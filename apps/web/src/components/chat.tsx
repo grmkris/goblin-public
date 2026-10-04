@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, Button, Empty, EmptyDescription, EmptyHeader, EmptyTitle, Textarea } from '@purrable/ui'
 import { failureText, request } from '../lib/boundary.ts'
 import { BrowserPiEvents, ConversationStream, type StreamStatus } from '../lib/conversation-stream.ts'
 import type { ConversationProjection, ToolCallView } from '../lib/projection.ts'
 import { MessageText, MessageView, StreamNotice } from './chat-message.tsx'
+import { ModelPicker, useModelChoice } from './model-picker.tsx'
 
 function useConversation() {
   const [projection, setProjection] = useState<ConversationProjection>()
@@ -52,7 +53,7 @@ function useConversation() {
       setNotice(failureText(error))
     }
   }
-  return { projection, status, notice, send, stop }
+  return { projection, status, notice, report: setNotice, send, stop }
 }
 
 function useAutoscroll(dependency: unknown) {
@@ -67,10 +68,12 @@ function Composer({
   onSend,
   running,
   onStop,
+  picker,
 }: {
   readonly onSend: (input: string) => Promise<boolean>
   readonly running: boolean
   readonly onStop: () => void
+  readonly picker: ReactNode
 }) {
   const [input, setInput] = useState('')
   const [pending, setPending] = useState(false)
@@ -102,7 +105,8 @@ function Composer({
         placeholder={running ? 'Add a follow-up…' : 'Ask your agent…'}
         disabled={pending}
       />
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center gap-2">
+        <div className="mr-auto min-w-0">{picker}</div>
         {running && (
           <Button type="button" variant="outline" onClick={onStop}>
             Stop
@@ -117,7 +121,8 @@ function Composer({
 }
 
 export function Chat() {
-  const { projection, status, notice, send, stop } = useConversation()
+  const { projection, status, notice, report, send, stop } = useConversation()
+  const { choice, choose } = useModelChoice(report)
   const messages = projection?.messages ?? []
   const calls = useMemo(() => {
     const map = new Map<string, ToolCallView>()
@@ -145,7 +150,14 @@ export function Chat() {
             </EmptyHeader>
           </Empty>
         ) : (
-          messages.map((message) => <MessageView key={message.id} message={message} calls={calls} />)
+          messages.map((message) => (
+            <MessageView
+              key={message.id}
+              message={message}
+              calls={calls}
+              canSwitchModel={(choice?.options.length ?? 0) > 1}
+            />
+          ))
         )}
         {projection?.tools
           .filter((tool) => tool.status === 'running')
@@ -161,7 +173,12 @@ export function Chat() {
         )}
         <div ref={end} />
       </div>
-      <Composer onSend={send} running={projection?.running ?? false} onStop={() => void stop()} />
+      <Composer
+        onSend={send}
+        running={projection?.running ?? false}
+        onStop={() => void stop()}
+        picker={<ModelPicker choice={choice} onChoose={(model) => void choose(model)} />}
+      />
     </section>
   )
 }

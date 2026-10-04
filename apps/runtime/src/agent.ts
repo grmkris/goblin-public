@@ -16,6 +16,7 @@ import { GrantStore } from './mcp/grants.ts'
 import { McpHost } from './mcp/host.ts'
 import { piEventResponse } from './pi/events.ts'
 import { makePiHarness } from './pi/harness.ts'
+import { MODEL_PROVIDER } from './pi/model.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { ResidentAuthority } from './resident.ts'
 import { ClientSessions } from './sessions.ts'
@@ -24,10 +25,12 @@ import {
   type AgentServices,
   Budget,
   Mcp,
+  Models,
   Resident,
   Sessions,
   agentLayer,
   attempt,
+  attemptSync,
   nowSecondsEffect,
   requireBudget,
   requireResident,
@@ -35,6 +38,7 @@ import {
 import { runApplicationMigrations } from './storage/migrations.ts'
 import { ModelBudget, UsageStore, dailyTokenLimit } from './budget.ts'
 import { budgetExtension } from './pi/budget.ts'
+import { ModelChoiceStore, ModelPicker, modelOptions } from './models.ts'
 
 type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
 
@@ -47,12 +51,29 @@ const clientSession = (clientId: string, clientName: string | undefined, harness
     )
   })
 
+/** The model last applied to each session in this isolate, keyed by session id (`root` for the main thread). */
+type Applied = Map<string, string>
+
+/**
+ * Puts a session on the user's model before a turn. Pi stores one model per conversation, set when it is created, so
+ * a pick (or a new deployment default) reaches existing conversations only this way. Skipped when already applied.
+ */
+const useModel = (harness: PiHarness, applied: Applied, session: string | undefined) =>
+  Effect.gen(function* () {
+    const id = (yield* Models).current()
+    const key = session ?? 'root'
+    if (applied.get(key) === id) return
+    yield* attempt(() => harness.session(session).setModel({ provider: MODEL_PROVIDER, id }))
+    applied.set(key, id)
+  })
+
 /**
  * The resident agent. Pi (through the native PiHarness) owns conversations; the services in `services.ts` own MCP
  * connections, credentials, grants and resident authority. RPC methods are thin: they run one program each.
  */
 export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods {
   readonly harness: PiHarness
+  readonly #applied: Applied = new Map()
   #runtime: Promise<Runtime> | undefined
 
   constructor(ctx: DurableObjectState, env: RuntimeEnv) {
@@ -79,7 +100,8 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
         fetch: globalThis.fetch.bind(globalThis),
       })
       const budget = new ModelBudget(new UsageStore(db), dailyTokenLimit(this.env.MODEL_DAILY_TOKENS))
-      return ManagedRuntime.make(agentLayer(host, new ResidentAuthority(db), new ClientSessions(db), budget))
+      const models = new ModelPicker(new ModelChoiceStore(db), modelOptions(this.env.MODELS, this.env.MODEL_ID))
+      return ManagedRuntime.make(agentLayer(host, new ResidentAuthority(db), new ClientSessions(db), budget, models))
     })()
     this.#runtime.catch(() => {
       this.#runtime = undefined
@@ -115,10 +137,30 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   submit(input: string, operationId: string) {
     const harness = this.harness
+    const model = useModel(harness, this.#applied, undefined)
     return this.#owner(
       Effect.gen(function* () {
         yield* requireBudget
+        yield* model
         return yield* attempt(() => harness.submit(input, { operationId }))
+      }),
+    )
+  }
+
+  modelChoice() {
+    return this.#owner(Models.useSync((models) => models.choice()))
+  }
+
+  /** Stores the pick and moves the main thread to it at once; client sessions follow on their next turn. */
+  chooseModel(modelId: string) {
+    const model = useModel(this.harness, this.#applied, undefined)
+    return this.#owner(
+      Effect.gen(function* () {
+        const models = yield* Models
+        const now = yield* nowSecondsEffect
+        const choice = yield* attemptSync(() => models.choose(modelId, now))
+        yield* model
+        return choice
       }),
     )
   }
@@ -218,11 +260,13 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
    */
   askAsClient(clientId: string, clientName: string | undefined, input: string, operationId: string, waitMs: number) {
     const harness = this.harness
+    const applied = this.#applied
     return this.#client(
       Effect.gen(function* () {
         yield* requireResident
         yield* requireBudget
         const session = yield* clientSession(clientId, clientName, harness)
+        yield* useModel(harness, applied, session)
         yield* attempt(() => harness.submit(input, { session, operationId }))
         const result = yield* attempt(() =>
           harness.wait(operationId, { session, signal: AbortSignal.timeout(waitMs) }).catch(() => undefined),

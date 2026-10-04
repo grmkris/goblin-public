@@ -109,9 +109,12 @@ function ToolResult({
 export function MessageView({
   message,
   calls,
+  canSwitchModel = false,
 }: {
   readonly message: ChatMessage
   readonly calls: ReadonlyMap<string, ToolCallView>
+  /** Another model is on offer, so a provider failure can point at the picker. */
+  readonly canSwitchModel?: boolean
 }) {
   if (message.role === 'tool') return <ToolResult message={message} call={calls.get(message.toolCallId)} />
   if (message.role === 'user')
@@ -129,7 +132,11 @@ export function MessageView({
       )}
       {message.failure !== undefined && (
         <Alert variant="destructive">
-          <AlertDescription>{message.failure}</AlertDescription>
+          <AlertDescription>
+            {message.failure.text}{' '}
+            {message.failure.provider &&
+              (canSwitchModel ? 'Try again later, or pick another model below.' : 'Try again later.')}
+          </AlertDescription>
         </Alert>
       )}
     </>

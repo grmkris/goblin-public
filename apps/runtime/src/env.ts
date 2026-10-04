@@ -2,7 +2,7 @@ import type { CallToolResult, GetPromptResult, ReadResourceResult } from '@model
 import type { PiOperationResult, PiReceipt } from 'agents/harness/pi'
 import type { RpcResult } from './http/rpc.ts'
 import type { Grant, GrantCapability } from './mcp/grants.ts'
-import type { ResidentStatus, ServerView, ToolView, UsageToday } from '@purrable/contracts'
+import type { ModelChoice, ResidentStatus, ServerView, ToolView, UsageToday } from '@purrable/contracts'
 import type { TranscriptMessage } from './pi/transcript.ts'
 import type { MailBinding } from './auth/mail.ts'
 
@@ -45,6 +45,8 @@ export interface AgentRpcMethods {
   ) => Promise<RpcResult<AskResult>>
   readonly clientMessages: (clientId: string, limit: number) => Promise<RpcResult<readonly TranscriptMessage[]>>
   readonly usageToday: () => Promise<RpcResult<UsageToday>>
+  readonly modelChoice: () => Promise<RpcResult<ModelChoice>>
+  readonly chooseModel: (modelId: string) => Promise<RpcResult<ModelChoice>>
   readonly deleteAgentData: () => Promise<RpcResult<true>>
 }
 export type AskResult =
@@ -66,7 +68,10 @@ export interface RuntimeEnv {
   readonly SIGNUP_MODE?: string
   readonly SIGNUP_INVITE_CODE?: string
   readonly MODEL_BASE_URL: string
+  /** The default model; also the first one offered. */
   readonly MODEL_ID: string
+  /** More LiteLLM model names users may pick, comma-separated (`models.ts`). */
+  readonly MODELS?: string
   readonly MODEL_KEY: string
   /** Model tokens each user's agent may spend per UTC day; see `budget.ts` for the default. */
   readonly MODEL_DAILY_TOKENS?: string

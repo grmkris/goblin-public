@@ -27,6 +27,11 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     tables: ['app_usage_daily'],
     sql: 'CREATE TABLE app_usage_daily (day TEXT PRIMARY KEY NOT NULL, tokens INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
   },
+  {
+    key: '20261007000000_model_choice',
+    tables: ['app_model_choice'],
+    sql: 'CREATE TABLE app_model_choice (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), model_id TEXT NOT NULL, updated_at INTEGER NOT NULL)',
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

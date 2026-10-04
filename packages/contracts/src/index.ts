@@ -53,6 +53,24 @@ export type ResidentStatus = typeof ResidentStatus.Type
 export const UsageToday = Schema.Struct({ used: Schema.Number, limit: Schema.Number, resetsAt: Schema.Number })
 export type UsageToday = typeof UsageToday.Type
 
+/** A model the deployment offers. `route` groups models by provider route, because quotas are per route. */
+export const ModelOption = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+  route: Schema.String,
+  note: Schema.String,
+  images: Schema.Boolean,
+})
+export type ModelOption = typeof ModelOption.Type
+
+/** The model the user's agent answers with, the deployment default, and every model on offer (default first). */
+export const ModelChoice = Schema.Struct({
+  current: Schema.String,
+  default: Schema.String,
+  options: Schema.Array(ModelOption),
+})
+export type ModelChoice = typeof ModelChoice.Type
+
 /** An MCP client the owner has authorized to use Purrable's /mcp server. */
 export const InboundClient = Schema.Struct({
   clientId: Schema.String,

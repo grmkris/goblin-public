@@ -11,7 +11,7 @@ export type ChatMessage =
       readonly text: string
       readonly toolCalls: readonly ToolCallView[]
       /** Why this turn has no answer: the model call failed, was stopped, or came back empty. */
-      readonly failure?: string
+      readonly failure?: TurnFailure
     }
   | {
       readonly id: string
@@ -39,18 +39,24 @@ export type ConversationProjection = {
   readonly progress: string
 }
 
+/** Why a turn has no answer. `provider`: the model's provider refused or is down, so another model may answer. */
+export type TurnFailure = { readonly text: string; readonly provider: boolean }
+
 /** The provider's raw error, in a sentence the owner can act on; the first line of anything unrecognised. */
-export function failureReason(raw: string): string {
+export function failureReason(raw: string): TurnFailure {
   if (/\b429\b|quota|rate.?limit|too many requests/iu.test(raw))
-    return 'The model provider refused the request: quota exceeded or rate-limited. Try again later.'
+    return { text: 'The model provider refused the request: quota exceeded or rate-limited.', provider: true }
   if (/\b(?:500|502|503|504)\b|overloaded|high demand|unavailable/iu.test(raw))
-    return 'The model provider is overloaded or unavailable. Try again in a minute.'
+    return { text: 'The model provider is overloaded or unavailable.', provider: true }
   const line =
     raw
       .split('\n')
       .find((part) => part.trim() !== '')
       ?.trim() ?? ''
-  return line === '' ? 'The model call failed.' : `The model call failed: ${line.slice(0, 200)}`
+  return {
+    text: line === '' ? 'The model call failed.' : `The model call failed: ${line.slice(0, 200)}`,
+    provider: false,
+  }
 }
 
 /** A turn that ended without an answer says why, instead of rendering nothing. */
@@ -58,11 +64,11 @@ function assistantFailure(
   message: Record<string, unknown>,
   content: string,
   calls: readonly ToolCallView[],
-): string | undefined {
+): TurnFailure | undefined {
   if (message.stopReason === 'error') return failureReason(isString(message.errorMessage) ? message.errorMessage : '')
-  if (message.stopReason === 'aborted') return 'Stopped before answering.'
+  if (message.stopReason === 'aborted') return { text: 'Stopped before answering.', provider: false }
   if (content === '' && calls.length === 0 && message.stopReason === 'stop')
-    return 'The model returned an empty answer.'
+    return { text: 'The model returned an empty answer.', provider: false }
   return undefined
 }
 

@@ -97,6 +97,11 @@ const Rpc = Schema.Struct({
     ok: Schema.Literal(true),
     value: Schema.Struct({ used: Schema.Number, limit: Schema.Number, resetsAt: Schema.Number }),
   }),
+  model: Schema.Struct({
+    ok: Schema.Literal(true),
+    value: Schema.Struct({ current: Schema.String, default: Schema.String, options: Schema.Array(Schema.Unknown) }),
+  }),
+  unknownModel: Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) }),
   askWhileRevoked: Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) }),
 })
 
@@ -119,6 +124,9 @@ harness.test(
     // A fresh agent has spent nothing today; the budget table exists after migration.
     expect(result.usage.value).toMatchObject({ used: 0, limit: 300_000 })
     expect(result.usage.value.resetsAt % 86_400).toBe(0)
+    // No pick yet: the deployment default; a model the deployment does not offer is refused (app_model_choice exists).
+    expect(result.model.value).toMatchObject({ current: 'storage-only', default: 'storage-only' })
+    expect(result.unknownModel.error._tag).toBe('InvalidInput')
     expect(result.askWhileRevoked.error._tag).toBe('ResidentInactive')
   }),
 )

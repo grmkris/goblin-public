@@ -97,6 +97,17 @@ Grants are per discovered tool (`app_mcp_grants`), toggled by the owner. A tool 
 resource. Tool annotations from the server are shown but never grant anything. Disconnecting forgets credentials
 and keeps grants.
 
+## Models
+
+Each user picks the model their agent answers with, in the composer. The deployment offers `PURRABLE_MODEL_ID` (the
+default) plus `PURRABLE_MODELS`, all served by the same LiteLLM key; `models.ts` names and groups them by route
+(Google, Alibaba Cloud), because quota runs out per route. The pick is one row in `app_model_choice`; without one, or
+when the deployment stops offering it, the default applies. Pi stores one model per conversation, set when it is
+created, so before each turn the agent calls `session.setModel` for the session the turn runs in (the main thread or
+an inbound client's), skipping it when that session already has the model. Every offered model is registered with
+Pi's `Models` under the one `purrable-litellm` provider. A failed model call shows its reason in the chat, and a
+quota or outage failure points at the picker.
+
 ## Model budget
 
 Users share the deployment's model key, so each agent has a daily token budget (`PURRABLE_MODEL_DAILY_TOKENS`,
@@ -141,5 +152,7 @@ meet its contract (ADR 0001). SQLite transactions are short and never span model
 
 `apps/web/alchemy.run.ts` declares the Vite Worker, the `PersonalAgent` namespace and the D1 database; it is the only
 deployment entrypoint. The local stage runs in workerd with CLIProxy; the dev stage calls Railway LiteLLM with a
-dedicated key limited to Gemini Flash and $10 per 30 days. Secrets are Worker secret bindings, never in the browser
+dedicated key limited to the offered models (Gemini 3.8 Flash and four Alibaba Token Plan models) and $10 per 30 days.
+The Token Plan's weekly quota is shared with Hermes and the coding agents, and LiteLLM may not price those models, so
+the per-user daily budget is their real limit. Secrets are Worker secret bindings, never in the browser
 bundle.

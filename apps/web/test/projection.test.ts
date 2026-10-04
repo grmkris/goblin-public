@@ -100,18 +100,22 @@ describe('Pi committed state projected for the chat', () => {
       'litellm.RateLimitError: RateLimitError: GeminiException - {"error": {"code": 429, "message": "You exceeded your current quota"}}'
     expect(assistant({ stopReason: 'error', errorMessage: quota })).toMatchObject({
       text: '',
-      failure: 'The model provider refused the request: quota exceeded or rate-limited. Try again later.',
+      failure: { text: 'The model provider refused the request: quota exceeded or rate-limited.', provider: true },
     })
     expect(
       assistant({ stopReason: 'error', errorMessage: 'Error: 503 This model is experiencing high demand' }),
     ).toMatchObject({
-      failure: 'The model provider is overloaded or unavailable. Try again in a minute.',
+      failure: { text: 'The model provider is overloaded or unavailable.', provider: true },
     })
     expect(assistant({ stopReason: 'error', errorMessage: 'Bad tool schema\nstack' })).toMatchObject({
-      failure: 'The model call failed: Bad tool schema',
+      failure: { text: 'The model call failed: Bad tool schema', provider: false },
     })
-    expect(assistant({ stopReason: 'aborted' })).toMatchObject({ failure: 'Stopped before answering.' })
-    expect(assistant({ stopReason: 'stop' })).toMatchObject({ failure: 'The model returned an empty answer.' })
+    expect(assistant({ stopReason: 'aborted' })).toMatchObject({
+      failure: { text: 'Stopped before answering.', provider: false },
+    })
+    expect(assistant({ stopReason: 'stop' })).toMatchObject({
+      failure: { text: 'The model returned an empty answer.', provider: false },
+    })
     expect(assistant({ stopReason: 'stop', content: [{ type: 'text', text: 'Hi' }] })).not.toHaveProperty('failure')
     expect(
       assistant({ stopReason: 'toolUse', content: [{ type: 'toolCall', id: 'c', name: 'mcp_list', arguments: {} }] }),

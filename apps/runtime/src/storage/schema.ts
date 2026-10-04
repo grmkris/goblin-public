@@ -58,3 +58,10 @@ export const appClientSessions = sqliteTable('app_client_sessions', {
   clientName: text('client_name'),
   createdAt: integer('created_at').notNull(),
 })
+
+/** The user's model pick (one row, id 1); none means the deployment default (`models.ts`). */
+export const appModelChoice = sqliteTable('app_model_choice', {
+  id: integer('id').primaryKey().notNull(),
+  modelId: text('model_id').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})

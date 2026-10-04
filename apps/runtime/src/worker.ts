@@ -31,6 +31,7 @@ const PromptGet = Schema.Struct({
 })
 const GrantChange = Schema.Struct({ serverId: Bounded(64), name: Bounded(256), allowed: Schema.Boolean })
 const ResidentChange = Schema.Struct({ enabled: Schema.Boolean })
+const ModelPick = Schema.Struct({ model: Bounded(128) })
 
 const json = (value: unknown, status = 200): Response => Response.json(value, { status })
 /** Every user has their own agent object, named by their user ID. */
@@ -57,6 +58,9 @@ const agentRoutes: Readonly<Record<string, Route>> = {
   'GET /api/agent/snapshot': (_request, agent) => agent.fetch('https://agent/snapshot'),
   'GET /api/agent/resident': async (_request, agent) => json(unwrap(await agent.residentStatus())),
   'GET /api/agent/usage': async (_request, agent) => json(unwrap(await agent.usageToday())),
+  'GET /api/agent/model': async (_request, agent) => json(unwrap(await agent.modelChoice())),
+  'PUT /api/agent/model': async (request, agent) =>
+    json(unwrap(await agent.chooseModel((await readJson(request, ModelPick)).model))),
   'POST /api/agent/resident': async (request, agent) =>
     json(unwrap(await agent.residentSet((await readJson(request, ResidentChange)).enabled))),
 }
