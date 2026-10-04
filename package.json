@@ -30,13 +30,12 @@
     "test:unit": "turbo run test:unit",
     "test:integration": "turbo run test:integration",
     "agents:check": "bun tools/docs-public.ts",
-    "compatibility:check": "bun tools/compatibility-check.ts",
     "check:files": "bun tools/check-files.ts",
     "graph": "bun tools/check-graph.ts",
     "check:fast": "bun run fmt:check && bun run agents:check && bun run lint && bun run typecheck && bun run test:unit",
-    "check": "bun run fmt:check && bun run agents:check && bun run compatibility:check && bun run graph && bun run typecheck && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run build",
+    "check": "bun run fmt:check && bun run agents:check && bun run graph && bun run typecheck && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run build",
     "infra": "alchemy",
-    "check:public": "bun run fmt:check && bun run agents:check && bun run compatibility:check && bun run graph && bun run typecheck && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run build"
+    "check:public": "bun run fmt:check && bun run agents:check && bun run graph && bun run typecheck && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run build"
   },
   "devDependencies": {
     "@shadcn/lint": "0.2.0",

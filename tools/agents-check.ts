@@ -8,10 +8,12 @@
  * - .claude/skills: one relative symlink per skill, none dangling.
  * - Instructions: CLAUDE.md imports AGENTS.md; every workspace and nested AGENTS.md has its CLAUDE.md shim and a link
  *   from the root; relative links resolve; .claude/rules globs match files; .cursor/rules points Cursor at AGENTS.md.
+ * - Docs (tools/docs.ts): links in README, docs/ (except docs/archive/) resolve; documented `bun run` scripts exist.
  */
 import { Schema } from 'effect'
 import path from 'node:path'
-import { checkAll, readSourcesAt } from './agents.ts'
+import { checkAll, listFiles, readSourcesAt } from './agents.ts'
+import { checkDocs } from './docs.ts'
 import { nodes } from './graph.ts'
 import { repoRoot } from './run.ts'
 
@@ -42,6 +44,7 @@ const failures = [
     repoRoot,
     nodes.map((node) => node.dir),
   ),
+  ...checkDocs(repoRoot, listFiles(repoRoot)),
   ...(await checkIgnores()),
 ]
 if (failures.length > 0) {

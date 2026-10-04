@@ -20,7 +20,7 @@ The web application projects committed Pi state through AG-UI. MCP Apps run in a
 
 Alchemy (`2.0.0-beta.80`) is the sole infrastructure entrypoint. It declares one Vite Worker, the `PersonalAgent` Durable Object binding, and a separate D1 auth database. The local stage uses CLIProxy; the retained dev stage uses the dedicated Railway LiteLLM key. No production deployment or external side effect is implied by local tests.
 
-See implementation status, [stack compatibility](stack-compatibility.md), [MCP compatibility](mcp-compatibility.md), and [ADRs](adr/0001-runtime-and-auth-storage.md).
+See implementation status, stack compatibility, MCP compatibility, and [ADRs](adr/0001-runtime-and-auth-storage.md).
 
 The current Effect service seam is deliberately small:
 
