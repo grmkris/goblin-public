@@ -121,13 +121,17 @@ export function RemoveServer({
 
 const decodeSuggestions = Schema.decodeUnknownSync(Schema.Array(ServerSuggestion))
 
-/** Add a suggested server and start connecting it: off to its sign-in, or connected at once if it needs none. */
-async function addAndConnect(suggestion: ServerSuggestion): Promise<string> {
-  const server = decodeServer(await request('/api/mcp/servers', { body: { endpoint: suggestion.endpoint } }))
+/** Where a server came from: a registry entry, recorded with it. */
+export type ServerOrigin = { readonly registry: string; readonly name: string; readonly version?: string }
+
+/** Add a server and start connecting it: off to its sign-in, or connected at once if it needs none. */
+export async function addAndConnect(endpoint: string, title: string, source?: ServerOrigin): Promise<string> {
+  const body = { endpoint, ...(source === undefined ? {} : { source }) }
+  const server = decodeServer(await request('/api/mcp/servers', { body }))
   const connect = record(await request(`/api/mcp/${encodeURIComponent(server.serverId)}/connect`, { body: {} }))
   const next = connect?.authorizationUrl
   if (isString(next)) window.location.assign(next)
-  return `Connected ${suggestion.title}. Choose the tools your agent may use.`
+  return `Connected ${title}. Choose the tools your agent may use.`
 }
 
 /** Servers we suggest, checked to connect from here: one tap adds and connects; already added ones say so. */
@@ -151,7 +155,7 @@ export function SuggestedServers({
   async function add(item: ServerSuggestion): Promise<void> {
     setBusy(item.id)
     try {
-      onChanged(await addAndConnect(item))
+      onChanged(await addAndConnect(item.endpoint, item.title))
     } catch (error) {
       onMessage(failureText(error))
     } finally {

@@ -108,7 +108,12 @@ Servers come from `PURRABLE_MCP_SERVERS` (JSON: `serverId`, `endpoint`, optional
 the owner, who may add up to sixteen by URL (`app_mcp_servers`, ADR 0006). An added endpoint is a public https
 address (`mcp/endpoint.ts`), and its server card labels it as the server's own claim. Configured servers win on ID
 and cannot be removed. Removing an added server forgets everything stored for it in one transaction. Connections
-also offers a shelf of suggested servers (`mcp/suggested.ts`), each checked by hand. One tap adds and connects. Connect
+also offers a shelf of suggested servers (`mcp/suggested.ts`), each checked by hand. One tap adds and connects. It also
+searches MCP registries that speak the generic registry API (`mcp/registry.ts`, `GET /api/mcp/catalog?q=`): the
+Official MCP Registry and GitHub's. Only the latest active entries with an https streamable-HTTP remote are shown,
+labelled by registry, each server once (the official registry first), cached for ten minutes. Endpoint placeholders
+are filled with one safe path segment each, and servers that want an API key are listed but cannot be added yet. An
+added entry records its registry, name and version. Connect
 first tries a server without sign-in, which many public servers need not have; if refused, it runs OAuth. The owner
 connects each one from the Connections page:
 

@@ -4,7 +4,8 @@ Accepted 2026-10-04 with the owner.
 
 **The owner may add MCP servers.** Until now servers came only from the stage's `PURRABLE_MCP_SERVERS`. Owners can now
 add their own: by URL, or with one tap from a shelf we curate (`mcp/suggested.ts`, each entry checked to connect from
-a Worker, with endpoints per stage and our own descriptions). MCP registries follow. Added servers live in
+a Worker, with endpoints per stage and our own descriptions), or found in MCP registries that speak the generic
+registry API (the Official MCP Registry and GitHub's). Added servers live in
 the agent object (`app_mcp_servers`) beside the configured ones. Configuration wins on a server ID; added servers get
 IDs of their own (host slug plus a random suffix) and can never shadow a configured one. Each agent may add sixteen.
 

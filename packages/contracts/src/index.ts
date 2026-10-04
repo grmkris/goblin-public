@@ -46,6 +46,26 @@ export const ServerSuggestion = Schema.Struct({
 })
 export type ServerSuggestion = typeof ServerSuggestion.Type
 
+/**
+ * A server found in an MCP registry, as its publisher describes it. `verified`: the registry checks namespace
+ * ownership (the official one does). `variables`: placeholders in the endpoint the owner fills in. `needsKey`: the
+ * server wants an API key header, which Purrable cannot send yet.
+ */
+export const CatalogEntry = Schema.Struct({
+  registry: Schema.String,
+  registryTitle: Schema.String,
+  verified: Schema.Boolean,
+  name: Schema.String,
+  title: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  version: Schema.optional(Schema.String),
+  endpoint: Schema.String,
+  variables: Schema.Array(Schema.String),
+  needsKey: Schema.Boolean,
+  added: Schema.Boolean,
+})
+export type CatalogEntry = typeof CatalogEntry.Type
+
 /** A discovered remote tool. The hints come from the server and are unverified; only `granted` is ours. */
 export const ToolView = Schema.Struct({
   name: Schema.String,

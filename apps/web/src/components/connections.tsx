@@ -16,6 +16,7 @@ import {
 } from '@purrable/ui'
 import { failureText, record, request } from '../lib/boundary.ts'
 import { AddServer, RemoveServer, SuggestedServers } from './server-add.tsx'
+import { ServerSearch } from './server-search.tsx'
 import { ToolConsole } from './tool-console.tsx'
 
 const decodeServers = Schema.decodeUnknownSync(Schema.Array(ServerView))
@@ -244,6 +245,13 @@ export function Connections() {
       )}
       <SuggestedServers
         version={version}
+        onChanged={(text) => {
+          setMessage(text)
+          load()
+        }}
+        onMessage={setMessage}
+      />
+      <ServerSearch
         onChanged={(text) => {
           setMessage(text)
           load()

@@ -4,6 +4,7 @@ import type { RpcResult } from './http/rpc.ts'
 import type { Grant, GrantCapability } from './mcp/grants.ts'
 import type {
   AppContext,
+  CatalogEntry,
   ModelChoice,
   ResidentStatus,
   ServerSuggestion,
@@ -29,6 +30,7 @@ export interface AgentRpcMethods {
   readonly mcpFinishConnect: (state: string, code: string, issuer?: string) => Promise<RpcResult<string>>
   readonly mcpDisconnect: (serverId: string) => Promise<RpcResult<null>>
   readonly mcpSuggested: () => Promise<RpcResult<readonly ServerSuggestion[]>>
+  readonly mcpCatalog: (query: string) => Promise<RpcResult<readonly CatalogEntry[]>>
   readonly mcpAddServer: (endpoint: string, source?: ServerSource) => Promise<RpcResult<ServerView>>
   readonly mcpRemoveServer: (serverId: string) => Promise<RpcResult<null>>
   readonly mcpTools: (serverId: string, refresh: boolean) => Promise<RpcResult<readonly ToolView[]>>

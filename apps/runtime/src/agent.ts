@@ -216,6 +216,10 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     )
   }
 
+  mcpCatalog(query: string) {
+    return this.#owner(Mcp.use((mcp) => attempt(() => mcp.searchCatalog(query))))
+  }
+
   mcpAddServer(endpoint: string, source?: ServerSource) {
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.addServer(endpoint, source))))
   }

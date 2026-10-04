@@ -1,5 +1,5 @@
 import { auth, type AuthProvider, discoverOAuthServerInfo, type Tool } from '@modelcontextprotocol/client'
-import type { ServerView, ToolView } from '@purrable/contracts'
+import type { CatalogEntry, ServerView, ToolView } from '@purrable/contracts'
 import { nowSeconds } from '../clock.ts'
 import { Internal, InvalidInput, NeedsAuthorization, NotFound } from '../http/errors.ts'
 import { McpConnectionManager, toolAppResource, toolOffered } from './connection.ts'
@@ -7,6 +7,7 @@ import type { Credentials } from './credentials.ts'
 import type { Grant, Grants } from './grants.ts'
 import { addedServerId, serverClaims, userEndpoint } from './endpoint.ts'
 import { StoredOAuthProvider } from './oauth-provider.ts'
+import { DEFAULT_REGISTRIES, RegistryCatalog } from './registry.ts'
 import { type AddedServers, MAX_ADDED_SERVERS, type ServerSource } from './servers.ts'
 import type { McpServerConfig } from './types.ts'
 
@@ -52,6 +53,7 @@ export class McpHost {
   readonly #grants: Grants
   readonly #appUrl: string
   readonly #fetch: typeof fetch
+  readonly #catalog: RegistryCatalog
   readonly #configured: ReadonlySet<string>
   readonly #added: AddedServers | undefined
   readonly #random: () => string
@@ -64,6 +66,7 @@ export class McpHost {
     this.#appUrl = options.appUrl
     this.#fetch = options.fetch
     this.#added = options.added
+    this.#catalog = new RegistryCatalog(options.fetch)
     // @effect-diagnostics-next-line cryptoRandomUUID:off -- Unguessable suffixes for added server ids.
     this.#random = options.random ?? (() => crypto.randomUUID().replaceAll('-', ''))
     this.#configured = new Set(options.servers.map((server) => server.serverId))
@@ -167,6 +170,13 @@ export class McpHost {
     const view = this.servers().find((item) => item.serverId === serverId)
     if (view === undefined) throw new Internal({ reason: 'added server missing' })
     return view
+  }
+
+  /** Search MCP registries for servers the owner may add, marking the ones already offered. */
+  async searchCatalog(query: string): Promise<readonly CatalogEntry[]> {
+    const offered = new Set(this.manager.servers.map((server) => server.endpoint))
+    const entries = await this.#catalog.search(query.trim(), DEFAULT_REGISTRIES)
+    return entries.map((entry) => ({ ...entry, added: offered.has(entry.endpoint) }))
   }
 
   /** Remove a server the owner added, with its credentials, grants and pending sign-ins. Configured ones stay. */

@@ -126,24 +126,34 @@ async function mcpServerRoute(request: Request, agent: DurableObjectStub<AgentRp
   throw new NotFound({ what: path })
 }
 
-async function mcpRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string, env: RuntimeEnv) {
-  if (path === '/api/mcp/oauth/callback' && request.method === 'GET') return oauthCallback(request, agent, env)
-  if (path === '/api/mcp/servers' && request.method === 'GET') return json(unwrap(await agent.mcpServers()))
-  if (path === '/api/mcp/suggested' && request.method === 'GET') return json(unwrap(await agent.mcpSuggested()))
-  if (path === '/api/mcp/servers' && request.method === 'POST') {
+/** The owner's MCP routes that are not about one server, keyed `METHOD path`. */
+const mcpRoutes: Readonly<Record<string, Route>> = {
+  'GET /api/mcp/servers': async (_request, agent) => json(unwrap(await agent.mcpServers())),
+  'POST /api/mcp/servers': async (request, agent) => {
     const body = await readJson(request, AddServer)
     return json(unwrap(await agent.mcpAddServer(body.endpoint, body.source)), 201)
-  }
-  if (path === '/api/mcp/grants' && request.method === 'GET') return json(unwrap(await agent.mcpGrants()))
-  if (path === '/api/mcp/grants' && request.method === 'PUT') {
+  },
+  'GET /api/mcp/suggested': async (_request, agent) => json(unwrap(await agent.mcpSuggested())),
+  'GET /api/mcp/catalog': async (request, agent) => {
+    const query = new URL(request.url).searchParams.get('q') ?? ''
+    if (query.length > 100) throw new InvalidInput({ reason: 'query_too_long' })
+    return json(unwrap(await agent.mcpCatalog(query)))
+  },
+  'GET /api/mcp/grants': async (_request, agent) => json(unwrap(await agent.mcpGrants())),
+  'PUT /api/mcp/grants': async (request, agent) => {
     const body = await readJson(request, GrantChange)
     return json(unwrap(await agent.mcpSetToolGrant(body.serverId, body.name, body.allowed)))
-  }
-  if (path === '/api/mcp/app-grants' && request.method === 'PUT') {
+  },
+  'PUT /api/mcp/app-grants': async (request, agent) => {
     const body = await readJson(request, AppGrantChange)
     return json(unwrap(await agent.mcpSetAppGrant(body.serverId, body.uri, body.allowed)))
-  }
-  return mcpServerRoute(request, agent, path)
+  },
+}
+
+async function mcpRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string, env: RuntimeEnv) {
+  if (path === '/api/mcp/oauth/callback' && request.method === 'GET') return oauthCallback(request, agent, env)
+  const route = mcpRoutes[`${request.method} ${path}`]
+  return route === undefined ? mcpServerRoute(request, agent, path) : route(request, agent)
 }
 
 /** Every /api route below belongs to the signed-in user and their agent: a cookie session, same-origin for writes. */
