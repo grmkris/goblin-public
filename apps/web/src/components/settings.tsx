@@ -203,11 +203,6 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
   )
 }
 
-async function signOut(): Promise<void> {
-  await request('/api/auth/sign-out', { body: {} }).catch(() => undefined)
-  window.location.assign('/')
-}
-
 export function Settings() {
   const [error, setError] = useState('')
   return (
@@ -221,11 +216,6 @@ export function Settings() {
       <UsageCard onError={setError} />
       <ClientsCard onError={setError} />
       <DeleteAccountCard onError={setError} />
-      <div>
-        <Button variant="ghost" onClick={() => void signOut()}>
-          Sign out
-        </Button>
-      </div>
     </div>
   )
 }

@@ -24,3 +24,9 @@ export function SessionProvider({ children }: { readonly children: ReactNode }) 
 }
 
 export const useSession = (): Session => useContext(SessionContext)
+
+/** Ends the session and starts over at the sign-in page. */
+export async function signOut(): Promise<void> {
+  await request('/api/auth/sign-out', { body: {} }).catch(() => undefined)
+  window.location.assign('/')
+}

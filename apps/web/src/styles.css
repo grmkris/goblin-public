@@ -1,42 +1,16 @@
+@import 'tailwindcss';
 @import '@purrable/ui/styles.css';
-@source '../../../packages/ui/src';
-body {
-  margin: 0;
-  min-width: 320px;
-  background: var(--background);
-  color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, sans-serif;
-}
+
+/* The page column under the header; the gutters match the header's and clear the notch. */
 .shell {
   max-width: 880px;
   margin: 0 auto;
-  padding: 1.25rem 1rem 3rem;
+  padding: 1rem max(1rem, env(safe-area-inset-right)) var(--page-gutter-bottom) max(1rem, env(safe-area-inset-left));
 }
-.workspace-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
-}
-.brand {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-.nav {
-  display: flex;
-  gap: 1rem;
-}
-.nav a {
-  color: var(--muted-foreground);
-  text-decoration: none;
-}
-.nav a.nav-active {
-  color: var(--foreground);
-  font-weight: 600;
+@media (min-width: 48rem) {
+  .shell {
+    padding-inline: 2rem;
+  }
 }
 .chat {
   display: flex;
@@ -96,7 +70,9 @@ body {
   padding-left: 1.25rem;
 }
 .markdown a {
-  color: var(--primary);
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 .composer {
   position: sticky;
@@ -143,9 +119,9 @@ body {
   background: var(--card);
 }
 select {
-  background: var(--input);
+  background: transparent;
   color: var(--foreground);
-  border: 1px solid var(--border);
+  border: 1px solid var(--input);
   border-radius: 0.5rem;
   padding: 0.5rem;
 }

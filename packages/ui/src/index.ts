@@ -10,6 +10,14 @@ export {
   CardHeader,
   CardTitle,
 } from './components/card.tsx'
+export {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './components/dropdown-menu.tsx'
 export { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './components/empty.tsx'
 export {
   Field,
@@ -25,6 +33,7 @@ export {
 export { Input } from './components/input.tsx'
 export { Label } from './components/label.tsx'
 export { Separator } from './components/separator.tsx'
+export { SiteHeader, SiteHeaderBrand, type SiteHeaderLink } from './components/site-header.tsx'
 export { Textarea } from './components/textarea.tsx'
 export { AuthPage } from './auth/auth-page.tsx'
 export { type AuthActionResult, failed, succeeded } from './auth/contract.ts'
