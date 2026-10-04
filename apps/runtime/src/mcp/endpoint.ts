@@ -1,6 +1,7 @@
 // What the owner may add as an MCP server, and what the server may say about itself. An added endpoint is a public
 // https URL; a server card (`/.well-known/mcp/server-card.json`) is the publisher's claim, bounded and decoded, used
-// only to label the server for the owner. It never reaches the model and never grants anything.
+// only to label the server for the owner. It never reaches the model and never grants anything. Its fetch follows
+// no redirect (`manual`; workerd has no `error` mode): a 3xx is not `ok`, so it reads as no card.
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { InvalidInput } from '../http/errors.ts'
@@ -71,7 +72,7 @@ function cardIcon(icons: readonly { readonly src: string }[] | undefined): strin
 export async function serverClaims(endpoint: URL, fetcher: typeof fetch): Promise<ServerClaims> {
   try {
     const response = await fetcher(new URL('/.well-known/mcp/server-card.json', endpoint.origin), {
-      redirect: 'error',
+      redirect: 'manual',
       signal: AbortSignal.timeout(5000),
     })
     if (!response.ok) return {}
