@@ -22,6 +22,7 @@ import {
   stepSpring,
 } from '../../lib/spring.ts'
 import { AppFrame } from './frame.tsx'
+import { useAppGrantAsks } from './grant-ask.tsx'
 import { LinkOffer } from './offers.tsx'
 import { type AppSession, useApps } from './provider.tsx'
 import { AppPanel } from './slot.tsx'
@@ -253,6 +254,7 @@ function Stage({ session }: { readonly session: AppSession }) {
     sheet: undefined,
   })
   const [error, setError] = useState('')
+  const grants = useAppGrantAsks(session.selection.serverId)
   const [box, setBox] = useState({ width: 0, height: 0 })
   const target = useRef<() => Rect | undefined>(() => undefined)
   target.current = () => {
@@ -292,6 +294,7 @@ function Stage({ session }: { readonly session: AppSession }) {
     <div ref={stage} className="app-stage" data-mode={sheet ? 'sheet' : mode} data-hidden="">
       <AppChrome session={session} drag={drag} />
       {error && <Receipt tone="error">{error}. The ordinary tool result remains available.</Receipt>}
+      {grants.card}
       {session.link && (
         <LinkOffer link={session.link} serverId={session.selection.serverId} onDone={() => apps.setLink(undefined)} />
       )}
@@ -305,6 +308,7 @@ function Stage({ session }: { readonly session: AppSession }) {
           requestMode: apps.setMode,
           share: apps.setContext,
           offerLink: apps.setLink,
+          askGrant: grants.ask,
         }}
       />
     </div>

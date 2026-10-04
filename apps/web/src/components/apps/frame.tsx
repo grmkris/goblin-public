@@ -14,6 +14,7 @@ import { isSandboxMessage, sandboxHtml, sandboxProxy } from '../../lib/app-sandb
 import { contextText, safeLink } from '../../lib/app-context.ts'
 import { isString, record, records, request, text } from '../../lib/boundary.ts'
 import { type AppPlacement, type Device, hostContext, inlineHeight } from '../../lib/host-context.ts'
+import { grantDenied } from './grant-ask.tsx'
 import { LinkOffer } from './offers.tsx'
 
 export type AppSelection = {
@@ -34,6 +35,8 @@ export type FrameEvents = {
   readonly share: (text: string) => void
   /** A link the App asks to open: offered to the owner, never opened for them. */
   readonly offerLink: (link: URL) => void
+  /** The App called a tool the owner has not granted: true once they allow it, false if they do not. */
+  readonly askGrant: (name: string) => Promise<boolean>
 }
 
 function device(): Device {
@@ -75,8 +78,17 @@ function configuredBridge(
     { hostContext: contextFor(placement()) },
   )
   const { serverId } = selection
-  bridge.oncalltool = (params) =>
-    forward<CallToolResult>(serverId, 'tools/call', { name: params.name, arguments: params.arguments ?? {} }, signal)
+  bridge.oncalltool = async (params) => {
+    const call = () =>
+      forward<CallToolResult>(serverId, 'tools/call', { name: params.name, arguments: params.arguments ?? {} }, signal)
+    try {
+      return await call()
+    } catch (cause) {
+      // An ungranted tool waits for the owner instead of failing; allowed, the same call runs once more.
+      if (grantDenied(cause) && (await events.askGrant(params.name))) return call()
+      throw cause
+    }
+  }
   bridge.onreadresource = (params) =>
     forward<ReadResourceResult>(serverId, 'resources/read', { uri: params.uri }, signal)
   bridge.onrequestdisplaymode = async ({ mode }) => ({ mode: events.requestMode(mode) })
@@ -185,6 +197,7 @@ export function AppFrame({
       requestMode: (mode) => latest.current.events.requestMode(mode),
       share: (shared) => latest.current.events.share(shared),
       offerLink: (link) => latest.current.events.offerLink(link),
+      askGrant: (name) => latest.current.events.askGrant(name),
     }
     if (element)
       attachApp(element, selection, () => latest.current.placement, controller.signal, relay)
@@ -231,6 +244,7 @@ export function McpApp({ selection, onClose }: { readonly selection: AppSelectio
     requestMode: () => 'inline',
     share: () => undefined,
     offerLink: setLink,
+    askGrant: async () => false,
   }
   return (
     <div className="flex flex-col gap-3">

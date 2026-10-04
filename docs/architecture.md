@@ -160,6 +160,10 @@ composer and travels once, with the owner's next message, as `appContext` on `PO
 `{ origin: { serverId, trust: 'untrusted' }, appContext }`. The persona treats it as data, never as the owner
 speaking, and the transcript shows it as a note under their message.
 
+An App's own call to a tool the owner has not granted does not fail at once (`components/apps/grant-ask.tsx`). It
+waits on a card the host draws in the App's chrome, naming the exact tool. Allow grants that one tool and runs the
+same call again. "Not now", or two minutes without an answer, returns the denial to the App.
+
 ## Models
 
 Each user picks the model their agent answers with, in the composer. The deployment offers `PURRABLE_MODEL_ID` (the
