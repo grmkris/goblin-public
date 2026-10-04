@@ -50,6 +50,7 @@ function Header() {
   if (state !== 'signed-in' || AUTH_PAGES.has(path)) return null
   return (
     <SiteHeader
+      material
       contentClassName="max-w-[880px]"
       brand={
         <SiteHeaderBrand render={<Link to="/" aria-label="Purrable home" />} mark={<CatIcon aria-hidden />}>

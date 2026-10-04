@@ -144,6 +144,45 @@
   }
 }
 
+/*
+ * Chrome that floats over content (the header, the composer): a translucent material the content scrolls under, as
+ * Apple's bars do. It falls back to the opaque page background where blur is unsupported, where the person asks for
+ * less transparency, and, with a defined border, where they ask for more contrast.
+ */
+@utility material-chrome {
+  background-color: color-mix(in oklab, var(--background) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(1.6);
+  @supports not (backdrop-filter: blur(1px)) {
+    background-color: var(--background);
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    background-color: var(--background);
+    backdrop-filter: none;
+  }
+  @media (prefers-contrast: more) {
+    background-color: var(--background);
+    backdrop-filter: none;
+    border-color: var(--foreground);
+  }
+}
+/* A soft fade below floating chrome instead of a hard divider: it shows only where content passes underneath. */
+@utility material-edge-bottom {
+  &::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    top: 100%;
+    height: 0.75rem;
+    pointer-events: none;
+    background: linear-gradient(to bottom, color-mix(in oklab, var(--background) 72%, transparent), transparent);
+  }
+  @media (prefers-contrast: more) {
+    &::after {
+      display: none;
+    }
+  }
+}
+
 @media (pointer: coarse) {
   [data-slot='button'] {
     min-height: 40px;

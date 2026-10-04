@@ -139,7 +139,8 @@ function SiteHeaderMenu({
  * icon menu at the end of the row, while a single link stays inline (`fold` overrides this). `actions` (theme, account) are always visible.
  * `menuItems` are DropdownMenu items shown only in the phone menu, after the links (for example Sign out).
  * On touch screens every header control gets a 44px target; the row is 56px plus the top safe area. `contentClassName`
- * sets the row's width and desktop height only.
+ * sets the row's width and desktop height only. `material` pins the header to the top as translucent chrome that the
+ * page scrolls under, with a soft edge instead of a border (Purrable's addition; myapps has no floating header).
  */
 function SiteHeader({
   brand,
@@ -151,6 +152,7 @@ function SiteHeader({
   variant,
   typography,
   bordered = false,
+  material = false,
   fold = links.length > 1 || menuItems !== undefined,
   className,
   contentClassName,
@@ -164,6 +166,8 @@ function SiteHeader({
     readonly menuLabel?: string
     readonly navLabel?: string
     readonly bordered?: boolean
+    /** Floating translucent chrome, pinned to the top of the page. */
+    readonly material?: boolean
     /** Fold the links into the phone menu; by default when there are two or more, or any `menuItems`. */
     readonly fold?: boolean
     readonly contentClassName?: string
@@ -174,6 +178,7 @@ function SiteHeader({
       className={cn(
         'w-full shrink-0 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]',
         bordered && 'border-b',
+        material && 'material-chrome material-edge-bottom sticky top-0 z-30',
         className,
       )}
       {...props}
