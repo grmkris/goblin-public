@@ -17,8 +17,10 @@ import { appChannel, appChannelReplies } from '../storage/schema.ts'
 export const TELEGRAM = 'Telegram'
 /** The tools a server must offer to carry the channel, all granted when the owner turns it on. */
 export const CHANNEL_TOOLS = ['inbox', 'send_message', 'subscribe', 'unsubscribe'] as const
-/** Pages of 100 read at most per pull, and when the channel is turned on to find the end of the inbox. */
+/** Pages of 100 read at most per pull. */
 const MAX_PAGES = 50
+/** Pages of 100 read at most to find the end of the inbox when the channel is turned on. */
+const MAX_HISTORY_PAGES = 200
 /** How long a turn's answer is waited for before it is given up. */
 const REPLY_DAYS = 1
 /** Telegram's limit is 4096 characters of HTML; plain text is cut well below it so escaping cannot push it over. */
@@ -118,11 +120,14 @@ export class TelegramChannel {
    */
   async enable(serverId: string, url: string, call: ChannelPorts['call'], now: number): Promise<ChannelStatus> {
     let cursor: string | undefined
-    for (let page = 0; page < MAX_PAGES; page += 1) {
+    let ended = false
+    for (let page = 0; page < MAX_HISTORY_PAGES && !ended; page += 1) {
       const inbox = decodeInbox(await call('inbox', { ...(cursor === undefined ? {} : { cursor }), limit: 100 }))
       cursor = inbox.nextCursor
-      if (inbox.messages.length === 0) break
+      ended = inbox.messages.length === 0
     }
+    // Starting short of the end would bring old messages into main as new ones.
+    if (!ended) throw new InvalidInput({ reason: 'the inbox is too long to start from its end' })
     const secret = btoa(String.fromCodePoint(...crypto.getRandomValues(new Uint8Array(32))))
     const subscribed = decodeSubscribed(await call('subscribe', { url, secret }))
     if (subscribed.status !== 'subscribed')
