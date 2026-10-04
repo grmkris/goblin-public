@@ -77,6 +77,8 @@ class FixtureAuthorizationServer {
         grant_types_supported: ['authorization_code', 'refresh_token'],
         code_challenge_methods_supported: ['S256'],
         token_endpoint_auth_methods_supported: ['none'],
+        // Scopes only on the authorization server, as MyTab publishes them: Connect must still request them.
+        scopes_supported: ['notes', 'offline_access'],
       })
     if (pathname === '/register') {
       const metadata: Record<string, unknown> = await request.json()
@@ -107,7 +109,9 @@ const setup = () => {
   })
   const connect = async () => {
     const { authorizationUrl } = await host.beginConnect('fixture')
-    expect(new URL(authorizationUrl ?? '').searchParams.get('code_challenge_method')).toBe('S256')
+    const params = new URL(authorizationUrl ?? '').searchParams
+    expect(params.get('code_challenge_method')).toBe('S256')
+    expect(params.get('scope')).toBe('notes offline_access')
     const approval = authorizationServer.approve(authorizationUrl ?? '')
     await host.finishConnect(approval.state, approval.code, undefined)
     return approval

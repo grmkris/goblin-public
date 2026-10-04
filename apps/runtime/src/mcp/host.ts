@@ -1,4 +1,4 @@
-import { auth, type AuthProvider, type Tool } from '@modelcontextprotocol/client'
+import { auth, type AuthProvider, discoverOAuthServerInfo, type Tool } from '@modelcontextprotocol/client'
 import type { ServerView, ToolView } from '@purrable/contracts'
 import { nowSeconds } from '../clock.ts'
 import { Internal, InvalidInput, NeedsAuthorization, NotFound } from '../http/errors.ts'
@@ -12,6 +12,17 @@ import type { McpServerConfig } from './types.ts'
 const REFRESH_SKEW_SECONDS = 60
 /** A 401 this soon after a completed refresh is a request that raced it: retry with the new token instead. */
 const RECENT_REFRESH_MS = 10_000
+
+/**
+ * Request every scope the server offers: the resource's own list, else its authorization server's. The SDK only
+ * falls back to the resource's list, so a server that publishes scopes on the authorization server alone would get
+ * no scope request, and with it no `offline_access` and no refresh token. Grants, not scopes, limit what runs.
+ */
+export const offeredScope = async (endpoint: string, fetchFn: typeof fetch): Promise<string | undefined> => {
+  const info = await discoverOAuthServerInfo(endpoint, { fetchFn })
+  const scopes = info.resourceMetadata?.scopes_supported ?? info.authorizationServerMetadata?.scopes_supported ?? []
+  return scopes.length === 0 ? undefined : scopes.join(' ')
+}
 
 export type McpHostOptions = {
   readonly servers: readonly McpServerConfig[]
@@ -112,7 +123,12 @@ export class McpHost {
     const server = this.manager.server(serverId)
     await this.manager.close(serverId)
     const provider = new StoredOAuthProvider(this.#credentials, serverId, this.#appUrl, { kind: 'interactive' })
-    const result = await auth(provider, { serverUrl: server.endpoint, fetchFn: this.#fetch })
+    const scope = await offeredScope(server.endpoint, this.#fetch)
+    const result = await auth(provider, {
+      serverUrl: server.endpoint,
+      fetchFn: this.#fetch,
+      ...(scope === undefined ? {} : { scope }),
+    })
     if (result === 'AUTHORIZED') return {}
     if (provider.authorizationUrl === undefined) throw new Internal({ reason: 'authorization URL missing' })
     return { authorizationUrl: provider.authorizationUrl.href }
