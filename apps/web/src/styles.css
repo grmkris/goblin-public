@@ -41,37 +41,8 @@
   margin: 0;
   white-space: pre-wrap;
 }
-.markdown > :first-child {
-  margin-top: 0;
-}
-.markdown > :last-child {
-  margin-bottom: 0;
-}
-.markdown pre,
-.markdown code {
-  font-size: 0.85rem;
-  background: var(--muted);
-  border-radius: 0.375rem;
-}
-.markdown code {
-  padding: 0.1rem 0.3rem;
-}
-.markdown pre {
-  padding: 0.75rem;
-  overflow: auto;
-}
-.markdown pre code {
-  padding: 0;
-}
-.markdown ul,
-.markdown ol,
 .list {
   padding-left: 1.25rem;
-}
-.markdown a {
-  color: var(--foreground);
-  text-decoration: underline;
-  text-underline-offset: 4px;
 }
 .composer {
   position: sticky;

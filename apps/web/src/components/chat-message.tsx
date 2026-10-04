@@ -1,21 +1,31 @@
 import { useState } from 'react'
 import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import { Alert, AlertDescription, Badge, Button } from '@purrable/ui'
 import { failureText, isString, record, records, request } from '../lib/boundary.ts'
 import type { ChatMessage, ToolCallView } from '../lib/projection.ts'
 import { McpApp, type AppSelection } from './mcp-app.tsx'
 
-/** Assistant text as Markdown. Raw HTML is never rendered; links open in a new tab without a referrer. */
+/**
+ * Assistant text as GitHub-flavoured Markdown, set by shadcn/typeset. Raw HTML is never rendered; links open in a new
+ * tab without a referrer; wide tables scroll sideways instead of widening the conversation.
+ */
 export function MessageText({ text }: { readonly text: string }) {
   return (
-    <div className="markdown">
+    <div className="typeset typeset-chat">
       <Markdown
+        remarkPlugins={[remarkGfm]}
         components={{
           a: ({ href, children }) => (
             <a href={href} target="_blank" rel="noreferrer noopener">
               {children}
             </a>
+          ),
+          table: ({ children }) => (
+            <div className="typeset-scroll">
+              <table>{children}</table>
+            </div>
           ),
         }}
       >
