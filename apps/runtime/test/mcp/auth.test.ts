@@ -23,16 +23,16 @@ describe('mcp principal boundary (unit)', () => {
         { iss: 'https://evil', sub: 'owner', azp: 'cli', aud: expected.resource, exp: 101 },
         expected,
       ),
-    ).toThrow('mcp_issuer_mismatch')
+    ).toThrow(expect.objectContaining({ reason: 'mcp_issuer_mismatch' }))
     expect(() =>
       principalFromClaims({ iss: expected.issuer, sub: 'owner', azp: 'cli', aud: 'other', exp: 101 }, expected),
-    ).toThrow('mcp_audience_mismatch')
+    ).toThrow(expect.objectContaining({ reason: 'mcp_audience_mismatch' }))
     expect(() =>
       principalFromClaims(
         { iss: expected.issuer, sub: 'owner', azp: 'cli', aud: expected.resource, exp: 100 },
         expected,
       ),
-    ).toThrow('mcp_token_expired')
+    ).toThrow(expect.objectContaining({ reason: 'mcp_token_expired' }))
   })
   it('requires current exact grants and scope', async () => {
     const store: GrantStore = {

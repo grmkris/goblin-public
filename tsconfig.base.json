@@ -49,19 +49,14 @@
           "promiseInEffectSuccess": "error",
           "scopeInLayerEffect": "error",
           "runEffectInsideEffect": "error",
-          // Global APIs, everywhere including Workers: use HttpClient, Clock/DateTime, Effect.log, Effect.sleep and
-          // Schedule, Random, Crypto, Config and the Effect platform modules instead.
-          "globalFetch": "error",
+          // Global APIs inside Effect programs: use HttpClient, Clock/DateTime, Effect.log, Effect.sleep and Schedule,
+          // Random and Crypto there. Plain async code at the Worker/DO/SDK edges may use the platform APIs directly
+          // (Effect is used at service seams, not as a wrapper around every clock read).
           "globalFetchInEffect": "error",
-          "globalDate": "error",
           "globalDateInEffect": "error",
-          "globalConsole": "error",
           "globalConsoleInEffect": "error",
-          "globalTimers": "error",
           "globalTimersInEffect": "error",
-          "globalRandom": "error",
           "globalRandomInEffect": "error",
-          "cryptoRandomUUID": "error",
           "cryptoRandomUUIDInEffect": "error",
           "processEnv": "error",
           "processEnvInEffect": "error",

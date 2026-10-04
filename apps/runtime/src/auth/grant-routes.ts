@@ -1,7 +1,10 @@
-import { Clock, Effect, Predicate } from 'effect'
+import { Predicate } from 'effect'
+import { nowSeconds } from '../clock.ts'
 import type { RuntimeEnv } from '../env.ts'
 import { D1GrantStore } from './store.ts'
 import { requireOwnerSession } from './service.ts'
+import { readJson } from '../http/body.ts'
+import * as Schema from 'effect/Schema'
 import type { GrantCapability } from './principal.ts'
 
 const record = (value: unknown): value is Record<string, unknown> => Predicate.isObject(value)
@@ -18,11 +21,11 @@ export const handleGrantRequest = async (request: Request, env: RuntimeEnv): Pro
   const origin = request.headers.get('origin')
   if (origin !== null && origin !== new URL(env.APP_URL).origin)
     return Response.json({ error: 'origin_denied' }, { status: 403 })
-  const body: unknown = await request.json()
+  const body = await readJson(request, Schema.Unknown)
   if (!record(body) || !text(body['clientId']) || !text(body['serverId']))
     return Response.json({ error: 'grant_invalid' }, { status: 400 })
   const key = { issuer: owner.issuer, subject: owner.subject, clientId: body['clientId'], serverId: body['serverId'] }
-  const now = Math.floor((await Effect.runPromise(Clock.currentTimeMillis)) / 1000)
+  const now = nowSeconds()
   if (request.method === 'DELETE') {
     await store.revoke(key, now)
     return Response.json({ revoked: true })

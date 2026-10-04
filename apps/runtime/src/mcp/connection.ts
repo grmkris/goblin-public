@@ -9,7 +9,8 @@ import {
   type Tool,
 } from '@modelcontextprotocol/client'
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/client/validators/cf-worker'
-import { Clock, Effect, Predicate } from 'effect'
+import { Predicate } from 'effect'
+import { nowSeconds } from '../clock.ts'
 import { requireGrant, type VerifiedMcpPrincipal } from '../auth/principal.ts'
 import { McpBoundaryError, mapMcpError } from './errors.ts'
 import type {
@@ -79,7 +80,7 @@ export class McpConnectionManager {
   }
 
   async #assertPrincipalActive(principal: VerifiedMcpPrincipal): Promise<void> {
-    const now = Math.floor((await Effect.runPromise(Clock.currentTimeMillis)) / 1000)
+    const now = nowSeconds()
     if (principal.expiresAt <= now) throw new McpBoundaryError('unauthorized', 'principal')
   }
   #bounded<T>(serverId: string, value: T, max = this.#options.maxResultBytes ?? 1_048_576): T {
@@ -107,7 +108,7 @@ export class McpConnectionManager {
     if (server === undefined) throw new McpBoundaryError('unsupported', serverId)
     const auth = await this.#options.tokenSource(server, principal)
     if (!authorizationMatches(server, auth)) throw new McpBoundaryError('unauthorized', serverId)
-    const now = Math.floor((await Effect.runPromise(Clock.currentTimeMillis)) / 1000)
+    const now = nowSeconds()
     if (auth.state.expiresAt !== undefined && auth.state.expiresAt <= now)
       throw new McpBoundaryError('unauthorized', serverId)
     const client = new Client(

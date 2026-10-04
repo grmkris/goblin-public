@@ -1,4 +1,6 @@
-import { Clock, Effect, Predicate } from 'effect'
+import { Predicate } from 'effect'
+import { nowSeconds } from '../clock.ts'
+import { Unauthenticated } from '../http/errors.ts'
 import { constantTimeEqual } from 'better-auth/crypto'
 
 export type VerifiedMcpPrincipal = {
@@ -61,18 +63,18 @@ export const principalFromClaims = (
   const subject = claims.sub
   const issuer = claims.iss
   const clientId = text(claims.azp) ? claims.azp : claims.client_id
-  if (!text(issuer) || issuer !== expected.issuer) throw new Error('mcp_issuer_mismatch')
-  if (!text(subject)) throw new Error('mcp_subject_missing')
-  if (!text(clientId)) throw new Error('mcp_client_missing')
-  if (!audiences(claims.aud).includes(expected.resource)) throw new Error('mcp_audience_mismatch')
+  if (!text(issuer) || issuer !== expected.issuer) throw new Unauthenticated({ reason: 'mcp_issuer_mismatch' })
+  if (!text(subject)) throw new Unauthenticated({ reason: 'mcp_subject_missing' })
+  if (!text(clientId)) throw new Unauthenticated({ reason: 'mcp_client_missing' })
+  if (!audiences(claims.aud).includes(expected.resource)) throw new Unauthenticated({ reason: 'mcp_audience_mismatch' })
   if (!Predicate.isNumber(claims.exp) || !Number.isSafeInteger(claims.exp) || claims.exp <= now)
-    throw new Error('mcp_token_expired')
+    throw new Unauthenticated({ reason: 'mcp_token_expired' })
   const generation = claims.grant_gen
   if (
     generation !== undefined &&
     (!Predicate.isNumber(generation) || !Number.isSafeInteger(generation) || generation < 0)
   )
-    throw new Error('mcp_grant_generation_invalid')
+    throw new Unauthenticated({ reason: 'mcp_grant_generation_invalid' })
   const scopes = Predicate.isString(claims.scope) ? claims.scope.split(/\s+/u).filter(Boolean) : []
   return {
     issuer,
@@ -91,8 +93,8 @@ export const requireGrant = async (
   principal: VerifiedMcpPrincipal,
   input: { serverId: string; capability: GrantCapability; name: string },
 ): Promise<GrantRecord> => {
-  const now = Math.floor((await Effect.runPromise(Clock.currentTimeMillis)) / 1000)
-  if (principal.expiresAt <= now) throw new Error('mcp_token_expired')
+  const now = nowSeconds()
+  if (principal.expiresAt <= now) throw new Unauthenticated({ reason: 'mcp_token_expired' })
   const grant = await store.findGrant({
     issuer: principal.issuer,
     subject: principal.subject,
