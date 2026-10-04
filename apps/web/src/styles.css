@@ -288,6 +288,16 @@
 .suggestion + .suggestion {
   border-top: 1px solid var(--border);
 }
+.registries {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+.registries > summary {
+  cursor: pointer;
+}
 /* An App's tools under its "Allow app" switch: indented, so the switch reads as their heading. */
 .tool-app {
   display: flex;

@@ -1,5 +1,5 @@
 import { auth, type AuthProvider, discoverOAuthServerInfo, type Tool } from '@modelcontextprotocol/client'
-import type { CatalogEntry, ServerView, ToolView } from '@purrable/contracts'
+import type { CatalogEntry, RegistryView, ServerView, ToolView } from '@purrable/contracts'
 import { nowSeconds } from '../clock.ts'
 import { Internal, InvalidInput, NeedsAuthorization, NotFound } from '../http/errors.ts'
 import { McpConnectionManager, toolAppResource, toolOffered } from './connection.ts'
@@ -7,6 +7,7 @@ import type { Credentials } from './credentials.ts'
 import type { Grant, Grants } from './grants.ts'
 import { addedServerId, serverClaims, userEndpoint } from './endpoint.ts'
 import { StoredOAuthProvider } from './oauth-provider.ts'
+import { type AddedRegistries, MAX_ADDED_REGISTRIES } from './registries.ts'
 import { DEFAULT_REGISTRIES, RegistryCatalog } from './registry.ts'
 import { type AddedServers, MAX_ADDED_SERVERS, type ServerSource } from './servers.ts'
 import type { McpServerConfig } from './types.ts'
@@ -41,6 +42,8 @@ export type McpHostOptions = {
   readonly added?: AddedServers
   /** Random characters for added server ids. */
   readonly random?: () => string
+  /** Registries the owner added; without it, only the built-in ones are searched. */
+  readonly registries?: AddedRegistries
 }
 
 /**
@@ -54,6 +57,7 @@ export class McpHost {
   readonly #appUrl: string
   readonly #fetch: typeof fetch
   readonly #catalog: RegistryCatalog
+  readonly #registries: AddedRegistries | undefined
   readonly #configured: ReadonlySet<string>
   readonly #added: AddedServers | undefined
   readonly #random: () => string
@@ -67,6 +71,7 @@ export class McpHost {
     this.#fetch = options.fetch
     this.#added = options.added
     this.#catalog = new RegistryCatalog(options.fetch)
+    this.#registries = options.registries
     // @effect-diagnostics-next-line cryptoRandomUUID:off -- Unguessable suffixes for added server ids.
     this.#random = options.random ?? (() => crypto.randomUUID().replaceAll('-', ''))
     this.#configured = new Set(options.servers.map((server) => server.serverId))
@@ -175,8 +180,38 @@ export class McpHost {
   /** Search MCP registries for servers the owner may add, marking the ones already offered. */
   async searchCatalog(query: string): Promise<readonly CatalogEntry[]> {
     const offered = new Set(this.manager.servers.map((server) => server.endpoint))
-    const entries = await this.#catalog.search(query.trim(), DEFAULT_REGISTRIES)
+    const entries = await this.#catalog.search(query.trim(), [
+      ...DEFAULT_REGISTRIES,
+      ...(this.#registries?.list() ?? []),
+    ])
     return entries.map((entry) => ({ ...entry, added: offered.has(entry.endpoint) }))
+  }
+
+  /** The registries searched for servers: the built-in ones first, then the owner's. */
+  registries(): readonly RegistryView[] {
+    return [
+      ...DEFAULT_REGISTRIES.map(({ url, title }) => ({ url, title, builtIn: true })),
+      ...(this.#registries?.list() ?? []).map(({ url, title }) => ({ url, title, builtIn: false })),
+    ]
+  }
+
+  /** Add a registry to search, once it answers the generic registry API. */
+  async addRegistry(raw: string): Promise<readonly RegistryView[]> {
+    const added = this.#registries
+    if (added === undefined) throw new InvalidInput({ reason: 'registries_fixed' })
+    if (added.list().length >= MAX_ADDED_REGISTRIES) throw new InvalidInput({ reason: 'too_many_registries' })
+    const registry = await this.#catalog.probe(raw)
+    if (this.registries().some((item) => item.url === registry.url)) throw new InvalidInput({ reason: 'already_added' })
+    added.add(registry, nowSeconds())
+    return this.registries()
+  }
+
+  /** Stop searching a registry the owner added; the built-in ones stay. Servers added from it stay too. */
+  removeRegistry(url: string): readonly RegistryView[] {
+    if (this.#registries === undefined || !this.#registries.list().some((item) => item.url === url))
+      throw new InvalidInput({ reason: 'unknown_registry' })
+    this.#registries.remove(url)
+    return this.registries()
   }
 
   /** Remove a server the owner added, with its credentials, grants and pending sign-ins. Configured ones stay. */

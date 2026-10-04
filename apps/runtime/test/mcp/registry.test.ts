@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { McpHost } from '../../src/mcp/host.ts'
 import { catalogEntry, DEFAULT_REGISTRIES, RegistryCatalog } from '../../src/mcp/registry.ts'
+import { MemoryCredentials, MemoryGrants, MemoryRegistries } from './memory.ts'
 
 const official = DEFAULT_REGISTRIES[0] ?? { url: '', title: '' }
 const github = DEFAULT_REGISTRIES[1] ?? { url: '', title: '' }
@@ -96,5 +98,42 @@ describe('searching registries', () => {
     const bad = new RegistryCatalog(async () => Response.json({ hello: 'world' }))
     await expect(bad.probe('https://example.com')).rejects.toMatchObject({ reason: 'not_a_registry' })
     await expect(good.probe('http://example.com')).rejects.toMatchObject({ reason: 'endpoint_not_https' })
+  })
+})
+
+/** A host with no servers whose registry fetches go to `fetcher`. */
+const registryHost = (fetcher: typeof fetch) =>
+  new McpHost({
+    servers: [],
+    credentials: new MemoryCredentials(),
+    grants: new MemoryGrants(),
+    appUrl: 'https://purrable.test',
+    fetch: fetcher,
+    registries: new MemoryRegistries(),
+  })
+
+describe('registries the owner adds', () => {
+  it('adds a registry that answers the registry API, searches it after the built-in ones, and removes it', async () => {
+    const asked: string[] = []
+    const mcp = registryHost(async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input)
+      asked.push(url.host)
+      return Response.json({ servers: url.host === 'registry.example.com' ? [myplan] : [], metadata: {} })
+    })
+    const after = await mcp.addRegistry('https://registry.example.com/v0.1')
+    expect(after.map((item) => [item.url, item.builtIn])).toEqual([
+      ['https://registry.modelcontextprotocol.io', true],
+      ['https://api.mcp.github.com', true],
+      ['https://registry.example.com', false],
+    ])
+    asked.length = 0
+    const found = await mcp.searchCatalog('plan')
+    expect(asked).toEqual(['registry.modelcontextprotocol.io', 'api.mcp.github.com', 'registry.example.com'])
+    expect(found.map((item) => [item.name, item.registryTitle, item.verified])).toEqual([
+      ['lol.myplan/myplan', 'registry.example.com', false],
+    ])
+    await expect(mcp.addRegistry('https://registry.example.com')).rejects.toMatchObject({ reason: 'already_added' })
+    expect(mcp.removeRegistry('https://registry.example.com')).toHaveLength(2)
+    expect(() => mcp.removeRegistry('https://registry.modelcontextprotocol.io')).toThrow()
   })
 })

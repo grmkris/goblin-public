@@ -6,6 +6,8 @@ import {
   PENDING_TTL_SECONDS,
 } from '../../src/mcp/credentials.ts'
 import type { Grant, Grants } from '../../src/mcp/grants.ts'
+import type { AddedRegistries } from '../../src/mcp/registries.ts'
+import type { Registry } from '../../src/mcp/registry.ts'
 import type { AddedServer, AddedServers } from '../../src/mcp/servers.ts'
 
 type Row = {
@@ -119,5 +121,20 @@ export class MemoryAddedServers implements AddedServers {
     this.#servers.delete(serverId)
     this.#credentials.remove(serverId)
     for (const grant of this.#grants.list(serverId)) this.#grants.set(grant, false)
+  }
+}
+
+/** Added registries in memory, in the order they were added. */
+export class MemoryRegistries implements AddedRegistries {
+  readonly #registries: Registry[] = []
+  list(): readonly Registry[] {
+    return [...this.#registries]
+  }
+  add(registry: Registry): void {
+    this.#registries.push(registry)
+  }
+  remove(url: string): void {
+    const index = this.#registries.findIndex((item) => item.url === url)
+    if (index >= 0) this.#registries.splice(index, 1)
   }
 }

@@ -110,7 +110,8 @@ address (`mcp/endpoint.ts`), and its server card labels it as the server's own c
 and cannot be removed. Removing an added server forgets everything stored for it in one transaction. Connections
 also offers a shelf of suggested servers (`mcp/suggested.ts`), each checked by hand. One tap adds and connects. It also
 searches MCP registries that speak the generic registry API (`mcp/registry.ts`, `GET /api/mcp/catalog?q=`): the
-Official MCP Registry and GitHub's. Only the latest active entries with an https streamable-HTTP remote are shown,
+Official MCP Registry and GitHub's, built in, then up to eight the owner adds (`app_mcp_registries`). A registry is
+added only once it answers `/v0.1/servers`, and removing it keeps the servers added from it. Only the latest active entries with an https streamable-HTTP remote are shown,
 labelled by registry, each server once (the official registry first), cached for ten minutes. Endpoint placeholders
 are filled with one safe path segment each, and servers that want an API key are listed but cannot be added yet. An
 added entry records its registry, name and version. Connect

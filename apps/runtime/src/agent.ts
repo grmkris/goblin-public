@@ -40,6 +40,7 @@ import { nowSeconds } from './clock.ts'
 import { bindEndpoints } from './mcp/endpoints.ts'
 import { AddedServerStore, type ServerSource } from './mcp/servers.ts'
 import { suggestions } from './mcp/suggested.ts'
+import { RegistryStore } from './mcp/registries.ts'
 import { logEndpointsReset } from './mcp/log.ts'
 import { ModelBudget, UsageStore, dailyTokenLimit } from './budget.ts'
 import { ownerContent } from './pi/app-context.ts'
@@ -104,6 +105,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       const host = new McpHost({
         servers,
         added,
+        registries: new RegistryStore(db),
         credentials: new CredentialStore(db, await CredentialCipher.fromBase64(this.env.CREDENTIAL_KEY)),
         grants: new GrantStore(db),
         appUrl: this.env.APP_URL,
@@ -218,6 +220,18 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   mcpCatalog(query: string) {
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.searchCatalog(query))))
+  }
+
+  mcpRegistries() {
+    return this.#owner(Mcp.useSync((mcp) => mcp.registries()))
+  }
+
+  mcpAddRegistry(url: string) {
+    return this.#owner(Mcp.use((mcp) => attempt(() => mcp.addRegistry(url))))
+  }
+
+  mcpRemoveRegistry(url: string) {
+    return this.#owner(Mcp.use((mcp) => attemptSync(() => mcp.removeRegistry(url))))
   }
 
   mcpAddServer(endpoint: string, source?: ServerSource) {

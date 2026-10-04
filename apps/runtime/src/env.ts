@@ -6,6 +6,7 @@ import type {
   AppContext,
   CatalogEntry,
   ModelChoice,
+  RegistryView,
   ResidentStatus,
   ServerSuggestion,
   ServerView,
@@ -31,6 +32,9 @@ export interface AgentRpcMethods {
   readonly mcpDisconnect: (serverId: string) => Promise<RpcResult<null>>
   readonly mcpSuggested: () => Promise<RpcResult<readonly ServerSuggestion[]>>
   readonly mcpCatalog: (query: string) => Promise<RpcResult<readonly CatalogEntry[]>>
+  readonly mcpRegistries: () => Promise<RpcResult<readonly RegistryView[]>>
+  readonly mcpAddRegistry: (url: string) => Promise<RpcResult<readonly RegistryView[]>>
+  readonly mcpRemoveRegistry: (url: string) => Promise<RpcResult<readonly RegistryView[]>>
   readonly mcpAddServer: (endpoint: string, source?: ServerSource) => Promise<RpcResult<ServerView>>
   readonly mcpRemoveServer: (serverId: string) => Promise<RpcResult<null>>
   readonly mcpTools: (serverId: string, refresh: boolean) => Promise<RpcResult<readonly ToolView[]>>

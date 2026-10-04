@@ -42,6 +42,13 @@ export const appMcpServers = sqliteTable('app_mcp_servers', {
   createdAt: integer('created_at').notNull(),
 })
 
+/** MCP registries the owner added to search (mcp/registries.ts), after the built-in ones. */
+export const appMcpRegistries = sqliteTable('app_mcp_registries', {
+  url: text('url').primaryKey().notNull(),
+  title: text('title').notNull(),
+  addedAt: integer('added_at').notNull(),
+})
+
 /** Outbound OAuth state per server. `client_info` and `tokens` are AES-GCM ciphertext (mcp/credentials.ts). */
 export const appMcpCredentials = sqliteTable('app_mcp_credentials', {
   serverId: text('server_id').primaryKey().notNull(),

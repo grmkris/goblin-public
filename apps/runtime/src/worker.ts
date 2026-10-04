@@ -41,6 +41,7 @@ const AddServer = Schema.Struct({
     Schema.Struct({ registry: Bounded(2048), name: Bounded(256), version: Schema.optional(Bounded(64)) }),
   ),
 })
+const RegistryChange = Schema.Struct({ url: Bounded(2048) })
 const AppGrantChange = Schema.Struct({
   serverId: Bounded(64),
   uri: Bounded(2048).check(Schema.isPattern(/^ui:\/\//u)),
@@ -139,6 +140,11 @@ const mcpRoutes: Readonly<Record<string, Route>> = {
     if (query.length > 100) throw new InvalidInput({ reason: 'query_too_long' })
     return json(unwrap(await agent.mcpCatalog(query)))
   },
+  'GET /api/mcp/registries': async (_request, agent) => json(unwrap(await agent.mcpRegistries())),
+  'POST /api/mcp/registries': async (request, agent) =>
+    json(unwrap(await agent.mcpAddRegistry((await readJson(request, RegistryChange)).url)), 201),
+  'POST /api/mcp/registries/remove': async (request, agent) =>
+    json(unwrap(await agent.mcpRemoveRegistry((await readJson(request, RegistryChange)).url))),
   'GET /api/mcp/grants': async (_request, agent) => json(unwrap(await agent.mcpGrants())),
   'PUT /api/mcp/grants': async (request, agent) => {
     const body = await readJson(request, GrantChange)

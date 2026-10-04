@@ -66,6 +66,10 @@ export const CatalogEntry = Schema.Struct({
 })
 export type CatalogEntry = typeof CatalogEntry.Type
 
+/** An MCP registry searched for servers: built in (always searched) or added by the owner. */
+export const RegistryView = Schema.Struct({ url: Schema.String, title: Schema.String, builtIn: Schema.Boolean })
+export type RegistryView = typeof RegistryView.Type
+
 /** A discovered remote tool. The hints come from the server and are unverified; only `granted` is ours. */
 export const ToolView = Schema.Struct({
   name: Schema.String,
