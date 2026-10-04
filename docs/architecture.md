@@ -34,7 +34,9 @@ flowchart LR
 Anyone may sign up when `PURRABLE_SIGNUP_MODE` is `open`; with `invite` the request needs the
 `PURRABLE_SIGNUP_INVITE_CODE` in an `x-invite-code` header; `closed` (the default for deployed stages) refuses every
 sign-up. With `PURRABLE_MAIL_SENDER` set (an address on an apex onboarded for Cloudflare Email Sending), a new account
-works only after its owner opens the one-hour link mailed to it (`auth/mail.ts`); the link signs them in. A deployed
+works only after its owner opens the one-hour link mailed to it (`auth/mail.ts`); the link signs them in. The same
+sender carries password-reset links (`/reset-password`); a reset signs every device out, and asking for one never
+reveals whether an address has an account. A deployed
 stage refuses to deploy `open` sign-up without a sender. Sign-up, verification mail and sign-in are rate limited per
 `cf-connecting-ip` in D1 (auth runs per request, so in-memory limits would reset every call). The agent a request
 reaches is always derived from authentication, the session's user ID or the inbound token's subject, never from the

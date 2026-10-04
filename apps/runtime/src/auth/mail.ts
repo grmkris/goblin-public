@@ -17,6 +17,26 @@ export const mailerOf = (env: { readonly MAIL?: MailBinding; readonly MAIL_SENDE
   return env.MAIL === undefined || !/^[^\s@]+@[^\s@]+$/u.test(from) ? undefined : { binding: env.MAIL, from }
 }
 
+/** The password-reset mail; the link carries a one-hour, single-use token. Same host marking as confirmation. */
+export const resetMail = (input: {
+  readonly from: string
+  readonly to: string
+  readonly url: string
+  readonly appUrl: string
+}): MailMessage => ({
+  from: input.from,
+  to: input.to,
+  subject: `[${new URL(input.appUrl).host}] Reset your Purrable password`,
+  text: [
+    `Open this link to choose a new password for ${input.to}:`,
+    '',
+    input.url,
+    '',
+    'The link works once and expires in one hour. Every device signed in to the account is signed out. If you did not',
+    'ask for this, ignore this email: your password stays as it is.',
+  ].join('\n'),
+})
+
 /**
  * The account-confirmation mail. Purrable has no production stage, so the subject always names the host the link
  * goes to: dev mail must never pass for production mail. The link carries a one-hour, single-use token.

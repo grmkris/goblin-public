@@ -18,21 +18,23 @@ import { authClient, redirectOf } from '../lib/auth-client.ts'
 import { ApiFailure, record, request } from '../lib/boundary.ts'
 
 type SignupMode = 'open' | 'invite' | 'closed'
+type AuthConfig = { readonly signup: SignupMode; readonly mail: boolean }
 
-/** How this deployment admits new accounts, from the public health endpoint. Unknown means closed. */
-function useSignupMode(): SignupMode {
-  const [mode, setMode] = useState<SignupMode>('closed')
+/** How this deployment admits accounts and whether it sends mail, from the public health endpoint. Unknown: none. */
+function useAuthConfig(): AuthConfig {
+  const [config, setConfig] = useState<AuthConfig>({ signup: 'closed', mail: false })
   useEffect(() => {
     const controller = new AbortController()
     void request('/health', { signal: controller.signal })
       .then((data) => {
-        const signup = record(data)?.signup
-        if (!controller.signal.aborted && (signup === 'open' || signup === 'invite')) setMode(signup)
+        const health = record(data)
+        const signup = health?.signup === 'open' || health?.signup === 'invite' ? health.signup : 'closed'
+        if (!controller.signal.aborted) setConfig({ signup, mail: health?.mail === true })
       })
       .catch(() => undefined)
     return () => controller.abort()
   }, [])
-  return mode
+  return config
 }
 
 /** Creates the account; `false` when it must be confirmed by email first (no session was started). */
@@ -87,7 +89,37 @@ function useAuthentication(onAuthenticated: () => void) {
       setPending(false)
     }
   }
-  return { email, setEmail, password, setPassword, inviteCode, setInviteCode, pending, error, notice, signIn }
+  /** The answer never says whether the address has an account. */
+  async function requestReset(): Promise<void> {
+    setError('')
+    setNotice('')
+    if (!email) {
+      setError('Enter your email first.')
+      return
+    }
+    setPending(true)
+    try {
+      await request('/api/auth/request-password-reset', { body: { email, redirectTo: '/reset-password' } })
+      setNotice(`If ${email} has an account, we sent it a link to choose a new password.`)
+    } catch {
+      setError('Could not send the reset link. Try again in a while.')
+    } finally {
+      setPending(false)
+    }
+  }
+  return {
+    email,
+    setEmail,
+    password,
+    setPassword,
+    inviteCode,
+    setInviteCode,
+    pending,
+    error,
+    notice,
+    signIn,
+    requestReset,
+  }
 }
 type AuthenticationView = ReturnType<typeof useAuthentication>
 
@@ -165,7 +197,7 @@ function AccountForm({
 
 export function Authentication({ onAuthenticated }: { readonly onAuthenticated: () => void }) {
   const view = useAuthentication(onAuthenticated)
-  const mode = useSignupMode()
+  const { signup: mode, mail } = useAuthConfig()
   const [creating, setCreating] = useState(false)
   return (
     <Card>
@@ -177,11 +209,18 @@ export function Authentication({ onAuthenticated }: { readonly onAuthenticated: 
       </CardHeader>
       <CardContent>
         <AccountForm view={view} mode={mode} creating={creating && mode !== 'closed'} />
-        {mode !== 'closed' && (
-          <Button variant="link" className="mt-4" onClick={() => setCreating(!creating)}>
-            {creating ? 'I already have an account' : 'Create an account'}
-          </Button>
-        )}
+        <div className="mt-4 flex flex-wrap gap-2">
+          {mode !== 'closed' && (
+            <Button variant="link" onClick={() => setCreating(!creating)}>
+              {creating ? 'I already have an account' : 'Create an account'}
+            </Button>
+          )}
+          {mail && !creating && (
+            <Button variant="link" disabled={view.pending} onClick={() => void view.requestReset()}>
+              Forgot password?
+            </Button>
+          )}
+        </div>
       </CardContent>
       <CardFooter>
         {view.error && (

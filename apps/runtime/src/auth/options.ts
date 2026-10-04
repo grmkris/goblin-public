@@ -6,7 +6,7 @@ import { constantTimeEqual } from 'better-auth/crypto'
 import { jwt } from 'better-auth/plugins'
 import type { RuntimeEnv } from '../env.ts'
 import { deleteAgentOf } from './account.ts'
-import { mailerOf, verificationMail } from './mail.ts'
+import { mailerOf, resetMail, verificationMail } from './mail.ts'
 import { passwordHasher } from './password.ts'
 
 const AUTH_BASE_PATH = '/api/auth'
@@ -57,7 +57,41 @@ const RATE_LIMITS = {
   '/send-verification-email': { window: 3600, max: 5 },
   '/sign-in/email': { window: 300, max: 20 },
   '/delete-user': { window: 300, max: 5 },
+  '/request-password-reset': { window: 3600, max: 5 },
+  '/reset-password': { window: 300, max: 10 },
 } as const
+type Mail = ReturnType<typeof mailerOf>
+
+/**
+ * Password accounts, and with a mail sender: confirmation before an account works (the link signs the user in) and
+ * reset links that sign every device out. Without a sender there is no mail, so neither exists.
+ */
+const accountEmailOptions = (env: AuthEnvironment, mailer: Mail) => {
+  const base = { enabled: true, minPasswordLength: 12, maxPasswordLength: 256, password: passwordHasher }
+  if (mailer === undefined) return { emailAndPassword: { ...base, requireEmailVerification: false } }
+  const send =
+    (build: typeof verificationMail) =>
+    async ({ user, url }: { user: { email: string }; url: string }) => {
+      await mailer.binding.send(build({ from: mailer.from, to: user.email, url, appUrl: env.APP_URL }))
+    }
+  return {
+    emailAndPassword: {
+      ...base,
+      requireEmailVerification: true,
+      resetPasswordTokenExpiresIn: 3600,
+      revokeSessionsOnPasswordReset: true,
+      sendResetPassword: send(resetMail),
+    },
+    emailVerification: {
+      sendOnSignUp: true,
+      sendOnSignIn: true,
+      autoSignInAfterVerification: true,
+      expiresIn: 3600,
+      sendVerificationEmail: send(verificationMail),
+    },
+  }
+}
+
 /**
  * Better Auth is instantiated per request: Worker I/O promises cannot outlive their request. The D1 adapter owns
  * auth tables; application Drizzle never adopts/migrates them. mcp() already includes OAuth provider functionality.
@@ -76,7 +110,6 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
     clientRegistrationAllowedResources: [resource],
     clientRegistrationDefaultScopes: [...MCP_SCOPES],
   })
-  const mailer = mailerOf(env)
   return {
     appName: 'purrable',
     baseURL: env.APP_URL,
@@ -85,29 +118,7 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
     database,
     trustedOrigins: [env.APP_URL],
     logger: { disabled: true },
-    emailAndPassword: {
-      enabled: true,
-      minPasswordLength: 12,
-      maxPasswordLength: 256,
-      password: passwordHasher,
-      // With a mail sender, an account works only after its owner opens the link sent to the address.
-      requireEmailVerification: mailer !== undefined,
-    },
-    ...(mailer === undefined
-      ? {}
-      : {
-          emailVerification: {
-            sendOnSignUp: true,
-            sendOnSignIn: true,
-            autoSignInAfterVerification: true,
-            expiresIn: 3600,
-            sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
-              await mailer.binding.send(
-                verificationMail({ from: mailer.from, to: user.email, url, appUrl: env.APP_URL }),
-              )
-            },
-          },
-        }),
+    ...accountEmailOptions(env, mailerOf(env)),
     // Deleting an account erases its agent first (conversations, MCP credentials, grants, usage); D1 then cascades
     // the user's sessions, consents and tokens. The before-hook below makes the password mandatory.
     user: { deleteUser: { enabled: true, beforeDelete: (user: { id: string }) => deleteAgentOf(env, user.id) } },

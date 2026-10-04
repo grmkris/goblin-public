@@ -7,6 +7,7 @@ import {
   requireUserSession,
   revokeInboundClient,
 } from './auth/index.ts'
+import { mailerOf } from './auth/mail.ts'
 import { signupMode } from './auth/options.ts'
 import { readJson } from './http/body.ts'
 import { Forbidden, InvalidInput, NotFound } from './http/errors.ts'
@@ -139,7 +140,13 @@ export default {
   async fetch(request: Request, env: RuntimeEnv): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === '/health')
-      return Response.json({ ok: true, service: 'purrable', stage: env.STAGE, signup: signupMode(env.SIGNUP_MODE) })
+      return Response.json({
+        ok: true,
+        service: 'purrable',
+        stage: env.STAGE,
+        signup: signupMode(env.SIGNUP_MODE),
+        mail: mailerOf(env) !== undefined,
+      })
     if (url.pathname.startsWith('/.well-known/oauth-protected-resource'))
       return secured(Response.json(protectedResourceMetadata(env)))
     if (url.pathname.startsWith('/.well-known/') || url.pathname.startsWith('/api/auth/'))
