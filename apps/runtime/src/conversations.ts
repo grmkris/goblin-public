@@ -93,6 +93,22 @@ export class ConversationRegistry {
     return this.#insert({ sessionId: session.id, kind: 'thread', parentSession: MAIN_THREAD }, now)
   }
 
+  /** Registers a subagent's conversation under the one that started it; a reporter repeats it, so it is idempotent. */
+  registerSubagent(session: string, parent: string, name: string, now: number): void {
+    this.#db
+      .insert(appConversations)
+      .values({ sessionId: session, kind: 'subagent', title: name, parentSession: parent, createdAt: now })
+      .onConflictDoNothing()
+      .run()
+  }
+
+  /** How many subagents are working now, across every conversation. */
+  async runningSubagents(): Promise<number> {
+    const rows = this.#db.select().from(appConversations).where(eq(appConversations.kind, 'subagent')).all()
+    const busy = await Promise.all(rows.map(async (row) => this.#harness.session(row.sessionId).busy()))
+    return busy.filter(Boolean).length
+  }
+
   /**
    * A note from a thread into main: main's model sees it, labelled with the thread, and no run starts. It goes in as
    * a write submission (never a direct append), so a busy main places it at its next boundary.

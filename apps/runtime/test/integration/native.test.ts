@@ -282,6 +282,43 @@ harness.test(
   }),
 )
 
+const SubagentRun = Schema.Struct({
+  spawned: Schema.Struct({ status: Schema.Literal('done'), text: Schema.String }),
+  main: Schema.Array(Schema.String),
+  subagent: Schema.Struct({ kind: Schema.Literal('subagent'), title: Schema.String, parent: Schema.String }),
+  child: Schema.Array(Schema.String),
+  mainRequest: ModelRequest,
+  childRequest: ModelRequest,
+})
+
+harness.test(
+  'local workerd: a subagent works in the background and its answer comes back to main, which answers it',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `subagent-${yield* nextInt}`
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/subagent?name=${name}`))
+    const result = yield* Schema.decodeUnknownEffect(SubagentRun)(yield* Effect.promise(() => response.json()))
+    expect(result.spawned.text).toBe('done: Started scout.')
+    expect(result.subagent).toEqual({ kind: 'subagent', title: 'scout', parent: '1' })
+    expect(turns(result.child)).toEqual([
+      'pi.user: "find the word"',
+      'pi.assistant: [{"type":"text","text":"echo: find the word"}]',
+    ])
+    const report = [
+      { type: 'text', text: '[from subagent scout]' },
+      { type: 'text', text: 'echo: find the word' },
+    ]
+    expect(turns(result.main).slice(-2)).toEqual([
+      `pi.user: ${JSON.stringify(report)}`,
+      'pi.assistant: [{"type":"text","text":"echo: echo: find the word"}]',
+    ])
+    expect(result.mainRequest.tools).toEqual(expect.arrayContaining(['subagent', 'ask_user', 'mcp_call']))
+    expect(result.childRequest.tools).toEqual(expect.arrayContaining(['mcp_list', 'mcp_call']))
+    expect(result.childRequest.tools).not.toContain('subagent')
+    expect(result.childRequest.tools).not.toContain('ask_user')
+  }),
+)
+
 harness.test(
   'local workerd: deleting an agent erases its conversation and application state',
   Effect.gen(function* () {

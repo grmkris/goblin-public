@@ -83,6 +83,15 @@ submission, an `app.shared` entry labelled `[from thread "<title>"]`. Main's mod
 answers nothing, since a write starts no run. After each response an untitled thread is named by the memory model
 from its latest exchange, in the background; the owner can rename it.
 
+Main and threads can start **subagents** with the `subagent` tool (`pi/subagents.ts`, after Pi Durable's background
+subagent example): `spawn`, `send`, `stop` and `status`. A subagent is a Pi conversation owned by a background anchor
+task of its spawner, so the spawner's Stop and idle waits do not reach it. It starts with the spawner's model and is
+given exactly the persona and the owner's MCP and budget extensions: the same grants, no subagents of its own, no
+`ask_user`. Each message goes through a reporter task that delivers it, waits for the answer and posts it into the
+spawner as an input labelled `[from subagent <name>]`, which the spawner answers; request ids keep a restart from
+delivering or reporting twice. At most three subagents work at once. The reporter registers the subagent in
+`app_conversations` under its spawner, so the web lists it there and the tool row links to it.
+
 The system prompt is two static Pi extension sections (`pi/persona.ts`): who the agent is, and that remote content
 is untrusted data. The `mcp_list` and `mcp_call` tools (`pi/resident-mcp.ts`) are how the model reaches the owner's
 MCP servers; both require current resident authority, and `mcp_call` is marked unsafe to replay.

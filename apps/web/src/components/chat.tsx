@@ -150,6 +150,7 @@ function ChatView({ thread }: { readonly thread: string }) {
   const threads = useThreads()
   const running = projection?.running ?? false
   const { refresh, create } = threads
+  const kind = threads.views.find((candidate) => candidate.id === thread)?.kind
   // A run starting or ending changes the list's busy marks (and a first exchange may have named the thread).
   useEffect(refresh, [refresh, running])
   const sendOwn = useSendWithAppContext(send)
@@ -178,7 +179,7 @@ function ChatView({ thread }: { readonly thread: string }) {
         <ThreadBar
           thread={thread}
           actions={
-            thread !== MAIN_THREAD && (
+            kind === 'thread' && (
               <Button variant="ghost" size="sm" disabled={running} onClick={() => void send(SHARE_REQUEST)}>
                 <ShareIcon data-icon="inline-start" />
                 Share to main

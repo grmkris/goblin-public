@@ -18,6 +18,8 @@ import { McpHost } from './mcp/host.ts'
 import { piEventResponse } from './pi/events.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
 import { LITELLM_STREAMS, MODEL_PROVIDER, makePiModels } from './pi/model.ts'
+import { personaExtension } from './pi/persona.ts'
+import { subagentsExtension } from './pi/subagents.ts'
 import { threadExtension } from './pi/thread.ts'
 import { CheapModel } from './memory/model.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
@@ -87,8 +89,11 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     super(ctx, env)
     const run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program)
     this.#pi = makePiModels(env, this.modelStreams())
+    const tools = [residentMcpExtension(run), budgetExtension(run)]
+    // A subagent gets the persona and the owner's tools, nothing else: no subagents of its own, no ask_user.
+    const subagents = subagentsExtension(run, [personaExtension, ...tools])
     this.#thread = threadExtension(run)
-    this.harness = makePiHarness(this.#pi, [residentMcpExtension(run), budgetExtension(run)], [this.#thread])
+    this.harness = makePiHarness(this.#pi, [...tools, subagents], [this.#thread])
     this.lifecycle.use(this.harness)
   }
 

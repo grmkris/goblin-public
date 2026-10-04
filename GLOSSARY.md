@@ -9,9 +9,11 @@
   message from anyone but the owner's browser labelled with its author.
 - **Thread**: a side conversation, branched from a message of main or empty. Nothing in it reaches main unless the
   owner shares it: `share_to_main` writes a note main sees and does not answer.
+- **Subagent**: a conversation main or a thread starts with the `subagent` tool to do a job in the background; its
+  answer comes back to the spawner as an input labelled with its name.
 - **Memory model**: `PURRABLE_MEMORY_MODEL`, the cheap offered model for housekeeping (thread titles); its tokens
   count toward the budget.
-- **Conversation registry**: `app_conversations`, the conversations a request may open (main, threads).
+- **Conversation registry**: `app_conversations`, the conversations a request may open (main, threads, subagents).
 - **Resident authority**: the agent's own permission to use the owner's MCP connections when the owner is not
   present. Lasts 30 days, renewed by owner activity, revocable in Settings.
 - **Outbound MCP server**: a server the agent calls (MyPlan, MyBrowser), listed in `PURRABLE_MCP_SERVERS` and

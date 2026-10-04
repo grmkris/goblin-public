@@ -1,4 +1,4 @@
-import { MAIN_THREAD } from '@purrable/contracts'
+import { MAIN_THREAD, type ThreadView } from '@purrable/contracts'
 import { PersonalAgent } from '../../src/agent.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { listTables } from '../../src/storage/vendor.ts'
@@ -219,16 +219,22 @@ async function branchSequence(agent: DurableObjectStub<PersonalAgentProbe>): Pro
   })
 }
 
-/** A thread's title, once the cheap model has written it (it names threads in the background). */
-async function titleOf(agent: DurableObjectStub<PersonalAgentProbe>, thread: string): Promise<string | undefined> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const threads = await agent.threads()
-    const title = threads.ok ? threads.value.find((view) => view.id === thread)?.title : undefined
-    if (title !== undefined) return title
+/** Reads every 20 ms, for up to 5 s, until `done` holds; the last read either way (background work settles late). */
+async function until<A>(read: () => Promise<A>, done: (value: A) => boolean): Promise<A> {
+  let value = await read()
+  for (let attempt = 0; attempt < 250 && !done(value); attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 20))
+    value = await read()
   }
-  return undefined
+  return value
 }
+
+/** The agent's conversations, once `done` holds for them. */
+const threadsUntil = (agent: DurableObjectStub<PersonalAgentProbe>, done: (views: readonly ThreadView[]) => boolean) =>
+  until(async (): Promise<readonly ThreadView[]> => {
+    const threads = await agent.threads()
+    return threads.ok ? threads.value : []
+  }, done)
 
 /**
  * A thread shares a note with main: main's next request carries it, labelled with the thread, and it started no run
@@ -249,7 +255,36 @@ async function shareSequence(agent: DurableObjectStub<PersonalAgentProbe>): Prom
     main: await transcript(agent, MAIN_THREAD),
     mainRequest: await agent.requestFor('what did the thread say?'),
     threadRequest: await agent.requestFor(share),
-    title: await titleOf(agent, thread.value.id),
+    // The cheap model names the thread in the background.
+    title: (await threadsUntil(agent, (views) => views.some(({ id, title }) => id === thread.value.id && title))).find(
+      ({ id }) => id === thread.value.id,
+    )?.title,
+  })
+}
+
+/**
+ * Main spawns a subagent: it works in its own conversation with the owner's tools but no subagents or ask_user, and
+ * its answer comes back into main as an input labelled with it, which main answers.
+ */
+async function subagentSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
+  const spawn = `call subagent ${JSON.stringify({ action: 'spawn', name: 'scout', message: 'find the word' })}`
+  await agent.submit(MAIN_THREAD, spawn, 'subagent-spawn')
+  const spawned = await agent.settle(MAIN_THREAD, 'subagent-spawn')
+  const main = await until(
+    () => transcript(agent, MAIN_THREAD),
+    (lines) =>
+      lines.some((line) => line.includes('[from subagent')) && lines.at(-1)?.startsWith('pi.assistant') === true,
+  )
+  const subagent = (
+    await threadsUntil(agent, (views) => views.some(({ kind, busy }) => kind === 'subagent' && !busy))
+  ).find(({ kind }) => kind === 'subagent')
+  return Response.json({
+    spawned,
+    main,
+    subagent,
+    child: subagent === undefined ? [] : await transcript(agent, subagent.id),
+    mainRequest: await agent.requestFor(spawn),
+    childRequest: await agent.requestFor('find the word'),
   })
 }
 
@@ -282,6 +317,7 @@ export default {
     if (new URL(request.url).pathname === '/destroy') return destroySequence(env, name)
     if (new URL(request.url).pathname === '/branch') return branchSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/share') return shareSequence(env.AGENTS.getByName(name))
+    if (new URL(request.url).pathname === '/subagent') return subagentSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/binding')
       return env.AGENTS.getByName(name)
         .bindingProbe()

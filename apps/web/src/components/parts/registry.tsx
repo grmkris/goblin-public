@@ -5,7 +5,7 @@ import { type Interaction, interactionOf } from '../../lib/interactions.ts'
 import type { Part, ToolPart } from '../../lib/parts.ts'
 import { McpToolPart } from './mcp-tool-part.tsx'
 import { AssistantText, UserText } from './text-part.tsx'
-import { GenericToolPart } from './tool-part.tsx'
+import { GenericToolPart, SubagentToolPart } from './tool-part.tsx'
 
 /** Quiet lines (receipts, thinking) start where the assistant's text does, inside its bubble's padding. */
 function Aside({ children }: { readonly children: ReactNode }) {
@@ -35,12 +35,13 @@ function InteractionReceipt({ interaction }: { readonly interaction: Interaction
 
 /**
  * The renderer for a tool part: a question or permission request becomes its receipt, MCP calls get the
- * server-aware card (and its App), the agent's own tools the generic one.
+ * server-aware card (and its App), a subagent call links to the subagent, the agent's other tools the generic one.
  */
 function ToolView({ part }: { readonly part: ToolPart }) {
   const interaction = interactionOf(part)
   if (interaction !== undefined) return <InteractionReceipt interaction={interaction} />
-  return part.target ? <McpToolPart part={part} /> : <GenericToolPart part={part} />
+  if (part.target) return <McpToolPart part={part} />
+  return part.call.name === 'subagent' ? <SubagentToolPart part={part} /> : <GenericToolPart part={part} />
 }
 
 /** One transcript part. `canSwitchModel`: another model is on offer, so a provider failure can point at the picker. */

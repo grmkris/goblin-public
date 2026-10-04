@@ -1,4 +1,6 @@
 import type { ThreadView } from '@purrable/contracts'
+import { isString, record } from './boundary.ts'
+import type { ToolPart } from './parts.ts'
 
 /** A conversation with the subagents it started, newest first. */
 export type ThreadNode = { readonly thread: ThreadView; readonly subagents: readonly ThreadView[] }
@@ -39,4 +41,12 @@ export function threadTitle(view: ThreadView | undefined): string {
 export function entryOfPart(id: string): number | undefined {
   const entry = Number(id.split(':')[0])
   return Number.isSafeInteger(entry) && entry > 0 ? entry : undefined
+}
+
+/** The subagent a `subagent` call started or addressed, from the details of its result. */
+export function subagentOf(part: ToolPart): { readonly name: string; readonly thread: string } | undefined {
+  const details = record(part.result?.details)
+  if (part.call.name !== 'subagent' || details === undefined) return undefined
+  const { name, conversationId } = details
+  return isString(name) && typeof conversationId === 'number' ? { name, thread: String(conversationId) } : undefined
 }
