@@ -1,10 +1,13 @@
 import { MAIN_THREAD, type ThreadView } from '@purrable/contracts'
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import type { Conversation, Extension } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import { InvalidInput, NotFound } from './http/errors.ts'
-import { BACKGROUND, entryId } from './pi/context.ts'
+import type { CheapModel } from './memory/model.ts'
+import { authoredContent } from './pi/content.ts'
+import { BACKGROUND, conversationId, entryId } from './pi/context.ts'
+import { recentMessages } from './pi/transcript.ts'
 import { appConversations } from './storage/schema.ts'
 
 type Row = typeof appConversations.$inferSelect
@@ -12,6 +15,19 @@ export type ThreadChange = { readonly title?: string | undefined; readonly archi
 
 /** Entries a thread may branch from: something the owner or the agent said, never a tool or system record. */
 const BRANCHABLE = new Set(['pi.user', 'pi.assistant'])
+
+const TITLE_SYSTEM =
+  'You name conversations. Reply with only a title of two to five words for the exchange you are given: no quotes, no ending punctuation.'
+
+/** The first line of a model's title, without quotes, at most 60 characters; empty when there is none. */
+const cleanTitle = (raw: string): string =>
+  (raw.split('\n')[0] ?? '')
+    .replaceAll(/["'`*]/gu, '')
+    .trim()
+    .slice(0, 60)
+
+/** What threads need beyond the registry: their own extension, and the cheap model that names them. */
+export type ThreadKit = { readonly extension: Extension; readonly namer: CheapModel }
 
 /**
  * The agent's conversations the owner can reach. Pi owns every transcript; this registry is what Pi does not keep
@@ -21,10 +37,13 @@ const BRANCHABLE = new Set(['pi.user', 'pi.assistant'])
 export class ConversationRegistry {
   readonly #db: DrizzleSqliteDODatabase
   readonly #harness: PiHarness
+  readonly #kit: ThreadKit
+  readonly #naming = new Set<string>()
 
-  constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, now: number) {
+  constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, kit: ThreadKit, now: number) {
     this.#db = db
     this.#harness = harness
+    this.#kit = kit
     db.insert(appConversations)
       .values({ sessionId: MAIN_THREAD, kind: 'main', createdAt: now })
       .onConflictDoNothing()
@@ -52,12 +71,15 @@ export class ConversationRegistry {
    * Pi forks by reference, so nothing is copied.
    */
   async branch(entry: number, now: number): Promise<ThreadView> {
-    const main = await (await this.#harness.pi()).conversation(ROOT_CONVERSATION_ID, BACKGROUND)
-    if (main === undefined) throw new NotFound({ what: 'thread' })
+    const main = await this.#conversation(MAIN_THREAD)
     const id = entryId(entry)
     const [at] = (await main.entries({ minEntryId: id, maxEntryId: id }, 1, undefined, BACKGROUND)).items
     if (at === undefined || !BRANCHABLE.has(at.kind)) throw new InvalidInput({ reason: 'branch_entry' })
-    const fork = await main.fork(at.id, { ownership: { kind: 'ownerless' } }, BACKGROUND)
+    const fork = await main.fork(
+      at.id,
+      { ownership: { kind: 'ownerless' }, agent: { extensions: { add: [this.#kit.extension] } } },
+      BACKGROUND,
+    )
     return this.#insert(
       { sessionId: String(fork.id), kind: 'thread', parentSession: MAIN_THREAD, forkEntry: at.id },
       now,
@@ -67,7 +89,55 @@ export class ConversationRegistry {
   /** An empty thread. */
   async create(now: number): Promise<ThreadView> {
     const session = await this.#harness.sessions.create()
+    await (await this.#conversation(session.id)).configure({ extensions: { add: [this.#kit.extension] } }, BACKGROUND)
     return this.#insert({ sessionId: session.id, kind: 'thread', parentSession: MAIN_THREAD }, now)
+  }
+
+  /**
+   * A note from a thread into main: main's model sees it, labelled with the thread, and no run starts. It goes in as
+   * a write submission (never a direct append), so a busy main places it at its next boundary.
+   */
+  async shareToMain(thread: string, note: string, requestId: string): Promise<void> {
+    const row = this.#row(thread)
+    if (row === undefined || row.kind === 'main') throw new InvalidInput({ reason: 'share_from_main' })
+    const content = authoredContent(`thread "${row.title ?? 'untitled'}"`, note)
+    await (
+      await this.#conversation(MAIN_THREAD)
+    ).submit(
+      {
+        type: 'write',
+        requestId,
+        entry: { kind: 'app.shared', data: { thread }, model: [{ role: 'user', content, timestamp: Date.now() }] },
+      },
+      BACKGROUND,
+    )
+  }
+
+  /** Names an untitled thread from its latest exchange with the cheap model; once at a time per thread. */
+  async nameIfUntitled(thread: string): Promise<void> {
+    const row = this.#row(thread)
+    if (row?.kind !== 'thread' || row.title !== null || this.#naming.has(thread)) return
+    this.#naming.add(thread)
+    try {
+      const [question, answer] = await recentMessages(await this.#conversation(thread), 2)
+      if (question?.role !== 'user' || answer?.role !== 'assistant') return
+      const exchange = `Owner: ${question.text.slice(0, 800)}\nAgent: ${answer.text.slice(0, 800)}`
+      const title = cleanTitle(await this.#kit.namer.complete(TITLE_SYSTEM, exchange, 24))
+      if (title === '') return
+      this.#db
+        .update(appConversations)
+        .set({ title })
+        .where(and(eq(appConversations.sessionId, thread), isNull(appConversations.title)))
+        .run()
+    } finally {
+      this.#naming.delete(thread)
+    }
+  }
+
+  async #conversation(session: string): Promise<Conversation> {
+    const conversation = await (await this.#harness.pi()).conversation(conversationId(session), BACKGROUND)
+    if (conversation === undefined) throw new NotFound({ what: 'thread' })
+    return conversation
   }
 
   /** Rename or (un)archive a thread or subagent; main keeps its name and is never archived. */

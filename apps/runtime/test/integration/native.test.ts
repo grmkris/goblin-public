@@ -201,12 +201,20 @@ const Destroy = Schema.Struct({
 /** A transcript's turns, without the system prompt entries Pi places among them. */
 const turns = (lines: readonly string[]) => lines.filter((line) => !line.startsWith('pi.system'))
 
+const ModelRequest = Schema.Struct({
+  messages: Schema.Array(Schema.Struct({ role: Schema.String, text: Schema.String })),
+  tools: Schema.Array(Schema.String),
+})
+/** A request's turns, without the system messages Pi places among them. */
+const requestTurns = (request: typeof ModelRequest.Type) =>
+  request.messages.filter(({ role }) => role !== 'system').map(({ text }) => text)
+
 const Branch = Schema.Struct({
   thread: Schema.Struct({ kind: Schema.Literal('thread'), parent: Schema.Literal('1') }),
   settled: Schema.Struct({ status: Schema.Literal('done'), text: Schema.String }),
   main: Schema.Array(Schema.String),
   branch: Schema.Array(Schema.String),
-  lastRequest: Schema.Array(Schema.Struct({ role: Schema.String, text: Schema.String })),
+  request: ModelRequest,
 })
 
 harness.test(
@@ -226,11 +234,51 @@ harness.test(
       'pi.user: "what was the word?"',
       'pi.assistant: [{"type":"text","text":"echo: what was the word?"}]',
     ])
-    expect(result.lastRequest.filter(({ role }) => role !== 'system').map(({ text }) => text)).toEqual([
+    expect(requestTurns(result.request)).toEqual([
       'remember the word lantern',
       'echo: remember the word lantern',
       'what was the word?',
     ])
+  }),
+)
+
+const Share = Schema.Struct({
+  shared: Schema.Struct({ status: Schema.Literal('done'), text: Schema.String }),
+  main: Schema.Array(Schema.String),
+  mainRequest: ModelRequest,
+  threadRequest: ModelRequest,
+  title: Schema.String,
+})
+
+harness.test(
+  'local workerd: a thread shares a note with main, which main sees as context without answering it',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `share-${yield* nextInt}`
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/share?name=${name}`))
+    const result = yield* Schema.decodeUnknownEffect(Share)(yield* Effect.promise(() => response.json()))
+    expect(result.shared.text).toBe('done: Shared with main.')
+    const note = [
+      { type: 'text', text: '[from thread "untitled"]' },
+      { type: 'text', text: 'the word is lantern' },
+    ]
+    expect(turns(result.main)).toEqual([
+      'pi.user: "remember the word lantern"',
+      'pi.assistant: [{"type":"text","text":"echo: remember the word lantern"}]',
+      `app.shared: ${JSON.stringify(note)}`,
+      'pi.user: "what did the thread say?"',
+      'pi.assistant: [{"type":"text","text":"echo: what did the thread say?"}]',
+    ])
+    expect(requestTurns(result.mainRequest)).toEqual([
+      'remember the word lantern',
+      'echo: remember the word lantern',
+      '[from thread "untitled"]\nthe word is lantern',
+      'what did the thread say?',
+    ])
+    expect(result.threadRequest.tools).toContain('share_to_main')
+    expect(result.mainRequest.tools).not.toContain('share_to_main')
+    // The cheap model (scripted: it echoes the last line) was asked to name the thread's latest exchange.
+    expect(result.title).toBe('echo: Agent: done: Shared with main.')
   }),
 )
 

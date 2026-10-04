@@ -76,6 +76,13 @@ conversation by guessing its number. Pi cannot delete a conversation, so archivi
 lists them beside the chat (`components/threads.tsx`, a sheet on phones): `/` is main and `/t/:id` a thread, and each
 settled answer in main offers "Branch from here".
 
+Every thread runs the `purrable.thread` extension (`pi/thread.ts`), added to that conversation alone when it is made;
+main never has it. It tells the model it is in a side thread and offers `share_to_main`: when the owner asks (the
+thread's "Share to main" button sends that request), the model writes a short note into main as a Pi write
+submission, an `app.shared` entry labelled `[from thread "<title>"]`. Main's model sees it from its next request and
+answers nothing, since a write starts no run. After each response an untitled thread is named by the memory model
+from its latest exchange, in the background; the owner can rename it.
+
 The system prompt is two static Pi extension sections (`pi/persona.ts`): who the agent is, and that remote content
 is untrusted data. The `mcp_list` and `mcp_call` tools (`pi/resident-mcp.ts`) are how the model reaches the owner's
 MCP servers; both require current resident authority, and `mcp_call` is marked unsafe to replay.
@@ -193,10 +200,14 @@ Each user picks the model their agent answers with, in the composer. The deploym
 default) plus `PURRABLE_MODELS`, all served by the same LiteLLM key; `models.ts` names and groups them by route
 (Google, Alibaba Cloud), because quota runs out per route. The pick is one row in `app_model_choice`; without one, or
 when the deployment stops offering it, the default applies. Pi stores one model per conversation, set when it is
-created, so before each turn the agent calls `session.setModel` for the session the turn runs in (the main thread or
-an inbound client's), skipping it when that session already has the model. Every offered model is registered with
+created, so before each turn the agent calls `session.setModel` for the conversation the turn runs in, skipping it
+when that conversation already has the model. Every offered model is registered with
 Pi's `Models` under the one `purrable-litellm` provider. A failed model call shows its reason in the chat, and a
 quota or outage failure points at the picker.
+
+Housekeeping nobody asked the agent for (naming threads) runs on the memory model, `PURRABLE_MEMORY_MODEL`: the
+cheapest offered model, or the default when it is unset or not offered (`memory/model.ts`). Its tokens count toward
+the owner's daily budget like any other.
 
 ## Model budget
 

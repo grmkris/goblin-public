@@ -100,6 +100,8 @@ export interface RuntimeEnv {
   /** More LiteLLM model names users may pick, comma-separated (`models.ts`). */
   readonly MODELS?: string
   readonly MODEL_KEY: string
+  /** The cheapest offered model, for thread titles and main's memory (`models.ts` `memoryModelId`). */
+  readonly MEMORY_MODEL?: string
   /** Model tokens each user's agent may spend per UTC day; see `budget.ts` for the default. */
   readonly MODEL_DAILY_TOKENS?: string
   /** JSON list of outbound MCP servers: `[{ serverId, endpoint, issuer?, resource? }]`. */

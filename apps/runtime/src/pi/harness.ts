@@ -1,21 +1,23 @@
 import { PiHarness } from 'agents/harness/pi'
 import { createRegistry, Harness } from '@earendil-works/pi-durable'
 import type { Extension } from '@earendil-works/pi-durable'
-import type { ProviderStreams } from '@earendil-works/pi-ai'
-import type { RuntimeEnv } from '../env.ts'
 import { askUserExtension } from './ask-user.ts'
-import { makePiModels } from './model.ts'
+import type { makePiModels } from './model.ts'
 import { personaExtension } from './persona.ts'
 
-/** Keep the beta Pi adapter in one small seam for a future Agents SDK upgrade. */
-export function makePiHarness(env: RuntimeEnv, extensions: readonly Extension[], streams: ProviderStreams): PiHarness {
-  const { models, model } = makePiModels(env, streams)
+export type PiModels = ReturnType<typeof makePiModels>
+
+/**
+ * Keep the beta Pi adapter in one small seam for a future Agents SDK upgrade. Every conversation selects the persona,
+ * `ask_user` and `base`; `extra` is installed for the conversations that add it by name (a thread's own tools).
+ */
+export function makePiHarness(pi: PiModels, base: readonly Extension[], extra: readonly Extension[]): PiHarness {
   const registry = createRegistry()
-  registry.install(personaExtension)
-  registry.install(askUserExtension)
-  for (const extension of extensions) registry.install(extension)
+  const defaults = [personaExtension, askUserExtension, ...base]
+  for (const extension of [...defaults, ...extra]) registry.install(extension)
   return new PiHarness({
-    harness: ({ storage, context }) => Harness.open(storage, { models, registry }, context),
-    defaults: { model, thinkingLevel: 'low' },
+    harness: ({ storage, context }) =>
+      Harness.open(storage, { models: pi.models, registry, settings: { extensions: defaults } }, context),
+    defaults: { model: pi.model, thinkingLevel: 'low' },
   })
 }

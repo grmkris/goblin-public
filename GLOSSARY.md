@@ -7,7 +7,10 @@
   replay; `PiHarness` is its native Agents SDK adapter.
 - **Main conversation**: Pi's root session (`1`). The owner's browser and inbound MCP clients talk in it, each
   message from anyone but the owner's browser labelled with its author.
-- **Thread**: a side conversation, branched from a message of main or empty. Nothing in it reaches main.
+- **Thread**: a side conversation, branched from a message of main or empty. Nothing in it reaches main unless the
+  owner shares it: `share_to_main` writes a note main sees and does not answer.
+- **Memory model**: `PURRABLE_MEMORY_MODEL`, the cheap offered model for housekeeping (thread titles); its tokens
+  count toward the budget.
 - **Conversation registry**: `app_conversations`, the conversations a request may open (main, threads).
 - **Resident authority**: the agent's own permission to use the owner's MCP connections when the owner is not
   present. Lasts 30 days, renewed by owner activity, revocable in Settings.

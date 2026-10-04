@@ -1,6 +1,7 @@
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react'
 import { type AppContext, MAIN_THREAD } from '@purrable/contracts'
-import { Alert, AlertDescription, PresenceBorder, PresenceOrb } from '@purrable/ui'
+import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@purrable/ui'
+import { ShareIcon } from 'lucide-react'
 import { failureText, request } from '../lib/boundary.ts'
 import { BrowserPiEvents, ConversationStream, type StreamStatus } from '../lib/conversation-stream.ts'
 import { openInteractions } from '../lib/interactions.ts'
@@ -74,6 +75,9 @@ function useConversation(thread: string) {
   }
   return { projection, status, notice, report: setNotice, send, stop }
 }
+
+/** What "Share to main" asks a thread's agent; it answers with `share_to_main`. */
+const SHARE_REQUEST = 'Share what we concluded here with main.'
 
 function StreamNotice({ text }: { readonly text: string }) {
   return (
@@ -171,7 +175,17 @@ function ChatView({ thread }: { readonly thread: string }) {
         <ThreadList current={thread} />
       </aside>
       <div className="chat-conversation">
-        <ThreadBar thread={thread} />
+        <ThreadBar
+          thread={thread}
+          actions={
+            thread !== MAIN_THREAD && (
+              <Button variant="ghost" size="sm" disabled={running} onClick={() => void send(SHARE_REQUEST)}>
+                <ShareIcon data-icon="inline-start" />
+                Share to main
+              </Button>
+            )
+          }
+        />
         <Conversation
           key={thread}
           parts={parts}

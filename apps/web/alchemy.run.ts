@@ -55,6 +55,7 @@ export default Alchemy.Stack(
         MODELS: Config.String('PURRABLE_MODELS').pipe(Config.withDefault('')),
         MODEL_KEY: Config.Redacted('PURRABLE_MODEL_KEY').pipe(Config.withDefault(Redacted.make(''))),
         MODEL_DAILY_TOKENS: Config.String('PURRABLE_MODEL_DAILY_TOKENS').pipe(Config.withDefault('300000')),
+        MEMORY_MODEL: Config.String('PURRABLE_MEMORY_MODEL').pipe(Config.withDefault('')),
         MCP_SERVERS: Config.String('PURRABLE_MCP_SERVERS').pipe(Config.withDefault('[]')),
         CREDENTIAL_KEY: Config.Redacted('PURRABLE_CREDENTIAL_KEY'),
         STAGE: stage.local ? 'local' : stage.name === 'dev' ? 'dev' : 'test',

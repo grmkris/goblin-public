@@ -8,7 +8,7 @@ import { Agent } from 'agents'
 import { PiHarness } from 'agents/harness/pi'
 import { createRegistry, Harness } from '@earendil-works/pi-durable'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
-import { FIXTURE_INPUT, type SeenMessage, fixtureModels, model, scriptedStreams } from './model.ts'
+import { FIXTURE_INPUT, type SeenRequest, fixtureModels, model, scriptedStreams } from './model.ts'
 import { nextInt } from 'effect/Random'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { bindEndpoints } from '../../src/mcp/endpoints.ts'
@@ -19,10 +19,10 @@ const notesAt = (endpoint: string) => [{ serverId: 'notes', endpoint }]
 
 /** The actual PersonalAgent on a scripted model (no network): every request it makes is kept for the test to read. */
 export class PersonalAgentProbe extends PersonalAgent {
-  readonly seen: (readonly SeenMessage[])[] = []
+  readonly seen: SeenRequest[] = []
 
   protected override modelStreams(): ProviderStreams {
-    return scriptedStreams((messages) => this.seen.push(messages))
+    return scriptedStreams((request) => this.seen.push(request))
   }
 
   /** Waits for an operation in a conversation to settle (the owner API has no wait route). */
@@ -30,9 +30,16 @@ export class PersonalAgentProbe extends PersonalAgent {
     return this.harness.wait(operationId, { session })
   }
 
-  /** The messages of the newest model request (plain data: deep readonly types do not cross the RPC stub). */
-  lastRequest(): { role: string; text: string }[] {
-    return (this.seen.at(-1) ?? []).map(({ role, text }) => ({ role, text }))
+  /**
+   * The newest model request that answered `turn` (its last non-system message), as plain data: deep readonly types
+   * do not cross the RPC stub. Matching the turn keeps the cheap model's own requests (thread titles) out of it.
+   */
+  requestFor(turn: string): { messages: { role: string; text: string }[]; tools: string[] } | undefined {
+    const request = this.seen.findLast(
+      ({ messages }) => messages.findLast((message) => message.role !== 'system')?.text === turn,
+    )
+    if (request === undefined) return undefined
+    return { messages: request.messages.map(({ role, text }) => ({ role, text })), tools: [...request.tools] }
   }
 
   /** `/probe` reads storage; every other path is the real agent's (thread events and snapshots). */
@@ -208,7 +215,41 @@ async function branchSequence(agent: DurableObjectStub<PersonalAgentProbe>): Pro
     settled,
     main: await transcript(agent, MAIN_THREAD),
     branch: await transcript(agent, thread.value.id),
-    lastRequest: await agent.lastRequest(),
+    request: await agent.requestFor('what was the word?'),
+  })
+}
+
+/** A thread's title, once the cheap model has written it (it names threads in the background). */
+async function titleOf(agent: DurableObjectStub<PersonalAgentProbe>, thread: string): Promise<string | undefined> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const threads = await agent.threads()
+    const title = threads.ok ? threads.value.find((view) => view.id === thread)?.title : undefined
+    if (title !== undefined) return title
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  return undefined
+}
+
+/**
+ * A thread shares a note with main: main's next request carries it, labelled with the thread, and it started no run
+ * of its own. Only the thread is offered `share_to_main`, and the thread is named after its first exchange.
+ */
+async function shareSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
+  await agent.submit(MAIN_THREAD, 'remember the word lantern', 'share-main')
+  await agent.settle(MAIN_THREAD, 'share-main')
+  const thread = await agent.createThread()
+  if (!thread.ok) return Response.json({ thread })
+  const share = 'call share_to_main {"note":"the word is lantern"}'
+  await agent.submit(thread.value.id, share, 'share-thread')
+  const shared = await agent.settle(thread.value.id, 'share-thread')
+  await agent.submit(MAIN_THREAD, 'what did the thread say?', 'share-ask')
+  await agent.settle(MAIN_THREAD, 'share-ask')
+  return Response.json({
+    shared,
+    main: await transcript(agent, MAIN_THREAD),
+    mainRequest: await agent.requestFor('what did the thread say?'),
+    threadRequest: await agent.requestFor(share),
+    title: await titleOf(agent, thread.value.id),
   })
 }
 
@@ -240,6 +281,7 @@ export default {
     if (new URL(request.url).pathname === '/rpc') return rpcSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/destroy') return destroySequence(env, name)
     if (new URL(request.url).pathname === '/branch') return branchSequence(env.AGENTS.getByName(name))
+    if (new URL(request.url).pathname === '/share') return shareSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/binding')
       return env.AGENTS.getByName(name)
         .bindingProbe()

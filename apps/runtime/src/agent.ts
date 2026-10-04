@@ -1,5 +1,5 @@
 import { Agent } from 'agents'
-import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { type Extension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { type AppContext, type JsonObject, MAIN_THREAD } from '@purrable/contracts'
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
@@ -16,8 +16,10 @@ import { CredentialStore } from './mcp/credentials.ts'
 import { GrantStore } from './mcp/grants.ts'
 import { McpHost } from './mcp/host.ts'
 import { piEventResponse } from './pi/events.ts'
-import { makePiHarness } from './pi/harness.ts'
-import { LITELLM_STREAMS, MODEL_PROVIDER } from './pi/model.ts'
+import { type PiModels, makePiHarness } from './pi/harness.ts'
+import { LITELLM_STREAMS, MODEL_PROVIDER, makePiModels } from './pi/model.ts'
+import { threadExtension } from './pi/thread.ts'
+import { CheapModel } from './memory/model.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { ResidentAuthority } from './resident.ts'
 import { ConversationRegistry, type ThreadChange } from './conversations.ts'
@@ -47,7 +49,7 @@ import { logEndpointsReset } from './mcp/log.ts'
 import { ModelBudget, UsageStore, dailyTokenLimit } from './budget.ts'
 import { authoredContent, ownerContent } from './pi/content.ts'
 import { budgetExtension } from './pi/budget.ts'
-import { ModelChoiceStore, ModelPicker, modelOptions } from './models.ts'
+import { ModelChoiceStore, ModelPicker, memoryModelId, modelOptions } from './models.ts'
 
 type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
 
@@ -76,13 +78,17 @@ const registered = (thread: string) =>
  */
 export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods {
   readonly harness: PiHarness
+  readonly #pi: PiModels
+  readonly #thread: Extension
   readonly #applied: Applied = new Map()
   #runtime: Promise<Runtime> | undefined
 
   constructor(ctx: DurableObjectState, env: RuntimeEnv) {
     super(ctx, env)
     const run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program)
-    this.harness = makePiHarness(env, [residentMcpExtension(run), budgetExtension(run)], this.modelStreams())
+    this.#pi = makePiModels(env, this.modelStreams())
+    this.#thread = threadExtension(run)
+    this.harness = makePiHarness(this.#pi, [residentMcpExtension(run), budgetExtension(run)], [this.#thread])
     this.lifecycle.use(this.harness)
   }
 
@@ -114,8 +120,12 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
         fetch: globalThis.fetch.bind(globalThis),
       })
       const budget = new ModelBudget(new UsageStore(db), dailyTokenLimit(this.env.MODEL_DAILY_TOKENS))
-      const models = new ModelPicker(new ModelChoiceStore(db), modelOptions(this.env.MODELS, this.env.MODEL_ID))
-      const conversations = new ConversationRegistry(db, this.harness, nowSeconds())
+      const options = modelOptions(this.env.MODELS, this.env.MODEL_ID)
+      const models = new ModelPicker(new ModelChoiceStore(db), options)
+      const namer = new CheapModel(this.#pi.models, memoryModelId(this.env.MEMORY_MODEL, options), (tokens) =>
+        budget.record(tokens, nowSeconds()),
+      )
+      const conversations = new ConversationRegistry(db, this.harness, { extension: this.#thread, namer }, nowSeconds())
       return ManagedRuntime.make(agentLayer(host, new ResidentAuthority(db), conversations, budget, models))
     })()
     this.#runtime.catch(() => {

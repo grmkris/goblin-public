@@ -45,6 +45,11 @@ export function modelOptions(models: string | undefined, defaultId: string): Mod
   return [optionOf(defaultId), ...others.map(optionOf)]
 }
 
+/** The model that names threads and writes main's memory: `PURRABLE_MEMORY_MODEL` when offered, else the default. */
+export function memoryModelId(memoryModel: string | undefined, options: ModelOptions): string {
+  return options.find((option) => option.id === memoryModel)?.id ?? options[0].id
+}
+
 /** The user's stored pick (one row), if any. */
 export interface ChoiceLedger {
   get(): string | undefined

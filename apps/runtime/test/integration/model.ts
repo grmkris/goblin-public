@@ -3,7 +3,6 @@ import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/e
 import type { AssistantMessage, Message, Model, ProviderStreams, ToolCall } from '@earendil-works/pi-ai'
 
 export const FIXTURE_INPUT = 'persist this lifecycle fixture input'
-export const FIXTURE_ANSWER = `echo: ${FIXTURE_INPUT}`
 export const model: Model<'openai-completions'> = {
   id: 'lifecycle-fixture',
   name: 'Lifecycle fixture',
@@ -19,11 +18,24 @@ export const model: Model<'openai-completions'> = {
 
 /** One message of a request the scripted model received, as role and plain text. */
 export type SeenMessage = { readonly role: string; readonly text: string }
+/** A request the scripted model received: its messages and the names of the tools it was offered. */
+export type SeenRequest = { readonly messages: readonly SeenMessage[]; readonly tools: readonly string[] }
 
 const textOf = (message: Message): string =>
   typeof message.content === 'string'
     ? message.content
     : message.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
+
+/** The tools a request offers: system messages add and remove them as the transcript goes. */
+function offeredTools(messages: readonly Message[]): string[] {
+  const tools = new Set<string>()
+  for (const message of messages) {
+    if (message.role !== 'system') continue
+    for (const tool of message.toolsAdded ?? []) tools.add(tool.name)
+    for (const tool of message.toolsRemoved ?? []) tools.delete(tool.name)
+  }
+  return [...tools]
+}
 
 /**
  * What the scripted model answers, from the newest turn: after a tool round, `done`; to `call <tool> <json>`, that
@@ -46,9 +58,12 @@ function reply(messages: readonly Message[]): AssistantMessage['content'] {
 }
 
 /** The scripted model's transport; `seen` receives every request's messages. */
-export function scriptedStreams(seen: (messages: readonly SeenMessage[]) => void = () => undefined): ProviderStreams {
+export function scriptedStreams(seen: (request: SeenRequest) => void = () => undefined): ProviderStreams {
   const stream: ProviderStreams['stream'] = (target, context) => {
-    seen(context.messages.map((message) => ({ role: message.role, text: textOf(message) })))
+    seen({
+      messages: context.messages.map((message) => ({ role: message.role, text: textOf(message) })),
+      tools: offeredTools(context.messages),
+    })
     const content = reply(context.messages)
     const message: AssistantMessage = {
       role: 'assistant',
