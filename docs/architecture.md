@@ -76,6 +76,12 @@ MCP servers; both require current resident authority, and `mcp_call` is marked u
 The browser follows the main thread over Server-Sent Events: a snapshot of committed Pi entries, then batches, with
 a heartbeat. On reconnect it starts again from a fresh snapshot.
 
+The chat view fills the screen under the header. The transcript scrolls in a `MessageScroller` (from
+`@shadcn/react`). Each of the owner's turns is a scroll anchor. The view follows a streaming reply only while the
+reader is at the end, and otherwise offers a jump back. The header and the composer float over the transcript as
+translucent chrome. Assistant Markdown is set by shadcn/typeset, whose append-stable rules keep earlier blocks still
+while a reply streams.
+
 ## Outbound MCP
 
 Servers come from `PURRABLE_MCP_SERVERS` (JSON: `serverId`, `endpoint`, optional `issuer` and `resource`). The owner

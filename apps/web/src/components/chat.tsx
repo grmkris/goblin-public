@@ -1,9 +1,11 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-import { Badge, Button, Empty, EmptyDescription, EmptyHeader, EmptyTitle, Textarea } from '@purrable/ui'
+import { type RefObject, useEffect, useRef, useState } from 'react'
+import { Badge } from '@purrable/ui'
 import { failureText, request } from '../lib/boundary.ts'
 import { BrowserPiEvents, ConversationStream, type StreamStatus } from '../lib/conversation-stream.ts'
-import type { ConversationProjection, ToolCallView } from '../lib/projection.ts'
-import { MessageText, MessageView, StreamNotice } from './chat-message.tsx'
+import type { ConversationProjection } from '../lib/projection.ts'
+import { StreamNotice } from './chat-message.tsx'
+import { MessageComposer } from './composer.tsx'
+import { Conversation } from './conversation.tsx'
 import { ModelPicker, useModelChoice } from './model-picker.tsx'
 
 function useConversation() {
@@ -56,129 +58,64 @@ function useConversation() {
   return { projection, status, notice, report: setNotice, send, stop }
 }
 
-function useAutoscroll(dependency: unknown) {
-  const end = useRef<HTMLDivElement>(null)
+/**
+ * Keeps the transcript clear of the floating composer: `--dock-height` follows the composer's size, and
+ * `--keyboard-inset` lifts it above an on-screen keyboard that covers the layout viewport (iOS Safari does not resize it).
+ */
+function useDockInsets(view: RefObject<HTMLElement | null>, dock: RefObject<HTMLElement | null>) {
   useEffect(() => {
-    end.current?.scrollIntoView({ block: 'end' })
-  }, [dependency])
-  return end
+    const root = view.current
+    const element = dock.current
+    if (!root || !element) return
+    const viewport = window.visualViewport
+    const keyboard = () => {
+      const inset = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0
+      root.style.setProperty('--keyboard-inset', `${Math.round(inset)}px`)
+    }
+    const observer = new ResizeObserver(([entry]) => {
+      const height = entry?.borderBoxSize[0]?.blockSize ?? element.offsetHeight
+      root.style.setProperty('--dock-height', `${Math.round(height)}px`)
+    })
+    observer.observe(element)
+    keyboard()
+    viewport?.addEventListener('resize', keyboard)
+    viewport?.addEventListener('scroll', keyboard)
+    return () => {
+      observer.disconnect()
+      viewport?.removeEventListener('resize', keyboard)
+      viewport?.removeEventListener('scroll', keyboard)
+    }
+  }, [view, dock])
 }
 
-function Composer({
-  onSend,
-  running,
-  onStop,
-  picker,
-}: {
-  readonly onSend: (input: string) => Promise<boolean>
-  readonly running: boolean
-  readonly onStop: () => void
-  readonly picker: ReactNode
-}) {
-  const [input, setInput] = useState('')
-  const [pending, setPending] = useState(false)
-  async function submit(): Promise<void> {
-    const value = input.trim()
-    if (!value || pending) return
-    setPending(true)
-    if (await onSend(value)) setInput('')
-    setPending(false)
-  }
-  return (
-    <form
-      className="composer"
-      onSubmit={(event) => {
-        event.preventDefault()
-        void submit()
-      }}
-    >
-      <Textarea
-        aria-label="Message"
-        value={input}
-        onChange={(event) => setInput(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault()
-            void submit()
-          }
-        }}
-        placeholder={running ? 'Add a follow-up…' : 'Ask your agent…'}
-        disabled={pending}
-      />
-      <div className="flex items-center gap-2">
-        <div className="mr-auto min-w-0">{picker}</div>
-        {running && (
-          <Button type="button" variant="outline" onClick={onStop}>
-            Stop
-          </Button>
-        )}
-        <Button type="submit" disabled={pending || !input.trim()}>
-          Send
-        </Button>
-      </div>
-    </form>
-  )
-}
-
+/** The chat: the transcript fills the screen under the header, and the composer floats over its bottom edge. */
 export function Chat() {
   const { projection, status, notice, report, send, stop } = useConversation()
   const { choice, choose } = useModelChoice(report)
-  const messages = projection?.messages ?? []
-  const calls = useMemo(() => {
-    const map = new Map<string, ToolCallView>()
-    for (const message of messages)
-      if (message.role === 'assistant') for (const call of message.toolCalls) map.set(call.id, call)
-    return map
-  }, [messages])
-  const end = useAutoscroll(`${messages.length}:${projection?.partial.length ?? 0}:${projection?.tools.length ?? 0}`)
+  const view = useRef<HTMLElement>(null)
+  const dock = useRef<HTMLDivElement>(null)
+  useDockInsets(view, dock)
   return (
-    <section className="chat" aria-label="Conversation">
-      <div className="flex items-center justify-between gap-3">
-        <Badge variant={status === 'connected' ? 'secondary' : 'outline'}>
-          {status === 'connected' ? (projection?.progress ?? 'Ready') : status}
-        </Badge>
+    <section className="chat-view" aria-label="Chat" ref={view}>
+      <div className="chat-conversation">
+        <Conversation projection={projection} canSwitchModel={(choice?.options.length ?? 0) > 1} />
+        <div className="chat-dock" ref={dock}>
+          {notice && <StreamNotice text={notice} />}
+          <MessageComposer
+            onSend={send}
+            running={projection?.running ?? false}
+            onStop={() => void stop()}
+            context={
+              <>
+                <Badge variant={status === 'connected' ? 'secondary' : 'outline'}>
+                  {status === 'connected' ? (projection?.progress ?? 'Ready') : status}
+                </Badge>
+                <ModelPicker choice={choice} onChoose={(model) => void choose(model)} />
+              </>
+            }
+          />
+        </div>
       </div>
-      {notice && <StreamNotice text={notice} />}
-      <div className="chat-log" aria-live="polite">
-        {messages.length === 0 && !projection?.partial ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyTitle>Your conversation starts here</EmptyTitle>
-              <EmptyDescription>
-                Ask anything. Your agent can use the tools you enable under Connections.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : (
-          messages.map((message) => (
-            <MessageView
-              key={message.id}
-              message={message}
-              calls={calls}
-              canSwitchModel={(choice?.options.length ?? 0) > 1}
-            />
-          ))
-        )}
-        {projection?.tools
-          .filter((tool) => tool.status === 'running')
-          .map((tool) => (
-            <p className="text-muted-foreground text-sm" key={tool.callId}>
-              Running {tool.name}…
-            </p>
-          ))}
-        {projection?.partial && (
-          <article className="bubble bubble-assistant">
-            <MessageText text={projection.partial} />
-          </article>
-        )}
-        <div ref={end} />
-      </div>
-      <Composer
-        onSend={send}
-        running={projection?.running ?? false}
-        onStop={() => void stop()}
-        picker={<ModelPicker choice={choice} onChoose={(model) => void choose(model)} />}
-      />
     </section>
   )
 }

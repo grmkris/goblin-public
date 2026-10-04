@@ -11,16 +11,53 @@
     padding-inline: 2rem;
   }
 }
-.chat {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+/*
+ * The chat fills the viewport under the floating header. The transcript scrolls beneath both the header and the
+ * composer dock; `--dock-height` and `--keyboard-inset` are measured in chat.tsx.
+ */
+:root {
+  --header-height: calc(3.5rem + env(safe-area-inset-top));
 }
-.chat-log {
+.chat-view {
+  --chat-gutter: 1rem;
+  /* The transcript column: as wide as the header's, clear of the header above and the composer below. */
+  --message-scroller-max-width: 880px;
+  --message-scroller-gap: 0.75rem;
+  --message-scroller-inset-x: max(var(--chat-gutter), env(safe-area-inset-left), env(safe-area-inset-right));
+  --message-scroller-inset-top: calc(var(--header-height) + 1rem);
+  --message-scroller-inset-bottom: calc(var(--dock-height, 8rem) + var(--keyboard-inset, 0px) + 1.5rem);
+  --message-scroller-end-offset: calc(var(--dock-height, 8rem) + var(--keyboard-inset, 0px) + 0.5rem);
+  position: fixed;
+  inset: 0;
+  display: flex;
+}
+.chat-conversation {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.chat-dock {
+  position: absolute;
+  inset-inline: 0;
+  bottom: var(--keyboard-inset, 0px);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  min-height: 40vh;
+  gap: 0.5rem;
+  padding: 1.5rem var(--message-scroller-inset-x) max(0.75rem, env(safe-area-inset-bottom));
+  /* The content passing beside the composer fades out rather than ending at a hard line. */
+  background: linear-gradient(to bottom, transparent, color-mix(in oklab, var(--background) 88%, transparent) 2.5rem);
+  pointer-events: none;
+}
+.chat-dock > * {
+  width: 100%;
+  max-width: calc(880px - 2 * var(--message-scroller-inset-x));
+  margin-inline: auto;
+  pointer-events: auto;
+}
+@media (min-width: 48rem) {
+  .chat-view {
+    --chat-gutter: 2rem;
+  }
 }
 .bubble {
   max-width: 100%;
@@ -43,15 +80,6 @@
 }
 .list {
   padding-left: 1.25rem;
-}
-.composer {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.75rem 0;
-  background: var(--background);
 }
 .tool-card {
   border: 1px solid var(--border);

@@ -21,6 +21,7 @@ export {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './components/dropdown-menu.tsx'
+export { Composer, ComposerActions, ComposerInput } from './components/composer.tsx'
 export { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './components/empty.tsx'
 export {
   Field,
@@ -35,6 +36,14 @@ export {
 } from './components/field.tsx'
 export { Input } from './components/input.tsx'
 export { Label } from './components/label.tsx'
+export {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from './components/message-scroller.tsx'
 export { Separator } from './components/separator.tsx'
 export { SiteHeader, SiteHeaderBrand, type SiteHeaderLink } from './components/site-header.tsx'
 export { Textarea } from './components/textarea.tsx'
