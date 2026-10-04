@@ -37,6 +37,14 @@ Intermediate fixtures stay ignored under `apps/runtime/.alchemy`; the
 sanitized reconstruction receipt is retained. This establishes local SQLite
 reconstruction through public APIs; remote eviction, in-flight alarm recovery and production lifecycle remain unproven.
 
+Alchemy's Vitest/workerd harness is selected because its pinned integration starts the native Agent binding, preserves
+SQLite across two explicit processes, and uses the same infrastructure declaration API as deployment. Cloudflare's
+separate Workers Vitest pool has no accepted pinned-stack receipt here; it is not installed as a competing runner.
+The built artifact is independently accepted through the real dev deployment and browser/MCP smoke, rather than
+assuming that source-harness success proves the production bundle. Alarm/model-call limits remain delegated to the
+beta harness and are not load-tested; cancellation can wait for an uncooperative tool. Conversation deletion is not
+implemented in this core.
+
 Installed source evidence (SHA-256): Agents `dist/harness/pi/index.js` is `95628ff43a5d9ab712559dc133b2f829d83cfc310bc3b8e0d3b72ccee2918556`; its declarations are `7775708f84d2f6cfa08ba70989207d2cd266bf21b237c9f15cef48afe1d73339`. Pi Durable `dist/storage/sqlite/migrations.js` is `2e3c0134615e89c060c19c7a62f4485025c78516ba26b0662310a48fe8776e68`, and its public `dist/index.js` is `3b4fbadce8cd28867621ef832b1597d02fae7a4b6b0abc394a9a241798b89d34`. Exact package dependencies and lockfile are retained in the isolated spike. The repository lockfile pins the shipped composition independently.
 
 The resident Pi registry rebuilds the static `mcp_list`/`mcp_call` tools on each native Agent construction. No network call occurs during lifecycle startup. Authenticated submission stores only Schema-validated owner/session metadata in `app_metadata`; each MCP tool execution rereads it, verifies the active D1 owner session, acquires its MCP connection, and checks live capability grants. MCP credentials stay in the manager closure. `mcp_call` is replay-unsafe; acceptance and durable receipts do not imply exactly-once external effects.
