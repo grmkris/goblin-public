@@ -25,6 +25,19 @@ describe('MCP App sandbox boundary', () => {
     expect(policy).toContain("frame-src 'none'")
     expect(policy).toContain("form-action 'none'")
   })
+  it('gives the MyPlan panel what its resource declares and nothing else: no wasm, no workers, no frames', () => {
+    // The panel's own end-to-end test (myapps apps/myplan-ui/test/e2e/panel.e2e.ts) passes under a stricter policy.
+    const myplan = 'https://dev-new.myplan.lol'
+    const policy = appCsp({
+      ui: { csp: { connectDomains: [myplan, 'wss://dev-new.myplan.lol'], resourceDomains: [myplan] } },
+    })
+    expect(policy).toContain(`connect-src ${myplan} wss://dev-new.myplan.lol`)
+    expect(policy).toContain(`img-src data: blob: ${myplan}`)
+    expect(policy).toContain(`script-src 'unsafe-inline' ${myplan}`)
+    expect(policy).not.toContain('wasm-unsafe-eval')
+    expect(policy).not.toContain('worker-src')
+    expect(policy).toContain("frame-src 'none'")
+  })
   it('prepends restrictive CSP and creates nested opaque frames without same-origin authority', () => {
     expect(sandboxHtml('<h1>App</h1>', {})).toContain("connect-src 'none'")
     const html = sandboxProxy('https://purrable.example.test')
