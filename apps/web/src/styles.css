@@ -38,6 +38,7 @@
 }
 .chat-dock {
   position: absolute;
+  z-index: 25;
   inset-inline: 0;
   bottom: var(--keyboard-inset, 0px);
   display: flex;
@@ -58,6 +59,134 @@
   .chat-view {
     --chat-gutter: 2rem;
   }
+}
+/* The App stage (components/apps): one fixed box holding the live App, positioned frame by frame over the slot its
+   display mode names. Inline it passes under the header and the composer; picture-in-picture and the sheet float. */
+.app-stage {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  background: var(--card);
+  will-change: transform;
+}
+.app-stage[data-hidden] {
+  visibility: hidden;
+  pointer-events: none;
+}
+.app-stage[data-mode='fullscreen'] {
+  border-block: 0;
+  border-right: 0;
+  border-radius: 0;
+}
+.app-stage[data-mode='pip'],
+.app-stage[data-mode='sheet'] {
+  z-index: 40;
+  box-shadow: 0 24px 60px -16px color-mix(in oklab, black 50%, transparent);
+}
+.app-stage[data-mode='sheet'] {
+  border-bottom: 0;
+  border-radius: 1rem 1rem 0 0;
+}
+.app-chrome {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.125rem;
+  height: 36px;
+  padding-inline: 0.75rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  user-select: none;
+}
+.app-chrome[data-grabbable] {
+  cursor: grab;
+  touch-action: none;
+}
+.app-chrome[data-grabbable]:active {
+  cursor: grabbing;
+}
+.app-stage[data-mode='sheet'] .app-chrome::before {
+  position: absolute;
+  top: 4px;
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  content: '';
+}
+.app-chrome-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-stage-frame {
+  display: block;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+}
+.app-slot {
+  width: 100%;
+}
+.app-slot-note {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.375rem 0.375rem 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.75rem;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+.app-slot-note > svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+.app-slot-note > span {
+  flex: 1;
+  min-width: 0;
+}
+/* The desktop side panel the App fills in fullscreen mode, beside the conversation and under the header. */
+.app-panel {
+  position: relative;
+  flex: none;
+  width: 520px;
+  height: 100%;
+  padding-top: var(--header-height);
+  border-left: 1px solid var(--border);
+  background: var(--background);
+}
+.app-panel-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  z-index: 21;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.app-panel-handle:hover,
+.app-panel-handle:active {
+  background: linear-gradient(to right, transparent 3px, var(--ring) 3px 5px, transparent 5px);
+}
+.app-panel-slot {
+  width: 100%;
+  height: 100%;
 }
 .bubble {
   max-width: 100%;

@@ -1,0 +1,224 @@
+// One MCP App in its double sandbox: an opaque proxy frame that only relays protocol messages, holding the App's own
+// opaque frame. The bridge lives as long as the iframe element; placement changes only update the host context, so
+// moving the App between display modes never reloads it.
+import { useEffect, useRef, useState } from 'react'
+import {
+  AppBridge,
+  type McpUiDisplayMode,
+  type McpUiHostContext,
+  PostMessageTransport,
+} from '@modelcontextprotocol/ext-apps/app-bridge'
+import type { CallToolResult, ReadResourceResult } from '@modelcontextprotocol/client'
+import { Alert, AlertDescription } from '@purrable/ui'
+import { isSandboxMessage, sandboxHtml, sandboxProxy } from '../../lib/app-sandbox.ts'
+import { isString, record, records, request, text } from '../../lib/boundary.ts'
+import { type AppPlacement, type Device, hostContext, inlineHeight } from '../../lib/host-context.ts'
+
+export type AppSelection = {
+  readonly serverId: string
+  readonly uri: string
+  readonly arguments: Record<string, unknown>
+  readonly result: CallToolResult
+}
+
+/** What the App asks of the host: to report a failure, a height, to close, or another display mode. */
+export type FrameEvents = {
+  readonly report: (message: string) => void
+  readonly resize: (height: number) => void
+  readonly close: () => void
+  /** Returns the mode the App is in afterwards: the requested one if the host offers it. */
+  readonly requestMode: (mode: McpUiDisplayMode) => McpUiDisplayMode
+}
+
+function device(): Device {
+  return {
+    dark: document.documentElement.classList.contains('dark'),
+    touch: matchMedia('(pointer: coarse)').matches,
+    hover: matchMedia('(hover: hover)').matches,
+    locale: navigator.language,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  }
+}
+
+/** The host context for `placement`, read from the document's current theme. */
+function contextFor(placement: AppPlacement): McpUiHostContext {
+  const style = getComputedStyle(document.documentElement)
+  return hostContext((name) => style.getPropertyValue(name), device(), placement)
+}
+
+function forward<T>(serverId: string, path: string, body: unknown, signal: AbortSignal): Promise<T> {
+  // SAFETY: the authenticated endpoints return SDK-validated results and enforce the originating server's grants.
+  return request(`/api/mcp/${encodeURIComponent(serverId)}/${path}`, {
+    body,
+    signal,
+    headers: { 'x-mcp-caller': 'app' },
+  }) as Promise<T>
+}
+
+function configuredBridge(
+  selection: AppSelection,
+  html: string,
+  placement: () => AppPlacement,
+  signal: AbortSignal,
+  events: FrameEvents,
+): AppBridge {
+  const bridge = new AppBridge(
+    null,
+    { name: 'Purrable', version: '0.1.0' },
+    { serverTools: {}, serverResources: {} },
+    { hostContext: contextFor(placement()) },
+  )
+  const { serverId } = selection
+  bridge.oncalltool = (params) =>
+    forward<CallToolResult>(serverId, 'tools/call', { name: params.name, arguments: params.arguments ?? {} }, signal)
+  bridge.onreadresource = (params) =>
+    forward<ReadResourceResult>(serverId, 'resources/read', { uri: params.uri }, signal)
+  bridge.onrequestdisplaymode = async ({ mode }) => ({ mode: events.requestMode(mode) })
+  bridge.addEventListener('sizechange', ({ height }) => {
+    if (height !== undefined) events.resize(height)
+  })
+  bridge.addEventListener('requestteardown', () => events.close())
+  bridge.addEventListener('sandboxready', () => {
+    void bridge
+      .sendSandboxResourceReady({ html, sandbox: 'allow-scripts' })
+      .catch(() => events.report('App resource could not be loaded'))
+  })
+  bridge.addEventListener('initialized', () => {
+    void bridge
+      .sendToolInput({ arguments: selection.arguments })
+      .then(() => bridge.sendToolResult(selection.result))
+      .catch(() => events.report('App initialization failed'))
+  })
+  return bridge
+}
+
+async function appHtml(selection: AppSelection, signal: AbortSignal): Promise<string> {
+  const data = await forward<unknown>(selection.serverId, 'resources/read', { uri: selection.uri }, signal)
+  const content = records(record(data)?.contents).find(
+    (item) =>
+      item.uri === selection.uri &&
+      isString(item.text) &&
+      (item.mimeType === 'text/html;profile=mcp-app' || item.mimeType === 'text/html'),
+  )
+  if (!content || !isString(content.text)) throw new Error('The server did not provide a supported App HTML resource')
+  return sandboxHtml(text(content.text), content._meta)
+}
+
+async function attachApp(
+  element: HTMLIFrameElement,
+  selection: AppSelection,
+  placement: () => AppPlacement,
+  signal: AbortSignal,
+  events: FrameEvents,
+): Promise<AppBridge | undefined> {
+  const html = await appHtml(selection, signal)
+  if (signal.aborted) return undefined
+  element.srcdoc = sandboxProxy(window.location.origin)
+  const target = element.contentWindow
+  if (!target) throw new Error('App sandbox could not be created')
+  const bridge = configuredBridge(selection, html, placement, signal, events)
+  // The theme follows the system; tell the App when it switches.
+  const theme = new MutationObserver(() => bridge.setHostContext(contextFor(placement())))
+  theme.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  const gate = (event: MessageEvent): void => {
+    if (event.source === target && !isSandboxMessage(event, target)) event.stopImmediatePropagation()
+  }
+  window.addEventListener('message', gate, true)
+  signal.addEventListener(
+    'abort',
+    () => {
+      void bridge
+        .teardownResource({}, { timeout: 500 })
+        .catch(() => undefined)
+        .finally(() => {
+          theme.disconnect()
+          window.removeEventListener('message', gate, true)
+          void bridge.close()
+        })
+    },
+    { once: true },
+  )
+  await bridge.connect(new PostMessageTransport(target, target))
+  return bridge
+}
+
+/** The App's iframe and bridge. `placement` may change freely; only `selection` (re)loads the App. */
+export function AppFrame({
+  selection,
+  placement,
+  events,
+  height,
+}: {
+  readonly selection: AppSelection
+  readonly placement: AppPlacement
+  readonly events: FrameEvents
+  /** A fixed height in pixels for a framed App in a page; without it the frame fills the stage. */
+  readonly height?: number
+}) {
+  const iframe = useRef<HTMLIFrameElement>(null)
+  const bridge = useRef<AppBridge>(undefined)
+  const latest = useRef({ placement, events })
+  latest.current = { placement, events }
+  useEffect(() => {
+    const controller = new AbortController()
+    const element = iframe.current
+    const relay: FrameEvents = {
+      report: (message) => latest.current.events.report(message),
+      resize: (asked) => latest.current.events.resize(asked),
+      close: () => latest.current.events.close(),
+      requestMode: (mode) => latest.current.events.requestMode(mode),
+    }
+    if (element)
+      attachApp(element, selection, () => latest.current.placement, controller.signal, relay)
+        .then((attached) => {
+          bridge.current = attached
+        })
+        .catch((cause: unknown) => {
+          if (!controller.signal.aborted)
+            relay.report(cause instanceof Error ? cause.message : 'App could not be loaded')
+        })
+    return () => {
+      bridge.current = undefined
+      controller.abort()
+    }
+  }, [selection])
+  const { mode, width, height: room } = placement
+  useEffect(() => {
+    bridge.current?.setHostContext(contextFor(latest.current.placement))
+  }, [mode, width, room])
+  return (
+    <iframe
+      ref={iframe}
+      title={`MCP App from ${selection.serverId}`}
+      sandbox="allow-scripts"
+      referrerPolicy="no-referrer"
+      className={height === undefined ? 'app-stage-frame' : 'mcp-app-frame'}
+      height={height}
+      srcDoc=""
+    />
+  )
+}
+
+/** An App shown in place and nowhere else (the tool console): inline only, as tall as it asks. */
+export function McpApp({ selection, onClose }: { readonly selection: AppSelection; readonly onClose: () => void }) {
+  const [error, setError] = useState('')
+  const [height, setHeight] = useState<number>()
+  const viewport = typeof window === 'undefined' ? 900 : window.innerHeight
+  const shown = inlineHeight(height, viewport)
+  const events: FrameEvents = { report: setError, resize: setHeight, close: onClose, requestMode: () => 'inline' }
+  return (
+    <div className="flex flex-col gap-3">
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}. The ordinary tool result remains available.</AlertDescription>
+        </Alert>
+      )}
+      <AppFrame
+        height={shown}
+        selection={selection}
+        placement={{ mode: 'inline', available: ['inline'], width: 720, height: inlineHeight(10_000, viewport) }}
+        events={events}
+      />
+    </div>
+  )
+}

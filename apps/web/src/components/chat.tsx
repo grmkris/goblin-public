@@ -7,6 +7,8 @@ import { conversationParts } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
 import { budgetFraction, contextTokens } from '../lib/usage.ts'
 import type { ConversationProjection } from '../lib/projection.ts'
+import { AppsProvider } from './apps/provider.tsx'
+import { AppLayer } from './apps/stage.tsx'
 import { MessageComposer } from './composer.tsx'
 import { Conversation } from './conversation.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
@@ -105,6 +107,14 @@ function useDockInsets(view: RefObject<HTMLElement | null>, dock: RefObject<HTML
 
 /** The chat: the transcript fills the screen under the header, and the composer floats over its bottom edge. */
 export function Chat() {
+  return (
+    <AppsProvider>
+      <ChatView />
+    </AppsProvider>
+  )
+}
+
+function ChatView() {
   const { projection, status, notice, report, send, stop } = useConversation()
   const { choice, choose } = useModelChoice(report)
   const view = useRef<HTMLElement>(null)
@@ -149,6 +159,7 @@ export function Chat() {
           </div>
         </div>
       </div>
+      <AppLayer />
     </section>
   )
 }

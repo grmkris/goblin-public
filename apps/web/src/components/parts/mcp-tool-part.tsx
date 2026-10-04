@@ -1,9 +1,10 @@
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import { Button } from '@purrable/ui'
 import { failureText, isString, record, records, request } from '../../lib/boundary.ts'
 import type { McpTarget, ToolPart } from '../../lib/parts.ts'
-import { McpApp, type AppSelection } from '../mcp-app.tsx'
+import { useApps } from '../apps/provider.tsx'
+import { AppSlot } from '../apps/slot.tsx'
 import { ToolCard } from './tool-part.tsx'
 
 /** Rebuild the tool result an App expects from the (redacted) details the resident tool committed. */
@@ -19,10 +20,11 @@ function resultOf(details: unknown): CallToolResult {
   }
 }
 
-function AppButton({ target, details }: { readonly target: McpTarget; readonly details: unknown }) {
-  const [selection, setSelection] = useState<AppSelection>()
+/** Opens the server's App view for this call, in the transcript (or the sheet, on a phone). */
+function AppButton({ part, target }: { readonly part: ToolPart; readonly target: McpTarget }) {
+  const { open } = useApps()
   const [error, setError] = useState('')
-  async function open(): Promise<void> {
+  async function show(): Promise<void> {
     setError('')
     try {
       const tools = records(await request(`/api/mcp/${encodeURIComponent(target.serverId)}/tools`))
@@ -31,16 +33,19 @@ function AppButton({ target, details }: { readonly target: McpTarget; readonly d
         setError('This tool has no app view.')
         return
       }
-      setSelection({ serverId: target.serverId, uri, arguments: target.arguments, result: resultOf(details) })
+      open(part.id, {
+        serverId: target.serverId,
+        uri,
+        arguments: target.arguments,
+        result: resultOf(part.result?.details),
+      })
     } catch (cause) {
       setError(failureText(cause))
     }
   }
-  const close = useCallback(() => setSelection(undefined), [])
-  if (selection) return <McpApp selection={selection} onClose={close} />
   return (
     <div className="flex flex-col gap-2">
-      <Button variant="outline" size="sm" onClick={() => void open()}>
+      <Button variant="outline" size="sm" onClick={() => void show()}>
         Show app
       </Button>
       {error && <p className="text-sm text-muted-foreground">{error}</p>}
@@ -48,11 +53,15 @@ function AppButton({ target, details }: { readonly target: McpTarget; readonly d
   )
 }
 
-/** A call to an owner's MCP server: the generic card, plus the server's App view once it succeeded. */
+/** A call to an owner's MCP server: the generic card, and its App once shown, in the row's place below it. */
 export function McpToolPart({ part }: { readonly part: ToolPart }) {
+  const { session } = useApps()
+  const showing = session?.key === part.id
+  const offerApp = part.target !== undefined && part.state === 'done' && !showing
   return (
-    <ToolCard part={part}>
-      {part.target && part.state === 'done' && <AppButton target={part.target} details={part.result?.details} />}
-    </ToolCard>
+    <div className="flex flex-col gap-2">
+      <ToolCard part={part}>{offerApp && part.target && <AppButton part={part} target={part.target} />}</ToolCard>
+      {showing && <AppSlot partKey={part.id} />}
+    </div>
   )
 }

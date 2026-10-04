@@ -3,7 +3,7 @@ import type { CallToolResult } from '@modelcontextprotocol/client'
 import type { ServerView } from '@purrable/contracts'
 import { Alert, AlertDescription, Button, Field, FieldGroup, FieldLabel, Input, Textarea } from '@purrable/ui'
 import { failureText, isString, record, records, request } from '../lib/boundary.ts'
-import { McpApp, type AppSelection } from './mcp-app.tsx'
+import { McpApp, type AppSelection } from './apps/frame.tsx'
 
 /** Call a granted tool by hand, for debugging. Results are remote data and are shown as such. */
 export function ToolConsole({ servers }: { readonly servers: readonly ServerView[] }) {

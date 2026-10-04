@@ -126,6 +126,30 @@ error result whose details are `{ kind: 'grant-required', serverId, name }`, and
 `mcpModelResult` details never carry a top-level `kind`, so remote content cannot forge one. The web turns that
 result into an owner-only Allow card.
 
+## MCP Apps host
+
+An App is a tool's `ui://` resource, served by the server that answered the call. It runs in two nested opaque
+sandboxed frames (`lib/app-sandbox.ts`). The outer proxy only relays protocol messages to and from the host's origin.
+Its calls go through the owner API to the originating server and need that server's grant.
+
+The chat view has at most one live App (`components/apps`). Its iframe sits in one fixed stage that is never moved
+in the DOM, because re-parenting an iframe reloads it. The stage follows the slot its display mode names, frame by
+frame:
+
+- inline: the App's place below its tool row in the transcript;
+- fullscreen: a resizable side panel beside the conversation on a desktop, or a bottom sheet on a phone;
+- pip: picture-in-picture, which a desktop offers and a phone does not.
+
+When the mode changes, the stage springs from one slot to the next (`lib/spring.ts`), so the App leaves the
+transcript and returns along the same path. Picture-in-picture and the sheet are dragged by the host's chrome. On
+release they are thrown, by projected momentum, to the nearest corner or snap height; a sheet thrown down closes to
+the transcript. On a phone, inline means the App waits behind an Open button in the transcript.
+
+The App learns the host context (`lib/host-context.ts`): theme, our tokens as MCP Apps style variables, device,
+locale, its display mode, the modes on offer, and its box. The host re-sends it when any of these change. Inline, the
+App may ask for a height between 160px and 70% of the viewport. It may ask for another display mode and gets it if
+the screen offers that mode.
+
 ## Models
 
 Each user picks the model their agent answers with, in the composer. The deployment offers `PURRABLE_MODEL_ID` (the
