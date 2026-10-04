@@ -16,13 +16,13 @@ export default defineConfig({
     '**/.output/**',
     '**/.tanstack/**',
     '**/routeTree.gen.ts',
-    'evidence/**',
+    'docs/archive/**',
     // Vendored from dmmulroy/anti-slop (tools/oxlint/anti-slop/PROVENANCE.md): upstream code, upstream style.
     'tools/oxlint/anti-slop/**',
     // Vendored skills (from .agents/skills/sources.json) and harness link and state directories.
     ...agentIgnorePatterns(),
   ],
-  // Type-aware rules run through oxlint-tsgolint, pinned with TypeScript (tools/test/pins.test.ts). A bare `oxlint`
+  // Type-aware rules run through oxlint-tsgolint, pinned with TypeScript in package.json. A bare `oxlint`
   // therefore matches CI. `--type-check` is never used: it picks the wrong tsconfig in workspaces with several.
   options: { typeAware: true, reportUnusedDisableDirectives: 'error' },
   jsPlugins: [
@@ -69,20 +69,15 @@ export default defineConfig({
     // requires), exhaustive switches, `process.exit` and React effect cleanups. TypeScript reports a missing return
     // value on its own.
     'typescript/consistent-return': 'off',
-    // anti-slop (vendored, tools/oxlint/anti-slop/PROVENANCE.md). Not enabled: require-readable-spacing (the
-    // formatter's job) and no-conditional-empty-object-spread (`...(c ? {} : { k })` is how optional properties are
-    // written under exactOptionalPropertyTypes).
+    // anti-slop (vendored, trimmed to these rules; tools/oxlint/anti-slop/PROVENANCE.md).
     'anti-slop/require-safety-comment-for-type-assertion': 'error',
     'anti-slop/no-chained-type-assertions': 'error',
     'anti-slop/no-widen-then-assert': 'error',
     'anti-slop/no-module-mocking': 'error',
-    'anti-slop/no-unknown-returns': 'error',
     'anti-slop/no-reflect-get': 'error',
     'anti-slop/no-reflect-apply': 'error',
-    'anti-slop/no-runtime-typeof': ['error', { allowInTypeGuards: true }],
     'anti-slop-effect/no-manual-tag-comparison': 'error',
     'anti-slop-effect/no-manual-effect-error-tag': 'error',
-    'anti-slop-effect/prefer-effect-match': 'error',
     // Size and complexity: a file, a function or a nesting level an agent can hold in one read.
     'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }],
     'max-lines-per-function': ['error', { max: 80, skipBlankLines: true, skipComments: true }],

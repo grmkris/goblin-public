@@ -21,6 +21,7 @@
     "lint": "oxlint -c oxlint.config.ts .",
     "lint:fix": "oxlint -c oxlint.config.ts --fix .",
     "lint:gate": "bun tools/lint-gate.ts",
+    "lint:report": "bun tools/lint-report.ts",
     "effect:check": "bun tools/effect-check.ts --workspaces tsconfig.json",
     "knip": "knip --no-progress",
     "dupes": "jscpd",

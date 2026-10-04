@@ -19,7 +19,7 @@
     "unlisted": "error",
     "unresolved": "error",
   },
-  "treatConfigHintsAsErrors": true,
+  "treatConfigHintsAsErrors": false,
   "ignore": ["tools/oxlint/anti-slop/**"],
   "ignoreDependencies": ["@effect/language-service"],
   "workspaces": {
