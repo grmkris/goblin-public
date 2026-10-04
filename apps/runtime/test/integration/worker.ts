@@ -8,6 +8,11 @@ import { PiHarness } from 'agents/harness/pi'
 import { createRegistry, Harness } from '@earendil-works/pi-durable'
 import { FIXTURE_INPUT, fixtureModels, model } from './model.ts'
 import { nextInt } from 'effect/Random'
+import { drizzle } from 'drizzle-orm/durable-sqlite'
+import { bindEndpoints } from '../../src/mcp/endpoints.ts'
+import { appMcpCredentials, appMcpEndpoints, appMcpGrants, appMcpOauthPending } from '../../src/storage/schema.ts'
+
+const notesAt = (endpoint: string) => [{ serverId: 'notes', endpoint }]
 
 /** Actual PersonalAgent startup, with no model generation or external calls in this storage test. */
 export class PersonalAgentProbe extends PersonalAgent {
@@ -24,6 +29,28 @@ export class PersonalAgentProbe extends PersonalAgent {
       }).pipe(Effect.provide(AppMetadata.layer(this.ctx.storage))),
     )
     return Response.json({ snapshot: await this.sessionSnapshot(), before, after, metadata })
+  }
+
+  /** Endpoint binding on the real SQLite store: a re-pointed server loses its credentials, grants and pending state. */
+  bindingProbe() {
+    runApplicationMigrations(this.ctx.storage)
+    const db = drizzle(this.ctx.storage)
+    const stored = () => ({
+      credentials: db.select().from(appMcpCredentials).all().length,
+      grants: db.select().from(appMcpGrants).all().length,
+      pending: db.select().from(appMcpOauthPending).all().length,
+    })
+    const first = bindEndpoints(db, notesAt('https://a.test/mcp'), 1)
+    db.insert(appMcpCredentials)
+      .values({ serverId: 'notes', status: 'connected', tokens: 'sealed', updatedAt: 1 })
+      .run()
+    db.insert(appMcpGrants).values({ serverId: 'notes', capability: 'tool', name: 'read', createdAt: 1 }).run()
+    db.insert(appMcpOauthPending).values({ state: 's', serverId: 'notes', codeVerifier: 'v', createdAt: 1 }).run()
+    const same = bindEndpoints(db, notesAt('https://a.test/mcp'), 2)
+    const kept = stored()
+    const moved = bindEndpoints(db, notesAt('https://b.test/mcp'), 3)
+    const bound = db.select().from(appMcpEndpoints).all()
+    return { first, same, kept, moved, after: stored(), bound }
   }
 }
 
@@ -127,6 +154,10 @@ export default {
     const name = new URL(request.url).searchParams.get('name') ?? 'initialization'
     if (new URL(request.url).pathname === '/rpc') return rpcSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/destroy') return destroySequence(env, name)
+    if (new URL(request.url).pathname === '/binding')
+      return env.AGENTS.getByName(name)
+        .bindingProbe()
+        .then((result) => Response.json(result))
     if (new URL(request.url).pathname.startsWith('/lifecycle')) return env.LIFECYCLE.getByName(name).fetch(request)
     return env.AGENTS.getByName(name).fetch(request)
   },

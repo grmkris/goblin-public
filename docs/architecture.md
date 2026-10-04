@@ -114,6 +114,11 @@ connects each one from the Connections page:
 3. Client registration and tokens are AES-GCM encrypted at rest (`PURRABLE_CREDENTIAL_KEY`, bound to server ID and
    purpose); discovery metadata is stored in plain JSON.
 
+Credentials and grants belong to the endpoint they were made for (`mcp/endpoints.ts`, `app_mcp_endpoints`). When the
+agent starts and a server ID now points at another endpoint, everything stored for it is dropped in one short
+transaction: credentials, client registration, pending authorizations and grants. The owner connects and grants
+again, so tokens issued by one host never reach another.
+
 Calls go through the `McpConnectionManager`, keyed by server ID, which caches a connection and closes it after five
 minutes idle. Its auth provider refreshes a token a minute before expiry, single-flight per server, and refreshes
 once after a 401. A refused refresh marks the server `needs_auth` and the owner reconnects. Results are bounded (1 MiB,

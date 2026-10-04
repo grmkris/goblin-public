@@ -32,6 +32,11 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     tables: ['app_model_choice'],
     sql: 'CREATE TABLE app_model_choice (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), model_id TEXT NOT NULL, updated_at INTEGER NOT NULL)',
   },
+  {
+    key: '20261008000000_mcp_endpoints',
+    tables: ['app_mcp_endpoints'],
+    sql: 'CREATE TABLE app_mcp_endpoints (server_id TEXT PRIMARY KEY NOT NULL, endpoint TEXT NOT NULL, bound_at INTEGER NOT NULL)',
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

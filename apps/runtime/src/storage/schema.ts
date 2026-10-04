@@ -18,6 +18,16 @@ export const appMcpGrants = sqliteTable(
   (table) => [primaryKey({ columns: [table.serverId, table.capability, table.name] })],
 )
 
+/**
+ * The endpoint each server id's credentials and grants were made for (mcp/endpoints.ts). Kept apart from the
+ * credentials, which a disconnect deletes, so grants stay bound too.
+ */
+export const appMcpEndpoints = sqliteTable('app_mcp_endpoints', {
+  serverId: text('server_id').primaryKey().notNull(),
+  endpoint: text('endpoint').notNull(),
+  boundAt: integer('bound_at').notNull(),
+})
+
 /** Outbound OAuth state per server. `client_info` and `tokens` are AES-GCM ciphertext (mcp/credentials.ts). */
 export const appMcpCredentials = sqliteTable('app_mcp_credentials', {
   serverId: text('server_id').primaryKey().notNull(),

@@ -36,6 +36,9 @@ import {
   requireResident,
 } from './services.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
+import { nowSeconds } from './clock.ts'
+import { bindEndpoints } from './mcp/endpoints.ts'
+import { logEndpointsReset } from './mcp/log.ts'
 import { ModelBudget, UsageStore, dailyTokenLimit } from './budget.ts'
 import { ownerContent } from './pi/app-context.ts'
 import { budgetExtension } from './pi/budget.ts'
@@ -92,8 +95,11 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     this.#runtime ??= (async () => {
       runApplicationMigrations(this.ctx.storage)
       const db = drizzle(this.ctx.storage)
+      const servers = configuredServers(this.env.MCP_SERVERS)
+      const reset = bindEndpoints(db, servers, nowSeconds())
+      if (reset.length > 0) logEndpointsReset(reset)
       const host = new McpHost({
-        servers: configuredServers(this.env.MCP_SERVERS),
+        servers,
         credentials: new CredentialStore(db, await CredentialCipher.fromBase64(this.env.CREDENTIAL_KEY)),
         grants: new GrantStore(db),
         appUrl: this.env.APP_URL,

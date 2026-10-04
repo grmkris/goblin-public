@@ -25,3 +25,8 @@ export async function timed<T>(step: Step, work: () => Promise<T>): Promise<T> {
     throw error
   }
 }
+
+/** One log line when servers lost their credentials and grants because their endpoint changed (ids only). */
+export function logEndpointsReset(serverIds: readonly string[]): void {
+  console.warn(JSON.stringify({ level: 'warn', event: 'mcp', step: 'endpoint-changed', serverIds }))
+}

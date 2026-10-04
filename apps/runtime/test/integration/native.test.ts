@@ -133,6 +133,33 @@ harness.test(
   }),
 )
 
+const Binding = Schema.Struct({
+  first: Schema.Array(Schema.String),
+  same: Schema.Array(Schema.String),
+  kept: Schema.Struct({ credentials: Schema.Number, grants: Schema.Number, pending: Schema.Number }),
+  moved: Schema.Array(Schema.String),
+  after: Schema.Struct({ credentials: Schema.Number, grants: Schema.Number, pending: Schema.Number }),
+  bound: Schema.Array(Schema.Struct({ serverId: Schema.String, endpoint: Schema.String, boundAt: Schema.Number })),
+})
+
+harness.test(
+  'local workerd: re-pointing a server drops the credentials, grants and pending state made for its old endpoint',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `binding-${yield* nextInt}`
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/binding?name=${name}`))
+    expect(response.status).toBe(200)
+    const raw: unknown = yield* Effect.promise(() => response.json())
+    const result = yield* Schema.decodeUnknownEffect(Binding)(raw)
+    expect(result.first).toEqual([])
+    expect(result.same).toEqual([])
+    expect(result.kept).toEqual({ credentials: 1, grants: 1, pending: 1 })
+    expect(result.moved).toEqual(['notes'])
+    expect(result.after).toEqual({ credentials: 0, grants: 0, pending: 0 })
+    expect(result.bound).toEqual([{ serverId: 'notes', endpoint: 'https://b.test/mcp', boundAt: 3 }])
+  }),
+)
+
 const Destroy = Schema.Struct({
   submitted: Schema.Struct({ ok: Schema.Literal(true) }),
   before: Schema.Number,
