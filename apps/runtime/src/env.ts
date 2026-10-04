@@ -5,6 +5,7 @@ import type { Grant, GrantCapability } from './mcp/grants.ts'
 import type {
   AppContext,
   CatalogEntry,
+  ChannelStatus,
   MemoryStatus,
   ModelChoice,
   RegistryView,
@@ -18,6 +19,7 @@ import type {
 import type { TranscriptMessage } from './pi/transcript.ts'
 import type { MailBinding } from './auth/mail.ts'
 import type { ServerSource } from './mcp/servers.ts'
+import type { Doorbell } from './channel/doorbell.ts'
 import type { ThreadChange } from './conversations.ts'
 
 /** Owner-facing RPC of the Agent DO. The Worker authenticates the owner before calling any of these. */
@@ -80,6 +82,11 @@ export interface AgentRpcMethods {
   readonly memoryStatus: () => Promise<RpcResult<MemoryStatus>>
   readonly modelChoice: () => Promise<RpcResult<ModelChoice>>
   readonly chooseModel: (modelId: string) => Promise<RpcResult<ModelChoice>>
+  readonly channelStatus: () => Promise<RpcResult<ChannelStatus>>
+  readonly channelEnable: (serverId: string) => Promise<RpcResult<ChannelStatus>>
+  readonly channelDisable: () => Promise<RpcResult<null>>
+  /** Not an owner request: myagent's doorbell, after the Worker checked the hook token (channel/doorbell.ts). */
+  readonly channelDoorbell: (doorbell: Doorbell) => Promise<RpcResult<true>>
   readonly deleteAgentData: () => Promise<RpcResult<true>>
 }
 export type AskResult =

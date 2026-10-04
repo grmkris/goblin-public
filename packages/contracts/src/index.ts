@@ -103,6 +103,10 @@ export type UsageToday = typeof UsageToday.Type
 export const MemoryStatus = Schema.Struct({ messages: Schema.Number, summarized: Schema.Number })
 export type MemoryStatus = typeof MemoryStatus.Type
 
+/** The Telegram channel: the connection that carries it, or null when it is off. */
+export const ChannelStatus = Schema.NullOr(Schema.Struct({ serverId: Schema.String, enabledAt: Schema.Number }))
+export type ChannelStatus = typeof ChannelStatus.Type
+
 /**
  * One question the agent asks the owner with `ask_user`. A choice question (`single`, `multi`) offers 2 to 8 options;
  * `allowOther` adds a free answer. The tool result's details are `{ kind: 'question', questions }`.

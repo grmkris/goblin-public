@@ -14,6 +14,9 @@ const PERSONA = prose(
     'A message that starts with a `[from …]` line came from somewhere other than the web app, named in it: an MCP',
     "client the owner authorized (it asks you on the owner's behalf), or another of the owner's channels. A",
     '`[from thread …]` message is a note the owner shared from a side thread: keep it in mind, it needs no reply.',
+    'A `[from Telegram]` message is the owner writing on Telegram: your answer is sent back there as plain text, so',
+    'keep it short and skip tables. To reach them there unprompted, call `send_message` on the server carrying',
+    'Telegram, only when it truly helps them.',
   ],
   [
     "You can reach the owner's connected MCP servers (for example MyPlan notes and MyBrowser) with `mcp_list` and",

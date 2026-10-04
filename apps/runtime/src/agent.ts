@@ -8,7 +8,10 @@ import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import type { AgentRpcMethods, RuntimeEnv } from './env.ts'
-import { type AppError, toAppError } from './http/errors.ts'
+import { type AppError, Forbidden, InvalidInput, toAppError } from './http/errors.ts'
+import { CHANNEL_TOOLS, type ChannelPorts, TelegramChannel, channelCall, logChannelFailure } from './channel/channel.ts'
+import { channelPorts } from './channel/turns.ts'
+import { type Doorbell, doorbellValid, hookToken, hookUrl } from './channel/doorbell.ts'
 import { type RpcResult, encodeExit } from './http/rpc.ts'
 import { CredentialCipher } from './mcp/cipher.ts'
 import { configuredServers } from './mcp/config.ts'
@@ -36,6 +39,7 @@ import { recentMessages } from './pi/transcript.ts'
 import {
   type AgentServices,
   Budget,
+  Channel,
   Conversations,
   Mcp,
   Skills,
@@ -93,6 +97,8 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   readonly #memory: ReturnType<typeof memoryExtensions>
   readonly #applied: Applied = new Map()
   #runtime: Promise<Runtime> | undefined
+  /** The Telegram pull in progress: one at a time (channelPull). */
+  #pulling: Promise<void> = Promise.resolve()
 
   constructor(ctx: DurableObjectState, env: RuntimeEnv) {
     super(ctx, env)
@@ -128,11 +134,12 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       if (reset.length > 0) logEndpointsReset(reset)
       const skillState = new SqliteSkillState(db)
       const grants = new GrantStore(db)
+      const cipher = await CredentialCipher.fromBase64(this.env.CREDENTIAL_KEY)
       const host = new McpHost({
         servers,
         added,
         registries: new RegistryStore(db),
-        credentials: new CredentialStore(db, await CredentialCipher.fromBase64(this.env.CREDENTIAL_KEY)),
+        credentials: new CredentialStore(db, cipher),
         grants,
         skillsEnabled: (serverId) => skillState.enabled(serverId),
         appUrl: this.env.APP_URL,
@@ -162,7 +169,10 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
         allows: (serverId, name) => grants.allows({ serverId, capability: 'tool', name }),
         now: nowMillis,
       })
-      return ManagedRuntime.make(agentLayer({ host, resident, conversations, budget, models, memory, skills, learner }))
+      const channel = new TelegramChannel(db, cipher, () => void this.schedule(5, 'channelReplies'))
+      return ManagedRuntime.make(
+        agentLayer({ host, resident, conversations, budget, models, memory, skills, learner, channel }),
+      )
     })()
     this.#runtime.catch(() => {
       this.#runtime = undefined
@@ -420,6 +430,102 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
           : { status: 'unanswered' as const, operationId, reason: result.reason ?? 'unanswered' }
       }),
     )
+  }
+
+  /** The Telegram channel's connection, or null when it is off. */
+  channelStatus() {
+    return this.#owner(Channel.use((channel) => Effect.succeed(channel.status())))
+  }
+
+  /**
+   * Carry Telegram through `serverId`, a myagent connection bound to the agent's own bot: grant its channel tools (an
+   * explicit owner action, so the grants are the owner's), read to the end of its inbox and subscribe the doorbell.
+   */
+  channelEnable(serverId: string) {
+    const { APP_URL, CREDENTIAL_KEY } = this.env
+    const userId = this.name
+    return this.#owner(
+      Effect.gen(function* () {
+        const mcp = yield* Mcp
+        const channel = yield* Channel
+        const tools = yield* attempt(() => mcp.tools(serverId, true))
+        const missing = CHANNEL_TOOLS.filter((name) => !tools.some((tool) => tool.name === name))
+        if (missing.length > 0)
+          return yield* new InvalidInput({ reason: `${serverId} does not offer ${missing.join(', ')}` })
+        for (const name of CHANNEL_TOOLS) yield* attempt(() => mcp.setToolGrant(serverId, name, true))
+        const url = hookUrl(APP_URL, userId, yield* attempt(() => hookToken(CREDENTIAL_KEY, userId)))
+        const now = yield* nowSecondsEffect
+        return yield* attempt(() => channel.enable(serverId, url, channelCall(mcp.manager, serverId), now))
+      }),
+    )
+  }
+
+  /** Stop carrying Telegram: unsubscribe the doorbell (best effort) and forget the channel. Grants stay the owner's. */
+  channelDisable() {
+    return this.#owner(
+      Effect.gen(function* () {
+        const mcp = yield* Mcp
+        const channel = yield* Channel
+        const status = channel.status()
+        if (status !== null)
+          yield* Effect.ignore(attempt(() => channelCall(mcp.manager, status.serverId)('unsubscribe', {})))
+        channel.disable()
+        return null
+      }),
+    )
+  }
+
+  /**
+   * A doorbell from myagent; the Worker already checked the hook token. Checked against the secret the agent gave
+   * myagent, then answered at once: the pull runs from a schedule.
+   */
+  channelDoorbell(doorbell: Doorbell) {
+    const pull = () => this.schedule(0, 'channelPull')
+    return this.#client(
+      Effect.gen(function* () {
+        const channel = yield* Channel
+        const secret = yield* attempt(() => channel.secret())
+        const valid = secret !== undefined && (yield* attempt(() => doorbellValid(secret, doorbell, nowMillis())))
+        if (!valid) return yield* new Forbidden({ reason: 'doorbell' })
+        yield* attempt(pull)
+        return true as const
+      }),
+    )
+  }
+
+  /** The channel and its ports under resident authority, for `work`; undefined when the channel is off. */
+  async #onChannel<T>(work: (channel: TelegramChannel, ports: ChannelPorts) => Promise<T>): Promise<T | undefined> {
+    const run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program)
+    const { mcp, channel } = await run(
+      Effect.gen(function* () {
+        yield* requireResident
+        return { mcp: yield* Mcp, channel: yield* Channel }
+      }),
+    )
+    const status = channel.status()
+    if (status === null) return undefined
+    const call = channelCall(mcp.manager, status.serverId)
+    return work(channel, channelPorts(this.harness, call, run, useModel(this.harness, this.#applied, MAIN_THREAD)))
+  }
+
+  /** Scheduled by a doorbell: read the new Telegram messages into main, one pull at a time. */
+  async channelPull(): Promise<void> {
+    this.#pulling = this.#pulling
+      .then(() => this.#onChannel((channel, ports) => channel.pull(ports, nowSeconds())))
+      .then(() => undefined)
+      .catch((error: unknown) => logChannelFailure('pull', error))
+    await this.#pulling
+  }
+
+  /** Scheduled: send the answers that are ready to Telegram; again in 15 s while some run, in 5 min after a failure. */
+  async channelReplies(): Promise<void> {
+    const again = await this.#onChannel(async (channel, ports) =>
+      (await channel.deliver(ports, nowSeconds())) ? 15 : undefined,
+    ).catch((error: unknown) => {
+      logChannelFailure('replies', error)
+      return 300
+    })
+    if (again !== undefined) await this.schedule(again, 'channelReplies')
   }
 
   /** Main's latest messages, newest last, for an inbound client (`get_recent_messages`). */

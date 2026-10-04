@@ -18,7 +18,8 @@ import {
 } from '@earendil-works/pi-durable'
 import { type Static, Type } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
-import { Conversations, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
+import { MAIN_THREAD } from '@purrable/contracts'
+import { Channel, Conversations, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
 import { authoredContent } from './content.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
@@ -144,6 +145,14 @@ function reporterTask(run: RunProgram): Reporter {
             },
             context,
           )
+          // Main's answer to a report goes to Telegram too when the channel is on (channel/channel.ts).
+          if (String(runtime.conversationId) === MAIN_THREAD)
+            await run(
+              Effect.gen(function* () {
+                const channel = yield* Channel
+                channel.track(`subagent-report:${reporter.id}`, yield* nowSecondsEffect)
+              }),
+            )
         }
         await runtime.commit(() => ({ status: 'terminal', outcome: { status: 'completed', result: null } }), context)
       },

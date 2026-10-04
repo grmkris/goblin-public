@@ -15,6 +15,8 @@
   starts main's context, followed by the newest exchange verbatim. `zoom` opens a line.
 - **Memory model**: `PURRABLE_MEMORY_MODEL`, the cheap offered model for housekeeping (thread titles, main's memory);
   its tokens count toward the budget.
+- **Telegram channel**: the one myagent connection that carries Telegram for the agent (ADR 0009). Owner messages
+  arrive in main authored "Telegram", on a signed **doorbell** from myagent; answers go back with `send_message`.
 - **Conversation registry**: `app_conversations`, the conversations a request may open (main, threads, subagents).
 - **Resident authority**: the agent's own permission to use the owner's MCP connections when the owner is not
   present. Lasts 30 days, renewed by owner activity, revocable in Settings.

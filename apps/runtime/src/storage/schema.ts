@@ -168,3 +168,20 @@ export const appSkillDrafts = sqliteTable('app_skill_drafts', {
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 })
+
+/** The Telegram channel (channel/channel.ts): at most one row, the connection that carries it. */
+export const appChannel = sqliteTable('app_channel', {
+  id: integer('id').primaryKey(),
+  serverId: text('server_id').notNull(),
+  cursor: text('cursor').notNull(),
+  /** The doorbell secret, sealed with the credential key. */
+  secret: text('secret').notNull(),
+  enabledAt: integer('enabled_at').notNull(),
+})
+
+/** Turns of main whose answers go back to Telegram, until they are sent. */
+export const appChannelReplies = sqliteTable('app_channel_replies', {
+  operationId: text('operation_id').primaryKey().notNull(),
+  createdAt: integer('created_at').notNull(),
+  deliveredAt: integer('delivered_at'),
+})

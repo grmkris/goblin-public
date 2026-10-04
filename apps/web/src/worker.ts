@@ -7,6 +7,7 @@ export default {
     const url = new URL(request.url)
     if (
       url.pathname.startsWith('/api/') ||
+      url.pathname.startsWith('/hooks/') ||
       url.pathname.startsWith('/.well-known/') ||
       url.pathname === '/health' ||
       url.pathname === '/mcp'

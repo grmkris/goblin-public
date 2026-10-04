@@ -28,6 +28,7 @@ flowchart LR
 | `/.well-known/*`, `/api/auth/*` | Better Auth: sign-up and sign-in, the OAuth authorization server for inbound clients. |
 | `/mcp` | Purrable's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented. |
 | `/api/*` | Owner API. A session cookie selects the signed-in user's agent; writes also need the app's own `Origin`. |
+| `/hooks/myagent/<userId>/<token>` | myagent's Telegram doorbell. The token (an HMAC of the user id) is checked before the agent wakes. See Telegram. |
 
 ## Accounts
 
@@ -297,12 +298,24 @@ Purrable is an MCP server at `/mcp`, the protected resource of Better Auth's `mc
 - Revoking a client in Settings deletes the consent, disables the client and revokes its refresh tokens; its next
   call gets a 401.
 
+## Telegram
+
+The agent talks on Telegram through myagent with a bot of its own (ADR 0009). The owner connects myagent, binds that
+connection to the agent's bot in myagent, and picks it under Connections, "Use for Telegram" (`PUT /api/agent/channel`).
+That grants `inbox`, `send_message`, `subscribe` and `unsubscribe`, reads to the end of the inbox, and subscribes a
+doorbell with a fresh secret (`app_channel`, sealed). A doorbell's signature is checked by the agent, which then
+schedules `channelPull`: under resident authority it reads `inbox` from its cursor and submits each new owner message
+into main authored "Telegram" (`telegram-<id>`). `channelReplies` sends main's answers to those turns, and to subagent
+reports in main, with `send_message` (`app_channel_replies`): escaped plain text in pieces, the `ask_user` questions
+when a turn stopped on one, given up after a day. `channel/channel.ts` holds the store and the logic,
+`channel/doorbell.ts` the hook token and signature.
+
 ## Storage
 
 | Store | Tables | Owner |
 | --- | --- | --- |
 | Agent DO SQLite | `pi_*`, `cf_agents_*` and the other vendor tables | Pi, Agents SDK. Never touched. |
-| Agent DO SQLite | `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants`, `app_resident`, `app_conversations`, `app_memory_log`, `app_memory_nodes`, `app_memory_state`, `app_skill_sources`, `app_skill_activations`, `app_skill_files`, `app_skill_drafts`, `app_usage_daily`, `app_metadata` | Drizzle, inline migrations in `storage/migrations.ts` |
+| Agent DO SQLite | `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants`, `app_resident`, `app_conversations`, `app_memory_log`, `app_memory_nodes`, `app_memory_state`, `app_skill_sources`, `app_skill_activations`, `app_skill_files`, `app_skill_drafts`, `app_channel`, `app_channel_replies`, `app_usage_daily`, `app_metadata` | Drizzle, inline migrations in `storage/migrations.ts` |
 | D1 `PurrableAuth` | `user`, `session`, `jwks`, `oauth*` | Better Auth, `apps/runtime/migrations` |
 
 Better Auth lives in D1 because the Durable SQLite adapter's async transactions and affected-row semantics do not

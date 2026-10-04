@@ -82,6 +82,16 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     tables: ['app_skill_drafts'],
     sql: "CREATE TABLE app_skill_drafts (content_hash TEXT PRIMARY KEY NOT NULL, server_id TEXT NOT NULL, name TEXT NOT NULL, base_uri TEXT, draft_id TEXT, status TEXT NOT NULL CHECK (status IN ('open', 'accepted', 'rejected')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
   },
+  {
+    // The Telegram channel (channel/channel.ts): the one connection that carries it, its inbox cursor and doorbell
+    // secret, and the turns of main whose answers go back to Telegram.
+    key: '20261015000000_channel',
+    tables: ['app_channel', 'app_channel_replies'],
+    sql: [
+      'CREATE TABLE app_channel (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), server_id TEXT NOT NULL, cursor TEXT NOT NULL, secret TEXT NOT NULL, enabled_at INTEGER NOT NULL)',
+      'CREATE TABLE app_channel_replies (operation_id TEXT PRIMARY KEY NOT NULL, created_at INTEGER NOT NULL, delivered_at INTEGER)',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

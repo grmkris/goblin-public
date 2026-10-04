@@ -65,3 +65,17 @@ export async function recentMessages(conversation: Conversation, limit: number):
   }
   return transcriptMessages(newestFirst.toReversed(), limit)
 }
+
+/**
+ * What the newest turn of `entries` (oldest first) asked the owner with `ask_user`, as the tool reported it; empty
+ * when that turn asked nothing. A turn that ends in a question has no final text of its own.
+ */
+export function askedText(entries: readonly EntryRecord[]): string {
+  for (const entry of entries.toReversed()) {
+    if (entry.kind === 'pi.user') return ''
+    for (const message of entry.model ?? [])
+      if (message.role === 'toolResult' && message.toolName === 'ask_user')
+        return textBlocks(message.content).join('\n')
+  }
+  return ''
+}

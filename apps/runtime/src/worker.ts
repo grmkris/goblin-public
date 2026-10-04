@@ -15,6 +15,7 @@ import { Forbidden, InvalidInput, NotFound } from './http/errors.ts'
 import { failureResponse, requestIdOf, secured } from './http/respond.ts'
 import { unwrap } from './http/rpc.ts'
 import { handleInboundMcp } from './inbound/route.ts'
+import { hookTokenValid } from './channel/doorbell.ts'
 
 export { PersonalAgent } from './agent.ts'
 
@@ -51,6 +52,7 @@ const AppGrantChange = Schema.Struct({
 })
 const SkillsChange = Schema.Struct({ serverId: Bounded(64), enabled: Schema.Boolean })
 const ResidentChange = Schema.Struct({ enabled: Schema.Boolean })
+const ChannelPick = Schema.Struct({ serverId: Bounded(64) })
 const ModelPick = Schema.Struct({ model: Bounded(128) })
 
 const json = (value: unknown, status = 200): Response => Response.json(value, { status })
@@ -69,6 +71,33 @@ const agentRoutes: Readonly<Record<string, Route>> = {
     json(unwrap(await agent.chooseModel((await readJson(request, ModelPick)).model))),
   'POST /api/agent/resident': async (request, agent) =>
     json(unwrap(await agent.residentSet((await readJson(request, ResidentChange)).enabled))),
+  'GET /api/agent/channel': async (_request, agent) => json(unwrap(await agent.channelStatus())),
+  'PUT /api/agent/channel': async (request, agent) =>
+    json(unwrap(await agent.channelEnable((await readJson(request, ChannelPick)).serverId))),
+  'DELETE /api/agent/channel': async (_request, agent) => json(unwrap(await agent.channelDisable())),
+}
+
+/** The largest doorbell body accepted (myagent sends `{ botId, cursor }`). */
+const DOORBELL_BYTES = 1024
+
+/**
+ * POST /hooks/myagent/<userId>/<token>: a doorbell from myagent (channel/doorbell.ts). The token is checked here,
+ * before any agent wakes; only the user it was made for reaches their agent, which checks myagent's signature.
+ */
+async function doorbellRoute(request: Request, env: RuntimeEnv, path: string): Promise<Response> {
+  const [, userId = '', token = ''] = /^\/hooks\/myagent\/([\w-]{1,200})\/([\w-]{43})$/u.exec(path) ?? []
+  if (request.method !== 'POST' || userId === '' || !(await hookTokenValid(env.CREDENTIAL_KEY, userId, token)))
+    throw new NotFound({ what: path })
+  const body = await request.text()
+  if (body.length > DOORBELL_BYTES) throw new InvalidInput({ reason: 'doorbell too large' })
+  unwrap(
+    await agentOf(env, userId).channelDoorbell({
+      body,
+      timestamp: request.headers.get('x-myagent-timestamp') ?? '',
+      signature: request.headers.get('x-myagent-signature') ?? '',
+    }),
+  )
+  return new Response(null, { status: 204 })
 }
 
 async function agentRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string): Promise<Response> {
@@ -220,9 +249,10 @@ export default {
     if (url.pathname.startsWith('/.well-known/') || url.pathname.startsWith('/api/auth/'))
       return handleAuth(request, env)
     if (url.pathname === '/mcp') return handleInboundMcp(request, env)
-    if (!url.pathname.startsWith('/api/')) return Response.json({ error: 'NotFound' }, { status: 404 })
+    const hook = url.pathname.startsWith('/hooks/')
+    if (!hook && !url.pathname.startsWith('/api/')) return Response.json({ error: 'NotFound' }, { status: 404 })
     try {
-      return secured(await apiRequest(request, env))
+      return secured(hook ? await doorbellRoute(request, env, url.pathname) : await apiRequest(request, env))
     } catch (cause) {
       return failureResponse(cause, url.pathname, requestIdOf(request))
     }
