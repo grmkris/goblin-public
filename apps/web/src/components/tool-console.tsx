@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import type { ServerView } from '@purrable/contracts'
 import { Alert, AlertDescription, Button, Field, FieldGroup, FieldLabel, Input, Textarea } from '@purrable/ui'
@@ -12,6 +12,7 @@ export function ToolConsole({ servers }: { readonly servers: readonly ServerView
   const [args, setArgs] = useState('{}')
   const [result, setResult] = useState('')
   const [selection, setSelection] = useState<AppSelection>()
+  const closeApp = useCallback(() => setSelection(undefined), [])
   const [error, setError] = useState('')
   const target = serverId || servers[0]?.serverId || ''
   async function call(): Promise<void> {
@@ -79,7 +80,7 @@ export function ToolConsole({ servers }: { readonly servers: readonly ServerView
         </Alert>
       )}
       {result && <pre className="tool-output">{result}</pre>}
-      {selection && <McpApp selection={selection} />}
+      {selection && <McpApp selection={selection} onClose={closeApp} />}
     </details>
   )
 }

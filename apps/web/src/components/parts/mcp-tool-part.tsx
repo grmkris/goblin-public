@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import { Button } from '@purrable/ui'
 import { failureText, isString, record, records, request } from '../../lib/boundary.ts'
@@ -36,7 +36,8 @@ function AppButton({ target, details }: { readonly target: McpTarget; readonly d
       setError(failureText(cause))
     }
   }
-  if (selection) return <McpApp selection={selection} />
+  const close = useCallback(() => setSelection(undefined), [])
+  if (selection) return <McpApp selection={selection} onClose={close} />
   return (
     <div className="flex flex-col gap-2">
       <Button variant="outline" size="sm" onClick={() => void open()}>
