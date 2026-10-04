@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": { "types": ["bun", "node"], "erasableSyntaxOnly": true },
+  "include": ["*.ts", "oxlint/**/*.ts", "test/**/*.ts"],
+  "exclude": ["oxlint/anti-slop/**"]
+}

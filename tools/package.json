@@ -1,0 +1,23 @@
+{
+  "name": "@purrable/tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "effect:check": "bun effect-check.ts tsconfig.json",
+    "test": "vitest run",
+    "test:unit": "vitest run"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "0.47.2",
+    "@oxlint/plugins": "1.81.0",
+    "@types/bun": "1.4.2",
+    "@types/node": "22.18.0",
+    "effect": "4.0.0",
+    "oxlint": "1.81.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1",
+    "yaml": "2.9.1"
+  }
+}

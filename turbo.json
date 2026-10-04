@@ -1,0 +1,21 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["tsconfig.base.json"],
+  "tasks": {
+    "typecheck": { "dependsOn": ["^typecheck"], "outputs": [] },
+    "effect:check": { "dependsOn": ["^effect:check"], "outputs": [] },
+    "test": { "dependsOn": ["^typecheck"], "outputs": [] },
+    "test:unit": { "dependsOn": ["^typecheck"], "outputs": [] },
+    "test:integration": {
+      "dependsOn": ["^build", "^typecheck"],
+      "cache": false,
+      "env": ["PURRABLE_HARNESS_PORT", "PURRABLE_NATIVE_LIFECYCLE_PHASE"],
+      "outputs": []
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/apps/runtime/src/**", "$TURBO_ROOT$/packages/*/src/**"],
+      "outputs": ["dist/**", ".output/**"]
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "@purrable/runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./agent": "./src/agent.ts",
+    "./worker": "./src/worker.ts",
+    "./env": "./src/env.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "effect:check": "bun ../../tools/effect-check.ts tsconfig.json",
+    "test": "vitest run",
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
+  },
+  "dependencies": {
+    "@better-auth/mcp": "1.7.6",
+    "@earendil-works/pi-ai": "1.0.1",
+    "@earendil-works/pi-durable": "1.0.1",
+    "@modelcontextprotocol/client": "2.2.0",
+    "@modelcontextprotocol/server": "2.2.0",
+    "@purrable/contracts": "workspace:*",
+    "agents": "0.26.0",
+    "better-auth": "1.7.6",
+    "drizzle-orm": "1.0.0-rc.5-ab785fc",
+    "effect": "4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260928.1",
+    "@effect/platform-bun": "4.0.0",
+    "@effect/platform-node": "4.0.0",
+    "@effect/vitest": "4.0.0",
+    "alchemy": "2.0.0-beta.80",
+    "drizzle-kit": "1.0.0-rc.5-ab785fc",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  }
+}

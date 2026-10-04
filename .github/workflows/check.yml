@@ -1,0 +1,28 @@
+name: Public checks
+on: [push, pull_request]
+permissions:
+  contents: read
+concurrency:
+  group: public-check-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TURBO_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+        working-directory: scripts/fixtures/mcp-app
+      - run: bun install --frozen-lockfile
+        working-directory: spikes/coding
+      - run: bun install --frozen-lockfile
+        working-directory: spikes/coding-cf
+      - run: bun run check:public

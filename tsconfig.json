@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": { "types": ["bun", "node"] },
+  "include": [
+    "apps/web/alchemy.run.ts",
+    "apps/web/vite.config.ts",
+    "scripts/**/*.ts",
+    "tools/**/*.ts",
+    "oxlint.config.ts",
+    "oxfmt.config.ts"
+  ],
+  "exclude": ["tools/oxlint/anti-slop/**"]
+}

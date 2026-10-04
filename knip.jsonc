@@ -1,0 +1,41 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "rules": {
+    "binaries": "error",
+    "catalog": "error",
+    "catalogReferences": "error",
+    "cycles": "error",
+    "dependencies": "error",
+    "devDependencies": "error",
+    "duplicates": "error",
+    "enumMembers": "error",
+    "exports": "error",
+    "files": "error",
+    "namespaceMembers": "error",
+    "nsExports": "error",
+    "nsTypes": "error",
+    "optionalPeerDependencies": "error",
+    "types": "error",
+    "unlisted": "error",
+    "unresolved": "error",
+  },
+  "treatConfigHintsAsErrors": true,
+  "ignore": ["tools/oxlint/anti-slop/**"],
+  "ignoreDependencies": ["@effect/language-service"],
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/**/*.ts!"],
+    },
+    "tools": {
+      "entry": ["*.ts!", "oxlint/*.ts!"],
+      "ignoreDependencies": ["@effect/tsgo"],
+    },
+    "apps/runtime": {
+      "entry": ["test/provider-probe.ts!"],
+    },
+    "apps/web": {
+      "entry": ["alchemy.run.ts!", "src/worker.ts!"],
+    },
+  },
+  "ignoreExportsUsedInFile": true,
+}
