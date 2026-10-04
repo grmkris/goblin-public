@@ -15,7 +15,7 @@ import {
   Switch,
 } from '@purrable/ui'
 import { failureText, record, request } from '../lib/boundary.ts'
-import { AddServer, RemoveServer } from './server-add.tsx'
+import { AddServer, RemoveServer, SuggestedServers } from './server-add.tsx'
 import { ToolConsole } from './tool-console.tsx'
 
 const decodeServers = Schema.decodeUnknownSync(Schema.Array(ServerView))
@@ -227,7 +227,9 @@ const callbackNotice = (): string => {
 export function Connections() {
   const [servers, setServers] = useState<readonly ServerView[]>([])
   const [message, setMessage] = useState(callbackNotice)
+  const [version, setVersion] = useState(0)
   const load = useCallback(() => {
+    setVersion((current) => current + 1)
     void request('/api/mcp/servers')
       .then((data) => setServers(decodeServers(data)))
       .catch((error: unknown) => setMessage(failureText(error)))
@@ -240,6 +242,14 @@ export function Connections() {
           <AlertDescription>{message}</AlertDescription>
         </Alert>
       )}
+      <SuggestedServers
+        version={version}
+        onChanged={(text) => {
+          setMessage(text)
+          load()
+        }}
+        onMessage={setMessage}
+      />
       <AddServer
         onAdded={(server) => {
           setMessage(`Added ${server.title ?? server.serverId}. Connect it, then choose the tools your agent may use.`)

@@ -270,6 +270,24 @@
 .tool-row input {
   margin-top: 0.3rem;
 }
+/* The suggested servers: one row each, name and our description beside its Add button. */
+.suggestions {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+.suggestion + .suggestion {
+  border-top: 1px solid var(--border);
+}
 /* An App's tools under its "Allow app" switch: indented, so the switch reads as their heading. */
 .tool-app {
   display: flex;

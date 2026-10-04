@@ -39,6 +39,7 @@ import { runApplicationMigrations } from './storage/migrations.ts'
 import { nowSeconds } from './clock.ts'
 import { bindEndpoints } from './mcp/endpoints.ts'
 import { AddedServerStore, type ServerSource } from './mcp/servers.ts'
+import { suggestions } from './mcp/suggested.ts'
 import { logEndpointsReset } from './mcp/log.ts'
 import { ModelBudget, UsageStore, dailyTokenLimit } from './budget.ts'
 import { ownerContent } from './pi/app-context.ts'
@@ -206,6 +207,13 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   mcpFinishConnect(state: string, code: string, issuer?: string) {
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.finishConnect(state, code, issuer))))
+  }
+
+  mcpSuggested() {
+    const stage = this.env.STAGE
+    return this.#owner(
+      Mcp.useSync((mcp) => suggestions(stage, new Set(mcp.manager.servers.map((server) => server.endpoint)))),
+    )
   }
 
   mcpAddServer(endpoint: string, source?: ServerSource) {

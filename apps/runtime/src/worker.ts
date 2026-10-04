@@ -129,6 +129,7 @@ async function mcpServerRoute(request: Request, agent: DurableObjectStub<AgentRp
 async function mcpRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string, env: RuntimeEnv) {
   if (path === '/api/mcp/oauth/callback' && request.method === 'GET') return oauthCallback(request, agent, env)
   if (path === '/api/mcp/servers' && request.method === 'GET') return json(unwrap(await agent.mcpServers()))
+  if (path === '/api/mcp/suggested' && request.method === 'GET') return json(unwrap(await agent.mcpSuggested()))
   if (path === '/api/mcp/servers' && request.method === 'POST') {
     const body = await readJson(request, AddServer)
     return json(unwrap(await agent.mcpAddServer(body.endpoint, body.source)), 201)

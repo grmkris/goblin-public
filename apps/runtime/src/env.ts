@@ -2,7 +2,15 @@ import type { CallToolResult, GetPromptResult, ReadResourceResult } from '@model
 import type { PiOperationResult, PiReceipt } from 'agents/harness/pi'
 import type { RpcResult } from './http/rpc.ts'
 import type { Grant, GrantCapability } from './mcp/grants.ts'
-import type { AppContext, ModelChoice, ResidentStatus, ServerView, ToolView, UsageToday } from '@purrable/contracts'
+import type {
+  AppContext,
+  ModelChoice,
+  ResidentStatus,
+  ServerSuggestion,
+  ServerView,
+  ToolView,
+  UsageToday,
+} from '@purrable/contracts'
 import type { TranscriptMessage } from './pi/transcript.ts'
 import type { MailBinding } from './auth/mail.ts'
 import type { ServerSource } from './mcp/servers.ts'
@@ -20,6 +28,7 @@ export interface AgentRpcMethods {
   readonly mcpConnect: (serverId: string) => Promise<RpcResult<{ readonly authorizationUrl?: string }>>
   readonly mcpFinishConnect: (state: string, code: string, issuer?: string) => Promise<RpcResult<string>>
   readonly mcpDisconnect: (serverId: string) => Promise<RpcResult<null>>
+  readonly mcpSuggested: () => Promise<RpcResult<readonly ServerSuggestion[]>>
   readonly mcpAddServer: (endpoint: string, source?: ServerSource) => Promise<RpcResult<ServerView>>
   readonly mcpRemoveServer: (serverId: string) => Promise<RpcResult<null>>
   readonly mcpTools: (serverId: string, refresh: boolean) => Promise<RpcResult<readonly ToolView[]>>

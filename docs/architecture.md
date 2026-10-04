@@ -107,8 +107,10 @@ the border is absent. Colours come from the theme's `--presence-*` tokens, resol
 Servers come from `PURRABLE_MCP_SERVERS` (JSON: `serverId`, `endpoint`, optional `issuer` and `resource`) and from
 the owner, who may add up to sixteen by URL (`app_mcp_servers`, ADR 0006). An added endpoint is a public https
 address (`mcp/endpoint.ts`), and its server card labels it as the server's own claim. Configured servers win on ID
-and cannot be removed. Removing an added server forgets everything stored for it in one transaction. A server that
-publishes no OAuth metadata is tried without sign-in. The owner connects each one from the Connections page:
+and cannot be removed. Removing an added server forgets everything stored for it in one transaction. Connections
+also offers a shelf of suggested servers (`mcp/suggested.ts`), each checked by hand. One tap adds and connects. Connect
+first tries a server without sign-in, which many public servers need not have; if refused, it runs OAuth. The owner
+connects each one from the Connections page:
 
 1. `POST /api/mcp/:id/connect` runs the MCP SDK's `auth()` with our `StoredOAuthProvider`: discovery, dynamic client
    registration, PKCE. It returns the remote authorization URL; the browser goes there.

@@ -35,6 +35,17 @@ export const ServerView = Schema.Struct({
 })
 export type ServerView = typeof ServerView.Type
 
+/** A server we suggest: our own description, whether it needs sign-in, and whether the owner already has it. */
+export const ServerSuggestion = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  description: Schema.String,
+  endpoint: Schema.String,
+  signIn: Schema.Boolean,
+  added: Schema.Boolean,
+})
+export type ServerSuggestion = typeof ServerSuggestion.Type
+
 /** A discovered remote tool. The hints come from the server and are unverified; only `granted` is ours. */
 export const ToolView = Schema.Struct({
   name: Schema.String,

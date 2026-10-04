@@ -1,9 +1,10 @@
-// Adding and removing the owner's own MCP servers. A pasted URL is checked by the runtime (public https only) and
+// Adding and removing the owner's own MCP servers, by URL or from the servers we suggest. A pasted URL is checked by the runtime (public https only) and
 // labelled from the server's card; it starts disconnected and is connected like any other.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Schema } from 'effect'
-import { ServerView } from '@purrable/contracts'
+import { ServerSuggestion, ServerView } from '@purrable/contracts'
 import {
+  Badge,
   Button,
   Card,
   CardContent,
@@ -14,7 +15,7 @@ import {
   FieldGroup,
   Input,
 } from '@purrable/ui'
-import { ApiFailure, failureText, request } from '../lib/boundary.ts'
+import { ApiFailure, failureText, isString, record, request } from '../lib/boundary.ts'
 
 const decodeServer = Schema.decodeUnknownSync(ServerView)
 
@@ -115,5 +116,78 @@ export function RemoveServer({
     <Button size="sm" variant="destructive" onClick={() => void remove()} onBlur={() => setConfirming(false)}>
       Remove with its grants
     </Button>
+  )
+}
+
+const decodeSuggestions = Schema.decodeUnknownSync(Schema.Array(ServerSuggestion))
+
+/** Add a suggested server and start connecting it: off to its sign-in, or connected at once if it needs none. */
+async function addAndConnect(suggestion: ServerSuggestion): Promise<string> {
+  const server = decodeServer(await request('/api/mcp/servers', { body: { endpoint: suggestion.endpoint } }))
+  const connect = record(await request(`/api/mcp/${encodeURIComponent(server.serverId)}/connect`, { body: {} }))
+  const next = connect?.authorizationUrl
+  if (isString(next)) window.location.assign(next)
+  return `Connected ${suggestion.title}. Choose the tools your agent may use.`
+}
+
+/** Servers we suggest, checked to connect from here: one tap adds and connects; already added ones say so. */
+export function SuggestedServers({
+  version,
+  onChanged,
+  onMessage,
+}: {
+  /** Changes whenever the server list does, so "Added" stays true. */
+  readonly version: number
+  readonly onChanged: (message: string) => void
+  readonly onMessage: (message: string) => void
+}) {
+  const [items, setItems] = useState<readonly ServerSuggestion[]>([])
+  const [busy, setBusy] = useState('')
+  useEffect(() => {
+    void request('/api/mcp/suggested')
+      .then((data) => setItems(decodeSuggestions(data)))
+      .catch((error: unknown) => onMessage(failureText(error)))
+  }, [version, onMessage])
+  async function add(item: ServerSuggestion): Promise<void> {
+    setBusy(item.id)
+    try {
+      onChanged(await addAndConnect(item))
+    } catch (error) {
+      onMessage(failureText(error))
+    } finally {
+      setBusy('')
+    }
+  }
+  if (items.length === 0) return null
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Suggested</CardTitle>
+        <CardDescription>Servers we have checked work from here. You still choose every tool.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="suggestions">
+          {items.map((item) => (
+            <li key={item.id} className="suggestion">
+              <span className="flex min-w-0 flex-col gap-1">
+                <span className="flex flex-wrap items-center gap-2 font-medium">
+                  {item.title}
+                  <Badge variant="outline">{item.signIn ? 'sign-in' : 'no sign-in'}</Badge>
+                </span>
+                <span className="text-sm text-muted-foreground">{item.description}</span>
+              </span>
+              <Button
+                size="sm"
+                variant={item.added ? 'ghost' : 'outline'}
+                disabled={item.added || busy !== ''}
+                onClick={() => void add(item)}
+              >
+                {item.added ? 'Added' : busy === item.id ? 'Adding…' : 'Add'}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
   )
 }

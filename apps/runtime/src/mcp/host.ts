@@ -82,6 +82,11 @@ export class McpHost {
       onUnauthorized: async () => {
         if (Date.now() - (this.#refreshedAt.get(server.serverId) ?? 0) < RECENT_REFRESH_MS) return
         const stale = (await this.#credentials.tokens(server.serverId))?.access_token
+        // Connected without sign-in and now refused: it wants sign-in. Nothing to refresh; the owner connects.
+        if (stale === OPEN_ACCESS.access_token) {
+          this.#credentials.markNeedsAuth(server.serverId, nowSeconds())
+          throw new NeedsAuthorization({ serverId: server.serverId })
+        }
         await this.#refresh(server, stale)
       },
     }
@@ -191,13 +196,11 @@ export class McpHost {
   }
 
   /**
-   * A server that publishes no OAuth metadata may need no sign-in at all (public documentation servers, for example).
-   * Try it with an empty token, which the transport leaves out; if it answers, it is connected. If it later demands
-   * sign-in, the refused refresh marks it needs_auth like any other.
+   * Many servers need no sign-in (public documentation servers, for example), some only offer it. Try the server with
+   * an empty token, which the transport leaves out: if it answers discovery, it is connected. If it refuses, the
+   * OAuth flow runs. A server that later demands sign-in is marked needs_auth by the refused refresh, as any other.
    */
   async #connectsOpenly(server: McpServerConfig): Promise<boolean> {
-    const info = await discoverOAuthServerInfo(server.endpoint, { fetchFn: this.#fetch }).catch(() => undefined)
-    if (info?.resourceMetadata !== undefined || info?.authorizationServerMetadata !== undefined) return false
     await this.#credentials.saveTokens(server.serverId, OPEN_ACCESS, nowSeconds())
     try {
       await this.manager.connect(server.serverId)
