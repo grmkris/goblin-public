@@ -5,6 +5,7 @@ import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { constantTimeEqual } from 'better-auth/crypto'
 import { jwt } from 'better-auth/plugins'
 import type { RuntimeEnv } from '../env.ts'
+import { deleteAgentOf } from './account.ts'
 import { mailerOf, verificationMail } from './mail.ts'
 import { passwordHasher } from './password.ts'
 
@@ -47,7 +48,7 @@ export const markLoopbackClientsNative = (body: unknown): void => {
 
 export type AuthEnvironment = Pick<
   RuntimeEnv,
-  'APP_URL' | 'BETTER_AUTH_SECRET' | 'SIGNUP_MODE' | 'SIGNUP_INVITE_CODE' | 'MAIL' | 'MAIL_SENDER'
+  'APP_URL' | 'BETTER_AUTH_SECRET' | 'SIGNUP_MODE' | 'SIGNUP_INVITE_CODE' | 'MAIL' | 'MAIL_SENDER' | 'AGENTS'
 >
 
 /** Per-IP limits on the endpoints that create accounts or send mail; everything else keeps the default window. */
@@ -55,6 +56,7 @@ const RATE_LIMITS = {
   '/sign-up/email': { window: 3600, max: 10 },
   '/send-verification-email': { window: 3600, max: 5 },
   '/sign-in/email': { window: 300, max: 20 },
+  '/delete-user': { window: 300, max: 5 },
 } as const
 /**
  * Better Auth is instantiated per request: Worker I/O promises cannot outlive their request. The D1 adapter owns
@@ -106,12 +108,21 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
             },
           },
         }),
+    // Deleting an account erases its agent first (conversations, MCP credentials, grants, usage); D1 then cascades
+    // the user's sessions, consents and tokens. The before-hook below makes the password mandatory.
+    user: { deleteUser: { enabled: true, beforeDelete: (user: { id: string }) => deleteAgentOf(env, user.id) } },
     rateLimit: { enabled: true, storage: 'database' as const, window: 60, max: 100, customRules: RATE_LIMITS },
     advanced: { ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] } },
     hooks: {
       before: createAuthMiddleware(async (context) => {
         if (context.path === '/oauth2/register') {
           markLoopbackClientsNative(context.body)
+          return
+        }
+        // Better Auth would delete without a password for a session under a day old; always ask for it.
+        if (context.path?.startsWith('/delete-user')) {
+          if (context.path !== '/delete-user' || !Predicate.isString(context.body?.password) || context.body.token)
+            throw new APIError('BAD_REQUEST', { message: 'Deleting the account needs your password.' })
           return
         }
         if (!context.path?.startsWith('/sign-up')) return

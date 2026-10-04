@@ -18,5 +18,5 @@ identity and routing:
 Consequences: the existing dev account (user ID `owner`) now uses an agent named `owner`; the old `root` object was
 left behind (it held only smoke data). Per-user daily model budgets and email verification followed the same day
 (see the architecture); accounts that existed before verification were marked verified. Dev mail is sent from
-`purrable@mytab.lol` because Purrable has no domain of its own yet. Not yet built: account deletion and an admin
-view. Verification makes each budget cost an address, not nothing; a catch-all domain still yields many.
+`purrable@mytab.lol` because Purrable has no domain of its own yet. Account deletion followed (Settings; it erases
+the agent first). Not yet built: an admin view. Verification makes each budget cost an address, not nothing; a catch-all domain still yields many.

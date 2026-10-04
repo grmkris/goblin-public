@@ -248,6 +248,23 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     )
   }
 
+  /**
+   * Account deletion: close outbound connections, then erase this agent (every Pi, Agents and application table,
+   * the alarm) through `Agent.destroy()`, which also aborts the isolate so no in-memory state survives. Callers may
+   * see that abort instead of the result (`auth/account.ts`).
+   */
+  async deleteAgentData(): Promise<RpcResult<true>> {
+    const runtime = this.#runtime
+    this.#runtime = undefined
+    if (runtime !== undefined) {
+      const services = await runtime.catch(() => undefined)
+      await services?.runPromise(Mcp.use((mcp) => attempt(() => mcp.manager.closeAll()))).catch(() => undefined)
+      await services?.dispose()
+    }
+    await this.destroy()
+    return { ok: true, value: true }
+  }
+
   /** An inbound client request: no resident renewal (only the owner renews). */
   async #client<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
     return encodeExit(await this.#exit(program))

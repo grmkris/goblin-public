@@ -11,8 +11,12 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Field,
+  FieldGroup,
+  FieldLabel,
+  Input,
 } from '@purrable/ui'
-import { failureText, request } from '../lib/boundary.ts'
+import { ApiFailure, failureText, request } from '../lib/boundary.ts'
 
 const decodeResident = Schema.decodeUnknownSync(ResidentStatus)
 const decodeClients = Schema.decodeUnknownSync(Schema.Array(InboundClient))
@@ -128,6 +132,70 @@ function ClientsCard({ onError }: { readonly onError: (message: string) => void 
   )
 }
 
+/** Permanent: the account, its agent's conversations, MCP connections and grants. The password confirms it. */
+function DeleteAccountCard({ onError }: { readonly onError: (message: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [password, setPassword] = useState('')
+  const [pending, setPending] = useState(false)
+  async function remove(): Promise<void> {
+    setPending(true)
+    try {
+      await request('/api/auth/delete-user', { body: { password } })
+      window.location.assign('/')
+    } catch (error) {
+      // Better Auth answers a wrong password with 400 and its own code, not an AppError tag.
+      onError(error instanceof ApiFailure && error.status === 400 ? 'That password is not right.' : failureText(error))
+    } finally {
+      setPassword('')
+      setPending(false)
+    }
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Delete account</CardTitle>
+        <CardDescription>
+          Deletes your account and your agent: its conversations, MCP connections, permissions and usage. This cannot be
+          undone.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {open ? (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              void remove()
+            }}
+          >
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="delete-password">Your password</FieldLabel>
+                <Input
+                  id="delete-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+              </Field>
+              <Field>
+                <Button type="submit" variant="destructive" disabled={pending || !password}>
+                  {pending ? 'Deleting…' : 'Delete my account and agent'}
+                </Button>
+              </Field>
+            </FieldGroup>
+          </form>
+        ) : (
+          <Button variant="outline" onClick={() => setOpen(true)}>
+            Delete account…
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 async function signOut(): Promise<void> {
   await request('/api/auth/sign-out', { body: {} }).catch(() => undefined)
   window.location.assign('/')
@@ -145,6 +213,7 @@ export function Settings() {
       <ResidentCard onError={setError} />
       <UsageCard onError={setError} />
       <ClientsCard onError={setError} />
+      <DeleteAccountCard onError={setError} />
       <div>
         <Button variant="ghost" onClick={() => void signOut()}>
           Sign out

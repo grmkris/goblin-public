@@ -38,7 +38,12 @@ works only after its owner opens the one-hour link mailed to it (`auth/mail.ts`)
 stage refuses to deploy `open` sign-up without a sender. Sign-up, verification mail and sign-in are rate limited per
 `cf-connecting-ip` in D1 (auth runs per request, so in-memory limits would reset every call). The agent a request
 reaches is always derived from authentication, the session's user ID or the inbound token's subject, never from the
-request. Users share the deployment's model key and
+request.
+
+Deleting an account (Settings, password required) first erases the user's agent through `Agent.destroy()`: every Pi,
+Agents and application table, its alarm, and its isolate. Only then does Better Auth delete the user, and D1 cascades
+their sessions, consents and tokens. If erasing the agent fails, the account stays so the user can retry. Outbound
+OAuth tokens are forgotten, not revoked at the remote server; they lapse there on their own. Users share the deployment's model key and
 MCP server list; their conversations, connections, credentials, grants and resident authority are per agent.
 
 The owner API forwards to the agent object over DO RPC. Workers RPC drops custom error classes, so every DO method

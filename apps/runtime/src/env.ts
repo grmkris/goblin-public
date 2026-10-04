@@ -45,6 +45,7 @@ export interface AgentRpcMethods {
   ) => Promise<RpcResult<AskResult>>
   readonly clientMessages: (clientId: string, limit: number) => Promise<RpcResult<readonly TranscriptMessage[]>>
   readonly usageToday: () => Promise<RpcResult<UsageToday>>
+  readonly deleteAgentData: () => Promise<RpcResult<true>>
 }
 export type AskResult =
   | { readonly status: 'done'; readonly operationId: string; readonly text: string }

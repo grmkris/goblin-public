@@ -89,10 +89,38 @@ async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promis
   })
 }
 
+const entries = async (agent: DurableObjectStub<PersonalAgentProbe>): Promise<number> => {
+  const body: { snapshot?: { entries?: unknown[] } } = await (await agent.fetch('https://agent/probe')).json()
+  return body.snapshot?.entries?.length ?? -1
+}
+
+/** Account deletion's agent half: state before, what the caller of deleteAgentData sees, state after. */
+async function destroySequence(env: Env, name: string): Promise<Response> {
+  const agent = env.AGENTS.getByName(name)
+  await agent.residentSet(false)
+  const submitted = await agent.submit('remember this before deletion', 'destroy-op-1')
+  const before = await entries(agent)
+  let deleted: unknown
+  try {
+    deleted = await agent.deleteAgentData()
+  } catch (cause) {
+    deleted = { thrown: cause instanceof Error ? cause.message : 'unknown' }
+  }
+  const fresh = env.AGENTS.getByName(name)
+  return Response.json({
+    submitted,
+    before,
+    deleted,
+    after: await entries(fresh),
+    resident: await fresh.residentStatus(),
+  })
+}
+
 export default {
   fetch(request: Request, env: Env): Promise<Response> {
     const name = new URL(request.url).searchParams.get('name') ?? 'initialization'
     if (new URL(request.url).pathname === '/rpc') return rpcSequence(env.AGENTS.getByName(name))
+    if (new URL(request.url).pathname === '/destroy') return destroySequence(env, name)
     if (new URL(request.url).pathname.startsWith('/lifecycle')) return env.LIFECYCLE.getByName(name).fetch(request)
     return env.AGENTS.getByName(name).fetch(request)
   },

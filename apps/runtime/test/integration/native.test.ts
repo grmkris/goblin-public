@@ -123,6 +123,32 @@ harness.test(
   }),
 )
 
+const Destroy = Schema.Struct({
+  submitted: Schema.Struct({ ok: Schema.Literal(true) }),
+  before: Schema.Number,
+  deleted: Schema.Unknown,
+  after: Schema.Number,
+  resident: Schema.Struct({ ok: Schema.Literal(true), value: Status }),
+})
+
+harness.test(
+  'local workerd: deleting an agent erases its conversation and application state',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `destroy-${yield* nextInt}`
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/destroy?name=${name}`))
+    expect(response.status).toBe(200)
+    const raw: unknown = yield* Effect.promise(() => response.json())
+    const result = yield* Schema.decodeUnknownEffect(Destroy)(raw)
+    expect(result.before).toBeGreaterThan(0)
+    // Either the result or the isolate abort that `Agent.destroy()` causes; nothing else is acceptable.
+    expect(JSON.stringify(result.deleted)).toMatch(/"ok":true|destroyed/u)
+    expect(result.after).toBe(0)
+    // The revocation row was erased too: the owner request after deletion starts a fresh, active authority.
+    expect(result.resident.value.state).toBe('active')
+  }),
+)
+
 harness.test(
   'local workerd: native Pi submit, receipt retry, durable readback and public dispose/reopen',
   Effect.gen(function* () {
