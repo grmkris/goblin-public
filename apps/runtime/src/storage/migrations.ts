@@ -76,6 +76,12 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'CREATE TABLE app_skill_files (digest TEXT PRIMARY KEY NOT NULL, content TEXT NOT NULL, stored_at INTEGER NOT NULL)',
     ].join(BREAK),
   },
+  {
+    // Drafts the agent proposed to a skills library (skills/learner.ts): never the same twice, never a rejected one again.
+    key: '20261014000000_skill_drafts',
+    tables: ['app_skill_drafts'],
+    sql: "CREATE TABLE app_skill_drafts (content_hash TEXT PRIMARY KEY NOT NULL, server_id TEXT NOT NULL, name TEXT NOT NULL, base_uri TEXT, draft_id TEXT, status TEXT NOT NULL CHECK (status IN ('open', 'accepted', 'rejected')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

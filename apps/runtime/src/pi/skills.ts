@@ -1,9 +1,9 @@
-import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
+import { GenerationTask, defineExtension, defineTool, hook, section } from '@earendil-works/pi-durable'
 import type { ToolExecutionResult } from '@earendil-works/pi-durable'
 import { Type } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import type { Catalog } from '../skills/library.ts'
-import { Skills, attempt, requireResident } from '../services.ts'
+import { Learner, Skills, attempt, requireBudget, requireResident } from '../services.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
 /** How many skills the prompt lists, and how much of each description. */
@@ -131,12 +131,29 @@ const readTool = (run: RunProgram) =>
 /**
  * Skills over MCP for a conversation: the `skills` section lists what the owner's skill servers offer (cached, never
  * fetched at wake), `skill_activate` loads one verified `SKILL.md` and `skill_read` one of its files. Both only read,
- * so a rerun after an eviction is harmless.
+ * so a rerun after an eviction is harmless. After a final answer the learner may draft a skill for the owner's review.
  */
 export function skillsExtension(run: RunProgram) {
   return defineExtension({
     name: 'purrable.skills',
     sections: [skillsSection(run)],
     tools: [activateTool(run), readTool(run)],
+    hooks: [
+      hook(GenerationTask, {
+        // Fire and forget after a final answer: the learner may propose a skill draft for the owner to review. It
+        // never holds up the turn, and an attempt an eviction cuts short is simply not made.
+        onYield: (_answer, api) => {
+          void run(
+            Effect.gen(function* () {
+              yield* requireResident
+              yield* requireBudget
+              const learner = yield* Learner
+              return yield* attempt(() => learner.consider(api.conversationId))
+            }),
+          ).catch(() => undefined)
+          return undefined
+        },
+      }),
+    ],
   })
 }

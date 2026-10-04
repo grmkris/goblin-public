@@ -1,7 +1,7 @@
-import { and, eq } from 'drizzle-orm'
+import { and, count, eq, gte, inArray } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Schema from 'effect/Schema'
-import { appSkillActivations, appSkillFiles, appSkillSources } from '../storage/schema.ts'
+import { appSkillActivations, appSkillDrafts, appSkillFiles, appSkillSources } from '../storage/schema.ts'
 import { SkillEntry } from './protocol.ts'
 
 /** A file is cached only up to this size: a Durable Object SQLite row stays well under its 2 MB limit. */
@@ -119,5 +119,110 @@ export class SqliteSkillState implements SkillState {
       .values({ digest, content: toBase64(bytes), storedAt: now })
       .onConflictDoNothing()
       .run()
+  }
+}
+
+export type DraftStatus = 'open' | 'accepted' | 'rejected'
+/** A draft the agent proposed: its content hash, the library, the skill it names or improves, and its review. */
+export type DraftRecord = {
+  readonly contentHash: string
+  readonly serverId: string
+  readonly name: string
+  readonly baseUri: string | undefined
+  readonly draftId: string | undefined
+  readonly status: DraftStatus
+}
+
+/** The learner's record of the drafts it proposed (skills/learner.ts). */
+export interface DraftLog {
+  /** Drafts proposed since `since` (ms). */
+  countSince(since: number): number
+  /** A draft with this content was proposed before. */
+  known(contentHash: string): boolean
+  /** A draft for this skill waits for review, or one for the same base was rejected. */
+  blocked(serverId: string, name: string, baseUri: string | undefined): boolean
+  open(limit: number): readonly DraftRecord[]
+  add(record: DraftRecord, now: number): void
+  update(contentHash: string, change: { readonly draftId?: string; readonly status: DraftStatus }, now: number): void
+  forget(contentHash: string): void
+}
+
+export class SqliteDraftLog implements DraftLog {
+  readonly #db: DrizzleSqliteDODatabase
+  constructor(db: DrizzleSqliteDODatabase) {
+    this.#db = db
+  }
+
+  countSince(since: number): number {
+    return (
+      this.#db.select({ n: count() }).from(appSkillDrafts).where(gte(appSkillDrafts.createdAt, since)).get()?.n ?? 0
+    )
+  }
+
+  known(contentHash: string): boolean {
+    return (
+      this.#db
+        .select({ hash: appSkillDrafts.contentHash })
+        .from(appSkillDrafts)
+        .where(eq(appSkillDrafts.contentHash, contentHash))
+        .get() !== undefined
+    )
+  }
+
+  blocked(serverId: string, name: string, baseUri: string | undefined): boolean {
+    return this.#db
+      .select({ status: appSkillDrafts.status, baseUri: appSkillDrafts.baseUri })
+      .from(appSkillDrafts)
+      .where(
+        and(
+          eq(appSkillDrafts.serverId, serverId),
+          eq(appSkillDrafts.name, name),
+          inArray(appSkillDrafts.status, ['open', 'rejected']),
+        ),
+      )
+      .all()
+      .some((row) => row.status === 'open' || row.baseUri === (baseUri ?? null))
+  }
+
+  open(limit: number): readonly DraftRecord[] {
+    return this.#db
+      .select()
+      .from(appSkillDrafts)
+      .where(eq(appSkillDrafts.status, 'open'))
+      .limit(limit)
+      .all()
+      .map((row) => ({
+        contentHash: row.contentHash,
+        serverId: row.serverId,
+        name: row.name,
+        baseUri: row.baseUri ?? undefined,
+        draftId: row.draftId ?? undefined,
+        status: row.status,
+      }))
+  }
+
+  add(record: DraftRecord, now: number): void {
+    this.#db
+      .insert(appSkillDrafts)
+      .values({
+        ...record,
+        baseUri: record.baseUri ?? null,
+        draftId: record.draftId ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+  }
+
+  update(contentHash: string, change: { readonly draftId?: string; readonly status: DraftStatus }, now: number): void {
+    this.#db
+      .update(appSkillDrafts)
+      .set({ ...change, updatedAt: now })
+      .where(eq(appSkillDrafts.contentHash, contentHash))
+      .run()
+  }
+
+  forget(contentHash: string): void {
+    this.#db.delete(appSkillDrafts).where(eq(appSkillDrafts.contentHash, contentHash)).run()
   }
 }

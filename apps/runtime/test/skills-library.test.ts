@@ -4,35 +4,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { McpHost } from '../src/mcp/host.ts'
 import { SkillLibrary } from '../src/skills/library.ts'
 import { SKILLS_EXTENSION, type SkillEntry } from '../src/skills/protocol.ts'
-import type { Activation, SkillState } from '../src/skills/store.ts'
 import { digestOf } from '../src/skills/verify.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
-
-/** The skills state in memory, with the SQLite store's semantics. */
-class MemorySkillState implements SkillState {
-  readonly #sources = new Set<string>()
-  readonly #activations = new Map<string, Activation[]>()
-  readonly files = new Map<string, Uint8Array>()
-  enabled = (serverId: string) => this.#sources.has(serverId)
-  sources = () => [...this.#sources]
-  setEnabled(serverId: string, enabled: boolean) {
-    if (enabled) this.#sources.add(serverId)
-    else this.#sources.delete(serverId)
-  }
-  activation = (sessionId: string, serverId: string, uri: string) =>
-    this.#activations.get(sessionId)?.find((item) => item.serverId === serverId && item.entry.uri === uri)
-  activations = (sessionId: string) => this.#activations.get(sessionId) ?? []
-  activate(sessionId: string, activation: Activation) {
-    const kept = this.activations(sessionId).filter(
-      (item) => !(item.serverId === activation.serverId && item.entry.uri === activation.entry.uri),
-    )
-    this.#activations.set(sessionId, [...kept, activation])
-  }
-  file = (digest: string) => this.files.get(digest)
-  storeFile(digest: string, bytes: Uint8Array) {
-    this.files.set(digest, bytes)
-  }
-}
+import { MemorySkillState } from './skills-memory.ts'
 
 const bytes = (text: string) => new TextEncoder().encode(text)
 const skillMd = (version: string) =>

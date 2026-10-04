@@ -26,8 +26,9 @@ import { MainMemory } from './memory/memory.ts'
 import { CheapModel } from './memory/model.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { skillsExtension } from './pi/skills.ts'
+import { SkillLearner } from './skills/learner.ts'
 import { SkillLibrary } from './skills/library.ts'
-import { SqliteSkillState } from './skills/store.ts'
+import { SqliteDraftLog, SqliteSkillState } from './skills/store.ts'
 import { ResidentAuthority } from './resident.ts'
 import { ConversationRegistry, type ThreadChange } from './conversations.ts'
 import { BACKGROUND } from './pi/context.ts'
@@ -126,12 +127,13 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       const reset = bindEndpoints(db, [...servers, ...added.list()], nowSeconds())
       if (reset.length > 0) logEndpointsReset(reset)
       const skillState = new SqliteSkillState(db)
+      const grants = new GrantStore(db)
       const host = new McpHost({
         servers,
         added,
         registries: new RegistryStore(db),
         credentials: new CredentialStore(db, await CredentialCipher.fromBase64(this.env.CREDENTIAL_KEY)),
-        grants: new GrantStore(db),
+        grants,
         skillsEnabled: (serverId) => skillState.enabled(serverId),
         appUrl: this.env.APP_URL,
         // SAFETY: the platform fetch is the outbound MCP/OAuth boundary; tokens are added only by the SDK transport.
@@ -150,7 +152,17 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       const conversations = new ConversationRegistry(db, this.harness, kit, nowSeconds())
       const resident = new ResidentAuthority(db)
       const skills = new SkillLibrary(host.manager, skillState, nowMillis)
-      return ManagedRuntime.make(agentLayer({ host, resident, conversations, budget, models, memory, skills }))
+      const learner = new SkillLearner({
+        drafts: new SqliteDraftLog(db),
+        harness: this.harness,
+        manager: host.manager,
+        library: skills,
+        state: skillState,
+        model: namer,
+        allows: (serverId, name) => grants.allows({ serverId, capability: 'tool', name }),
+        now: nowMillis,
+      })
+      return ManagedRuntime.make(agentLayer({ host, resident, conversations, budget, models, memory, skills, learner }))
     })()
     this.#runtime.catch(() => {
       this.#runtime = undefined

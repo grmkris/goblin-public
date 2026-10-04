@@ -156,3 +156,15 @@ export const appSkillFiles = sqliteTable('app_skill_files', {
   content: text('content').notNull(),
   storedAt: integer('stored_at').notNull(),
 })
+
+/** Skill drafts the agent proposed (skills/learner.ts), by content hash: one proposal per content, ever. */
+export const appSkillDrafts = sqliteTable('app_skill_drafts', {
+  contentHash: text('content_hash').primaryKey().notNull(),
+  serverId: text('server_id').notNull(),
+  name: text('name').notNull(),
+  baseUri: text('base_uri'),
+  draftId: text('draft_id'),
+  status: text('status', { enum: ['open', 'accepted', 'rejected'] }).notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
