@@ -1,4 +1,3 @@
-export { AgentCard } from './agent-card.tsx'
 export { Alert, AlertDescription, AlertTitle } from './components/alert.tsx'
 export { Badge } from './components/badge.tsx'
 export { Button, buttonVariants } from './components/button.tsx'
