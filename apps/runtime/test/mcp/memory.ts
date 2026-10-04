@@ -6,6 +6,7 @@ import {
   PENDING_TTL_SECONDS,
 } from '../../src/mcp/credentials.ts'
 import type { Grant, Grants } from '../../src/mcp/grants.ts'
+import type { AddedServer, AddedServers } from '../../src/mcp/servers.ts'
 
 type Row = {
   status: 'connected' | 'needs_auth'
@@ -96,5 +97,27 @@ export class MemoryGrants implements Grants {
   set(grant: Grant, allowed: boolean): void {
     if (allowed) this.#grants.set(this.#key(grant), grant)
     else this.#grants.delete(this.#key(grant))
+  }
+}
+
+/** Added servers in memory; removing one forgets its credentials and grants, as the SQLite store does. */
+export class MemoryAddedServers implements AddedServers {
+  readonly #servers = new Map<string, AddedServer>()
+  readonly #credentials: MemoryCredentials
+  readonly #grants: MemoryGrants
+  constructor(credentials: MemoryCredentials, grants: MemoryGrants) {
+    this.#credentials = credentials
+    this.#grants = grants
+  }
+  list(): readonly AddedServer[] {
+    return [...this.#servers.values()]
+  }
+  add(server: AddedServer): void {
+    this.#servers.set(server.serverId, server)
+  }
+  remove(serverId: string): void {
+    this.#servers.delete(serverId)
+    this.#credentials.remove(serverId)
+    for (const grant of this.#grants.list(serverId)) this.#grants.set(grant, false)
   }
 }

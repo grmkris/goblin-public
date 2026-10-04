@@ -35,6 +35,12 @@ const PromptGet = Schema.Struct({
   arguments: Schema.optional(Schema.Record(Schema.String, Schema.String.check(Schema.isMaxLength(16_384)))),
 })
 const GrantChange = Schema.Struct({ serverId: Bounded(64), name: Bounded(256), allowed: Schema.Boolean })
+const AddServer = Schema.Struct({
+  endpoint: Bounded(2048),
+  source: Schema.optional(
+    Schema.Struct({ registry: Bounded(2048), name: Bounded(256), version: Schema.optional(Bounded(64)) }),
+  ),
+})
 const AppGrantChange = Schema.Struct({
   serverId: Bounded(64),
   uri: Bounded(2048).check(Schema.isPattern(/^ui:\/\//u)),
@@ -106,6 +112,7 @@ async function mcpServerRoute(request: Request, agent: DurableObjectStub<AgentRp
   if (request.method !== 'POST') throw new NotFound({ what: path })
   if (action === 'connect') return json(unwrap(await agent.mcpConnect(serverId)))
   if (action === 'disconnect') return json(unwrap(await agent.mcpDisconnect(serverId)))
+  if (action === 'remove') return json(unwrap(await agent.mcpRemoveServer(serverId)))
   if (action === 'tools/call') {
     const body = await readJson(request, ToolCall)
     return json(unwrap(await agent.mcpCallTool(serverId, body.name, body.arguments ?? {}, caller)))
@@ -122,6 +129,10 @@ async function mcpServerRoute(request: Request, agent: DurableObjectStub<AgentRp
 async function mcpRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string, env: RuntimeEnv) {
   if (path === '/api/mcp/oauth/callback' && request.method === 'GET') return oauthCallback(request, agent, env)
   if (path === '/api/mcp/servers' && request.method === 'GET') return json(unwrap(await agent.mcpServers()))
+  if (path === '/api/mcp/servers' && request.method === 'POST') {
+    const body = await readJson(request, AddServer)
+    return json(unwrap(await agent.mcpAddServer(body.endpoint, body.source)), 201)
+  }
   if (path === '/api/mcp/grants' && request.method === 'GET') return json(unwrap(await agent.mcpGrants()))
   if (path === '/api/mcp/grants' && request.method === 'PUT') {
     const body = await readJson(request, GrantChange)

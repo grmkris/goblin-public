@@ -5,7 +5,9 @@ import { Internal, InvalidInput, NeedsAuthorization, NotFound } from '../http/er
 import { McpConnectionManager, toolAppResource, toolOffered } from './connection.ts'
 import type { Credentials } from './credentials.ts'
 import type { Grant, Grants } from './grants.ts'
+import { addedServerId, serverClaims, userEndpoint } from './endpoint.ts'
 import { StoredOAuthProvider } from './oauth-provider.ts'
+import { type AddedServers, MAX_ADDED_SERVERS, type ServerSource } from './servers.ts'
 import type { McpServerConfig } from './types.ts'
 
 /** Refresh this many seconds before the access token's recorded expiry. */
@@ -24,12 +26,20 @@ export const offeredScope = async (endpoint: string, fetchFn: typeof fetch): Pro
   return scopes.length === 0 ? undefined : scopes.join(' ')
 }
 
+/** The "token" of a server that needs no sign-in: empty, so no Authorization header is sent. */
+const OPEN_ACCESS = { access_token: '', token_type: 'none' } as const
+
 export type McpHostOptions = {
+  /** The deployment's servers; they win over an added server with the same id. */
   readonly servers: readonly McpServerConfig[]
   readonly credentials: Credentials
   readonly grants: Grants
   readonly appUrl: string
   readonly fetch: typeof fetch
+  /** Servers the owner added; without it, the server list is fixed. */
+  readonly added?: AddedServers
+  /** Random characters for added server ids. */
+  readonly random?: () => string
 }
 
 /**
@@ -42,6 +52,9 @@ export class McpHost {
   readonly #grants: Grants
   readonly #appUrl: string
   readonly #fetch: typeof fetch
+  readonly #configured: ReadonlySet<string>
+  readonly #added: AddedServers | undefined
+  readonly #random: () => string
   readonly #refreshing = new Map<string, Promise<void>>()
   readonly #refreshedAt = new Map<string, number>()
 
@@ -50,8 +63,13 @@ export class McpHost {
     this.#grants = options.grants
     this.#appUrl = options.appUrl
     this.#fetch = options.fetch
+    this.#added = options.added
+    // @effect-diagnostics-next-line cryptoRandomUUID:off -- Unguessable suffixes for added server ids.
+    this.#random = options.random ?? (() => crypto.randomUUID().replaceAll('-', ''))
+    this.#configured = new Set(options.servers.map((server) => server.serverId))
+    const added = (options.added?.list() ?? []).filter((server) => !this.#configured.has(server.serverId))
     this.manager = new McpConnectionManager({
-      servers: options.servers,
+      servers: [...options.servers, ...added.map(({ serverId, endpoint }) => ({ serverId, endpoint }))],
       allows: (grant) => options.grants.allows(grant),
       auth: (server) => this.#authProvider(server),
       fetch: options.fetch,
@@ -106,22 +124,60 @@ export class McpHost {
   }
 
   servers(): readonly ServerView[] {
+    const added = new Map((this.#added?.list() ?? []).map((server) => [server.serverId, server]))
     return this.manager.servers.map((server) => {
       const name = this.manager.snapshot(server.serverId)?.serverInfo?.name
+      const claims = this.#configured.has(server.serverId) ? undefined : added.get(server.serverId)
       return {
         serverId: server.serverId,
         endpoint: server.endpoint,
         status: this.#credentials.status(server.serverId),
         live: this.manager.snapshot(server.serverId) !== undefined,
         ...(name === undefined ? {} : { serverName: name }),
+        source: claims === undefined ? 'config' : 'added',
+        ...(claims?.title === undefined ? {} : { title: claims.title }),
+        ...(claims?.description === undefined ? {} : { description: claims.description }),
+        ...(claims?.icon === undefined ? {} : { icon: claims.icon }),
       }
     })
+  }
+
+  /**
+   * Add a server by its endpoint: a public https URL not already offered, labelled from its server card. It starts
+   * disconnected; the owner connects it as any other. `source` records the registry entry it came from.
+   */
+  async addServer(raw: string, source?: ServerSource): Promise<ServerView> {
+    const added = this.#added
+    if (added === undefined) throw new InvalidInput({ reason: 'servers_fixed' })
+    const endpoint = userEndpoint(raw)
+    if (this.manager.servers.some((server) => server.endpoint === endpoint.href))
+      throw new InvalidInput({ reason: 'already_added' })
+    if (added.list().length >= MAX_ADDED_SERVERS) throw new InvalidInput({ reason: 'too_many_servers' })
+    const claims = await serverClaims(endpoint, this.#fetch)
+    const taken = new Set(this.manager.servers.map((server) => server.serverId))
+    const serverId = addedServerId(endpoint, taken, this.#random)
+    const server = { serverId, endpoint: endpoint.href }
+    added.add({ ...server, ...claims, ...(source === undefined ? {} : { source }) }, nowSeconds())
+    this.manager.add(server)
+    const view = this.servers().find((item) => item.serverId === serverId)
+    if (view === undefined) throw new Internal({ reason: 'added server missing' })
+    return view
+  }
+
+  /** Remove a server the owner added, with its credentials, grants and pending sign-ins. Configured ones stay. */
+  async removeServer(serverId: string): Promise<void> {
+    const added = this.#added
+    if (added === undefined || !added.list().some((server) => server.serverId === serverId))
+      throw new InvalidInput({ reason: this.#configured.has(serverId) ? 'configured_server' : 'unknown_server' })
+    await this.manager.remove(serverId)
+    added.remove(serverId)
   }
 
   /** Start (or silently renew) authorization. Returns the URL to send the owner's browser to, when one is needed. */
   async beginConnect(serverId: string): Promise<{ readonly authorizationUrl?: string }> {
     const server = this.manager.server(serverId)
     await this.manager.close(serverId)
+    if (await this.#connectsOpenly(server)) return {}
     const provider = new StoredOAuthProvider(this.#credentials, serverId, this.#appUrl, { kind: 'interactive' })
     const scope = await offeredScope(server.endpoint, this.#fetch)
     const result = await auth(provider, {
@@ -132,6 +188,25 @@ export class McpHost {
     if (result === 'AUTHORIZED') return {}
     if (provider.authorizationUrl === undefined) throw new Internal({ reason: 'authorization URL missing' })
     return { authorizationUrl: provider.authorizationUrl.href }
+  }
+
+  /**
+   * A server that publishes no OAuth metadata may need no sign-in at all (public documentation servers, for example).
+   * Try it with an empty token, which the transport leaves out; if it answers, it is connected. If it later demands
+   * sign-in, the refused refresh marks it needs_auth like any other.
+   */
+  async #connectsOpenly(server: McpServerConfig): Promise<boolean> {
+    const info = await discoverOAuthServerInfo(server.endpoint, { fetchFn: this.#fetch }).catch(() => undefined)
+    if (info?.resourceMetadata !== undefined || info?.authorizationServerMetadata !== undefined) return false
+    await this.#credentials.saveTokens(server.serverId, OPEN_ACCESS, nowSeconds())
+    try {
+      await this.manager.connect(server.serverId)
+      return true
+    } catch {
+      await this.manager.close(server.serverId)
+      this.#credentials.invalidate(server.serverId, 'tokens', nowSeconds())
+      return false
+    }
   }
 
   /** Complete the authorization the browser was redirected back from. The `state` is single-use. */

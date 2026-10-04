@@ -65,25 +65,40 @@ const optionalTemplates = async (
   }
 }
 
+function assertEndpoint(server: McpServerConfig): void {
+  const url = new URL(server.endpoint)
+  const localHttp = url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1')
+  if (url.protocol !== 'https:' && !localHttp) throw new Error('mcp_endpoint_not_https')
+  if (url.username || url.password || url.hash) throw new Error('mcp_endpoint_invalid')
+}
+
 /**
  * One cached client per configured server, owned by the Agent DO. Every call checks the owner's exact grant first;
  * results are size-bounded before they reach the host or the model. Remote metadata is data, never authority.
  */
 export class McpConnectionManager {
   readonly #options: McpManagerOptions
-  readonly #servers: ReadonlyMap<string, McpServerConfig>
+  readonly #servers: Map<string, McpServerConfig>
   readonly #connections = new Map<string, Connection>()
   readonly #connecting = new Map<string, Promise<Connection>>()
   constructor(options: McpManagerOptions) {
     this.#options = options
     this.#servers = new Map(options.servers.map((server) => [server.serverId, server]))
     if (this.#servers.size !== options.servers.length) throw new Error('mcp_server_id_duplicate')
-    for (const server of options.servers) {
-      const url = new URL(server.endpoint)
-      const localHttp = url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1')
-      if (url.protocol !== 'https:' && !localHttp) throw new Error('mcp_endpoint_not_https')
-      if (url.username || url.password || url.hash) throw new Error('mcp_endpoint_invalid')
-    }
+    for (const server of options.servers) assertEndpoint(server)
+  }
+
+  /** Start offering a server the owner added. */
+  add(server: McpServerConfig): void {
+    assertEndpoint(server)
+    if (this.#servers.has(server.serverId)) throw new Error('mcp_server_id_duplicate')
+    this.#servers.set(server.serverId, server)
+  }
+
+  /** Stop offering a server and close its connection. */
+  async remove(serverId: string): Promise<void> {
+    await this.close(serverId)
+    this.#servers.delete(serverId)
   }
 
   get servers(): readonly McpServerConfig[] {

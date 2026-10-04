@@ -28,6 +28,20 @@ export const appMcpEndpoints = sqliteTable('app_mcp_endpoints', {
   boundAt: integer('bound_at').notNull(),
 })
 
+/**
+ * Servers the owner added (mcp/servers.ts), beside the deployment's configured ones. Title, description and icon are
+ * the server's own claims from its card or registry entry; `source` records where it was found.
+ */
+export const appMcpServers = sqliteTable('app_mcp_servers', {
+  serverId: text('server_id').primaryKey().notNull(),
+  endpoint: text('endpoint').notNull(),
+  title: text('title'),
+  description: text('description'),
+  icon: text('icon'),
+  source: text('source'),
+  createdAt: integer('created_at').notNull(),
+})
+
 /** Outbound OAuth state per server. `client_info` and `tokens` are AES-GCM ciphertext (mcp/credentials.ts). */
 export const appMcpCredentials = sqliteTable('app_mcp_credentials', {
   serverId: text('server_id').primaryKey().notNull(),

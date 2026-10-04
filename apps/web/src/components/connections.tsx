@@ -15,6 +15,7 @@ import {
   Switch,
 } from '@purrable/ui'
 import { failureText, record, request } from '../lib/boundary.ts'
+import { AddServer, RemoveServer } from './server-add.tsx'
 import { ToolConsole } from './tool-console.tsx'
 
 const decodeServers = Schema.decodeUnknownSync(Schema.Array(ServerView))
@@ -168,13 +169,17 @@ function ServerCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{server.serverName ?? server.serverId}</CardTitle>
-        <CardDescription>{server.endpoint}</CardDescription>
+        <CardTitle>{server.title ?? server.serverName ?? server.serverId}</CardTitle>
+        <CardDescription>
+          {server.endpoint}
+          {server.description && <span className="block">The server says: {server.description}</span>}
+        </CardDescription>
         <CardAction>
           <div className="flex items-center gap-2">
             <Badge variant={server.status === 'connected' ? 'secondary' : 'outline'}>
               {server.status.replace('_', ' ')}
             </Badge>
+            {server.source === 'added' && <RemoveServer server={server} onRemoved={onReload} onMessage={onMessage} />}
             {server.status === 'connected' ? (
               <>
                 <Button size="sm" variant="outline" disabled={pending} onClick={() => loadTools(true)}>
@@ -235,7 +240,13 @@ export function Connections() {
           <AlertDescription>{message}</AlertDescription>
         </Alert>
       )}
-      {servers.length === 0 && <p className="text-muted-foreground">No MCP servers are configured.</p>}
+      <AddServer
+        onAdded={(server) => {
+          setMessage(`Added ${server.title ?? server.serverId}. Connect it, then choose the tools your agent may use.`)
+          load()
+        }}
+        onMessage={setMessage}
+      />
       {servers.map((server) => (
         <ServerCard key={server.serverId} server={server} onReload={load} onMessage={setMessage} />
       ))}

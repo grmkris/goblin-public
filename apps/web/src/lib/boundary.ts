@@ -35,10 +35,13 @@ export type RequestOptions = {
 export class ApiFailure extends Error {
   readonly tag: string
   readonly status: number
-  constructor(tag: string, status: number) {
+  /** The safe detail the runtime gives for some failures (`InvalidInput`'s reason, for example). */
+  readonly reason: string | undefined
+  constructor(tag: string, status: number, reason?: string) {
     super(tag)
     this.tag = tag
     this.status = status
+    this.reason = reason
   }
 }
 /** Same-origin JSON call with the owner's cookie. Non-JSON error bodies still produce an `ApiFailure`. */
@@ -60,7 +63,12 @@ export async function request(path: string, options: RequestOptions = {}): Promi
   }
   if (!response.ok) {
     const tag = record(data)?.error
-    throw new ApiFailure(isString(tag) ? tag : `HTTP ${response.status}`, response.status)
+    const reason = record(data)?.reason
+    throw new ApiFailure(
+      isString(tag) ? tag : `HTTP ${response.status}`,
+      response.status,
+      isString(reason) ? reason : undefined,
+    )
   }
   return data
 }

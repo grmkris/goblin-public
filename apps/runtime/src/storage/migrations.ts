@@ -37,6 +37,11 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     tables: ['app_mcp_endpoints'],
     sql: 'CREATE TABLE app_mcp_endpoints (server_id TEXT PRIMARY KEY NOT NULL, endpoint TEXT NOT NULL, bound_at INTEGER NOT NULL)',
   },
+  {
+    key: '20261009000000_mcp_added_servers',
+    tables: ['app_mcp_servers'],
+    sql: 'CREATE TABLE app_mcp_servers (server_id TEXT PRIMARY KEY NOT NULL, endpoint TEXT NOT NULL, title TEXT, description TEXT, icon TEXT, source TEXT, created_at INTEGER NOT NULL)',
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

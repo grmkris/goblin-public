@@ -35,3 +35,12 @@ export function bindEndpoints(db: Database, servers: readonly McpServerConfig[],
     return reset
   })
 }
+
+/** Forget a server the owner removed: everything stored for it and its endpoint binding, in one transaction. */
+export function forgetServer(db: Database, serverId: string, also: (tx: Pick<Database, 'delete'>) => void): void {
+  db.transaction((tx) => {
+    forget(tx, serverId)
+    tx.delete(appMcpEndpoints).where(eq(appMcpEndpoints.serverId, serverId)).run()
+    also(tx)
+  })
+}

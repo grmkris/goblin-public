@@ -18,13 +18,20 @@ export const ApiError = Schema.Struct({
 })
 export type ApiError = typeof ApiError.Type
 
-/** An outbound MCP server as the owner sees it. `live`: a connection is open right now. */
+/**
+ * An outbound MCP server as the owner sees it. `live`: a connection is open right now. `source`: the deployment
+ * configured it, or the owner added it. `title`, `description` and `icon` are the server's own claims.
+ */
 export const ServerView = Schema.Struct({
   serverId: Schema.String,
   endpoint: Schema.String,
   status: Schema.Literals(['connected', 'needs_auth', 'disconnected']),
   live: Schema.Boolean,
   serverName: Schema.optional(Schema.String),
+  source: Schema.Literals(['config', 'added']),
+  title: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  icon: Schema.optional(Schema.String),
 })
 export type ServerView = typeof ServerView.Type
 

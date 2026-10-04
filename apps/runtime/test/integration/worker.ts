@@ -10,6 +10,7 @@ import { FIXTURE_INPUT, fixtureModels, model } from './model.ts'
 import { nextInt } from 'effect/Random'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { bindEndpoints } from '../../src/mcp/endpoints.ts'
+import { AddedServerStore } from '../../src/mcp/servers.ts'
 import { appMcpCredentials, appMcpEndpoints, appMcpGrants, appMcpOauthPending } from '../../src/storage/schema.ts'
 
 const notesAt = (endpoint: string) => [{ serverId: 'notes', endpoint }]
@@ -50,7 +51,22 @@ export class PersonalAgentProbe extends PersonalAgent {
     const kept = stored()
     const moved = bindEndpoints(db, notesAt('https://b.test/mcp'), 3)
     const bound = db.select().from(appMcpEndpoints).all()
-    return { first, same, kept, moved, after: stored(), bound }
+    // An added server, removed: its row, binding, credentials, grants and pending sign-ins all go.
+    const added = new AddedServerStore(db)
+    added.add({ serverId: 'extra', endpoint: 'https://extra.test/mcp', title: 'Extra' }, 4)
+    db.insert(appMcpCredentials)
+      .values({ serverId: 'extra', status: 'connected', tokens: 'sealed', updatedAt: 4 })
+      .run()
+    db.insert(appMcpGrants).values({ serverId: 'extra', capability: 'tool', name: 'read', createdAt: 4 }).run()
+    const listed = added.list().map((server) => server.serverId)
+    added.remove('extra')
+    const removed = {
+      listed,
+      left: added.list().length,
+      after: stored(),
+      bound: db.select().from(appMcpEndpoints).all().length,
+    }
+    return { first, same, kept, moved, after: stored(), bound, removed }
   }
 }
 

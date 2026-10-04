@@ -38,6 +38,7 @@ import {
 import { runApplicationMigrations } from './storage/migrations.ts'
 import { nowSeconds } from './clock.ts'
 import { bindEndpoints } from './mcp/endpoints.ts'
+import { AddedServerStore, type ServerSource } from './mcp/servers.ts'
 import { logEndpointsReset } from './mcp/log.ts'
 import { ModelBudget, UsageStore, dailyTokenLimit } from './budget.ts'
 import { ownerContent } from './pi/app-context.ts'
@@ -96,10 +97,12 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       runApplicationMigrations(this.ctx.storage)
       const db = drizzle(this.ctx.storage)
       const servers = configuredServers(this.env.MCP_SERVERS)
-      const reset = bindEndpoints(db, servers, nowSeconds())
+      const added = new AddedServerStore(db)
+      const reset = bindEndpoints(db, [...servers, ...added.list()], nowSeconds())
       if (reset.length > 0) logEndpointsReset(reset)
       const host = new McpHost({
         servers,
+        added,
         credentials: new CredentialStore(db, await CredentialCipher.fromBase64(this.env.CREDENTIAL_KEY)),
         grants: new GrantStore(db),
         appUrl: this.env.APP_URL,
@@ -203,6 +206,14 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   mcpFinishConnect(state: string, code: string, issuer?: string) {
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.finishConnect(state, code, issuer))))
+  }
+
+  mcpAddServer(endpoint: string, source?: ServerSource) {
+    return this.#owner(Mcp.use((mcp) => attempt(() => mcp.addServer(endpoint, source))))
+  }
+
+  mcpRemoveServer(serverId: string) {
+    return this.#owner(Mcp.use((mcp) => attempt(async () => (await mcp.removeServer(serverId), null))))
   }
 
   mcpDisconnect(serverId: string) {

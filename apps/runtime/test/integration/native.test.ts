@@ -140,6 +140,12 @@ const Binding = Schema.Struct({
   moved: Schema.Array(Schema.String),
   after: Schema.Struct({ credentials: Schema.Number, grants: Schema.Number, pending: Schema.Number }),
   bound: Schema.Array(Schema.Struct({ serverId: Schema.String, endpoint: Schema.String, boundAt: Schema.Number })),
+  removed: Schema.Struct({
+    listed: Schema.Array(Schema.String),
+    left: Schema.Number,
+    after: Schema.Struct({ credentials: Schema.Number, grants: Schema.Number, pending: Schema.Number }),
+    bound: Schema.Number,
+  }),
 })
 
 harness.test(
@@ -157,6 +163,12 @@ harness.test(
     expect(result.moved).toEqual(['notes'])
     expect(result.after).toEqual({ credentials: 0, grants: 0, pending: 0 })
     expect(result.bound).toEqual([{ serverId: 'notes', endpoint: 'https://b.test/mcp', boundAt: 3 }])
+    expect(result.removed).toEqual({
+      listed: ['extra'],
+      left: 0,
+      after: { credentials: 0, grants: 0, pending: 0 },
+      bound: 1,
+    })
   }),
 )
 
