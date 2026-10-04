@@ -5,6 +5,7 @@ import type { Grant, GrantCapability } from './mcp/grants.ts'
 import type {
   AppContext,
   CatalogEntry,
+  MemoryStatus,
   ModelChoice,
   RegistryView,
   ResidentStatus,
@@ -72,6 +73,7 @@ export interface AgentRpcMethods {
   ) => Promise<RpcResult<AskResult>>
   readonly recentMessages: (limit: number) => Promise<RpcResult<readonly TranscriptMessage[]>>
   readonly usageToday: () => Promise<RpcResult<UsageToday>>
+  readonly memoryStatus: () => Promise<RpcResult<MemoryStatus>>
   readonly modelChoice: () => Promise<RpcResult<ModelChoice>>
   readonly chooseModel: (modelId: string) => Promise<RpcResult<ModelChoice>>
   readonly deleteAgentData: () => Promise<RpcResult<true>>

@@ -1,14 +1,14 @@
-import { type RefObject, useEffect, useMemo, useRef, useState } from 'react'
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type AppContext, MAIN_THREAD } from '@purrable/contracts'
 import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@purrable/ui'
 import { ShareIcon } from 'lucide-react'
-import { failureText, request } from '../lib/boundary.ts'
+import { failureText, isNumber, record, records, request } from '../lib/boundary.ts'
 import { BrowserPiEvents, ConversationStream, type StreamStatus } from '../lib/conversation-stream.ts'
 import { openInteractions } from '../lib/interactions.ts'
 import { conversationParts } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
 import { budgetFraction, contextTokens } from '../lib/usage.ts'
-import type { ConversationProjection } from '../lib/projection.ts'
+import { type ConversationProjection, entryMessages, historyStart } from '../lib/projection.ts'
 import { SharedContextChip } from './apps/offers.tsx'
 import { AppsProvider, useApps } from './apps/provider.tsx'
 import { AppLayer } from './apps/stage.tsx'
@@ -74,6 +74,56 @@ function useConversation(thread: string) {
     }
   }
   return { projection, status, notice, report: setNotice, send, stop }
+}
+
+type HistoryPage = { readonly entries: readonly Record<string, unknown>[]; readonly more: boolean }
+
+/**
+ * The conversation before what its snapshot shows: once a memory view or a summary starts the model's context later,
+ * the snapshot starts there too. The page before `start` loads on its own; `earlier` loads the next older one.
+ */
+function useHistory(thread: string, start: number | undefined, report: (text: string) => void) {
+  const [page, setPage] = useState<HistoryPage>({ entries: [], more: false })
+  const load = useCallback(
+    async (before: number): Promise<HistoryPage> => {
+      const data = record(await request(`/api/threads/${thread}/history?before=${before}`))
+      return { entries: records(data?.entries), more: data?.more === true }
+    },
+    [thread],
+  )
+  useEffect(() => {
+    let current = true
+    setPage({ entries: [], more: false })
+    if (start !== undefined)
+      load(start)
+        .then((first) => current && setPage(first))
+        .catch((failure: unknown) => report(failureText(failure)))
+    return () => {
+      current = false
+    }
+  }, [load, start, report])
+  const oldest = page.entries[0]?.id
+  const earlier =
+    page.more && isNumber(oldest)
+      ? () =>
+          void load(oldest)
+            .then((older) => setPage((shown) => ({ entries: [...older.entries, ...shown.entries], more: older.more })))
+            .catch((failure: unknown) => report(failureText(failure)))
+      : undefined
+  return { entries: page.entries, earlier }
+}
+
+/** The transcript's parts: the history pages loaded so far, then the snapshot and what streamed since. */
+function useTranscript(thread: string, projection: ConversationProjection | undefined, report: (text: string) => void) {
+  const history = useHistory(thread, projection === undefined ? undefined : historyStart(projection), report)
+  const parts = useMemo(
+    () =>
+      projection === undefined
+        ? []
+        : conversationParts({ ...projection, messages: [...entryMessages(history.entries), ...projection.messages] }),
+    [projection, history.entries],
+  )
+  return { parts, earlier: history.earlier }
 }
 
 /** What "Share to main" asks a thread's agent; it answers with `share_to_main`. */
@@ -158,7 +208,7 @@ function ChatView({ thread }: { readonly thread: string }) {
   const view = useRef<HTMLElement>(null)
   const dock = useRef<HTMLDivElement>(null)
   useDockInsets(view, dock)
-  const parts = useMemo(() => (projection === undefined ? [] : conversationParts(projection)), [projection])
+  const { parts, earlier } = useTranscript(thread, projection, report)
   const waiting = useMemo(() => openInteractions(parts), [parts])
   const usage = useUsageToday(running)
   const context = useMemo(() => contextTokens(projection?.messages ?? []), [projection])
@@ -191,6 +241,7 @@ function ChatView({ thread }: { readonly thread: string }) {
           key={thread}
           parts={parts}
           canSwitchModel={(choice?.options.length ?? 0) > 1}
+          {...(earlier && { onEarlier: earlier })}
           {...(thread === MAIN_THREAD && { onBranch: (entry: number) => void create(entry) })}
         />
         <div className="chat-dock" ref={dock}>

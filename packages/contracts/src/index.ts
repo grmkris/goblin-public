@@ -95,6 +95,10 @@ export type ResidentStatus = typeof ResidentStatus.Type
 export const UsageToday = Schema.Struct({ used: Schema.Number, limit: Schema.Number, resetsAt: Schema.Number })
 export type UsageToday = typeof UsageToday.Type
 
+/** Main's memory: the messages it remembers, and how many of them its newest view summarizes. */
+export const MemoryStatus = Schema.Struct({ messages: Schema.Number, summarized: Schema.Number })
+export type MemoryStatus = typeof MemoryStatus.Type
+
 /**
  * One question the agent asks the owner with `ask_user`. A choice question (`single`, `multi`) offers 2 to 8 options;
  * `allowOther` adds a free answer. The tool result's details are `{ kind: 'question', questions }`.

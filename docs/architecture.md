@@ -203,6 +203,34 @@ An App's own call to a tool the owner has not granted does not fail at once (`co
 waits on a card the host draws in the App's chrome, naming the exact tool. Allow grants that one tool and runs the
 same call again. "Not now", or two minutes without an answer, returns the denial to the App.
 
+## Main's memory
+
+Main never ends, so it keeps a memory instead of an ever-longer context (`memory/`, after VictorTaelin's OptChat
+gist). Every message of main since the memory was activated is logged in `app_memory_log` with its Pi entry id:
+- the owner's and other authors' words;
+- the agent's replies, with their tool calls;
+- tool results.
+
+System entries and thinking are never logged.
+
+A background builder task (`pi/memory.ts`), which main starts after each of its responses, summarizes each message in
+order into one line of about 512 bytes with the memory model. It then merges adjacent lines in pairs into a binary
+tree (`app_memory_nodes`). A short message, or a pair that fits, is its own line word for word, with no model call.
+The view folds the tree into 48 KB (`memory/tree.ts`): one line per recent message, and older lines covering more
+messages, merging the pair that is oldest relative to its size first. Only the merges the view needs are built.
+
+The builder writes the view into main as an `app.memory` entry, a Pi write submission whose head is main's newest
+input, which is how Pi places a compaction. The model then sees the view and, verbatim, everything from that input
+on, so nothing waits for the summarizer. `zoom(id, n)` (the `purrable.recall` extension) opens a line into the two
+under it, down to a single message. It is offered in main and in threads branched from it; a branched thread is
+bounded at its fork.
+
+The summarizer's tokens count toward the budget, and the builder stops once the budget is spent. The memory begins at
+activation: older history stays in Pi, out of the model's context once the first view lands. Once a view or a
+compaction starts a conversation's snapshot later, the web reads the earlier entries through
+`GET /api/threads/:id/history?before=<entry>`; it never shows the marker entries themselves. Settings shows how many
+messages main remembers.
+
 ## Models
 
 Each user picks the model their agent answers with, in the composer. The deployment offers `PURRABLE_MODEL_ID` (the
@@ -214,7 +242,7 @@ when that conversation already has the model. Every offered model is registered 
 Pi's `Models` under the one `purrable-litellm` provider. A failed model call shows its reason in the chat, and a
 quota or outage failure points at the picker.
 
-Housekeeping nobody asked the agent for (naming threads) runs on the memory model, `PURRABLE_MEMORY_MODEL`: the
+Housekeeping nobody asked the agent for (naming threads, summarizing main's memory) runs on the memory model, `PURRABLE_MEMORY_MODEL`: the
 cheapest offered model, or the default when it is unset or not offered (`memory/model.ts`). Its tokens count toward
 the owner's daily budget like any other.
 
@@ -254,7 +282,7 @@ Purrable is an MCP server at `/mcp`, the protected resource of Better Auth's `mc
 | Store | Tables | Owner |
 | --- | --- | --- |
 | Agent DO SQLite | `pi_*`, `cf_agents_*` and the other vendor tables | Pi, Agents SDK. Never touched. |
-| Agent DO SQLite | `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants`, `app_resident`, `app_conversations`, `app_usage_daily`, `app_metadata` | Drizzle, inline migrations in `storage/migrations.ts` |
+| Agent DO SQLite | `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants`, `app_resident`, `app_conversations`, `app_memory_log`, `app_memory_nodes`, `app_memory_state`, `app_usage_daily`, `app_metadata` | Drizzle, inline migrations in `storage/migrations.ts` |
 | D1 `PurrableAuth` | `user`, `session`, `jwks`, `oauth*` | Better Auth, `apps/runtime/migrations` |
 
 Better Auth lives in D1 because the Durable SQLite adapter's async transactions and affected-row semantics do not

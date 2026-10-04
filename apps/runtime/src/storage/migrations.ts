@@ -56,6 +56,16 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'DROP TABLE app_client_sessions',
     ].join(BREAK),
   },
+  {
+    key: '20261012000000_memory',
+    tables: ['app_memory_log', 'app_memory_nodes', 'app_memory_state', 'app_conversations'],
+    sql: [
+      `CREATE TABLE app_memory_log (idx INTEGER PRIMARY KEY NOT NULL, entry_id INTEGER NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('user', 'talk', 'echo')))`,
+      'CREATE TABLE app_memory_nodes (level INTEGER NOT NULL, idx INTEGER NOT NULL, text TEXT NOT NULL, bytes INTEGER NOT NULL, PRIMARY KEY (level, idx))',
+      'CREATE TABLE app_memory_state (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), origin_entry INTEGER NOT NULL, view_through INTEGER NOT NULL)',
+      'ALTER TABLE app_conversations ADD COLUMN recall_through INTEGER',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

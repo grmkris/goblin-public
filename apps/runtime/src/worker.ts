@@ -62,6 +62,7 @@ type Route = (request: Request, agent: DurableObjectStub<AgentRpc>) => Promise<R
 const agentRoutes: Readonly<Record<string, Route>> = {
   'GET /api/agent/resident': async (_request, agent) => json(unwrap(await agent.residentStatus())),
   'GET /api/agent/usage': async (_request, agent) => json(unwrap(await agent.usageToday())),
+  'GET /api/agent/memory': async (_request, agent) => json(unwrap(await agent.memoryStatus())),
   'GET /api/agent/model': async (_request, agent) => json(unwrap(await agent.modelChoice())),
   'PUT /api/agent/model': async (request, agent) =>
     json(unwrap(await agent.chooseModel((await readJson(request, ModelPick)).model))),
@@ -87,6 +88,8 @@ const threadRoutes: Readonly<
     json({ stopped: unwrap(await agent.stop(thread, (await readJson(request, Stop)).operationId)) }),
   'GET events': (_request, agent, thread) => agent.fetch(`https://agent/threads/${thread}/events`),
   'GET snapshot': (_request, agent, thread) => agent.fetch(`https://agent/threads/${thread}/snapshot`),
+  'GET history': (request, agent, thread) =>
+    agent.fetch(`https://agent/threads/${thread}/history${new URL(request.url).search}`),
   'PATCH ': async (request, agent, thread) =>
     json(unwrap(await agent.updateThread(thread, await readJson(request, UpdateThread)))),
 }

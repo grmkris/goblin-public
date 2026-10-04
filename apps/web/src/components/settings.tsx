@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Schema } from 'effect'
-import { InboundClient, ResidentStatus } from '@purrable/contracts'
+import { InboundClient, MemoryStatus, ResidentStatus } from '@purrable/contracts'
 import {
   Alert,
   AlertDescription,
@@ -26,6 +26,7 @@ import { useUsageToday } from './use-usage.ts'
 
 const decodeResident = Schema.decodeUnknownSync(ResidentStatus)
 const decodeClients = Schema.decodeUnknownSync(Schema.Array(InboundClient))
+const decodeMemory = Schema.decodeUnknownSync(MemoryStatus)
 const day = (seconds: number | undefined): string =>
   seconds === undefined ? '—' : new Date(seconds * 1000).toLocaleDateString()
 
@@ -51,6 +52,39 @@ function UsageCard() {
               <Count value={budgetFraction(usage)} percent className="ml-auto" />
             </p>
           </Meter>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Main's memory: what the agent remembers of the main conversation, and how much of it it reads as summaries. */
+function MemoryCard({ onError }: { readonly onError: (message: string) => void }) {
+  const [status, setStatus] = useState<MemoryStatus>()
+  useEffect(() => {
+    void request('/api/agent/memory')
+      .then((data) => setStatus(decodeMemory(data)))
+      .catch((failure: unknown) => onError(failureText(failure)))
+  }, [onError])
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Memory</CardTitle>
+        <CardDescription>
+          Your agent remembers the main conversation in full. It reads older messages as one-line summaries it can open
+          again, so the conversation never has to end.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {status === undefined ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
+          <p className="flex items-baseline gap-1.5 text-sm text-muted-foreground">
+            <Count value={status.messages} size="display" />
+            <span>
+              messages remembered, <Count value={status.summarized} /> of them as summaries
+            </span>
+          </p>
         )}
       </CardContent>
     </Card>
@@ -224,6 +258,7 @@ export function Settings() {
       )}
       <ResidentCard onError={setError} />
       <UsageCard />
+      <MemoryCard onError={setError} />
       <PasskeysCard onError={setError} />
       <ClientsCard onError={setError} />
       <DeleteAccountCard onError={setError} />

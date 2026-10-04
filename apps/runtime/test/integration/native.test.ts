@@ -198,8 +198,9 @@ const Destroy = Schema.Struct({
   resident: Schema.Struct({ ok: Schema.Literal(true), value: Status }),
 })
 
-/** A transcript's turns, without the system prompt entries Pi places among them. */
-const turns = (lines: readonly string[]) => lines.filter((line) => !line.startsWith('pi.system'))
+/** A transcript's turns, without the system prompt and memory view entries placed among them for the model. */
+const turns = (lines: readonly string[]) =>
+  lines.filter((line) => !line.startsWith('pi.system') && !line.startsWith('app.memory'))
 
 const ModelRequest = Schema.Struct({
   messages: Schema.Array(Schema.Struct({ role: Schema.String, text: Schema.String })),
@@ -279,6 +280,36 @@ harness.test(
     expect(result.mainRequest.tools).not.toContain('share_to_main')
     // The cheap model (scripted: it echoes the last line) was asked to name the thread's latest exchange.
     expect(result.title).toBe('echo: Agent: done: Shared with main.')
+  }),
+)
+
+const MemoryRun = Schema.Struct({
+  summarized: Schema.Number,
+  request: ModelRequest,
+  zoomed: Schema.Struct({ status: Schema.Literal('done'), text: Schema.String }),
+  view: Schema.String,
+  earlier: Schema.Array(Schema.String),
+})
+
+harness.test(
+  'local workerd: main reads its earlier turns as a memory view, the newest verbatim, and zooms into it',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `memory-${yield* nextInt}`
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/memory?name=${name}`))
+    const result = yield* Schema.decodeUnknownEffect(MemoryRun)(yield* Effect.promise(() => response.json()))
+    expect(result.summarized).toBeGreaterThanOrEqual(2)
+    // Messages are short here, so each is its own summary line, word for word (no model call).
+    expect(requestTurns(result.request)).toEqual([
+      '<memory>\n0+1|user: remember alpha\n1+1|talk: echo: remember alpha\n</memory>',
+      'remember beta',
+      'echo: remember beta',
+      'what do you remember?',
+    ])
+    expect(result.request.tools).toContain('zoom')
+    expect(result.zoomed.text).toBe('done: 0+1|user: remember alpha')
+    expect(result.view).toBe('app.memory')
+    expect(result.earlier).toContain('pi.user: "remember alpha"')
   }),
 )
 

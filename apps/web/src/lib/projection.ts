@@ -178,19 +178,36 @@ function entryMessage(message: Record<string, unknown>, id: string): ChatMessage
   return []
 }
 
+/**
+ * Entries that start the model's context (Purrable's memory view, Pi's compaction summary and reset): they are written
+ * for the model, so the transcript leaves them out.
+ */
+const MARKERS = new Set(['app.memory', 'pi.compaction', 'pi.reset'])
+
 /** Committed entries never change, so each one is projected once and reused while it stays in the transcript. */
 const projected = new WeakMap<Record<string, unknown>, readonly ChatMessage[]>()
 function messagesOf(entry: Record<string, unknown>): readonly ChatMessage[] {
   const cached = projected.get(entry)
   if (cached !== undefined) return cached
+  if (MARKERS.has(identifier(entry.kind))) return []
   const messages = records(entry.model).flatMap((message, index) =>
     entryMessage(message, `${identifier(entry.id)}:${index}`),
   )
   projected.set(entry, messages)
   return messages
 }
-function entryMessages(entries: readonly Record<string, unknown>[]): ChatMessage[] {
+/** The messages of entries in transcript order: a snapshot's, or a page of history before it. */
+export function entryMessages(entries: readonly Record<string, unknown>[]): ChatMessage[] {
   return entries.flatMap(messagesOf)
+}
+
+/**
+ * Where the snapshot's transcript starts when a marker cut it (the model sees a memory view or summary instead of what
+ * came before): the first entry kept after the marker. History before it is read in pages.
+ */
+export function historyStart(projection: ConversationProjection): number | undefined {
+  const head = projection.entries[0]?.head
+  return isNumber(head) ? head : undefined
 }
 
 function liveTools(value: unknown): LiveTool[] {

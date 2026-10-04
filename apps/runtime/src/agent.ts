@@ -21,6 +21,8 @@ import { LITELLM_STREAMS, MODEL_PROVIDER, makePiModels } from './pi/model.ts'
 import { personaExtension } from './pi/persona.ts'
 import { subagentsExtension } from './pi/subagents.ts'
 import { threadExtension } from './pi/thread.ts'
+import { memoryExtensions } from './pi/memory.ts'
+import { MainMemory } from './memory/memory.ts'
 import { CheapModel } from './memory/model.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { ResidentAuthority } from './resident.ts'
@@ -32,6 +34,7 @@ import {
   Budget,
   Conversations,
   Mcp,
+  Memory,
   Models,
   Resident,
   agentLayer,
@@ -82,6 +85,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   readonly harness: PiHarness
   readonly #pi: PiModels
   readonly #thread: Extension
+  readonly #memory: ReturnType<typeof memoryExtensions>
   readonly #applied: Applied = new Map()
   #runtime: Promise<Runtime> | undefined
 
@@ -93,7 +97,9 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     // A subagent gets the persona and the owner's tools, nothing else: no subagents of its own, no ask_user.
     const subagents = subagentsExtension(run, [personaExtension, ...tools])
     this.#thread = threadExtension(run)
-    this.harness = makePiHarness(this.#pi, [...tools, subagents], [this.#thread])
+    this.#memory = memoryExtensions(run)
+    const { memory, recall } = this.#memory
+    this.harness = makePiHarness(this.#pi, [...tools, subagents], [this.#thread, memory, recall])
     this.lifecycle.use(this.harness)
   }
 
@@ -130,8 +136,13 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       const namer = new CheapModel(this.#pi.models, memoryModelId(this.env.MEMORY_MODEL, options), (tokens) =>
         budget.record(tokens, nowSeconds()),
       )
-      const conversations = new ConversationRegistry(db, this.harness, { extension: this.#thread, namer }, nowSeconds())
-      return ManagedRuntime.make(agentLayer(host, new ResidentAuthority(db), conversations, budget, models))
+      const memory = new MainMemory(db, this.harness, namer)
+      const { recall } = this.#memory
+      await memory.activate([this.#memory.memory, recall])
+      const kit = { thread: this.#thread, recall, memory, namer }
+      const conversations = new ConversationRegistry(db, this.harness, kit, nowSeconds())
+      const resident = new ResidentAuthority(db)
+      return ManagedRuntime.make(agentLayer({ host, resident, conversations, budget, models, memory }))
     })()
     this.#runtime.catch(() => {
       this.#runtime = undefined
@@ -229,6 +240,12 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
         const budget = yield* Budget
         return budget.today(yield* nowSecondsEffect)
       }),
+    )
+  }
+
+  memoryStatus() {
+    return this.#owner(
+      Memory.use((memory) => Effect.succeed({ messages: memory.size(), summarized: memory.viewThrough() })),
     )
   }
 
@@ -414,13 +431,22 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return JSON.parse(JSON.stringify(snapshot)) as JsonObject
   }
 
-  /** `/threads/<id>/events` (SSE) and `/threads/<id>/snapshot`, for registered conversations only. */
+  /**
+   * `/threads/<id>/events` (SSE), `/threads/<id>/snapshot` and `/threads/<id>/history?before=<entry>`, for registered
+   * conversations only.
+   */
   override async onRequest(request: Request): Promise<Response> {
-    const [, thread = '', view = ''] =
-      /^\/threads\/(\d{1,12})\/(events|snapshot)$/u.exec(new URL(request.url).pathname) ?? []
+    const url = new URL(request.url)
+    const [, thread = '', view = ''] = /^\/threads\/(\d{1,12})\/(events|snapshot|history)$/u.exec(url.pathname) ?? []
     const session = await this.#exit(registered(thread))
     if (view === '' || Exit.isFailure(session)) return Response.json({ error: 'NotFound' }, { status: 404 })
     if (view === 'events') return piEventResponse(await this.harness.session(session.value).events())
-    return Response.json(await this.sessionSnapshot(session.value))
+    if (view === 'snapshot') return Response.json(await this.sessionSnapshot(session.value))
+    const before = Number(url.searchParams.get('before'))
+    if (!Number.isSafeInteger(before) || before < 1) return Response.json({ error: 'InvalidInput' }, { status: 400 })
+    const page = await this.#exit(
+      Conversations.use((conversations) => attempt(() => conversations.history(session.value, before))),
+    )
+    return Exit.isSuccess(page) ? Response.json(page.value) : Response.json({ error: 'NotFound' }, { status: 404 })
   }
 }

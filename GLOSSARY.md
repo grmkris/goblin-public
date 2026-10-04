@@ -11,8 +11,10 @@
   owner shares it: `share_to_main` writes a note main sees and does not answer.
 - **Subagent**: a conversation main or a thread starts with the `subagent` tool to do a job in the background; its
   answer comes back to the spawner as an input labelled with its name.
-- **Memory model**: `PURRABLE_MEMORY_MODEL`, the cheap offered model for housekeeping (thread titles); its tokens
-  count toward the budget.
+- **Memory view**: main's memory as the model reads it: an `app.memory` entry of one-line summaries (48 KB) that
+  starts main's context, followed by the newest exchange verbatim. `zoom` opens a line.
+- **Memory model**: `PURRABLE_MEMORY_MODEL`, the cheap offered model for housekeeping (thread titles, main's memory);
+  its tokens count toward the budget.
 - **Conversation registry**: `app_conversations`, the conversations a request may open (main, threads, subagents).
 - **Resident authority**: the agent's own permission to use the owner's MCP connections when the owner is not
   present. Lasts 30 days, renewed by owner activity, revocable in Settings.

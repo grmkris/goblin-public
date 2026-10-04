@@ -10,7 +10,7 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from '@purrable/ui'
-import { SplitIcon } from 'lucide-react'
+import { HistoryIcon, SplitIcon } from 'lucide-react'
 import type { Part } from '../lib/parts.ts'
 import { entryOfPart } from '../lib/threads.ts'
 import { PartView } from './parts/registry.tsx'
@@ -37,16 +37,25 @@ export function Conversation({
   parts,
   canSwitchModel,
   onBranch,
+  onEarlier,
 }: {
   readonly parts: readonly Part[]
   readonly canSwitchModel: boolean
   readonly onBranch?: (entry: number) => void
+  /** Loads the page of history before the oldest part shown, while there is one. */
+  readonly onEarlier?: () => void
 }) {
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
       <MessageScroller>
         <MessageScrollerViewport aria-label="Conversation">
           <MessageScrollerContent>
+            {onEarlier !== undefined && (
+              <button type="button" className="history-action" onClick={onEarlier}>
+                <HistoryIcon aria-hidden />
+                Earlier messages
+              </button>
+            )}
             {parts.length === 0 ? (
               <Empty className="m-auto">
                 <EmptyHeader>

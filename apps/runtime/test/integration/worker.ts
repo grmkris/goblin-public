@@ -181,7 +181,12 @@ const entries = async (agent: DurableObjectStub<PersonalAgentProbe>): Promise<nu
   return body.snapshot?.entries?.length ?? -1
 }
 
-type Entry = { readonly id: number; readonly kind: string; readonly model?: readonly { readonly content?: unknown }[] }
+type Entry = {
+  readonly id: number
+  readonly kind: string
+  readonly head?: number
+  readonly model?: readonly { readonly content?: unknown }[]
+}
 
 /** A conversation's snapshot through the same route the Worker proxies (`/threads/<id>/snapshot`). */
 const snapshotOf = async (
@@ -189,13 +194,21 @@ const snapshotOf = async (
   session: string,
 ): Promise<{ entries?: Entry[] }> => (await agent.fetch(`https://agent/threads/${session}/snapshot`)).json()
 
-/** The text of a conversation's entries the model sees, in order: `kind: text`. */
-async function transcript(agent: DurableObjectStub<PersonalAgentProbe>, session: string): Promise<string[]> {
-  const snapshot = await snapshotOf(agent, session)
-  return (snapshot.entries ?? []).flatMap((entry) =>
-    (entry.model ?? []).map((message) => `${entry.kind}: ${JSON.stringify(message.content)}`),
-  )
-}
+/** Entries as `kind: content`, one line per model message. */
+const linesOf = (records: readonly Entry[]) =>
+  records.flatMap((entry) => (entry.model ?? []).map((message) => `${entry.kind}: ${JSON.stringify(message.content)}`))
+
+/** A conversation's history before entry `before`, through the route the Worker proxies (`/threads/<id>/history`). */
+const historyOf = async (
+  agent: DurableObjectStub<PersonalAgentProbe>,
+  session: string,
+  before = 2 ** 31,
+): Promise<{ entries?: Entry[] }> =>
+  (await agent.fetch(`https://agent/threads/${session}/history?before=${before}`)).json()
+
+/** A conversation's newest entries as people read them, in order, whatever the model's context starts with now. */
+const transcript = async (agent: DurableObjectStub<PersonalAgentProbe>, session: string): Promise<string[]> =>
+  linesOf((await historyOf(agent, session)).entries ?? [])
 
 /**
  * A thread branched at main's answer sees main up to there and goes on alone: main never sees the thread's turn, and
@@ -288,6 +301,39 @@ async function subagentSequence(agent: DurableObjectStub<PersonalAgentProbe>): P
   })
 }
 
+/**
+ * Main remembers: after two turns the builder places a view of the first, so the next request reads the view, then
+ * the second turn verbatim; `zoom` opens a line of it, and the history route still serves what the view replaced.
+ */
+async function memorySequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
+  for (const [input, operation] of [
+    ['remember alpha', 'memory-1'],
+    ['remember beta', 'memory-2'],
+  ] as const) {
+    await agent.submit(MAIN_THREAD, input, operation)
+    await agent.settle(MAIN_THREAD, operation)
+  }
+  const summarized = await until(
+    async () => {
+      const status = await agent.memoryStatus()
+      return status.ok ? status.value.summarized : 0
+    },
+    (count) => count >= 2,
+  )
+  await agent.submit(MAIN_THREAD, 'what do you remember?', 'memory-3')
+  await agent.settle(MAIN_THREAD, 'memory-3')
+  await agent.submit(MAIN_THREAD, 'call zoom {"id":0,"n":1}', 'memory-4')
+  const zoomed = await agent.settle(MAIN_THREAD, 'memory-4')
+  const view = (await snapshotOf(agent, MAIN_THREAD)).entries?.[0]
+  return Response.json({
+    summarized,
+    request: await agent.requestFor('what do you remember?'),
+    zoomed,
+    view: view?.kind,
+    earlier: linesOf((await historyOf(agent, MAIN_THREAD, view?.head)).entries ?? []),
+  })
+}
+
 /** Account deletion's agent half: state before, what the caller of deleteAgentData sees, state after. */
 async function destroySequence(env: Env, name: string): Promise<Response> {
   const agent = env.AGENTS.getByName(name)
@@ -318,6 +364,7 @@ export default {
     if (new URL(request.url).pathname === '/branch') return branchSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/share') return shareSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/subagent') return subagentSequence(env.AGENTS.getByName(name))
+    if (new URL(request.url).pathname === '/memory') return memorySequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/binding')
       return env.AGENTS.getByName(name)
         .bindingProbe()

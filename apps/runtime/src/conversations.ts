@@ -1,9 +1,10 @@
 import { MAIN_THREAD, type ThreadView } from '@purrable/contracts'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import type { Conversation, Extension } from '@earendil-works/pi-durable'
+import type { Conversation, EntryRecord, Extension } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import { InvalidInput, NotFound } from './http/errors.ts'
+import type { MainMemory } from './memory/memory.ts'
 import type { CheapModel } from './memory/model.ts'
 import { authoredContent } from './pi/content.ts'
 import { BACKGROUND, conversationId, entryId } from './pi/context.ts'
@@ -12,6 +13,9 @@ import { appConversations } from './storage/schema.ts'
 
 type Row = typeof appConversations.$inferSelect
 export type ThreadChange = { readonly title?: string | undefined; readonly archived?: boolean | undefined }
+
+/** Entries in one page of a conversation's history. */
+const HISTORY_PAGE = 40
 
 /** Entries a thread may branch from: something the owner or the agent said, never a tool or system record. */
 const BRANCHABLE = new Set(['pi.user', 'pi.assistant'])
@@ -26,8 +30,16 @@ const cleanTitle = (raw: string): string =>
     .trim()
     .slice(0, 60)
 
-/** What threads need beyond the registry: their own extension, and the cheap model that names them. */
-export type ThreadKit = { readonly extension: Extension; readonly namer: CheapModel }
+/**
+ * What threads need beyond the registry: their own extension, `recall` for the ones branched from main (they start
+ * with main's memory view), the memory that bounds their zooms, and the cheap model that names them.
+ */
+export type ThreadKit = {
+  readonly thread: Extension
+  readonly recall: Extension
+  readonly memory: MainMemory
+  readonly namer: CheapModel
+}
 
 /**
  * The agent's conversations the owner can reach. Pi owns every transcript; this registry is what Pi does not keep
@@ -75,13 +87,11 @@ export class ConversationRegistry {
     const id = entryId(entry)
     const [at] = (await main.entries({ minEntryId: id, maxEntryId: id }, 1, undefined, BACKGROUND)).items
     if (at === undefined || !BRANCHABLE.has(at.kind)) throw new InvalidInput({ reason: 'branch_entry' })
-    const fork = await main.fork(
-      at.id,
-      { ownership: { kind: 'ownerless' }, agent: { extensions: { add: [this.#kit.extension] } } },
-      BACKGROUND,
-    )
+    const extensions = { add: [this.#kit.thread, this.#kit.recall] }
+    const fork = await main.fork(at.id, { ownership: { kind: 'ownerless' }, agent: { extensions } }, BACKGROUND)
+    const recallThrough = this.#kit.memory.sizeAt(at.id)
     return this.#insert(
-      { sessionId: String(fork.id), kind: 'thread', parentSession: MAIN_THREAD, forkEntry: at.id },
+      { sessionId: String(fork.id), kind: 'thread', parentSession: MAIN_THREAD, forkEntry: at.id, recallThrough },
       now,
     )
   }
@@ -89,8 +99,14 @@ export class ConversationRegistry {
   /** An empty thread. */
   async create(now: number): Promise<ThreadView> {
     const session = await this.#harness.sessions.create()
-    await (await this.#conversation(session.id)).configure({ extensions: { add: [this.#kit.extension] } }, BACKGROUND)
+    await (await this.#conversation(session.id)).configure({ extensions: { add: [this.#kit.thread] } }, BACKGROUND)
     return this.#insert({ sessionId: session.id, kind: 'thread', parentSession: MAIN_THREAD }, now)
+  }
+
+  /** How far `zoom` reaches into main's memory from `session`: all of it from main, up to its fork from a thread. */
+  recallLimit(session: string, mainSize: number): number {
+    const row = this.#row(session)
+    return row?.kind === 'main' ? mainSize : (row?.recallThrough ?? 0)
   }
 
   /** Registers a subagent's conversation under the one that started it; a reporter repeats it, so it is idempotent. */
@@ -148,6 +164,20 @@ export class ConversationRegistry {
     } finally {
       this.#naming.delete(thread)
     }
+  }
+
+  /**
+   * A page of a conversation's history before entry `before`, oldest first: what the model no longer sees once a memory
+   * view or a compaction starts its context later, but the people in the conversation still read.
+   */
+  async history(
+    session: string,
+    before: number,
+  ): Promise<{ readonly entries: readonly EntryRecord[]; readonly more: boolean }> {
+    const page = await (
+      await this.#conversation(this.require(session))
+    ).entries({ maxEntryId: entryId(before - 1) }, HISTORY_PAGE, undefined, BACKGROUND)
+    return { entries: page.items.toReversed(), more: page.next !== undefined }
   }
 
   async #conversation(session: string): Promise<Conversation> {

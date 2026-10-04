@@ -10,7 +10,8 @@ export type TranscriptMessage = {
   readonly author?: string
 }
 
-const textBlocks = (content: unknown): string[] => {
+/** The non-empty text blocks of message content (a plain string is one block). */
+export const textBlocks = (content: unknown): string[] => {
   if (Predicate.isString(content)) return [content]
   if (!Array.isArray(content)) return []
   return content.flatMap((block: unknown) =>
