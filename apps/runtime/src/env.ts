@@ -4,6 +4,7 @@ import type { RpcResult } from './http/rpc.ts'
 import type { Grant, GrantCapability } from './mcp/grants.ts'
 import type { ResidentStatus, ServerView, ToolView, UsageToday } from '@purrable/contracts'
 import type { TranscriptMessage } from './pi/transcript.ts'
+import type { MailBinding } from './auth/mail.ts'
 
 /** Owner-facing RPC of the Agent DO. The Worker authenticates the owner before calling any of these. */
 export interface AgentRpcMethods {
@@ -57,6 +58,9 @@ export interface RuntimeEnv {
   readonly AUTH_DB: D1Database
   readonly APP_URL: string
   readonly BETTER_AUTH_SECRET: string
+  /** Cloudflare Email Sending; with `MAIL_SENDER` it turns on email verification (`auth/mail.ts`). */
+  readonly MAIL?: MailBinding
+  readonly MAIL_SENDER?: string
   /** `open`, `invite` (needs `SIGNUP_INVITE_CODE`) or `closed`; anything else counts as `closed`. */
   readonly SIGNUP_MODE?: string
   readonly SIGNUP_INVITE_CODE?: string

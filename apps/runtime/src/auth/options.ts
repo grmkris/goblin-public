@@ -5,6 +5,7 @@ import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { constantTimeEqual } from 'better-auth/crypto'
 import { jwt } from 'better-auth/plugins'
 import type { RuntimeEnv } from '../env.ts'
+import { mailerOf, verificationMail } from './mail.ts'
 import { passwordHasher } from './password.ts'
 
 const AUTH_BASE_PATH = '/api/auth'
@@ -44,7 +45,17 @@ export const markLoopbackClientsNative = (body: unknown): void => {
     Object.assign(body, { application_type: 'native' })
 }
 
-export type AuthEnvironment = Pick<RuntimeEnv, 'APP_URL' | 'BETTER_AUTH_SECRET' | 'SIGNUP_MODE' | 'SIGNUP_INVITE_CODE'>
+export type AuthEnvironment = Pick<
+  RuntimeEnv,
+  'APP_URL' | 'BETTER_AUTH_SECRET' | 'SIGNUP_MODE' | 'SIGNUP_INVITE_CODE' | 'MAIL' | 'MAIL_SENDER'
+>
+
+/** Per-IP limits on the endpoints that create accounts or send mail; everything else keeps the default window. */
+const RATE_LIMITS = {
+  '/sign-up/email': { window: 3600, max: 10 },
+  '/send-verification-email': { window: 3600, max: 5 },
+  '/sign-in/email': { window: 300, max: 20 },
+} as const
 /**
  * Better Auth is instantiated per request: Worker I/O promises cannot outlive their request. The D1 adapter owns
  * auth tables; application Drizzle never adopts/migrates them. mcp() already includes OAuth provider functionality.
@@ -63,6 +74,7 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
     clientRegistrationAllowedResources: [resource],
     clientRegistrationDefaultScopes: [...MCP_SCOPES],
   })
+  const mailer = mailerOf(env)
   return {
     appName: 'purrable',
     baseURL: env.APP_URL,
@@ -71,7 +83,31 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
     database,
     trustedOrigins: [env.APP_URL],
     logger: { disabled: true },
-    emailAndPassword: { enabled: true, minPasswordLength: 12, maxPasswordLength: 256, password: passwordHasher },
+    emailAndPassword: {
+      enabled: true,
+      minPasswordLength: 12,
+      maxPasswordLength: 256,
+      password: passwordHasher,
+      // With a mail sender, an account works only after its owner opens the link sent to the address.
+      requireEmailVerification: mailer !== undefined,
+    },
+    ...(mailer === undefined
+      ? {}
+      : {
+          emailVerification: {
+            sendOnSignUp: true,
+            sendOnSignIn: true,
+            autoSignInAfterVerification: true,
+            expiresIn: 3600,
+            sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
+              await mailer.binding.send(
+                verificationMail({ from: mailer.from, to: user.email, url, appUrl: env.APP_URL }),
+              )
+            },
+          },
+        }),
+    rateLimit: { enabled: true, storage: 'database' as const, window: 60, max: 100, customRules: RATE_LIMITS },
+    advanced: { ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] } },
     hooks: {
       before: createAuthMiddleware(async (context) => {
         if (context.path === '/oauth2/register') {

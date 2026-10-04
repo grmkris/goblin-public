@@ -35,12 +35,16 @@ function useSignupMode(): SignupMode {
   return mode
 }
 
-async function createAccount(email: string, password: string, inviteCode: string): Promise<void> {
+/** Creates the account; `false` when it must be confirmed by email first (no session was started). */
+async function createAccount(email: string, password: string, inviteCode: string): Promise<boolean> {
   try {
-    await request('/api/auth/sign-up/email', {
-      body: { email, password, name: email.split('@')[0] ?? email },
+    // The confirmation link brings the user back here, so an MCP client's authorization can continue.
+    const callbackURL = `${window.location.pathname}${window.location.search}`
+    const created = await request('/api/auth/sign-up/email', {
+      body: { email, password, name: email.split('@')[0] ?? email, callbackURL },
       headers: inviteCode ? { 'x-invite-code': inviteCode } : {},
     })
+    return typeof record(created)?.token === 'string'
   } catch (cause) {
     if (cause instanceof ApiFailure && cause.status === 403)
       throw new Error('Sign-up needs a valid invite code.', { cause })
@@ -55,12 +59,20 @@ function useAuthentication(onAuthenticated: () => void) {
   const [inviteCode, setInviteCode] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   async function signIn(create: boolean): Promise<void> {
     setPending(true)
     setError('')
+    setNotice('')
     try {
-      if (create) await createAccount(email, password, inviteCode)
+      if (create && !(await createAccount(email, password, inviteCode))) {
+        setPassword('')
+        setInviteCode('')
+        setNotice(`We sent a confirmation link to ${email}. Open it to finish; it signs you in.`)
+        return
+      }
       const { data, error: failure } = await authClient.signIn.email({ email, password })
+      if (failure?.status === 403) throw new Error(`Confirm your email first: we sent a new link to ${email}.`)
       if (failure) throw new Error(failure.message ?? 'Sign in failed')
       setPassword('')
       setInviteCode('')
@@ -75,7 +87,7 @@ function useAuthentication(onAuthenticated: () => void) {
       setPending(false)
     }
   }
-  return { email, setEmail, password, setPassword, inviteCode, setInviteCode, pending, error, signIn }
+  return { email, setEmail, password, setPassword, inviteCode, setInviteCode, pending, error, notice, signIn }
 }
 type AuthenticationView = ReturnType<typeof useAuthentication>
 
@@ -175,6 +187,11 @@ export function Authentication({ onAuthenticated }: { readonly onAuthenticated: 
         {view.error && (
           <Alert variant="destructive">
             <AlertDescription>{view.error}</AlertDescription>
+          </Alert>
+        )}
+        {view.notice && (
+          <Alert>
+            <AlertDescription>{view.notice}</AlertDescription>
           </Alert>
         )}
       </CardFooter>

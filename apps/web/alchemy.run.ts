@@ -14,6 +14,13 @@ export default Alchemy.Stack(
   Effect.gen(function* () {
     const stage = resolveStage(yield* Alchemy.Stage)
     const appUrl = yield* Config.String('PURRABLE_APP_URL').pipe(Config.withDefault('http://localhost:18971'))
+    const signupMode = yield* Config.String('PURRABLE_SIGNUP_MODE').pipe(Config.withDefault('closed'))
+    // An address on an apex onboarded for Cloudflare Email Sending; empty means no mail and no email verification.
+    const mailSender = yield* Config.String('PURRABLE_MAIL_SENDER').pipe(Config.withDefault(''))
+    if (signupMode === 'open' && mailSender === '' && !stage.local)
+      return yield* Effect.die(
+        new Error('open sign-up on a deployed stage needs PURRABLE_MAIL_SENDER (email verification)'),
+      )
     const db = yield* Cloudflare.D1.Database('PurrableAuth', {
       name: stage.resourceName('auth'),
       migrations: fileURLToPath(new URL('../../apps/runtime/migrations', import.meta.url)),
@@ -35,7 +42,13 @@ export default Alchemy.Stack(
         AUTH_DB: db,
         APP_URL: appUrl,
         BETTER_AUTH_SECRET: Config.Redacted('PURRABLE_BETTER_AUTH_SECRET'),
-        SIGNUP_MODE: Config.String('PURRABLE_SIGNUP_MODE').pipe(Config.withDefault('closed')),
+        SIGNUP_MODE: signupMode,
+        ...(mailSender === ''
+          ? {}
+          : {
+              MAIL: Cloudflare.Email.SendEmail('Mail', { allowedSenderAddresses: [mailSender] }),
+              MAIL_SENDER: mailSender,
+            }),
         SIGNUP_INVITE_CODE: Config.Redacted('PURRABLE_SIGNUP_INVITE_CODE').pipe(Config.withDefault(Redacted.make(''))),
         MODEL_BASE_URL: Config.String('PURRABLE_MODEL_BASE_URL').pipe(Config.withDefault('http://127.0.0.1:8317/v1')),
         MODEL_ID: Config.String('PURRABLE_MODEL_ID').pipe(Config.withDefault('gemini-3.8-flash')),
