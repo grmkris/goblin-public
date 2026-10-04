@@ -9,6 +9,7 @@ import type { McpHost } from './mcp/host.ts'
 import type { ResidentAuthority } from './resident.ts'
 import type { ConversationRegistry } from './conversations.ts'
 import type { MainMemory } from './memory/memory.ts'
+import type { SkillLibrary } from './skills/library.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('purrable/Mcp') {}
@@ -17,7 +18,8 @@ export class Conversations extends Context.Service<Conversations, ConversationRe
 export class Budget extends Context.Service<Budget, ModelBudget>()('purrable/Budget') {}
 export class Models extends Context.Service<Models, ModelPicker>()('purrable/Models') {}
 export class Memory extends Context.Service<Memory, MainMemory>()('purrable/Memory') {}
-export type AgentServices = Mcp | Resident | Conversations | Budget | Models | Memory
+export class Skills extends Context.Service<Skills, SkillLibrary>()('purrable/Skills') {}
+export type AgentServices = Mcp | Resident | Conversations | Budget | Models | Memory | Skills
 
 export const agentLayer = (services: {
   readonly host: McpHost
@@ -26,6 +28,7 @@ export const agentLayer = (services: {
   readonly budget: ModelBudget
   readonly models: ModelPicker
   readonly memory: MainMemory
+  readonly skills: SkillLibrary
 }): Layer.Layer<AgentServices> =>
   Layer.mergeAll(
     Layer.succeed(Mcp, services.host),
@@ -34,6 +37,7 @@ export const agentLayer = (services: {
     Layer.succeed(Budget, services.budget),
     Layer.succeed(Models, services.models),
     Layer.succeed(Memory, services.memory),
+    Layer.succeed(Skills, services.skills),
   )
 
 /** Wrap a plain async step so its failure lands in the typed `AppError` channel. */

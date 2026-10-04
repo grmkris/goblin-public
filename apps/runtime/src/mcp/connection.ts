@@ -10,7 +10,14 @@ import {
 } from '@modelcontextprotocol/client'
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/client/validators/cf-worker'
 import { Predicate } from 'effect'
-import { GrantDenied, NotFound, UpstreamMcp } from '../http/errors.ts'
+import { Forbidden, GrantDenied, NotFound, UpstreamMcp } from '../http/errors.ts'
+import {
+  SKILLS_EXTENSION,
+  type SkillEntry,
+  type SkillsGetResult,
+  skillsGetStandard,
+  skillsListStandard,
+} from '../skills/protocol.ts'
 import { mapMcpError } from './errors.ts'
 import { timed } from './log.ts'
 import type { GrantCapability } from './grants.ts'
@@ -39,6 +46,10 @@ export const toolOffered = (tool: Tool, caller: McpCaller): boolean => {
   if (caller === 'human') return true
   return ui.visibility.includes(caller)
 }
+
+/** A server serves skills when it declares the Skills extension together with resources (files are resources). */
+export const offersSkills = (snapshot: McpConnectionSnapshot): boolean =>
+  snapshot.capabilities.resources !== undefined && snapshot.capabilities.extensions?.[SKILLS_EXTENSION] !== undefined
 
 /** The `ui://` resource a tool renders into, when it declares one. */
 export const toolAppResource = (tool: Tool): string | undefined => {
@@ -151,7 +162,7 @@ export class McpConnectionManager {
     const client = new Client(
       { name: 'purrable', version: '0.1.0' },
       {
-        capabilities: {},
+        capabilities: { extensions: { [SKILLS_EXTENSION]: {} } },
         versionNegotiation: { mode: 'auto', probe: { timeoutMs: this.#options.timeoutMs ?? 10_000, maxRetries: 0 } },
         listMaxPages: this.#options.maxPages ?? 64,
         cachePartition: server.serverId,
@@ -326,6 +337,71 @@ export class McpConnectionManager {
       () => connection.client.readResource({ uri }, { timeout: this.#options.timeoutMs ?? 30_000, ...options }),
       maxBytes,
     )
+  }
+
+  /**
+   * Every skill a server lists, when the owner uses skills from it and it declares the Skills extension. Pages are
+   * followed up to the manager's page bound; the shortest `ttlMs` seen is returned for the caller's cache.
+   */
+  async listSkills(
+    serverId: string,
+    options: RequestOptions = {},
+  ): Promise<{ readonly skills: readonly SkillEntry[]; readonly ttlMs: number | undefined }> {
+    const connection = await this.#skillsConnection(serverId, options)
+    if (!offersSkills(connection.snapshot)) return { skills: [], ttlMs: undefined }
+    const skills: SkillEntry[] = []
+    let ttlMs: number | undefined
+    let cursor: string | undefined
+    for (let page = 0; page < (this.#options.maxPages ?? 64); page++) {
+      const params = cursor === undefined ? {} : { cursor }
+      const result = await timed({ step: 'skills', serverId }, () =>
+        this.#remote(connection, () =>
+          connection.client.request({ method: 'skills/list', params }, skillsListStandard, {
+            timeout: this.#options.timeoutMs ?? 30_000,
+            ...options,
+          }),
+        ),
+      )
+      skills.push(...result.skills)
+      if (result.ttlMs !== undefined) ttlMs = Math.min(ttlMs ?? result.ttlMs, result.ttlMs)
+      if (result.nextCursor === undefined || result.nextCursor === cursor) break
+      cursor = result.nextCursor
+    }
+    return { skills, ttlMs }
+  }
+
+  /** One skill entry by URI (`skills/get`); an unknown URI is the server's `-32602`, mapped to an upstream error. */
+  async getSkill(serverId: string, uri: string, options: RequestOptions = {}): Promise<SkillsGetResult> {
+    const connection = await this.#skillsConnection(serverId, options)
+    if (!offersSkills(connection.snapshot)) throw new UpstreamMcp({ serverId, reason: 'unsupported' })
+    return this.#remote(connection, () =>
+      connection.client.request({ method: 'skills/get', params: { uri } }, skillsGetStandard, {
+        timeout: this.#options.timeoutMs ?? 30_000,
+        ...options,
+      }),
+    )
+  }
+
+  /**
+   * One skill file through `resources/read`, from the server that lists the skill. The caller verifies the bytes
+   * against the retained manifest (skills/verify.ts); this only bounds and fetches them.
+   */
+  async readSkillFile(serverId: string, uri: string, options: RequestOptions = {}): Promise<ReadResourceResult> {
+    const connection = await this.#skillsConnection(serverId, options)
+    if (!offersSkills(connection.snapshot)) throw new UpstreamMcp({ serverId, reason: 'unsupported' })
+    return this.#remote(
+      connection,
+      () => connection.client.readResource({ uri }, { timeout: this.#options.timeoutMs ?? 30_000, ...options }),
+      this.#options.maxSkillFileBytes ?? 4_194_304,
+    )
+  }
+
+  /** Skills are read only from servers the owner turned them on for; nothing is opened otherwise. */
+  async #skillsConnection(serverId: string, options: RequestOptions): Promise<Connection> {
+    this.server(serverId)
+    if (this.#options.skillsEnabled?.(serverId) !== true)
+      throw new Forbidden({ reason: `skills are not enabled for ${serverId}` })
+    return this.#connection(serverId, options)
   }
 
   async getPrompt(

@@ -130,3 +130,29 @@ export const appModelChoice = sqliteTable('app_model_choice', {
   modelId: text('model_id').notNull(),
   updatedAt: integer('updated_at').notNull(),
 })
+
+/** Servers the owner uses skills from (skills/store.ts). A skill is a procedure; only these servers' are followed. */
+export const appSkillSources = sqliteTable('app_skill_sources', {
+  serverId: text('server_id').primaryKey().notNull(),
+  enabledAt: integer('enabled_at').notNull(),
+})
+
+/** The skill entry each conversation activated, kept as loaded: its manifest pins the bytes later reads must match. */
+export const appSkillActivations = sqliteTable(
+  'app_skill_activations',
+  {
+    sessionId: text('session_id').notNull(),
+    serverId: text('server_id').notNull(),
+    uri: text('uri').notNull(),
+    entry: text('entry').notNull(),
+    activatedAt: integer('activated_at').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.sessionId, table.serverId, table.uri] })],
+)
+
+/** Verified skill file bytes (base64) by digest; re-verified on every read, so a changed row is never used. */
+export const appSkillFiles = sqliteTable('app_skill_files', {
+  digest: text('digest').primaryKey().notNull(),
+  content: text('content').notNull(),
+  storedAt: integer('stored_at').notNull(),
+})

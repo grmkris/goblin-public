@@ -25,6 +25,9 @@ import { memoryExtensions } from './pi/memory.ts'
 import { MainMemory } from './memory/memory.ts'
 import { CheapModel } from './memory/model.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
+import { skillsExtension } from './pi/skills.ts'
+import { SkillLibrary } from './skills/library.ts'
+import { SqliteSkillState } from './skills/store.ts'
 import { ResidentAuthority } from './resident.ts'
 import { ConversationRegistry, type ThreadChange } from './conversations.ts'
 import { BACKGROUND } from './pi/context.ts'
@@ -45,7 +48,7 @@ import {
   requireResident,
 } from './services.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
-import { nowSeconds } from './clock.ts'
+import { nowMillis, nowSeconds } from './clock.ts'
 import { bindEndpoints } from './mcp/endpoints.ts'
 import { AddedServerStore, type ServerSource } from './mcp/servers.ts'
 import { suggestions } from './mcp/suggested.ts'
@@ -99,7 +102,8 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     this.#thread = threadExtension(run)
     this.#memory = memoryExtensions(run)
     const { memory, recall } = this.#memory
-    this.harness = makePiHarness(this.#pi, [...tools, subagents], [this.#thread, memory, recall])
+    // Skills are for main and threads; a subagent gets only the extensions its spawner hands it.
+    this.harness = makePiHarness(this.#pi, [...tools, skillsExtension(run), subagents], [this.#thread, memory, recall])
     this.lifecycle.use(this.harness)
   }
 
@@ -120,12 +124,14 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       const added = new AddedServerStore(db)
       const reset = bindEndpoints(db, [...servers, ...added.list()], nowSeconds())
       if (reset.length > 0) logEndpointsReset(reset)
+      const skillState = new SqliteSkillState(db)
       const host = new McpHost({
         servers,
         added,
         registries: new RegistryStore(db),
         credentials: new CredentialStore(db, await CredentialCipher.fromBase64(this.env.CREDENTIAL_KEY)),
         grants: new GrantStore(db),
+        skillsEnabled: (serverId) => skillState.enabled(serverId),
         appUrl: this.env.APP_URL,
         // SAFETY: the platform fetch is the outbound MCP/OAuth boundary; tokens are added only by the SDK transport.
         fetch: globalThis.fetch.bind(globalThis),
@@ -142,7 +148,8 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       const kit = { thread: this.#thread, recall, memory, namer }
       const conversations = new ConversationRegistry(db, this.harness, kit, nowSeconds())
       const resident = new ResidentAuthority(db)
-      return ManagedRuntime.make(agentLayer({ host, resident, conversations, budget, models, memory }))
+      const skills = new SkillLibrary(host.manager, skillState, nowMillis)
+      return ManagedRuntime.make(agentLayer({ host, resident, conversations, budget, models, memory, skills }))
     })()
     this.#runtime.catch(() => {
       this.#runtime = undefined

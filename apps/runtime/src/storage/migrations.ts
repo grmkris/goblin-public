@@ -66,6 +66,16 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'ALTER TABLE app_conversations ADD COLUMN recall_through INTEGER',
     ].join(BREAK),
   },
+  {
+    // Skills over MCP: the servers the owner uses skills from, what each conversation activated, verified file bytes.
+    key: '20261013000000_skills',
+    tables: ['app_skill_sources', 'app_skill_activations', 'app_skill_files'],
+    sql: [
+      'CREATE TABLE app_skill_sources (server_id TEXT PRIMARY KEY NOT NULL, enabled_at INTEGER NOT NULL)',
+      'CREATE TABLE app_skill_activations (session_id TEXT NOT NULL, server_id TEXT NOT NULL, uri TEXT NOT NULL, entry TEXT NOT NULL, activated_at INTEGER NOT NULL, PRIMARY KEY (session_id, server_id, uri))',
+      'CREATE TABLE app_skill_files (digest TEXT PRIMARY KEY NOT NULL, content TEXT NOT NULL, stored_at INTEGER NOT NULL)',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

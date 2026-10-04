@@ -44,6 +44,8 @@ export type McpHostOptions = {
   readonly random?: () => string
   /** Registries the owner added; without it, only the built-in ones are searched. */
   readonly registries?: AddedRegistries
+  /** Whether the owner uses skills from a server; without it, no server's skills are read. */
+  readonly skillsEnabled?: (serverId: string) => boolean
 }
 
 /**
@@ -79,6 +81,7 @@ export class McpHost {
     this.manager = new McpConnectionManager({
       servers: [...options.servers, ...added.map(({ serverId, endpoint }) => ({ serverId, endpoint }))],
       allows: (grant) => options.grants.allows(grant),
+      skillsEnabled: (serverId) => options.skillsEnabled?.(serverId) === true,
       auth: (server) => this.#authProvider(server),
       fetch: options.fetch,
     })

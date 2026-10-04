@@ -29,6 +29,8 @@ export type McpManagerOptions = {
   readonly servers: readonly McpServerConfig[]
   /** The owner's exact grants; checked before any connection is opened for a call. */
   readonly allows: (grant: Grant) => boolean
+  /** Whether the owner uses skills from a server (skills/store.ts); checked before any skill request. */
+  readonly skillsEnabled?: (serverId: string) => boolean
   /** Bearer token source per server, with refresh on 401 (mcp/host.ts). */
   readonly auth: (server: McpServerConfig) => AuthProvider
   readonly fetch: typeof fetch
@@ -36,6 +38,8 @@ export type McpManagerOptions = {
   readonly timeoutMs?: number
   /** Maximum encoded size of any one remote result or discovery page. */
   readonly maxResultBytes?: number
+  /** One skill file (`readSkillFile`); default 4 MiB. Larger files stay unreadable rather than truncated. */
+  readonly maxSkillFileBytes?: number
   /** HTML app bundles are host-only; ordinary resources and model results retain maxResultBytes. */
   readonly maxAppResourceBytes?: number
   /** Close a connection this long after its last use (default 5 minutes). */

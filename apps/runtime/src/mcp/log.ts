@@ -1,7 +1,7 @@
 import { Predicate } from 'effect'
 import { nowMillis } from '../clock.ts'
 
-type Step = { readonly step: 'connect' | 'call'; readonly serverId: string; readonly tool?: string }
+type Step = { readonly step: 'connect' | 'call' | 'skills'; readonly serverId: string; readonly tool?: string }
 
 /** `ok`, or the error's tag with its reason (`UpstreamMcp:timeout`). */
 const outcomeOf = (error: unknown): string => {
