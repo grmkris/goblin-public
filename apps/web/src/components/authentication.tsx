@@ -15,6 +15,7 @@ import {
   Input,
 } from '@purrable/ui'
 import { authClient, redirectOf } from '../lib/auth-client.ts'
+import { EmailCodeSignIn } from './email-code.tsx'
 import { ApiFailure, record, request } from '../lib/boundary.ts'
 
 type SignupMode = 'open' | 'invite' | 'closed'
@@ -116,7 +117,9 @@ function useAuthentication(onAuthenticated: () => void) {
     setInviteCode,
     pending,
     error,
+    setError,
     notice,
+    setNotice,
     signIn,
     requestReset,
   }
@@ -195,32 +198,62 @@ function AccountForm({
   )
 }
 
+function PasswordSignIn({ view, signup: mode, mail }: { readonly view: AuthenticationView } & AuthConfig) {
+  const [creating, setCreating] = useState(false)
+  return (
+    <>
+      <AccountForm view={view} mode={mode} creating={creating && mode !== 'closed'} />
+      <div className="mt-4 flex flex-wrap gap-2">
+        {mode !== 'closed' && (
+          <Button variant="link" onClick={() => setCreating(!creating)}>
+            {creating ? 'I already have an account' : 'Create an account with a password'}
+          </Button>
+        )}
+        {mail && !creating && (
+          <Button variant="link" disabled={view.pending} onClick={() => void view.requestReset()}>
+            Forgot password?
+          </Button>
+        )}
+      </div>
+    </>
+  )
+}
+
+/** With mail, an emailed code is the way in (a new address gets an account); a password stays as the fallback. */
 export function Authentication({ onAuthenticated }: { readonly onAuthenticated: () => void }) {
   const view = useAuthentication(onAuthenticated)
-  const { signup: mode, mail } = useAuthConfig()
-  const [creating, setCreating] = useState(false)
+  const config = useAuthConfig()
+  const [withPassword, setWithPassword] = useState(false)
+  const codes = config.mail && !withPassword
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{creating ? 'Create your Purrable' : 'Welcome to Purrable'}</CardTitle>
-        <CardDescription>
-          {creating ? 'You get your own resident agent.' : 'Sign in to your resident agent.'}
-        </CardDescription>
+        <CardTitle>Welcome to Purrable</CardTitle>
+        <CardDescription>Sign in, or create your own resident agent.</CardDescription>
       </CardHeader>
       <CardContent>
-        <AccountForm view={view} mode={mode} creating={creating && mode !== 'closed'} />
-        <div className="mt-4 flex flex-wrap gap-2">
-          {mode !== 'closed' && (
-            <Button variant="link" onClick={() => setCreating(!creating)}>
-              {creating ? 'I already have an account' : 'Create an account'}
-            </Button>
-          )}
-          {mail && !creating && (
-            <Button variant="link" disabled={view.pending} onClick={() => void view.requestReset()}>
-              Forgot password?
-            </Button>
-          )}
-        </div>
+        {codes ? (
+          <EmailCodeSignIn
+            invite={config.signup === 'invite'}
+            feedback={{ error: view.setError, notice: view.setNotice }}
+            onAuthenticated={onAuthenticated}
+          />
+        ) : (
+          <PasswordSignIn view={view} {...config} />
+        )}
+        {config.mail && (
+          <Button
+            variant="link"
+            className="mt-2"
+            onClick={() => {
+              view.setError('')
+              view.setNotice('')
+              setWithPassword(!withPassword)
+            }}
+          >
+            {withPassword ? 'Email me a code instead' : 'Use a password instead'}
+          </Button>
+        )}
       </CardContent>
       <CardFooter>
         {view.error && (

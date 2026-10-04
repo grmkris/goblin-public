@@ -8,7 +8,7 @@ import {
   revokeInboundClient,
 } from './auth/index.ts'
 import { mailerOf } from './auth/mail.ts'
-import { signupMode } from './auth/options.ts'
+import { signupMode } from './auth/signup.ts'
 import { readJson } from './http/body.ts'
 import { Forbidden, InvalidInput, NotFound } from './http/errors.ts'
 import { failureResponse, requestIdOf, secured } from './http/respond.ts'

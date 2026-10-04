@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
   Field,
+  FieldDescription,
   FieldGroup,
   FieldLabel,
   Input,
@@ -140,11 +141,15 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
   async function remove(): Promise<void> {
     setPending(true)
     try {
-      await request('/api/auth/delete-user', { body: { password } })
+      await request('/api/auth/delete-user', { body: password ? { password } : {} })
       window.location.assign('/')
     } catch (error) {
       // Better Auth answers a wrong password with 400 and its own code, not an AppError tag.
-      onError(error instanceof ApiFailure && error.status === 400 ? 'That password is not right.' : failureText(error))
+      onError(
+        error instanceof ApiFailure && error.status === 400
+          ? 'That password is not right, or your sign-in is older than 10 minutes. Sign in again, then retry.'
+          : failureText(error),
+      )
     } finally {
       setPassword('')
       setPending(false)
@@ -169,18 +174,20 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
           >
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="delete-password">Your password</FieldLabel>
+                <FieldLabel htmlFor="delete-password">Your password, if your account has one</FieldLabel>
                 <Input
                   id="delete-password"
                   type="password"
                   autoComplete="current-password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  required
                 />
+                <FieldDescription>
+                  Without a password, sign in again with a code first: deleting works for 10 minutes after.
+                </FieldDescription>
               </Field>
               <Field>
-                <Button type="submit" variant="destructive" disabled={pending || !password}>
+                <Button type="submit" variant="destructive" disabled={pending}>
                   {pending ? 'Deleting…' : 'Delete my account and agent'}
                 </Button>
               </Field>

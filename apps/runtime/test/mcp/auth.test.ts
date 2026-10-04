@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { markLoopbackClientsNative, signupAllowed, signupMode } from '../../src/auth/options.ts'
+import { markLoopbackClientsNative } from '../../src/auth/options.ts'
+import { signupAllowed, signupMode } from '../../src/auth/signup.ts'
 import { clientFromClaims } from '../../src/auth/principal.ts'
 
 describe('inbound client claims (unit)', () => {

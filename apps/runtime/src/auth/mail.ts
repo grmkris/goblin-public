@@ -17,6 +17,23 @@ export const mailerOf = (env: { readonly MAIL?: MailBinding; readonly MAIL_SENDE
   return env.MAIL === undefined || !/^[^\s@]+@[^\s@]+$/u.test(from) ? undefined : { binding: env.MAIL, from }
 }
 
+/** A sign-in code. The subject never contains the code, so a lock-screen preview does not give it away. */
+export const codeMail = (input: {
+  readonly from: string
+  readonly to: string
+  readonly code: string
+  readonly appUrl: string
+}): MailMessage => ({
+  from: input.from,
+  to: input.to,
+  subject: `[${new URL(input.appUrl).host}] Your Purrable sign-in code`,
+  text: [
+    `Your Purrable sign-in code is ${input.code}`,
+    '',
+    'It expires in 10 minutes and works once. If you did not try to sign in, ignore this email.',
+  ].join('\n'),
+})
+
 /** The password-reset mail; the link carries a one-hour, single-use token. Same host marking as confirmation. */
 export const resetMail = (input: {
   readonly from: string

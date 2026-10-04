@@ -2,26 +2,18 @@ import { Predicate } from 'effect'
 import { mcp } from '@better-auth/mcp'
 import { betterAuth, type BetterAuthPlugin } from 'better-auth'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
-import { constantTimeEqual } from 'better-auth/crypto'
-import { jwt } from 'better-auth/plugins'
+import { emailOTP, jwt } from 'better-auth/plugins'
 import type { RuntimeEnv } from '../env.ts'
 import { deleteAgentOf } from './account.ts'
-import { mailerOf, resetMail, verificationMail } from './mail.ts'
+import { CODE_SEND, CODE_SIGN_IN, guardEmailCode } from './email-code.ts'
+import { codeMail, mailerOf, resetMail, verificationMail } from './mail.ts'
+import { canonicalEmail, signupAllowed, signupMode } from './signup.ts'
 import { passwordHasher } from './password.ts'
 
 const AUTH_BASE_PATH = '/api/auth'
 const MCP_SCOPES = ['openid', 'profile', 'email', 'offline_access'] as const
 export const mcpResource = (appUrl: string): string => `${appUrl.replace(/\/$/u, '')}/mcp`
 export const authIssuer = (appUrl: string): string => `${appUrl.replace(/\/$/u, '')}${AUTH_BASE_PATH}`
-export const canonicalEmail = (email: string): string => email.trim().toLowerCase()
-
-export type SignupMode = 'open' | 'invite' | 'closed'
-export const signupMode = (value: string | undefined): SignupMode =>
-  value === 'open' || value === 'invite' ? value : 'closed'
-
-/** Open lets anyone register; invite needs the configured code; closed (the default) refuses every sign-up. */
-export const signupAllowed = (mode: SignupMode, inviteCode: string, presented: string): boolean =>
-  mode === 'open' || (mode === 'invite' && inviteCode.length > 0 && constantTimeEqual(presented, inviteCode))
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
 const isLoopbackHttp = (uri: unknown): boolean => {
@@ -59,6 +51,8 @@ const RATE_LIMITS = {
   '/delete-user': { window: 300, max: 5 },
   '/request-password-reset': { window: 3600, max: 5 },
   '/reset-password': { window: 300, max: 10 },
+  [CODE_SEND]: { window: 3600, max: 10 },
+  [CODE_SIGN_IN]: { window: 300, max: 20 },
 } as const
 type Mail = ReturnType<typeof mailerOf>
 
@@ -92,6 +86,48 @@ const accountEmailOptions = (env: AuthEnvironment, mailer: Mail) => {
   }
 }
 
+/** Sign-in by a six-digit emailed code (ten minutes, five tries, stored hashed), when the deployment sends mail. */
+const codePlugins = (env: AuthEnvironment, mailer: Mail): BetterAuthPlugin[] =>
+  mailer === undefined
+    ? []
+    : [
+        emailOTP({
+          otpLength: 6,
+          expiresIn: 600,
+          allowedAttempts: 5,
+          storeOTP: 'hashed',
+          sendVerificationOTP: async ({ email, otp, type }) => {
+            if (type === 'sign-in')
+              await mailer.binding.send(codeMail({ from: mailer.from, to: email, code: otp, appUrl: env.APP_URL }))
+          },
+        }),
+      ]
+
+/** Every gate Better Auth's own options cannot express, before any endpoint runs. */
+const beforeAuth = (env: AuthEnvironment, database: D1Database) =>
+  createAuthMiddleware(async (context) => {
+    if (context.path === '/oauth2/register') {
+      markLoopbackClientsNative(context.body)
+      return
+    }
+    // Deleting needs the password, or a sign-in within the last 10 minutes (`freshAge`), the only proof a code-only
+    // account can give. The emailed-token path is never offered.
+    if (context.path?.startsWith('/delete-user')) {
+      if (context.path !== '/delete-user' || context.body?.token !== undefined)
+        throw new APIError('BAD_REQUEST', { message: 'Invalid request' })
+      return
+    }
+    if (await guardEmailCode(context, env, database, Date.now())) return
+    if (!context.path?.startsWith('/sign-up')) return
+    const presented = context.headers?.get('x-invite-code') ?? ''
+    if (
+      context.path !== '/sign-up/email' ||
+      !signupAllowed(signupMode(env.SIGNUP_MODE), env.SIGNUP_INVITE_CODE ?? '', presented)
+    )
+      throw new APIError('FORBIDDEN', { message: 'Sign-up is closed.' })
+    if (Predicate.isString(context.body?.email)) context.body.email = canonicalEmail(context.body.email)
+  })
+
 /**
  * Better Auth is instantiated per request: Worker I/O promises cannot outlive their request. The D1 adapter owns
  * auth tables; application Drizzle never adopts/migrates them. mcp() already includes OAuth provider functionality.
@@ -120,36 +156,17 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
     logger: { disabled: true },
     ...accountEmailOptions(env, mailerOf(env)),
     // Deleting an account erases its agent first (conversations, MCP credentials, grants, usage); D1 then cascades
-    // the user's sessions, consents and tokens. The before-hook below makes the password mandatory.
+    // the user's sessions, consents and tokens. Without the password it needs a sign-in from the last 10 minutes.
+    session: { freshAge: 600 },
     user: { deleteUser: { enabled: true, beforeDelete: (user: { id: string }) => deleteAgentOf(env, user.id) } },
     rateLimit: { enabled: true, storage: 'database' as const, window: 60, max: 100, customRules: RATE_LIMITS },
     advanced: { ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] } },
-    hooks: {
-      before: createAuthMiddleware(async (context) => {
-        if (context.path === '/oauth2/register') {
-          markLoopbackClientsNative(context.body)
-          return
-        }
-        // Better Auth would delete without a password for a session under a day old; always ask for it.
-        if (context.path?.startsWith('/delete-user')) {
-          if (context.path !== '/delete-user' || !Predicate.isString(context.body?.password) || context.body.token)
-            throw new APIError('BAD_REQUEST', { message: 'Deleting the account needs your password.' })
-          return
-        }
-        if (!context.path?.startsWith('/sign-up')) return
-        const presented = context.headers?.get('x-invite-code') ?? ''
-        if (
-          context.path !== '/sign-up/email' ||
-          !signupAllowed(signupMode(env.SIGNUP_MODE), env.SIGNUP_INVITE_CODE ?? '', presented)
-        )
-          throw new APIError('FORBIDDEN', { message: 'Sign-up is closed.' })
-        if (Predicate.isString(context.body?.email)) context.body.email = canonicalEmail(context.body.email)
-      }),
-    },
+    hooks: { before: beforeAuth(env, database) },
     plugins: [
       jwt({ disableSettingJwtHeader: true, jwt: { issuer: authIssuer(env.APP_URL), audience: resource } }),
       // SAFETY: Better Auth 1.7.6 MCP endpoint metadata types violate exactOptionalPropertyTypes; runtime shape is the pinned official plugin.
       oauthPlugin as BetterAuthPlugin,
+      ...codePlugins(env, mailerOf(env)),
     ],
   }
 }

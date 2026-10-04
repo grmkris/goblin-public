@@ -33,7 +33,9 @@ flowchart LR
 
 Anyone may sign up when `PURRABLE_SIGNUP_MODE` is `open`; with `invite` the request needs the
 `PURRABLE_SIGNUP_INVITE_CODE` in an `x-invite-code` header; `closed` (the default for deployed stages) refuses every
-sign-up. With `PURRABLE_MAIL_SENDER` set (an address on an apex onboarded for Cloudflare Email Sending), a new account
+sign-up. When the deployment sends mail, the usual way in is a six-digit code mailed to the address (ten minutes, five
+tries, one per address per minute; `auth/email-code.ts`): a known address signs in, a new one gets an account through
+the same sign-up gate, already verified. Passwords remain as the fallback. With `PURRABLE_MAIL_SENDER` set (an address on an apex onboarded for Cloudflare Email Sending), a new account
 works only after its owner opens the one-hour link mailed to it (`auth/mail.ts`); the link signs them in. The same
 sender carries password-reset links (`/reset-password`); a reset signs every device out, and asking for one never
 reveals whether an address has an account. A deployed
@@ -42,7 +44,7 @@ stage refuses to deploy `open` sign-up without a sender. Sign-up, verification m
 reaches is always derived from authentication, the session's user ID or the inbound token's subject, never from the
 request.
 
-Deleting an account (Settings, password required) first erases the user's agent through `Agent.destroy()`: every Pi,
+Deleting an account (Settings; the password, or a sign-in within the last 10 minutes) first erases the user's agent through `Agent.destroy()`: every Pi,
 Agents and application table, its alarm, and its isolate. Only then does Better Auth delete the user, and D1 cascades
 their sessions, consents and tokens. If erasing the agent fails, the account stays so the user can retry. Outbound
 OAuth tokens are forgotten, not revoked at the remote server; they lapse there on their own. Users share the deployment's model key and
