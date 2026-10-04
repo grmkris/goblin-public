@@ -1,6 +1,9 @@
 import type { Models } from '@earendil-works/pi-ai'
 import { MODEL_PROVIDER } from '../pi/model.ts'
 
+/** Room for the thinking a model does before answering by default: it counts against `maxTokens`. */
+const THINKING_HEADROOM = 2048
+
 /**
  * The deployment's cheap model for housekeeping nobody asked the agent for: naming threads, summarizing main into its
  * memory. It is one of the offered models (`PURRABLE_MEMORY_MODEL`), called on the same LiteLLM key, and every token
@@ -17,14 +20,14 @@ export class CheapModel {
     this.#spent = spent
   }
 
-  /** One completion without tools; its text, or a throw when the model failed. */
+  /** One completion without tools, its answer at most `maxTokens`; its text, or a throw when the model failed. */
   async complete(system: string, user: string, maxTokens: number, signal?: AbortSignal): Promise<string> {
     const model = this.#models.getModel(MODEL_PROVIDER, this.#id)
     if (model === undefined) throw new Error(`Memory model ${this.#id} is not offered`)
     const message = await this.#models.completeSimple(
       model,
       { systemPrompt: system, messages: [{ role: 'user', content: user, timestamp: Date.now() }] },
-      { maxTokens, ...(signal === undefined ? {} : { signal }) },
+      { maxTokens: maxTokens + THINKING_HEADROOM, ...(signal === undefined ? {} : { signal }) },
     )
     this.#spent(message.usage.totalTokens)
     if (message.stopReason === 'error' || message.stopReason === 'aborted')
