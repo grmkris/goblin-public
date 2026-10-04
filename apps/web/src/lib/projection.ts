@@ -2,14 +2,29 @@ import { isString, isNumber, identifier, record, records, text } from './boundar
 
 /** A tool call the assistant made, with its raw arguments. */
 export type ToolCallView = { readonly id: string; readonly name: string; readonly arguments: Record<string, unknown> }
-/** Committed conversation messages, projected from Pi entries. */
+/** The tokens one model response used, as Pi records them (cost is not tracked: the catalog prices are zero). */
+export type TokenUsage = {
+  readonly input: number
+  readonly output: number
+  readonly cacheRead: number
+  readonly cacheWrite: number
+  readonly totalTokens: number
+}
+/**
+ * Committed conversation messages, projected from Pi entries. `timestamp` (epoch ms) is Pi's, when the message has
+ * one; optional fields are absent rather than empty.
+ */
 export type ChatMessage =
-  | { readonly id: string; readonly role: 'user'; readonly text: string }
+  | { readonly id: string; readonly role: 'user'; readonly text: string; readonly timestamp?: number }
   | {
       readonly id: string
       readonly role: 'assistant'
       readonly text: string
       readonly toolCalls: readonly ToolCallView[]
+      /** The model's visible thinking, when it emitted any (redacted thinking is left out). */
+      readonly reasoning?: string
+      readonly usage?: TokenUsage
+      readonly timestamp?: number
       /** Why this turn has no answer: the model call failed, was stopped, or came back empty. */
       readonly failure?: TurnFailure
     }
@@ -21,13 +36,16 @@ export type ChatMessage =
       readonly toolName: string
       readonly isError: boolean
       readonly details: unknown
+      readonly timestamp?: number
     }
-/** A tool running in the current turn. */
+/** A tool running in the current turn. `startedAt` is when this browser saw it start (Pi's slots carry no time). */
 export type LiveTool = {
   readonly callId: string
   readonly name: string
   readonly status: 'running' | 'done'
   readonly output: string
+  readonly args: Record<string, unknown>
+  readonly startedAt?: number
 }
 export type ConversationProjection = {
   readonly messages: readonly ChatMessage[]
@@ -35,6 +53,8 @@ export type ConversationProjection = {
   readonly tools: readonly LiveTool[]
   readonly running: boolean
   readonly partial: string
+  /** The in-flight message's thinking so far. */
+  readonly partialReasoning: string
   readonly partialBlocks: readonly Record<string, unknown>[]
   readonly progress: string
 }
@@ -72,6 +92,53 @@ function assistantFailure(
   return undefined
 }
 
+/** The visible thinking in content blocks; redacted thinking is an opaque payload, not text for the owner. */
+export function reasoningText(blocks: unknown): string {
+  return records(blocks)
+    .filter((block) => block.type === 'thinking' && block.redacted !== true && isString(block.thinking))
+    .map((block) => text(block.thinking).trim())
+    .filter((thought) => thought !== '')
+    .join('\n\n')
+}
+
+const count = (value: unknown): number => (isNumber(value) && Number.isFinite(value) ? value : 0)
+function tokenUsage(value: unknown): TokenUsage | undefined {
+  const usage = record(value)
+  if (usage === undefined) return undefined
+  return {
+    input: count(usage.input),
+    output: count(usage.output),
+    cacheRead: count(usage.cacheRead),
+    cacheWrite: count(usage.cacheWrite),
+    totalTokens: count(usage.totalTokens),
+  }
+}
+const stamped = (message: Record<string, unknown>) =>
+  isNumber(message.timestamp) && Number.isFinite(message.timestamp) ? { timestamp: message.timestamp } : {}
+
+function assistantMessage(message: Record<string, unknown>, id: string, content: string): ChatMessage {
+  const toolCalls = records(message.content)
+    .filter((block) => block.type === 'toolCall')
+    .map((block) => ({
+      id: identifier(block.id),
+      name: identifier(block.name),
+      arguments: record(block.arguments) ?? {},
+    }))
+  const failure = assistantFailure(message, content, toolCalls)
+  const reasoning = reasoningText(message.content)
+  const usage = tokenUsage(message.usage)
+  return {
+    id,
+    role: 'assistant',
+    text: content,
+    toolCalls,
+    ...(reasoning === '' ? {} : { reasoning }),
+    ...(usage === undefined ? {} : { usage }),
+    ...stamped(message),
+    ...(failure === undefined ? {} : { failure }),
+  }
+}
+
 function entryMessage(message: Record<string, unknown>, id: string): ChatMessage[] {
   const content = text(message.content)
   if (message.role === 'toolResult')
@@ -84,27 +151,27 @@ function entryMessage(message: Record<string, unknown>, id: string): ChatMessage
         toolName: identifier(message.toolName),
         isError: message.isError === true,
         details: message.details,
+        ...stamped(message),
       },
     ]
-  if (message.role === 'assistant') {
-    const toolCalls = records(message.content)
-      .filter((block) => block.type === 'toolCall')
-      .map((block) => ({
-        id: identifier(block.id),
-        name: identifier(block.name),
-        arguments: record(block.arguments) ?? {},
-      }))
-    const failure = assistantFailure(message, content, toolCalls)
-    return [{ id, role: 'assistant', text: content, toolCalls, ...(failure === undefined ? {} : { failure }) }]
-  }
-  if (message.role === 'user') return [{ id, role: 'user', text: content }]
+  if (message.role === 'assistant') return [assistantMessage(message, id, content)]
+  if (message.role === 'user') return [{ id, role: 'user', text: content, ...stamped(message) }]
   return []
 }
 
-function entryMessages(entries: readonly Record<string, unknown>[]): ChatMessage[] {
-  return entries.flatMap((entry) =>
-    records(entry.model).flatMap((message, index) => entryMessage(message, `${identifier(entry.id)}:${index}`)),
+/** Committed entries never change, so each one is projected once and reused while it stays in the transcript. */
+const projected = new WeakMap<Record<string, unknown>, readonly ChatMessage[]>()
+function messagesOf(entry: Record<string, unknown>): readonly ChatMessage[] {
+  const cached = projected.get(entry)
+  if (cached !== undefined) return cached
+  const messages = records(entry.model).flatMap((message, index) =>
+    entryMessage(message, `${identifier(entry.id)}:${index}`),
   )
+  projected.set(entry, messages)
+  return messages
+}
+function entryMessages(entries: readonly Record<string, unknown>[]): ChatMessage[] {
+  return entries.flatMap(messagesOf)
 }
 
 function liveTools(value: unknown): LiveTool[] {
@@ -113,6 +180,7 @@ function liveTools(value: unknown): LiveTool[] {
     name: identifier(tool.name ?? tool.toolName),
     status: tool.status === 'done' ? 'done' : 'running',
     output: isString(tool.output) ? tool.output : '',
+    args: {},
   }))
 }
 
@@ -124,6 +192,7 @@ export function projectSnapshot(value: unknown): ConversationProjection {
   const generation = record(snapshot.generation)
   const partialBlocks = records(record(generation?.message)?.content)
   const partial = text(partialBlocks)
+  const partialReasoning = reasoningText(partialBlocks)
   const running = record(snapshot.run) !== undefined
   const inbox = records(snapshot.inbox)
   const progress = record(generation?.retry)
@@ -140,6 +209,7 @@ export function projectSnapshot(value: unknown): ConversationProjection {
     tools,
     running,
     partial,
+    partialReasoning,
     partialBlocks,
     progress,
     messages: entryMessages(entries),
@@ -152,8 +222,14 @@ function refreshed(next: ConversationProjection): ConversationProjection {
 function appended(next: ConversationProjection, event: Record<string, unknown>): ConversationProjection {
   const entry = record(event.entry)
   const entries = entry ? [...next.entries.filter((item) => item.id !== entry.id), entry] : next.entries
-  return { ...next, entries, ...(event.type === 'message_end' ? { partial: '', partialBlocks: [] } : {}) }
+  return {
+    ...next,
+    entries,
+    ...(event.type === 'message_end' ? { partial: '', partialReasoning: '', partialBlocks: [] } : {}),
+  }
 }
+/** Changes that put a whole block in place: a block starting, or Pi replacing one. */
+const STARTS = new Set(['text_start', 'thinking_start', 'toolcall_start', 'block'])
 function changedBlocks(
   blocks: readonly Record<string, unknown>[],
   change: Record<string, unknown>,
@@ -161,12 +237,14 @@ function changedBlocks(
   if (change.type === 'message') return records(record(change.message)?.content)
   if (!isNumber(change.contentIndex) || !Number.isInteger(change.contentIndex) || change.contentIndex < 0) return blocks
   const next = [...blocks]
-  if (change.type === 'text_delta' && isString(change.delta)) {
-    const block = next[change.contentIndex]
+  const block = next[change.contentIndex]
+  if (change.type === 'text_delta' && isString(change.delta))
     next[change.contentIndex] = { ...block, type: 'text', text: text(block?.text) + change.delta }
-  } else if (change.type === 'text_start' || change.type === 'block') {
-    const block = record(change.block)
-    if (block) next[change.contentIndex] = block
+  else if (change.type === 'thinking_delta' && isString(change.delta))
+    next[change.contentIndex] = { ...block, type: 'thinking', thinking: text(block?.thinking) + change.delta }
+  else if (STARTS.has(identifier(change.type))) {
+    const started = record(change.block)
+    if (started) next[change.contentIndex] = started
   }
   return next
 }
@@ -174,7 +252,7 @@ function updatedPartial(
   next: ConversationProjection,
   blocks: readonly Record<string, unknown>[],
 ): ConversationProjection {
-  return { ...next, partialBlocks: blocks, partial: text(blocks) }
+  return { ...next, partialBlocks: blocks, partial: text(blocks), partialReasoning: reasoningText(blocks) }
 }
 function toolOutput(tool: LiveTool, event: Record<string, unknown>): LiveTool {
   if (tool.callId !== event.toolCallId) return tool
@@ -187,7 +265,11 @@ function toolOutput(tool: LiveTool, event: Record<string, unknown>): LiveTool {
         (isString(output?.append) ? output.append : ''),
   }
 }
-function projectedEvent(next: ConversationProjection, event: Record<string, unknown>): ConversationProjection {
+function projectedEvent(
+  next: ConversationProjection,
+  event: Record<string, unknown>,
+  now: number,
+): ConversationProjection {
   switch (event.type) {
     case 'snapshot':
       return projectSnapshot(event)
@@ -197,7 +279,15 @@ function projectedEvent(next: ConversationProjection, event: Record<string, unkn
     case 'run_start':
       return { ...next, running: true, progress: 'Agent is working' }
     case 'run_end':
-      return { ...next, running: false, progress: 'Ready', partial: '', partialBlocks: [], tools: [] }
+      return {
+        ...next,
+        running: false,
+        progress: 'Ready',
+        partial: '',
+        partialReasoning: '',
+        partialBlocks: [],
+        tools: [],
+      }
     case 'message_start':
       return updatedPartial(next, records(record(event.message)?.content))
     case 'message_update':
@@ -207,7 +297,14 @@ function projectedEvent(next: ConversationProjection, event: Record<string, unkn
         ...next,
         tools: [
           ...next.tools.filter((tool) => tool.callId !== event.toolCallId),
-          { callId: identifier(event.toolCallId), name: identifier(event.toolName), status: 'running', output: '' },
+          {
+            callId: identifier(event.toolCallId),
+            name: identifier(event.toolName),
+            status: 'running',
+            output: '',
+            args: record(event.args) ?? {},
+            startedAt: now,
+          },
         ],
       }
     case 'tool_execution_update':
@@ -227,10 +324,14 @@ function projectedEvent(next: ConversationProjection, event: Record<string, unkn
       return next
   }
 }
-export function projectBatch(previous: ConversationProjection, value: unknown): ConversationProjection {
+/** Applies one SSE batch; `now` stamps tools that start in it. Messages are rebuilt once per batch, not per event. */
+export function projectBatch(
+  previous: ConversationProjection,
+  value: unknown,
+  now: number = Date.now(),
+): ConversationProjection {
   if (!Array.isArray(value)) throw new Error('Invalid Pi event batch')
-  return records(value).reduce<ConversationProjection>(
-    (next, event) => refreshed(projectedEvent(next, event)),
-    previous,
+  return refreshed(
+    records(value).reduce<ConversationProjection>((next, event) => projectedEvent(next, event, now), previous),
   )
 }

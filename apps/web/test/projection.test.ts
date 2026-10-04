@@ -121,4 +121,71 @@ describe('Pi committed state projected for the chat', () => {
       assistant({ stopReason: 'toolUse', content: [{ type: 'toolCall', id: 'c', name: 'mcp_list', arguments: {} }] }),
     ).not.toHaveProperty('failure')
   })
+  it('projects each committed entry once and reuses it while the transcript grows', () => {
+    const entry = { id: 1, kind: 'user', model: [{ role: 'user', content: 'hello', timestamp: 1000 }] }
+    const first = projectSnapshot({ type: 'snapshot', entries: [entry], tools: [], inbox: [] })
+    const next = projectBatch(first, [
+      { type: 'run_start' },
+      { type: 'entry_appended', entry: { id: 2, model: [{ role: 'user', content: 'again' }] } },
+    ])
+    expect(next.messages[0]).toBe(first.messages[0])
+    expect(next.messages[0]).toEqual({ id: '1:0', role: 'user', text: 'hello', timestamp: 1000 })
+    expect(next.messages).toHaveLength(2)
+  })
+  it('keeps visible thinking, usage and the timestamp, and leaves redacted thinking out', () => {
+    const usage = { input: 1200, output: 80, cacheRead: 300, cacheWrite: 0, totalTokens: 1580, cost: { total: 0 } }
+    expect(
+      assistant({
+        stopReason: 'stop',
+        timestamp: 1700,
+        usage,
+        content: [
+          { type: 'thinking', thinking: 'Weigh the options.' },
+          { type: 'thinking', thinking: 'opaque', redacted: true },
+          { type: 'text', text: 'Answer' },
+        ],
+      }),
+    ).toEqual({
+      id: '5:0',
+      role: 'assistant',
+      text: 'Answer',
+      toolCalls: [],
+      reasoning: 'Weigh the options.',
+      usage: { input: 1200, output: 80, cacheRead: 300, cacheWrite: 0, totalTokens: 1580 },
+      timestamp: 1700,
+    })
+  })
+  it('streams thinking apart from the answer text', () => {
+    const initial = projectSnapshot({ type: 'snapshot', entries: [], tools: [], inbox: [] })
+    const next = projectBatch(initial, [
+      {
+        type: 'message_update',
+        changes: [
+          { type: 'thinking_start', contentIndex: 0, block: { type: 'thinking', thinking: 'Check' } },
+          { type: 'thinking_delta', contentIndex: 0, delta: ' the notes' },
+          { type: 'text_start', contentIndex: 1, block: { type: 'text', text: 'Done' } },
+        ],
+      },
+    ])
+    expect(next.partialReasoning).toBe('Check the notes')
+    expect(next.partial).toBe('Done')
+    expect(projectBatch(next, [{ type: 'run_end' }]).partialReasoning).toBe('')
+  })
+  it('stamps a tool with the time its start arrived and keeps its arguments', () => {
+    const initial = projectSnapshot({ type: 'snapshot', entries: [], tools: [{ callId: 'old', name: 'x' }], inbox: [] })
+    expect(initial.tools[0]).toEqual({ callId: 'old', name: 'x', status: 'running', output: '', args: {} })
+    const next = projectBatch(
+      initial,
+      [{ type: 'tool_execution_start', toolCallId: 'c2', toolName: 'mcp_call', args: { serverId: 'myplan' } }],
+      42_000,
+    )
+    expect(next.tools[1]).toEqual({
+      callId: 'c2',
+      name: 'mcp_call',
+      status: 'running',
+      output: '',
+      args: { serverId: 'myplan' },
+      startedAt: 42_000,
+    })
+  })
 })
