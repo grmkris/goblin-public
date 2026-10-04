@@ -31,6 +31,9 @@
   --ring: oklch(0.82 0.13 170);
   --destructive: oklch(0.68 0.2 25);
 }
-* {
-  border-color: var(--border);
+/* In the base layer, so utilities such as `border-transparent` (ghost and link buttons) still win. */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }

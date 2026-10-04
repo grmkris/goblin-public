@@ -1,45 +1,65 @@
 import { useEffect, useState } from 'react'
+import { CatIcon, KeyRoundIcon } from 'lucide-react'
 import {
-  Alert,
-  AlertDescription,
+  type AuthActionResult,
+  AuthPage,
   Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
   Field,
+  FieldDescription,
   FieldGroup,
   FieldLabel,
   Input,
+  SignInMethods,
+  failed,
+  succeeded,
 } from '@purrable/ui'
 import { authClient, redirectOf } from '../lib/auth-client.ts'
-import { EmailCodeSignIn } from './email-code.tsx'
 import { ApiFailure, record, request } from '../lib/boundary.ts'
 
 type SignupMode = 'open' | 'invite' | 'closed'
-type AuthConfig = { readonly signup: SignupMode; readonly mail: boolean }
+type AuthConfig = { readonly signup: SignupMode; readonly mail: boolean; readonly loaded: boolean }
+type View = 'sign-in' | 'create' | 'reset'
+type Notify = (message: string) => void
+type Created =
+  | { readonly ok: true; readonly confirmFirst: boolean }
+  | { readonly ok: false; readonly result: AuthActionResult }
 
 /** How this deployment admits accounts and whether it sends mail, from the public health endpoint. Unknown: none. */
 function useAuthConfig(): AuthConfig {
-  const [config, setConfig] = useState<AuthConfig>({ signup: 'closed', mail: false })
+  const [config, setConfig] = useState<AuthConfig>({ signup: 'closed', mail: false, loaded: false })
   useEffect(() => {
     const controller = new AbortController()
     void request('/health', { signal: controller.signal })
       .then((data) => {
         const health = record(data)
         const signup = health?.signup === 'open' || health?.signup === 'invite' ? health.signup : 'closed'
-        if (!controller.signal.aborted) setConfig({ signup, mail: health?.mail === true })
+        if (!controller.signal.aborted) setConfig({ signup, mail: health?.mail === true, loaded: true })
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (!controller.signal.aborted) setConfig({ signup: 'closed', mail: false, loaded: true })
+      })
     return () => controller.abort()
   }, [])
   return config
 }
 
-/** Creates the account; `false` when it must be confirmed by email first (no session was started). */
-async function createAccount(email: string, password: string, inviteCode: string): Promise<boolean> {
+const refusal = (status: number | undefined, fallback: string): AuthActionResult => {
+  if (status === 403) return failed('Creating an account needs a valid invite code.')
+  if (status === 429) return failed('Too many tries. Wait a minute and try again.')
+  return failed(fallback)
+}
+
+/** During an MCP client's authorization the provider continues to consent; otherwise the caller's next step. */
+function continueAfter(data: unknown, onAuthenticated: () => void): AuthActionResult {
+  const next = redirectOf(data)
+  if (next !== undefined && new URL(next, window.location.origin).pathname !== window.location.pathname)
+    window.location.assign(next)
+  else onAuthenticated()
+  return succeeded
+}
+
+/** A password account. `confirmFirst` when the deployment requires email confirmation (no session yet). */
+async function createAccount(email: string, password: string, inviteCode: string): Promise<Created> {
   try {
     // The confirmation link brings the user back here, so an MCP client's authorization can continue.
     const callbackURL = `${window.location.pathname}${window.location.search}`
@@ -47,226 +67,178 @@ async function createAccount(email: string, password: string, inviteCode: string
       body: { email, password, name: email.split('@')[0] ?? email, callbackURL },
       headers: inviteCode ? { 'x-invite-code': inviteCode } : {},
     })
-    return typeof record(created)?.token === 'string'
+    return { ok: true, confirmFirst: typeof record(created)?.token !== 'string' }
   } catch (cause) {
-    if (cause instanceof ApiFailure && cause.status === 403)
-      throw new Error('Sign-up needs a valid invite code.', { cause })
-    const status = cause instanceof ApiFailure ? ` (${cause.status})` : ''
-    throw new Error(`Could not create the account${status}`, { cause })
+    const status = cause instanceof ApiFailure ? cause.status : undefined
+    return { ok: false, result: refusal(status, 'Could not create the account.') }
   }
 }
 
-function useAuthentication(onAuthenticated: () => void) {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [inviteCode, setInviteCode] = useState('')
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
-  async function signIn(create: boolean): Promise<void> {
-    setPending(true)
-    setError('')
-    setNotice('')
-    try {
-      if (create && !(await createAccount(email, password, inviteCode))) {
-        setPassword('')
-        setInviteCode('')
-        setNotice(`We sent a confirmation link to ${email}. Open it to finish; it signs you in.`)
-        return
+/** The app's side of the shared sign-in form: Better Auth calls, the invite header and where to go next. */
+function signInActions(inviteCode: string, creating: boolean, onAuthenticated: () => void, notify: Notify) {
+  const fetchOptions = { headers: inviteCode ? { 'x-invite-code': inviteCode } : {} }
+  const emailCode = {
+    onRequestCode: async (email: string): Promise<AuthActionResult> => {
+      const { error } = await authClient.emailOtp.sendVerificationOtp({ email, type: 'sign-in', fetchOptions })
+      return error ? refusal(error.status, 'Could not send a code. Try again.') : succeeded
+    },
+    onVerifyCode: async (email: string, otp: string): Promise<AuthActionResult> => {
+      const { data, error } = await authClient.signIn.emailOtp({ email, otp, fetchOptions })
+      if (error) return refusal(error.status, 'That code did not work. Check it or get a new one.')
+      return continueAfter(data, onAuthenticated)
+    },
+  }
+  const password = {
+    onSubmit: async (email: string, secret: string): Promise<AuthActionResult> => {
+      if (creating) {
+        const created = await createAccount(email, secret, inviteCode)
+        if (!created.ok) return created.result
+        if (created.confirmFirst) {
+          notify(`We sent a confirmation link to ${email}. Open it to finish; it signs you in.`)
+          return succeeded
+        }
       }
-      const { data, error: failure } = await authClient.signIn.email({ email, password })
-      if (failure?.status === 403) throw new Error(`Confirm your email first: we sent a new link to ${email}.`)
-      if (failure) throw new Error(failure.message ?? 'Sign in failed')
-      setPassword('')
-      setInviteCode('')
-      // During an MCP client's authorization the provider continues to consent; otherwise stay here.
-      const next = redirectOf(data)
-      if (next !== undefined && new URL(next, window.location.origin).pathname !== window.location.pathname)
-        window.location.assign(next)
-      else onAuthenticated()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Sign in failed')
-    } finally {
-      setPending(false)
-    }
+      const { data, error } = await authClient.signIn.email({ email, password: secret })
+      if (error?.status === 403) return failed(`Confirm your email first: we sent a new link to ${email}.`)
+      return error ? failed('Wrong email or password.') : continueAfter(data, onAuthenticated)
+    },
   }
-  /** The answer never says whether the address has an account. */
-  async function requestReset(): Promise<void> {
-    setError('')
-    setNotice('')
-    if (!email) {
-      setError('Enter your email first.')
-      return
-    }
-    setPending(true)
-    try {
-      await request('/api/auth/request-password-reset', { body: { email, redirectTo: '/reset-password' } })
-      setNotice(`If ${email} has an account, we sent it a link to choose a new password.`)
-    } catch {
-      setError('Could not send the reset link. Try again in a while.')
-    } finally {
-      setPending(false)
-    }
-  }
-  return {
-    email,
-    setEmail,
-    password,
-    setPassword,
-    inviteCode,
-    setInviteCode,
-    pending,
-    error,
-    setError,
-    notice,
-    setNotice,
-    signIn,
-    requestReset,
-  }
+  return { emailCode, password }
 }
-type AuthenticationView = ReturnType<typeof useAuthentication>
 
-function Credentials({ view, creating }: { readonly view: AuthenticationView; readonly creating: boolean }) {
+function InviteField({ value, onChange }: { readonly value: string; readonly onChange: (value: string) => void }) {
   return (
-    <>
+    <FieldGroup>
       <Field>
-        <FieldLabel htmlFor="email">Email</FieldLabel>
+        <FieldLabel htmlFor="invite-code">Invite code</FieldLabel>
         <Input
-          id="email"
-          type="email"
-          autoComplete="username"
-          value={view.email}
-          onChange={(event) => view.setEmail(event.target.value)}
-          required
-        />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="password">Password</FieldLabel>
-        <Input
-          id="password"
+          id="invite-code"
           type="password"
-          autoComplete={creating ? 'new-password' : 'current-password'}
-          value={view.password}
-          onChange={(event) => view.setPassword(event.target.value)}
-          minLength={creating ? 12 : 8}
-          required
+          autoComplete="off"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
         />
+        <FieldDescription>Purrable is invite-only for now.</FieldDescription>
       </Field>
-    </>
+    </FieldGroup>
   )
 }
 
-function AccountForm({
-  view,
-  mode,
-  creating,
-}: {
-  readonly view: AuthenticationView
-  readonly mode: SignupMode
-  readonly creating: boolean
-}) {
-  const label = creating ? 'Create account' : 'Sign in'
+/** "Forgot your password": one field; the answer never says whether the address has an account. */
+function ResetRequest({ notify }: { readonly notify: Notify }) {
+  const [email, setEmail] = useState('')
+  const [pending, setPending] = useState(false)
+  async function send(): Promise<void> {
+    setPending(true)
+    await request('/api/auth/request-password-reset', { body: { email, redirectTo: '/reset-password' } }).catch(
+      () => undefined,
+    )
+    setPending(false)
+    notify(`If ${email} has an account with a password, a link to choose a new one is on its way.`)
+  }
   return (
     <form
       onSubmit={(event) => {
         event.preventDefault()
-        void view.signIn(creating)
+        void send()
       }}
     >
       <FieldGroup>
-        <Credentials view={view} creating={creating} />
-        {creating && mode === 'invite' && (
-          <Field>
-            <FieldLabel htmlFor="invite-code">Invite code</FieldLabel>
-            <Input
-              id="invite-code"
-              type="password"
-              autoComplete="off"
-              value={view.inviteCode}
-              onChange={(event) => view.setInviteCode(event.target.value)}
-              required
-            />
-          </Field>
-        )}
         <Field>
-          <Button type="submit" disabled={view.pending}>
-            {view.pending ? 'Working…' : label}
-          </Button>
+          <FieldLabel htmlFor="reset-email">Email</FieldLabel>
+          <Input
+            id="reset-email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
         </Field>
+        <Button type="submit" size="lg" className="w-full" disabled={pending}>
+          <KeyRoundIcon data-icon="inline-start" />
+          Email me a reset link
+        </Button>
       </FieldGroup>
     </form>
   )
 }
 
-function PasswordSignIn({ view, signup: mode, mail }: { readonly view: AuthenticationView } & AuthConfig) {
-  const [creating, setCreating] = useState(false)
+const TITLES: Record<View, { readonly title: string; readonly description: string }> = {
+  'sign-in': { title: 'Sign in to Purrable', description: 'Your own resident agent, always on.' },
+  create: { title: 'Create your Purrable', description: 'You get your own resident agent.' },
+  reset: { title: 'Reset your password', description: 'We email you a link to choose a new one.' },
+}
+
+/** Quiet text links under the form; the page footer styles its buttons like links (adapted from the myapps footer). */
+function Footer(props: { readonly view: View; readonly config: AuthConfig; readonly go: (view: View) => void }) {
+  if (props.view !== 'sign-in')
+    return (
+      <p>
+        <button type="button" onClick={() => props.go('sign-in')}>
+          Back to sign in
+        </button>
+      </p>
+    )
   return (
     <>
-      <AccountForm view={view} mode={mode} creating={creating && mode !== 'closed'} />
-      <div className="mt-4 flex flex-wrap gap-2">
-        {mode !== 'closed' && (
-          <Button variant="link" onClick={() => setCreating(!creating)}>
-            {creating ? 'I already have an account' : 'Create an account with a password'}
-          </Button>
-        )}
-        {mail && !creating && (
-          <Button variant="link" disabled={view.pending} onClick={() => void view.requestReset()}>
-            Forgot password?
-          </Button>
-        )}
-      </div>
+      {props.config.signup !== 'closed' && (
+        <p>
+          New here?{' '}
+          <button type="button" onClick={() => props.go('create')}>
+            Create an account
+          </button>
+        </p>
+      )}
+      {props.config.mail && (
+        <p>
+          <button type="button" onClick={() => props.go('reset')}>
+            Forgot your password?
+          </button>
+        </p>
+      )}
     </>
   )
 }
 
-/** With mail, an emailed code is the way in (a new address gets an account); a password stays as the fallback. */
+/** Sign in or create an account: with mail, an emailed code first and a password behind it; without mail, a password. */
 export function Authentication({ onAuthenticated }: { readonly onAuthenticated: () => void }) {
-  const view = useAuthentication(onAuthenticated)
   const config = useAuthConfig()
-  const [withPassword, setWithPassword] = useState(false)
-  const codes = config.mail && !withPassword
+  const [view, setView] = useState<View>('sign-in')
+  const [inviteCode, setInviteCode] = useState('')
+  const [notice, setNotice] = useState('')
+  const creating = view === 'create'
+  const actions = signInActions(inviteCode, creating, onAuthenticated, setNotice)
+  const go = (next: View) => {
+    setNotice('')
+    setView(next)
+  }
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Welcome to Purrable</CardTitle>
-        <CardDescription>Sign in, or create your own resident agent.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {codes ? (
-          <EmailCodeSignIn
-            invite={config.signup === 'invite'}
-            feedback={{ error: view.setError, notice: view.setNotice }}
-            onAuthenticated={onAuthenticated}
-          />
-        ) : (
-          <PasswordSignIn view={view} {...config} />
-        )}
-        {config.mail && (
-          <Button
-            variant="link"
-            className="mt-2"
-            onClick={() => {
-              view.setError('')
-              view.setNotice('')
-              setWithPassword(!withPassword)
-            }}
-          >
-            {withPassword ? 'Email me a code instead' : 'Use a password instead'}
-          </Button>
-        )}
-      </CardContent>
-      <CardFooter>
-        {view.error && (
-          <Alert variant="destructive">
-            <AlertDescription>{view.error}</AlertDescription>
-          </Alert>
-        )}
-        {view.notice && (
-          <Alert>
-            <AlertDescription>{view.notice}</AlertDescription>
-          </Alert>
-        )}
-      </CardFooter>
-    </Card>
+    <AuthPage
+      as="section"
+      mark={<CatIcon />}
+      title={TITLES[view].title}
+      description={TITLES[view].description}
+      footer={<Footer view={view} config={config} go={go} />}
+    >
+      {creating && config.signup === 'invite' && <InviteField value={inviteCode} onChange={setInviteCode} />}
+      {/* The form picks its first method when it mounts, so it waits until the deployment says whether it sends mail. */}
+      {!config.loaded ? null : view === 'reset' ? (
+        <ResetRequest notify={setNotice} />
+      ) : (
+        <SignInMethods
+          key={view}
+          methods={config.mail ? ['email-otp', 'password'] : ['password']}
+          emailCode={actions.emailCode}
+          password={actions.password}
+          labels={creating ? { signIn: 'Create account', requestCode: 'Email me a code to start' } : {}}
+        />
+      )}
+      {notice && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {notice}
+        </p>
+      )}
+    </AuthPage>
   )
 }
