@@ -117,3 +117,10 @@ export function conversationParts(projection: ConversationProjection): Part[] {
   }
   return [...parts, ...liveParts(projection, context, seen)]
 }
+
+/** How long a tool has run (to `now` while it runs) or ran; undefined when its start or end is unknown. */
+export function elapsedMs(part: ToolPart, now: number): number | undefined {
+  if (part.startedAt === undefined) return undefined
+  const end = part.endedAt ?? (part.state === 'running' || part.state === 'pending' ? now : undefined)
+  return end === undefined ? undefined : Math.max(0, end - part.startedAt)
+}

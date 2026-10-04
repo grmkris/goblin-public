@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { conversationParts } from '../src/lib/parts.ts'
+import { conversationParts, elapsedMs, type ToolPart, type ToolState } from '../src/lib/parts.ts'
 import { projectBatch, projectSnapshot } from '../src/lib/projection.ts'
 
 const call = (id: string, args: Record<string, unknown> = {}) => ({
@@ -90,5 +90,27 @@ describe('the transcript as render parts', () => {
       ['tool', 'tool:gone'],
       ['failure', '2:0:failure'],
     ])
+  })
+})
+
+const toolAt = (state: ToolState, times: { readonly startedAt?: number; readonly endedAt?: number }): ToolPart => ({
+  kind: 'tool',
+  id: 'tool:c',
+  call: { id: 'c', name: 'mcp_list', arguments: {} },
+  state,
+  ...times,
+})
+
+describe('how long a tool ran', () => {
+  it('counts to now while running and to the result once done', () => {
+    expect(elapsedMs(toolAt('running', { startedAt: 1_000 }), 3_500)).toBe(2_500)
+    expect(elapsedMs(toolAt('done', { startedAt: 1_000, endedAt: 1_800 }), 9_000)).toBe(800)
+  })
+  it('has no time without a start, or for a call that never ran', () => {
+    expect(elapsedMs(toolAt('running', {}), 3_500)).toBeUndefined()
+    expect(elapsedMs(toolAt('stopped', { startedAt: 1_000 }), 3_500)).toBeUndefined()
+  })
+  it('never goes negative when clocks disagree', () => {
+    expect(elapsedMs(toolAt('done', { startedAt: 5_000, endedAt: 4_000 }), 9_000)).toBe(0)
   })
 })

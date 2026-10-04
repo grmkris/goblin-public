@@ -22,6 +22,7 @@ export {
   DropdownMenuTrigger,
 } from './components/dropdown-menu.tsx'
 export { Composer, ComposerActions, ComposerInput } from './components/composer.tsx'
+export { Duration } from './components/duration.tsx'
 export { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './components/empty.tsx'
 export {
   Field,
@@ -47,6 +48,15 @@ export {
 export { Separator } from './components/separator.tsx'
 export { SiteHeader, SiteHeaderBrand, type SiteHeaderLink } from './components/site-header.tsx'
 export { Textarea } from './components/textarea.tsx'
+export {
+  ToolCall,
+  ToolCallContent,
+  ToolCallMeta,
+  ToolCallStatus,
+  ToolCallTitle,
+  ToolCallTrigger,
+  type ToolCallState,
+} from './components/tool-call.tsx'
 export { AuthPage } from './auth/auth-page.tsx'
 export { type AuthActionResult, failed, type PasskeySummary, type SignInMethod, succeeded } from './auth/contract.ts'
 export { PasskeyManager } from './auth/passkey-manager.tsx'

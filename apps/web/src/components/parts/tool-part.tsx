@@ -1,30 +1,52 @@
-import type { ReactNode } from 'react'
-import { Badge } from '@purrable/ui'
-import type { ToolPart, ToolState } from '../../lib/parts.ts'
+import { type ReactNode, useEffect, useState } from 'react'
+import {
+  Duration,
+  ToolCall,
+  ToolCallContent,
+  ToolCallMeta,
+  ToolCallStatus,
+  ToolCallTitle,
+  ToolCallTrigger,
+} from '@purrable/ui'
+import { elapsedMs, type ToolPart } from '../../lib/parts.ts'
 
-const STATE_LABEL: Record<ToolState, string> = {
-  pending: 'queued',
-  running: 'running',
-  done: 'tool',
-  error: 'failed',
-  stopped: 'stopped',
+/** The current time, ticking once a second while `active`, so a running tool's clock advances. */
+function useNow(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active) return
+    setNow(Date.now())
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [active])
+  return now
 }
 
-/** A tool call and its result: the call's arguments and the result text, folded; `children` add to the open card. */
+/**
+ * A tool call as one quiet row: lifecycle dot, `server · tool`, and its running clock or final time. It opens to the
+ * call's arguments and the result text; `children` add to the open card (an App view, for example).
+ */
 export function ToolCard({ part, children }: { readonly part: ToolPart; readonly children?: ReactNode }) {
+  const live = part.state === 'running' || part.state === 'pending'
+  const now = useNow(live)
+  const elapsed = elapsedMs(part, now)
   const label = part.target ? `${part.target.serverId} · ${part.target.name}` : part.call.name || 'tool'
   const args = part.target?.arguments ?? part.call.arguments
   return (
-    <details className="tool-card">
-      <summary>
-        <Badge variant={part.state === 'error' ? 'destructive' : 'outline'}>{STATE_LABEL[part.state]}</Badge> {label}
-      </summary>
-      <div className="flex flex-col gap-2">
+    <ToolCall>
+      <ToolCallTrigger>
+        <ToolCallStatus state={part.state} />
+        <ToolCallTitle>{label}</ToolCallTitle>
+        <ToolCallMeta>
+          {part.state === 'stopped' ? 'stopped' : elapsed !== undefined && <Duration ms={elapsed} running={live} />}
+        </ToolCallMeta>
+      </ToolCallTrigger>
+      <ToolCallContent>
         {Object.keys(args).length > 0 && <pre className="tool-output">{JSON.stringify(args, null, 2)}</pre>}
         {part.result && <pre className="tool-output">{part.result.text}</pre>}
         {children}
-      </div>
-    </details>
+      </ToolCallContent>
+    </ToolCall>
   )
 }
 
