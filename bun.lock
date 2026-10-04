@@ -98,6 +98,7 @@
         "@base-ui/react": "1.8.0",
         "@fontsource-variable/geist": "5.3.0",
         "@number-flow/react": "0.6.2",
+        "@paper-design/shaders-react": "0.0.81",
         "@shadcn/react": "0.3.1",
         "class-variance-authority": "0.7.1",
         "cn": "0.3.2",
@@ -767,6 +768,10 @@
     "@oxlint/binding-win32-x64-msvc": ["@oxlint/binding-win32-x64-msvc@1.81.0", "", { "os": "win32", "cpu": "x64" }, "sha512-IZuUCwGw9emG5JtCp+fYGB+Z4OWEoeEcM8R5BA1pYw63/ieYFVdcU2ylxTpHbVHSenZnsYE+ZZ20uHAJszQ4cA=="],
 
     "@oxlint/plugins": ["@oxlint/plugins@1.81.0", "", {}, "sha512-HhD8kd3r6XpelZkhxhRty/po8V6yK1VV63Eq4kSsOS2IoHUywG3DV2EX+z/ZHw46aLI74Y6aA604NRiAqLKW9w=="],
+
+    "@paper-design/shaders": ["@paper-design/shaders@0.0.81", "", {}, "sha512-jeGdyjMscZ2bxmQdo8lhwUufHUf4iq3s1ayjh8PXU7Go42Rw8E3I0It1FZdc3HuWt5J82m//DRWaxsRqRfA4Gg=="],
+
+    "@paper-design/shaders-react": ["@paper-design/shaders-react@0.0.81", "", { "dependencies": { "@paper-design/shaders": "0.0.81" }, "peerDependencies": { "@types/react": "^18 || ^19", "react": "^18 || ^19" }, "optionalPeers": ["@types/react"] }, "sha512-3FMkeZqj9sSvK/WkgekGu3crnOQd4R2iH8IT+jVBuQmq1m8p88VFvxh63s9bSt2exBwjBNaRfSo0FSCeNxqh3w=="],
 
     "@peculiar/asn1-android": ["@peculiar/asn1-android@2.10.0", "", { "dependencies": { "@peculiar/asn1-schema": "^2.10.0", "asn1js": "^3.0.10", "tslib": "^2.8.1" } }, "sha512-IHKdYL5MRW76DOQCv2HSE/vUMOf2jqH4E7yhtQYe/xx+RxpPiXfkUdhex0N4/s5crsnXCGftRNzy4RJn1s6CZA=="],
 

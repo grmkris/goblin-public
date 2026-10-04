@@ -1,10 +1,11 @@
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, AlertDescription, Badge } from '@purrable/ui'
+import { Alert, AlertDescription, PresenceBorder, PresenceOrb } from '@purrable/ui'
 import { failureText, request } from '../lib/boundary.ts'
 import { BrowserPiEvents, ConversationStream, type StreamStatus } from '../lib/conversation-stream.ts'
 import { openInteractions } from '../lib/interactions.ts'
 import { conversationParts } from '../lib/parts.ts'
-import { contextTokens } from '../lib/usage.ts'
+import { presenceOf } from '../lib/presence.ts'
+import { budgetFraction, contextTokens } from '../lib/usage.ts'
 import type { ConversationProjection } from '../lib/projection.ts'
 import { MessageComposer } from './composer.tsx'
 import { Conversation } from './conversation.tsx'
@@ -114,6 +115,13 @@ export function Chat() {
   const usage = useUsageToday(projection?.running ?? false)
   const context = useMemo(() => contextTokens(projection?.messages ?? []), [projection])
   const contextWindow = choice?.options.find((option) => option.id === choice.current)?.contextWindow
+  const presence = presenceOf({
+    status,
+    projection,
+    parts,
+    waiting: waiting.length,
+    exhausted: usage !== undefined && budgetFraction(usage) >= 1,
+  })
   return (
     <section className="chat-view" aria-label="Chat" ref={view}>
       <div className="chat-conversation">
@@ -121,20 +129,24 @@ export function Chat() {
         <div className="chat-dock" ref={dock}>
           {notice && <StreamNotice text={notice} />}
           <InteractionCards interactions={waiting} onAnswer={send} />
-          <MessageComposer
-            onSend={(input) => send(input)}
-            running={projection?.running ?? false}
-            onStop={() => void stop()}
-            context={
-              <>
-                <Badge variant={status === 'connected' ? 'secondary' : 'outline'}>
-                  {status === 'connected' ? (projection?.progress ?? 'Ready') : status}
-                </Badge>
-                <ModelPicker choice={choice} onChoose={(model) => void choose(model)} />
-                <UsageIndicator usage={usage} context={context} contextWindow={contextWindow} />
-              </>
-            }
-          />
+          <div className="relative">
+            {presence.state === 'waiting' && <PresenceBorder />}
+            <MessageComposer
+              onSend={(input) => send(input)}
+              running={projection?.running ?? false}
+              onStop={() => void stop()}
+              context={
+                <>
+                  <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
+                    <PresenceOrb state={presence.state} label={presence.label} />
+                    <span className="truncate">{presence.label}</span>
+                  </span>
+                  <ModelPicker choice={choice} onChoose={(model) => void choose(model)} />
+                  <UsageIndicator usage={usage} context={context} contextWindow={contextWindow} />
+                </>
+              }
+            />
+          </div>
         </div>
       </div>
     </section>

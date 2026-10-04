@@ -95,6 +95,13 @@ for the exact server and tool). The reply is an ordinary message with a stable o
 In the transcript, both requests leave a quiet receipt. An Allow card is only trusted from Purrable's own result for
 the tool that was called, never from a remote result, which always carries `origin`.
 
+The composer carries the agent's presence (`lib/presence.ts`): one state for the whole agent, with the most urgent
+first. In order: offline, waiting for the owner, retrying, using a tool (named `server · tool`), writing, thinking,
+budget spent, no answer, and ready. A small orb of moving colour (a Paper Shaders `MeshGradient`, loaded lazily)
+shows it beside a text label, and its pace follows the work. While the agent waits on the owner, a pulsing border
+frames the composer. Under reduced motion, in a hidden tab or before the shader loads, the orb is a still gradient and
+the border is absent. Colours come from the theme's `--presence-*` tokens, resolved to RGB at runtime.
+
 ## Outbound MCP
 
 Servers come from `PURRABLE_MCP_SERVERS` (JSON: `serverId`, `endpoint`, optional `issuer` and `resource`). The owner

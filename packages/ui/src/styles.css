@@ -92,6 +92,13 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /* The agent's presence (components/presence.tsx): the one colourful thing on screen, cool when it works, warm when
+     it waits on the owner. Read at runtime, because the shaders take rgb, not OKLCH. */
+  --presence-1: oklch(0.72 0.13 250);
+  --presence-2: oklch(0.68 0.15 292);
+  --presence-3: oklch(0.8 0.1 205);
+  --presence-4: oklch(0.93 0.04 260);
+  --presence-warm: oklch(0.8 0.14 70);
   /* A page's outer gutters: at least the base gutter, more where the iPhone's notch or home indicator needs it. */
   --page-gutter-left: max(1.25rem, env(safe-area-inset-left));
   --page-gutter-right: max(1.25rem, env(safe-area-inset-right));
@@ -130,6 +137,11 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --presence-1: oklch(0.66 0.14 252);
+  --presence-2: oklch(0.6 0.17 292);
+  --presence-3: oklch(0.72 0.11 205);
+  --presence-4: oklch(0.36 0.05 262);
+  --presence-warm: oklch(0.76 0.14 70);
 }
 
 @layer base {
