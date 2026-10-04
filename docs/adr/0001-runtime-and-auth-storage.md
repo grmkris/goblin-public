@@ -1,6 +1,7 @@
 # Native Pi runtime and identity storage
 
-Accepted 2026-10-04 after the native stack spike.
+Accepted 2026-10-04 after the native stack spike. Outbound credentials, grants and the resident principal are
+superseded by [ADR 0003](0003-resident-mcp-and-inbound-server.md).
 
 `PersonalAgent extends Agent` uses `agents/harness/pi`. Alchemy declares the native class binding and owns one
 TanStack Start Worker, its SQLite Durable Object namespace, static assets, and a separate D1 auth database.
