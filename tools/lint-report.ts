@@ -2,7 +2,7 @@
  * `bun run lint:report`: every finding of the lint gates, counted per rule and per workspace (tools/graph.ts).
  *
  *   bun run lint:report                          Markdown tables for the whole repository
- *   bun run lint:report --json                   the same as JSON (docs/agents/lint-rollout.md reads it)
+ *   bun run lint:report --json                   the same as JSON
  *   bun run lint:report --files a.ts b.ts         only findings in these files
  *   bun run lint:report --config /tmp/x.ts       measure a candidate oxlint config before enabling it
  *   bun run lint:report --only oxlint            one gate only (`oxlint`, `effect` or `knip`); the default is all

@@ -99,7 +99,7 @@ export default defineConfig({
     //   extension origin before anything is bundled;
     // - test/support wires the harness to its ports and evidence directory (docs/agents/testing-harness.md);
     // - scripts/stage.ts builds and scrubs the child environment of every stage run (ADR 0001; decision F4 in
-    //   docs/agents/lint-rollout.md).
+    //   docs/agents/lint-quality.md).
     {
       files: ['**/vitest*.config.ts', '**/vite.config.ts', '**/test/support/**', 'scripts/stage.ts'],
       rules: { 'purrable/no-process-env': 'off' },
