@@ -5,6 +5,7 @@ import { readJson } from './http/body.ts'
 import { Forbidden, InvalidInput, NotFound } from './http/errors.ts'
 import { failureResponse, requestIdOf, secured } from './http/respond.ts'
 import { unwrap } from './http/rpc.ts'
+import { handleInboundMcp } from './inbound/route.ts'
 
 export { PersonalAgent } from './agent.ts'
 
@@ -125,7 +126,9 @@ export default {
     if (url.pathname === '/health') return Response.json({ ok: true, service: 'purrable', stage: env.STAGE })
     if (url.pathname.startsWith('/.well-known/oauth-protected-resource'))
       return secured(Response.json(protectedResourceMetadata(env)))
-    if (url.pathname.startsWith('/api/auth/')) return handleAuth(request, env)
+    if (url.pathname.startsWith('/.well-known/') || url.pathname.startsWith('/api/auth/'))
+      return handleAuth(request, env)
+    if (url.pathname === '/mcp') return handleInboundMcp(request, env)
     if (!url.pathname.startsWith('/api/')) return Response.json({ error: 'NotFound' }, { status: 404 })
     try {
       return secured(await apiRequest(request, env))

@@ -18,10 +18,30 @@ import { piEventResponse } from './pi/events.ts'
 import { makePiHarness } from './pi/harness.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { ResidentAuthority } from './resident.ts'
-import { type AgentServices, Mcp, Resident, agentLayer, attempt, nowSecondsEffect } from './services.ts'
+import { ClientSessions } from './sessions.ts'
+import { type TranscriptMessage, transcriptMessages } from './pi/transcript.ts'
+import {
+  type AgentServices,
+  Mcp,
+  Resident,
+  Sessions,
+  agentLayer,
+  attempt,
+  nowSecondsEffect,
+  requireResident,
+} from './services.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
 
 type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
+
+const clientSession = (clientId: string, clientName: string | undefined, harness: PiHarness) =>
+  Effect.gen(function* () {
+    const sessions = yield* Sessions
+    const now = yield* nowSecondsEffect
+    return yield* attempt(() =>
+      sessions.ensure(clientId, clientName, async () => (await harness.sessions.create()).id, now),
+    )
+  })
 
 /**
  * The resident agent. Pi (through the native PiHarness) owns conversations; the services in `services.ts` own MCP
@@ -53,7 +73,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
         // SAFETY: the platform fetch is the outbound MCP/OAuth boundary; tokens are added only by the SDK transport.
         fetch: globalThis.fetch.bind(globalThis),
       })
-      return ManagedRuntime.make(agentLayer(host, new ResidentAuthority(db)))
+      return ManagedRuntime.make(agentLayer(host, new ResidentAuthority(db), new ClientSessions(db)))
     })()
     this.#runtime.catch(() => {
       this.#runtime = undefined
@@ -169,6 +189,46 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
         }),
       ),
     )
+  }
+
+  /**
+   * An inbound MCP client asks the resident agent something, in that client's own conversation. Needs current
+   * resident authority (it does not renew it). Returns the answer, or `running` with the operation id to wait again.
+   */
+  askAsClient(clientId: string, clientName: string | undefined, input: string, operationId: string, waitMs: number) {
+    const harness = this.harness
+    return this.#client(
+      Effect.gen(function* () {
+        yield* requireResident
+        const session = yield* clientSession(clientId, clientName, harness)
+        yield* attempt(() => harness.submit(input, { session, operationId }))
+        const result = yield* attempt(() =>
+          harness.wait(operationId, { session, signal: AbortSignal.timeout(waitMs) }).catch(() => undefined),
+        )
+        if (result === undefined) return { status: 'running' as const, operationId }
+        return result.status === 'done'
+          ? { status: 'done' as const, operationId, text: result.text ?? '' }
+          : { status: 'unanswered' as const, operationId, reason: result.reason ?? 'unanswered' }
+      }),
+    )
+  }
+
+  /** The client's own conversation, newest last. A client never sees the owner's main thread. */
+  clientMessages(clientId: string, limit: number) {
+    const harness = this.harness
+    return this.#client(
+      Effect.gen(function* () {
+        const sessions = yield* Sessions
+        const session = sessions.find(clientId)
+        if (session === undefined) return [] satisfies readonly TranscriptMessage[]
+        return transcriptMessages(yield* attempt(() => harness.messages({ session })), limit)
+      }),
+    )
+  }
+
+  /** An inbound client request: no resident renewal (only the owner renews). */
+  async #client<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
+    return encodeExit(await this.#exit(program))
   }
 
   async messages(): Promise<readonly EntryRecord[]> {

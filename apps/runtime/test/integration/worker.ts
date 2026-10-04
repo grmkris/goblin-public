@@ -72,7 +72,19 @@ async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promis
   const enabled = await agent.residentSet(true)
   const servers = await agent.mcpServers()
   const unknownServer = await agent.mcpSetToolGrant('missing', 'tool', true)
-  return Response.json({ first, revoked, afterOwnerRequest, enabled, servers, unknownServer })
+  const noConversation = await agent.clientMessages('client-1', 5)
+  await agent.residentSet(false)
+  const askWhileRevoked = await agent.askAsClient('client-1', 'Test client', 'hello', 'op-1', 1000)
+  return Response.json({
+    first,
+    revoked,
+    afterOwnerRequest,
+    enabled,
+    servers,
+    unknownServer,
+    noConversation,
+    askWhileRevoked,
+  })
 }
 
 export default {

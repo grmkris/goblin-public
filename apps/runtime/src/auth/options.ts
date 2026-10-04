@@ -28,8 +28,11 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
     scopes: [...MCP_SCOPES],
     loginPage: '/login',
     consentPage: '/consent',
+    // MCP clients (Claude Code and others) register themselves before the owner signs in. Registration grants
+    // nothing: every new client needs the owner's consent, and only the /mcp resource can be requested.
     allowDynamicClientRegistration: true,
     allowUnauthenticatedClientRegistration: true,
+    clientRegistrationAllowedResources: [resource],
     clientRegistrationDefaultScopes: [...MCP_SCOPES],
   })
   return {

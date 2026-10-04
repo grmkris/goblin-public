@@ -5,14 +5,20 @@ import * as Layer from 'effect/Layer'
 import { type AppError, toAppError } from './http/errors.ts'
 import type { McpHost } from './mcp/host.ts'
 import type { ResidentAuthority } from './resident.ts'
+import type { ClientSessions } from './sessions.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('purrable/Mcp') {}
 export class Resident extends Context.Service<Resident, ResidentAuthority>()('purrable/Resident') {}
-export type AgentServices = Mcp | Resident
+export class Sessions extends Context.Service<Sessions, ClientSessions>()('purrable/Sessions') {}
+export type AgentServices = Mcp | Resident | Sessions
 
-export const agentLayer = (host: McpHost, resident: ResidentAuthority): Layer.Layer<AgentServices> =>
-  Layer.mergeAll(Layer.succeed(Mcp, host), Layer.succeed(Resident, resident))
+export const agentLayer = (
+  host: McpHost,
+  resident: ResidentAuthority,
+  sessions: ClientSessions,
+): Layer.Layer<AgentServices> =>
+  Layer.mergeAll(Layer.succeed(Mcp, host), Layer.succeed(Resident, resident), Layer.succeed(Sessions, sessions))
 
 /** Wrap a plain async step so its failure lands in the typed `AppError` channel. */
 export const attempt = <A>(run: () => Promise<A>): Effect.Effect<A, AppError> =>

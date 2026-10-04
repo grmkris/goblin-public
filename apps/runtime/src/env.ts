@@ -4,6 +4,7 @@ import type { RpcResult } from './http/rpc.ts'
 import type { Grant, GrantCapability } from './mcp/grants.ts'
 import type { ServerView, ToolView } from './mcp/host.ts'
 import type { ResidentStatus } from './resident.ts'
+import type { TranscriptMessage } from './pi/transcript.ts'
 
 /** Owner-facing RPC of the Agent DO. The Worker authenticates the owner before calling any of these. */
 export interface AgentRpcMethods {
@@ -35,7 +36,19 @@ export interface AgentRpcMethods {
   ) => Promise<RpcResult<GetPromptResult>>
   readonly residentStatus: () => Promise<RpcResult<ResidentStatus>>
   readonly residentSet: (enabled: boolean) => Promise<RpcResult<ResidentStatus>>
+  readonly askAsClient: (
+    clientId: string,
+    clientName: string | undefined,
+    input: string,
+    operationId: string,
+    waitMs: number,
+  ) => Promise<RpcResult<AskResult>>
+  readonly clientMessages: (clientId: string, limit: number) => Promise<RpcResult<readonly TranscriptMessage[]>>
 }
+export type AskResult =
+  | { readonly status: 'done'; readonly operationId: string; readonly text: string }
+  | { readonly status: 'running'; readonly operationId: string }
+  | { readonly status: 'unanswered'; readonly operationId: string; readonly reason: string }
 export type AgentRpc = AgentRpcMethods & Rpc.DurableObjectBranded
 export type { GrantCapability }
 

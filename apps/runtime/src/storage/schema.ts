@@ -44,3 +44,10 @@ export const appResident = sqliteTable('app_resident', {
   expiresAt: integer('expires_at').notNull(),
   revokedAt: integer('revoked_at'),
 })
+/** Pi session per inbound MCP client: each client talks to the agent in its own conversation. */
+export const appClientSessions = sqliteTable('app_client_sessions', {
+  clientId: text('client_id').primaryKey().notNull(),
+  sessionId: text('session_id').notNull(),
+  clientName: text('client_name'),
+  createdAt: integer('created_at').notNull(),
+})

@@ -92,10 +92,12 @@ const Rpc = Schema.Struct({
   enabled: Schema.Struct({ ok: Schema.Literal(true), value: Status }),
   servers: Schema.Struct({ ok: Schema.Literal(true), value: Schema.Array(Schema.Unknown) }),
   unknownServer: Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) }),
+  noConversation: Schema.Struct({ ok: Schema.Literal(true), value: Schema.Array(Schema.Unknown) }),
+  askWhileRevoked: Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) }),
 })
 
 harness.test(
-  'local workerd: owner RPC renews resident authority, revocation is sticky, errors cross as data',
+  'local workerd: owner RPC renews resident authority, revocation is sticky and blocks client asks',
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `rpc-${yield* nextInt}`
@@ -109,6 +111,8 @@ harness.test(
     expect(result.enabled.value.state).toBe('active')
     expect(result.servers.value).toEqual([])
     expect(result.unknownServer.error._tag).toBe('NotFound')
+    expect(result.noConversation.value).toEqual([])
+    expect(result.askWhileRevoked.error._tag).toBe('ResidentInactive')
   }),
 )
 

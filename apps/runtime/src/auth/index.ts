@@ -1,1 +1,1 @@
-export { handleAuth, protectedResourceMetadata, requireOwnerSession } from './service.ts'
+export { clientName, handleAuth, protectedResourceMetadata, requireOwnerSession, verifyClientToken } from './service.ts'
