@@ -1,10 +1,11 @@
 /**
  * Manual acceptance against the retained dev Worker (`smoke:dev`) or the local stack (`smoke:local`). Never imported
- * by CI or the deployed Worker. It reads the owner's state but changes none
- * of it: grants stay as the owner set them, and agent turns run in a throwaway inbound client's own conversation,
- * which is revoked before the script exits.
+ * by CI or the deployed Worker. It reads the owner's state and changes one thing for the length of its agent turns:
+ * with `PURRABLE_SMOKE_MODEL` set, the agent answers on that model, and the owner's own pick is put back afterwards,
+ * whatever failed. Grants stay as the owner set them, and agent turns run in a throwaway inbound client's own
+ * conversation, which is revoked before the script exits.
  */
-import { Config, Effect, Redacted, Schema } from 'effect'
+import { Config, Effect, Option, Redacted, Schema } from 'effect'
 import { createHash, randomBytes } from 'node:crypto'
 import { chmod, stat, writeFile } from 'node:fs/promises'
 
@@ -34,6 +35,8 @@ const settings = Effect.gen(function* () {
     url: yield* Config.String('PURRABLE_APP_URL'),
     email: yield* Config.Redacted('PURRABLE_OWNER_EMAIL'),
     password: yield* Config.Redacted('PURRABLE_OWNER_PASSWORD'),
+    /** The model the smoke's agent turns run on (dev: an Alibaba Token Plan model); unset: the owner's own pick. */
+    smokeModel: Option.getOrUndefined(yield* Config.option(Config.String('PURRABLE_SMOKE_MODEL'))),
   }
 })
 
@@ -275,6 +278,28 @@ async function inboundChecks(dev: DevClient, client: InboundClient, servers: rea
   return { initialized: true, modelTurn: 'ok', residentTool, history: 'ok', revokedThen401: true }
 }
 
+const putModel = (dev: DevClient, model: string) =>
+  dev.json('/api/agent/model', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model }),
+  })
+
+/** Runs `work` with the agent answering on `model`, then puts the owner's own pick back, whatever happened. */
+async function withModel<T>(dev: DevClient, model: string | undefined, work: () => Promise<T>): Promise<T> {
+  if (model === undefined) return work()
+  const choice = await dev.json('/api/agent/model')
+  if (!objects(choice['options']).some((option) => option['id'] === model)) throw new Error('smoke_model_not_offered')
+  const own = string(choice['current'])
+  if (own === model) return work()
+  await putModel(dev, model)
+  try {
+    return await work()
+  } finally {
+    await putModel(dev, own)
+  }
+}
+
 /** Unless sign-up is open, a registration without the invite code must be refused (and so writes nothing). */
 async function refusedSignup(dev: DevClient): Promise<void> {
   const response = await dev.send('/api/auth/sign-up/email', {
@@ -292,6 +317,7 @@ async function refusedSignup(dev: DevClient): Promise<void> {
 
 type Receipt = {
   readonly stage: string
+  readonly model: string
   readonly signup: string
   readonly resident: string
   readonly servers: readonly ServerReport[]
@@ -316,8 +342,9 @@ async function smokeDev(steps: Step[]): Promise<Receipt> {
   for (const server of await dev.list('/api/mcp/servers')) servers.push(await serverReport(dev, server))
   const client = await InboundClient.register(dev)
   try {
-    const inbound = await inboundChecks(dev, client, servers)
-    return { stage: config.stage, signup, resident: string(resident['state']), servers, inbound }
+    const inbound = await withModel(dev, config.smokeModel, () => inboundChecks(dev, client, servers))
+    const model = config.smokeModel ?? 'owner pick'
+    return { stage: config.stage, model, signup, resident: string(resident['state']), servers, inbound }
   } finally {
     // Never leave the throwaway client authorized, whatever failed above.
     await dev.send(`/api/clients/${encodeURIComponent(client.clientId)}`, { method: 'DELETE' })
