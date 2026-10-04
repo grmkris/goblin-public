@@ -1,4 +1,6 @@
+import type { AppContext } from '@purrable/contracts'
 import { isString, isNumber, identifier, record, records, text } from './boundary.ts'
+import { sharedContext } from './app-context.ts'
 
 /** A tool call the assistant made, with its raw arguments. */
 export type ToolCallView = { readonly id: string; readonly name: string; readonly arguments: Record<string, unknown> }
@@ -15,7 +17,14 @@ export type TokenUsage = {
  * one; optional fields are absent rather than empty.
  */
 export type ChatMessage =
-  | { readonly id: string; readonly role: 'user'; readonly text: string; readonly timestamp?: number }
+  | {
+      readonly id: string
+      readonly role: 'user'
+      readonly text: string
+      /** What an open App shared with this message, labelled untrusted for the agent. */
+      readonly context?: readonly AppContext[]
+      readonly timestamp?: number
+    }
   | {
       readonly id: string
       readonly role: 'assistant'
@@ -158,7 +167,11 @@ function entryMessage(message: Record<string, unknown>, id: string): ChatMessage
       },
     ]
   if (message.role === 'assistant') return [assistantMessage(message, id, content)]
-  if (message.role === 'user') return [{ id, role: 'user', text: content, ...stamped(message) }]
+  if (message.role === 'user') {
+    const shared = sharedContext(message.content)
+    const context = shared.context.length === 0 ? {} : { context: shared.context }
+    return [{ id, role: 'user', text: shared.text, ...context, ...stamped(message) }]
+  }
   return []
 }
 

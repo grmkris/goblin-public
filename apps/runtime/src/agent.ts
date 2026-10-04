@@ -1,6 +1,6 @@
 import { Agent } from 'agents'
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import type { JsonObject } from '@purrable/contracts'
+import type { AppContext, JsonObject } from '@purrable/contracts'
 import { PiHarness } from 'agents/harness/pi'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Effect from 'effect/Effect'
@@ -37,6 +37,7 @@ import {
 } from './services.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
 import { ModelBudget, UsageStore, dailyTokenLimit } from './budget.ts'
+import { ownerContent } from './pi/app-context.ts'
 import { budgetExtension } from './pi/budget.ts'
 import { ModelChoiceStore, ModelPicker, modelOptions } from './models.ts'
 
@@ -135,14 +136,16 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return encodeExit(await this.#exit(renewed))
   }
 
-  submit(input: string, operationId: string) {
+  /** The owner's message, with what an open App shared for the agent as separate untrusted blocks. */
+  submit(input: string, operationId: string, appContext: readonly AppContext[] = []) {
     const harness = this.harness
     const model = useModel(harness, this.#applied, undefined)
+    const content = ownerContent(input, appContext)
     return this.#owner(
       Effect.gen(function* () {
         yield* requireBudget
         yield* model
-        return yield* attempt(() => harness.submit(input, { operationId }))
+        return yield* attempt(() => harness.submit(content, { operationId }))
       }),
     )
   }

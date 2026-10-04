@@ -150,6 +150,14 @@ locale, its display mode, the modes on offer, and its box. The host re-sends it 
 App may ask for a height between 160px and 70% of the viewport. It may ask for another display mode and gets it if
 the screen offers that mode.
 
+Two more requests are drawn by the host, where the App cannot reach (`lib/app-context.ts`). A link the App asks to
+open (https only, no credentials) becomes an offer with a real anchor, so only the owner's click opens it. Context
+the App shares for the agent (`ui/update-model-context`, text, at most 8 KB) waits in a removable chip above the
+composer and travels once, with the owner's next message, as `appContext` on `POST /api/agent`. The runtime
+(`pi/app-context.ts`) appends it after the owner's words as a separate block shaped
+`{ origin: { serverId, trust: 'untrusted' }, appContext }`. The persona treats it as data, never as the owner
+speaking, and the transcript shows it as a note under their message.
+
 ## Models
 
 Each user picks the model their agent answers with, in the composer. The deployment offers `PURRABLE_MODEL_ID` (the

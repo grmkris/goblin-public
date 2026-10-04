@@ -1,4 +1,5 @@
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react'
+import type { AppContext } from '@purrable/contracts'
 import { Alert, AlertDescription, PresenceBorder, PresenceOrb } from '@purrable/ui'
 import { failureText, request } from '../lib/boundary.ts'
 import { BrowserPiEvents, ConversationStream, type StreamStatus } from '../lib/conversation-stream.ts'
@@ -7,7 +8,8 @@ import { conversationParts } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
 import { budgetFraction, contextTokens } from '../lib/usage.ts'
 import type { ConversationProjection } from '../lib/projection.ts'
-import { AppsProvider } from './apps/provider.tsx'
+import { SharedContextChip } from './apps/offers.tsx'
+import { AppsProvider, useApps } from './apps/provider.tsx'
 import { AppLayer } from './apps/stage.tsx'
 import { MessageComposer } from './composer.tsx'
 import { Conversation } from './conversation.tsx'
@@ -47,10 +49,15 @@ function useConversation() {
     }
   }, [])
   /** `operationId` is stable for replies to a question or permission request; a typed message gets a fresh one. */
-  async function send(input: string, operationId?: string): Promise<boolean> {
+  async function send(input: string, operationId?: string, appContext: readonly AppContext[] = []): Promise<boolean> {
     try {
       // @effect-diagnostics-next-line cryptoRandomUUID:off -- A fresh idempotency key for this browser submission.
-      await request('/api/agent', { body: { input, operationId: operationId ?? crypto.randomUUID() } })
+      const body = {
+        input,
+        operationId: operationId ?? crypto.randomUUID(),
+        ...(appContext.length > 0 && { appContext }),
+      }
+      await request('/api/agent', { body })
       return true
     } catch (error) {
       setNotice(failureText(error))
@@ -114,8 +121,23 @@ export function Chat() {
   )
 }
 
+type Send = (input: string, operationId?: string, appContext?: readonly AppContext[]) => Promise<boolean>
+
+/** The owner's message, with what the open App shares; the shared context is sent once, then cleared. */
+function useSendWithAppContext(send: Send): (input: string) => Promise<boolean> {
+  const { session, setContext } = useApps()
+  return async (input) => {
+    const shared = session?.context
+    const context = shared === undefined ? [] : [{ serverId: session?.selection.serverId ?? '', text: shared }]
+    const sent = await send(input, undefined, context)
+    if (sent && shared !== undefined) setContext('')
+    return sent
+  }
+}
+
 function ChatView() {
   const { projection, status, notice, report, send, stop } = useConversation()
+  const sendOwn = useSendWithAppContext(send)
   const { choice, choose } = useModelChoice(report)
   const view = useRef<HTMLElement>(null)
   const dock = useRef<HTMLDivElement>(null)
@@ -139,10 +161,11 @@ function ChatView() {
         <div className="chat-dock" ref={dock}>
           {notice && <StreamNotice text={notice} />}
           <InteractionCards interactions={waiting} onAnswer={send} />
+          <SharedContextChip />
           <div className="relative">
             {presence.state === 'waiting' && <PresenceBorder />}
             <MessageComposer
-              onSend={(input) => send(input)}
+              onSend={sendOwn}
               running={projection?.running ?? false}
               onStop={() => void stop()}
               context={

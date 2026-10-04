@@ -160,6 +160,47 @@
   flex: 1;
   min-width: 0;
 }
+/* Host-drawn offers from an App: a link to open on the owner's click, context to share with the next message. */
+.app-offer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.375rem 0.375rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: color-mix(in oklab, var(--card) 92%, transparent);
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+.app-stage > .app-offer {
+  margin: 0.5rem;
+}
+.app-offer > svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+.app-offer > span {
+  flex: 1;
+  min-width: 0;
+}
+.shared-context {
+  display: flex;
+  align-self: flex-end;
+  align-items: center;
+  gap: 0.375rem;
+  max-width: 85%;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.shared-context > svg {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+}
 /* The desktop side panel the App fills in fullscreen mode, beside the conversation and under the header. */
 .app-panel {
   position: relative;

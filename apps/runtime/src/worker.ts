@@ -1,4 +1,5 @@
 import * as Schema from 'effect/Schema'
+import { AppContext } from '@purrable/contracts'
 import type { AgentRpc, RuntimeEnv } from './env.ts'
 import {
   handleAuth,
@@ -18,7 +19,11 @@ import { handleInboundMcp } from './inbound/route.ts'
 export { PersonalAgent } from './agent.ts'
 
 const Bounded = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max))
-const Submit = Schema.Struct({ input: Bounded(20_000), operationId: Bounded(200) })
+const Submit = Schema.Struct({
+  input: Bounded(20_000),
+  operationId: Bounded(200),
+  appContext: Schema.optional(Schema.Array(AppContext).check(Schema.isMaxLength(2))),
+})
 const Stop = Schema.Struct({ operationId: Schema.optional(Bounded(200)) })
 const ToolCall = Schema.Struct({
   name: Bounded(256),
@@ -49,7 +54,7 @@ const waitRoute: Route = async (request, agent) => {
 const agentRoutes: Readonly<Record<string, Route>> = {
   'POST /api/agent': async (request, agent) => {
     const body = await readJson(request, Submit)
-    return json(unwrap(await agent.submit(body.input, body.operationId)), 202)
+    return json(unwrap(await agent.submit(body.input, body.operationId, body.appContext ?? [])), 202)
   },
   'POST /api/agent/stop': async (request, agent) =>
     json({ stopped: unwrap(await agent.stop((await readJson(request, Stop)).operationId)) }),

@@ -1,5 +1,8 @@
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { AppWindowIcon } from 'lucide-react'
+import type { AppContext } from '@purrable/contracts'
+import { contextPreview } from '../../lib/app-context.ts'
 
 /**
  * Assistant text as GitHub-flavoured Markdown, set by shadcn/typeset. Raw HTML is never rendered; links open in a new
@@ -30,11 +33,20 @@ export function MessageText({ text }: { readonly text: string }) {
 }
 
 /** The owner's words, as they typed them. */
-export function UserText({ text }: { readonly text: string }) {
+/** The owner's message; what an open App shared with it shows as a quiet note, never as their words. */
+export function UserText({ text, context = [] }: { readonly text: string; readonly context?: readonly AppContext[] }) {
   return (
-    <article className="bubble bubble-user">
-      <p className="message-text">{text}</p>
-    </article>
+    <>
+      <article className="bubble bubble-user">
+        <p className="message-text">{text}</p>
+      </article>
+      {context.map((shared) => (
+        <p key={shared.serverId} className="shared-context" title={shared.text}>
+          <AppWindowIcon aria-hidden />
+          Shared from {shared.serverId}: {contextPreview(shared.text)}
+        </p>
+      ))}
+    </>
   )
 }
 

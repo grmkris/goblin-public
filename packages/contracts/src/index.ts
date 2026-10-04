@@ -71,6 +71,16 @@ export const QuestionSpec = Schema.Struct({
 })
 export type QuestionSpec = typeof QuestionSpec.Type
 
+/**
+ * What an open MCP App shared for the agent (`ui/update-model-context`), sent with the owner's next message. The
+ * runtime passes it to the model as a separate block labelled untrusted, never as the owner's words.
+ */
+export const AppContext = Schema.Struct({
+  serverId: Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u)),
+  text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(8192)),
+})
+export type AppContext = typeof AppContext.Type
+
 /** A model the deployment offers. `route` groups models by provider route, because quotas are per route. */
 export const ModelOption = Schema.Struct({
   id: Schema.String,

@@ -22,6 +22,7 @@ import {
   stepSpring,
 } from '../../lib/spring.ts'
 import { AppFrame } from './frame.tsx'
+import { LinkOffer } from './offers.tsx'
 import { type AppSession, useApps } from './provider.tsx'
 import { AppPanel } from './slot.tsx'
 
@@ -291,10 +292,20 @@ function Stage({ session }: { readonly session: AppSession }) {
     <div ref={stage} className="app-stage" data-mode={sheet ? 'sheet' : mode} data-hidden="">
       <AppChrome session={session} drag={drag} />
       {error && <Receipt tone="error">{error}. The ordinary tool result remains available.</Receipt>}
+      {session.link && (
+        <LinkOffer link={session.link} serverId={session.selection.serverId} onDone={() => apps.setLink(undefined)} />
+      )}
       <AppFrame
         selection={session.selection}
         placement={placement}
-        events={{ report: setError, resize: apps.setHeight, close: apps.close, requestMode: apps.setMode }}
+        events={{
+          report: setError,
+          resize: apps.setHeight,
+          close: apps.close,
+          requestMode: apps.setMode,
+          share: apps.setContext,
+          offerLink: apps.setLink,
+        }}
       />
     </div>
   )

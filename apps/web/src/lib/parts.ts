@@ -1,3 +1,4 @@
+import type { AppContext } from '@purrable/contracts'
 import { isString, record } from './boundary.ts'
 import type { ChatMessage, ConversationProjection, LiveTool, ToolCallView, TurnFailure } from './projection.ts'
 
@@ -28,7 +29,12 @@ export type ToolPart = {
 }
 /** What the transcript renders, in order. Every part has a stable id for the scroller. */
 export type Part =
-  | { readonly kind: 'user'; readonly id: string; readonly text: string }
+  | {
+      readonly kind: 'user'
+      readonly id: string
+      readonly text: string
+      readonly context?: readonly AppContext[]
+    }
   | { readonly kind: 'reasoning'; readonly id: string; readonly text: string; readonly live: boolean }
   | { readonly kind: 'text'; readonly id: string; readonly text: string; readonly live: boolean }
   | ToolPart
@@ -105,7 +111,13 @@ export function conversationParts(projection: ConversationProjection): Part[] {
   const seen = new Set<string>()
   const parts: Part[] = []
   for (const message of projection.messages) {
-    if (message.role === 'user') parts.push({ kind: 'user', id: message.id, text: message.text })
+    if (message.role === 'user')
+      parts.push({
+        kind: 'user',
+        id: message.id,
+        text: message.text,
+        ...(message.context && { context: message.context }),
+      })
     else if (message.role === 'assistant') {
       for (const call of message.toolCalls) seen.add(call.id)
       parts.push(...assistantParts(message, context))

@@ -11,8 +11,10 @@ import {
 import type { CallToolResult, ReadResourceResult } from '@modelcontextprotocol/client'
 import { Alert, AlertDescription } from '@purrable/ui'
 import { isSandboxMessage, sandboxHtml, sandboxProxy } from '../../lib/app-sandbox.ts'
+import { contextText, safeLink } from '../../lib/app-context.ts'
 import { isString, record, records, request, text } from '../../lib/boundary.ts'
 import { type AppPlacement, type Device, hostContext, inlineHeight } from '../../lib/host-context.ts'
+import { LinkOffer } from './offers.tsx'
 
 export type AppSelection = {
   readonly serverId: string
@@ -28,6 +30,10 @@ export type FrameEvents = {
   readonly close: () => void
   /** Returns the mode the App is in afterwards: the requested one if the host offers it. */
   readonly requestMode: (mode: McpUiDisplayMode) => McpUiDisplayMode
+  /** What the App shares for the agent; '' withdraws it. */
+  readonly share: (text: string) => void
+  /** A link the App asks to open: offered to the owner, never opened for them. */
+  readonly offerLink: (link: URL) => void
 }
 
 function device(): Device {
@@ -65,7 +71,7 @@ function configuredBridge(
   const bridge = new AppBridge(
     null,
     { name: 'Purrable', version: '0.1.0' },
-    { serverTools: {}, serverResources: {} },
+    { serverTools: {}, serverResources: {}, openLinks: {}, updateModelContext: { text: {}, structuredContent: {} } },
     { hostContext: contextFor(placement()) },
   )
   const { serverId } = selection
@@ -74,6 +80,16 @@ function configuredBridge(
   bridge.onreadresource = (params) =>
     forward<ReadResourceResult>(serverId, 'resources/read', { uri: params.uri }, signal)
   bridge.onrequestdisplaymode = async ({ mode }) => ({ mode: events.requestMode(mode) })
+  bridge.onupdatemodelcontext = async ({ content, structuredContent }) => {
+    events.share(contextText(content, structuredContent))
+    return {}
+  }
+  bridge.onopenlink = async ({ url }) => {
+    const link = safeLink(url)
+    if (link === undefined) return { isError: true }
+    events.offerLink(link)
+    return {}
+  }
   bridge.addEventListener('sizechange', ({ height }) => {
     if (height !== undefined) events.resize(height)
   })
@@ -167,6 +183,8 @@ export function AppFrame({
       resize: (asked) => latest.current.events.resize(asked),
       close: () => latest.current.events.close(),
       requestMode: (mode) => latest.current.events.requestMode(mode),
+      share: (shared) => latest.current.events.share(shared),
+      offerLink: (link) => latest.current.events.offerLink(link),
     }
     if (element)
       attachApp(element, selection, () => latest.current.placement, controller.signal, relay)
@@ -203,9 +221,17 @@ export function AppFrame({
 export function McpApp({ selection, onClose }: { readonly selection: AppSelection; readonly onClose: () => void }) {
   const [error, setError] = useState('')
   const [height, setHeight] = useState<number>()
+  const [link, setLink] = useState<URL>()
   const viewport = typeof window === 'undefined' ? 900 : window.innerHeight
   const shown = inlineHeight(height, viewport)
-  const events: FrameEvents = { report: setError, resize: setHeight, close: onClose, requestMode: () => 'inline' }
+  const events: FrameEvents = {
+    report: setError,
+    resize: setHeight,
+    close: onClose,
+    requestMode: () => 'inline',
+    share: () => undefined,
+    offerLink: setLink,
+  }
   return (
     <div className="flex flex-col gap-3">
       {error && (
@@ -213,6 +239,7 @@ export function McpApp({ selection, onClose }: { readonly selection: AppSelectio
           <AlertDescription>{error}. The ordinary tool result remains available.</AlertDescription>
         </Alert>
       )}
+      {link && <LinkOffer link={link} serverId={selection.serverId} onDone={() => setLink(undefined)} />}
       <AppFrame
         height={shown}
         selection={selection}

@@ -2,13 +2,17 @@ import type { CallToolResult, GetPromptResult, ReadResourceResult } from '@model
 import type { PiOperationResult, PiReceipt } from 'agents/harness/pi'
 import type { RpcResult } from './http/rpc.ts'
 import type { Grant, GrantCapability } from './mcp/grants.ts'
-import type { ModelChoice, ResidentStatus, ServerView, ToolView, UsageToday } from '@purrable/contracts'
+import type { AppContext, ModelChoice, ResidentStatus, ServerView, ToolView, UsageToday } from '@purrable/contracts'
 import type { TranscriptMessage } from './pi/transcript.ts'
 import type { MailBinding } from './auth/mail.ts'
 
 /** Owner-facing RPC of the Agent DO. The Worker authenticates the owner before calling any of these. */
 export interface AgentRpcMethods {
-  readonly submit: (input: string, operationId: string) => Promise<RpcResult<PiReceipt>>
+  readonly submit: (
+    input: string,
+    operationId: string,
+    appContext?: readonly AppContext[],
+  ) => Promise<RpcResult<PiReceipt>>
   readonly wait: (operationId: string) => Promise<RpcResult<PiOperationResult>>
   readonly stop: (operationId?: string) => Promise<RpcResult<boolean>>
   readonly mcpServers: () => Promise<RpcResult<readonly ServerView[]>>

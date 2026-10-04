@@ -13,6 +13,10 @@ export type AppSession = {
   readonly mode: McpUiDisplayMode
   /** The height the App asked for inline. */
   readonly height?: number
+  /** What the App last shared for the agent; sent with the owner's next message, then cleared. */
+  readonly context?: string
+  /** A link the App asked to open, waiting for the owner's click. */
+  readonly link?: URL
 }
 
 /** Where an App can be: its inline place in the transcript (by part key) or the desktop panel. */
@@ -27,6 +31,10 @@ type Apps = {
   /** Moves the App to `mode` if this screen offers it; returns the mode it is in afterwards. */
   readonly setMode: (mode: McpUiDisplayMode) => McpUiDisplayMode
   readonly setHeight: (height: number) => void
+  /** Keeps (or with '', drops) what the App shares with the owner's next message. */
+  readonly setContext: (text: string) => void
+  /** Offers a link the App asked to open, or withdraws it. */
+  readonly setLink: (link: URL | undefined) => void
   readonly close: () => void
   /** A ref callback that registers a slot's element while it is mounted. */
   readonly slot: (name: SlotName) => (element: HTMLElement | null) => void
@@ -105,14 +113,42 @@ export function AppsProvider({ children }: { readonly children: ReactNode }) {
   const setHeight = useCallback((height: number) => {
     setSession((current) => (current === undefined ? current : { ...current, height }))
   }, [])
+  const setContext = useCallback((text: string) => {
+    setSession((current) => {
+      if (current === undefined) return current
+      const { context: _dropped, ...rest } = current
+      return text === '' ? rest : { ...rest, context: text }
+    })
+  }, [])
+  const setLink = useCallback((link: URL | undefined) => {
+    setSession((current) => {
+      if (current === undefined) return current
+      const { link: _dropped, ...rest } = current
+      return link === undefined ? rest : { ...rest, link }
+    })
+  }, [])
   const close = useCallback(() => setSession(undefined), [])
   // A screen that stops offering the current mode (a desktop window narrowed to phone size) falls back to the panel.
   useEffect(() => {
     if (session !== undefined && !available.includes(session.mode)) setSession({ ...session, mode: 'fullscreen' })
   }, [session, available])
   const apps = useMemo(
-    () => ({ session, phone, available, open, setMode, setHeight, close, slot, element, kick, onKick }),
-    [session, phone, available, open, setMode, setHeight, close, slot, element, kick, onKick],
+    () => ({
+      session,
+      phone,
+      available,
+      open,
+      setMode,
+      setHeight,
+      setContext,
+      setLink,
+      close,
+      slot,
+      element,
+      kick,
+      onKick,
+    }),
+    [session, phone, available, open, setMode, setHeight, setContext, setLink, close, slot, element, kick, onKick],
   )
   return <AppsContext value={apps}>{children}</AppsContext>
 }
