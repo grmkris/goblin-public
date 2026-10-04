@@ -71,7 +71,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const fixtureId = yield* nextInt
-    const response = yield* Effect.promise(() => fetch(`${url.replace(/\/+$/u, '')}/?name=${fixtureId}`))
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/probe?name=${fixtureId}`))
     expect(response.status).toBe(200)
     const raw: unknown = yield* Effect.promise(() => response.json())
     const result = yield* Schema.decodeUnknownEffect(NativeResult)(raw)
@@ -198,6 +198,42 @@ const Destroy = Schema.Struct({
   resident: Schema.Struct({ ok: Schema.Literal(true), value: Status }),
 })
 
+/** A transcript's turns, without the system prompt entries Pi places among them. */
+const turns = (lines: readonly string[]) => lines.filter((line) => !line.startsWith('pi.system'))
+
+const Branch = Schema.Struct({
+  thread: Schema.Struct({ kind: Schema.Literal('thread'), parent: Schema.Literal('1') }),
+  settled: Schema.Struct({ status: Schema.Literal('done'), text: Schema.String }),
+  main: Schema.Array(Schema.String),
+  branch: Schema.Array(Schema.String),
+  lastRequest: Schema.Array(Schema.Struct({ role: Schema.String, text: Schema.String })),
+})
+
+harness.test(
+  'local workerd: a thread branched from main sees main up to the branch, and main never sees the thread',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `branch-${yield* nextInt}`
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/branch?name=${name}`))
+    const result = yield* Schema.decodeUnknownEffect(Branch)(yield* Effect.promise(() => response.json()))
+    expect(result.settled.text).toBe('echo: what was the word?')
+    expect(turns(result.main)).toEqual([
+      'pi.user: "remember the word lantern"',
+      'pi.assistant: [{"type":"text","text":"echo: remember the word lantern"}]',
+    ])
+    expect(turns(result.branch)).toEqual([
+      ...turns(result.main),
+      'pi.user: "what was the word?"',
+      'pi.assistant: [{"type":"text","text":"echo: what was the word?"}]',
+    ])
+    expect(result.lastRequest.filter(({ role }) => role !== 'system').map(({ text }) => text)).toEqual([
+      'remember the word lantern',
+      'echo: remember the word lantern',
+      'what was the word?',
+    ])
+  }),
+)
+
 harness.test(
   'local workerd: deleting an agent erases its conversation and application state',
   Effect.gen(function* () {
@@ -232,14 +268,19 @@ harness.test(
       accepted: false,
     })
     const result = yield* get('/wait', Operation)
-    expect(result).toMatchObject({ operationId, session: '1', status: 'done', text: 'fixture-persisted-answer' })
+    expect(result).toMatchObject({
+      operationId,
+      session: '1',
+      status: 'done',
+      text: 'echo: persist this lifecycle fixture input',
+    })
     const read = yield* get('/read', LifecycleRead)
     expect(read.messages).toHaveLength(2)
     expect(read.messages).toMatchObject([
       { kind: 'pi.user', model: [{ role: 'user', content: 'persist this lifecycle fixture input' }] },
       {
         kind: 'pi.assistant',
-        model: [{ role: 'assistant', content: [{ type: 'text', text: 'fixture-persisted-answer' }] }],
+        model: [{ role: 'assistant', content: [{ type: 'text', text: 'echo: persist this lifecycle fixture input' }] }],
       },
     ])
     const reopened = yield* get('/reopen', Reopen)

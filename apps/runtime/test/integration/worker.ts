@@ -7,7 +7,8 @@ import { AppMetadata } from '../../src/storage/metadata.ts'
 import { Agent } from 'agents'
 import { PiHarness } from 'agents/harness/pi'
 import { createRegistry, Harness } from '@earendil-works/pi-durable'
-import { FIXTURE_INPUT, fixtureModels, model } from './model.ts'
+import type { ProviderStreams } from '@earendil-works/pi-ai'
+import { FIXTURE_INPUT, type SeenMessage, fixtureModels, model, scriptedStreams } from './model.ts'
 import { nextInt } from 'effect/Random'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { bindEndpoints } from '../../src/mcp/endpoints.ts'
@@ -16,9 +17,27 @@ import { appMcpCredentials, appMcpEndpoints, appMcpGrants, appMcpOauthPending } 
 
 const notesAt = (endpoint: string) => [{ serverId: 'notes', endpoint }]
 
-/** Actual PersonalAgent startup, with no model generation or external calls in this storage test. */
+/** The actual PersonalAgent on a scripted model (no network): every request it makes is kept for the test to read. */
 export class PersonalAgentProbe extends PersonalAgent {
-  override async onRequest(): Promise<Response> {
+  readonly seen: (readonly SeenMessage[])[] = []
+
+  protected override modelStreams(): ProviderStreams {
+    return scriptedStreams((messages) => this.seen.push(messages))
+  }
+
+  /** Waits for an operation in a conversation to settle (the owner API has no wait route). */
+  async settle(session: string, operationId: string) {
+    return this.harness.wait(operationId, { session })
+  }
+
+  /** The messages of the newest model request (plain data: deep readonly types do not cross the RPC stub). */
+  lastRequest(): { role: string; text: string }[] {
+    return (this.seen.at(-1) ?? []).map(({ role, text }) => ({ role, text }))
+  }
+
+  /** `/probe` reads storage; every other path is the real agent's (thread events and snapshots). */
+  override async onRequest(request: Request): Promise<Response> {
+    if (new URL(request.url).pathname !== '/probe') return super.onRequest(request)
     const before = listTables(this.ctx.storage)
     runApplicationMigrations(this.ctx.storage)
     const after = listTables(this.ctx.storage)
@@ -155,6 +174,44 @@ const entries = async (agent: DurableObjectStub<PersonalAgentProbe>): Promise<nu
   return body.snapshot?.entries?.length ?? -1
 }
 
+type Entry = { readonly id: number; readonly kind: string; readonly model?: readonly { readonly content?: unknown }[] }
+
+/** A conversation's snapshot through the same route the Worker proxies (`/threads/<id>/snapshot`). */
+const snapshotOf = async (
+  agent: DurableObjectStub<PersonalAgentProbe>,
+  session: string,
+): Promise<{ entries?: Entry[] }> => (await agent.fetch(`https://agent/threads/${session}/snapshot`)).json()
+
+/** The text of a conversation's entries the model sees, in order: `kind: text`. */
+async function transcript(agent: DurableObjectStub<PersonalAgentProbe>, session: string): Promise<string[]> {
+  const snapshot = await snapshotOf(agent, session)
+  return (snapshot.entries ?? []).flatMap((entry) =>
+    (entry.model ?? []).map((message) => `${entry.kind}: ${JSON.stringify(message.content)}`),
+  )
+}
+
+/**
+ * A thread branched at main's answer sees main up to there and goes on alone: main never sees the thread's turn, and
+ * the thread's request carried main's history.
+ */
+async function branchSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
+  await agent.submit(MAIN_THREAD, 'remember the word lantern', 'branch-main')
+  await agent.settle(MAIN_THREAD, 'branch-main')
+  const snapshot = await snapshotOf(agent, MAIN_THREAD)
+  const answer = (snapshot.entries ?? []).findLast((entry) => entry.kind === 'pi.assistant')
+  const thread = await agent.createThread(answer?.id)
+  if (!thread.ok) return Response.json({ thread })
+  await agent.submit(thread.value.id, 'what was the word?', 'branch-thread')
+  const settled = await agent.settle(thread.value.id, 'branch-thread')
+  return Response.json({
+    thread: thread.value,
+    settled,
+    main: await transcript(agent, MAIN_THREAD),
+    branch: await transcript(agent, thread.value.id),
+    lastRequest: await agent.lastRequest(),
+  })
+}
+
 /** Account deletion's agent half: state before, what the caller of deleteAgentData sees, state after. */
 async function destroySequence(env: Env, name: string): Promise<Response> {
   const agent = env.AGENTS.getByName(name)
@@ -182,6 +239,7 @@ export default {
     const name = new URL(request.url).searchParams.get('name') ?? 'initialization'
     if (new URL(request.url).pathname === '/rpc') return rpcSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/destroy') return destroySequence(env, name)
+    if (new URL(request.url).pathname === '/branch') return branchSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/binding')
       return env.AGENTS.getByName(name)
         .bindingProbe()

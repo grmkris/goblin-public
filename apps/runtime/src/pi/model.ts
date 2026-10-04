@@ -1,6 +1,6 @@
 import { createModels, createProvider } from '@earendil-works/pi-ai/models'
 import { stream, streamSimple } from '@earendil-works/pi-ai/api/openai-completions'
-import type { Model } from '@earendil-works/pi-ai'
+import type { Model, ProviderStreams } from '@earendil-works/pi-ai'
 import type { ModelOption } from '@purrable/contracts'
 import type { RuntimeEnv } from '../env.ts'
 import { modelOptions } from '../models.ts'
@@ -27,8 +27,14 @@ function makePiModel(option: ModelOption, baseUrl: string): Model<'openai-comple
   }
 }
 
-/** Every offered model (`models.ts`), the default first; `model` is the default for new sessions. */
-export function makePiModels(env: ModelEnvironment) {
+/** How every model's requests reach LiteLLM: its OpenAI-compatible chat completions API. */
+export const LITELLM_STREAMS: ProviderStreams = { stream, streamSimple }
+
+/**
+ * Every offered model (`models.ts`), the default first; `model` is the default for new sessions. `streams` carries
+ * the requests; only a test passes anything but LiteLLM's.
+ */
+export function makePiModels(env: ModelEnvironment, streams: ProviderStreams = LITELLM_STREAMS) {
   const options = modelOptions(env.MODELS, env.MODEL_ID)
   const [first, ...rest] = options
   const model = makePiModel(first, env.MODEL_BASE_URL)
@@ -44,7 +50,7 @@ export function makePiModels(env: ModelEnvironment) {
         resolve: async () => ({ auth: { apiKey: env.MODEL_KEY } }),
       },
     },
-    api: { stream, streamSimple },
+    api: streams,
   })
   const models = createModels()
   models.setProvider(provider)

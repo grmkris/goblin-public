@@ -2,6 +2,7 @@ import { Agent } from 'agents'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { type AppContext, type JsonObject, MAIN_THREAD } from '@purrable/contracts'
 import { PiHarness } from 'agents/harness/pi'
+import type { ProviderStreams } from '@earendil-works/pi-ai'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
@@ -16,7 +17,7 @@ import { GrantStore } from './mcp/grants.ts'
 import { McpHost } from './mcp/host.ts'
 import { piEventResponse } from './pi/events.ts'
 import { makePiHarness } from './pi/harness.ts'
-import { MODEL_PROVIDER } from './pi/model.ts'
+import { LITELLM_STREAMS, MODEL_PROVIDER } from './pi/model.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { ResidentAuthority } from './resident.ts'
 import { ConversationRegistry, type ThreadChange } from './conversations.ts'
@@ -81,8 +82,13 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   constructor(ctx: DurableObjectState, env: RuntimeEnv) {
     super(ctx, env)
     const run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program)
-    this.harness = makePiHarness(env, [residentMcpExtension(run), budgetExtension(run)])
+    this.harness = makePiHarness(env, [residentMcpExtension(run), budgetExtension(run)], this.modelStreams())
     this.lifecycle.use(this.harness)
+  }
+
+  /** How model requests leave the object: LiteLLM. The integration harness overrides it with a scripted model. */
+  protected modelStreams(): ProviderStreams {
+    return LITELLM_STREAMS
   }
 
   override async onStart(): Promise<void> {
