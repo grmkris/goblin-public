@@ -23,6 +23,7 @@ export {
   DropdownMenuTrigger,
 } from './components/dropdown-menu.tsx'
 export { Composer, ComposerActions, ComposerInput } from './components/composer.tsx'
+export { Count } from './components/count.tsx'
 export { Duration } from './components/duration.tsx'
 export { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './components/empty.tsx'
 export {
@@ -38,6 +39,7 @@ export {
 } from './components/field.tsx'
 export { Input } from './components/input.tsx'
 export { Label } from './components/label.tsx'
+export { Meter } from './components/meter.tsx'
 export {
   MessageScroller,
   MessageScrollerButton,
@@ -68,6 +70,7 @@ export { Reasoning, ReasoningContent, ReasoningTrigger } from './components/reas
 export { Receipt } from './components/receipt.tsx'
 export { SiteHeader, SiteHeaderBrand, type SiteHeaderLink } from './components/site-header.tsx'
 export { Textarea } from './components/textarea.tsx'
+export { UsageRing } from './components/usage-ring.tsx'
 export {
   ToolCall,
   ToolCallContent,

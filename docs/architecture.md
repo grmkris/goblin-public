@@ -137,7 +137,9 @@ default 300 000, per UTC day). A Pi extension (`pi/budget.ts`) records every mod
 `app_usage_daily`. Once the day is spent, new turns are refused with `BudgetExhausted` (429), from the browser and
 from `/mcp`, and tool calls inside a running turn are blocked, so a looping turn ends after one more reply. Pi
 reports and swallows exceptions thrown by hooks, so the in-turn lever is blocking tools, not throwing. Settings shows
-today's usage. The model key's own cap stays the backstop.
+today's usage, and the composer shows it as a ring, re-read whenever a run ends. On wider screens the composer also
+shows how full the context was at the latest response, measured against the model's `contextWindow`. The model key's
+own cap stays the backstop.
 
 ## Resident authority
 

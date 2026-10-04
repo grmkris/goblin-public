@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Schema } from 'effect'
-import { InboundClient, ResidentStatus, UsageToday } from '@purrable/contracts'
+import { InboundClient, ResidentStatus } from '@purrable/contracts'
 import {
   Alert,
   AlertDescription,
@@ -11,39 +11,48 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Count,
   Field,
   FieldDescription,
   FieldGroup,
   FieldLabel,
   Input,
+  Meter,
 } from '@purrable/ui'
 import { ApiFailure, failureText, request } from '../lib/boundary.ts'
+import { budgetFraction } from '../lib/usage.ts'
 import { PasskeysCard } from './passkeys.tsx'
+import { useUsageToday } from './use-usage.ts'
 
 const decodeResident = Schema.decodeUnknownSync(ResidentStatus)
 const decodeClients = Schema.decodeUnknownSync(Schema.Array(InboundClient))
-const decodeUsage = Schema.decodeUnknownSync(UsageToday)
 const day = (seconds: number | undefined): string =>
   seconds === undefined ? '—' : new Date(seconds * 1000).toLocaleDateString()
 
-function UsageCard({ onError }: { readonly onError: (message: string) => void }) {
-  const [usage, setUsage] = useState<UsageToday>()
-  useEffect(() => {
-    void request('/api/agent/usage')
-      .then((data) => setUsage(decodeUsage(data)))
-      .catch((error: unknown) => onError(failureText(error)))
-  }, [onError])
-  const percent = usage === undefined ? 0 : Math.min(100, Math.round((usage.used / usage.limit) * 100))
+/** Today's model budget: tokens spent against the daily limit, rolling as they change. */
+function UsageCard() {
+  const usage = useUsageToday()
   return (
     <Card>
       <CardHeader>
         <CardTitle>Model budget</CardTitle>
-        <CardDescription>
-          {usage === undefined
-            ? 'Loading…'
-            : `${usage.used.toLocaleString()} of ${usage.limit.toLocaleString()} tokens used today (${percent}%). Resets at 00:00 UTC.`}
-        </CardDescription>
+        <CardDescription>Tokens your agent used today (UTC). It resets at 00:00 UTC.</CardDescription>
       </CardHeader>
+      <CardContent>
+        {usage === undefined ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
+          <Meter value={budgetFraction(usage) * 100} aria-label="Model budget used today">
+            <p className="flex items-baseline gap-1.5 text-sm text-muted-foreground">
+              <Count value={usage.used} size="display" />
+              <span>
+                of <Count value={usage.limit} /> tokens
+              </span>
+              <Count value={budgetFraction(usage)} percent className="ml-auto" />
+            </p>
+          </Meter>
+        )}
+      </CardContent>
     </Card>
   )
 }
@@ -214,7 +223,7 @@ export function Settings() {
         </Alert>
       )}
       <ResidentCard onError={setError} />
-      <UsageCard onError={setError} />
+      <UsageCard />
       <PasskeysCard onError={setError} />
       <ClientsCard onError={setError} />
       <DeleteAccountCard onError={setError} />

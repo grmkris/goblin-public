@@ -4,11 +4,14 @@ import { failureText, request } from '../lib/boundary.ts'
 import { BrowserPiEvents, ConversationStream, type StreamStatus } from '../lib/conversation-stream.ts'
 import { openInteractions } from '../lib/interactions.ts'
 import { conversationParts } from '../lib/parts.ts'
+import { contextTokens } from '../lib/usage.ts'
 import type { ConversationProjection } from '../lib/projection.ts'
 import { MessageComposer } from './composer.tsx'
 import { Conversation } from './conversation.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
 import { ModelPicker, useModelChoice } from './model-picker.tsx'
+import { UsageIndicator } from './usage-indicator.tsx'
+import { useUsageToday } from './use-usage.ts'
 
 function useConversation() {
   const [projection, setProjection] = useState<ConversationProjection>()
@@ -108,6 +111,9 @@ export function Chat() {
   useDockInsets(view, dock)
   const parts = useMemo(() => (projection === undefined ? [] : conversationParts(projection)), [projection])
   const waiting = useMemo(() => openInteractions(parts), [parts])
+  const usage = useUsageToday(projection?.running ?? false)
+  const context = useMemo(() => contextTokens(projection?.messages ?? []), [projection])
+  const contextWindow = choice?.options.find((option) => option.id === choice.current)?.contextWindow
   return (
     <section className="chat-view" aria-label="Chat" ref={view}>
       <div className="chat-conversation">
@@ -125,6 +131,7 @@ export function Chat() {
                   {status === 'connected' ? (projection?.progress ?? 'Ready') : status}
                 </Badge>
                 <ModelPicker choice={choice} onChoose={(model) => void choose(model)} />
+                <UsageIndicator usage={usage} context={context} contextWindow={contextWindow} />
               </>
             }
           />
