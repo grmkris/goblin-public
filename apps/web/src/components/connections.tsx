@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Schema } from 'effect'
-import { ServerView, ToolView } from '@purrable/contracts'
+import { ChannelStatus, ServerView, ToolView } from '@purrable/contracts'
 import {
   Alert,
   AlertDescription,
@@ -21,7 +21,44 @@ import { ToolConsole } from './tool-console.tsx'
 
 const decodeServers = Schema.decodeUnknownSync(Schema.Array(ServerView))
 const decodeTools = Schema.decodeUnknownSync(Schema.Array(ToolView))
+const decodeChannel = Schema.decodeUnknownSync(ChannelStatus)
 const path = (serverId: string, action: string): string => `/api/mcp/${encodeURIComponent(serverId)}/${action}`
+const TELEGRAM_TOOLS = ['inbox', 'send_message', 'subscribe', 'unsubscribe']
+
+const hasTelegramTools = (tools: readonly ToolView[]): boolean =>
+  TELEGRAM_TOOLS.every((name) => tools.some((tool) => tool.name === name))
+
+const channelDate = (seconds: number): string => new Date(seconds * 1000).toLocaleDateString()
+
+/** One Telegram channel for the owner, shared by every server row. */
+function useTelegramChannel(onMessage: (message: string) => void) {
+  const [status, setStatus] = useState<ChannelStatus>()
+  const [pending, setPending] = useState(false)
+  const load = useCallback(async (): Promise<void> => {
+    try {
+      setStatus(decodeChannel(await request('/api/agent/channel')))
+    } catch (error) {
+      onMessage(failureText(error))
+    }
+  }, [onMessage])
+  useEffect(() => void load(), [load])
+  async function change(serverId: string | null): Promise<void> {
+    setPending(true)
+    try {
+      const data =
+        serverId === null
+          ? await request('/api/agent/channel', { method: 'DELETE' })
+          : await request('/api/agent/channel', { method: 'PUT', body: { serverId } })
+      setStatus(decodeChannel(data))
+    } catch (error) {
+      onMessage(failureText(error))
+    } finally {
+      await load()
+      setPending(false)
+    }
+  }
+  return { status, pending, change }
+}
 
 /** One remote tool with its grant toggle. Remote hints are labelled as the server's claim, never as fact. */
 function ToolRow({ tool, onToggle }: { readonly tool: ToolView; readonly onToggle: (allowed: boolean) => void }) {
@@ -189,15 +226,51 @@ function SkillsSwitch({
   )
 }
 
-function ServerCard({
-  server,
-  onReload,
-  onMessage,
+function TelegramControl({
+  serverId,
+  channel,
 }: {
+  readonly serverId: string
+  readonly channel: ReturnType<typeof useTelegramChannel>
+}) {
+  const { status, pending, change } = channel
+  if (status === undefined) return null
+  const enabledHere = status !== null && status.serverId === serverId
+  return (
+    <div className="flex flex-col gap-2" aria-busy={pending}>
+      <div className="flex flex-wrap items-center gap-3">
+        {enabledHere ? (
+          <>
+            <Badge variant="secondary">Telegram</Badge>
+            <span className="text-muted-foreground text-sm">
+              On since{' '}
+              <time dateTime={new Date(status.enabledAt * 1000).toISOString()}>{channelDate(status.enabledAt)}</time>
+            </span>
+            <Button size="sm" variant="outline" disabled={pending} onClick={() => void change(null)}>
+              {pending ? 'Updating…' : 'Stop'}
+            </Button>
+          </>
+        ) : (
+          <Button size="sm" variant="outline" disabled={pending} onClick={() => void change(serverId)}>
+            {pending ? 'Updating…' : 'Use for Telegram'}
+          </Button>
+        )}
+      </div>
+      <p className="text-muted-foreground text-sm">
+        Messages to your bot come into main, and the answers go back to Telegram.
+      </p>
+    </div>
+  )
+}
+
+type ServerCardProps = {
   readonly server: ServerView
   readonly onReload: () => void
   readonly onMessage: (message: string) => void
-}) {
+  readonly channel: ReturnType<typeof useTelegramChannel>
+}
+
+function ServerCard({ server, onReload, onMessage, channel }: ServerCardProps) {
   const { tools, loadTools, update } = useServerTools(server, onMessage)
   const [pending, setPending] = useState(false)
   const loaded = tools !== undefined
@@ -255,6 +328,9 @@ function ServerCard({
             {(server.skillsOffered === true || server.skillsEnabled === true) && (
               <SkillsSwitch server={server} onMessage={onMessage} />
             )}
+            {tools !== undefined && hasTelegramTools(tools) && (
+              <TelegramControl serverId={server.serverId} channel={channel} />
+            )}
             <p className="text-muted-foreground text-sm">
               Your agent may call only the tools you tick. Descriptions and hints come from the server.
             </p>
@@ -282,6 +358,7 @@ const callbackNotice = (): string => {
 export function Connections() {
   const [servers, setServers] = useState<readonly ServerView[]>([])
   const [message, setMessage] = useState(callbackNotice)
+  const channel = useTelegramChannel(setMessage)
   const [version, setVersion] = useState(0)
   const load = useCallback(() => {
     setVersion((current) => current + 1)
@@ -320,7 +397,7 @@ export function Connections() {
         onMessage={setMessage}
       />
       {servers.map((server) => (
-        <ServerCard key={server.serverId} server={server} onReload={load} onMessage={setMessage} />
+        <ServerCard key={server.serverId} server={server} onReload={load} onMessage={setMessage} channel={channel} />
       ))}
       <ToolConsole servers={servers.filter((server) => server.status === 'connected')} />
     </div>
