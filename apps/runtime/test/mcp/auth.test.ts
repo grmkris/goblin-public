@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { markLoopbackClientsNative } from '../../src/auth/options.ts'
 import { clientFromClaims } from '../../src/auth/principal.ts'
 
 describe('inbound client claims (unit)', () => {
@@ -26,5 +27,22 @@ describe('inbound client claims (unit)', () => {
     expect(reason({ ...valid, exp: 100 })).toBe('expired')
     expect(reason({ ...valid, azp: undefined })).toBe('client')
     expect(reason({ ...valid, cnf: { jkt: 'x' } })).toBe('sender-constrained tokens are not supported')
+  })
+})
+
+describe('dynamic registration of loopback MCP clients (unit)', () => {
+  it('marks http-loopback-only registrations native and leaves the rest alone', () => {
+    const loopback = { redirect_uris: ['http://localhost:33418/callback', 'http://127.0.0.1:9/cb'] }
+    markLoopbackClientsNative(loopback)
+    expect(loopback).toMatchObject({ application_type: 'native' })
+    const web = { redirect_uris: ['https://app.example/cb'] }
+    markLoopbackClientsNative(web)
+    expect(web).not.toHaveProperty('application_type')
+    const mixed = { redirect_uris: ['http://localhost/cb', 'http://evil.example/cb'] }
+    markLoopbackClientsNative(mixed)
+    expect(mixed).not.toHaveProperty('application_type')
+    const declared = { redirect_uris: ['http://localhost/cb'], application_type: 'web' }
+    markLoopbackClientsNative(declared)
+    expect(declared.application_type).toBe('web')
   })
 })

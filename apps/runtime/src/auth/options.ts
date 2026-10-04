@@ -13,6 +13,29 @@ export const mcpResource = (appUrl: string): string => `${appUrl.replace(/\/$/u,
 export const authIssuer = (appUrl: string): string => `${appUrl.replace(/\/$/u, '')}${AUTH_BASE_PATH}`
 export const canonicalEmail = (email: string): string => email.trim().toLowerCase()
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
+const isLoopbackHttp = (uri: unknown): boolean => {
+  if (!Predicate.isString(uri)) return false
+  try {
+    const url = new URL(uri)
+    return url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * MCP clients (Claude Code and others) register http loopback redirects without saying `application_type`, and the
+ * provider defaults that to `web`, which forbids them. A registration whose every redirect is http loopback is a
+ * native app by RFC 8252; say so. Anything else keeps the provider's rules.
+ */
+export const markLoopbackClientsNative = (body: unknown): void => {
+  if (!Predicate.isObject(body) || 'application_type' in body) return
+  const uris = 'redirect_uris' in body ? body.redirect_uris : undefined
+  if (Array.isArray(uris) && uris.length > 0 && uris.every(isLoopbackHttp))
+    Object.assign(body, { application_type: 'native' })
+}
+
 export type AuthEnvironment = Pick<
   RuntimeEnv,
   'APP_URL' | 'BETTER_AUTH_SECRET' | 'OWNER_EMAIL' | 'OWNER_BOOTSTRAP_TOKEN' | 'STAGE'
@@ -52,6 +75,10 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
     },
     hooks: {
       before: createAuthMiddleware(async (context) => {
+        if (context.path === '/oauth2/register') {
+          markLoopbackClientsNative(context.body)
+          return
+        }
         if (!context.path?.startsWith('/sign-up')) return
         const email = Predicate.isString(context.body?.email) ? canonicalEmail(context.body.email) : ''
         const presented = context.headers?.get('x-owner-bootstrap') ?? ''
