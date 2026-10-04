@@ -64,9 +64,21 @@ interface Env {
   readonly LIFECYCLE: DurableObjectNamespace<NativeLifecycleProbe>
 }
 
+/** Owner RPC through a real stub: resident authority renews, revocation is sticky, errors cross as AppError data. */
+async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
+  const first = await agent.residentStatus()
+  const revoked = await agent.residentSet(false)
+  const afterOwnerRequest = await agent.residentStatus()
+  const enabled = await agent.residentSet(true)
+  const servers = await agent.mcpServers()
+  const unknownServer = await agent.mcpSetToolGrant('missing', 'tool', true)
+  return Response.json({ first, revoked, afterOwnerRequest, enabled, servers, unknownServer })
+}
+
 export default {
   fetch(request: Request, env: Env): Promise<Response> {
     const name = new URL(request.url).searchParams.get('name') ?? 'initialization'
+    if (new URL(request.url).pathname === '/rpc') return rpcSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname.startsWith('/lifecycle')) return env.LIFECYCLE.getByName(name).fetch(request)
     return env.AGENTS.getByName(name).fetch(request)
   },

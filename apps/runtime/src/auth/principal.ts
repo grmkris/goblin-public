@@ -1,43 +1,12 @@
 import { Predicate } from 'effect'
-import { nowSeconds } from '../clock.ts'
 import { Unauthenticated } from '../http/errors.ts'
-import { constantTimeEqual } from 'better-auth/crypto'
 
-export type VerifiedMcpPrincipal = {
-  readonly issuer: string
-  readonly subject: string
+/** An inbound MCP client acting for the owner with a Better Auth access token. Never an owner session. */
+export type ClientPrincipal = {
   readonly clientId: string
-  readonly tenantId?: string
-  readonly authKind?: 'owner' | 'mcp'
-  readonly sessionId?: string
-  readonly resource: string
+  readonly subject: string
   readonly scopes: readonly string[]
   readonly expiresAt: number
-  readonly grantGeneration: number
-}
-export type GrantCapability = 'tool' | 'resource' | 'prompt'
-export type GrantRecord = {
-  readonly issuer: string
-  readonly subject: string
-  readonly clientId: string
-  readonly serverId: string
-  readonly capability: GrantCapability
-  readonly name: string
-  readonly scopes: readonly string[]
-  readonly generation: number
-  readonly expiresAt?: number
-  readonly tenantId?: string
-}
-export interface GrantStore {
-  findGrant(input: {
-    issuer: string
-    subject: string
-    clientId: string
-    serverId: string
-    capability: GrantCapability
-    name: string
-  }): Promise<GrantRecord | undefined>
-  currentGeneration(input: { issuer: string; subject: string; clientId: string; serverId: string }): Promise<number>
 }
 export interface TokenClaims {
   readonly iss?: unknown
@@ -47,85 +16,29 @@ export interface TokenClaims {
   readonly client_id?: unknown
   readonly scope?: unknown
   readonly exp?: unknown
-  readonly tenant?: unknown
-  readonly grant_gen?: unknown
-  readonly sid?: unknown
   readonly cnf?: unknown
 }
-const text = (value: unknown): value is string => typeof value === 'string' && value.length > 0
+const text = (value: unknown): value is string => Predicate.isString(value) && value.length > 0
 const audiences = (value: unknown): readonly string[] =>
   Array.isArray(value) ? value.filter(text) : text(value) ? [value] : []
-export const principalFromClaims = (
+
+/** Check the claims the signature does not: issuer, audience (our /mcp resource), expiry, subject and client. */
+export const clientFromClaims = (
   claims: TokenClaims,
-  expected: { issuer: string; resource: string; now: number },
-): VerifiedMcpPrincipal => {
-  const now = expected.now
-  const subject = claims.sub
-  const issuer = claims.iss
+  expected: { readonly issuer: string; readonly resource: string; readonly now: number },
+): ClientPrincipal => {
   const clientId = text(claims.azp) ? claims.azp : claims.client_id
-  if (!text(issuer) || issuer !== expected.issuer) throw new Unauthenticated({ reason: 'mcp_issuer_mismatch' })
-  if (!text(subject)) throw new Unauthenticated({ reason: 'mcp_subject_missing' })
-  if (!text(clientId)) throw new Unauthenticated({ reason: 'mcp_client_missing' })
-  if (!audiences(claims.aud).includes(expected.resource)) throw new Unauthenticated({ reason: 'mcp_audience_mismatch' })
-  if (!Predicate.isNumber(claims.exp) || !Number.isSafeInteger(claims.exp) || claims.exp <= now)
-    throw new Unauthenticated({ reason: 'mcp_token_expired' })
-  const generation = claims.grant_gen
-  if (
-    generation !== undefined &&
-    (!Predicate.isNumber(generation) || !Number.isSafeInteger(generation) || generation < 0)
-  )
-    throw new Unauthenticated({ reason: 'mcp_grant_generation_invalid' })
-  const scopes = Predicate.isString(claims.scope) ? claims.scope.split(/\s+/u).filter(Boolean) : []
+  if (!text(claims.iss) || claims.iss !== expected.issuer) throw new Unauthenticated({ reason: 'issuer' })
+  if (!audiences(claims.aud).includes(expected.resource)) throw new Unauthenticated({ reason: 'audience' })
+  if (!Predicate.isNumber(claims.exp) || !Number.isSafeInteger(claims.exp) || claims.exp <= expected.now)
+    throw new Unauthenticated({ reason: 'expired' })
+  if (!text(claims.sub)) throw new Unauthenticated({ reason: 'subject' })
+  if (!text(clientId)) throw new Unauthenticated({ reason: 'client' })
+  if (claims.cnf !== undefined) throw new Unauthenticated({ reason: 'sender-constrained tokens are not supported' })
   return {
-    issuer,
-    subject,
     clientId,
-    ...(text(claims.tenant) ? { tenantId: claims.tenant } : {}),
-    ...(text(claims.sid) ? { sessionId: claims.sid } : {}),
-    resource: expected.resource,
-    scopes,
+    subject: claims.sub,
+    scopes: Predicate.isString(claims.scope) ? claims.scope.split(/\s+/u).filter(Boolean) : [],
     expiresAt: claims.exp,
-    grantGeneration: generation ?? 0,
   }
-}
-export const requireGrant = async (
-  store: GrantStore,
-  principal: VerifiedMcpPrincipal,
-  input: { serverId: string; capability: GrantCapability; name: string },
-): Promise<GrantRecord> => {
-  const now = nowSeconds()
-  if (principal.expiresAt <= now) throw new Unauthenticated({ reason: 'mcp_token_expired' })
-  const grant = await store.findGrant({
-    issuer: principal.issuer,
-    subject: principal.subject,
-    clientId: principal.clientId,
-    ...input,
-  })
-  if (
-    grant === undefined ||
-    grant.generation !==
-      (await store.currentGeneration({
-        issuer: principal.issuer,
-        subject: principal.subject,
-        clientId: principal.clientId,
-        serverId: input.serverId,
-      })) ||
-    (principal.authKind !== 'owner' && grant.generation !== principal.grantGeneration)
-  )
-    throw new Error('mcp_grant_denied')
-  if (grant.expiresAt !== undefined && grant.expiresAt <= now) throw new Error('mcp_grant_expired')
-  if (grant.tenantId !== principal.tenantId || !grant.scopes.every((scope) => principal.scopes.includes(scope)))
-    throw new Error('mcp_grant_scope_denied')
-  if (!input.name || grant.name !== input.name || grant.capability !== input.capability)
-    throw new Error('mcp_grant_capability_denied')
-  return grant
-}
-/** Explicit stage and configured owner identity gate; never admit an unset token. */
-export const requireDevBootstrap = (
-  env: { STAGE: string; OWNER_EMAIL: string; OWNER_BOOTSTRAP_TOKEN: string },
-  token: string,
-): void => {
-  if (env.STAGE !== 'dev' && env.STAGE !== 'local' && env.STAGE !== 'test') throw new Error('owner_bootstrap_disabled')
-  if (!env.OWNER_EMAIL || !env.OWNER_BOOTSTRAP_TOKEN || !constantTimeEqual(token, env.OWNER_BOOTSTRAP_TOKEN))
-    throw new Error('owner_bootstrap_denied')
 }

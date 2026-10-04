@@ -1,0 +1,32 @@
+import * as Clock from 'effect/Clock'
+import * as Context from 'effect/Context'
+import * as Effect from 'effect/Effect'
+import * as Layer from 'effect/Layer'
+import { type AppError, toAppError } from './http/errors.ts'
+import type { McpHost } from './mcp/host.ts'
+import type { ResidentAuthority } from './resident.ts'
+
+/** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
+export class Mcp extends Context.Service<Mcp, McpHost>()('purrable/Mcp') {}
+export class Resident extends Context.Service<Resident, ResidentAuthority>()('purrable/Resident') {}
+export type AgentServices = Mcp | Resident
+
+export const agentLayer = (host: McpHost, resident: ResidentAuthority): Layer.Layer<AgentServices> =>
+  Layer.mergeAll(Layer.succeed(Mcp, host), Layer.succeed(Resident, resident))
+
+/** Wrap a plain async step so its failure lands in the typed `AppError` channel. */
+export const attempt = <A>(run: () => Promise<A>): Effect.Effect<A, AppError> =>
+  Effect.tryPromise({ try: run, catch: toAppError })
+
+export const attemptSync = <A>(run: () => A): Effect.Effect<A, AppError> => Effect.try({ try: run, catch: toAppError })
+
+export const nowSecondsEffect: Effect.Effect<number> = Effect.map(Clock.currentTimeMillis, (millis) =>
+  Math.floor(millis / 1000),
+)
+
+/** Fails with `ResidentInactive` unless the owner's resident authority is current. */
+export const requireResident: Effect.Effect<void, AppError, Resident> = Effect.gen(function* () {
+  const resident = yield* Resident
+  const now = yield* nowSecondsEffect
+  yield* attemptSync(() => resident.require(now))
+})

@@ -22,6 +22,9 @@ export default Alchemy.Stack(
         MODEL_BASE_URL: 'https://no-model-calls.invalid/v1',
         MODEL_ID: 'storage-only',
         MODEL_KEY: 'unused-storage-fixture',
+        APP_URL: 'https://purrable.test',
+        // A fixed 32-byte test key: encrypts nothing real in this harness.
+        CREDENTIAL_KEY: 'cHVycmFibGUtdGVzdC1rZXktMzItYnl0ZXMtbG9uZyE=',
       },
     })
     return { url: worker.url.as<string>() }

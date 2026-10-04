@@ -1,91 +1,30 @@
 import { describe, expect, it } from 'vitest'
-import { principalFromClaims, requireDevBootstrap, requireGrant, type GrantStore } from '../../src/auth/principal.ts'
+import { clientFromClaims } from '../../src/auth/principal.ts'
 
-describe('mcp principal boundary (unit)', () => {
+describe('inbound client claims (unit)', () => {
   const expected = { issuer: 'https://dev.example/api/auth', resource: 'https://dev.example/mcp', now: 100 }
-  it('requires issuer, audience, expiry and client identity', () => {
-    expect(
-      principalFromClaims(
-        {
-          iss: expected.issuer,
-          sub: 'owner',
-          azp: 'cli',
-          aud: expected.resource,
-          exp: 101,
-          scope: 'read write',
-          grant_gen: 2,
-        },
-        expected,
-      ),
-    ).toMatchObject({ subject: 'owner', clientId: 'cli', scopes: ['read', 'write'], grantGeneration: 2 })
-    expect(() =>
-      principalFromClaims(
-        { iss: 'https://evil', sub: 'owner', azp: 'cli', aud: expected.resource, exp: 101 },
-        expected,
-      ),
-    ).toThrow(expect.objectContaining({ reason: 'mcp_issuer_mismatch' }))
-    expect(() =>
-      principalFromClaims({ iss: expected.issuer, sub: 'owner', azp: 'cli', aud: 'other', exp: 101 }, expected),
-    ).toThrow(expect.objectContaining({ reason: 'mcp_audience_mismatch' }))
-    expect(() =>
-      principalFromClaims(
-        { iss: expected.issuer, sub: 'owner', azp: 'cli', aud: expected.resource, exp: 100 },
-        expected,
-      ),
-    ).toThrow(expect.objectContaining({ reason: 'mcp_token_expired' }))
+  const valid = { iss: expected.issuer, sub: 'owner', azp: 'cli', aud: expected.resource, exp: 101, scope: 'openid' }
+  it('accepts our issuer, audience and an unexpired token', () => {
+    expect(clientFromClaims(valid, expected)).toEqual({
+      clientId: 'cli',
+      subject: 'owner',
+      scopes: ['openid'],
+      expiresAt: 101,
+    })
   })
-  it('requires current exact grants and scope', async () => {
-    const store: GrantStore = {
-      currentGeneration: async () => 3,
-      findGrant: async () => ({
-        issuer: expected.issuer,
-        subject: 'owner',
-        clientId: 'cli',
-        serverId: 'myplan',
-        capability: 'tool',
-        name: 'document_read',
-        scopes: ['read'],
-        generation: 3,
-      }),
+  it('rejects foreign issuers, other audiences, expiry and sender-constrained tokens', () => {
+    const reason = (claims: object) => {
+      try {
+        clientFromClaims(claims, expected)
+        return 'accepted'
+      } catch (error) {
+        return error instanceof Error && 'reason' in error ? error.reason : 'unknown'
+      }
     }
-    const principal = principalFromClaims(
-      {
-        iss: expected.issuer,
-        sub: 'owner',
-        azp: 'cli',
-        aud: expected.resource,
-        exp: 4102444800,
-        scope: 'read',
-        grant_gen: 3,
-      },
-      expected,
-    )
-    await expect(
-      requireGrant(store, principal, { serverId: 'myplan', capability: 'tool', name: 'document_read' }),
-    ).resolves.toMatchObject({ generation: 3 })
-    await expect(
-      requireGrant(
-        store,
-        { ...principal, grantGeneration: 2 },
-        { serverId: 'myplan', capability: 'tool', name: 'document_read' },
-      ),
-    ).rejects.toThrow('mcp_grant_denied')
-  })
-  it('only accepts configured owner bootstrap in explicit dev stages', () => {
-    expect(() =>
-      requireDevBootstrap(
-        { STAGE: 'dev', OWNER_EMAIL: 'owner@example.test', OWNER_BOOTSTRAP_TOKEN: 'secret' },
-        'secret',
-      ),
-    ).not.toThrow()
-    expect(() =>
-      requireDevBootstrap(
-        { STAGE: 'production', OWNER_EMAIL: 'owner@example.test', OWNER_BOOTSTRAP_TOKEN: 'secret' },
-        'secret',
-      ),
-    ).toThrow('owner_bootstrap_disabled')
-    expect(() =>
-      requireDevBootstrap({ STAGE: 'dev', OWNER_EMAIL: 'owner@example.test', OWNER_BOOTSTRAP_TOKEN: 'secret' }, 'bad'),
-    ).toThrow('owner_bootstrap_denied')
+    expect(reason({ ...valid, iss: 'https://evil' })).toBe('issuer')
+    expect(reason({ ...valid, aud: 'https://dev.example/other' })).toBe('audience')
+    expect(reason({ ...valid, exp: 100 })).toBe('expired')
+    expect(reason({ ...valid, azp: undefined })).toBe('client')
+    expect(reason({ ...valid, cnf: { jkt: 'x' } })).toBe('sender-constrained tokens are not supported')
   })
 })

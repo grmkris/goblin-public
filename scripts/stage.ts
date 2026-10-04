@@ -34,6 +34,8 @@ if (stage.local) {
   childEnv['PURRABLE_APP_URL'] = 'http://localhost:18971'
   childEnv['PURRABLE_BETTER_AUTH_SECRET'] = 'purrable-local-only-secret-not-for-cloudflare-00000000000000000'
   childEnv['PURRABLE_MODEL_KEY'] = process.env['CLIPROXY_API_KEY'] ?? ''
+  // Local-only default; a .local/local.env value overrides it.
+  childEnv['PURRABLE_CREDENTIAL_KEY'] = 'cHVycmFibGUtbG9jYWwtb25seS1rZXktMzItYnl0ZSE='
   if (existsSync(config)) addEnvFile(config)
 } else {
   addEnvFile(shared)

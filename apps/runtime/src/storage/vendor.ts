@@ -27,7 +27,13 @@ const VENDOR_TABLES = new Set([
 ])
 
 export function isVendorTable(name: string): boolean {
-  return VENDOR_TABLES.has(name) || name.startsWith('pi_') || name.startsWith('cf_agents_') || name.startsWith('_cf_')
+  return (
+    VENDOR_TABLES.has(name) ||
+    name.startsWith('pi_') ||
+    name.startsWith('cf_agent') ||
+    name.startsWith('_cf_') ||
+    name.startsWith('__drizzle')
+  )
 }
 
 export type TableDefinition = { readonly name: string; readonly definition: string | null }

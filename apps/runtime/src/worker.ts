@@ -1,82 +1,122 @@
 import * as Schema from 'effect/Schema'
-import type { RuntimeEnv } from './env.ts'
-import {
-  handleAuth,
-  handleGrantRequest,
-  authPrincipal,
-  requireOwnerSession,
-  protectedResourceMetadata,
-} from './auth/index.ts'
+import type { AgentRpc, RuntimeEnv } from './env.ts'
+import { handleAuth, protectedResourceMetadata, requireOwnerSession } from './auth/index.ts'
 import { readJson } from './http/body.ts'
-import { Forbidden, NotFound } from './http/errors.ts'
+import { Forbidden, InvalidInput, NotFound } from './http/errors.ts'
 import { failureResponse, requestIdOf, secured } from './http/respond.ts'
-import { callMcpTool, connectMcpServer, getMcpPrompt, listMcpServers, readMcpResource } from './mcp/routes.ts'
+import { unwrap } from './http/rpc.ts'
 
 export { PersonalAgent } from './agent.ts'
 
-const Input = Schema.Struct({
-  input: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(20_000)),
-  operationId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+const Bounded = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max))
+const Submit = Schema.Struct({ input: Bounded(20_000), operationId: Bounded(200) })
+const Stop = Schema.Struct({ operationId: Schema.optional(Bounded(200)) })
+const ToolCall = Schema.Struct({
+  name: Bounded(256),
+  arguments: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 })
-const Stop = Schema.Struct({ operationId: Schema.optional(Schema.String) })
-const Resource = Schema.Struct({ uri: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048)) })
-const Body = Schema.Unknown
+const ResourceRead = Schema.Struct({ uri: Bounded(2048) })
+const PromptGet = Schema.Struct({
+  name: Bounded(256),
+  arguments: Schema.optional(Schema.Record(Schema.String, Schema.String.check(Schema.isMaxLength(16_384)))),
+})
+const GrantChange = Schema.Struct({ serverId: Bounded(64), name: Bounded(256), allowed: Schema.Boolean })
+const ResidentChange = Schema.Struct({ enabled: Schema.Boolean })
 
-async function agentRequest(request: Request, env: RuntimeEnv): Promise<Response> {
-  const principal = await requireOwnerSession(request, env)
-  const agent = env.AGENTS.getByName('root')
-  const path = new URL(request.url).pathname
-  if (path === '/api/agent' && request.method === 'POST') {
-    const input = await readJson(request, Input)
-    return Response.json(await agent.submitAuthenticated(input.input, input.operationId, principal), { status: 202 })
+const json = (value: unknown, status = 200): Response => Response.json(value, { status })
+const residentAgent = (env: RuntimeEnv): DurableObjectStub<AgentRpc> => env.AGENTS.getByName('root')
+
+type Route = (request: Request, agent: DurableObjectStub<AgentRpc>) => Promise<Response>
+
+const waitRoute: Route = async (request, agent) => {
+  const operationId = new URL(request.url).searchParams.get('operationId') ?? ''
+  if (operationId.length === 0 || operationId.length > 200) throw new InvalidInput({ reason: 'operationId' })
+  return json(unwrap(await agent.wait(operationId)))
+}
+
+/** The conversation and resident-authority routes, keyed `METHOD path`. */
+const agentRoutes: Readonly<Record<string, Route>> = {
+  'POST /api/agent': async (request, agent) => {
+    const body = await readJson(request, Submit)
+    return json(unwrap(await agent.submit(body.input, body.operationId)), 202)
+  },
+  'POST /api/agent/stop': async (request, agent) =>
+    json({ stopped: unwrap(await agent.stop((await readJson(request, Stop)).operationId)) }),
+  'GET /api/agent/wait': waitRoute,
+  'GET /api/agent/events': (_request, agent) => agent.fetch('https://agent/events'),
+  'GET /api/agent/snapshot': (_request, agent) => agent.fetch('https://agent/snapshot'),
+  'GET /api/agent/resident': async (_request, agent) => json(unwrap(await agent.residentStatus())),
+  'POST /api/agent/resident': async (request, agent) =>
+    json(unwrap(await agent.residentSet((await readJson(request, ResidentChange)).enabled))),
+}
+
+async function agentRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string): Promise<Response> {
+  const route = agentRoutes[`${request.method} ${path}`]
+  if (route === undefined) throw new NotFound({ what: path })
+  return route(request, agent)
+}
+
+/** Completes an outbound OAuth authorization, then sends the owner back to the Connections page. */
+async function oauthCallback(request: Request, agent: DurableObjectStub<AgentRpc>, env: RuntimeEnv) {
+  const params = new URL(request.url).searchParams
+  const target = new URL('/connections', env.APP_URL)
+  const state = params.get('state')
+  const code = params.get('code')
+  if (params.get('error') !== null || state === null || code === null) {
+    target.searchParams.set('error', params.get('error') ?? 'authorization_failed')
+    return Response.redirect(target.href, 302)
   }
-  if (path === '/api/agent/stop' && request.method === 'POST') {
-    const input = await readJson(request, Stop)
-    return Response.json({ stopped: await agent.stop(input.operationId) })
+  const issuer = params.get('iss') ?? undefined
+  const result = await agent.mcpFinishConnect(state, code, issuer)
+  if (result.ok) target.searchParams.set('connected', result.value)
+  else target.searchParams.set('error', result.error._tag)
+  return Response.redirect(target.href, 302)
+}
+
+async function mcpServerRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string) {
+  const [, serverId = '', action = ''] = /^\/api\/mcp\/([\w-]{1,64})\/([a-z/]+)$/u.exec(path) ?? []
+  const caller = request.headers.get('x-mcp-caller') === 'app' ? 'app' : 'human'
+  if (action === 'tools' && request.method === 'GET')
+    return json(unwrap(await agent.mcpTools(serverId, new URL(request.url).searchParams.has('refresh'))))
+  if (request.method !== 'POST') throw new NotFound({ what: path })
+  if (action === 'connect') return json(unwrap(await agent.mcpConnect(serverId)))
+  if (action === 'disconnect') return json(unwrap(await agent.mcpDisconnect(serverId)))
+  if (action === 'tools/call') {
+    const body = await readJson(request, ToolCall)
+    return json(unwrap(await agent.mcpCallTool(serverId, body.name, body.arguments ?? {}, caller)))
   }
-  if (path === '/api/agent/wait' && request.method === 'GET') {
-    const operationId = new URL(request.url).searchParams.get('operationId')
-    if (operationId === null || operationId.length === 0 || operationId.length > 200)
-      return Response.json({ error: 'operation_id_required' }, { status: 400 })
-    return Response.json(await agent.wait(operationId))
-  }
-  if (request.method === 'GET' && (path === '/api/agent/events' || path === '/api/agent/snapshot')) {
-    return agent.fetch(`https://agent/${path.endsWith('/events') ? 'events' : 'snapshot'}`)
+  if (action === 'resources/read')
+    return json(unwrap(await agent.mcpReadResource(serverId, (await readJson(request, ResourceRead)).uri, caller)))
+  if (action === 'prompts/get') {
+    const body = await readJson(request, PromptGet)
+    return json(unwrap(await agent.mcpGetPrompt(serverId, body.name, body.arguments ?? {})))
   }
   throw new NotFound({ what: path })
 }
 
-async function mcpCaller(request: Request, env: RuntimeEnv): Promise<'human' | 'app'> {
-  if (request.headers.get('x-mcp-caller') !== 'app') return 'human'
-  await requireOwnerSession(request, env)
-  return 'app'
-}
-
-async function mcpRequest(request: Request, env: RuntimeEnv): Promise<Response> {
-  const url = new URL(request.url)
-  if (url.pathname === '/api/mcp/grants') return handleGrantRequest(request, env)
-  const principal = await authPrincipal(request, env)
-  if (url.pathname === '/api/mcp/servers' && request.method === 'GET') return listMcpServers(env)
-  const [, serverId, action] =
-    /^\/api\/mcp\/([^/]+)\/(connect|tools\/call|resources\/read|prompts\/get)$/u.exec(url.pathname) ?? []
-  if (serverId === undefined || request.method !== 'POST') throw new NotFound({ what: url.pathname })
-  const caller = await mcpCaller(request, env)
-  if (action === 'connect') return connectMcpServer(env, principal, serverId)
-  if (action === 'tools/call') return callMcpTool(env, principal, serverId, await readJson(request, Body), caller)
-  if (action === 'resources/read') {
-    const resource = await readJson(request, Resource)
-    return readMcpResource(env, principal, serverId, resource.uri, caller)
+async function mcpRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string, env: RuntimeEnv) {
+  if (path === '/api/mcp/oauth/callback' && request.method === 'GET') return oauthCallback(request, agent, env)
+  if (path === '/api/mcp/servers' && request.method === 'GET') return json(unwrap(await agent.mcpServers()))
+  if (path === '/api/mcp/grants' && request.method === 'GET') return json(unwrap(await agent.mcpGrants()))
+  if (path === '/api/mcp/grants' && request.method === 'PUT') {
+    const body = await readJson(request, GrantChange)
+    return json(unwrap(await agent.mcpSetToolGrant(body.serverId, body.name, body.allowed)))
   }
-  return getMcpPrompt(env, principal, serverId, await readJson(request, Body))
+  return mcpServerRoute(request, agent, path)
 }
 
+/** Every /api route below is the owner's: a valid owner cookie session, same-origin for writes. */
 async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> {
   if (request.method !== 'GET') {
     const origin = request.headers.get('origin')
     if (origin !== null && origin !== new URL(env.APP_URL).origin) throw new Forbidden({ reason: 'origin' })
   }
+  await requireOwnerSession(request, env)
   const path = new URL(request.url).pathname
-  return path.startsWith('/api/agent') ? agentRequest(request, env) : mcpRequest(request, env)
+  const agent = residentAgent(env)
+  if (path.startsWith('/api/agent')) return agentRoute(request, agent, path)
+  if (path.startsWith('/api/mcp/')) return mcpRoute(request, agent, path, env)
+  throw new NotFound({ what: path })
 }
 
 export default {

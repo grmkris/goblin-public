@@ -1,16 +1,43 @@
+import type { CallToolResult, GetPromptResult, ReadResourceResult } from '@modelcontextprotocol/client'
 import type { PiOperationResult, PiReceipt } from 'agents/harness/pi'
-import type { VerifiedMcpPrincipal } from './auth/principal.ts'
+import type { RpcResult } from './http/rpc.ts'
+import type { Grant, GrantCapability } from './mcp/grants.ts'
+import type { ServerView, ToolView } from './mcp/host.ts'
+import type { ResidentStatus } from './resident.ts'
 
-export interface AgentRpc extends Rpc.DurableObjectBranded {
-  readonly submit: (input: string, operationId: string) => Promise<PiReceipt>
-  readonly submitAuthenticated: (
-    input: string,
-    operationId: string,
-    principal: VerifiedMcpPrincipal,
-  ) => Promise<PiReceipt>
-  readonly wait: (operationId: string) => Promise<PiOperationResult>
-  readonly stop: (operationId?: string) => Promise<boolean>
+/** Owner-facing RPC of the Agent DO. The Worker authenticates the owner before calling any of these. */
+export interface AgentRpcMethods {
+  readonly submit: (input: string, operationId: string) => Promise<RpcResult<PiReceipt>>
+  readonly wait: (operationId: string) => Promise<RpcResult<PiOperationResult>>
+  readonly stop: (operationId?: string) => Promise<RpcResult<boolean>>
+  readonly mcpServers: () => Promise<RpcResult<readonly ServerView[]>>
+  readonly mcpConnect: (serverId: string) => Promise<RpcResult<{ readonly authorizationUrl?: string }>>
+  readonly mcpFinishConnect: (state: string, code: string, issuer?: string) => Promise<RpcResult<string>>
+  readonly mcpDisconnect: (serverId: string) => Promise<RpcResult<null>>
+  readonly mcpTools: (serverId: string, refresh: boolean) => Promise<RpcResult<readonly ToolView[]>>
+  readonly mcpGrants: () => Promise<RpcResult<readonly Grant[]>>
+  readonly mcpSetToolGrant: (serverId: string, name: string, allowed: boolean) => Promise<RpcResult<readonly Grant[]>>
+  readonly mcpCallTool: (
+    serverId: string,
+    name: string,
+    args: Record<string, unknown>,
+    caller: 'human' | 'app',
+  ) => Promise<RpcResult<CallToolResult>>
+  readonly mcpReadResource: (
+    serverId: string,
+    uri: string,
+    caller: 'human' | 'app',
+  ) => Promise<RpcResult<ReadResourceResult>>
+  readonly mcpGetPrompt: (
+    serverId: string,
+    name: string,
+    args: Record<string, string>,
+  ) => Promise<RpcResult<GetPromptResult>>
+  readonly residentStatus: () => Promise<RpcResult<ResidentStatus>>
+  readonly residentSet: (enabled: boolean) => Promise<RpcResult<ResidentStatus>>
 }
+export type AgentRpc = AgentRpcMethods & Rpc.DurableObjectBranded
+export type { GrantCapability }
 
 export interface RuntimeEnv {
   readonly AGENTS: DurableObjectNamespace<AgentRpc>
@@ -22,7 +49,9 @@ export interface RuntimeEnv {
   readonly MODEL_BASE_URL: string
   readonly MODEL_ID: string
   readonly MODEL_KEY: string
+  /** JSON list of outbound MCP servers: `[{ serverId, endpoint, issuer?, resource? }]`. */
   readonly MCP_SERVERS?: string
-  readonly MCP_TOKENS?: string
+  /** 32 random bytes, base64: encrypts outbound OAuth credentials at rest. */
+  readonly CREDENTIAL_KEY: string
   readonly STAGE?: 'local' | 'dev' | 'test'
 }

@@ -43,7 +43,7 @@ export default Alchemy.Stack(
         MODEL_ID: Config.String('PURRABLE_MODEL_ID').pipe(Config.withDefault('gemini-3.8-flash')),
         MODEL_KEY: Config.Redacted('PURRABLE_MODEL_KEY').pipe(Config.withDefault(Redacted.make(''))),
         MCP_SERVERS: Config.String('PURRABLE_MCP_SERVERS').pipe(Config.withDefault('[]')),
-        MCP_TOKENS: Config.Redacted('PURRABLE_MCP_TOKENS').pipe(Config.withDefault(Redacted.make('{}'))),
+        CREDENTIAL_KEY: Config.Redacted('PURRABLE_CREDENTIAL_KEY'),
         STAGE: stage.local ? 'local' : stage.name === 'dev' ? 'dev' : 'test',
       },
     })

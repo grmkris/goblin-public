@@ -84,6 +84,34 @@ harness.test(
   }),
 )
 
+const Status = Schema.Struct({ state: Schema.String })
+const Rpc = Schema.Struct({
+  first: Schema.Struct({ ok: Schema.Literal(true), value: Status }),
+  revoked: Schema.Struct({ ok: Schema.Literal(true), value: Status }),
+  afterOwnerRequest: Schema.Struct({ ok: Schema.Literal(true), value: Status }),
+  enabled: Schema.Struct({ ok: Schema.Literal(true), value: Status }),
+  servers: Schema.Struct({ ok: Schema.Literal(true), value: Schema.Array(Schema.Unknown) }),
+  unknownServer: Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) }),
+})
+
+harness.test(
+  'local workerd: owner RPC renews resident authority, revocation is sticky, errors cross as data',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `rpc-${yield* nextInt}`
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/rpc?name=${name}`))
+    expect(response.status).toBe(200)
+    const raw: unknown = yield* Effect.promise(() => response.json())
+    const result = yield* Schema.decodeUnknownEffect(Rpc)(raw)
+    expect(result.first.value.state).toBe('active')
+    expect(result.revoked.value.state).toBe('revoked')
+    expect(result.afterOwnerRequest.value.state).toBe('revoked')
+    expect(result.enabled.value.state).toBe('active')
+    expect(result.servers.value).toEqual([])
+    expect(result.unknownServer.error._tag).toBe('NotFound')
+  }),
+)
+
 harness.test(
   'local workerd: native Pi submit, receipt retry, durable readback and public dispose/reopen',
   Effect.gen(function* () {
