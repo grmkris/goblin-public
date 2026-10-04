@@ -151,3 +151,32 @@ export const InboundClient = Schema.Struct({
   consentedAt: Schema.optional(Schema.String),
 })
 export type InboundClient = typeof InboundClient.Type
+
+/** Pi's root conversation: the agent's one main conversation, where every channel and client talks. */
+export const MAIN_THREAD = '1'
+
+/**
+ * A conversation of the agent the owner can open: `main` (Pi's root), a side `thread` (branched from main or new),
+ * or a `subagent` the agent started. `parent` is main for a thread and the spawner for a subagent.
+ */
+export const ThreadView = Schema.Struct({
+  id: Schema.String,
+  kind: Schema.Literals(['main', 'thread', 'subagent']),
+  title: Schema.optional(Schema.String),
+  parent: Schema.optional(Schema.String),
+  busy: Schema.Boolean,
+  archived: Schema.Boolean,
+  createdAt: Schema.Number,
+})
+export type ThreadView = typeof ThreadView.Type
+
+const AUTHOR_TAG = /^\[from ([^\]\n]{1,80})\]$/u
+
+/**
+ * Who wrote a message into a conversation when it was not the owner's own browser (Telegram, an MCP client, a
+ * subagent): its content starts with a text block holding only this tag. The model reads it as written.
+ */
+export const authorTag = (author: string): string => `[from ${author.replaceAll(/[\]\n]/gu, ' ').slice(0, 80)}]`
+
+/** The author named by a leading tag block, if that is what the block is. */
+export const authorOf = (block: string): string | undefined => AUTHOR_TAG.exec(block)?.[1]

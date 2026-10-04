@@ -62,12 +62,17 @@ error tag, never bodies or credentials.
 ## The agent object
 
 `PersonalAgent extends Agent` and registers the native `PiHarness` with the Agent lifecycle. Pi owns transcripts,
-tasks, submissions, recovery and tool replay. The object builds one Effect `ManagedRuntime` lazily, providing three
-services: `Mcp` (the MCP host), `Resident` (resident authority) and `Sessions` (inbound client sessions). DO methods
-are thin: each runs one Effect program and encodes the exit.
+tasks, submissions, recovery and tool replay. The object builds one Effect `ManagedRuntime` lazily, providing its
+services: `Mcp` (the MCP host), `Resident` (resident authority), `Conversations` (the conversation registry),
+`Budget` and `Models`. DO methods are thin: each runs one Effect program and encodes the exit.
 
-Conversations: the owner's browser uses Pi's root session (the main thread). Each inbound MCP client gets its own Pi
-session, created once and mapped by client ID in `app_client_sessions`.
+Conversations (`conversations.ts`): every agent has one **main** conversation, Pi's root session `1`, where the owner's
+browser and every inbound MCP client talk. A message from anyone but the owner's browser starts with an author tag
+block (`[from Claude Code]`, the `authorTag` contract), so the model and the web both know who wrote it. Side
+**threads** are Pi conversations of their own: branched from a message of main (a Pi fork at that entry, so the thread
+sees main up to there and main never sees the thread) or empty. `app_conversations` registers each one with its kind,
+title, origin and archive time; a session id reaches Pi only if it is registered there, so no request opens a
+conversation by guessing its number. Pi cannot delete a conversation, so archiving only hides a thread.
 
 The system prompt is two static Pi extension sections (`pi/persona.ts`): who the agent is, and that remote content
 is untrusted data. The `mcp_list` and `mcp_call` tools (`pi/resident-mcp.ts`) are how the model reaches the owner's
@@ -79,7 +84,7 @@ single choice, multiple choice or free text. The tool result is the questions as
 so no model call waits on a person. The answer is the owner's next ordinary message, whether it comes from the web
 card or any other channel. A question counts as settled once a later user message exists.
 
-The browser follows the main thread over Server-Sent Events: a snapshot of committed Pi entries, then batches, with
+The browser follows a conversation over Server-Sent Events: a snapshot of committed Pi entries, then batches, with
 a heartbeat. On reconnect it starts again from a fresh snapshot.
 
 The chat view fills the screen under the header. The transcript scrolls in a `MessageScroller` (from
@@ -171,8 +176,8 @@ the screen offers that mode.
 Two more requests are drawn by the host, where the App cannot reach (`lib/app-context.ts`). A link the App asks to
 open (https only, no credentials) becomes an offer with a real anchor, so only the owner's click opens it. Context
 the App shares for the agent (`ui/update-model-context`, text, at most 8 KB) waits in a removable chip above the
-composer and travels once, with the owner's next message, as `appContext` on `POST /api/agent`. The runtime
-(`pi/app-context.ts`) appends it after the owner's words as a separate block shaped
+composer and travels once, with the owner's next message, as `appContext` on `POST /api/threads/:id/messages`. The runtime
+(`pi/content.ts`) appends it after the owner's words as a separate block shaped
 `{ origin: { serverId, trust: 'untrusted' }, appContext }`. The persona treats it as data, never as the owner
 speaking, and the transcript shows it as a note under their message.
 
@@ -217,8 +222,8 @@ Purrable is an MCP server at `/mcp`, the protected resource of Better Auth's `mc
   all http loopback is marked native, which is how Claude Code registers.
 - The owner signs in and consents at `/consent`. A Bearer token is accepted only if it verifies against the local
   JWKS, names `/mcp` as audience, comes from an enabled client and the owner's consent still exists.
-- Tools: `ask_agent` (submit to the client's own session and wait up to 110 seconds; a stable `operationId` makes it
-  idempotent) and `get_recent_messages` (the client's own session only).
+- Tools: `ask_agent` (submit into main, labelled with the client's name, and wait up to 110 seconds; a stable
+  `operationId` makes it idempotent) and `get_recent_messages` (main's latest messages, with their authors).
 - Revoking a client in Settings deletes the consent, disables the client and revokes its refresh tokens; its next
   call gets a 401.
 
@@ -227,7 +232,7 @@ Purrable is an MCP server at `/mcp`, the protected resource of Better Auth's `mc
 | Store | Tables | Owner |
 | --- | --- | --- |
 | Agent DO SQLite | `pi_*`, `cf_agents_*` and the other vendor tables | Pi, Agents SDK. Never touched. |
-| Agent DO SQLite | `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants`, `app_resident`, `app_client_sessions`, `app_usage_daily`, `app_metadata` | Drizzle, inline migrations in `storage/migrations.ts` |
+| Agent DO SQLite | `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants`, `app_resident`, `app_conversations`, `app_usage_daily`, `app_metadata` | Drizzle, inline migrations in `storage/migrations.ts` |
 | D1 `PurrableAuth` | `user`, `session`, `jwks`, `oauth*` | Better Auth, `apps/runtime/migrations` |
 
 Better Auth lives in D1 because the Durable SQLite adapter's async transactions and affected-row semantics do not

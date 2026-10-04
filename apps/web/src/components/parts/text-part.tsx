@@ -34,9 +34,19 @@ export function MessageText({ text }: { readonly text: string }) {
 
 /** The owner's words, as they typed them. */
 /** The owner's message; what an open App shared with it shows as a quiet note, never as their words. */
-export function UserText({ text, context = [] }: { readonly text: string; readonly context?: readonly AppContext[] }) {
+/** A message in the user column: the owner's own, or one labelled with who wrote it (Telegram, an MCP client). */
+export function UserText({
+  text,
+  context = [],
+  author,
+}: {
+  readonly text: string
+  readonly context?: readonly AppContext[]
+  readonly author?: string | undefined
+}) {
   return (
     <>
+      {author !== undefined && <p className="message-author">{author}</p>}
       <article className="bubble bubble-user">
         <p className="message-text">{text}</p>
       </article>

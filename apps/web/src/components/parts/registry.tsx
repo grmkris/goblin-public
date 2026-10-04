@@ -47,7 +47,7 @@ function ToolView({ part }: { readonly part: ToolPart }) {
 export function PartView({ part, canSwitchModel }: { readonly part: Part; readonly canSwitchModel: boolean }) {
   switch (part.kind) {
     case 'user':
-      return <UserText text={part.text} context={part.context ?? []} />
+      return <UserText text={part.text} context={part.context ?? []} author={part.author} />
     case 'text':
       return <AssistantText text={part.text} />
     case 'reasoning':

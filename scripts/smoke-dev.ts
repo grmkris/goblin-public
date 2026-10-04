@@ -336,7 +336,7 @@ async function smokeDev(steps: Step[]): Promise<Receipt> {
   await dev.signIn(config.email, config.password)
   const resident = await dev.json('/api/agent/resident')
   if (resident['state'] !== 'active') throw new Error('resident_authority_inactive')
-  const snapshot = await dev.json('/api/agent/snapshot')
+  const snapshot = await dev.json('/api/threads/1/snapshot')
   if (snapshot['type'] !== 'snapshot') throw new Error('main_snapshot_missing')
   const servers: ServerReport[] = []
   for (const server of await dev.list('/api/mcp/servers')) servers.push(await serverReport(dev, server))

@@ -1,3 +1,4 @@
+import { authorTag } from '@purrable/contracts'
 import { describe, expect, it } from 'vitest'
 import { projectBatch, projectSnapshot } from '../src/lib/projection.ts'
 
@@ -9,6 +10,11 @@ const assistant = (message: Record<string, unknown>) =>
     tools: [],
     inbox: [],
   }).messages[0]
+
+/** The one user message of a snapshot holding just it. */
+const user = (content: unknown) =>
+  projectSnapshot({ type: 'snapshot', entries: [{ id: 2, model: [{ role: 'user', content }] }], tools: [], inbox: [] })
+    .messages[0]
 
 describe('Pi committed state projected for the chat', () => {
   it('projects Pi whole-block replacements without duplicating streamed text', () => {
@@ -36,6 +42,14 @@ describe('Pi committed state projected for the chat', () => {
     ])
     expect(duplicate.messages).toHaveLength(1)
     expect(projectBatch(duplicate, [{ type: 'snapshot', entries: [], tools: [], inbox: [] }]).messages).toEqual([])
+  })
+  it('names the author the runtime tagged, and never reads an owner message as a tag', () => {
+    const tagged = [
+      { type: 'text', text: authorTag('Claude Code') },
+      { type: 'text', text: 'Is the deploy green?' },
+    ]
+    expect(user(tagged)).toEqual({ id: '2:0', role: 'user', text: 'Is the deploy green?', author: 'Claude Code' })
+    expect(user(authorTag('Claude Code'))).toEqual({ id: '2:0', role: 'user', text: '[from Claude Code]' })
   })
   it('projects committed tool progress and clears in-flight text after a run ends', () => {
     const snapshot = projectSnapshot({ type: 'snapshot', entries: [], tools: [], inbox: [] })

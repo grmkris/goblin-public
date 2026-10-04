@@ -1,5 +1,5 @@
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react'
-import type { AppContext } from '@purrable/contracts'
+import { type AppContext, MAIN_THREAD } from '@purrable/contracts'
 import { Alert, AlertDescription, PresenceBorder, PresenceOrb } from '@purrable/ui'
 import { failureText, request } from '../lib/boundary.ts'
 import { BrowserPiEvents, ConversationStream, type StreamStatus } from '../lib/conversation-stream.ts'
@@ -18,7 +18,7 @@ import { ModelPicker, useModelChoice } from './model-picker.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
 import { useUsageToday } from './use-usage.ts'
 
-function useConversation() {
+function useConversation(thread: string) {
   const [projection, setProjection] = useState<ConversationProjection>()
   const [status, setStatus] = useState<StreamStatus>('connecting')
   const [notice, setNotice] = useState('')
@@ -26,8 +26,8 @@ function useConversation() {
   useEffect(() => {
     const attachment = new ConversationStream(
       {
-        snapshot: (signal) => request('/api/agent/snapshot', { signal }),
-        events: () => new BrowserPiEvents('/api/agent/events'),
+        snapshot: (signal) => request(`/api/threads/${thread}/snapshot`, { signal }),
+        events: () => new BrowserPiEvents(`/api/threads/${thread}/events`),
       },
       setProjection,
       (next, detail) => {
@@ -47,7 +47,7 @@ function useConversation() {
       document.removeEventListener('visibilitychange', resume)
       attachment.dispose()
     }
-  }, [])
+  }, [thread])
   /** `operationId` is stable for replies to a question or permission request; a typed message gets a fresh one. */
   async function send(input: string, operationId?: string, appContext: readonly AppContext[] = []): Promise<boolean> {
     try {
@@ -57,7 +57,7 @@ function useConversation() {
         operationId: operationId ?? crypto.randomUUID(),
         ...(appContext.length > 0 && { appContext }),
       }
-      await request('/api/agent', { body })
+      await request(`/api/threads/${thread}/messages`, { body })
       return true
     } catch (error) {
       setNotice(failureText(error))
@@ -66,7 +66,7 @@ function useConversation() {
   }
   async function stop(): Promise<void> {
     try {
-      await request('/api/agent/stop', { body: {} })
+      await request(`/api/threads/${thread}/stop`, { body: {} })
     } catch (error) {
       setNotice(failureText(error))
     }
@@ -136,7 +136,7 @@ function useSendWithAppContext(send: Send): (input: string) => Promise<boolean> 
 }
 
 function ChatView() {
-  const { projection, status, notice, report, send, stop } = useConversation()
+  const { projection, status, notice, report, send, stop } = useConversation(MAIN_THREAD)
   const sendOwn = useSendWithAppContext(send)
   const { choice, choose } = useModelChoice(report)
   const view = useRef<HTMLElement>(null)

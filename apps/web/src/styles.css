@@ -201,6 +201,13 @@
   width: 0.875rem;
   height: 0.875rem;
 }
+/* Who wrote a message into the conversation when it was not the owner here: Telegram, an MCP client, a subagent. */
+.message-author {
+  align-self: flex-end;
+  margin-bottom: -0.25rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
 /* The desktop side panel the App fills in fullscreen mode, beside the conversation and under the header. */
 .app-panel {
   position: relative;

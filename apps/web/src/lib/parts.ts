@@ -34,6 +34,7 @@ export type Part =
       readonly id: string
       readonly text: string
       readonly context?: readonly AppContext[]
+      readonly author?: string
     }
   | { readonly kind: 'reasoning'; readonly id: string; readonly text: string; readonly live: boolean }
   | { readonly kind: 'text'; readonly id: string; readonly text: string; readonly live: boolean }
@@ -117,6 +118,7 @@ export function conversationParts(projection: ConversationProjection): Part[] {
         id: message.id,
         text: message.text,
         ...(message.context && { context: message.context }),
+        ...(message.author !== undefined && { author: message.author }),
       })
     else if (message.role === 'assistant') {
       for (const call of message.toolCalls) seen.add(call.id)

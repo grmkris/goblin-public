@@ -23,6 +23,8 @@ export type ChatMessage =
       readonly text: string
       /** What an open App shared with this message, labelled untrusted for the agent. */
       readonly context?: readonly AppContext[]
+      /** Who wrote it, when not the owner in this browser: Telegram, an MCP client, a subagent. */
+      readonly author?: string
       readonly timestamp?: number
     }
   | {
@@ -170,7 +172,8 @@ function entryMessage(message: Record<string, unknown>, id: string): ChatMessage
   if (message.role === 'user') {
     const shared = sharedContext(message.content)
     const context = shared.context.length === 0 ? {} : { context: shared.context }
-    return [{ id, role: 'user', text: shared.text, ...context, ...stamped(message) }]
+    const author = shared.author === undefined ? {} : { author: shared.author }
+    return [{ id, role: 'user', text: shared.text, ...context, ...author, ...stamped(message) }]
   }
   return []
 }

@@ -7,27 +7,27 @@ import type { ModelBudget } from './budget.ts'
 import type { ModelPicker } from './models.ts'
 import type { McpHost } from './mcp/host.ts'
 import type { ResidentAuthority } from './resident.ts'
-import type { ClientSessions } from './sessions.ts'
+import type { ConversationRegistry } from './conversations.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('purrable/Mcp') {}
 export class Resident extends Context.Service<Resident, ResidentAuthority>()('purrable/Resident') {}
-export class Sessions extends Context.Service<Sessions, ClientSessions>()('purrable/Sessions') {}
+export class Conversations extends Context.Service<Conversations, ConversationRegistry>()('purrable/Conversations') {}
 export class Budget extends Context.Service<Budget, ModelBudget>()('purrable/Budget') {}
 export class Models extends Context.Service<Models, ModelPicker>()('purrable/Models') {}
-export type AgentServices = Mcp | Resident | Sessions | Budget | Models
+export type AgentServices = Mcp | Resident | Conversations | Budget | Models
 
 export const agentLayer = (
   host: McpHost,
   resident: ResidentAuthority,
-  sessions: ClientSessions,
+  conversations: ConversationRegistry,
   budget: ModelBudget,
   models: ModelPicker,
 ): Layer.Layer<AgentServices> =>
   Layer.mergeAll(
     Layer.succeed(Mcp, host),
     Layer.succeed(Resident, resident),
-    Layer.succeed(Sessions, sessions),
+    Layer.succeed(Conversations, conversations),
     Layer.succeed(Budget, budget),
     Layer.succeed(Models, models),
   )

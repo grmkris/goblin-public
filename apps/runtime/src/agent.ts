@@ -1,6 +1,6 @@
 import { Agent } from 'agents'
-import type { EntryRecord } from '@earendil-works/pi-durable'
-import type { AppContext, JsonObject } from '@purrable/contracts'
+import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { type AppContext, type JsonObject, MAIN_THREAD } from '@purrable/contracts'
 import { PiHarness } from 'agents/harness/pi'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Effect from 'effect/Effect'
@@ -19,15 +19,16 @@ import { makePiHarness } from './pi/harness.ts'
 import { MODEL_PROVIDER } from './pi/model.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { ResidentAuthority } from './resident.ts'
-import { ClientSessions } from './sessions.ts'
-import { type TranscriptMessage, transcriptMessages } from './pi/transcript.ts'
+import { ConversationRegistry, type ThreadChange } from './conversations.ts'
+import { BACKGROUND } from './pi/context.ts'
+import { recentMessages } from './pi/transcript.ts'
 import {
   type AgentServices,
   Budget,
+  Conversations,
   Mcp,
   Models,
   Resident,
-  Sessions,
   agentLayer,
   attempt,
   attemptSync,
@@ -43,36 +44,30 @@ import { suggestions } from './mcp/suggested.ts'
 import { RegistryStore } from './mcp/registries.ts'
 import { logEndpointsReset } from './mcp/log.ts'
 import { ModelBudget, UsageStore, dailyTokenLimit } from './budget.ts'
-import { ownerContent } from './pi/app-context.ts'
+import { authoredContent, ownerContent } from './pi/content.ts'
 import { budgetExtension } from './pi/budget.ts'
 import { ModelChoiceStore, ModelPicker, modelOptions } from './models.ts'
 
 type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
 
-const clientSession = (clientId: string, clientName: string | undefined, harness: PiHarness) =>
-  Effect.gen(function* () {
-    const sessions = yield* Sessions
-    const now = yield* nowSecondsEffect
-    return yield* attempt(() =>
-      sessions.ensure(clientId, clientName, async () => (await harness.sessions.create()).id, now),
-    )
-  })
-
-/** The model last applied to each session in this isolate, keyed by session id (`root` for the main thread). */
+/** The model last applied to each session in this isolate, keyed by session id. */
 type Applied = Map<string, string>
 
 /**
  * Puts a session on the user's model before a turn. Pi stores one model per conversation, set when it is created, so
  * a pick (or a new deployment default) reaches existing conversations only this way. Skipped when already applied.
  */
-const useModel = (harness: PiHarness, applied: Applied, session: string | undefined) =>
+const useModel = (harness: PiHarness, applied: Applied, session: string) =>
   Effect.gen(function* () {
     const id = (yield* Models).current()
-    const key = session ?? 'root'
-    if (applied.get(key) === id) return
+    if (applied.get(session) === id) return
     yield* attempt(() => harness.session(session).setModel({ provider: MODEL_PROVIDER, id }))
-    applied.set(key, id)
+    applied.set(session, id)
   })
+
+/** A registered conversation's Pi session, or `NotFound`: the gate every thread request passes. */
+const registered = (thread: string) =>
+  Conversations.use((conversations) => attemptSync(() => conversations.require(thread)))
 
 /**
  * The resident agent. Pi (through the native PiHarness) owns conversations; the services in `services.ts` own MCP
@@ -114,7 +109,8 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       })
       const budget = new ModelBudget(new UsageStore(db), dailyTokenLimit(this.env.MODEL_DAILY_TOKENS))
       const models = new ModelPicker(new ModelChoiceStore(db), modelOptions(this.env.MODELS, this.env.MODEL_ID))
-      return ManagedRuntime.make(agentLayer(host, new ResidentAuthority(db), new ClientSessions(db), budget, models))
+      const conversations = new ConversationRegistry(db, this.harness, nowSeconds())
+      return ManagedRuntime.make(agentLayer(host, new ResidentAuthority(db), conversations, budget, models))
     })()
     this.#runtime.catch(() => {
       this.#runtime = undefined
@@ -148,16 +144,42 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return encodeExit(await this.#exit(renewed))
   }
 
-  /** The owner's message, with what an open App shared for the agent as separate untrusted blocks. */
-  submit(input: string, operationId: string, appContext: readonly AppContext[] = []) {
+  /** The owner's message into a thread, with what an open App shared for the agent as separate untrusted blocks. */
+  submit(thread: string, input: string, operationId: string, appContext: readonly AppContext[] = []) {
     const harness = this.harness
-    const model = useModel(harness, this.#applied, undefined)
+    const applied = this.#applied
     const content = ownerContent(input, appContext)
     return this.#owner(
       Effect.gen(function* () {
         yield* requireBudget
-        yield* model
-        return yield* attempt(() => harness.submit(content, { operationId }))
+        const session = yield* registered(thread)
+        yield* useModel(harness, applied, session)
+        return yield* attempt(() => harness.submit(content, { session, operationId }))
+      }),
+    )
+  }
+
+  threads() {
+    return this.#owner(Conversations.use((conversations) => attempt(() => conversations.list())))
+  }
+
+  /** A thread branched from main at one of its messages (`from`, a Pi entry id), or an empty one. */
+  createThread(from?: number) {
+    return this.#owner(
+      Effect.gen(function* () {
+        const conversations = yield* Conversations
+        const now = yield* nowSecondsEffect
+        return yield* attempt(() => (from === undefined ? conversations.create(now) : conversations.branch(from, now)))
+      }),
+    )
+  }
+
+  updateThread(thread: string, change: ThreadChange) {
+    return this.#owner(
+      Effect.gen(function* () {
+        const conversations = yield* Conversations
+        const now = yield* nowSecondsEffect
+        return yield* attempt(() => conversations.update(thread, change, now))
       }),
     )
   }
@@ -166,9 +188,9 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return this.#owner(Models.useSync((models) => models.choice()))
   }
 
-  /** Stores the pick and moves the main thread to it at once; client sessions follow on their next turn. */
+  /** Stores the pick and moves main to it at once; other threads follow on their next turn. */
   chooseModel(modelId: string) {
-    const model = useModel(this.harness, this.#applied, undefined)
+    const model = useModel(this.harness, this.#applied, MAIN_THREAD)
     return this.#owner(
       Effect.gen(function* () {
         const models = yield* Models
@@ -189,13 +211,13 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     )
   }
 
-  wait(operationId: string) {
-    return this.#owner(attempt(() => this.harness.wait(operationId)))
-  }
-
-  stop(operationId?: string) {
+  stop(thread: string, operationId?: string) {
+    const harness = this.harness
     return this.#owner(
-      attempt(() => (operationId === undefined ? this.harness.abort() : this.harness.abort({ operationId }))),
+      Effect.gen(function* () {
+        const session = yield* registered(thread)
+        return yield* attempt(() => harness.abort({ session, ...(operationId === undefined ? {} : { operationId }) }))
+      }),
     )
   }
 
@@ -305,19 +327,20 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
 
   /**
-   * An inbound MCP client asks the resident agent something, in that client's own conversation. Needs current
-   * resident authority (it does not renew it). Returns the answer, or `running` with the operation id to wait again.
+   * An inbound MCP client asks the resident agent something, in main and labelled with the client's name, so the
+   * owner sees it and the agent answers with everything main knows. Needs current resident authority (it does not
+   * renew it). Returns the answer, or `running` with the operation id to wait again.
    */
-  askAsClient(clientId: string, clientName: string | undefined, input: string, operationId: string, waitMs: number) {
+  askAsClient(author: string, input: string, operationId: string, waitMs: number) {
     const harness = this.harness
     const applied = this.#applied
+    const session = MAIN_THREAD
     return this.#client(
       Effect.gen(function* () {
         yield* requireResident
         yield* requireBudget
-        const session = yield* clientSession(clientId, clientName, harness)
         yield* useModel(harness, applied, session)
-        yield* attempt(() => harness.submit(input, { session, operationId }))
+        yield* attempt(() => harness.submit(authoredContent(author, input), { session, operationId }))
         const result = yield* attempt(() =>
           harness.wait(operationId, { session, signal: AbortSignal.timeout(waitMs) }).catch(() => undefined),
         )
@@ -329,15 +352,13 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     )
   }
 
-  /** The client's own conversation, newest last. A client never sees the owner's main thread. */
-  clientMessages(clientId: string, limit: number) {
+  /** Main's latest messages, newest last, for an inbound client (`get_recent_messages`). */
+  recentMessages(limit: number) {
     const harness = this.harness
     return this.#client(
-      Effect.gen(function* () {
-        const sessions = yield* Sessions
-        const session = sessions.find(clientId)
-        if (session === undefined) return [] satisfies readonly TranscriptMessage[]
-        return transcriptMessages(yield* attempt(() => harness.messages({ session })), limit)
+      attempt(async () => {
+        const main = await (await harness.pi()).conversation(ROOT_CONVERSATION_ID, BACKGROUND)
+        return main === undefined ? [] : recentMessages(main, limit)
       }),
     )
   }
@@ -364,22 +385,21 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return encodeExit(await this.#exit(program))
   }
 
-  async messages(): Promise<readonly EntryRecord[]> {
-    return this.harness.messages()
-  }
-
-  async sessionSnapshot(): Promise<JsonObject> {
-    const stream = await this.harness.session().events()
+  async sessionSnapshot(session: string): Promise<JsonObject> {
+    const stream = await this.harness.session(session).events()
     const snapshot = stream.snapshot
     await stream.stop()
     // SAFETY: Pi's snapshot is structured cloneable; JSON normalization narrows it to the shared RPC contract.
     return JSON.parse(JSON.stringify(snapshot)) as JsonObject
   }
 
+  /** `/threads/<id>/events` (SSE) and `/threads/<id>/snapshot`, for registered conversations only. */
   override async onRequest(request: Request): Promise<Response> {
-    const url = new URL(request.url)
-    if (url.pathname === '/events') return piEventResponse(await this.harness.session().events())
-    if (url.pathname === '/snapshot') return Response.json(await this.sessionSnapshot())
-    return Response.json({ error: 'NotFound' }, { status: 404 })
+    const [, thread = '', view = ''] =
+      /^\/threads\/(\d{1,12})\/(events|snapshot)$/u.exec(new URL(request.url).pathname) ?? []
+    const session = await this.#exit(registered(thread))
+    if (view === '' || Exit.isFailure(session)) return Response.json({ error: 'NotFound' }, { status: 404 })
+    if (view === 'events') return piEventResponse(await this.harness.session(session.value).events())
+    return Response.json(await this.sessionSnapshot(session.value))
   }
 }

@@ -1,3 +1,4 @@
+import { MAIN_THREAD } from '@purrable/contracts'
 import { PersonalAgent } from '../../src/agent.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { listTables } from '../../src/storage/vendor.ts'
@@ -29,7 +30,7 @@ export class PersonalAgentProbe extends PersonalAgent {
         return yield* service.get('probe')
       }).pipe(Effect.provide(AppMetadata.layer(this.ctx.storage))),
     )
-    return Response.json({ snapshot: await this.sessionSnapshot(), before, after, metadata })
+    return Response.json({ snapshot: await this.sessionSnapshot(MAIN_THREAD), before, after, metadata })
   }
 
   /** Endpoint binding on the real SQLite store: a re-pointed server loses its credentials, grants and pending state. */
@@ -116,12 +117,18 @@ async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promis
   const servers = await agent.mcpServers()
   const unknownServer = await agent.mcpSetToolGrant('missing', 'tool', true)
   const unknownApp = await agent.mcpSetAppGrant('missing', 'ui://missing/app.html', true)
-  const noConversation = await agent.clientMessages('client-1', 5)
+  const noConversation = await agent.recentMessages(5)
+  const thread = await agent.createThread()
+  const threads = await agent.threads()
+  const badBranch = await agent.createThread(999_999)
+  const unknownThread = await agent.submit('424242', 'hello', 'op-unknown-thread')
+  const archived = thread.ok ? await agent.updateThread(thread.value.id, { archived: true }) : thread
+  const mainUntouchable = await agent.updateThread(MAIN_THREAD, { title: 'renamed' })
   const usage = await agent.usageToday()
   const modelChoice = await agent.modelChoice()
   const unknownModel = await agent.chooseModel('not-offered')
   await agent.residentSet(false)
-  const askWhileRevoked = await agent.askAsClient('client-1', 'Test client', 'hello', 'op-1', 1000)
+  const askWhileRevoked = await agent.askAsClient('Test client', 'hello', 'op-1', 1000)
   return Response.json({
     first,
     revoked,
@@ -131,6 +138,11 @@ async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promis
     unknownServer,
     unknownApp,
     noConversation,
+    threads,
+    badBranch,
+    unknownThread,
+    archived,
+    mainUntouchable,
     usage,
     model: modelChoice,
     unknownModel,
@@ -147,7 +159,7 @@ const entries = async (agent: DurableObjectStub<PersonalAgentProbe>): Promise<nu
 async function destroySequence(env: Env, name: string): Promise<Response> {
   const agent = env.AGENTS.getByName(name)
   await agent.residentSet(false)
-  const submitted = await agent.submit('remember this before deletion', 'destroy-op-1')
+  const submitted = await agent.submit(MAIN_THREAD, 'remember this before deletion', 'destroy-op-1')
   const before = await entries(agent)
   let deleted: unknown
   try {

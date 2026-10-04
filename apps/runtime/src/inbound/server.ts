@@ -36,15 +36,16 @@ const standard = <S extends Schema.Top & Schema.ConstraintDecoder<unknown>>(sche
 const text = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] })
 
 /**
- * Purrable as an MCP server: authorized clients (Claude Code, Hermes, ...) can ask the resident agent things. Each
- * client has its own conversation; the agent uses the owner's granted tools under resident authority.
+ * Purrable as an MCP server: authorized clients (Claude Code, Hermes, ...) can ask the resident agent things. They
+ * talk in the agent's main conversation, labelled with their name; the agent uses the owner's granted tools under
+ * resident authority.
  */
 export const inboundServer = (agent: ClientAgentPort): McpServer => {
   const server = new McpServer(
     { name: 'purrable', version: '0.1.0' },
     {
       instructions:
-        "Purrable is the owner's resident personal agent. Use ask_agent to delegate a question or task; it answers in this client's own conversation.",
+        "Purrable is the owner's resident personal agent. Use ask_agent to delegate a question or task; it answers in its main conversation, where the owner sees your message labelled with your name.",
     },
   )
   server.registerTool(
@@ -65,7 +66,8 @@ export const inboundServer = (agent: ClientAgentPort): McpServer => {
     'get_recent_messages',
     {
       title: 'Recent messages',
-      description: "The recent messages of this client's conversation with the resident agent, newest last.",
+      description:
+        "The recent messages of the agent's main conversation, newest last. A message written by someone other than the owner names its author.",
       inputSchema: standard(RecentInput),
       annotations: { readOnlyHint: true },
     },

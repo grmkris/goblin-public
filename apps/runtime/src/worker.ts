@@ -25,6 +25,8 @@ const Submit = Schema.Struct({
   appContext: Schema.optional(Schema.Array(AppContext).check(Schema.isMaxLength(2))),
 })
 const Stop = Schema.Struct({ operationId: Schema.optional(Bounded(200)) })
+const CreateThread = Schema.Struct({ from: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))) })
+const UpdateThread = Schema.Struct({ title: Schema.optional(Bounded(120)), archived: Schema.optional(Schema.Boolean) })
 const ToolCall = Schema.Struct({
   name: Bounded(256),
   arguments: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
@@ -56,23 +58,8 @@ const agentOf = (env: RuntimeEnv, userId: string): DurableObjectStub<AgentRpc> =
 
 type Route = (request: Request, agent: DurableObjectStub<AgentRpc>) => Promise<Response>
 
-const waitRoute: Route = async (request, agent) => {
-  const operationId = new URL(request.url).searchParams.get('operationId') ?? ''
-  if (operationId.length === 0 || operationId.length > 200) throw new InvalidInput({ reason: 'operationId' })
-  return json(unwrap(await agent.wait(operationId)))
-}
-
-/** The conversation and resident-authority routes, keyed `METHOD path`. */
+/** The agent-wide routes (resident authority, budget, model), keyed `METHOD path`. */
 const agentRoutes: Readonly<Record<string, Route>> = {
-  'POST /api/agent': async (request, agent) => {
-    const body = await readJson(request, Submit)
-    return json(unwrap(await agent.submit(body.input, body.operationId, body.appContext ?? [])), 202)
-  },
-  'POST /api/agent/stop': async (request, agent) =>
-    json({ stopped: unwrap(await agent.stop((await readJson(request, Stop)).operationId)) }),
-  'GET /api/agent/wait': waitRoute,
-  'GET /api/agent/events': (_request, agent) => agent.fetch('https://agent/events'),
-  'GET /api/agent/snapshot': (_request, agent) => agent.fetch('https://agent/snapshot'),
   'GET /api/agent/resident': async (_request, agent) => json(unwrap(await agent.residentStatus())),
   'GET /api/agent/usage': async (_request, agent) => json(unwrap(await agent.usageToday())),
   'GET /api/agent/model': async (_request, agent) => json(unwrap(await agent.modelChoice())),
@@ -86,6 +73,32 @@ async function agentRoute(request: Request, agent: DurableObjectStub<AgentRpc>, 
   const route = agentRoutes[`${request.method} ${path}`]
   if (route === undefined) throw new NotFound({ what: path })
   return route(request, agent)
+}
+
+/** One conversation's routes, keyed `METHOD action`; the agent checks the thread is one of the owner's. */
+const threadRoutes: Readonly<
+  Record<string, (request: Request, agent: DurableObjectStub<AgentRpc>, thread: string) => Promise<Response>>
+> = {
+  'POST messages': async (request, agent, thread) => {
+    const body = await readJson(request, Submit)
+    return json(unwrap(await agent.submit(thread, body.input, body.operationId, body.appContext ?? [])), 202)
+  },
+  'POST stop': async (request, agent, thread) =>
+    json({ stopped: unwrap(await agent.stop(thread, (await readJson(request, Stop)).operationId)) }),
+  'GET events': (_request, agent, thread) => agent.fetch(`https://agent/threads/${thread}/events`),
+  'GET snapshot': (_request, agent, thread) => agent.fetch(`https://agent/threads/${thread}/snapshot`),
+  'PATCH ': async (request, agent, thread) =>
+    json(unwrap(await agent.updateThread(thread, await readJson(request, UpdateThread)))),
+}
+
+async function threadRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string): Promise<Response> {
+  if (path === '/api/threads' && request.method === 'GET') return json(unwrap(await agent.threads()))
+  if (path === '/api/threads' && request.method === 'POST')
+    return json(unwrap(await agent.createThread((await readJson(request, CreateThread)).from)), 201)
+  const [, thread = '', action = ''] = /^\/api\/threads\/(\d{1,12})(?:\/([a-z]+))?$/u.exec(path) ?? []
+  const route = threadRoutes[`${request.method} ${action}`]
+  if (thread === '' || route === undefined) throw new NotFound({ what: path })
+  return route(request, agent, thread)
 }
 
 /** Completes an outbound OAuth authorization, then sends the owner back to the Connections page. */
@@ -171,7 +184,8 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   const { userId } = await requireUserSession(request, env)
   const path = new URL(request.url).pathname
   const agent = agentOf(env, userId)
-  if (path.startsWith('/api/agent')) return agentRoute(request, agent, path)
+  if (path.startsWith('/api/agent/')) return agentRoute(request, agent, path)
+  if (path === '/api/threads' || path.startsWith('/api/threads/')) return threadRoute(request, agent, path)
   if (path.startsWith('/api/mcp/')) return mcpRoute(request, agent, path, env)
   if (path === '/api/clients' && request.method === 'GET') return json(await listInboundClients(env, userId))
   const revoke = /^\/api\/clients\/([\w.-]{1,200})$/u.exec(path)?.[1]

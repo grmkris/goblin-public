@@ -85,6 +85,7 @@ harness.test(
 )
 
 const Status = Schema.Struct({ state: Schema.String })
+const Failure = Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) })
 const Rpc = Schema.Struct({
   first: Schema.Struct({ ok: Schema.Literal(true), value: Status }),
   revoked: Schema.Struct({ ok: Schema.Literal(true), value: Status }),
@@ -94,6 +95,14 @@ const Rpc = Schema.Struct({
   unknownServer: Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) }),
   unknownApp: Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) }),
   noConversation: Schema.Struct({ ok: Schema.Literal(true), value: Schema.Array(Schema.Unknown) }),
+  threads: Schema.Struct({
+    ok: Schema.Literal(true),
+    value: Schema.Array(Schema.Struct({ id: Schema.String, kind: Schema.String, archived: Schema.Boolean })),
+  }),
+  badBranch: Failure,
+  unknownThread: Failure,
+  archived: Schema.Struct({ ok: Schema.Literal(true), value: Schema.Struct({ archived: Schema.Boolean }) }),
+  mainUntouchable: Failure,
   usage: Schema.Struct({
     ok: Schema.Literal(true),
     value: Schema.Struct({ used: Schema.Number, limit: Schema.Number, resetsAt: Schema.Number }),
@@ -107,7 +116,7 @@ const Rpc = Schema.Struct({
 })
 
 harness.test(
-  'local workerd: owner RPC renews resident authority, revocation is sticky and blocks client asks',
+  'local workerd: owner RPC renews resident authority, gates threads, and revocation blocks client asks',
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `rpc-${yield* nextInt}`
@@ -123,6 +132,15 @@ harness.test(
     expect(result.unknownServer.error._tag).toBe('NotFound')
     expect(result.unknownApp.error._tag).toBe('NotFound')
     expect(result.noConversation.value).toEqual([])
+    // Main is registered on first use; an empty thread joins it. Only registered conversations reach Pi.
+    expect(result.threads.value.map(({ kind, archived }) => ({ kind, archived }))).toEqual([
+      { kind: 'main', archived: false },
+      { kind: 'thread', archived: false },
+    ])
+    expect(result.badBranch.error._tag).toBe('InvalidInput')
+    expect(result.unknownThread.error._tag).toBe('NotFound')
+    expect(result.archived.value.archived).toBe(true)
+    expect(result.mainUntouchable.error._tag).toBe('InvalidInput')
     // A fresh agent has spent nothing today; the budget table exists after migration.
     expect(result.usage.value).toMatchObject({ used: 0, limit: 300_000 })
     expect(result.usage.value.resetsAt % 86_400).toBe(0)

@@ -31,8 +31,8 @@ export const handleInboundMcp = async (request: Request, env: RuntimeEnv): Promi
     () =>
       inboundServer({
         ask: async (input, operationId, waitMs) =>
-          unwrap(await agent.askAsClient(principal.clientId, name, input, operationId, waitMs)),
-        recent: async (limit) => unwrap(await agent.clientMessages(principal.clientId, limit)),
+          unwrap(await agent.askAsClient(name ?? 'an MCP client', input, operationId, waitMs)),
+        recent: async (limit) => unwrap(await agent.recentMessages(limit)),
       }),
     { route: '/mcp' },
   )

@@ -82,12 +82,18 @@ export const appUsageDaily = sqliteTable('app_usage_daily', {
   updatedAt: integer('updated_at').notNull(),
 })
 
-/** Pi session per inbound MCP client: each client talks to the agent in its own conversation. */
-export const appClientSessions = sqliteTable('app_client_sessions', {
-  clientId: text('client_id').primaryKey().notNull(),
-  sessionId: text('session_id').notNull(),
-  clientName: text('client_name'),
+/**
+ * The conversations the owner can reach, keyed by Pi session id: main (Pi's root), threads and subagents. Pi owns
+ * their transcripts; this is only what Pi does not keep: kind, title, where it came from, and whether it is archived.
+ */
+export const appConversations = sqliteTable('app_conversations', {
+  sessionId: text('session_id').primaryKey().notNull(),
+  kind: text('kind', { enum: ['main', 'thread', 'subagent'] }).notNull(),
+  title: text('title'),
+  parentSession: text('parent_session'),
+  forkEntry: integer('fork_entry'),
   createdAt: integer('created_at').notNull(),
+  archivedAt: integer('archived_at'),
 })
 
 /** The user's model pick (one row, id 1); none means the deployment default (`models.ts`). */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ownerContent } from '../src/pi/app-context.ts'
+import { ownerContent } from '../src/pi/content.ts'
 
 describe('the owner message with App context', () => {
   it('stays the owner’s plain words when no App shared anything', () => {

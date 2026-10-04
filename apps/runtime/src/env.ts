@@ -1,5 +1,5 @@
 import type { CallToolResult, GetPromptResult, ReadResourceResult } from '@modelcontextprotocol/client'
-import type { PiOperationResult, PiReceipt } from 'agents/harness/pi'
+import type { PiReceipt } from 'agents/harness/pi'
 import type { RpcResult } from './http/rpc.ts'
 import type { Grant, GrantCapability } from './mcp/grants.ts'
 import type {
@@ -10,22 +10,27 @@ import type {
   ResidentStatus,
   ServerSuggestion,
   ServerView,
+  ThreadView,
   ToolView,
   UsageToday,
 } from '@purrable/contracts'
 import type { TranscriptMessage } from './pi/transcript.ts'
 import type { MailBinding } from './auth/mail.ts'
 import type { ServerSource } from './mcp/servers.ts'
+import type { ThreadChange } from './conversations.ts'
 
 /** Owner-facing RPC of the Agent DO. The Worker authenticates the owner before calling any of these. */
 export interface AgentRpcMethods {
   readonly submit: (
+    thread: string,
     input: string,
     operationId: string,
     appContext?: readonly AppContext[],
   ) => Promise<RpcResult<PiReceipt>>
-  readonly wait: (operationId: string) => Promise<RpcResult<PiOperationResult>>
-  readonly stop: (operationId?: string) => Promise<RpcResult<boolean>>
+  readonly stop: (thread: string, operationId?: string) => Promise<RpcResult<boolean>>
+  readonly threads: () => Promise<RpcResult<readonly ThreadView[]>>
+  readonly createThread: (from?: number) => Promise<RpcResult<ThreadView>>
+  readonly updateThread: (thread: string, change: ThreadChange) => Promise<RpcResult<ThreadView>>
   readonly mcpServers: () => Promise<RpcResult<readonly ServerView[]>>
   readonly mcpConnect: (serverId: string) => Promise<RpcResult<{ readonly authorizationUrl?: string }>>
   readonly mcpFinishConnect: (state: string, code: string, issuer?: string) => Promise<RpcResult<string>>
@@ -60,13 +65,12 @@ export interface AgentRpcMethods {
   readonly residentStatus: () => Promise<RpcResult<ResidentStatus>>
   readonly residentSet: (enabled: boolean) => Promise<RpcResult<ResidentStatus>>
   readonly askAsClient: (
-    clientId: string,
-    clientName: string | undefined,
+    author: string,
     input: string,
     operationId: string,
     waitMs: number,
   ) => Promise<RpcResult<AskResult>>
-  readonly clientMessages: (clientId: string, limit: number) => Promise<RpcResult<readonly TranscriptMessage[]>>
+  readonly recentMessages: (limit: number) => Promise<RpcResult<readonly TranscriptMessage[]>>
   readonly usageToday: () => Promise<RpcResult<UsageToday>>
   readonly modelChoice: () => Promise<RpcResult<ModelChoice>>
   readonly chooseModel: (modelId: string) => Promise<RpcResult<ModelChoice>>

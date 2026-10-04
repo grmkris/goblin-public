@@ -5,8 +5,10 @@
   user ID.
 - **Pi Durable / PiHarness**: the conversation and execution runtime. It owns transcripts, tasks, recovery and tool
   replay; `PiHarness` is its native Agents SDK adapter.
-- **Main thread**: Pi's root session. The owner's browser chat (and later Telegram) talk to it.
-- **Client session**: a separate Pi session per inbound MCP client; it only ever sees its own messages.
+- **Main conversation**: Pi's root session (`1`). The owner's browser and inbound MCP clients talk in it, each
+  message from anyone but the owner's browser labelled with its author.
+- **Thread**: a side conversation, branched from a message of main or empty. Nothing in it reaches main.
+- **Conversation registry**: `app_conversations`, the conversations a request may open (main, threads).
 - **Resident authority**: the agent's own permission to use the owner's MCP connections when the owner is not
   present. Lasts 30 days, renewed by owner activity, revocable in Settings.
 - **Outbound MCP server**: a server the agent calls (MyPlan, MyBrowser), listed in `PURRABLE_MCP_SERVERS` and

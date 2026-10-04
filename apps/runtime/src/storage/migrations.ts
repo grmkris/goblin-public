@@ -47,6 +47,15 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     tables: ['app_mcp_registries'],
     sql: 'CREATE TABLE app_mcp_registries (url TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, added_at INTEGER NOT NULL)',
   },
+  {
+    // Inbound clients now talk in the main conversation, so their per-client sessions go.
+    key: '20261011000000_conversations',
+    tables: ['app_conversations', 'app_client_sessions'],
+    sql: [
+      `CREATE TABLE app_conversations (session_id TEXT PRIMARY KEY NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('main', 'thread', 'subagent')), title TEXT, parent_session TEXT, fork_entry INTEGER, created_at INTEGER NOT NULL, archived_at INTEGER)`,
+      'DROP TABLE app_client_sessions',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {
