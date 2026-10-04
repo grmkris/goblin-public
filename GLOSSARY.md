@@ -1,6 +1,8 @@
 # Glossary
 
-- **Agent / PersonalAgent**: the Cloudflare Agents SDK Durable Object that is the resident agent. One per owner.
+- **Owner**: the user an agent belongs to. Every signed-up user owns exactly one agent and sees only that one.
+- **Agent / PersonalAgent**: the Cloudflare Agents SDK Durable Object that is a resident agent, named by its owner's
+  user ID.
 - **Pi Durable / PiHarness**: the conversation and execution runtime. It owns transcripts, tasks, recovery and tool
   replay; `PiHarness` is its native Agents SDK adapter.
 - **Main thread**: Pi's root session. The owner's browser chat (and later Telegram) talk to it.
@@ -13,7 +15,8 @@
 - **Inbound client**: an MCP client (Claude Code, another agent) the owner authorized to call Purrable's `/mcp`.
 - **MCP App**: a sandboxed `ui://` resource rendered inline through its originating MCP connection.
 - **Operation ID**: the stable key that makes a submission idempotent. Acceptance is not external completion.
-- **D1**: Cloudflare SQLite holding Better Auth's tables only (owner, sessions, inbound OAuth clients and tokens).
+- **Sign-up mode**: `open`, `invite` (an invite code is required) or `closed`; deployed stages default to `closed`.
+- **D1**: Cloudflare SQLite holding Better Auth's tables only (users, sessions, inbound OAuth clients and tokens).
 - **CLIProxy / LiteLLM**: model gateways. CLIProxy for local work on the build box; Railway LiteLLM for the deployed
   dev Worker, with a dedicated capped key.
 - **Alchemy**: the only infrastructure and local-workerd entrypoint. **Stage**: `local`, `dev` or a disposable

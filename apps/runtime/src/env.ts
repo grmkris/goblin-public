@@ -56,8 +56,9 @@ export interface RuntimeEnv {
   readonly AUTH_DB: D1Database
   readonly APP_URL: string
   readonly BETTER_AUTH_SECRET: string
-  readonly OWNER_EMAIL: string
-  readonly OWNER_BOOTSTRAP_TOKEN: string
+  /** `open`, `invite` (needs `SIGNUP_INVITE_CODE`) or `closed`; anything else counts as `closed`. */
+  readonly SIGNUP_MODE?: string
+  readonly SIGNUP_INVITE_CODE?: string
   readonly MODEL_BASE_URL: string
   readonly MODEL_ID: string
   readonly MODEL_KEY: string

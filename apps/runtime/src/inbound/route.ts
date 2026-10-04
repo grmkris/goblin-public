@@ -24,7 +24,8 @@ export const handleInboundMcp = async (request: Request, env: RuntimeEnv): Promi
   } catch {
     return challenge(env)
   }
-  const agent = env.AGENTS.getByName('root')
+  // The token's subject is the user who consented; the client talks to that user's agent only.
+  const agent = env.AGENTS.getByName(principal.subject)
   const name = await clientName(principal.clientId, env)
   const handler = createMcpHandler(
     () =>

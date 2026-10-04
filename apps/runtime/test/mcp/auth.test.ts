@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { markLoopbackClientsNative } from '../../src/auth/options.ts'
+import { markLoopbackClientsNative, signupAllowed, signupMode } from '../../src/auth/options.ts'
 import { clientFromClaims } from '../../src/auth/principal.ts'
 
 describe('inbound client claims (unit)', () => {
@@ -44,5 +44,23 @@ describe('dynamic registration of loopback MCP clients (unit)', () => {
     const declared = { redirect_uris: ['http://localhost/cb'], application_type: 'web' }
     markLoopbackClientsNative(declared)
     expect(declared.application_type).toBe('web')
+  })
+})
+
+describe('sign-up modes (unit)', () => {
+  it('admits everyone when open, only the matching code on invite, and no one when closed or unset', () => {
+    expect(signupAllowed('open', '', '')).toBe(true)
+    expect(signupAllowed('invite', 'let-me-in-2026', 'let-me-in-2026')).toBe(true)
+    expect(signupAllowed('invite', 'let-me-in-2026', 'let-me-in-2025')).toBe(false)
+    expect(signupAllowed('invite', 'let-me-in-2026', '')).toBe(false)
+    // An invite mode without a configured code must not turn into "any empty header passes".
+    expect(signupAllowed('invite', '', '')).toBe(false)
+    expect(signupAllowed('closed', 'let-me-in-2026', 'let-me-in-2026')).toBe(false)
+    expect([signupMode('open'), signupMode('invite'), signupMode(undefined), signupMode('OPEN')]).toEqual([
+      'open',
+      'invite',
+      'closed',
+      'closed',
+    ])
   })
 })

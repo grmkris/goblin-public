@@ -2,31 +2,30 @@ import { verifyJwsAccessToken } from 'better-auth/oauth2'
 import type { RuntimeEnv } from '../env.ts'
 import { nowSeconds } from '../clock.ts'
 import { Unauthenticated } from '../http/errors.ts'
-import { authIssuer, canonicalEmail, createAuth, mcpResource } from './options.ts'
+import { authIssuer, createAuth, mcpResource } from './options.ts'
 import { clientFromClaims, type ClientPrincipal, type TokenClaims } from './principal.ts'
 
-export type OwnerSession = { readonly sessionId: string; readonly expiresAt: number }
+export type UserSession = { readonly userId: string; readonly sessionId: string; readonly expiresAt: number }
 
 /**
- * The owner's browser session (cookie). Bearer tokens never count as the owner: a request that carries one is
- * rejected here, so inbound MCP clients cannot reach owner routes or outbound credentials.
+ * A signed-in user's browser session (cookie): that user owns one agent. Bearer tokens never count: a request that
+ * carries one is rejected here, so inbound MCP clients cannot reach owner routes or outbound credentials.
  */
-export const requireOwnerSession = async (request: Request, env: RuntimeEnv): Promise<OwnerSession> => {
-  if (request.headers.has('authorization')) throw new Unauthenticated({ reason: 'owner session required' })
+export const requireUserSession = async (request: Request, env: RuntimeEnv): Promise<UserSession> => {
+  if (request.headers.has('authorization')) throw new Unauthenticated({ reason: 'session required' })
   const session = await createAuth(env, env.AUTH_DB).api.getSession({ headers: request.headers })
-  if (
-    session === null ||
-    session.user.id !== 'owner' ||
-    canonicalEmail(session.user.email) !== canonicalEmail(env.OWNER_EMAIL) ||
-    session.session.expiresAt.getTime() <= Date.now()
-  )
-    throw new Unauthenticated({ reason: 'owner session required' })
-  return { sessionId: session.session.id, expiresAt: Math.floor(session.session.expiresAt.getTime() / 1000) }
+  if (session === null || session.session.expiresAt.getTime() <= Date.now())
+    throw new Unauthenticated({ reason: 'session required' })
+  return {
+    userId: session.user.id,
+    sessionId: session.session.id,
+    expiresAt: Math.floor(session.session.expiresAt.getTime() / 1000),
+  }
 }
 
 /**
  * An inbound MCP client's access token: a signature from our own JWKS (read locally, no self-fetch), our issuer and
- * /mcp audience, an enabled client and a standing owner consent. Revoking the consent or the client ends access.
+ * /mcp audience, an enabled client and the user's standing consent. Revoking the consent or the client ends access.
  */
 export const verifyClientToken = async (token: string, env: RuntimeEnv): Promise<ClientPrincipal> => {
   const auth = createAuth(env, env.AUTH_DB)

@@ -1,0 +1,20 @@
+# An agent per user, with gated sign-up
+
+Accepted 2026-10-04 at the owner's request ("make this like regular SaaS"). Supersedes the single-owner bootstrap.
+
+Purrable started single-owner: one agent object named `root`, a user ID pinned to `owner`, and a one-time bootstrap
+token for the first sign-up. Now anyone admitted by the sign-up mode gets an account, and every account owns one
+`PersonalAgent` object named by its user ID. ADR 0003's design already kept everything per object (conversations, MCP
+connections, encrypted credentials, grants, resident authority, inbound client sessions), so the change is confined to
+identity and routing:
+
+- The agent is chosen from authentication only: the session's user ID for the owner API, the access token's subject
+  for `/mcp`. No route takes an agent name from the request.
+- Inbound clients are listed and revoked per user. Revoking deletes that user's consent and refresh tokens; it no
+  longer disables the client registration, which other users may share.
+- Sign-up is `open`, `invite` (an invite code header) or `closed`, and deployed stages default to `closed`. Dev runs
+  `invite` because every user spends the same capped model key.
+
+Consequences: the existing dev account (user ID `owner`) now uses an agent named `owner`; the old `root` object was
+left behind (it held only smoke data). Not yet built: email verification, per-user model budgets, account deletion,
+and an admin view. Until per-user budgets exist, sign-up must not be opened on a stage with a shared paid key.

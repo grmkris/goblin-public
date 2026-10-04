@@ -35,10 +35,8 @@ export default Alchemy.Stack(
         AUTH_DB: db,
         APP_URL: appUrl,
         BETTER_AUTH_SECRET: Config.Redacted('PURRABLE_BETTER_AUTH_SECRET'),
-        OWNER_EMAIL: Config.String('PURRABLE_OWNER_EMAIL').pipe(Config.withDefault('')),
-        OWNER_BOOTSTRAP_TOKEN: Config.Redacted('PURRABLE_OWNER_BOOTSTRAP_TOKEN').pipe(
-          Config.withDefault(Redacted.make('')),
-        ),
+        SIGNUP_MODE: Config.String('PURRABLE_SIGNUP_MODE').pipe(Config.withDefault('closed')),
+        SIGNUP_INVITE_CODE: Config.Redacted('PURRABLE_SIGNUP_INVITE_CODE').pipe(Config.withDefault(Redacted.make(''))),
         MODEL_BASE_URL: Config.String('PURRABLE_MODEL_BASE_URL').pipe(Config.withDefault('http://127.0.0.1:8317/v1')),
         MODEL_ID: Config.String('PURRABLE_MODEL_ID').pipe(Config.withDefault('gemini-3.8-flash')),
         MODEL_KEY: Config.Redacted('PURRABLE_MODEL_KEY').pipe(Config.withDefault(Redacted.make(''))),

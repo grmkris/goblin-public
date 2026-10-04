@@ -1,8 +1,8 @@
 # Architecture
 
-One Cloudflare Worker serves the web app and the API. Behind it, one `PersonalAgent` Durable Object per owner is the
-resident agent: it runs Pi, holds the outbound MCP connections and their credentials, and keeps application state in
-its own SQLite. D1 holds Better Auth's tables only.
+One Cloudflare Worker serves the web app and the API. Behind it, every user has their own `PersonalAgent` Durable
+Object, named by their user ID: it runs Pi, holds that user's outbound MCP connections and credentials, and keeps
+application state in its own SQLite. D1 holds Better Auth's tables only (users, sessions, inbound OAuth).
 
 ```mermaid
 flowchart LR
@@ -23,11 +23,19 @@ flowchart LR
 
 | Path | What happens |
 | --- | --- |
-| `/health` | Stage and service name. |
+| `/health` | Stage, service name and sign-up mode. |
 | `/.well-known/oauth-protected-resource*` | Protected-resource metadata for `/mcp`. |
-| `/.well-known/*`, `/api/auth/*` | Better Auth: owner sign-in, the OAuth authorization server for inbound clients. |
-| `/mcp` | Purrable's own MCP server; needs a Bearer token from an inbound client the owner consented to. |
-| `/api/*` | Owner API. Requires the owner's session cookie; writes also require the app's own `Origin`. |
+| `/.well-known/*`, `/api/auth/*` | Better Auth: sign-up and sign-in, the OAuth authorization server for inbound clients. |
+| `/mcp` | Purrable's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented. |
+| `/api/*` | Owner API. A session cookie selects the signed-in user's agent; writes also need the app's own `Origin`. |
+
+## Accounts
+
+Anyone may sign up when `PURRABLE_SIGNUP_MODE` is `open`; with `invite` the request needs the
+`PURRABLE_SIGNUP_INVITE_CODE` in an `x-invite-code` header; `closed` (the default for deployed stages) refuses every
+sign-up. There is no email verification yet. The agent a request reaches is always derived from authentication, the
+session's user ID or the inbound token's subject, never from the request. Users share the deployment's model key and
+MCP server list; their conversations, connections, credentials, grants and resident authority are per agent.
 
 The owner API forwards to the agent object over DO RPC. Workers RPC drops custom error classes, so every DO method
 returns an encoded `RpcResult`; the Worker decodes it and maps the tagged error to a status in one place

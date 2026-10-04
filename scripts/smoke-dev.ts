@@ -275,8 +275,24 @@ async function inboundChecks(dev: DevClient, client: InboundClient, servers: rea
   return { initialized: true, modelTurn: 'ok', residentTool, history: 'ok', revokedThen401: true }
 }
 
+/** Unless sign-up is open, a registration without the invite code must be refused (and so writes nothing). */
+async function refusedSignup(dev: DevClient): Promise<void> {
+  const response = await dev.send('/api/auth/sign-up/email', {
+    method: 'POST',
+    owner: false,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      email: `smoke-${base64url(randomBytes(6)).toLowerCase()}@example.invalid`,
+      password: base64url(randomBytes(18)),
+      name: 'smoke',
+    }),
+  })
+  if (response.status !== 403) throw new Error('signup_gate_open')
+}
+
 type Receipt = {
   readonly stage: string
+  readonly signup: string
   readonly resident: string
   readonly servers: readonly ServerReport[]
   readonly inbound: Awaited<ReturnType<typeof inboundChecks>>
@@ -289,6 +305,8 @@ async function smokeDev(steps: Step[]): Promise<Receipt> {
   const dev = new DevClient(targetUrl(config), steps)
   const health = await dev.json('/health', { owner: false })
   if (health['stage'] !== config.stage || health['service'] !== 'purrable') throw new Error('stage_health_mismatch')
+  const signup = string(health['signup'])
+  if (signup !== 'open') await refusedSignup(dev)
   await dev.signIn(config.email, config.password)
   const resident = await dev.json('/api/agent/resident')
   if (resident['state'] !== 'active') throw new Error('resident_authority_inactive')
@@ -299,7 +317,7 @@ async function smokeDev(steps: Step[]): Promise<Receipt> {
   const client = await InboundClient.register(dev)
   try {
     const inbound = await inboundChecks(dev, client, servers)
-    return { stage: config.stage, resident: string(resident['state']), servers, inbound }
+    return { stage: config.stage, signup, resident: string(resident['state']), servers, inbound }
   } finally {
     // Never leave the throwaway client authorized, whatever failed above.
     await dev.send(`/api/clients/${encodeURIComponent(client.clientId)}`, { method: 'DELETE' })
