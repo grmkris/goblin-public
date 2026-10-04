@@ -111,7 +111,7 @@ describe('Pi committed state projected for the chat', () => {
       failure: { text: 'The model call failed: Bad tool schema', provider: false },
     })
     expect(assistant({ stopReason: 'aborted' })).toMatchObject({
-      failure: { text: 'Stopped before answering.', provider: false },
+      failure: { text: 'Stopped before answering.', provider: false, stopped: true },
     })
     expect(assistant({ stopReason: 'stop' })).toMatchObject({
       failure: { text: 'The model returned an empty answer.', provider: false },

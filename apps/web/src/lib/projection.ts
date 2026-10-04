@@ -59,8 +59,11 @@ export type ConversationProjection = {
   readonly progress: string
 }
 
-/** Why a turn has no answer. `provider`: the model's provider refused or is down, so another model may answer. */
-export type TurnFailure = { readonly text: string; readonly provider: boolean }
+/**
+ * Why a turn has no answer. `provider`: the model's provider refused or is down, so another model may answer.
+ * `stopped`: the owner stopped it, which is a choice rather than a failure.
+ */
+export type TurnFailure = { readonly text: string; readonly provider: boolean; readonly stopped?: true }
 
 /** The provider's raw error, in a sentence the owner can act on; the first line of anything unrecognised. */
 export function failureReason(raw: string): TurnFailure {
@@ -86,7 +89,7 @@ function assistantFailure(
   calls: readonly ToolCallView[],
 ): TurnFailure | undefined {
   if (message.stopReason === 'error') return failureReason(isString(message.errorMessage) ? message.errorMessage : '')
-  if (message.stopReason === 'aborted') return { text: 'Stopped before answering.', provider: false }
+  if (message.stopReason === 'aborted') return { text: 'Stopped before answering.', provider: false, stopped: true }
   if (content === '' && calls.length === 0 && message.stopReason === 'stop')
     return { text: 'The model returned an empty answer.', provider: false }
   return undefined

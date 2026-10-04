@@ -46,6 +46,8 @@ export {
   MessageScrollerViewport,
 } from './components/message-scroller.tsx'
 export { Separator } from './components/separator.tsx'
+export { Reasoning, ReasoningContent, ReasoningTrigger } from './components/reasoning.tsx'
+export { Receipt } from './components/receipt.tsx'
 export { SiteHeader, SiteHeaderBrand, type SiteHeaderLink } from './components/site-header.tsx'
 export { Textarea } from './components/textarea.tsx'
 export {
