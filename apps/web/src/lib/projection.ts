@@ -10,6 +10,8 @@ export type ChatMessage =
       readonly role: 'assistant'
       readonly text: string
       readonly toolCalls: readonly ToolCallView[]
+      /** Why this turn has no answer: the model call failed, was stopped, or came back empty. */
+      readonly failure?: string
     }
   | {
       readonly id: string
@@ -37,6 +39,33 @@ export type ConversationProjection = {
   readonly progress: string
 }
 
+/** The provider's raw error, in a sentence the owner can act on; the first line of anything unrecognised. */
+export function failureReason(raw: string): string {
+  if (/\b429\b|quota|rate.?limit|too many requests/iu.test(raw))
+    return 'The model provider refused the request: quota exceeded or rate-limited. Try again later.'
+  if (/\b(?:500|502|503|504)\b|overloaded|high demand|unavailable/iu.test(raw))
+    return 'The model provider is overloaded or unavailable. Try again in a minute.'
+  const line =
+    raw
+      .split('\n')
+      .find((part) => part.trim() !== '')
+      ?.trim() ?? ''
+  return line === '' ? 'The model call failed.' : `The model call failed: ${line.slice(0, 200)}`
+}
+
+/** A turn that ended without an answer says why, instead of rendering nothing. */
+function assistantFailure(
+  message: Record<string, unknown>,
+  content: string,
+  calls: readonly ToolCallView[],
+): string | undefined {
+  if (message.stopReason === 'error') return failureReason(isString(message.errorMessage) ? message.errorMessage : '')
+  if (message.stopReason === 'aborted') return 'Stopped before answering.'
+  if (content === '' && calls.length === 0 && message.stopReason === 'stop')
+    return 'The model returned an empty answer.'
+  return undefined
+}
+
 function entryMessage(message: Record<string, unknown>, id: string): ChatMessage[] {
   const content = text(message.content)
   if (message.role === 'toolResult')
@@ -51,21 +80,17 @@ function entryMessage(message: Record<string, unknown>, id: string): ChatMessage
         details: message.details,
       },
     ]
-  if (message.role === 'assistant')
-    return [
-      {
-        id,
-        role: 'assistant',
-        text: content,
-        toolCalls: records(message.content)
-          .filter((block) => block.type === 'toolCall')
-          .map((block) => ({
-            id: identifier(block.id),
-            name: identifier(block.name),
-            arguments: record(block.arguments) ?? {},
-          })),
-      },
-    ]
+  if (message.role === 'assistant') {
+    const toolCalls = records(message.content)
+      .filter((block) => block.type === 'toolCall')
+      .map((block) => ({
+        id: identifier(block.id),
+        name: identifier(block.name),
+        arguments: record(block.arguments) ?? {},
+      }))
+    const failure = assistantFailure(message, content, toolCalls)
+    return [{ id, role: 'assistant', text: content, toolCalls, ...(failure === undefined ? {} : { failure }) }]
+  }
   if (message.role === 'user') return [{ id, role: 'user', text: content }]
   return []
 }

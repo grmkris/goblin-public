@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { projectBatch, projectSnapshot } from '../src/lib/projection.ts'
 
+/** The one assistant message of a snapshot holding just it. */
+const assistant = (message: Record<string, unknown>) =>
+  projectSnapshot({
+    type: 'snapshot',
+    entries: [{ id: 5, model: [{ role: 'assistant', content: [], ...message }] }],
+    tools: [],
+    inbox: [],
+  }).messages[0]
+
 describe('Pi committed state projected for the chat', () => {
   it('projects Pi whole-block replacements without duplicating streamed text', () => {
     const initial = projectSnapshot({ type: 'snapshot', entries: [], tools: [], inbox: [] })
@@ -85,5 +94,27 @@ describe('Pi committed state projected for the chat', () => {
         details: { a: 1 },
       },
     ])
+  })
+  it('says why a turn has no answer instead of rendering nothing', () => {
+    const quota =
+      'litellm.RateLimitError: RateLimitError: GeminiException - {"error": {"code": 429, "message": "You exceeded your current quota"}}'
+    expect(assistant({ stopReason: 'error', errorMessage: quota })).toMatchObject({
+      text: '',
+      failure: 'The model provider refused the request: quota exceeded or rate-limited. Try again later.',
+    })
+    expect(
+      assistant({ stopReason: 'error', errorMessage: 'Error: 503 This model is experiencing high demand' }),
+    ).toMatchObject({
+      failure: 'The model provider is overloaded or unavailable. Try again in a minute.',
+    })
+    expect(assistant({ stopReason: 'error', errorMessage: 'Bad tool schema\nstack' })).toMatchObject({
+      failure: 'The model call failed: Bad tool schema',
+    })
+    expect(assistant({ stopReason: 'aborted' })).toMatchObject({ failure: 'Stopped before answering.' })
+    expect(assistant({ stopReason: 'stop' })).toMatchObject({ failure: 'The model returned an empty answer.' })
+    expect(assistant({ stopReason: 'stop', content: [{ type: 'text', text: 'Hi' }] })).not.toHaveProperty('failure')
+    expect(
+      assistant({ stopReason: 'toolUse', content: [{ type: 'toolCall', id: 'c', name: 'mcp_list', arguments: {} }] }),
+    ).not.toHaveProperty('failure')
   })
 })

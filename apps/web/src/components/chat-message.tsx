@@ -120,11 +120,19 @@ export function MessageView({
         <p className="message-text">{message.text}</p>
       </article>
     )
-  if (message.text === '') return null
   return (
-    <article className="bubble bubble-assistant">
-      <MessageText text={message.text} />
-    </article>
+    <>
+      {message.text !== '' && (
+        <article className="bubble bubble-assistant">
+          <MessageText text={message.text} />
+        </article>
+      )}
+      {message.failure !== undefined && (
+        <Alert variant="destructive">
+          <AlertDescription>{message.failure}</AlertDescription>
+        </Alert>
+      )}
+    </>
   )
 }
 
