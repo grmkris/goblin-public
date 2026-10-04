@@ -10,6 +10,7 @@ import {
   FieldLabel,
   Input,
   SignInMethods,
+  type SignInMethod,
   failed,
   succeeded,
 } from '@purrable/ui'
@@ -103,7 +104,13 @@ function signInActions(inviteCode: string, creating: boolean, onAuthenticated: (
       return error ? failed('Wrong email or password.') : continueAfter(data, onAuthenticated)
     },
   }
-  return { emailCode, password }
+  const passkey = {
+    onSignIn: async (): Promise<AuthActionResult> => {
+      const result = await authClient.signIn.passkey()
+      return result?.error ? failed('Could not sign in with a passkey.') : continueAfter(result?.data, onAuthenticated)
+    },
+  }
+  return { emailCode, password, passkey }
 }
 
 function InviteField({ value, onChange }: { readonly value: string; readonly onChange: (value: string) => void }) {
@@ -170,6 +177,13 @@ const TITLES: Record<View, { readonly title: string; readonly description: strin
   reset: { title: 'Reset your password', description: 'We email you a link to choose a new one.' },
 }
 
+/** A passkey signs in to an existing account only, so creating one offers the email methods. */
+const methodsFor = (view: View, config: AuthConfig): SignInMethod[] => [
+  ...(config.mail ? (['email-otp'] as const) : []),
+  'password',
+  ...(view === 'sign-in' ? (['passkey'] as const) : []),
+]
+
 /** Quiet text links under the form; the page footer styles its buttons like links (adapted from the myapps footer). */
 function Footer(props: { readonly view: View; readonly config: AuthConfig; readonly go: (view: View) => void }) {
   if (props.view !== 'sign-in')
@@ -228,9 +242,10 @@ export function Authentication({ onAuthenticated }: { readonly onAuthenticated: 
       ) : (
         <SignInMethods
           key={view}
-          methods={config.mail ? ['email-otp', 'password'] : ['password']}
+          methods={methodsFor(view, config)}
           emailCode={actions.emailCode}
           password={actions.password}
+          passkey={actions.passkey}
           labels={creating ? { signIn: 'Create account', requestCode: 'Email me a code to start' } : {}}
         />
       )}

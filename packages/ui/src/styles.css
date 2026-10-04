@@ -1,9 +1,10 @@
 /*
  * Adapted from grmkris/myapps packages/ui/src/styles.css (9616f76): the look the myapps apps share (the Geist font,
- * shadcn's neutral tokens, light and dark). The app imports this after `@import 'tailwindcss'`; the dark tokens apply
- * under `.dark`, which the document's theme script sets from the system preference. The @source line makes the app's
- * Tailwind build scan this package's components, because Tailwind does not scan node_modules.
+ * shadcn's neutral tokens, light and dark). It brings Tailwind itself (myapps leaves that to each app). The dark
+ * tokens apply under `.dark`, which the document's theme script sets from the system preference. The @source line
+ * makes the app's Tailwind build scan this package's components, because Tailwind does not scan node_modules.
  */
+@import 'tailwindcss';
 @import 'tw-animate-css';
 @import './shadcn.css';
 @import '@fontsource-variable/geist';

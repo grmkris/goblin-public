@@ -18,6 +18,7 @@ import {
   Input,
 } from '@purrable/ui'
 import { ApiFailure, failureText, request } from '../lib/boundary.ts'
+import { PasskeysCard } from './passkeys.tsx'
 
 const decodeResident = Schema.decodeUnknownSync(ResidentStatus)
 const decodeClients = Schema.decodeUnknownSync(Schema.Array(InboundClient))
@@ -214,6 +215,7 @@ export function Settings() {
       )}
       <ResidentCard onError={setError} />
       <UsageCard onError={setError} />
+      <PasskeysCard onError={setError} />
       <ClientsCard onError={setError} />
       <DeleteAccountCard onError={setError} />
     </div>

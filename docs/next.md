@@ -33,4 +33,5 @@ refuses on the owner's answer. Never treat remote annotations such as `readOnlyH
 - A production stage: its own D1, credential key and model key; nothing is shared with dev.
 - Dev sign-up is open, so every account draws on the one $10/30-day model key: a few heavy users can spend it for
   everyone. Not built: a per-user override (raise one account's limit), a global cap on new accounts per day, and a mail
-  domain of Purrable's own (dev sends from `purrable@mytab.lol`).
+  domain of Purrable's own (dev sends from `purrable@mytab.lol`). Passkeys are bound to the host they were made on:
+  moving dev to its own domain leaves them unusable there (people sign in with a code and add new ones).

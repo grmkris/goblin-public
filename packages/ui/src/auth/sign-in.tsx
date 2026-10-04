@@ -1,13 +1,14 @@
 // Adapted from grmkris/myapps packages/ui/src/auth (9616f76): the sign-in look Kristjan uses across his apps.
 /**
  * The sign-in methods: one Email field shared by an emailed code (offered first) and the password (opened with "Use a
- * password instead"). The form owns only its fields and busy state; the app's callback does the auth
+ * password instead"), then a passkey. The form owns only its fields and busy state; the app's callback does the auth
  * call and, on success, the navigation (its OAuth continuation or a checked path).
  */
-import { LockKeyholeIcon, LogInIcon, MailIcon, PencilLineIcon, RotateCwIcon } from 'lucide-react'
-import { useId, useState } from 'react'
+import { KeyRoundIcon, LockKeyholeIcon, LogInIcon, MailIcon, PencilLineIcon, RotateCwIcon } from 'lucide-react'
+import type * as React from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Button } from '../components/button.tsx'
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '../components/field.tsx'
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldSeparator } from '../components/field.tsx'
 import { Input } from '../components/input.tsx'
 import { ActionIcon } from './action-icon.tsx'
 import {
@@ -18,6 +19,7 @@ import {
   type EmailMethod,
   failed,
   labelsWith,
+  passkeysSupported,
   type SignInLabels,
   type SignInMethod,
 } from './contract.ts'
@@ -290,28 +292,90 @@ function MethodSwitch({ form }: { readonly form: EmailSignIn }) {
   )
 }
 
+/**
+ * Browser WebAuthn support, read after mount (the server render cannot know it): `given` when the app knows. Until
+ * then it assumes support, so nearly every browser renders the passkey button once, without a flash of the
+ * unsupported text.
+ */
+export function usePasskeySupport(given?: boolean): boolean {
+  const [supported, setSupported] = useState(given ?? true)
+  useEffect(() => {
+    setSupported(given ?? passkeysSupported())
+  }, [given])
+  return supported
+}
+
+export interface PasskeySignInButtonProps {
+  /** Runs the WebAuthn ceremony (the app's auth client); a cancelled ceremony reports a failure to show. */
+  readonly onSignIn: () => Promise<AuthActionResult>
+  readonly supported?: boolean | undefined
+  readonly disabled?: boolean | undefined
+  readonly labels?: Partial<SignInLabels> | undefined
+}
+
+/** Sign in with a discoverable passkey; without browser support it says so instead. */
+export function PasskeySignInButton(props: PasskeySignInButtonProps) {
+  const labels = labelsWith(props.labels)
+  const supported = usePasskeySupport(props.supported)
+  const action = useAction(labels.failed)
+  if (!supported)
+    return (
+      <p data-method="passkey" className="text-center text-sm text-muted-foreground">
+        {labels.passkeyUnsupported}
+      </p>
+    )
+  return (
+    <div data-method="passkey" className="flex flex-col gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="lg"
+        className="w-full"
+        disabled={action.busy || props.disabled === true}
+        aria-busy={action.busy}
+        onClick={() => void action.run(props.onSignIn)}
+      >
+        <ActionIcon icon={KeyRoundIcon} busy={action.busy} />
+        {labels.passkeySignIn}
+      </Button>
+      {action.error === null ? null : <FieldError>{action.error}</FieldError>}
+    </div>
+  )
+}
+
 export interface SignInMethodsProps {
   /** The methods to offer; a method shows only with its callbacks. */
   readonly methods: readonly SignInMethod[]
   readonly emailCode?: EmailCodeMethod | undefined
   readonly password?: PasswordMethod | undefined
+  readonly passkey?: Omit<PasskeySignInButtonProps, 'labels'> | undefined
   readonly initialEmail?: string | undefined
   readonly disabled?: boolean | undefined
   readonly labels?: Partial<SignInLabels> | undefined
+  /** Text between the email form and the passkey. */
+  readonly separator?: React.ReactNode
 }
 
-/** Every enabled email method, the same way in every app. */
+/** Every enabled method, the same way in every app: the email form, then the passkey. */
 export function SignInMethods(props: SignInMethodsProps) {
   const offered = (method: SignInMethod) => props.methods.includes(method)
+  const emailCode = offered('email-otp') ? props.emailCode : undefined
+  const password = offered('password') ? props.password : undefined
+  const email = emailCode !== undefined || password !== undefined
+  const passkey = offered('passkey') ? props.passkey : undefined
   return (
     <div data-slot="sign-in-methods" className="flex flex-col gap-6">
-      <EmailSignInForm
-        emailCode={offered('email-otp') ? props.emailCode : undefined}
-        password={offered('password') ? props.password : undefined}
-        initialEmail={props.initialEmail}
-        disabled={props.disabled}
-        labels={props.labels}
-      />
+      {email ? (
+        <EmailSignInForm
+          emailCode={emailCode}
+          password={password}
+          initialEmail={props.initialEmail}
+          disabled={props.disabled}
+          labels={props.labels}
+        />
+      ) : null}
+      {email && passkey !== undefined ? <FieldSeparator>{props.separator ?? 'or'}</FieldSeparator> : null}
+      {passkey === undefined ? null : <PasskeySignInButton {...passkey} labels={props.labels} />}
     </div>
   )
 }

@@ -7,6 +7,7 @@ import type { RuntimeEnv } from '../env.ts'
 import { deleteAgentOf } from './account.ts'
 import { CODE_SEND, CODE_SIGN_IN, guardEmailCode } from './email-code.ts'
 import { codeMail, mailerOf, resetMail, verificationMail } from './mail.ts'
+import { passkeyPlugin } from './passkey.ts'
 import { canonicalEmail, signupAllowed, signupMode } from './signup.ts'
 import { passwordHasher } from './password.ts'
 
@@ -53,6 +54,8 @@ const RATE_LIMITS = {
   '/reset-password': { window: 300, max: 10 },
   [CODE_SEND]: { window: 3600, max: 10 },
   [CODE_SIGN_IN]: { window: 300, max: 20 },
+  '/passkey/verify-authentication': { window: 300, max: 20 },
+  '/passkey/verify-registration': { window: 3600, max: 10 },
 } as const
 type Mail = ReturnType<typeof mailerOf>
 
@@ -167,6 +170,7 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
       // SAFETY: Better Auth 1.7.6 MCP endpoint metadata types violate exactOptionalPropertyTypes; runtime shape is the pinned official plugin.
       oauthPlugin as BetterAuthPlugin,
       ...codePlugins(env, mailerOf(env)),
+      passkeyPlugin(env.APP_URL),
     ],
   }
 }

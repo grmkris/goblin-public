@@ -27,6 +27,16 @@ export type EmailMethod = (typeof EMAIL_METHODS)[number]
 /** The two stages of an emailed code: ask for the email, then for the code sent to it. */
 export type EmailCodeStage = 'email' | 'code'
 
+/** A passkey as the manager lists it. */
+export interface PasskeySummary {
+  readonly id: string
+  readonly name?: string | undefined
+  /** ISO date or a Date: when it was added. */
+  readonly createdAt: string | Date
+  /** Synced across the person's devices (backed up). */
+  readonly backedUp?: boolean | undefined
+}
+
 /** Default English labels; an app overrides any of them. */
 export const SIGN_IN_LABELS = {
   email: 'Email',
@@ -41,6 +51,20 @@ export const SIGN_IN_LABELS = {
   useEmailCode: 'Email me a code instead',
   signIn: 'Sign in',
   failed: 'Something went wrong. Check your connection and try again.',
+  passkeySignIn: 'Sign in with a passkey',
+  passkeyUnsupported: 'This browser cannot use passkeys.',
+  passkeys: 'Passkeys',
+  passkeyName: 'Name for this passkey',
+  addPasskey: 'Add a passkey',
+  removePasskey: 'Remove',
+  confirmRemovePasskey: 'Remove this passkey? It will no longer sign you in.',
+  noPasskeys: 'No passkeys yet.',
+  noPasskeysHint: 'A passkey signs you in with this device’s screen lock: no code, no password.',
+  passkeyAdded: 'Added',
+  passkeySynced: 'Synced',
+  freshSessionRequired: 'Sign in again to change your passkeys.',
+  reauthenticate: 'Sign in again',
+  cancel: 'Cancel',
 } as const
 
 export type SignInLabels = { readonly [K in keyof typeof SIGN_IN_LABELS]: string }
@@ -50,3 +74,6 @@ export const labelsWith = (overrides: Partial<SignInLabels> = {}): SignInLabels 
 
 /** The code with everything but digits removed, at most `length` digits. */
 export const codeDigits = (value: string, length = 6): string => value.replace(/\D/g, '').slice(0, length)
+
+/** Whether this browser offers WebAuthn at all (the passkey button and manager show their unsupported state). */
+export const passkeysSupported = (): boolean => 'PublicKeyCredential' in globalThis

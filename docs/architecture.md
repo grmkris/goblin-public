@@ -35,7 +35,11 @@ Anyone may sign up when `PURRABLE_SIGNUP_MODE` is `open`; with `invite` the requ
 `PURRABLE_SIGNUP_INVITE_CODE` in an `x-invite-code` header; `closed` (the default for deployed stages) refuses every
 sign-up. When the deployment sends mail, the usual way in is a six-digit code mailed to the address (ten minutes, five
 tries, one per address per minute; `auth/email-code.ts`): a known address signs in, a new one gets an account through
-the same sign-up gate, already verified. Passwords remain as the fallback. With `PURRABLE_MAIL_SENDER` set (an address on an apex onboarded for Cloudflare Email Sending), a new account
+the same sign-up gate, already verified. Passwords remain as the fallback. A signed-in user can add passkeys in
+Settings (`auth/passkey.ts`, the myapps policy: Purrable's own host is the relying party, credentials are discoverable
+and must verify the person; adding one needs a sign-in from the last 10 minutes) and then sign in with one without
+typing an email. A passkey never creates an account, and an MCP client's authorization resumes after it like after
+any sign-in. With `PURRABLE_MAIL_SENDER` set (an address on an apex onboarded for Cloudflare Email Sending), a new account
 works only after its owner opens the one-hour link mailed to it (`auth/mail.ts`); the link signs them in. The same
 sender carries password-reset links (`/reset-password`); a reset signs every device out, and asking for one never
 reveals whether an address has an account. A deployed
@@ -46,7 +50,7 @@ request.
 
 Deleting an account (Settings; the password, or a sign-in within the last 10 minutes) first erases the user's agent through `Agent.destroy()`: every Pi,
 Agents and application table, its alarm, and its isolate. Only then does Better Auth delete the user, and D1 cascades
-their sessions, consents and tokens. If erasing the agent fails, the account stays so the user can retry. Outbound
+their sessions, passkeys, consents and tokens. If erasing the agent fails, the account stays so the user can retry. Outbound
 OAuth tokens are forgotten, not revoked at the remote server; they lapse there on their own. Users share the deployment's model key and
 MCP server list; their conversations, connections, credentials, grants and resident authority are per agent.
 
