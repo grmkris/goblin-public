@@ -14,6 +14,7 @@ import { AppLayer } from './apps/stage.tsx'
 import { MessageComposer } from './composer.tsx'
 import { Conversation } from './conversation.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
+import { ThreadBar, ThreadList, ThreadsProvider, useThreads } from './threads.tsx'
 import { ModelPicker, useModelChoice } from './model-picker.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
 import { useUsageToday } from './use-usage.ts'
@@ -112,12 +113,17 @@ function useDockInsets(view: RefObject<HTMLElement | null>, dock: RefObject<HTML
   }, [view, dock])
 }
 
-/** The chat: the transcript fills the screen under the header, and the composer floats over its bottom edge. */
-export function Chat() {
+/**
+ * The chat with one of the agent's conversations (`thread`; main is `MAIN_THREAD`): the transcript fills the screen
+ * under the header, the conversation list sits beside it, and the composer floats over its bottom edge.
+ */
+export function Chat({ thread }: { readonly thread: string }) {
   return (
-    <AppsProvider>
-      <ChatView />
-    </AppsProvider>
+    <ThreadsProvider>
+      <AppsProvider key={thread}>
+        <ChatView thread={thread} />
+      </AppsProvider>
+    </ThreadsProvider>
   )
 }
 
@@ -135,8 +141,13 @@ function useSendWithAppContext(send: Send): (input: string) => Promise<boolean> 
   }
 }
 
-function ChatView() {
-  const { projection, status, notice, report, send, stop } = useConversation(MAIN_THREAD)
+function ChatView({ thread }: { readonly thread: string }) {
+  const { projection, status, notice, report, send, stop } = useConversation(thread)
+  const threads = useThreads()
+  const running = projection?.running ?? false
+  const { refresh, create } = threads
+  // A run starting or ending changes the list's busy marks (and a first exchange may have named the thread).
+  useEffect(refresh, [refresh, running])
   const sendOwn = useSendWithAppContext(send)
   const { choice, choose } = useModelChoice(report)
   const view = useRef<HTMLElement>(null)
@@ -144,7 +155,7 @@ function ChatView() {
   useDockInsets(view, dock)
   const parts = useMemo(() => (projection === undefined ? [] : conversationParts(projection)), [projection])
   const waiting = useMemo(() => openInteractions(parts), [parts])
-  const usage = useUsageToday(projection?.running ?? false)
+  const usage = useUsageToday(running)
   const context = useMemo(() => contextTokens(projection?.messages ?? []), [projection])
   const contextWindow = choice?.options.find((option) => option.id === choice.current)?.contextWindow
   const presence = presenceOf({
@@ -156,17 +167,27 @@ function ChatView() {
   })
   return (
     <section className="chat-view" aria-label="Chat" ref={view}>
+      <aside className="thread-column">
+        <ThreadList current={thread} />
+      </aside>
       <div className="chat-conversation">
-        <Conversation parts={parts} canSwitchModel={(choice?.options.length ?? 0) > 1} />
+        <ThreadBar thread={thread} />
+        <Conversation
+          key={thread}
+          parts={parts}
+          canSwitchModel={(choice?.options.length ?? 0) > 1}
+          {...(thread === MAIN_THREAD && { onBranch: (entry: number) => void create(entry) })}
+        />
         <div className="chat-dock" ref={dock}>
           {notice && <StreamNotice text={notice} />}
+          {threads.error && <StreamNotice text={threads.error} />}
           <InteractionCards interactions={waiting} onAnswer={send} />
           <SharedContextChip />
           <div className="relative">
             {presence.state === 'waiting' && <PresenceBorder />}
             <MessageComposer
               onSend={sendOwn}
-              running={projection?.running ?? false}
+              running={running}
               onStop={() => void stop()}
               context={
                 <>

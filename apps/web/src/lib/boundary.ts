@@ -26,7 +26,7 @@ export function identifier(value: unknown): string {
   return isString(value) || isNumber(value) ? String(value) : ''
 }
 export type RequestOptions = {
-  readonly method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  readonly method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   readonly body?: unknown
   readonly signal?: AbortSignal
   readonly headers?: Record<string, string>

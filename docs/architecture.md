@@ -72,7 +72,9 @@ block (`[from Claude Code]`, the `authorTag` contract), so the model and the web
 **threads** are Pi conversations of their own: branched from a message of main (a Pi fork at that entry, so the thread
 sees main up to there and main never sees the thread) or empty. `app_conversations` registers each one with its kind,
 title, origin and archive time; a session id reaches Pi only if it is registered there, so no request opens a
-conversation by guessing its number. Pi cannot delete a conversation, so archiving only hides a thread.
+conversation by guessing its number. Pi cannot delete a conversation, so archiving only hides a thread. The web
+lists them beside the chat (`components/threads.tsx`, a sheet on phones): `/` is main and `/t/:id` a thread, and each
+settled answer in main offers "Branch from here".
 
 The system prompt is two static Pi extension sections (`pi/persona.ts`): who the agent is, and that remote content
 is untrusted data. The `mcp_list` and `mcp_call` tools (`pi/resident-mcp.ts`) are how the model reaches the owner's

@@ -1,0 +1,42 @@
+import type { ThreadView } from '@purrable/contracts'
+
+/** A conversation with the subagents it started, newest first. */
+export type ThreadNode = { readonly thread: ThreadView; readonly subagents: readonly ThreadView[] }
+/** The list the owner sees: main, then live threads newest first (each with its subagents), then archived ones. */
+export type ThreadTree = {
+  readonly main: ThreadNode | undefined
+  readonly threads: readonly ThreadNode[]
+  readonly archived: readonly ThreadView[]
+}
+
+const newestFirst = (a: ThreadView, b: ThreadView) => b.createdAt - a.createdAt || Number(b.id) - Number(a.id)
+
+/** Arranges the registry for the thread list. A subagent sits under the conversation that started it. */
+export function threadTree(views: readonly ThreadView[]): ThreadTree {
+  const live = views.filter((view) => !view.archived)
+  const node = (thread: ThreadView): ThreadNode => ({
+    thread,
+    subagents: live.filter((view) => view.kind === 'subagent' && view.parent === thread.id).toSorted(newestFirst),
+  })
+  const main = views.find((view) => view.kind === 'main')
+  return {
+    main: main === undefined ? undefined : node(main),
+    threads: live
+      .filter((view) => view.kind === 'thread')
+      .toSorted(newestFirst)
+      .map(node),
+    archived: views.filter((view) => view.archived).toSorted(newestFirst),
+  }
+}
+
+/** What to call a conversation: main is Main; a thread or subagent has its title, or a placeholder until it gets one. */
+export function threadTitle(view: ThreadView | undefined): string {
+  if (view === undefined || view.kind === 'main') return 'Main'
+  return view.title ?? (view.kind === 'subagent' ? 'Subagent' : 'New thread')
+}
+
+/** The Pi entry a transcript part belongs to (part ids start with the entry id), for branching from it. */
+export function entryOfPart(id: string): number | undefined {
+  const entry = Number(id.split(':')[0])
+  return Number.isSafeInteger(entry) && entry > 0 ? entry : undefined
+}
