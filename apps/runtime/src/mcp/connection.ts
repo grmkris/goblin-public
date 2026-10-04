@@ -12,6 +12,7 @@ import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/client/valida
 import { Predicate } from 'effect'
 import { GrantDenied, NotFound, UpstreamMcp } from '../http/errors.ts'
 import { mapMcpError } from './errors.ts'
+import { timed } from './log.ts'
 import type { GrantCapability } from './grants.ts'
 import type {
   McpCallOptions,
@@ -124,7 +125,9 @@ export class McpConnectionManager {
     }
     const pending = this.#connecting.get(serverId)
     if (pending !== undefined) return pending
-    const opening = this.#open(this.server(serverId), options).finally(() => this.#connecting.delete(serverId))
+    const opening = timed({ step: 'connect', serverId }, () => this.#open(this.server(serverId), options)).finally(() =>
+      this.#connecting.delete(serverId),
+    )
     this.#connecting.set(serverId, opening)
     return opening
   }
@@ -264,8 +267,13 @@ export class McpConnectionManager {
     const tool = connection.snapshot.tools.find((item) => item.name === name)
     if (tool === undefined || !toolOffered(tool, caller)) throw new NotFound({ what: `tool ${name}` })
     this.#bounded(serverId, args)
-    return this.#remote(connection, () =>
-      connection.client.callTool({ name, arguments: args }, { timeout: this.#options.timeoutMs ?? 30_000, ...request }),
+    return timed({ step: 'call', serverId, tool: name }, () =>
+      this.#remote(connection, () =>
+        connection.client.callTool(
+          { name, arguments: args },
+          { timeout: this.#options.timeoutMs ?? 30_000, ...request },
+        ),
+      ),
     )
   }
 
