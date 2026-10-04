@@ -19,7 +19,14 @@ describe('offered models (unit)', () => {
     const options = modelOptions(' qwen3.8-flash, gemini-3.8-flash,,qwen3.8-flash,mystery-1 ', 'gemini-3.8-flash')
     expect(options.map((option) => option.id)).toEqual(['gemini-3.8-flash', 'qwen3.8-flash', 'mystery-1'])
     expect(options[1]).toMatchObject({ label: 'Qwen 3.8 Flash', route: 'Alibaba Cloud', images: true })
-    expect(options[2]).toEqual({ id: 'mystery-1', label: 'mystery-1', route: 'Other', note: '', images: false })
+    expect(options[2]).toEqual({
+      id: 'mystery-1',
+      label: 'mystery-1',
+      route: 'Other',
+      note: '',
+      images: false,
+      contextWindow: 131_072,
+    })
     expect(modelOptions(undefined, 'gemini-3.8-flash').map((option) => option.id)).toEqual(['gemini-3.8-flash'])
   })
 })

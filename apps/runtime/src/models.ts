@@ -4,7 +4,13 @@ import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { InvalidInput } from './http/errors.ts'
 import { appModelChoice } from './storage/schema.ts'
 
-type Known = Omit<ModelOption, 'id'>
+type Known = Omit<ModelOption, 'id' | 'contextWindow'>
+
+/**
+ * The context window Pi assumes for every offered model until a model's own is recorded here: it compacts the
+ * conversation before this many tokens. The composer shows how full it is.
+ */
+const CONTEXT_WINDOW = 131_072
 
 /**
  * What the picker says about the models LiteLLM serves to Purrable. Grouped by the route the call takes, because
@@ -24,7 +30,9 @@ export type ModelOptions = readonly [ModelOption, ...ModelOption[]]
 
 const optionOf = (id: string): ModelOption => {
   const known = KNOWN[id]
-  return known === undefined ? { id, label: id, route: 'Other', note: '', images: false } : { id, ...known }
+  return known === undefined
+    ? { id, label: id, route: 'Other', note: '', images: false, contextWindow: CONTEXT_WINDOW }
+    : { id, ...known, contextWindow: CONTEXT_WINDOW }
 }
 
 /**

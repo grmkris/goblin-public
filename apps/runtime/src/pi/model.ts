@@ -21,7 +21,7 @@ function makePiModel(option: ModelOption, baseUrl: string): Model<'openai-comple
     baseUrl,
     input: option.images ? ['text', 'image'] : ['text'],
     reasoning: false,
-    contextWindow: 131_072,
+    contextWindow: option.contextWindow,
     maxTokens: 8192,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   }

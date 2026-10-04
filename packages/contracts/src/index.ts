@@ -78,6 +78,8 @@ export const ModelOption = Schema.Struct({
   route: Schema.String,
   note: Schema.String,
   images: Schema.Boolean,
+  /** The context the agent may fill, in tokens; Pi compacts the conversation before it is full. */
+  contextWindow: Schema.Number,
 })
 export type ModelOption = typeof ModelOption.Type
 
