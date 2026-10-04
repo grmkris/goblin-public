@@ -38,3 +38,19 @@ export const mcpModelResult = (serverId: string, result: CallToolResult): ToolEx
     content: result.content,
   }),
 })
+
+/**
+ * What the model gets for a tool the owner has not granted: words it can relay, and a marker the web turns into an
+ * owner-only Allow card. The marker is the top-level `kind`; `mcpModelResult` details never have one, so a remote
+ * server's content cannot forge it. The model is told to wait: granting is the owner's act, never the model's.
+ */
+export const grantRequiredResult = (serverId: string, name: string): ToolExecutionResult => ({
+  content: [
+    {
+      type: 'text',
+      text: `Not granted: ${serverId} · ${name}. The owner has been shown an Allow button for this tool. Stop here and wait for their decision; do not retry until they reply.`,
+    },
+  ],
+  isError: true,
+  details: { kind: 'grant-required', serverId, name },
+})
