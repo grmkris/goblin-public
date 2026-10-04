@@ -1,4 +1,5 @@
 export { Alert, AlertDescription, AlertTitle } from './components/alert.tsx'
+export { AskCard, AskCardActions, AskCardDescription, AskCardHeader } from './components/ask-card.tsx'
 export { Badge } from './components/badge.tsx'
 export { Button, buttonVariants } from './components/button.tsx'
 export {
@@ -46,6 +47,23 @@ export {
   MessageScrollerViewport,
 } from './components/message-scroller.tsx'
 export { Separator } from './components/separator.tsx'
+export {
+  Questionnaire,
+  QuestionnaireActions,
+  QuestionnaireChoice,
+  QuestionnaireChoiceDescription,
+  QuestionnaireChoices,
+  QuestionnaireDescription,
+  QuestionnaireError,
+  QuestionnaireInput,
+  QuestionnaireItem,
+  QuestionnaireNext,
+  QuestionnairePrevious,
+  QuestionnaireProgress,
+  QuestionnaireSkip,
+  QuestionnaireSubmit,
+  QuestionnaireTitle,
+} from './components/questionnaire.tsx'
 export { Reasoning, ReasoningContent, ReasoningTrigger } from './components/reasoning.tsx'
 export { Receipt } from './components/receipt.tsx'
 export { SiteHeader, SiteHeaderBrand, type SiteHeaderLink } from './components/site-header.tsx'

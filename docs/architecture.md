@@ -88,6 +88,13 @@ reader is at the end, and otherwise offers a jump back. The header and the compo
 translucent chrome. Assistant Markdown is set by shadcn/typeset, whose append-stable rules keep earlier blocks still
 while a reply streams.
 
+When the agent waits on the owner, the request is pinned above the composer until their next message
+(`lib/interactions.ts`). This covers `ask_user` questions (a questionnaire) and grant-required results (an Allow card
+for the exact server and tool). The reply is an ordinary message with a stable operation ID: `answer:<callId>` or
+`grant:<callId>`. Allow first sets the exact grant through `PUT /api/mcp/grants`, and the allowed tool stays allowed.
+In the transcript, both requests leave a quiet receipt. An Allow card is only trusted from Purrable's own result for
+the tool that was called, never from a remote result, which always carries `origin`.
+
 ## Outbound MCP
 
 Servers come from `PURRABLE_MCP_SERVERS` (JSON: `serverId`, `endpoint`, optional `issuer` and `resource`). The owner

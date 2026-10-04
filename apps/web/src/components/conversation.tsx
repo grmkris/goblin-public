@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import {
   Empty,
   EmptyDescription,
@@ -11,8 +10,7 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from '@purrable/ui'
-import { conversationParts } from '../lib/parts.ts'
-import type { ConversationProjection } from '../lib/projection.ts'
+import type { Part } from '../lib/parts.ts'
 import { PartView } from './parts/registry.tsx'
 
 /**
@@ -21,13 +19,12 @@ import { PartView } from './parts/registry.tsx'
  * reader is already at the end, and offers a jump back when they are not.
  */
 export function Conversation({
-  projection,
+  parts,
   canSwitchModel,
 }: {
-  readonly projection: ConversationProjection | undefined
+  readonly parts: readonly Part[]
   readonly canSwitchModel: boolean
 }) {
-  const parts = useMemo(() => (projection === undefined ? [] : conversationParts(projection)), [projection])
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
       <MessageScroller>

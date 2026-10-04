@@ -1,10 +1,13 @@
-import { type RefObject, useEffect, useRef, useState } from 'react'
+import { type RefObject, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AlertDescription, Badge } from '@purrable/ui'
 import { failureText, request } from '../lib/boundary.ts'
 import { BrowserPiEvents, ConversationStream, type StreamStatus } from '../lib/conversation-stream.ts'
+import { openInteractions } from '../lib/interactions.ts'
+import { conversationParts } from '../lib/parts.ts'
 import type { ConversationProjection } from '../lib/projection.ts'
 import { MessageComposer } from './composer.tsx'
 import { Conversation } from './conversation.tsx'
+import { InteractionCards } from './interaction-cards.tsx'
 import { ModelPicker, useModelChoice } from './model-picker.tsx'
 
 function useConversation() {
@@ -37,10 +40,11 @@ function useConversation() {
       attachment.dispose()
     }
   }, [])
-  async function send(input: string): Promise<boolean> {
+  /** `operationId` is stable for replies to a question or permission request; a typed message gets a fresh one. */
+  async function send(input: string, operationId?: string): Promise<boolean> {
     try {
       // @effect-diagnostics-next-line cryptoRandomUUID:off -- A fresh idempotency key for this browser submission.
-      await request('/api/agent', { body: { input, operationId: crypto.randomUUID() } })
+      await request('/api/agent', { body: { input, operationId: operationId ?? crypto.randomUUID() } })
       return true
     } catch (error) {
       setNotice(failureText(error))
@@ -102,14 +106,17 @@ export function Chat() {
   const view = useRef<HTMLElement>(null)
   const dock = useRef<HTMLDivElement>(null)
   useDockInsets(view, dock)
+  const parts = useMemo(() => (projection === undefined ? [] : conversationParts(projection)), [projection])
+  const waiting = useMemo(() => openInteractions(parts), [parts])
   return (
     <section className="chat-view" aria-label="Chat" ref={view}>
       <div className="chat-conversation">
-        <Conversation projection={projection} canSwitchModel={(choice?.options.length ?? 0) > 1} />
+        <Conversation parts={parts} canSwitchModel={(choice?.options.length ?? 0) > 1} />
         <div className="chat-dock" ref={dock}>
           {notice && <StreamNotice text={notice} />}
+          <InteractionCards interactions={waiting} onAnswer={send} />
           <MessageComposer
-            onSend={send}
+            onSend={(input) => send(input)}
             running={projection?.running ?? false}
             onStop={() => void stop()}
             context={
