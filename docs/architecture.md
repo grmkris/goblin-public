@@ -167,6 +167,26 @@ error result whose details are `{ kind: 'grant-required', serverId, name }`, and
 `mcpModelResult` details never carry a top-level `kind`, so remote content cannot forge one. The web turns that
 result into an owner-only Allow card.
 
+## Skills
+
+Skills come from MCP servers that declare the MCP Skills extension, and only from those the owner turns them on for
+in Connections (`app_skill_sources`, ADR 0008). The client declares the extension; `McpConnectionManager.listSkills`,
+`getSkill` and `readSkillFile` speak `skills/list`, `skills/get` and `resources/read`, with the shapes decoded in
+`skills/protocol.ts` because the SDK has no Skills support yet.
+
+`SkillLibrary` (`skills/library.ts`) keeps each enabled server's listing for its `ttlMs` (30 s to an hour) and names
+every skill `<server>:<name>`. The `purrable.skills` extension (main and threads, not subagents) renders that list in
+its `skills` section, never fetching at wake, and offers `skill_activate` and `skill_read`. Activation reads `SKILL.md`,
+checks size, SHA-256 and frontmatter against the entry (`skills/verify.ts`), and records the entry for the
+conversation (`app_skill_activations`). `skill_read` reads only files in that retained manifest, so a conversation
+stays on the version it activated. Verified bytes are cached by digest (`app_skill_files`) and checked again on every
+read. An unreachable server keeps its last listing, or is reported unavailable.
+
+After a final answer (`onYield`), the learner (`skills/learner.ts`) looks at the owner's last message. On a correction
+or a request to keep how something was done, a cheap model decides whether the exchange teaches a procedure. A
+procedure becomes a draft sent through the library's `skill_draft` tool, which the owner reviews in the library. At
+most five a day, never the same content twice, never a rejected draft again (`app_skill_drafts`).
+
 ## MCP Apps host
 
 An App is a tool's `ui://` resource, served by the server that answered the call. It runs in two nested opaque
@@ -282,7 +302,7 @@ Purrable is an MCP server at `/mcp`, the protected resource of Better Auth's `mc
 | Store | Tables | Owner |
 | --- | --- | --- |
 | Agent DO SQLite | `pi_*`, `cf_agents_*` and the other vendor tables | Pi, Agents SDK. Never touched. |
-| Agent DO SQLite | `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants`, `app_resident`, `app_conversations`, `app_memory_log`, `app_memory_nodes`, `app_memory_state`, `app_usage_daily`, `app_metadata` | Drizzle, inline migrations in `storage/migrations.ts` |
+| Agent DO SQLite | `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants`, `app_resident`, `app_conversations`, `app_memory_log`, `app_memory_nodes`, `app_memory_state`, `app_skill_sources`, `app_skill_activations`, `app_skill_files`, `app_skill_drafts`, `app_usage_daily`, `app_metadata` | Drizzle, inline migrations in `storage/migrations.ts` |
 | D1 `PurrableAuth` | `user`, `session`, `jwks`, `oauth*` | Better Auth, `apps/runtime/migrations` |
 
 Better Auth lives in D1 because the Durable SQLite adapter's async transactions and affected-row semantics do not
