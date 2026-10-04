@@ -12,6 +12,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Switch,
 } from '@purrable/ui'
 import { failureText, record, request } from '../lib/boundary.ts'
 import { ToolConsole } from './tool-console.tsx'
@@ -21,35 +22,16 @@ const decodeTools = Schema.decodeUnknownSync(Schema.Array(ToolView))
 const path = (serverId: string, action: string): string => `/api/mcp/${encodeURIComponent(serverId)}/${action}`
 
 /** One remote tool with its grant toggle. Remote hints are labelled as the server's claim, never as fact. */
-function ToolRow({
-  serverId,
-  tool,
-  onChange,
-}: {
-  readonly serverId: string
-  readonly tool: ToolView
-  readonly onChange: (message: string) => void
-}) {
-  const [granted, setGranted] = useState(tool.granted)
-  async function toggle(): Promise<void> {
-    const allowed = !granted
-    try {
-      await request('/api/mcp/grants', { method: 'PUT', body: { serverId, name: tool.name, allowed } })
-      setGranted(allowed)
-    } catch (error) {
-      onChange(failureText(error))
-    }
-  }
+function ToolRow({ tool, onToggle }: { readonly tool: ToolView; readonly onToggle: (allowed: boolean) => void }) {
   return (
     <label className="tool-row">
-      <input type="checkbox" checked={granted} onChange={() => void toggle()} />
+      <input type="checkbox" checked={tool.granted} onChange={() => onToggle(!tool.granted)} />
       <span className="flex flex-col gap-1">
         <span className="flex flex-wrap items-center gap-2">
           <code>{tool.name}</code>
           {tool.readOnlyHint === true && <Badge variant="outline">says read-only</Badge>}
           {tool.destructiveHint === true && <Badge variant="destructive">says destructive</Badge>}
           {!tool.modelVisible && <Badge variant="outline">app only</Badge>}
-          {tool.appResource !== undefined && <Badge variant="outline">has app</Badge>}
         </span>
         {tool.description && <span className="text-muted-foreground text-sm">{tool.description}</span>}
       </span>
@@ -57,17 +39,92 @@ function ToolRow({
   )
 }
 
-function ServerCard({
-  server,
-  onReload,
+/** An App and the exact tools it uses: one switch allows them all, and each stays listed and adjustable. */
+function AppGroup({
+  uri,
+  tools,
+  onAllow,
+  onToggle,
+}: {
+  readonly uri: string
+  readonly tools: readonly ToolView[]
+  readonly onAllow: (allowed: boolean) => void
+  readonly onToggle: (tool: ToolView, allowed: boolean) => void
+}) {
+  const all = tools.every((tool) => tool.granted)
+  const id = `app-${uri}`
+  return (
+    <section className="tool-app" aria-labelledby={id}>
+      <div className="flex items-center gap-3">
+        <Switch checked={all} onCheckedChange={(checked) => onAllow(checked)} aria-labelledby={id} />
+        <span className="flex min-w-0 flex-col">
+          <span id={id} className="text-sm font-medium">
+            Allow app
+          </span>
+          <code className="truncate text-xs text-muted-foreground">{uri}</code>
+        </span>
+      </div>
+      {tools.map((tool) => (
+        <ToolRow key={tool.name} tool={tool} onToggle={(allowed) => onToggle(tool, allowed)} />
+      ))}
+    </section>
+  )
+}
+
+/** The server's tools, an App's tools grouped under it; grants change here and the list follows. */
+function ToolGrants({
+  serverId,
+  tools,
+  setTools,
   onMessage,
 }: {
-  readonly server: ServerView
-  readonly onReload: () => void
+  readonly serverId: string
+  readonly tools: readonly ToolView[]
+  readonly setTools: (update: (tools: readonly ToolView[]) => readonly ToolView[]) => void
   readonly onMessage: (message: string) => void
 }) {
+  const grant = (changed: (tool: ToolView) => boolean, allowed: boolean) =>
+    setTools((current) => current.map((tool) => (changed(tool) ? { ...tool, granted: allowed } : tool)))
+  async function toggle(tool: ToolView, allowed: boolean): Promise<void> {
+    try {
+      await request('/api/mcp/grants', { method: 'PUT', body: { serverId, name: tool.name, allowed } })
+      grant((other) => other.name === tool.name, allowed)
+    } catch (error) {
+      onMessage(failureText(error))
+    }
+  }
+  async function allowApp(uri: string, allowed: boolean): Promise<void> {
+    try {
+      await request('/api/mcp/app-grants', { method: 'PUT', body: { serverId, uri, allowed } })
+      grant((tool) => tool.appResource === uri, allowed)
+    } catch (error) {
+      onMessage(failureText(error))
+    }
+  }
+  const apps = [...new Set(tools.flatMap((tool) => (tool.appResource === undefined ? [] : [tool.appResource])))]
+  return (
+    <>
+      {apps.map((uri) => (
+        <AppGroup
+          key={uri}
+          uri={uri}
+          tools={tools.filter((tool) => tool.appResource === uri)}
+          onAllow={(allowed) => void allowApp(uri, allowed)}
+          onToggle={(tool, allowed) => void toggle(tool, allowed)}
+        />
+      ))}
+      {tools
+        .filter((tool) => tool.appResource === undefined)
+        .map((tool) => (
+          <ToolRow key={tool.name} tool={tool} onToggle={(allowed) => void toggle(tool, allowed)} />
+        ))}
+    </>
+  )
+}
+
+/** The server's discovered tools: loaded once connected, reloaded on demand, updated in place as grants change. */
+function useServerTools(server: ServerView, onMessage: (message: string) => void) {
   const [tools, setTools] = useState<readonly ToolView[]>()
-  const [pending, setPending] = useState(false)
   const loadTools = useCallback(
     (refresh: boolean) => {
       void request(path(server.serverId, `tools${refresh ? '?refresh=1' : ''}`))
@@ -79,6 +136,22 @@ function ServerCard({
   useEffect(() => {
     if (server.status === 'connected') loadTools(false)
   }, [server.status, loadTools])
+  const update = (change: (current: readonly ToolView[]) => readonly ToolView[]) =>
+    setTools((current) => (current === undefined ? current : change(current)))
+  return { tools, loadTools, update }
+}
+
+function ServerCard({
+  server,
+  onReload,
+  onMessage,
+}: {
+  readonly server: ServerView
+  readonly onReload: () => void
+  readonly onMessage: (message: string) => void
+}) {
+  const { tools, loadTools, update } = useServerTools(server, onMessage)
+  const [pending, setPending] = useState(false)
   async function act(action: 'connect' | 'disconnect'): Promise<void> {
     setPending(true)
     try {
@@ -125,10 +198,11 @@ function ServerCard({
             <p className="text-muted-foreground text-sm">
               Your agent may call only the tools you tick. Descriptions and hints come from the server.
             </p>
-            {tools === undefined && <p role="status">Loading tools…</p>}
-            {tools?.map((tool) => (
-              <ToolRow key={tool.name} serverId={server.serverId} tool={tool} onChange={onMessage} />
-            ))}
+            {tools === undefined ? (
+              <p role="status">Loading tools…</p>
+            ) : (
+              <ToolGrants serverId={server.serverId} tools={tools} setTools={update} onMessage={onMessage} />
+            )}
           </div>
         </CardContent>
       )}

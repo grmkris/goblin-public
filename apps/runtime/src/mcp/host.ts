@@ -183,6 +183,20 @@ export class McpHost {
     return this.#grants.list()
   }
 
+  /**
+   * Grant or revoke an App as a whole: exactly the discovered tools that declare `uri` as their App (including the
+   * ones only the App may call), and the App resource itself. Nothing else on the server changes.
+   */
+  async setAppGrant(serverId: string, uri: string, allowed: boolean): Promise<readonly Grant[]> {
+    const snapshot = await this.manager.connect(serverId)
+    const tools = snapshot.tools.filter((tool) => toolAppResource(tool) === uri)
+    if (tools.length === 0) throw new NotFound({ what: `app ${uri}` })
+    const now = nowSeconds()
+    for (const tool of tools) this.#grants.set({ serverId, capability: 'tool', name: tool.name }, allowed, now)
+    this.#grants.set({ serverId, capability: 'resource', name: uri }, allowed, now)
+    return this.#grants.list()
+  }
+
   /** Grant or revoke one discovered tool. Its `ui://` App resource follows the tools that use it. */
   async setToolGrant(serverId: string, name: string, allowed: boolean): Promise<readonly Grant[]> {
     const snapshot = await this.manager.connect(serverId)

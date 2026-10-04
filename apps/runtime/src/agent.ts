@@ -215,6 +215,10 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.setToolGrant(serverId, name, allowed))))
   }
 
+  mcpSetAppGrant(serverId: string, uri: string, allowed: boolean) {
+    return this.#owner(Mcp.use((mcp) => attempt(() => mcp.setAppGrant(serverId, uri, allowed))))
+  }
+
   mcpCallTool(serverId: string, name: string, args: Record<string, unknown>, caller: 'human' | 'app') {
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.manager.callTool(serverId, name, args, { caller }))))
   }

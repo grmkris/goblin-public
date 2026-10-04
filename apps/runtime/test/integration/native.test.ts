@@ -92,6 +92,7 @@ const Rpc = Schema.Struct({
   enabled: Schema.Struct({ ok: Schema.Literal(true), value: Status }),
   servers: Schema.Struct({ ok: Schema.Literal(true), value: Schema.Array(Schema.Unknown) }),
   unknownServer: Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) }),
+  unknownApp: Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) }),
   noConversation: Schema.Struct({ ok: Schema.Literal(true), value: Schema.Array(Schema.Unknown) }),
   usage: Schema.Struct({
     ok: Schema.Literal(true),
@@ -120,6 +121,7 @@ harness.test(
     expect(result.enabled.value.state).toBe('active')
     expect(result.servers.value).toEqual([])
     expect(result.unknownServer.error._tag).toBe('NotFound')
+    expect(result.unknownApp.error._tag).toBe('NotFound')
     expect(result.noConversation.value).toEqual([])
     // A fresh agent has spent nothing today; the budget table exists after migration.
     expect(result.usage.value).toMatchObject({ used: 0, limit: 300_000 })

@@ -270,6 +270,18 @@
 .tool-row input {
   margin-top: 0.3rem;
 }
+/* An App's tools under its "Allow app" switch: indented, so the switch reads as their heading. */
+.tool-app {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+.tool-app > .tool-row {
+  padding-left: 0.25rem;
+}
 .tool-output {
   max-height: 20rem;
   margin: 0;

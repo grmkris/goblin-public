@@ -72,6 +72,7 @@ async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promis
   const enabled = await agent.residentSet(true)
   const servers = await agent.mcpServers()
   const unknownServer = await agent.mcpSetToolGrant('missing', 'tool', true)
+  const unknownApp = await agent.mcpSetAppGrant('missing', 'ui://missing/app.html', true)
   const noConversation = await agent.clientMessages('client-1', 5)
   const usage = await agent.usageToday()
   const modelChoice = await agent.modelChoice()
@@ -85,6 +86,7 @@ async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promis
     enabled,
     servers,
     unknownServer,
+    unknownApp,
     noConversation,
     usage,
     model: modelChoice,

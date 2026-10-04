@@ -50,6 +50,7 @@ export {
 } from './components/message-scroller.tsx'
 export { Separator } from './components/separator.tsx'
 export { PresenceBorder, PresenceOrb, type PresenceState } from './components/presence.tsx'
+export { Switch } from './components/switch.tsx'
 export {
   Questionnaire,
   QuestionnaireActions,

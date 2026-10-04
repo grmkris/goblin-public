@@ -35,6 +35,11 @@ const PromptGet = Schema.Struct({
   arguments: Schema.optional(Schema.Record(Schema.String, Schema.String.check(Schema.isMaxLength(16_384)))),
 })
 const GrantChange = Schema.Struct({ serverId: Bounded(64), name: Bounded(256), allowed: Schema.Boolean })
+const AppGrantChange = Schema.Struct({
+  serverId: Bounded(64),
+  uri: Bounded(2048).check(Schema.isPattern(/^ui:\/\//u)),
+  allowed: Schema.Boolean,
+})
 const ResidentChange = Schema.Struct({ enabled: Schema.Boolean })
 const ModelPick = Schema.Struct({ model: Bounded(128) })
 
@@ -121,6 +126,10 @@ async function mcpRoute(request: Request, agent: DurableObjectStub<AgentRpc>, pa
   if (path === '/api/mcp/grants' && request.method === 'PUT') {
     const body = await readJson(request, GrantChange)
     return json(unwrap(await agent.mcpSetToolGrant(body.serverId, body.name, body.allowed)))
+  }
+  if (path === '/api/mcp/app-grants' && request.method === 'PUT') {
+    const body = await readJson(request, AppGrantChange)
+    return json(unwrap(await agent.mcpSetAppGrant(body.serverId, body.uri, body.allowed)))
   }
   return mcpServerRoute(request, agent, path)
 }

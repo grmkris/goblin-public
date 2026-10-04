@@ -120,7 +120,9 @@ once after a 401. A refused refresh marks the server `needs_auth` and the owner 
 16 MiB for App HTML).
 
 Grants are per discovered tool (`app_mcp_grants`), toggled by the owner. A tool grant also grants its `ui://` App
-resource. Tool annotations from the server are shown but never grant anything. Disconnecting forgets credentials
+resource. "Allow app" (`PUT /api/mcp/app-grants`, `McpHost.setAppGrant`) grants an App as a whole: exactly the tools
+that declare its `ui://` resource, including the ones only the App may call, and the resource itself. Connections
+lists those tools under the switch, each still adjustable. Tool annotations from the server are shown but never grant anything. Disconnecting forgets credentials
 and keeps grants. When the model calls a tool that exists but is not granted, nothing runs. `mcp_call` returns an
 error result whose details are `{ kind: 'grant-required', serverId, name }`, and the model is told to wait.
 `mcpModelResult` details never carry a top-level `kind`, so remote content cannot forge one. The web turns that
