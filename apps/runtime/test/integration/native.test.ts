@@ -260,7 +260,7 @@ harness.test(
     const result = yield* Schema.decodeUnknownEffect(Share)(yield* Effect.promise(() => response.json()))
     expect(result.shared.text).toBe('done: Shared with main.')
     const note = [
-      { type: 'text', text: '[from thread "untitled"]' },
+      { type: 'text', text: '[from thread (untitled)]' },
       { type: 'text', text: 'the word is lantern' },
     ]
     expect(turns(result.main)).toEqual([
@@ -273,7 +273,7 @@ harness.test(
     expect(requestTurns(result.mainRequest)).toEqual([
       'remember the word lantern',
       'echo: remember the word lantern',
-      '[from thread "untitled"]\nthe word is lantern',
+      '[from thread (untitled)]\nthe word is lantern',
       'what did the thread say?',
     ])
     expect(result.threadRequest.tools).toContain('share_to_main')

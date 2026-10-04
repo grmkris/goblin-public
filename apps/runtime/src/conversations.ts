@@ -132,7 +132,8 @@ export class ConversationRegistry {
   async shareToMain(thread: string, note: string, requestId: string): Promise<void> {
     const row = this.#row(thread)
     if (row === undefined || row.kind === 'main') throw new InvalidInput({ reason: 'share_from_main' })
-    const content = authoredContent(`thread "${row.title ?? 'untitled'}"`, note)
+    // A thread shared from before its title is written is labelled as untitled, never with a made-up name.
+    const content = authoredContent(row.title === null ? 'thread (untitled)' : `thread "${row.title}"`, note)
     await (
       await this.#conversation(MAIN_THREAD)
     ).submit(
