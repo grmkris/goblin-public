@@ -44,6 +44,13 @@ export const appResident = sqliteTable('app_resident', {
   expiresAt: integer('expires_at').notNull(),
   revokedAt: integer('revoked_at'),
 })
+/** Model tokens this agent spent per UTC day (`YYYY-MM-DD`), for the per-user budget. */
+export const appUsageDaily = sqliteTable('app_usage_daily', {
+  day: text('day').primaryKey().notNull(),
+  tokens: integer('tokens').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
 /** Pi session per inbound MCP client: each client talks to the agent in its own conversation. */
 export const appClientSessions = sqliteTable('app_client_sessions', {
   clientId: text('client_id').primaryKey().notNull(),

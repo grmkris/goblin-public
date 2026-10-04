@@ -1,7 +1,7 @@
 import * as Schema from 'effect/Schema'
 import { expect, test } from 'vitest'
 import { readJson } from '../../src/http/body.ts'
-import { GrantDenied, InvalidInput, PayloadTooLarge, UpstreamMcp } from '../../src/http/errors.ts'
+import { BudgetExhausted, GrantDenied, InvalidInput, PayloadTooLarge, UpstreamMcp } from '../../src/http/errors.ts'
 import { failureResponse, statusOf } from '../../src/http/respond.ts'
 
 const chunked = (parts: readonly string[]): Request => {
@@ -32,6 +32,7 @@ test('bodies decode through the schema; mismatches are InvalidInput', async () =
 test('each failure maps to one status; unknown causes become a bodiless 500', async () => {
   expect(statusOf(new GrantDenied({ serverId: 'myplan', name: 'x' }))).toBe(403)
   expect(statusOf(new UpstreamMcp({ serverId: 'myplan', reason: 'timeout' }))).toBe(504)
+  expect(statusOf(new BudgetExhausted({ limit: 1000, resetsAt: 86_400 }))).toBe(429)
   const response = failureResponse(new Error('token=secret-value'), '/api/x', 'req-1')
   expect(response.status).toBe(500)
   const body = JSON.stringify(await response.json())

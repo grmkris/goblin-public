@@ -55,6 +55,7 @@ const agentRoutes: Readonly<Record<string, Route>> = {
   'GET /api/agent/events': (_request, agent) => agent.fetch('https://agent/events'),
   'GET /api/agent/snapshot': (_request, agent) => agent.fetch('https://agent/snapshot'),
   'GET /api/agent/resident': async (_request, agent) => json(unwrap(await agent.residentStatus())),
+  'GET /api/agent/usage': async (_request, agent) => json(unwrap(await agent.usageToday())),
   'POST /api/agent/resident': async (request, agent) =>
     json(unwrap(await agent.residentSet((await readJson(request, ResidentChange)).enabled))),
 }

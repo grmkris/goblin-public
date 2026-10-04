@@ -49,6 +49,10 @@ export const ResidentStatus = Schema.Struct({
 })
 export type ResidentStatus = typeof ResidentStatus.Type
 
+/** Model tokens the user's agent spent today (UTC) against its daily limit, and when the day resets (epoch seconds). */
+export const UsageToday = Schema.Struct({ used: Schema.Number, limit: Schema.Number, resetsAt: Schema.Number })
+export type UsageToday = typeof UsageToday.Type
+
 /** An MCP client the owner has authorized to use Purrable's /mcp server. */
 export const InboundClient = Schema.Struct({
   clientId: Schema.String,

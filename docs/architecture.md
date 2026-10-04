@@ -80,6 +80,15 @@ Grants are per discovered tool (`app_mcp_grants`), toggled by the owner. A tool 
 resource. Tool annotations from the server are shown but never grant anything. Disconnecting forgets credentials
 and keeps grants.
 
+## Model budget
+
+Users share the deployment's model key, so each agent has a daily token budget (`PURRABLE_MODEL_DAILY_TOKENS`,
+default 300 000, per UTC day). A Pi extension (`pi/budget.ts`) records every model response's tokens in
+`app_usage_daily`. Once the day is spent, new turns are refused with `BudgetExhausted` (429), from the browser and
+from `/mcp`, and tool calls inside a running turn are blocked, so a looping turn ends after one more reply. Pi
+reports and swallows exceptions thrown by hooks, so the in-turn lever is blocking tools, not throwing. Settings shows
+today's usage. The model key's own cap stays the backstop.
+
 ## Resident authority
 
 The agent acts for the owner when the owner is not there, so it needs its own standing permission rather than a
@@ -105,7 +114,7 @@ Purrable is an MCP server at `/mcp`, the protected resource of Better Auth's `mc
 | Store | Tables | Owner |
 | --- | --- | --- |
 | Agent DO SQLite | `pi_*`, `cf_agents_*` and the other vendor tables | Pi, Agents SDK. Never touched. |
-| Agent DO SQLite | `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants`, `app_resident`, `app_client_sessions`, `app_metadata` | Drizzle, inline migrations in `storage/migrations.ts` |
+| Agent DO SQLite | `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants`, `app_resident`, `app_client_sessions`, `app_usage_daily`, `app_metadata` | Drizzle, inline migrations in `storage/migrations.ts` |
 | D1 `PurrableAuth` | `user`, `session`, `jwks`, `oauth*` | Better Auth, `apps/runtime/migrations` |
 
 Better Auth lives in D1 because the Durable SQLite adapter's async transactions and affected-row semantics do not

@@ -73,6 +73,7 @@ export function failureText(error: unknown): string {
     GrantDenied: 'That tool is not enabled. Turn it on under Connections.',
     NeedsAuthorization: 'This server needs to be connected again.',
     ResidentInactive: 'Resident authority is off. Re-enable it in Settings.',
+    BudgetExhausted: "You have used today's model budget. It resets at 00:00 UTC.",
     UpstreamMcp: 'The MCP server did not respond as expected.',
     NotFound: 'Not found.',
     InvalidInput: 'The request was not valid.',

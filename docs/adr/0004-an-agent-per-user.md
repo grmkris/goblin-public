@@ -16,5 +16,6 @@ identity and routing:
   `invite` because every user spends the same capped model key.
 
 Consequences: the existing dev account (user ID `owner`) now uses an agent named `owner`; the old `root` object was
-left behind (it held only smoke data). Not yet built: email verification, per-user model budgets, account deletion,
-and an admin view. Until per-user budgets exist, sign-up must not be opened on a stage with a shared paid key.
+left behind (it held only smoke data). Per-user daily model budgets followed the same day (see the architecture).
+Not yet built: email verification, account deletion and an admin view. A daily token budget bounds each user, not
+their number: until email verification exists, `open` sign-up lets one person create many budgets.

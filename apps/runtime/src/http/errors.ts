@@ -20,6 +20,10 @@ export class PayloadTooLarge extends Schema.TaggedError<PayloadTooLarge>()('Payl
 export class ResidentInactive extends Schema.TaggedError<ResidentInactive>()('ResidentInactive', {
   state: Schema.String,
 }) {}
+export class BudgetExhausted extends Schema.TaggedError<BudgetExhausted>()('BudgetExhausted', {
+  limit: Schema.Number,
+  resetsAt: Schema.Number,
+}) {}
 export class NeedsAuthorization extends Schema.TaggedError<NeedsAuthorization>()('NeedsAuthorization', {
   serverId: Schema.String,
 }) {}
@@ -47,6 +51,7 @@ export const AppError = Schema.Union([
   InvalidInput,
   PayloadTooLarge,
   ResidentInactive,
+  BudgetExhausted,
   NeedsAuthorization,
   UpstreamMcp,
   Internal,

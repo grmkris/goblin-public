@@ -15,6 +15,7 @@
 - **Inbound client**: an MCP client (Claude Code, another agent) the owner authorized to call Purrable's `/mcp`.
 - **MCP App**: a sandboxed `ui://` resource rendered inline through its originating MCP connection.
 - **Operation ID**: the stable key that makes a submission idempotent. Acceptance is not external completion.
+- **Model budget**: tokens a user's agent may spend per UTC day; past it, new turns get 429 and tools are blocked.
 - **Sign-up mode**: `open`, `invite` (an invite code is required) or `closed`; deployed stages default to `closed`.
 - **D1**: Cloudflare SQLite holding Better Auth's tables only (users, sessions, inbound OAuth clients and tokens).
 - **CLIProxy / LiteLLM**: model gateways. CLIProxy for local work on the build box; Railway LiteLLM for the deployed

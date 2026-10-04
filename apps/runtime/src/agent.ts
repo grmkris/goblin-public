@@ -22,15 +22,19 @@ import { ClientSessions } from './sessions.ts'
 import { type TranscriptMessage, transcriptMessages } from './pi/transcript.ts'
 import {
   type AgentServices,
+  Budget,
   Mcp,
   Resident,
   Sessions,
   agentLayer,
   attempt,
   nowSecondsEffect,
+  requireBudget,
   requireResident,
 } from './services.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
+import { ModelBudget, UsageStore, dailyTokenLimit } from './budget.ts'
+import { budgetExtension } from './pi/budget.ts'
 
 type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
 
@@ -53,7 +57,8 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   constructor(ctx: DurableObjectState, env: RuntimeEnv) {
     super(ctx, env)
-    this.harness = makePiHarness(env, [residentMcpExtension((program) => this.#runOrThrow(program))])
+    const run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program)
+    this.harness = makePiHarness(env, [residentMcpExtension(run), budgetExtension(run)])
     this.lifecycle.use(this.harness)
   }
 
@@ -73,7 +78,8 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
         // SAFETY: the platform fetch is the outbound MCP/OAuth boundary; tokens are added only by the SDK transport.
         fetch: globalThis.fetch.bind(globalThis),
       })
-      return ManagedRuntime.make(agentLayer(host, new ResidentAuthority(db), new ClientSessions(db)))
+      const budget = new ModelBudget(new UsageStore(db), dailyTokenLimit(this.env.MODEL_DAILY_TOKENS))
+      return ManagedRuntime.make(agentLayer(host, new ResidentAuthority(db), new ClientSessions(db), budget))
     })()
     this.#runtime.catch(() => {
       this.#runtime = undefined
@@ -108,7 +114,22 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
 
   submit(input: string, operationId: string) {
-    return this.#owner(attempt(() => this.harness.submit(input, { operationId })))
+    const harness = this.harness
+    return this.#owner(
+      Effect.gen(function* () {
+        yield* requireBudget
+        return yield* attempt(() => harness.submit(input, { operationId }))
+      }),
+    )
+  }
+
+  usageToday() {
+    return this.#owner(
+      Effect.gen(function* () {
+        const budget = yield* Budget
+        return budget.today(yield* nowSecondsEffect)
+      }),
+    )
   }
 
   wait(operationId: string) {
@@ -200,6 +221,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return this.#client(
       Effect.gen(function* () {
         yield* requireResident
+        yield* requireBudget
         const session = yield* clientSession(clientId, clientName, harness)
         yield* attempt(() => harness.submit(input, { session, operationId }))
         const result = yield* attempt(() =>

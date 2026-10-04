@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Schema } from 'effect'
-import { InboundClient, ResidentStatus } from '@purrable/contracts'
+import { InboundClient, ResidentStatus, UsageToday } from '@purrable/contracts'
 import {
   Alert,
   AlertDescription,
@@ -16,8 +16,31 @@ import { failureText, request } from '../lib/boundary.ts'
 
 const decodeResident = Schema.decodeUnknownSync(ResidentStatus)
 const decodeClients = Schema.decodeUnknownSync(Schema.Array(InboundClient))
+const decodeUsage = Schema.decodeUnknownSync(UsageToday)
 const day = (seconds: number | undefined): string =>
   seconds === undefined ? '—' : new Date(seconds * 1000).toLocaleDateString()
+
+function UsageCard({ onError }: { readonly onError: (message: string) => void }) {
+  const [usage, setUsage] = useState<UsageToday>()
+  useEffect(() => {
+    void request('/api/agent/usage')
+      .then((data) => setUsage(decodeUsage(data)))
+      .catch((error: unknown) => onError(failureText(error)))
+  }, [onError])
+  const percent = usage === undefined ? 0 : Math.min(100, Math.round((usage.used / usage.limit) * 100))
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Model budget</CardTitle>
+        <CardDescription>
+          {usage === undefined
+            ? 'Loading…'
+            : `${usage.used.toLocaleString()} of ${usage.limit.toLocaleString()} tokens used today (${percent}%). Resets at 00:00 UTC.`}
+        </CardDescription>
+      </CardHeader>
+    </Card>
+  )
+}
 
 function ResidentCard({ onError }: { readonly onError: (message: string) => void }) {
   const [status, setStatus] = useState<ResidentStatus>()
@@ -120,6 +143,7 @@ export function Settings() {
         </Alert>
       )}
       <ResidentCard onError={setError} />
+      <UsageCard onError={setError} />
       <ClientsCard onError={setError} />
       <div>
         <Button variant="ghost" onClick={() => void signOut()}>

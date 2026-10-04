@@ -40,6 +40,7 @@ export default Alchemy.Stack(
         MODEL_BASE_URL: Config.String('PURRABLE_MODEL_BASE_URL').pipe(Config.withDefault('http://127.0.0.1:8317/v1')),
         MODEL_ID: Config.String('PURRABLE_MODEL_ID').pipe(Config.withDefault('gemini-3.8-flash')),
         MODEL_KEY: Config.Redacted('PURRABLE_MODEL_KEY').pipe(Config.withDefault(Redacted.make(''))),
+        MODEL_DAILY_TOKENS: Config.String('PURRABLE_MODEL_DAILY_TOKENS').pipe(Config.withDefault('300000')),
         MCP_SERVERS: Config.String('PURRABLE_MCP_SERVERS').pipe(Config.withDefault('[]')),
         CREDENTIAL_KEY: Config.Redacted('PURRABLE_CREDENTIAL_KEY'),
         STAGE: stage.local ? 'local' : stage.name === 'dev' ? 'dev' : 'test',

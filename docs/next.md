@@ -31,4 +31,5 @@ refuses on the owner's answer. Never treat remote annotations such as `readOnlyH
 - `app_metadata` and the `AppMetadata` service are used only by the integration test worker; remove them or give
   them a job.
 - A production stage: its own D1, credential key and model key; nothing is shared with dev.
-- Before sign-up can be `open` anywhere: per-user model budgets, email verification and account deletion (ADR 0004).
+- Before sign-up can be `open` anywhere: email verification and account deletion (ADR 0004). Per-user daily budgets
+  exist; a per-user override (raise one account's limit) does not.

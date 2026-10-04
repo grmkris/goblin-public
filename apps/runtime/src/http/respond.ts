@@ -12,6 +12,7 @@ export const statusOf = (error: AppError): number =>
       InvalidInput: () => 400,
       PayloadTooLarge: () => 413,
       ResidentInactive: () => 409,
+      BudgetExhausted: () => 429,
       NeedsAuthorization: () => 409,
       UpstreamMcp: (upstream) => (upstream.reason === 'timeout' ? 504 : 502),
       Internal: () => 500,

@@ -22,6 +22,11 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       `CREATE TABLE app_client_sessions (client_id TEXT PRIMARY KEY NOT NULL, session_id TEXT NOT NULL, client_name TEXT, created_at INTEGER NOT NULL)`,
     ].join(BREAK),
   },
+  {
+    key: '20261006000000_model_budget',
+    tables: ['app_usage_daily'],
+    sql: 'CREATE TABLE app_usage_daily (day TEXT PRIMARY KEY NOT NULL, tokens INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

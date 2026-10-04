@@ -1,0 +1,39 @@
+import { GenerationTask, ToolTask, defineExtension, hook } from '@earendil-works/pi-durable'
+import * as Effect from 'effect/Effect'
+import { Budget, nowSecondsEffect } from '../services.ts'
+import type { RunProgram } from './resident-mcp.ts'
+
+const EXHAUSTED =
+  "Today's model budget is used up, so this tool was not run. Tell the user, and that the budget resets at 00:00 UTC."
+
+const spent = Effect.gen(function* () {
+  const budget = yield* Budget
+  const today = budget.today(yield* nowSecondsEffect)
+  return today.used >= today.limit
+})
+
+/**
+ * The user's daily model budget inside a turn. Every response's tokens are recorded; once the budget is spent, tool
+ * calls are blocked, so a turn looping through tools ends after one more reply. New turns are refused at submission
+ * (agent.ts). Pi reports and swallows hook exceptions, so blocking a tool is the lever, not throwing.
+ */
+export function budgetExtension(run: RunProgram) {
+  return defineExtension({
+    name: 'purrable.budget',
+    hooks: [
+      hook(GenerationTask, {
+        afterResponse: async (message) => {
+          await run(
+            Effect.gen(function* () {
+              const budget = yield* Budget
+              budget.record(message.usage.totalTokens, yield* nowSecondsEffect)
+            }),
+          )
+        },
+      }),
+      hook(ToolTask, {
+        beforeTool: async () => ((await run(spent)) ? { block: EXHAUSTED } : undefined),
+      }),
+    ],
+  })
+}

@@ -2,7 +2,7 @@ import type { CallToolResult, GetPromptResult, ReadResourceResult } from '@model
 import type { PiOperationResult, PiReceipt } from 'agents/harness/pi'
 import type { RpcResult } from './http/rpc.ts'
 import type { Grant, GrantCapability } from './mcp/grants.ts'
-import type { ResidentStatus, ServerView, ToolView } from '@purrable/contracts'
+import type { ResidentStatus, ServerView, ToolView, UsageToday } from '@purrable/contracts'
 import type { TranscriptMessage } from './pi/transcript.ts'
 
 /** Owner-facing RPC of the Agent DO. The Worker authenticates the owner before calling any of these. */
@@ -43,6 +43,7 @@ export interface AgentRpcMethods {
     waitMs: number,
   ) => Promise<RpcResult<AskResult>>
   readonly clientMessages: (clientId: string, limit: number) => Promise<RpcResult<readonly TranscriptMessage[]>>
+  readonly usageToday: () => Promise<RpcResult<UsageToday>>
 }
 export type AskResult =
   | { readonly status: 'done'; readonly operationId: string; readonly text: string }
@@ -62,6 +63,8 @@ export interface RuntimeEnv {
   readonly MODEL_BASE_URL: string
   readonly MODEL_ID: string
   readonly MODEL_KEY: string
+  /** Model tokens each user's agent may spend per UTC day; see `budget.ts` for the default. */
+  readonly MODEL_DAILY_TOKENS?: string
   /** JSON list of outbound MCP servers: `[{ serverId, endpoint, issuer?, resource? }]`. */
   readonly MCP_SERVERS?: string
   /** 32 random bytes, base64: encrypts outbound OAuth credentials at rest. */

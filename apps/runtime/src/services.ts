@@ -3,6 +3,7 @@ import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { type AppError, toAppError } from './http/errors.ts'
+import type { ModelBudget } from './budget.ts'
 import type { McpHost } from './mcp/host.ts'
 import type { ResidentAuthority } from './resident.ts'
 import type { ClientSessions } from './sessions.ts'
@@ -11,14 +12,21 @@ import type { ClientSessions } from './sessions.ts'
 export class Mcp extends Context.Service<Mcp, McpHost>()('purrable/Mcp') {}
 export class Resident extends Context.Service<Resident, ResidentAuthority>()('purrable/Resident') {}
 export class Sessions extends Context.Service<Sessions, ClientSessions>()('purrable/Sessions') {}
-export type AgentServices = Mcp | Resident | Sessions
+export class Budget extends Context.Service<Budget, ModelBudget>()('purrable/Budget') {}
+export type AgentServices = Mcp | Resident | Sessions | Budget
 
 export const agentLayer = (
   host: McpHost,
   resident: ResidentAuthority,
   sessions: ClientSessions,
+  budget: ModelBudget,
 ): Layer.Layer<AgentServices> =>
-  Layer.mergeAll(Layer.succeed(Mcp, host), Layer.succeed(Resident, resident), Layer.succeed(Sessions, sessions))
+  Layer.mergeAll(
+    Layer.succeed(Mcp, host),
+    Layer.succeed(Resident, resident),
+    Layer.succeed(Sessions, sessions),
+    Layer.succeed(Budget, budget),
+  )
 
 /** Wrap a plain async step so its failure lands in the typed `AppError` channel. */
 export const attempt = <A>(run: () => Promise<A>): Effect.Effect<A, AppError> =>
@@ -35,4 +43,11 @@ export const requireResident: Effect.Effect<void, AppError, Resident> = Effect.g
   const resident = yield* Resident
   const now = yield* nowSecondsEffect
   yield* attemptSync(() => resident.require(now))
+})
+
+/** Fails with `BudgetExhausted` once the user's agent has spent today's model budget. */
+export const requireBudget: Effect.Effect<void, AppError, Budget> = Effect.gen(function* () {
+  const budget = yield* Budget
+  const now = yield* nowSecondsEffect
+  yield* attemptSync(() => budget.require(now))
 })
