@@ -12,8 +12,8 @@ identity and routing:
   for `/mcp`. No route takes an agent name from the request.
 - Inbound clients are listed and revoked per user. Revoking deletes that user's consent and refresh tokens; it no
   longer disables the client registration, which other users may share.
-- Sign-up is `open`, `invite` (an invite code header) or `closed`, and deployed stages default to `closed`. Dev runs
-  `invite` because every user spends the same capped model key.
+- Sign-up is `open`, `invite` (an invite code header) or `closed`, and deployed stages default to `closed`. Dev ran
+  `invite` at first because every user spends the same capped model key; the owner opened it the same day.
 
 Consequences: the existing dev account (user ID `owner`) now uses an agent named `owner`; the old `root` object was
 left behind (it held only smoke data). Per-user daily model budgets and email verification followed the same day

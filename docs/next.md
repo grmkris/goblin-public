@@ -31,4 +31,6 @@ refuses on the owner's answer. Never treat remote annotations such as `readOnlyH
 - `app_metadata` and the `AppMetadata` service are used only by the integration test worker; remove them or give
   them a job.
 - A production stage: its own D1, credential key and model key; nothing is shared with dev.
-- Before sign-up can be `open` anywhere: a domain of Purrable's own to send mail from. Budgets and email verification exist; a per-user override (raise one account's limit) does not.
+- Dev sign-up is open, so every account draws on the one $10/30-day model key: a few heavy users can spend it for
+  everyone. Not built: a per-user override (raise one account's limit), a global cap on new accounts per day, and a mail
+  domain of Purrable's own (dev sends from `purrable@mytab.lol`).
