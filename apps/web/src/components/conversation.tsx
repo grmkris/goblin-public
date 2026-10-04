@@ -11,8 +11,9 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from '@purrable/ui'
-import type { ConversationProjection, ToolCallView } from '../lib/projection.ts'
-import { MessageText, MessageView } from './chat-message.tsx'
+import { conversationParts } from '../lib/parts.ts'
+import type { ConversationProjection } from '../lib/projection.ts'
+import { PartView } from './parts/registry.tsx'
 
 /**
  * The transcript. It scrolls under the floating header and composer; each of the owner's turns is a scroll anchor, so
@@ -26,21 +27,13 @@ export function Conversation({
   readonly projection: ConversationProjection | undefined
   readonly canSwitchModel: boolean
 }) {
-  const messages = projection?.messages ?? []
-  const calls = useMemo(() => {
-    const map = new Map<string, ToolCallView>()
-    for (const message of messages)
-      if (message.role === 'assistant') for (const call of message.toolCalls) map.set(call.id, call)
-    return map
-  }, [messages])
-  const running = projection?.tools.filter((tool) => tool.status === 'running') ?? []
-  const empty = messages.length === 0 && !projection?.partial
+  const parts = useMemo(() => (projection === undefined ? [] : conversationParts(projection)), [projection])
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
       <MessageScroller>
         <MessageScrollerViewport aria-label="Conversation">
           <MessageScrollerContent>
-            {empty ? (
+            {parts.length === 0 ? (
               <Empty className="m-auto">
                 <EmptyHeader>
                   <EmptyTitle>Your conversation starts here</EmptyTitle>
@@ -50,33 +43,13 @@ export function Conversation({
                 </EmptyHeader>
               </Empty>
             ) : (
-              messages.map((message) => (
-                <MessageScrollerItem key={message.id} messageId={message.id} scrollAnchor={message.role === 'user'}>
-                  <div className="flex flex-col gap-3">
-                    <MessageView message={message} calls={calls} canSwitchModel={canSwitchModel} />
+              parts.map((part) => (
+                <MessageScrollerItem key={part.id} messageId={part.id} scrollAnchor={part.kind === 'user'}>
+                  <div className="flex flex-col">
+                    <PartView part={part} canSwitchModel={canSwitchModel} />
                   </div>
                 </MessageScrollerItem>
               ))
-            )}
-            {running.length > 0 && (
-              <MessageScrollerItem messageId="live-tools">
-                <div className="flex flex-col gap-1">
-                  {running.map((tool) => (
-                    <p className="text-sm text-muted-foreground" key={tool.callId}>
-                      Running {tool.name}…
-                    </p>
-                  ))}
-                </div>
-              </MessageScrollerItem>
-            )}
-            {projection?.partial && (
-              <MessageScrollerItem messageId="partial">
-                <div className="flex flex-col">
-                  <article className="bubble bubble-assistant">
-                    <MessageText text={projection.partial} />
-                  </article>
-                </div>
-              </MessageScrollerItem>
             )}
           </MessageScrollerContent>
         </MessageScrollerViewport>

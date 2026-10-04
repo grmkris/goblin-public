@@ -1,9 +1,8 @@
 import { type RefObject, useEffect, useRef, useState } from 'react'
-import { Badge } from '@purrable/ui'
+import { Alert, AlertDescription, Badge } from '@purrable/ui'
 import { failureText, request } from '../lib/boundary.ts'
 import { BrowserPiEvents, ConversationStream, type StreamStatus } from '../lib/conversation-stream.ts'
 import type { ConversationProjection } from '../lib/projection.ts'
-import { StreamNotice } from './chat-message.tsx'
 import { MessageComposer } from './composer.tsx'
 import { Conversation } from './conversation.tsx'
 import { ModelPicker, useModelChoice } from './model-picker.tsx'
@@ -56,6 +55,14 @@ function useConversation() {
     }
   }
   return { projection, status, notice, report: setNotice, send, stop }
+}
+
+function StreamNotice({ text }: { readonly text: string }) {
+  return (
+    <Alert>
+      <AlertDescription>{text}</AlertDescription>
+    </Alert>
+  )
 }
 
 /**
