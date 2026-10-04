@@ -53,6 +53,24 @@ export type ResidentStatus = typeof ResidentStatus.Type
 export const UsageToday = Schema.Struct({ used: Schema.Number, limit: Schema.Number, resetsAt: Schema.Number })
 export type UsageToday = typeof UsageToday.Type
 
+/**
+ * One question the agent asks the owner with `ask_user`. A choice question (`single`, `multi`) offers 2 to 8 options;
+ * `allowOther` adds a free answer. The tool result's details are `{ kind: 'question', questions }`.
+ */
+export const QuestionOption = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+  description: Schema.optional(Schema.String),
+})
+export const QuestionSpec = Schema.Struct({
+  id: Schema.String,
+  prompt: Schema.String,
+  kind: Schema.Literals(['single', 'multi', 'text']),
+  options: Schema.optional(Schema.Array(QuestionOption)),
+  allowOther: Schema.optional(Schema.Boolean),
+})
+export type QuestionSpec = typeof QuestionSpec.Type
+
 /** A model the deployment offers. `route` groups models by provider route, because quotas are per route. */
 export const ModelOption = Schema.Struct({
   id: Schema.String,

@@ -73,6 +73,12 @@ The system prompt is two static Pi extension sections (`pi/persona.ts`): who the
 is untrusted data. The `mcp_list` and `mcp_call` tools (`pi/resident-mcp.ts`) are how the model reaches the owner's
 MCP servers; both require current resident authority, and `mcp_call` is marked unsafe to replay.
 
+`ask_user` (`pi/ask-user.ts`) is how the agent asks the owner something. It takes one to five short questions:
+single choice, multiple choice or free text. The tool result is the questions as numbered plain text, with details
+`{ kind: 'question', questions }` (the `QuestionSpec` contract). It ends the run with `control: { terminate: true }`,
+so no model call waits on a person. The answer is the owner's next ordinary message, whether it comes from the web
+card or any other channel. A question counts as settled once a later user message exists.
+
 The browser follows the main thread over Server-Sent Events: a snapshot of committed Pi entries, then batches, with
 a heartbeat. On reconnect it starts again from a fresh snapshot.
 
