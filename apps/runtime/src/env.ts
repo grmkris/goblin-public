@@ -46,6 +46,10 @@ export interface AgentRpcMethods {
   readonly mcpTools: (serverId: string, refresh: boolean) => Promise<RpcResult<readonly ToolView[]>>
   readonly mcpGrants: () => Promise<RpcResult<readonly Grant[]>>
   readonly mcpSetToolGrant: (serverId: string, name: string, allowed: boolean) => Promise<RpcResult<readonly Grant[]>>
+  readonly mcpSetSkills: (
+    serverId: string,
+    enabled: boolean,
+  ) => Promise<RpcResult<{ readonly serverId: string; readonly enabled: boolean }>>
   readonly mcpSetAppGrant: (serverId: string, uri: string, allowed: boolean) => Promise<RpcResult<readonly Grant[]>>
   readonly mcpCallTool: (
     serverId: string,

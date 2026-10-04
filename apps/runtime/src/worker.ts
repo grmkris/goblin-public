@@ -49,6 +49,7 @@ const AppGrantChange = Schema.Struct({
   uri: Bounded(2048).check(Schema.isPattern(/^ui:\/\//u)),
   allowed: Schema.Boolean,
 })
+const SkillsChange = Schema.Struct({ serverId: Bounded(64), enabled: Schema.Boolean })
 const ResidentChange = Schema.Struct({ enabled: Schema.Boolean })
 const ModelPick = Schema.Struct({ model: Bounded(128) })
 
@@ -165,6 +166,10 @@ const mcpRoutes: Readonly<Record<string, Route>> = {
   'PUT /api/mcp/grants': async (request, agent) => {
     const body = await readJson(request, GrantChange)
     return json(unwrap(await agent.mcpSetToolGrant(body.serverId, body.name, body.allowed)))
+  },
+  'PUT /api/mcp/skills': async (request, agent) => {
+    const body = await readJson(request, SkillsChange)
+    return json(unwrap(await agent.mcpSetSkills(body.serverId, body.enabled)))
   },
   'PUT /api/mcp/app-grants': async (request, agent) => {
     const body = await readJson(request, AppGrantChange)

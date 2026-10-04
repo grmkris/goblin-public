@@ -37,6 +37,7 @@ import {
   Budget,
   Conversations,
   Mcp,
+  Skills,
   Memory,
   Models,
   Resident,
@@ -323,6 +324,18 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   mcpSetToolGrant(serverId: string, name: string, allowed: boolean) {
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.setToolGrant(serverId, name, allowed))))
+  }
+
+  /** Turn the agent's use of a server's skills on or off. */
+  mcpSetSkills(serverId: string, enabled: boolean) {
+    return this.#owner(
+      Skills.use((skills) =>
+        attemptSync(() => {
+          skills.setEnabled(serverId, enabled)
+          return { serverId, enabled }
+        }),
+      ),
+    )
   }
 
   mcpSetAppGrant(serverId: string, uri: string, allowed: boolean) {

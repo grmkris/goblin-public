@@ -143,6 +143,52 @@ function useServerTools(server: ServerView, onMessage: (message: string) => void
   return { tools, loadTools, update }
 }
 
+/**
+ * Whether the agent follows this server's skills. A skill is a procedure the agent reads and acts on, so this is for a
+ * library the owner trusts; a skill still never allows a tool by itself.
+ */
+function SkillsSwitch({
+  server,
+  onMessage,
+}: {
+  readonly server: ServerView
+  readonly onMessage: (message: string) => void
+}) {
+  const [enabled, setEnabled] = useState(server.skillsEnabled === true)
+  const [pending, setPending] = useState(false)
+  async function toggle(next: boolean): Promise<void> {
+    setPending(true)
+    try {
+      await request('/api/mcp/skills', { method: 'PUT', body: { serverId: server.serverId, enabled: next } })
+      setEnabled(next)
+    } catch (error) {
+      onMessage(failureText(error))
+    } finally {
+      setPending(false)
+    }
+  }
+  const id = `skills-${server.serverId}`
+  return (
+    <div className="flex items-start gap-3">
+      <Switch
+        checked={enabled}
+        disabled={pending}
+        onCheckedChange={(checked) => void toggle(checked)}
+        aria-labelledby={id}
+      />
+      <span className="flex flex-col gap-1">
+        <span id={id} className="text-sm font-medium">
+          Use skills from this server
+        </span>
+        <span className="text-muted-foreground text-sm">
+          Skills are procedures your agent follows. Turn this on only for a skills library you trust, such as MySkills.
+          A skill never allows a tool by itself.
+        </span>
+      </span>
+    </div>
+  )
+}
+
 function ServerCard({
   server,
   onReload,
@@ -154,6 +200,11 @@ function ServerCard({
 }) {
   const { tools, loadTools, update } = useServerTools(server, onMessage)
   const [pending, setPending] = useState(false)
+  const loaded = tools !== undefined
+  // Loading tools opens the connection; reload once so what it declares (skills) shows.
+  useEffect(() => {
+    if (loaded && !server.live) onReload()
+  }, [loaded, server.live, onReload])
   async function act(action: 'connect' | 'disconnect'): Promise<void> {
     setPending(true)
     try {
@@ -201,6 +252,9 @@ function ServerCard({
       {server.status === 'connected' && (
         <CardContent>
           <div className="flex flex-col gap-3">
+            {(server.skillsOffered === true || server.skillsEnabled === true) && (
+              <SkillsSwitch server={server} onMessage={onMessage} />
+            )}
             <p className="text-muted-foreground text-sm">
               Your agent may call only the tools you tick. Descriptions and hints come from the server.
             </p>

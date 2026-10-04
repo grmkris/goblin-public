@@ -32,6 +32,10 @@ export const ServerView = Schema.Struct({
   title: Schema.optional(Schema.String),
   description: Schema.optional(Schema.String),
   icon: Schema.optional(Schema.String),
+  /** The live connection declares the MCP Skills extension. */
+  skillsOffered: Schema.optional(Schema.Boolean),
+  /** The owner uses this server's skills (procedures the agent follows). */
+  skillsEnabled: Schema.optional(Schema.Boolean),
 })
 export type ServerView = typeof ServerView.Type
 

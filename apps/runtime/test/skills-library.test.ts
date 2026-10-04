@@ -134,6 +134,13 @@ describe('skills over MCP (unit)', () => {
     await expect(library.activate('s1', 'lib:code-review')).rejects.toMatchObject({ _tag: 'NotFound' })
   })
 
+  it('shows the owner which servers offer skills and which are on', async () => {
+    await library.catalog()
+    expect(host.servers()[0]).toMatchObject({ serverId: 'lib', skillsOffered: true, skillsEnabled: true })
+    library.setEnabled('lib', false)
+    expect(host.servers()[0]).toMatchObject({ skillsOffered: true, skillsEnabled: false })
+  })
+
   it('lists skills under host handles and activates one with verified content', async () => {
     const catalog = await library.catalog()
     expect(catalog.skills.map((skill) => skill.handle)).toEqual(['lib:code-review'])

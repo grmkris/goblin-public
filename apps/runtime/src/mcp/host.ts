@@ -2,7 +2,7 @@ import { auth, type AuthProvider, discoverOAuthServerInfo, type Tool } from '@mo
 import type { CatalogEntry, RegistryView, ServerView, ToolView } from '@purrable/contracts'
 import { nowSeconds } from '../clock.ts'
 import { Internal, InvalidInput, NeedsAuthorization, NotFound } from '../http/errors.ts'
-import { McpConnectionManager, toolAppResource, toolOffered } from './connection.ts'
+import { McpConnectionManager, offersSkills, toolAppResource, toolOffered } from './connection.ts'
 import type { Credentials } from './credentials.ts'
 import type { Grant, Grants } from './grants.ts'
 import { addedServerId, serverClaims, userEndpoint } from './endpoint.ts'
@@ -63,6 +63,7 @@ export class McpHost {
   readonly #configured: ReadonlySet<string>
   readonly #added: AddedServers | undefined
   readonly #random: () => string
+  readonly #skillsEnabled: (serverId: string) => boolean
   readonly #refreshing = new Map<string, Promise<void>>()
   readonly #refreshedAt = new Map<string, number>()
 
@@ -77,11 +78,12 @@ export class McpHost {
     // @effect-diagnostics-next-line cryptoRandomUUID:off -- Unguessable suffixes for added server ids.
     this.#random = options.random ?? (() => crypto.randomUUID().replaceAll('-', ''))
     this.#configured = new Set(options.servers.map((server) => server.serverId))
+    this.#skillsEnabled = (serverId) => options.skillsEnabled?.(serverId) === true
     const added = (options.added?.list() ?? []).filter((server) => !this.#configured.has(server.serverId))
     this.manager = new McpConnectionManager({
       servers: [...options.servers, ...added.map(({ serverId, endpoint }) => ({ serverId, endpoint }))],
       allows: (grant) => options.grants.allows(grant),
-      skillsEnabled: (serverId) => options.skillsEnabled?.(serverId) === true,
+      skillsEnabled: (serverId) => this.#skillsEnabled(serverId),
       auth: (server) => this.#authProvider(server),
       fetch: options.fetch,
     })
@@ -142,13 +144,16 @@ export class McpHost {
   servers(): readonly ServerView[] {
     const added = new Map((this.#added?.list() ?? []).map((server) => [server.serverId, server]))
     return this.manager.servers.map((server) => {
-      const name = this.manager.snapshot(server.serverId)?.serverInfo?.name
+      const snapshot = this.manager.snapshot(server.serverId)
+      const name = snapshot?.serverInfo?.name
       const claims = this.#configured.has(server.serverId) ? undefined : added.get(server.serverId)
       return {
         serverId: server.serverId,
         endpoint: server.endpoint,
         status: this.#credentials.status(server.serverId),
-        live: this.manager.snapshot(server.serverId) !== undefined,
+        live: snapshot !== undefined,
+        skillsOffered: snapshot !== undefined && offersSkills(snapshot),
+        skillsEnabled: this.#skillsEnabled(server.serverId),
         ...(name === undefined ? {} : { serverName: name }),
         source: claims === undefined ? 'config' : 'added',
         ...(claims?.title === undefined ? {} : { title: claims.title }),

@@ -40,6 +40,8 @@ describe('servers the owner adds', () => {
       endpoint: 'https://notes.example.com/mcp',
       status: 'disconnected',
       live: false,
+      skillsOffered: false,
+      skillsEnabled: false,
       source: 'added',
       title: 'Example notes',
       description: 'Notes, as the publisher puts it.',
