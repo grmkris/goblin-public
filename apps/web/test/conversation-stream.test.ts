@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { ConversationStream, type PiEventSource } from '../src/lib/conversation-stream.ts'
+import {
+  ConversationStream,
+  reconnectDelay,
+  type PiEventSource,
+  type ReconnectScheduler,
+} from '../src/lib/conversation-stream.ts'
 import type { ConversationProjection } from '../src/lib/projection.ts'
 
 class FixtureEvents implements PiEventSource {
@@ -50,7 +55,7 @@ describe('snapshot reconnection', () => {
     const count = states.length
     streams[0]?.emit('batch', [{ type: 'run_start' }])
     expect(states).toHaveLength(count)
-    expect(states.at(-1)?.messages.messages).toEqual([])
+    expect(states.at(-1)?.messages).toEqual([])
     connection.dispose()
     expect(streams[1]?.closed).toBe(true)
   })
@@ -71,7 +76,58 @@ describe('snapshot reconnection', () => {
         { id: 2, model: [{ role: 'assistant', content: [{ type: 'text', text: 'Committed during attachment' }] }] },
       ],
     })
-    expect(state?.messages.messages[0]).toMatchObject({ content: 'Committed during attachment' })
+    expect(state?.messages[0]).toMatchObject({ text: 'Committed during attachment' })
     connection.dispose()
+  })
+  it('reconnects on its own with backoff through a fresh snapshot, and stops when disposed', async () => {
+    const streams: FixtureEvents[] = []
+    const scheduled: { run: () => void; delay: number }[] = []
+    const scheduler: ReconnectScheduler = {
+      schedule: (run, delay) => {
+        scheduled.push({ run, delay })
+        return () => undefined
+      },
+    }
+    let snapshots = 0
+    const statuses: string[] = []
+    const connection = new ConversationStream(
+      {
+        snapshot: async () => {
+          snapshots += 1
+          if (snapshots === 2) throw new Error('offline')
+          return snapshot
+        },
+        events: () => {
+          const source = new FixtureEvents()
+          streams.push(source)
+          return source
+        },
+      },
+      () => undefined,
+      (status) => statuses.push(status),
+      scheduler,
+    )
+    await connection.reconnect()
+    streams[0]?.errorListener?.()
+    expect(streams[0]?.closed).toBe(true)
+    expect(scheduled).toHaveLength(1)
+    scheduled[0]?.run()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(scheduled).toHaveLength(2)
+    expect(scheduled[1]?.delay).toBeGreaterThan(scheduled[0]?.delay ?? 0)
+    scheduled[1]?.run()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(snapshots).toBe(3)
+    expect(statuses.at(-1)).toBe('connected')
+    connection.dispose()
+    streams.at(-1)?.errorListener?.()
+    expect(scheduled).toHaveLength(2)
+  })
+  it('caps the backoff at thirty seconds plus jitter', () => {
+    expect(reconnectDelay(0, 0)).toBe(1000)
+    expect(reconnectDelay(10, 0)).toBe(30_000)
+    expect(reconnectDelay(10, 1)).toBe(36_000)
   })
 })

@@ -14,7 +14,7 @@ import {
   FieldLabel,
   Input,
 } from '@purrable/ui'
-import { request } from '../lib/boundary.ts'
+import { authClient, redirectOf } from '../lib/auth-client.ts'
 
 function useAuthentication(onAuthenticated: () => void) {
   const [email, setEmail] = useState('')
@@ -36,9 +36,14 @@ function useAuthentication(onAuthenticated: () => void) {
         setToken('')
         if (!response.ok) throw new Error(`Owner bootstrap failed (${response.status})`)
       }
-      await request('/api/auth/sign-in/email', { email, password })
+      const { data, error: failure } = await authClient.signIn.email({ email, password })
+      if (failure) throw new Error(failure.message ?? 'Sign in failed')
       setPassword('')
-      onAuthenticated()
+      // During an MCP client's authorization the provider continues to consent; otherwise stay here.
+      const next = redirectOf(data)
+      if (next !== undefined && new URL(next, window.location.origin).pathname !== window.location.pathname)
+        window.location.assign(next)
+      else onAuthenticated()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Sign in failed')
     } finally {

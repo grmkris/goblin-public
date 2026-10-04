@@ -1,8 +1,9 @@
 import { auth, type AuthProvider, type Tool } from '@modelcontextprotocol/client'
+import type { ServerView, ToolView } from '@purrable/contracts'
 import { nowSeconds } from '../clock.ts'
 import { Internal, InvalidInput, NeedsAuthorization, NotFound } from '../http/errors.ts'
 import { McpConnectionManager, toolAppResource, toolOffered } from './connection.ts'
-import type { ConnectionStatus, Credentials } from './credentials.ts'
+import type { Credentials } from './credentials.ts'
 import type { Grant, Grants } from './grants.ts'
 import { StoredOAuthProvider } from './oauth-provider.ts'
 import type { McpServerConfig } from './types.ts'
@@ -11,25 +12,6 @@ import type { McpServerConfig } from './types.ts'
 const REFRESH_SKEW_SECONDS = 60
 /** A 401 this soon after a completed refresh is a request that raced it: retry with the new token instead. */
 const RECENT_REFRESH_MS = 10_000
-
-export type ServerView = {
-  readonly serverId: string
-  readonly endpoint: string
-  readonly status: ConnectionStatus
-  readonly live: boolean
-  readonly serverName?: string
-}
-export type ToolView = {
-  readonly name: string
-  readonly title?: string
-  readonly description?: string
-  /** Remote hints, shown to the owner as unverified. They never grant anything. */
-  readonly readOnlyHint?: boolean
-  readonly destructiveHint?: boolean
-  readonly modelVisible: boolean
-  readonly appResource?: string
-  readonly granted: boolean
-}
 
 export type McpHostOptions = {
   readonly servers: readonly McpServerConfig[]

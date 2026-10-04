@@ -17,3 +17,43 @@ export const ApiError = Schema.Struct({
   serverId: Schema.optional(Schema.String),
 })
 export type ApiError = typeof ApiError.Type
+
+/** An outbound MCP server as the owner sees it. `live`: a connection is open right now. */
+export const ServerView = Schema.Struct({
+  serverId: Schema.String,
+  endpoint: Schema.String,
+  status: Schema.Literals(['connected', 'needs_auth', 'disconnected']),
+  live: Schema.Boolean,
+  serverName: Schema.optional(Schema.String),
+})
+export type ServerView = typeof ServerView.Type
+
+/** A discovered remote tool. The hints come from the server and are unverified; only `granted` is ours. */
+export const ToolView = Schema.Struct({
+  name: Schema.String,
+  title: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  readOnlyHint: Schema.optional(Schema.Boolean),
+  destructiveHint: Schema.optional(Schema.Boolean),
+  modelVisible: Schema.Boolean,
+  appResource: Schema.optional(Schema.String),
+  granted: Schema.Boolean,
+})
+export type ToolView = typeof ToolView.Type
+
+export const ResidentStatus = Schema.Struct({
+  state: Schema.Literals(['active', 'expired', 'revoked', 'never']),
+  renewedAt: Schema.optional(Schema.Number),
+  expiresAt: Schema.optional(Schema.Number),
+  revokedAt: Schema.optional(Schema.Number),
+})
+export type ResidentStatus = typeof ResidentStatus.Type
+
+/** An MCP client the owner has authorized to use Purrable's /mcp server. */
+export const InboundClient = Schema.Struct({
+  clientId: Schema.String,
+  name: Schema.optional(Schema.String),
+  uri: Schema.optional(Schema.String),
+  consentedAt: Schema.optional(Schema.String),
+})
+export type InboundClient = typeof InboundClient.Type

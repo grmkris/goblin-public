@@ -19,22 +19,20 @@ function configuredBridge(
 ): AppBridge {
   const bridge = new AppBridge(null, { name: 'Purrable', version: '0.1.0' }, { serverTools: {}, serverResources: {} })
   bridge.oncalltool = async (params): Promise<CallToolResult> => {
-    const response = await request(
-      `/api/mcp/${encodeURIComponent(selection.serverId)}/tools/call`,
-      { name: params.name, arguments: params.arguments ?? {} },
+    const response = await request(`/api/mcp/${encodeURIComponent(selection.serverId)}/tools/call`, {
+      body: { name: params.name, arguments: params.arguments ?? {} },
       signal,
-      { 'x-mcp-caller': 'app' },
-    )
+      headers: { 'x-mcp-caller': 'app' },
+    })
     // SAFETY: The authenticated server endpoint returns SDK-validated CallToolResult and enforces the originating server grant.
     return response as CallToolResult
   }
   bridge.onreadresource = async (params): Promise<ReadResourceResult> => {
-    const response = await request(
-      `/api/mcp/${encodeURIComponent(selection.serverId)}/resources/read`,
-      { uri: params.uri },
+    const response = await request(`/api/mcp/${encodeURIComponent(selection.serverId)}/resources/read`, {
+      body: { uri: params.uri },
       signal,
-      { 'x-mcp-caller': 'app' },
-    )
+      headers: { 'x-mcp-caller': 'app' },
+    })
     // SAFETY: The authenticated originating server endpoint returns SDK-validated ReadResourceResult.
     return response as ReadResourceResult
   }
@@ -57,12 +55,11 @@ async function attachApp(
   signal: AbortSignal,
   report: (message: string) => void,
 ): Promise<void> {
-  const data = await request(
-    `/api/mcp/${encodeURIComponent(selection.serverId)}/resources/read`,
-    { uri: selection.uri },
+  const data = await request(`/api/mcp/${encodeURIComponent(selection.serverId)}/resources/read`, {
+    body: { uri: selection.uri },
     signal,
-    { 'x-mcp-caller': 'app' },
-  )
+    headers: { 'x-mcp-caller': 'app' },
+  })
   if (signal.aborted) return
   const content = records(record(data)?.contents).find(
     (item) =>

@@ -1,50 +1,95 @@
-import { EventType, type Message, type MessagesSnapshotEvent, type StateSnapshotEvent } from '@ag-ui/core'
 import { isString, isNumber, identifier, record, records, text } from './boundary.ts'
 
+/** A tool call the assistant made, with its raw arguments. */
+export type ToolCallView = { readonly id: string; readonly name: string; readonly arguments: Record<string, unknown> }
+/** Committed conversation messages, projected from Pi entries. */
+export type ChatMessage =
+  | { readonly id: string; readonly role: 'user'; readonly text: string }
+  | {
+      readonly id: string
+      readonly role: 'assistant'
+      readonly text: string
+      readonly toolCalls: readonly ToolCallView[]
+    }
+  | {
+      readonly id: string
+      readonly role: 'tool'
+      readonly text: string
+      readonly toolCallId: string
+      readonly toolName: string
+      readonly isError: boolean
+      readonly details: unknown
+    }
+/** A tool running in the current turn. */
+export type LiveTool = {
+  readonly callId: string
+  readonly name: string
+  readonly status: 'running' | 'done'
+  readonly output: string
+}
 export type ConversationProjection = {
-  readonly messages: MessagesSnapshotEvent
-  readonly state: StateSnapshotEvent
+  readonly messages: readonly ChatMessage[]
   readonly entries: readonly Record<string, unknown>[]
-  readonly tools: readonly Record<string, unknown>[]
+  readonly tools: readonly LiveTool[]
   readonly running: boolean
   readonly partial: string
   readonly partialBlocks: readonly Record<string, unknown>[]
   readonly progress: string
 }
 
-function entryMessages(entries: readonly Record<string, unknown>[]): Message[] {
+function entryMessage(message: Record<string, unknown>, id: string): ChatMessage[] {
+  const content = text(message.content)
+  if (message.role === 'toolResult')
+    return [
+      {
+        id,
+        role: 'tool',
+        text: content,
+        toolCallId: identifier(message.toolCallId),
+        toolName: identifier(message.toolName),
+        isError: message.isError === true,
+        details: message.details,
+      },
+    ]
+  if (message.role === 'assistant')
+    return [
+      {
+        id,
+        role: 'assistant',
+        text: content,
+        toolCalls: records(message.content)
+          .filter((block) => block.type === 'toolCall')
+          .map((block) => ({
+            id: identifier(block.id),
+            name: identifier(block.name),
+            arguments: record(block.arguments) ?? {},
+          })),
+      },
+    ]
+  if (message.role === 'user') return [{ id, role: 'user', text: content }]
+  return []
+}
+
+function entryMessages(entries: readonly Record<string, unknown>[]): ChatMessage[] {
   return entries.flatMap((entry) =>
-    records(entry.model).flatMap((message, index): Message[] => {
-      const id = `${identifier(entry.id)}:${index}`
-      const content = text(message.content)
-      if (message.role === 'toolResult')
-        return [{ id, role: 'tool', content, toolCallId: identifier(message.toolCallId) }]
-      if (message.role === 'assistant')
-        return [
-          {
-            id,
-            role: 'assistant',
-            content,
-            toolCalls: records(message.content)
-              .filter((block) => block.type === 'toolCall')
-              .map((block) => ({
-                id: identifier(block.id),
-                type: 'function',
-                function: { name: identifier(block.name), arguments: JSON.stringify(block.arguments ?? {}) },
-              })),
-          },
-        ]
-      if (message.role === 'user' || message.role === 'system') return [{ id, role: message.role, content }]
-      return []
-    }),
+    records(entry.model).flatMap((message, index) => entryMessage(message, `${identifier(entry.id)}:${index}`)),
   )
+}
+
+function liveTools(value: unknown): LiveTool[] {
+  return records(value).map((tool) => ({
+    callId: identifier(tool.callId ?? tool.toolCallId),
+    name: identifier(tool.name ?? tool.toolName),
+    status: tool.status === 'done' ? 'done' : 'running',
+    output: isString(tool.output) ? tool.output : '',
+  }))
 }
 
 export function projectSnapshot(value: unknown): ConversationProjection {
   const snapshot = record(value)
   if (snapshot?.type !== 'snapshot' || !Array.isArray(snapshot.entries)) throw new Error('Invalid Pi snapshot')
   const entries = records(snapshot.entries)
-  const tools = records(snapshot.tools)
+  const tools = liveTools(snapshot.tools)
   const generation = record(snapshot.generation)
   const partialBlocks = records(record(generation?.message)?.content)
   const partial = text(partialBlocks)
@@ -66,20 +111,12 @@ export function projectSnapshot(value: unknown): ConversationProjection {
     partial,
     partialBlocks,
     progress,
-    messages: { type: EventType.MESSAGES_SNAPSHOT, messages: entryMessages(entries) },
-    state: { type: EventType.STATE_SNAPSHOT, snapshot: { running, tools, inbox, progress } },
+    messages: entryMessages(entries),
   }
 }
 
 function refreshed(next: ConversationProjection): ConversationProjection {
-  return {
-    ...next,
-    messages: { type: EventType.MESSAGES_SNAPSHOT, messages: entryMessages(next.entries) },
-    state: {
-      type: EventType.STATE_SNAPSHOT,
-      snapshot: { running: next.running, tools: next.tools, progress: next.progress },
-    },
-  }
+  return { ...next, messages: entryMessages(next.entries) }
 }
 function appended(next: ConversationProjection, event: Record<string, unknown>): ConversationProjection {
   const entry = record(event.entry)
@@ -108,15 +145,14 @@ function updatedPartial(
 ): ConversationProjection {
   return { ...next, partialBlocks: blocks, partial: text(blocks) }
 }
-function toolOutput(tool: Record<string, unknown>, event: Record<string, unknown>): Record<string, unknown> {
+function toolOutput(tool: LiveTool, event: Record<string, unknown>): LiveTool {
   if (tool.callId !== event.toolCallId) return tool
   const output = record(event.output)
-  const current = isString(tool.output) ? tool.output : ''
   return {
     ...tool,
     output: isString(output?.set)
       ? output.set
-      : current.slice(isNumber(output?.trimStart) ? output.trimStart : 0) +
+      : tool.output.slice(isNumber(output?.trimStart) ? output.trimStart : 0) +
         (isString(output?.append) ? output.append : ''),
   }
 }
@@ -140,7 +176,7 @@ function projectedEvent(next: ConversationProjection, event: Record<string, unkn
         ...next,
         tools: [
           ...next.tools.filter((tool) => tool.callId !== event.toolCallId),
-          { callId: event.toolCallId, name: event.toolName, status: 'running', output: '' },
+          { callId: identifier(event.toolCallId), name: identifier(event.toolName), status: 'running', output: '' },
         ],
       }
     case 'tool_execution_update':

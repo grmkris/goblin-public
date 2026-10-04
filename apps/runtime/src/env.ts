@@ -2,8 +2,7 @@ import type { CallToolResult, GetPromptResult, ReadResourceResult } from '@model
 import type { PiOperationResult, PiReceipt } from 'agents/harness/pi'
 import type { RpcResult } from './http/rpc.ts'
 import type { Grant, GrantCapability } from './mcp/grants.ts'
-import type { ServerView, ToolView } from './mcp/host.ts'
-import type { ResidentStatus } from './resident.ts'
+import type { ResidentStatus, ServerView, ToolView } from '@purrable/contracts'
 import type { TranscriptMessage } from './pi/transcript.ts'
 
 /** Owner-facing RPC of the Agent DO. The Worker authenticates the owner before calling any of these. */

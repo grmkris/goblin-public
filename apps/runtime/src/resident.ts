@@ -1,3 +1,4 @@
+import type { ResidentStatus } from '@purrable/contracts'
 import { eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { ResidentInactive } from './http/errors.ts'
@@ -6,13 +7,7 @@ import { appResident } from './storage/schema.ts'
 /** The agent may act on its own for this long after the owner's last signed-in action. */
 export const RESIDENT_TTL_SECONDS = 30 * 24 * 60 * 60
 
-export type ResidentState = 'active' | 'expired' | 'revoked' | 'never'
-export type ResidentStatus = {
-  readonly state: ResidentState
-  readonly renewedAt?: number
-  readonly expiresAt?: number
-  readonly revokedAt?: number
-}
+export type { ResidentStatus }
 
 /**
  * Resident authority: what lets tools run without a live browser session (chat, inbound MCP clients, later routines

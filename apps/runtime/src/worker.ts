@@ -1,6 +1,12 @@
 import * as Schema from 'effect/Schema'
 import type { AgentRpc, RuntimeEnv } from './env.ts'
-import { handleAuth, protectedResourceMetadata, requireOwnerSession } from './auth/index.ts'
+import {
+  handleAuth,
+  listInboundClients,
+  protectedResourceMetadata,
+  requireOwnerSession,
+  revokeInboundClient,
+} from './auth/index.ts'
 import { readJson } from './http/body.ts'
 import { Forbidden, InvalidInput, NotFound } from './http/errors.ts'
 import { failureResponse, requestIdOf, secured } from './http/respond.ts'
@@ -117,6 +123,12 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   const agent = residentAgent(env)
   if (path.startsWith('/api/agent')) return agentRoute(request, agent, path)
   if (path.startsWith('/api/mcp/')) return mcpRoute(request, agent, path, env)
+  if (path === '/api/clients' && request.method === 'GET') return json(await listInboundClients(env))
+  const revoke = /^\/api\/clients\/([\w.-]{1,200})$/u.exec(path)?.[1]
+  if (revoke !== undefined && request.method === 'DELETE') {
+    await revokeInboundClient(env, revoke)
+    return json({ revoked: true })
+  }
   throw new NotFound({ what: path })
 }
 

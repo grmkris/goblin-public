@@ -25,26 +25,57 @@ export function text(value: unknown): string {
 export function identifier(value: unknown): string {
   return isString(value) || isNumber(value) ? String(value) : ''
 }
-export async function request(
-  path: string,
-  body?: unknown,
-  signal?: AbortSignal,
-  extraHeaders?: Record<string, string>,
-): Promise<JsonValue> {
+export type RequestOptions = {
+  readonly method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  readonly body?: unknown
+  readonly signal?: AbortSignal
+  readonly headers?: Record<string, string>
+}
+/** A failed API call: the runtime's error tag (`GrantDenied`, `NeedsAuthorization`, ...) and HTTP status. */
+export class ApiFailure extends Error {
+  readonly tag: string
+  readonly status: number
+  constructor(tag: string, status: number) {
+    super(tag)
+    this.tag = tag
+    this.status = status
+  }
+}
+/** Same-origin JSON call with the owner's cookie. Non-JSON error bodies still produce an `ApiFailure`. */
+export async function request(path: string, options: RequestOptions = {}): Promise<JsonValue> {
+  const { method = options.body === undefined ? 'GET' : 'POST', body, signal, headers } = options
   // @effect-diagnostics-next-line globalFetch:off -- Browser UI owns this same-origin authenticated request boundary; runtime Effect services cannot access the browser session.
   const response = await fetch(path, {
-    method: body === undefined ? 'GET' : 'POST',
+    method,
     credentials: 'same-origin',
-    ...(body === undefined && extraHeaders === undefined
-      ? {}
-      : {
-          headers: { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...extraHeaders },
-          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        }),
+    headers: { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     ...(signal ? { signal } : {}),
   })
-  const data = Schema.decodeUnknownSync(Schema.MutableJson)(await response.json())
-  if (!response.ok)
-    throw new Error(isString(record(data)?.error) ? String(record(data)?.error) : `Request failed (${response.status})`)
+  let data: JsonValue = null
+  try {
+    data = Schema.decodeUnknownSync(Schema.MutableJson)(await response.json())
+  } catch {
+    if (response.ok) throw new ApiFailure('InvalidResponse', response.status)
+  }
+  if (!response.ok) {
+    const tag = record(data)?.error
+    throw new ApiFailure(isString(tag) ? tag : `HTTP ${response.status}`, response.status)
+  }
   return data
+}
+
+/** Plain-language text for an API failure, for alerts. */
+export function failureText(error: unknown): string {
+  if (!(error instanceof ApiFailure)) return error instanceof Error ? error.message : 'Something went wrong'
+  const known: Record<string, string> = {
+    Unauthenticated: 'Your session has ended. Sign in again.',
+    GrantDenied: 'That tool is not enabled. Turn it on under Connections.',
+    NeedsAuthorization: 'This server needs to be connected again.',
+    ResidentInactive: 'Resident authority is off. Re-enable it in Settings.',
+    UpstreamMcp: 'The MCP server did not respond as expected.',
+    NotFound: 'Not found.',
+    InvalidInput: 'The request was not valid.',
+  }
+  return known[error.tag] ?? `Request failed (${error.tag})`
 }

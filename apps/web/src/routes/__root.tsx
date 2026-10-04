@@ -1,4 +1,4 @@
-import { HeadContent, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
+import { HeadContent, Link, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import css from '../styles.css?url'
 
@@ -18,8 +18,18 @@ function Root() {
   return (
     <main className="shell">
       <header className="workspace-header">
-        <p className="eyebrow">Purrable · durable personal agent</p>
-        <h1>Your resident workspace</h1>
+        <p className="brand">Purrable</p>
+        <nav className="nav" aria-label="Main">
+          <Link to="/" activeProps={{ className: 'nav-active' }} activeOptions={{ exact: true }}>
+            Chat
+          </Link>
+          <Link to="/connections" activeProps={{ className: 'nav-active' }}>
+            Connections
+          </Link>
+          <Link to="/settings" activeProps={{ className: 'nav-active' }}>
+            Settings
+          </Link>
+        </nav>
       </header>
       <Outlet />
     </main>

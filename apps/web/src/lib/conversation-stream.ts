@@ -28,25 +28,67 @@ export type PiStreamDependencies = {
   readonly snapshot: (signal: AbortSignal) => Promise<JsonValue>
   readonly events: () => PiEventSource
 }
-/** Replaced attachment aborts before requesting a fresh snapshot. Pi's initial stream snapshot closes the attach race. */
+/** Timers, injectable so tests can drive reconnection without waiting. */
+export type ReconnectScheduler = {
+  readonly schedule: (run: () => void, delayMs: number) => () => void
+}
+const browserScheduler: ReconnectScheduler = {
+  schedule: (run, delayMs) => {
+    const handle = setTimeout(run, delayMs)
+    return () => clearTimeout(handle)
+  },
+}
+export type StreamStatus = 'connecting' | 'connected' | 'reconnecting'
+
+/** 1s, 2s, 4s ... capped at 30s, with up to 20% jitter so reconnecting tabs do not stampede. */
+export const reconnectDelay = (attempt: number, jitter = Math.random()): number =>
+  Math.round(Math.min(30_000, 1000 * 2 ** attempt) * (1 + 0.2 * jitter))
+
+/**
+ * Committed Pi state for the browser: a snapshot, then live batches. Every (re)connect fetches a fresh snapshot and
+ * disposes the previous stream first; a dropped stream reconnects on its own with backoff.
+ */
 export class ConversationStream {
   #controller: AbortController | undefined
   #source: PiEventSource | undefined
   #projection: ConversationProjection | undefined
+  #cancelRetry: (() => void) | undefined
+  #attempt = 0
+  #disposed = false
   constructor(
     readonly dependencies: PiStreamDependencies,
     readonly publish: (projection: ConversationProjection) => void,
-    readonly report: (message: string) => void,
+    readonly report: (status: StreamStatus, detail?: string) => void,
+    readonly scheduler: ReconnectScheduler = browserScheduler,
   ) {}
-  dispose(): void {
+
+  #detach(): void {
+    this.#cancelRetry?.()
+    this.#cancelRetry = undefined
     this.#controller?.abort()
     this.#source?.close()
     this.#source = undefined
   }
+
+  dispose(): void {
+    this.#disposed = true
+    this.#detach()
+  }
+
+  #retry(detail: string): void {
+    if (this.#disposed) return
+    this.report('reconnecting', detail)
+    const delay = reconnectDelay(this.#attempt)
+    this.#attempt += 1
+    this.#cancelRetry = this.scheduler.schedule(() => void this.reconnect(), delay)
+  }
+
   async reconnect(): Promise<void> {
-    this.dispose()
+    this.#detach()
+    this.#disposed = false
     const controller = new AbortController()
     this.#controller = controller
+    this.report('connecting')
     try {
       const snapshot = await this.dependencies.snapshot(controller.signal)
       if (controller.signal.aborted) return
@@ -58,13 +100,15 @@ export class ConversationStream {
       source.addEventListener('batch', (event) => this.#receive('batch', event, controller, source))
       source.onError(() => {
         source.close()
-        if (!controller.signal.aborted) this.report('Connection interrupted. Reconnect to reload committed state.')
+        if (!controller.signal.aborted) this.#retry('Connection interrupted')
       })
-      this.report('Connected')
+      this.#attempt = 0
+      this.report('connected')
     } catch (error) {
-      if (!controller.signal.aborted) this.report(error instanceof Error ? error.message : 'Connection failed')
+      if (!controller.signal.aborted) this.#retry(error instanceof Error ? error.message : 'Connection failed')
     }
   }
+
   #receive(
     kind: 'snapshot' | 'batch',
     event: MessageEvent<string>,
@@ -79,7 +123,7 @@ export class ConversationStream {
       if (this.#projection) this.publish(this.#projection)
     } catch {
       source.close()
-      this.report('Stream data could not be read. Reconnect to reload committed state.')
+      this.#retry('Stream data could not be read')
     }
   }
 }
