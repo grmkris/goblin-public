@@ -587,33 +587,37 @@ async function destroySequence(env: Env, name: string): Promise<Response> {
 }
 
 function nativeFetch(request: Request, env: Env): Promise<Response> {
-  const name = new URL(request.url).searchParams.get('name') ?? 'initialization'
-  if (new URL(request.url).pathname === '/events-probe')
-    return env.AGENTS.getByName(name)
-      .eventsProbe()
-      .then((result) => Response.json(result))
-  if (new URL(request.url).pathname === '/rpc') return rpcSequence(env.AGENTS.getByName(name))
-  if (new URL(request.url).pathname === '/skills-cache')
-    return env.AGENTS.getByName(name)
-      .skillsCacheProbe()
-      .then((result) => Response.json(result))
-  if (new URL(request.url).pathname === '/destroy') return destroySequence(env, name)
-  if (new URL(request.url).pathname === '/branch') return branchSequence(env.AGENTS.getByName(name))
-  if (new URL(request.url).pathname === '/share') return shareSequence(env.AGENTS.getByName(name))
-  if (new URL(request.url).pathname === '/announce') return announceSequence(env.AGENTS.getByName(name))
-  if (new URL(request.url).pathname === '/capabilities') return capabilitySequence(env.AGENTS.getByName(name))
-  if (new URL(request.url).pathname === '/scopes')
-    return env.AGENTS.getByName(name)
-      .scopeProbe()
-      .then((result) => Response.json(result))
-  if (new URL(request.url).pathname === '/subagent') return subagentSequence(env.AGENTS.getByName(name))
-  if (new URL(request.url).pathname === '/memory') return memorySequence(env.AGENTS.getByName(name))
-  if (new URL(request.url).pathname === '/binding')
-    return env.AGENTS.getByName(name)
-      .bindingProbe()
-      .then((result) => Response.json(result))
-  if (new URL(request.url).pathname.startsWith('/lifecycle')) return env.LIFECYCLE.getByName(name).fetch(request)
-  return env.AGENTS.getByName(name).fetch(request)
+  const url = new URL(request.url)
+  const name = url.searchParams.get('name') ?? 'initialization'
+  const agent = env.AGENTS.getByName(name)
+  switch (url.pathname) {
+    case '/events-probe':
+      return agent.eventsProbe().then((result) => Response.json(result))
+    case '/rpc':
+      return rpcSequence(agent)
+    case '/skills-cache':
+      return agent.skillsCacheProbe().then((result) => Response.json(result))
+    case '/destroy':
+      return destroySequence(env, name)
+    case '/branch':
+      return branchSequence(agent)
+    case '/share':
+      return shareSequence(agent)
+    case '/announce':
+      return announceSequence(agent)
+    case '/capabilities':
+      return capabilitySequence(agent)
+    case '/scopes':
+      return agent.scopeProbe().then((result) => Response.json(result))
+    case '/subagent':
+      return subagentSequence(agent)
+    case '/memory':
+      return memorySequence(agent)
+    case '/binding':
+      return agent.bindingProbe().then((result) => Response.json(result))
+    default:
+      return url.pathname.startsWith('/lifecycle') ? env.LIFECYCLE.getByName(name).fetch(request) : agent.fetch(request)
+  }
 }
 
 export default {

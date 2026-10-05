@@ -22,6 +22,7 @@ import type {
 import type { TranscriptMessage } from './pi/transcript.ts'
 import type { MailBinding } from './auth/mail.ts'
 import type { ServerSource } from './mcp/servers.ts'
+import type { EventWebhook, EventWebhookResult } from './mcp/events.ts'
 import type { Doorbell } from './channel/doorbell.ts'
 import type { ThreadChange } from './conversations.ts'
 
@@ -96,6 +97,7 @@ export interface AgentRpcMethods {
   readonly channelDisable: () => Promise<RpcResult<null>>
   /** Not an owner request: myagent's doorbell, after the Worker checked the hook token (channel/doorbell.ts). */
   readonly channelDoorbell: (doorbell: Doorbell) => Promise<RpcResult<true>>
+  readonly mcpEventsWebhook: (input: EventWebhook) => Promise<RpcResult<EventWebhookResult>>
   readonly deleteAgentData: () => Promise<RpcResult<true>>
 }
 export type AskResult =

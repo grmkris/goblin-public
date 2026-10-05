@@ -1,5 +1,6 @@
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
+import type { EventHealth } from '@purrable/contracts'
 import { type AppError, InvalidInput, toAppError } from '../http/errors.ts'
 import type { CredentialCipher } from './cipher.ts'
 import type { McpConnectionManager } from './connection.ts'
@@ -28,13 +29,6 @@ export type SubscribeConsumer = {
 }
 export type EventWebhook = WebhookHeaders & { readonly subscriptionId: string; readonly body: Uint8Array }
 export type EventWebhookResult = { readonly status: 200 | 204 | 410 | 503; readonly response?: string }
-export type EventHealth = {
-  readonly name: string
-  readonly status: string
-  readonly refreshBefore: number | null
-  readonly lastReceiptAt: number | null
-  readonly lastError: string | null
-}
 
 /** Consumer API returns Effect values. Alarm-driven processing, shared leases and independent durable ack. */
 export class McpEvents {
@@ -68,12 +62,13 @@ export class McpEvents {
     return this.store
       .list()
       .filter((r) => r.serverId === serverId && r.status !== 'tombstone')
-      .map(({ name, status, refreshBefore, lastReceiptAt, lastError }) => ({
+      .map(({ id, name, argumentsJson, status, refreshBefore, lastReceiptAt }) => ({
+        subscriptionId: id,
         name,
+        granted: this.store.allows(serverId, name, argumentsJson),
         status,
         refreshBefore,
         lastReceiptAt,
-        lastError,
       }))
   }
   list(serverId: string, name: string, args: Record<string, unknown>) {

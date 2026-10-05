@@ -3,6 +3,7 @@ import * as Schema from 'effect/Schema'
 import * as Option from 'effect/Option'
 import { sign } from '../../src/mcp/events/webhook.ts'
 import type { EventEnvelope } from '../../src/mcp/events/protocol.ts'
+import { SKILLS_EXTENSION, type SkillEntry } from '../../src/skills/protocol.ts'
 
 const Params = Schema.toStandardSchemaV1(Schema.Record(Schema.String, Schema.Unknown))
 const Subscribe = Schema.Struct({
@@ -16,13 +17,26 @@ export class EventsFixture {
   readonly journal: { eventId: string; name: string; timestamp: string; data: unknown; cursor: string }[] = []
   readonly calls: string[] = []
   readonly inbox: { id: string; text: string; direction: string }[] = []
+  skills: readonly SkillEntry[] = []
+  readonly files = new Map<string, string>()
   cursor = '0'
   now = Date.now()
   ttlMs = 3_600_000
   receiver: ((request: Request) => Promise<Response>) | undefined
   readonly #handler = createMcpHandler(() => {
     // oxlint-disable-next-line typescript/no-deprecated -- Low-level official Server exposes draft methods absent from McpServer.
-    const server = new Server({ name: 'mygram-events-fixture', version: '1' }, { capabilities: { tools: {} } })
+    const server = new Server(
+      { name: 'mygram-events-fixture', version: '1' },
+      { capabilities: { tools: {}, resources: {}, extensions: { [SKILLS_EXTENSION]: {} } } },
+    )
+    server.setRequestHandler('skills/list', { params: Params }, () => ({ skills: this.skills, ttlMs: 60_000 }))
+    server.setRequestHandler('resources/list', () => ({ resources: [] }))
+    server.setRequestHandler('resources/templates/list', () => ({ resourceTemplates: [] }))
+    server.setRequestHandler('resources/read', (request) => ({
+      contents: [
+        { uri: request.params.uri, text: this.files.get(request.params.uri) ?? '', mimeType: 'text/markdown' },
+      ],
+    }))
     server.setRequestHandler('tools/list', () => ({
       tools: ['inbox', 'send_message', 'subscribe', 'unsubscribe'].map((name) => ({
         name,

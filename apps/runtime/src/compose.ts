@@ -2,9 +2,6 @@ import type { Extension, ToolRegistration } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
-import * as Effect from 'effect/Effect'
-import * as Layer from 'effect/Layer'
-import { Entitlements, type EntitlementPolicy } from './billing/gates.ts'
 import { ModelBudget, UsageStore, modelTokenWeights } from './budget.ts'
 import { CapabilityProfiles, type PiTools } from './capabilities/profiles.ts'
 import { TelegramChannel } from './channel/channel.ts'
@@ -16,6 +13,12 @@ import { configuredServers } from './mcp/config.ts'
 import { CredentialStore } from './mcp/credentials.ts'
 import { bindEndpoints } from './mcp/endpoints.ts'
 import { GrantStore } from './mcp/grants.ts'
+import { installEventConsumers } from './mcp/events/consumers.ts'
+import { Events, McpEvents } from './mcp/events.ts'
+import { EventStorage, SqliteEventStore } from './mcp/events/store.ts'
+import { eventsHookToken, eventsHookUrl } from './mcp/events/route-token.ts'
+import { GrantDenied, Forbidden } from './http/errors.ts'
+import * as Layer from 'effect/Layer'
 import { McpHost } from './mcp/host.ts'
 import { logEndpointsReset } from './mcp/log.ts'
 import { RegistryStore } from './mcp/registries.ts'
@@ -32,6 +35,8 @@ import { SkillLearner } from './skills/learner.ts'
 import { SkillLibrary } from './skills/library.ts'
 import { SqliteDraftLog, SqliteSkillState } from './skills/store.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
+import { Entitlements, type EntitlementPolicy } from './billing/gates.ts'
+import * as Effect from 'effect/Effect'
 
 /** What the agent's services are built from: its storage and env, and the Pi pieces its constructor made. */
 export type ComposeInput = {
@@ -45,7 +50,10 @@ export type ComposeInput = {
   readonly subagentTool: ToolRegistration
   /** Schedules the Telegram replies alarm. */
   readonly scheduleReplies: () => void
+  readonly userId: string
   readonly entitlements: EntitlementPolicy
+  readonly scheduleEvents: (at: number) => Promise<void>
+  readonly pullTelegram: () => Promise<void>
 }
 
 /** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
@@ -53,6 +61,16 @@ const retool = (harness: PiHarness) => async (session: string, tools: PiTools) =
   const conversation = await (await harness.pi()).conversation(conversationId(session), BACKGROUND)
   await conversation?.configure({ tools }, BACKGROUND)
 }
+
+const authorizeEvents =
+  (resident: ResidentAuthority, credentials: CredentialStore, store: SqliteEventStore, policy: EntitlementPolicy) =>
+  async (serverId: string, name: string, argumentsJson: string): Promise<void> => {
+    await Effect.runPromise(policy.require())
+    resident.require(nowSeconds())
+    if (credentials.status(serverId) !== 'connected')
+      throw new Forbidden({ reason: 'event connection requires authorization' })
+    if (!store.allows(serverId, name, argumentsJson)) throw new GrantDenied({ serverId, name })
+  }
 
 /**
  * The agent's services over its SQLite, built once per isolate on first use: MCP host and grants, budget and models,
@@ -72,11 +90,15 @@ export async function composeServices(
   const skillState = new SqliteSkillState(db)
   const grants = new GrantStore(db)
   const cipher = await CredentialCipher.fromBase64(env.CREDENTIAL_KEY)
+  const resident = new ResidentAuthority(db)
+  const eventStore = new SqliteEventStore(db)
+  const credentials = new CredentialStore(db, cipher)
   const host = new McpHost({
     servers,
     added,
     registries: new RegistryStore(db),
-    credentials: new CredentialStore(db, cipher),
+    credentials,
+    authorizeEvents: authorizeEvents(resident, credentials, eventStore, input.entitlements),
     grants,
     skillsEnabled: (serverId) => skillState.enabled(serverId),
     appUrl: env.APP_URL,
@@ -100,7 +122,6 @@ export async function composeServices(
   const capabilities = new CapabilityProfiles(db, input.subagentTool, retool(harness))
   const kit = { thread: input.thread, recall, memory, namer, capabilities }
   const conversations = new ConversationRegistry(db, harness, kit, nowSeconds())
-  const resident = new ResidentAuthority(db)
   const skills = new SkillLibrary(host.manager, skillState, nowMillis)
   const learner = new SkillLearner({
     drafts: new SqliteDraftLog(db),
@@ -113,10 +134,25 @@ export async function composeServices(
     now: nowMillis,
   })
   const channel = new TelegramChannel(db, cipher, input.scheduleReplies)
+  const events = new McpEvents({
+    manager: host.manager,
+    store: eventStore,
+    cipher,
+    principal: input.userId,
+    callback: eventsHookUrl(env.APP_URL, input.userId, await eventsHookToken(env.CREDENTIAL_KEY, input.userId)),
+    wake: input.scheduleEvents,
+    authorize: async () => {
+      await Effect.runPromise(input.entitlements.require())
+      resident.require(nowSeconds())
+    },
+  })
+  installEventConsumers(events, channel, skills, input.pullTelegram)
   return ManagedRuntime.make(
     Layer.mergeAll(
       agentLayer({ host, resident, conversations, budget, models, memory, skills, learner, channel, capabilities }),
       Layer.succeed(Entitlements, input.entitlements),
+      Layer.succeed(Events, events),
+      Layer.succeed(EventStorage, eventStore),
     ),
   )
 }

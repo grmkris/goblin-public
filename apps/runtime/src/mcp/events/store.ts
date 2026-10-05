@@ -55,7 +55,10 @@ export function pendingFits(rows: number, bytes: number, incoming: number): bool
 
 /** Database operations are synchronous and short; callers seal bytes before beginning a transaction. */
 export class SqliteEventStore {
-  constructor(readonly db: DrizzleSqliteDODatabase) {}
+  readonly db: DrizzleSqliteDODatabase
+  constructor(db: DrizzleSqliteDODatabase) {
+    this.db = db
+  }
 
   grant(serverId: string, name: string, argumentsJson: string, allowed: boolean, now: number): void {
     this.db

@@ -111,6 +111,8 @@ harness.test(
       pollRecovered: true,
       sharedPreserved: true,
       scheduledRecovery: true,
+      skills: { first: true, second: true, retained: true, dirty: 1, replayDirty: 1, refreshed: 1, terminated: true },
+      recovery: { interrupted: true, pendingRetained: true, accepted: true, stableOperation: true, processed: true },
     })
   }),
 )

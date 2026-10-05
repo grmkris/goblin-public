@@ -11,12 +11,13 @@ import * as Schema from 'effect/Schema'
 import { InvalidInput, UpstreamMcp } from '../http/errors.ts'
 import type { CredentialCipher } from '../mcp/cipher.ts'
 import type { McpConnectionManager } from '../mcp/connection.ts'
-import { appChannel, appChannelReplies } from '../storage/schema.ts'
+import { appChannel, appChannelReplies, appTelegramChannel } from '../storage/schema.ts'
 
 /** The author main shows on a message that came from Telegram. */
 export const TELEGRAM = 'Telegram'
 /** The tools a server must offer to carry the channel, all granted when the owner turns it on. */
-export const CHANNEL_TOOLS = ['inbox', 'send_message', 'subscribe', 'unsubscribe'] as const
+export const CHANNEL_TOOLS = ['inbox', 'send_message'] as const
+export const DOORBELL_TOOLS = ['subscribe', 'unsubscribe'] as const
 /** Pages of 100 read at most per pull. */
 const MAX_PAGES = 50
 /** Pages of 100 read at most to find the end of the inbox when the channel is turned on. */
@@ -107,11 +108,42 @@ export class TelegramChannel {
   }
 
   status(): ChannelStatus {
+    const events = this.#db.select().from(appTelegramChannel).get()
+    if (events !== undefined) return { serverId: events.serverId, enabledAt: events.enabledAt, transport: 'events' }
     const row = this.#db
       .select({ serverId: appChannel.serverId, enabledAt: appChannel.enabledAt })
       .from(appChannel)
       .get()
-    return row ?? null
+    return row === undefined ? null : { ...row, transport: 'doorbell' }
+  }
+
+  async startCursor(serverId: string, call: ChannelPorts['call']): Promise<string> {
+    const active = this.status()
+    if (active?.serverId === serverId) {
+      return (
+        this.#db.select().from(appTelegramChannel).get()?.inboxCursor ??
+        this.#db.select().from(appChannel).get()?.cursor ??
+        ''
+      )
+    }
+    let cursor: string | undefined
+    for (let page = 0; page < MAX_HISTORY_PAGES; page++) {
+      const inbox = decodeInbox(await call('inbox', { ...(cursor === undefined ? {} : { cursor }), limit: 100 }))
+      cursor = inbox.nextCursor
+      if (inbox.messages.length === 0) return cursor
+    }
+    throw new InvalidInput({ reason: 'the inbox is too long to start from its end' })
+  }
+
+  /** Called only after both Events leases are confirmed. Historical cursor writers are fenced by this row. */
+  enableEvents(serverId: string, inboxCursor: string, now: number): ChannelStatus {
+    const row = { id: 1, serverId, inboxCursor, enabledAt: now }
+    this.#db
+      .insert(appTelegramChannel)
+      .values(row)
+      .onConflictDoUpdate({ target: appTelegramChannel.id, set: row })
+      .run()
+    return this.status()
   }
 
   /**
@@ -119,15 +151,7 @@ export class TelegramChannel {
    * subscribe the doorbell at `url` with a fresh secret, then store all three.
    */
   async enable(serverId: string, url: string, call: ChannelPorts['call'], now: number): Promise<ChannelStatus> {
-    let cursor: string | undefined
-    let ended = false
-    for (let page = 0; page < MAX_HISTORY_PAGES && !ended; page += 1) {
-      const inbox = decodeInbox(await call('inbox', { ...(cursor === undefined ? {} : { cursor }), limit: 100 }))
-      cursor = inbox.nextCursor
-      ended = inbox.messages.length === 0
-    }
-    // Starting short of the end would bring old messages into main as new ones.
-    if (!ended) throw new InvalidInput({ reason: 'the inbox is too long to start from its end' })
+    const cursor = await this.startCursor(serverId, call)
     const secret = btoa(String.fromCodePoint(...crypto.getRandomValues(new Uint8Array(32))))
     const subscribed = decodeSubscribed(await call('subscribe', { url, secret }))
     if (subscribed.status !== 'subscribed')
@@ -140,17 +164,20 @@ export class TelegramChannel {
       enabledAt: now,
     }
     this.#db.insert(appChannel).values(row).onConflictDoUpdate({ target: appChannel.id, set: row }).run()
+    this.#db.delete(appTelegramChannel).run()
     return this.status()
   }
 
   /** Turn the channel off; answers still to send are dropped. */
   disable(): void {
+    this.#db.delete(appTelegramChannel).run()
     this.#db.delete(appChannel).run()
     this.#db.delete(appChannelReplies).run()
   }
 
   /** The doorbell secret, when the channel is on. */
   async secret(): Promise<string | undefined> {
+    if (this.status()?.transport === 'events') return undefined
     const row = this.#db.select({ secret: appChannel.secret }).from(appChannel).get()
     return row === undefined ? undefined : this.#cipher.decrypt(row.secret, AAD)
   }
@@ -162,19 +189,42 @@ export class TelegramChannel {
     this.#wake()
   }
 
+  #cursor(transport: 'events' | 'doorbell' | undefined): string | undefined {
+    return transport === 'events'
+      ? this.#db.select().from(appTelegramChannel).get()?.inboxCursor
+      : this.#db.select().from(appChannel).get()?.cursor
+  }
+  #checkpoint(status: NonNullable<ChannelStatus>, cursor: string): void {
+    if (status.transport === 'events')
+      this.#db
+        .update(appTelegramChannel)
+        .set({ inboxCursor: cursor })
+        .where(eq(appTelegramChannel.serverId, status.serverId))
+        .run()
+    else if (this.status()?.transport === 'doorbell')
+      this.#db.update(appChannel).set({ cursor }).where(eq(appChannel.serverId, status.serverId)).run()
+  }
+  #current(status: NonNullable<ChannelStatus>): boolean {
+    const current = this.status()
+    return current?.serverId === status.serverId && current?.transport === status.transport
+  }
+
   /** Read the inbox from the cursor and put each new message from the owner into main; the cursor follows each page. */
   async pull(ports: ChannelPorts, now: number): Promise<void> {
     for (let page = 0; page < MAX_PAGES; page += 1) {
-      const cursor = this.#db.select({ cursor: appChannel.cursor }).from(appChannel).get()?.cursor
+      const status = this.status()
+      if (status === null) return
+      const cursor = this.#cursor(status.transport)
       if (cursor === undefined) return
       const inbox = decodeInbox(await ports.call('inbox', { cursor, limit: 100 }))
+      if (!this.#current(status)) return
       for (const message of inbox.messages) {
         if (message.direction !== 'in' || message.delivery === 'archive') continue
         const operationId = myagentId('telegram', message.id)
         await ports.submit(messageText(message), operationId)
         this.track(operationId, now)
       }
-      this.#db.update(appChannel).set({ cursor: inbox.nextCursor }).run()
+      this.#checkpoint(status, inbox.nextCursor)
       if (inbox.messages.length === 0) return
     }
   }

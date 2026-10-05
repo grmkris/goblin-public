@@ -16,10 +16,12 @@ export type EventHandler = (context: EventContext) => Promise<void>
 /** Static handler registry. A completed handler has durably accepted its intent before its independent ack. */
 export class EventDispatcher {
   readonly #handlers = new Map<string, EventHandler>()
-  constructor(
-    readonly store: SqliteEventStore,
-    readonly cipher: CredentialCipher,
-  ) {}
+  readonly store: SqliteEventStore
+  readonly cipher: CredentialCipher
+  constructor(store: SqliteEventStore, cipher: CredentialCipher) {
+    this.store = store
+    this.cipher = cipher
+  }
   register(key: string, handler: EventHandler): void {
     this.#handlers.set(key, handler)
   }

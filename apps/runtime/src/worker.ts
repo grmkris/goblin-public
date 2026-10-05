@@ -11,11 +11,13 @@ import {
 } from './auth/index.ts'
 import { mailerOf } from './auth/mail.ts'
 import { signupMode } from './auth/signup.ts'
-import { readJson } from './http/body.ts'
+import { readBytes, readJson } from './http/body.ts'
 import { Forbidden, InvalidInput, NotFound } from './http/errors.ts'
 import { failureResponse, requestIdOf, secured } from './http/respond.ts'
 import { unwrap } from './http/rpc.ts'
 import { handleInboundMcp } from './inbound/route.ts'
+import { eventsHookTokenValid } from './mcp/events/route-token.ts'
+import { EVENT_BODY_BYTES } from './mcp/events/webhook.ts'
 import { hookTokenValid } from './channel/doorbell.ts'
 import { canonicalRedirect } from './http/canonical.ts'
 import { billingApi, billingDeps } from './billing/routes.ts'
@@ -105,6 +107,28 @@ async function doorbellRoute(request: Request, env: RuntimeEnv, path: string): P
     }),
   )
   return new Response(null, { status: 204 })
+}
+
+/** User-bound route token precedes object lookup; raw bytes are bounded before RPC/signature verification. */
+async function mcpEventsRoute(request: Request, env: RuntimeEnv, path: string): Promise<Response> {
+  const [, userId = '', token = ''] = /^\/hooks\/mcp-events\/([\w-]{1,200})\/([\w-]{43})$/u.exec(path) ?? []
+  if (request.method !== 'POST' || userId === '' || !(await eventsHookTokenValid(env.CREDENTIAL_KEY, userId, token)))
+    throw new NotFound({ what: path })
+  await requireAccountPlan(env, userId)
+  const body = await readBytes(request, EVENT_BODY_BYTES)
+  const result = unwrap(
+    await agentOf(env, userId).mcpEventsWebhook({
+      body,
+      subscriptionId: request.headers.get('x-mcp-subscription-id') ?? '',
+      id: request.headers.get('webhook-id') ?? '',
+      timestamp: request.headers.get('webhook-timestamp') ?? '',
+      signature: request.headers.get('webhook-signature') ?? '',
+    }),
+  )
+  return new Response(result.response ?? null, {
+    status: result.status,
+    ...(result.response === undefined ? {} : { headers: { 'content-type': 'application/json' } }),
+  })
 }
 
 async function agentRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string): Promise<Response> {
@@ -254,6 +278,7 @@ async function admittedRoute(
   const path = new URL(request.url).pathname
   if (path === '/mcp') return handleInboundMcp(request, env)
   if (path === '/hooks/dodo') return Effect.runPromise(billingWebhook(billingDeps(env), request, ctx))
+  if (path.startsWith('/hooks/mcp-events/')) return mcpEventsRoute(request, env, path)
   if (path.startsWith('/hooks/')) return doorbellRoute(request, env, path)
   if (path.startsWith('/api/')) return apiRequest(request, env)
   throw new NotFound({ what: path })
@@ -274,7 +299,10 @@ export default {
         stage: env.STAGE,
         signup: signupMode(env.SIGNUP_MODE),
         mail: mailerOf(env) !== undefined,
-        billing: { mode: env.DODO_PAYMENTS_ENVIRONMENT ?? billingMode(env), configured: billingDeps(env) !== undefined },
+        billing: {
+          mode: env.DODO_PAYMENTS_ENVIRONMENT ?? billingMode(env),
+          configured: billingDeps(env) !== undefined,
+        },
       })
     if (url.pathname.startsWith('/.well-known/oauth-protected-resource'))
       return secured(Response.json(protectedResourceMetadata(env)))

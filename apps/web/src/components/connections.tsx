@@ -18,12 +18,13 @@ import { failureText, record, request } from '../lib/boundary.ts'
 import { AddServer, RemoveServer, SuggestedServers } from './server-add.tsx'
 import { ServerSearch } from './server-search.tsx'
 import { ToolConsole } from './tool-console.tsx'
+import { EventsHealth } from './event-health.tsx'
 
 const decodeServers = Schema.decodeUnknownSync(Schema.Array(ServerView))
 const decodeTools = Schema.decodeUnknownSync(Schema.Array(ToolView))
 const decodeChannel = Schema.decodeUnknownSync(ChannelStatus)
 const path = (serverId: string, action: string): string => `/api/mcp/${encodeURIComponent(serverId)}/${action}`
-const TELEGRAM_TOOLS = ['inbox', 'send_message', 'subscribe', 'unsubscribe']
+const TELEGRAM_TOOLS = ['inbox', 'send_message']
 
 const hasTelegramTools = (tools: readonly ToolView[]): boolean =>
   TELEGRAM_TOOLS.every((name) => tools.some((tool) => tool.name === name))
@@ -187,9 +188,11 @@ function useServerTools(server: ServerView, onMessage: (message: string) => void
 function SkillsSwitch({
   server,
   onMessage,
+  onChanged,
 }: {
   readonly server: ServerView
   readonly onMessage: (message: string) => void
+  readonly onChanged: () => void
 }) {
   const [enabled, setEnabled] = useState(server.skillsEnabled === true)
   const [pending, setPending] = useState(false)
@@ -198,6 +201,7 @@ function SkillsSwitch({
     try {
       await request('/api/mcp/skills', { method: 'PUT', body: { serverId: server.serverId, enabled: next } })
       setEnabled(next)
+      onChanged()
     } catch (error) {
       onMessage(failureText(error))
     } finally {
@@ -241,7 +245,7 @@ function TelegramControl({
       <div className="flex flex-wrap items-center gap-3">
         {enabledHere ? (
           <>
-            <Badge variant="secondary">Telegram</Badge>
+            <Badge variant="secondary">Telegram · {status.transport === 'events' ? 'Events' : 'doorbell'}</Badge>
             <span className="text-muted-foreground text-sm">
               On since{' '}
               <time dateTime={new Date(status.enabledAt * 1000).toISOString()}>{channelDate(status.enabledAt)}</time>
@@ -325,8 +329,9 @@ function ServerCard({ server, onReload, onMessage, channel }: ServerCardProps) {
       {server.status === 'connected' && (
         <CardContent>
           <div className="flex flex-col gap-3">
+            <EventsHealth events={server.eventHealth ?? []} />
             {(server.skillsOffered === true || server.skillsEnabled === true) && (
-              <SkillsSwitch server={server} onMessage={onMessage} />
+              <SkillsSwitch server={server} onMessage={onMessage} onChanged={onReload} />
             )}
             {tools !== undefined && hasTelegramTools(tools) && (
               <TelegramControl serverId={server.serverId} channel={channel} />
@@ -367,6 +372,9 @@ export function Connections() {
       .catch((error: unknown) => setMessage(failureText(error)))
   }, [])
   useEffect(load, [load])
+  useEffect(() => {
+    if (channel.status !== undefined) load()
+  }, [channel.status, load])
   return (
     <div className="flex flex-col gap-6">
       {message && (

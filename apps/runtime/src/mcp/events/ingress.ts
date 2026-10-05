@@ -18,7 +18,10 @@ export type IngressOptions = {
 
 /** Verification is bounded to this owner's endpoint-bound pending intents and matching current/previous secrets. */
 export class EventIngress {
-  constructor(readonly options: IngressOptions) {}
+  readonly options: IngressOptions
+  constructor(options: IngressOptions) {
+    this.options = options
+  }
   async #matches(row: Subscription, input: EventWebhook): Promise<boolean> {
     const { cipher, now } = this.options
     const secrets = [row.secret]

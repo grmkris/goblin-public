@@ -2,6 +2,12 @@
 
 Accepted 2026-10-04 with the owner. Supersedes the Telegram section of `docs/next.md`.
 
+Amended 2026-10-05 by [ADR 0011](0011-mcp-events.md): servers advertising `capabilities.events` use exact
+`message.received` and `question.answered` grants with `inbox` and `send_message`. Both Events leases confirm before
+the old cursor is fenced and an immediate authoritative pull runs. Legacy servers retain the doorbell described
+below until the announced mygram batch. Inbound `tg:<update>` identifiers keep the existing sanitized
+`telegram-tg-<update>` operation mapping; reply IDs, escaping, chunking and pending reply records stay the same.
+
 **The agent talks on Telegram through myagent, with a bot of its own.** myagent is the owner's Telegram-to-MCP
 bridge. It holds several bots, and the owner binds each authorized MCP client to one of them. Purrable connects to
 myagent like any other MCP server. The owner then picks that connection under Connections, "Use for Telegram". That is

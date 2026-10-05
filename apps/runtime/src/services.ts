@@ -3,7 +3,6 @@ import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { type AppError, toAppError } from './http/errors.ts'
-import type { Entitlements } from './billing/gates.ts'
 import type { ModelBudget } from './budget.ts'
 import type { ModelPicker } from './models.ts'
 import type { McpHost } from './mcp/host.ts'
@@ -13,6 +12,9 @@ import type { MainMemory } from './memory/memory.ts'
 import type { SkillLearner } from './skills/learner.ts'
 import type { SkillLibrary } from './skills/library.ts'
 import type { TelegramChannel } from './channel/channel.ts'
+import type { Entitlements } from './billing/gates.ts'
+import type { Events } from './mcp/events.ts'
+import type { EventStorage } from './mcp/events/store.ts'
 import type { CapabilityProfiles } from './capabilities/profiles.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
@@ -29,6 +31,8 @@ export class Channel extends Context.Service<Channel, TelegramChannel>()('purrab
 export class Capabilities extends Context.Service<Capabilities, CapabilityProfiles>()('purrable/Capabilities') {}
 export type AgentServices =
   | Entitlements
+  | Events
+  | EventStorage
   | Mcp
   | Resident
   | Conversations
@@ -51,7 +55,7 @@ export const agentLayer = (services: {
   readonly learner: SkillLearner
   readonly channel: TelegramChannel
   readonly capabilities: CapabilityProfiles
-}): Layer.Layer<Exclude<AgentServices, Entitlements>> =>
+}): Layer.Layer<Exclude<AgentServices, Entitlements | Events | EventStorage>> =>
   Layer.mergeAll(
     Layer.succeed(Mcp, services.host),
     Layer.succeed(Resident, services.resident),

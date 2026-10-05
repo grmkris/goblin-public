@@ -13,6 +13,8 @@ import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { appEventDeliveries } from '../../src/storage/schema.ts'
 import { EventsFixture } from '../mcp/events-fixture.ts'
 import type { EventEnvelope } from '../../src/mcp/events/protocol.ts'
+import { SqliteSkillState } from '../../src/skills/store.ts'
+import { eventsSkillsProbe, eventsRecoveryProbe } from './events-recovery.ts'
 
 const KEY = 'cHVycmFibGUtdGVzdC1rZXktMzItYnl0ZXMtbG9uZyE='
 const occurrence = (fixture: EventsFixture, eventId: string): EventEnvelope => ({
@@ -27,6 +29,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
   runApplicationMigrations(storage)
   const db = drizzle(storage)
   const store = new SqliteEventStore(db)
+  const skillState = new SqliteSkillState(db)
   const cipher = await CredentialCipher.fromBase64(KEY)
   const fixture = new EventsFixture()
   let clock = fixture.now
@@ -34,6 +37,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
   const manager = new McpConnectionManager({
     servers: [{ serverId: 'mygram', endpoint: 'https://events.test/mcp' }],
     allows: () => true,
+    skillsEnabled: (serverId) => skillState.enabled(serverId),
     auth: () => ({ token: async () => 'synthetic-fixture-bearer' }),
     fetch: (input, init) => fixture.fetch(input, init),
     authorizeEvents: (serverId, name, args) => {
@@ -41,7 +45,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
     },
   })
   const channel = new TelegramChannel(db, cipher, () => undefined)
-  const events = new McpEvents({
+  const eventOptions = {
     store,
     cipher,
     manager,
@@ -49,10 +53,11 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
     callback: 'https://purrable.test/hooks/mcp-events/fixture/token',
     now: () => clock,
     authorize: () => undefined,
-    wake: async (at) => {
+    wake: async (at: number) => {
       wakes.push(at)
     },
-  })
+  }
+  const events = new McpEvents(eventOptions)
   fixture.receiver = async (request) => {
     const exit = await Effect.runPromiseExit(
       events.receive({
@@ -90,6 +95,8 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
     manager,
     channel,
     events,
+    eventOptions,
+    skillState,
     clock: (at: number) => {
       clock = at
       fixture.now = at
@@ -99,6 +106,8 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
     pull,
   }
 }
+
+export type EventsProbeState = Awaited<ReturnType<typeof setup>>
 
 async function subscribeTelegram(state: Awaited<ReturnType<typeof setup>>) {
   for (const name of ['message.received', 'question.answered']) {
@@ -201,8 +210,17 @@ export async function eventsProbe(storage: DurableObjectStorage, harness: PiHarn
     await subscribeTelegram(state)
     const discovered = offersEvents(await state.manager.connect('mygram'))
     const result = await exercise(state)
+    const skills = await eventsSkillsProbe(state)
+    const recovery = await eventsRecoveryProbe(state)
     const messages = await harness.messages({ session: MAIN_THREAD })
-    return { ...result, discovered, messageCount: messages.length, scheduledRecovery: state.wakes.length > 0 }
+    return {
+      ...result,
+      discovered,
+      skills,
+      recovery,
+      messageCount: messages.length,
+      scheduledRecovery: state.wakes.length > 0,
+    }
   } finally {
     await state.manager.closeAll()
   }

@@ -7,10 +7,10 @@ import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import type { AgentRpcMethods, RuntimeEnv } from './env.ts'
-import { type AppError, Forbidden, InvalidInput, toAppError } from './http/errors.ts'
-import { CHANNEL_TOOLS, type ChannelPorts, TelegramChannel, channelCall, logChannelFailure } from './channel/channel.ts'
+import { type AppError, Forbidden, toAppError } from './http/errors.ts'
+import { type ChannelPorts, TelegramChannel, channelCall, logChannelFailure } from './channel/channel.ts'
 import { channelPorts } from './channel/turns.ts'
-import { type Doorbell, doorbellValid, hookToken, hookUrl } from './channel/doorbell.ts'
+import { type Doorbell, doorbellValid } from './channel/doorbell.ts'
 import { type RpcResult, encodeExit } from './http/rpc.ts'
 import { piEventResponse } from './pi/events.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
@@ -32,7 +32,6 @@ import {
   Channel,
   Conversations,
   Mcp,
-  Skills,
   Memory,
   Models,
   Resident,
@@ -46,6 +45,9 @@ import { accountEntitlements, Entitlements, type EntitlementPolicy } from './bil
 import { runApplicationMigrations } from './storage/migrations.ts'
 import { nowMillis, nowSeconds } from './clock.ts'
 import type { ServerSource } from './mcp/servers.ts'
+import { Events, type EventWebhook } from './mcp/events.ts'
+import { enableTelegram, disableTelegram } from './channel/program.ts'
+import { setSkillEvents } from './skills/events.ts'
 import { suggestions } from './mcp/suggested.ts'
 import { authoredContent, ownerContent } from './pi/content.ts'
 import { budgetExtension } from './pi/budget.ts'
@@ -111,6 +113,8 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   override async onStart(): Promise<void> {
     runApplicationMigrations(this.ctx.storage)
+    // Reconstruct lease and receipt recovery without opening Pi or waiting on outbound network calls.
+    await this.#scheduleEvents(Date.now() + 1000)
   }
 
   /** Tests inject account authority here; the deployed object always reads its own account in auth D1. */
@@ -128,12 +132,34 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       memory: this.#memory,
       subagentTool: this.#subagentTool,
       scheduleReplies: () => void this.schedule(5, 'channelReplies'),
+      userId: this.name,
       entitlements: this.entitlementPolicy(),
+      scheduleEvents: (at) => this.#scheduleEvents(at),
+      pullTelegram: () => this.channelPull(),
     })
     this.#runtime.catch(() => {
       this.#runtime = undefined
     })
     return this.#runtime
+  }
+
+  /** One earliest Events wake. Agent schedules are durable and reconstructed independently of Pi. */
+  async #scheduleEvents(at: number): Promise<void> {
+    const pending = (await this.listSchedules()).filter((job) => job.callback === 'mcpEventsWake')
+    const seconds = Math.ceil(at / 1000)
+    if (pending.some((job) => job.time <= seconds)) return
+    await this.schedule(new Date(at), 'mcpEventsWake')
+    for (const job of pending) await this.cancelSchedule(job.id)
+  }
+
+  mcpEventsWebhook(input: EventWebhook) {
+    return this.#client(Events.use((events) => events.receive(input)))
+  }
+
+  async mcpEventsWake(): Promise<void> {
+    await this.#runOrThrow(Events.use((events) => events.maintain())).catch(() =>
+      this.#scheduleEvents(Date.now() + 60_000),
+    )
   }
 
   async #exit<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<Exit.Exit<A, AppError>> {
@@ -266,7 +292,13 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
 
   mcpServers() {
-    return this.#owner(Mcp.useSync((mcp) => mcp.servers()))
+    return this.#owner(
+      Effect.gen(function* () {
+        const mcp = yield* Mcp
+        const events = yield* Events
+        return mcp.servers().map((server) => ({ ...server, eventHealth: events.health(server.serverId) }))
+      }),
+    )
   }
 
   mcpConnect(serverId: string) {
@@ -305,11 +337,21 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
 
   mcpRemoveServer(serverId: string) {
-    return this.#owner(Mcp.use((mcp) => attempt(async () => (await mcp.removeServer(serverId), null))))
+    return this.#owner(
+      Effect.gen(function* () {
+        yield* (yield* Events).disableServer(serverId)
+        return yield* Mcp.use((mcp) => attempt(async () => (await mcp.removeServer(serverId), null)))
+      }),
+    )
   }
 
   mcpDisconnect(serverId: string) {
-    return this.#owner(Mcp.use((mcp) => attempt(async () => (await mcp.disconnect(serverId), null))))
+    return this.#owner(
+      Effect.gen(function* () {
+        yield* (yield* Events).disableServer(serverId)
+        return yield* Mcp.use((mcp) => attempt(async () => (await mcp.disconnect(serverId), null)))
+      }),
+    )
   }
 
   mcpTools(serverId: string, refresh: boolean) {
@@ -326,14 +368,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   /** Turn the agent's use of a server's skills on or off. */
   mcpSetSkills(serverId: string, enabled: boolean) {
-    return this.#owner(
-      Skills.use((skills) =>
-        attemptSync(() => {
-          skills.setEnabled(serverId, enabled)
-          return { serverId, enabled }
-        }),
-      ),
-    )
+    return this.#owner(setSkillEvents(serverId, enabled))
   }
 
   mcpSetAppGrant(serverId: string, uri: string, allowed: boolean) {
@@ -375,7 +410,10 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
           const resident = yield* Resident
           const now = yield* nowSecondsEffect
           if (enabled) resident.enable(now)
-          else resident.revoke(now)
+          else {
+            yield* (yield* Events).disableServer()
+            resident.revoke(now)
+          }
           return resident.status(now)
         }),
       ),
@@ -415,40 +453,18 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   /**
    * Carry Telegram through `serverId`, a myagent connection bound to the agent's own bot: grant its channel tools (an
-   * explicit owner action, so the grants are the owner's), read to the end of its inbox and subscribe the doorbell.
+   * explicit owner action), checkpoint its inbox and subscribe Events or the legacy doorbell.
    */
   channelEnable(serverId: string) {
-    const { APP_URL, CREDENTIAL_KEY } = this.env
-    const userId = this.name
     return this.#owner(
-      Effect.gen(function* () {
-        const mcp = yield* Mcp
-        const channel = yield* Channel
-        const tools = yield* attempt(() => mcp.tools(serverId, true))
-        const missing = CHANNEL_TOOLS.filter((name) => !tools.some((tool) => tool.name === name))
-        if (missing.length > 0)
-          return yield* new InvalidInput({ reason: `${serverId} does not offer ${missing.join(', ')}` })
-        for (const name of CHANNEL_TOOLS) yield* attempt(() => mcp.setToolGrant(serverId, name, true))
-        const url = hookUrl(APP_URL, userId, yield* attempt(() => hookToken(CREDENTIAL_KEY, userId)))
-        const now = yield* nowSecondsEffect
-        return yield* attempt(() => channel.enable(serverId, url, channelCall(mcp.manager, serverId), now))
-      }),
+      enableTelegram(serverId, this.env.APP_URL, this.env.CREDENTIAL_KEY, this.name, () =>
+        this.schedule(0, 'channelPull'),
+      ),
     )
   }
 
-  /** Stop carrying Telegram: unsubscribe the doorbell (best effort) and forget the channel. Grants stay the owner's. */
   channelDisable() {
-    return this.#owner(
-      Effect.gen(function* () {
-        const mcp = yield* Mcp
-        const channel = yield* Channel
-        const status = channel.status()
-        if (status !== null)
-          yield* Effect.ignore(attempt(() => channelCall(mcp.manager, status.serverId)('unsubscribe', {})))
-        channel.disable()
-        return null
-      }),
-    )
+    return this.#owner(disableTelegram)
   }
 
   /**
