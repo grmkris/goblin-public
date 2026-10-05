@@ -2,7 +2,7 @@ import { Effect, FileSystem, Schema } from 'effect'
 import { join } from 'node:path'
 import { Corpus } from '../src/corpus.ts'
 import { validateScenario } from '../src/fixtures.ts'
-import { starterManifest, validateManifest } from '../src/manifest.ts'
+import { canaryManifest, validateManifest } from '../src/manifest.ts'
 import { Probe } from '../src/schema.ts'
 import { fail, readJson, writeJson } from './store.ts'
 import { sha256 } from './corpus.ts'
@@ -30,19 +30,10 @@ export const createCanary = Effect.fn('bench.createCanary')(function* (root: str
       return yield* fail('Each cutoff requires state, evidence and abstention probes')
   }
   const scenario = { ...original, probes }
-  const starter = starterManifest()
   const relative = `.local/bench/corpora/${id}/labeled.json`
   const labeled = { ...corpus, scenarios: [scenario] }
   const text = `${JSON.stringify(labeled, null, 2)}\n`
-  const manifest = {
-    ...starter,
-    name: `real-${id}`,
-    scenarioIds: [scenario.id],
-    transport: { contextWindowTokens: 131_072, thinking: 'disabled' as const },
-    corpus: { path: relative, sha256: sha256(text) },
-    variants: starter.variants.filter((variant) => variant.policy !== 'optchat' || variant.writer === variant.reader),
-    allowance: { ...starter.allowance, maxAnswers: 36, concurrency: 1 },
-  }
+  const manifest = canaryManifest(id, scenario.id, { path: relative, sha256: sha256(text) })
   const errors = [...validateScenario(scenario), ...validateManifest(manifest, [scenario])]
   if (errors.length > 0) return yield* fail(errors.join('; '))
   yield* fs.writeFileString(path, text, { mode: 0o600 })

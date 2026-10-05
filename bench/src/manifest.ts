@@ -39,6 +39,24 @@ export function starterManifest(): Manifest {
   }
 }
 
+/** Real canaries keep each writer coupled to its reader and retain provider-compatible thinking defaults. */
+export function canaryManifest(
+  id: string,
+  scenarioId: string,
+  corpus: NonNullable<Manifest['corpus']>,
+): Manifest & { readonly corpus: NonNullable<Manifest['corpus']> } {
+  const starter = starterManifest()
+  return {
+    ...starter,
+    name: `real-${id}`,
+    scenarioIds: [scenarioId],
+    transport: { contextWindowTokens: 131_072, thinking: 'provider-default' },
+    corpus,
+    variants: starter.variants.filter((variant) => variant.policy !== 'optchat' || variant.writer === variant.reader),
+    allowance: { ...starter.allowance, maxAnswers: 36, concurrency: 1 },
+  }
+}
+
 export const decodeManifest = Schema.decodeUnknownSync(Manifest)
 
 function variantErrors(manifest: Manifest): string[] {

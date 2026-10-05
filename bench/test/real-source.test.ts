@@ -7,12 +7,67 @@ import { importClaude, sourceCheckpoints } from '../src/import.ts'
 import { publicEvents } from '../src/protocol.ts'
 import { replayGroups } from '../worker/replay.ts'
 import { episodes } from '../src/plan.ts'
-import { validateManifest, starterManifest } from '../src/manifest.ts'
+import { canaryManifest, validateManifest, starterManifest } from '../src/manifest.ts'
 import { redactor } from '../scripts/redaction.ts'
 import { scoreProbe } from '../src/scoring.ts'
+import { Manifest } from '../src/schema.ts'
+import { EpisodeResult, Resolved, Trace } from '../src/results.ts'
+import { accounting, summary } from '../src/report.ts'
+import { applyReview, Review } from '../src/review.ts'
 
 const dir = resolve(import.meta.dirname, '../../.local/bench/corpora/purrable-claude-canary')
 const sourcePath = resolve(dir, 'source.jsonl')
+const runPath = resolve(dir, '../../runs/real-claude-canary-04/result.json')
+test.skipIf(!existsSync(runPath))('unreviewed real answers have no accuracy and runtime failures stay separate', () => {
+  const data = Schema.decodeUnknownSync(
+    Schema.Struct({ resolved: Resolved, results: Schema.Array(EpisodeResult), traces: Schema.Array(Trace) }),
+  )(JSON.parse(readFileSync(runPath, 'utf8')))
+  const scores = Object.values(summary(data))
+  expect(scores.every((score) => score.accuracy === null)).toBe(true)
+  expect(scores.reduce((n, score) => n + score.scoredAnswers, 0)).toBe(0)
+  expect(scores.reduce((n, score) => n + score.completedAnswers, 0)).toBe(9)
+  expect(scores.reduce((n, score) => n + score.runtimeFailures, 0)).toBe(27)
+  expect(scores.reduce((n, score) => n + score.pendingReviews, 0)).toBe(9)
+  expect(accounting(data)).toEqual({
+    requests: 51,
+    successfulRequests: 49,
+    failedRequests: 2,
+    unsettledRequests: 0,
+    unknownUsageRequests: 2,
+    chargedTokens: { input: 363339, output: 8479 },
+    reportedTokens: { input: 293308, output: 4393 },
+  })
+})
+const reviewsPath = resolve(runPath, '../reviews.jsonl')
+test.skipIf(!existsSync(runPath) || !existsSync(reviewsPath))(
+  'real semantic reviews preserve strict failures and coverage',
+  () => {
+    const data = Schema.decodeUnknownSync(
+      Schema.Struct({ resolved: Resolved, results: Schema.Array(EpisodeResult), traces: Schema.Array(Trace) }),
+    )(JSON.parse(readFileSync(runPath, 'utf8')))
+    const reviews = readFileSync(reviewsPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => Schema.decodeUnknownSync(Review)(JSON.parse(line)))
+    const results = data.results.map((result) => {
+      const review = reviews.findLast((item) => item.episodeId === result.id)
+      return review === undefined ? result : applyReview(data.resolved, result, review)
+    })
+    const scores = Object.values(summary({ ...data, results }))
+    expect(scores.reduce((n, score) => n + score.scoredAnswers, 0)).toBe(9)
+    expect(scores.reduce((n, score) => n + score.correct, 0)).toBe(3)
+    expect(scores.reduce((n, score) => n + score.runtimeFailures, 0)).toBe(27)
+    expect(scores.reduce((n, score) => n + score.pendingReviews, 0)).toBe(0)
+  },
+)
+test.skipIf(!existsSync(sourcePath))('real canary preserves provider-default thinking for GLM compatibility', () => {
+  const original = Schema.decodeUnknownSync(Manifest)(JSON.parse(readFileSync(resolve(dir, 'manifest.json'), 'utf8')))
+  const scenarioId = original.scenarioIds[0]
+  if (original.corpus === undefined || scenarioId === undefined) throw new Error('Missing real canary manifest')
+  const manifest = canaryManifest('purrable-claude-canary', scenarioId, original.corpus)
+  expect(manifest.transport).toEqual({ contextWindowTokens: 131_072, thinking: 'provider-default' })
+  expect(manifest.variants).toHaveLength(6)
+})
 // Optional private regression uses the actual frozen session. CI never substitutes a generated conversation.
 test.skipIf(!existsSync(sourcePath))(
   'real Claude source: visible blocks, parallel calls, checkpoint pairs and host-only labels',

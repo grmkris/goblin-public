@@ -1,4 +1,4 @@
-import type { RunData, EpisodeResult } from './results.ts'
+import type { RunData, EpisodeResult, Trace } from './results.ts'
 import { sameTransport } from './transport.ts'
 import { episodes } from './plan.ts'
 
@@ -13,31 +13,58 @@ const categoryScores = (results: readonly EpisodeResult[]) =>
   )
 const probeIds = (data: RunData) =>
   data.results.map((result) => result.id.slice(0, -result.variant.length - 1)).toSorted()
+const attemptsOf = (data: RunData) => [...new Map(data.traces.map((trace) => [trace.attempt, trace])).values()]
+const tokens = (traces: readonly Trace[]) => ({
+  input: traces.reduce((n, trace) => n + trace.input, 0),
+  output: traces.reduce((n, trace) => n + trace.output, 0),
+})
 
 export function summary(data: RunData) {
   return Object.fromEntries(
-    [...grouped(data)].map(([variant, results]) => [
-      variant,
-      {
-        answers: results.length,
-        correct: results.filter((result) => result.score.correct).length,
-        accuracy:
-          results.every((result) => result.status === 'failed') && data.resolved.manifest.corpus !== undefined
-            ? null
-            : average(results),
-        completedAnswers: results.filter((result) => result.status === 'completed').length,
-        runtimeFailures: results.filter((result) => result.status === 'failed').length,
-        categories: categoryScores(results),
-        failures: results.filter(
-          (result) => result.status === 'failed' || (result.reviewStatus !== 'pending' && !result.score.correct),
-        ).length,
-        pendingReviews: results.filter((result) => result.reviewStatus === 'pending').length,
-      },
-    ]),
+    [...grouped(data)].map(([variant, results]) => {
+      const scored = results.filter(
+        (result) =>
+          result.status === 'completed' &&
+          (data.resolved.manifest.corpus === undefined
+            ? result.reviewStatus !== 'pending'
+            : result.reviewStatus === 'reviewed'),
+      )
+      return [
+        variant,
+        {
+          answers: results.length,
+          correct: scored.filter((result) => result.score.correct).length,
+          accuracy: scored.length === 0 ? null : average(scored),
+          scoredAnswers: scored.length,
+          completedAnswers: results.filter((result) => result.status === 'completed').length,
+          runtimeFailures: results.filter((result) => result.status === 'failed').length,
+          categories: categoryScores(scored),
+          failures:
+            results.filter((result) => result.status === 'failed').length +
+            scored.filter((result) => !result.score.correct).length,
+          pendingReviews: results.filter((result) => result.reviewStatus === 'pending').length,
+        },
+      ]
+    }),
   )
 }
+/** The final record settles each attempt; reservations without reported usage remain charged. */
+export function accounting(data: RunData) {
+  const attempts = attemptsOf(data)
+  const reported = attempts.filter((trace) => !trace.unknownUsage)
+  return {
+    requests: attempts.length,
+    successfulRequests: attempts.filter((trace) => trace.status >= 200 && trace.status < 300).length,
+    failedRequests: attempts.filter((trace) => trace.status !== 0 && (trace.status < 200 || trace.status >= 300))
+      .length,
+    unsettledRequests: attempts.filter((trace) => trace.status === 0).length,
+    unknownUsageRequests: attempts.length - reported.length,
+    chargedTokens: tokens(attempts),
+    reportedTokens: tokens(reported),
+  }
+}
 export function cost(data: RunData) {
-  const attempts = [...new Map(data.traces.map((trace) => [trace.attempt, trace])).values()]
+  const attempts = attemptsOf(data)
   let spend = 0
   for (const trace of attempts) {
     const rate = data.resolved.manifest.rates.find((item) => item.model === trace.model)
@@ -124,8 +151,8 @@ export function renderReport(data: RunData): string {
   const rows = data.results
     .map(
       (result) =>
-        `<tr><td>${escape(result.variant)}</td><td>${escape(result.id)}</td><td>${result.reviewStatus === 'pending' ? 'review pending' : result.score.correct ? 'pass' : 'fail'}</td><td><details><summary>inspect</summary><pre>${escape(JSON.stringify(result, null, 2))}</pre><a href="traces/${encodeURIComponent(result.id)}.json">private episode trace</a></details></td></tr>`,
+        `<tr><td>${escape(result.variant)}</td><td>${escape(result.id)}</td><td>${result.status === 'failed' ? 'runtime failure' : result.reviewStatus === 'pending' ? 'review pending' : result.score.correct ? 'pass' : 'fail'}</td><td><details><summary>inspect</summary><pre>${escape(JSON.stringify(result, null, 2))}</pre><a href="${result.status === 'failed' ? 'failures.jsonl' : `traces/${encodeURIComponent(result.id)}.json`}">private ${result.status === 'failed' ? 'failure ledger' : 'episode trace'}</a></details></td></tr>`,
     )
     .join('')
-  return `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Memory bench ${escape(data.resolved.runId)}</title><style>body{font:14px system-ui;margin:2rem;background:#111;color:#eee}table{border-collapse:collapse;width:100%}td,th{border:1px solid #444;padding:.4rem}details{max-width:50rem}pre{white-space:pre-wrap}a{color:#8bd}</style><h1>${escape(data.resolved.runId)}</h1><p>${escape(data.resolved.mode)} provider · source ${escape(data.resolved.sourceHash)} · corpus ${escape(data.resolved.corpusHash)}</p><pre>${escape(JSON.stringify({ scores: summary(data), cost: cost(data) }, null, 2))}</pre><table><thead><tr><th>variant</th><th>episode</th><th>result</th><th>trace</th></tr></thead><tbody>${rows}</tbody></table>`
+  return `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Memory bench ${escape(data.resolved.runId)}</title><style>body{font:14px system-ui;margin:2rem;background:#111;color:#eee}table{border-collapse:collapse;width:100%}td,th{border:1px solid #444;padding:.4rem}details{max-width:50rem}pre{white-space:pre-wrap}a{color:#8bd}</style><h1>${escape(data.resolved.runId)}</h1><p>${escape(data.resolved.mode)} provider · source ${escape(data.resolved.sourceHash)} · corpus ${escape(data.resolved.corpusHash)}</p><p>Accuracy covers completed, scored answers; real answers require semantic review. Inspect completion and review coverage before comparing variants. Charged tokens include retained reservations when provider usage is unknown.</p><pre>${escape(JSON.stringify({ plannedAnswers: episodes(data.resolved.manifest, data.resolved.scenarios).length, scores: summary(data), accounting: accounting(data), cost: cost(data) }, null, 2))}</pre><table><thead><tr><th>variant</th><th>episode</th><th>result</th><th>trace</th></tr></thead><tbody>${rows}</tbody></table>`
 }

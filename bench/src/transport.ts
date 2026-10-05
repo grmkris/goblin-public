@@ -1,6 +1,6 @@
 import type { Manifest } from './schema.ts'
 
-/** Alibaba's OpenAI-compatible routes need an explicit thinking switch; Pi thinkingLevel=off sends no switch. */
+/** Explicit disabling is opt-in: some routes (including GLM) require provider-default thinking. */
 export function requestPayload(original: Readonly<Record<string, unknown>>, thinking: 'provider-default' | 'disabled') {
   return JSON.stringify({
     ...original,
