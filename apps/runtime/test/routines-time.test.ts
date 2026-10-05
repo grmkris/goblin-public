@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { nextCron, nextFire, parseCron } from '../src/routines/time.ts'
-import { routineOrigin } from '../src/routines/routes.ts'
+import { routineOrigin } from '../src/routines/csrf.ts'
 import type { RoutineDefinition } from '@purrable/contracts'
 
 const at = (iso: string) => Date.parse(iso)
@@ -35,6 +35,9 @@ describe('routine dates and schedule policy', () => {
     expect(() => nextCron('0 9 * * *', 'Mars/Base', at('2026-10-05T00:00:00Z'))).toThrow()
     expect(() => nextCron('0 9 31 2 *', 'UTC', at('2026-10-05T00:00:00Z'))).toThrow()
     expect(() => nextFire(reminder, at('2026-10-07T00:00:00Z'))).toThrow()
+    expect(() =>
+      nextFire({ ...reminder, trigger: { kind: 'once', at: '2027-02-30T09:00:00Z' } }, at('2026-10-05T00:00:00Z')),
+    ).toThrow()
   })
   it('requires exact configured origin and CSRF header on every routine write', () => {
     const url = 'https://purrable.test/api/routines'

@@ -41,7 +41,13 @@ function conversationAt(path: string): string | undefined {
 }
 
 const linkTo = (view: ThreadView) =>
-  view.id === MAIN_THREAD ? <Link to="/" /> : <Link to="/t/$threadId" params={{ threadId: view.id }} />
+  view.id === MAIN_THREAD ? (
+    <Link to="/" />
+  ) : view.kind === 'thread' && !view.archived ? (
+    <Link to="/" search={{ thread: Number(view.id) }} />
+  ) : (
+    <Link to="/t/$threadId" params={{ threadId: view.id }} />
+  )
 
 function Busy({ view }: { readonly view: ThreadView }) {
   if (!view.busy) return null

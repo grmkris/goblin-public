@@ -21,11 +21,11 @@ import {
   SPRINGS,
   stepSpring,
 } from '../../lib/spring.ts'
+import { clipStage } from '../../lib/app-occlusion.ts'
 import { AppFrame } from './frame.tsx'
 import { useAppGrantAsks } from './grant-ask.tsx'
 import { LinkOffer } from './offers.tsx'
 import { type AppSession, useApps } from './provider.tsx'
-import { AppPanel } from './slot.tsx'
 
 type Axes = { x: Motion; y: Motion; width: Motion; height: Motion }
 const AXES = ['x', 'y', 'width', 'height'] as const
@@ -86,6 +86,7 @@ function useStageMotion(
   live: RefObject<Live>,
   target: () => Rect | undefined,
   onTarget: (rect: Rect) => void,
+  clip: (element: HTMLElement) => void,
 ): () => void {
   const kickRef = useRef<() => void>(() => undefined)
   const { onKick } = useApps()
@@ -109,6 +110,7 @@ function useStageMotion(
       onTarget(rect)
       const moving = advance(live.current, rect, seconds, reduced.matches)
       write(element, live.current.axes)
+      clip(element)
       if (moving) raf = requestAnimationFrame(frame)
       else last = 0
     }
@@ -119,6 +121,7 @@ function useStageMotion(
     const off = onKick(kick)
     window.addEventListener('scroll', kick, { capture: true, passive: true })
     window.addEventListener('resize', kick)
+    window.addEventListener('pointermove', kick, { passive: true })
     window.visualViewport?.addEventListener('resize', kick)
     kick()
     return () => {
@@ -126,9 +129,10 @@ function useStageMotion(
       off()
       window.removeEventListener('scroll', kick, { capture: true })
       window.removeEventListener('resize', kick)
+      window.removeEventListener('pointermove', kick)
       window.visualViewport?.removeEventListener('resize', kick)
     }
-  }, [stage, live, target, onTarget, onKick])
+  }, [stage, live, target, onTarget, onKick, clip])
   return () => kickRef.current()
 }
 
@@ -205,8 +209,8 @@ function useStageDrag(live: RefObject<Live>, kick: () => void, mode: McpUiDispla
 }
 
 const MODE_ACTIONS: Record<McpUiDisplayMode, { readonly label: string; readonly icon: typeof XIcon }> = {
-  inline: { label: 'Back to the conversation', icon: Minimize2Icon },
-  fullscreen: { label: 'Open in the side panel', icon: PanelRightOpenIcon },
+  inline: { label: 'Back to workspace pane', icon: Minimize2Icon },
+  fullscreen: { label: 'Fullscreen', icon: PanelRightOpenIcon },
   pip: { label: 'Picture in picture', icon: PictureInPicture2Icon },
 }
 
@@ -241,9 +245,32 @@ function AppChrome({ session, drag }: { readonly session: AppSession; readonly d
   )
 }
 
+function measuredStage(session: AppSession, apps: ReturnType<typeof useApps>, live: Live): Rect | undefined {
+  const { mode, key } = session
+  if (apps.phone && mode === 'inline') return undefined
+  if (!apps.phone) {
+    const slot = apps.element(mode === 'fullscreen' ? 'workspace-fullscreen' : 'workspace-app')
+    if (
+      mode !== 'fullscreen' &&
+      slot?.closest<HTMLElement>('[data-workspace-visible]')?.dataset.workspaceVisible === 'false'
+    )
+      return undefined
+    return rectOf(slot)
+  }
+  const view = viewport()
+  return stageRect(mode, {
+    viewport: view,
+    phone: apps.phone,
+    inline: rectOf(apps.element(`inline:${key}`)),
+    panel: rectOf(apps.element('panel')),
+    pip: live.pip ?? pipCorners(view)[0],
+    sheet: live.sheet ?? sheetSnaps(view)[1],
+  })
+}
+
 function Stage({ session }: { readonly session: AppSession }) {
   const apps = useApps()
-  const { mode, key } = session
+  const { mode } = session
   const sheet = apps.phone && mode === 'fullscreen'
   const stage = useRef<HTMLDivElement>(null)
   const live = useRef<Live>({
@@ -258,38 +285,31 @@ function Stage({ session }: { readonly session: AppSession }) {
   const grants = useAppGrantAsks(session.selection.serverId)
   const [box, setBox] = useState({ width: 0, height: 0 })
   const target = useRef<() => Rect | undefined>(() => undefined)
-  target.current = () => {
-    if (apps.phone && mode === 'inline') return undefined
-    const view = viewport()
-    return stageRect(mode, {
-      viewport: view,
-      phone: apps.phone,
-      inline: rectOf(apps.element(`inline:${key}`)),
-      panel: rectOf(apps.element('panel')),
-      pip: live.current.pip ?? pipCorners(view)[0],
-      sheet: live.current.sheet ?? sheetSnaps(view)[1],
-    })
-  }
+  target.current = () => measuredStage(session, apps, live.current)
   const [measure] = useState(() => () => target.current())
   const [onTarget] = useState(() => (rect: Rect) => {
     const width = Math.round(rect.width)
     const height = Math.round(rect.height) - CHROME_HEIGHT
     setBox((current) => (current.width === width && current.height === height ? current : { width, height }))
   })
-  const kick = useStageMotion(stage, live, measure, onTarget)
+  const clipRef = useRef<(element: HTMLElement) => void>(() => undefined)
+  clipRef.current = (element) =>
+    clipStage(element, apps.phone || mode === 'fullscreen' ? undefined : apps.element('workspace-app'))
+  const [clip] = useState(() => (element: HTMLElement) => clipRef.current(element))
+  const kick = useStageMotion(stage, live, measure, onTarget, clip)
   const drag = useStageDrag(live, kick, mode, sheet)
   const previous = useRef(mode)
   useEffect(() => {
     if (previous.current === mode) return
     previous.current = mode
-    live.current.spring = SPRINGS.place
+    live.current.spring = apps.phone ? SPRINGS.place : undefined
     kick()
-  }, [mode, kick])
+  }, [mode, kick, apps.phone])
   const placement: AppPlacement = {
     mode,
     available: apps.available,
     width: box.width,
-    height: mode === 'inline' ? inlineHeight(10_000, window.innerHeight) : box.height,
+    height: apps.phone && mode === 'inline' ? inlineHeight(10_000, window.innerHeight) : box.height,
   }
   return (
     <div ref={stage} className="app-stage" data-mode={sheet ? 'sheet' : mode} data-hidden="">
@@ -321,12 +341,7 @@ function Stage({ session }: { readonly session: AppSession }) {
  * stage holding the single live App, wherever its display mode puts it. Nothing while no App is open.
  */
 export function AppLayer() {
-  const { session, phone } = useApps()
+  const { session } = useApps()
   if (session === undefined) return null
-  return (
-    <>
-      {session.mode === 'fullscreen' && !phone && <AppPanel />}
-      <Stage key={`${session.key} ${session.selection.uri}`} session={session} />
-    </>
-  )
+  return <Stage key={`${session.selection.serverId} ${session.key} ${session.selection.uri}`} session={session} />
 }

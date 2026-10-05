@@ -49,7 +49,7 @@ export function MessageComposer({
         disabled={pending}
       />
       <ComposerActions>
-        <div className="mr-auto flex min-w-0 items-center gap-2">{context}</div>
+        <div className="composer-context mr-auto flex min-w-0 items-center gap-2">{context}</div>
         {running && (
           <Button type="button" variant="outline" onClick={onStop}>
             Stop

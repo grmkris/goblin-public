@@ -3,6 +3,7 @@ import { canonicalRedirect } from '../../src/http/canonical.ts'
 import { inboundHostProbe } from './inbound-host.ts'
 import { MAIN_THREAD, type ThreadView } from '@purrable/contracts'
 import { eventsProbe } from './events-probe.ts'
+import { routinesProbe } from './routines-probe.ts'
 import { PersonalAgent } from '../../src/agent.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { listTables } from '../../src/storage/vendor.ts'
@@ -50,6 +51,10 @@ export class PersonalAgentProbe extends PersonalAgent {
 
   eventsProbe() {
     return eventsProbe(this.ctx.storage, this.harness)
+  }
+
+  routinesProbe() {
+    return routinesProbe(this.ctx.storage)
   }
 
   skillsCacheProbe() {
@@ -593,6 +598,8 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
   switch (url.pathname) {
     case '/events-probe':
       return agent.eventsProbe().then((result) => Response.json(result))
+    case '/routines-probe':
+      return agent.routinesProbe().then((result) => Response.json(result))
     case '/rpc':
       return rpcSequence(agent)
     case '/skills-cache':

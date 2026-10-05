@@ -14,7 +14,9 @@ import { Conversation } from './conversation.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
 import type { Part } from '../lib/parts.ts'
 import { ChatBar } from './chat-bar.tsx'
-import { MainThreadPanel, type ThreadPanelControl } from './thread-panel.tsx'
+import { type ThreadPanelControl } from './thread-panel.tsx'
+import { WorkspaceLayout } from './workspace-layout.tsx'
+import { WorkspaceProvider, useWorkspace } from './workspace-state.tsx'
 import { useInlineThreads } from './thread-replies.tsx'
 import { useThreads } from './threads.tsx'
 import { ModelPicker, useModelChoice } from './model-picker.tsx'
@@ -40,7 +42,9 @@ function StreamNotice({ text }: { readonly text: string }) {
 export function Chat({ thread, panel }: { readonly thread: string; readonly panel?: ThreadPanelControl }) {
   return (
     <AppsProvider key={thread}>
-      <ChatView thread={thread} panel={panel} />
+      <WorkspaceProvider primary={thread} panel={panel}>
+        <ChatView thread={thread} panel={panel} />
+      </WorkspaceProvider>
     </AppsProvider>
   )
 }
@@ -140,39 +144,41 @@ function ChatView({ thread, panel }: { readonly thread: string; readonly panel: 
   const { parts, branchable, earlier } = useTranscript(thread, projection, report)
   const waiting = useMemo(() => openInteractions(parts), [parts])
   // Threads start from main and show under its messages; a thread does not branch further.
-  const inline = useInlineThreads(branchable, panel?.open ?? NOWHERE, panel?.reply ?? NOWHERE)
+  const workspace = useWorkspace()
+  const inline = useInlineThreads(branchable, workspace.openThread, panel?.reply ?? NOWHERE)
   const inlineThreads = thread === MAIN_THREAD && panel !== undefined ? inline : undefined
   return (
     <section className="chat-view" aria-label="Chat" ref={view}>
-      <div className="chat-conversation chat-pane">
-        <ChatBar
-          thread={thread}
-          actions={
-            kind === 'thread' && (
-              <Button variant="ghost" size="sm" disabled={running} onClick={() => void send(SHARE_REQUEST)}>
-                <ShareIcon data-icon="inline-start" />
-                Share to main
-              </Button>
-            )
-          }
-        />
-        <Conversation
-          key={thread}
-          parts={parts}
-          canSwitchModel={(model.choice?.options.length ?? 0) > 1}
-          {...(earlier && { onEarlier: earlier })}
-          {...(inlineThreads && { threads: inlineThreads })}
-        />
-        <ChatDock
-          ref={dock}
-          thread={thread}
-          conversation={conversation}
-          parts={parts}
-          waiting={waiting}
-          model={model}
-        />
-      </div>
-      <MainThreadPanel panel={panel} parts={parts} />
+      <WorkspaceLayout panel={panel} parts={parts}>
+        <div className="chat-conversation chat-pane">
+          <ChatBar
+            thread={thread}
+            actions={
+              kind === 'thread' && (
+                <Button variant="ghost" size="sm" disabled={running} onClick={() => void send(SHARE_REQUEST)}>
+                  <ShareIcon data-icon="inline-start" />
+                  Share to main
+                </Button>
+              )
+            }
+          />
+          <Conversation
+            key={thread}
+            parts={parts}
+            canSwitchModel={(model.choice?.options.length ?? 0) > 1}
+            {...(earlier && { onEarlier: earlier })}
+            {...(inlineThreads && { threads: inlineThreads })}
+          />
+          <ChatDock
+            ref={dock}
+            thread={thread}
+            conversation={conversation}
+            parts={parts}
+            waiting={waiting}
+            model={model}
+          />
+        </div>
+      </WorkspaceLayout>
       <AppLayer />
     </section>
   )

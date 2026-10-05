@@ -40,6 +40,7 @@ export function ThreadsProvider({ enabled, children }: { readonly enabled: boole
       create: async (from) => {
         try {
           const view = decodeThread(await request('/api/threads', { body: from === undefined ? {} : { from } }))
+          setViews((current) => [...current.filter((item) => item.id !== view.id), view])
           refresh()
           return view
         } catch (failure) {

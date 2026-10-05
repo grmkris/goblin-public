@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useHydrated } from '@tanstack/react-router'
 import type { ThreadView } from '@purrable/contracts'
 import {
@@ -11,7 +11,6 @@ import {
   SheetTitle,
   TopBar,
   TopBarTitle,
-  useMediaQuery,
 } from '@purrable/ui'
 import { Maximize2Icon, XIcon } from 'lucide-react'
 import { failureText } from '../lib/boundary.ts'
@@ -28,9 +27,6 @@ import { WithoutApps } from './parts/mcp-tool-part.tsx'
 import { PartView } from './parts/registry.tsx'
 import { useThreads } from './threads.tsx'
 import { postMessage, useConversation, useDockInsets, useTranscript } from './use-conversation.ts'
-
-/** Wide enough for main and the thread side by side (beside an open sidebar); narrower, the thread is a sheet. */
-const SIDE_BY_SIDE = '(min-width: 75rem)'
 
 /**
  * The thread panel beside main, as the URL names it: a thread (`thread`), a reply to one of main's messages that
@@ -50,7 +46,7 @@ export type ThreadPanelControl = {
  * What the panel shows: a thread, or a draft that starts one on its first send, from a message of main (`entry` and its
  * `root` parts) or empty (the sidebar's "+").
  */
-type PanelTarget =
+export type PanelTarget =
   | { readonly kind: 'thread'; readonly thread: string }
   | { readonly kind: 'draft'; readonly entry?: number; readonly root: readonly Part[] }
 
@@ -236,18 +232,7 @@ function PanelFrame({
   readonly children: ReactNode
 }) {
   const hydrated = useHydrated()
-  const sideBySide = useMediaQuery(SIDE_BY_SIDE)
   if (!hydrated) return null
-  if (sideBySide)
-    return (
-      <aside
-        className="thread-panel"
-        aria-label={title}
-        onKeyDown={(event: KeyboardEvent) => event.key === 'Escape' && !event.defaultPrevented && onClose()}
-      >
-        {children}
-      </aside>
-    )
   return (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
       <SheetContent side="right" variant="pane" showCloseButton={false}>
@@ -258,7 +243,7 @@ function PanelFrame({
   )
 }
 
-function ThreadPanel({
+export function ThreadPane({
   target,
   onClose,
   onStarted,
@@ -289,11 +274,7 @@ function ThreadPanel({
       </section>
     )
   else body = <ThreadBody key={view.id} view={view} onClose={onClose} />
-  return (
-    <PanelFrame title={title} onClose={onClose}>
-      {body}
-    </PanelFrame>
-  )
+  return body
 }
 
 /**
@@ -331,5 +312,9 @@ export function MainThreadPanel({
   const key = target?.kind === 'thread' ? target.thread : target && `draft:${target.entry ?? 'new'}`
   useSharedRightColumn(key, panel?.close ?? NO_PANEL)
   if (panel === undefined || target === undefined) return null
-  return <ThreadPanel target={target} onClose={panel.close} onStarted={panel.open} />
+  return (
+    <PanelFrame title="Thread" onClose={panel.close}>
+      <ThreadPane target={target} onClose={panel.close} onStarted={panel.open} />
+    </PanelFrame>
+  )
 }

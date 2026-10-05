@@ -96,8 +96,9 @@ thread. Main attaches threads to their parent message with a connector rail and 
 text, and quiet thought/tool lines; a busy mark follows current activity. The owner can collapse each block, with
 that device preference in guarded localStorage. An IntersectionObserver starts the compact owner-scoped preview read
 only near the viewport, then polls while visible. After five messages only activity and the remaining count change.
-Owner-started threads get the same block. Open thread and the remaining-replies action open the thread beside main
-(`/?thread=<id>`, `components/thread-panel.tsx`) with its own composer. Reply in thread opens a reply there
+Owner-started threads get the same block. Open thread, the remaining-replies action and active sidebar threads
+open independent panes beside main (`/?thread=<id>`) with their own composers. The URL identifies the most recently
+opened thread; earlier panes stay open. `/t/:id` still gives the full conversation, including archived threads. Reply in thread opens a reply there
 (`/?reply=<entry>`) that branches the thread only when it is sent, because Pi cannot delete a conversation; the
 sidebar's "+" beside Threads opens an empty draft there (`/?new=true`) the same way. A thread started with "+" tells
 main its name once it has one (ADR 0010): main gets one `app.thread_started` note, `[thread started: "<title>"]`, and
@@ -271,23 +272,27 @@ An App is a tool's `ui://` resource, served by the server that answered the call
 sandboxed frames (`lib/app-sandbox.ts`). The outer proxy only relays protocol messages to and from the host's origin.
 Its calls go through the owner API to the originating server and need that server's grant.
 
-The chat view has at most one live App (`components/apps`). Its iframe sits in one fixed stage that is never moved
-in the DOM, because re-parenting an iframe reloads it. The stage follows the slot its display mode names, frame by
-frame:
+The chat view has at most one live App (`components/apps`). At 75rem and wider, `components/workspace-layout.tsx`
+mounts Trellis 0.3.0 after hydration. Main is a nonclosable stage view. Thread/draft panes and the App slot can dock,
+float, tab and resize; stable portal hosts retain React pane state during rearrangement. Narrow screens render main
+and use the existing thread and App sheets. Server rendering shows main alone.
 
-- inline: the App's place below its tool row in the transcript;
-- fullscreen: a resizable side panel beside the conversation on a desktop, or a bottom sheet on a phone;
-- pip: picture-in-picture, which a desktop offers and a phone does not.
+Pane metadata and the bounded Trellis document use separate version-1 localStorage records, scoped to the authenticated
+owner and primary conversation on this device. Restore migrates old thread lists and prunes archived/missing threads,
+unknown view types and stale App panes. App selections and grants never come from storage. Reset layout creates equal
+splits for the current panes. Tokens follow the local shadcn dark/light palette; the toolbar credits Trellis and Dan
+Fessler. See [ADR 0016](adr/0016-workspace-layout-with-trellis.md) for the license arrangement.
 
-When the mode changes, the stage springs from one slot to the next (`lib/spring.ts`), so the App leaves the
-transcript and returns along the same path. Picture-in-picture and the sheet are dragged by the host's chrome. On
-release they are thrown, by projected momentum, to the nearest corner or snap height; a sheet thrown down closes to
-the transcript. On a phone, inline means the App waits behind an Open button in the transcript.
+The App iframe remains in the fixed `AppLayer` stage outside Trellis. Trellis moves an empty measured slot, so docking,
+undocking and responsive changes never reparent the opaque frame or replace its bridge. The stage follows that slot
+frame by frame; hidden tabs hide it, and clipping respects floating panes above it. Fullscreen fills the workspace
+surface. The advertised modes are inline (the desktop pane) and fullscreen. Narrow screens use a momentum/snapping
+bottom sheet for fullscreen; inline waits behind Open in the transcript. Changing selection tears down the old bridge
+and reconnects through the new originating server. Grant cards, link offers and context sharing remain host-drawn.
 
 The App learns the host context (`lib/host-context.ts`): theme, our tokens as MCP Apps style variables, device,
-locale and time zone, its display mode, the modes on offer, and its box. The host re-sends it when any of these change.
-Inline, the App may ask for a height between 160px and the larger of 240px or 70% of the viewport. It may ask for
-another display mode and gets it if the screen offers that mode.
+locale and time zone, its display mode, the modes on offer, and its measured box. The host re-sends it when these change.
+Desktop resizing controls the pane height; the App's own height request remains bounded for narrow/standalone use.
 
 Two more requests are drawn by the host, where the App cannot reach (`lib/app-context.ts`). A link the App asks to
 open (https only, no credentials) becomes an offer with a real anchor, so only the owner's click opens it. Context

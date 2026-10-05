@@ -141,6 +141,11 @@ export function nextFire(definition: RoutineDefinition, after: number): number |
       const raw = definition.trigger.at
       if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/u.test(raw))
         throw new InvalidInput({ reason: 'reminder needs an ISO instant with an explicit UTC offset' })
+      const calendar = raw.replace(/(?:Z|[+-]\d{2}:\d{2})$/u, '')
+      const local = new Date(`${calendar}Z`)
+      const normalized = local.toJSON()
+      if (normalized === null || normalized.slice(0, 16) !== calendar.slice(0, 16))
+        throw new InvalidInput({ reason: 'invalid reminder calendar date' })
       const at = Date.parse(raw)
       if (!Number.isFinite(at) || at <= after || at > after + 732 * DAY)
         throw new InvalidInput({ reason: 'reminder must be in the future within two years' })

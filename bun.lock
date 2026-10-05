@@ -56,6 +56,7 @@
       "dependencies": {
         "@better-auth/oauth-provider": "1.7.6",
         "@better-auth/passkey": "1.7.6",
+        "@danfessler/trellis": "0.3.0",
         "@modelcontextprotocol/client": "2.2.0",
         "@modelcontextprotocol/ext-apps": "2.0.3",
         "@purrable/contracts": "workspace:*",
@@ -313,6 +314,8 @@
     "@cloudflare/workerd-windows-64": ["@cloudflare/workerd-windows-64@1.20260918.1", "", { "os": "win32", "cpu": "x64" }, "sha512-sATrMx5ShYYgmgUGrcTmvsFSJBFuN95NEkX3xwb1qk8w1A6h5N11sea7yN2IeibwPyPmXKjWNjXOno0hZAM71Q=="],
 
     "@cloudflare/workers-types": ["@cloudflare/workers-types@5.20260928.1", "", {}, "sha512-B/El15v5HqZyuyfR7Z0W443iA6Ml4nZjaR8rgHyW612r8reO+1JaDKtNbP3CPdzVIM2egp98by3NlpMm5pKbcg=="],
+
+    "@danfessler/trellis": ["@danfessler/trellis@0.3.0", "", {}, "sha512-pvlexewXbyws7/l7oXEJt8/pdb7c5IECV/10Hm/zMIy1Hn4CweyL2fBrygj4BjxX/bE9nGx0V1dbhRccWqiC/A=="],
 
     "@distilled.cloud/acme": ["@distilled.cloud/acme@1.0.0-rc.13", "", { "dependencies": { "@distilled.cloud/core": "1.0.0-rc.13" }, "peerDependencies": { "effect": "^4.0.0" } }, "sha512-3rmzH125jQxk0zpCvXGNEybSaqpAolyCX+8LWDDrXf+wIKs67GflkJyQLjOOh0lKARe29hdUZGgqEbbvpp0LNA=="],
 

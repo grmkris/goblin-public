@@ -1,9 +1,8 @@
 // The one live App of the chat view. "Show app" opens a session; the stage (stage.tsx) renders its single iframe and
-// follows whichever slot the session's display mode names: the App's place in the transcript, the right panel, a
-// phone sheet or picture-in-picture. Slots register their elements here; nothing re-parents the iframe.
+// follows a measured Trellis pane on desktop or a phone sheet. Fullscreen remains available. Slots register their elements here; nothing re-parents the iframe.
 import { createContext, type ReactNode, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { McpUiDisplayMode } from '@modelcontextprotocol/ext-apps/app-bridge'
-import { useIsMobile } from '@purrable/ui'
+import { useMediaQuery } from '@purrable/ui'
 import { availableModes } from '../../lib/host-context.ts'
 import type { AppSelection } from './frame.tsx'
 
@@ -21,7 +20,7 @@ export type AppSession = {
 }
 
 /** Where an App can be: its inline place in the transcript (by part key) or the desktop panel. */
-export type SlotName = `inline:${string}` | 'panel'
+export type SlotName = `inline:${string}` | 'panel' | 'workspace-app' | 'workspace-fullscreen'
 
 type Apps = {
   readonly session: AppSession | undefined
@@ -76,8 +75,8 @@ function useSlots(kick: () => void) {
 
 export function AppsProvider({ children }: { readonly children: ReactNode }) {
   const [session, setSession] = useState<AppSession>()
-  const phone = useIsMobile()
-  const available = useMemo(() => availableModes(phone), [phone])
+  const phone = !useMediaQuery('(min-width: 75rem)')
+  const available = useMemo(() => availableModes(true), [])
   const listeners = useRef(new Set<() => void>())
   const kick = useCallback(() => {
     for (const listener of listeners.current) listener()
@@ -87,10 +86,10 @@ export function AppsProvider({ children }: { readonly children: ReactNode }) {
     return () => void listeners.current.delete(listener)
   }, [])
   const { slot, element } = useSlots(kick)
-  const latest = useRef({ session, available })
-  latest.current = { session, available }
+  const latest = useRef({ session, available, phone })
+  latest.current = { session, available, phone }
   const open = useCallback((key: string, selection: AppSelection) => {
-    setSession({ key, selection, mode: latest.current.available.length === 2 ? 'fullscreen' : 'inline' })
+    setSession({ key, selection, mode: latest.current.phone ? 'fullscreen' : 'inline' })
   }, [])
   const setMode = useCallback((mode: McpUiDisplayMode) => {
     const { session: current, available: modes } = latest.current
@@ -116,10 +115,13 @@ export function AppsProvider({ children }: { readonly children: ReactNode }) {
     })
   }, [])
   const close = useCallback(() => setSession(undefined), [])
-  // A screen that stops offering the current mode (a desktop window narrowed to phone size) falls back to the panel.
+  // Crossing the tiling breakpoint keeps the iframe alive and changes only its placement.
+  const previousPhone = useRef(phone)
   useEffect(() => {
-    if (session !== undefined && !available.includes(session.mode)) setSession({ ...session, mode: 'fullscreen' })
-  }, [session, available])
+    if (previousPhone.current === phone) return
+    previousPhone.current = phone
+    setSession((current) => (current === undefined ? current : { ...current, mode: phone ? 'fullscreen' : 'inline' }))
+  }, [phone])
   const apps = useMemo(
     () => ({
       session,

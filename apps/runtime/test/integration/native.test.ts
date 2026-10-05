@@ -74,6 +74,33 @@ const Evidence = Schema.Struct({
 
 const baseUrl = (url: string): string => url.replace(/\/+$/u, '')
 
+harness.test(
+  'local workerd: routine definitions retain exact confirmations, replay IDs and revision fences',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `routines-${yield* nextInt}`
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/routines-probe?name=${name}`))
+    expect(response.status).toBe(200)
+    const result = yield* Effect.promise(() => response.json())
+    expect(result).toMatchObject({
+      replay: true,
+      changedId: true,
+      stale: true,
+      foreign: true,
+      cap: true,
+      confirmationReplay: true,
+      confirmed: 'activating',
+      nextFire: Date.parse('2026-10-05T07:00:00Z'),
+      editCleared: true,
+      paused: 'paused',
+      definitions: 1,
+      operations: 4,
+      emptyRunStores: [0, 0, 0, 0],
+      settings: [{ id: 1, timezone: 'UTC', maxActive: 20, maxRunning: 2 }],
+    })
+  }),
+)
+
 function lifecycleEvidencePath(): FileURL {
   return new FileURL('../../.alchemy/purrable-native-lifecycle.json', import.meta.url)
 }

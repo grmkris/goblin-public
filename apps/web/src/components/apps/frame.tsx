@@ -3,7 +3,7 @@
 // moving the App between display modes never reloads it.
 import { useEffect, useRef, useState } from 'react'
 import {
-  AppBridge,
+  type AppBridge,
   type McpUiDisplayMode,
   type McpUiHostContext,
   PostMessageTransport,
@@ -11,10 +11,9 @@ import {
 import type { CallToolResult, ReadResourceResult } from '@modelcontextprotocol/client'
 import { Alert, AlertDescription } from '@purrable/ui'
 import { isSandboxMessage, sandboxHtml, sandboxProxy } from '../../lib/app-sandbox.ts'
-import { contextText, safeLink } from '../../lib/app-context.ts'
+import { createAppBridge } from '../../lib/app-bridge.ts'
 import { isString, record, records, request, text } from '../../lib/boundary.ts'
 import { type AppPlacement, type Device, hostContext, inlineHeight } from '../../lib/host-context.ts'
-import { grantDenied } from './grant-ask.tsx'
 import { LinkOffer } from './offers.tsx'
 
 export type AppSelection = {
@@ -64,62 +63,6 @@ function forward<T>(serverId: string, path: string, body: unknown, signal: Abort
   }) as Promise<T>
 }
 
-function configuredBridge(
-  selection: AppSelection,
-  html: string,
-  placement: () => AppPlacement,
-  signal: AbortSignal,
-  events: FrameEvents,
-): AppBridge {
-  const bridge = new AppBridge(
-    null,
-    { name: 'Purrable', version: '0.1.0' },
-    { serverTools: {}, serverResources: {}, openLinks: {}, updateModelContext: { text: {}, structuredContent: {} } },
-    { hostContext: contextFor(placement()) },
-  )
-  const { serverId } = selection
-  bridge.oncalltool = async (params) => {
-    const call = () =>
-      forward<CallToolResult>(serverId, 'tools/call', { name: params.name, arguments: params.arguments ?? {} }, signal)
-    try {
-      return await call()
-    } catch (cause) {
-      // An ungranted tool waits for the owner instead of failing; allowed, the same call runs once more.
-      if (grantDenied(cause) && (await events.askGrant(params.name))) return call()
-      throw cause
-    }
-  }
-  bridge.onreadresource = (params) =>
-    forward<ReadResourceResult>(serverId, 'resources/read', { uri: params.uri }, signal)
-  bridge.onrequestdisplaymode = async ({ mode }) => ({ mode: events.requestMode(mode) })
-  bridge.onupdatemodelcontext = async ({ content, structuredContent }) => {
-    events.share(contextText(content, structuredContent))
-    return {}
-  }
-  bridge.onopenlink = async ({ url }) => {
-    const link = safeLink(url)
-    if (link === undefined) return { isError: true }
-    events.offerLink(link)
-    return {}
-  }
-  bridge.addEventListener('sizechange', ({ height }) => {
-    if (height !== undefined) events.resize(height)
-  })
-  bridge.addEventListener('requestteardown', () => events.close())
-  bridge.addEventListener('sandboxready', () => {
-    void bridge
-      .sendSandboxResourceReady({ html, sandbox: 'allow-scripts' })
-      .catch(() => events.report('App resource could not be loaded'))
-  })
-  bridge.addEventListener('initialized', () => {
-    void bridge
-      .sendToolInput({ arguments: selection.arguments })
-      .then(() => bridge.sendToolResult(selection.result))
-      .catch(() => events.report('App initialization failed'))
-  })
-  return bridge
-}
-
 async function appHtml(selection: AppSelection, signal: AbortSignal): Promise<string> {
   const data = await forward<unknown>(selection.serverId, 'resources/read', { uri: selection.uri }, signal)
   const content = records(record(data)?.contents).find(
@@ -144,7 +87,16 @@ async function attachApp(
   element.srcdoc = sandboxProxy(window.location.origin)
   const target = element.contentWindow
   if (!target) throw new Error('App sandbox could not be created')
-  const bridge = configuredBridge(selection, html, placement, signal, events)
+  const bridge = createAppBridge(
+    selection,
+    html,
+    contextFor(placement()),
+    {
+      tool: (serverId, body) => forward<CallToolResult>(serverId, 'tools/call', body, signal),
+      resource: (serverId, body) => forward<ReadResourceResult>(serverId, 'resources/read', body, signal),
+    },
+    events,
+  )
   // The theme follows the system; tell the App when it switches.
   const theme = new MutationObserver(() => bridge.setHostContext(contextFor(placement())))
   theme.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
