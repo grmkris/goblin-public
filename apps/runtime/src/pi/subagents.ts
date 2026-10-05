@@ -23,6 +23,9 @@ import { Channel, Conversations, attempt, attemptSync, nowSecondsEffect } from '
 import { authoredContent } from './content.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
+/** The tool that starts subagents: what a conversation with subagents switched off has filtered out (ADR 0010). */
+export const SUBAGENT_TOOL = 'subagent'
+
 /** Subagents working at once, across the agent: each one spends the owner's budget on its own. */
 const MAX_RUNNING = 3
 
@@ -228,7 +231,7 @@ export function subagentsExtension(run: RunProgram, members: readonly Extension[
   }
 
   const tool = defineTool({
-    name: 'subagent',
+    name: SUBAGENT_TOOL,
     description: [
       'Manage background subagents. spawn (name, message) starts one on a job; send (name, message) gives it another',
       'after its current answer; stop (name) aborts its current work; status (name, or none for all) says who is',

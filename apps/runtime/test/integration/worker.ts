@@ -6,14 +6,21 @@ import * as Effect from 'effect/Effect'
 import { AppMetadata } from '../../src/storage/metadata.ts'
 import { Agent } from 'agents'
 import { PiHarness } from 'agents/harness/pi'
-import { createRegistry, Harness } from '@earendil-works/pi-durable'
-import type { ProviderStreams } from '@earendil-works/pi-ai'
+import { createRegistry, defineTool, Harness } from '@earendil-works/pi-durable'
+import { type ProviderStreams, Type } from '@earendil-works/pi-ai'
 import { FIXTURE_INPUT, type SeenRequest, fixtureModels, model, scriptedStreams } from './model.ts'
 import { nextInt } from 'effect/Random'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { bindEndpoints } from '../../src/mcp/endpoints.ts'
 import { AddedServerStore } from '../../src/mcp/servers.ts'
-import { appMcpCredentials, appMcpEndpoints, appMcpGrants, appMcpOauthPending } from '../../src/storage/schema.ts'
+import {
+  appConversations,
+  appMcpCredentials,
+  appMcpEndpoints,
+  appMcpGrants,
+  appMcpOauthPending,
+} from '../../src/storage/schema.ts'
+import { CapabilityProfiles } from '../../src/capabilities/profiles.ts'
 
 const notesAt = (endpoint: string) => [{ serverId: 'notes', endpoint }]
 
@@ -94,6 +101,64 @@ export class PersonalAgentProbe extends PersonalAgent {
       bound: db.select().from(appMcpEndpoints).all().length,
     }
     return { first, same, kept, moved, after: stored(), bound, removed }
+  }
+
+  /** Before the agent's services start: an added server `notes` (never reached), its `read` and `write` granted. */
+  seedNotes() {
+    runApplicationMigrations(this.ctx.storage)
+    const db = drizzle(this.ctx.storage)
+    new AddedServerStore(db).add({ serverId: 'notes', endpoint: 'https://notes.test/mcp', title: 'Notes' }, 1)
+    for (const name of ['read', 'write'])
+      db.insert(appMcpGrants).values({ serverId: 'notes', capability: 'tool', name, createdAt: 1 }).run()
+  }
+
+  /**
+   * Conversation switches on the real SQLite store: a thread copies main's, a subagent two levels down is bounded by
+   * every conversation above it, one whose spawner is unknown (or an unknown session) may use nothing.
+   */
+  async scopeProbe() {
+    runApplicationMigrations(this.ctx.storage)
+    const db = drizzle(this.ctx.storage)
+    db.insert(appConversations)
+      .values([
+        { sessionId: MAIN_THREAD, kind: 'main', createdAt: 1 },
+        { sessionId: '900', kind: 'thread', parentSession: MAIN_THREAD, createdAt: 1 },
+        { sessionId: '901', kind: 'subagent', parentSession: '900', createdAt: 1 },
+        { sessionId: '902', kind: 'subagent', parentSession: '901', createdAt: 1 },
+        { sessionId: '903', kind: 'subagent', parentSession: '999', createdAt: 1 },
+      ])
+      .onConflictDoNothing()
+      .run()
+    const tool = defineTool({
+      name: 'subagent',
+      description: '',
+      parameters: Type.Object({}),
+      execute: async () => ({ content: [] }),
+    })
+    const retooled: string[] = []
+    const profiles = new CapabilityProfiles(db, tool, async (session) => void retooled.push(session))
+    profiles.set(MAIN_THREAD, { kind: 'tool', serverId: 'notes', name: 'write' }, false, 1)
+    profiles.copy(MAIN_THREAD, '900', 2)
+    profiles.set('900', { kind: 'server', serverId: 'mail' }, false, 2)
+    profiles.set('900', { kind: 'tool', serverId: 'mail', name: 'send' }, false, 2)
+    profiles.set('901', { kind: 'skills', serverId: 'myskills' }, false, 2)
+    const view = (session: string) => {
+      const scope = profiles.scope(session)
+      return {
+        editable: scope.editable,
+        mail: scope.server('mail'),
+        send: scope.tool('mail', 'send'),
+        read: scope.tool('notes', 'read'),
+        write: scope.tool('notes', 'write'),
+        skills: scope.skills('myskills'),
+        subagents: scope.subagents(),
+      }
+    }
+    const before = { thread: view('900'), deep: view('902'), orphan: view('903'), unknown: view('12345') }
+    profiles.set('900', { kind: 'server', serverId: 'mail' }, true, 3)
+    const serverBackOn = view('900')
+    await profiles.reset('900', 4)
+    return { ...before, serverBackOn, afterReset: view('900'), own: profiles.own('900'), retooled }
   }
 }
 
@@ -333,6 +398,61 @@ async function announceSequence(agent: DurableObjectStub<PersonalAgentProbe>): P
   })
 }
 
+/** The newest answer in main: what a thread can branch from. */
+const mainAnswer = async (agent: DurableObjectStub<PersonalAgentProbe>) =>
+  ((await snapshotOf(agent, MAIN_THREAD)).entries ?? []).findLast(({ kind }) => kind === 'pi.assistant')?.id
+
+/** One owner message into a conversation, settled. */
+async function exchange(agent: DurableObjectStub<PersonalAgentProbe>, session: string, text: string, id: string) {
+  await agent.submit(session, text, id)
+  return agent.settle(session, id)
+}
+
+/**
+ * The owner's switches per conversation: main switches a tool and subagents off, a new thread (empty or branched)
+ * copies that, the `subagent` tool leaves the request where subagents are off and comes back where they are turned on,
+ * and Reset gives a thread main's switches again. Only what is shown can be switched off; main has no reset.
+ */
+async function capabilitySequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
+  await agent.seedNotes()
+  const mainBefore = await agent.conversationCapabilities(MAIN_THREAD)
+  await agent.setConversationCapability(MAIN_THREAD, {
+    target: { kind: 'tool', serverId: 'notes', name: 'write' },
+    on: false,
+  })
+  const mainAfter = await agent.setConversationCapability(MAIN_THREAD, { target: { kind: 'subagents' }, on: false })
+  await exchange(agent, MAIN_THREAD, 'which tools do you have?', 'capabilities-main')
+  const fresh = await agent.createThread()
+  const branched = await agent.createThread(await mainAnswer(agent))
+  if (!fresh.ok || !branched.ok) return Response.json({ fresh, branched })
+  const freshView = await agent.conversationCapabilities(fresh.value.id)
+  const branchedView = await agent.conversationCapabilities(branched.value.id)
+  const freshOn = await agent.setConversationCapability(fresh.value.id, { target: { kind: 'subagents' }, on: true })
+  await exchange(agent, fresh.value.id, 'and in the thread?', 'capabilities-thread')
+  await exchange(agent, branched.value.id, 'and in the branch?', 'capabilities-branch')
+  const reset = await agent.setConversationCapability(fresh.value.id, { reset: 'main' })
+  await exchange(agent, fresh.value.id, 'and after the reset?', 'capabilities-reset')
+  return Response.json({
+    mainBefore,
+    mainAfter,
+    freshView,
+    branchedView,
+    freshOn,
+    reset,
+    unknown: await agent.setConversationCapability(MAIN_THREAD, {
+      target: { kind: 'server', serverId: 'nope' },
+      on: false,
+    }),
+    mainReset: await agent.setConversationCapability(MAIN_THREAD, { reset: 'main' }),
+    tools: {
+      main: (await agent.requestFor('which tools do you have?'))?.tools,
+      thread: (await agent.requestFor('and in the thread?'))?.tools,
+      branch: (await agent.requestFor('and in the branch?'))?.tools,
+      reset: (await agent.requestFor('and after the reset?'))?.tools,
+    },
+  })
+}
+
 /**
  * Main spawns a subagent: it works in its own conversation with the owner's tools but no subagents or ask_user, and
  * its answer comes back into main as an input labelled with it, which main answers.
@@ -422,6 +542,11 @@ export default {
     if (new URL(request.url).pathname === '/branch') return branchSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/share') return shareSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/announce') return announceSequence(env.AGENTS.getByName(name))
+    if (new URL(request.url).pathname === '/capabilities') return capabilitySequence(env.AGENTS.getByName(name))
+    if (new URL(request.url).pathname === '/scopes')
+      return env.AGENTS.getByName(name)
+        .scopeProbe()
+        .then((result) => Response.json(result))
     if (new URL(request.url).pathname === '/subagent') return subagentSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/memory') return memorySequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/binding')

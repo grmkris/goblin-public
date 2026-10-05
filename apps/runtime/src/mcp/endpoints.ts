@@ -1,15 +1,25 @@
 import type { McpServerConfig } from '@purrable/contracts'
 import { eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import { appMcpCredentials, appMcpEndpoints, appMcpGrants, appMcpOauthPending } from '../storage/schema.ts'
+import {
+  appConversationCapabilities,
+  appMcpCredentials,
+  appMcpEndpoints,
+  appMcpGrants,
+  appMcpOauthPending,
+} from '../storage/schema.ts'
 
 type Database = DrizzleSqliteDODatabase
 
-/** Everything stored for a server id: credentials, client registration, pending authorizations and grants. */
+/**
+ * Everything stored for a server id: credentials, client registration, pending authorizations, grants, and what
+ * conversations switched off on it.
+ */
 function forget(db: Pick<Database, 'delete'>, serverId: string): void {
   db.delete(appMcpCredentials).where(eq(appMcpCredentials.serverId, serverId)).run()
   db.delete(appMcpOauthPending).where(eq(appMcpOauthPending.serverId, serverId)).run()
   db.delete(appMcpGrants).where(eq(appMcpGrants.serverId, serverId)).run()
+  db.delete(appConversationCapabilities).where(eq(appConversationCapabilities.serverId, serverId)).run()
 }
 
 /**

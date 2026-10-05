@@ -91,6 +91,8 @@ its transcript shows a row for that thread. The owner API is conversation-scoped
 | `GET /api/threads` | List registered conversations, including archived ones. A live thread also carries where it branched (`forkEntry`) and its own `replies` and `lastReplyAt`, counted from Pi (`replies.ts`). |
 | `POST /api/threads` | Create an empty thread (`{}`) or branch main at an entry (`{ from: <entry> }`). |
 | `PATCH /api/threads/:id` | Rename or (un)archive a thread or subagent. Main cannot be changed this way. |
+| `GET /api/threads/:id/capabilities` | What the conversation lets its agent use (`ConversationCapabilities`): each server with a granted tool and those tools, each skills library, subagents, and for a thread whether it has main's switches. |
+| `PATCH /api/threads/:id/capabilities` | Switch one `CapabilityTarget` on or off there (only what is shown can be switched off), or `{ reset: 'main' }` a thread back to main's switches. A subagent's are not editable. |
 | `POST /api/threads/:id/messages` | Submit `input`, a stable `operationId` and optional `appContext`; returns 202 acceptance. |
 | `POST /api/threads/:id/stop` | Stop a conversation or one `operationId`. |
 | `GET /api/threads/:id/snapshot`, `GET /api/threads/:id/events` | Pi snapshot or SSE snapshot followed by committed batches. |
@@ -364,6 +366,7 @@ myagent's bot ownership and doorbell retry policy belong to that server.
 | Agent DO SQLite | `pi_*`, `cf_agents_*` and the other vendor tables | Pi, Agents SDK. Never touched. |
 | Agent DO SQLite | `app_mcp_servers`, `app_mcp_registries`, `app_mcp_endpoints`, `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants` | Drizzle: MCP metadata and authorization. |
 | Agent DO SQLite | `app_resident`, `app_conversations`, `app_model_choice`, `app_usage_daily`, `app_metadata` | Drizzle: agent metadata. |
+| Agent DO SQLite | `app_conversation_capabilities` | Drizzle: what each conversation switched off (ADR 0010). |
 | Agent DO SQLite | `app_memory_log`, `app_memory_nodes`, `app_memory_state` | Drizzle: main's memory. |
 | Agent DO SQLite | `app_skill_sources`, `app_skill_activations`, `app_skill_files`, `app_skill_drafts` | Drizzle: skills and draft tracking. |
 | Agent DO SQLite | `app_channel`, `app_channel_replies` | Drizzle: Telegram cursor, secret and replies. |

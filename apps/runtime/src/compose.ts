@@ -1,8 +1,9 @@
-import type { Extension } from '@earendil-works/pi-durable'
+import type { Extension, ToolRegistration } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import { ModelBudget, UsageStore, dailyTokenLimit } from './budget.ts'
+import { CapabilityProfiles, type PiTools } from './capabilities/profiles.ts'
 import { TelegramChannel } from './channel/channel.ts'
 import { nowMillis, nowSeconds } from './clock.ts'
 import { ConversationRegistry } from './conversations.ts'
@@ -19,6 +20,7 @@ import { AddedServerStore } from './mcp/servers.ts'
 import { MainMemory } from './memory/memory.ts'
 import { CheapModel } from './memory/model.ts'
 import { ModelChoiceStore, ModelPicker, memoryModelId, modelOptions } from './models.ts'
+import { BACKGROUND, conversationId } from './pi/context.ts'
 import type { PiModels } from './pi/harness.ts'
 import type { memoryExtensions } from './pi/memory.ts'
 import { ResidentAuthority } from './resident.ts'
@@ -36,8 +38,16 @@ export type ComposeInput = {
   readonly pi: PiModels
   readonly thread: Extension
   readonly memory: ReturnType<typeof memoryExtensions>
+  /** The `subagent` tool, which Pi's tool filter removes where subagents are switched off. */
+  readonly subagentTool: ToolRegistration
   /** Schedules the Telegram replies alarm. */
   readonly scheduleReplies: () => void
+}
+
+/** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
+const retool = (harness: PiHarness) => async (session: string, tools: PiTools) => {
+  const conversation = await (await harness.pi()).conversation(conversationId(session), BACKGROUND)
+  await conversation?.configure({ tools }, BACKGROUND)
 }
 
 /**
@@ -78,7 +88,8 @@ export async function composeServices(
   const memory = new MainMemory(db, harness, namer)
   const { recall } = input.memory
   await memory.activate([input.memory.memory, recall])
-  const kit = { thread: input.thread, recall, memory, namer }
+  const capabilities = new CapabilityProfiles(db, input.subagentTool, retool(harness))
+  const kit = { thread: input.thread, recall, memory, namer, capabilities }
   const conversations = new ConversationRegistry(db, harness, kit, nowSeconds())
   const resident = new ResidentAuthority(db)
   const skills = new SkillLibrary(host.manager, skillState, nowMillis)
@@ -94,6 +105,6 @@ export async function composeServices(
   })
   const channel = new TelegramChannel(db, cipher, input.scheduleReplies)
   return ManagedRuntime.make(
-    agentLayer({ host, resident, conversations, budget, models, memory, skills, learner, channel }),
+    agentLayer({ host, resident, conversations, budget, models, memory, skills, learner, channel, capabilities }),
   )
 }

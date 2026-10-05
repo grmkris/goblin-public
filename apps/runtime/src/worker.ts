@@ -1,5 +1,5 @@
 import * as Schema from 'effect/Schema'
-import { AppContext } from '@purrable/contracts'
+import { AppContext, CapabilityChange } from '@purrable/contracts'
 import type { AgentRpc, RuntimeEnv } from './env.ts'
 import {
   handleAuth,
@@ -122,6 +122,9 @@ const threadRoutes: Readonly<
     agent.fetch(`https://agent/threads/${thread}/history${new URL(request.url).search}`),
   'PATCH ': async (request, agent, thread) =>
     json(unwrap(await agent.updateThread(thread, await readJson(request, UpdateThread)))),
+  'GET capabilities': async (_request, agent, thread) => json(unwrap(await agent.conversationCapabilities(thread))),
+  'PATCH capabilities': async (request, agent, thread) =>
+    json(unwrap(await agent.setConversationCapability(thread, await readJson(request, CapabilityChange)))),
 }
 
 async function threadRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string): Promise<Response> {

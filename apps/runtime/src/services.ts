@@ -12,6 +12,7 @@ import type { MainMemory } from './memory/memory.ts'
 import type { SkillLearner } from './skills/learner.ts'
 import type { SkillLibrary } from './skills/library.ts'
 import type { TelegramChannel } from './channel/channel.ts'
+import type { CapabilityProfiles } from './capabilities/profiles.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('purrable/Mcp') {}
@@ -23,7 +24,19 @@ export class Memory extends Context.Service<Memory, MainMemory>()('purrable/Memo
 export class Skills extends Context.Service<Skills, SkillLibrary>()('purrable/Skills') {}
 export class Learner extends Context.Service<Learner, SkillLearner>()('purrable/Learner') {}
 export class Channel extends Context.Service<Channel, TelegramChannel>()('purrable/Channel') {}
-export type AgentServices = Mcp | Resident | Conversations | Budget | Models | Memory | Skills | Learner | Channel
+/** What each conversation switched off: the one gate every MCP, skills and subagent tool asks (ADR 0010). */
+export class Capabilities extends Context.Service<Capabilities, CapabilityProfiles>()('purrable/Capabilities') {}
+export type AgentServices =
+  | Mcp
+  | Resident
+  | Conversations
+  | Budget
+  | Models
+  | Memory
+  | Skills
+  | Learner
+  | Channel
+  | Capabilities
 
 export const agentLayer = (services: {
   readonly host: McpHost
@@ -35,6 +48,7 @@ export const agentLayer = (services: {
   readonly skills: SkillLibrary
   readonly learner: SkillLearner
   readonly channel: TelegramChannel
+  readonly capabilities: CapabilityProfiles
 }): Layer.Layer<AgentServices> =>
   Layer.mergeAll(
     Layer.succeed(Mcp, services.host),
@@ -46,6 +60,7 @@ export const agentLayer = (services: {
     Layer.succeed(Skills, services.skills),
     Layer.succeed(Learner, services.learner),
     Layer.succeed(Channel, services.channel),
+    Layer.succeed(Capabilities, services.capabilities),
   )
 
 /** Wrap a plain async step so its failure lands in the typed `AppError` channel. */

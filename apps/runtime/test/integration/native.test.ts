@@ -329,6 +329,114 @@ harness.test(
   }),
 )
 
+const Scope = Schema.Struct({
+  editable: Schema.Boolean,
+  mail: Schema.Boolean,
+  send: Schema.Boolean,
+  read: Schema.Boolean,
+  write: Schema.Boolean,
+  skills: Schema.Boolean,
+  subagents: Schema.Boolean,
+})
+const Scopes = Schema.Struct({
+  thread: Scope,
+  deep: Scope,
+  orphan: Scope,
+  unknown: Scope,
+  serverBackOn: Scope,
+  afterReset: Scope,
+  own: Schema.Array(Schema.Unknown),
+  retooled: Schema.Array(Schema.String),
+})
+const closed = { editable: false, mail: false, send: false, read: false, write: false, skills: false, subagents: false }
+
+harness.test(
+  "local workerd: a thread copies main's switches and a subagent is bounded by every conversation above it",
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `scopes-${yield* nextInt}`
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/scopes?name=${name}`))
+    const result = yield* Schema.decodeUnknownEffect(Scopes)(yield* Effect.promise(() => response.json()))
+    const thread = { editable: true, mail: false, send: false, read: true, write: false, skills: true, subagents: true }
+    expect(result.thread).toEqual(thread)
+    expect(result.deep).toEqual({ ...thread, editable: false, skills: false })
+    expect(result.orphan).toEqual(closed)
+    expect(result.unknown).toEqual(closed)
+    // A server switched back on keeps the tool switched off under it.
+    expect(result.serverBackOn).toEqual({ ...thread, mail: true })
+    expect(result.afterReset).toEqual({ ...thread, mail: true, send: true })
+    expect(result.own).toEqual([{ kind: 'tool', serverId: 'notes', name: 'write' }])
+    expect(result.retooled).toEqual(['900'])
+  }),
+)
+
+const Ok = <S extends Schema.Top>(value: S) => Schema.Struct({ ok: Schema.Literal(true), value })
+const Refused = Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) })
+const View = Schema.Struct({
+  thread: Schema.String,
+  kind: Schema.String,
+  servers: Schema.Array(
+    Schema.Struct({
+      serverId: Schema.String,
+      label: Schema.String,
+      on: Schema.Boolean,
+      tools: Schema.Array(Schema.Struct({ name: Schema.String, on: Schema.Boolean })),
+    }),
+  ),
+  skills: Schema.Array(Schema.Unknown),
+  subagents: Schema.Boolean,
+  sameAsMain: Schema.optional(Schema.Boolean),
+})
+const Tools = Schema.optional(Schema.Array(Schema.String))
+/** The seeded `notes` server as a conversation shows it, `write` switched as given. */
+const notes = (write: boolean) => [
+  {
+    serverId: 'notes',
+    label: 'Notes',
+    on: true,
+    tools: [
+      { name: 'read', on: true },
+      { name: 'write', on: write },
+    ],
+  },
+]
+const CapabilityRun = Schema.Struct({
+  mainBefore: Ok(View),
+  mainAfter: Ok(View),
+  freshView: Ok(View),
+  branchedView: Ok(View),
+  freshOn: Ok(View),
+  reset: Ok(View),
+  unknown: Refused,
+  mainReset: Refused,
+  tools: Schema.Struct({ main: Tools, thread: Tools, branch: Tools, reset: Tools }),
+})
+
+harness.test(
+  'local workerd: the owner switches a tool and subagents off in main, a new thread copies that, and Reset restores it',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `capabilities-${yield* nextInt}`
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/capabilities?name=${name}`))
+    const result = yield* Schema.decodeUnknownEffect(CapabilityRun)(yield* Effect.promise(() => response.json()))
+    expect(result.mainBefore.value).toMatchObject({ kind: 'main', servers: notes(true), skills: [], subagents: true })
+    expect(result.mainBefore.value.sameAsMain).toBeUndefined()
+    expect(result.mainAfter.value).toMatchObject({ servers: notes(false), subagents: false })
+    for (const copied of [result.freshView.value, result.branchedView.value])
+      expect(copied).toMatchObject({ kind: 'thread', servers: notes(false), subagents: false, sameAsMain: true })
+    expect(result.freshOn.value).toMatchObject({ subagents: true, sameAsMain: false })
+    expect(result.reset.value).toMatchObject({ servers: notes(false), subagents: false, sameAsMain: true })
+    expect(result.unknown.error._tag).toBe('InvalidInput')
+    expect(result.mainReset.error._tag).toBe('InvalidInput')
+    // Pi's tool filter follows the switch: no `subagent` where subagents are off.
+    expect(result.tools.main).toContain('mcp_call')
+    expect(result.tools.main).not.toContain('subagent')
+    expect(result.tools.thread).toContain('subagent')
+    expect(result.tools.branch).not.toContain('subagent')
+    expect(result.tools.reset).not.toContain('subagent')
+  }),
+)
+
 const MemoryRun = Schema.Struct({
   summarized: Schema.Number,
   request: ModelRequest,

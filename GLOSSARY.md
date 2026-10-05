@@ -23,6 +23,9 @@
 - **Outbound MCP server**: a server the agent calls, configured in `PURRABLE_MCP_SERVERS` or added by the owner by URL,
   suggestion or registry. Connections tries without sign-in first, then OAuth if needed.
 - **Grant**: the owner's per-tool permission for one outbound server. A tool grant also covers its `ui://` App.
+- **Capabilities**: what one conversation lets its agent use (ADR 0010): the owner's grants, skills libraries and
+  subagents, narrowed by what was switched off there (`app_conversation_capabilities`). A new thread copies main's
+  switches; a subagent is bounded by every conversation above it. Switches only narrow; they never grant.
 - **Inbound client**: an MCP client (Claude Code, another agent) the owner authorized to call Purrable's `/mcp`.
 - **MCP App**: a sandboxed `ui://` resource served through its originating MCP connection. One live App per chat view
   moves between inline, panel/sheet and desktop picture-in-picture slots while its iframe stays in place.

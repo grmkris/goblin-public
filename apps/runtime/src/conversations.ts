@@ -3,6 +3,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { Conversation, EntryRecord, Extension } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
+import type { CapabilityProfiles } from './capabilities/profiles.ts'
 import { InvalidInput, NotFound } from './http/errors.ts'
 import type { MainMemory } from './memory/memory.ts'
 import type { CheapModel } from './memory/model.ts'
@@ -33,13 +34,15 @@ const cleanTitle = (raw: string): string =>
 
 /**
  * What threads need beyond the registry: their own extension, `recall` for the ones branched from main (they start
- * with main's memory view), the memory that bounds their zooms, and the cheap model that names them.
+ * with main's memory view), the memory that bounds their zooms, the cheap model that names them, and the switches a
+ * new thread copies from main.
  */
 export type ThreadKit = {
   readonly thread: Extension
   readonly recall: Extension
   readonly memory: MainMemory
   readonly namer: CheapModel
+  readonly capabilities: CapabilityProfiles
 }
 
 /**
@@ -74,6 +77,13 @@ export class ConversationRegistry {
     return id
   }
 
+  /** Whether a registered conversation is main, a thread or a subagent; anything else is `NotFound`. */
+  kindOf(id: string): Row['kind'] {
+    const row = this.#row(id)
+    if (row === undefined) throw new NotFound({ what: 'thread' })
+    return row.kind
+  }
+
   /**
    * Every registered conversation, oldest first (main is the oldest), with whether Pi is running it now and, for a
    * live thread, its own activity.
@@ -93,7 +103,9 @@ export class ConversationRegistry {
     const [at] = (await main.entries({ minEntryId: id, maxEntryId: id }, 1, undefined, BACKGROUND)).items
     if (at === undefined || !BRANCHABLE.has(at.kind)) throw new InvalidInput({ reason: 'branch_entry' })
     const extensions = { add: [this.#kit.thread, this.#kit.recall] }
-    const fork = await main.fork(at.id, { ownership: { kind: 'ownerless' }, agent: { extensions } }, BACKGROUND)
+    // The fork starts from main's agent as it was at that entry; its tool filter is set to main's switches now.
+    const agent = { extensions, tools: this.#kit.capabilities.piTools(MAIN_THREAD) }
+    const fork = await main.fork(at.id, { ownership: { kind: 'ownerless' }, agent }, BACKGROUND)
     const recallThrough = this.#kit.memory.sizeAt(at.id)
     return this.#insert(
       { sessionId: String(fork.id), kind: 'thread', parentSession: MAIN_THREAD, forkEntry: at.id, recallThrough },
@@ -104,7 +116,10 @@ export class ConversationRegistry {
   /** An empty thread the owner started; main learns its name once it has one (`announce`). */
   async create(now: number): Promise<ThreadView> {
     const session = await this.#harness.sessions.create()
-    await (await this.#conversation(session.id)).configure({ extensions: { add: [this.#kit.thread] } }, BACKGROUND)
+    const tools = this.#kit.capabilities.piTools(MAIN_THREAD)
+    await (
+      await this.#conversation(session.id)
+    ).configure({ extensions: { add: [this.#kit.thread] }, tools }, BACKGROUND)
     return this.#insert({ sessionId: session.id, kind: 'thread', parentSession: MAIN_THREAD, mainNote: 'owed' }, now)
   }
 
@@ -233,11 +248,13 @@ export class ConversationRegistry {
     return this.#reload(id)
   }
 
+  /** Registers a new thread with main's switches, copied in the same synchronous step (no await between). */
   async #insert(values: Omit<typeof appConversations.$inferInsert, 'createdAt'>, now: number): Promise<ThreadView> {
     this.#db
       .insert(appConversations)
       .values({ ...values, createdAt: now })
       .run()
+    this.#kit.capabilities.copy(MAIN_THREAD, values.sessionId, now)
     return this.#reload(values.sessionId)
   }
 

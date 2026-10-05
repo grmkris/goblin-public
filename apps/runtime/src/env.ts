@@ -4,8 +4,10 @@ import type { RpcResult } from './http/rpc.ts'
 import type { Grant, GrantCapability } from './mcp/grants.ts'
 import type {
   AppContext,
+  CapabilityChange,
   CatalogEntry,
   ChannelStatus,
+  ConversationCapabilities,
   MemoryStatus,
   ModelChoice,
   RegistryView,
@@ -34,6 +36,11 @@ export interface AgentRpcMethods {
   readonly threads: () => Promise<RpcResult<readonly ThreadView[]>>
   readonly createThread: (from?: number) => Promise<RpcResult<ThreadView>>
   readonly updateThread: (thread: string, change: ThreadChange) => Promise<RpcResult<ThreadView>>
+  readonly conversationCapabilities: (thread: string) => Promise<RpcResult<ConversationCapabilities>>
+  readonly setConversationCapability: (
+    thread: string,
+    change: CapabilityChange,
+  ) => Promise<RpcResult<ConversationCapabilities>>
   readonly mcpServers: () => Promise<RpcResult<readonly ServerView[]>>
   readonly mcpConnect: (serverId: string) => Promise<RpcResult<{ readonly authorizationUrl?: string }>>
   readonly mcpFinishConnect: (state: string, code: string, issuer?: string) => Promise<RpcResult<string>>

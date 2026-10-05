@@ -1,6 +1,6 @@
 import { Agent } from 'agents'
-import { type Extension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { type AppContext, type JsonObject, MAIN_THREAD } from '@purrable/contracts'
+import { type Extension, ROOT_CONVERSATION_ID, type ToolRegistration } from '@earendil-works/pi-durable'
+import { type AppContext, type CapabilityChange, type JsonObject, MAIN_THREAD } from '@purrable/contracts'
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
@@ -16,13 +16,14 @@ import { piEventResponse } from './pi/events.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
 import { LITELLM_STREAMS, MODEL_PROVIDER, makePiModels } from './pi/model.ts'
 import { personaExtension } from './pi/persona.ts'
-import { subagentsExtension } from './pi/subagents.ts'
+import { SUBAGENT_TOOL, subagentsExtension } from './pi/subagents.ts'
 import { threadExtension } from './pi/thread.ts'
 import { memoryExtensions } from './pi/memory.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { skillsExtension } from './pi/skills.ts'
 import type { ThreadChange } from './conversations.ts'
 import { composeServices } from './compose.ts'
+import { capabilitiesOf, changeCapabilities } from './capabilities/program.ts'
 import { BACKGROUND } from './pi/context.ts'
 import { recentMessages } from './pi/transcript.ts'
 import {
@@ -78,6 +79,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   readonly #pi: PiModels
   readonly #thread: Extension
   readonly #memory: ReturnType<typeof memoryExtensions>
+  readonly #subagentTool: ToolRegistration
   readonly #applied: Applied = new Map()
   #runtime: Promise<Runtime> | undefined
   /** The Telegram pull in progress: one at a time (channelPull). */
@@ -90,6 +92,9 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     const tools = [residentMcpExtension(run), budgetExtension(run)]
     // A subagent gets the persona and the owner's tools, nothing else: no subagents of its own, no ask_user.
     const subagents = subagentsExtension(run, [personaExtension, ...tools])
+    const subagentTool = subagents.tools?.find((tool) => tool.name === SUBAGENT_TOOL)
+    if (subagentTool === undefined) throw new Error('The subagents extension has no subagent tool')
+    this.#subagentTool = subagentTool
     this.#thread = threadExtension(run)
     this.#memory = memoryExtensions(run)
     const { memory, recall } = this.#memory
@@ -115,6 +120,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       pi: this.#pi,
       thread: this.#thread,
       memory: this.#memory,
+      subagentTool: this.#subagentTool,
       scheduleReplies: () => void this.schedule(5, 'channelReplies'),
     })
     this.#runtime.catch(() => {
@@ -187,6 +193,15 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
         return yield* attempt(() => conversations.update(thread, change, now))
       }),
     )
+  }
+
+  /** What a conversation lets its agent use: its switches over the agent's servers, skills and subagents. */
+  conversationCapabilities(thread: string) {
+    return this.#owner(capabilitiesOf(thread))
+  }
+
+  setConversationCapability(thread: string, change: CapabilityChange) {
+    return this.#owner(changeCapabilities(thread, change))
   }
 
   modelChoice() {

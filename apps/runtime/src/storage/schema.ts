@@ -100,6 +100,22 @@ export const appConversations = sqliteTable('app_conversations', {
   mainNote: text('main_note', { enum: ['owed', 'written'] }),
 })
 
+/**
+ * What each conversation switched off for its agent (ADR 0010): one row per thing off there, so anything granted later
+ * is on everywhere. `server_id` is empty for `subagents`; `name` is set only for a `tool`.
+ */
+export const appConversationCapabilities = sqliteTable(
+  'app_conversation_capabilities',
+  {
+    sessionId: text('session_id').notNull(),
+    kind: text('kind', { enum: ['server', 'tool', 'skills', 'subagents'] }).notNull(),
+    serverId: text('server_id').notNull().default(''),
+    name: text('name').notNull().default(''),
+    offAt: integer('off_at').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.sessionId, table.kind, table.serverId, table.name] })],
+)
+
 /** Main's memory log: the messages it covers, in order, each pointing at its Pi entry (`memory/log.ts`). */
 export const appMemoryLog = sqliteTable('app_memory_log', {
   idx: integer('idx').primaryKey().notNull(),
