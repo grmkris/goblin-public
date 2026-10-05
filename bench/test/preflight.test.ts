@@ -31,6 +31,7 @@ const options = {
   writerId: 'grok-4.7',
   readerId: 'grok-4.7',
   readerMaxOutputTokens: 4096,
+  thinking: 'provider-default' as const,
 }
 const traces: Trace[] = ['shared-writer', 'preflight-reader', 'preflight-reader'].map((scope, index) => ({
   scope,
@@ -65,5 +66,25 @@ test('same-model preflight still rejects reported usage beyond the reservation',
   expect(validatePreflight({ ...options, traces: overrun })).toMatchObject({
     passed: false,
     checks: { capped: true, usageBounded: false },
+  })
+})
+
+test('preflight verifies the explicit thinking configuration without changing provider defaults', () => {
+  const disabled = traces.map((trace) => ({
+    ...trace,
+    request: JSON.stringify({
+      ...JSON.parse(trace.request),
+      enable_thinking: false,
+      thinking: { type: 'disabled' },
+    }),
+  }))
+  expect(validatePreflight({ ...options, thinking: 'disabled', traces: disabled })).toMatchObject({ passed: true })
+  expect(validatePreflight({ ...options, thinking: 'disabled', traces })).toMatchObject({
+    passed: false,
+    checks: { correctPayloads: false },
+  })
+  expect(validatePreflight({ ...options, traces: disabled })).toMatchObject({
+    passed: false,
+    checks: { correctPayloads: false },
   })
 })

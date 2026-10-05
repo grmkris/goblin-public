@@ -133,12 +133,11 @@ function preflightErrors(manifest: Manifest, scenarios: readonly Scenario[]): st
   const source = scenario?.events.slice(0, preflight.cutoff).find((item) => item.id === preflight.sourceId)
   const realSource =
     manifest.corpus !== undefined && source?.kind === 'user' && new TextEncoder().encode(source.text).length > 512
-  const transport =
-    manifest.transport?.thinking === 'provider-default' && manifest.transport.readerMaxOutputTokens !== undefined
+  const transport = manifest.transport !== undefined && manifest.transport.readerMaxOutputTokens !== undefined
   const selected = manifest.scenarioIds.includes(preflight.scenarioId) && manifest.variants[0]?.writer !== undefined
   return [
     ...(realSource ? [] : ['preflight requires an original real owner event large enough for the actual summarizer']),
-    ...(transport ? [] : ['preflight requires explicit reader output and provider-default thinking']),
+    ...(transport ? [] : ['preflight requires explicit reader output and thinking configuration']),
     ...(selected ? [] : ['preflight requires a selected scenario and writer']),
   ]
 }

@@ -135,7 +135,9 @@ allowances and provider-default thinking. Optional regressions use these actual 
 Explicit manifests may also select the exact `qwen3.8-flash` and `grok-4.7` routes. The worker registers readers from
 the manifest. `transport.readerMaxOutputTokens` optionally caps each reader completion independently of the writer;
 old manifests retain their previous output default. Tool requests use `tool_choice: auto`.
-Preflight checks writer and reader output limits by operation scope, including when both use the same model route.
+Preflight checks writer and reader output limits by operation scope, including when both use the same model route,
+and verifies the manifest's explicit thinking configuration. Disabling thinking requires a fresh named experiment;
+the recorded usage must still fit every reservation before bulk construction is admitted.
 
 Search ranks lexical matches in original text and recorded paired-call metadata, returning at most four original
 excerpts within 2048 serialized UTF-8 bytes. A filename can locate its recorded Read result. `archive_read` accepts

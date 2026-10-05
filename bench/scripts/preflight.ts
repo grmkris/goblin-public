@@ -59,6 +59,7 @@ const check = Effect.fn('bench.preflight.check')(function* (url: string, resolve
     writerId: variant.writer,
     readerId: variant.reader,
     readerMaxOutputTokens: resolved.manifest.transport?.readerMaxOutputTokens,
+    thinking: resolved.manifest.transport?.thinking ?? 'provider-default',
   })
   return { ...checks, actor, operation, build, native, answer, limits: config }
 })
@@ -99,6 +100,7 @@ export function validatePreflight({
   writerId,
   readerId,
   readerMaxOutputTokens,
+  thinking,
 }: {
   native: ProbeResult
   answer: Answer
@@ -110,6 +112,7 @@ export function validatePreflight({
   writerId: string
   readerId: string
   readerMaxOutputTokens: number | undefined
+  thinking: 'provider-default' | 'disabled'
 }) {
   const writer = traces.filter((trace) => trace.scope === actor && trace.model === writerId && trace.status === 200)
   const reader = traces.filter((trace) => trace.scope === operation && trace.model === readerId && trace.status === 200)
@@ -119,12 +122,21 @@ export function validatePreflight({
   )
   const cited = source.some((item) => answer.evidenceIds.includes(item.id))
   const payloads: Record<string, unknown>[] = traces.map((trace) => JSON.parse(trace.request))
-  const correctPayloads = payloads.every(
-    (payload) =>
-      payload['enable_thinking'] !== false &&
-      payload['thinking'] === undefined &&
-      (!Array.isArray(payload['tools']) || payload['tools'].length === 0 || payload['tool_choice'] === 'auto'),
-  )
+  const correctPayloads = payloads.every((payload) => {
+    const option = payload['thinking']
+    const configuredThinking =
+      thinking === 'disabled'
+        ? payload['enable_thinking'] === false &&
+          typeof option === 'object' &&
+          option !== null &&
+          'type' in option &&
+          option.type === 'disabled'
+        : payload['enable_thinking'] !== false && option === undefined
+    return (
+      configuredThinking &&
+      (!Array.isArray(payload['tools']) || payload['tools'].length === 0 || payload['tool_choice'] === 'auto')
+    )
+  })
   const capped = payloads.every(
     (payload, index) =>
       (payload['max_tokens'] ?? payload['max_completion_tokens']) ===
