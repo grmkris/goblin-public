@@ -101,6 +101,19 @@ const toolAt = (state: ToolState, times: { readonly startedAt?: number; readonly
   ...times,
 })
 
+describe('a thread started with + in main', () => {
+  it('is its own part between the messages around it', () => {
+    const parts = conversationParts(
+      snapshot([
+        { id: 1, model: [{ role: 'user', content: 'hello' }] },
+        { id: 2, kind: 'app.thread_started', data: { thread: '7' }, model: [{ role: 'user', content: 'x' }] },
+      ]),
+    )
+    expect(parts.map((part) => part.kind)).toEqual(['user', 'thread-started'])
+    expect(parts[1]).toEqual({ kind: 'thread-started', id: '2:0', thread: '7' })
+  })
+})
+
 describe('how long a tool ran', () => {
   it('counts to now while running and to the result once done', () => {
     expect(elapsedMs(toolAt('running', { startedAt: 1_000 }), 3_500)).toBe(2_500)

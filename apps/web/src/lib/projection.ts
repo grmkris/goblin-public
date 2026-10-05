@@ -51,6 +51,8 @@ export type ChatMessage =
       readonly details: unknown
       readonly timestamp?: number
     }
+  /** A thread the owner started with "+": main's note naming it, shown as a row rather than a message. */
+  | { readonly id: string; readonly role: 'thread-started'; readonly thread: string; readonly timestamp?: number }
 /** A tool running in the current turn. `startedAt` is when this browser saw it start (Pi's slots carry no time). */
 export type LiveTool = {
   readonly callId: string
@@ -187,6 +189,17 @@ function entryMessage(message: Record<string, unknown>, id: string, thread?: str
  */
 const MARKERS = new Set(['app.memory', 'pi.compaction', 'pi.reset'])
 
+/**
+ * Main's note that the owner started a thread with "+" (`app.thread_started`): the model reads its text, the
+ * transcript shows a row for the thread it names instead.
+ */
+function threadStarted(entry: Record<string, unknown>): ChatMessage[] {
+  const thread = record(entry.data)?.thread
+  if (!isString(thread)) return []
+  const note = records(entry.model)[0] ?? {}
+  return [{ id: `${identifier(entry.id)}:0`, role: 'thread-started', thread, ...stamped(note) }]
+}
+
 /** Committed entries never change, so each one is projected once and reused while it stays in the transcript. */
 const projected = new WeakMap<Record<string, unknown>, readonly ChatMessage[]>()
 function messagesOf(entry: Record<string, unknown>): readonly ChatMessage[] {
@@ -196,9 +209,12 @@ function messagesOf(entry: Record<string, unknown>): readonly ChatMessage[] {
   // A note a thread shared into main names the thread it came from.
   const shared = entry.kind === 'app.shared' ? record(entry.data)?.thread : undefined
   const thread = isString(shared) ? shared : undefined
-  const messages = records(entry.model).flatMap((message, index) =>
-    entryMessage(message, `${identifier(entry.id)}:${index}`, thread),
-  )
+  const messages =
+    entry.kind === 'app.thread_started'
+      ? threadStarted(entry)
+      : records(entry.model).flatMap((message, index) =>
+          entryMessage(message, `${identifier(entry.id)}:${index}`, thread),
+        )
   projected.set(entry, messages)
   return messages
 }

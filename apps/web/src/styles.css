@@ -261,6 +261,10 @@ main.shell {
   height: 1rem;
   color: var(--muted-foreground);
 }
+.thread-row-lead {
+  flex: none;
+  color: var(--muted-foreground);
+}
 .thread-row-count {
   flex: none;
   font-weight: 600;

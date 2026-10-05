@@ -3,6 +3,7 @@ import { CircleAlertIcon, CircleStopIcon, KeyRoundIcon, MessageCircleQuestionIco
 import { Reasoning, ReasoningContent, ReasoningTrigger, Receipt } from '@purrable/ui'
 import { type Interaction, interactionOf } from '../../lib/interactions.ts'
 import type { Part, ToolPart } from '../../lib/parts.ts'
+import { ThreadStartedRow } from '../thread-replies.tsx'
 import { McpToolPart } from './mcp-tool-part.tsx'
 import { AssistantText, UserText } from './text-part.tsx'
 import { GenericToolPart, SubagentToolPart } from './tool-part.tsx'
@@ -62,6 +63,8 @@ export function PartView({ part, canSwitchModel }: { readonly part: Part; readon
       )
     case 'tool':
       return <ToolView part={part} />
+    case 'thread-started':
+      return <ThreadStartedRow thread={part.thread} />
     case 'failure':
       return (
         <Aside>

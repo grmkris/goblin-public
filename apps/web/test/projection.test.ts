@@ -71,6 +71,18 @@ describe('Pi committed state projected for the chat', () => {
     })
     expect(user(content)).not.toHaveProperty('thread')
   })
+  it("shows main's note of a thread started with + as that thread, not as a message", () => {
+    const note = {
+      id: 12,
+      kind: 'app.thread_started',
+      data: { thread: '61' },
+      model: [{ role: 'user', content: [{ type: 'text', text: '[thread started: "Car search"]' }], timestamp: 4_000 }],
+    }
+    const projected = projectSnapshot({ type: 'snapshot', entries: [note], tools: [], inbox: [] })
+    expect(projected.messages).toEqual([{ id: '12:0', role: 'thread-started', thread: '61', timestamp: 4_000 }])
+    const broken = projectSnapshot({ type: 'snapshot', entries: [{ ...note, data: {} }], tools: [], inbox: [] })
+    expect(broken.messages).toEqual([])
+  })
   it('projects committed tool progress and clears in-flight text after a run ends', () => {
     const snapshot = projectSnapshot({ type: 'snapshot', entries: [], tools: [], inbox: [] })
     const next = projectBatch(snapshot, [

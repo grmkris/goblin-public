@@ -42,6 +42,8 @@ export type Part =
   | { readonly kind: 'text'; readonly id: string; readonly text: string; readonly live: boolean }
   | ToolPart
   | { readonly kind: 'failure'; readonly id: string; readonly failure: TurnFailure }
+  /** A thread the owner started with "+", where main noted it. */
+  | { readonly kind: 'thread-started'; readonly id: string; readonly thread: string }
 
 /** The MCP server, tool and arguments of an `mcp_call`, when the call has that shape. */
 export function mcpTarget(call: ToolCallView): McpTarget | undefined {
@@ -126,7 +128,9 @@ export function conversationParts(projection: ConversationProjection): Part[] {
     else if (message.role === 'assistant') {
       for (const call of message.toolCalls) seen.add(call.id)
       parts.push(...assistantParts(message, context))
-    } else if (!seen.has(message.toolCallId))
+    } else if (message.role === 'thread-started')
+      parts.push({ kind: 'thread-started', id: message.id, thread: message.thread })
+    else if (!seen.has(message.toolCallId))
       // A result whose call is not in the transcript (compacted away) still shows on its own.
       parts.push(
         toolPart({ id: message.toolCallId, name: message.toolName, arguments: {} }, context, message.timestamp),

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, use, useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import type { ThreadView } from '@purrable/contracts'
-import { ChevronRightIcon, MessageSquareReplyIcon, MessagesSquareIcon } from 'lucide-react'
+import { ChevronRightIcon, MessageSquarePlusIcon, MessageSquareReplyIcon, MessagesSquareIcon } from 'lucide-react'
 import type { Part } from '../lib/parts.ts'
 import { entryOfPart, relativeTime, repliesLabel, threadTitle, threadsByFork } from '../lib/threads.ts'
+import { OpenThread } from './parts/text-part.tsx'
 import { useThreads } from './threads.tsx'
 
 /** Main's threads as its transcript shows them: under the message each branched from, and how to start one. */
@@ -17,7 +19,7 @@ export type InlineThreads = {
 }
 
 /** Now in seconds, updated each minute while the page is open. */
-function useMinute(): number {
+export function useMinute(): number {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
   useEffect(() => {
     const timer = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 60_000)
@@ -49,20 +51,11 @@ export function useInlineThreads(
   return useMemo(() => ({ at, branchable, reply, open, now }), [at, branchable, reply, open, now])
 }
 
-/** A thread under the message it branched from, as Slack shows one: its reply count, name and last reply. */
-function ThreadRow({
-  view,
-  now,
-  onOpen,
-}: {
-  readonly view: ThreadView
-  readonly now: number
-  readonly onOpen: () => void
-}) {
+/** What a thread row shows: its reply count, name and last reply, and whether the agent is working in it. */
+function ThreadSummary({ view, now }: { readonly view: ThreadView; readonly now: number }) {
   const last = view.lastReplyAt
   return (
-    <button type="button" className="thread-row" onClick={onOpen}>
-      <MessagesSquareIcon aria-hidden />
+    <>
       <span className="thread-row-count">{repliesLabel(view.replies ?? 0)}</span>
       <span className="thread-row-meta">
         {threadTitle(view)}
@@ -75,7 +68,64 @@ function ThreadRow({
       </span>
       {view.busy && <span className="thread-busy" aria-label="Working" />}
       <ChevronRightIcon aria-hidden className="thread-row-chevron" />
+    </>
+  )
+}
+
+/** A thread under the message it branched from, as Slack shows one. */
+function ThreadRow({
+  view,
+  now,
+  onOpen,
+}: {
+  readonly view: ThreadView
+  readonly now: number
+  readonly onOpen: () => void
+}) {
+  return (
+    <button type="button" className="thread-row" onClick={onOpen}>
+      <MessagesSquareIcon aria-hidden />
+      <ThreadSummary view={view} now={now} />
     </button>
+  )
+}
+
+/** Opens a thread beside main where the transcript can (`OpenThread`), or on its own page. */
+function OpenThreadButton({ thread, children }: { readonly thread: string; readonly children: ReactNode }) {
+  const open = use(OpenThread)
+  if (open === undefined)
+    return (
+      <Link to="/t/$threadId" params={{ threadId: thread }} className="thread-row">
+        {children}
+      </Link>
+    )
+  return (
+    <button type="button" className="thread-row" onClick={() => open(thread)}>
+      {children}
+    </button>
+  )
+}
+
+/**
+ * Where main noted a thread the owner started with "+": a quiet row with the thread as it is now (its current name, its
+ * replies), which opens it. Main's model saw only the name it had then.
+ */
+export function ThreadStartedRow({ thread }: { readonly thread: string }) {
+  const { views } = useThreads()
+  const now = useMinute()
+  const view = views.find((candidate) => candidate.id === thread)
+  return (
+    <div className="thread-rows">
+      <OpenThreadButton thread={thread}>
+        <MessageSquarePlusIcon aria-hidden />
+        <span className="thread-row-lead">You started a thread</span>
+        {view === undefined ? (
+          <ChevronRightIcon aria-hidden className="thread-row-chevron" />
+        ) : (
+          <ThreadSummary view={view} now={now} />
+        )}
+      </OpenThreadButton>
+    </div>
   )
 }
 
