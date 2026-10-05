@@ -2,7 +2,8 @@
 
 Accepted 2026-10-04 with the owner. Amended by ADR 0010: main learns the name of a thread started with "+".
 Threads branching only from main, archiving and `share_to_main` are superseded by ADR 0017 (a tree of conversations,
-threads from anywhere, one Close).
+threads from anywhere, one Close); the subagent rules (one level, three at once) by ADR 0018 (subagents nest, steer
+and close).
 
 **Each agent has one main conversation.** Main is Pi's root session. Everyone who reaches the agent talks there:
 - the owner's browser;

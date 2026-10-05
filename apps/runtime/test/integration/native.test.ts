@@ -20,6 +20,7 @@ import {
   subagentBranchChecks,
   treeChecks,
 } from './conversation-checks.ts'
+import { chainChecks, closeChecks, ownerChecks } from './subagent-checks.ts'
 
 const harness = Test.make({
   providers: Cloudflare.providers(),
@@ -861,8 +862,7 @@ harness.test(
       'pi.assistant: [{"type":"text","text":"echo: echo: find the word"}]',
     ])
     expect(result.mainRequest.tools).toEqual(expect.arrayContaining(['subagent', 'ask_user', 'mcp_call']))
-    expect(result.childRequest.tools).toEqual(expect.arrayContaining(['mcp_list', 'mcp_call']))
-    expect(result.childRequest.tools).not.toContain('subagent')
+    expect(result.childRequest.tools).toEqual(expect.arrayContaining(['mcp_list', 'mcp_call', 'subagent']))
     expect(result.childRequest.tools).not.toContain('ask_user')
   }),
 )
@@ -872,6 +872,13 @@ for (const [title, path, check] of [
   ['a thread branches from a thread, and Close shuts it with everything under it until Reopen', 'tree', treeChecks],
   ["a thread branched from a subagent is the owner's, and keeps it open", 'subagent-branch', subagentBranchChecks],
   ['the workspace feed sends a snapshot, then each change and what each is doing', 'feed', feedChecks],
+  ["a subagent's subagent reports to it, and only the final answer reaches main", 'chain', chainChecks],
+  ['the owner steers a busy subagent; the answer reports up once and the subagent stays open', 'owner', ownerChecks],
+  [
+    'Stop and Close reach subagents of subagents and report nothing; a closed one refuses its spawner',
+    'close',
+    closeChecks,
+  ],
 ] as const)
   harness.test(
     `local workerd: ${title}`,

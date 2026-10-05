@@ -1,68 +1,53 @@
 import {
-  AssistantEntry,
-  AgentDoc,
   type ConversationId,
-  type EntryId,
-  type EntryRecord,
   type Extension,
+  type Harness,
   LiveDoc,
-  type SettledSubmissionRecord,
-  type Task,
   type ToolExecutionApi,
+  type ToolRegistration,
   type Tx,
   configure,
-  defineDoc,
   defineExtension,
   defineTask,
   defineTool,
   section,
 } from '@earendil-works/pi-durable'
-import { type Static, Type } from '@earendil-works/pi-ai'
+import { type Static, Type, type UserMessage } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
-import { MAIN_THREAD } from '@purrable/contracts'
-import { Capabilities, Channel, Conversations, Members, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
+import { Capabilities, Conversations, attempt, nowSecondsEffect } from '../services.ts'
 import { capabilityOffResult } from './capabilities.ts'
-import { authoredContent } from './content.ts'
+import { BACKGROUND, conversationId } from './context.ts'
 import type { RunProgram } from './resident-mcp.ts'
+import {
+  type Authorize,
+  type Relay,
+  type Subagent,
+  Subagents,
+  background,
+  carriesRequest,
+  liveRelays,
+  quoted,
+  relayTask,
+} from './subagent-relay.ts'
 
 /** The tool that starts subagents: what a conversation with subagents switched off has filtered out (ADR 0010). */
 export const SUBAGENT_TOOL = 'subagent'
 
-/** The task that waits on a subagent's answer in its spawner: while one is live, the spawner waits on its helpers. */
-export const SUBAGENT_REPORTER = 'purrable.subagent-reporter'
-
-/** Subagents working at once, across the agent: each one spends the owner's budget on its own. */
-const MAX_RUNNING = 3
-
 const GUIDE = [
   'The `subagent` tool starts subagents: helpers that work in the background, each in a conversation of its own, with',
-  "the owner's tools and grants. Use one for a job that takes a while or can be done apart from the conversation. A",
-  "subagent's answer comes back to you as a message starting `[from subagent <name>]`: tell the owner what matters in",
-  `it. At most ${MAX_RUNNING} subagents work at once.`,
+  "the owner's tools and grants, and subagents of their own when a job splits. Use one for a job that takes a while or",
+  "can be done apart from the conversation. A subagent's final answer comes back to you as a message starting",
+  '`[from subagent <name>]`, once it and its own helpers are done: tell whoever you answer what matters in it. A',
+  'subagent closes when its job is done; send to it again and it picks up where it left off.',
 ].join(' ')
 
 const instructions = (name: string) =>
   [
-    `You are the subagent "${name}", started by the owner's agent to do one job. Do it and answer with the result:`,
-    'your answer is reported to the agent that started you. You cannot ask the owner anything; if you need something',
-    'from them, say so in your answer.',
+    `You are the subagent "${name}", started to do one job. Do it and answer with the result: your answer is reported to`,
+    'the agent that started you. Split a large job with subagents of your own; their answers come back to you, and',
+    'yours is reported once they are done. You cannot ask the owner anything; if you need something from them, say so',
+    'in your answer. The owner may also write to you directly: answer them the same way.',
   ].join(' ')
-
-type Subagent = {
-  readonly conversationId: ConversationId
-  /** Answers already reported: several messages can end in one answer, reported once. */
-  readonly reported: EntryId[]
-}
-
-/** The subagents a conversation started, by name. A thread branched from main starts without main's. */
-const Subagents = defineDoc<{ agents: Record<string, Subagent> }>({
-  kind: 'app.subagents',
-  version: 1,
-  scope: 'conversation',
-  history: 'latest',
-  fork: 'initial',
-  initial: () => ({ agents: {} }),
-})
 
 /**
  * Owns a subagent's conversation. It is a background task that finishes at once: the spawner's Stop and idle waits end
@@ -80,112 +65,6 @@ const Anchor = defineTask<null, { phase: 'done' }, null>({
     runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), context),
 })
 
-/** The text of an answer entry; empty when it has none (a run that a tool ended). */
-function answerText(entry: Pick<EntryRecord, 'model'> | undefined): string {
-  const message = entry?.model?.[0]
-  if (message?.role !== 'assistant') return ''
-  return message.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('')
-}
-
-type ReporterInput = { readonly name: string; readonly conversationId: ConversationId; readonly message: string }
-type ReporterState = { readonly phase: 'deliver' } | { readonly phase: 'report'; readonly report?: string }
-type Reporter = Task<ReporterInput, ReporterState, null, object>
-
-const background = { ownership: { kind: 'conversation' }, background: true } as const
-const toReport = (report?: string) =>
-  ({ status: 'running', checkpoint: { phase: 'report', ...(report === undefined ? {} : { report }) } }) as const
-
-/**
- * What a settled message to a subagent reports, decided in the reporter's commit so a restart does not decide again:
- * nothing when it was stopped or its answer was already reported, else the answer or the failure.
- */
-async function decideReport(tx: Tx, spawner: ConversationId, name: string, settled: SettledSubmissionRecord) {
-  if (settled.status === 'unanswered')
-    return toReport(settled.reason === 'aborted' ? undefined : `It failed: ${settled.reason}.`)
-  if (settled.type !== 'input') return toReport()
-  const agent = (await tx.doc(Subagents, spawner)).agents[name]
-  if (agent === undefined || agent.reported.includes(settled.answer)) return toReport()
-  agent.reported.push(settled.answer)
-  const answer = answerText(await tx.entry(AssistantEntry, settled.answer))
-  return toReport(answer === '' ? 'It ended without an answer; its conversation shows why.' : answer)
-}
-
-/**
- * Delivers one message to a subagent, waits for its answer and posts it into the spawner as an input it answers.
- * Request ids keep a restart from delivering or reporting twice.
- */
-function reporterTask(run: RunProgram, authorize: (session: string) => Promise<void>): Reporter {
-  return defineTask<ReporterInput, ReporterState, null>({
-    name: SUBAGENT_REPORTER,
-    version: 1,
-    initial: () => ({ phase: 'deliver' }),
-    phases: {
-      deliver: async (reporter, runtime, context) => {
-        const { name, conversationId, message } = reporter.input
-        const parent = String(runtime.conversationId)
-        await authorize(parent)
-        await run(
-          Effect.gen(function* () {
-            const conversations = yield* Conversations
-            const now = yield* nowSecondsEffect
-            yield* attemptSync(() => conversations.registerSubagent(String(conversationId), parent, name, now))
-          }),
-        )
-        const subagent = await runtime.conversation(conversationId, context)
-        if (subagent === undefined) throw new Error(`Subagent ${name} has no conversation`)
-        await authorize(parent)
-        await authorize(String(conversationId))
-        const principal = await run(Members.use((members) => attempt(() => members.require(String(conversationId)))))
-        if (principal !== undefined) {
-          const model = (await runtime.snapshot(AgentDoc, conversationId, context))?.model
-          await authorize(String(conversationId))
-          if (model !== undefined && model !== null)
-            await runtime.commit(async (tx) => {
-              await configure(tx, conversationId, {
-                model: { provider: `purrable-member:${conversationId}`, modelId: model.modelId },
-              })
-            }, context)
-        }
-        const submission = await subagent.submit(
-          { type: 'input', content: message, whenBusy: 'followUp', requestId: `subagent:${reporter.id}` },
-          context,
-        )
-        const settled = await submission.wait(context)
-        await runtime.commit(async (tx) => decideReport(tx, runtime.conversationId, name, settled), context)
-      },
-      // A follow-up input: it starts a turn when the spawner is idle, or waits for its current answer.
-      report: async (reporter, runtime, context) => {
-        await authorize(String(runtime.conversationId))
-        const { report } = reporter.state.checkpoint
-        if (report !== undefined) {
-          const spawner = await runtime.conversation(runtime.conversationId, context)
-          await authorize(String(runtime.conversationId))
-          await spawner?.submit(
-            {
-              type: 'input',
-              content: authoredContent(`subagent ${reporter.input.name}`, report),
-              whenBusy: 'followUp',
-              requestId: `subagent-report:${reporter.id}`,
-            },
-            context,
-          )
-          // Main's answer to a report goes to Telegram too when the channel is on (channel/channel.ts).
-          if (String(runtime.conversationId) === MAIN_THREAD)
-            await run(
-              Effect.gen(function* () {
-                const channel = yield* Channel
-                channel.track(`subagent-report:${reporter.id}`, yield* nowSecondsEffect)
-              }),
-            )
-        }
-        await runtime.commit(() => ({ status: 'terminal', outcome: { status: 'completed', result: null } }), context)
-      },
-    },
-    abort: (_reporter, runtime, context) =>
-      runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), context),
-  })
-}
-
 const Args = Type.Object({
   action: Type.Union([Type.Literal('spawn'), Type.Literal('send'), Type.Literal('stop'), Type.Literal('status')]),
   name: Type.Optional(Type.String({ pattern: '^[A-Za-z0-9_-]{1,40}$' })),
@@ -199,9 +78,9 @@ type Agents = Readonly<Record<string, Subagent>>
 const known = (agents: Agents, name: string) => (Object.hasOwn(agents, name) ? agents[name] : undefined)
 
 /** The tool's answer; the details link the call to the subagent's conversation in the web. */
-const reply = (text: string, name?: string, conversationId?: ConversationId) => ({
+const reply = (text: string, name?: string, conversation?: ConversationId) => ({
   content: [{ type: 'text' as const, text }],
-  ...(conversationId === undefined || name === undefined ? {} : { details: { name, conversationId } }),
+  ...(conversation === undefined || name === undefined ? {} : { details: { name, conversationId: conversation } }),
 })
 
 /** Who is working: one subagent, or every subagent this conversation started. */
@@ -217,51 +96,57 @@ async function status(api: Api, agents: Agents, name: string | undefined, contex
 }
 
 /**
- * Background subagents behind one `subagent` tool, after Pi Durable's example 23. A subagent is a conversation owned by
- * an anchor task of its spawner, given exactly `members` (no subagents of its own, no `ask_user`). Each message goes
- * through a reporter task, and the answer comes back to the spawner as an input. The app registry lists each subagent
- * under its spawner, so the owner can open it.
+ * Whether the spawner may send to a subagent: not one the owner closed, until they reopen it; one closed because its
+ * job was done opens again for the next one.
  */
-export function subagentsExtension(
-  run: RunProgram,
-  members: readonly Extension[],
-  authorize: (session: string) => Promise<void> = async () => undefined,
-) {
-  const Reporter = reporterTask(run, authorize)
+async function admit(run: RunProgram, agent: Subagent | undefined, name: string) {
+  if (agent === undefined) return { reopened: false }
+  const session = String(agent.conversationId)
+  const view = await run(Conversations.use((conversations) => attempt(() => conversations.view(session))))
+  if (view?.closedBy === 'owner')
+    return { refused: `The owner closed ${name}; it takes no messages until they reopen it.`, reopened: false }
+  if (view?.closedBy !== 'done') return { reopened: false }
+  await run(
+    Effect.gen(function* () {
+      const conversations = yield* Conversations
+      const now = yield* nowSecondsEffect
+      yield* attempt(() => conversations.update(session, { closed: false }, now))
+    }),
+  )
+  return { reopened: true }
+}
 
-  /** A conversation for a new subagent, owned by an anchor of the spawner and given exactly `members`. */
-  async function spawn(tx: Tx, name: string): Promise<ConversationId> {
-    const anchor = await tx.createTask(Anchor, null, background)
-    // A task-owned conversation starts as a copy of the spawner's agent: its model and settings.
-    const child = await tx.createConversation({ ownership: { kind: 'task', taskId: anchor } })
-    await configure(tx, child.id, { extensions: members, instructions: instructions(name) })
-    return child.id
-  }
+/**
+ * Stop: its current work and everything its own subagents are doing, through every level. What was on its way to it
+ * stops first, so nothing reports the job cut short.
+ */
+async function stop(run: RunProgram, authorize: Authorize, api: Api, agent: Subagent, context: CallContext) {
+  const session = String(agent.conversationId)
+  const child = await api.conversation(agent.conversationId, context)
+  await authorize(String(api.conversationId))
+  await run(Conversations.use((conversations) => attempt(() => conversations.stopSubagents(session))))
+  await child?.abort(context, { background: true })
+}
 
-  /** spawn and send: one commit starts the subagent if new, and a reporter for the message. */
-  async function deliver(api: Api, action: 'spawn' | 'send', name: string, message: string, context: CallContext) {
-    const working = await run(Conversations.use((conversations) => attempt(() => conversations.runningSubagents())))
-    await authorize(String(api.conversationId))
-    if (working >= MAX_RUNNING) return reply(`${MAX_RUNNING} subagents are already working; wait for one to report.`)
-    const result = await api.commit(async (tx) => {
-      const state = await tx.doc(Subagents, api.conversationId)
-      const existing = known(state.agents, name)
-      if (action === 'spawn' && existing !== undefined) return `${name} already exists; use send.`
-      const conversationId = existing?.conversationId ?? (await spawn(tx, name))
-      state.agents[name] ??= { conversationId, reported: [] }
-      await tx.createTask(Reporter, { name, conversationId, message }, background)
-      return action === 'spawn' ? `Started ${name}.` : `Sent to ${name}.`
-    }, context)
-    const current = (await api.snapshot(Subagents, api.conversationId, context))?.agents[name]
-    return reply(result, name, current?.conversationId)
-  }
+type Deliver = (
+  api: Api,
+  action: 'spawn' | 'send',
+  name: string,
+  message: string,
+  context: CallContext,
+) => Promise<ReturnType<typeof reply>>
 
-  const tool = defineTool({
+/**
+ * The `subagent` tool: spawn, send, stop and status, behind the conversation's subagents switch. The caller's
+ * authority is checked again after each read, before what it changes or answers.
+ */
+function subagentTool(run: RunProgram, authorize: Authorize, deliver: Deliver) {
+  return defineTool({
     name: SUBAGENT_TOOL,
     description: [
       'Manage background subagents. spawn (name, message) starts one on a job; send (name, message) gives it another',
-      'after its current answer; stop (name) aborts its current work; status (name, or none for all) says who is',
-      'working. Answers are reported back to you when they arrive.',
+      'after its current answer; stop (name) aborts its current work and its own subagents; status (name, or none for',
+      'all) says who is working. Final answers are reported back to you when they arrive.',
     ].join(' '),
     parameters: Args,
     // An interrupted call is not rerun: repeating a spawn or a stop could start or stop newer work. The model sees
@@ -279,11 +164,7 @@ export function subagentsExtension(
       const agent = known(agents, name)
       if (action !== 'spawn' && agent === undefined) return reply(`No subagent named ${name}.`)
       if (action === 'stop') {
-        if (agent !== undefined) {
-          const child = await api.conversation(agent.conversationId, context)
-          await authorize(String(api.conversationId))
-          await child?.abort(context)
-        }
+        if (agent !== undefined) await stop(run, authorize, api, agent, context)
         return reply(`Stopped ${name}.`, name, agent?.conversationId)
       }
       if (message === undefined) return reply(`${action} needs a message.`)
@@ -293,8 +174,105 @@ export function subagentsExtension(
       return deliver(api, action, name, message, context)
     },
   })
+}
 
-  return defineExtension({
+/** The owner's message to a subagent, as `ownerSend` carries it. */
+export type OwnerSend = {
+  readonly subagent: string
+  readonly spawner: string
+  /** Its name in the registry, for a subagent its spawner no longer lists. */
+  readonly title: string
+  readonly content: UserMessage['content']
+  readonly text: string
+  readonly operationId: string
+  /** Busy: the message steers its current work; idle: it starts a turn. */
+  readonly busy: boolean
+}
+
+/** A relay in the spawner for the owner's message, once per operation: false when it is already on its way. */
+async function ownerRelay(relay: Relay, pi: Harness, send: OwnerSend): Promise<boolean> {
+  const spawner = await pi.conversation(conversationId(send.spawner), BACKGROUND)
+  if (spawner === undefined) throw new Error(`Subagent ${send.subagent} has no spawner`)
+  const subagent = conversationId(send.subagent)
+  const created = await spawner.commit(async (tx) => {
+    if ((await tx.submissionByRequest(subagent, send.operationId)) !== undefined) return false
+    if ((await liveRelays(tx, spawner.id)).some((live) => carriesRequest(live, send.operationId))) return false
+    const roster = await tx.doc(Subagents, spawner.id)
+    const name = Object.entries(roster.agents).find(([, agent]) => agent.conversationId === subagent)?.[0]
+    const input = {
+      name: name ?? send.title,
+      conversationId: subagent,
+      content: send.content,
+      origin: 'owner',
+      whenBusy: send.busy ? 'steer' : 'followUp',
+      quote: quoted(send.text),
+      requestId: send.operationId,
+    } as const
+    await tx.createTask(relay, input, background)
+    return true
+  }, BACKGROUND)
+  pi.resume()
+  return created
+}
+
+export type SubagentKit = {
+  readonly extension: Extension
+  readonly tool: ToolRegistration
+  /**
+   * The owner's message to a subagent, carried like the spawner's by a relay in the spawner, so the answer reports up.
+   * False when that operation is already on its way or delivered.
+   */
+  readonly ownerSend: (pi: Harness, send: OwnerSend) => Promise<boolean>
+}
+
+/**
+ * Background subagents behind one `subagent` tool, after Pi Durable's example 23. A subagent is a conversation owned by
+ * an anchor task of its spawner, given exactly `members(extension)`: the owner's tools and this extension again, so it
+ * can start subagents of its own, at any depth (no `ask_user`). Each message goes through a relay task (`relayTask`),
+ * and only the final answer comes back to the spawner. The registry lists each subagent under its spawner, so the
+ * owner can open it.
+ */
+export function subagentsExtension(
+  run: RunProgram,
+  members: (self: Extension) => readonly Extension[],
+  authorize: Authorize = async () => undefined,
+): SubagentKit {
+  const Relay = relayTask(run, authorize)
+
+  /** A conversation for a new subagent, owned by an anchor of the spawner and given exactly its members. */
+  async function spawn(tx: Tx, name: string): Promise<ConversationId> {
+    const anchor = await tx.createTask(Anchor, null, background)
+    // A task-owned conversation starts as a copy of the spawner's agent: its model and settings.
+    const child = await tx.createConversation({ ownership: { kind: 'task', taskId: anchor } })
+    await configure(tx, child.id, { extensions: members(extension), instructions: instructions(name) })
+    return child.id
+  }
+
+  /** spawn and send: one commit starts the subagent if new, and a relay for the message. */
+  async function deliver(api: Api, action: 'spawn' | 'send', name: string, message: string, context: CallContext) {
+    await authorize(String(api.conversationId))
+    const roster = await api.snapshot(Subagents, api.conversationId, context)
+    const admitted = await admit(run, roster === undefined ? undefined : known(roster.agents, name), name)
+    if (admitted.refused !== undefined) return reply(admitted.refused)
+    const result = await api.commit(async (tx) => {
+      const state = await tx.doc(Subagents, api.conversationId)
+      const existing = known(state.agents, name)
+      if (action === 'spawn' && existing !== undefined) return `${name} already exists; use send.`
+      const child = existing?.conversationId ?? (await spawn(tx, name))
+      state.agents[name] ??= { conversationId: child, reported: [] }
+      const input = { name, conversationId: child, content: message, origin: 'spawner', whenBusy: 'followUp' } as const
+      await tx.createTask(Relay, input, background)
+      if (action === 'spawn') return `Started ${name}.`
+      return admitted.reopened
+        ? `Sent to ${name}; it had closed when its job was done and is open again.`
+        : `Sent to ${name}.`
+    }, context)
+    const current = (await api.snapshot(Subagents, api.conversationId, context))?.agents[name]
+    return reply(result, name, current?.conversationId)
+  }
+
+  const tool = subagentTool(run, authorize, deliver)
+  const extension: Extension = defineExtension({
     name: 'purrable.subagents',
     // Only where the tool is offered: a conversation with subagents switched off has it filtered out.
     sections: [
@@ -302,7 +280,8 @@ export function subagentsExtension(
         input.agent.tools.some((offered) => offered.name === SUBAGENT_TOOL) ? GUIDE : undefined,
       ),
     ],
-    tasks: [Anchor, Reporter],
+    tasks: [Anchor, Relay],
     tools: [tool],
   })
+  return { extension, tool, ownerSend: (pi, send) => ownerRelay(Relay, pi, send) }
 }

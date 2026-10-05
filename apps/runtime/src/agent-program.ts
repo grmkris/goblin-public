@@ -1,5 +1,11 @@
 import type { PiHarness } from 'agents/harness/pi'
-import { MAIN_THREAD, type AppContext, type CreateConversation, type UpdateConversation } from '@purrable/contracts'
+import {
+  MAIN_THREAD,
+  type AppContext,
+  type ConversationView,
+  type CreateConversation,
+  type UpdateConversation,
+} from '@purrable/contracts'
 import * as Effect from 'effect/Effect'
 import type { AppError } from './http/errors.ts'
 import { Entitlements } from './billing/gates.ts'
@@ -24,6 +30,7 @@ import { BACKGROUND } from './pi/context.ts'
 import { recentMessages } from './pi/transcript.ts'
 import { Forbidden } from './http/errors.ts'
 import { authoredContent, ownerContent } from './pi/content.ts'
+import type { SubagentKit } from './pi/subagents.ts'
 
 /** The registration gate for every owner conversation request. */
 export const registeredConversation = (id: string) =>
@@ -87,9 +94,8 @@ export const stopOwner = (input: {
       return true
     }
     const operationId = input.operationId === undefined ? {} : { operationId: input.operationId }
-    const stopped = yield* attempt(() => input.harness.abort({ session, ...operationId }))
     yield* attempt(() => conversations.stopSubagents(session))
-    return stopped
+    return yield* attempt(() => input.harness.abort({ session, ...operationId }))
   })
 
 export const ownerRequest = <A>(program: Effect.Effect<A, AppError, AgentServices>) =>
@@ -112,25 +118,54 @@ export const setResident = (enabled: boolean) =>
     return resident.status(now)
   })
 
-export const submitOwner = (input: {
+type OwnerSubmit = {
   harness: PiHarness
   applied: Applied
   routines: RoutineRunner
+  subagents: SubagentKit
   thread: string
   text: string
   operationId: string
   appContext: readonly AppContext[]
-}) =>
+}
+
+/**
+ * The owner's message to a subagent: the subagent stays open after its job (the owner engaged with it), and the
+ * message goes through a relay in its spawner, so the answer reports up with the owner's words quoted. While the
+ * subagent works, the message steers it.
+ */
+const sendToSubagent = (input: OwnerSubmit, view: ConversationView, spawner: string) =>
+  Effect.gen(function* () {
+    const conversations = yield* Conversations
+    const now = yield* nowSecondsEffect
+    yield* attempt(() => conversations.update(view.id, { keepOpen: true }, now))
+    const busy = yield* attempt(() => input.harness.session(view.id).busy())
+    const pi = yield* attempt(() => input.harness.pi())
+    const send = {
+      subagent: view.id,
+      spawner,
+      title: view.title ?? 'subagent',
+      content: ownerContent(input.text, input.appContext),
+      text: input.text,
+      operationId: input.operationId,
+      busy,
+    }
+    const accepted = yield* attempt(() => input.subagents.ownerSend(pi, send))
+    return { session: view.id, operationId: input.operationId, accepted }
+  })
+
+export const submitOwner = (input: OwnerSubmit) =>
   Effect.gen(function* () {
     yield* requireBudget
-    const session = yield* Conversations.use((conversations) =>
-      attemptSync(() => conversations.requireOpen(input.thread)),
-    )
+    const conversations = yield* Conversations
+    const session = yield* attemptSync(() => conversations.requireOpen(input.thread))
     if ((yield* Members).access.origin(session) !== undefined)
       return yield* new Forbidden({ reason: 'member conversation requester' })
     if (yield* attempt(() => input.routines.answer(session, input.operationId, input.text)))
       return { session, operationId: input.operationId, accepted: true }
     yield* useModel(input.harness, input.applied, session)
+    const view = yield* attempt(() => conversations.view(session))
+    if (view?.kind === 'subagent' && view.parent !== undefined) return yield* sendToSubagent(input, view, view.parent)
     return yield* attempt(() =>
       input.harness.submit(ownerContent(input.text, input.appContext), { session, operationId: input.operationId }),
     )

@@ -9,6 +9,7 @@ import type { MainMemory } from './memory/memory.ts'
 import type { CheapModel } from './memory/model.ts'
 import { authoredContent, threadStartedContent } from './pi/content.ts'
 import { BACKGROUND, conversationId, entryId } from './pi/context.ts'
+import { dropRelaysTo } from './pi/subagent-relay.ts'
 import { type ReplyStats, recentMessages } from './pi/transcript.ts'
 import { ReplyLedger } from './replies.ts'
 import { appConversations } from './storage/schema.ts'
@@ -222,7 +223,7 @@ export class ConversationRegistry {
     this.#changed([session])
   }
 
-  /** Registers a subagent's conversation under the one that started it; a reporter repeats it, so it is idempotent. */
+  /** Registers a subagent's conversation under the one that started it; a relay repeats it, so it is idempotent. */
   registerSubagent(session: string, parent: string, name: string, now: number): void {
     this.#db
       .insert(appConversations)
@@ -273,13 +274,6 @@ export class ConversationRegistry {
       },
       BACKGROUND,
     )
-  }
-
-  /** How many subagents are working now, across every conversation. */
-  async runningSubagents(): Promise<number> {
-    const rows = this.#db.select().from(appConversations).where(eq(appConversations.kind, 'subagent')).all()
-    const busy = await Promise.all(rows.map(async (row) => this.#harness.session(row.sessionId).busy()))
-    return busy.filter(Boolean).length
   }
 
   /**
@@ -392,10 +386,6 @@ export class ConversationRegistry {
     return this.#db.all<{ id: string }>(sql`${tree(id)} SELECT id FROM tree`).map((row) => row.id)
   }
 
-  /**
-   * Closes `id` and every open conversation under it in one statement, then stops each, background work included (a
-   * reporter waiting on a subagent, a thread's subagents): a closed conversation runs nothing. Returns what it closed.
-   */
   /** The owner has seen `id` up to `now`, so replies until then are read. The mark only moves forward. */
   markRead(id: string, now: number): void {
     this.#registered(id)
@@ -407,6 +397,10 @@ export class ConversationRegistry {
     if (moved.length > 0) this.#changed([id])
   }
 
+  /**
+   * Closes `id` and every open conversation under it in one statement, then stops each, background work included (a
+   * relay waiting on a subagent, a thread's subagents): a closed conversation runs nothing. Returns what it closed.
+   */
   async close(id: string, by: 'owner' | 'done', now: number): Promise<readonly string[]> {
     if (this.kindOf(id) === 'main') throw new InvalidInput({ reason: 'main_thread' })
     const closed = this.#db
@@ -418,13 +412,16 @@ export class ConversationRegistry {
       )
       .map((row) => row.session_id)
     this.#changed(closed)
+    // A job done closes from its own last relay, which has nothing left to drop.
+    if (by === 'owner') await this.#dropRelays(closed)
     await this.#stop(closed)
     return closed
   }
 
   /**
    * Stops every open subagent below `id`, through subagents of subagents: Stop in a conversation reaches the helpers it
-   * started. Threads branched from it are the owner's own and keep going.
+   * started. Threads branched from it are the owner's own and keep going. Nothing still on its way to `id` or below
+   * reports: a stopped job reports nothing. Call it before stopping `id` itself.
    */
   async stopSubagents(id: string): Promise<void> {
     const below = this.#db.all<{ session_id: string }>(
@@ -437,7 +434,19 @@ export class ConversationRegistry {
           )
           SELECT id AS session_id FROM tree WHERE id <> ${id}`,
     )
-    await this.#stop(below.map((row) => row.session_id))
+    const stopping = below.map((row) => row.session_id)
+    await this.#dropRelays([id, ...stopping])
+    await this.#stop(stopping)
+  }
+
+  /** Stops the relays carrying messages to each subagent among `sessions` from its spawner. */
+  async #dropRelays(sessions: readonly string[]): Promise<void> {
+    const pi = await this.#harness.pi()
+    for (const session of sessions) {
+      const row = this.#row(session)
+      if (row?.kind === 'subagent' && row.parentSession !== null)
+        await dropRelaysTo(pi, conversationId(row.parentSession), conversationId(session))
+    }
   }
 
   /** Aborts each conversation across background boundaries: its runs, its queued inputs and its background tasks. */

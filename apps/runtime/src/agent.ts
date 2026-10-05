@@ -1,5 +1,5 @@
 import { Agent } from 'agents'
-import { type Extension, type ToolRegistration } from '@earendil-works/pi-durable'
+import { type Extension } from '@earendil-works/pi-durable'
 import { type AppContext, type CapabilityChange, type JsonObject, MAIN_THREAD } from '@purrable/contracts'
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
@@ -17,7 +17,7 @@ import { memberProgram, executionAuthority } from './members/program.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
 import { LITELLM_STREAMS, makePiModels } from './pi/model.ts'
 import { personaExtension, principalExtension } from './pi/persona.ts'
-import { SUBAGENT_TOOL, subagentsExtension } from './pi/subagents.ts'
+import { type SubagentKit, subagentsExtension } from './pi/subagents.ts'
 import { threadExtension } from './pi/thread.ts'
 import { memoryExtensions } from './pi/memory.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
@@ -95,7 +95,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   readonly #pi: PiModels
   readonly #thread: Extension
   readonly #memory: ReturnType<typeof memoryExtensions>
-  readonly #subagentTool: ToolRegistration
+  readonly #subagents: SubagentKit
   readonly #memberExtensions: readonly Extension[]
   readonly #applied: Applied = new Map()
   readonly #routines: RoutineController
@@ -113,11 +113,10 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     const principal = principalExtension(async (session) =>
       routineRun(Members.use((members) => attempt(() => members.access.require(session)))),
     )
-    // A subagent gets the persona and the owner's tools, nothing else: no subagents of its own, no ask_user.
-    const subagents = subagentsExtension(routineRun, [personaExtension, principal, ...tools], execution)
-    const subagentTool = subagents.tools?.find((tool) => tool.name === SUBAGENT_TOOL)
-    if (subagentTool === undefined) throw new Error('The subagents extension has no subagent tool')
-    this.#subagentTool = subagentTool
+    // A subagent gets the persona, the owner's tools and subagents of its own, nothing else: no ask_user.
+    const subagentMembers = (self: Extension) => [personaExtension, principal, ...tools, self]
+    this.#subagents = subagentsExtension(routineRun, subagentMembers, execution)
+    const subagents = this.#subagents.extension
     this.#thread = threadExtension(run, routineRun)
     this.#memory = memoryExtensions(run)
     const { memory, recall } = this.#memory
@@ -184,7 +183,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       pi: this.#pi,
       thread: this.#thread,
       memory: this.#memory,
-      subagentTool: this.#subagentTool,
+      subagentTool: this.#subagents.tool,
       memberExtensions: this.#memberExtensions,
       scheduleReplies: () => void this.schedule(5, 'channelReplies'),
       userId: this.name,
@@ -266,7 +265,12 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   /** The owner's message into a thread, with what an open App shared for the agent as separate untrusted blocks. */
   submit(thread: string, input: string, operationId: string, appContext: readonly AppContext[] = []) {
-    const runtime = { harness: this.harness, applied: this.#applied, routines: this.#routines }
+    const runtime = {
+      harness: this.harness,
+      applied: this.#applied,
+      routines: this.#routines,
+      subagents: this.#subagents,
+    }
     return this.#owner(submitOwner({ ...runtime, thread, text: input, operationId, appContext }))
   }
   conversations() {

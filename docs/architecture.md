@@ -163,11 +163,17 @@ show under their message in main and get no note.
 Main and threads can start **subagents** with the `subagent` tool (`pi/subagents.ts`, after Pi Durable's background
 subagent example): `spawn`, `send`, `stop` and `status`. A subagent is a Pi conversation owned by a background anchor
 task of its spawner, so the spawner's Stop and idle waits do not reach it. It starts with the spawner's model and is
-given exactly the persona and the owner's MCP and budget extensions: the same grants, no subagents of its own, no
-`ask_user` and no skills. Each message goes through a reporter task that delivers it, waits for the answer and posts
-it into the spawner as an input labelled `[from subagent <name>]`, which the spawner answers; request ids keep a
-restart from delivering or reporting twice. At most three subagents work at once. The reporter registers the subagent in
-`app_conversations` under its spawner, so the web lists it there and the tool row links to it.
+given exactly the persona, the owner's MCP and budget extensions and the subagents extension again: the same grants,
+subagents of its own at any depth, no `ask_user` and no skills (ADR 0018). Each message, the spawner's or the owner's,
+goes through a relay task in the spawner (`pi/subagent-relay.ts`): it delivers the message, waits until the subagent is
+done (idle, with none of its own relays live; it parks on those), then posts the newest answer once into the spawner as
+an input labelled `[from subagent <name>]`, which the spawner answers. Request ids keep a restart from delivering or
+reporting twice; of several messages on their way to one subagent only the last relay reports, quoting what the owner
+wrote. The subagent then closes as done unless the owner wrote to it, branched from it or pinned it; a later message
+from its spawner opens it again, while one the owner closed refuses its spawner. The owner's message to a subagent
+pins it open and steers it when it is busy. Stop and Close stop the relays carrying to each subagent before aborting
+it, so a job cut short reports nothing. The relay registers the subagent in `app_conversations` under its spawner, so
+the web lists it there and the tool row links to it.
 
 **Capabilities** (ADR 0010, `capabilities/`): each conversation can switch off, for its own agent, a connected server,
 one granted tool of it, a skills library, or subagents. `app_conversation_capabilities` stores only what is off, so a

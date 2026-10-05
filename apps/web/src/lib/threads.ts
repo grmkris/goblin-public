@@ -8,6 +8,10 @@ const newestFirst = (a: ConversationView, b: ConversationView) =>
 /** Whether a conversation is closed (it and everything under it run nothing until reopened). */
 export const isClosed = (view: ConversationView): boolean => view.closedAt !== undefined
 
+/** Who closed a conversation: the owner, or, for a subagent, its job being done; undefined while it is open. */
+export const closedBy = (view: ConversationView): 'owner' | 'done' | undefined =>
+  isClosed(view) ? (view.closedBy ?? 'owner') : undefined
+
 /** What to call a conversation: main is Main; a thread or subagent has its title, or a placeholder until it gets one. */
 export function threadTitle(view: ConversationView | undefined): string {
   if (view === undefined || view.kind === 'main') return 'Main'

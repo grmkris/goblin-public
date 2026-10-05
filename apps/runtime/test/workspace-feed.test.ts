@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ConversationId, TaskGraph, TaskGraphNode, TaskId } from '@earendil-works/pi-durable'
-import { SUBAGENT_REPORTER } from '../src/pi/subagents.ts'
+import { SUBAGENT_RELAY } from '../src/pi/subagent-relay.ts'
 import { activityOf } from '../src/workspace/feed.ts'
 
 /** A live task in conversation `conversation`. SAFETY: Pi ids are plain integers at runtime; the brand only types them. */
@@ -18,13 +18,13 @@ const graph = (...tasks: TaskGraphNode[]): TaskGraph => ({
 })
 
 describe('what each conversation is doing, from the task graph', () => {
-  it('works on ordinary tasks, waits on subagent reporters, and ignores background housekeeping', () => {
+  it('works on ordinary tasks, waits on subagent relays, and ignores background housekeeping', () => {
     const states = activityOf(
       graph(
         task(1, 1, 'purrable.memory-builder', true),
         task(2, 7, 'pi.generation', false),
-        task(3, 9, SUBAGENT_REPORTER, true),
-        task(4, 11, SUBAGENT_REPORTER, true),
+        task(3, 9, SUBAGENT_RELAY, true),
+        task(4, 11, SUBAGENT_RELAY, true),
         task(5, 11, 'pi.generation', false),
       ),
     )

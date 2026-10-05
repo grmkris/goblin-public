@@ -15,6 +15,7 @@ import {
   lateInvalidationCase,
   historyDowngradeCase,
   memberDescendantsCase,
+  memberRelayAuthorityCase,
 } from './members-security.ts'
 import { memberToolsCase } from './members-tools.ts'
 
@@ -35,6 +36,7 @@ for (const [name, run] of [
   ['late invalidation preserves questions from the current membership version', lateInvalidationCase],
   ['history downgrade fences the old context and starts without root history', historyDowngradeCase],
   ['subagents retain member provenance, scoped providers and acting-account usage', memberDescendantsCase],
+  ["a subagent's relay checks the member's authority again: revoked, it reports nothing", memberRelayAuthorityCase],
 ] as const)
   harness.test(
     `native Members: ${name}`,

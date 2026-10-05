@@ -41,10 +41,15 @@ function useSendWithAppContext(send: Send): (input: string) => Promise<boolean> 
   }
 }
 
-function ClosedNotice({ onReopen }: { readonly onReopen: () => void }) {
+/** Why a conversation takes no message: the owner closed it, or, for a subagent, its job was done. */
+function ClosedNotice({ by, onReopen }: { readonly by: 'owner' | 'done'; readonly onReopen: () => void }) {
   return (
     <div className="pane-closed" role="status">
-      <span>Closed. It and everything under it run nothing until it is reopened.</span>
+      <span>
+        {by === 'done'
+          ? 'Its job is done, so it closed. Its spawner can send it more; reopen it to write to it yourself.'
+          : 'Closed. It and everything under it run nothing until it is reopened.'}
+      </span>
       <Button variant="outline" size="sm" onClick={onReopen}>
         <RotateCcwIcon data-icon="inline-start" />
         Reopen
@@ -75,7 +80,8 @@ export function ConversationDock({
   readonly model: ReturnType<typeof useModelChoice>
   readonly parts: readonly Part[]
   readonly readOnly?: boolean
-  readonly closed: boolean
+  /** Who closed it, when it is closed. */
+  readonly closed: 'owner' | 'done' | undefined
   readonly onReopen: () => void
   readonly notices?: readonly string[]
 }) {
@@ -102,8 +108,8 @@ export function ConversationDock({
       ))}
       {readOnly ? (
         <p className="pane-closed">Read only. The owner can read all workspace conversations.</p>
-      ) : closed ? (
-        <ClosedNotice onReopen={onReopen} />
+      ) : closed !== undefined ? (
+        <ClosedNotice by={closed} onReopen={onReopen} />
       ) : (
         <>
           {owner ? <InteractionCards interactions={waiting} thread={id} onAnswer={send} /> : <MemberInteractionCards />}

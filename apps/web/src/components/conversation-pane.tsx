@@ -6,7 +6,7 @@ import { Maximize2Icon, Minimize2Icon, PencilIcon, RotateCcwIcon, ShareIcon, XIc
 import { failureText } from '../lib/boundary.ts'
 import { WIDE_QUERY } from '../lib/breakpoints.ts'
 import type { Part } from '../lib/parts.ts'
-import { entryOfPart, isClosed, repliesLabel, rootParts, threadTitle } from '../lib/threads.ts'
+import { closedBy, entryOfPart, isClosed, repliesLabel, rootParts, threadTitle } from '../lib/threads.ts'
 import { activityState } from '../lib/workspace-feed.ts'
 import { type ItemKey, conversationKey, itemOf, order } from '../lib/workspace.ts'
 import { MessageComposer } from './composer.tsx'
@@ -55,7 +55,7 @@ export function usePlace(item: ItemKey) {
 function Status({ view }: { readonly view: ConversationView | undefined }) {
   const feed = useWorkspaceFeed()
   if (view === undefined) return null
-  if (isClosed(view)) return <span className="pane-state">Closed</span>
+  if (isClosed(view)) return <span className="pane-state">{view.closedBy === 'done' ? 'Done' : 'Closed'}</span>
   const state = activityState(feed, view.id)
   if (state === 'working') return <span className="thread-busy" aria-label="Working" />
   return state === 'waiting' ? <span className="pane-state">Waiting on helpers</span> : null
@@ -233,7 +233,7 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
         conversation={conversation}
         model={model}
         parts={parts}
-        closed={isClosed(view)}
+        closed={closedBy(view)}
         readOnly={!canCompose}
         onReopen={() => void feed.update(id, { closed: false })}
         notices={feed.error === '' ? [] : [feed.error]}

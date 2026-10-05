@@ -87,6 +87,8 @@ export async function treeChecks(base: string, name: string): Promise<void> {
 }
 
 const SubagentBranchRun = Schema.Struct({
+  doneClosed: Listed,
+  status: Schema.Struct({ text: Schema.optional(Schema.String) }),
   branch: Listed,
   request: ModelRequest,
   subagentAfter: Listed,
@@ -95,12 +97,14 @@ const SubagentBranchRun = Schema.Struct({
   keepOpenThread: Refused,
 })
 
-/** A thread branched from a subagent is the owner's, and keeps the subagent open. */
+/** A subagent closes once its job is done; a thread branched from it (reopened) is the owner's, and keeps it open. */
 export async function subagentBranchChecks(base: string, name: string): Promise<void> {
   const result = await probe(base, 'subagent-branch', name, SubagentBranchRun)
+  expect(result.doneClosed.closedBy).toBe('done')
   expect(result.branch).toMatchObject({ kind: 'thread', parent: result.subagentAfter.id })
   expect(requestTurns(result.request)).toEqual(['find the word', 'echo: find the word', 'what did you find?'])
-  expect(result.request.tools).toEqual(expect.arrayContaining(['share_back', 'ask_user', 'subagent']))
+  expect(result.request.tools).toEqual(expect.arrayContaining(['share_back', 'ask_user']))
+  expect(result.status.text).toBe('done: No subagents.')
   // Historical section deltas remain in the fork; its current prompt must clear the subagent instructions.
   expect(result.request.systemPrompt).not.toContain('You are the subagent')
   expect(result.subagentAfter.keepOpen).toBe(true)

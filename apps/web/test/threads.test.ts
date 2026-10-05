@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ConversationView } from '@purrable/contracts'
 import {
   branchPoints,
+  closedBy,
   entryOfPart,
   fromEntry,
   relativeTime,
@@ -82,5 +83,13 @@ describe('threads in main', () => {
     expect(relativeTime(now - 14 * 86_400, now)).toBe('2 weeks ago')
     expect(relativeTime(now - 400 * 86_400, now)).toBe('last year')
     expect(relativeTime(now + 30, now)).toBe('just now')
+  })
+
+  it('says who closed a conversation: the owner, or a subagent whose job was done', () => {
+    expect(closedBy(view('5'))).toBeUndefined()
+    expect(closedBy(view('5', { closedAt: 10, closedBy: 'owner' }))).toBe('owner')
+    expect(closedBy(view('6', { kind: 'subagent', closedAt: 10, closedBy: 'done' }))).toBe('done')
+    // Archived before closing was recorded by whom: the owner archived it.
+    expect(closedBy(view('7', { closedAt: 10 }))).toBe('owner')
   })
 })

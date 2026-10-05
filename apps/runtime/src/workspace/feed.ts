@@ -4,7 +4,7 @@ import type { PiHarness } from 'agents/harness/pi'
 import type { ConversationRegistry } from '../conversations.ts'
 import { sseResponse } from '../http/sse.ts'
 import { BACKGROUND } from '../pi/context.ts'
-import { SUBAGENT_REPORTER } from '../pi/subagents.ts'
+import { SUBAGENT_RELAY } from '../pi/subagent-relay.ts'
 
 type Busy = 'working' | 'waiting'
 
@@ -18,7 +18,7 @@ export function activityOf(graph: TaskGraph): ReadonlyMap<string, Busy> {
   for (const task of Object.values(graph.tasks)) {
     const id = String(task.conversationId)
     if (!task.background) states.set(id, 'working')
-    else if (task.kind === SUBAGENT_REPORTER && states.get(id) !== 'working') states.set(id, 'waiting')
+    else if (task.kind === SUBAGENT_RELAY && states.get(id) !== 'working') states.set(id, 'waiting')
   }
   return states
 }

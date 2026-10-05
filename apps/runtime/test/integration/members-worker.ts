@@ -23,7 +23,11 @@ export class MembersAgent extends PersonalAgent {
   readonly #mcp = new MembersMcpFixture()
   readonly #requests: SeenRequest[] = []
   protected override modelStreams() {
-    return scriptedStreams((request) => this.#requests.push(request))
+    return scriptedStreams(
+      (request) => this.#requests.push(request),
+      undefined,
+      (messages) => (messages.some((message) => message.content === 'member slow job') ? 3000 : 0),
+    )
   }
   protected override mcpFetch(): typeof fetch {
     return this.#mcp.fetch

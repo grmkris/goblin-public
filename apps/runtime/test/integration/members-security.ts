@@ -268,6 +268,10 @@ export async function memberDescendantsCase(base: string, ports: Ports): Promise
       .status,
   ).toBe(202)
   await waitFor(base, member, '/api/conversations/1/snapshot', 'descendant-account-marker', ports)
+  // The relay reports the child's answer into the member's own context: their authority still holds.
+  await until(base, member, '/api/conversations/1/snapshot', ports, (text) =>
+    text.includes('[from subagent member-child]'),
+  )
   const views = Schema.decodeUnknownSync(Schema.Array(Schema.Struct({ id: Schema.String, kind: Schema.String })))(
     await (await ports.call(base, member, '/api/conversations')).json(),
   )
@@ -280,4 +284,45 @@ export async function memberDescendantsCase(base: string, ports: Ports): Promise
   expect(Usage(await (await ports.call(base, owner, '/api/agent/usage')).json())).toEqual(before)
   await ports.lever(base, member, 'revoke')
   expect((await ports.call(base, member, `/api/conversations/${child.id}/snapshot`)).status).toBe(404)
+}
+
+/** Reads `path` as `who` every 100 ms, for up to 15 s, until `done` holds for its text. */
+async function until(base: string, who: Person, path: string, ports: Ports, done: (text: string) => boolean) {
+  for (let attempt = 0; attempt < 150; attempt += 1) {
+    const text = await (await ports.call(base, who, path)).text()
+    if (done(text)) return text
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  throw new Error(`timed out reading ${path}`)
+}
+
+const Listed = Schema.decodeUnknownSync(
+  Schema.Array(
+    Schema.Struct({ id: Schema.String, title: Schema.optional(Schema.String), parent: Schema.optional(Schema.String) }),
+  ),
+)
+
+/**
+ * A relay checks the member's authority again before it reports: a member revoked while their subagent works never
+ * hears its answer, though the subagent finished it.
+ */
+export async function memberRelayAuthorityCase(base: string, ports: Ports): Promise<void> {
+  const { owner, member } = await shared(base, ports)
+  const input = `call subagent ${JSON.stringify({ action: 'spawn', name: 'member-slow', message: 'member slow job' })}`
+  expect(
+    (await ports.call(base, member, '/api/conversations/1/messages', { input, operationId: crypto.randomUUID() }))
+      .status,
+  ).toBe(202)
+  const listed = await until(base, owner, '/api/conversations', ports, (text) => text.includes('"member-slow"'))
+  const child = Listed(JSON.parse(listed)).find((view) => view.title === 'member-slow')
+  if (child?.parent === undefined) throw new Error('Missing member subagent')
+  // Its model request is under way (the fixture takes three seconds to answer it); then the member loses access.
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await ports.lever(base, member, 'revoke')
+  await until(base, owner, `/api/conversations/${child.id}/snapshot`, ports, (text) =>
+    text.includes('echo: member slow job'),
+  )
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+  const spawner = await (await ports.call(base, owner, `/api/conversations/${child.parent}/snapshot`)).text()
+  expect(spawner).not.toContain('[from subagent member-slow]')
 }

@@ -34,6 +34,8 @@ import {
 } from '../../src/storage/schema.ts'
 import { CapabilityProfiles } from '../../src/capabilities/profiles.ts'
 import { skillsCacheProbe, skillsLearnerRejectionProbe, skillsPersistedRead } from './skills-probe.ts'
+import { exchange, historyOf, linesOf, snapshotOf, threadsUntil, transcript, until } from './probe-reads.ts'
+import { subagentChainSequence, subagentCloseSequence, subagentOwnerSequence } from './subagent-probe.ts'
 
 const fixturePlan = () =>
   Effect.succeed({
@@ -384,36 +386,6 @@ const entries = async (agent: DurableObjectStub<PersonalAgentProbe>): Promise<nu
   return body.snapshot?.entries?.length ?? -1
 }
 
-type Entry = {
-  readonly id: number
-  readonly kind: string
-  readonly head?: number
-  readonly data?: unknown
-  readonly model?: readonly { readonly content?: unknown; readonly details?: unknown }[]
-}
-
-/** A conversation's snapshot through the same route the Worker proxies (`/threads/<id>/snapshot`). */
-const snapshotOf = async (
-  agent: DurableObjectStub<PersonalAgentProbe>,
-  session: string,
-): Promise<{ entries?: Entry[] }> => (await agent.fetch(`https://agent/conversations/${session}/snapshot`)).json()
-
-/** Entries as `kind: content`, one line per model message. */
-const linesOf = (records: readonly Entry[]) =>
-  records.flatMap((entry) => (entry.model ?? []).map((message) => `${entry.kind}: ${JSON.stringify(message.content)}`))
-
-/** A conversation's history before entry `before`, through the route the Worker proxies (`/threads/<id>/history`). */
-const historyOf = async (
-  agent: DurableObjectStub<PersonalAgentProbe>,
-  session: string,
-  before = 2 ** 31,
-): Promise<{ entries?: Entry[] }> =>
-  (await agent.fetch(`https://agent/conversations/${session}/history?before=${before}`)).json()
-
-/** A conversation's newest entries as people read them, in order, whatever the model's context starts with now. */
-const transcript = async (agent: DurableObjectStub<PersonalAgentProbe>, session: string): Promise<string[]> =>
-  linesOf((await historyOf(agent, session)).entries ?? [])
-
 /** How the thread list shows one conversation now. */
 async function listedThread(agent: DurableObjectStub<PersonalAgentProbe>, id: string) {
   const threads = await agent.conversations()
@@ -450,26 +422,6 @@ async function branchSequence(agent: DurableObjectStub<PersonalAgentProbe>): Pro
     afterTwo: await listedThread(agent, thread.value.id),
   })
 }
-
-/** Reads every 20 ms, for up to 5 s, until `done` holds; the last read either way (background work settles late). */
-async function until<A>(read: () => Promise<A>, done: (value: A) => boolean): Promise<A> {
-  let value = await read()
-  for (let attempt = 0; attempt < 250 && !done(value); attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    value = await read()
-  }
-  return value
-}
-
-/** The agent's conversations, once `done` holds for them. */
-const threadsUntil = (
-  agent: DurableObjectStub<PersonalAgentProbe>,
-  done: (views: readonly ConversationView[]) => boolean,
-) =>
-  until(async (): Promise<readonly ConversationView[]> => {
-    const threads = await agent.conversations()
-    return threads.ok ? threads.value : []
-  }, done)
 
 /**
  * A thread shares a note with main: main's next request carries it, labelled with the thread, and it started no run
@@ -542,12 +494,6 @@ async function announceSequence(agent: DurableObjectStub<PersonalAgentProbe>): P
 /** The newest answer in main: what a thread can branch from. */
 const mainAnswer = async (agent: DurableObjectStub<PersonalAgentProbe>) =>
   ((await snapshotOf(agent, MAIN_THREAD)).entries ?? []).findLast(({ kind }) => kind === 'pi.assistant')?.id
-
-/** One owner message into a conversation, settled. */
-async function exchange(agent: DurableObjectStub<PersonalAgentProbe>, session: string, text: string, id: string) {
-  await agent.submit(session, text, id)
-  return agent.settle(session, id)
-}
 
 /**
  * The owner's switches per conversation: main switches a tool and subagents off, a new thread (empty or branched)
@@ -703,15 +649,25 @@ async function subagentBranchSequence(agent: DurableObjectStub<PersonalAgentProb
     ({ kind }) => kind === 'subagent',
   )
   if (listed === undefined) return Response.json({ listed })
-  await idle(agent, listed)
+  // Its job done, the subagent closed; the owner reopens it to branch from its answer.
+  const done = await threadsUntil(
+    agent,
+    (views) => views.some(({ id, closedBy }) => id === listed.id && closedBy === 'done'),
+    15_000,
+  )
+  await agent.updateConversation(listed.id, { closed: false })
   const branch = await agent.createConversation({
     from: { conversation: listed.id, entry: await answerIn(agent, listed.id) },
   })
   if (!branch.ok) return Response.json({ branch })
   await exchange(agent, branch.value.id, 'what did you find?', 'subagent-branch-ask')
+  // The subagent already offered `subagent`, so the thread's request lists only what it adds: use the tool instead.
+  const status = await exchange(agent, branch.value.id, 'call subagent {"action":"status"}', 'subagent-branch-status')
   const subagentAfter = (await agent.conversations()).ok ? await listedThread(agent, listed.id) : undefined
   const closed = await agent.updateConversation(listed.id, { closed: true })
   return Response.json({
+    doneClosed: done.find(({ id }) => id === listed.id),
+    status,
     branch: branch.value,
     request: await agent.requestFor('what did you find?'),
     subagentAfter,
@@ -886,6 +842,12 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return feedSequence(agent)
     case '/subagent-branch':
       return subagentBranchSequence(agent)
+    case '/subagent-chain':
+      return subagentChainSequence(agent)
+    case '/subagent-owner':
+      return subagentOwnerSequence(agent)
+    case '/subagent-close':
+      return subagentCloseSequence(agent)
     case '/memory':
       return memorySequence(agent)
     case '/binding':
