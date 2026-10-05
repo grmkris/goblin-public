@@ -81,7 +81,7 @@ thread, and each settled answer in main offers "Branch from here". The owner API
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/threads` | List registered conversations, including archived ones. |
+| `GET /api/threads` | List registered conversations, including archived ones. A live thread also carries where it branched (`forkEntry`) and its own `replies` and `lastReplyAt`, counted from Pi (`replies.ts`). |
 | `POST /api/threads` | Create an empty thread (`{}`) or branch main at an entry (`{ from: <entry> }`). |
 | `PATCH /api/threads/:id` | Rename or (un)archive a thread or subagent. Main cannot be changed this way. |
 | `POST /api/threads/:id/messages` | Submit `input`, a stable `operationId` and optional `appContext`; returns 202 acceptance. |

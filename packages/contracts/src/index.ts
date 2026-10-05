@@ -169,7 +169,10 @@ export const MAIN_THREAD = '1'
 
 /**
  * A conversation of the agent the owner can open: `main` (Pi's root), a side `thread` (branched from main or new),
- * or a `subagent` the agent started. `parent` is main for a thread and the spawner for a subagent.
+ * or a `subagent` the agent started. `parent` is main for a thread and the spawner for a subagent. A live thread also
+ * carries its activity: `forkEntry`, the entry of main it branched at (none when it started empty); `replies`, the
+ * messages written in the thread itself (the owner's and the agent's, not the main history it inherited); and
+ * `lastReplyAt`, when the newest was written. Times are in seconds.
  */
 export const ThreadView = Schema.Struct({
   id: Schema.String,
@@ -179,6 +182,9 @@ export const ThreadView = Schema.Struct({
   busy: Schema.Boolean,
   archived: Schema.Boolean,
   createdAt: Schema.Number,
+  forkEntry: Schema.optional(Schema.Number),
+  replies: Schema.optional(Schema.Number),
+  lastReplyAt: Schema.optional(Schema.Number),
 })
 export type ThreadView = typeof ThreadView.Type
 

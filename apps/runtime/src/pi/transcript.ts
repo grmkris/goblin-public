@@ -47,6 +47,28 @@ export const transcriptMessages = (entries: readonly EntryRecord[], limit: numbe
     )
     .slice(-limit)
 
+/** What a thread holds of its own: how many messages of the owner and the agent, and when the newest was written. */
+export type ReplyStats = { readonly replies: number; readonly lastReplyAt?: number }
+
+/**
+ * The owner's and the agent's messages in `entries` (tool traffic, system entries and messages without text left
+ * out), with the newest one's time in seconds.
+ */
+export function replyStats(entries: readonly EntryRecord[]): ReplyStats {
+  const messages = entries
+    .filter((entry) => entry.kind === 'pi.user' || entry.kind === 'pi.assistant')
+    .flatMap((entry) => entry.model ?? [])
+    .filter(
+      (message) =>
+        (message.role === 'user' || message.role === 'assistant') &&
+        transcriptMessage(message.role, message.content) !== undefined,
+    )
+  const newest = Math.max(0, ...messages.map((message) => message.timestamp))
+  return newest === 0
+    ? { replies: messages.length }
+    : { replies: messages.length, lastReplyAt: Math.floor(newest / 1000) }
+}
+
 const PAGE = 50
 const MAX_PAGES = 10
 

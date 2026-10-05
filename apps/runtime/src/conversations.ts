@@ -9,6 +9,7 @@ import type { CheapModel } from './memory/model.ts'
 import { authoredContent } from './pi/content.ts'
 import { BACKGROUND, conversationId, entryId } from './pi/context.ts'
 import { recentMessages } from './pi/transcript.ts'
+import { ReplyLedger } from './replies.ts'
 import { appConversations } from './storage/schema.ts'
 
 type Row = typeof appConversations.$inferSelect
@@ -51,6 +52,7 @@ export class ConversationRegistry {
   readonly #harness: PiHarness
   readonly #kit: ThreadKit
   readonly #naming = new Set<string>()
+  readonly #replies = new ReplyLedger()
 
   constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, kit: ThreadKit, now: number) {
     this.#db = db
@@ -72,10 +74,13 @@ export class ConversationRegistry {
     return id
   }
 
-  /** Every registered conversation, oldest first (main is the oldest), with whether Pi is running it now. */
+  /**
+   * Every registered conversation, oldest first (main is the oldest), with whether Pi is running it now and, for a
+   * live thread, its own activity.
+   */
   async list(): Promise<readonly ThreadView[]> {
     const rows = this.#db.select().from(appConversations).orderBy(asc(appConversations.createdAt)).all()
-    return Promise.all(rows.map(async (row) => this.#view(row, await this.#harness.session(row.sessionId).busy())))
+    return Promise.all(rows.map(async (row) => this.#describe(row)))
   }
 
   /**
@@ -213,11 +218,12 @@ export class ConversationRegistry {
   async #reload(id: string): Promise<ThreadView> {
     const row = this.#row(id)
     if (row === undefined) throw new NotFound({ what: 'thread' })
-    return this.#view(row, await this.#harness.session(id).busy())
+    return this.#describe(row)
   }
 
-  #view(row: Row, busy: boolean): ThreadView {
-    return {
+  async #describe(row: Row): Promise<ThreadView> {
+    const busy = await this.#harness.session(row.sessionId).busy()
+    const view: ThreadView = {
       id: row.sessionId,
       kind: row.kind,
       ...(row.title === null ? {} : { title: row.title }),
@@ -226,5 +232,9 @@ export class ConversationRegistry {
       archived: row.archivedAt !== null,
       createdAt: row.createdAt,
     }
+    if (row.kind !== 'thread' || row.archivedAt !== null) return view
+    const floor = row.forkEntry ?? 0
+    const activity = await this.#replies.stats(row.sessionId, await this.#conversation(row.sessionId), floor)
+    return { ...view, ...(row.forkEntry === null ? {} : { forkEntry: row.forkEntry }), ...activity }
   }
 }

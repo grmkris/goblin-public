@@ -210,9 +210,15 @@ const historyOf = async (
 const transcript = async (agent: DurableObjectStub<PersonalAgentProbe>, session: string): Promise<string[]> =>
   linesOf((await historyOf(agent, session)).entries ?? [])
 
+/** How the thread list shows one conversation now. */
+async function listedThread(agent: DurableObjectStub<PersonalAgentProbe>, id: string) {
+  const threads = await agent.threads()
+  return threads.ok ? threads.value.find((view) => view.id === id) : undefined
+}
+
 /**
  * A thread branched at main's answer sees main up to there and goes on alone: main never sees the thread's turn, and
- * the thread's request carried main's history.
+ * the thread's request carried main's history. The thread list counts only the thread's own messages, turn by turn.
  */
 async function branchSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
   await agent.submit(MAIN_THREAD, 'remember the word lantern', 'branch-main')
@@ -221,14 +227,23 @@ async function branchSequence(agent: DurableObjectStub<PersonalAgentProbe>): Pro
   const answer = (snapshot.entries ?? []).findLast((entry) => entry.kind === 'pi.assistant')
   const thread = await agent.createThread(answer?.id)
   if (!thread.ok) return Response.json({ thread })
+  const before = await listedThread(agent, thread.value.id)
   await agent.submit(thread.value.id, 'what was the word?', 'branch-thread')
   const settled = await agent.settle(thread.value.id, 'branch-thread')
+  const branch = await transcript(agent, thread.value.id)
+  const afterOne = await listedThread(agent, thread.value.id)
+  await agent.submit(thread.value.id, 'and once more?', 'branch-thread-again')
+  await agent.settle(thread.value.id, 'branch-thread-again')
   return Response.json({
     thread: thread.value,
     settled,
     main: await transcript(agent, MAIN_THREAD),
-    branch: await transcript(agent, thread.value.id),
+    branch,
     request: await agent.requestFor('what was the word?'),
+    forkedAt: answer?.id,
+    before,
+    afterOne,
+    afterTwo: await listedThread(agent, thread.value.id),
   })
 }
 

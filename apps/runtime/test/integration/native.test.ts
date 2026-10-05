@@ -210,12 +210,22 @@ const ModelRequest = Schema.Struct({
 const requestTurns = (request: typeof ModelRequest.Type) =>
   request.messages.filter(({ role }) => role !== 'system').map(({ text }) => text)
 
+const Activity = Schema.Struct({
+  createdAt: Schema.Number,
+  forkEntry: Schema.Number,
+  replies: Schema.Number,
+  lastReplyAt: Schema.optional(Schema.Number),
+})
 const Branch = Schema.Struct({
   thread: Schema.Struct({ kind: Schema.Literal('thread'), parent: Schema.Literal('1') }),
   settled: Schema.Struct({ status: Schema.Literal('done'), text: Schema.String }),
   main: Schema.Array(Schema.String),
   branch: Schema.Array(Schema.String),
   request: ModelRequest,
+  forkedAt: Schema.Number,
+  before: Activity,
+  afterOne: Activity,
+  afterTwo: Activity,
 })
 
 harness.test(
@@ -240,6 +250,12 @@ harness.test(
       'echo: remember the word lantern',
       'what was the word?',
     ])
+    // The thread list knows where the thread branched and counts only what was said in it.
+    expect(result.before).toMatchObject({ forkEntry: result.forkedAt, replies: 0 })
+    expect(result.before.lastReplyAt).toBeUndefined()
+    expect(result.afterOne).toMatchObject({ forkEntry: result.forkedAt, replies: 2 })
+    expect(result.afterOne.lastReplyAt).toBeGreaterThanOrEqual(result.afterOne.createdAt)
+    expect(result.afterTwo.replies).toBe(4)
   }),
 )
 
