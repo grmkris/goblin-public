@@ -1,4 +1,4 @@
-import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 /** Pi owns conversations; these tables hold application state only. Every name keeps the `app_` prefix. */
 export const appMetadata = sqliteTable('app_metadata', {
@@ -202,4 +202,110 @@ export const appChannelReplies = sqliteTable('app_channel_replies', {
   operationId: text('operation_id').primaryKey().notNull(),
   createdAt: integer('created_at').notNull(),
   deliveredAt: integer('delivered_at'),
+})
+
+/** Exact owner Events grants, independent of tools and remote subscription ids. */
+export const appMcpEventGrants = sqliteTable(
+  'app_mcp_event_grants',
+  {
+    serverId: text('server_id').notNull(),
+    name: text('name').notNull(),
+    argumentsJson: text('arguments_json').notNull(),
+    grantedAt: integer('granted_at').notNull(),
+    revokedAt: integer('revoked_at'),
+  },
+  (t) => [primaryKey({ columns: [t.serverId, t.name, t.argumentsJson] })],
+)
+
+/** Endpoint-bound finite leases. Secrets are ciphertext bound to server, subscription and purpose. */
+export const appMcpEventSubscriptions = sqliteTable(
+  'app_mcp_event_subscriptions',
+  {
+    id: text('id').primaryKey().notNull(),
+    serverId: text('server_id').notNull(),
+    name: text('name').notNull(),
+    argumentsJson: text('arguments_json').notNull(),
+    endpoint: text('endpoint').notNull(),
+    principal: text('principal').notNull(),
+    callbackUrl: text('callback_url').notNull(),
+    remoteId: text('remote_id'),
+    secret: text('secret').notNull(),
+    previousSecret: text('previous_secret'),
+    graceUntil: integer('grace_until'),
+    cursor: text('cursor'),
+    refreshBefore: integer('refresh_before'),
+    nextRefreshAt: integer('next_refresh_at').notNull(),
+    nextPollAt: integer('next_poll_at').notNull(),
+    status: text('status', { enum: ['pending', 'active', 'catching_up', 'terminated', 'tombstone'] }).notNull(),
+    lastError: text('last_error'),
+    lastReceiptAt: integer('last_receipt_at'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [uniqueIndex('app_event_selector').on(t.serverId, t.name, t.argumentsJson)],
+)
+
+/** Encrypted deliveries and their frozen consumer revisions; never prune unfinished work. */
+export const appEventDeliveries = sqliteTable(
+  'app_event_deliveries',
+  {
+    subscriptionId: text('subscription_id').notNull(),
+    webhookId: text('webhook_id').notNull(),
+    kind: text('kind').notNull(),
+    envelope: text('envelope').notNull(),
+    bytes: integer('bytes').notNull(),
+    receivedAt: integer('received_at').notNull(),
+    processedAt: integer('processed_at'),
+    nextAttemptAt: integer('next_attempt_at').notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    challengeResponse: text('challenge_response'),
+    challengeUntil: integer('challenge_until'),
+  },
+  (t) => [primaryKey({ columns: [t.subscriptionId, t.webhookId] })],
+)
+
+/** Static handlers only. A revision stays recoverable after its binding retires. */
+export const appMcpEventConsumers = sqliteTable(
+  'app_mcp_event_consumers',
+  {
+    consumerId: text('consumer_id').notNull(),
+    revision: integer('revision').notNull(),
+    subscriptionId: text('subscription_id').notNull(),
+    handlerKey: text('handler_key').notNull(),
+    state: text('state', { enum: ['active', 'retiring'] }).notNull(),
+    createdAt: integer('created_at').notNull(),
+    retiredAt: integer('retired_at'),
+  },
+  (t) => [primaryKey({ columns: [t.consumerId, t.revision] })],
+)
+
+export const appEventConsumerReceipts = sqliteTable(
+  'app_event_consumer_receipts',
+  {
+    subscriptionId: text('subscription_id').notNull(),
+    webhookId: text('webhook_id').notNull(),
+    consumerId: text('consumer_id').notNull(),
+    revision: integer('revision').notNull(),
+    operationId: text('operation_id').notNull(),
+    state: text('state', { enum: ['pending', 'accepted', 'retired'] }).notNull(),
+    acceptedAt: integer('accepted_at'),
+  },
+  (t) => [primaryKey({ columns: [t.subscriptionId, t.webhookId, t.consumerId, t.revision] })],
+)
+
+/** The Events checkpoint fences historical doorbell cursor writes. Reply operation ids do not change. */
+export const appTelegramChannel = sqliteTable('app_telegram_channel', {
+  id: integer('id').primaryKey().notNull(),
+  serverId: text('server_id').notNull(),
+  inboxCursor: text('inbox_cursor').notNull(),
+  enabledAt: integer('enabled_at').notNull(),
+})
+
+/** A newer invalidation cannot be cleared by an older listing response. */
+export const appSkillCatalogState = sqliteTable('app_skill_catalog_state', {
+  serverId: text('server_id').primaryKey().notNull(),
+  dirtyGeneration: integer('dirty_generation').notNull(),
+  refreshedGeneration: integer('refreshed_generation').notNull(),
+  nextRetryAt: integer('next_retry_at').notNull(),
+  lastError: text('last_error'),
 })

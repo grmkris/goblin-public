@@ -104,6 +104,30 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     tables: ['app_conversation_capabilities'],
     sql: `CREATE TABLE app_conversation_capabilities (session_id TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('server', 'tool', 'skills', 'subagents')), server_id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', off_at INTEGER NOT NULL, PRIMARY KEY (session_id, kind, server_id, name), CHECK ((kind = 'subagents') = (server_id = '')), CHECK ((kind = 'tool') = (name <> '')))`,
   },
+  {
+    key: '20261016000200_mcp_events',
+    tables: [
+      'app_mcp_event_grants',
+      'app_mcp_event_subscriptions',
+      'app_event_deliveries',
+      'app_mcp_event_consumers',
+      'app_event_consumer_receipts',
+      'app_telegram_channel',
+      'app_skill_catalog_state',
+    ],
+    sql: [
+      'CREATE TABLE app_mcp_event_grants (server_id TEXT NOT NULL, name TEXT NOT NULL, arguments_json TEXT NOT NULL, granted_at INTEGER NOT NULL, revoked_at INTEGER, PRIMARY KEY (server_id, name, arguments_json))',
+      'CREATE TABLE app_mcp_event_subscriptions (id TEXT PRIMARY KEY NOT NULL, server_id TEXT NOT NULL, name TEXT NOT NULL, arguments_json TEXT NOT NULL, endpoint TEXT NOT NULL, principal TEXT NOT NULL, callback_url TEXT NOT NULL, remote_id TEXT, secret TEXT NOT NULL, previous_secret TEXT, grace_until INTEGER, cursor TEXT, refresh_before INTEGER, next_refresh_at INTEGER NOT NULL, next_poll_at INTEGER NOT NULL, status TEXT NOT NULL, last_error TEXT, last_receipt_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
+      'CREATE UNIQUE INDEX app_event_selector ON app_mcp_event_subscriptions (server_id, name, arguments_json)',
+      'CREATE TABLE app_event_deliveries (subscription_id TEXT NOT NULL, webhook_id TEXT NOT NULL, kind TEXT NOT NULL, envelope TEXT NOT NULL, bytes INTEGER NOT NULL, received_at INTEGER NOT NULL, processed_at INTEGER, next_attempt_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, challenge_response TEXT, challenge_until INTEGER, PRIMARY KEY (subscription_id, webhook_id))',
+      'CREATE INDEX app_event_pending ON app_event_deliveries (processed_at, next_attempt_at)',
+      'CREATE TABLE app_mcp_event_consumers (consumer_id TEXT NOT NULL, revision INTEGER NOT NULL, subscription_id TEXT NOT NULL, handler_key TEXT NOT NULL, state TEXT NOT NULL, created_at INTEGER NOT NULL, retired_at INTEGER, PRIMARY KEY (consumer_id, revision))',
+      "CREATE UNIQUE INDEX app_event_active_consumer ON app_mcp_event_consumers (consumer_id) WHERE state = 'active'",
+      'CREATE TABLE app_event_consumer_receipts (subscription_id TEXT NOT NULL, webhook_id TEXT NOT NULL, consumer_id TEXT NOT NULL, revision INTEGER NOT NULL, operation_id TEXT NOT NULL, state TEXT NOT NULL, accepted_at INTEGER, PRIMARY KEY (subscription_id, webhook_id, consumer_id, revision))',
+      'CREATE TABLE app_telegram_channel (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), server_id TEXT NOT NULL, inbox_cursor TEXT NOT NULL, enabled_at INTEGER NOT NULL)',
+      'CREATE TABLE app_skill_catalog_state (server_id TEXT PRIMARY KEY NOT NULL, dirty_generation INTEGER NOT NULL, refreshed_generation INTEGER NOT NULL, next_retry_at INTEGER NOT NULL, last_error TEXT)',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {
