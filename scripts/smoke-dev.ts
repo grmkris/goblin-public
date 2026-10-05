@@ -2,8 +2,8 @@
  * Manual acceptance against the retained dev Worker (`smoke:dev`) or the local stack (`smoke:local`). Never imported
  * by CI or the deployed Worker. It reads the owner's state and changes one thing for the length of its agent turns:
  * with `PURRABLE_SMOKE_MODEL` set, the agent answers on that model, and the owner's own pick is put back afterwards,
- * whatever failed. Grants stay as the owner set them, and agent turns run in a throwaway inbound client's own
- * conversation, which is revoked before the script exits.
+ * whatever failed. Grants stay as the owner set them. Turns run in main and an archived side thread; the throwaway
+ * inbound client is revoked before the script exits.
  */
 import { Config, Effect, Option, Redacted, Schema } from 'effect'
 import { createHash, randomBytes } from 'node:crypto'
@@ -14,12 +14,15 @@ type JsonObject = typeof ObjectSchema.Type
 const object = Schema.decodeUnknownSync(ObjectSchema)
 const objects = Schema.decodeUnknownSync(Schema.Array(ObjectSchema))
 const string = Schema.decodeUnknownSync(Schema.String)
+const number = Schema.decodeUnknownSync(Schema.Number)
 
 /** A read-only tool per known server, called only if the owner has already granted it. */
 const PROBES: Readonly<Record<string, string>> = { myplan: 'account_read', mybrowser: 'browser_backends' }
 const REDIRECT_URI = 'http://127.0.0.1:9/callback'
 const DEV_MARKER = 'PURRABLE_DEV_OK'
 const MCP_MARKER = 'PURRABLE_MCP_OK'
+const SMOKE_CLIENT_NAME = 'purrable-smoke'
+const MAIN_HISTORY = '/api/threads/1/history?before=2147483647'
 
 type Step = { readonly step: string; readonly status: number }
 type Settings = {
@@ -78,7 +81,7 @@ class DevClient {
       ...rest,
       headers,
       redirect: 'manual',
-      signal: AbortSignal.timeout(150_000),
+      signal: rest.signal ?? AbortSignal.timeout(150_000),
     })
     this.#steps.push({ step: `${rest.method ?? 'GET'} ${path.split('?')[0] ?? path}`, status: response.status })
     return response
@@ -132,7 +135,7 @@ class InboundClient {
       owner: false,
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        client_name: 'purrable-smoke',
+        client_name: SMOKE_CLIENT_NAME,
         redirect_uris: [REDIRECT_URI],
         token_endpoint_auth_method: 'none',
         grant_types: ['authorization_code', 'refresh_token'],
@@ -216,7 +219,7 @@ class InboundClient {
   }
 
   async ask(input: string): Promise<JsonObject> {
-    return this.tool('ask_agent', { input, operationId: `smoke-${base64url(randomBytes(9))}`, waitSeconds: 100 })
+    return this.tool('ask_agent', { input, operationId: operationId('inbound'), waitSeconds: 100 })
   }
 }
 
@@ -255,27 +258,173 @@ async function residentToolTurn(client: InboundClient, servers: readonly ServerR
   return 'ok'
 }
 
+const wait = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds))
+
+const operationId = (step: string): string => `smoke-${step}-${base64url(randomBytes(9))}`
+
+async function poll(
+  dev: DevClient,
+  path: string,
+  ready: (value: JsonObject) => boolean,
+  milliseconds: number,
+  reason: string,
+): Promise<void> {
+  const deadline = Date.now() + milliseconds
+  const signal = AbortSignal.timeout(milliseconds)
+  try {
+    await wait(1_500)
+    while (Date.now() < deadline) {
+      if (ready(await dev.json(path, { signal }))) return
+      await wait(1_000)
+    }
+  } catch (error) {
+    if (!signal.aborted) throw error
+  }
+  throw new Error(reason)
+}
+
+const waitForIdle = (dev: DevClient, thread: string): Promise<void> =>
+  poll(
+    dev,
+    `/api/threads/${encodeURIComponent(thread)}/snapshot`,
+    (snapshot) => !snapshot['run'] && objects(snapshot['inbox']).length === 0,
+    120_000,
+    'thread_still_busy',
+  )
+
+async function submitMessage(dev: DevClient, thread: string, input: string, step: string): Promise<void> {
+  const response = await dev.send(`/api/threads/${encodeURIComponent(thread)}/messages`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ input, operationId: operationId(step) }),
+  })
+  if (response.status !== 202) throw new Error(`${step}_submit_failed`)
+}
+
+/** Text from Pi's model messages, whether the provider returned a string or text content blocks. */
+function entryText(entry: JsonObject): string {
+  return objects(entry['model'] ?? [])
+    .flatMap((message) => {
+      const content = message['content']
+      return Array.isArray(content)
+        ? objects(content).flatMap((block) => (block['text'] === undefined ? [] : [string(block['text'])]))
+        : [string(content)]
+    })
+    .join(' ')
+}
+
+type ThreadCheck = { readonly thread: 'ok'; readonly shared: true }
+
+async function archiveThread(dev: DevClient, thread: string): Promise<void> {
+  const archived = await dev.send(`/api/threads/${encodeURIComponent(thread)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ archived: true }),
+  })
+  if (!archived.ok) throw new Error('thread_archive_failed')
+}
+
+async function threadChecks(dev: DevClient): Promise<ThreadCheck> {
+  const created = await dev.json('/api/threads', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  })
+  const thread = string(created['id'])
+  try {
+    await submitMessage(
+      dev,
+      thread,
+      'Pick three prime numbers between 10 and 30 and tell me which you picked. Short.',
+      'thread',
+    )
+    await waitForIdle(dev, thread)
+    const before = await dev.json(MAIN_HISTORY)
+    const seen = new Set(objects(before['entries']).map((entry) => entry['id']))
+    await submitMessage(dev, thread, 'Share what we concluded here with main.', 'thread_share')
+    await poll(
+      dev,
+      MAIN_HISTORY,
+      (history) =>
+        objects(history['entries']).some((entry) => entry['kind'] === 'app.shared' && !seen.has(entry['id'])),
+      60_000,
+      'thread_share_missing',
+    )
+    await waitForIdle(dev, thread)
+    return { thread: 'ok', shared: true }
+  } finally {
+    await archiveThread(dev, thread)
+  }
+}
+
+type SubagentCheck = { readonly subagent: 'reported' }
+
+async function subagentChecks(dev: DevClient): Promise<SubagentCheck> {
+  const before = await dev.json(MAIN_HISTORY)
+  const seen = new Set(objects(before['entries']).map((entry) => entry['id']))
+  await submitMessage(
+    dev,
+    '1',
+    'Start a subagent named smokecount: it should count the letters in the word "purrable" and report the number. Then tell me you started it.',
+    'subagent',
+  )
+  await poll(
+    dev,
+    MAIN_HISTORY,
+    (history) => {
+      const entries = objects(history['entries']).filter((entry) => !seen.has(entry['id']))
+      const reportIndex = entries.findIndex(
+        (entry) => entry['kind'] === 'pi.user' && entryText(entry).includes('[from subagent smokecount]'),
+      )
+      return (
+        reportIndex >= 0 &&
+        entries
+          .slice(reportIndex + 1)
+          .some((entry) => entry['kind'] === 'pi.assistant' && entryText(entry).trim() !== '')
+      )
+    },
+    120_000,
+    'subagent_report_missing',
+  )
+  await waitForIdle(dev, '1')
+  return { subagent: 'reported' }
+}
+
+type MemoryCheck = { readonly memory: { readonly messages: number; readonly summarized: number } }
+
+async function memoryChecks(dev: DevClient): Promise<MemoryCheck> {
+  const memory = await dev.json('/api/agent/memory')
+  const messages = number(memory['messages'])
+  const summarized = number(memory['summarized'])
+  if (messages === 0) throw new Error('memory_empty')
+  return { memory: { messages, summarized } }
+}
+
 async function inboundChecks(dev: DevClient, client: InboundClient, servers: readonly ServerReport[]) {
   await client.authorize()
   const init = await client.rpc('initialize', {
     protocolVersion: '2025-06-18',
     capabilities: {},
-    clientInfo: { name: 'purrable-smoke', version: '1' },
+    clientInfo: { name: SMOKE_CLIENT_NAME, version: '1' },
   })
   const listed = await client.rpc('tools/list')
   const names = objects(listed.result?.['tools'] ?? []).map((tool) => tool['name'])
   if (init.result === undefined || !names.includes('ask_agent') || !names.includes('get_recent_messages'))
     throw new Error('inbound_tools_missing')
-  const reply = await client.ask(`Reply with exactly: ${DEV_MARKER}`)
+  const smokeInput = `Reply with exactly: ${DEV_MARKER}`
+  const reply = await client.ask(smokeInput)
   if (reply['status'] !== 'done' || reply['text'] !== DEV_MARKER) throw new Error('inbound_model_turn_failed')
   const residentTool = await residentToolTurn(client, servers)
   const recent = await client.tool('get_recent_messages', { limit: 10 })
-  const texts = objects(recent['messages']).map((message) => message['text'])
+  const messages = objects(recent['messages'])
+  const texts = messages.map((message) => message['text'])
   if (!texts.includes(DEV_MARKER)) throw new Error('inbound_history_missing')
+  const smokeMessage = messages.findLast((message) => message['role'] === 'user' && message['text'] === smokeInput)
+  if (smokeMessage?.['author'] !== SMOKE_CLIENT_NAME) throw new Error('inbound_author_missing')
   const revoked = await dev.json(`/api/clients/${encodeURIComponent(client.clientId)}`, { method: 'DELETE' })
   const after = await client.rpc('tools/list')
   if (revoked['revoked'] !== true || after.status !== 401) throw new Error('inbound_revocation_failed')
-  return { initialized: true, modelTurn: 'ok', residentTool, history: 'ok', revokedThen401: true }
+  return { initialized: true, modelTurn: 'ok', residentTool, history: 'ok', author: 'ok', revokedThen401: true }
 }
 
 const putModel = (dev: DevClient, model: string) =>
@@ -322,6 +471,10 @@ type Receipt = {
   readonly resident: string
   readonly servers: readonly ServerReport[]
   readonly inbound: Awaited<ReturnType<typeof inboundChecks>>
+  readonly thread: ThreadCheck['thread']
+  readonly shared: ThreadCheck['shared']
+  readonly subagent: SubagentCheck['subagent']
+  readonly memory: MemoryCheck['memory']
 }
 
 async function smokeDev(steps: Step[]): Promise<Receipt> {
@@ -342,9 +495,15 @@ async function smokeDev(steps: Step[]): Promise<Receipt> {
   for (const server of await dev.list('/api/mcp/servers')) servers.push(await serverReport(dev, server))
   const client = await InboundClient.register(dev)
   try {
-    const inbound = await withModel(dev, config.smokeModel, () => inboundChecks(dev, client, servers))
+    const checks = await withModel(dev, config.smokeModel, async () => {
+      const inbound = await inboundChecks(dev, client, servers)
+      const thread = await threadChecks(dev)
+      const subagent = await subagentChecks(dev)
+      const memory = await memoryChecks(dev)
+      return { inbound, ...thread, ...subagent, ...memory }
+    })
     const model = config.smokeModel ?? 'owner pick'
-    return { stage: config.stage, model, signup, resident: string(resident['state']), servers, inbound }
+    return { stage: config.stage, model, signup, resident: string(resident['state']), servers, ...checks }
   } finally {
     // Never leave the throwaway client authorized, whatever failed above.
     await dev.send(`/api/clients/${encodeURIComponent(client.clientId)}`, { method: 'DELETE' })
