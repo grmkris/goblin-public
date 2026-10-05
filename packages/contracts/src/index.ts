@@ -285,3 +285,15 @@ export const authorOf = (block: string): string | undefined => AUTHOR_TAG.exec(b
 
 export { BillingState } from './billing.ts'
 export * from './workspaces.ts'
+export {
+  RoutineDefinition,
+  RoutineView,
+  RoutinePage,
+  RoutineProposal,
+  RoutineRevision,
+  RoutineEdit,
+  RoutineManualRun,
+  RoutineRunView,
+  RoutineRunPage,
+  RoutineSettings,
+} from './routines.ts'

@@ -128,6 +128,32 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'CREATE TABLE app_skill_catalog_state (server_id TEXT PRIMARY KEY NOT NULL, dirty_generation INTEGER NOT NULL, refreshed_generation INTEGER NOT NULL, next_retry_at INTEGER NOT NULL, last_error TEXT)',
     ].join(BREAK),
   },
+  {
+    key: '20261016000210_routines',
+    tables: [
+      'app_routines',
+      'app_routine_operations',
+      'app_routine_runs',
+      'app_routine_usage',
+      'app_routine_settings',
+      'app_submission_origins',
+      'app_interactions',
+      'app_conversations',
+    ],
+    sql: [
+      "CREATE TABLE app_routines (id TEXT PRIMARY KEY NOT NULL, revision INTEGER NOT NULL, state TEXT NOT NULL CHECK (state IN ('proposed','activating','active','paused','completed','archived')), definition_json TEXT NOT NULL, proposer_user_id TEXT NOT NULL, confirmed_by_user_id TEXT, confirmed_at INTEGER, schedule_id TEXT, next_fire_at INTEGER, last_fire_at INTEGER, missed_count INTEGER NOT NULL DEFAULT 0, pending_trigger TEXT, suppressed_count INTEGER NOT NULL DEFAULT 0, health TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
+      'CREATE TABLE app_routine_operations (operation_id TEXT PRIMARY KEY NOT NULL, request_json TEXT NOT NULL, response_json TEXT NOT NULL, created_at INTEGER NOT NULL)',
+      "CREATE TABLE app_routine_runs (id TEXT PRIMARY KEY NOT NULL, routine_id TEXT NOT NULL, revision INTEGER NOT NULL, operation_id TEXT NOT NULL UNIQUE, source TEXT NOT NULL, fired_at INTEGER NOT NULL, event_id TEXT, subscription_id TEXT, webhook_id TEXT, definition_json TEXT NOT NULL, event_data_sealed TEXT, session_id TEXT UNIQUE, admitted_at INTEGER NOT NULL, deadline_at INTEGER NOT NULL, state TEXT NOT NULL CHECK (state IN ('admitted','running','waiting_owner','completed','skipped','failed','stopped')), outcome TEXT, summary TEXT, report_request_id TEXT NOT NULL, report_accepted_at INTEGER, notification_text TEXT, notification_state TEXT NOT NULL DEFAULT 'none', notification_receipt TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
+      'CREATE TABLE app_routine_usage (run_id TEXT NOT NULL, source_key TEXT NOT NULL, utc_day TEXT NOT NULL, tokens INTEGER NOT NULL, committed_at INTEGER NOT NULL, PRIMARY KEY (run_id, source_key))',
+      'CREATE TABLE app_routine_settings (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), timezone TEXT NOT NULL, max_active INTEGER NOT NULL DEFAULT 20, max_running INTEGER NOT NULL DEFAULT 2)',
+      "INSERT INTO app_routine_settings (id, timezone) VALUES (1, 'UTC')",
+      'CREATE TABLE app_submission_origins (session_id TEXT NOT NULL, operation_id TEXT NOT NULL, principal_user_id TEXT NOT NULL, role TEXT NOT NULL, source TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (session_id, operation_id))',
+      'CREATE TABLE app_interactions (id TEXT PRIMARY KEY NOT NULL, session_id TEXT NOT NULL, run_id TEXT, call_id TEXT NOT NULL, requester_user_id TEXT NOT NULL, answerer_user_id TEXT NOT NULL, intent TEXT NOT NULL, request_hash TEXT NOT NULL, state TEXT NOT NULL, expires_at INTEGER NOT NULL, decision_operation_id TEXT)',
+      'ALTER TABLE app_conversations ADD COLUMN routine_run_id TEXT',
+      'CREATE UNIQUE INDEX app_conversation_routine ON app_conversations (routine_run_id)',
+      'CREATE INDEX app_routine_live_runs ON app_routine_runs (routine_id, state)',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

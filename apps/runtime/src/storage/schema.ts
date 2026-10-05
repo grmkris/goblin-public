@@ -98,6 +98,7 @@ export const appConversations = sqliteTable('app_conversations', {
   recallThrough: integer('recall_through'),
   /** A thread the owner started with "+" owes main a note naming it (`owed`) until that note is in (`written`). */
   mainNote: text('main_note', { enum: ['owed', 'written'] }),
+  routineRunId: text('routine_run_id'),
 })
 
 /**
