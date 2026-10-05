@@ -1,10 +1,11 @@
 import { type ReactNode, use, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import type { ThreadView } from '@purrable/contracts'
-import { ChevronRightIcon, MessageSquarePlusIcon, MessageSquareReplyIcon, MessagesSquareIcon } from 'lucide-react'
+import { ChevronRightIcon, MessageSquareReplyIcon } from 'lucide-react'
 import type { Part } from '../lib/parts.ts'
-import { entryOfPart, relativeTime, repliesLabel, threadTitle, threadsByFork } from '../lib/threads.ts'
+import { entryOfPart, threadsByFork } from '../lib/threads.ts'
 import { OpenThread } from './parts/text-part.tsx'
+import { ThreadPreviewBlock } from './thread-preview.tsx'
 import { useThreads } from './threads.tsx'
 
 /** Main's threads as its transcript shows them: under the message each branched from, and how to start one. */
@@ -51,45 +52,6 @@ export function useInlineThreads(
   return useMemo(() => ({ at, branchable, reply, open, now }), [at, branchable, reply, open, now])
 }
 
-/** What a thread row shows: its reply count, name and last reply, and whether the agent is working in it. */
-function ThreadSummary({ view, now }: { readonly view: ThreadView; readonly now: number }) {
-  const last = view.lastReplyAt
-  return (
-    <>
-      <span className="thread-row-count">{repliesLabel(view.replies ?? 0)}</span>
-      <span className="thread-row-meta">
-        {threadTitle(view)}
-        {last !== undefined && (
-          <>
-            {' · '}
-            <time dateTime={new Date(last * 1000).toISOString()}>{relativeTime(last, now)}</time>
-          </>
-        )}
-      </span>
-      {view.busy && <span className="thread-busy" aria-label="Working" />}
-      <ChevronRightIcon aria-hidden className="thread-row-chevron" />
-    </>
-  )
-}
-
-/** A thread under the message it branched from, as Slack shows one. */
-function ThreadRow({
-  view,
-  now,
-  onOpen,
-}: {
-  readonly view: ThreadView
-  readonly now: number
-  readonly onOpen: () => void
-}) {
-  return (
-    <button type="button" className="thread-row" onClick={onOpen}>
-      <MessagesSquareIcon aria-hidden />
-      <ThreadSummary view={view} now={now} />
-    </button>
-  )
-}
-
 /** Opens a thread beside main where the transcript can (`OpenThread`), or on its own page. */
 function OpenThreadButton({ thread, children }: { readonly thread: string; readonly children: ReactNode }) {
   const open = use(OpenThread)
@@ -114,18 +76,23 @@ export function ThreadStartedRow({ thread }: { readonly thread: string }) {
   const { views } = useThreads()
   const now = useMinute()
   const view = views.find((candidate) => candidate.id === thread)
+  const open = use(OpenThread)
+  if (view !== undefined && !view.archived)
+    return (
+      <div className="thread-rows" data-side="start">
+        <ThreadPreviewBlock
+          view={view}
+          now={now}
+          started
+          onOpen={open === undefined ? undefined : () => open(thread)}
+        />
+      </div>
+    )
   return (
-    <div className="thread-rows">
-      <OpenThreadButton thread={thread}>
-        <MessageSquarePlusIcon aria-hidden />
-        <span className="thread-row-lead">You started a thread</span>
-        {view === undefined ? (
-          <ChevronRightIcon aria-hidden className="thread-row-chevron" />
-        ) : (
-          <ThreadSummary view={view} now={now} />
-        )}
-      </OpenThreadButton>
-    </div>
+    <OpenThreadButton thread={thread}>
+      You started a thread
+      <ChevronRightIcon aria-hidden />
+    </OpenThreadButton>
   )
 }
 
@@ -154,7 +121,7 @@ export function PartThreads({ part, threads }: { readonly part: Part; readonly t
   return (
     <div className="thread-rows" data-side={side}>
       {started.map((view) => (
-        <ThreadRow key={view.id} view={view} now={threads.now} onOpen={() => threads.open(view.id)} />
+        <ThreadPreviewBlock key={view.id} view={view} now={threads.now} onOpen={() => threads.open(view.id)} />
       ))}
     </div>
   )

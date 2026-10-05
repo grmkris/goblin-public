@@ -174,6 +174,10 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return this.#owner(Conversations.use((conversations) => attempt(() => conversations.list())))
   }
 
+  threadPreview(thread: string) {
+    return this.#owner(Conversations.use((conversations) => attempt(() => conversations.preview(thread))))
+  }
+
   /** A thread branched from main at one of its messages (`from`, a Pi entry id), or an empty one. */
   createThread(from?: number) {
     return this.#owner(

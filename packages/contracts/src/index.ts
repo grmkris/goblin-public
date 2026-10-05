@@ -188,6 +188,23 @@ export const ThreadView = Schema.Struct({
 })
 export type ThreadView = typeof ThreadView.Type
 
+/** A bounded, owner-scoped preview used under a message in the main transcript. */
+export const ThreadPreviewMessage = Schema.Struct({
+  role: Schema.Literals(['user', 'assistant']),
+  text: Schema.String.check(Schema.isMaxLength(800)),
+  author: Schema.optional(Schema.String),
+  quiet: Schema.optional(Schema.Array(Schema.String).check(Schema.isMaxLength(8))),
+})
+export type ThreadPreviewMessage = typeof ThreadPreviewMessage.Type
+
+export const ThreadPreview = Schema.Struct({
+  threadId: Schema.String,
+  messages: Schema.Array(ThreadPreviewMessage).check(Schema.isMaxLength(5)),
+  more: Schema.Number,
+  busy: Schema.Boolean,
+})
+export type ThreadPreview = typeof ThreadPreview.Type
+
 /** A server id as configuration and the owner's added servers spell it. */
 const ServerId = Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u))
 const ToolName = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256))

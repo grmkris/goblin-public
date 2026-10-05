@@ -118,6 +118,7 @@ const threadRoutes: Readonly<
   'POST stop': async (request, agent, thread) =>
     json({ stopped: unwrap(await agent.stop(thread, (await readJson(request, Stop)).operationId)) }),
   'GET events': (_request, agent, thread) => agent.fetch(`https://agent/threads/${thread}/events`),
+  'GET preview': async (_request, agent, thread) => json(unwrap(await agent.threadPreview(thread))),
   'GET snapshot': (_request, agent, thread) => agent.fetch(`https://agent/threads/${thread}/snapshot`),
   'GET history': (request, agent, thread) =>
     agent.fetch(`https://agent/threads/${thread}/history${new URL(request.url).search}`),

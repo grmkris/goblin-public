@@ -15,6 +15,7 @@ import type {
   ServerSuggestion,
   ServerView,
   ThreadView,
+  ThreadPreview,
   ToolView,
   UsageToday,
 } from '@purrable/contracts'
@@ -34,6 +35,7 @@ export interface AgentRpcMethods {
   ) => Promise<RpcResult<PiReceipt>>
   readonly stop: (thread: string, operationId?: string) => Promise<RpcResult<boolean>>
   readonly threads: () => Promise<RpcResult<readonly ThreadView[]>>
+  readonly threadPreview: (thread: string) => Promise<RpcResult<ThreadPreview>>
   readonly createThread: (from?: number) => Promise<RpcResult<ThreadView>>
   readonly updateThread: (thread: string, change: ThreadChange) => Promise<RpcResult<ThreadView>>
   readonly conversationCapabilities: (thread: string) => Promise<RpcResult<ConversationCapabilities>>

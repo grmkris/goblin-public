@@ -1,4 +1,4 @@
-import { MAIN_THREAD, type ThreadView } from '@purrable/contracts'
+import { MAIN_THREAD, type ThreadPreview, type ThreadPreviewMessage, type ThreadView } from '@purrable/contracts'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { Conversation, EntryRecord, Extension } from '@earendil-works/pi-durable'
@@ -10,6 +10,7 @@ import type { CheapModel } from './memory/model.ts'
 import { authoredContent, threadStartedContent } from './pi/content.ts'
 import { BACKGROUND, conversationId, entryId } from './pi/context.ts'
 import { recentMessages } from './pi/transcript.ts'
+import { firstThreadMessages } from './thread-preview.ts'
 import { ReplyLedger } from './replies.ts'
 import { appConversations } from './storage/schema.ts'
 
@@ -56,6 +57,7 @@ export class ConversationRegistry {
   readonly #kit: ThreadKit
   readonly #naming = new Set<string>()
   readonly #replies = new ReplyLedger()
+  readonly #previews = new Map<string, readonly ThreadPreviewMessage[]>()
 
   constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, kit: ThreadKit, now: number) {
     this.#db = db
@@ -225,6 +227,18 @@ export class ConversationRegistry {
       await this.#conversation(this.require(session))
     ).entries({ maxEntryId: entryId(before - 1) }, HISTORY_PAGE, undefined, BACKGROUND)
     return { entries: page.items.toReversed(), more: page.next !== undefined }
+  }
+
+  /** A compact read of a registered thread; completed first-five previews stay stable in this isolate. */
+  async preview(session: string): Promise<ThreadPreview> {
+    const row = this.#row(this.require(session))
+    if (row === undefined || row.kind !== 'thread') throw new NotFound({ what: 'thread' })
+    const view = await this.#describe(row)
+    const messages =
+      this.#previews.get(session) ?? (await firstThreadMessages(await this.#conversation(session), row.forkEntry ?? 0))
+    if (messages.length === 5) this.#previews.set(session, messages)
+    const shownReplies = messages.filter((message) => message.text !== '').length
+    return { threadId: session, messages, more: Math.max(0, (view.replies ?? 0) - shownReplies), busy: view.busy }
   }
 
   async #conversation(session: string): Promise<Conversation> {

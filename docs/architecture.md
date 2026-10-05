@@ -77,10 +77,13 @@ sees main up to there and main never sees the thread) or empty. `app_conversatio
 title, origin and archive time; a session id reaches Pi only if it is registered there, so no request opens a
 conversation by guessing its number. Pi cannot delete a conversation, so archiving only hides a thread. The web
 lists them in the app's sidebar (`components/app-sidebar.tsx`, a sheet on phones): `/` is main and `/t/:id` a
-thread. Main shows its threads inline, as Slack does (`components/thread-replies.tsx`): under the message each one
-branched from, a row with its reply count and last reply, and "Reply in thread" on the other messages of the owner
-and the agent. A row opens its thread beside main (`/?thread=<id>`, `components/thread-panel.tsx`): the message it
-branched from, then only what was said in the thread, with its own composer. Reply in thread opens a reply there
+thread. Main attaches threads to their parent message with a connector rail and an indented preview
+(`components/thread-replies.tsx`). Blocks are expanded by default: the first five messages show their author, clipped
+text, and quiet thought/tool lines; a busy mark follows current activity. The owner can collapse each block, with
+that device preference in guarded localStorage. An IntersectionObserver starts the compact owner-scoped preview read
+only near the viewport, then polls while visible. After five messages only activity and the remaining count change.
+Owner-started threads get the same block. Open thread and the remaining-replies action open the thread beside main
+(`/?thread=<id>`, `components/thread-panel.tsx`) with its own composer. Reply in thread opens a reply there
 (`/?reply=<entry>`) that branches the thread only when it is sent, because Pi cannot delete a conversation; the
 sidebar's "+" beside Threads opens an empty draft there (`/?new=true`) the same way. A thread started with "+" tells
 main its name once it has one (ADR 0010): main gets one `app.thread_started` note, `[thread started: "<title>"]`, and
@@ -96,6 +99,7 @@ its transcript shows a row for that thread. The owner API is conversation-scoped
 | `POST /api/threads/:id/messages` | Submit `input`, a stable `operationId` and optional `appContext`; returns 202 acceptance. |
 | `POST /api/threads/:id/stop` | Stop a conversation or one `operationId`. |
 | `GET /api/threads/:id/snapshot`, `GET /api/threads/:id/events` | Pi snapshot or SSE snapshot followed by committed batches. |
+| `GET /api/threads/:id/preview` | First five own messages (bounded text and quiet tool/thought lines), remaining replies and busy state; no inherited main history. |
 | `GET /api/threads/:id/history?before=<entry>` | Earlier entries, oldest first, with a `more` flag. |
 
 Every thread runs the `purrable.thread` extension (`pi/thread.ts`), added to that conversation alone when it is made;

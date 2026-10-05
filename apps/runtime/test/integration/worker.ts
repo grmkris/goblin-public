@@ -310,6 +310,7 @@ async function branchSequence(agent: DurableObjectStub<PersonalAgentProbe>): Pro
   const thread = await agent.createThread(answer?.id)
   if (!thread.ok) return Response.json({ thread })
   const before = await listedThread(agent, thread.value.id)
+  const previewEmpty = await agent.threadPreview(thread.value.id)
   await agent.submit(thread.value.id, 'what was the word?', 'branch-thread')
   const settled = await agent.settle(thread.value.id, 'branch-thread')
   const branch = await transcript(agent, thread.value.id)
@@ -324,6 +325,9 @@ async function branchSequence(agent: DurableObjectStub<PersonalAgentProbe>): Pro
     request: await agent.requestFor('what was the word?'),
     forkedAt: answer?.id,
     before,
+    previewEmpty,
+    preview: await agent.threadPreview(thread.value.id),
+    unknownPreview: await agent.threadPreview('999999999'),
     afterOne,
     afterTwo: await listedThread(agent, thread.value.id),
   })

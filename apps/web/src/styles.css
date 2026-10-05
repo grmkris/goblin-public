@@ -733,3 +733,89 @@ summary {
     transition: none;
   }
 }
+
+/* The connector starts at the owning message's edge and turns into its indented thread preview. */
+.thread-rows {
+  align-self: flex-start;
+  width: min(100%, 42rem);
+  padding-left: 1.5rem;
+  margin-top: 0;
+}
+.thread-rows[data-side='end'] {
+  align-self: flex-end;
+  padding-left: 0;
+  padding-right: 1.5rem;
+}
+.thread-preview {
+  position: relative;
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+}
+.thread-preview::before {
+  position: absolute;
+  inset: -0.75rem auto auto -1rem;
+  width: 1rem;
+  height: 2rem;
+  border-left: 2px solid var(--border);
+  border-bottom: 2px solid var(--border);
+  border-bottom-left-radius: var(--radius-md);
+  content: '';
+}
+[data-side='end'] > .thread-preview::before {
+  left: auto;
+  right: -1rem;
+  border-left: 0;
+  border-right: 2px solid var(--border);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: var(--radius-md);
+}
+.thread-preview > .thread-row {
+  width: 100%;
+  padding-inline: 0.25rem;
+}
+.thread-preview-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.5rem 0.25rem 0.25rem;
+}
+.thread-preview-message {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr);
+  column-gap: 0.625rem;
+  font-size: 0.8125rem;
+}
+.thread-preview-author {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+.thread-preview-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.thread-preview-message > .thread-preview-quiet {
+  grid-column: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-preview-quiet {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+.thread-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--primary);
+  font-size: 0.75rem;
+}

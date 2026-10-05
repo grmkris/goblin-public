@@ -9,6 +9,7 @@ import { expect } from 'vitest'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { URL as FileURL } from 'node:url'
 import Stack from './stack.ts'
+import { ThreadPreview } from '@purrable/contracts'
 
 const harness = Test.make({
   providers: Cloudflare.providers(),
@@ -306,6 +307,9 @@ const Branch = Schema.Struct({
   main: Schema.Array(Schema.String),
   branch: Schema.Array(Schema.String),
   request: ModelRequest,
+  previewEmpty: Schema.Struct({ ok: Schema.Literal(true), value: ThreadPreview }),
+  preview: Schema.Struct({ ok: Schema.Literal(true), value: ThreadPreview }),
+  unknownPreview: Failure,
   forkedAt: Schema.Number,
   before: Activity,
   afterOne: Activity,
@@ -335,6 +339,14 @@ harness.test(
       'what was the word?',
     ])
     // The thread list knows where the thread branched and counts only what was said in it.
+    expect(result.previewEmpty.value.messages).toEqual([])
+    expect(result.preview.value.messages.map(({ text }) => text)).toEqual([
+      'what was the word?',
+      'echo: what was the word?',
+      'and once more?',
+      'echo: and once more?',
+    ])
+    expect(result.unknownPreview.error._tag).toBe('NotFound')
     expect(result.before).toMatchObject({ forkEntry: result.forkedAt, replies: 0 })
     expect(result.before.lastReplyAt).toBeUndefined()
     expect(result.afterOne).toMatchObject({ forkEntry: result.forkedAt, replies: 2 })
