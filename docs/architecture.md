@@ -78,6 +78,12 @@ Operation receipts and version CAS protect owner changes; replay never restores 
 proofs. Transactions finish before mail or owner grant RPCs, and members cannot invoke owner grant validation while
 leaving. The workspace limits pending/active invitees to sixteen and mail attempts to ten per hour.
 
+The browser projects D1 workspace state in Settings and the sidebar. Selection performs a full navigation to close
+streams, App frames and conversation caches; focus rechecks the opaque session context. Agent cards, conversations
+and credentials stay closed for shared memberships. Invitation pages clear fragment proofs before exchange, provide
+email-bound sign-in, and resume joining after the invitee's own plan activates. Owner permission checkboxes begin
+empty and server tools are independent of skill-library choices; viewers receive no execution permissions.
+
 Members/viewers cannot reach owner RPCs in Phase A. Shared execution waits for trusted principal contexts, capability
 scope, visibility and acting-account usage in Phase B. The owner reads all; each member needs their own Pro plan.
 Deletion commits a closed workspace before native destruction and leaves failure retryable. Member account deletion

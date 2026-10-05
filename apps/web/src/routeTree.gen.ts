@@ -19,6 +19,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SubscribeRouteImport } from './routes/subscribe'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as InviteInviteIdRouteImport } from './routes/invite.$inviteId'
 import { Route as SubscribeSuccessRouteImport } from './routes/subscribe.success'
 import { Route as TThreadIdRouteImport } from './routes/t.$threadId'
 
@@ -72,6 +73,11 @@ const TermsRoute = TermsRouteImport.update({
   path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InviteInviteIdRoute = InviteInviteIdRouteImport.update({
+  id: '/invite/$inviteId',
+  path: '/invite/$inviteId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SubscribeSuccessRoute = SubscribeSuccessRouteImport.update({
   id: '/success',
   path: '/success',
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
   '/terms': typeof TermsRoute
+  '/invite/$inviteId': typeof InviteInviteIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/t/$threadId': typeof TThreadIdRoute
 }
@@ -108,6 +115,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
   '/terms': typeof TermsRoute
+  '/invite/$inviteId': typeof InviteInviteIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/t/$threadId': typeof TThreadIdRoute
 }
@@ -123,6 +131,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
   '/terms': typeof TermsRoute
+  '/invite/$inviteId': typeof InviteInviteIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/t/$threadId': typeof TThreadIdRoute
 }
@@ -139,6 +148,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/subscribe'
     | '/terms'
+    | '/invite/$inviteId'
     | '/subscribe/success'
     | '/t/$threadId'
   fileRoutesByTo: FileRoutesByTo
@@ -153,6 +163,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/subscribe'
     | '/terms'
+    | '/invite/$inviteId'
     | '/subscribe/success'
     | '/t/$threadId'
   id:
@@ -167,6 +178,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/subscribe'
     | '/terms'
+    | '/invite/$inviteId'
     | '/subscribe/success'
     | '/t/$threadId'
   fileRoutesById: FileRoutesById
@@ -182,6 +194,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SubscribeRoute: typeof SubscribeRouteWithChildren
   TermsRoute: typeof TermsRoute
+  InviteInviteIdRoute: typeof InviteInviteIdRoute
   TThreadIdRoute: typeof TThreadIdRoute
 }
 
@@ -257,6 +270,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invite/$inviteId': {
+      id: '/invite/$inviteId'
+      path: '/invite/$inviteId'
+      fullPath: '/invite/$inviteId'
+      preLoaderRoute: typeof InviteInviteIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/subscribe/success': {
       id: '/subscribe/success'
       path: '/success'
@@ -297,6 +317,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SubscribeRoute: SubscribeRouteWithChildren,
   TermsRoute: TermsRoute,
+  InviteInviteIdRoute: InviteInviteIdRoute,
   TThreadIdRoute: TThreadIdRoute,
 }
 export const routeTree = rootRouteImport

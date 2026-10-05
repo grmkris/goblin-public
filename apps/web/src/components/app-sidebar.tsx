@@ -33,6 +33,7 @@ import {
 import { signOut } from '../lib/session.tsx'
 import { type ThreadNode, threadTitle, threadTree } from '../lib/threads.ts'
 import { useThreads } from './threads.tsx'
+import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
 
 /** The conversation a path shows: main at `/`, a thread or subagent at `/t/:id`, none elsewhere. */
 function conversationAt(path: string): string | undefined {
@@ -161,6 +162,7 @@ function Conversations({ current, onNew }: { readonly current: string | undefine
 export function AppSidebar() {
   const path = useRouterState({ select: (router) => router.location.pathname })
   const { setOpenMobile } = useSidebar()
+  const { state } = useAccountWorkspaces()
   const close = useCallback(() => setOpenMobile(false), [setOpenMobile])
   useEffect(() => close(), [path, close])
   return (
@@ -170,9 +172,15 @@ export function AppSidebar() {
           <CatIcon aria-hidden />
           Purrable
         </Link>
+        {state?.active && (
+          <a href="/settings" className="px-2 text-sm text-muted-foreground">
+            {state.active.name} · {state.active.role}
+            <span className="block text-xs">Owned by {state.active.ownerName}</span>
+          </a>
+        )}
       </SidebarHeader>
       <SidebarContent>
-        <Conversations current={conversationAt(path)} onNew={close} />
+        {state?.active?.agentReady && <Conversations current={conversationAt(path)} onNew={close} />}
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>

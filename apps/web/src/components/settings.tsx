@@ -25,6 +25,8 @@ import { BillingCard } from './billing.tsx'
 import { useBilling } from '../lib/billing.tsx'
 import { PasskeysCard } from './passkeys.tsx'
 import { useUsageToday } from './use-usage.ts'
+import { AccountWorkspaceCard, MembersCard } from './members.tsx'
+import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
 
 const decodeResident = Schema.decodeUnknownSync(ResidentStatus)
 const decodeClients = Schema.decodeUnknownSync(Schema.Array(InboundClient))
@@ -206,8 +208,8 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
       <CardHeader>
         <CardTitle>Delete account</CardTitle>
         <CardDescription>
-          Deletes your account and your agent: its conversations, MCP connections, permissions and usage. This cannot be
-          undone.
+          Deletes your account, memberships and personal agent if you own one, including its conversations, MCP
+          connections, permissions and usage. Other workspace owners keep their agents. This cannot be undone.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -234,7 +236,7 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
               </Field>
               <Field>
                 <Button type="submit" variant="destructive" disabled={pending}>
-                  {pending ? 'Deleting…' : 'Delete my account and agent'}
+                  {pending ? 'Deleting…' : 'Delete my account'}
                 </Button>
               </Field>
             </FieldGroup>
@@ -252,6 +254,7 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
 export function Settings() {
   const [error, setError] = useState('')
   const billing = useBilling()
+  const workspaces = useAccountWorkspaces()
   return (
     <div className="flex flex-col gap-6">
       {error && (
@@ -260,7 +263,9 @@ export function Settings() {
         </Alert>
       )}
       <BillingCard />
-      {billing.state?.active && (
+      <AccountWorkspaceCard />
+      <MembersCard />
+      {billing.state?.active && workspaces.state?.active?.agentReady && (
         <>
           <ResidentCard onError={setError} />
           <UsageCard />
@@ -268,7 +273,7 @@ export function Settings() {
         </>
       )}
       <PasskeysCard onError={setError} />
-      {billing.state?.active && <ClientsCard onError={setError} />}
+      {billing.state?.active && workspaces.state?.active?.agentReady && <ClientsCard onError={setError} />}
       <DeleteAccountCard onError={setError} />
     </div>
   )

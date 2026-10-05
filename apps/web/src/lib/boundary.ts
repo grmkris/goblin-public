@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 import type { JsonValue } from '@purrable/contracts'
+import { workspaceHeaders } from './workspace-request.ts'
 
 const ObjectSchema = Schema.Record(Schema.String, Schema.Unknown)
 export const isString = Schema.is(Schema.String)
@@ -51,7 +52,11 @@ export async function request(path: string, options: RequestOptions = {}): Promi
   const response = await fetch(path, {
     method,
     credentials: 'same-origin',
-    headers: { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
+    headers: {
+      ...workspaceHeaders(),
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      ...headers,
+    },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     ...(signal ? { signal } : {}),
   })
