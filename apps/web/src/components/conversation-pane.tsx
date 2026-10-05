@@ -183,6 +183,13 @@ function ConversationHeader({
   )
 }
 
+/** What writing in a conversation does, said under its composer where that is not obvious. */
+function hintOf(view: ConversationView, conversations: readonly ConversationView[]): string | undefined {
+  if (view.kind !== 'thread' || view.parent === undefined) return undefined
+  const parent = nameOf(conversations.find((candidate) => candidate.id === view.parent))
+  return `An aside from ${parent}. Nothing here reaches it unless you share it.`
+}
+
 /**
  * A conversation's transcript and dock. A branched thread starts at the message it branched from, shown above its
  * replies; every message carries the threads started from it, or Reply in thread. The owner's Apps live in place.
@@ -240,6 +247,8 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
         closed={closedBy(view)}
         onReopen={() => void feed.update(id, { closed: false })}
         notices={feed.error === '' ? [] : [feed.error]}
+        hint={hintOf(view, feed.conversations)}
+        {...(view.kind === 'thread' && { placeholder: 'Reply in thread…' })}
       />
     </section>
   )

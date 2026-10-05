@@ -1,5 +1,6 @@
-// Purrable's message composer: a floating card of the chrome material that the conversation scrolls under, with a
-// borderless input that grows with its text and a row of actions. The parts own the look; the app wires behaviour.
+// Purrable's message composer: a floating card of the chrome material, set off by a hairline and glowing softly while
+// it has focus, with a borderless input that grows with its text and a row of actions. The parts own the look; the app
+// wires behaviour.
 import type * as React from 'react'
 import { cn } from '../lib/cn'
 
@@ -9,7 +10,7 @@ function Composer({ className, ...props }: React.ComponentProps<'form'>) {
     <form
       data-slot="composer"
       className={cn(
-        'material-chrome flex w-full flex-col gap-1 rounded-2xl border border-border p-1.5 shadow-(--shadow-2) transition-[border-color,box-shadow] duration-200 has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:shadow-(--shadow-3)',
+        'material-chrome flex w-full flex-col gap-1 rounded-2xl border border-hairline p-1.5 shadow-(--shadow-2) transition-[border-color,box-shadow] duration-200 has-[textarea:focus-visible]:border-ring/60 has-[textarea:focus-visible]:shadow-(--shadow-3) has-[textarea:focus-visible]:ring-3 has-[textarea:focus-visible]:ring-ring/15',
         className,
       )}
       {...props}
@@ -24,7 +25,7 @@ function ComposerInput({ className, ...props }: React.ComponentProps<'textarea'>
       data-slot="composer-input"
       rows={1}
       className={cn(
-        'field-sizing-content max-h-[40dvh] min-h-11 w-full resize-none bg-transparent px-2.5 py-2 text-base outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
+        'field-sizing-content max-h-[40dvh] min-h-11 w-full resize-none bg-transparent px-2.5 py-2 text-base outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 md:text-[0.9375rem]',
         className,
       )}
       {...props}

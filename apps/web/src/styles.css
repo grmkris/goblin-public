@@ -549,6 +549,12 @@ main.shell {
   padding: 1.5rem var(--message-scroller-inset-x) max(0.75rem, env(safe-area-inset-bottom));
   pointer-events: none;
 }
+.dock-hint {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  text-align: center;
+  text-wrap: balance;
+}
 .chat-dock > * {
   width: 100%;
   max-width: var(--chat-column);

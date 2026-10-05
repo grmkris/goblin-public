@@ -67,6 +67,8 @@ export function ConversationDock({
   closed,
   onReopen,
   notices = [],
+  hint,
+  placeholder,
 }: {
   readonly ref: RefObject<HTMLDivElement | null>
   readonly id: string
@@ -77,6 +79,10 @@ export function ConversationDock({
   readonly closed: 'owner' | 'done' | undefined
   readonly onReopen: () => void
   readonly notices?: readonly string[]
+  /** A quiet line under the composer: what writing here does. */
+  readonly hint?: string | undefined
+  /** What the empty composer says; the default asks the agent. */
+  readonly placeholder?: string | undefined
 }) {
   const { projection, status, notice, send, stop } = conversation
   const running = projection?.running ?? false
@@ -109,6 +115,7 @@ export function ConversationDock({
               onSend={sendOwn}
               running={running}
               onStop={() => void stop()}
+              {...(placeholder !== undefined && { placeholder })}
               context={
                 <>
                   <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
@@ -128,6 +135,7 @@ export function ConversationDock({
               }
             />
           </div>
+          {hint !== undefined && <p className="dock-hint">{hint}</p>}
         </>
       )}
     </div>
