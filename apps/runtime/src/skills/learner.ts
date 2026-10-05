@@ -91,6 +91,11 @@ const yamlString = (value: string) => JSON.stringify(value.replaceAll(/\s+/gu, '
 
 export type LearnOutcome = 'skipped' | 'none' | 'duplicate' | 'drafted' | 'failed'
 
+/** Log only the bounded learner outcome; transcript, skill body and draft content never enter this line. */
+export const logLearnOutcome = (conversation: ConversationId, outcome: LearnOutcome): void => {
+  console.log(JSON.stringify({ level: 'info', event: 'skill-learner', conversation: String(conversation), outcome }))
+}
+
 export class SkillLearner {
   readonly #drafts: DraftLog
   readonly #harness: PiHarness

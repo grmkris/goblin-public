@@ -239,7 +239,7 @@ file reads; instructions already in a conversation stay there. A conversation ca
 After a final answer (`onYield`), the learner (`skills/learner.ts`) looks at the latest user message. On a correction
 or a request to keep how something was done, the memory model decides whether the exchange teaches a procedure. A
 procedure becomes a draft sent through an enabled library's granted `skill_draft` tool, which the owner reviews in the
-library. At most five in a rolling 24 hours, never the same content twice, no new draft while one for that skill is open,
+library. The Worker logs the learner outcome and conversation id without transcript or draft content. At most five in a rolling 24 hours, never the same content twice, no new draft while one for that skill is open,
 and never a rejected draft again (`app_skill_drafts`). A grant for `skill_draft_status` lets the learner refresh review
 status. Draft payloads contain generated procedure text and brief evidence, with email- and secret-shaped strings
 scrubbed, and no transcript field. The learner's model call counts toward the budget.

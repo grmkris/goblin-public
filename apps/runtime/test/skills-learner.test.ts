@@ -1,9 +1,17 @@
 import { createMcpHandler, Server } from '@modelcontextprotocol/server'
-import type { ConversationId } from '@earendil-works/pi-durable'
+import type { ConversationId, GenerationHooks } from '@earendil-works/pi-durable'
 import * as Schema from 'effect/Schema'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import * as Effect from 'effect/Effect'
+import * as Layer from 'effect/Layer'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { McpHost } from '../src/mcp/host.ts'
-import { SkillLearner } from '../src/skills/learner.ts'
+import { SkillLearner, type LearnOutcome } from '../src/skills/learner.ts'
+import { skillsExtension } from '../src/pi/skills.ts'
+import type { RunProgram } from '../src/pi/resident-mcp.ts'
+import { ModelBudget } from '../src/budget.ts'
+import { Budget, Learner, Resident } from '../src/services.ts'
+import type { AppError } from '../src/http/errors.ts'
+import { ActiveResident } from './fixed-services.ts'
 import { SkillLibrary } from '../src/skills/library.ts'
 import { SKILLS_EXTENSION } from '../src/skills/protocol.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
@@ -105,6 +113,13 @@ const NEW_SKILL = JSON.stringify({
   evidence: 'The owner said the review must start with blocked tasks.',
 })
 
+const failedRun: RunProgram = async () => {
+  throw new Error('private transcript and secret-shaped content must stay out of outcome logs')
+}
+
+const hasYieldHook = (handlers: object | undefined): handlers is Pick<GenerationHooks, 'onYield'> =>
+  handlers !== undefined && 'onYield' in handlers && typeof handlers.onYield === 'function'
+
 beforeEach(() => {
   library.drafts = []
   library.status = 'open'
@@ -126,6 +141,38 @@ afterEach(async () => {
 })
 
 describe('the skill learner (unit)', () => {
+  it('observes malformed model replies as failed without exposing the reply or holding up the answer', async () => {
+    model.answer = 'private malformed model reply, with no decision JSON'
+    const outcomes: LearnOutcome[] = []
+    const layer = Layer.mergeAll(
+      Layer.succeed(Learner, learner()),
+      Layer.succeed(Resident, new ActiveResident()),
+      Layer.succeed(Budget, new ModelBudget({ tokens: () => 0, add: () => undefined }, 300_000)),
+    )
+    const run: RunProgram = <A>(program: Parameters<RunProgram>[0]) =>
+      // SAFETY: onYield uses only Learner, Resident and Budget, provided by this test's layer.
+      Effect.runPromise(Effect.provide(program, layer) as Effect.Effect<A, AppError>)
+    const extension = skillsExtension(run, (_conversation, outcome) => outcomes.push(outcome))
+    const hooks = extension.hooks?.[0]?.handlers
+    if (!hasYieldHook(hooks)) throw new Error('skills onYield hook missing')
+    // SAFETY: the hook only reads conversationId; unused native answer, readers and context are omitted.
+    expect(hooks.onYield(undefined as never, { conversationId: MAIN } as never, {} as never)).toBeUndefined()
+    await vi.waitFor(() => expect(outcomes).toEqual(['failed']))
+    expect(model.calls).toBe(1)
+  })
+
+  it('reports a failed background hook without leaking error content or blocking the final answer', async () => {
+    const outcomes: { conversation: ConversationId; outcome: LearnOutcome }[] = []
+    const extension = skillsExtension(failedRun, (conversation, outcome) => outcomes.push({ conversation, outcome }))
+    const hooks = extension.hooks?.[0]?.handlers
+    if (!hasYieldHook(hooks)) throw new Error('skills onYield hook missing')
+    // SAFETY: the hook only reads conversationId; unused native answer, readers and context are omitted.
+    const result = hooks.onYield(undefined as never, { conversationId: MAIN } as never, {} as never)
+    expect(result).toBeUndefined()
+    await vi.waitFor(() => expect(outcomes).toEqual([{ conversation: MAIN, outcome: 'failed' }]))
+    expect(JSON.stringify(outcomes)).not.toContain('private')
+  })
+
   it('asks the model nothing when the owner neither corrected nor asked to keep anything', async () => {
     exchange = [
       { role: 'user', text: 'Thanks, that is great.' },

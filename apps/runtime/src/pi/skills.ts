@@ -4,6 +4,8 @@ import { Type } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import type { Catalog } from '../skills/library.ts'
 import { Capabilities, Learner, Skills, attempt, requireBudget, requireResident } from '../services.ts'
+import { logLearnOutcome, type LearnOutcome } from '../skills/learner.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { capabilityOffResult } from './capabilities.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
@@ -158,7 +160,10 @@ const readTool = (run: RunProgram) =>
  * fetched at wake), `skill_activate` loads one verified `SKILL.md` and `skill_read` one of its files. Both only read,
  * so a rerun after an eviction is harmless. After a final answer the learner may draft a skill for the owner's review.
  */
-export function skillsExtension(run: RunProgram) {
+export function skillsExtension(
+  run: RunProgram,
+  observe: (conversation: ConversationId, outcome: LearnOutcome) => void = logLearnOutcome,
+) {
   return defineExtension({
     name: 'purrable.skills',
     sections: [skillsSection(run)],
@@ -175,7 +180,9 @@ export function skillsExtension(run: RunProgram) {
               const learner = yield* Learner
               return yield* attempt(() => learner.consider(api.conversationId))
             }),
-          ).catch(() => undefined)
+          )
+            .then((outcome) => observe(api.conversationId, outcome))
+            .catch(() => observe(api.conversationId, 'failed'))
           return undefined
         },
       }),
