@@ -169,14 +169,18 @@ export const relay = Effect.fn('bench.relay')(function* (
     provider === undefined ? fakeTransport : liveTransport(client, provider, yield* Config.Redacted(provider.keyEnv))
   const gate = Semaphore.makeUnsafe(1)
   let label: Label = { scope: 'unassigned', phase: 'build' }
+  const labels = new Map<string, Label>()
   const allowed = new Set(
     resolved.manifest.variants.flatMap((variant) => [variant.reader, variant.writer ?? variant.reader]),
   )
   const handle = (request: Request) =>
-    handleRequest(request, account, label, send, allowed).pipe(
-      gate.withPermits(1),
-      Effect.provideService(FileSystem.FileSystem, fs),
-    )
+    handleRequest(
+      request,
+      account,
+      labels.get(request.headers.get('x-bench-scope') ?? '') ?? { scope: 'unassigned', phase: 'build' },
+      send,
+      allowed,
+    ).pipe(gate.withPermits(1), Effect.provideService(FileSystem.FileSystem, fs))
   const server = yield* Effect.acquireRelease(
     io(() => startServer(handle)),
     (resource) => io(resource.stop).pipe(Effect.orDie),
@@ -186,6 +190,7 @@ export const relay = Effect.fn('bench.relay')(function* (
     totals: () => account.budget.totals(),
     setScope: (scope: string, phase: Label['phase']) => {
       label = { scope, phase }
+      labels.set(scope, label)
     },
     traces: (scope: string) => account.records.filter((record) => record.scope === scope && record.status !== 0),
     allTraces: () => account.records,

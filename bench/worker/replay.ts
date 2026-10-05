@@ -1,6 +1,12 @@
-import type { AssistantMessage } from '@earendil-works/pi-ai'
+import type { AssistantMessage, Message } from '@earendil-works/pi-ai'
 import type { EntryDraft } from '@earendil-works/pi-durable'
 import type { ReplayEvent } from '../src/protocol.ts'
+
+/** Persisted system instructions bind provider attribution through native Pi recovery. User/tool text cannot route it. */
+export function requestScope(messages: readonly Message[], artifact: string): string {
+  const systems = JSON.stringify(messages.filter((message) => message.role === 'system'))
+  return /BENCH_OPERATION_ID=([a-zA-Z0-9_.:-]+)/u.exec(systems)?.[1] ?? artifact
+}
 
 /** Preserve roles and original tool-call pairs, with a source citation marker carried through summaries. */
 export function replayEntry(event: ReplayEvent): EntryDraft {

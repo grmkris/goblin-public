@@ -27,7 +27,7 @@ const post = Effect.fn('bench.native')(function* (url: string, path: string, act
   const request = HttpClientRequest.post(`${url.replace(/\/+$/u, '')}/${path}?actor=${actor}`).pipe(
     HttpClientRequest.bodyText(JSON.stringify(body), 'application/json'),
   )
-  const response = yield* client.execute(request).pipe(Effect.timeout('120 seconds'))
+  const response = yield* client.execute(request)
   if (response.status !== 200) return yield* fail(`Native ${path} failed with status ${response.status}`)
   return yield* response.json
 })
@@ -37,7 +37,7 @@ function evaluated(episode: Episode, native: ProbeResult, traces: readonly Trace
   if (scenario === undefined) throw new Error('Unknown scenario')
   let answer: Answer | null = null
   try {
-    answer = Schema.decodeUnknownSync(Answer)(JSON.parse(native.text))
+    answer = Schema.decodeUnknownSync(Answer)(JSON.parse(native.text), { onExcessProperty: 'error' })
   } catch {
     /* Malformed answers fail, including abstention probes. */
   }
@@ -86,9 +86,10 @@ const executeEpisode = Effect.fn('bench.episode')(function* (
     writer: episode.variant.writer ?? episode.variant.reader,
     events: publicEvents(scenario.events.slice(0, episode.probe.cutoff)),
   })
-  provider.setScope(episode.id, 'answer')
+  const operationId = `${resolved.runId}.${episode.id}`
+  provider.setScope(operationId, 'answer')
   const raw = yield* post(url, 'probe', actor, {
-    id: `${resolved.runId}.${episode.id}`,
+    id: operationId,
     reader: episode.variant.reader,
     cutoff: episode.probe.cutoff,
     recallGuide: resolved.manifest.recallGuide,
@@ -96,7 +97,7 @@ const executeEpisode = Effect.fn('bench.episode')(function* (
     search: episode.variant.policy === 'standard-search',
   })
   const native = yield* Schema.decodeUnknownEffect(ProbeResult)(raw)
-  return { result: evaluated(episode, native, provider.traces(episode.id)), native, actor }
+  return { result: evaluated(episode, native, provider.traces(operationId)), native, actor }
 })
 
 export const loadRun = Effect.fn('bench.loadRun')(function* (dir: string) {

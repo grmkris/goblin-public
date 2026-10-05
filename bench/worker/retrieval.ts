@@ -33,7 +33,7 @@ export class Retrieval {
 /** A lexical control with a fixed archive prefix, no access to main, future events or the evaluator ledger. */
 export function searchExtension(
   archive: () => readonly ReplayEvent[],
-  use: (read: () => Promise<string>) => Promise<string>,
+  use: (read: () => Promise<string>, conversation: string) => Promise<string>,
 ) {
   return defineExtension({
     name: 'bench.search',
@@ -43,7 +43,7 @@ export function searchExtension(
         description: 'Find source events in the authorized archive prefix using lexical terms.',
         parameters: Type.Object({ query: Type.String({ minLength: 1 }) }),
         replay: 'safe',
-        execute: async ({ query }) => {
+        execute: async ({ query }, api) => {
           const events = archive()
           const terms = query.toLowerCase().split(/\W+/u).filter(Boolean)
           const matches = events
@@ -53,7 +53,14 @@ export function searchExtension(
             .slice(0, 4)
             .map(({ event }) => `[source:${event.id}] ${event.kind}: ${event.text}`)
             .join('\n')
-          return { content: [{ type: 'text', text: await use(async () => matches || 'No matching source events.') }] }
+          return {
+            content: [
+              {
+                type: 'text',
+                text: await use(async () => matches || 'No matching source events.', String(api.conversationId)),
+              },
+            ],
+          }
         },
       }),
     ],

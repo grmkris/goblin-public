@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "name": "starter",
+  "split": "development",
+  "profile": "controlled",
+  "scenarioIds": ["staging", "interface", "recovery"],
+  "variants": [
+    {
+      "id": "optchat.glm-5.3.glm-5.3",
+      "policy": "optchat",
+      "writer": "glm-5.3",
+      "reader": "glm-5.3"
+    },
+    {
+      "id": "optchat.glm-5.3.deepseek-v4-pro-0813",
+      "policy": "optchat",
+      "writer": "glm-5.3",
+      "reader": "deepseek-v4-pro-0813"
+    },
+    {
+      "id": "optchat.deepseek-v4-pro-0813.glm-5.3",
+      "policy": "optchat",
+      "writer": "deepseek-v4-pro-0813",
+      "reader": "glm-5.3"
+    },
+    {
+      "id": "optchat.deepseek-v4-pro-0813.deepseek-v4-pro-0813",
+      "policy": "optchat",
+      "writer": "deepseek-v4-pro-0813",
+      "reader": "deepseek-v4-pro-0813"
+    },
+    {
+      "id": "standard.glm-5.3",
+      "policy": "standard",
+      "reader": "glm-5.3"
+    },
+    {
+      "id": "search.glm-5.3",
+      "policy": "standard-search",
+      "reader": "glm-5.3"
+    },
+    {
+      "id": "standard.deepseek-v4-pro-0813",
+      "policy": "standard",
+      "reader": "deepseek-v4-pro-0813"
+    },
+    {
+      "id": "search.deepseek-v4-pro-0813",
+      "policy": "standard-search",
+      "reader": "deepseek-v4-pro-0813"
+    }
+  ],
+  "pressure": {
+    "contextWindowTokens": 8192,
+    "reserveTokens": 2048,
+    "keepRecentTokens": 1024,
+    "viewBytes": 4096
+  },
+  "allowance": {
+    "maxAnswers": 200,
+    "maxRequests": 1000,
+    "maxInputTokens": 1000000,
+    "maxOutputTokens": 100000,
+    "concurrency": 2
+  },
+  "retrieval": {
+    "maxCalls": 4,
+    "maxBytes": 4096
+  },
+  "buildTrial": 0,
+  "summaryPrompt": null,
+  "recallGuide": null,
+  "rates": []
+}

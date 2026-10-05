@@ -8,7 +8,8 @@ import { Manifest } from '../src/schema.ts'
 import { Resolved } from '../src/results.ts'
 import { corpusHash, sourceHash } from './identity.ts'
 import { ProviderConfig, validateProvider, providerCatalog } from './relay.ts'
-import { readJson, fail, json, writeJson } from './store.ts'
+import { readJson, fail, json, writeJson, appendJson, lockRun } from './store.ts'
+import { Schema } from 'effect'
 import { run, resolveRun, loadRun } from './runner.ts'
 import { compare, renderReport, promotion } from '../src/report.ts'
 
@@ -30,7 +31,7 @@ const doctor = Effect.fn('bench.doctor')(function* (manifest: Manifest) {
   const providerPath = option('provider') ?? join(root, '.local/bench/provider.json')
   const configured = yield* fs.exists(providerPath)
   if (!configured)
-    return { mode: 'fake', configured: false, models: manifest.variants.map((variant) => variant.reader) }
+    return { mode: 'fake', configured: false, models: [...new Set(manifest.variants.map((variant) => variant.reader))] }
   const provider = yield* readJson(providerPath, ProviderConfig)
   yield* validateProvider(providerPath, provider)
   const catalog = yield* providerCatalog(provider)
@@ -45,6 +46,8 @@ const doctor = Effect.fn('bench.doctor')(function* (manifest: Manifest) {
 })
 
 const executeRun = Effect.fn('bench.command.run')(function* (manifest: Manifest) {
+  if (command === 'run' && args.includes('--live') && option('manifest') === undefined)
+    return yield* fail('Live runs require an explicit --manifest; review bench:plan first')
   const now = yield* DateTime.now
   const id = runId ?? `run-${DateTime.formatIso(now).replaceAll(/[^0-9]/gu, '')}`
   const dir = runDir(id)
@@ -75,10 +78,22 @@ const analyze = Effect.fn('bench.analyze')(function* () {
   }
   if (command === 'compare') return compare(data, yield* loadRun(runDir(option('against'))))
   if (command === 'promote') {
+    yield* lockRun(join(root, '.local/bench/promotion'))
     const incumbent = yield* loadRun(runDir(option('against')))
     const decision = promotion(data, incumbent)
     if (!decision.eligible) return decision
     const path = join(root, '.local/bench/incumbent.json')
+    const fs = yield* FileSystem.FileSystem
+    if (yield* fs.exists(path)) {
+      const frozen = yield* readJson(path, Schema.Struct({ runId: Schema.String }))
+      if (frozen.runId !== incumbent.resolved.runId)
+        return yield* fail('The frozen incumbent changed; compare against its current run')
+    }
+    yield* appendJson(join(root, '.local/bench/promotions.jsonl'), {
+      resolved: data.resolved,
+      against: incumbent.resolved.runId,
+      decision,
+    })
     yield* writeJson(path, { runId: data.resolved.runId, resolved: data.resolved, decision })
     return { ...decision, path }
   }

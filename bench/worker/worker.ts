@@ -1,5 +1,6 @@
 import { Agent } from 'agents'
 import { PiHarness } from 'agents/harness/pi'
+import type { ProviderStreams } from '@earendil-works/pi-ai'
 import { Harness, createRegistry, type Conversation, type Registry } from '@earendil-works/pi-durable'
 import {
   MainMemory,
@@ -8,6 +9,7 @@ import {
   entryId,
   makePiModels,
   MODEL_PROVIDER,
+  LITELLM_STREAMS,
   runApplicationMigrations,
   appMetadata,
   recallExtension,
@@ -16,7 +18,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import { Schema } from 'effect'
 import { BuildRequest, ProbeRequest, type ProbeResult } from '../src/protocol.ts'
-import { replayEntry } from './replay.ts'
+import { replayEntry, requestScope } from './replay.ts'
 import { Retrieval, searchExtension } from './retrieval.ts'
 
 interface Env {
@@ -40,6 +42,7 @@ export class BenchmarkAgent extends Agent<Env> {
   #retrieval: Retrieval | undefined
   #cutoff = 0
   #registry: Registry | undefined
+  #conversation = ''
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -65,7 +68,7 @@ export class BenchmarkAgent extends Agent<Env> {
             MODEL_KEY: 'local-relay',
             MODELS: modelIds.join(','),
           },
-          undefined,
+          this.#streams(config.identity),
           profile === 'controlled' ? pressure.contextWindowTokens : undefined,
         )
         this.#memory = new MainMemory(this.#db, this.#harness, new CheapModel(models, config.writer, () => undefined), {
@@ -76,14 +79,14 @@ export class BenchmarkAgent extends Agent<Env> {
         this.#registry = registry
         registry.install(
           recallExtension(
-            (id, n) => this.#use(() => this.#mainMemory().zoom(id, n, this.#cutoff)),
+            (id, n, conversation) => this.#use(() => this.#mainMemory().zoom(id, n, this.#cutoff), conversation),
             config.manifest.recallGuide ?? undefined,
           ),
         )
         registry.install(
           searchExtension(
             () => config.events.slice(0, this.#cutoff),
-            (read) => this.#use(read),
+            (read, conversation) => this.#use(read, conversation),
           ),
         )
         return Harness.open(
@@ -119,6 +122,20 @@ export class BenchmarkAgent extends Agent<Env> {
     if (row === undefined) throw new Error('Benchmark actor has not been configured')
     return decode(JSON.parse(row.value))
   }
+  #streams(artifact: string): ProviderStreams {
+    return {
+      stream: (model, context, options) =>
+        LITELLM_STREAMS.stream(model, context, {
+          ...options,
+          headers: withScope(options?.headers, requestScope(context.messages, artifact)),
+        }),
+      streamSimple: (model, context, options) =>
+        LITELLM_STREAMS.streamSimple(model, context, {
+          ...options,
+          headers: withScope(options?.headers, requestScope(context.messages, artifact)),
+        }),
+    }
+  }
   #save(value: typeof Stored.Type) {
     this.#db
       .insert(appMetadata)
@@ -130,8 +147,9 @@ export class BenchmarkAgent extends Agent<Env> {
     if (this.#memory === undefined) throw new Error('Memory has not opened')
     return this.#memory
   }
-  #use(read: () => Promise<string>) {
-    if (this.#retrieval === undefined) throw new Error('No active probe retrieval allowance')
+  #use(read: () => Promise<string>, conversation: string) {
+    if (this.#retrieval === undefined || conversation !== this.#conversation)
+      throw new Error('No active authorized probe retrieval allowance')
     return this.#retrieval.get(read)
   }
 
@@ -150,6 +168,7 @@ export class BenchmarkAgent extends Agent<Env> {
   }
 
   async build(config: BuildRequest) {
+    if (this.#retrieval !== undefined) throw new Error('A probe is still active')
     const previous = this.#db.select().from(appMetadata).where(eq(appMetadata.id, 'bench')).get()
     if (previous !== undefined && decode(JSON.parse(previous.value)).config.identity !== config.identity)
       throw new Error('Artifact identity mismatch')
@@ -214,18 +233,20 @@ export class BenchmarkAgent extends Agent<Env> {
   async probe(input: ProbeRequest): Promise<ProbeResult> {
     const { config, ready, checkpoints } = this.#stored()
     if (!ready) throw new Error('Checkpoint is incomplete')
+    if (config.policy === 'standard' && input.reader !== config.writer)
+      throw new Error('Native compaction writer remains coupled to its reader')
     if (this.#retrieval !== undefined) throw new Error('A probe is already active')
     const checkpoint = checkpoints[String(input.cutoff)]
     if (checkpoint === undefined) throw new Error('Unknown authorized cutoff')
     const main = await this.#root()
     // Resolve extension objects from the same definitions used by the native registry.
     const recall = recallExtension(
-      (id, n) => this.#use(() => this.#mainMemory().zoom(id, n, this.#cutoff)),
+      (id, n, conversation) => this.#use(() => this.#mainMemory().zoom(id, n, this.#cutoff), conversation),
       input.recallGuide ?? undefined,
     )
     const search = searchExtension(
       () => config.events.slice(0, this.#cutoff),
-      (read) => this.#use(read),
+      (read, conversation) => this.#use(read, conversation),
     )
     this.#registry?.install(recall)
     this.#registry?.install(search)
@@ -236,13 +257,14 @@ export class BenchmarkAgent extends Agent<Env> {
         agent: {
           model: { provider: MODEL_PROVIDER, modelId: input.reader },
           thinkingLevel: 'off',
-          instructions: INSTRUCTIONS,
+          instructions: `${INSTRUCTIONS}\nBENCH_OPERATION_ID=${input.id}`,
           extensions: config.policy === 'optchat' ? [recall] : input.search ? [search] : [],
         },
       },
       BACKGROUND,
     )
     this.#cutoff = input.cutoff
+    this.#conversation = String(fork.id)
     this.#retrieval = new Retrieval(config.manifest.retrieval.maxCalls, config.manifest.retrieval.maxBytes)
     try {
       const result = await this.#harness.prompt(input.question, { session: String(fork.id), operationId: input.id })
@@ -252,14 +274,25 @@ export class BenchmarkAgent extends Agent<Env> {
         retrieval: this.#retrieval.trace,
         context: (await fork.context(BACKGROUND)).messages.map((message) => ({
           role: message.role,
-          text: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+          text:
+            message.role === 'system'
+              ? JSON.stringify(message)
+              : typeof message.content === 'string'
+                ? message.content
+                : JSON.stringify(message.content),
         })),
       }
     } finally {
       this.#retrieval = undefined
+      this.#conversation = ''
     }
   }
 }
+
+const withScope = (existing: Record<string, string | null> | undefined, scope: string) => ({
+  ...existing,
+  'x-bench-scope': scope,
+})
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
