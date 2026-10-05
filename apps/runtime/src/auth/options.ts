@@ -5,6 +5,7 @@ import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { emailOTP, jwt } from 'better-auth/plugins'
 import type { RuntimeEnv } from '../env.ts'
 import { deleteAccountWorkspaces, registerAccount } from '../workspaces/lifecycle.ts'
+import { createdAccountKind } from '../workspaces/auth-admission.ts'
 import { CODE_SEND, CODE_SIGN_IN, guardEmailCode } from './email-code.ts'
 import { codeMail, mailerOf, resetMail, verificationMail } from './mail.ts'
 import { passkeyPlugin } from './passkey.ts'
@@ -184,7 +185,15 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
       },
     },
     databaseHooks: {
-      user: { create: { after: (user: { id: string }) => registerAccount(database, user.id, 'ordinary') } },
+      user: {
+        create: {
+          before: async (user: { email: string }, context: Parameters<typeof createdAccountKind>[2]) => {
+            await createdAccountKind(database, env, context, user.email)
+          },
+          after: async (user: { id: string; email: string }, context: Parameters<typeof createdAccountKind>[2]) =>
+            registerAccount(database, user.id, await createdAccountKind(database, env, context, user.email)),
+        },
+      },
     },
     rateLimit: { enabled: true, storage: 'database' as const, window: 60, max: 100, customRules: RATE_LIMITS },
     advanced: { ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] } },

@@ -1,6 +1,7 @@
 import * as Schema from 'effect/Schema'
 
 const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200))
+const Endpoint = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048))
 export const WorkspaceRole = Schema.Literals(['owner', 'member', 'viewer'])
 export type WorkspaceRole = typeof WorkspaceRole.Type
 /** Frozen endpoint-bound ceilings; a later owner grant never widens the invited member. */
@@ -8,11 +9,11 @@ export const MemberPolicy = Schema.Struct({
   servers: Schema.Array(
     Schema.Struct({
       serverId: Id,
-      endpoint: Schema.String,
+      endpoint: Endpoint,
       tools: Schema.Array(Schema.String.check(Schema.isMaxLength(256))).check(Schema.isMaxLength(256)),
     }),
   ).check(Schema.isMaxLength(32)),
-  skills: Schema.Array(Schema.Struct({ serverId: Id, endpoint: Schema.String })).check(Schema.isMaxLength(32)),
+  skills: Schema.Array(Schema.Struct({ serverId: Id, endpoint: Endpoint })).check(Schema.isMaxLength(32)),
   mainHistory: Schema.Literals(['own', 'all']),
 })
 export type MemberPolicy = typeof MemberPolicy.Type

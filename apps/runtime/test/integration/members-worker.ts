@@ -11,7 +11,8 @@ import { liveApi } from '../../src/billing/dodo.ts'
 import { billingTestRoute } from '../../src/billing/test-route.ts'
 import { PersonalAgent } from '../../src/agent.ts'
 import { scriptedStreams } from './model.ts'
-import { accountAdmissions, members } from '../../src/workspaces/schema.ts'
+import { accountAdmissions, admissions, invitations, members } from '../../src/workspaces/schema.ts'
+import type { MailMessage } from '../../src/auth/mail.ts'
 import { makeWorkspaceStore } from '../../src/workspaces/store.ts'
 import { deleteAccountWorkspaces } from '../../src/workspaces/lifecycle.ts'
 
@@ -24,11 +25,24 @@ const Command = Schema.Struct({
   userId: Schema.String,
   workspaceId: Schema.optional(Schema.String),
   role: Schema.optional(Schema.Literals(['member', 'viewer'])),
+  email: Schema.optional(Schema.String),
+  invitationId: Schema.optional(Schema.String),
 })
+const fixtureMail = new Map<string, MailMessage>()
 async function lever(request: Request, env: RuntimeEnv): Promise<Response> {
   const body = await readJson(request, Command)
   const action = new URL(request.url).pathname.split('/').at(-1)
+  const email = body.email ?? ''
   const db = drizzle(env.AUTH_DB)
+  if (action === 'mail') return Response.json(fixtureMail.get(email) ?? null)
+  if (action === 'expire' && body.invitationId !== undefined) {
+    await db.update(invitations).set({ expiresAt: 1 }).where(eq(invitations.id, body.invitationId)).run()
+    return Response.json({ ok: true })
+  }
+  if (action === 'expire-admission') {
+    await db.update(admissions).set({ expiresAt: 1 }).where(eq(admissions.email, email)).run()
+    return Response.json({ ok: true })
+  }
   if (action === 'invitation-account') {
     await db
       .update(accountAdmissions)
@@ -83,7 +97,17 @@ export default {
             productId: 'unused',
           }),
         )
-      return await runtime.fetch(input, env, ctx)
+      const mail = {
+        send: async (message: MailMessage) => {
+          fixtureMail.set(message.to, message)
+        },
+      }
+      const withMail = request.headers.get('x-fixture-mail') === '1'
+      return await runtime.fetch(
+        input,
+        withMail ? { ...env, SIGNUP_MODE: 'closed', MAIL: mail, MAIL_SENDER: 'hello@purrable.lol' } : env,
+        ctx,
+      )
     } catch (cause) {
       return failureResponse(cause, url.pathname, 'members-fixture')
     }

@@ -26,6 +26,7 @@ import { runBillingCron } from './billing/cron.ts'
 import { billingMode, requireAccountPlan } from './billing/gates.ts'
 import { ownerWorkspace, sessionOwnerWorkspace } from './workspaces/resolution.ts'
 import { workspaceApi } from './workspaces/routes.ts'
+import { currentInvitation, invitationPreview, membersApi } from './workspaces/invitations.ts'
 
 export { PersonalAgent } from './agent.ts'
 
@@ -262,6 +263,7 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   const path = new URL(request.url).pathname
   if (path.startsWith('/api/billing/')) return Effect.runPromise(billingApi(request, env, userId))
   if (path === '/api/workspaces' || path.startsWith('/api/workspaces/')) return workspaceApi(request, env, session)
+  if (path.startsWith('/api/members') || path.startsWith('/api/invitations')) return membersApi(request, env, session)
   await requireAccountPlan(env, userId)
   const workspace = await sessionOwnerWorkspace(env, session, request.headers.get('x-purrable-workspace') ?? undefined)
   const agent = agentOf(env, workspace.ownerUserId)
@@ -294,6 +296,9 @@ async function admittedRoute(
 ): Promise<Response> {
   const path = new URL(request.url).pathname
   if (path === '/mcp') return handleInboundMcp(request, env)
+  if (path === '/api/invitations/admission' && request.method === 'GET') return currentInvitation(env, request)
+  const previewId = /^\/api\/invitations\/([\w-]{1,200})\/preview$/u.exec(path)?.[1]
+  if (previewId !== undefined && request.method === 'POST') return invitationPreview(env, request, previewId)
   if (path === '/hooks/dodo') return Effect.runPromise(billingWebhook(billingDeps(env), request, ctx))
   if (path.startsWith('/hooks/mcp-events/')) return mcpEventsRoute(request, env, path)
   if (path.startsWith('/hooks/')) return doorbellRoute(request, env, path)

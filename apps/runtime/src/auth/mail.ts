@@ -21,6 +21,30 @@ type MailStage = { readonly stage?: 'local' | 'dev' | 'prod' | 'test' }
 const subjectPrefix = (input: MailStage & { readonly appUrl: string }): string =>
   input.stage === 'prod' ? '' : `[${new URL(input.appUrl).host}] `
 
+export const invitationMail = (
+  input: {
+    readonly from: string
+    readonly to: string
+    readonly url: string
+    readonly code: string
+    readonly appUrl: string
+  } & MailStage,
+): MailMessage => ({
+  from: input.from,
+  to: input.to,
+  subject: `${subjectPrefix(input)}Invitation to Purrable`,
+  text: [
+    'You have been invited to a Purrable workspace.',
+    '',
+    input.url,
+    '',
+    `Or enter this invitation code on that page: ${input.code}`,
+    '',
+    'The invitation expires in seven days. Sign in with this email and your own active Pro plan to join.',
+    'The workspace owner can read every conversation in their workspace. If you did not expect this, ignore it.',
+  ].join('\n'),
+})
+
 /** A sign-in code. The subject never contains the code, so a lock-screen preview does not give it away. */
 export const codeMail = (
   input: {

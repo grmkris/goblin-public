@@ -70,6 +70,7 @@ const provision = (db: Database, userId: string, id: string, now: number) =>
               invitationId: sql<null>`NULL`.as('invitationId'),
               joinedAt: workspaces.createdAt,
               removedAt: sql<null>`NULL`.as('removedAt'),
+              lastOperationId: sql<null>`NULL`.as('lastOperationId'),
             })
             .from(workspaces)
             .where(and(eq(workspaces.ownerUserId, userId), eq(workspaces.state, 'active'))),

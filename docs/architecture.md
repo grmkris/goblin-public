@@ -70,6 +70,14 @@ returns 409, and selection writes require exact Origin plus `x-purrable-csrf: 1`
 to the verified owner's workspace. Ordinary accounts can provision a personal workspace; invitation-only accounts
 never fall back to a personal Agent. Existing objects and Pi history keep their original names.
 
+Invitations store only hashes of a fragment secret and separate strong code. Public proof exchange requires exact
+Origin and CSRF headers, is rate limited, and issues a ten-minute HttpOnly admission bound to the email and current
+invitation version. Closed signup checks that admission at OTP send/verify and account creation. Acceptance requires
+a fresh verified session and the acting account's plan, then commits membership and proof consumption in a D1 batch.
+Operation receipts and version CAS protect owner changes; replay never restores removed access. Resend rotates
+proofs. Transactions finish before mail or owner grant RPCs, and members cannot invoke owner grant validation while
+leaving. The workspace limits pending/active invitees to sixteen and mail attempts to ten per hour.
+
 Members/viewers cannot reach owner RPCs in Phase A. Shared execution waits for trusted principal contexts, capability
 scope, visibility and acting-account usage in Phase B. The owner reads all; each member needs their own Pro plan.
 Deletion commits a closed workspace before native destruction and leaves failure retryable. Member account deletion
