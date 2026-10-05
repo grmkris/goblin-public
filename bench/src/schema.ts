@@ -95,6 +95,7 @@ export const Manifest = Schema.Struct({
       contextWindowTokens: Positive,
       thinking: Schema.Literals(['provider-default', 'disabled']),
       readerMaxOutputTokens: Schema.optional(Positive.check(Schema.isLessThanOrEqualTo(8192))),
+      nativeCompactionMaxOutputTokens: Schema.optional(Positive.check(Schema.isLessThanOrEqualTo(8192))),
     }),
   ),
   profile: Schema.Literals(['controlled', 'production-compatibility']),

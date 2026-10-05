@@ -70,9 +70,34 @@ test('native workerd: Pi compaction and OptChat settle, probes fork without chan
             if (!response.ok) throw new Error(await response.text())
             return response.json()
           })
-        for (const { at, policy, reader, writer, head } of [
-          { at: 0, policy: 'optchat', reader: 'grok-4.7', writer: 'qwen3.8-flash', head: 'app.memory' },
-          { at: 1, policy: 'standard', reader: 'glm-5.3', writer: 'glm-5.3', head: 'pi.compaction' },
+        for (const { at, policy, reader, writer, head, compactionLimit, expectedLimit } of [
+          {
+            at: 0,
+            policy: 'optchat',
+            reader: 'grok-4.7',
+            writer: 'qwen3.8-flash',
+            head: 'app.memory',
+            compactionLimit: 3072,
+            expectedLimit: 2448,
+          },
+          {
+            at: 1,
+            policy: 'standard',
+            reader: 'glm-5.3',
+            writer: 'glm-5.3',
+            head: 'pi.compaction',
+            compactionLimit: 3072,
+            expectedLimit: 3072,
+          },
+          {
+            at: 2,
+            policy: 'standard',
+            reader: 'glm-5.3',
+            writer: 'glm-5.3',
+            head: 'pi.compaction',
+            compactionLimit: undefined,
+            expectedLimit: Math.floor(0.8 * manifest.pressure.reserveTokens),
+          },
         ]) {
           const actor = Math.abs(yield* Random.nextInt)
             .toString(16)
@@ -83,6 +108,7 @@ test('native workerd: Pi compaction and OptChat settle, probes fork without chan
               contextWindowTokens: 131072,
               thinking: 'provider-default' as const,
               readerMaxOutputTokens: 4096,
+              nativeCompactionMaxOutputTokens: compactionLimit,
             },
             variants: [{ id: 'native', policy: 'optchat-search' as const, writer, reader }],
           }
@@ -92,6 +118,7 @@ test('native workerd: Pi compaction and OptChat settle, probes fork without chan
           expect(built).toMatchObject({ reused: false, head })
           expect(seen.length).toBeGreaterThan(buildStart)
           expect(seen.slice(buildStart).every(({ scope }) => scope === actor)).toBe(true)
+          checkOutputLimits(seen.slice(buildStart), expectedLimit)
           const probeStart = seen.length
           const result = yield* Schema.decodeUnknownEffect(ProbeResult)(
             yield* call(actor, 'probe', {
@@ -106,6 +133,7 @@ test('native workerd: Pi compaction and OptChat settle, probes fork without chan
           expect(result.status).toBe('done')
           expect(seen.length).toBeGreaterThan(probeStart)
           expect(seen.slice(probeStart).every(({ scope }) => scope === `probe-${at}`)).toBe(true)
+          checkOutputLimits(seen.slice(probeStart), 4096)
           if (policy === 'optchat')
             yield* checkSearch(seen, () =>
               call(actor, 'probe', {
@@ -156,7 +184,12 @@ const checkSearch = Effect.fn('bench.test.search')(function* (
   expect(searched.deliveries.some((item) => item.origin === 'search')).toBe(true)
   const requests = seen.slice(beforeSearch)
   expect(requests).toHaveLength(2)
-  expect(requests.every(({ body }) => body.max_tokens === 4096 || body.max_completion_tokens === 4096)).toBe(true)
+  checkOutputLimits(requests, 4096)
   const offered = JSON.stringify(requests[0]?.body.tools)
   for (const name of ['zoom', 'archive_search', 'archive_read']) expect(offered).toContain(name)
 })
+
+function checkOutputLimits(requests: readonly { readonly body: ChatRequest }[], limit: number) {
+  expect(requests.length).toBeGreaterThan(0)
+  for (const { body } of requests) expect(body.max_tokens ?? body.max_completion_tokens).toBe(limit)
+}

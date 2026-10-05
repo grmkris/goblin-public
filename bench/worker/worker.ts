@@ -47,6 +47,7 @@ export class BenchmarkAgent extends Agent<Env> {
   #sourceCutoff = 0
   readonly #transportWindows = new Map<string, number>()
   #readerMaxTokens: number | undefined
+  #nativeCompactionMaxTokens: number | undefined
   #registry: Registry | undefined
   #conversation = ''
   #contextSources: ReturnType<typeof contextSources> = []
@@ -69,6 +70,8 @@ export class BenchmarkAgent extends Agent<Env> {
         const { config } = this.#stored()
         const { pressure, profile } = config.manifest
         this.#readerMaxTokens = config.manifest.transport?.readerMaxOutputTokens
+        this.#nativeCompactionMaxTokens =
+          config.policy === 'standard' ? config.manifest.transport?.nativeCompactionMaxOutputTokens : undefined
         const modelIds = [...new Set([config.writer, ...config.manifest.variants.map((variant) => variant.reader)])]
         const { models, options } = makePiModels(
           {
@@ -137,22 +140,22 @@ export class BenchmarkAgent extends Agent<Env> {
     return {
       stream: (model, context, options) => {
         this.#recordContext(context.messages)
+        const scope = requestScope(context.messages, artifact)
+        const maxTokens = scope === artifact ? this.#nativeCompactionMaxTokens : this.#readerMaxTokens
         return LITELLM_STREAMS.stream(transportModel(model, this.#transportWindows), context, {
           ...options,
-          ...(requestScope(context.messages, artifact) !== artifact && this.#readerMaxTokens !== undefined
-            ? { maxTokens: this.#readerMaxTokens }
-            : {}),
-          headers: withScope(options?.headers, requestScope(context.messages, artifact)),
+          ...(maxTokens === undefined ? {} : { maxTokens }),
+          headers: withScope(options?.headers, scope),
         })
       },
       streamSimple: (model, context, options) => {
         this.#recordContext(context.messages)
+        const scope = requestScope(context.messages, artifact)
+        const maxTokens = scope === artifact ? this.#nativeCompactionMaxTokens : this.#readerMaxTokens
         return LITELLM_STREAMS.streamSimple(transportModel(model, this.#transportWindows), context, {
           ...options,
-          ...(requestScope(context.messages, artifact) !== artifact && this.#readerMaxTokens !== undefined
-            ? { maxTokens: this.#readerMaxTokens }
-            : {}),
-          headers: withScope(options?.headers, requestScope(context.messages, artifact)),
+          ...(maxTokens === undefined ? {} : { maxTokens }),
+          headers: withScope(options?.headers, scope),
         })
       },
     }

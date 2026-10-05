@@ -139,6 +139,10 @@ allowances and provider-default thinking. Optional regressions use these actual 
 Explicit manifests may also select the exact `qwen3.8-flash` and `grok-4.7` routes. The worker registers readers from
 the manifest. `transport.readerMaxOutputTokens` optionally caps each reader completion independently of the writer;
 old manifests retain their previous output default. Tool requests use `tool_choice: auto`.
+`transport.nativeCompactionMaxOutputTokens` optionally sets the output allowance for native construction only;
+it leaves OptChat writer and reader limits independent. Unset, native Pi retains its installed default
+`floor(0.8 * reserveTokens)` (1638 at the 2048-token reserve). This field changes the experimental configuration:
+use a fresh immutable trial, preserve default-limit failures, and report calibrated controls separately.
 Preflight checks writer and reader output limits by operation scope, including when both use the same model route,
 and verifies the manifest's explicit thinking configuration. Disabling thinking requires a fresh named experiment;
 the recorded usage must still fit every reservation before bulk construction is admitted.
