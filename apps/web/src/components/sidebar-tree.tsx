@@ -1,6 +1,5 @@
 import { type CSSProperties, useMemo, useState } from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
-import type { ConversationView } from '@purrable/contracts'
 import {
   Duration,
   SidebarGroup,
@@ -12,15 +11,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubItem,
 } from '@purrable/ui'
-import {
-  AppWindowIcon,
-  BotIcon,
-  ChevronRightIcon,
-  Columns2Icon,
-  MessageCircleIcon,
-  MessagesSquareIcon,
-  PlusIcon,
-} from 'lucide-react'
+import { AppWindowIcon, ChevronRightIcon, Columns2Icon, PlusIcon } from 'lucide-react'
 import { isClosed, threadTitle } from '../lib/threads.ts'
 import { type ItemKey, appKey, conversationKey, isOpen, itemOf } from '../lib/workspace.ts'
 import {
@@ -32,18 +23,13 @@ import {
   foldApps,
   rowStatus,
 } from '../lib/workspace-tree.ts'
+import { KindMark } from './pane-nav.tsx'
 import { useNow } from './use-now.ts'
 import { useWorkspace } from './workspace.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
 /** Whether a path shows the workspace: `/`, a conversation's `/c/<id>` or an App's `/a/<id>`. */
 export const onWorkspace = (path: string) => path === '/' || path.startsWith('/c/') || path.startsWith('/a/')
-
-/** The icon of a conversation's kind: main, a thread or a subagent. */
-export function KindIcon({ kind }: { readonly kind: ConversationView['kind'] }) {
-  if (kind === 'main') return <MessageCircleIcon aria-hidden />
-  return kind === 'subagent' ? <BotIcon aria-hidden /> : <MessagesSquareIcon aria-hidden />
-}
 
 /** The sidebar's tree, from the live workspace feed; a thread nobody wrote in shows only while it is in a pane. */
 export function useWorkspaceTree() {
@@ -92,13 +78,18 @@ function Elapsed({ since }: { readonly since: number }) {
   return <Duration ms={useNow() - since} running />
 }
 
-/** How long a working conversation has been at it, a spinner for work below it, and a dot for unread replies. */
-function RowMarks({ status }: { readonly status: RowStatus }) {
+/**
+ * How long a working conversation has been at it, a spinner for work below it, and a dot for unread replies. A
+ * subagent's own state is its mark at the row's start (`stated`), so the end does not repeat it.
+ */
+function RowMarks({ status, stated }: { readonly status: RowStatus; readonly stated: boolean }) {
   return (
     <span className="tree-row-marks">
       {status.state === 'working' && status.since !== undefined && <Elapsed since={status.since} />}
-      {status.state === 'working' && <span className="thread-busy" aria-label="Working" />}
-      {status.state === 'waiting' && <span className="tree-row-waiting" aria-label="Waiting on its subagents" />}
+      {!stated && status.state === 'working' && <span className="thread-busy" aria-label="Working" />}
+      {!stated && status.state === 'waiting' && (
+        <span className="tree-row-waiting" aria-label="Waiting on its subagents" />
+      )}
       {status.state === 'idle' && status.below && <span className="tree-row-below" aria-label="Work under it" />}
       {status.unread && <span className="tree-row-unread" aria-label="Unread replies" />}
     </span>
@@ -189,9 +180,9 @@ function TreeRow({ node, nested = false }: { readonly node: TreeNode; readonly n
         onClick={row.showHere}
         isActive={row.focused}
       >
-        <KindIcon kind={node.view.kind} />
+        <KindMark view={node.view} />
         <span className="tree-row-name">{name}</span>
-        <RowMarks status={status} />
+        <RowMarks status={status} stated={node.view.kind === 'subagent'} />
       </SidebarMenuButton>
       <button
         type="button"

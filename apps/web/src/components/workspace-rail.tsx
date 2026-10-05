@@ -4,7 +4,8 @@ import { PlusIcon } from 'lucide-react'
 import { threadTitle } from '../lib/threads.ts'
 import { appKey, conversationKey, isOpen } from '../lib/workspace.ts'
 import { type AppRow, type RowStatus, type TreeNode, pathOf, railItems, rowStatus } from '../lib/workspace-tree.ts'
-import { AppTile, KindIcon, useRowActions, useWorkspaceTree } from './sidebar-tree.tsx'
+import { KindMark } from './pane-nav.tsx'
+import { AppTile, useRowActions, useWorkspaceTree } from './sidebar-tree.tsx'
 import { useWorkspace } from './workspace.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
@@ -46,7 +47,7 @@ function RailItem({ node }: { readonly node: TreeNode }) {
           />
         }
       >
-        <KindIcon kind={node.view.kind} />
+        <KindMark view={node.view} />
       </HoverCardTrigger>
       <HoverCardContent>
         <p className="font-medium">{name}</p>

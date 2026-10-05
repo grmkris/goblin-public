@@ -8,6 +8,7 @@ import type { ItemKey } from '../../lib/workspace.ts'
 import { appNames } from '../../lib/workspace-tree.ts'
 import { usePlace } from '../conversation-pane.tsx'
 import { PaneHeader } from '../pane-header.tsx'
+import { AppTile } from '../sidebar-tree.tsx'
 import { useWorkspace } from '../workspace.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { useAppHost } from './host.tsx'
@@ -88,7 +89,11 @@ export function AppPage({ item, id }: { readonly item: ItemKey; readonly id: str
         item={item}
         title={title}
         first={first}
-        menu={app === undefined ? undefined : <AppPageMenu app={app} item={item} />}
+        {...(app !== undefined && {
+          menu: <AppPageMenu app={app} item={item} />,
+          mark: <AppTile serverId={app.serverId} />,
+          status: <span className="pane-state">{app.serverId}</span>,
+        })}
         onClose={only ? undefined : () => workspace.close(item)}
       />
       {asleep && app !== undefined ? (

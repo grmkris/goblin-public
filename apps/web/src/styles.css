@@ -1690,6 +1690,28 @@ summary {
   display: flex;
   flex: none;
 }
+/* What the pane holds, as a small mark before its name: main, a thread, a subagent's state, an App's tile. */
+.pane-mark {
+  display: grid;
+  flex: none;
+  width: 1.25rem;
+  place-items: center;
+  color: var(--muted-foreground);
+}
+.pane-mark > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+.pane-mark + .pane-crumb {
+  padding-left: 0.125rem;
+}
+/* A menu item's quiet note at its end ("started it", "subagent"). */
+.menu-hint {
+  margin-left: auto;
+  padding-left: 1rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
 .pane-rename {
   min-width: 10rem;
 }

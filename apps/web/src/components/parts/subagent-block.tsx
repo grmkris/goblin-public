@@ -21,7 +21,7 @@ import { OpenThread } from './text-part.tsx'
 import { ToolCard } from './tool-part.tsx'
 
 /** A subagent's state as a small mark: a turning ring at work, a check once it reported, a square once stopped. */
-function SubagentStateIcon({ state }: { readonly state: SubagentState }) {
+export function SubagentStateIcon({ state }: { readonly state: SubagentState }) {
   let icon = null
   if (state.kind === 'reported' || (state.kind === 'closed' && state.by === 'done')) icon = <CheckIcon />
   else if (state.kind === 'stopped') icon = <SquareIcon />
@@ -35,18 +35,23 @@ function SubagentStateIcon({ state }: { readonly state: SubagentState }) {
 }
 
 /** The state in words, with a running clock while it works. */
-function SubagentStateText({ state }: { readonly state: SubagentState }) {
+export function SubagentStateText({ state }: { readonly state: SubagentState }) {
   const now = useNow(state.kind === 'working' || state.kind === 'reported')
-  if (state.kind === 'working') return <Duration ms={now - state.since} running />
+  if (state.kind === 'working')
+    return (
+      <>
+        working <Duration ms={now - state.since} running />
+      </>
+    )
   return <>{subagentLabel(state, Math.floor(now / 1000))}</>
 }
 
 /**
  * A subagent's live state and what the owner can do to it: Stop (the subagent and all under it, the call the pane's
- * Stop makes), Keep open past its report, Dismiss and Reopen. A Stop the feed cannot show is remembered here until the
+ * Stop makes), Keep open past its report, Close and Reopen. A Stop the feed cannot show is remembered here until the
  * subagent works again.
  */
-function useSubagent(view: ConversationView) {
+export function useSubagent(view: ConversationView) {
   const feed = useWorkspaceFeed()
   const [stopped, setStopped] = useState(false)
   const [failure, setFailure] = useState('')
@@ -120,7 +125,7 @@ function Tool({
   )
 }
 
-/** The row's tools, shown on hover: open it beside, Stop while anything works, Keep open, Dismiss or Reopen. */
+/** The row's tools, shown on hover: open it beside, Stop while anything works, Keep open, Close or Reopen. */
 function SubagentTools({
   view,
   name,
@@ -155,7 +160,7 @@ function SubagentTools({
           <RotateCcwIcon aria-hidden />
         </Tool>
       ) : (
-        <Tool label={`Dismiss ${name}`} onClick={subagent.dismiss}>
+        <Tool label={`Close ${name}`} onClick={subagent.dismiss}>
           <XIcon aria-hidden />
         </Tool>
       )}
@@ -169,7 +174,7 @@ function noteOf(view: ConversationView, { state, below, parent }: Subagent): str
     return state.by === 'done' ? 'Closed after its report. Reopen it to write to it.' : 'You closed it.'
   if (below > 0) return `Waiting on ${below} of its subagents.`
   if (state.kind === 'stopped') return 'Stopped. Write to it to start it again.'
-  if (view.keepOpen) return 'Kept open: it stays after its report until you dismiss it.'
+  if (view.keepOpen) return 'Kept open: it stays after its report until you close it.'
   if (state.kind === 'reported') return `Its report went to ${parent}.`
   return `Started by ${parent}. It closes after its report unless you keep it open.`
 }

@@ -22,6 +22,7 @@ import { useMarkRead, useOnScreen } from './on-screen.ts'
 import { Conversation } from './conversation.tsx'
 import { ConversationDock, Notice } from './conversation-dock.tsx'
 import { useModelChoice } from './model-picker.tsx'
+import { KindMark, ShowInPane, SubagentMenuItems, SubagentPillState } from './pane-nav.tsx'
 import { PaneHeader } from './pane-header.tsx'
 import { AppsIn } from './parts/mcp-tool-part.tsx'
 import { PartView } from './parts/registry.tsx'
@@ -114,7 +115,10 @@ function RenameForm({ view, onDone }: { readonly view: ConversationView; readonl
   )
 }
 
-/** The pill's menu for a conversation: rename, share back, fill the workspace, close or reopen. */
+/**
+ * The pill's menu for a conversation: where it sits and what is around it to show here, a subagent's Stop and Keep
+ * open, then rename, share back, fill the workspace, close or reopen.
+ */
 function ConversationMenu({
   view,
   item,
@@ -134,6 +138,9 @@ function ConversationMenu({
   const closed = isClosed(view)
   return (
     <>
+      <ShowInPane view={view} item={item} />
+      <DropdownMenuSeparator />
+      {view.kind === 'subagent' && <SubagentMenuItems view={view} />}
       {view.kind !== 'main' && (
         <DropdownMenuItem onClick={onRename}>
           <PencilIcon aria-hidden />
@@ -187,7 +194,8 @@ function ConversationHeader({
       item={item}
       title={nameOf(view)}
       first={first}
-      status={<Status view={view} />}
+      {...(view !== undefined && { mark: <KindMark view={view} /> })}
+      status={view?.kind === 'subagent' ? <SubagentPillState view={view} /> : <Status view={view} />}
       onClose={only ? undefined : () => workspace.close(item)}
       crumb={
         parent === undefined

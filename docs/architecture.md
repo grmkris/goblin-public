@@ -300,7 +300,9 @@ transcript link can open things, and keeps the URL (`/c/<id>` or `/a/<id>`) on t
 floating, navigation or shortcuts) inside a sideways scroller about 400px a pane wide; narrower screens show one pane
 per screen in a snapping strip whose pane in view is the focused one. Each item renders once into a stable portal host
 that moves between panes, the strip and a parking lot, so streams and React state survive rearrangement. Each pane
-draws its own floating pill (`components/pane-header.tsx`); `components/workspace-drag.tsx` drags a pill's grip onto a
+draws its own floating pill (`components/pane-header.tsx`): a mark of what it holds (main, a thread, a subagent's
+state, an App's tile), where it came from, its name and menu, and its state; the menu starts with its path and the
+conversations around it to show in that pane instead (`components/pane-nav.tsx`). `components/workspace-drag.tsx` drags a pill's grip onto a
 pane to split it at an edge or swap with it (`lib/pane-drop.ts`). The arrangement is a bounded device preference
 (`purrable:workspace:v2:<owner>`, 64 views, no stage, nothing floating); conversation and App panes come back from it,
 drafts do not. The sidebar footer credits Trellis and Dan Fessler; see

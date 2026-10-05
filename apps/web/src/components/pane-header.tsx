@@ -16,6 +16,7 @@ export function PaneHeader({
   title,
   crumb,
   status,
+  mark,
   menu,
   editing,
   first,
@@ -25,6 +26,8 @@ export function PaneHeader({
   readonly title: string
   readonly crumb?: Crumb | undefined
   readonly status?: ReactNode
+  /** What the item is, as a small mark before its name. */
+  readonly mark?: ReactNode
   /** The name's menu items; without any the name is plain text. */
   readonly menu?: ReactNode
   /** Shown in place of the name while it is being renamed. */
@@ -40,6 +43,7 @@ export function PaneHeader({
         <button type="button" className="pane-grip" data-drag-item={item} aria-label={`Move ${title}`}>
           <GripVerticalIcon aria-hidden />
         </button>
+        {mark !== undefined && <span className="pane-mark">{mark}</span>}
         {crumb !== undefined && (
           <>
             <button type="button" className="pane-crumb" onClick={crumb.open} title={`Open ${crumb.title}`}>
