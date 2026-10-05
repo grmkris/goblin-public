@@ -524,7 +524,11 @@ submissions in its own local workerd actors. OptChat, native compaction and lexi
 cutoffs and bounded API/retrieval allowances. Source tool calls are transcript evidence; the benchmark installs only
 recall/search tools and never executes historical commands. Expected claims stay on the coordinator host, outside
 worker requests. Private manifests, source hashes, API ledgers, native contexts and identity-bound semantic reviews
-make runs inspectable. This local recall experiment does not mutate a deployed user's agent or prove coding continuation.
+make runs inspectable. Recall v2 compares the four memory/search combinations with a coupled DeepSeek writer and
+reader, enforces phase and cutoff allowances, and requires a durable operational receipt before the later cutoff.
+Blinded packets preserve unmodified answers; separate machine/human votes and adjudication provide semantic scores
+alongside strict format/evidence results. Shared construction is charged once per memory. This local recall
+experiment does not mutate a deployed user's agent or prove coding continuation.
 
 ## Routine definitions
 

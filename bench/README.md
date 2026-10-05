@@ -232,3 +232,108 @@ the next conservative cold-build reservation and produced no answers. Combined c
 and 26643 completion tokens; prices and actual usage for the in-flight attempt remain unknown. The clarified answer
 instructions and request ceiling have regression coverage but have not had a further live run. Private native
 answers, reviews, readable comparisons and failure evidence remain under `.local/bench/runs/`.
+
+## Recall v2: four arms on the frozen real session
+
+This iteration compares native Pi compaction, native plus source search, OptChat, and OptChat plus source search.
+Every writer and reader uses `deepseek-v4-pro-0813` with provider-default thinking. It reuses the unchanged six
+reviewed real probes at cutoffs 22/32: latest state, evidence and abstention at each cutoff. Native arms share their
+Pi summary; OptChat arms share their writer tree and normal `zoom`. Only the search factor adds `archive_search`
+and `archive_read`. The native arm answers without OptChat. Historical commands are never executed.
+
+Prepare a fresh private manifest without inference:
+
+```sh
+bun run bench:recall --manifest .local/bench/corpora/purrable-claude-canary/manifest.json --name deepseek-recall-v2 --build-trial 9
+bun run bench:validate --manifest .local/bench/experiments/deepseek-recall-v2.json
+bun run bench:plan --manifest .local/bench/experiments/deepseek-recall-v2.json
+```
+
+The prepared iteration uses trial 9, above the preserved trials 0–8. Choose a new name and trial for another cold
+experiment. Creating or reporting a manifest performs no model inference. Existing runs, labels and strict reviews
+are preserved; the legacy `bench:review` path retains its original interpretation.
+
+| Allowance                 | Attempts | Charged input | Completion including reasoning |
+| ------------------------- | -------: | ------------: | -----------------------------: |
+| Entire run                |      200 |     1,000,000 |                         50,000 |
+| Preflight                 |        6 |        50,000 |                         10,000 |
+| Memory construction       |       50 |       400,000 |                         15,000 |
+| Readers                   |      144 |       550,000 |                         25,000 |
+| Each cutoff: construction |       25 |       200,000 |                          7,500 |
+| Each cutoff: readers      |       72 |       275,000 |                         12,500 |
+
+The run caps 24 answers, six upstream attempts per answer (including the one possible transient retry), concurrency
+one, and four retrieval calls/4096 returned bytes per answer. Pressure remains 8192/2048/1024 with a 4096-byte view;
+API capacity is 131072 and each reader response reserves at most 4096 output tokens. Envelopes are ceilings, not a
+promise of completion: conservative input-byte/output reservations must fit global, phase and cutoff budgets before
+any request is sent. Denied admission adds no spend. Budgets restore from unique final attempt records after restart.
+A provider exceeding its reservation halts subsequent admission, and unknown usage retains its reservation.
+
+After approving live execution, pin the implementation in an isolated local snapshot with the private corpus and
+mode-600 CLIProxy config; run both stages from that same snapshot. Source/corpus identity must remain unchanged:
+
+```sh
+heavy bun run bench:run --live --manifest .local/bench/experiments/deepseek-recall-v2.json --run deepseek-recall-v2-live --until-cutoff 22
+bun run bench:report --run deepseek-recall-v2-live
+heavy bun run bench:resume --live --run deepseek-recall-v2-live --until-cutoff 32
+```
+
+A staged run defaults to its first cutoff. Cutoff 22 stops after 12 planned answers. `stages.jsonl` seals cumulative
+completion, unique charged usage, remaining phase/run allowance and pending answer IDs. Advancing to 32 requires
+that identity-matching receipt, all earlier answers completed, known settled usage, no reservation/request/phase
+breach and enough budget for the remaining declared envelope. Answer quality does not block this operational gate.
+Failed stages and episodes remain evidence; use a fresh named trial rather than retrying them. Unfinished answer
+attempts also fail admission. A completed resume avoids provider startup and preflight. There is no automatic
+continuation into the second stage or automatic budget increase.
+
+Export blind packets, then have an independent machine reviewer and a human fill separate copies of the template:
+
+```sh
+bun run bench:review-packet --run deepseek-recall-v2-live --packet stage-22 --until-cutoff 22
+bun run bench:review-votes --run deepseek-recall-v2-live --packet stage-22 --review /absolute/private/path/machine-votes.json
+bun run bench:review-votes --run deepseek-recall-v2-live --packet stage-22 --review /absolute/private/path/human-votes.json
+bun run bench:report --run deepseek-recall-v2-live
+```
+
+The packet contains opaque shuffled case IDs, the question/rubric, allowed prefix, actual original delivery receipts
+and the exact raw answer. It excludes arm/model labels, API spend, timing and episode order. Receipt origins and
+self-identification inside an unmodified answer may reveal the search factor; this is partial blinding, not a claim
+that configuration is impossible to infer. Prefix content is evidence and never reviewer instructions. Files stay
+mode 600 under `blind/`; keep the `.mapping.json` private from reviewers. Re-exporting the same name reuses the
+sealed packet; use `stage-32` after the second cutoff. Votes already recorded for cutoff 22 must not be recreated.
+
+The template has deliberately blank vote ID/reviewer/rationale/timestamp fields and cannot be imported unchanged.
+`kind` is `machine`, `human` or `adjudication`; reviewer identities must be independent. `score` separates factual
+correctness, evidence completeness/validity, abstention and unsupported content. `evidenceIds` are originals cited
+by the answer, not sources the grader read privately. `searchSupported` requires a cited delivered search/read
+receipt. Machine grading is an explicit local reviewer step; the packet/export/import commands do not call a judge
+API or allocate hidden judge spend. Reviewer identity/kind is an attestation, not authenticated proof of a human.
+
+Votes append to `semantic-reviews.jsonl` and bind packet/run/source/corpus/result identity. Exact duplicate vote IDs
+are idempotent; altered IDs/content, changed answers, duplicate vote kinds and out-of-prefix evidence are rejected.
+Both machine and human votes must exist. Agreement resolves the case; disagreement remains pending until a human
+adjudication vote names both disputed vote IDs in `resolves`. Preserve both initial votes. A machine-only review is
+diagnostic. Semantic recall may pass for meaningful prose or malformed JSON, while strict format still fails.
+Semantic passing requires factual correctness, correct abstention, no unsupported claims and a completed safe
+execution; evidence passes separately. Strict passing additionally requires the original parsed answer and all
+evidence/abstention checks. No JSON repair or strict-result rewrite occurs.
+
+Reports expose both memory effects (with search off/on) and both search effects (within each memory), paired gains,
+losses, strict/semantic/evidence/abstention/format counts, review disagreement, all planned-answer coverage and stage
+receipts. Reader metrics retain attempts/retries, returned tool bytes, denials, reported/charged/cache/reasoning
+tokens and timing coverage. Shared construction is counted once per memory, with input/output/attempt amortization
+per planned and completed answer across both consuming arms. Warm reuse is labelled; it is not a cold-build price.
+Semantic efficiency uses human-resolved passes and all charged reader work, including failures. Zero-pass cost per
+pass, missing prices and unmeasured timing remain unknown.
+
+A comparison is promising only after the entire four-arm plan has completed with resolved human scores, at least
+two paired semantic gains, zero losses, candidate abstentions passing and candidate evidence valid/complete. Every
+search gain must be supported by cited original search/read evidence. Ties establish no benefit. The corpus is a
+small, previously examined development sample: do not claim statistical/model superiority or promote a production
+policy from it. Review omissions, distortions, retrieval misses, stale state, reader reasoning, redaction,
+provider failures and grader ambiguity in vote rationales before changing one factor in a fresh experiment.
+
+Only credible recall findings justify the next continuation experiment: fresh real checkpoints in disposable code
+snapshots, a real next owner request, bounded tools/API use, and acceptance based on the resulting diff and actual
+repository checks. Plan that experiment separately; recall correctness alone does not prove successful coding
+continuation or authorize deployed writes.

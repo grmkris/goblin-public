@@ -296,6 +296,23 @@ function renderEfficiency(data: RunData): string {
   const arms = efficiency(data)
   return `${readerTable(arms)}${answerTable(arms)}${sharedTable(data)}<p>API time sums recorded response durations; coverage counts measured attempts. Answer time includes retrieval and model turns after the checkpoint is ready. Checkpoint + answer time also includes checkpoint readiness and evaluation. Older runs have no coordinator timing. Unknown retrieval logs and prices remain unknown. Completion tokens include reasoning; reasoning/cache details and retries have measurement coverage in JSON. These totals include failures and unfinished work. Cost per correct answer is unknown when no answer passes. TTFT is unmeasured.</p>`
 }
+/** Shared JSON payload keeps readable and machine reports on the same metrics. */
+export function reportData(data: RunData) {
+  return {
+    plannedAnswers: episodes(data.resolved.manifest, data.resolved.scenarios).length,
+    scores: summary(data),
+    accounting: accounting(data),
+    phases: phaseAccounting(data),
+    efficiency: efficiency(data),
+    paired: paired(data),
+    factorial: factorial(data),
+    semantic: semanticSummary(data),
+    stages: data.stageReceipts ?? [],
+    construction: construction(data),
+    semanticEfficiency: semanticEfficiency(data),
+    cost: cost(data),
+  }
+}
 export function renderReport(data: RunData): string {
   const rows = data.results
     .map(
@@ -303,5 +320,5 @@ export function renderReport(data: RunData): string {
         `<tr><td>${escape(result.variant)}</td><td>${escape(result.id)}</td><td>${result.status === 'failed' ? 'runtime failure' : result.reviewStatus === 'pending' ? 'review pending' : result.score.correct ? 'pass' : 'fail'}</td><td><details><summary>inspect</summary><pre>${escape(JSON.stringify(result, null, 2))}</pre><a href="${result.status === 'failed' ? 'failures.jsonl' : `traces/${encodeURIComponent(result.id)}.json`}">private ${result.status === 'failed' ? 'failure ledger' : 'episode trace'}</a></details></td></tr>`,
     )
     .join('')
-  return `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Memory bench ${escape(data.resolved.runId)}</title><style>body{font:14px system-ui;margin:2rem;background:#111;color:#eee}table{border-collapse:collapse;width:100%;margin:1rem 0}caption{text-align:left;font-weight:bold;margin:.5rem 0}td,th{border:1px solid #444;padding:.4rem}details{max-width:80rem}pre{white-space:pre-wrap}a{color:#8bd}.scroll{overflow-x:auto}</style><h1>${escape(data.resolved.runId)}</h1><p>${escape(data.resolved.mode)} provider · source ${escape(data.resolved.sourceHash)} · corpus ${escape(data.resolved.corpusHash)}</p><p>Accuracy covers completed, scored answers; real answers require semantic review. Inspect completion and review coverage before comparing variants. Charged tokens include retained reservations when provider usage is unknown.</p>${recallTables(data)}${renderEfficiency(data)}<details><summary>Accounting and paired diagnostic details</summary><pre>${escape(JSON.stringify({ plannedAnswers: episodes(data.resolved.manifest, data.resolved.scenarios).length, scores: summary(data), accounting: accounting(data), phases: phaseAccounting(data), efficiency: efficiency(data), paired: paired(data), factorial: factorial(data), semantic: semanticSummary(data), stages: data.stageReceipts ?? [], construction: construction(data), semanticEfficiency: semanticEfficiency(data), cost: cost(data) }, null, 2))}</pre></details><table><thead><tr><th>variant</th><th>episode</th><th>result</th><th>trace</th></tr></thead><tbody>${rows}</tbody></table>`
+  return `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Memory bench ${escape(data.resolved.runId)}</title><style>body{font:14px system-ui;margin:2rem;background:#111;color:#eee}table{border-collapse:collapse;width:100%;margin:1rem 0}caption{text-align:left;font-weight:bold;margin:.5rem 0}td,th{border:1px solid #444;padding:.4rem}details{max-width:80rem}pre{white-space:pre-wrap}a{color:#8bd}.scroll{overflow-x:auto}</style><h1>${escape(data.resolved.runId)}</h1><p>${escape(data.resolved.mode)} provider · source ${escape(data.resolved.sourceHash)} · corpus ${escape(data.resolved.corpusHash)}</p><p>Accuracy covers completed, scored answers; real answers require semantic review. Inspect completion and review coverage before comparing variants. Charged tokens include retained reservations when provider usage is unknown.</p>${recallTables(data)}${renderEfficiency(data)}<details><summary>Accounting and paired diagnostic details</summary><pre>${escape(JSON.stringify(reportData(data), null, 2))}</pre></details><table><thead><tr><th>variant</th><th>episode</th><th>result</th><th>trace</th></tr></thead><tbody>${rows}</tbody></table>`
 }

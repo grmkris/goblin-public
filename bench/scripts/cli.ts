@@ -15,11 +15,8 @@ import { ProviderConfig, validateProvider, providerCatalog } from './relay.ts'
 import { readJson, fail, json, writeJson, appendJson, lockRun } from './store.ts'
 import { Schema } from 'effect'
 import { run, resolveRun, loadRun } from './runner.ts'
-import { compare, renderReport, promotion, accounting, summary, phaseAccounting } from '../src/report.ts'
-import { efficiency } from '../src/metrics.ts'
+import { compare, renderReport, promotion, reportData } from '../src/report.ts'
 import { factorial } from '../src/factorial.ts'
-import { semanticSummary } from '../src/semantic.ts'
-import { construction, semanticEfficiency } from '../src/construction.ts'
 import { createRecall } from './recall.ts'
 import { exportPacket, importVotes } from './blind.ts'
 
@@ -95,18 +92,15 @@ const analyze = Effect.fn('bench.analyze')(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = join(runDir(runId), 'report.html')
     yield* fs.writeFileString(path, renderReport(data), { mode: 0o600 })
-    yield* writeJson(join(runDir(runId), 'report.json'), {
-      scores: summary(data),
-      accounting: accounting(data),
-      phases: phaseAccounting(data),
-      efficiency: efficiency(data),
-      paired: paired(data),
-      factorial: factorial(data),
-      semantic: semanticSummary(data),
-      stages: data.stageReceipts ?? [],
-      construction: construction(data),
-      semanticEfficiency: semanticEfficiency(data),
-    })
+    yield* writeJson(join(runDir(runId), 'report.json'), reportData(data))
+    if (data.resolved.manifest.allowance.stages !== undefined) {
+      const report = factorial(data)
+      return {
+        path,
+        complete: report.complete,
+        comparisons: report.comparisons.map(({ rows: _rows, ...decision }) => decision),
+      }
+    }
     return { path, paired: paired(data).map(({ rows: _rows, ...decision }) => decision) }
   }
   if (command === 'compare') return compare(data, yield* loadRun(runDir(option('against'))))
