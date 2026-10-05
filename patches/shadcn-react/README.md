@@ -21,7 +21,7 @@ has changed since). Its build is byte-identical to the published `dist/message-s
 | Scrolling while a just-sent turn is held drains the reserved space instead of yanking to the live end           | [#11465](https://github.com/shadcn-ui/ui/pull/11465), #11125 | `bd850c4b9e` |
 | Narrowing the transcript (a pane resized, an App opened beside it) keeps a reader resting at the end at the end | [#11506](https://github.com/shadcn-ui/ui/pull/11506)         | `14b28a872e` |
 | Each streamed chunk is corrected before paint, not one frame late                                               | [#11808](https://github.com/shadcn-ui/ui/pull/11808), #11577 | `6e12421a53` |
-| Prepends are told by the first message row, so a persistent "Earlier messages" row no longer hides them         | Purrable (see below)                                         |              |
+| Prepends are told by the first message row, so a persistent "Earlier messages" row no longer hides them         | [#12150](https://github.com/shadcn-ui/ui/pull/12150) (ours)  |              |
 
 Each PR was applied as its own diff against its merge base (`git apply -3`). Resolved by hand:
 
@@ -30,7 +30,8 @@ Each PR was applied as its own diff against its merge base (`git apply -3`). Res
 - #11808 runs `handleResize` synchronously in the content `ResizeObserver` and suspends the observer only while a turn
   is held. #11465's drain also writes the spacer, so the observer is suspended whenever a spacer is reserved, too.
 
-Ours, in `handleContentChange`: a prepend is recognised when the previous first **message** row (one with a
+Ours (upstream as [#12150](https://github.com/shadcn-ui/ui/pull/12150), without the anchor-scan part, which needs
+#11182), in `handleContentChange`: a prepend is recognised when the previous first **message** row (one with a
 `messageId`) is no longer the first message row, rather than when the previous first child moved. Rows that are not
 messages, such as Purrable's "Earlier messages" button or a thread's lead, can stay first or come and go without hiding
 a prepend. New scroll anchors are the ones not yet handled, wherever they were inserted, rather than whatever sits
