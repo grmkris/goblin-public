@@ -37,6 +37,7 @@ export {
   FieldSeparator,
   FieldContent,
 } from './components/field.tsx'
+export { HoverCard, HoverCardContent, HoverCardTrigger } from './components/hover-card.tsx'
 export { Input } from './components/input.tsx'
 export { Label } from './components/label.tsx'
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from './components/collapsible.tsx'

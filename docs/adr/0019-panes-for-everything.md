@@ -33,6 +33,15 @@ pane by pane; the pane in view is the focused one. Each item renders once into a
 panes, the strip and a parking lot, so React state and streams survive every rearrangement. Fill the workspace shows
 one pane alone until the next change.
 
+**The sidebar is the tree, and folds to a rail.** Main with its subagents (at any depth), then the threads, each with
+everything under it; closed conversations fold into "n closed" under where they sat. A row shows its agent's working
+time, work going on under it and unread replies, shows here on a click, opens beside from its side button and drags
+onto a pane like a grip. On a desktop the sidebar folds to a 56px rail, never further: main and the conversations that
+are open, at work or unread, each icon shaped by kind, marked when focused or open, with a hover card saying what it
+is, where it sits and what a click does. Unread is synced through the server, not per device: `read_at` on
+`app_conversations` is the owner's read mark (`PUT /api/conversations/:id/read`), set once a pane has shown the
+conversation for a moment, and replies after it are unread.
+
 **Apps, for now.** The transcript's one live App opens in a pane beside the focused conversation on a desktop and in
 its bottom sheet on a phone; closing that pane closes the App, and fullscreen fills the workspace. Apps open only
 from main's transcript until durable Apps (several live, in any conversation) replace this.
@@ -54,4 +63,6 @@ text and link; the README keeps its credit.
 The pane store (`lib/workspace.ts`), the one-view geometry (`lib/trellis-layout.ts`), drop planning
 (`lib/pane-drop.ts`) and bounded parsing (`lib/workspace-document.ts`) are pure and unit-tested. A local Chromium run
 against local workerd covers opening, drafts becoming threads, nested threads, Close and Reopen, closing main, the
-last-pane rule, sidebar and deep links, reload, drag to split and swap, Escape, fill and the narrow strip.
+last-pane rule, sidebar and deep links, reload, drag to split and swap, Escape, fill and the narrow strip. The tree
+and rail (`lib/workspace-tree.ts`) are unit-tested, and the read mark's round trip through the workspace feed runs in
+local workerd.

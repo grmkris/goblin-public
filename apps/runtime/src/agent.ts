@@ -51,6 +51,7 @@ import { suggestions } from './mcp/suggested.ts'
 import {
   askClient,
   createOwnerConversation,
+  markOwnerRead,
   ownerRequest,
   recentOwnerMessages,
   ownerUsage,
@@ -270,17 +271,8 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   /** The owner's message into a thread, with what an open App shared for the agent as separate untrusted blocks. */
   submit(thread: string, input: string, operationId: string, appContext: readonly AppContext[] = []) {
-    return this.#owner(
-      submitOwner({
-        harness: this.harness,
-        applied: this.#applied,
-        routines: this.#routines,
-        thread,
-        text: input,
-        operationId,
-        appContext,
-      }),
-    )
+    const runtime = { harness: this.harness, applied: this.#applied, routines: this.#routines }
+    return this.#owner(submitOwner({ ...runtime, thread, text: input, operationId, appContext }))
   }
   conversations() {
     return this.#owner(Conversations.use((conversations) => attempt(() => conversations.list())))
@@ -320,6 +312,12 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   updateConversation(id: string, change: UpdateConversation) {
     return this.#owner(updateOwnerConversation(this.#routines, id, change))
   }
+
+  /** The owner has seen the conversation's newest reply. */
+  markRead(id: string) {
+    return this.#owner(markOwnerRead(id))
+  }
+
   /** What a conversation lets its agent use: its switches over the agent's servers, skills and subagents. */
   conversationCapabilities(thread: string) {
     return this.#owner(capabilitiesOf(thread))

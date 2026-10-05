@@ -212,6 +212,12 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'CREATE TABLE app_thread_readers (session_id TEXT NOT NULL, user_id TEXT NOT NULL, granted_by_user_id TEXT NOT NULL, granted_at INTEGER NOT NULL, PRIMARY KEY (session_id, user_id))',
     ].join(BREAK),
   },
+  {
+    // The owner's read mark: replies after it are unread.
+    key: '20261017000100_conversation_read_mark',
+    tables: ['app_conversations'],
+    sql: 'ALTER TABLE app_conversations ADD COLUMN read_at INTEGER',
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

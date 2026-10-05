@@ -2,38 +2,11 @@ import type { ConversationView } from '@purrable/contracts'
 import { isString, record } from './boundary.ts'
 import type { Part, ToolPart } from './parts.ts'
 
-/** A conversation with the subagents it started, newest first. */
-export type ThreadNode = { readonly thread: ConversationView; readonly subagents: readonly ConversationView[] }
-/** The list the owner sees: main, then open threads newest first (each with its subagents), then closed ones. */
-export type ThreadTree = {
-  readonly main: ThreadNode | undefined
-  readonly threads: readonly ThreadNode[]
-  readonly closed: readonly ConversationView[]
-}
-
 const newestFirst = (a: ConversationView, b: ConversationView) =>
   b.createdAt - a.createdAt || Number(b.id) - Number(a.id)
 
 /** Whether a conversation is closed (it and everything under it run nothing until reopened). */
 export const isClosed = (view: ConversationView): boolean => view.closedAt !== undefined
-
-/** Arranges the registry for the thread list. A subagent sits under the conversation that started it. */
-export function threadTree(views: readonly ConversationView[]): ThreadTree {
-  const live = views.filter((view) => !isClosed(view))
-  const node = (thread: ConversationView): ThreadNode => ({
-    thread,
-    subagents: live.filter((view) => view.kind === 'subagent' && view.parent === thread.id).toSorted(newestFirst),
-  })
-  const main = views.find((view) => view.kind === 'main')
-  return {
-    main: main === undefined ? undefined : node(main),
-    threads: live
-      .filter((view) => view.kind === 'thread')
-      .toSorted(newestFirst)
-      .map(node),
-    closed: views.filter((view) => view.kind !== 'main' && isClosed(view)).toSorted(newestFirst),
-  }
-}
 
 /** What to call a conversation: main is Main; a thread or subagent has its title, or a placeholder until it gets one. */
 export function threadTitle(view: ConversationView | undefined): string {

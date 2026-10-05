@@ -114,8 +114,14 @@ main (ADR 0017). `app_conversations` registers each one as a tree (`parent_sessi
 subagent's spawner) with its kind, title, origin and close time; a session id reaches Pi only if it is registered
 there, so no request opens a conversation by guessing its number. Pi cannot delete a conversation, so Close stops a
 conversation and everything under it and keeps it readable until Reopen; main never closes. The web
-lists them in the app's sidebar (`components/app-sidebar.tsx`, a sheet on phones) and shows each in a pane of its own
-(below); `/c/:id` names the focused one. A conversation attaches threads to their parent message with a connector rail and an indented preview
+lists them in the app's sidebar as a tree at any depth (`components/sidebar-tree.tsx` over the pure
+`lib/workspace-tree.ts`): main with its subagents and theirs, then each thread with everything under it, closed ones
+folded into "n closed". A row shows how long its agent has been working, a turning ring for work under it and a dot
+for unread replies; a click shows it in the focused pane, its side button opens it beside, and it drags onto a pane
+like a pane's grip. Folded on a desktop the sidebar is a 56px rail (`components/workspace-rail.tsx`) of main and the
+active conversations, never hidden altogether, each with a hover card. Unread is the server's: `read_at` on
+`app_conversations` is the owner's read mark, set when a pane has shown the conversation for a moment (half in view,
+the page in front). Each conversation shows in a pane of its own (below); `/c/:id` names the focused one. A conversation attaches threads to their parent message with a connector rail and an indented preview
 (`components/thread-replies.tsx`). Blocks are expanded by default: the first five messages show their author, clipped
 text, and quiet thought/tool lines; a busy mark follows current activity. The owner can collapse each block, with
 that device preference in guarded localStorage. An IntersectionObserver starts the compact owner-scoped preview read
@@ -132,6 +138,7 @@ its transcript shows a row for that thread. The owner API is conversation-scoped
 | `GET /api/conversations` | List registered conversations (`ConversationView`), closed ones included, each with its `parent`, where it branched (`forkEntry`), and its own `replies` and `lastReplyAt`, counted from Pi (`replies.ts`). |
 | `POST /api/conversations` | Create an empty thread (`{}`) or branch an open conversation at an entry (`{ from: { conversation, entry } }`). |
 | `PATCH /api/conversations/:id` | Rename, close or reopen (`closed`) a thread or subagent, or pin a subagent open (`keepOpen`). Closing stops it and everything under it; main cannot be changed this way. |
+| `PUT /api/conversations/:id/read` | The owner has seen its newest reply: `read_at` moves forward to now, and the feed carries it as `readAt` (a later `lastReplyAt` is unread). |
 | `GET /api/conversations/:id/capabilities` | What the conversation lets its agent use (`ConversationCapabilities`): each server with a granted tool and those tools, each skills library, subagents, and for a thread whether it has its parent's switches (`sameAsParent`). |
 | `PATCH /api/conversations/:id/capabilities` | Switch one `CapabilityTarget` on or off there (only what is shown can be switched off), or `{ reset: 'parent' }` a thread back to its parent's switches. A subagent's are not editable. |
 | `POST /api/conversations/:id/messages` | Submit `input`, a stable `operationId` and optional `appContext` to an open conversation; returns 202 acceptance. |
@@ -190,8 +197,8 @@ The browser follows a conversation over Server-Sent Events: a snapshot of commit
 a heartbeat. On reconnect it starts again from a fresh snapshot.
 
 Every signed-in page sits beside the app's sidebar (shadcn's sidebar, ported to `packages/ui`): the conversations,
-then Connections, Settings and Sign out. On desktop it slides away (the toggle in a page's top bar or the first pane's
-pill, or ⌘/Ctrl+B) and a cookie remembers it, which the server reads so the first paint has the right layout; on
+then Connections, Settings and Sign out. On desktop it folds to an icon rail (the toggle in a page's top bar or the
+first pane's pill, its edge, or ⌘/Ctrl+B) and a cookie remembers it, which the server reads so the first paint has the right layout; on
 phones it is a sheet. The workspace fills the page beside it. The transcript scrolls in a `MessageScroller` (from `@shadcn/react`). Each of
 the owner's turns is a scroll anchor. The view follows a streaming reply only while the reader is at the end, and
 otherwise offers a jump back. The pane's pill (where it came from, its name and menu, its state) and the composer

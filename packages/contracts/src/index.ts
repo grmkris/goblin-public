@@ -212,6 +212,8 @@ export const ConversationView = Schema.Struct({
   canCompose: Schema.optional(Schema.Boolean),
   replies: Schema.Number,
   lastReplyAt: Schema.optional(Schema.Number),
+  /** When the owner last saw the newest reply (seconds): a later `lastReplyAt` is unread. */
+  readAt: Schema.optional(Schema.Number),
 })
 export type ConversationView = typeof ConversationView.Type
 

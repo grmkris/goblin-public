@@ -100,6 +100,8 @@ export const appConversations = sqliteTable('app_conversations', {
   closedBy: text('closed_by', { enum: ['owner', 'done'] }),
   /** The owner engaged with a subagent (wrote to it, branched from it, pinned it), so it does not close itself. */
   keepOpenAt: integer('keep_open_at'),
+  /** When the owner last saw the conversation's newest reply; replies after it are unread. */
+  readAt: integer('read_at'),
   /** A thread branched from main may zoom into main's memory below this message (the memory's size at the fork). */
   recallThrough: integer('recall_through'),
   /** A thread the owner started with "+" owes main a note naming it (`owed`) until that note is in (`written`). */

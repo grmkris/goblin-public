@@ -58,6 +58,8 @@ function track(down: PointerEvent, workspace: Live, show: (drag: Drag | undefine
     window.removeEventListener('pointercancel', cancel)
     window.removeEventListener('keydown', escape)
     const plan = current?.plan
+    // A drag that ends on a link or button is not also a click on it.
+    if (current !== undefined) swallowClick()
     current = undefined
     show(undefined)
     if (!commit || plan === undefined || plan.kind === 'refused') return
@@ -75,6 +77,17 @@ function track(down: PointerEvent, workspace: Live, show: (drag: Drag | undefine
 
 const px = (value: number) => `${Math.round(value)}px`
 
+const swallow = (event: MouseEvent) => {
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+/** Drops the click the browser sends after a drag ends on the element it started from, and nothing later. */
+function swallowClick(): void {
+  window.addEventListener('click', swallow, { capture: true, once: true })
+  setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0)
+}
+
 /**
  * Drag and drop between panes on a desktop. Anything marked `data-drag-item` (a pane's grip) can be dragged onto a
  * pane: near an edge it splits that pane there (refused when a half would be too small), in the middle it opens there,
@@ -88,8 +101,16 @@ export function WorkspaceDrag() {
   const overlay = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const begin = (down: PointerEvent) => track(down, latest, setDrag)
+    // A sidebar row is a link: the browser's own link drag would take the pointer away from ours.
+    const native = (event: DragEvent) => {
+      if (event.target instanceof Element && event.target.closest('[data-drag-item]') !== null) event.preventDefault()
+    }
     window.addEventListener('pointerdown', begin)
-    return () => window.removeEventListener('pointerdown', begin)
+    window.addEventListener('dragstart', native)
+    return () => {
+      window.removeEventListener('pointerdown', begin)
+      window.removeEventListener('dragstart', native)
+    }
   }, [])
   // Positions go through custom properties: the overlay follows the pointer every frame.
   useLayoutEffect(() => {

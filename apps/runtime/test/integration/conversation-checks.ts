@@ -113,7 +113,7 @@ const FeedRun = Schema.Struct({
   changes: Schema.Array(WorkspaceChange),
 })
 
-/** The workspace feed sends a snapshot, then each conversation change and what each is doing. */
+/** The workspace feed sends a snapshot, then each conversation change (a read mark too) and what each is doing. */
 export async function feedChecks(base: string, name: string): Promise<void> {
   const result = await probe(base, 'feed', name, FeedRun)
   expect(result.snapshot.data.conversations.map(({ kind }) => kind)).toEqual(['main'])
@@ -124,11 +124,15 @@ export async function feedChecks(base: string, name: string): Promise<void> {
   const steps = mine.map((change) =>
     change.type === 'activity'
       ? `activity ${change.activity.state}`
-      : `conversation ${change.conversation.closedBy ?? 'open'} ${change.conversation.replies}`,
+      : `conversation ${change.conversation.closedBy ?? 'open'} ${change.conversation.replies}${change.conversation.readAt === undefined ? '' : ' read'}`,
   )
   expect(steps[0]).toBe('conversation open 0')
   expect(steps).toContain('activity working')
   expect(steps.indexOf('activity idle')).toBeGreaterThan(steps.indexOf('activity working'))
   expect(steps).toContain('conversation open 2')
-  expect(steps.at(-1)).toBe('conversation owner 2')
+  expect(steps.indexOf('conversation open 2 read')).toBeGreaterThan(steps.indexOf('conversation open 2'))
+  expect(steps.at(-1)).toBe('conversation owner 2 read')
+  const read = mine.flatMap((change) => (change.type === 'conversation' ? [change.conversation] : []))
+  const marked = read.find(({ readAt }) => readAt !== undefined)
+  expect(marked?.readAt).toBeGreaterThanOrEqual(marked?.lastReplyAt ?? Number.POSITIVE_INFINITY)
 }

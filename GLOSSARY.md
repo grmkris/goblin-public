@@ -16,6 +16,8 @@
   doing (`working`, or `waiting` on its subagents).
 - **Pane**: where the web shows one item (a conversation, a thread's unsent draft, the App), with a floating pill
   instead of a tab (ADR 0019). An item is in at most one pane; closing the pane leaves the conversation going.
+- **Read mark**: when the owner last saw a conversation's newest reply (`read_at`), kept by the server so every
+  device agrees what is unread.
 - **Subagent**: a conversation main or a thread starts with the `subagent` tool to do a job in the background; its
   answer comes back to the spawner as an input labelled with its name.
 - **Memory view**: main's memory as the model reads it: an `app.memory` entry of one-line summaries targeting 48,000 bytes that

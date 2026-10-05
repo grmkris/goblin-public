@@ -1,224 +1,102 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect } from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
-import type { ConversationView } from '@purrable/contracts'
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupAction,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarRail,
   useSidebar,
 } from '@purrable/ui'
-import {
-  BotIcon,
-  CatIcon,
-  ChevronRightIcon,
-  LogOutIcon,
-  MessageCircleIcon,
-  MessagesSquareIcon,
-  PlugIcon,
-  PlusIcon,
-  SettingsIcon,
-} from 'lucide-react'
+import { CatIcon, LogOutIcon, PlugIcon, SettingsIcon } from 'lucide-react'
 import { signOut } from '../lib/session.tsx'
-import { type ThreadNode, threadTitle, threadTree } from '../lib/threads.ts'
-import { activityState } from '../lib/workspace-feed.ts'
-import { conversationKey, itemOf } from '../lib/workspace.ts'
-import { useWorkspace } from './workspace.tsx'
-import { useWorkspaceFeed } from './workspace-feed.tsx'
 import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
+import { SidebarTree, onWorkspace } from './sidebar-tree.tsx'
+import { WorkspaceRail } from './workspace-rail.tsx'
+import { useWorkspace } from './workspace.tsx'
 
-/** Whether a path shows the workspace: `/` or a conversation's `/c/<id>`. */
-const onWorkspace = (path: string) => path === '/' || path.startsWith('/c/')
-
-/** A row's link: it shows the conversation in the focused pane, and the URL then names it. */
-const linkTo = (view: ConversationView) => <Link to="/c/$conversationId" params={{ conversationId: view.id }} />
-
-/** A spinner while the conversation works, or waits on its subagents. */
-function Busy({ view }: { readonly view: ConversationView }) {
-  const feed = useWorkspaceFeed()
-  if (activityState(feed, view.id) === 'idle') return null
+/** Connections (the owner's), Settings and Sign out; folded to the rail, their icons alone. */
+function Pages({ path, rail, owner }: { readonly path: string; readonly rail: boolean; readonly owner: boolean }) {
   return (
-    <SidebarMenuBadge>
-      <span className="thread-busy" aria-label="Working" />
-    </SidebarMenuBadge>
-  )
-}
-
-/** A conversation, with the subagents it started nested under it. */
-function ConversationItem({ node, current }: { readonly node: ThreadNode; readonly current: string | undefined }) {
-  const workspace = useWorkspace()
-  const showHere = (view: ConversationView) => () => workspace.open(conversationKey(view.id), 'here')
-  const { thread } = node
-  const Icon = thread.kind === 'main' ? MessageCircleIcon : MessagesSquareIcon
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton render={linkTo(thread)} onClick={showHere(thread)} isActive={thread.id === current}>
-        <Icon aria-hidden />
-        <span>{threadTitle(thread)}</span>
-      </SidebarMenuButton>
-      <Busy view={thread} />
-      {node.subagents.length > 0 && (
-        <SidebarMenuSub>
-          {node.subagents.map((subagent) => (
-            <SidebarMenuSubItem key={subagent.id}>
-              <SidebarMenuSubButton
-                render={linkTo(subagent)}
-                onClick={showHere(subagent)}
-                isActive={subagent.id === current}
-              >
-                <BotIcon aria-hidden />
-                <span>{threadTitle(subagent)}</span>
-              </SidebarMenuSubButton>
-            </SidebarMenuSubItem>
-          ))}
-        </SidebarMenuSub>
+    <SidebarMenu>
+      {owner && (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            render={<Link to="/connections" aria-label="Connections" title={rail ? 'Connections' : undefined} />}
+            isActive={path === '/connections'}
+          >
+            <PlugIcon aria-hidden />
+            {!rail && <span>Connections</span>}
+          </SidebarMenuButton>
+        </SidebarMenuItem>
       )}
-    </SidebarMenuItem>
-  )
-}
-
-/** Threads the owner closed: hidden behind a toggle, still readable. */
-function ClosedGroup({
-  views,
-  current,
-}: {
-  readonly views: readonly ConversationView[]
-  readonly current: string | undefined
-}) {
-  const [open, setOpen] = useState(false)
-  if (views.length === 0) return null
-  return (
-    <SidebarGroup>
-      <SidebarGroupLabel
-        render={<button type="button" aria-expanded={open} onClick={() => setOpen(!open)} />}
-        className="closed-toggle"
-      >
-        <ChevronRightIcon aria-hidden />
-        Closed ({views.length})
-      </SidebarGroupLabel>
-      {open && (
-        <SidebarMenu>
-          {views.map((view) => (
-            <ConversationItem key={view.id} node={{ thread: view, subagents: [] }} current={current} />
-          ))}
-        </SidebarMenu>
-      )}
-    </SidebarGroup>
-  )
-}
-
-/**
- * Main, then the threads newest first (each with its subagents), then the closed ones. The "+" beside Threads opens
- * a new thread's draft beside the focused pane; nothing exists until its first message is sent.
- */
-function Conversations({ current, onNew }: { readonly current: string | undefined; readonly onNew: () => void }) {
-  const { conversations } = useWorkspaceFeed()
-  const workspace = useWorkspace()
-  const tree = useMemo(() => threadTree(conversations), [conversations])
-  return (
-    <>
-      <SidebarGroup>
-        <SidebarMenu>{tree.main !== undefined && <ConversationItem node={tree.main} current={current} />}</SidebarMenu>
-      </SidebarGroup>
-      <SidebarGroup>
-        <SidebarGroupLabel>Threads</SidebarGroupLabel>
-        <SidebarGroupAction
-          aria-label="New thread"
-          title="New thread"
-          onClick={() => {
-            workspace.draft(undefined, [], workspace.state.focused)
-            onNew()
-          }}
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          render={<Link to="/settings" aria-label="Settings" title={rail ? 'Settings' : undefined} />}
+          isActive={path === '/settings'}
         >
-          <PlusIcon aria-hidden />
-        </SidebarGroupAction>
-        {tree.threads.length === 0 ? (
-          <p className="sidebar-hint">
-            Start one with +, or reply in thread on any message to talk it through on the side.
-          </p>
-        ) : (
-          <SidebarMenu>
-            {tree.threads.map((node) => (
-              <ConversationItem key={node.thread.id} node={node} current={current} />
-            ))}
-          </SidebarMenu>
-        )}
-      </SidebarGroup>
-      <ClosedGroup views={tree.closed} current={current} />
-    </>
+          <SettingsIcon aria-hidden />
+          {!rail && <span>Settings</span>}
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      <SidebarMenuItem>
+        <SidebarMenuButton onClick={() => void signOut()} aria-label="Sign out" title={rail ? 'Sign out' : undefined}>
+          <LogOutIcon aria-hidden />
+          {!rail && <span>Sign out</span>}
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
   )
 }
 
 /**
- * The app's navigation: the brand on top, the conversations, then Connections, Settings and Sign out. On phones it is a
- * sheet that closes as soon as the page changes or a new thread's draft opens.
+ * The app's navigation: the brand on top, the conversations, then Connections, Settings and Sign out. On a desktop it
+ * folds to an icon rail (never away); on phones it is a sheet that closes as soon as the page changes or a new
+ * thread's draft opens.
  */
 export function AppSidebar() {
   const path = useRouterState({ select: (router) => router.location.pathname })
   const navigate = useNavigate()
-  const { setOpenMobile } = useSidebar()
+  const { setOpenMobile, state: fold, isMobile } = useSidebar()
   const { state } = useAccountWorkspaces()
   const workspace = useWorkspace()
-  const focused = itemOf(workspace.state.focused)
-  const current = onWorkspace(path) && focused?.kind === 'conversation' ? focused.id : undefined
+  const rail = fold === 'collapsed' && !isMobile
   const close = useCallback(() => setOpenMobile(false), [setOpenMobile])
   useEffect(() => close(), [path, close])
-  const opened = useCallback(() => {
+  const draft = useCallback(() => {
+    workspace.draft(undefined, [], workspace.state.focused)
     close()
     if (!onWorkspace(path)) void navigate({ to: '/' })
-  }, [close, path, navigate])
+  }, [workspace, close, path, navigate])
+  const ready = state?.active?.agentReady === true
   return (
     <Sidebar label="Purrable">
       <SidebarHeader>
         <Link to="/" className="sidebar-brand" aria-label="Purrable home">
           <CatIcon aria-hidden />
-          Purrable
+          {!rail && 'Purrable'}
         </Link>
-        {state?.active && (
+        {state?.active && !rail && (
           <a href="/settings" className="px-2 text-sm text-muted-foreground">
             {state.active.name} · {state.active.role}
             <span className="block text-xs">Owned by {state.active.ownerName}</span>
           </a>
         )}
       </SidebarHeader>
-      <SidebarContent>{state?.active?.agentReady && <Conversations current={current} onNew={opened} />}</SidebarContent>
+      <SidebarContent>
+        {ready && rail && <WorkspaceRail onNew={draft} />}
+        {ready && !rail && <SidebarTree onNew={draft} />}
+      </SidebarContent>
       <SidebarFooter>
-        <SidebarMenu>
-          {state?.active?.role === 'owner' && (
-            <SidebarMenuItem>
-              <SidebarMenuButton render={<Link to="/connections" />} isActive={path === '/connections'}>
-                <PlugIcon aria-hidden />
-                <span>Connections</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          )}
-          <SidebarMenuItem>
-            <SidebarMenuButton render={<Link to="/settings" />} isActive={path === '/settings'}>
-              <SettingsIcon aria-hidden />
-              <span>Settings</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => void signOut()}>
-              <LogOutIcon aria-hidden />
-              <span>Sign out</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-        <a className="sidebar-credit" href="https://github.com/DanFessler/trellis" target="_blank" rel="noreferrer">
-          Workspace layout powered by Trellis by Dan Fessler
-        </a>
+        <Pages path={path} rail={rail} owner={state?.active?.role === 'owner'} />
+        {!rail && (
+          <a className="sidebar-credit" href="https://github.com/DanFessler/trellis" target="_blank" rel="noreferrer">
+            Workspace layout powered by Trellis by Dan Fessler
+          </a>
+        )}
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

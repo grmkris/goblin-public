@@ -417,6 +417,17 @@ export class ConversationRegistry {
    * Closes `id` and every open conversation under it in one statement, then stops each, background work included (a
    * reporter waiting on a subagent, a thread's subagents): a closed conversation runs nothing. Returns what it closed.
    */
+  /** The owner has seen `id` up to `now`, so replies until then are read. The mark only moves forward. */
+  markRead(id: string, now: number): void {
+    this.#registered(id)
+    const moved = this.#db.all<{ session_id: string }>(
+      sql`UPDATE app_conversations SET read_at = ${now}
+          WHERE session_id = ${id} AND (read_at IS NULL OR read_at < ${now})
+          RETURNING session_id`,
+    )
+    if (moved.length > 0) this.#changed([id])
+  }
+
   async close(id: string, by: 'owner' | 'done', now: number): Promise<readonly string[]> {
     if (this.kindOf(id) === 'main') throw new InvalidInput({ reason: 'main_thread' })
     const closed = this.#db
@@ -492,6 +503,7 @@ export class ConversationRegistry {
       ...(row.principalUserId === null ? {} : { requesterUserId: row.principalUserId, canCompose: false }),
       replies: activity.replies,
       ...(activity.lastReplyAt === undefined ? {} : { lastReplyAt: activity.lastReplyAt }),
+      ...(row.readAt === null ? {} : { readAt: row.readAt }),
     }
   }
 }

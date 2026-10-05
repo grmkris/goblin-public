@@ -1,7 +1,8 @@
 // Adapted from shadcn/ui's base-nova sidebar (MIT, https://ui.shadcn.com/r/styles/base-nova/sidebar.json): trimmed to
-// the one shape Purrable uses, a left sidebar that slides off the canvas on desktop and becomes a sheet on phones.
-// No icon-only rail, tooltips, skeletons or inputs; widths are classes rather than inline styles; the motion is the
-// sheet curve (`--ease-sheet`) instead of a linear 200ms. The menu parts live in sidebar-menu.tsx.
+// the one shape Purrable uses, a left sidebar that folds to an icon rail on desktop and becomes a sheet on phones.
+// The app draws the rail's contents itself; no tooltips, skeletons or inputs; widths are classes rather than inline
+// styles; the motion is the sheet curve (`--ease-sheet`) instead of a linear 200ms. The menu parts live in
+// sidebar-menu.tsx.
 import { PanelLeftIcon } from 'lucide-react'
 import {
   type ComponentProps,
@@ -97,7 +98,10 @@ function SidebarProvider({
     <SidebarContext value={value}>
       <div
         data-slot="sidebar-wrapper"
-        className={cn('group/sidebar-wrapper flex min-h-svh w-full [--sidebar-width:16rem]', className)}
+        className={cn(
+          'group/sidebar-wrapper flex min-h-svh w-full [--sidebar-width-icon:3.5rem] [--sidebar-width:16rem]',
+          className,
+        )}
         {...props}
       >
         {children}
@@ -128,25 +132,28 @@ function SidebarSheet({ label, children }: { readonly label: string; readonly ch
   )
 }
 
-/** The desktop sidebar: a gap that reserves its width in the layout, and the fixed panel that slides off the canvas. */
+/**
+ * The desktop sidebar: a gap that reserves its width in the layout, and the fixed panel beside it. Collapsed, both
+ * narrow to the icon rail (`--sidebar-width-icon`); the sidebar is never fully hidden.
+ */
 function SidebarDesktop({ className, children, ...props }: ComponentProps<'div'>) {
   const { state } = useSidebar()
   return (
     <div
       className="group peer hidden text-sidebar-foreground md:block"
       data-state={state}
-      data-collapsible={state === 'collapsed' ? 'offcanvas' : ''}
+      data-collapsible={state === 'collapsed' ? 'icon' : ''}
       data-side="left"
       data-slot="sidebar"
     >
       <div
         data-slot="sidebar-gap"
-        className="relative w-(--sidebar-width) bg-transparent transition-[width] duration-300 ease-(--ease-sheet) group-data-[collapsible=offcanvas]:w-0"
+        className="relative w-(--sidebar-width) bg-transparent transition-[width] duration-300 ease-(--ease-sheet) group-data-[collapsible=icon]:w-(--sidebar-width-icon)"
       />
       <div
         data-slot="sidebar-container"
         className={cn(
-          'fixed inset-y-0 left-0 z-10 hidden h-svh w-(--sidebar-width) border-r border-sidebar-border transition-[left] duration-300 ease-(--ease-sheet) group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] md:flex',
+          'fixed inset-y-0 left-0 z-10 hidden h-svh w-(--sidebar-width) border-r border-sidebar-border transition-[width] duration-300 ease-(--ease-sheet) group-data-[collapsible=icon]:w-(--sidebar-width-icon) md:flex',
           className,
         )}
         {...props}
@@ -200,7 +207,7 @@ function SidebarRail({ className, ...props }: ComponentProps<'button'>) {
       title="Toggle sidebar"
       className={cn(
         'absolute inset-y-0 -right-2 z-20 hidden w-4 cursor-w-resize after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 hover:after:bg-sidebar-border sm:flex',
-        'group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:cursor-e-resize group-data-[collapsible=offcanvas]:after:left-full',
+        'group-data-[collapsible=icon]:cursor-e-resize',
         className,
       )}
       {...props}

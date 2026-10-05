@@ -1,5 +1,5 @@
 import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
-import { type ReactNode, useMemo, useRef, useState } from 'react'
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react'
 import { type ConversationView, MAIN_THREAD } from '@purrable/contracts'
 import { DropdownMenuItem, DropdownMenuSeparator, Input, useMediaQuery } from '@purrable/ui'
 import { Maximize2Icon, Minimize2Icon, PencilIcon, RotateCcwIcon, ShareIcon, XIcon } from 'lucide-react'
@@ -8,6 +8,7 @@ import { WIDE_QUERY } from '../lib/breakpoints.ts'
 import type { Part } from '../lib/parts.ts'
 import { entryOfPart, isClosed, repliesLabel, rootParts, threadTitle } from '../lib/threads.ts'
 import { activityState } from '../lib/workspace-feed.ts'
+import { isUnread } from '../lib/workspace-tree.ts'
 import { type ItemKey, conversationKey, itemOf, order } from '../lib/workspace.ts'
 import { MessageComposer } from './composer.tsx'
 import { Conversation } from './conversation.tsx'
@@ -48,6 +49,46 @@ export function usePlace(item: ItemKey) {
   const wide = useMediaQuery(WIDE_QUERY)
   const items = order(state)
   return { first: items[0] === item || !wide, only: items.length <= 1, maximized: state.maximized === item }
+}
+
+/** Whether the page is in front: a background tab reads nothing. */
+function useDocumentVisible(): boolean {
+  const [visible, setVisible] = useState(() => document.visibilityState === 'visible')
+  useEffect(() => {
+    const change = () => setVisible(document.visibilityState === 'visible')
+    document.addEventListener('visibilitychange', change)
+    return () => document.removeEventListener('visibilitychange', change)
+  }, [])
+  return visible
+}
+
+/**
+ * Marks the conversation read once its pane has been on screen for a moment with replies the owner has not seen: at
+ * least half of it in view (the strip and the scroller move panes out of it), not set aside for a filled pane, and the
+ * page in front.
+ */
+function useMarkRead(view: ConversationView, pane: RefObject<HTMLElement | null>, item: ItemKey, owner: boolean) {
+  const { markRead } = useWorkspaceFeed()
+  const { maximized } = useWorkspace().state
+  const front = useDocumentVisible()
+  const [inView, setInView] = useState(false)
+  useEffect(() => {
+    const element = pane.current
+    if (element === null) return
+    const observer = new IntersectionObserver(([entry]) => setInView(entry?.isIntersecting ?? false), {
+      threshold: 0.5,
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [pane])
+  // The read mark is the owner's; a member's view never moves it.
+  const shown = owner && inView && front && (maximized === undefined || maximized === item)
+  const unread = isUnread(view)
+  useEffect(() => {
+    if (!shown || !unread) return
+    const timer = setTimeout(() => markRead(view.id), 800)
+    return () => clearTimeout(timer)
+  }, [shown, unread, view.id, view.lastReplyAt, markRead])
 }
 
 /** What the agent of a conversation is doing, as the pill shows it. */
@@ -202,6 +243,7 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
   const pane = useRef<HTMLElement>(null)
   const dock = useRef<HTMLDivElement>(null)
   useDockInsets(pane, dock)
+  useMarkRead(view, pane, item, account?.active?.role === 'owner')
   const inline = useInlineThreads(
     id,
     canCompose ? branchable : new Set<number>(),

@@ -79,6 +79,7 @@ export interface AgentRpcMethods {
   readonly threadPreview: (thread: string) => Promise<RpcResult<ThreadPreview>>
   readonly createConversation: (input: CreateConversation) => Promise<RpcResult<ConversationView>>
   readonly updateConversation: (id: string, change: UpdateConversation) => Promise<RpcResult<ConversationView>>
+  readonly markRead: (id: string) => Promise<RpcResult<boolean>>
   readonly conversationCapabilities: (thread: string) => Promise<RpcResult<ConversationCapabilities>>
   readonly setConversationCapability: (
     thread: string,

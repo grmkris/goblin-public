@@ -7,7 +7,6 @@ import {
   relativeTime,
   repliesLabel,
   rootParts,
-  threadTree,
   threadsByFork,
 } from '../src/lib/threads.ts'
 
@@ -21,24 +20,6 @@ const view = (id: string, extra: Partial<ConversationView> = {}): ConversationVi
   ...extra,
 })
 const MAIN = view('1', { kind: 'main', createdAt: 0 })
-
-describe('the thread list', () => {
-  it('puts main first, open threads newest first with their subagents, and closed ones apart', () => {
-    const tree = threadTree([
-      MAIN,
-      view('5'),
-      view('9'),
-      view('6', { kind: 'subagent', parent: '5' }),
-      view('7', { kind: 'subagent', parent: '1' }),
-      view('8', { closedAt: 10, closedBy: 'owner' }),
-    ])
-    expect(tree.main?.thread.id).toBe('1')
-    expect(tree.main?.subagents.map(({ id }) => id)).toEqual(['7'])
-    expect(tree.threads.map(({ thread }) => thread.id)).toEqual(['9', '5'])
-    expect(tree.threads[1]?.subagents.map(({ id }) => id)).toEqual(['6'])
-    expect(tree.closed.map(({ id }) => id)).toEqual(['8'])
-  })
-})
 
 describe('threads in main', () => {
   it('groups open threads under the entry of the parent they branched from, newest first', () => {

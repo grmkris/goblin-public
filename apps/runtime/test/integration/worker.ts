@@ -758,16 +758,20 @@ async function feedSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promi
   const id = created.value.id
   await agent.submit(id, 'Native slow job', 'feed-turn')
   const changes: unknown[] = []
-  let closing = false
+  let stage: 'running' | 'reading' | 'closing' = 'running'
   for await (const { event, data } of events) {
     if (event !== 'change' || !Array.isArray(data)) continue
     changes.push(...data)
     const text = JSON.stringify(changes)
-    if (!closing && text.includes('"state":"idle"') && text.includes('"replies":2')) {
-      closing = true
+    if (stage === 'running' && text.includes('"state":"idle"') && text.includes('"replies":2')) {
+      stage = 'reading'
+      await agent.markRead(id)
+    }
+    if (stage === 'reading' && text.includes('"readAt"')) {
+      stage = 'closing'
       await agent.updateConversation(id, { closed: true })
     }
-    if (closing && text.includes('"closedBy":"owner"')) break
+    if (stage === 'closing' && text.includes('"closedBy":"owner"')) break
   }
   return Response.json({ snapshot: first.value, id, changes })
 }

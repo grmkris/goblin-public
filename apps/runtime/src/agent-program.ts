@@ -62,6 +62,15 @@ export const updateOwnerConversation = (routines: RoutineRunner, id: string, cha
     return (yield* attempt(() => conversations.update(id, change, now))).view
   })
 
+/** The owner has seen a conversation's newest reply. */
+export const markOwnerRead = (id: string) =>
+  Effect.gen(function* () {
+    const conversations = yield* Conversations
+    const now = yield* nowSecondsEffect
+    yield* attemptSync(() => conversations.markRead(id, now))
+    return true
+  })
+
 /** Stop in a conversation: its current work, a routine's run when it is one, and the subagents it started. */
 export const stopOwner = (input: {
   harness: PiHarness

@@ -160,6 +160,7 @@ const conversationRoutes: Readonly<
   'GET snapshot': (_request, agent, thread) => agent.fetch(`https://agent/conversations/${thread}/snapshot`),
   'GET history': (request, agent, thread) =>
     agent.fetch(`https://agent/conversations/${thread}/history${new URL(request.url).search}`),
+  'PUT read': async (_request, agent, thread) => json({ read: unwrap(await agent.markRead(thread)) }),
   'PATCH ': async (request, agent, thread) =>
     json(unwrap(await agent.updateConversation(thread, await readJson(request, UpdateConversation)))),
   'GET capabilities': async (_request, agent, thread) => json(unwrap(await agent.conversationCapabilities(thread))),
