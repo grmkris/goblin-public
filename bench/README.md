@@ -32,6 +32,10 @@ bytes and maximum output tokens before sending; provider usage reconciles the re
 full reservation charged. All writer calls, reader turns and the one transient retry count. Global ceilings are
 200 answers, 1000 attempts, 1M input and 100k output/reasoning tokens. Search and zoom share 4 calls and 4096 UTF-8
 returned bytes per episode. Tool results cannot read outside the fork's fixed source prefix.
+Each answer also has at most eight upstream attempts, including retries; `allowance.maxRequestsPerAnswer` can
+declare a smaller ceiling. This durable limit isolates looping readers without consuming the other answers' budget.
+The answer instructions require every JSON field, exact delivered source IDs and empty claims on abstention. These
+instructions contain no expected facts and apply equally to both policies.
 
 Private evidence lives under `.local/bench/runs/<run>/`: `resolved.json`, append-only `attempts.jsonl`, per-episode
 scores, complete provider payloads and responses, native trace snapshots, failures and `report.html`. Files are
@@ -202,3 +206,14 @@ also requires reported usage within reservations. This cannot retroactively cap 
 total completion allowance: validate a route's reasoning-inclusive limit before another experiment. The approved
 provider-default Qwen configuration needs that validation; no replacement model, altered thinking setting, increased
 limit or automatic retry was made. Regressions use both injected admission services and the actual Qwen receipt.
+
+Fresh trials 02–04 preserved that pilot and stayed within a separately accounted combined allowance of 200 attempts,
+1M input and 50k completion tokens. Grok's default writer also exceeded its reservation. Qwen with thinking explicitly
+disabled completed six cutoff-22 answers in trial 03; all six model-assisted reviews failed JSON, citation or
+abstention requirements, giving three comparable pairs and no grounded search improvement. One answer made 71 API
+attempts after repeated denied retrievals, motivating the per-answer ceiling above. Trial 03 was manually stopped
+before the second cutoff settled; one in-flight reservation remains charged. Trial 04's 90k allowance could not admit
+the next conservative cold-build reservation and produced no answers. Combined charges are 142 attempts, 976634 input
+and 26643 completion tokens; prices and actual usage for the in-flight attempt remain unknown. The clarified answer
+instructions and request ceiling have regression coverage but have not had a further live run. Private native
+answers, reviews, readable comparisons and failure evidence remain under `.local/bench/runs/`.

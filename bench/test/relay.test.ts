@@ -99,6 +99,50 @@ test('provider reservation breach halts admission durably and keeps the actual u
   await Effect.runPromise(round())
 })
 
+test('answer attempt ceiling survives restart, counts each attempt once, and isolates other answers', async () => {
+  const fs = ledgerLayer()
+  const base = starterManifest()
+  const resolved = {
+    manifest: { ...base, allowance: { ...base.allowance, maxRequestsPerAnswer: 2 } },
+    sourceHash: '',
+    corpusHash: '',
+    runId: 'answer-limit-test',
+    mode: 'fake' as const,
+    createdAt: '',
+  }
+  const round = (resume: boolean) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const provider = yield* relay(resolved, 'attempts', undefined)
+        const send = (scope: string) =>
+          Effect.promise(() =>
+            fetch(`${provider.url}/v1/chat/completions`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', 'x-bench-scope': scope, connection: 'close' },
+              body: JSON.stringify({
+                model: 'glm-5.3',
+                messages: [{ role: 'user', content: 'Admission check' }],
+                max_tokens: 20,
+              }),
+            }),
+          )
+        provider.setScope('looping-answer', 'answer')
+        if (!resume) {
+          expect((yield* send('looping-answer')).status).toBe(200)
+          expect((yield* send('looping-answer')).status).toBe(200)
+        }
+        expect((yield* send('looping-answer')).status).toBe(402)
+        expect(provider.totals().requests).toBe(resume ? 3 : 2)
+        if (!resume) {
+          provider.setScope('another-answer', 'answer')
+          expect((yield* send('another-answer')).status).toBe(200)
+        }
+      }),
+    ).pipe(Effect.provide(Layer.merge(fs, FetchHttpClient.layer)))
+  await Effect.runPromise(round(false))
+  await Effect.runPromise(round(true))
+})
+
 function ledgerLayer() {
   const files = new Map<string, string>()
   const fs = FileSystem.layerNoop({

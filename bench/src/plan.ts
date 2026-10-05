@@ -33,5 +33,6 @@ export function plan(manifest: Manifest = starterManifest(), scenarios: readonly
     estimates: 'Writer/retrieval/retry requests are additional; exact writer counts depend on generated summaries.',
     withinAnswerLimit: cases.length <= manifest.allowance.maxAnswers,
     limits: manifest.allowance,
+    maxRequestsPerAnswer: manifest.allowance.maxRequestsPerAnswer ?? 8,
   }
 }

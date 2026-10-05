@@ -49,6 +49,7 @@ type Accounting = {
   readonly budget: Budget
   readonly records: Trace[]
   readonly preflightBudget: Budget | undefined
+  readonly answerRequestLimit: number
 }
 
 const restoredTotals = (traces: readonly Trace[]): Totals =>
@@ -97,6 +98,17 @@ const fakeTransport: Send = (_payload, body) =>
     }
   })
 
+function answerLimitReached(account: Accounting, label: Label): boolean {
+  if (label.phase !== 'answer') return false
+  return (
+    new Set(
+      account.records
+        .filter((trace) => trace.phase === 'answer' && trace.scope === label.scope)
+        .map((trace) => trace.attempt),
+    ).size >= account.answerRequestLimit
+  )
+}
+
 const attempt = Effect.fn('bench.attempt')(function* (
   account: Accounting,
   label: Label,
@@ -106,6 +118,7 @@ const attempt = Effect.fn('bench.attempt')(function* (
   const reservation = { input: new TextEncoder().encode(request.payload).length, output: request.output }
   const phaseBudget = label.phase === 'preflight' ? account.preflightBudget : undefined
   if (
+    answerLimitReached(account, label) ||
     account.records.some(exceededReservation) ||
     phaseBudget?.accepts(reservation) === false ||
     !account.budget.reserve(reservation)
@@ -211,6 +224,7 @@ export const relay = Effect.fn('bench.relay')(function* (
     path,
     budget: new Budget(resolved.manifest.allowance, restoredTotals(previous)),
     records: [...previous],
+    answerRequestLimit: resolved.manifest.allowance.maxRequestsPerAnswer ?? 8,
     preflightBudget:
       resolved.manifest.preflight === undefined
         ? undefined

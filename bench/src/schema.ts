@@ -104,6 +104,7 @@ export const Manifest = Schema.Struct({
   allowance: Schema.Struct({
     maxAnswers: Positive,
     maxRequests: Positive,
+    maxRequestsPerAnswer: Schema.optional(Positive.check(Schema.isLessThanOrEqualTo(8))),
     maxInputTokens: Positive,
     maxOutputTokens: Positive,
     concurrency: Positive.check(Schema.isLessThanOrEqualTo(2)),
