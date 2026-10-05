@@ -26,6 +26,7 @@ import {
   serializeWorkspace,
   workspaceStorageKey,
 } from '../lib/workspace.ts'
+import { appNames } from '../lib/workspace-tree.ts'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
 /** A message to start a thread from: the conversation and its entry. */
@@ -159,7 +160,7 @@ export function WorkspaceProvider({ enabled, children }: { readonly enabled: boo
     const item = itemOf(key)
     if (item?.kind === 'conversation')
       return threadTitle(views.current.conversations.find((view) => view.id === item.id))
-    if (item?.kind === 'app') return views.current.apps.find((app) => app.id === item.id)?.title ?? 'App'
+    if (item?.kind === 'app') return appNames(views.current.apps).get(item.id) ?? 'App'
     return 'New thread'
   }, [])
   const path = useRouterState({ select: (router) => router.location.pathname })

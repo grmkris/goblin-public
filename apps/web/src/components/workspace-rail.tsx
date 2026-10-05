@@ -1,10 +1,9 @@
 import { Link } from '@tanstack/react-router'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@purrable/ui'
-import type { AppView } from '@purrable/contracts'
 import { AppWindowIcon, PlusIcon } from 'lucide-react'
 import { threadTitle } from '../lib/threads.ts'
 import { appKey, conversationKey, isOpen } from '../lib/workspace.ts'
-import { type RowStatus, type TreeNode, pathOf, railItems, rowStatus } from '../lib/workspace-tree.ts'
+import { type AppRow, type RowStatus, type TreeNode, pathOf, railItems, rowStatus } from '../lib/workspace-tree.ts'
 import { KindIcon, useRowActions, useWorkspaceTree } from './sidebar-tree.tsx'
 import { useWorkspace } from './workspace.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
@@ -63,7 +62,7 @@ function RailItem({ node }: { readonly node: TreeNode }) {
 }
 
 /** An App open as a page, on the rail: a bar while its pane is focused; a click shows it there. */
-function RailApp({ app }: { readonly app: AppView }) {
+function RailApp({ row: { app, name } }: { readonly row: AppRow }) {
   const row = useRowActions(appKey(app.id))
   return (
     <HoverCard>
@@ -74,7 +73,7 @@ function RailApp({ app }: { readonly app: AppView }) {
             params={{ appId: app.id }}
             onClick={row.showHere}
             className="rail-item"
-            aria-label={app.title}
+            aria-label={name}
             data-kind="app"
             data-focused={row.focused}
             data-open={row.open}
@@ -85,7 +84,7 @@ function RailApp({ app }: { readonly app: AppView }) {
         <AppWindowIcon aria-hidden />
       </HoverCardTrigger>
       <HoverCardContent>
-        <p className="font-medium">{app.title}</p>
+        <p className="font-medium">{name}</p>
         <p className="text-xs text-muted-foreground">App from {app.serverId} · open as a page</p>
         <p className="text-xs text-muted-foreground">Click to go to it; drag it onto a pane to place it there.</p>
       </HoverCardContent>
@@ -117,8 +116,8 @@ export function WorkspaceRail({ onNew }: { readonly onNew: () => void }) {
         <RailItem key={node.view.id} node={node} />
       ))}
       {items.apps.length > 0 && <hr className="rail-separator" />}
-      {items.apps.map((app) => (
-        <RailApp key={app.id} app={app} />
+      {items.apps.map((row) => (
+        <RailApp key={row.app.id} row={row} />
       ))}
       <button type="button" className="rail-item" aria-label="New thread" title="New thread" onClick={onNew}>
         <PlusIcon aria-hidden />

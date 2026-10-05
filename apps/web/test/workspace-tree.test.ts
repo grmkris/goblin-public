@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { AppView, ConversationActivity, ConversationView } from '@purrable/contracts'
-import { type TreeNode, buildTree, isUnread, pathOf, railItems, rowStatus } from '../src/lib/workspace-tree.ts'
+import {
+  type TreeNode,
+  appNames,
+  buildTree,
+  foldApps,
+  isUnread,
+  pathOf,
+  railItems,
+  rowStatus,
+} from '../src/lib/workspace-tree.ts'
 
 const view = (id: string, extra: Partial<ConversationView> = {}): ConversationView => ({
   id,
@@ -87,18 +96,42 @@ const app = (id: string, conversation: string, extra: Partial<AppView> = {}): Ap
 })
 
 describe('Apps in the sidebar tree', () => {
-  it('lists each open App under its conversation, at any depth, and leaves closed ones out', () => {
+  it('lists each open App under its conversation, newest first, at any depth, and leaves closed ones out', () => {
     const tree = buildTree(VIEWS, [app('1', '1'), app('2', '6'), app('3', '6', { closedAt: 9 }), app('4', '99')])
-    expect(tree.main?.apps.map(({ id }) => id)).toEqual(['1'])
+    expect(tree.main?.apps.map(({ app: { id } }) => id)).toEqual(['1'])
     const thread = tree.threads.find(({ view: { id } }) => id === '5')
-    expect(thread?.children[0]?.apps.map(({ id }) => id)).toEqual(['2'])
+    expect(thread?.children[0]?.apps.map(({ app: { id } }) => id)).toEqual(['2'])
     const rail = railItems(
       tree,
       new Map(),
       () => false,
       (id) => id !== '1',
     )
-    expect(rail.apps.map(({ id }) => id)).toEqual(['2'])
+    expect(rail.apps.map(({ app: { id } }) => id)).toEqual(['2'])
+  })
+  it('numbers Apps of one title within a conversation, closed ones counted, so names never shift', () => {
+    const board = { title: 'Board' }
+    const names = appNames([
+      app('3', '1', board),
+      app('1', '1', board),
+      app('2', '1', { ...board, closedAt: 5 }),
+      app('4', '6', board),
+      app('5', '1', { title: 'Map' }),
+    ])
+    expect(Object.fromEntries(names)).toEqual({
+      1: 'Board (1)',
+      2: 'Board (2)',
+      3: 'Board (3)',
+      4: 'Board',
+      5: 'Map',
+    })
+  })
+  it('shows the Apps open as pages and the newest up to three, and folds the rest', () => {
+    const rows = ['9', '8', '7', '6', '5'].map((id) => ({ app: app(id, '1'), name: id }))
+    const folded = foldApps(rows, (id) => id === '5')
+    expect(folded.shown.map(({ name }) => name)).toEqual(['9', '8', '5'])
+    expect(folded.folded.map(({ name }) => name)).toEqual(['7', '6'])
+    expect(foldApps(rows.slice(0, 2), () => false).folded).toEqual([])
   })
 })
 

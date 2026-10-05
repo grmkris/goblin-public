@@ -32,7 +32,9 @@ tool row offers *Show app*, which keeps it again.
 
 **Per conversation, in the sidebar.** What an App shares waits above its own conversation's composer and goes with
 the next message there. The sidebar lists each open App under its conversation, and the rail shows the Apps open as
-pages. App panes come back with a stored layout and load from the registry.
+pages. Apps a conversation kept under one title (a tool called again and again) are numbered in order of creation,
+closed ones counted, so names never shift; a conversation's row shows those open as pages and its newest three, and
+folds the rest into "n more apps". App panes come back with a stored layout and load from the registry.
 
 Consequences:
 - Moving an App between its place and its page keeps it running. Reloading the page, unloading or closing it starts

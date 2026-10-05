@@ -1,10 +1,13 @@
 import type { AppView, ConversationActivity, ConversationView } from '@purrable/contracts'
 import { isClosed } from './threads.ts'
 
-/** A conversation in the sidebar, with its open Apps, the open conversations under it and, folded, the closed ones. */
+/** An App as the sidebar shows it: the App, and its name there. */
+export type AppRow = { readonly app: AppView; readonly name: string }
+
+/** A conversation in the sidebar, with its open Apps (newest first), the open conversations under it and, folded, the closed ones. */
 export type TreeNode = {
   readonly view: ConversationView
-  readonly apps: readonly AppView[]
+  readonly apps: readonly AppRow[]
   readonly children: readonly TreeNode[]
   readonly closed: readonly TreeNode[]
 }
@@ -33,8 +36,39 @@ function groupBy<T>(items: readonly T[], of: (item: T) => string | undefined): M
   return groups
 }
 
+const byCreation = (a: AppView, b: AppView) => a.createdAt - b.createdAt || Number(a.id) - Number(b.id)
+
+/**
+ * Every App's name: its title, and where its conversation has kept several by that title (one tool called again and
+ * again), its number among them in order of creation, closed ones counted, so the names do not shift.
+ */
+export function appNames(apps: readonly AppView[]): ReadonlyMap<string, string> {
+  const named = groupBy(apps.toSorted(byCreation), (app) => `${app.conversation}\u0000${app.title}`)
+  const names = new Map<string, string>()
+  for (const same of named.values())
+    for (const [index, app] of same.entries())
+      names.set(app.id, same.length === 1 ? app.title : `${app.title} (${index + 1})`)
+  return names
+}
+
+/** How many of a conversation's Apps its row shows before the older ones fold away. */
+const SHOWN_APPS = 3
+
+/** A conversation's Apps as its row shows them: every one open as a page, then the newest up to `keep`; the rest fold. */
+export function foldApps(rows: readonly AppRow[], paged: (id: string) => boolean, keep = SHOWN_APPS) {
+  const shown = new Set(rows.filter(({ app }) => paged(app.id)).map(({ app }) => app.id))
+  for (const { app } of rows) if (shown.size < keep) shown.add(app.id)
+  return {
+    shown: rows.filter(({ app }) => shown.has(app.id)),
+    folded: rows.filter(({ app }) => !shown.has(app.id)),
+  }
+}
+
 export function buildTree(views: readonly ConversationView[], apps: readonly AppView[] = []): WorkspaceTree {
-  const appsOf = groupBy(apps, (app) => (app.closedAt === undefined ? app.conversation : undefined))
+  const names = appNames(apps)
+  const appsOf = groupBy(apps.toSorted(byCreation).toReversed(), (app) =>
+    app.closedAt === undefined ? app.conversation : undefined,
+  )
   const under = groupBy(views.toSorted(newestFirst), (view) => view.parent)
   // Each conversation once, however its parents point: a cycle in stored data ends instead of recursing forever.
   const seen = new Set<string>()
@@ -45,7 +79,7 @@ export function buildTree(views: readonly ConversationView[], apps: readonly App
       .map((child) => node(child))
     return {
       view,
-      apps: appsOf.get(view.id) ?? [],
+      apps: (appsOf.get(view.id) ?? []).map((app) => ({ app, name: names.get(app.id) ?? app.title })),
       children: below.filter((child) => !isClosed(child.view)),
       closed: below.filter((child) => isClosed(child.view)),
     }
@@ -111,7 +145,7 @@ export function railItems(
 ): {
   readonly main: readonly TreeNode[]
   readonly threads: readonly TreeNode[]
-  readonly apps: readonly AppView[]
+  readonly apps: readonly AppRow[]
 } {
   const walk = (nodes: readonly TreeNode[]): TreeNode[] =>
     nodes.flatMap((node) => [...(active(node, activity, open) ? [node] : []), ...walk(node.children)])
@@ -119,7 +153,7 @@ export function railItems(
   return {
     main: tree.main === undefined ? [] : [tree.main, ...walk(tree.main.children)],
     threads: walk(tree.threads),
-    apps: all.flatMap((node) => node.apps.filter((app) => paged(app.id))),
+    apps: all.flatMap((node) => node.apps.filter(({ app }) => paged(app.id))),
   }
 }
 

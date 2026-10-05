@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
-import type { AppView, ConversationView } from '@purrable/contracts'
+import type { ConversationView } from '@purrable/contracts'
 import {
   Duration,
   SidebarGroup,
@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { threadTitle } from '../lib/threads.ts'
 import { type ItemKey, appKey, conversationKey, isOpen, itemOf } from '../lib/workspace.ts'
-import { type RowStatus, type TreeNode, buildTree, rowStatus } from '../lib/workspace-tree.ts'
+import { type AppRow, type RowStatus, type TreeNode, buildTree, foldApps, rowStatus } from '../lib/workspace-tree.ts'
 import { useWorkspace } from './workspace.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
@@ -110,7 +110,7 @@ function ClosedFold({ nodes }: { readonly nodes: readonly TreeNode[] }) {
 }
 
 /** One of a conversation's Apps: a click shows its page here, the side button beside, and it drags onto a pane. */
-function AppRow({ app }: { readonly app: AppView }) {
+function AppItem({ row: { app, name } }: { readonly row: AppRow }) {
   const row = useRowActions(appKey(app.id))
   return (
     <SidebarMenuSubItem>
@@ -122,12 +122,12 @@ function AppRow({ app }: { readonly app: AppView }) {
           isActive={row.focused}
         >
           <AppWindowIcon aria-hidden />
-          <span className="tree-row-name">{app.title}</span>
+          <span className="tree-row-name">{name}</span>
         </SidebarMenuButton>
         <button
           type="button"
           className="tree-row-beside"
-          aria-label={`Open ${app.title} beside`}
+          aria-label={`Open ${name} beside`}
           title="Open beside"
           onClick={row.openBeside}
         >
@@ -138,14 +138,34 @@ function AppRow({ app }: { readonly app: AppView }) {
   )
 }
 
+/** A conversation's older Apps, folded into "n more apps" until asked for. */
+function MoreApps({ rows }: { readonly rows: readonly AppRow[] }) {
+  const [open, setOpen] = useState(false)
+  if (rows.length === 0) return null
+  return (
+    <>
+      <SidebarMenuSubItem>
+        <button type="button" className="closed-fold" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <ChevronRightIcon aria-hidden />
+          {rows.length} more {rows.length === 1 ? 'app' : 'apps'}
+        </button>
+      </SidebarMenuSubItem>
+      {open && rows.map((row) => <AppItem key={row.app.id} row={row} />)}
+    </>
+  )
+}
+
 /**
- * One conversation, then its Apps and everything under it at any depth. Its row shows it here on a click, opens it beside on the
+ * One conversation, then its Apps (those open as pages and the newest few; older ones folded) and everything under it
+ * at any depth. Its row shows it here on a click, opens it beside on the
  * side button, and drags onto a pane to place it there.
  */
 function TreeRow({ node, nested = false }: { readonly node: TreeNode; readonly nested?: boolean }) {
   const { activity } = useWorkspaceFeed()
   const status = rowStatus(node, activity)
   const row = useRowActions(conversationKey(node.view.id))
+  const { state } = useWorkspace()
+  const apps = foldApps(node.apps, (id) => isOpen(state, appKey(id)))
   const name = threadTitle(node.view)
   const Item = nested ? SidebarMenuSubItem : SidebarMenuItem
   return (
@@ -171,9 +191,10 @@ function TreeRow({ node, nested = false }: { readonly node: TreeNode; readonly n
       </button>
       {node.children.length + node.apps.length > 0 && (
         <SidebarMenuSub>
-          {node.apps.map((app) => (
-            <AppRow key={app.id} app={app} />
+          {apps.shown.map((app) => (
+            <AppItem key={app.app.id} row={app} />
           ))}
+          <MoreApps rows={apps.folded} />
           {node.children.map((child) => (
             <TreeRow key={child.view.id} node={child} nested />
           ))}

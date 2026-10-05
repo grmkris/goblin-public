@@ -1,9 +1,10 @@
 // An App as a page of its own (ADR 0020): one pane showing it, its stage filling the pane under the pill. Filling the
 // workspace is maximizing that pane; that is what an App asking for fullscreen gets.
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { AppView } from '@purrable/contracts'
 import { Button } from '@purrable/ui'
 import type { ItemKey } from '../../lib/workspace.ts'
+import { appNames } from '../../lib/workspace-tree.ts'
 import { usePlace } from '../conversation-pane.tsx'
 import { PaneHeader } from '../pane-header.tsx'
 import { useWorkspace } from '../workspace.tsx'
@@ -52,7 +53,7 @@ export function AppPage({ item, id }: { readonly item: ItemKey; readonly id: str
     opened.current = true
     show(app)
   }, [app, show])
-  const title = app?.title ?? 'App'
+  const title = useMemo(() => appNames(apps).get(id), [apps, id]) ?? 'App'
   return (
     <section className="app-pane" aria-label={title}>
       <PaneHeader item={item} title={title} first={first} onClose={only ? undefined : () => workspace.close(item)} />
