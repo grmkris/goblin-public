@@ -3,6 +3,7 @@
 // phone sheet or picture-in-picture. Slots register their elements here; nothing re-parents the iframe.
 import { createContext, type ReactNode, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { McpUiDisplayMode } from '@modelcontextprotocol/ext-apps/app-bridge'
+import { useIsMobile } from '@purrable/ui'
 import { availableModes } from '../../lib/host-context.ts'
 import type { AppSelection } from './frame.tsx'
 
@@ -52,19 +53,6 @@ export function useApps(): Apps {
   return apps
 }
 
-/** The same media query on the server render and the first client render, then the real answer. */
-function useMedia(query: string): boolean {
-  const [matches, setMatches] = useState(false)
-  useEffect(() => {
-    const list = matchMedia(query)
-    const update = () => setMatches(list.matches)
-    update()
-    list.addEventListener('change', update)
-    return () => list.removeEventListener('change', update)
-  }, [query])
-  return matches
-}
-
 function useSlots(kick: () => void) {
   const elements = useRef(new Map<SlotName, HTMLElement>())
   const callbacks = useRef(new Map<SlotName, (element: HTMLElement | null) => void>())
@@ -88,7 +76,7 @@ function useSlots(kick: () => void) {
 
 export function AppsProvider({ children }: { readonly children: ReactNode }) {
   const [session, setSession] = useState<AppSession>()
-  const phone = useMedia('(max-width: 767px)')
+  const phone = useIsMobile()
   const available = useMemo(() => availableModes(phone), [phone])
   const listeners = useRef(new Set<() => void>())
   const kick = useCallback(() => {

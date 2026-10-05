@@ -91,6 +91,7 @@ export {
   ToolCallTrigger,
   type ToolCallState,
 } from './components/tool-call.tsx'
+export { useIsMobile, useMediaQuery } from './hooks/use-media-query.ts'
 export { AuthPage } from './auth/auth-page.tsx'
 export { type AuthActionResult, failed, type PasskeySummary, type SignInMethod, succeeded } from './auth/contract.ts'
 export { PasskeyManager } from './auth/passkey-manager.tsx'

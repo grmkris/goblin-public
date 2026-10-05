@@ -103,6 +103,15 @@
   --page-gutter-left: max(1.25rem, env(safe-area-inset-left));
   --page-gutter-right: max(1.25rem, env(safe-area-inset-right));
   --page-gutter-bottom: max(3rem, env(safe-area-inset-bottom));
+  /* The safe-area insets, mirrored once so every consumer (and JS, through getComputedStyle) reads the same values. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  /* The bar at the top of each page (components/top-bar.tsx): 48px plus the notch, correct at a 0 inset too. */
+  --top-bar-height: calc(3rem + var(--safe-top));
+  /* Sheets and the sidebar settle like iOS sheets: fast out of the gate, a long soft landing. */
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .dark {
@@ -200,6 +209,13 @@
   [data-slot='button'] {
     min-height: 40px;
   }
+}
+/* No grey flash on tap, and no double-tap zoom delay on controls (pinch zoom stays). */
+:where(*) {
+  -webkit-tap-highlight-color: transparent;
+}
+[data-slot='button'] {
+  touch-action: manipulation;
 }
 @media (prefers-reduced-motion: reduce) {
   *,
