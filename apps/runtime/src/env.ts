@@ -126,7 +126,7 @@ export interface RuntimeEnv {
   readonly MODEL_KEY: string
   /** The cheapest offered model, for thread titles and main's memory (`models.ts` `memoryModelId`). */
   readonly MEMORY_MODEL?: string
-  /** Model tokens each user's agent may spend per UTC day; see `budget.ts` for the default. */
+  /** Native fixture allowance only; deployed accounts use their plan or account override. */
   readonly MODEL_DAILY_TOKENS?: string
   /** JSON object of model id to price multiplier; omitted models count at one. */
   readonly MODEL_TOKEN_WEIGHTS?: string
