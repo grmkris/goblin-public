@@ -3,7 +3,6 @@ import { type Extension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable
 import { type AppContext, type JsonObject, MAIN_THREAD } from '@purrable/contracts'
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
-import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
@@ -13,11 +12,6 @@ import { CHANNEL_TOOLS, type ChannelPorts, TelegramChannel, channelCall, logChan
 import { channelPorts } from './channel/turns.ts'
 import { type Doorbell, doorbellValid, hookToken, hookUrl } from './channel/doorbell.ts'
 import { type RpcResult, encodeExit } from './http/rpc.ts'
-import { CredentialCipher } from './mcp/cipher.ts'
-import { configuredServers } from './mcp/config.ts'
-import { CredentialStore } from './mcp/credentials.ts'
-import { GrantStore } from './mcp/grants.ts'
-import { McpHost } from './mcp/host.ts'
 import { piEventResponse } from './pi/events.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
 import { LITELLM_STREAMS, MODEL_PROVIDER, makePiModels } from './pi/model.ts'
@@ -25,15 +19,10 @@ import { personaExtension } from './pi/persona.ts'
 import { subagentsExtension } from './pi/subagents.ts'
 import { threadExtension } from './pi/thread.ts'
 import { memoryExtensions } from './pi/memory.ts'
-import { MainMemory } from './memory/memory.ts'
-import { CheapModel } from './memory/model.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { skillsExtension } from './pi/skills.ts'
-import { SkillLearner } from './skills/learner.ts'
-import { SkillLibrary } from './skills/library.ts'
-import { SqliteDraftLog, SqliteSkillState } from './skills/store.ts'
-import { ResidentAuthority } from './resident.ts'
-import { ConversationRegistry, type ThreadChange } from './conversations.ts'
+import type { ThreadChange } from './conversations.ts'
+import { composeServices } from './compose.ts'
 import { BACKGROUND } from './pi/context.ts'
 import { recentMessages } from './pi/transcript.ts'
 import {
@@ -46,7 +35,6 @@ import {
   Memory,
   Models,
   Resident,
-  agentLayer,
   attempt,
   attemptSync,
   nowSecondsEffect,
@@ -55,15 +43,10 @@ import {
 } from './services.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
 import { nowMillis, nowSeconds } from './clock.ts'
-import { bindEndpoints } from './mcp/endpoints.ts'
-import { AddedServerStore, type ServerSource } from './mcp/servers.ts'
+import type { ServerSource } from './mcp/servers.ts'
 import { suggestions } from './mcp/suggested.ts'
-import { RegistryStore } from './mcp/registries.ts'
-import { logEndpointsReset } from './mcp/log.ts'
-import { ModelBudget, UsageStore, dailyTokenLimit } from './budget.ts'
 import { authoredContent, ownerContent } from './pi/content.ts'
 import { budgetExtension } from './pi/budget.ts'
-import { ModelChoiceStore, ModelPicker, memoryModelId, modelOptions } from './models.ts'
 
 type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
 
@@ -125,55 +108,15 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
 
   #services(): Promise<Runtime> {
-    this.#runtime ??= (async () => {
-      runApplicationMigrations(this.ctx.storage)
-      const db = drizzle(this.ctx.storage)
-      const servers = configuredServers(this.env.MCP_SERVERS)
-      const added = new AddedServerStore(db)
-      const reset = bindEndpoints(db, [...servers, ...added.list()], nowSeconds())
-      if (reset.length > 0) logEndpointsReset(reset)
-      const skillState = new SqliteSkillState(db)
-      const grants = new GrantStore(db)
-      const cipher = await CredentialCipher.fromBase64(this.env.CREDENTIAL_KEY)
-      const host = new McpHost({
-        servers,
-        added,
-        registries: new RegistryStore(db),
-        credentials: new CredentialStore(db, cipher),
-        grants,
-        skillsEnabled: (serverId) => skillState.enabled(serverId),
-        appUrl: this.env.APP_URL,
-        // SAFETY: the platform fetch is the outbound MCP/OAuth boundary; tokens are added only by the SDK transport.
-        fetch: globalThis.fetch.bind(globalThis),
-      })
-      const budget = new ModelBudget(new UsageStore(db), dailyTokenLimit(this.env.MODEL_DAILY_TOKENS))
-      const options = modelOptions(this.env.MODELS, this.env.MODEL_ID)
-      const models = new ModelPicker(new ModelChoiceStore(db), options)
-      const namer = new CheapModel(this.#pi.models, memoryModelId(this.env.MEMORY_MODEL, options), (tokens) =>
-        budget.record(tokens, nowSeconds()),
-      )
-      const memory = new MainMemory(db, this.harness, namer)
-      const { recall } = this.#memory
-      await memory.activate([this.#memory.memory, recall])
-      const kit = { thread: this.#thread, recall, memory, namer }
-      const conversations = new ConversationRegistry(db, this.harness, kit, nowSeconds())
-      const resident = new ResidentAuthority(db)
-      const skills = new SkillLibrary(host.manager, skillState, nowMillis)
-      const learner = new SkillLearner({
-        drafts: new SqliteDraftLog(db),
-        harness: this.harness,
-        manager: host.manager,
-        library: skills,
-        state: skillState,
-        model: namer,
-        allows: (serverId, name) => grants.allows({ serverId, capability: 'tool', name }),
-        now: nowMillis,
-      })
-      const channel = new TelegramChannel(db, cipher, () => void this.schedule(5, 'channelReplies'))
-      return ManagedRuntime.make(
-        agentLayer({ host, resident, conversations, budget, models, memory, skills, learner, channel }),
-      )
-    })()
+    this.#runtime ??= composeServices({
+      storage: this.ctx.storage,
+      env: this.env,
+      harness: this.harness,
+      pi: this.#pi,
+      thread: this.#thread,
+      memory: this.#memory,
+      scheduleReplies: () => void this.schedule(5, 'channelReplies'),
+    })
     this.#runtime.catch(() => {
       this.#runtime = undefined
     })
