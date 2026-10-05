@@ -1,6 +1,6 @@
 # ADR 0012: Confirmed routines and isolated run threads
 
-Status: scheduled and Event execution implemented; native workerd verified. Phase 1 deployed on dev; phase 2 deployment and real producer acceptance pending.
+Status: scheduled and Event execution implemented; native workerd verified. Phase 1 and the Event checkpoint are deployed on dev; the recurring-wake follow-up and real producer acceptance remain pending.
 
 ## Decision
 
@@ -30,7 +30,7 @@ a suggestion, not an implicit account change.
 
 Agents SDK dated schedules contain IDs, revision and the firing
 instant (dated idempotency ignores the date itself). A short application claim owns the stable operation ID before
-model work. Pi background tasks own a fresh empty conversation; routine threads copy no main capability rows and
+model work. Reconciliation retains only future wakes; the executing scheduler row cannot suppress its successor. Pi background tasks own a fresh empty conversation; routine threads copy no main capability rows and
 have no ordinary main-start note. The confirmed tool ceiling narrows `Capabilities.scope`, intersecting current
 grants and resident authority at action time. Routine runs omit management, main memory and learner extensions.
 
@@ -70,5 +70,11 @@ remote receipt from the passive main write. Signed Event fixtures also prove sha
 metadata sealing/scrubbing/labelling, per-agent spacing, pending coalescing/drain, descriptor argument rejection,
 gap/poll recovery, termination/reconfirmation and edit retirement. Labelling is structural evidence, not a model
 injection-resistance claim. These fixture values do not measure a real provider or Telegram host.
+
+A real native wake regression fails when the callback counts its own firing row and passes when only future jobs
+participate in earliest-wake selection. LOCAL throwaway-account acceptance through CLIProxy verifies one reminder
+and passive note, retained cron firing/rearm across a local process restart, revoked-authority skip without usage or
+renewal, the twenty-active/two-running caps, Event editor validation/review and run/day token blocking. CLIProxy reported 1526 committed weighted tokens for the first response under a one-token test cap (1525 overshoot); the next run added no usage. This meter is not an exact provider billing measurement. This proves the local source with its wake fix, not remote
+eviction, Railway billing or live Event producers.
 
 Related: [ADR 0010](0010-per-conversation-capabilities-and-thread-notes.md), [ADR 0011](0011-mcp-events.md).

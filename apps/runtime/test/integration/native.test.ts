@@ -9,7 +9,7 @@ import { expect } from 'vitest'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { URL as FileURL } from 'node:url'
 import Stack from './stack.ts'
-import { routineEventsCase } from './native-routines-events.ts'
+import { routineEventsCase, routineSchedulingCase } from './native-routines-events.ts'
 import { ThreadPreview } from '@purrable/contracts'
 import {
   Listed,
@@ -336,28 +336,8 @@ harness.test(
 
 harness.test(
   'local workerd: native dated routine alarms dedupe and collapse cron downtime before rearming',
-  Effect.gen(function* () {
-    const { url } = yield* stack
-    const response = yield* Effect.promise(() =>
-      fetch(`${baseUrl(url)}/routine-schedule?name=routine-schedule-${Date.now()}`),
-    )
-    expect(response.status).toBe(200)
-    const result = yield* Effect.promise(() => response.json())
-    expect(result).toMatchObject({
-      duplicateScheduleCount: 1,
-      earlierWakeRetained: true,
-      nativeReminderCompleted: true,
-      onceCount: 1,
-      onceState: 'completed',
-      cronCount: 1,
-      missed: 4,
-      nextFuture: true,
-      editedState: 'proposed',
-      staleRevisionKeptRuns: true,
-    })
-  }),
+  stack.pipe(Effect.flatMap(({ url }) => routineSchedulingCase(url))),
 )
-
 harness.test(
   'local workerd: Events discovery, challenge, signed Telegram, replay, gap, refresh, termination and cleanup',
   Effect.gen(function* () {

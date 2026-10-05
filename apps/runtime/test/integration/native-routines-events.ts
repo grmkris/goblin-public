@@ -39,3 +39,26 @@ export function routineEventsCase(url: string) {
     })
   })
 }
+
+export function routineSchedulingCase(url: string) {
+  return Effect.gen(function* () {
+    const response = yield* Effect.promise(() =>
+      fetch(`${url.replace(/\/+$/u, '')}/routine-schedule?name=routine-schedule-${Date.now()}`),
+    )
+    expect(response.status).toBe(200)
+    const result = yield* Effect.promise(() => response.json())
+    expect(result).toMatchObject({
+      duplicateScheduleCount: 1,
+      earlierWakeRetained: true,
+      recurringWakeRetained: true,
+      nativeReminderCompleted: true,
+      onceCount: 1,
+      onceState: 'completed',
+      cronCount: 1,
+      missed: 4,
+      nextFuture: true,
+      editedState: 'proposed',
+      staleRevisionKeptRuns: true,
+    })
+  })
+}

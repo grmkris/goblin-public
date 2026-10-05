@@ -24,6 +24,26 @@ async function confirmed(agent: PersonalAgent, input: RoutineDefinition, operati
   return draft.id
 }
 
+async function cancelWakes(agent: PersonalAgent) {
+  for (const job of await agent.listSchedules()) if (job.callback === 'routinesWake') await agent.cancelSchedule(job.id)
+}
+async function recurringWake(agent: PersonalAgent): Promise<boolean> {
+  await cancelWakes(agent)
+  await agent.schedule(new Date(Date.now() + 500), 'routinesWake', { at: Date.now() }, { idempotent: true })
+  for (let index = 0; index < 400; index += 1) {
+    const retained = (await agent.listSchedules()).some(
+      (job) => job.callback === 'routinesWake' && job.time > Math.floor(Date.now() / 1000) + 10,
+    )
+    if (retained) {
+      await cancelWakes(agent)
+      return true
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  await cancelWakes(agent)
+  return false
+}
+
 /** Uses the native alarm for the reminder; later callbacks exercise app watermarks and edit fences. */
 export async function routineScheduleProbe(storage: DurableObjectStorage, agent: PersonalAgent) {
   const db = drizzle(storage)
@@ -46,7 +66,7 @@ export async function routineScheduleProbe(storage: DurableObjectStorage, agent:
   const once = runs.list(onceId)
   const cron = { ...definition, title: 'Native cron', trigger: { kind: 'cron' as const, expression: '*/15 * * * *' } }
   const cronId = await confirmed(agent, cron, 'cron')
-  for (const job of await agent.listSchedules()) if (job.callback === 'routinesWake') await agent.cancelSchedule(job.id)
+  const recurringWakeRetained = await recurringWake(agent)
   const later = Date.now() + 3_600_000
   await agent.schedule(new Date(later), 'routinesWake', undefined, { idempotent: true })
   await agent.routinesWake()
@@ -68,6 +88,7 @@ export async function routineScheduleProbe(storage: DurableObjectStorage, agent:
   const after = runs.list(cronId)
   return {
     duplicateScheduleCount,
+    recurringWakeRetained,
     earlierWakeRetained: wakes.length === 1 && (wakes[0]?.time ?? Number.MAX_SAFE_INTEGER) < later / 1000,
     nativeReminderCompleted: before.length === 1 && before[0]?.state === 'completed',
     onceCount: once.length,

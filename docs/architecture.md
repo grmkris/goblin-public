@@ -542,7 +542,9 @@ shows the prompt, exact tool pairs, timezone, budgets and Telegram policy before
 Confirmed reminders and cron schedules use native dated Agent callbacks carrying routine ID, revision and firing
 instant. A short application transaction claims each firing and advances its watermark before rearming; one newest
 catch-up replaces missed slots, with a 24-hour window and one encrypted pending trigger while busy. Reconciliation
-repairs missing schedules and removes only routine-owned wakes. UTC reminders require an explicit offset. The
+repairs missing schedules and removes only routine-owned wakes. The earliest-wake check considers future jobs only:
+Agents includes the currently firing row in `listSchedules`, and counting it would suppress the next report/recovery
+sweep. UTC reminders require an explicit offset. The
 numeric cron parser enforces 15-minute spacing, skips spring DST gaps and chooses the earlier autumn repeated instant.
 
 Pi background Anchor/Reporter tasks create and recover an empty task-owned run conversation, registered as a thread

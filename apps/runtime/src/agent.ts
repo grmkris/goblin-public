@@ -185,7 +185,9 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   /** One earliest Events wake. Agent schedules are durable and reconstructed independently of Pi. */
   async #scheduleWake(callback: 'mcpEventsWake' | 'routinesWake', at: number): Promise<void> {
-    const pending = (await this.listSchedules()).filter((job) => job.callback === callback)
+    // listSchedules includes the currently executing wake; only future jobs can replace the next sweep.
+    const now = nowSeconds()
+    const pending = (await this.listSchedules()).filter((job) => job.callback === callback && job.time > now)
     const seconds = Math.ceil(at / 1000)
     if (pending.some((job) => job.time <= seconds)) return
     // Dated schedule dedupe ignores the date; include the instant so advancing a wake cannot cancel its replacement.
