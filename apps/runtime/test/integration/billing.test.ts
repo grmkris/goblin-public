@@ -81,11 +81,15 @@ async function deliver(
   const signature = `v1,${createHmac('sha256', Buffer.from(KEY.slice(6), 'base64'))
     .update(`${id}.${sent}.${body}`)
     .digest('base64')}`
-  return fetch(`${base}/hooks/dodo`, {
+  const response = await fetch(`${base}/hooks/dodo`, {
     method: 'POST',
     headers: { 'webhook-id': id, 'webhook-timestamp': String(sent), 'webhook-signature': signature },
     body,
   })
+  // Webhook acceptance precedes application. Observe the durable receipt before asserting the resulting plan.
+  if (response.ok)
+    await expect.poll(() => lever(base, who, 'inbox', { eventId: id })).toMatchObject({ state: 'processed' })
+  return response
 }
 async function active(base: string, who: Person, enabled: boolean) {
   await expect
