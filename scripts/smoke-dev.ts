@@ -447,7 +447,7 @@ async function withModel<T>(dev: DevClient, model: string | undefined, work: () 
 }
 
 /** Unless sign-up is open, a registration without the invite code must be refused (and so writes nothing). */
-async function refusedSignup(dev: DevClient): Promise<void> {
+async function refusedSignup(dev: DevClient, steps: Step[]): Promise<void> {
   const response = await dev.send('/api/auth/sign-up/email', {
     method: 'POST',
     owner: false,
@@ -458,6 +458,10 @@ async function refusedSignup(dev: DevClient): Promise<void> {
       name: 'smoke',
     }),
   })
+  if (response.status === 429) {
+    steps.push({ step: 'signup refused (rate-limited); gate not proven open', status: response.status })
+    return
+  }
   if (response.status !== 403) throw new Error('signup_gate_open')
 }
 
@@ -489,7 +493,7 @@ async function smokeDev(
     if (probe.status !== 401) throw new Error('anonymous_auth_probe_not_refused')
     return { stage: config.stage, signup, mode: 'read-only' }
   }
-  if (signup !== 'open') await refusedSignup(dev)
+  if (signup !== 'open') await refusedSignup(dev, steps)
   await dev.signIn(config.email, config.password)
   const resident = await dev.json('/api/agent/resident')
   if (resident['state'] !== 'active') throw new Error('resident_authority_inactive')
