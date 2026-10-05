@@ -31,8 +31,16 @@ export async function serveLocal(port: number, handle: (request: Request) => Pro
     url: `http://127.0.0.1:${port}`,
     stop: () =>
       new Promise<void>((resolve, reject) => {
+        if (!server.listening) {
+          resolve()
+          return
+        }
         server.closeAllConnections()
-        server.close((error) => (error === undefined ? resolve() : reject(error)))
+        if (!server.listening) {
+          resolve()
+          return
+        }
+        server.close((error) => (error ? reject(error) : resolve()))
       }),
   }
 }

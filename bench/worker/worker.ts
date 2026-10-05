@@ -1,6 +1,6 @@
 import { Agent } from 'agents'
 import { PiHarness } from 'agents/harness/pi'
-import { Harness, createRegistry, type Conversation } from '@earendil-works/pi-durable'
+import { Harness, createRegistry, type Conversation, type Registry } from '@earendil-works/pi-durable'
 import {
   MainMemory,
   CheapModel,
@@ -39,6 +39,7 @@ export class BenchmarkAgent extends Agent<Env> {
   #memory: MainMemory | undefined
   #retrieval: Retrieval | undefined
   #cutoff = 0
+  #registry: Registry | undefined
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -56,7 +57,7 @@ export class BenchmarkAgent extends Agent<Env> {
         }
         const { config } = this.#stored()
         const { pressure, profile } = config.manifest
-        const modelIds = [...new Set([config.writer, ...config.manifest.variants.map(({ reader }) => reader)])]
+        const modelIds = [...new Set([config.writer, 'glm-5.3', 'deepseek-v4-pro-0813'])]
         const { models } = makePiModels(
           {
             MODEL_ID: config.writer,
@@ -72,6 +73,7 @@ export class BenchmarkAgent extends Agent<Env> {
           ...(config.manifest.summaryPrompt === null ? {} : { summaryPrompt: config.manifest.summaryPrompt }),
         })
         const registry = createRegistry()
+        this.#registry = registry
         registry.install(
           recallExtension(
             (id, n) => this.#use(() => this.#mainMemory().zoom(id, n, this.#cutoff)),
@@ -102,7 +104,7 @@ export class BenchmarkAgent extends Agent<Env> {
                       backgroundTokens: 0,
                     },
                   }
-                : { compaction: { enabled: config.policy === 'standard' } }),
+                : {}),
             },
           },
           context,
@@ -219,12 +221,14 @@ export class BenchmarkAgent extends Agent<Env> {
     // Resolve extension objects from the same definitions used by the native registry.
     const recall = recallExtension(
       (id, n) => this.#use(() => this.#mainMemory().zoom(id, n, this.#cutoff)),
-      config.manifest.recallGuide ?? undefined,
+      input.recallGuide ?? undefined,
     )
     const search = searchExtension(
       () => config.events.slice(0, this.#cutoff),
       (read) => this.#use(read),
     )
+    this.#registry?.install(recall)
+    this.#registry?.install(search)
     const fork = await main.fork(
       entryId(checkpoint),
       {

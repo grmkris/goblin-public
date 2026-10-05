@@ -48,6 +48,7 @@ test('native workerd: Pi compaction and OptChat settle, probes fork without chan
               question: 'What staging retry limit is approved?',
               search: policy === 'standard',
               cutoff: 64,
+              recallGuide: null,
             }),
           )
           expect(result.status).toBe('done')

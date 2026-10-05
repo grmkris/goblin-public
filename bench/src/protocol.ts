@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import { Manifest, SourceEvent } from './schema.ts'
 
-/** The worker never receives the private fact ledger, expected values or probe keys. */
+/** The worker never receives the private fact ledger or expected values. */
 export const ReplayEvent = Schema.Struct({
   id: SourceEvent.fields.id,
   kind: SourceEvent.fields.kind,
@@ -24,6 +24,7 @@ export const ProbeRequest = Schema.Struct({
   question: Schema.String,
   search: Schema.Boolean,
   cutoff: Schema.Int.check(Schema.isGreaterThan(0)),
+  recallGuide: Schema.NullOr(Schema.String),
 })
 export type ProbeRequest = typeof ProbeRequest.Type
 

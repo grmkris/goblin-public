@@ -47,10 +47,35 @@ function variantErrors(manifest: Manifest): string[] {
   for (const variant of manifest.variants) {
     if (ids.has(variant.id)) errors.push(`duplicate variant ${variant.id}`)
     ids.add(variant.id)
+    if (!MODELS.includes(variant.reader) || (variant.writer !== undefined && !MODELS.includes(variant.writer)))
+      errors.push(`${variant.id} selects an unconfigured model ID`)
     if (variant.policy === 'optchat' && variant.writer === undefined) errors.push(`${variant.id} needs a writer`)
     if (variant.policy !== 'optchat' && variant.writer !== undefined)
       errors.push(`${variant.id} native writer must remain coupled to reader`)
   }
+  return errors
+}
+
+function allowanceErrors(manifest: Manifest): string[] {
+  const errors: string[] = []
+  const { allowance } = manifest
+  if (
+    allowance.maxAnswers > 200 ||
+    allowance.maxRequests > 1000 ||
+    allowance.maxInputTokens > 1_000_000 ||
+    allowance.maxOutputTokens > 100_000
+  )
+    errors.push('allowance exceeds global ceilings')
+  if (manifest.scenarioIds.length * manifest.variants.length * 4 > allowance.maxAnswers)
+    errors.push('answer plan exceeds allowance')
+  if (manifest.retrieval.maxCalls > 4 || manifest.retrieval.maxBytes > 4096)
+    errors.push('retrieval exceeds shared ceiling')
+  if (
+    manifest.rates.some(
+      (rate) => rate.inputPerMillion < 0 || rate.outputPerMillion < 0 || !/^\d{4}-\d{2}-\d{2}$/u.test(rate.dated),
+    )
+  )
+    errors.push('prices require nonnegative rates and YYYY-MM-DD provenance')
   return errors
 }
 
@@ -60,6 +85,7 @@ export function validateManifest(manifest: Manifest): string[] {
   if (manifest.variants.length === 0 || manifest.scenarioIds.length === 0) errors.push('empty experiment')
   if (new Set(manifest.scenarioIds).size !== manifest.scenarioIds.length) errors.push('duplicate scenarios')
   const { pressure } = manifest
+  errors.push(...allowanceErrors(manifest))
   if (pressure.reserveTokens + pressure.keepRecentTokens >= pressure.contextWindowTokens)
     errors.push('invalid compaction pressure')
   for (const id of manifest.scenarioIds) {
