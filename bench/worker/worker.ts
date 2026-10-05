@@ -17,6 +17,7 @@ import {
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import { Schema } from 'effect'
+import { transportModel } from '../src/transport.ts'
 import { BuildRequest, ProbeRequest, type ProbeResult } from '../src/protocol.ts'
 import { replayGroups, requestScope } from './replay.ts'
 import { Retrieval, searchExtension } from './retrieval.ts'
@@ -42,6 +43,7 @@ export class BenchmarkAgent extends Agent<Env> {
   #retrieval: Retrieval | undefined
   #cutoff = 0
   #sourceCutoff = 0
+  readonly #transportWindows = new Map<string, number>()
   #registry: Registry | undefined
   #conversation = ''
 
@@ -62,7 +64,7 @@ export class BenchmarkAgent extends Agent<Env> {
         const { config } = this.#stored()
         const { pressure, profile } = config.manifest
         const modelIds = [...new Set([config.writer, 'glm-5.3', 'deepseek-v4-pro-0813'])]
-        const { models } = makePiModels(
+        const { models, options } = makePiModels(
           {
             MODEL_ID: config.writer,
             MODEL_BASE_URL: env.RELAY_URL,
@@ -72,6 +74,8 @@ export class BenchmarkAgent extends Agent<Env> {
           this.#streams(config.identity),
           profile === 'controlled' ? pressure.contextWindowTokens : undefined,
         )
+        for (const option of options)
+          this.#transportWindows.set(option.id, config.manifest.transport?.contextWindowTokens ?? option.contextWindow)
         this.#memory = new MainMemory(this.#db, this.#harness, new CheapModel(models, config.writer, () => undefined), {
           ...(profile === 'controlled' ? { viewBytes: pressure.viewBytes } : {}),
           ...(config.manifest.summaryPrompt === null ? {} : { summaryPrompt: config.manifest.summaryPrompt }),
@@ -126,12 +130,12 @@ export class BenchmarkAgent extends Agent<Env> {
   #streams(artifact: string): ProviderStreams {
     return {
       stream: (model, context, options) =>
-        LITELLM_STREAMS.stream(model, context, {
+        LITELLM_STREAMS.stream(transportModel(model, this.#transportWindows), context, {
           ...options,
           headers: withScope(options?.headers, requestScope(context.messages, artifact)),
         }),
       streamSimple: (model, context, options) =>
-        LITELLM_STREAMS.streamSimple(model, context, {
+        LITELLM_STREAMS.streamSimple(transportModel(model, this.#transportWindows), context, {
           ...options,
           headers: withScope(options?.headers, requestScope(context.messages, artifact)),
         }),

@@ -47,6 +47,7 @@ export function artifactIdentity(resolved: Resolved, scenarioId: string, variant
     writer: variant.writer ?? variant.reader,
     profile: resolved.manifest.profile,
     pressure: resolved.manifest.pressure,
+    transport: resolved.manifest.transport,
     trial: resolved.manifest.buildTrial,
     prompt: resolved.manifest.summaryPrompt,
   })

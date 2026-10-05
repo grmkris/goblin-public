@@ -30,7 +30,8 @@ const post = Effect.fn('bench.native')(function* (url: string, path: string, act
     HttpClientRequest.bodyText(JSON.stringify(body), 'application/json'),
   )
   const response = yield* client.execute(request)
-  if (response.status !== 200) return yield* fail(`Native ${path} failed with status ${response.status}`)
+  if (response.status !== 200)
+    return yield* fail(`Native ${path} failed with status ${response.status}: ${yield* response.text}`)
   return yield* response.json
 })
 
@@ -77,10 +78,16 @@ const executeEpisode = Effect.fn('bench.episode')(function* (
   resolved: Resolved,
   episode: Episode,
   provider: Effect.Success<ReturnType<typeof relay>>,
+  blocked: {
+    has: (actor: string) => boolean
+    record: (actor: string) => Effect.Effect<void, unknown, FileSystem.FileSystem>
+  },
 ) {
   const scenario = (resolved.scenarios ?? dataset()).find((item) => item.id === episode.probe.scenarioId)
   if (scenario === undefined) return yield* fail('Unknown scenario')
   const actor = artifactIdentity(resolved, scenario.id, episode.variant)
+  if (blocked.has(actor))
+    return yield* fail('Checkpoint build previously failed in this run; dependent episodes remain blocked')
   provider.setScope(actor, 'build')
   const build = yield* post(url, 'build', actor, {
     identity: actor,
@@ -88,7 +95,7 @@ const executeEpisode = Effect.fn('bench.episode')(function* (
     policy: episode.variant.policy === 'optchat' ? 'optchat' : 'standard',
     writer: episode.variant.writer ?? episode.variant.reader,
     events: publicEvents(scenario.events.slice(0, episode.probe.cutoff)),
-  })
+  }).pipe(Effect.tapError(() => blocked.record(actor)))
   const operationId = `${resolved.runId}.${episode.id}`
   provider.setScope(operationId, 'answer')
   const raw = yield* post(url, 'probe', actor, {
@@ -167,10 +174,19 @@ export const run = Effect.fn('bench.run')(function* (options: {
   const provider = yield* openProvider(options)
   yield* admitHoldout(options.root, options.resolved)
   const { url } = yield* localStack
+  const blockedPath = join(options.dir, 'blocked-checkpoints.jsonl')
+  const blockedActors = new Set(
+    (yield* readLedger(blockedPath, Schema.Struct({ actor: Schema.String }))).map((item) => item.actor),
+  )
+  const blocked = {
+    has: (actor: string) => blockedActors.has(actor),
+    record: (actor: string) =>
+      appendJson(blockedPath, { actor }).pipe(Effect.tap(() => Effect.sync(() => blockedActors.add(actor)))),
+  }
   for (const episode of episodes(options.resolved.manifest, options.resolved.scenarios)) {
     const episodePath = join(options.dir, 'episodes', `${episode.id}.json`)
     if (yield* fs.exists(episodePath)) continue
-    const completed = yield* executeEpisode(url, options.resolved, episode, provider).pipe(Effect.result)
+    const completed = yield* executeEpisode(url, options.resolved, episode, provider, blocked).pipe(Effect.result)
     if (Result.isSuccess(completed)) {
       yield* writeJson(join(options.dir, 'traces', `${episode.id}.json`), completed.success)
       yield* writeJson(episodePath, completed.success.result)

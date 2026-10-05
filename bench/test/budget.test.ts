@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest'
+import { providerDetails } from '../src/provider-details.ts'
 import { Budget, usageOf } from '../src/budget.ts'
 import { starterManifest } from '../src/manifest.ts'
 import { Retrieval } from '../worker/retrieval.ts'
@@ -28,4 +29,25 @@ test('zoom/search share UTF-8 byte and call ceilings, including rejected retriev
     { text: '', denied: true },
     { text: '', denied: true },
   ])
+})
+
+test('provider metadata counts reasoning once and rejects malformed usage', () => {
+  const reply = JSON.stringify({
+    model: 'glm-5.3',
+    id: 'observed-response',
+    usage: {
+      prompt_tokens: 1122,
+      completion_tokens: 2448,
+      prompt_tokens_details: { cached_tokens: 0 },
+      completion_tokens_details: { reasoning_tokens: 2446 },
+    },
+  })
+  expect(usageOf(reply)).toEqual({ input: 1122, output: 2448 })
+  expect(providerDetails(reply)).toMatchObject({
+    responseModel: 'glm-5.3',
+    responseId: 'observed-response',
+    reasoningTokens: 2446,
+    cacheReadTokens: 0,
+  })
+  expect(usageOf('{"usage":{"prompt_tokens":-1,"completion_tokens":3}}')).toBeUndefined()
 })

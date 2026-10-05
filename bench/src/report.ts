@@ -1,4 +1,5 @@
 import type { RunData, EpisodeResult } from './results.ts'
+import { sameTransport } from './transport.ts'
 import { episodes } from './plan.ts'
 
 const escape = (text: string): string =>
@@ -20,7 +21,12 @@ export function summary(data: RunData) {
       {
         answers: results.length,
         correct: results.filter((result) => result.score.correct).length,
-        accuracy: average(results),
+        accuracy:
+          results.every((result) => result.status === 'failed') && data.resolved.manifest.corpus !== undefined
+            ? null
+            : average(results),
+        completedAnswers: results.filter((result) => result.status === 'completed').length,
+        runtimeFailures: results.filter((result) => result.status === 'failed').length,
         categories: categoryScores(results),
         failures: results.filter(
           (result) => result.status === 'failed' || (result.reviewStatus !== 'pending' && !result.score.correct),
@@ -52,7 +58,8 @@ export function compare(candidate: RunData, incumbent: RunData) {
       JSON.stringify(incumbent.resolved.manifest.scenarioIds) &&
     JSON.stringify(candidate.resolved.manifest.pressure) === JSON.stringify(incumbent.resolved.manifest.pressure) &&
     JSON.stringify(candidate.resolved.manifest.retrieval) === JSON.stringify(incumbent.resolved.manifest.retrieval) &&
-    candidate.resolved.manifest.profile === incumbent.resolved.manifest.profile
+    candidate.resolved.manifest.profile === incumbent.resolved.manifest.profile &&
+    sameTransport(candidate.resolved.manifest, incumbent.resolved.manifest)
   return {
     compatible,
     candidate: candidate.resolved.runId,

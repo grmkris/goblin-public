@@ -38,6 +38,7 @@ export const createCanary = Effect.fn('bench.createCanary')(function* (root: str
     ...starter,
     name: `real-${id}`,
     scenarioIds: [scenario.id],
+    transport: { contextWindowTokens: 131_072, thinking: 'disabled' as const },
     corpus: { path: relative, sha256: sha256(text) },
     variants: starter.variants.filter((variant) => variant.policy !== 'optchat' || variant.writer === variant.reader),
     allowance: { ...starter.allowance, maxAnswers: 36, concurrency: 1 },

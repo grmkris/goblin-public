@@ -101,3 +101,17 @@ Redaction matches available credential literals through Effect Config and common
 inspect the private normalized prefix and omissions before labeling. Redaction changes data, so review failures
 against the private source snapshot rather than silently repairing them. The checked-in optional real-source
 regression reads the frozen local canary if present; CI skips it and never substitutes generated data.
+
+Controlled pressure and API capacity are separate: Pi schedules at 8192 context tokens, while newly generated real
+canaries declare a 131072-token transport capacity. The installed API adapter otherwise subtracts a 4096-token
+safety margin from the artificial 8k window and can clip summaries to one output token. The relay explicitly sends
+Alibaba thinking-disable fields for these canaries; reported usage still determines whether reasoning occurred.
+Transport settings enter artifact identity and comparison compatibility. A failed build is recorded durably and
+blocks its dependent episodes instead of causing repeated build calls; a new trial preserves the failed evidence.
+
+The first live real-session canary (`real-claude-canary-01`) verified both exact model routes with 40 successful
+HTTP responses, 595322 reported input tokens and 6464 completion tokens. It produced zero recall answers: the
+artificial provider window clipped 36 requests to one output token; GLM also consumed almost all of its early output
+allowance as reasoning. These are harness/provider findings, not memory accuracy. Its private evidence remains
+under `.local/bench/runs/real-claude-canary-01/`. The transport fix has a regression against that observed payload;
+a live corrected trial is needed before claiming recall quality.

@@ -82,6 +82,12 @@ export const Manifest = Schema.Struct({
   name: Id,
   corpus: Schema.optional(Schema.Struct({ path: Schema.String, sha256: Schema.String })),
   split: Schema.Literals(['development', 'held-out']),
+  transport: Schema.optional(
+    Schema.Struct({
+      contextWindowTokens: Positive,
+      thinking: Schema.Literals(['provider-default', 'disabled']),
+    }),
+  ),
   profile: Schema.Literals(['controlled', 'production-compatibility']),
   scenarioIds: Schema.Array(Id),
   variants: Schema.Array(Variant),

@@ -1,5 +1,6 @@
 import { Config, DateTime, Effect, FileSystem, Redacted, Schema, Semaphore } from 'effect'
 import { HttpClient, HttpClientRequest } from 'effect/http'
+import { requestPayload } from '../src/transport.ts'
 import { providerDetails } from '../src/provider-details.ts'
 import { Budget, usageOf, transientStatus, type Totals } from '../src/budget.ts'
 import { ChatRequest, fakeResponse } from '../src/fake.ts'
@@ -155,19 +156,20 @@ const handleRequest = Effect.fn('bench.relay.request')(function* (
   account: Accounting,
   label: Label,
   send: Send,
-  allowed: ReadonlySet<string>,
+  rules: { allowed: ReadonlySet<string>; thinking: 'provider-default' | 'disabled' },
 ) {
   if (request.method !== 'POST' || new URL(request.url).pathname !== '/v1/chat/completions')
     return new Response('not found', { status: 404 })
   const raw = yield* io(() => request.json())
   const body = yield* Schema.decodeUnknownEffect(ChatRequest)(raw)
-  if (!allowed.has(body.model) || label.scope === 'unassigned')
+  if (!rules.allowed.has(body.model) || label.scope === 'unassigned')
     return new Response('unassigned model request', { status: 403 })
   const original = yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(raw)
   const output = body.max_completion_tokens ?? body.max_tokens ?? 8192
   if (!Number.isSafeInteger(output) || output <= 0 || output > 8192)
     return new Response('invalid output reservation', { status: 400 })
-  const payload = JSON.stringify({ ...original, ...(body.stream ? { stream_options: { include_usage: true } } : {}) })
+  const payload = requestPayload(original, rules.thinking)
+
   let reply: Reply = { status: 503, text: '', contentType: 'application/json' }
   for (let retry = 0; retry < 2; retry += 1) {
     reply = yield* attempt(account, label, send, { payload, body, output, retry })
@@ -207,7 +209,7 @@ export const relay = Effect.fn('bench.relay')(function* (
       account,
       labels.get(request.headers.get('x-bench-scope') ?? '') ?? { scope: 'unassigned', phase: 'build' },
       send,
-      allowed,
+      { allowed, thinking: resolved.manifest.transport?.thinking ?? 'provider-default' },
     ).pipe(gate.withPermits(1), Effect.provideService(FileSystem.FileSystem, fs))
   const server = yield* Effect.acquireRelease(
     io(() => startServer(handle)),

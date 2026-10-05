@@ -63,6 +63,8 @@ const executeRun = Effect.fn('bench.command.run')(function* (manifest: Manifest)
     resolved.corpusHash !== corpusHash(yield* loadCorpus(root, resolved.manifest))
   )
     return yield* fail('Current source or corpus differs from this run; start a new run')
+  if (resolved.scenarios !== undefined && corpusHash(resolved.scenarios) !== resolved.corpusHash)
+    return yield* fail('Resolved corpus snapshot was modified')
   if (command === 'resume' && resolved.mode === 'live' && !args.includes('--live'))
     return yield* fail('Resuming live inference requires --live')
   return yield* run({
