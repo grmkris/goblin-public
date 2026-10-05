@@ -46,6 +46,10 @@ export type McpManagerOptions = {
   /** Close a connection this long after its last use (default 5 minutes). */
   readonly idleMs?: number
 }
-export type McpCallOptions = RequestOptions & { readonly caller?: McpCaller }
+export type McpCallOptions = RequestOptions & {
+  readonly caller?: McpCaller
+  /** Recheck the local execution scope after connection/credential waits, immediately before dispatch. */
+  readonly authorize?: () => Promise<void>
+}
 export type McpToolResult = CallToolResult
 export type McpPromptResult = GetPromptResult

@@ -2,6 +2,7 @@ import { createMcpHandler, Server } from '@modelcontextprotocol/server'
 import { describe, expect, it } from 'vitest'
 import { McpConnectionManager } from '../../src/mcp/connection.ts'
 import { MemoryGrants } from './memory.ts'
+import { Forbidden } from '../../src/http/errors.ts'
 
 const serverConfig = {
   serverId: 'fixture',
@@ -65,6 +66,50 @@ const makeManager = (
 }
 
 describe('official MCP SDK host interoperability (unit)', () => {
+  it('rechecks execution authority after SDK token refresh and keeps correlation headers local', async () => {
+    const official = handler()
+    let revoked = false
+    let calls = 0
+    const manager = new McpConnectionManager({
+      servers: [serverConfig],
+      allows: (grant) => grants.allows(grant),
+      auth: () => ({
+        token: async () => 'fixture',
+        onUnauthorized: async () => {
+          revoked = true
+        },
+      }),
+      fetch: async (input, init) => {
+        const request = new Request(input, init)
+        expect(request.headers.has('x-purrable-local-dispatch')).toBe(false)
+        if (request.method === 'POST') {
+          const body: { method?: string } = await request.clone().json()
+          if (body.method === 'tools/call') {
+            calls += 1
+            if (calls === 1) return new Response(null, { status: 401 })
+          }
+        }
+        return official.fetch(request)
+      },
+    })
+    try {
+      await expect(
+        manager.callTool(
+          'fixture',
+          'read',
+          {},
+          {
+            authorize: async () => {
+              if (revoked) throw new Forbidden({ reason: 'execution revoked during refresh' })
+            },
+          },
+        ),
+      ).rejects.toMatchObject({ _tag: 'Forbidden' })
+      expect(calls).toBe(1)
+    } finally {
+      await manager.closeAll()
+    }
+  })
   it('connects a resource provider that rejects optional template discovery as not implemented', async () => {
     const manager = makeManager(undefined, false)
     try {

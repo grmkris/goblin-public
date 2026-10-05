@@ -19,6 +19,7 @@ import {
   skillsListStandard,
 } from '../skills/protocol.ts'
 import { mapMcpError } from './errors.ts'
+import { DispatchGuards } from './dispatch.ts'
 import { timed } from './log.ts'
 import type { GrantCapability } from './grants.ts'
 import * as Schema from 'effect/Schema'
@@ -103,6 +104,7 @@ export class McpConnectionManager {
   readonly #servers: Map<string, McpServerConfig>
   readonly #connections = new Map<string, Connection>()
   readonly #connecting = new Map<string, Promise<Connection>>()
+  readonly #dispatch = new DispatchGuards()
   constructor(options: McpManagerOptions) {
     this.#options = options
     this.#servers = new Map(options.servers.map((server) => [server.serverId, server]))
@@ -186,7 +188,7 @@ export class McpConnectionManager {
       // The pinned SDK strips draft top-level capabilities. Decode the authenticated discovery response
       // at its supported fetch seam; never make a second unauthenticated discovery request.
       fetch: async (input, init) => {
-        const response = await this.#options.fetch(input, init)
+        const response = await this.#dispatch.fetch(input, init, this.#options.fetch)
         if (
           typeof init?.body === 'string' &&
           /"method":"(?:server\/discover|initialize)"/u.test(init.body) &&
@@ -319,16 +321,22 @@ export class McpConnectionManager {
     args: Record<string, unknown> = {},
     options: McpCallOptions = {},
   ): Promise<McpToolResult> {
-    const { caller = 'model', ...request } = options
+    const { caller = 'model', authorize, ...request } = options
     const connection = await this.#authorized(serverId, 'tool', name, request)
+    await authorize?.()
+    if (!this.#options.allows({ serverId, capability: 'tool', name })) throw new GrantDenied({ serverId, name })
     const tool = connection.snapshot.tools.find((item) => item.name === name)
     if (tool === undefined || !toolOffered(tool, caller)) throw new NotFound({ what: `tool ${name}` })
     this.#bounded(serverId, args)
     return timed({ step: 'call', serverId, tool: name }, () =>
       this.#remote(connection, () =>
-        connection.client.callTool(
-          { name, arguments: args },
+        this.#dispatch.request(
+          async () => {
+            await authorize?.()
+            if (!this.#options.allows({ serverId, capability: 'tool', name })) throw new GrantDenied({ serverId, name })
+          },
           { timeout: this.#options.timeoutMs ?? 30_000, ...request },
+          (guarded) => connection.client.callTool({ name, arguments: args }, guarded),
         ),
       ),
     )
