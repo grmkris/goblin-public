@@ -32,6 +32,7 @@ const Stored = Schema.Struct({
   config: BuildRequest,
   ready: Schema.Boolean,
   checkpoints: Schema.Record(Schema.String, Schema.Int),
+  activeProbe: Schema.optional(Schema.String),
 })
 const decode = Schema.decodeUnknownSync(Stored)
 const INSTRUCTIONS =
@@ -140,7 +141,7 @@ export class BenchmarkAgent extends Agent<Env> {
     return {
       stream: (model, context, options) => {
         this.#recordContext(context.messages)
-        const scope = requestScope(context.messages, artifact)
+        const scope = this.#stored().activeProbe ?? requestScope(context.messages, artifact)
         const maxTokens = scope === artifact ? this.#nativeCompactionMaxTokens : this.#readerMaxTokens
         return LITELLM_STREAMS.stream(transportModel(model, this.#transportWindows), context, {
           ...options,
@@ -150,7 +151,7 @@ export class BenchmarkAgent extends Agent<Env> {
       },
       streamSimple: (model, context, options) => {
         this.#recordContext(context.messages)
-        const scope = requestScope(context.messages, artifact)
+        const scope = this.#stored().activeProbe ?? requestScope(context.messages, artifact)
         const maxTokens = scope === artifact ? this.#nativeCompactionMaxTokens : this.#readerMaxTokens
         return LITELLM_STREAMS.streamSimple(transportModel(model, this.#transportWindows), context, {
           ...options,
@@ -228,6 +229,7 @@ export class BenchmarkAgent extends Agent<Env> {
       await this.#harness.dispose()
     }
     const stored = this.#stored()
+    if (stored.activeProbe !== undefined) throw new Error('A persisted probe is still active')
     if (stored.checkpoints[String(config.events.length)] !== undefined)
       return this.#buildEvidence(await this.#root(), config, true)
     if (
@@ -296,11 +298,11 @@ export class BenchmarkAgent extends Agent<Env> {
   }
 
   async probe(input: ProbeRequest): Promise<ProbeResult> {
-    const { config, ready, checkpoints } = this.#stored()
+    const { config, ready, checkpoints, activeProbe } = this.#stored()
     if (!ready) throw new Error('Checkpoint is incomplete')
     if (config.policy === 'standard' && input.reader !== config.writer)
       throw new Error('Native compaction writer remains coupled to its reader')
-    if (this.#retrieval !== undefined) throw new Error('A probe is already active')
+    if (this.#retrieval !== undefined || activeProbe !== undefined) throw new Error('A probe is already active')
     const checkpoint = checkpoints[String(input.cutoff)]
     if (checkpoint === undefined) throw new Error('Unknown authorized cutoff')
     const main = await this.#root()
@@ -333,6 +335,8 @@ export class BenchmarkAgent extends Agent<Env> {
     this.#conversation = String(fork.id)
     this.#retrieval = new Retrieval(config.manifest.retrieval.maxCalls, config.manifest.retrieval.maxBytes)
     try {
+      // Pi compaction builds its own system prompt, so attribution must survive without the answer instructions.
+      this.#save({ ...this.#stored(), activeProbe: input.id })
       this.#contextSources = contextSources(await fork.context(BACKGROUND), config.events.slice(0, input.cutoff))
       const result = await this.#harness.prompt(input.question, { session: String(fork.id), operationId: input.id })
       return {
@@ -351,6 +355,7 @@ export class BenchmarkAgent extends Agent<Env> {
         })),
       }
     } finally {
+      this.#save({ ...this.#stored(), activeProbe: undefined })
       this.#retrieval = undefined
       this.#conversation = ''
       this.#contextSources = []

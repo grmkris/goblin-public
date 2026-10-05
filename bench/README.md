@@ -143,6 +143,10 @@ old manifests retain their previous output default. Tool requests use `tool_choi
 it leaves OptChat writer and reader limits independent. Unset, native Pi retains its installed default
 `floor(0.8 * reserveTokens)` (1638 at the 2048-token reserve). This field changes the experimental configuration:
 use a fresh immutable trial, preserve default-limit failures, and report calibrated controls separately.
+The actor persists the active probe ID before prompting. Every model request during that probe, including native
+automatic compaction, consumes its reader allowance and appears in reader call/token/time totals. Native summary
+requests replace the answer's system instructions, so those instructions alone cannot establish operation scope.
+Build admission stays closed while a persisted probe is active; recovery must not charge that work to shared construction.
 Preflight checks writer and reader output limits by operation scope, including when both use the same model route,
 and verifies the manifest's explicit thinking configuration. Disabling thinking requires a fresh named experiment;
 the recorded usage must still fit every reservation before bulk construction is admitted.
