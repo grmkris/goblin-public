@@ -79,6 +79,8 @@ export const preflight = Effect.fn('bench.preflight')(function* (
       return yield* fail('Recorded native preflight failed; bulk run remains aborted')
     return
   }
+  if (provider.allTraces().some((trace) => trace.phase === 'preflight'))
+    return yield* fail('Preflight attempts lack a terminal receipt; preserve evidence and start a fresh named trial')
   const result = yield* check(url, resolved, provider).pipe(Effect.result)
   if (Result.isFailure(result)) {
     yield* writeJson(path, { passed: false, error: json(result.failure) })

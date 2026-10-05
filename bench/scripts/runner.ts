@@ -10,12 +10,13 @@ import { loadCorpus } from './corpus.ts'
 import { evaluated, failedScore } from '../src/evaluate.ts'
 import { localStack } from './local.ts'
 import { relay, ProviderConfig, validateProvider, providerCatalog } from './relay.ts'
-import { artifactIdentity, sourceHash, corpusHash, digest } from './identity.ts'
+import { artifactIdentity, sourceHash, corpusHash, digest, fingerprint } from './identity.ts'
 import { admitHoldout } from './holdout.ts'
 import { preflight } from './preflight.ts'
 import { post } from './native.ts'
 import { fail, json, lockRun, readJson, writeJson, appendJson, readLedger } from './store.ts'
 import { StageReceipt, stageAdmission, stageGate } from '../src/stages.ts'
+import { SemanticVote } from '../src/semantic.ts'
 
 const executeEpisode = Effect.fn('bench.episode')(function* (
   url: string,
@@ -71,6 +72,18 @@ export const loadRun = Effect.fn('bench.loadRun')(function* (dir: string) {
     (name) => readJson(join(dir, 'episodes', name), EpisodeResult),
   )
   const reviews = yield* readLedger(join(dir, 'reviews.jsonl'), Review)
+  const semanticVotes = yield* readLedger(join(dir, 'semantic-reviews.jsonl'), SemanticVote)
+  for (const vote of semanticVotes) {
+    const result = results.find((item) => item.id === vote.episodeId)
+    if (
+      vote.runId !== resolved.runId ||
+      vote.sourceHash !== resolved.sourceHash ||
+      vote.corpusHash !== resolved.corpusHash ||
+      result === undefined ||
+      fingerprint(result) !== vote.resultHash
+    )
+      return yield* fail('Semantic review identity or answer changed')
+  }
   const reviewed = yield* Effect.try({
     try: () =>
       results.map((result) => {
@@ -79,7 +92,13 @@ export const loadRun = Effect.fn('bench.loadRun')(function* (dir: string) {
       }),
     catch: () => fail('Invalid semantic review ledger'),
   })
-  return { resolved, results: reviewed, traces: yield* readLedger(join(dir, 'attempts.jsonl'), Trace) }
+  return {
+    resolved,
+    results: reviewed,
+    traces: yield* readLedger(join(dir, 'attempts.jsonl'), Trace),
+    semanticVotes,
+    stageReceipts: yield* readLedger(join(dir, 'stages.jsonl'), StageReceipt),
+  }
 })
 
 const openProvider = Effect.fn('bench.openProvider')(function* (options: {

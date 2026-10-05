@@ -1,5 +1,8 @@
+import { Effect, FileSystem, Layer } from 'effect'
+import { FetchHttpClient } from 'effect/http'
+import { starterManifest } from '../src/manifest.ts'
 import { expect, test } from 'vitest'
-import { validatePreflight } from '../scripts/preflight.ts'
+import { preflight, validatePreflight } from '../scripts/preflight.ts'
 import type { Trace } from '../src/results.ts'
 
 const source = { id: 'owner.request', kind: 'user' as const, text: 'Put threads in the sidebar.' }
@@ -87,4 +90,35 @@ test('preflight verifies the explicit thinking configuration without changing pr
     passed: false,
     checks: { correctPayloads: false },
   })
+})
+
+test('preflight attempts without a terminal receipt are never replayed implicitly', async () => {
+  const manifest = {
+    ...starterManifest(),
+    preflight: {
+      scenarioId: 'staging',
+      cutoff: 3,
+      sourceId: 'owner',
+      query: 'request',
+      maxRequests: 6,
+      maxInputTokens: 50000,
+      maxOutputTokens: 10000,
+    },
+  }
+  const provider = {
+    url: 'unused',
+    totals: () => ({ requests: 1, input: 100, output: 20 }),
+    setScope: () => {
+      throw new Error('Must not open a new scope')
+    },
+    traces: () => traces,
+    allTraces: () => traces,
+  }
+  const fs = FileSystem.layerNoop({ exists: () => Effect.succeed(false) })
+  const resolved = { manifest, runId: 'test', sourceHash: '', corpusHash: '', mode: 'fake' as const, createdAt: '' }
+  await expect(
+    Effect.runPromise(
+      preflight('run', 'unused', resolved, provider).pipe(Effect.provide(Layer.merge(fs, FetchHttpClient.layer))),
+    ),
+  ).rejects.toThrow('Preflight attempts lack a terminal receipt')
 })

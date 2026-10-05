@@ -60,6 +60,7 @@ export function evaluated(resolved: Resolved, episode: Episode, native: ProbeRes
     category: episode.probe.category,
     status: native.status === 'done' ? 'completed' : 'failed',
     answer,
+    rawAnswer: native.text,
     score: {
       ...base,
       correct:

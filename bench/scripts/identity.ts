@@ -1,13 +1,8 @@
 import { Effect, FileSystem } from 'effect'
-import { createHash } from 'node:crypto'
 import { join } from 'node:path'
-import { dataset } from '../src/fixtures.ts'
-import { publicEvents } from '../src/protocol.ts'
-import type { Resolved } from '../src/results.ts'
-import { buildPolicy, type Scenario, type Variant } from '../src/schema.ts'
+import { digest } from './artifact.ts'
+export { digest, fingerprint, corpusHash, artifactIdentity } from './artifact.ts'
 
-export const digest = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex')
-export const corpusHash = (scenarios: readonly Scenario[] = dataset()): string => digest(scenarios)
 export const sourceHash = Effect.fn('bench.sourceHash')(function* (root: string) {
   const fs = yield* FileSystem.FileSystem
   const files: string[] = []
@@ -35,20 +30,3 @@ export const sourceHash = Effect.fn('bench.sourceHash')(function* (root: string)
   )
   return digest(content)
 })
-
-/** Reader-independent OptChat builds, coupled native writers, and shared search/standard compaction roots. */
-export function artifactIdentity(resolved: Resolved, scenarioId: string, variant: Variant): string {
-  const scenario = (resolved.scenarios ?? dataset()).find((item) => item.id === scenarioId)
-  return digest({
-    source: resolved.sourceHash,
-    corpus: scenario === undefined ? '' : publicEvents(scenario.events),
-    mode: resolved.mode,
-    policy: buildPolicy(variant.policy),
-    writer: variant.writer ?? variant.reader,
-    profile: resolved.manifest.profile,
-    pressure: resolved.manifest.pressure,
-    transport: resolved.manifest.transport,
-    trial: resolved.manifest.buildTrial,
-    prompt: resolved.manifest.summaryPrompt,
-  })
-}

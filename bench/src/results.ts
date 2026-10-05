@@ -1,6 +1,8 @@
 import { Schema } from 'effect'
 import { Answer, Category, Manifest, Scenario } from './schema.ts'
 import { Delivery, RetrievalRecord } from './protocol.ts'
+import type { StageReceipt } from './stages.ts'
+import type { SemanticVote } from './semantic.ts'
 
 export const Score = Schema.Struct({
   correct: Schema.Boolean,
@@ -15,6 +17,7 @@ export const EpisodeResult = Schema.Struct({
   category: Category,
   status: Schema.Literals(['completed', 'failed']),
   answer: Schema.NullOr(Answer),
+  rawAnswer: Schema.optional(Schema.String),
   score: Score,
   malformed: Schema.Boolean,
   futureLeakage: Schema.Boolean,
@@ -56,6 +59,8 @@ export type RunData = {
   readonly resolved: Resolved
   readonly results: readonly EpisodeResult[]
   readonly traces: readonly Trace[]
+  readonly semanticVotes?: readonly SemanticVote[]
+  readonly stageReceipts?: readonly StageReceipt[]
 }
 export const Trace = Schema.Struct({
   scope: Schema.String,

@@ -17,7 +17,11 @@ import { Schema } from 'effect'
 import { run, resolveRun, loadRun } from './runner.ts'
 import { compare, renderReport, promotion, accounting, summary, phaseAccounting } from '../src/report.ts'
 import { efficiency } from '../src/metrics.ts'
+import { factorial } from '../src/factorial.ts'
+import { semanticSummary } from '../src/semantic.ts'
+import { construction, semanticEfficiency } from '../src/construction.ts'
 import { createRecall } from './recall.ts'
+import { exportPacket, importVotes } from './blind.ts'
 
 const [command = 'plan', ...args] = Bun.argv.slice(2)
 function option(name: string): string | undefined {
@@ -97,6 +101,11 @@ const analyze = Effect.fn('bench.analyze')(function* () {
       phases: phaseAccounting(data),
       efficiency: efficiency(data),
       paired: paired(data),
+      factorial: factorial(data),
+      semantic: semanticSummary(data),
+      stages: data.stageReceipts ?? [],
+      construction: construction(data),
+      semanticEfficiency: semanticEfficiency(data),
     })
     return { path, paired: paired(data).map(({ rows: _rows, ...decision }) => decision) }
   }
@@ -124,7 +133,19 @@ const analyze = Effect.fn('bench.analyze')(function* () {
   return yield* fail('Use compare, report or promote')
 })
 
+const reviewCommand = Effect.fn('bench.reviewCommand')(function* () {
+  if (command === 'review-packet')
+    return yield* exportPacket(
+      runDir(runId),
+      option('packet') ?? 'recall',
+      option('until-cutoff') === undefined ? undefined : cutoffOption(),
+    )
+  if (command === 'review-votes')
+    return yield* importVotes(runDir(runId), option('packet') ?? 'recall', resolve(option('review') ?? ''))
+  return yield* fail('Unknown review command')
+})
 const artifactCommand = Effect.fn('bench.artifactCommand')(function* () {
+  if (command === 'review-packet' || command === 'review-votes') return yield* reviewCommand()
   if (command === 'recall')
     return yield* createRecall(root, {
       manifest: resolve(option('manifest') ?? ''),
@@ -138,7 +159,11 @@ const artifactCommand = Effect.fn('bench.artifactCommand')(function* () {
   return yield* fail('Unknown artifact command')
 })
 const program = Effect.gen(function* () {
-  if (['recall', 'canary', 'review', 'import', 'report', 'compare', 'promote'].includes(command))
+  if (
+    ['review-packet', 'review-votes', 'recall', 'canary', 'review', 'import', 'report', 'compare', 'promote'].includes(
+      command,
+    )
+  )
     return yield* artifactCommand()
   const manifest =
     option('manifest') === undefined ? starterManifest() : yield* readJson(resolve(option('manifest') ?? ''), Manifest)

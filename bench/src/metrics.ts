@@ -1,4 +1,5 @@
 import { episodes } from './plan.ts'
+import { semanticOutcome } from './semantic.ts'
 import type { EpisodeResult, RunData, Trace } from './results.ts'
 
 const sum = (items: readonly number[]): number => items.reduce((total, value) => total + value, 0)
@@ -92,13 +93,21 @@ function toolMetrics(result: EpisodeResult | undefined) {
   }
 }
 
+function reviewedOutcome(data: RunData, id: string, result: EpisodeResult | undefined, attempts: number) {
+  const assessment = semanticOutcome(
+    result,
+    (data.semanticVotes ?? []).filter((vote) => vote.episodeId === id),
+  )
+  if (assessment.final !== undefined) return assessment.strictPass === true ? 'pass' : 'fail'
+  return outcome(result, attempts, data.resolved.manifest.corpus !== undefined)
+}
 /** API attempts are distinct from tool calls; absent measurements remain unknown. */
 export function answerMetrics(data: RunData, id: string) {
   const traces = scoped(data, [id])
   const result = data.results.find((item) => item.id === id)
   return {
     id,
-    outcome: outcome(result, traces.length, data.resolved.manifest.corpus !== undefined),
+    outcome: reviewedOutcome(data, id, result, traces.length),
     ...requestMetrics(data, traces),
     ...toolMetrics(result),
     episodeMs: result?.timing?.episodeMs ?? null,
