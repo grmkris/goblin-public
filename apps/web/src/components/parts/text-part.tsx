@@ -33,7 +33,7 @@ export function MessageText({ text }: { readonly text: string }) {
   )
 }
 
-/** Opens a thread beside main: given where a note's thread label can lead somewhere (main, with its thread panel). */
+/** Opens a thread in a pane beside the transcript: given where a note's thread label can lead somewhere. */
 export const OpenThread = createContext<((thread: string) => void) | undefined>(undefined)
 
 /** Who wrote a message; the label of a note shared from a thread opens that thread where it can. */

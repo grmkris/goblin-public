@@ -4,7 +4,7 @@ import { Reasoning, ReasoningContent, ReasoningTrigger, Receipt } from '@purrabl
 import { targetLabel } from '../../lib/capabilities.ts'
 import { type Interaction, interactionOf } from '../../lib/interactions.ts'
 import type { Part, ToolPart } from '../../lib/parts.ts'
-import { ThreadStartedRow } from '../thread-replies.tsx'
+import { ThreadStartedRow } from '../inline-thread.tsx'
 import { McpToolPart } from './mcp-tool-part.tsx'
 import { AssistantText, UserText } from './text-part.tsx'
 import { GenericToolPart, SubagentToolPart } from './tool-part.tsx'

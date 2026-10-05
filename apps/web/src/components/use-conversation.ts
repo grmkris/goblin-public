@@ -1,7 +1,8 @@
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AppContext } from '@purrable/contracts'
 import { failureText, isNumber, record, records, request } from '../lib/boundary.ts'
-import { BrowserPiEvents, ConversationStream, type StreamStatus } from '../lib/conversation-stream.ts'
+import { BrowserPiEvents, type StreamStatus } from '../lib/conversation-stream.ts'
+import { type Lease, type StreamState, StreamPool } from '../lib/stream-pool.ts'
 import { conversationParts } from '../lib/parts.ts'
 import { type ConversationProjection, entryMessages, historyStart } from '../lib/projection.ts'
 import { branchPoints, fromEntry } from '../lib/threads.ts'
@@ -21,47 +22,55 @@ export async function postMessage(
   await request(`/api/conversations/${thread}/messages`, { body })
 }
 
+/** Every conversation the browser follows, shared by the panes and inline threads that show it. */
+const streams = new StreamPool((thread) => ({
+  snapshot: (signal) => request(`/api/conversations/${thread}/snapshot`, { signal }),
+  events: () => new BrowserPiEvents(`/api/conversations/${thread}/events`),
+}))
+
+let resuming = false
+/** Coming back to the tab, or back online, every followed conversation starts again from a fresh snapshot. */
+function resumeWithThePage(): void {
+  if (resuming) return
+  resuming = true
+  const resume = () => {
+    if (document.visibilityState === 'visible') streams.resume()
+  }
+  window.addEventListener('online', resume)
+  document.addEventListener('visibilitychange', resume)
+}
+
+const FOLLOWING: StreamState = { projection: undefined, status: 'connecting', notice: '' }
+
 /**
- * One conversation of the agent as the browser follows it: a Pi snapshot, then the event stream (reconnecting on
- * focus and when the network returns), with sending and stopping. The chat and the thread panel each hold one.
+ * One conversation of the agent as the browser follows it, from the shared stream pool: a Pi snapshot, then the
+ * event stream, with sending and stopping. `visible` says whether it is on screen; one nobody sees for a while stops
+ * following until it is (its last state stays).
  */
-export function useConversation(thread: string) {
-  const [projection, setProjection] = useState<ConversationProjection>()
-  const [status, setStatus] = useState<StreamStatus>('connecting')
-  const [notice, setNotice] = useState('')
-  const stream = useRef<ConversationStream | undefined>(undefined)
+export function useConversation(thread: string, visible = true) {
+  const [state, setState] = useState<StreamState>(FOLLOWING)
+  const [failure, setFailure] = useState('')
+  const lease = useRef<Lease | undefined>(undefined)
+  const seen = useRef(visible)
+  seen.current = visible
   useEffect(() => {
-    const attachment = new ConversationStream(
-      {
-        snapshot: (signal) => request(`/api/conversations/${thread}/snapshot`, { signal }),
-        events: () => new BrowserPiEvents(`/api/conversations/${thread}/events`),
-      },
-      setProjection,
-      (next, detail) => {
-        setStatus(next)
-        setNotice(next === 'reconnecting' ? `${detail ?? 'Disconnected'}. Reconnecting…` : '')
-      },
-    )
-    stream.current = attachment
-    void attachment.reconnect()
-    const resume = () => {
-      if (document.visibilityState === 'visible') void attachment.reconnect()
-    }
-    window.addEventListener('online', resume)
-    document.addEventListener('visibilitychange', resume)
+    resumeWithThePage()
+    const held = streams.acquire(thread, seen.current, setState)
+    lease.current = held
     return () => {
-      window.removeEventListener('online', resume)
-      document.removeEventListener('visibilitychange', resume)
-      attachment.dispose()
+      held.release()
+      lease.current = undefined
     }
   }, [thread])
+  useEffect(() => lease.current?.setVisible(visible), [visible])
   /** `operationId` is stable for replies to a question or permission request; a typed message gets a fresh one. */
   async function send(input: string, operationId?: string, appContext: readonly AppContext[] = []): Promise<boolean> {
     try {
       await postMessage(thread, input, operationId, appContext)
+      setFailure('')
       return true
     } catch (error) {
-      setNotice(failureText(error))
+      setFailure(failureText(error))
       return false
     }
   }
@@ -69,10 +78,19 @@ export function useConversation(thread: string) {
     try {
       await request(`/api/conversations/${thread}/stop`, { body: {} })
     } catch (error) {
-      setNotice(failureText(error))
+      setFailure(failureText(error))
     }
   }
-  return { projection, status, notice, report: setNotice, send, stop }
+  // A suspended conversation is off screen; it shows its last state as it was.
+  const status: StreamStatus = state.status === 'suspended' ? 'connected' : state.status
+  return {
+    projection: state.projection,
+    status,
+    notice: failure === '' ? state.notice : failure,
+    report: setFailure,
+    send,
+    stop,
+  }
 }
 
 type HistoryPage = { readonly entries: readonly Record<string, unknown>[]; readonly more: boolean }

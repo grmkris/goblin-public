@@ -121,14 +121,15 @@ for unread replies; a click shows it in the focused pane, its side button opens 
 like a pane's grip. Folded on a desktop the sidebar is a 56px rail (`components/workspace-rail.tsx`) of main and the
 active conversations, never hidden altogether, each with a hover card. Unread is the server's: `read_at` on
 `app_conversations` is the owner's read mark, set when a pane has shown the conversation for a moment (half in view,
-the page in front). Each conversation shows in a pane of its own (below); `/c/:id` names the focused one. A conversation attaches threads to their parent message with a connector rail and an indented preview
-(`components/thread-replies.tsx`). Blocks are expanded by default: the first five messages show their author, clipped
-text, and quiet thought/tool lines; a busy mark follows current activity. The owner can collapse each block, with
-that device preference in guarded localStorage. An IntersectionObserver starts the compact owner-scoped preview read
-only near the viewport, then polls while visible. After five messages only activity and the remaining count change.
-Owner-started threads get the same block. Open thread and the remaining-replies action open the thread beside its
-parent's pane. Reply in thread opens a draft pane beside it that branches the thread only when it is sent, because Pi
-cannot delete a conversation; the sidebar's "+" beside Threads opens an empty draft the same way. A thread started with "+" tells
+the page in front). Each conversation shows in a pane of its own (below); `/c/:id` names the focused one. Threads open inline first, at any depth (`components/inline-thread.tsx`): under the message a thread branched from
+sits a chip with its reply count, name, last activity and state; it unfolds the live thread in place, connected to
+the message, with its own messages (the message it branched from is right above), its own threads unfolding the same
+way, and a small composer, plus Open in pane to put it beside. While the thread is in a pane the fold shows a note
+with the way to it and back. Reply in thread on a message with no thread opens an inline reply that branches the
+thread only when it is sent, because Pi cannot delete a conversation; the sidebar's "+" opens an empty draft pane the
+same way. Panes and inline threads follow conversations through one stream pool (`lib/stream-pool.ts`): one event
+stream per conversation however many show it, at most eight following beyond those on screen, and one off screen
+stops following after ten seconds, resuming from a fresh snapshot when it comes back. A thread started with "+" tells
 main its name once it has one (ADR 0010): main gets one `app.thread_started` note, `[thread started: "<title>"]`, and
 its transcript shows a row for that thread. The owner API is conversation-scoped:
 
@@ -144,7 +145,6 @@ its transcript shows a row for that thread. The owner API is conversation-scoped
 | `POST /api/conversations/:id/messages` | Submit `input`, a stable `operationId` and optional `appContext` to an open conversation; returns 202 acceptance. |
 | `POST /api/conversations/:id/stop` | Stop a conversation or one `operationId`, and the subagents it started (not its threads). |
 | `GET /api/conversations/:id/snapshot`, `GET /api/conversations/:id/events` | Pi snapshot or SSE snapshot followed by committed batches. |
-| `GET /api/conversations/:id/preview` | First five own messages (bounded text and quiet tool/thought lines), remaining replies and busy state; no inherited history. |
 | `GET /api/conversations/:id/history?before=<entry>` | Earlier entries, oldest first, with a `more` flag. |
 
 Every thread runs the `purrable.thread` extension (`pi/thread.ts`), added to that conversation alone when it is made;

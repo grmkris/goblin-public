@@ -894,7 +894,7 @@ summary {
   }
 }
 
-/* The connector starts at the owning message's edge and turns into its indented thread preview. */
+/* The connector starts at the owning message's edge and turns into the thread unfolded under it. */
 .thread-rows {
   align-self: flex-start;
   width: min(100%, 42rem);
@@ -906,16 +906,22 @@ summary {
   padding-left: 0;
   padding-right: 1.5rem;
 }
-.thread-preview {
+.inline-thread,
+.inline-thread-stub {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--message-scroller-gap, 0.75rem);
   width: 100%;
-  padding: 0.5rem;
+  padding: 0.625rem 0.75rem 0.75rem;
   margin-top: 0.75rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--card);
 }
-.thread-preview::before {
+/* The connector from the message's edge into the thread under it. */
+.inline-thread::before,
+.inline-thread-stub::before {
   position: absolute;
   inset: -0.75rem auto auto -1rem;
   width: 1rem;
@@ -925,7 +931,8 @@ summary {
   border-bottom-left-radius: var(--radius-md);
   content: '';
 }
-[data-side='end'] > .thread-preview::before {
+[data-side='end'] > .inline-thread::before,
+[data-side='end'] > .inline-thread-stub::before {
   left: auto;
   right: -1rem;
   border-left: 0;
@@ -933,51 +940,72 @@ summary {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: var(--radius-md);
 }
-.thread-preview > .thread-row {
-  width: 100%;
-  padding-inline: 0.25rem;
-}
-.thread-preview-body {
+.inline-thread-header {
   display: flex;
-  flex-direction: column;
-  gap: 0.625rem;
-  padding: 0.5rem 0.25rem 0.25rem;
-}
-.thread-preview-message {
-  display: grid;
-  grid-template-columns: 3rem minmax(0, 1fr);
-  column-gap: 0.625rem;
-  font-size: 0.8125rem;
-}
-.thread-preview-author {
-  color: var(--muted-foreground);
+  align-items: center;
+  gap: 0.25rem;
   font-size: 0.75rem;
 }
-.thread-preview-text {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+.inline-thread-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.thread-preview-message > .thread-preview-quiet {
-  grid-column: 2;
-  overflow: hidden;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.thread-preview-quiet {
+.inline-thread-header > button,
+.inline-thread-stub > button,
+.inline-draft-cancel {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.5rem;
+  padding-inline: 0.375rem;
+  border-radius: var(--radius-sm);
   color: var(--muted-foreground);
   font-size: 0.75rem;
 }
-.thread-preview-actions {
+.inline-thread-header > button > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+@media (hover: hover) {
+  .inline-thread-header > button:hover,
+  .inline-thread-stub > button:hover,
+  .inline-draft-cancel:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+}
+.inline-thread-parts {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-  color: var(--primary);
+  flex-direction: column;
+  gap: var(--message-scroller-gap, 0.75rem);
+  min-width: 0;
+}
+.inline-thread-quiet {
+  color: var(--muted-foreground);
   font-size: 0.75rem;
+}
+.inline-thread-stub {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+.inline-thread-stub > span {
+  flex: 1;
+}
+.inline-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.inline-draft {
+  padding: 0.5rem;
 }
 
 .workspace-surface {
