@@ -2,7 +2,7 @@ import { auth, type AuthProvider, discoverOAuthServerInfo, type Tool } from '@mo
 import type { CatalogEntry, RegistryView, ServerView, ToolView } from '@purrable/contracts'
 import { nowSeconds } from '../clock.ts'
 import { Internal, InvalidInput, NeedsAuthorization, NotFound } from '../http/errors.ts'
-import { McpConnectionManager, offersSkills, toolAppResource, toolOffered } from './connection.ts'
+import { McpConnectionManager, offersEvents, offersSkills, toolAppResource, toolOffered } from './connection.ts'
 import type { Credentials } from './credentials.ts'
 import type { Grant, Grants } from './grants.ts'
 import { addedServerId, serverClaims, userEndpoint } from './endpoint.ts'
@@ -45,6 +45,7 @@ export type McpHostOptions = {
   /** Registries the owner added; without it, only the built-in ones are searched. */
   readonly registries?: AddedRegistries
   /** Whether the owner uses skills from a server; without it, no server's skills are read. */
+  readonly authorizeEvents?: (serverId: string, name: string, argumentsJson: string) => void | Promise<void>
   readonly skillsEnabled?: (serverId: string) => boolean
 }
 
@@ -84,6 +85,7 @@ export class McpHost {
       servers: [...options.servers, ...added.map(({ serverId, endpoint }) => ({ serverId, endpoint }))],
       allows: (grant) => options.grants.allows(grant),
       skillsEnabled: (serverId) => this.#skillsEnabled(serverId),
+      ...(options.authorizeEvents === undefined ? {} : { authorizeEvents: options.authorizeEvents }),
       auth: (server) => this.#authProvider(server),
       fetch: options.fetch,
     })
@@ -153,6 +155,7 @@ export class McpHost {
         status: this.#credentials.status(server.serverId),
         live: snapshot !== undefined,
         skillsOffered: snapshot !== undefined && offersSkills(snapshot),
+        ...(snapshot !== undefined && offersEvents(snapshot) ? { eventsOffered: true } : {}),
         skillsEnabled: this.#skillsEnabled(server.serverId),
         ...(name === undefined ? {} : { serverName: name }),
         source: claims === undefined ? 'config' : 'added',

@@ -5,7 +5,10 @@ import { InvalidInput, PayloadTooLarge } from './errors.ts'
 const DEFAULT_LIMIT = 65_536
 
 /** Read at most `limit` bytes of the request body, whatever `content-length` claims (chunked bodies have none). */
-export const readBytes = async (request: Request, limit = DEFAULT_LIMIT): Promise<Uint8Array> => {
+export const readBytes = async (
+  request: Pick<Request, 'headers' | 'body'>,
+  limit = DEFAULT_LIMIT,
+): Promise<Uint8Array> => {
   const declared = Number(request.headers.get('content-length') ?? 0)
   if (declared > limit) throw new PayloadTooLarge({ limit })
   if (request.body === null) return new Uint8Array()

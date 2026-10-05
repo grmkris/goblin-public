@@ -1,0 +1,139 @@
+import { createMcpHandler, ProtocolError, Server } from '@modelcontextprotocol/server'
+import * as Schema from 'effect/Schema'
+import * as Option from 'effect/Option'
+import { sign } from '../../src/mcp/events/webhook.ts'
+import type { EventEnvelope } from '../../src/mcp/events/protocol.ts'
+
+const Params = Schema.toStandardSchemaV1(Schema.Record(Schema.String, Schema.Unknown))
+const Subscribe = Schema.Struct({
+  name: Schema.String,
+  delivery: Schema.Struct({ mode: Schema.Literal('webhook'), url: Schema.String, secret: Schema.String }),
+})
+
+/** A producer fixture speaks the selected raw capabilities.events profile, not an alternate extension spelling. */
+export class EventsFixture {
+  readonly subscriptions = new Map<string, { secret: string; url: string }>()
+  readonly journal: { eventId: string; name: string; timestamp: string; data: unknown; cursor: string }[] = []
+  readonly calls: string[] = []
+  readonly inbox: { id: string; text: string; direction: string }[] = []
+  cursor = '0'
+  now = Date.now()
+  ttlMs = 3_600_000
+  receiver: ((request: Request) => Promise<Response>) | undefined
+  readonly #handler = createMcpHandler(() => {
+    // oxlint-disable-next-line typescript/no-deprecated -- Low-level official Server exposes draft methods absent from McpServer.
+    const server = new Server({ name: 'mygram-events-fixture', version: '1' }, { capabilities: { tools: {} } })
+    server.setRequestHandler('tools/list', () => ({
+      tools: ['inbox', 'send_message', 'subscribe', 'unsubscribe'].map((name) => ({
+        name,
+        inputSchema: { type: 'object' as const },
+      })),
+    }))
+    server.setRequestHandler('tools/call', (request) => {
+      this.calls.push(request.params.name)
+      const content =
+        request.params.name === 'inbox'
+          ? { messages: request.params.arguments?.cursor === this.cursor ? [] : this.inbox, nextCursor: this.cursor }
+          : { status: 'subscribed' }
+      return { content: [], structuredContent: content }
+    })
+    server.setRequestHandler('events/list', { params: Params }, () => ({
+      resultType: 'complete',
+      events: ['message.received', 'question.answered', 'skills.updated', 'skills.list_changed'].map((name) => ({
+        name,
+        description: name,
+        inputSchema: { type: 'object' },
+        payloadSchema: { type: 'object' },
+        delivery: ['poll', 'webhook'],
+      })),
+    }))
+    server.setRequestHandler('events/subscribe', { params: Params }, async (params) => {
+      this.calls.push('events/subscribe')
+      const request = Schema.decodeUnknownSync(Subscribe)(params)
+      const id = `sub_${request.name}`
+      this.subscriptions.set(id, request.delivery)
+      if (this.receiver !== undefined) {
+        const response = await this.deliver(
+          id,
+          { type: 'verification', challenge: 'fixture-challenge' },
+          `msg_verification_${this.calls.length}`,
+        )
+        if (response.status !== 200 || (await response.text()) !== '{"challenge":"fixture-challenge"}')
+          throw new ProtocolError(-32015, 'challenge_failed')
+      }
+      return {
+        resultType: 'complete',
+        id,
+        refreshBefore: new Date(this.now + this.ttlMs).toISOString(),
+        cursor: this.cursor,
+        truncated: false,
+      }
+    })
+    server.setRequestHandler('events/unsubscribe', { params: Params }, (params) => {
+      this.calls.push('events/unsubscribe')
+      if (!this.subscriptions.delete(`sub_${String(params['name'])}`)) throw new ProtocolError(-32011, 'not found')
+      return { resultType: 'complete' }
+    })
+    server.setRequestHandler('events/poll', { params: Params }, (params) => {
+      this.calls.push('events/poll')
+      const events = this.journal
+        .filter(
+          (e) =>
+            e.name === params['name'] &&
+            e.cursor > (Schema.decodeUnknownSync(Schema.NullOr(Schema.String))(params['cursor'] ?? null) ?? ''),
+        )
+        .slice(0, Number(params['maxEvents'] ?? 100))
+      return {
+        resultType: 'complete',
+        events,
+        cursor: this.cursor,
+        truncated: false,
+        hasMore: false,
+        nextPollMs: 300_000,
+      }
+    })
+    server.setRequestHandler('events/stream', { params: Params }, () => {
+      throw new ProtocolError(-32014, 'Unsupported')
+    })
+    return server
+  })
+  async fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    const request = new Request(input, init)
+    const response = await this.#handler.fetch(request)
+    if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return response
+    const payload: unknown = await response.clone().json()
+    const raw = Schema.decodeUnknownOption(
+      Schema.Struct({ result: Schema.Struct({ capabilities: Schema.Record(Schema.String, Schema.Unknown) }) }),
+    )(payload)
+    if (Option.isSome(raw))
+      return Response.json({
+        ...Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(payload),
+        result: { ...raw.value.result, capabilities: { ...raw.value.result.capabilities, events: {} } },
+      })
+    return response
+  }
+  async deliver(
+    subscriptionId: string,
+    envelope: EventEnvelope,
+    id: string,
+    overrides: { signature?: string; timestamp?: string } = {},
+  ): Promise<Response> {
+    const subscription = this.subscriptions.get(subscriptionId)
+    if (subscription === undefined || this.receiver === undefined) throw new Error('fixture subscription missing')
+    const body = JSON.stringify(envelope)
+    const timestamp = overrides.timestamp ?? String(Math.floor(this.now / 1000))
+    return this.receiver(
+      new Request(subscription.url, {
+        method: 'POST',
+        body,
+        headers: {
+          'x-mcp-subscription-id': subscriptionId,
+          'webhook-id': id,
+          'webhook-timestamp': timestamp,
+          'webhook-signature':
+            overrides.signature ?? (await sign(subscription.secret, id, timestamp, new TextEncoder().encode(body))),
+        },
+      }),
+    )
+  }
+}

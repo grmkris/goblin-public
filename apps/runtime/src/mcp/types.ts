@@ -18,7 +18,7 @@ export type McpConnectionSnapshot = {
   readonly protocolVersion?: string
   readonly protocolEra?: 'modern' | 'legacy'
   readonly serverInfo?: { readonly name: string; readonly version: string }
-  readonly capabilities: ServerCapabilities
+  readonly capabilities: ServerCapabilities & { readonly events?: Record<string, unknown> }
   readonly tools: readonly Tool[]
   readonly resources: ListResourcesResult['resources']
   readonly resourceTemplates: ListResourceTemplatesResult['resourceTemplates']
@@ -30,6 +30,7 @@ export type McpManagerOptions = {
   /** The owner's exact grants; checked before any connection is opened for a call. */
   readonly allows: (grant: Grant) => boolean
   /** Whether the owner uses skills from a server (skills/store.ts); checked before any skill request. */
+  readonly authorizeEvents?: (serverId: string, name: string, argumentsJson: string) => void | Promise<void>
   readonly skillsEnabled?: (serverId: string) => boolean
   /** Bearer token source per server, with refresh on 401 (mcp/host.ts). */
   readonly auth: (server: McpServerConfig) => AuthProvider

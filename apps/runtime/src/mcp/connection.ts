@@ -21,6 +21,8 @@ import {
 import { mapMcpError } from './errors.ts'
 import { timed } from './log.ts'
 import type { GrantCapability } from './grants.ts'
+import * as Schema from 'effect/Schema'
+import { readBytes } from '../http/body.ts'
 import type {
   McpCallOptions,
   McpCaller,
@@ -50,6 +52,15 @@ export const toolOffered = (tool: Tool, caller: McpCaller): boolean => {
 /** A server serves skills when it declares the Skills extension together with resources (files are resources). */
 export const offersSkills = (snapshot: McpConnectionSnapshot): boolean =>
   snapshot.capabilities.resources !== undefined && snapshot.capabilities.extensions?.[SKILLS_EXTENSION] !== undefined
+
+/** The selected draft uses one spelling, top-level capabilities.events. */
+export const offersEvents = (snapshot: McpConnectionSnapshot): boolean => snapshot.capabilities.events !== undefined
+
+const RawDiscovery = Schema.Struct({
+  result: Schema.Struct({
+    capabilities: Schema.Struct({ events: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)) }),
+  }),
+})
 
 /** The `ui://` resource a tool renders into, when it declares one. */
 export const toolAppResource = (tool: Tool): string | undefined => {
@@ -169,9 +180,29 @@ export class McpConnectionManager {
         jsonSchemaValidator: new CfWorkerJsonSchemaValidator(),
       },
     )
+    let events: Record<string, unknown> | undefined
     const transport = new StreamableHTTPClientTransport(new URL(server.endpoint), {
       authProvider: this.#options.auth(server),
-      fetch: this.#options.fetch,
+      // The pinned SDK strips draft top-level capabilities. Decode the authenticated discovery response
+      // at its supported fetch seam; never make a second unauthenticated discovery request.
+      fetch: async (input, init) => {
+        const response = await this.#options.fetch(input, init)
+        if (
+          typeof init?.body === 'string' &&
+          /"method":"(?:server\/discover|initialize)"/u.test(init.body) &&
+          response.ok &&
+          response.headers.get('content-type')?.includes('application/json')
+        ) {
+          const raw = await readBytes(response.clone(), 16 * 1024 * 1024)
+          try {
+            events = Schema.decodeUnknownSync(RawDiscovery)(JSON.parse(new TextDecoder().decode(raw))).result
+              .capabilities.events
+          } catch {
+            /* Ordinary legacy discovery has no draft capability. */
+          }
+        }
+        return response
+      },
     })
     try {
       await client.connect(transport, { timeout: this.#options.timeoutMs ?? 10_000, ...options })
@@ -191,7 +222,7 @@ export class McpConnectionManager {
           protocolEra,
           ...(serverInfo === undefined ? {} : { serverInfo: { name: serverInfo.name, version: serverInfo.version } }),
           ...(instructions === undefined ? {} : { instructions }),
-          capabilities: client.getServerCapabilities() ?? {},
+          capabilities: { ...client.getServerCapabilities(), ...(events === undefined ? {} : { events }) },
           tools: [],
           resources: [],
           resourceTemplates: [],
@@ -336,6 +367,29 @@ export class McpConnectionManager {
       connection,
       () => connection.client.readResource({ uri }, { timeout: this.#options.timeoutMs ?? 30_000, ...options }),
       maxBytes,
+    )
+  }
+
+  /** Draft requests use the existing connection, OAuth refresh and bounded result seam. */
+  async eventRequest<S extends Schema.ConstraintDecoder<unknown>>(
+    serverId: string,
+    selector: { readonly name: string; readonly argumentsJson: string },
+    method: 'events/list' | 'events/poll' | 'events/subscribe' | 'events/unsubscribe',
+    params: Record<string, unknown>,
+    schema: S,
+  ): Promise<S['Type']> {
+    this.server(serverId)
+    if (this.#options.authorizeEvents === undefined) throw new GrantDenied({ serverId, name: selector.name })
+    await this.#options.authorizeEvents(serverId, selector.name, selector.argumentsJson)
+    const connection = await this.#connection(serverId, { timeout: 5000 })
+    if (!offersEvents(connection.snapshot)) throw new UpstreamMcp({ serverId, reason: 'unsupported' })
+    await this.#options.authorizeEvents(serverId, selector.name, selector.argumentsJson)
+    return timed({ step: 'events', serverId, method }, () =>
+      this.#remote(
+        connection,
+        () => connection.client.request({ method, params }, Schema.toStandardSchemaV1(schema), { timeout: 5000 }),
+        262_144,
+      ),
     )
   }
 
