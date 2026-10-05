@@ -3,6 +3,10 @@
 // registry's icon placeholder, and plain utilities for the registry's scroll-fade and scrollbar helpers (the floating
 // composer and header provide the edge fades here), and layout custom properties a parent sets to inset the content
 // under floating chrome: --message-scroller-max-width, -gap, -inset-top, -inset-bottom, -inset-x and -end-offset.
+// Items render without the registry's `content-visibility: auto` and 10rem placeholder: rows not yet painted measured
+// as the placeholder, so the content and the scrollbar shifted while scrolling up, and a just-sent turn was measured
+// at the wrong height and yanked to the end (shadcn-ui/ui#11175). The cost is painting every row: main's memory view
+// keeps its snapshot short, but a thread renders everything since its last compaction.
 import type * as React from 'react'
 import { MessageScroller as MessageScrollerPrimitive } from '@shadcn/react/message-scroller'
 import { ArrowDownIcon } from 'lucide-react'
@@ -64,7 +68,7 @@ function MessageScrollerItem({
     <MessageScrollerPrimitive.Item
       data-slot="message-scroller-item"
       scrollAnchor={scrollAnchor}
-      className={cn('min-w-0 shrink-0 [contain-intrinsic-size:auto_10rem] [content-visibility:auto]', className)}
+      className={cn('min-w-0 shrink-0', className)}
       {...props}
     />
   )
