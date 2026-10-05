@@ -12,11 +12,16 @@ type ModelEnvironment = Pick<RuntimeEnv, 'MODEL_ID' | 'MODEL_BASE_URL' | 'MODEL_
 export const MODEL_PROVIDER = 'purrable-litellm'
 
 /** The provider is configured at the Worker boundary; its key never enters Pi state. */
-function makePiModel(option: ModelOption, baseUrl: string, contextWindow?: number): Model<'openai-completions'> {
+function makePiModel(
+  option: ModelOption,
+  baseUrl: string,
+  contextWindow?: number,
+  provider = MODEL_PROVIDER,
+): Model<'openai-completions'> {
   return {
     id: option.id,
     name: option.label,
-    provider: MODEL_PROVIDER,
+    provider,
     api: 'openai-completions',
     baseUrl,
     input: option.images ? ['text', 'image'] : ['text'],
@@ -38,6 +43,7 @@ export function makePiModels(
   env: ModelEnvironment,
   streams: ProviderStreams = LITELLM_STREAMS,
   contextWindow?: number,
+  authorizeRoutine?: (runId: string) => Promise<void>,
 ) {
   const options = modelOptions(env.MODELS, env.MODEL_ID)
   const [first, ...rest] = options
@@ -58,5 +64,32 @@ export function makePiModels(
   })
   const models = createModels()
   models.setProvider(provider)
+  if (authorizeRoutine !== undefined) {
+    const original = models.getModel.bind(models)
+    models.getModel = (providerId, id) => {
+      const runId = /^purrable-routine:(rr_[\w-]{1,100})$/u.exec(providerId)?.[1]
+      if (runId !== undefined && models.getProvider(providerId) === undefined) {
+        models.setProvider(
+          createProvider({
+            id: providerId,
+            name: 'Purrable routine',
+            baseUrl: env.MODEL_BASE_URL,
+            models: options.map((option) => makePiModel(option, env.MODEL_BASE_URL, contextWindow, providerId)),
+            auth: {
+              apiKey: {
+                name: 'Routine model authority',
+                resolve: async () => {
+                  await authorizeRoutine(runId)
+                  return { auth: { apiKey: env.MODEL_KEY } }
+                },
+              },
+            },
+            api: streams,
+          }),
+        )
+      }
+      return original(providerId, id)
+    }
+  }
   return { models, model, options }
 }

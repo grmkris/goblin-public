@@ -61,6 +61,7 @@ function reply(messages: readonly Message[]): AssistantMessage['content'] {
 export function scriptedStreams(
   seen: (request: SeenRequest) => void = () => undefined,
   respond: (messages: readonly Message[]) => AssistantMessage['content'] = reply,
+  delay: (messages: readonly Message[]) => number = () => 0,
 ): ProviderStreams {
   const stream: ProviderStreams['stream'] = (target, context) => {
     seen({
@@ -86,11 +87,14 @@ export function scriptedStreams(
       timestamp: 0,
     }
     const output = createAssistantMessageEventStream()
-    queueMicrotask(() => {
+    const publish = () => {
       output.push({ type: 'start', partial: message })
       output.push({ type: 'done', reason: message.stopReason === 'toolUse' ? 'toolUse' : 'stop', message })
       output.end(message)
-    })
+    }
+    const wait = delay(context.messages)
+    if (wait > 0) setTimeout(publish, wait)
+    else queueMicrotask(publish)
     return output
   }
   return { stream, streamSimple: stream }

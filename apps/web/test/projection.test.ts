@@ -83,6 +83,33 @@ describe('Pi committed state projected for the chat', () => {
     const broken = projectSnapshot({ type: 'snapshot', entries: [{ ...note, data: {} }], tools: [], inbox: [] })
     expect(broken.messages).toEqual([])
   })
+  it('labels passive routine reports and links their registered run thread', () => {
+    const note = {
+      id: 13,
+      kind: 'app.routine',
+      data: { thread: '62', routineId: 'rt_test', runId: 'rr_test', outcome: 'completed' },
+      model: [{ role: 'user', content: 'Routine completed: Check the plan.', timestamp: 4_000 }],
+    }
+    const projected = projectSnapshot({ type: 'snapshot', entries: [note], tools: [], inbox: [] })
+    expect(projected.messages).toEqual([
+      {
+        id: '13:0',
+        role: 'user',
+        text: 'Routine completed: Check the plan.',
+        timestamp: 4_000,
+        author: 'Routine',
+        thread: '62',
+      },
+    ])
+    const skipped = projectSnapshot({
+      type: 'snapshot',
+      entries: [{ ...note, data: { thread: null } }],
+      tools: [],
+      inbox: [],
+    })
+    expect(skipped.messages[0]).toMatchObject({ author: 'Routine' })
+    expect(skipped.messages[0]).not.toHaveProperty('thread')
+  })
   it('projects committed tool progress and clears in-flight text after a run ends', () => {
     const snapshot = projectSnapshot({ type: 'snapshot', entries: [], tools: [], inbox: [] })
     const next = projectBatch(snapshot, [

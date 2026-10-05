@@ -24,6 +24,7 @@ import { budgetFraction } from '../lib/usage.ts'
 import { BillingCard } from './billing.tsx'
 import { useBilling } from '../lib/billing.tsx'
 import { PasskeysCard } from './passkeys.tsx'
+import { RoutinesCard } from './routines.tsx'
 import { useUsageToday } from './use-usage.ts'
 import { AccountWorkspaceCard, MembersCard } from './members.tsx'
 import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
@@ -270,6 +271,7 @@ export function Settings() {
           <ResidentCard onError={setError} />
           <UsageCard />
           <MemoryCard onError={setError} />
+          <RoutinesCard />
         </>
       )}
       <PasskeysCard onError={setError} />

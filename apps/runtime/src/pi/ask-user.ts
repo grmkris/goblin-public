@@ -72,31 +72,37 @@ const ASKING = [
  * `ask_user`: the agent's structured questions to the owner. The tool records them and ends the run (`terminate`), so
  * no model call waits on a person; the answer is an ordinary next message, from the web card or any other channel.
  */
-export const askUserExtension = defineExtension({
-  name: 'purrable.ask',
-  sections: [section('asking', () => ASKING)],
-  tools: [
-    defineTool({
-      name: 'ask_user',
-      description:
-        'Ask the owner one to five short questions when you cannot continue without their decision or a missing detail. Offer 2-8 options for a choice. Call it alone, then stop: their answers arrive as their next message.',
-      parameters: Parameters,
-      replay: 'safe',
-      execute: async ({ questions }) => {
-        const problems = questionProblems(questions)
-        if (problems.length > 0)
-          return { content: [{ type: 'text', text: `Not asked. ${problems.join(' ')}` }], isError: true }
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Asked the owner:\n${questionText(questions)}\nTheir answers will arrive as their next message.`,
-            },
-          ],
-          details: { kind: 'question', questions: questions.map(spec) },
-          control: { terminate: true },
-        }
-      },
-    }),
-  ],
-})
+export function askingExtension(
+  onQuestion?: (session: string, callId: string, questions: readonly QuestionSpec[]) => Promise<void>,
+) {
+  return defineExtension({
+    name: onQuestion === undefined ? 'purrable.ask' : 'purrable.routine-ask',
+    sections: [section('asking', () => ASKING)],
+    tools: [
+      defineTool({
+        name: 'ask_user',
+        description:
+          'Ask the owner one to five short questions when you cannot continue without their decision or a missing detail. Offer 2-8 options for a choice. Call it alone, then stop: their answers arrive as their next message.',
+        parameters: Parameters,
+        replay: 'safe',
+        execute: async ({ questions }, api) => {
+          const problems = questionProblems(questions)
+          if (problems.length > 0)
+            return { content: [{ type: 'text', text: `Not asked. ${problems.join(' ')}` }], isError: true }
+          if (onQuestion !== undefined) await onQuestion(String(api.conversationId), api.callId, questions.map(spec))
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Asked the owner:\n${questionText(questions)}\nTheir answers will arrive as their next message.`,
+              },
+            ],
+            details: { kind: 'question', questions: questions.map(spec) },
+            control: { terminate: true },
+          }
+        },
+      }),
+    ],
+  })
+}
+export const askUserExtension = askingExtension()

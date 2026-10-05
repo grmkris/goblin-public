@@ -105,6 +105,184 @@ function lifecycleEvidencePath(): FileURL {
   return new FileURL('../../.alchemy/purrable-native-lifecycle.json', import.meta.url)
 }
 
+const RoutineRecovery = Schema.Struct({
+  instance: Schema.String,
+  runId: Schema.String,
+  sessionId: Schema.String,
+  used: Schema.Number,
+})
+const RoutineRecovered = Schema.Struct({
+  ...RoutineRecovery.fields,
+  state: Schema.String,
+  usedBefore: Schema.Number,
+  replay: Schema.Boolean,
+  reportAccepted: Schema.Boolean,
+  retainedSchedules: Schema.Number,
+})
+const routineRecoveryPath = new FileURL('../../.alchemy/purrable-routine-reconstruction.json', import.meta.url)
+
+harness.test(
+  'local workerd: routine Telegram flag, frozen retries and remote receipt remain separate from Pi acceptance',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const response = yield* Effect.promise(() =>
+      fetch(`${baseUrl(url)}/routine-notifications?name=routine-notifications-${Date.now()}`),
+    )
+    expect(response.status).toBe(200)
+    const result = yield* Effect.promise(() => response.json())
+    expect(result).toMatchObject({
+      offCalls: 0,
+      frozenServer: 'mygram',
+      retryState: 'pending',
+      attempts: 2,
+      stableBytes: true,
+      accepted: 1,
+      state: 'accepted',
+      metadata: { id: 'fixture-remote-id', delivery: 'accepted' },
+      scrubbed: 'Useful result <safe> [redacted]',
+      reported: true,
+    })
+  }),
+)
+
+harness.test(
+  'local workerd: routine question survives eviction with the same Pi session and one usage projection',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `routine-recovery-${yield* nextInt}`
+    const beforeResponse = yield* Effect.promise(() => fetch(`${baseUrl(url)}/routine-recovery-write?name=${name}`))
+    expect(beforeResponse.status).toBe(200)
+    const before = yield* Schema.decodeUnknownEffect(RoutineRecovery)(
+      yield* Effect.promise(() => beforeResponse.json()),
+    )
+    if (phase === 'write') {
+      mkdirSync(new FileURL('./', routineRecoveryPath), { recursive: true })
+      writeFileSync(routineRecoveryPath, JSON.stringify({ name, testProcess: process.pid, ...before }))
+      return
+    }
+    yield* Effect.promise(() =>
+      fetch(`${baseUrl(url)}/routine-evict?name=${name}`).then(
+        () => undefined,
+        () => undefined,
+      ),
+    )
+    const afterResponse = yield* Effect.promise(() => fetch(`${baseUrl(url)}/routine-recovery-read?name=${name}`))
+    expect(afterResponse.status).toBe(200)
+    const after = yield* Schema.decodeUnknownEffect(RoutineRecovered)(yield* Effect.promise(() => afterResponse.json()))
+    expect(after.instance).not.toBe(before.instance)
+    expect(after).toMatchObject({
+      runId: before.runId,
+      sessionId: before.sessionId,
+      usedBefore: before.used,
+      used: 30,
+      state: 'completed',
+      replay: true,
+      reportAccepted: true,
+    })
+    expect(after.retainedSchedules).toBeLessThanOrEqual(1)
+  }),
+)
+
+if (phase === 'read')
+  harness.test(
+    'local workerd process two: routines recover the retained question and same Pi session',
+    Effect.gen(function* () {
+      const RecoveryEvidence = Schema.Struct({
+        ...RoutineRecovery.fields,
+        name: Schema.String,
+        testProcess: Schema.Number,
+      })
+      const before = yield* Schema.decodeUnknownEffect(RecoveryEvidence)(
+        JSON.parse(readFileSync(routineRecoveryPath, 'utf8')),
+      )
+      expect(process.pid).not.toBe(before.testProcess)
+      const { url } = yield* stack
+      const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/routine-recovery-read?name=${before.name}`))
+      expect(response.status).toBe(200)
+      const after = yield* Schema.decodeUnknownEffect(RoutineRecovered)(yield* Effect.promise(() => response.json()))
+      expect(after.instance).not.toBe(before.instance)
+      expect(after).toMatchObject({
+        runId: before.runId,
+        sessionId: before.sessionId,
+        usedBefore: 15,
+        used: 30,
+        state: 'completed',
+        replay: true,
+        reportAccepted: true,
+      })
+      expect(after.retainedSchedules).toBeLessThanOrEqual(1)
+    }),
+  )
+
+harness.test(
+  'local workerd: routines charge committed native compaction, dedupe UTC-day replay and bound cap overshoot',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const response = yield* Effect.promise(() =>
+      fetch(`${baseUrl(url)}/routine-usage?name=routine-usage-${Date.now()}`),
+    )
+    expect(response.status).toBe(200)
+    const result = yield* Effect.promise(() => response.json())
+    expect(result).toMatchObject({
+      compactionStatus: 'completed',
+      compactedTokens: 45,
+      afterReplay: 45,
+      nextDay: 0,
+      capState: 'failed',
+      overshoot: 10,
+      capModelRequests: 1,
+    })
+  }),
+)
+
+harness.test(
+  'local workerd: main Stop preserves executing routines, caps queue one trigger and archive stops owned work',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/routine-stop?name=routine-stop-${Date.now()}`))
+    expect(response.status).toBe(200)
+    const result = yield* Effect.promise(() => response.json())
+    expect(result).toMatchObject({
+      currentConfirmation: 'active',
+      mainStopPreserved: true,
+      capped: true,
+      noCapRun: true,
+      onePending: true,
+      suppressed: 2,
+      archived: 'archived',
+      archivedState: 'stopped',
+      pendingCleared: true,
+      secondSettled: 'completed',
+      oneReport: true,
+    })
+  }),
+)
+
+harness.test(
+  'local workerd: routine manual runs isolate native Pi sessions and dedupe passive reports',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const response = yield* Effect.promise(() =>
+      fetch(`${baseUrl(url)}/routine-execution?name=routine-run-${Date.now()}`),
+    )
+    expect(response.status).toBe(200)
+    const result = yield* Effect.promise(() => response.json())
+    expect(result).toMatchObject({
+      duplicate: true,
+      state: 'completed',
+      registered: true,
+      copiedCapabilities: 0,
+      reportCount: 1,
+      reportAccepted: true,
+      tools: ['mcp_list', 'mcp_call', 'ask_user'],
+      usage: { run: 15, day: 15 },
+      skipped: 'skipped',
+      skipOutcome: 'ResidentInactive',
+      noSkippedModel: true,
+    })
+  }),
+)
+
 function lifecycleClient(url: string, name: string, operationId: string) {
   return <S extends Schema.Top>(path: string, schema: S) =>
     Effect.gen(function* () {
@@ -116,6 +294,53 @@ function lifecycleClient(url: string, name: string, operationId: string) {
       return yield* Schema.decodeUnknownEffect(schema)(raw)
     })
 }
+
+harness.test(
+  'local workerd: routine questions release slots and resume only with correlated owner answers',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const response = yield* Effect.promise(() =>
+      fetch(`${baseUrl(url)}/routine-question?name=routine-question-${Date.now()}`),
+    )
+    expect(response.status).toBe(200)
+    const result = yield* Effect.promise(() => response.json())
+    expect(result).toMatchObject({
+      mainStopPreserved: true,
+      answered: true,
+      replay: true,
+      changedRejected: true,
+      sameSession: true,
+      answeredState: 'completed',
+      answeredInteractions: ['answered'],
+      lateRejected: true,
+      expiredState: 'stopped',
+    })
+  }),
+)
+
+harness.test(
+  'local workerd: native dated routine alarms dedupe and collapse cron downtime before rearming',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const response = yield* Effect.promise(() =>
+      fetch(`${baseUrl(url)}/routine-schedule?name=routine-schedule-${Date.now()}`),
+    )
+    expect(response.status).toBe(200)
+    const result = yield* Effect.promise(() => response.json())
+    expect(result).toMatchObject({
+      duplicateScheduleCount: 1,
+      earlierWakeRetained: true,
+      nativeReminderCompleted: true,
+      onceCount: 1,
+      onceState: 'completed',
+      cronCount: 1,
+      missed: 4,
+      nextFuture: true,
+      editedState: 'proposed',
+      staleRevisionKeptRuns: true,
+    })
+  }),
+)
 
 harness.test(
   'local workerd: Events discovery, challenge, signed Telegram, replay, gap, refresh, termination and cleanup',

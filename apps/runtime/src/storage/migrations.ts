@@ -154,6 +154,17 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'CREATE INDEX app_routine_live_runs ON app_routine_runs (routine_id, state)',
     ].join(BREAK),
   },
+  {
+    key: '20261016000211_routine_usage_projection',
+    tables: ['app_routine_usage_projection', 'app_routine_answers', 'app_routine_runs'],
+    sql: [
+      'CREATE TABLE app_routine_usage_projection (run_id TEXT NOT NULL, model TEXT NOT NULL, tokens INTEGER NOT NULL, PRIMARY KEY (run_id, model))',
+      'CREATE TABLE app_routine_answers (run_id TEXT NOT NULL, operation_id TEXT NOT NULL, request_json TEXT NOT NULL, interaction_id TEXT NOT NULL, PRIMARY KEY (run_id, operation_id))',
+      'ALTER TABLE app_routine_runs ADD COLUMN notification_server_id TEXT',
+      'ALTER TABLE app_routine_runs ADD COLUMN notification_attempts INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE app_routine_runs ADD COLUMN notification_next_at INTEGER NOT NULL DEFAULT 0',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

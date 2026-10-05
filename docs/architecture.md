@@ -526,3 +526,31 @@ cutoffs and bounded API/retrieval allowances. Source tool calls are transcript e
 recall/search tools and never executes historical commands. Expected claims stay on the coordinator host, outside
 worker requests. Private manifests, source hashes, API ledgers, native contexts and identity-bound semantic reviews
 make runs inspectable. This local recall experiment does not mutate a deployed user's agent or prove coding continuation.
+
+## Routine definitions
+
+`routines/store.ts` stores bounded drafts and immutable operation receipts in application SQLite. A model can propose,
+list or pause through `routine`; only an authenticated owner may confirm the exact revision. Routine writes require
+an exact configured Origin and `x-purrable-csrf: 1`. Edits clear confirmation and stale revisions return 409. Settings
+shows the prompt, exact tool pairs, timezone, budgets and Telegram policy before confirmation.
+
+Confirmed reminders and cron schedules use native dated Agent callbacks carrying routine ID, revision and firing
+instant. A short application transaction claims each firing and advances its watermark before rearming; one newest
+catch-up replaces missed slots, with a 24-hour window and one encrypted pending trigger while busy. Reconciliation
+repairs missing schedules and removes only routine-owned wakes. UTC reminders require an explicit offset. The
+numeric cron parser enforces 15-minute spacing, skips spring DST gaps and chooses the earlier autumn repeated instant.
+
+Pi background Anchor/Reporter tasks create and recover an empty task-owned run conversation, registered as a thread
+without copied capability rows or an ordinary main-start note. The confirmed MCP ceiling narrows `Capabilities.scope`.
+A dedicated per-run model provider checks resident authority, entitlements, deadlines and committed usage before
+every model dispatch, including compaction. MCP checks repeat at the HTTP dispatch seam after token refresh, with
+local correlation headers removed before egress. Main Stop leaves background runs alone; run Stop and archive fence
+and abort owned conversations. Questions use sealed shared interaction receipts and authenticated same-session answers.
+
+Committed `pi.usage` counters, including compaction, project into app-only cumulative watermarks and weighted UTC-day
+receipts. Replay does not charge twice; a model response already in flight may overshoot a cap. Settlement freezes a
+scrubbed summary and one `app.routine` parent write with a stable request ID. Telegram reporting is separate authorized
+plumbing with frozen bytes/server, stable operation ID, five bounded attempts over at most 15 minutes, and a separate
+remote acceptance receipt. Pi acceptance does not establish external delivery. Additive migrations …210/…211 modify
+only application tables. Event-trigger activation and live dev acceptance remain separate work. See
+[ADR 0012](adr/0012-routines.md).

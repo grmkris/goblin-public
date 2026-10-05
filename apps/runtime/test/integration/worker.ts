@@ -4,6 +4,11 @@ import { inboundHostProbe } from './inbound-host.ts'
 import { MAIN_THREAD, type ThreadView } from '@purrable/contracts'
 import { eventsProbe } from './events-probe.ts'
 import { routinesProbe } from './routines-probe.ts'
+import { routineExecutionProbe } from './routines-execution.ts'
+import { routineQuestionProbe, routineStopProbe, routineRecoveryWrite, routineRecoveryRead } from './routines-safety.ts'
+import { routineScheduleProbe } from './routines-scheduling.ts'
+import { routineUsageProbe } from './routines-usage.ts'
+import { routineNotificationProbe } from './routines-notifications.ts'
 import { PersonalAgent } from '../../src/agent.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { listTables } from '../../src/storage/vendor.ts'
@@ -44,6 +49,7 @@ const notesAt = (endpoint: string) => [{ serverId: 'notes', endpoint }]
 /** The actual PersonalAgent on a scripted model (no network): every request it makes is kept for the test to read. */
 export class PersonalAgentProbe extends PersonalAgent {
   readonly seen: SeenRequest[] = []
+  readonly instance = String(Effect.runSync(nextInt))
 
   protected override entitlementPolicy(): EntitlementPolicy {
     return { state: fixturePlan, require: fixturePlan }
@@ -56,13 +62,49 @@ export class PersonalAgentProbe extends PersonalAgent {
   routinesProbe() {
     return routinesProbe(this.ctx.storage)
   }
+  async routineExecutionProbe(): Promise<Response> {
+    return Response.json(await routineExecutionProbe(this.ctx.storage, this, this.seen))
+  }
+  async routineQuestionProbe(): Promise<Response> {
+    return Response.json(await routineQuestionProbe(this.ctx.storage, this))
+  }
+  async routineRecoveryWrite(): Promise<Response> {
+    return Response.json({ instance: this.instance, ...(await routineRecoveryWrite(this.ctx.storage, this)) })
+  }
+  async routineRecoveryRead(): Promise<Response> {
+    return Response.json({ instance: this.instance, ...(await routineRecoveryRead(this.ctx.storage, this)) })
+  }
+  routineEvict() {
+    this.ctx.abort('routine acceptance reconstruction')
+  }
+  routineStopProbe() {
+    return routineStopProbe(this.ctx.storage, this)
+  }
+  routineScheduleProbe() {
+    return routineScheduleProbe(this.ctx.storage, this)
+  }
+  async routineUsageProbe(): Promise<Response> {
+    return Response.json(await routineUsageProbe(this.ctx.storage, this, this.seen))
+  }
+  async routineNotificationProbe(): Promise<Response> {
+    return Response.json(await routineNotificationProbe(this.ctx.storage, this.name))
+  }
 
   skillsCacheProbe() {
     return skillsCacheProbe(this.ctx.storage)
   }
 
   protected override modelStreams(): ProviderStreams {
-    return scriptedStreams((request) => this.seen.push(request))
+    return scriptedStreams(
+      (request) => this.seen.push(request),
+      undefined,
+      (messages) =>
+        messages.some(
+          (message) => typeof message.content === 'string' && message.content.includes('Native slow routine'),
+        )
+          ? 1000
+          : 0,
+    )
   }
 
   /** Waits for an operation in a conversation to settle (the owner API has no wait route). */
@@ -600,6 +642,24 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return agent.eventsProbe().then((result) => Response.json(result))
     case '/routines-probe':
       return agent.routinesProbe().then((result) => Response.json(result))
+    case '/routine-execution':
+      return agent.routineExecutionProbe()
+    case '/routine-question':
+      return agent.routineQuestionProbe()
+    case '/routine-recovery-write':
+      return agent.routineRecoveryWrite()
+    case '/routine-recovery-read':
+      return agent.routineRecoveryRead()
+    case '/routine-evict':
+      return agent.routineEvict().then(() => Response.json({ evicted: true }))
+    case '/routine-stop':
+      return agent.routineStopProbe().then((result) => Response.json(result))
+    case '/routine-schedule':
+      return agent.routineScheduleProbe().then((result) => Response.json(result))
+    case '/routine-usage':
+      return agent.routineUsageProbe()
+    case '/routine-notifications':
+      return agent.routineNotificationProbe()
     case '/rpc':
       return rpcSequence(agent)
     case '/skills-cache':

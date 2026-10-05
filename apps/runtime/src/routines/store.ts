@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { Conflict, InvalidInput, NotFound } from '../http/errors.ts'
 import { RoutineDefinition, RoutineView } from '@purrable/contracts'
@@ -72,6 +72,9 @@ export class RoutineStore {
     if (row === undefined || row.proposerUserId !== this.#user) throw new NotFound({ what: 'routine' })
     return row
   }
+  view(routineId: string): RoutineView {
+    return this.#view(this.get(routineId))
+  }
   #operation(operationId: string, request: unknown): RoutineOperationResult | undefined {
     const row = this.#db
       .select()
@@ -142,6 +145,7 @@ export class RoutineStore {
           confirmedByUserId: null,
           confirmedAt: null,
           scheduleId: null,
+          pendingTrigger: null,
           nextFireAt: nextFire(valid, at),
           health: null,
           updatedAt: at,
@@ -185,10 +189,10 @@ export class RoutineStore {
   }
   markActive(routineId: string, revision: number, scheduleId: string | null, at: number): RoutineView {
     const row = this.get(routineId)
-    if (row.revision !== revision || row.state !== 'activating') return this.#view(row)
+    if (row.revision !== revision || (row.state !== 'activating' && row.state !== 'active')) return this.#view(row)
     this.#db
       .update(appRoutines)
-      .set({ state: 'active', scheduleId, updatedAt: at })
+      .set({ state: 'active', scheduleId, health: null, updatedAt: at })
       .where(eq(appRoutines.id, routineId))
       .run()
     return this.#view(this.get(routineId))
@@ -201,7 +205,7 @@ export class RoutineStore {
       if (current.revision !== revision) throw new Conflict({ reason: 'stale routine revision' })
       this.#db
         .update(appRoutines)
-        .set({ state: 'paused', scheduleId: null, nextFireAt: null, updatedAt: at })
+        .set({ state: 'paused', scheduleId: null, nextFireAt: null, pendingTrigger: null, updatedAt: at })
         .where(eq(appRoutines.id, routineId))
         .run()
       const response = { routine: this.#view(this.get(routineId)), operationId }
@@ -217,7 +221,7 @@ export class RoutineStore {
       if (current.revision !== revision) throw new Conflict({ reason: 'stale routine revision' })
       this.#db
         .update(appRoutines)
-        .set({ state: 'archived', scheduleId: null, nextFireAt: null, updatedAt: at })
+        .set({ state: 'archived', scheduleId: null, nextFireAt: null, pendingTrigger: null, updatedAt: at })
         .where(eq(appRoutines.id, routineId))
         .run()
       const response = { routine: this.#view(this.get(routineId)), operationId }
@@ -228,12 +232,72 @@ export class RoutineStore {
 
   settingsUpdate(timezone: string, maxActive: number, maxRunning: number): void {
     timezoneValid(timezone)
-    if (maxActive < 1 || maxActive > 20 || maxRunning < 1 || maxRunning > 2)
+    if (
+      !Number.isInteger(maxActive) ||
+      !Number.isInteger(maxRunning) ||
+      maxActive < 1 ||
+      maxActive > 20 ||
+      maxRunning < 1 ||
+      maxRunning > 2
+    )
       throw new InvalidInput({ reason: 'routine caps' })
     this.#db
       .update(appRoutineSettings)
       .set({ timezone, maxActive, maxRunning })
       .where(eq(appRoutineSettings.id, 1))
+      .run()
+  }
+
+  scheduling(): Row[] {
+    return this.#db.select().from(appRoutines).all()
+  }
+  advance(
+    input: { id: string; revision: number; expectedAt: number; nextAt: number | null; missed: number },
+    at: number,
+  ): void {
+    const { id, revision, expectedAt, nextAt, missed } = input
+    this.#db
+      .update(appRoutines)
+      .set({
+        nextFireAt: nextAt,
+        scheduleId: null,
+        missedCount: sql`${appRoutines.missedCount} + ${missed}`,
+        state: nextAt === null && this.get(id).pendingTrigger === null ? 'completed' : 'active',
+        updatedAt: at,
+      })
+      .where(
+        and(
+          eq(appRoutines.id, id),
+          eq(appRoutines.revision, revision),
+          eq(appRoutines.nextFireAt, expectedAt),
+          eq(appRoutines.state, 'active'),
+        ),
+      )
+      .run()
+  }
+  pending(id: string, revision: number, sealed: string, at: number): void {
+    this.#db
+      .update(appRoutines)
+      .set({ pendingTrigger: sealed, suppressedCount: sql`${appRoutines.suppressedCount} + 1`, updatedAt: at })
+      .where(and(eq(appRoutines.id, id), eq(appRoutines.revision, revision), eq(appRoutines.state, 'active')))
+      .run()
+  }
+  queue(
+    input: { id: string; revision: number; expectedAt: number; nextAt: number | null; missed: number },
+    sealed: string,
+    at: number,
+  ): void {
+    this.#db.transaction(() => {
+      this.pending(input.id, input.revision, sealed, at)
+      this.advance(input, at)
+    })
+  }
+  clearPending(id: string, sealed: string, at: number): void {
+    const row = this.get(id)
+    this.#db
+      .update(appRoutines)
+      .set({ pendingTrigger: null, state: row.nextFireAt === null ? 'completed' : row.state, updatedAt: at })
+      .where(and(eq(appRoutines.id, id), eq(appRoutines.pendingTrigger, sealed)))
       .run()
   }
 }

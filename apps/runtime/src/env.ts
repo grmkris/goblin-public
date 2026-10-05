@@ -99,6 +99,28 @@ export interface AgentRpcMethods {
   readonly channelDoorbell: (doorbell: Doorbell) => Promise<RpcResult<true>>
   readonly mcpEventsWebhook: (input: EventWebhook) => Promise<RpcResult<EventWebhookResult>>
   readonly deleteAgentData: () => Promise<RpcResult<true>>
+  readonly routines: () => Promise<RpcResult<import('@purrable/contracts').RoutinePage>>
+  readonly routinePropose: (
+    input: import('@purrable/contracts').RoutineProposal,
+  ) => Promise<RpcResult<import('@purrable/contracts').RoutineView>>
+  readonly routineEdit: (
+    id: string,
+    input: import('@purrable/contracts').RoutineEdit,
+  ) => Promise<RpcResult<import('@purrable/contracts').RoutineView>>
+  readonly routineChange: (
+    id: string,
+    input: import('@purrable/contracts').RoutineRevision,
+    action: 'confirm' | 'pause' | 'archive',
+  ) => Promise<RpcResult<import('@purrable/contracts').RoutineView>>
+  readonly routineSettings: () => Promise<RpcResult<import('@purrable/contracts').RoutineSettings>>
+  readonly routineSettingsSet: (
+    settings: import('@purrable/contracts').RoutineSettings,
+  ) => Promise<RpcResult<import('@purrable/contracts').RoutineSettings>>
+  readonly routineRun: (
+    id: string,
+    input: import('@purrable/contracts').RoutineManualRun,
+  ) => Promise<RpcResult<import('@purrable/contracts').RoutineRunView>>
+  readonly routineRuns: (id: string) => Promise<RpcResult<import('@purrable/contracts').RoutineRunPage>>
 }
 export type AskResult =
   | { readonly status: 'done'; readonly operationId: string; readonly text: string }

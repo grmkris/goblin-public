@@ -95,6 +95,11 @@ function nextOnDay(
   format: Intl.DateTimeFormat,
   after: number,
 ): number | undefined {
+  for (const candidate of slotsOnDay(cron, day, offsets, format)) if (candidate > after) return candidate
+  return undefined
+}
+
+function* slotsOnDay(cron: Cron, day: number, offsets: ReadonlySet<number>, format: Intl.DateTimeFormat) {
   const slots = cron.hours.flatMap((hour) => cron.minutes.map((minute) => day + hour * 3_600_000 + minute * MINUTE))
   for (const local of slots) {
     const candidates = [...offsets]
@@ -102,9 +107,30 @@ function nextOnDay(
       .filter((candidate) => localMillis(localAt(format, candidate)) === local)
     if (candidates.length === 0) continue
     const candidate = Math.min(...candidates)
-    if (candidate > after) return candidate
+    yield candidate
   }
-  return undefined
+}
+
+/** Bounded civil-day scan with one parser/formatter; suitable for counting collapsed downtime slots. */
+export function* cronSlots(expression: string, zone: string, from: number, until: number) {
+  const cron = parseCron(expression)
+  const format = formatter(zone)
+  const first = localAt(format, from)
+  const last = localAt(format, until)
+  const start = Date.UTC(first.year, first.month - 1, first.day)
+  const end = Date.UTC(last.year, last.month - 1, last.day)
+  if (end - start > 732 * DAY) throw new InvalidInput({ reason: 'routine downtime exceeds bounded calendar history' })
+  for (let day = start; day <= end; day += DAY) {
+    if (!dayMatches(cron, new Date(day))) continue
+    const offsets = new Set(
+      [-36, -12, 12, 36].map((hour) => {
+        const sample = day + hour * 3_600_000
+        return localMillis(localAt(format, sample)) - sample
+      }),
+    )
+    for (const candidate of slotsOnDay(cron, day, offsets, format))
+      if (candidate >= from && candidate <= until) yield candidate
+  }
 }
 
 /** DST gaps have no candidate; autumn repeats select only the earlier instant. Bounded to two years. */

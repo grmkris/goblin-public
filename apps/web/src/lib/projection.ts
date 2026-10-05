@@ -206,14 +206,16 @@ function messagesOf(entry: Record<string, unknown>): readonly ChatMessage[] {
   const cached = projected.get(entry)
   if (cached !== undefined) return cached
   if (MARKERS.has(identifier(entry.kind))) return []
-  // A note a thread shared into main names the thread it came from.
-  const shared = entry.kind === 'app.shared' ? record(entry.data)?.thread : undefined
+  // Passive shared and routine notes name their registered source thread.
+  const shared = entry.kind === 'app.shared' || entry.kind === 'app.routine' ? record(entry.data)?.thread : undefined
   const thread = isString(shared) ? shared : undefined
   const messages =
     entry.kind === 'app.thread_started'
       ? threadStarted(entry)
       : records(entry.model).flatMap((message, index) =>
-          entryMessage(message, `${identifier(entry.id)}:${index}`, thread),
+          entryMessage(message, `${identifier(entry.id)}:${index}`, thread).map((item) =>
+            entry.kind === 'app.routine' && item.role === 'user' ? { ...item, author: 'Routine' } : item,
+          ),
         )
   projected.set(entry, messages)
   return messages

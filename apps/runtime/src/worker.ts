@@ -24,6 +24,8 @@ import { billingApi, billingDeps } from './billing/routes.ts'
 import { billingWebhook } from './billing/webhook.ts'
 import { runBillingCron } from './billing/cron.ts'
 import { billingMode, requireAccountPlan } from './billing/gates.ts'
+import { routineRoute } from './routines/routes.ts'
+import { routineOrigin } from './routines/csrf.ts'
 import { ownerWorkspace, sessionOwnerWorkspace } from './workspaces/resolution.ts'
 import { workspaceApi } from './workspaces/routes.ts'
 import { currentInvitation, invitationPreview, membersApi } from './workspaces/invitations.ts'
@@ -261,6 +263,7 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   const session = await requireUserSession(request, env)
   const { userId } = session
   const path = new URL(request.url).pathname
+  if (path === '/api/routines' || path.startsWith('/api/routines/')) routineOrigin(request, env.APP_URL)
   if (path.startsWith('/api/billing/')) return Effect.runPromise(billingApi(request, env, userId))
   if (path === '/api/workspaces' || path.startsWith('/api/workspaces/')) return workspaceApi(request, env, session)
   if (path.startsWith('/api/members') || path.startsWith('/api/invitations')) return membersApi(request, env, session)
@@ -278,6 +281,7 @@ async function ownerApiRequest(
   userId: string,
 ): Promise<Response> {
   if (path.startsWith('/api/agent/')) return agentRoute(request, agent, path)
+  if (path === '/api/routines' || path.startsWith('/api/routines/')) return routineRoute(request, agent, path)
   if (path === '/api/threads' || path.startsWith('/api/threads/')) return threadRoute(request, agent, path)
   if (path.startsWith('/api/mcp/')) return mcpRoute(request, agent, path, env)
   if (path === '/api/clients' && request.method === 'GET') return json(await listInboundClients(env, userId))

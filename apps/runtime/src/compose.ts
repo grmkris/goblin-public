@@ -36,6 +36,9 @@ import { SkillLibrary } from './skills/library.ts'
 import { SqliteDraftLog, SqliteSkillState } from './skills/store.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
 import { Entitlements, type EntitlementPolicy } from './billing/gates.ts'
+import { RoutineStore } from './routines/store.ts'
+import { RoutineRunStore } from './routines/runs.ts'
+import { RoutineUsage, installRoutineUsage } from './routines/usage.ts'
 import * as Effect from 'effect/Effect'
 
 /** What the agent's services are built from: its storage and env, and the Pi pieces its constructor made. */
@@ -71,6 +74,42 @@ const authorizeEvents =
       throw new Forbidden({ reason: 'event connection requires authorization' })
     if (!store.allows(serverId, name, argumentsJson)) throw new GrantDenied({ serverId, name })
   }
+
+async function makeEvents(
+  input: ComposeInput,
+  host: McpHost,
+  resident: ResidentAuthority,
+  eventStore: SqliteEventStore,
+  cipher: CredentialCipher,
+): Promise<McpEvents> {
+  const env = input.env
+  return new McpEvents({
+    manager: host.manager,
+    store: eventStore,
+    cipher,
+    principal: input.userId,
+    callback: eventsHookUrl(env.APP_URL, input.userId, await eventsHookToken(env.CREDENTIAL_KEY, input.userId)),
+    wake: input.scheduleEvents,
+    authorize: async () => {
+      await Effect.runPromise(input.entitlements.require())
+      resident.require(nowSeconds())
+    },
+  })
+}
+
+async function makeRoutines(input: ComposeInput) {
+  const db = drizzle(input.storage)
+  const routines = new RoutineStore(db, input.userId)
+  const routineRuns = new RoutineRunStore(db, input.userId)
+  const routineUsage = new RoutineUsage(
+    db,
+    routineRuns,
+    modelTokenWeights(input.env.MODEL_TOKEN_WEIGHTS),
+    input.harness,
+  )
+  await installRoutineUsage(input.harness, routineUsage, routineRuns)
+  return { routines, routineRuns, routineUsage }
+}
 
 /**
  * The agent's services over its SQLite, built once per isolate on first use: MCP host and grants, budget and models,
@@ -120,6 +159,7 @@ export async function composeServices(
   const { recall } = input.memory
   await memory.activate([input.memory.memory, recall])
   const capabilities = new CapabilityProfiles(db, input.subagentTool, retool(harness))
+  const routineServices = await makeRoutines(input)
   const kit = { thread: input.thread, recall, memory, namer, capabilities }
   const conversations = new ConversationRegistry(db, harness, kit, nowSeconds())
   const skills = new SkillLibrary(host.manager, skillState, nowMillis)
@@ -134,22 +174,23 @@ export async function composeServices(
     now: nowMillis,
   })
   const channel = new TelegramChannel(db, cipher, input.scheduleReplies)
-  const events = new McpEvents({
-    manager: host.manager,
-    store: eventStore,
-    cipher,
-    principal: input.userId,
-    callback: eventsHookUrl(env.APP_URL, input.userId, await eventsHookToken(env.CREDENTIAL_KEY, input.userId)),
-    wake: input.scheduleEvents,
-    authorize: async () => {
-      await Effect.runPromise(input.entitlements.require())
-      resident.require(nowSeconds())
-    },
-  })
+  const events = await makeEvents(input, host, resident, eventStore, cipher)
   installEventConsumers(events, channel, skills, input.pullTelegram)
   return ManagedRuntime.make(
     Layer.mergeAll(
-      agentLayer({ host, resident, conversations, budget, models, memory, skills, learner, channel, capabilities }),
+      agentLayer({
+        host,
+        resident,
+        conversations,
+        budget,
+        models,
+        memory,
+        skills,
+        learner,
+        channel,
+        capabilities,
+        ...routineServices,
+      }),
       Layer.succeed(Entitlements, input.entitlements),
       Layer.succeed(Events, events),
       Layer.succeed(EventStorage, eventStore),

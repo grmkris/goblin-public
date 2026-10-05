@@ -16,6 +16,9 @@ import type { Entitlements } from './billing/gates.ts'
 import type { Events } from './mcp/events.ts'
 import type { EventStorage } from './mcp/events/store.ts'
 import type { CapabilityProfiles } from './capabilities/profiles.ts'
+import type { RoutineStore } from './routines/store.ts'
+import type { RoutineRunStore } from './routines/runs.ts'
+import type { RoutineUsage } from './routines/usage.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('purrable/Mcp') {}
@@ -29,6 +32,11 @@ export class Learner extends Context.Service<Learner, SkillLearner>()('purrable/
 export class Channel extends Context.Service<Channel, TelegramChannel>()('purrable/Channel') {}
 /** What each conversation switched off: the one gate every MCP, skills and subagent tool asks (ADR 0010). */
 export class Capabilities extends Context.Service<Capabilities, CapabilityProfiles>()('purrable/Capabilities') {}
+export class Routines extends Context.Service<Routines, RoutineStore>()('purrable/Routines') {}
+export class RoutineRuns extends Context.Service<RoutineRuns, RoutineRunStore>()('purrable/RoutineRuns') {}
+export class RoutineUsageProjection extends Context.Service<RoutineUsageProjection, RoutineUsage>()(
+  'purrable/RoutineUsageProjection',
+) {}
 export type AgentServices =
   | Entitlements
   | Events
@@ -43,6 +51,9 @@ export type AgentServices =
   | Learner
   | Channel
   | Capabilities
+  | Routines
+  | RoutineRuns
+  | RoutineUsageProjection
 
 export const agentLayer = (services: {
   readonly host: McpHost
@@ -55,6 +66,9 @@ export const agentLayer = (services: {
   readonly learner: SkillLearner
   readonly channel: TelegramChannel
   readonly capabilities: CapabilityProfiles
+  readonly routines: RoutineStore
+  readonly routineRuns: RoutineRunStore
+  readonly routineUsage: RoutineUsage
 }): Layer.Layer<Exclude<AgentServices, Entitlements | Events | EventStorage>> =>
   Layer.mergeAll(
     Layer.succeed(Mcp, services.host),
@@ -67,6 +81,9 @@ export const agentLayer = (services: {
     Layer.succeed(Learner, services.learner),
     Layer.succeed(Channel, services.channel),
     Layer.succeed(Capabilities, services.capabilities),
+    Layer.succeed(Routines, services.routines),
+    Layer.succeed(RoutineRuns, services.routineRuns),
+    Layer.succeed(RoutineUsageProjection, services.routineUsage),
   )
 
 /** Wrap a plain async step so its failure lands in the typed `AppError` channel. */

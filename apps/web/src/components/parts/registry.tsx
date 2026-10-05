@@ -8,6 +8,7 @@ import { ThreadStartedRow } from '../thread-replies.tsx'
 import { McpToolPart } from './mcp-tool-part.tsx'
 import { AssistantText, UserText } from './text-part.tsx'
 import { GenericToolPart, SubagentToolPart } from './tool-part.tsx'
+import { RoutineProposalPart } from './routine-proposal.tsx'
 
 /** Quiet lines (receipts, thinking) start where the assistant's text does, inside its bubble's padding. */
 function Aside({ children }: { readonly children: ReactNode }) {
@@ -57,6 +58,7 @@ function ToolView({ part }: { readonly part: ToolPart }) {
   const interaction = interactionOf(part)
   if (interaction !== undefined) return <InteractionReceipt interaction={interaction} />
   if (part.target) return <McpToolPart part={part} />
+  if (part.call.name === 'routine') return <RoutineProposalPart part={part} />
   return part.call.name === 'subagent' ? <SubagentToolPart part={part} /> : <GenericToolPart part={part} />
 }
 

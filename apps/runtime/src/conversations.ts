@@ -140,6 +140,48 @@ export class ConversationRegistry {
       .run()
   }
 
+  /** A task-created routine conversation starts empty and copies no main exclusions or announcement. */
+  registerRoutine(session: string, runId: string, title: string, now: number): void {
+    this.#db
+      .insert(appConversations)
+      .values({
+        sessionId: session,
+        kind: 'thread',
+        title,
+        parentSession: MAIN_THREAD,
+        routineRunId: runId,
+        createdAt: now,
+        mainNote: null,
+      })
+      .onConflictDoNothing()
+      .run()
+  }
+
+  /** Frozen passive report; acceptance records a Pi write, not a new main run or external notification. */
+  async reportRoutine(input: {
+    readonly runId: string
+    readonly routineId: string
+    readonly sessionId: string | null
+    readonly outcome: string
+    readonly text: string
+    readonly at: number
+  }): Promise<void> {
+    await (
+      await this.#conversation(MAIN_THREAD)
+    ).submit(
+      {
+        type: 'write',
+        requestId: `routine-report:${input.runId}`,
+        entry: {
+          kind: 'app.routine',
+          data: { thread: input.sessionId, routineId: input.routineId, runId: input.runId, outcome: input.outcome },
+          model: [{ role: 'user', content: input.text, timestamp: input.at }],
+        },
+      },
+      BACKGROUND,
+    )
+  }
+
   /** How many subagents are working now, across every conversation. */
   async runningSubagents(): Promise<number> {
     const rows = this.#db.select().from(appConversations).where(eq(appConversations.kind, 'subagent')).all()

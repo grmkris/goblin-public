@@ -2,7 +2,10 @@ import type { ToolRegistration } from '@earendil-works/pi-durable'
 import { type CapabilityTarget, MAIN_THREAD } from '@purrable/contracts'
 import { and, eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import { appConversationCapabilities, appConversations } from '../storage/schema.ts'
+import { appConversationCapabilities, appConversations, appChannel, appTelegramChannel } from '../storage/schema.ts'
+import { appRoutineRuns } from '../storage/routines.ts'
+import { RoutineDefinition } from '@purrable/contracts'
+import * as Schema from 'effect/Schema'
 
 type Kind = CapabilityTarget['kind']
 
@@ -103,7 +106,11 @@ export class CapabilityProfiles {
 
   #conversation(session: string) {
     return this.#db
-      .select({ kind: appConversations.kind, parent: appConversations.parentSession })
+      .select({
+        kind: appConversations.kind,
+        parent: appConversations.parentSession,
+        routineRunId: appConversations.routineRunId,
+      })
       .from(appConversations)
       .where(eq(appConversations.sessionId, session))
       .get()
@@ -121,7 +128,22 @@ export class CapabilityProfiles {
       exclusions.push(...this.own(current.parent))
       current = above
     }
-    return scopeOf(exclusions, start.kind !== 'subagent')
+    const scope = scopeOf(exclusions, start.kind !== 'subagent' && start.routineRunId === null)
+    if (current.routineRunId === null) return scope
+    const run = this.#db.select().from(appRoutineRuns).where(eq(appRoutineRuns.id, current.routineRunId)).get()
+    if (run === undefined) return CLOSED
+    const definition = Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(run.definitionJson))
+    const channel = this.#db.select().from(appTelegramChannel).get() ?? this.#db.select().from(appChannel).get()
+    return {
+      editable: false,
+      server: (id) => scope.server(id) && definition.allowedTools.some((tool) => tool.serverId === id),
+      tool: (id, name) =>
+        scope.tool(id, name) &&
+        (definition.notifyTelegram || channel?.serverId !== id || name !== 'send_message') &&
+        definition.allowedTools.some((tool) => tool.serverId === id && tool.name === name),
+      skills: () => false,
+      subagents: () => false,
+    }
   }
 
   /** Switch one thing on or off in `session`. A server switched back on keeps the tools switched off under it. */

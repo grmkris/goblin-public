@@ -51,6 +51,9 @@ export const appRoutineRuns = sqliteTable(
     notificationText: text('notification_text'),
     notificationState: text('notification_state').notNull().default('none'),
     notificationReceipt: text('notification_receipt'),
+    notificationServerId: text('notification_server_id'),
+    notificationAttempts: integer('notification_attempts').notNull().default(0),
+    notificationNextAt: integer('notification_next_at').notNull().default(0),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -73,6 +76,25 @@ export const appRoutineSettings = sqliteTable('app_routine_settings', {
   maxActive: integer('max_active').notNull().default(20),
   maxRunning: integer('max_running').notNull().default(2),
 })
+export const appRoutineUsageProjection = sqliteTable(
+  'app_routine_usage_projection',
+  {
+    runId: text('run_id').notNull(),
+    model: text('model').notNull(),
+    tokens: integer('tokens').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.model] })],
+)
+export const appRoutineAnswers = sqliteTable(
+  'app_routine_answers',
+  {
+    runId: text('run_id').notNull(),
+    operationId: text('operation_id').notNull(),
+    requestJson: text('request_json').notNull(),
+    interactionId: text('interaction_id').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.operationId] })],
+)
 export const appSubmissionOrigins = sqliteTable(
   'app_submission_origins',
   {

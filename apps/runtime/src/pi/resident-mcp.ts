@@ -8,10 +8,31 @@ import type { McpHost } from '../mcp/host.ts'
 import { type AgentServices, Capabilities, Mcp, attempt, requireResident } from '../services.ts'
 import { capabilityOffResult, mcpOff } from './capabilities.ts'
 
+const executionAuthority = (session: string, authorize?: (session: string) => Promise<void>) =>
+  Effect.gen(function* () {
+    yield* requireResident
+    if (authorize !== undefined) yield* attempt(() => authorize(session))
+  })
+
 /** Runs a program on the Agent DO's services; failures reject with the typed `AppError`. */
 export type RunProgram = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<A>
 
 const text = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] })
+const dispatchAuthority =
+  (
+    run: RunProgram,
+    session: string,
+    input: { serverId: string; name: string },
+    authorize?: (session: string) => Promise<void>,
+  ) =>
+  () =>
+    run(
+      Effect.gen(function* () {
+        yield* executionAuthority(session, authorize)
+        if (!(yield* Capabilities).scope(session).tool(input.serverId, input.name))
+          return yield* new NotFound({ what: 'tool scope' })
+      }),
+    )
 
 /**
  * A call the owner has not granted becomes a request for their decision, but only for a tool that exists and the
@@ -29,7 +50,7 @@ const grantRequired = (mcp: McpHost, denied: GrantDenied, signal: AbortSignal | 
  * The resident agent's MCP tools. Each execution checks resident authority and the owner's exact grant; nothing is
  * resolved at wake. Remote descriptions, schemas and results are untrusted data.
  */
-export function residentMcpExtension(run: RunProgram) {
+export function residentMcpExtension(run: RunProgram, authorize?: (session: string) => Promise<void>) {
   return defineExtension({
     name: 'purrable.mcp',
     tools: [
@@ -43,11 +64,9 @@ export function residentMcpExtension(run: RunProgram) {
         execute: async ({ serverId }, api, context) =>
           run(
             Effect.gen(function* () {
-              yield* requireResident
+              yield* executionAuthority(String(api.conversationId), authorize)
               const mcp = yield* Mcp
-              const scope = yield* Capabilities.useSync((capabilities) =>
-                capabilities.scope(String(api.conversationId)),
-              )
+              const scope = (yield* Capabilities).scope(String(api.conversationId))
               if (serverId === undefined)
                 return text({
                   servers: mcp
@@ -60,6 +79,7 @@ export function residentMcpExtension(run: RunProgram) {
               const snapshot = yield* attempt(() =>
                 mcp.manager.connect(serverId, context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
               )
+              yield* executionAuthority(String(api.conversationId), authorize)
               const tools = snapshot.tools
                 .filter((tool) => toolOffered(tool, 'model') && scope.tool(serverId, tool.name))
                 .map((tool) => ({
@@ -88,7 +108,7 @@ export function residentMcpExtension(run: RunProgram) {
         execute: async (input, api, context) =>
           run(
             Effect.gen(function* () {
-              yield* requireResident
+              yield* executionAuthority(String(api.conversationId), authorize)
               const scope = yield* Capabilities.useSync((capabilities) =>
                 capabilities.scope(String(api.conversationId)),
               )
@@ -98,6 +118,7 @@ export function residentMcpExtension(run: RunProgram) {
               return yield* attempt(() =>
                 mcp.manager.callTool(input.serverId, input.name, input.arguments, {
                   caller: 'model',
+                  authorize: dispatchAuthority(run, String(api.conversationId), input, authorize),
                   ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
                 }),
               ).pipe(
