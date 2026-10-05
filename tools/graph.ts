@@ -32,6 +32,15 @@ export const runtimeAllows: Readonly<Record<Runtime, readonly (keyof typeof runt
 }
 export const nodes: readonly Node[] = [
   {
+    dir: 'bench',
+    name: '@purrable/bench',
+    role: 'bounded native memory benchmark and experiment workspace',
+    runtime: 'tooling',
+    mayImport: [],
+    zones: { test: 'test' },
+    seam: { consumer: 'developers and CI', reason: 'benchmark runner is intentionally outside deployed applications' },
+  },
+  {
     dir: 'apps/runtime',
     name: '@purrable/runtime',
     role: 'resident Cloudflare Agent and authorized MCP host',

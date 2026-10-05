@@ -30,6 +30,9 @@
       "entry": ["*.ts!", "oxlint/*.ts!"],
       "ignoreDependencies": ["@effect/tsgo"],
     },
+    "bench": {
+      "entry": ["scripts/cli.ts!"],
+    },
     "apps/runtime": {
       "entry": ["test/provider-probe.ts!"],
     },

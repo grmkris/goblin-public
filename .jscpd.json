@@ -1,5 +1,5 @@
 {
-  "path": ["apps", "packages", "tools", "scripts"],
+  "path": ["apps", "bench", "packages", "tools", "scripts"],
   "format": ["typescript", "tsx", "javascript"],
   "minTokens": 70,
   "minLines": 8,

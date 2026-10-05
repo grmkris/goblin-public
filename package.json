@@ -5,6 +5,7 @@
   "workspaces": {
     "packages": [
       "apps/*",
+      "bench",
       "packages/*",
       "tools"
     ]
@@ -33,6 +34,8 @@
     "test:unit": "turbo run test:unit",
     "test:integration": "turbo run test:integration",
     "agents:check": "bun tools/docs-public.ts",
+    "bench:plan": "bun bench/scripts/cli.ts plan",
+    "bench:validate": "bun bench/scripts/cli.ts validate",
     "check:files": "bun tools/check-files.ts",
     "graph": "bun tools/check-graph.ts",
     "check:fast": "bun run fmt:check && bun run agents:check && bun run lint && bun run typecheck && bun run test:unit",
