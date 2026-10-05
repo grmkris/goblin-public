@@ -84,8 +84,6 @@ export default Alchemy.Stack(
           Config.withDefault(Redacted.make('')),
         ),
         DODO_PRODUCT_ID: Config.Redacted('DODO_PRODUCT_ID').pipe(Config.withDefault(Redacted.make(''))),
-        // Phase B is reviewed in source and native workerd; deployed stages opt in explicitly here.
-        MEMBER_EXECUTION_ENABLED: '1',
         STAGE: runtimeStage(stage.name),
       },
     })
