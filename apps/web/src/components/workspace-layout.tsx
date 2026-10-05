@@ -98,7 +98,14 @@ function PaneContents({
           ...(pane.entry === undefined ? {} : { entry: pane.entry }),
           root: pane.entry === undefined ? [] : rootParts(parts, pane.entry),
         }
-  return <ThreadPane target={target} onClose={() => close(pane.id)} onStarted={(id) => started(pane.id, id)} />
+  return (
+    <ThreadPane
+      host="workspace"
+      target={target}
+      onClose={() => close(pane.id)}
+      onStarted={(id) => started(pane.id, id)}
+    />
+  )
 }
 
 function useResources(panes: readonly Pane[]): Resources {

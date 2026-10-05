@@ -16,7 +16,8 @@ and App sheets. TanStack Start renders main alone on the server and mounts Trell
 Version-1 pane metadata and layout are localStorage records scoped to owner and primary conversation on a device.
 Malformed/future formats reset safely, legacy thread lists migrate, and disappeared or archived threads are pruned.
 Drafts and App selections are ephemeral. A saved view never grants authority to restore an App. Reset layout keeps
-current panes and equalizes their splits. Shadcn tokens theme Trellis in light and dark.
+current panes and equalizes their splits. Shadcn tokens theme Trellis in light and dark. Desktop thread panes use
+the Trellis tab's title and close action; narrow sheets retain the full thread header, including the full-view link.
 
 One live App remains the chat-view limit. Its nested opaque sandbox iframe and bridge stay in the fixed AppLayer
 outside Trellis; only an empty slot moves. The stage measures that slot, hides for inactive tabs, and clips behind
@@ -27,9 +28,15 @@ Fullscreen fills the workspace surface; narrow fullscreen retains the snapping b
 flows remain host-drawn.
 
 Trellis is commercially licensed. Dan Fessler gave Purrable permission to use it without sponsorship until Purrable
-makes money, then Kris sponsors. In exchange Dan may showcase Purrable as a Trellis user and receives visible credit
-in the workspace toolbar and README, linking https://github.com/DanFessler/trellis. This project-specific arrangement
-is the authority for Purrable; it is not a general license exemption or a claim that sponsorship is already active.
+makes money, in exchange for crediting him and allowing him to showcase Purrable as a Trellis user. The workspace
+toolbar and README credit him, linking https://github.com/DanFessler/trellis. This project-specific permission covers
+the period before revenue; it does not mean sponsorship is already active.
+
+Once Purrable earns revenue, Kris maintains an active GitHub Sponsorship at the applicable commercial tier. The
+installed 0.3.0 `LICENSE-COMMERCIAL.md` specifies $10/month for individuals and $100/month for studios of up to 10
+members. Larger organizations need an enterprise agreement. Sponsorship must stay active for continued commercial
+use, with the required attribution; the library cannot be resold on its own or relicensed. The commercial license
+and Dan's Purrable-specific permission remain the governing terms.
 
 Reducer, migration, pruning and ported geometry tests cover persistence and main retention. Official MCP App SDK
 interoperability tests prove originating-server binding across host-context updates and bridge reconnection. Local

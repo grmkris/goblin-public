@@ -129,6 +129,9 @@ main.shell {
   position: relative;
   height: 100%;
 }
+.thread-pane[data-thread-host='workspace'] {
+  --message-scroller-inset-top: 0.75rem;
+}
 [data-slot='sheet-content'] .thread-pane {
   flex: 1;
   min-height: 0;

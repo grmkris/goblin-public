@@ -1,18 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useHydrated } from '@tanstack/react-router'
+import { useHydrated } from '@tanstack/react-router'
 import type { ThreadView } from '@purrable/contracts'
-import {
-  Alert,
-  AlertDescription,
-  Button,
-  PresenceOrb,
-  Sheet,
-  SheetContent,
-  SheetTitle,
-  TopBar,
-  TopBarTitle,
-} from '@purrable/ui'
-import { Maximize2Icon, XIcon } from 'lucide-react'
+import { Alert, AlertDescription, PresenceOrb, Sheet, SheetContent, SheetTitle } from '@purrable/ui'
 import { failureText } from '../lib/boundary.ts'
 import { openInteractions } from '../lib/interactions.ts'
 import type { Part } from '../lib/parts.ts'
@@ -27,6 +16,7 @@ import { WithoutApps } from './parts/mcp-tool-part.tsx'
 import { PartView } from './parts/registry.tsx'
 import { useThreads } from './threads.tsx'
 import { postMessage, useConversation, useDockInsets, useTranscript } from './use-conversation.ts'
+import { ThreadPaneHeader, type ThreadHost } from './thread-pane-header.tsx'
 
 /**
  * The thread panel beside main, as the URL names it: a thread (`thread`), a reply to one of main's messages that
@@ -62,37 +52,6 @@ function ThreadRoot({ parts, replies }: { readonly parts: readonly Part[]; reado
   )
 }
 
-/** The panel's bar: its name, the full view of a thread that exists, and close. */
-function PanelBar({
-  title,
-  thread,
-  onClose,
-}: {
-  readonly title: string
-  readonly thread?: string
-  readonly onClose: () => void
-}) {
-  return (
-    <TopBar floating>
-      <TopBarTitle>{title}</TopBarTitle>
-      {thread !== undefined && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Open the thread in full"
-          nativeButton={false}
-          render={<Link to="/t/$threadId" params={{ threadId: thread }} />}
-        >
-          <Maximize2Icon />
-        </Button>
-      )}
-      <Button variant="ghost" size="icon-sm" aria-label="Close the thread" onClick={onClose}>
-        <XIcon />
-      </Button>
-    </TopBar>
-  )
-}
-
 function Notice({ text }: { readonly text: string }) {
   if (text === '') return null
   return (
@@ -103,7 +62,15 @@ function Notice({ text }: { readonly text: string }) {
 }
 
 /** The thread itself: its transcript from the message it branched at, and a composer to reply in it. */
-function ThreadBody({ view, onClose }: { readonly view: ThreadView; readonly onClose: () => void }) {
+function ThreadBody({
+  view,
+  host,
+  onClose,
+}: {
+  readonly view: ThreadView
+  readonly host: ThreadHost
+  readonly onClose: () => void
+}) {
   const { projection, status, notice, report, send, stop } = useConversation(view.id)
   const pane = useRef<HTMLElement>(null)
   const dock = useRef<HTMLDivElement>(null)
@@ -119,8 +86,8 @@ function ThreadBody({ view, onClose }: { readonly view: ThreadView; readonly onC
   const waiting = useMemo(() => openInteractions(parts), [parts])
   const presence = presenceOf({ status, projection, parts, waiting: waiting.length, exhausted: false })
   return (
-    <section className="thread-pane chat-pane" aria-label="Thread" ref={pane}>
-      <PanelBar title={threadTitle(view)} thread={view.id} onClose={onClose} />
+    <section className="thread-pane chat-pane" data-thread-host={host} aria-label="Thread" ref={pane}>
+      <ThreadPaneHeader host={host} title={threadTitle(view)} thread={view.id} onClose={onClose} />
       <WithoutApps>
         <Conversation
           key={view.id}
@@ -171,11 +138,13 @@ function NewThreadIntro() {
 function DraftBody({
   entry,
   root,
+  host,
   onClose,
   onStarted,
 }: {
   readonly entry: number | undefined
   readonly root: readonly Part[]
+  readonly host: ThreadHost
   readonly onClose: () => void
   readonly onStarted: (thread: string) => void
 }) {
@@ -201,8 +170,8 @@ function DraftBody({
   }
   const lead = entry === undefined ? <NewThreadIntro /> : <ThreadRoot parts={root} replies={0} />
   return (
-    <section className="thread-pane chat-pane" aria-label="New thread" ref={pane}>
-      <PanelBar title="New thread" onClose={onClose} />
+    <section className="thread-pane chat-pane" data-thread-host={host} aria-label="New thread" ref={pane}>
+      <ThreadPaneHeader host={host} title="New thread" onClose={onClose} />
       <Conversation parts={[]} canSwitchModel={false} lead={lead} />
       <div className="chat-dock" ref={dock}>
         <Notice text={notice} />
@@ -245,10 +214,12 @@ function PanelFrame({
 
 export function ThreadPane({
   target,
+  host,
   onClose,
   onStarted,
 }: {
   readonly target: PanelTarget
+  readonly host: ThreadHost
   readonly onClose: () => void
   readonly onStarted: (thread: string) => void
 }) {
@@ -262,6 +233,7 @@ export function ThreadPane({
         key={target.entry ?? 'new'}
         entry={target.entry}
         root={target.root}
+        host={host}
         onClose={onClose}
         onStarted={onStarted}
       />
@@ -269,11 +241,11 @@ export function ThreadPane({
   // Until the list has the thread the panel cannot tell where it branched, so it waits rather than show main's history.
   else if (view === undefined)
     body = (
-      <section className="thread-pane chat-pane" aria-busy>
-        <PanelBar title={title} onClose={onClose} />
+      <section className="thread-pane chat-pane" data-thread-host={host} aria-busy>
+        <ThreadPaneHeader host={host} title={title} onClose={onClose} />
       </section>
     )
-  else body = <ThreadBody key={view.id} view={view} onClose={onClose} />
+  else body = <ThreadBody key={view.id} view={view} host={host} onClose={onClose} />
   return body
 }
 
@@ -314,7 +286,7 @@ export function MainThreadPanel({
   if (panel === undefined || target === undefined) return null
   return (
     <PanelFrame title="Thread" onClose={panel.close}>
-      <ThreadPane target={target} onClose={panel.close} onStarted={panel.open} />
+      <ThreadPane host="sheet" target={target} onClose={panel.close} onStarted={panel.open} />
     </PanelFrame>
   )
 }

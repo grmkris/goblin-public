@@ -36,6 +36,33 @@ async function pair(serverId: string, calls: AppCalls) {
 }
 
 describe('official MCP App bridge stays bound to its originating connection', () => {
+  it('reconnects the same originating App after teardown without retaining the old bridge', async () => {
+    const reached: string[] = []
+    const calls: AppCalls = {
+      tool: async (serverId, params) => {
+        reached.push(`${serverId}:${params.name}`)
+        return { content: [{ type: 'text', text: serverId }] }
+      },
+      resource: async (serverId, params) => ({ contents: [{ uri: params.uri, text: serverId }] }),
+    }
+    const first = await pair('notes', calls)
+    try {
+      await first.app.callServerTool({ name: 'before' })
+    } finally {
+      await first.close()
+    }
+    await expect(first.app.callServerTool({ name: 'stale' })).rejects.toThrow()
+    const remounted = await pair('notes', calls)
+    try {
+      expect(await remounted.app.callServerTool({ name: 'after', arguments: { serverId: 'other' } })).toMatchObject({
+        content: [{ text: 'notes' }],
+      })
+    } finally {
+      await remounted.close()
+    }
+    expect(reached).toEqual(['notes:before', 'notes:after'])
+  })
+
   it('continues tool/resource calls after placement updates and reconnects a new selection cleanly', async () => {
     const reached: string[] = []
     const calls: AppCalls = {

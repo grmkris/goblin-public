@@ -288,7 +288,8 @@ Its calls go through the owner API to the originating server and need that serve
 
 The chat view has at most one live App (`components/apps`). At 75rem and wider, `components/workspace-layout.tsx`
 mounts Trellis 0.3.0 after hydration. Main is a nonclosable stage view. Thread/draft panes and the App slot can dock,
-float, tab and resize; stable portal hosts retain React pane state during rearrangement. Narrow screens render main
+float, tab and resize; stable portal hosts retain React pane state during rearrangement. Desktop thread tabs own
+their title and close action; only sheets have the inner thread header. Narrow screens render main
 and use the existing thread and App sheets. Server rendering shows main alone.
 
 Pane metadata and the bounded Trellis document use separate version-1 localStorage records, scoped to the authenticated
