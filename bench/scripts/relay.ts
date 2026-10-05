@@ -2,7 +2,15 @@ import { Config, DateTime, Effect, FileSystem, Redacted, Schema, Semaphore } fro
 import { HttpClient, HttpClientRequest } from 'effect/http'
 import { requestPayload } from '../src/transport.ts'
 import { providerDetails } from '../src/provider-details.ts'
-import { Budget, usageOf, transientStatus, exceededReservation, type Totals } from '../src/budget.ts'
+import {
+  Budget,
+  minimumLimits,
+  phaseLimits,
+  usageOf,
+  transientStatus,
+  exceededReservation,
+  type Totals,
+} from '../src/budget.ts'
 import { ChatRequest, fakeResponse } from '../src/fake.ts'
 import { Trace, type Resolved } from '../src/results.ts'
 import { serveLocal } from './http-server.ts'
@@ -36,7 +44,7 @@ export const providerCatalog = Effect.fn('bench.providerCatalog')(function* (pro
   )(yield* response.json)
   return catalog.data.map((model) => model.id)
 })
-type Label = { readonly scope: string; readonly phase: Trace['phase'] }
+type Label = { readonly scope: string; readonly phase: Trace['phase']; readonly stage?: number }
 type Reply = {
   readonly status: number
   readonly text: string
@@ -48,7 +56,8 @@ type Accounting = {
   readonly path: string
   readonly budget: Budget
   readonly records: Trace[]
-  readonly preflightBudget: Budget | undefined
+  readonly phaseBudgets: Readonly<Record<Trace['phase'], Budget>>
+  readonly stageBudgets: ReadonlyMap<number, { readonly build: Budget; readonly answer: Budget }>
   readonly answerRequestLimit: number
 }
 
@@ -109,6 +118,41 @@ function answerLimitReached(account: Accounting, label: Label): boolean {
   )
 }
 
+const denied: Reply = {
+  status: 402,
+  text: '{"error":{"message":"Benchmark allowance exhausted"}}',
+  contentType: 'application/json',
+}
+function budgetsFor(account: Accounting, label: Label): Budget[] {
+  const stage =
+    label.stage === undefined || label.phase === 'preflight'
+      ? undefined
+      : account.stageBudgets.get(label.stage)?.[label.phase]
+  return [account.budget, account.phaseBudgets[label.phase], ...(stage === undefined ? [] : [stage])]
+}
+function admitAttempt(account: Accounting, label: Label, reservation: { input: number; output: number }): boolean {
+  const budgets = budgetsFor(account, label)
+  const missingStage = label.phase !== 'preflight' && account.stageBudgets.size > 0 && budgets.length !== 3
+  if (missingStage || answerLimitReached(account, label) || account.records.some(exceededReservation)) return false
+  if (!budgets.every((budget) => budget.accepts(reservation))) return false
+  for (const budget of budgets) budget.reserve(reservation)
+  return true
+}
+function settled(started: Trace, reply: Reply, elapsed: number): Trace {
+  const usage = usageOf(reply.text)
+  return {
+    ...started,
+    ...providerDetails(reply.text),
+    status: reply.status,
+    input: usage?.input ?? started.input,
+    output: usage?.output ?? started.output,
+    unknownUsage: usage === undefined,
+    response: reply.text,
+    latencyMs: elapsed,
+    ...(reply.requestId === undefined ? {} : { requestId: reply.requestId }),
+    reservationBreach: usage !== undefined && (usage.input > started.input || usage.output > started.output),
+  }
+}
 const attempt = Effect.fn('bench.attempt')(function* (
   account: Accounting,
   label: Label,
@@ -116,19 +160,7 @@ const attempt = Effect.fn('bench.attempt')(function* (
   request: { payload: string; body: ChatRequest; output: number; retry: number },
 ) {
   const reservation = { input: new TextEncoder().encode(request.payload).length, output: request.output }
-  const phaseBudget = label.phase === 'preflight' ? account.preflightBudget : undefined
-  if (
-    answerLimitReached(account, label) ||
-    account.records.some(exceededReservation) ||
-    phaseBudget?.accepts(reservation) === false ||
-    !account.budget.reserve(reservation)
-  )
-    return {
-      status: 402,
-      text: '{"error":{"message":"Benchmark allowance exhausted"}}',
-      contentType: 'application/json',
-    }
-  phaseBudget?.reserve(reservation)
+  if (!admitAttempt(account, label, reservation)) return denied
   const at = yield* DateTime.now
   const started: Trace = {
     ...label,
@@ -152,26 +184,8 @@ const attempt = Effect.fn('bench.attempt')(function* (
     ),
   )
   const elapsed = DateTime.toEpochMillis(yield* DateTime.now) - DateTime.toEpochMillis(at)
-  const usage = usageOf(reply.text)
-  const details = providerDetails(reply.text)
-  account.budget.reconcile(reservation, usage)
-  phaseBudget?.reconcile(reservation, usage)
-  const finished: Trace = {
-    ...started,
-    status: reply.status,
-    input: usage?.input ?? reservation.input,
-    output: usage?.output ?? reservation.output,
-    unknownUsage: usage === undefined,
-    response: reply.text,
-    latencyMs: elapsed,
-    ...(reply.requestId === undefined ? {} : { requestId: reply.requestId }),
-    ...(details.responseModel === undefined ? {} : { responseModel: details.responseModel }),
-    ...(details.responseId === undefined ? {} : { responseId: details.responseId }),
-    ...(details.reasoningTokens === undefined ? {} : { reasoningTokens: details.reasoningTokens }),
-    ...(details.cacheReadTokens === undefined ? {} : { cacheReadTokens: details.cacheReadTokens }),
-    ...(details.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: details.cacheWriteTokens }),
-    reservationBreach: usage !== undefined && (usage.input > reservation.input || usage.output > reservation.output),
-  }
+  for (const budget of budgetsFor(account, label)) budget.reconcile(reservation, usageOf(reply.text))
+  const finished = settled(started, reply, elapsed)
   yield* appendJson(account.path, finished)
   account.records.push(finished)
   return finished.reservationBreach === true
@@ -211,6 +225,46 @@ const handleRequest = Effect.fn('bench.relay.request')(function* (
   return new Response(reply.text, { status: reply.status, headers: { 'content-type': reply.contentType } })
 })
 
+function restoreAccounting(resolved: Resolved, path: string, previous: readonly Trace[]): Accounting {
+  return {
+    path,
+    budget: new Budget(resolved.manifest.allowance, restoredTotals(previous)),
+    records: [...previous],
+    answerRequestLimit: resolved.manifest.allowance.maxRequestsPerAnswer ?? 8,
+    phaseBudgets: {
+      preflight: new Budget(
+        resolved.manifest.preflight === undefined
+          ? phaseLimits(resolved.manifest, 'preflight')
+          : minimumLimits(phaseLimits(resolved.manifest, 'preflight'), resolved.manifest.preflight),
+        restoredTotals(previous.filter((record) => record.phase === 'preflight')),
+      ),
+      build: new Budget(
+        phaseLimits(resolved.manifest, 'build'),
+        restoredTotals(previous.filter((record) => record.phase === 'build')),
+      ),
+      answer: new Budget(
+        phaseLimits(resolved.manifest, 'answer'),
+        restoredTotals(previous.filter((record) => record.phase === 'answer')),
+      ),
+    },
+    stageBudgets: new Map(
+      (resolved.manifest.allowance.stages ?? []).map((stage) => [
+        stage.cutoff,
+        {
+          build: new Budget(
+            stage.build,
+            restoredTotals(previous.filter((record) => record.stage === stage.cutoff && record.phase === 'build')),
+          ),
+          answer: new Budget(
+            stage.answer,
+            restoredTotals(previous.filter((record) => record.stage === stage.cutoff && record.phase === 'answer')),
+          ),
+        },
+      ]),
+    ),
+  }
+}
+
 /** Scoped credential boundary. Every upstream attempt reserves and records before it starts. */
 export const relay = Effect.fn('bench.relay')(function* (
   resolved: Resolved,
@@ -220,19 +274,7 @@ export const relay = Effect.fn('bench.relay')(function* (
   const client = yield* HttpClient.HttpClient
   const fs = yield* FileSystem.FileSystem
   const previous = yield* readLedger(path, Trace)
-  const account: Accounting = {
-    path,
-    budget: new Budget(resolved.manifest.allowance, restoredTotals(previous)),
-    records: [...previous],
-    answerRequestLimit: resolved.manifest.allowance.maxRequestsPerAnswer ?? 8,
-    preflightBudget:
-      resolved.manifest.preflight === undefined
-        ? undefined
-        : new Budget(
-            { ...resolved.manifest.allowance, ...resolved.manifest.preflight },
-            restoredTotals(previous.filter((record) => record.phase === 'preflight')),
-          ),
-  }
+  const account = restoreAccounting(resolved, path, previous)
   const send =
     provider === undefined
       ? fakeTransport
@@ -258,8 +300,8 @@ export const relay = Effect.fn('bench.relay')(function* (
   return {
     url: server.url,
     totals: () => account.budget.totals(),
-    setScope: (scope: string, phase: Label['phase']) => {
-      label = { scope, phase }
+    setScope: (scope: string, phase: Label['phase'], stage?: number) => {
+      label = { scope, phase, ...(stage === undefined ? {} : { stage }) }
       labels.set(scope, label)
     },
     traces: (scope: string) => account.records.filter((record) => record.scope === scope && record.status !== 0),

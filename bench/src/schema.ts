@@ -2,6 +2,11 @@ import * as Schema from 'effect/Schema'
 
 const Id = Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9_.:-]+$/u))
 const Positive = Schema.Int.check(Schema.isGreaterThan(0))
+const AllowanceLimits = Schema.Struct({
+  maxRequests: Positive,
+  maxInputTokens: Positive,
+  maxOutputTokens: Positive,
+})
 export const Policy = Schema.Literals(['optchat', 'optchat-search', 'standard', 'standard-search'])
 /** Retrieval changes answer policy, never the shared writer artifact. */
 export const buildPolicy = (policy: typeof Policy.Type): 'optchat' | 'standard' =>
@@ -108,6 +113,22 @@ export const Manifest = Schema.Struct({
     maxInputTokens: Positive,
     maxOutputTokens: Positive,
     concurrency: Positive.check(Schema.isLessThanOrEqualTo(2)),
+    phases: Schema.optional(
+      Schema.Struct({
+        preflight: AllowanceLimits,
+        build: AllowanceLimits,
+        answer: AllowanceLimits,
+      }),
+    ),
+    stages: Schema.optional(
+      Schema.Array(
+        Schema.Struct({
+          cutoff: Positive,
+          build: AllowanceLimits,
+          answer: AllowanceLimits,
+        }),
+      ),
+    ),
   }),
   retrieval: Schema.Struct({ maxCalls: Positive, maxBytes: Positive }),
   buildTrial: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),

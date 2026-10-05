@@ -155,3 +155,56 @@ function ledgerLayer() {
   })
   return fs
 }
+
+test('stage and phase limits restore independently without charging denied requests', async () => {
+  const fs = ledgerLayer()
+  const base = starterManifest()
+  const limits = { maxRequests: 2, maxInputTokens: 10000, maxOutputTokens: 100 }
+  const resolved = {
+    manifest: {
+      ...base,
+      allowance: {
+        ...base.allowance,
+        phases: { preflight: limits, build: limits, answer: limits },
+        stages: [22, 32].map((cutoff) => ({ cutoff, build: limits, answer: { ...limits, maxRequests: 1 } })),
+      },
+    },
+    sourceHash: '',
+    corpusHash: '',
+    runId: 'stage-limit-test',
+    mode: 'fake' as const,
+    createdAt: '',
+  }
+  const round = (resume: boolean) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const provider = yield* relay(resolved, 'attempts', undefined)
+        const send = (scope: string) =>
+          Effect.promise(() =>
+            fetch(`${provider.url}/v1/chat/completions`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', 'x-bench-scope': scope, connection: 'close' },
+              body: JSON.stringify({
+                model: 'glm-5.3',
+                messages: [{ role: 'user', content: 'Admission check' }],
+                max_tokens: 20,
+              }),
+            }),
+          )
+        provider.setScope('missing-stage', 'answer')
+        expect((yield* send('missing-stage')).status).toBe(402)
+        provider.setScope('first', 'answer', 22)
+        if (!resume) expect((yield* send('first')).status).toBe(200)
+        const before = provider.totals()
+        expect((yield* send('first')).status).toBe(402)
+        expect(provider.totals()).toEqual(before)
+        provider.setScope('later', 'answer', 32)
+        if (!resume) expect((yield* send('later')).status).toBe(200)
+        provider.setScope('build', 'build', 22)
+        if (!resume) expect((yield* send('build')).status).toBe(200)
+        expect(provider.totals().requests).toBe(3)
+      }),
+    ).pipe(Effect.provide(Layer.merge(fs, FetchHttpClient.layer)))
+  await Effect.runPromise(round(false))
+  await Effect.runPromise(round(true))
+})

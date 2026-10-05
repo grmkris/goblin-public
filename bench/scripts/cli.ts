@@ -17,11 +17,17 @@ import { Schema } from 'effect'
 import { run, resolveRun, loadRun } from './runner.ts'
 import { compare, renderReport, promotion, accounting, summary, phaseAccounting } from '../src/report.ts'
 import { efficiency } from '../src/metrics.ts'
+import { createRecall } from './recall.ts'
 
 const [command = 'plan', ...args] = Bun.argv.slice(2)
 function option(name: string): string | undefined {
   const at = args.indexOf(`--${name}`)
   return at < 0 ? undefined : args[at + 1]
+}
+function cutoffOption(): number {
+  const value = Number(option('until-cutoff'))
+  if (!Number.isSafeInteger(value) || value <= 0) throw new Error('Supply a positive integer --until-cutoff')
+  return value
 }
 const root = resolve(import.meta.dirname, '../..')
 const runs = join(root, '.local/bench/runs')
@@ -74,6 +80,7 @@ const executeRun = Effect.fn('bench.command.run')(function* (manifest: Manifest)
     dir,
     resolved,
     resume: command === 'resume',
+    ...(option('until-cutoff') === undefined ? {} : { untilCutoff: cutoffOption() }),
     ...(option('provider') === undefined ? {} : { providerPath: option('provider') ?? '' }),
   })
 })
@@ -117,11 +124,22 @@ const analyze = Effect.fn('bench.analyze')(function* () {
   return yield* fail('Use compare, report or promote')
 })
 
-const program = Effect.gen(function* () {
+const artifactCommand = Effect.fn('bench.artifactCommand')(function* () {
+  if (command === 'recall')
+    return yield* createRecall(root, {
+      manifest: resolve(option('manifest') ?? ''),
+      name: option('name') ?? 'deepseek-recall-v2',
+      buildTrial: Number(option('build-trial')),
+    })
   if (command === 'canary') return yield* createCanary(root, option('corpus') ?? '', resolve(option('labels') ?? ''))
   if (command === 'review') return yield* recordReviews(runDir(runId), resolve(option('review') ?? ''))
   if (command === 'import') return yield* importCorpus(root, resolve(option('source') ?? ''), option('corpus') ?? '')
   if (['report', 'compare', 'promote'].includes(command)) return yield* analyze()
+  return yield* fail('Unknown artifact command')
+})
+const program = Effect.gen(function* () {
+  if (['recall', 'canary', 'review', 'import', 'report', 'compare', 'promote'].includes(command))
+    return yield* artifactCommand()
   const manifest =
     option('manifest') === undefined ? starterManifest() : yield* readJson(resolve(option('manifest') ?? ''), Manifest)
   const scenarios = yield* loadCorpus(root, manifest)

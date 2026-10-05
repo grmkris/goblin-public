@@ -4,12 +4,13 @@ import type { Trace } from './results.ts'
 
 export type Reservation = { readonly input: number; readonly output: number }
 export type Totals = { readonly requests: number; readonly input: number; readonly output: number }
+export type AllowanceLimits = Pick<Manifest['allowance'], 'maxRequests' | 'maxInputTokens' | 'maxOutputTokens'>
 
 /** Every upstream attempt reserves before it starts. Missing usage keeps the full reservation charged. */
 export class Budget {
   #totals: Totals
-  readonly #limits: Manifest['allowance']
-  constructor(limits: Manifest['allowance'], totals: Totals = { requests: 0, input: 0, output: 0 }) {
+  readonly #limits: AllowanceLimits
+  constructor(limits: AllowanceLimits, totals: Totals = { requests: 0, input: 0, output: 0 }) {
     this.#limits = limits
     this.#totals = totals
   }
@@ -45,6 +46,18 @@ export class Budget {
       input: this.#totals.input - reserved.input + actual.input,
       output: this.#totals.output - reserved.output + actual.output,
     }
+  }
+}
+
+export function phaseLimits(manifest: Manifest, phase: 'preflight' | 'build' | 'answer'): AllowanceLimits {
+  return manifest.allowance.phases?.[phase] ?? manifest.allowance
+}
+
+export function minimumLimits(a: AllowanceLimits, b: AllowanceLimits): AllowanceLimits {
+  return {
+    maxRequests: Math.min(a.maxRequests, b.maxRequests),
+    maxInputTokens: Math.min(a.maxInputTokens, b.maxInputTokens),
+    maxOutputTokens: Math.min(a.maxOutputTokens, b.maxOutputTokens),
   }
 }
 

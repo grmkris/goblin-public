@@ -14,6 +14,7 @@ import { Manifest } from '../src/schema.ts'
 import { EpisodeResult, Resolved, Trace } from '../src/results.ts'
 import { accounting, summary } from '../src/report.ts'
 import { applyReview, Review } from '../src/review.ts'
+import { stageGate } from '../src/stages.ts'
 import { answerMetrics, efficiency } from '../src/metrics.ts'
 
 const dir = resolve(import.meta.dirname, '../../.local/bench/corpora/purrable-claude-canary')
@@ -160,6 +161,18 @@ test.skipIf(!existsSync(resolve(pairedPath, 'resolved.json')))(
         return review === undefined ? result : applyReview(resolved, result, review)
       })
     const data = { resolved, traces, results }
+    expect(
+      stageGate(
+        {
+          ...data,
+          resolved: {
+            ...resolved,
+            manifest: { ...resolved.manifest, allowance: { ...resolved.manifest.allowance, maxRequestsPerAnswer: 6 } },
+          },
+        },
+        22,
+      ).reasons,
+    ).toContain('Per-answer request ceiling exceeded')
     expect(
       answerMetrics(data, 'purrable-claude-canary.22.abstention.optchat.qwen3.8-flash.qwen3.8-flash'),
     ).toMatchObject({

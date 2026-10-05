@@ -99,12 +99,44 @@ function allowanceErrors(manifest: Manifest, scenarios: readonly Scenario[]): st
     errors.push('answer plan exceeds allowance')
   if (manifest.retrieval.maxCalls > 4 || manifest.retrieval.maxBytes > 4096)
     errors.push('retrieval exceeds shared ceiling')
+  errors.push(...stagedAllowanceErrors(manifest, scenarios))
   if (
     manifest.rates.some(
       (rate) => rate.inputPerMillion < 0 || rate.outputPerMillion < 0 || !/^\d{4}-\d{2}-\d{2}$/u.test(rate.dated),
     )
   )
     errors.push('prices require nonnegative rates and YYYY-MM-DD provenance')
+  return errors
+}
+
+function stagedAllowanceErrors(manifest: Manifest, scenarios: readonly Scenario[]): string[] {
+  const { phases, stages } = manifest.allowance
+  const errors: string[] = []
+  const keys = ['maxRequests', 'maxInputTokens', 'maxOutputTokens'] as const
+  if (
+    phases !== undefined &&
+    keys.some((key) => Object.values(phases).reduce((n, limits) => n + limits[key], 0) > manifest.allowance[key])
+  )
+    errors.push('phase allowances exceed global ceiling')
+  if (stages === undefined) return errors
+  const cutoffs = [
+    ...new Set(
+      scenarios
+        .filter((scenario) => manifest.scenarioIds.includes(scenario.id))
+        .flatMap((scenario) => scenario.probes.map((probe) => probe.cutoff)),
+    ),
+  ].toSorted((a, b) => a - b)
+  if (JSON.stringify(stages.map((stage) => stage.cutoff)) !== JSON.stringify(cutoffs))
+    errors.push('stages must match every planned cutoff in ascending order')
+  if (phases === undefined) errors.push('stages require explicit phase allowances')
+  for (const phase of ['build', 'answer'] as const)
+    if (
+      keys.some(
+        (key) =>
+          stages.reduce((n, stage) => n + stage[phase][key], 0) > (phases?.[phase][key] ?? manifest.allowance[key]),
+      )
+    )
+      errors.push(`${phase} stage allowances exceed phase ceiling`)
   return errors
 }
 

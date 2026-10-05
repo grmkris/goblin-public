@@ -61,6 +61,7 @@ export const Trace = Schema.Struct({
   scope: Schema.String,
   model: Schema.String,
   phase: Schema.Literals(['preflight', 'build', 'answer']),
+  stage: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
   attempt: Schema.Int,
   status: Schema.Int,
   input: Schema.Number,

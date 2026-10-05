@@ -15,6 +15,7 @@ import { admitHoldout } from './holdout.ts'
 import { preflight } from './preflight.ts'
 import { post } from './native.ts'
 import { fail, json, lockRun, readJson, writeJson, appendJson, readLedger } from './store.ts'
+import { StageReceipt, stageAdmission, stageGate } from '../src/stages.ts'
 
 const executeEpisode = Effect.fn('bench.episode')(function* (
   url: string,
@@ -31,7 +32,7 @@ const executeEpisode = Effect.fn('bench.episode')(function* (
   const actor = artifactIdentity(resolved, scenario.id, episode.variant)
   if (blocked.has(actor))
     return yield* fail('Checkpoint build previously failed in this run; dependent episodes remain blocked')
-  provider.setScope(actor, 'build')
+  provider.setScope(actor, 'build', episode.probe.cutoff)
   const [buildDuration, build] = yield* post(url, 'build', actor, {
     identity: actor,
     manifest: resolved.manifest,
@@ -43,7 +44,7 @@ const executeEpisode = Effect.fn('bench.episode')(function* (
     Effect.timed,
   )
   const operationId = `${resolved.runId}.${episode.id}`
-  provider.setScope(operationId, 'answer')
+  provider.setScope(operationId, 'answer', episode.probe.cutoff)
   const [answerDuration, raw] = yield* post(url, 'probe', actor, {
     id: operationId,
     reader: episode.variant.reader,
@@ -104,13 +105,15 @@ const openProvider = Effect.fn('bench.openProvider')(function* (options: {
   return yield* relay(options.resolved, join(options.dir, 'attempts.jsonl'), providerConfig)
 })
 
-export const run = Effect.fn('bench.run')(function* (options: {
+type RunOptions = {
   dir: string
   root: string
   resolved: Resolved
   resume: boolean
   providerPath?: string
-}) {
+  untilCutoff?: number
+}
+const initializeRun = Effect.fn('bench.initializeRun')(function* (options: RunOptions) {
   const fs = yield* FileSystem.FileSystem
   yield* lockRun(options.dir)
   const path = join(options.dir, 'resolved.json')
@@ -123,6 +126,81 @@ export const run = Effect.fn('bench.run')(function* (options: {
     yield* fs.makeDirectory(join(options.dir, 'traces'), { mode: 0o700 })
     yield* writeJson(path, options.resolved)
   }
+})
+const saveEpisode = Effect.fn('bench.saveEpisode')(function* (
+  options: RunOptions,
+  episode: Episode,
+  url: string,
+  provider: Effect.Success<ReturnType<typeof relay>>,
+  blocked: Parameters<typeof executeEpisode>[4],
+) {
+  const episodePath = join(options.dir, 'episodes', `${episode.id}.json`)
+  const [duration, completed] = yield* executeEpisode(url, options.resolved, episode, provider, blocked).pipe(
+    Effect.result,
+    Effect.timed,
+  )
+  const episodeMs = Duration.toMillis(duration)
+  if (Result.isSuccess(completed)) {
+    const result = { ...completed.success.result, timing: { episodeMs, ...completed.success.timing } }
+    yield* writeJson(join(options.dir, 'traces', `${episode.id}.json`), { ...completed.success, result })
+    yield* writeJson(episodePath, result)
+  } else {
+    const result: EpisodeResult = {
+      id: episode.id,
+      variant: episode.variant.id,
+      category: episode.probe.category,
+      status: 'failed',
+      answer: null,
+      score: failedScore,
+      malformed: false,
+      futureLeakage: false,
+      unauthorizedReads: false,
+      forbiddenEndorsement: false,
+      deliveredIds: [],
+      detail: 'Execution failed; inspect attempts and native logs',
+      timing: { episodeMs },
+    }
+    yield* writeJson(episodePath, result)
+    yield* appendJson(join(options.dir, 'failures.jsonl'), { id: episode.id, error: json(completed.failure) })
+  }
+})
+const finalizeRun = Effect.fn('bench.finalizeRun')(function* (
+  options: RunOptions,
+  cutoff: number | undefined,
+  receipts: readonly StageReceipt[],
+) {
+  const data = yield* loadRun(options.dir)
+  if (cutoff !== undefined && !receipts.some((receipt) => receipt.cutoff === cutoff))
+    yield* appendJson(join(options.dir, 'stages.jsonl'), {
+      runId: options.resolved.runId,
+      sourceHash: options.resolved.sourceHash,
+      corpusHash: options.resolved.corpusHash,
+      cutoff,
+      ...stageGate(data, cutoff),
+      at: DateTime.formatIso(yield* DateTime.now),
+    })
+  yield* writeJson(join(options.dir, 'result.json'), data)
+  return {
+    answers: data.results.length,
+    correct: data.results.filter((item) => item.score.correct).length,
+    cutoff,
+    operationalGate: cutoff === undefined ? undefined : stageGate(data, cutoff),
+  }
+})
+export const run = Effect.fn('bench.run')(function* (options: RunOptions) {
+  yield* initializeRun(options)
+  const initial = yield* loadRun(options.dir)
+  const receipts = yield* readLedger(join(options.dir, 'stages.jsonl'), StageReceipt)
+  const admission = stageAdmission(initial, receipts, options.untilCutoff)
+  if (admission.reasons.length > 0) return yield* fail(admission.reasons.join('; '))
+  const selected = episodes(options.resolved.manifest, options.resolved.scenarios)
+    .filter((episode) => admission.cutoff === undefined || episode.probe.cutoff <= admission.cutoff)
+    .filter((episode) => !initial.results.some((result) => result.id === episode.id))
+  const unfinished = selected.some((episode) =>
+    initial.traces.some((trace) => trace.scope === `${options.resolved.runId}.${episode.id}`),
+  )
+  if (unfinished) return yield* fail('Unfinished answer evidence is preserved; start a fresh named trial')
+  if (selected.length === 0) return yield* finalizeRun(options, admission.cutoff, receipts)
   const provider = yield* openProvider(options)
   yield* admitHoldout(options.root, options.resolved)
   const { url } = yield* localStack
@@ -136,45 +214,8 @@ export const run = Effect.fn('bench.run')(function* (options: {
     record: (actor: string) =>
       appendJson(blockedPath, { actor }).pipe(Effect.tap(() => Effect.sync(() => blockedActors.add(actor)))),
   }
-  for (const episode of episodes(options.resolved.manifest, options.resolved.scenarios)) {
-    const episodePath = join(options.dir, 'episodes', `${episode.id}.json`)
-    if (yield* fs.exists(episodePath)) continue
-    const [duration, completed] = yield* executeEpisode(url, options.resolved, episode, provider, blocked).pipe(
-      Effect.result,
-      Effect.timed,
-    )
-    const episodeMs = Duration.toMillis(duration)
-    if (Result.isSuccess(completed)) {
-      const result = { ...completed.success.result, timing: { episodeMs, ...completed.success.timing } }
-      yield* writeJson(join(options.dir, 'traces', `${episode.id}.json`), { ...completed.success, result })
-      yield* writeJson(episodePath, result)
-    } else {
-      const result: EpisodeResult = {
-        id: episode.id,
-        variant: episode.variant.id,
-        category: episode.probe.category,
-        status: 'failed',
-        answer: null,
-        score: failedScore,
-        malformed: false,
-        futureLeakage: false,
-        unauthorizedReads: false,
-        forbiddenEndorsement: false,
-        deliveredIds: [],
-        detail: 'Execution failed; inspect attempts and native logs',
-        timing: { episodeMs },
-      }
-      yield* writeJson(episodePath, result)
-      yield* appendJson(join(options.dir, 'failures.jsonl'), { id: episode.id, error: json(completed.failure) })
-    }
-  }
-  const data = yield* loadRun(options.dir)
-  yield* writeJson(join(options.dir, 'result.json'), data)
-  return {
-    answers: data.results.length,
-    correct: data.results.filter((item) => item.score.correct).length,
-    totals: provider.totals(),
-  }
+  for (const episode of selected) yield* saveEpisode(options, episode, url, provider, blocked)
+  return yield* finalizeRun(options, admission.cutoff, receipts)
 })
 
 export const resolveRun = Effect.fn('bench.resolveRun')(function* (

@@ -34,5 +34,6 @@ export function plan(manifest: Manifest = starterManifest(), scenarios: readonly
     withinAnswerLimit: cases.length <= manifest.allowance.maxAnswers,
     limits: manifest.allowance,
     maxRequestsPerAnswer: manifest.allowance.maxRequestsPerAnswer ?? 8,
+    stages: manifest.allowance.stages ?? [],
   }
 }
