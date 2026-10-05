@@ -17,6 +17,11 @@ context returns 409 and a foreign or revoked workspace returns 404. Selection wr
 `x-purrable-csrf: 1`. Hooks and inbound MCP resolve the authenticated owner's workspace independently of browser
 selection. Invitation-only accounts never provision a personal Agent or fall back to their account ID.
 
+Established workspace resolution uses one live joined D1 read and performs no writes. It reads account kind,
+owned workspace, active membership, owner identity and session selection together; it caches no authority.
+Provisioning and initial owner selection write only on the cold path. Deleted/deleting ownership still prevents
+re-provisioning, and a removed selection never falls back to the user's personal workspace.
+
 Invitations use a seven-day 256-bit fragment secret or independent 80-bit invitation code. Only hashes are stored.
 The page removes the fragment before proof exchange; responses are no-store/no-referrer. Exact Origin and CSRF proof
 are required to mint a ten-minute Secure/HttpOnly/SameSite admission cookie. Proof attempts are bounded per IP and
@@ -35,6 +40,11 @@ Acceptance retains the admission cookie's original ten-minute expiry so a browse
 observed response. A used admission returns only the original accepting account's receipt, with no membership
 change. Replays never renew that cookie or its D1 expiry.
 
+The hourly Worker cron prunes at most 1000 expired admissions and 1000 rate-limit buckets per tick through indexed
+expiry queries, even without Dodo configuration. It retains every unexpired admission, including used proofs needed
+for acceptance retries, and all rate buckets younger than one hour to preserve invitation-send counters. An expiry
+backlog drains over subsequent ticks; this bounds each sweep, not total storage under sustained abuse.
+
 Phase A closes every existing owner RPC to members and viewers. A membership does not renew resident authority,
 expose credentials or grant owner methods. Phase B must add immutable requester provenance, visibility filters,
 requester-directed questions, live D1 invalidation and the member ceiling inside ADR 0010's capability scope before
@@ -49,6 +59,7 @@ Deleting an invitation-only member account never looks up a personal Agent; dele
 owners. Retained transcripts are removed with the workspace; forgetting OAuth credentials is not remote revocation.
 
 Local workerd tests prove stable owner routing, selection/CSRF fences, paid email-bound invitation acceptance,
-concurrent/replayed acceptance, proof rotation/expiry, closed member/viewer RPCs and deletion failure/retry with real
+concurrent/replayed acceptance, proof rotation/expiry, one-read workspace resolution without writes, bounded cron
+cleanup without Dodo, closed member/viewer RPCs and deletion failure/retry with real
 D1 and injected mail. Chromium fixture tests cover the Settings and invitation flows; they make no provider calls. Live paid invitations and Phase B privacy, provenance, budgets and invalidation acceptance
 remain separate gates before the complete Members milestone can be claimed.

@@ -15,6 +15,7 @@ import { accountAdmissions, admissions, invitations, members } from '../../src/w
 import type { MailMessage } from '../../src/auth/mail.ts'
 import { makeWorkspaceStore } from '../../src/workspaces/store.ts'
 import { deleteAccountWorkspaces } from '../../src/workspaces/lifecycle.ts'
+import { maintenanceCase, observeWorkspace } from './members-maintenance.ts'
 
 export class MembersAgent extends PersonalAgent {
   protected override modelStreams() {
@@ -88,6 +89,8 @@ export default {
     const url = new URL(request.url)
     const input = new Request(new URL(url.pathname + url.search, env.APP_URL), request)
     try {
+      if (url.pathname === '/__test/members/queries') return await observeWorkspace(input, env)
+      if (url.pathname === '/__test/members/maintenance') return await maintenanceCase(input, env)
       if (url.pathname.startsWith('/__test/members/')) return await lever(input, env)
       if (url.pathname.startsWith('/__test/billing/'))
         return await Effect.runPromise(

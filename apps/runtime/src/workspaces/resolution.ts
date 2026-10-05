@@ -3,6 +3,7 @@ import type { RuntimeEnv } from '../env.ts'
 import { Conflict, Forbidden, NotFound } from '../http/errors.ts'
 import type { UserSession } from '../auth/service.ts'
 import { makeWorkspaceStore, type WorkspaceStore } from './store.ts'
+type Snapshot = Awaited<ReturnType<WorkspaceStore['snapshot']>>
 
 const view = (row: Awaited<ReturnType<WorkspaceStore['list']>>[number]): WorkspaceView => ({
   id: row.workspace.id,
@@ -17,27 +18,30 @@ const view = (row: Awaited<ReturnType<WorkspaceStore['list']>>[number]): Workspa
 })
 
 /** Only ordinary accounts get a personal workspace. Invitation-only accounts never fall back to their user id. */
-export async function provisionPersonalWorkspace(store: WorkspaceStore, userId: string): Promise<void> {
-  if ((await store.account(userId))?.kind === 'ordinary')
-    await store.provision(userId, `ws_${crypto.randomUUID()}`, Date.now())
+async function provisionPersonalWorkspace(store: WorkspaceStore, userId: string, snapshot: Snapshot): Promise<boolean> {
+  if (snapshot.ownedId !== undefined || snapshot.kind !== 'ordinary') return false
+  await store.provision(userId, `ws_${crypto.randomUUID()}`, Date.now())
+  return true
 }
-export async function workspaceState(env: RuntimeEnv, session: UserSession): Promise<WorkspaceState> {
-  const store = makeWorkspaceStore(env.AUTH_DB)
-  await provisionPersonalWorkspace(store, session.userId)
-  const rows = await store.list(session.userId)
-  let selection = await store.selection(session.sessionId)
-  if (selection === undefined) {
-    const owned = rows.find((row) => row.workspace.ownerUserId === session.userId)
+async function loadSnapshot(store: WorkspaceStore, userId: string, sessionId?: string): Promise<Snapshot> {
+  let snapshot = await store.snapshot(userId, sessionId)
+  if (await provisionPersonalWorkspace(store, userId, snapshot)) snapshot = await store.snapshot(userId, sessionId)
+  if (sessionId !== undefined && snapshot.selection === undefined) {
+    const owned = snapshot.rows.find((row) => row.workspace.ownerUserId === userId && row.member.role === 'owner')
     if (owned !== undefined) {
-      await store.select(session.sessionId, owned.workspace.id, null, crypto.randomUUID(), Date.now())
-      selection = await store.selection(session.sessionId)
+      const selected = await store.select(sessionId, owned.workspace.id, null, crypto.randomUUID(), Date.now())
+      snapshot = selected === undefined ? await store.snapshot(userId, sessionId) : { ...snapshot, selection: selected }
     }
   }
-  const active = rows.find((row) => row.workspace.id === selection?.workspaceId)
+  return snapshot
+}
+export async function workspaceState(env: RuntimeEnv, session: UserSession): Promise<WorkspaceState> {
+  const snapshot = await loadSnapshot(makeWorkspaceStore(env.AUTH_DB), session.userId, session.sessionId)
+  const active = snapshot.rows.find((row) => row.workspace.id === snapshot.selection?.workspaceId)
   return {
     active: active === undefined ? null : view(active),
-    context: selection?.context ?? null,
-    workspaces: rows.map(view),
+    context: snapshot.selection?.context ?? null,
+    workspaces: snapshot.rows.map(view),
   }
 }
 export async function selectWorkspace(
@@ -47,10 +51,9 @@ export async function selectWorkspace(
   expected: string | null,
 ): Promise<WorkspaceState> {
   const store = makeWorkspaceStore(env.AUTH_DB)
-  const rows = await store.list(session.userId)
-  if (!rows.some((row) => row.workspace.id === workspaceId)) throw new NotFound({ what: 'workspace' })
-  if (((await store.selection(session.sessionId))?.context ?? null) !== expected)
-    throw new Conflict({ reason: 'workspace context changed' })
+  const snapshot = await store.snapshot(session.userId, session.sessionId)
+  if (!snapshot.rows.some((row) => row.workspace.id === workspaceId)) throw new NotFound({ what: 'workspace' })
+  if ((snapshot.selection?.context ?? null) !== expected) throw new Conflict({ reason: 'workspace context changed' })
   const selection = await store.select(session.sessionId, workspaceId, expected, crypto.randomUUID(), Date.now())
   if (selection === undefined) throw new Conflict({ reason: 'workspace context changed' })
   return workspaceState(env, session)
@@ -59,20 +62,18 @@ export async function selectWorkspace(
 /** Derive the Agent name from verified D1 ownership. No request parameter supplies an Agent name. */
 export async function ownerWorkspace(env: RuntimeEnv, userId: string) {
   const store = makeWorkspaceStore(env.AUTH_DB)
-  await provisionPersonalWorkspace(store, userId)
-  const rows = await store.list(userId)
-  const owned = rows.find((row) => row.workspace.ownerUserId === userId && row.member.role === 'owner')
+  const snapshot = await loadSnapshot(store, userId)
+  const owned = snapshot.rows.find((row) => row.workspace.ownerUserId === userId && row.member.role === 'owner')
   if (owned === undefined) throw new NotFound({ what: 'workspace' })
   return owned.workspace
 }
 export async function sessionWorkspace(env: RuntimeEnv, session: UserSession, context?: string) {
-  const state = await workspaceState(env, session)
-  if (state.active === null) throw new NotFound({ what: 'workspace' })
-  if (context !== undefined && context !== state.context) throw new Conflict({ reason: 'workspace context changed' })
-  const store = makeWorkspaceStore(env.AUTH_DB)
-  const row = (await store.list(session.userId)).find((item) => item.workspace.id === state.active?.id)
+  const snapshot = await loadSnapshot(makeWorkspaceStore(env.AUTH_DB), session.userId, session.sessionId)
+  const row = snapshot.rows.find((item) => item.workspace.id === snapshot.selection?.workspaceId)
   if (row === undefined) throw new NotFound({ what: 'workspace' })
-  return { ...row, context: state.context, view: state.active }
+  const current = snapshot.selection?.context ?? null
+  if (context !== undefined && context !== current) throw new Conflict({ reason: 'workspace context changed' })
+  return { ...row, context: current, view: view(row) }
 }
 export async function sessionOwnerWorkspace(env: RuntimeEnv, session: UserSession, context?: string) {
   const principal = await sessionWorkspace(env, session, context)

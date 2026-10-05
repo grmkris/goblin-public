@@ -150,6 +150,101 @@ async function codeSignIn(base: string, who: Person) {
 }
 const accept = (base: string, who: Person, id: string) => call(base, who, `/api/invitations/${id}/accept`, {}, MAIL)
 
+const QueryObservation = Schema.Struct({
+  reads: Schema.Number,
+  writes: Schema.Number,
+  status: Schema.Number,
+  result: Schema.optional(Schema.Unknown),
+})
+async function observe(base: string, who: Person, mode: 'state' | 'browser' | 'owner', context?: string) {
+  return Schema.decodeUnknownSync(QueryObservation)(
+    await (
+      await call(
+        base,
+        who,
+        '/__test/members/queries',
+        { mode },
+        context === undefined ? {} : { 'x-purrable-workspace': context },
+      )
+    ).json(),
+  )
+}
+async function oneRead(base: string, who: Person, mode: 'state' | 'browser' | 'owner', status = 200, context?: string) {
+  const result = await observe(base, who, mode, context)
+  expect(result).toMatchObject({ reads: 1, writes: 0, status })
+  return result
+}
+async function readBudgetCase(base: string) {
+  const owner = await person(base)
+  const cold = await observe(base, owner, 'state')
+  expect(cold.status).toBe(200)
+  expect(cold.writes).toBeGreaterThan(0)
+  const initial = Schema.decodeUnknownSync(WorkspaceState)(cold.result)
+  expect(initial.active).toMatchObject({ role: 'owner', agentReady: true })
+  expect((await oneRead(base, owner, 'state')).result).toEqual(initial)
+  await oneRead(base, owner, 'browser')
+  await oneRead(base, owner, 'owner')
+  await oneRead(base, owner, 'browser', 409, 'stale-context')
+  const selector = await person(base)
+  // Owner/MCP resolution provisions ownership without selecting a browser workspace.
+  const provisioned = await observe(base, selector, 'owner')
+  expect(provisioned.status).toBe(200)
+  const workspace = Schema.decodeUnknownSync(Schema.Struct({ id: Schema.String }))(provisioned.result)
+  expect(
+    (await call(base, selector, '/api/workspaces/active', { workspaceId: workspace.id, context: null })).status,
+  ).toBe(200)
+  await oneRead(base, selector, 'browser')
+  for (const role of ['member', 'viewer'] as const) {
+    const invitee = await person(base)
+    await lever(base, invitee, 'invitation-account')
+    expect(Schema.decodeUnknownSync(WorkspaceState)((await oneRead(base, invitee, 'state')).result).workspaces).toEqual(
+      [],
+    )
+    await oneRead(base, invitee, 'owner', 404)
+    await lever(base, invitee, 'member', { workspaceId: initial.active?.id, role })
+    expect(
+      (await call(base, invitee, '/api/workspaces/active', { workspaceId: initial.active?.id, context: null })).status,
+    ).toBe(200)
+    await oneRead(base, invitee, 'state')
+    await oneRead(base, invitee, 'browser', 403)
+    await oneRead(base, invitee, 'owner', 404)
+    await lever(base, invitee, 'revoke')
+    await oneRead(base, invitee, 'browser', 404)
+  }
+  await lever(base, owner, 'delete-fault')
+  expect(Schema.decodeUnknownSync(WorkspaceState)((await oneRead(base, owner, 'state')).result).active).toBeNull()
+  await oneRead(base, owner, 'browser', 404)
+  await oneRead(base, owner, 'owner', 404)
+}
+harness.test(
+  'native Members: one live read and no steady-state writes preserve cold provision, invitation and revocation fences',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    yield* Effect.promise(() => readBudgetCase(url))
+  }),
+)
+async function cleanupCase(base: string) {
+  const owner = await person(base)
+  await state(base, owner)
+  await pay(base, owner)
+  const invitation = await invite(base, owner, `${crypto.randomUUID()}@fixture.test`)
+  const result = await (await lever(base, owner, 'maintenance', { invitationId: invitation.receipt.id })).json()
+  expect(result).toEqual({
+    before: { admissions: 1003, rates: 1003 },
+    first: { admissions: 3, rates: 3 },
+    second: { admissions: 2, rates: 2 },
+    repeated: { admissions: 2, rates: 2 },
+    retainedAttempts: 20,
+  })
+}
+harness.test(
+  'native Members: scheduled cleanup without Dodo bounds expiry sweeps and retains live proofs and hourly counters',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    yield* Effect.promise(() => cleanupCase(url))
+  }),
+)
+
 async function resolutionCase(base: string) {
   const owner = await person(base)
   const stranger = await person(base)

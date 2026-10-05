@@ -70,6 +70,10 @@ returns 409, and selection writes require exact Origin plus `x-purrable-csrf: 1`
 to the verified owner's workspace. Ordinary accounts can provision a personal workspace; invitation-only accounts
 never fall back to a personal Agent. Existing objects and Pi history keep their original names.
 
+Established workspace resolution makes one live joined D1 read and no writes. The query binds admission kind,
+ownership, active memberships and session selection to the authenticated user. Only cold provisioning and initial
+owner selection write; revocation and deleting workspaces are read afresh on every request.
+
 Invitations store only hashes of a fragment secret and separate strong code. Public proof exchange requires exact
 Origin and CSRF headers, is rate limited, and issues a ten-minute HttpOnly admission bound to the email and current
 invitation version. Closed signup checks that admission at OTP send/verify and account creation. Acceptance requires
@@ -77,6 +81,10 @@ a fresh verified session and the acting account's plan, then commits membership 
 Operation receipts and version CAS protect owner changes; replay never restores removed access. Resend rotates
 proofs. Transactions finish before mail or owner grant RPCs, and members cannot invoke owner grant validation while
 leaving. The workspace limits pending/active invitees to sixteen and mail attempts to ten per hour.
+
+The hourly cron removes up to 1000 expired admissions and 1000 rate buckets using expiry indexes, including when
+Dodo is unconfigured. It retains unexpired acceptance-retry proofs and all rate buckets younger than one hour.
+Larger expired backlogs drain over later ticks.
 
 The browser projects D1 workspace state in Settings and the sidebar. Selection performs a full navigation to close
 streams, App frames and conversation caches; focus rechecks the opaque session context. Agent cards, conversations

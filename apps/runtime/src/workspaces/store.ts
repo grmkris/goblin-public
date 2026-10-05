@@ -1,5 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
+import { alias } from 'drizzle-orm/sqlite-core'
 import { authUsers } from '../billing/schema.ts'
 import { Internal } from '../http/errors.ts'
 import { accountAdmissions, members, selections, workspaces } from './schema.ts'
@@ -14,8 +15,45 @@ export const databaseOperation = async <A>(read: () => PromiseLike<A>): Promise<
 }
 const NONE = JSON.stringify({ servers: [], skills: [], mainHistory: 'all' })
 type Database = ReturnType<typeof drizzle>
+const requester = alias(authUsers, 'workspace_requester')
+const ownedWorkspace = alias(workspaces, 'workspace_owned')
+
+/** One live query binds admission, ownership, active memberships and selection to the authenticated user. */
+async function accessSnapshot(db: Database, userId: string, sessionId?: string) {
+  const rows = await databaseOperation(() =>
+    db
+      .select({
+        kind: accountAdmissions.kind,
+        ownedId: ownedWorkspace.id,
+        workspace: workspaces,
+        member: members,
+        ownerName: authUsers.name,
+        selection: selections,
+      })
+      .from(requester)
+      .leftJoin(accountAdmissions, eq(accountAdmissions.userId, requester.id))
+      .leftJoin(ownedWorkspace, eq(ownedWorkspace.ownerUserId, requester.id))
+      .leftJoin(members, and(eq(members.userId, requester.id), eq(members.state, 'active')))
+      .leftJoin(workspaces, and(eq(workspaces.id, members.workspaceId), eq(workspaces.state, 'active')))
+      .leftJoin(authUsers, eq(authUsers.id, workspaces.ownerUserId))
+      .leftJoin(selections, eq(selections.sessionId, sessionId ?? ''))
+      .where(eq(requester.id, userId))
+      .all(),
+  )
+  return {
+    kind: rows[0]?.kind ?? undefined,
+    ownedId: rows[0]?.ownedId ?? undefined,
+    selection: rows[0]?.selection ?? undefined,
+    rows: rows.flatMap((row) =>
+      row.workspace !== null && row.member !== null && row.ownerName !== null
+        ? [{ workspace: row.workspace, member: row.member, ownerName: row.ownerName }]
+        : [],
+    ),
+  }
+}
 
 const workspaceReads = (db: Database) => ({
+  snapshot: (userId: string, sessionId?: string) => accessSnapshot(db, userId, sessionId),
   owned: (userId: string) =>
     databaseOperation(() => db.select().from(workspaces).where(eq(workspaces.ownerUserId, userId)).get()),
   workspace: (id: string) => databaseOperation(() => db.select().from(workspaces).where(eq(workspaces.id, id)).get()),

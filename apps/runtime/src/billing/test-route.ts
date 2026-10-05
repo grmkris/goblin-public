@@ -34,7 +34,7 @@ export const billingTestRoute = Effect.fn('billing.fixture')(function* (
     return Response.json({ outcome: yield* processStored(deps, eventId) })
   if (action === 'inbox' && eventId !== undefined) return Response.json((yield* deps.store.inbox(eventId)) ?? null)
   if (action === 'cron') {
-    yield* runBillingCron(deps)
+    yield* runBillingCron(deps, env.AUTH_DB)
     return Response.json({ ok: true })
   }
   if (action === 'override') {
