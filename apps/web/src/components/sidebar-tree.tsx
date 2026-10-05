@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useMemo, useState } from 'react'
+import { type CSSProperties, useMemo, useState } from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import type { ConversationView } from '@purrable/contracts'
 import {
@@ -32,6 +32,7 @@ import {
   foldApps,
   rowStatus,
 } from '../lib/workspace-tree.ts'
+import { useNow } from './use-now.ts'
 import { useWorkspace } from './workspace.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
@@ -85,16 +86,6 @@ export function useRowActions(key: ItemKey) {
       else void navigate({ to: '/c/$conversationId', params: { conversationId: item.id } })
     },
   }
-}
-
-/** Now, in milliseconds, every second while mounted: how long a conversation has been at work. */
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
-  }, [])
-  return now
 }
 
 function Elapsed({ since }: { readonly since: number }) {
