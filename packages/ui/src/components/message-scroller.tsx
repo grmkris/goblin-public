@@ -1,8 +1,9 @@
 // Adapted from the shadcn base-nova registry item `message-scroller` (shadcn/ui, MIT): the styled parts over the
-// headless @shadcn/react primitive, which owns the scroll behaviour. Purrable's changes: lucide's arrow instead of the
-// registry's icon placeholder, and plain utilities for the registry's scroll-fade and scrollbar helpers (the floating
-// composer and header provide the edge fades here), and layout custom properties a parent sets to inset the content
-// under floating chrome: --message-scroller-max-width, -gap, -inset-top, -inset-bottom, -inset-x and -end-offset.
+// headless @shadcn/react primitive, which owns the scroll behaviour (patched with unreleased upstream fixes, see
+// patches/shadcn-react/README.md). Purrable's changes: lucide's arrow instead of the registry's icon placeholder, and
+// plain utilities for the registry's scroll-fade and scrollbar helpers (the floating composer and header provide the
+// edge fades here), and layout custom properties a parent sets to inset the content under floating chrome:
+// --message-scroller-max-width, -gap, -inset-top, -inset-bottom, -inset-x and -end-offset.
 // Items render without the registry's `content-visibility: auto` and 10rem placeholder: rows not yet painted measured
 // as the placeholder, so the content and the scrollbar shifted while scrolling up, and a just-sent turn was measured
 // at the wrong height and yanked to the end (shadcn-ui/ui#11175). The cost is painting every row: main's memory view

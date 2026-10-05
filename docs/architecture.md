@@ -68,7 +68,8 @@ error tag, never bodies or credentials.
 tasks, submissions, recovery and tool replay. The object builds one Effect `ManagedRuntime` lazily, providing its
 services: `Mcp` (the MCP host), `Resident` (resident authority), `Conversations` (the conversation registry),
 `Budget`, `Models`, `Memory`, `Skills`, `Learner` and `Channel` (`services.ts`). DO methods are thin: each runs one Effect
-program and encodes the exit. PiHarness and Pi Durable are experimental; Alchemy is a pinned beta and Drizzle an RC.
+program and encodes the exit. PiHarness and Pi Durable are experimental; Alchemy is a pinned beta and Drizzle an RC. `@shadcn/react` is pinned at
+0.3.1 and patched (`patches/shadcn-react/README.md`): its MessageScroller carries unreleased upstream fixes.
 
 Conversations (`conversations.ts`): every agent has one **main** conversation, Pi's root session `1`, where the owner's
 browser and every inbound MCP client talk. A message from anyone but the owner's browser starts with an author tag
@@ -176,7 +177,8 @@ a heartbeat. On reconnect it starts again from a fresh snapshot.
 Every signed-in page sits beside the app's sidebar (shadcn's sidebar, ported to `packages/ui`): the conversations,
 then Connections, Settings and Sign out. On desktop it folds to an icon rail (the toggle in a page's top bar or the
 first pane's pill, its edge, or ⌘/Ctrl+B) and a cookie remembers it, which the server reads so the first paint has the right layout; on
-phones it is a sheet. The workspace fills the page beside it. The transcript scrolls in a `MessageScroller` (from `@shadcn/react`). Each of
+phones it is a sheet. The workspace fills the page beside it. The transcript scrolls in a `MessageScroller` (from `@shadcn/react`, patched with upstream fixes that are not
+released yet; `bun run check:patches` proves the patch is installed). Each of
 the owner's turns (typed in the app or sent from Telegram, `isOwnTurn` in `lib/parts.ts`) is a scroll anchor; a
 message from an MCP client, a subagent, a routine or a thread's share-back arrives without moving the view. Until its
 snapshot arrives a pane shows nothing, so a conversation opens at its end. The view follows a streaming reply only while the reader is at the end, and

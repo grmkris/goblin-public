@@ -49,14 +49,15 @@
     "bench:promote": "bun bench/scripts/cli.ts promote",
     "bench:doctor": "bun bench/scripts/cli.ts doctor",
     "check:files": "bun tools/check-files.ts",
+    "check:patches": "bun tools/check-patches.ts",
     "graph": "bun tools/check-graph.ts",
-    "check:fast": "bun run fmt:check && bun run agents:check && bun run lint && bun run typecheck && bun run test:unit",
-    "check": "bun run fmt:check && bun run agents:check && bun run graph && bun run typecheck && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run build",
+    "check:fast": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run lint && bun run typecheck && bun run test:unit",
+    "check": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run graph && bun run typecheck && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run build",
     "infra": "alchemy",
     "deploy:prod": "bun scripts/stage.ts deploy:prod",
     "plan:prod": "bun scripts/stage.ts plan:prod",
     "smoke:prod": "bun scripts/stage.ts smoke:prod",
-    "check:public": "bun run fmt:check && bun run agents:check && bun run graph && bun run typecheck && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run build"
+    "check:public": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run graph && bun run typecheck && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run build"
   },
   "devDependencies": {
     "@shadcn/lint": "0.2.0",
@@ -80,5 +81,8 @@
     "@effect/platform-node-shared": "4.0.0"
   },
   "packageManager": "bun@1.4.2",
+  "patchedDependencies": {
+    "@shadcn/react@0.3.1": "patches/@shadcn%2Freact@0.3.1.patch"
+  },
   "license": "MIT"
 }
