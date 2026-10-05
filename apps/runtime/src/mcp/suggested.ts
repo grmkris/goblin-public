@@ -2,7 +2,7 @@
 // sign-in at all. Descriptions are ours, not the servers'. The shelf only adds them; grants still start empty.
 import type { ServerSuggestion } from '@purrable/contracts'
 
-type Stage = 'local' | 'dev' | 'test'
+type Stage = 'local' | 'dev' | 'prod' | 'test'
 
 type Suggested = {
   readonly id: string
@@ -13,7 +13,7 @@ type Suggested = {
   readonly signIn: boolean
 }
 
-/** Checked 2026-10-04: MyPlan and MyTab answer 401 with OAuth metadata; the rest answer `initialize` openly. */
+/** Checked 2026-10-05: stage endpoints follow the wrap-up plan; live acceptance is recorded separately. */
 const SUGGESTED: readonly Suggested[] = [
   {
     id: 'myplan',
@@ -23,6 +23,7 @@ const SUGGESTED: readonly Suggested[] = [
       local: 'https://dev-new.myplan.lol/mcp',
       dev: 'https://dev-new.myplan.lol/mcp',
       test: 'https://myplan.lol/mcp',
+      prod: 'https://myplan.lol/mcp',
     },
     signIn: true,
   },
@@ -30,7 +31,36 @@ const SUGGESTED: readonly Suggested[] = [
     id: 'mytab',
     title: 'MyTab',
     description: 'Browser sessions on your own machines, for pages that need a real browser.',
-    endpoint: { local: 'https://dev.mytab.lol/mcp', dev: 'https://mytab.lol/mcp', test: 'https://mytab.lol/mcp' },
+    endpoint: {
+      local: 'https://dev.mytab.lol/mcp',
+      dev: 'https://mytab.lol/mcp',
+      test: 'https://mytab.lol/mcp',
+      prod: 'https://mytab.lol/mcp',
+    },
+    signIn: true,
+  },
+  {
+    id: 'mygram',
+    title: 'MyGram',
+    description: 'Telegram for your agent: messages in, replies out.',
+    endpoint: {
+      local: 'https://dev.mygram.lol/mcp',
+      dev: 'https://dev.mygram.lol/mcp',
+      test: 'https://mygram.lol/mcp',
+      prod: 'https://mygram.lol/mcp',
+    },
+    signIn: true,
+  },
+  {
+    id: 'myskills',
+    title: 'MySkills',
+    description: 'Skill libraries your agent can read and follow.',
+    endpoint: {
+      local: 'https://dev.myskills.lol/mcp',
+      dev: 'https://dev.myskills.lol/mcp',
+      test: 'https://myskills.lol/mcp',
+      prod: 'https://myskills.lol/mcp',
+    },
     signIn: true,
   },
   {

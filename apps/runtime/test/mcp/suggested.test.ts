@@ -18,3 +18,13 @@ describe('the suggested servers', () => {
     for (const item of all) expect(new URL(item.endpoint).protocol).toBe('https:')
   })
 })
+
+it('maps MyGram, MySkills and MyPlan to their stage endpoints', () => {
+  for (const stage of ['local', 'dev', 'prod', 'test'] as const) {
+    const shelf = suggestions(stage, new Set())
+    const dev = stage === 'local' || stage === 'dev'
+    expect(shelf.find((item) => item.id === 'mygram')?.endpoint).toBe(`https://${dev ? 'dev.' : ''}mygram.lol/mcp`)
+    expect(shelf.find((item) => item.id === 'myskills')?.endpoint).toBe(`https://${dev ? 'dev.' : ''}myskills.lol/mcp`)
+    expect(shelf.find((item) => item.id === 'myplan')?.endpoint).toBe(`https://${dev ? 'dev-new.' : ''}myplan.lol/mcp`)
+  }
+})
