@@ -87,10 +87,12 @@ like a pane's grip. Folded on a desktop the sidebar is a 56px rail (`components/
 active conversations, never hidden altogether, each with a hover card. Unread is the server's: `read_at` on
 `app_conversations` is the owner's read mark, set when a pane has shown the conversation for a moment (half in view,
 the page in front). Each conversation shows in a pane of its own (below); `/c/:id` names the focused one. Threads open inline first, at any depth (`components/inline-thread.tsx`): under the message a thread branched from
-sits a chip with its reply count, name, last activity and state; it unfolds the live thread in place, connected to
-the message, with its own messages (the message it branched from is right above), its own threads unfolding the same
-way, and a small composer, plus Open in pane to put it beside. While the thread is in a pane the fold shows a note
-with the way to it and back. Reply in thread on a message with no thread opens an inline reply that branches the
+sits a chip with its reply count, name, last activity and state; it unfolds the live thread in place, set in under
+the message by a rule at its left, with its own messages (the message it branched from is right above), its own
+threads unfolding the same way, and a one-line composer, plus Open in pane to put it beside. While the thread is in a
+pane the fold shows a note with the way to it and back. A message with no thread offers Reply in thread and Copy, in a
+small pill over its lower edge where a pointer hovers, and on a touch screen once the message is tapped. Reply in
+thread opens an inline reply that branches the
 thread only when it is sent, because Pi cannot delete a conversation; the sidebar's "+" opens an empty draft pane the
 same way. Panes and inline threads follow conversations through one stream pool (`lib/stream-pool.ts`): one event
 stream per conversation however many show it, at most eight following beyond those on screen, and one off screen

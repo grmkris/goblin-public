@@ -70,7 +70,7 @@ export function Conversation({
                 ) : (
                   parts.map((part) => (
                     <MessageScrollerItem key={part.id} messageId={part.id} scrollAnchor={isOwnTurn(part)}>
-                      <div className="flex flex-col">
+                      <div className="message-item flex flex-col" tabIndex={-1}>
                         <PartView part={part} canSwitchModel={canSwitchModel} />
                         {threads !== undefined && <MessageThreads part={part} threads={threads} />}
                       </div>

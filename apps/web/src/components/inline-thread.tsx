@@ -2,7 +2,15 @@ import { createContext, type ReactNode, use, useCallback, useEffect, useMemo, us
 import { Link } from '@tanstack/react-router'
 import type { ConversationView } from '@purrable/contracts'
 import { Alert, AlertDescription, PresenceOrb } from '@purrable/ui'
-import { ChevronDownIcon, MessageSquareReplyIcon, MessagesSquareIcon, PanelRightOpenIcon, XIcon } from 'lucide-react'
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  CopyIcon,
+  MessageSquareReplyIcon,
+  MessagesSquareIcon,
+  PanelRightOpenIcon,
+  XIcon,
+} from 'lucide-react'
 import { failureText } from '../lib/boundary.ts'
 import { openInteractions } from '../lib/interactions.ts'
 import type { Part } from '../lib/parts.ts'
@@ -170,17 +178,18 @@ function InlineDock({
       <Notice text={notice} />
       <InteractionCards interactions={waiting} thread={id} onAnswer={send} />
       <SharedContextChips conversation={id} />
+      {presence.state !== 'idle' && presence.state !== 'offline' && (
+        <span className="inline-dock-presence" aria-live="polite">
+          <PresenceOrb state={presence.state} label={presence.label} />
+          {presence.label}
+        </span>
+      )}
       <MessageComposer
         onSend={sendOwn}
         running={running}
         onStop={() => void stop()}
         placeholder="Reply in thread…"
-        context={
-          <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-            <PresenceOrb state={presence.state} label={presence.label} />
-            <span className="truncate">{presence.label}</span>
-          </span>
-        }
+        compact
       />
     </div>
   )
@@ -207,6 +216,8 @@ function InlineThreadBody({ view, threads }: { readonly view: ConversationView; 
     [parts, view.forkEntry],
   )
   const nested = useInlineThreads(view.id, threads.source, branchable)
+  const feed = useWorkspaceFeed()
+  const parent = threadTitle(feed.conversations.find((candidate) => candidate.id === view.parent))
   useMarkRead(view, onScreen)
   return (
     <section className="inline-thread" aria-label={threadTitle(view)} ref={block}>
@@ -223,9 +234,11 @@ function InlineThreadBody({ view, threads }: { readonly view: ConversationView; 
       <InlineThreadsProvider value={nested}>
         <AppsIn conversation={view.id}>
           <div className="inline-thread-parts">
-            {own.length === 0 && <p className="inline-thread-quiet">No replies yet</p>}
+            {own.length === 0 && (
+              <p className="inline-thread-quiet">An aside. {parent} sees none of it unless you share it.</p>
+            )}
             {own.map((part) => (
-              <div key={part.id} className="flex flex-col">
+              <div key={part.id} className="message-item flex flex-col" tabIndex={-1}>
                 <PartView part={part} canSwitchModel={false} />
                 <MessageThreads part={part} threads={nested} />
               </div>
@@ -281,27 +294,47 @@ function InlineDraft({ entry, threads }: { readonly entry: number; readonly thre
   return (
     <section className="inline-thread inline-draft" aria-label="New thread">
       <Notice text={notice} />
-      <MessageComposer
-        onSend={start}
-        running={false}
-        onStop={NOTHING_TO_STOP}
-        placeholder="Reply in thread…"
-        context={
-          <>
-            <span className="truncate text-xs text-muted-foreground">Sending starts a thread here</span>
-            <button type="button" className="inline-draft-cancel" onClick={threads.cancel}>
-              Cancel
-            </button>
-          </>
-        }
-      />
+      <MessageComposer onSend={start} running={false} onStop={NOTHING_TO_STOP} placeholder="Reply in thread…" compact />
+      <p className="inline-draft-note">
+        Sending starts a thread here.
+        <button type="button" className="inline-draft-cancel" onClick={threads.cancel}>
+          Cancel
+        </button>
+      </p>
     </section>
   )
 }
 
+/** Copies a message's text, and says so for a moment. The clipboard can refuse; then nothing changes. */
+function CopyMessage({ text }: { readonly text: string }) {
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 1500)
+    return () => clearTimeout(timer)
+  }, [copied])
+  return (
+    <button
+      type="button"
+      className="message-action"
+      aria-label={copied ? 'Copied' : 'Copy'}
+      title={copied ? 'Copied' : 'Copy'}
+      onClick={() => {
+        navigator.clipboard.writeText(text).then(
+          () => setCopied(true),
+          () => undefined,
+        )
+      }}
+    >
+      {copied ? <CheckIcon aria-hidden /> : <CopyIcon aria-hidden />}
+    </button>
+  )
+}
+
 /**
- * Under one message: the threads started from it, each a chip that unfolds it in place, or, when there are none,
- * Reply in thread (shown on hover where there is one), which starts one here. They line up with the message's side.
+ * Under one message: the threads started from it, each a chip that unfolds it in place, or, when there are none, its
+ * actions (Reply in thread, which starts one here, and Copy), floating on hover where there is one. They line up with
+ * the message's side.
  */
 export function MessageThreads({ part, threads }: { readonly part: Part; readonly threads: InlineThreads }) {
   const entry = messageEntry(part)
@@ -311,10 +344,13 @@ export function MessageThreads({ part, threads }: { readonly part: Part; readonl
   return (
     <div className="thread-rows" data-side={side}>
       {started.length === 0 && threads.drafting !== entry && (
-        <button type="button" className="message-action" data-side={side} onClick={() => threads.reply(entry)}>
-          <MessageSquareReplyIcon aria-hidden />
-          Reply in thread
-        </button>
+        <span className="message-actions" data-side={side} role="toolbar" aria-label="Message actions">
+          <button type="button" className="message-action" onClick={() => threads.reply(entry)}>
+            <MessageSquareReplyIcon aria-hidden />
+            Reply in thread
+          </button>
+          {(part.kind === 'user' || part.kind === 'text') && <CopyMessage text={part.text} />}
+        </span>
       )}
       {started.map((view) => (
         <ThreadFold key={view.id} view={view} threads={threads} />
