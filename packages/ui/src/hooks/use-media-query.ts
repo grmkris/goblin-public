@@ -1,16 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 
-/** Whether `query` matches: false on the server render and the first client render (so they agree), then live. */
+/**
+ * Whether `query` matches, live. The server render and hydration answer false (so they agree); a component mounted
+ * after that gets the real answer on its first render, so it never draws the wrong layout for a frame.
+ */
 export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(false)
-  useEffect(() => {
-    const list = matchMedia(query)
-    const update = () => setMatches(list.matches)
-    update()
-    list.addEventListener('change', update)
-    return () => list.removeEventListener('change', update)
-  }, [query])
-  return matches
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const list = matchMedia(query)
+      list.addEventListener('change', onChange)
+      return () => list.removeEventListener('change', onChange)
+    },
+    [query],
+  )
+  return useSyncExternalStore(
+    subscribe,
+    () => matchMedia(query).matches,
+    () => false,
+  )
 }
 
 /** The phone layout: below Tailwind's `md` breakpoint (48rem). */
