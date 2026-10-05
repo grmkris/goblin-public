@@ -1,5 +1,6 @@
 import { providerDetails } from './provider-details.ts'
 import type { Manifest } from './schema.ts'
+import type { Trace } from './results.ts'
 
 export type Reservation = { readonly input: number; readonly output: number }
 export type Totals = { readonly requests: number; readonly input: number; readonly output: number }
@@ -48,6 +49,14 @@ export class Budget {
 }
 
 export const transientStatus = (status: number): boolean => [429, 502, 503, 504].includes(status)
+
+/** A requested output cap is insufficient evidence when the provider bills additional reasoning outside it. */
+export function exceededReservation(trace: Trace): boolean {
+  return (
+    !trace.unknownUsage &&
+    (trace.input > (trace.reservedInput ?? trace.input) || trace.output > (trace.reservedOutput ?? trace.output))
+  )
+}
 
 export function usageOf(text: string): Reservation | undefined {
   const usage = providerDetails(text).usage

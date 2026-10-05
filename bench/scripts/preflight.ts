@@ -4,6 +4,7 @@ import { Answer } from '../src/schema.ts'
 import { ProbeResult, publicEvents, type ReplayEvent } from '../src/protocol.ts'
 import type { Resolved, Trace } from '../src/results.ts'
 import { validDelivery } from '../src/evaluate.ts'
+import { exceededReservation } from '../src/budget.ts'
 import { digest } from './identity.ts'
 import type { relay } from './relay.ts'
 import { post } from './native.ts'
@@ -129,6 +130,7 @@ function validatePreflight({
       (payload['max_tokens'] ?? payload['max_completion_tokens']) ===
       (payload['model'] === writerId ? 2448 : readerMaxOutputTokens),
   )
+  const usageBounded = traces.every((trace) => !trace.unknownUsage && !exceededReservation(trace))
   const passed =
     native.status === 'done' &&
     writer.length > 0 &&
@@ -139,9 +141,17 @@ function validatePreflight({
     answer.claims.length > 0 &&
     answer.evidenceIds.every((id) => native.deliveries.some((item) => item.id === id)) &&
     correctPayloads &&
-    capped
+    capped &&
+    usageBounded
   return {
     passed,
-    checks: { writerRequests: writer.length, readerRequests: reader.length, cited, correctPayloads, capped },
+    checks: {
+      writerRequests: writer.length,
+      readerRequests: reader.length,
+      cited,
+      correctPayloads,
+      capped,
+      usageBounded,
+    },
   }
 }

@@ -183,3 +183,19 @@ abstentions passing, and zero candidate malformed answers, invalid citations, un
 unauthorized reads. A tie demonstrates no benefit. Some questions are answerable from recent raw context: inspect
 receipt origins before attributing a gain to search. This tiny development sample is diagnostic and cannot establish
 statistical/model superiority or authorize promotion.
+
+The first paired pilot (`optchat-search-pilot-01-live`, implementation `a83ca3e`) completed a native Qwen summarizer
+call and a Grok search/read/citation round. Functional preflight passed in four attempts, but Qwen reported 4198
+completion tokens (4101 reasoning) against the requested 2448. A later writer call likewise reported 2951/2448.
+The coordinator was stopped after seven attempts, before any scored answer. Six attempts settled successfully;
+one in-flight attempt remains usage unknown with its original reservation retained. Charged totals are 30075 input
+and 11725 completion; reported totals are 11846 input and 9277 completion. The incomplete attempt may have additional
+unreported reasoning, so actual spend is unknown. This gives provider/budget evidence, with no recall accuracy or
+paired gain conclusion. The private preflight, API ledger and stop receipt remain unchanged in the run directory.
+
+The relay now fails closed on reported input/output above its reservation, keeps the upstream response and actual
+usage, returns a local budget error, and denies every subsequent attempt, including after restart. Native preflight
+also requires reported usage within reservations. This cannot retroactively cap a provider that ignores the requested
+total completion allowance: validate a route's reasoning-inclusive limit before another experiment. The approved
+provider-default Qwen configuration needs that validation; no replacement model, altered thinking setting, increased
+limit or automatic retry was made. Regressions use both injected admission services and the actual Qwen receipt.

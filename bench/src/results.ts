@@ -72,5 +72,6 @@ export const Trace = Schema.Struct({
   cacheWriteTokens: Schema.optional(Schema.Number),
   reservedInput: Schema.optional(Schema.Number),
   reservedOutput: Schema.optional(Schema.Number),
+  reservationBreach: Schema.optional(Schema.Boolean),
 })
 export type Trace = typeof Trace.Type

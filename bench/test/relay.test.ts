@@ -6,15 +6,7 @@ import { starterManifest } from '../src/manifest.ts'
 
 // Injected transport and ledger validate admission only, never benchmark quality.
 test('preflight subceiling stays inside the shared durable allowance', async () => {
-  const files = new Map<string, string>()
-  const fs = FileSystem.layerNoop({
-    exists: (path) => Effect.succeed(files.has(path)),
-    readFileString: (path) => Effect.succeed(files.get(path) ?? ''),
-    writeFileString: (path, content, options) =>
-      Effect.sync(() => {
-        files.set(path, `${options?.flag === 'a' ? (files.get(path) ?? '') : ''}${content}`)
-      }),
-  })
+  const fs = ledgerLayer()
   const manifest = {
     ...starterManifest(),
     allowance: { ...starterManifest().allowance, maxRequests: 2 },
@@ -67,3 +59,55 @@ test('preflight subceiling stays inside the shared durable allowance', async () 
   await Effect.runPromise(round(false))
   await Effect.runPromise(round(true))
 })
+
+test('provider reservation breach halts admission durably and keeps the actual upstream receipt', async () => {
+  const fs = ledgerLayer()
+  const manifest = starterManifest()
+  const resolved = {
+    manifest,
+    sourceHash: '',
+    corpusHash: '',
+    runId: 'breach-test',
+    mode: 'fake' as const,
+    createdAt: '',
+  }
+  const round = () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const provider = yield* relay(resolved, 'attempts', undefined)
+        provider.setScope('writer', 'build')
+        const response = yield* Effect.promise(() =>
+          fetch(`${provider.url}/v1/chat/completions`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-bench-scope': 'writer', connection: 'close' },
+            body: JSON.stringify({
+              model: 'glm-5.3',
+              messages: [{ role: 'user', content: 'Admission check' }],
+              max_tokens: 5,
+            }),
+          }),
+        )
+        expect(response.status).toBe(402)
+        yield* Effect.promise(() => response.text())
+        expect(provider.totals()).toEqual({ requests: 1, input: 20, output: 10 })
+        const settled = provider.traces('writer')
+        expect(settled).toHaveLength(1)
+        expect(settled[0]).toMatchObject({ status: 200, output: 10, reservedOutput: 5, reservationBreach: true })
+      }),
+    ).pipe(Effect.provide(Layer.merge(fs, FetchHttpClient.layer)))
+  await Effect.runPromise(round())
+  await Effect.runPromise(round())
+})
+
+function ledgerLayer() {
+  const files = new Map<string, string>()
+  const fs = FileSystem.layerNoop({
+    exists: (path) => Effect.succeed(files.has(path)),
+    readFileString: (path) => Effect.succeed(files.get(path) ?? ''),
+    writeFileString: (path, content, options) =>
+      Effect.sync(() => {
+        files.set(path, `${options?.flag === 'a' ? (files.get(path) ?? '') : ''}${content}`)
+      }),
+  })
+  return fs
+}

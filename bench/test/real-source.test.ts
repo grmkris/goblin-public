@@ -109,3 +109,27 @@ test.skipIf(!existsSync(sourcePath))(
     expect(() => importClaude('{broken JSON}', (text) => text)).toThrow()
   },
 )
+
+const pilotPath = resolve(dir, '../../runs/optchat-search-pilot-01-live/attempts.jsonl')
+test.skipIf(!existsSync(pilotPath))(
+  'observed Qwen usage outside max_tokens would now fail preflight and stop admission',
+  async () => {
+    const { exceededReservation } = await import('../src/budget.ts')
+    const traces = readFileSync(pilotPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => Schema.decodeUnknownSync(Trace)(JSON.parse(line)))
+    const rows = [...new Map(traces.map((trace) => [trace.attempt, trace])).values()]
+    const writer = rows.find((trace) => trace.attempt === 1)
+    expect(writer).toMatchObject({
+      model: 'qwen3.8-flash',
+      output: 4198,
+      reasoningTokens: 4101,
+      reservedOutput: 2448,
+      phase: 'preflight',
+    })
+    if (writer === undefined) throw new Error('Missing actual Qwen preflight receipt')
+    expect(exceededReservation(writer)).toBe(true)
+    expect(rows.filter(exceededReservation).map((trace) => trace.attempt)).toEqual([1, 5])
+  },
+)

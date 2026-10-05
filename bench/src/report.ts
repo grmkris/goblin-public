@@ -2,6 +2,7 @@ import type { RunData, EpisodeResult, Trace } from './results.ts'
 import { sameTransport } from './transport.ts'
 import { episodes } from './plan.ts'
 import { paired } from './paired.ts'
+import { exceededReservation } from './budget.ts'
 
 const escape = (text: string): string =>
   text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
@@ -77,6 +78,7 @@ export function phaseAccounting(data: RunData) {
       phase,
       {
         ...accounting({ ...data, traces }),
+        reservationBreaches: traces.filter(exceededReservation).length,
         latencyMs: traces.reduce((n, trace) => n + (trace.latencyMs ?? 0), 0),
         latencyCoverage: traces.filter((trace) => trace.latencyMs !== undefined).length,
         details: Object.fromEntries(

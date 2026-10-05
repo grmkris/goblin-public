@@ -2,7 +2,7 @@ import { Config, DateTime, Effect, FileSystem, Redacted, Schema, Semaphore } fro
 import { HttpClient, HttpClientRequest } from 'effect/http'
 import { requestPayload } from '../src/transport.ts'
 import { providerDetails } from '../src/provider-details.ts'
-import { Budget, usageOf, transientStatus, type Totals } from '../src/budget.ts'
+import { Budget, usageOf, transientStatus, exceededReservation, type Totals } from '../src/budget.ts'
 import { ChatRequest, fakeResponse } from '../src/fake.ts'
 import { Trace, type Resolved } from '../src/results.ts'
 import { serveLocal } from './http-server.ts'
@@ -105,7 +105,11 @@ const attempt = Effect.fn('bench.attempt')(function* (
 ) {
   const reservation = { input: new TextEncoder().encode(request.payload).length, output: request.output }
   const phaseBudget = label.phase === 'preflight' ? account.preflightBudget : undefined
-  if (phaseBudget?.accepts(reservation) === false || !account.budget.reserve(reservation))
+  if (
+    account.records.some(exceededReservation) ||
+    phaseBudget?.accepts(reservation) === false ||
+    !account.budget.reserve(reservation)
+  )
     return {
       status: 402,
       text: '{"error":{"message":"Benchmark allowance exhausted"}}',
@@ -153,10 +157,17 @@ const attempt = Effect.fn('bench.attempt')(function* (
     ...(details.reasoningTokens === undefined ? {} : { reasoningTokens: details.reasoningTokens }),
     ...(details.cacheReadTokens === undefined ? {} : { cacheReadTokens: details.cacheReadTokens }),
     ...(details.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: details.cacheWriteTokens }),
+    reservationBreach: usage !== undefined && (usage.input > reservation.input || usage.output > reservation.output),
   }
   yield* appendJson(account.path, finished)
   account.records.push(finished)
-  return reply
+  return finished.reservationBreach === true
+    ? {
+        status: 402,
+        text: '{"error":{"message":"Provider usage exceeded reserved benchmark allowance; run halted"}}',
+        contentType: 'application/json',
+      }
+    : reply
 })
 
 const handleRequest = Effect.fn('bench.relay.request')(function* (
