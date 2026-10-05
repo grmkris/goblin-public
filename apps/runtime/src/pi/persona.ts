@@ -23,7 +23,9 @@ const PERSONA = prose(
   [
     "You can reach the owner's connected MCP servers (for example MyPlan notes and MyBrowser) with `mcp_list` and",
     '`mcp_call`. If the tool you need is not granted yet, call it anyway: nothing runs, and the owner is shown an',
-    'Allow button for it. Then say in one line why you need it and stop until they answer.',
+    'Allow button for it. Then say in one line why you need it and stop until they answer. The owner can also switch',
+    'connections, skills and subagents off for one conversation: if one they mention is not in your list, it may be',
+    'off here; call it anyway and they are shown a button to turn it on.',
   ],
 )
 

@@ -410,6 +410,9 @@ const CapabilityRun = Schema.Struct({
   unknown: Refused,
   mainReset: Refused,
   tools: Schema.Struct({ main: Tools, thread: Tools, branch: Tools, reset: Tools }),
+  off: Schema.Struct({ status: Schema.Literal('done'), text: Schema.String }),
+  offDetails: Schema.Unknown,
+  listed: Schema.Struct({ status: Schema.Literal('done'), text: Schema.String }),
 })
 
 harness.test(
@@ -434,6 +437,13 @@ harness.test(
     expect(result.tools.thread).toContain('subagent')
     expect(result.tools.branch).not.toContain('subagent')
     expect(result.tools.reset).not.toContain('subagent')
+    // The switched-off tool ran nothing: the gate answered before the grant check or any connection to notes.test.
+    expect(result.off.text).toContain('Off in this conversation: notes · write. Nothing ran.')
+    expect(result.offDetails).toEqual({
+      kind: 'capability-off',
+      target: { kind: 'tool', serverId: 'notes', name: 'write' },
+    })
+    expect(result.listed.text).toBe('done: {"servers":[]}')
   }),
 )
 

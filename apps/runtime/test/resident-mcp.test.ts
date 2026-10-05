@@ -4,10 +4,14 @@ import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AppError } from '../src/http/errors.ts'
 import { McpHost } from '../src/mcp/host.ts'
+import { type CapabilityScope, type Exclusion, scopeOf } from '../src/capabilities/profiles.ts'
 import { residentMcpExtension } from '../src/pi/resident-mcp.ts'
-import { ResidentAuthority } from '../src/resident.ts'
-import { type AgentServices, Mcp, Resident } from '../src/services.ts'
+import { type AgentServices, Capabilities, Mcp, Resident } from '../src/services.ts'
+import { ActiveResident, FixedProfiles } from './fixed-services.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
+
+/** The tools the notes server ran, in order. */
+const ran: string[] = []
 
 /** A notes server: `read` is granted, `write` exists but is not, `panel` is for its App only. */
 const notes = createMcpHandler(() => {
@@ -20,9 +24,10 @@ const notes = createMcpHandler(() => {
       { name: 'panel', inputSchema: { type: 'object', properties: {} }, _meta: { ui: { visibility: ['app'] } } },
     ],
   }))
-  server.setRequestHandler('tools/call', (request) => ({
-    content: [{ type: 'text', text: `ran ${request.params.name}` }],
-  }))
+  server.setRequestHandler('tools/call', (request) => {
+    ran.push(request.params.name)
+    return { content: [{ type: 'text', text: `ran ${request.params.name}` }] }
+  })
   return server
 })
 
@@ -35,24 +40,40 @@ const host = new McpHost({
   appUrl: 'https://purrable.test',
   fetch: async (input, init) => notes.fetch(new Request(input, init)),
 })
-/** Resident authority that is always active: mcp_call only asks it to `require` the current time. */
-class ActiveResident extends ResidentAuthority {
-  constructor() {
-    // SAFETY: `require` is overridden below and nothing else is called, so the database is never touched.
-    super(undefined as never)
-  }
-  override require(): void {}
-}
 const resident = new ActiveResident()
-const layer = Layer.mergeAll(Layer.succeed(Mcp, host), Layer.succeed(Resident, resident))
+const off = (kind: Exclusion['kind'], serverId = '', name = ''): Exclusion => ({ kind, serverId, name })
+/**
+ * Each conversation's switches: 7 has everything on, 8 switched the notes server off, 9 only its `read` tool, and 10
+ * is a subagent below a conversation with notes off.
+ */
+const scopes: Readonly<Record<string, CapabilityScope>> = {
+  '7': scopeOf([], true),
+  '8': scopeOf([off('server', 'notes')], true),
+  '9': scopeOf([off('tool', 'notes', 'read')], true),
+  '10': scopeOf([off('server', 'notes')], false),
+}
+const layer = Layer.mergeAll(
+  Layer.succeed(Mcp, host),
+  Layer.succeed(Resident, resident),
+  Layer.succeed(Capabilities, new FixedProfiles(scopes)),
+)
 const run = <A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<A> =>
-  // SAFETY: mcp_call and mcp_list need only the Mcp and Resident services provided here.
+  // SAFETY: mcp_call and mcp_list need only the Mcp, Resident and Capabilities services provided here.
   Effect.runPromise(Effect.provide(program, layer) as Effect.Effect<A, AppError>)
-const mcpCall = residentMcpExtension(run).tools?.find((tool) => tool.name === 'mcp_call')
-const call = (name: string) => {
-  if (mcpCall === undefined) throw new Error('mcp_call is not registered')
-  // SAFETY: mcp_call reads neither the execution API nor anything in the context beyond the optional abort signal.
-  return mcpCall.execute({ serverId: 'notes', name, arguments: {} }, {} as never, {} as never)
+const tools = residentMcpExtension(run).tools ?? []
+const execute = (tool: string, input: Record<string, unknown>, conversationId: number) => {
+  const found = tools.find((candidate) => candidate.name === tool)
+  if (found === undefined) throw new Error(`${tool} is not registered`)
+  // SAFETY: `input` matches the named tool's parameters (each call site passes that tool's shape); the MCP tools read
+  // only `conversationId` from the execution API, and only the abort signal from the context.
+  return found.execute(input as never, { conversationId } as never, {} as never)
+}
+const call = (name: string, conversationId = 7) =>
+  execute('mcp_call', { serverId: 'notes', name, arguments: {} }, conversationId)
+const listed = async (input: Record<string, unknown>, conversationId: number): Promise<unknown> => {
+  const result = await execute('mcp_list', input, conversationId)
+  const [block] = result.content ?? []
+  return block?.type === 'text' ? JSON.parse(block.text) : undefined
 }
 
 afterEach(async () => {
@@ -76,5 +97,31 @@ describe('mcp_call and the owner grant (unit)', () => {
   it('never asks the owner about a tool that is missing or meant for an App only', async () => {
     await expect(call('missing')).rejects.toMatchObject({ _tag: 'NotFound' })
     await expect(call('panel')).rejects.toMatchObject({ _tag: 'NotFound' })
+  })
+})
+
+describe('what a conversation switched off (unit)', () => {
+  it('leaves a server or tool switched off out of mcp_list', async () => {
+    expect(await listed({}, 8)).toEqual({ servers: [] })
+    await expect(listed({ serverId: 'notes' }, 8)).rejects.toMatchObject({ _tag: 'NotFound' })
+    const notesTools = await listed({ serverId: 'notes' }, 9)
+    expect(notesTools).toMatchObject({ tools: [{ name: 'write', granted: false }] })
+  })
+  it('runs nothing for a server or tool switched off, and offers the owner to turn it on here', async () => {
+    ran.length = 0
+    expect(await call('read', 8)).toMatchObject({
+      isError: true,
+      details: { kind: 'capability-off', target: { kind: 'server', serverId: 'notes' } },
+    })
+    const tool = await call('read', 9)
+    expect(tool.details).toEqual({ kind: 'capability-off', target: { kind: 'tool', serverId: 'notes', name: 'read' } })
+    expect(JSON.stringify(tool.content)).toContain('turn it on here')
+    expect(ran).toEqual([])
+  })
+  it('tells a subagent it cannot, with no card for the owner to answer', async () => {
+    const result = await call('read', 10)
+    expect(result.isError).toBe(true)
+    expect(result.details).toBeUndefined()
+    expect(JSON.stringify(result.content)).toContain('the conversation that started you')
   })
 })

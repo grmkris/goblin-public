@@ -251,7 +251,7 @@ type Entry = {
   readonly kind: string
   readonly head?: number
   readonly data?: unknown
-  readonly model?: readonly { readonly content?: unknown }[]
+  readonly model?: readonly { readonly content?: unknown; readonly details?: unknown }[]
 }
 
 /** A conversation's snapshot through the same route the Worker proxies (`/threads/<id>/snapshot`). */
@@ -432,7 +432,18 @@ async function capabilitySequence(agent: DurableObjectStub<PersonalAgentProbe>):
   await exchange(agent, branched.value.id, 'and in the branch?', 'capabilities-branch')
   const reset = await agent.setConversationCapability(fresh.value.id, { reset: 'main' })
   await exchange(agent, fresh.value.id, 'and after the reset?', 'capabilities-reset')
+  // A tool switched off runs nothing (the unreachable server is never asked) and the result offers it to the owner.
+  const offCall = 'call mcp_call {"serverId":"notes","name":"write","arguments":{}}'
+  const off = await exchange(agent, MAIN_THREAD, offCall, 'capabilities-off-call')
+  const offResult = ((await historyOf(agent, MAIN_THREAD)).entries ?? []).findLast(
+    ({ kind }) => kind === 'pi.tool-result',
+  )
+  await agent.setConversationCapability(branched.value.id, { target: { kind: 'server', serverId: 'notes' }, on: false })
+  const listed = await exchange(agent, branched.value.id, 'call mcp_list {}', 'capabilities-list')
   return Response.json({
+    off,
+    offDetails: offResult?.model?.[0]?.details,
+    listed,
     mainBefore,
     mainAfter,
     freshView,

@@ -19,7 +19,8 @@ import {
 import { type Static, Type } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import { MAIN_THREAD } from '@purrable/contracts'
-import { Channel, Conversations, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
+import { Capabilities, Channel, Conversations, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
+import { capabilityOffResult } from './capabilities.ts'
 import { authoredContent } from './content.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
@@ -252,13 +253,21 @@ export function subagentsExtension(run: RunProgram, members: readonly Extension[
         return reply(`Stopped ${name}.`, name, agent?.conversationId)
       }
       if (message === undefined) return reply(`${action} needs a message.`)
+      // Pi's tool filter hides this tool where subagents are switched off; a call that still arrives starts nothing.
+      const scope = await run(Capabilities.useSync((capabilities) => capabilities.scope(String(api.conversationId))))
+      if (!scope.subagents()) return capabilityOffResult({ kind: 'subagents' }, scope)
       return deliver(api, action, name, message, context)
     },
   })
 
   return defineExtension({
     name: 'purrable.subagents',
-    sections: [section('subagents', () => GUIDE)],
+    // Only where the tool is offered: a conversation with subagents switched off has it filtered out.
+    sections: [
+      section('subagents', (input) =>
+        input.agent.tools.some((offered) => offered.name === SUBAGENT_TOOL) ? GUIDE : undefined,
+      ),
+    ],
     tasks: [Anchor, Reporter],
     tools: [tool],
   })

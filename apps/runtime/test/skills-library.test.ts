@@ -1,10 +1,17 @@
 import { ProtocolError, createMcpHandler, Server } from '@modelcontextprotocol/server'
+import * as Effect from 'effect/Effect'
+import * as Layer from 'effect/Layer'
 import * as Schema from 'effect/Schema'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { scopeOf } from '../src/capabilities/profiles.ts'
+import type { AppError } from '../src/http/errors.ts'
 import { McpHost } from '../src/mcp/host.ts'
+import { skillsExtension } from '../src/pi/skills.ts'
+import { type AgentServices, Capabilities, Resident, Skills } from '../src/services.ts'
 import { SkillLibrary } from '../src/skills/library.ts'
 import { SKILLS_EXTENSION, type SkillEntry } from '../src/skills/protocol.ts'
 import { digestOf } from '../src/skills/verify.ts'
+import { ActiveResident, FixedProfiles } from './fixed-services.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
 import { MemorySkillState } from './skills-memory.ts'
 
@@ -163,5 +170,34 @@ describe('skills over MCP (unit)', () => {
     clock += 600_000
     const fresh = new SkillLibrary(host.manager, state, () => clock)
     expect(await fresh.catalog()).toEqual({ skills: [], unavailable: ['lib'] })
+  })
+})
+
+describe('a skills library switched off in one conversation (unit)', () => {
+  it('is left out of the catalog without being fetched', async () => {
+    served.down = true
+    expect(await library.catalog({}, () => false)).toEqual({ skills: [], unavailable: [] })
+  })
+
+  it('loads nothing when the model still asks for one of its skills, and offers to turn it on there', async () => {
+    const layer = Layer.mergeAll(
+      Layer.succeed(Skills, library),
+      Layer.succeed(Resident, new ActiveResident()),
+      Layer.succeed(
+        Capabilities,
+        new FixedProfiles({ '4': scopeOf([{ kind: 'skills', serverId: 'lib', name: '' }], true) }),
+      ),
+    )
+    const run = <A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<A> =>
+      // SAFETY: skill_activate needs only the Skills, Resident and Capabilities services provided here.
+      Effect.runPromise(Effect.provide(program, layer) as Effect.Effect<A, AppError>)
+    const activate = skillsExtension(run).tools?.find((tool) => tool.name === 'skill_activate')
+    if (activate === undefined) throw new Error('skill_activate is not registered')
+    // SAFETY: skill_activate reads only `conversationId` from the execution API and the abort signal from the context.
+    const result = await activate.execute({ skill: 'lib:code-review' }, { conversationId: 4 } as never, {} as never)
+    expect(result).toMatchObject({
+      isError: true,
+      details: { kind: 'capability-off', target: { kind: 'skills', serverId: 'lib' } },
+    })
   })
 })

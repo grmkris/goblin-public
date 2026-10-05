@@ -3,7 +3,8 @@ import type { ToolExecutionResult } from '@earendil-works/pi-durable'
 import { Type } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import type { Catalog } from '../skills/library.ts'
-import { Learner, Skills, attempt, requireBudget, requireResident } from '../services.ts'
+import { Capabilities, Learner, Skills, attempt, requireBudget, requireResident } from '../services.ts'
+import { capabilityOffResult } from './capabilities.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
 /** How many skills the prompt lists, and how much of each description. */
@@ -33,23 +34,43 @@ const listing = (catalog: Catalog): string | undefined => {
 
 const text = (value: string): ToolExecutionResult => ({ content: [{ type: 'text', text: value }] })
 
-/** The `skills` section: what the owner's skill servers list, from the library's cache. */
+/**
+ * The `skills` section: what the owner's skill servers list, from the library's cache, without the libraries this
+ * conversation switched off.
+ */
 const skillsSection = (run: RunProgram) =>
-  section('skills', async () => {
+  section('skills', async (input) => {
     try {
       return listing(
         await run(
           Effect.gen(function* () {
             yield* requireResident
             const skills = yield* Skills
-            if (skills.sources().length === 0) return { skills: [], unavailable: [] }
-            return yield* attempt(() => skills.catalog({ timeout: 5000 }))
+            const scope = yield* Capabilities.useSync((capabilities) =>
+              capabilities.scope(String(input.conversationId)),
+            )
+            const sources = skills.sources().filter((serverId) => scope.skills(serverId))
+            if (sources.length === 0) return { skills: [], unavailable: [] }
+            return yield* attempt(() => skills.catalog({ timeout: 5000 }, (serverId) => scope.skills(serverId)))
           }),
         ),
       )
     } catch {
       return undefined
     }
+  })
+
+/**
+ * Whether a skill handle (`<server>:<name>`) comes from a library this conversation switched off: the result that says
+ * so, or none. A handle from no enabled library goes on to the library, which does not know it.
+ */
+const skillsOff = (session: string, handle: string) =>
+  Effect.gen(function* () {
+    const skills = yield* Skills
+    const scope = yield* Capabilities.useSync((capabilities) => capabilities.scope(session))
+    const serverId = handle.split(':', 1)[0] ?? ''
+    if (scope.skills(serverId) || !skills.sources().includes(serverId)) return undefined
+    return capabilityOffResult({ kind: 'skills', serverId }, scope)
   })
 
 /** `skill_activate`: load one verified `SKILL.md` into the conversation. */
@@ -64,6 +85,8 @@ const activateTool = (run: RunProgram) =>
       run(
         Effect.gen(function* () {
           yield* requireResident
+          const off = yield* skillsOff(String(api.conversationId), skill)
+          if (off !== undefined) return off
           const skills = yield* Skills
           const loaded = yield* attempt(() =>
             skills.activate(
@@ -103,6 +126,8 @@ const readTool = (run: RunProgram) =>
       run(
         Effect.gen(function* () {
           yield* requireResident
+          const off = yield* skillsOff(String(api.conversationId), skill)
+          if (off !== undefined) return off
           const skills = yield* Skills
           const file = yield* attempt(() =>
             skills.read(

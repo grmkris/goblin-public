@@ -102,11 +102,12 @@ export class SkillLibrary {
   }
 
   /**
-   * Every listed skill of every enabled server. A server that cannot be reached keeps its last listing while one is
-   * cached; with none it is reported unavailable, never as an empty library.
+   * Every listed skill of every enabled server that `include` keeps (a conversation leaves out the libraries it switched
+   * off, which are then not fetched). A server that cannot be reached keeps its last listing while one is cached; with
+   * none it is reported unavailable, never as an empty library.
    */
-  async catalog(options: RequestOptions = {}): Promise<Catalog> {
-    const sources = this.sources()
+  async catalog(options: RequestOptions = {}, include: (serverId: string) => boolean = () => true): Promise<Catalog> {
+    const sources = this.sources().filter(include)
     const results = await Promise.all(
       sources.map(async (serverId) => {
         try {

@@ -119,6 +119,19 @@ it into the spawner as an input labelled `[from subagent <name>]`, which the spa
 restart from delivering or reporting twice. At most three subagents work at once. The reporter registers the subagent in
 `app_conversations` under its spawner, so the web lists it there and the tool row links to it.
 
+**Capabilities** (ADR 0010, `capabilities/`): each conversation can switch off, for its own agent, a connected server,
+one granted tool of it, a skills library, or subagents. `app_conversation_capabilities` stores only what is off, so a
+tool granted later is on everywhere. `CapabilityProfiles.scope(session)` is the one gate: a conversation's own switches,
+and for a subagent those of every conversation above it, read live (an unregistered session may use nothing). A thread
+copies main's switches as it is registered; "Reset to main's setup" copies them again. What is off is hidden from the
+model there: `mcp_list` leaves it out, the `skills` section does not list or fetch that library, and Pi's
+per-conversation tool filter (`configure({ tools: { remove } })`) drops `subagent`, whose section then hides too. A call
+that still arrives runs nothing: `mcp_call`, `skill_activate`, `skill_read` and `subagent` check the scope before
+anything else (before the grant check or any connection) and return an error result with details
+`{ kind: 'capability-off', target }` (`pi/capabilities.ts`), which the web turns into an owner-only "Turn on here"
+card. In a subagent the result has words only. The owner's console and an App's own calls carry no conversation and
+are not narrowed; Telegram and inbound clients talk in main, so main's switches cover them.
+
 The persona contributes two static system-prompt sections (`pi/persona.ts`): who the agent is, and that remote content
 is untrusted data. The `mcp_list` and `mcp_call` tools (`pi/resident-mcp.ts`) are how the model reaches the owner's
 MCP servers; both require current resident authority, and `mcp_call` is marked unsafe to replay.
@@ -198,7 +211,8 @@ grant anything. Disconnecting forgets credentials and keeps grants. When the mod
 not granted, nothing runs. `mcp_call` returns an error result whose details are
 `{ kind: 'grant-required', serverId, name }`, and the model is told to wait.
 `mcpModelResult` details never carry a top-level `kind`, so remote content cannot forge one. The web turns that
-result into an owner-only Allow card.
+result into an owner-only Allow card. A conversation can switch servers and tools off for its agent (Capabilities,
+above); that check comes first, and switches are forgotten with the server's grants.
 
 ## Skills
 
@@ -218,7 +232,8 @@ stays on the version it activated. Verified bytes are cached by digest (`app_ski
 read. An unreachable server keeps its last listing while it remains cached in the isolate, or is reported unavailable.
 Dynamic skills are declined; skill scripts can be read but are never executed. Enabled skills are procedures the agent
 follows, but they grant no permissions and cannot override the owner. Disabling the server stops new activations and
-file reads; instructions already in a conversation stay there.
+file reads; instructions already in a conversation stay there. A conversation can switch one library off for itself
+(Capabilities): its section leaves the library out without fetching it, and its activations and reads are refused.
 
 After a final answer (`onYield`), the learner (`skills/learner.ts`) looks at the latest user message. On a correction
 or a request to keep how something was done, the memory model decides whether the exchange teaches a procedure. A
