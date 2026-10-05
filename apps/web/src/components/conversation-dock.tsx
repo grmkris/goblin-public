@@ -53,6 +53,39 @@ function ClosedNotice({ by, onReopen }: { readonly by: 'owner' | 'done'; readonl
   )
 }
 
+/** What the composer shows beside its buttons: what the agent is doing, the model, what it may use, the day's usage. */
+function ComposerContext({
+  id,
+  running,
+  presence,
+  model,
+  usage,
+  context,
+}: {
+  readonly id: string
+  readonly running: boolean
+  readonly presence: ReturnType<typeof presenceOf>
+  readonly model: ReturnType<typeof useModelChoice>
+  readonly usage: ReturnType<typeof useUsageToday>
+  readonly context: number | undefined
+}) {
+  return (
+    <>
+      <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
+        <PresenceOrb state={presence.state} label={presence.label} />
+        <span className="truncate">{presence.label}</span>
+      </span>
+      <ModelPicker choice={model.choice} onChoose={(picked) => void model.choose(picked)} />
+      <CapabilitiesButton thread={id} running={running} />
+      <UsageIndicator
+        usage={usage}
+        context={context}
+        contextWindow={model.choice?.options.find((option) => option.id === model.choice?.current)?.contextWindow}
+      />
+    </>
+  )
+}
+
 /**
  * Under a conversation's transcript, floating over its bottom edge: what waits on the owner, then the composer with
  * what the agent is doing, the model, what it may use here and the day's usage. A closed conversation offers Reopen
@@ -69,6 +102,7 @@ export function ConversationDock({
   notices = [],
   hint,
   placeholder,
+  sendLabel,
 }: {
   readonly ref: RefObject<HTMLDivElement | null>
   readonly id: string
@@ -83,6 +117,8 @@ export function ConversationDock({
   readonly hint?: string | undefined
   /** What the empty composer says; the default asks the agent. */
   readonly placeholder?: string | undefined
+  /** What the send button says; Send by default. */
+  readonly sendLabel?: string | undefined
 }) {
   const { projection, status, notice, send, stop } = conversation
   const running = projection?.running ?? false
@@ -116,22 +152,16 @@ export function ConversationDock({
               running={running}
               onStop={() => void stop()}
               {...(placeholder !== undefined && { placeholder })}
+              {...(sendLabel !== undefined && { sendLabel })}
               context={
-                <>
-                  <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-                    <PresenceOrb state={presence.state} label={presence.label} />
-                    <span className="truncate">{presence.label}</span>
-                  </span>
-                  <ModelPicker choice={model.choice} onChoose={(picked) => void model.choose(picked)} />
-                  <CapabilitiesButton thread={id} running={running} />
-                  <UsageIndicator
-                    usage={usage}
-                    context={context}
-                    contextWindow={
-                      model.choice?.options.find((option) => option.id === model.choice?.current)?.contextWindow
-                    }
-                  />
-                </>
+                <ComposerContext
+                  id={id}
+                  running={running}
+                  presence={presence}
+                  model={model}
+                  usage={usage}
+                  context={context}
+                />
               }
             />
           </div>

@@ -210,11 +210,24 @@ function ConversationHeader({
   )
 }
 
-/** What writing in a conversation does, said under its composer where that is not obvious. */
-function hintOf(view: ConversationView, conversations: readonly ConversationView[]): string | undefined {
-  if (view.kind !== 'thread' || view.parent === undefined) return undefined
+/**
+ * What writing in a conversation does, said by its composer where that is not obvious: a thread is an aside its parent
+ * sees nothing of; writing to a subagent steers it, and its answer goes to the conversation that started it.
+ */
+function composerOf(view: ConversationView, conversations: readonly ConversationView[]) {
   const parent = nameOf(conversations.find((candidate) => candidate.id === view.parent))
-  return `An aside from ${parent}. Nothing here reaches it unless you share it.`
+  if (view.kind === 'thread')
+    return {
+      placeholder: 'Reply in thread…',
+      hint: `An aside from ${parent}. Nothing here reaches it unless you share it.`,
+    }
+  if (view.kind === 'subagent')
+    return {
+      placeholder: `Steer ${nameOf(view)}…`,
+      sendLabel: 'Steer',
+      hint: `It started with ${parent}'s model and tools. Its answers go to ${parent}; writing while it works steers it.`,
+    }
+  return {}
 }
 
 /**
@@ -294,8 +307,7 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
         closed={closedBy(view)}
         onReopen={() => void feed.update(id, { closed: false })}
         notices={feed.error === '' ? [] : [feed.error]}
-        hint={hintOf(view, feed.conversations)}
-        {...(view.kind === 'thread' && { placeholder: 'Reply in thread…' })}
+        {...composerOf(view, feed.conversations)}
       />
     </section>
   )
