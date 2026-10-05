@@ -91,6 +91,31 @@ function lifecycleClient(url: string, name: string, operationId: string) {
 }
 
 harness.test(
+  'local workerd: Events discovery, challenge, signed Telegram, replay, gap, refresh, termination and cleanup',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/events-probe?name=events-${Date.now()}`))
+    expect(response.status).toBe(200)
+    const result = yield* Effect.promise(() => response.json())
+    expect(result).toMatchObject({
+      discovered: true,
+      received: 204,
+      replayed: 204,
+      bad: 400,
+      old: 400,
+      operations: ['telegram-tg-123', 'telegram-tg-124'],
+      refreshedEarly: true,
+      terminated: 'terminated',
+      cleanup: { retired: true, remoteCleanup: true },
+      remainingRemote: 0,
+      pollRecovered: true,
+      sharedPreserved: true,
+      scheduledRecovery: true,
+    })
+  }),
+)
+
+harness.test(
   'local workerd: a corrupted skill cache row is rejected, refetched and repaired',
   Effect.gen(function* () {
     const { url } = yield* stack

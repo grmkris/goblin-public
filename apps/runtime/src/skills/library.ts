@@ -3,7 +3,7 @@
 // another. Activation reads `SKILL.md` lazily, verifies it against the entry and records the entry for the
 // conversation; supporting files are read only from that retained manifest. Nothing is fetched at wake.
 import type { RequestOptions } from '@modelcontextprotocol/client'
-import { NotFound } from '../http/errors.ts'
+import { NotFound, UpstreamMcp } from '../http/errors.ts'
 import type { McpConnectionManager } from '../mcp/connection.ts'
 import type { SkillEntry } from './protocol.ts'
 import type { Activation, SkillState } from './store.ts'
@@ -37,7 +37,7 @@ export type Activated = {
   readonly files: readonly { readonly path: string; readonly size: number }[]
 }
 
-type Cached = { readonly skills: readonly ListedSkill[]; readonly expiresAt: number }
+type Cached = { readonly generation: number; readonly skills: readonly ListedSkill[]; readonly expiresAt: number }
 
 const stringField = (entry: SkillEntry, key: string): string => {
   const value = entry.frontmatter[key]
@@ -97,6 +97,12 @@ export class SkillLibrary {
     this.#cache.delete(serverId)
   }
 
+  /** Persist invalidation before ack; retained activations keep their immutable manifest. */
+  invalidate(serverId: string, unavailable = false): void {
+    this.#state.dirtyCatalog?.(serverId, unavailable, this.#now())
+    this.#cache.delete(serverId)
+  }
+
   enabled(serverId: string): boolean {
     return this.#state.enabled(serverId)
   }
@@ -113,7 +119,9 @@ export class SkillLibrary {
         try {
           return { serverId, skills: await this.#listing(serverId, options) }
         } catch {
-          const stale = this.#cache.get(serverId)
+          const candidate = this.#cache.get(serverId)
+          const stale =
+            candidate?.generation === (this.#state.catalogState?.(serverId).dirty ?? 0) ? candidate : undefined
           return stale === undefined ? { serverId, skills: undefined } : { serverId, skills: stale.skills }
         }
       }),
@@ -126,14 +134,18 @@ export class SkillLibrary {
 
   async #listing(serverId: string, options: RequestOptions): Promise<readonly ListedSkill[]> {
     const cached = this.#cache.get(serverId)
-    if (cached !== undefined && cached.expiresAt > this.#now()) return cached.skills
+    const generation = this.#state.catalogState?.(serverId).dirty ?? 0
+    if (cached !== undefined && cached.generation === generation && cached.expiresAt > this.#now()) return cached.skills
     const pending = this.#loading.get(serverId)
     if (pending !== undefined) return pending
     const loading = this.#manager
       .listSkills(serverId, options)
       .then(({ skills, ttlMs }) => {
         const ttl = Math.min(MAX_TTL_MS, Math.max(MIN_TTL_MS, ttlMs ?? DEFAULT_TTL_MS))
-        const entry = { skills: listed(serverId, skills), expiresAt: this.#now() + ttl }
+        if ((this.#state.catalogState?.(serverId).dirty ?? 0) !== generation)
+          throw new UpstreamMcp({ serverId, reason: 'content-limit' })
+        this.#state.refreshedCatalog?.(serverId, generation, this.#now())
+        const entry = { generation, skills: listed(serverId, skills), expiresAt: this.#now() + ttl }
         this.#cache.set(serverId, entry)
         return entry.skills
       })

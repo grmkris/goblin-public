@@ -1,6 +1,8 @@
+import type { EntitlementPolicy } from '../../src/billing/gates.ts'
 import { canonicalRedirect } from '../../src/http/canonical.ts'
 import { inboundHostProbe } from './inbound-host.ts'
 import { MAIN_THREAD, type ThreadView } from '@purrable/contracts'
+import { eventsProbe } from './events-probe.ts'
 import { PersonalAgent } from '../../src/agent.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { listTables } from '../../src/storage/vendor.ts'
@@ -25,11 +27,30 @@ import {
 import { CapabilityProfiles } from '../../src/capabilities/profiles.ts'
 import { skillsCacheProbe, skillsLearnerRejectionProbe, skillsPersistedRead } from './skills-probe.ts'
 
+const fixturePlan = () =>
+  Effect.succeed({
+    active: true,
+    source: 'override' as const,
+    until: null,
+    dailyTokens: 300_000,
+    status: 'fixture',
+    hasCustomer: false,
+    cancelAtPeriodEnd: false,
+  })
+
 const notesAt = (endpoint: string) => [{ serverId: 'notes', endpoint }]
 
 /** The actual PersonalAgent on a scripted model (no network): every request it makes is kept for the test to read. */
 export class PersonalAgentProbe extends PersonalAgent {
   readonly seen: SeenRequest[] = []
+
+  protected override entitlementPolicy(): EntitlementPolicy {
+    return { state: fixturePlan, require: fixturePlan }
+  }
+
+  eventsProbe() {
+    return eventsProbe(this.ctx.storage, this.harness)
+  }
 
   skillsCacheProbe() {
     return skillsCacheProbe(this.ctx.storage)
@@ -567,6 +588,10 @@ async function destroySequence(env: Env, name: string): Promise<Response> {
 
 function nativeFetch(request: Request, env: Env): Promise<Response> {
   const name = new URL(request.url).searchParams.get('name') ?? 'initialization'
+  if (new URL(request.url).pathname === '/events-probe')
+    return env.AGENTS.getByName(name)
+      .eventsProbe()
+      .then((result) => Response.json(result))
   if (new URL(request.url).pathname === '/rpc') return rpcSequence(env.AGENTS.getByName(name))
   if (new URL(request.url).pathname === '/skills-cache')
     return env.AGENTS.getByName(name)

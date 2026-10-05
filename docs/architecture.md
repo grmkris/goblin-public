@@ -2,7 +2,7 @@
 
 One Cloudflare Worker serves the web app and the API. Behind it, every user has their own `PersonalAgent` Durable
 Object, named by their user ID: it runs Pi, holds that user's outbound MCP connections and credentials, and keeps
-application state in its own SQLite. D1 holds Better Auth's tables only (users, sessions, inbound OAuth).
+application state in its own SQLite. D1 holds Better Auth's account tables (users, sessions, inbound OAuth) and Purrable's `app_billing_*` tables.
 
 ```mermaid
 flowchart LR
@@ -29,7 +29,8 @@ Runtime paths below are relative to `apps/runtime/src/`; browser paths are relat
 | `/.well-known/*`, `/api/auth/*` | Better Auth: sign-up and sign-in, the OAuth authorization server for inbound clients. |
 | `/mcp` | Purrable's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented. |
 | `/api/*` | Owner API. A session cookie selects the signed-in user's agent; writes reject an `Origin` header if it names another origin. |
-| `/hooks/myagent/<userId>/<token>` | myagent's Telegram doorbell. The token (an HMAC of the user id) is checked before the agent wakes. See Telegram. |
+| `/hooks/mcp-events/<userId>/<token>` | Signed MCP Events; the user-bound route token is checked before object lookup. |
+| `/hooks/myagent/<userId>/<token>` | Legacy Telegram doorbell fallback for servers without Events. |
 
 ## Accounts
 
@@ -367,20 +368,37 @@ Purrable is an MCP server at `/mcp`, the protected resource of Better Auth's `mc
 - Revoking a client in Settings deletes the consent, disables the client and revokes its refresh tokens; its next
   call gets a 401.
 
-## Telegram
+## MCP Events and Telegram
 
-The agent talks on Telegram through myagent with a bot of its own (ADR 0009). The owner connects myagent, binds that
-connection to the agent's bot in myagent, and picks it under Connections, "Use for Telegram" (`PUT /api/agent/channel`).
-That grants `inbox`, `send_message`, `subscribe` and `unsubscribe`, reads to the end of the inbox, and subscribes a
-doorbell with a fresh secret (`app_channel`, sealed). At most one connection carries Telegram. The Worker checks the
-user-bound HMAC hook token before waking the agent; the agent checks myagent's signature with five minutes of allowed
-clock skew, then schedules `channelPull`: under resident authority it reads `inbox` from its cursor and submits each
-new owner message into main authored "Telegram" (`telegram-<id>`). `channelReplies` sends main's answers to those turns, and to subagent
-reports in main, with `send_message` (`app_channel_replies`): escaped plain text in pieces, the `ask_user` questions
-when a turn stopped on one, given up after a day. `channel/channel.ts` holds the store and the logic,
-`channel/doorbell.ts` the hook token and signature. Turning the channel off (`DELETE /api/agent/channel`) unsubscribes
-best effort and clears pending replies; the four tool grants remain. Purrable's hook and pull are implemented here;
-myagent's bot ownership and doorbell retry policy belong to that server.
+The owner selects one Telegram connection under **Use for Telegram** (ADR 0011). If its authenticated discovery
+advertises top-level `capabilities.events`, the action grants `inbox`, `send_message` and the exact Events selectors
+`message.received` and `question.answered` with `{}` arguments. Both finite webhook subscriptions must confirm before
+`app_telegram_channel` copies the checkpoint and fences old doorbell cursor writes. The channel pulls immediately;
+a failure before that fence leaves the old channel checkpoint intact. A server without Events retains the legacy
+`subscribe`/`unsubscribe` doorbell transport. Connections shows the active transport.
+
+`POST /hooks/mcp-events/<userId>/<token>` verifies the user-bound token before lookup. Inside the object, Standard
+Webhooks HMAC and five-minute freshness checks precede decoding. A pre-persisted subscribe intent accepts an early
+signed verification challenge; remote ids are cross-checked when subscribe returns. Receipts and their frozen consumer
+revisions commit in short transactions, with an already armed recovery schedule. The hook returns quickly and dispatch
+runs asynchronously. Replay wakes unfinished handlers without duplicating their accepted intent.
+
+`message.received` and `question.answered` both pull the authoritative inbox into main. `ask_user` ends its turn;
+the answer arrives as the owner's next inbox message. The existing id mapping is preserved: `tg:123` becomes
+`telegram-tg-123`, and reply operations keep their sanitization/truncation. Main's replies and subagent reports go
+back with `send_message`, escaped and chunked, using `app_channel_replies`. Submission acceptance is distinct from
+external Telegram completion. Disabling cleans up Events while authority is available, then tombstones locally;
+finite remote leases expire if authorized cleanup cannot run.
+
+The dispatcher also binds MySkills `skills.updated` and `skills.list_changed`. Their payload is untrusted metadata;
+the handler persists a dirty catalog generation and invalidates the cache before acknowledgement. A listing can
+clear only the generation it observed, and retained activations stay pinned. Gap controls trigger reconciliation;
+termination stops lease refresh and surfaces health. Mail and workspace changes have no installed consumer yet.
+
+The client refreshes before the producer's ISO `refreshBefore` and polls on gaps or webhook outages. Bounds are
+32 subscriptions, 100 events per page, 256 KiB bodies, five-second remote requests and 10,000 pending rows / 32 MiB.
+Recovery sweeps process at most 256 deliveries and retain completed receipts for eight days; unfinished receipts
+are never pruned. Workers cannot pin resolved DNS IPs; trusted DNS is the documented v1 deviation (ADR 0011).
 
 ## Storage
 
@@ -392,7 +410,9 @@ myagent's bot ownership and doorbell retry policy belong to that server.
 | Agent DO SQLite | `app_conversation_capabilities` | Drizzle: what each conversation switched off (ADR 0010). |
 | Agent DO SQLite | `app_memory_log`, `app_memory_nodes`, `app_memory_state` | Drizzle: main's memory. |
 | Agent DO SQLite | `app_skill_sources`, `app_skill_activations`, `app_skill_files`, `app_skill_drafts` | Drizzle: skills and draft tracking. |
-| Agent DO SQLite | `app_channel`, `app_channel_replies` | Drizzle: Telegram cursor, secret and replies. |
+| Agent DO SQLite | `app_channel`, `app_telegram_channel`, `app_channel_replies` | Drizzle: Telegram transport checkpoints and replies. |
+| Agent DO SQLite | `app_mcp_event_grants`, `app_mcp_event_subscriptions`, `app_event_deliveries`, `app_mcp_event_consumers`, `app_event_consumer_receipts` | Drizzle: exact Events grants, leases, encrypted receipts and independent acknowledgements. |
+| Agent DO SQLite | `app_skill_catalog_state` | Drizzle: durable catalog invalidation generations. |
 | D1 `PurrableAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `passkey`, `oauth*` | Better Auth, `apps/runtime/migrations`. |
 
 Application tables are declared in `storage/schema.ts` and migrated inline in `storage/migrations.ts`.
@@ -424,3 +444,34 @@ separate operator checks; local workerd proves the redirect behavior.
 The inbound Agents SDK handler explicitly allows only the configured `APP_URL` hostname for both Host and browser
 Origin validation. The SDK defaults otherwise reject browser requests on custom domains. A native workerd regression
 proves a custom-domain Origin succeeds and a foreign Origin is rejected.
+
+## Plans and payments
+
+The account boundary in auth D1 is independent of the agent's Pi store (ADR 0015). `billing/` owns customers,
+subscriptions, checkout rate accounting and the verified webhook inbox through Drizzle `app_billing_*` tables. Better
+Auth continues to own identity and inbound OAuth. No billing operation writes Pi or Agents tables.
+
+`GET /api/billing/state`, `POST /api/billing/checkout` and `POST /api/billing/portal` authenticate the owner without
+resolving an Agent. Product and checkout metadata are selected server-side. Checkout and the return page grant no
+access: `POST /hooks/dodo` verifies Standard Webhooks HMAC over the raw body, checks freshness and stores the first
+body under `webhook-id` before responding 2xx. A leased background run updates the subscription; an hourly Worker cron
+retries unfinished receipts and reads stale subscriptions back from Dodo. Provider timestamps prevent old events
+from overwriting newer states. This is durable idempotent reconciliation, not exactly-once provider effects.
+
+Worker APIs, inbound MCP and user-bound hooks require an active plan before selecting the user's Agent. Agent owner,
+client and background runs also check the shared `Entitlements` service. It reads current account state at admission,
+without a cached plan or a lifecycle lock around D1/network waits. Pro is $10/month, without trial or free tier; active
+or cancelled subscriptions remain usable only through their recorded paid period. Failed renewals use the provider's
+grace end or three days after the period end; missing dates fail closed. Existing users at the billing migration get a
+dev-only override, which grants nothing on prod. Operator overrides may supply their own allowance.
+
+Each Agent's usage ledger still records its owner's UTC-day spend, while the allowance now comes from that account's
+plan (2M/day for Pro). Optional configured model price multipliers count weighted tokens in Pi replies and cheap
+memory/title calls, with weight one for omitted models. The price schedule needs operator review. Member attribution
+across another owner's Agent will be added with Members; M1 accounts for the current one-owner agent model.
+
+The browser reads billing state before mounting agent pages; unpaid accounts reach `/subscribe`. The return page
+polls verified state and Settings opens the Dodo portal. `/terms`, `/privacy` and `/refunds` are draft public pages,
+pending operator identity and legal review. Native workerd tests verify signup, injected checkout, activation,
+replay, stale updates, cancellation, grace and per-account allowances with real D1/Agent storage. They do not prove
+live Dodo delivery or merchant onboarding.

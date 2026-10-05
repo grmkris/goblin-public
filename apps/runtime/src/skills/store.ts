@@ -1,7 +1,13 @@
-import { and, count, eq, gte, inArray } from 'drizzle-orm'
+import { and, count, eq, gte, inArray, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Schema from 'effect/Schema'
-import { appSkillActivations, appSkillDrafts, appSkillFiles, appSkillSources } from '../storage/schema.ts'
+import {
+  appSkillCatalogState,
+  appSkillActivations,
+  appSkillDrafts,
+  appSkillFiles,
+  appSkillSources,
+} from '../storage/schema.ts'
 import { SkillEntry } from './protocol.ts'
 
 /** A file is cached only up to this size: a Durable Object SQLite row stays well under its 2 MB limit. */
@@ -13,6 +19,9 @@ export type Activation = { readonly serverId: string; readonly entry: SkillEntry
 /** The skills state the Agent DO keeps: owner switches, per-conversation activations, verified bytes. */
 export interface SkillState {
   /** Whether the owner uses skills from this server. */
+  catalogState?(serverId: string): { readonly dirty: number; readonly refreshed: number; readonly unavailable: boolean }
+  dirtyCatalog?(serverId: string, unavailable: boolean, now: number): void
+  refreshedCatalog?(serverId: string, generation: number, now: number): boolean
   enabled(serverId: string): boolean
   sources(): readonly string[]
   setEnabled(serverId: string, enabled: boolean, now: number): void
@@ -33,6 +42,43 @@ export class SqliteSkillState implements SkillState {
   readonly #db: DrizzleSqliteDODatabase
   constructor(db: DrizzleSqliteDODatabase) {
     this.#db = db
+  }
+
+  catalogState(serverId: string) {
+    const row = this.#db.select().from(appSkillCatalogState).where(eq(appSkillCatalogState.serverId, serverId)).get()
+    return {
+      dirty: row?.dirtyGeneration ?? 0,
+      refreshed: row?.refreshedGeneration ?? 0,
+      unavailable: row?.lastError === 'terminated',
+    }
+  }
+  dirtyCatalog(serverId: string, unavailable: boolean, now: number): void {
+    this.#db
+      .insert(appSkillCatalogState)
+      .values({
+        serverId,
+        dirtyGeneration: 1,
+        refreshedGeneration: 0,
+        nextRetryAt: now,
+        lastError: unavailable ? 'terminated' : null,
+      })
+      .onConflictDoUpdate({
+        target: appSkillCatalogState.serverId,
+        set: {
+          dirtyGeneration: sql`${appSkillCatalogState.dirtyGeneration} + 1`,
+          nextRetryAt: now,
+          lastError: unavailable ? 'terminated' : null,
+        },
+      })
+      .run()
+  }
+  refreshedCatalog(serverId: string, generation: number, now: number): boolean {
+    this.#db
+      .update(appSkillCatalogState)
+      .set({ refreshedGeneration: generation, nextRetryAt: now + 300_000, lastError: null })
+      .where(and(eq(appSkillCatalogState.serverId, serverId), eq(appSkillCatalogState.dirtyGeneration, generation)))
+      .run()
+    return this.catalogState(serverId).dirty === generation
   }
 
   enabled(serverId: string): boolean {
