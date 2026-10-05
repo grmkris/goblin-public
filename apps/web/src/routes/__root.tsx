@@ -5,6 +5,7 @@ import { AppSidebar } from '../components/app-sidebar.tsx'
 import { ThreadsProvider } from '../components/threads.tsx'
 import { SessionProvider, useSession } from '../lib/session.tsx'
 import { readSidebarOpen } from '../lib/sidebar-state.ts'
+import { BillingProvider, useBilling } from '../lib/billing.tsx'
 import css from '../styles.css?url'
 
 /** Follows the system's light or dark preference, before first paint and when it changes (as the myapps apps do). */
@@ -36,14 +37,25 @@ export const Route = createRootRoute({
   shellComponent: Document,
 })
 /** Pages that are part of signing in: no app navigation there. */
-const AUTH_PAGES = new Set(['/login', '/consent', '/reset-password'])
+const AUTH_PAGES = new Set([
+  '/login',
+  '/consent',
+  '/reset-password',
+  '/subscribe',
+  '/subscribe/success',
+  '/terms',
+  '/privacy',
+  '/refunds',
+])
 
 function Root() {
   return (
     <SessionProvider>
-      <Shell>
-        <Outlet />
-      </Shell>
+      <BillingProvider>
+        <Shell>
+          <Outlet />
+        </Shell>
+      </BillingProvider>
     </SessionProvider>
   )
 }
@@ -55,11 +67,12 @@ function Root() {
  */
 function Shell({ children }: { readonly children: ReactNode }) {
   const [state] = useSession()
+  const billing = useBilling()
   const path = useRouterState({ select: (router) => router.location.pathname })
   const sidebarOpen = Route.useLoaderData()
   if (state === 'signed-out' || AUTH_PAGES.has(path)) return <main className="shell">{children}</main>
   return (
-    <ThreadsProvider enabled={state === 'signed-in'}>
+    <ThreadsProvider enabled={state === 'signed-in' && billing.state?.active === true}>
       <SidebarProvider defaultOpen={sidebarOpen}>
         <AppSidebar />
         <SidebarInset>{children}</SidebarInset>

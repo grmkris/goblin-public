@@ -21,6 +21,8 @@ import {
 } from '@purrable/ui'
 import { ApiFailure, failureText, request } from '../lib/boundary.ts'
 import { budgetFraction } from '../lib/usage.ts'
+import { BillingCard } from './billing.tsx'
+import { useBilling } from '../lib/billing.tsx'
 import { PasskeysCard } from './passkeys.tsx'
 import { useUsageToday } from './use-usage.ts'
 
@@ -249,6 +251,7 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
 
 export function Settings() {
   const [error, setError] = useState('')
+  const billing = useBilling()
   return (
     <div className="flex flex-col gap-6">
       {error && (
@@ -256,11 +259,16 @@ export function Settings() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      <ResidentCard onError={setError} />
-      <UsageCard />
-      <MemoryCard onError={setError} />
+      <BillingCard />
+      {billing.state?.active && (
+        <>
+          <ResidentCard onError={setError} />
+          <UsageCard />
+          <MemoryCard onError={setError} />
+        </>
+      )}
       <PasskeysCard onError={setError} />
-      <ClientsCard onError={setError} />
+      {billing.state?.active && <ClientsCard onError={setError} />}
       <DeleteAccountCard onError={setError} />
     </div>
   )

@@ -6,7 +6,7 @@ import { Settings } from '../components/settings.tsx'
 export const Route = createFileRoute('/settings')({ component: SettingsPage })
 function SettingsPage() {
   return (
-    <OwnerGate>
+    <OwnerGate planRequired={false}>
       <PageBar title="Settings" />
       <div className="shell">
         <Settings />

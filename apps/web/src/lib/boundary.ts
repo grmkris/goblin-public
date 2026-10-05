@@ -77,6 +77,8 @@ export async function request(path: string, options: RequestOptions = {}): Promi
 export function failureText(error: unknown): string {
   if (!(error instanceof ApiFailure)) return error instanceof Error ? error.message : 'Something went wrong'
   const known: Record<string, string> = {
+    SubscriptionRequired: 'Subscribe to Pro to use your personal agent.',
+    billing_unavailable: 'Checkout is being set up. Please try again later.',
     Unauthenticated: 'Your session has ended. Sign in again.',
     GrantDenied: 'That tool is not enabled. Turn it on under Connections.',
     NeedsAuthorization: 'This server needs to be connected again.',

@@ -13,8 +13,13 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as ConsentRouteImport } from './routes/consent'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as RefundsRouteImport } from './routes/refunds'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SubscribeRouteImport } from './routes/subscribe'
+import { Route as TermsRouteImport } from './routes/terms'
+import { Route as SubscribeSuccessRouteImport } from './routes/subscribe.success'
 import { Route as TThreadIdRouteImport } from './routes/t.$threadId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -37,6 +42,16 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RefundsRoute = RefundsRouteImport.update({
+  id: '/refunds',
+  path: '/refunds',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
@@ -46,6 +61,21 @@ const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => rootRouteImport,
+} as any)
+const SubscribeRoute = SubscribeRouteImport.update({
+  id: '/subscribe',
+  path: '/subscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SubscribeSuccessRoute = SubscribeSuccessRouteImport.update({
+  id: '/success',
+  path: '/success',
+  getParentRoute: () => SubscribeRoute,
 } as any)
 const TThreadIdRoute = TThreadIdRouteImport.update({
   id: '/t/$threadId',
@@ -58,8 +88,13 @@ export interface FileRoutesByFullPath {
   '/connections': typeof ConnectionsRoute
   '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/refunds': typeof RefundsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
+  '/subscribe': typeof SubscribeRouteWithChildren
+  '/terms': typeof TermsRoute
+  '/subscribe/success': typeof SubscribeSuccessRoute
   '/t/$threadId': typeof TThreadIdRoute
 }
 export interface FileRoutesByTo {
@@ -67,8 +102,13 @@ export interface FileRoutesByTo {
   '/connections': typeof ConnectionsRoute
   '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/refunds': typeof RefundsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
+  '/subscribe': typeof SubscribeRouteWithChildren
+  '/terms': typeof TermsRoute
+  '/subscribe/success': typeof SubscribeSuccessRoute
   '/t/$threadId': typeof TThreadIdRoute
 }
 export interface FileRoutesById {
@@ -77,8 +117,13 @@ export interface FileRoutesById {
   '/connections': typeof ConnectionsRoute
   '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/refunds': typeof RefundsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
+  '/subscribe': typeof SubscribeRouteWithChildren
+  '/terms': typeof TermsRoute
+  '/subscribe/success': typeof SubscribeSuccessRoute
   '/t/$threadId': typeof TThreadIdRoute
 }
 export interface FileRouteTypes {
@@ -88,8 +133,13 @@ export interface FileRouteTypes {
     | '/connections'
     | '/consent'
     | '/login'
+    | '/privacy'
+    | '/refunds'
     | '/reset-password'
     | '/settings'
+    | '/subscribe'
+    | '/terms'
+    | '/subscribe/success'
     | '/t/$threadId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -97,8 +147,13 @@ export interface FileRouteTypes {
     | '/connections'
     | '/consent'
     | '/login'
+    | '/privacy'
+    | '/refunds'
     | '/reset-password'
     | '/settings'
+    | '/subscribe'
+    | '/terms'
+    | '/subscribe/success'
     | '/t/$threadId'
   id:
     | '__root__'
@@ -106,8 +161,13 @@ export interface FileRouteTypes {
     | '/connections'
     | '/consent'
     | '/login'
+    | '/privacy'
+    | '/refunds'
     | '/reset-password'
     | '/settings'
+    | '/subscribe'
+    | '/terms'
+    | '/subscribe/success'
     | '/t/$threadId'
   fileRoutesById: FileRoutesById
 }
@@ -116,8 +176,12 @@ export interface RootRouteChildren {
   ConnectionsRoute: typeof ConnectionsRoute
   ConsentRoute: typeof ConsentRoute
   LoginRoute: typeof LoginRoute
+  PrivacyRoute: typeof PrivacyRoute
+  RefundsRoute: typeof RefundsRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
+  SubscribeRoute: typeof SubscribeRouteWithChildren
+  TermsRoute: typeof TermsRoute
   TThreadIdRoute: typeof TThreadIdRoute
 }
 
@@ -151,6 +215,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/refunds': {
+      id: '/refunds'
+      path: '/refunds'
+      fullPath: '/refunds'
+      preLoaderRoute: typeof RefundsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reset-password': {
       id: '/reset-password'
       path: '/reset-password'
@@ -165,6 +243,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/subscribe': {
+      id: '/subscribe'
+      path: '/subscribe'
+      fullPath: '/subscribe'
+      preLoaderRoute: typeof SubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/subscribe/success': {
+      id: '/subscribe/success'
+      path: '/success'
+      fullPath: '/subscribe/success'
+      preLoaderRoute: typeof SubscribeSuccessRouteImport
+      parentRoute: typeof SubscribeRoute
+    }
     '/t/$threadId': {
       id: '/t/$threadId'
       path: '/t/$threadId'
@@ -175,13 +274,29 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface SubscribeRouteChildren {
+  SubscribeSuccessRoute: typeof SubscribeSuccessRoute
+}
+
+const SubscribeRouteChildren: SubscribeRouteChildren = {
+  SubscribeSuccessRoute: SubscribeSuccessRoute,
+}
+
+const SubscribeRouteWithChildren = SubscribeRoute._addFileChildren(
+  SubscribeRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConnectionsRoute: ConnectionsRoute,
   ConsentRoute: ConsentRoute,
   LoginRoute: LoginRoute,
+  PrivacyRoute: PrivacyRoute,
+  RefundsRoute: RefundsRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
+  SubscribeRoute: SubscribeRouteWithChildren,
+  TermsRoute: TermsRoute,
   TThreadIdRoute: TThreadIdRoute,
 }
 export const routeTree = rootRouteImport
