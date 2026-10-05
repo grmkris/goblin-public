@@ -313,41 +313,48 @@ An App is a tool's `ui://` resource, served by the server that answered the call
 sandboxed frames (`lib/app-sandbox.ts`). The outer proxy only relays protocol messages to and from the host's origin.
 Its calls go through the owner API to the originating server and need that server's grant.
 
-Every conversation, a thread's draft and the transcript's App is a pane of its own (ADR 0019). The pane store
+Every conversation, a thread's draft and every App's page is a pane of its own (ADR 0019). The pane store
 (`lib/workspace.ts`) holds a Trellis document of one-view panes keyed by item (`c:<id>`, `d:…`, `a:<id>`), the focused
 item and an optional filled pane; `components/workspace.tsx` provides it to the whole app so the sidebar and every
-transcript link can open things, and keeps the URL (`/c/<id>`) on the focused conversation. At 75rem and wider
+transcript link can open things, and keeps the URL (`/c/<id>` or `/a/<id>`) on the focused item. At 75rem and wider
 `components/workspace-surface.tsx` mounts Trellis 0.3.0 after hydration as a controlled layout (no tabs, menus,
 floating, navigation or shortcuts) inside a sideways scroller about 400px a pane wide; narrower screens show one pane
 per screen in a snapping strip whose pane in view is the focused one. Each item renders once into a stable portal host
 that moves between panes, the strip and a parking lot, so streams and React state survive rearrangement. Each pane
 draws its own floating pill (`components/pane-header.tsx`); `components/workspace-drag.tsx` drags a pill's grip onto a
 pane to split it at an edge or swap with it (`lib/pane-drop.ts`). The arrangement is a bounded device preference
-(`purrable:workspace:v2:<owner>`, 64 views, no stage, nothing floating); only conversation panes come back from it.
-The sidebar footer credits Trellis and Dan Fessler; see [ADR 0016](adr/0016-workspace-layout-with-trellis.md) for the
-license arrangement.
+(`purrable:workspace:v2:<owner>`, 64 views, no stage, nothing floating); conversation and App panes come back from it,
+drafts do not. The sidebar footer credits Trellis and Dan Fessler; see
+[ADR 0016](adr/0016-workspace-layout-with-trellis.md) for the license arrangement.
 
-The transcript has at most one live App (`components/apps`), from main only for now: a pane beside the focused
-conversation on a desktop, its bottom sheet on a phone. Closing the pane closes the App.
+Apps are kept (ADR 0020). A call the owner's agent makes to a tool that declares an App keeps it in the agent's
+registry (`apps/registry.ts`, `app_apps`, one per conversation and call); *Show app* on an older or closed one keeps it
+through `POST /api/apps`. The workspace feed lists them, the sidebar shows each under its conversation, and closing a
+conversation closes its Apps. `GET /api/apps/:id/launch` reads the call's arguments and redacted result back from the
+transcript; keeping and launching grant nothing.
 
-The App iframe remains in the fixed `AppLayer` stage outside Trellis. Trellis moves an empty measured slot, so
-rearranging panes and responsive changes never reparent the opaque frame or replace its bridge. The stage follows that
-slot frame by frame, including while the panes scroll. Fullscreen fills the workspace
-surface. The advertised modes are inline (the desktop pane) and fullscreen. Narrow screens use a momentum/snapping
-bottom sheet for fullscreen; inline waits behind Open in the transcript. Changing selection tears down the old bridge
-and reconnects through the new originating server. Grant cards, link offers and context sharing remain host-drawn.
+Several Apps run at once, in any conversation the owner views (`components/apps`). `AppHost` holds one instance per
+loaded App, and `AppLayer` draws one fixed stage per instance outside the panes, never moved in the DOM, so nothing
+reparents an opaque frame or replaces its bridge. A stage follows its App's page while the App has one, else its place
+under its tool row (`app-inline:<id>`, `app-page:<id>` slots), frame by frame, including while panes scroll, and
+springs between the two (`lib/spring.ts`). It clips itself to the containers that scroll its slot and to the pane's
+pill and composer (`data-app-cover`, `lib/app-occlusion.ts`), which also keeps pointer events off what is hidden. An App
+loads when its place comes on screen; beyond six instances the least recently seen unloads to a stub
+(`lib/app-residency.ts`), while one on screen never does. The advertised modes are inline and fullscreen: fullscreen is
+the App's page filling the workspace (Open as a page, then Fill the workspace), and on a phone the page is a pane in
+the strip. The App's × closes it. Grant cards, link offers and context sharing remain host-drawn, per App.
 
 The App learns the host context (`lib/host-context.ts`): theme, our tokens as MCP Apps style variables, device,
 locale and time zone, its display mode, the modes on offer, and its measured box. The host re-sends it when these change.
-Desktop resizing controls the pane height; the App's own height request remains bounded for narrow/standalone use.
+On its page the App fills the pane; in its transcript its own height request is bounded (160px to 70% of the window).
 
 Two more requests are drawn by the host, where the App cannot reach (`lib/app-context.ts`). A link the App asks to
 open (https only, no credentials) becomes an offer with a real anchor, so only the owner's click opens it. Context
 the App shares for the agent (`ui/update-model-context`, text or structured content rendered as JSON, at most 8192
-JavaScript string units) waits in a removable chip above the composer and travels once, with the owner's next message,
-as `appContext` on `POST /api/conversations/:id/messages`. The runtime (`pi/content.ts`) appends it after the owner's words as
-a separate block shaped `{ origin: { serverId, trust: 'untrusted' }, appContext }`. The persona treats it as data, never as the owner
-speaking, and the transcript shows it as a note under their message.
+JavaScript string units) waits in a removable chip above its conversation's composer and travels once, with the
+owner's next message there, as `appContext` on `POST /api/conversations/:id/messages`. The runtime (`pi/content.ts`)
+appends it after the owner's words as a separate block shaped `{ origin: { serverId, trust: 'untrusted' }, appContext }`.
+The persona treats it as data, never as the owner speaking, and the transcript shows it as a note under their message.
 
 An App's own call to a tool the owner has not granted does not fail at once (`components/apps/grant-ask.tsx`). It
 waits on a card the host draws in the App's chrome, naming the exact tool. Allow grants that one tool and runs the

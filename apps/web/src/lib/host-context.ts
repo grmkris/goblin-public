@@ -75,7 +75,7 @@ export type AppPlacement = {
   readonly mode: McpUiDisplayMode
   readonly available: readonly McpUiDisplayMode[]
   readonly width: number
-  /** Fixed in the panel, sheet and picture-in-picture; inline the App picks its height up to this. */
+  /** Fixed on its page; inline the App picks its height up to this. */
   readonly height: number
 }
 
@@ -87,10 +87,8 @@ export type Device = {
   readonly timeZone: string
 }
 
-/** Display modes this host offers: no picture-in-picture on a phone, where the sheet does that job. */
-export function availableModes(phone: boolean): McpUiDisplayMode[] {
-  return phone ? ['inline', 'fullscreen'] : ['inline', 'fullscreen', 'pip']
-}
+/** The display modes this host offers: in its place in the transcript, or as a page of its own (fullscreen). */
+export const APP_MODES: readonly McpUiDisplayMode[] = ['inline', 'fullscreen']
 
 /** Everything an App learns about the host: theme, styles, device and its own placement. Never the owner's data. */
 export function hostContext(read: TokenReader, device: Device, placement: AppPlacement): McpUiHostContext {

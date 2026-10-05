@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { availableModes, hostContext, hostStyles, inlineHeight } from '../src/lib/host-context.ts'
+import { APP_MODES, hostContext, hostStyles, inlineHeight } from '../src/lib/host-context.ts'
 
 const tokens: Record<string, string> = {
   '--background': ' oklch(0.2 0.006 255)',
@@ -35,7 +35,7 @@ describe('the host context an MCP App receives', () => {
       { ...device, dark: false, touch: true, hover: false },
       {
         mode: 'fullscreen',
-        available: availableModes(true),
+        available: [...APP_MODES],
         width: 390,
         height: 700,
       },

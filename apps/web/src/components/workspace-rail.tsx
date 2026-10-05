@@ -1,8 +1,9 @@
 import { Link } from '@tanstack/react-router'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@purrable/ui'
-import { PlusIcon } from 'lucide-react'
+import type { AppView } from '@purrable/contracts'
+import { AppWindowIcon, PlusIcon } from 'lucide-react'
 import { threadTitle } from '../lib/threads.ts'
-import { conversationKey, isOpen } from '../lib/workspace.ts'
+import { appKey, conversationKey, isOpen } from '../lib/workspace.ts'
 import { type RowStatus, type TreeNode, pathOf, railItems, rowStatus } from '../lib/workspace-tree.ts'
 import { KindIcon, useRowActions, useWorkspaceTree } from './sidebar-tree.tsx'
 import { useWorkspace } from './workspace.tsx'
@@ -25,7 +26,7 @@ function stateLabel(status: RowStatus): string {
 function RailItem({ node }: { readonly node: TreeNode }) {
   const feed = useWorkspaceFeed()
   const status = rowStatus(node, feed.activity)
-  const row = useRowActions(node.view.id)
+  const row = useRowActions(conversationKey(node.view.id))
   const name = threadTitle(node.view)
   return (
     <HoverCard>
@@ -61,14 +62,51 @@ function RailItem({ node }: { readonly node: TreeNode }) {
   )
 }
 
+/** An App open as a page, on the rail: a bar while its pane is focused; a click shows it there. */
+function RailApp({ app }: { readonly app: AppView }) {
+  const row = useRowActions(appKey(app.id))
+  return (
+    <HoverCard>
+      <HoverCardTrigger
+        render={
+          <Link
+            to="/a/$appId"
+            params={{ appId: app.id }}
+            onClick={row.showHere}
+            className="rail-item"
+            aria-label={app.title}
+            data-kind="app"
+            data-focused={row.focused}
+            data-open={row.open}
+            data-drag-item={row.key}
+          />
+        }
+      >
+        <AppWindowIcon aria-hidden />
+      </HoverCardTrigger>
+      <HoverCardContent>
+        <p className="font-medium">{app.title}</p>
+        <p className="text-xs text-muted-foreground">App from {app.serverId} · open as a page</p>
+        <p className="text-xs text-muted-foreground">Click to go to it; drag it onto a pane to place it there.</p>
+      </HoverCardContent>
+    </HoverCard>
+  )
+}
+
 /**
  * The folded sidebar: main and the conversations of its tree that are active (open in a pane, at work or with unread
- * replies), then the active threads, then a new thread. The sidebar is never hidden altogether on a desktop.
+ * replies), then the active threads, then the Apps open as pages, then a new thread. The sidebar is never hidden
+ * altogether on a desktop.
  */
 export function WorkspaceRail({ onNew }: { readonly onNew: () => void }) {
   const feed = useWorkspaceFeed()
   const { state } = useWorkspace()
-  const items = railItems(useWorkspaceTree(), feed.activity, (id) => isOpen(state, conversationKey(id)))
+  const items = railItems(
+    useWorkspaceTree(),
+    feed.activity,
+    (id) => isOpen(state, conversationKey(id)),
+    (id) => isOpen(state, appKey(id)),
+  )
   return (
     <nav className="workspace-rail" aria-label="Conversations">
       {items.main.map((node) => (
@@ -77,6 +115,10 @@ export function WorkspaceRail({ onNew }: { readonly onNew: () => void }) {
       {items.threads.length > 0 && <hr className="rail-separator" />}
       {items.threads.map((node) => (
         <RailItem key={node.view.id} node={node} />
+      ))}
+      {items.apps.length > 0 && <hr className="rail-separator" />}
+      {items.apps.map((app) => (
+        <RailApp key={app.id} app={app} />
       ))}
       <button type="button" className="rail-item" aria-label="New thread" title="New thread" onClick={onNew}>
         <PlusIcon aria-hidden />

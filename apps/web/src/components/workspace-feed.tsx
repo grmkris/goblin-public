@@ -1,11 +1,12 @@
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { Schema } from 'effect'
-import { ConversationView, type CreateConversation, type UpdateConversation } from '@purrable/contracts'
+import { AppView, ConversationView, type CreateConversation, type UpdateConversation } from '@purrable/contracts'
 import { failureText, request } from '../lib/boundary.ts'
 import { BrowserPiEvents } from '../lib/conversation-stream.ts'
 import { EMPTY_WORKSPACE, WorkspaceFeedConnection, type WorkspaceState, applyChanges } from '../lib/workspace-feed.ts'
 
 const decodeView = Schema.decodeUnknownSync(ConversationView)
+const decodeApp = Schema.decodeUnknownSync(AppView)
 
 type WorkspaceFeed = WorkspaceState & {
   readonly error: string
@@ -14,12 +15,16 @@ type WorkspaceFeed = WorkspaceState & {
   readonly update: (id: string, change: UpdateConversation) => Promise<void>
   /** The owner has seen the conversation's newest reply: it shows read at once, and the server keeps the mark. */
   readonly markRead: (id: string) => void
+  /** Keeps the App of call `callId` in `conversation`, reopening it if it was closed. Throws when the call has none. */
+  readonly keepApp: (conversation: string, callId: string) => Promise<AppView>
+  /** Closes a kept App: its iframe goes everywhere, and its place offers to show it again. Throws on failure. */
+  readonly closeApp: (id: string) => Promise<void>
 }
 
 const WorkspaceFeedContext = createContext<WorkspaceFeed | undefined>(undefined)
 
 /**
- * The owner's conversations and what each is doing, for the whole app, from one live feed opened once someone is
+ * The owner's conversations, what each is doing and their kept Apps, for the whole app, from one live feed opened once someone is
  * signed in with an agent (`enabled`). Creating or changing a conversation shows at once; the feed confirms it.
  */
 export function WorkspaceFeedProvider({
@@ -56,10 +61,27 @@ export function WorkspaceFeedProvider({
   const value = useMemo<WorkspaceFeed>(() => {
     const show = (view: ConversationView) =>
       setState((current) => applyChanges(current, [{ type: 'conversation', conversation: view }]))
+    const showApp = (app: AppView) => {
+      setState((current) => applyChanges(current, [{ type: 'app', app }]))
+      return app
+    }
     return {
       ...state,
       error,
       markRead,
+      keepApp: async (conversation, callId) =>
+        showApp(decodeApp(await request('/api/apps', { body: { conversation, callId } }))),
+      closeApp: async (id) => {
+        // Shown closed at once, so nothing loads it again while the server confirms; back as it was if that fails.
+        const before = state.apps.find((app) => app.id === id)
+        if (before !== undefined) showApp({ ...before, closedAt: Math.floor(Date.now() / 1000) })
+        try {
+          showApp(decodeApp(await request(`/api/apps/${id}`, { method: 'PATCH', body: { closed: true } })))
+        } catch (failure) {
+          if (before !== undefined) showApp(before)
+          throw failure
+        }
+      },
       create: async (from) => {
         try {
           const view = decodeView(await request('/api/conversations', { body: from === undefined ? {} : { from } }))

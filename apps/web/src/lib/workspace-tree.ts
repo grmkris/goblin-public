@@ -1,9 +1,10 @@
-import type { ConversationActivity, ConversationView } from '@purrable/contracts'
+import type { AppView, ConversationActivity, ConversationView } from '@purrable/contracts'
 import { isClosed } from './threads.ts'
 
-/** A conversation in the sidebar, with the open conversations under it and, folded away, the closed ones. */
+/** A conversation in the sidebar, with its open Apps, the open conversations under it and, folded, the closed ones. */
 export type TreeNode = {
   readonly view: ConversationView
+  readonly apps: readonly AppView[]
   readonly children: readonly TreeNode[]
   readonly closed: readonly TreeNode[]
 }
@@ -22,10 +23,19 @@ export type WorkspaceTree = {
 const newestFirst = (a: ConversationView, b: ConversationView) =>
   b.createdAt - a.createdAt || Number(b.id) - Number(a.id)
 
-export function buildTree(views: readonly ConversationView[]): WorkspaceTree {
-  const under = new Map<string, ConversationView[]>()
-  for (const view of views.toSorted(newestFirst))
-    if (view.parent !== undefined) under.set(view.parent, [...(under.get(view.parent) ?? []), view])
+/** `items` by the key `of` gives each, in their order; an item without one is left out. */
+function groupBy<T>(items: readonly T[], of: (item: T) => string | undefined): Map<string, T[]> {
+  const groups = new Map<string, T[]>()
+  for (const item of items) {
+    const key = of(item)
+    if (key !== undefined) groups.set(key, [...(groups.get(key) ?? []), item])
+  }
+  return groups
+}
+
+export function buildTree(views: readonly ConversationView[], apps: readonly AppView[] = []): WorkspaceTree {
+  const appsOf = groupBy(apps, (app) => (app.closedAt === undefined ? app.conversation : undefined))
+  const under = groupBy(views.toSorted(newestFirst), (view) => view.parent)
   // Each conversation once, however its parents point: a cycle in stored data ends instead of recursing forever.
   const seen = new Set<string>()
   const node = (view: ConversationView, keep: (child: ConversationView) => boolean = () => true): TreeNode => {
@@ -35,6 +45,7 @@ export function buildTree(views: readonly ConversationView[]): WorkspaceTree {
       .map((child) => node(child))
     return {
       view,
+      apps: appsOf.get(view.id) ?? [],
       children: below.filter((child) => !isClosed(child.view)),
       closed: below.filter((child) => isClosed(child.view)),
     }
@@ -84,20 +95,31 @@ const active = (node: TreeNode, activity: Activity, open: (id: string) => boolea
   return open(node.view.id) || status.state !== 'idle' || status.below || status.unread
 }
 
+/** Every open conversation from `nodes` down, in tree order. */
+const everyNode = (nodes: readonly TreeNode[]): TreeNode[] =>
+  nodes.flatMap((node) => [node, ...everyNode(node.children)])
+
 /**
  * The folded rail: main and the active conversations of its tree, then the active threads and theirs, each group in
- * tree order. A closed conversation is never on it.
+ * tree order, then the Apps open as pages. A closed conversation is never on it.
  */
 export function railItems(
   tree: WorkspaceTree,
   activity: Activity,
   open: (id: string) => boolean,
-): { readonly main: readonly TreeNode[]; readonly threads: readonly TreeNode[] } {
+  paged: (app: string) => boolean = () => false,
+): {
+  readonly main: readonly TreeNode[]
+  readonly threads: readonly TreeNode[]
+  readonly apps: readonly AppView[]
+} {
   const walk = (nodes: readonly TreeNode[]): TreeNode[] =>
     nodes.flatMap((node) => [...(active(node, activity, open) ? [node] : []), ...walk(node.children)])
+  const all = [...(tree.main === undefined ? [] : everyNode([tree.main])), ...everyNode(tree.threads)]
   return {
     main: tree.main === undefined ? [] : [tree.main, ...walk(tree.main.children)],
     threads: walk(tree.threads),
+    apps: all.flatMap((node) => node.apps.filter((app) => paged(app.id))),
   }
 }
 

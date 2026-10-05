@@ -14,12 +14,11 @@ import { useMediaQuery } from '@purrable/ui'
 import { WIDE_QUERY } from '../lib/breakpoints.ts'
 import { PANE_MIN } from '../lib/pane-drop.ts'
 import { PANE_TYPE, columnCount, singlePane } from '../lib/trellis-layout.ts'
-import { type ItemKey, type WorkspaceState, appKey, isOpen, itemOf, order } from '../lib/workspace.ts'
-import { AppsProvider, useApps } from './apps/provider.tsx'
-import { WorkspaceAppSlot } from './apps/slot.tsx'
+import { type ItemKey, type WorkspaceState, isOpen, itemOf, order } from '../lib/workspace.ts'
+import { AppHost, useAppHost } from './apps/host.tsx'
+import { AppPage } from './apps/page.tsx'
 import { AppLayer } from './apps/stage.tsx'
-import { ConversationPane, DraftPane, usePlace } from './conversation-pane.tsx'
-import { PaneHeader } from './pane-header.tsx'
+import { ConversationPane, DraftPane } from './conversation-pane.tsx'
 import { WorkspaceDrag } from './workspace-drag.tsx'
 import { useWorkspace } from './workspace.tsx'
 
@@ -40,9 +39,6 @@ const TOKENS = {
 
 /** Trellis keeps none of its own shortcuts: hiding, floating or closing a pane belongs to the workspace store. */
 const NO_KEYS: Keymap = Object.fromEntries(Object.keys(DEFAULT_KEYMAP).map((command) => [command, null]))
-
-/** The App of the transcript (one at a time until Apps are durable), in a pane beside the conversation it came from. */
-const APP_KEY = appKey('current')
 
 type Hosts = RefObject<Map<ItemKey, HTMLDivElement>>
 type Parking = RefObject<HTMLDivElement | null>
@@ -92,7 +88,7 @@ function useHosts(items: readonly ItemKey[], parking: Parking): Hosts {
 const shownDocument = (state: WorkspaceState, title: (key: ItemKey) => string): LayoutDocument =>
   state.maximized === undefined ? state.doc : singlePane(state.maximized, title(state.maximized))
 
-type Live = { readonly workspace: ReturnType<typeof useWorkspace>; readonly apps: ReturnType<typeof useApps> }
+type Live = { readonly workspace: ReturnType<typeof useWorkspace>; readonly apps: ReturnType<typeof useAppHost> }
 
 function mountHost(hosts: Hosts, parking: Parking, latest: RefObject<Live>, element: HTMLElement, view: ViewHandle) {
   const host = hosts.current.get(view.id)
@@ -144,7 +140,7 @@ function connect(handle: WorkspaceHandle, latest: RefObject<Live>, applied: RefO
  */
 function WideLayout({ hosts, parking }: { readonly hosts: Hosts; readonly parking: Parking }) {
   const workspace = useWorkspace()
-  const apps = useApps()
+  const apps = useAppHost()
   const root = useRef<HTMLDivElement>(null)
   const handle = useRef<WorkspaceHandle | null>(null)
   const applied = useRef('')
@@ -249,7 +245,7 @@ function NarrowStrip({
   readonly parking: Parking
 }) {
   const workspace = useWorkspace()
-  const apps = useApps()
+  const apps = useAppHost()
   const strip = useRef<HTMLDivElement>(null)
   // Set while the strip glides to the focused pane, so that scroll's end does not refocus anything.
   const steering = useRef(false)
@@ -285,24 +281,6 @@ function NarrowStrip({
   )
 }
 
-/** The App's pane: its pill, and the place the App's stage follows. */
-function AppPane({ item }: { readonly item: ItemKey }) {
-  const workspace = useWorkspace()
-  const { session } = useApps()
-  const { first, only } = usePlace(item)
-  return (
-    <section className="app-pane" aria-label="App">
-      <PaneHeader
-        item={item}
-        title={session === undefined ? 'App' : `App · ${session.selection.serverId}`}
-        first={first}
-        onClose={only ? undefined : () => workspace.close(item)}
-      />
-      <WorkspaceAppSlot />
-    </section>
-  )
-}
-
 /** What an item's host shows. A pointer or focus inside a pane focuses it. */
 function PaneContents({ item }: { readonly item: ItemKey }) {
   const workspace = useWorkspace()
@@ -310,7 +288,7 @@ function PaneContents({ item }: { readonly item: ItemKey }) {
   let contents = null
   if (parsed?.kind === 'conversation') contents = <ConversationPane id={parsed.id} />
   else if (parsed?.kind === 'draft') contents = <DraftPane item={item} />
-  else if (parsed?.kind === 'app') contents = <AppPane item={item} />
+  else if (parsed?.kind === 'app') contents = <AppPage item={item} id={parsed.id} />
   return (
     <div
       className="workspace-pane"
@@ -323,40 +301,14 @@ function PaneContents({ item }: { readonly item: ItemKey }) {
   )
 }
 
-/**
- * On a desktop the transcript's App opens in a pane beside the focused conversation, and the pane goes when the App
- * closes; closing the pane closes the App. A phone shows the App in its sheet instead.
- */
-function useAppPane(wide: boolean): void {
-  const { session, close } = useApps()
-  const workspace = useWorkspace()
-  const live = wide && session !== undefined
-  const open = isOpen(workspace.state, APP_KEY)
-  const wasOpen = useRef(false)
-  useEffect(() => {
-    const was = wasOpen.current
-    wasOpen.current = open
-    if (live && !open) {
-      if (was) close()
-      else workspace.open(APP_KEY, 'beside')
-    } else if (!live && open) workspace.close(APP_KEY)
-  }, [live, open, workspace, close])
-}
-
 function Surface() {
   const workspace = useWorkspace()
-  const apps = useApps()
   const wide = useMediaQuery(WIDE_QUERY)
   const parking = useRef<HTMLDivElement>(null)
   const items = useMemo(() => order(workspace.state), [workspace.state])
   const hosts = useHosts(items, parking)
-  useAppPane(wide)
   return (
-    <div
-      className="workspace-surface"
-      ref={apps.slot('workspace-fullscreen')}
-      data-workspace={wide ? 'wide' : 'narrow'}
-    >
+    <div className="workspace-surface" data-workspace={wide ? 'wide' : 'narrow'}>
       <div className="workspace-parking" ref={parking} inert aria-hidden />
       {wide && <WorkspaceDrag />}
       {wide ? (
@@ -373,17 +325,17 @@ function Surface() {
 }
 
 /**
- * The owner's panes, each showing one conversation, draft or App. Trellis and the strip are DOM-only, so nothing
- * renders until the page has hydrated.
+ * The owner's panes, each showing one conversation, draft or App page, and above them the stages of the live Apps.
+ * Trellis and the strip are DOM-only, so nothing renders until the page has hydrated.
  */
 export function WorkspaceSurface() {
   const hydrated = useHydrated()
   return (
-    <AppsProvider>
+    <AppHost>
       <section className="workspace" aria-label="Workspace">
         {hydrated && <Surface />}
       </section>
       <AppLayer />
-    </AppsProvider>
+    </AppHost>
   )
 }

@@ -1,56 +1,27 @@
-// The App stage: one fixed box holding the live App's iframe and the host's chrome above it. It never moves in the
-// DOM; it follows the slot its display mode names, frame by frame, and springs between slots when the mode changes,
-// so the App leaves the transcript for the panel and returns along the same path without reloading. Picture-in-picture
-// and the phone sheet are dragged by the chrome and thrown with momentum.
-import { type PointerEvent as ReactPointerEvent, type RefObject, useEffect, useRef, useState } from 'react'
+// The App stages: one fixed box per live App, holding its iframe and the host's chrome above it. A stage never moves in
+// the DOM; it follows its App's page while the App has one, else the App's place in its transcript, frame by frame,
+// and springs between the two when the App moves, so it leaves the transcript for its page and comes back along the
+// same path without reloading. It clips itself to what of that place shows, and tells the host whether any does.
+import { type RefObject, useEffect, useRef, useState } from 'react'
 import type { McpUiDisplayMode } from '@modelcontextprotocol/ext-apps/app-bridge'
-import { Maximize2Icon, Minimize2Icon, PanelRightOpenIcon, PictureInPicture2Icon, XIcon } from 'lucide-react'
+import { Maximize2Icon, Minimize2Icon, PanelLeftCloseIcon, PanelRightOpenIcon, XIcon } from 'lucide-react'
 import { Button, Receipt } from '@purrable/ui'
-import { CHROME_HEIGHT, pipCorners, type Rect, sheetSnaps, stageRect, type Viewport } from '../../lib/app-stage.ts'
-import { type AppPlacement, inlineHeight } from '../../lib/host-context.ts'
-import {
-  atRest,
-  type Motion,
-  nearestCorner,
-  nearestSnap,
-  type Point,
-  project,
-  releaseVelocity,
-  rubberband,
-  type Spring,
-  SPRINGS,
-  stepSpring,
-} from '../../lib/spring.ts'
 import { clipStage } from '../../lib/app-occlusion.ts'
+import { CHROME_HEIGHT, type Rect } from '../../lib/app-stage.ts'
+import { APP_MODES, type AppPlacement, inlineHeight } from '../../lib/host-context.ts'
+import { atRest, type Motion, PLACE, stepSpring } from '../../lib/spring.ts'
+import { appKey, conversationKey, isOpen, order } from '../../lib/workspace.ts'
+import { useWorkspace } from '../workspace.tsx'
 import { AppFrame } from './frame.tsx'
 import { useAppGrantAsks } from './grant-ask.tsx'
+import { type Instance, type SlotName, useAppHost } from './host.tsx'
 import { LinkOffer } from './offers.tsx'
-import { type AppSession, useApps } from './provider.tsx'
 
 type Axes = { x: Motion; y: Motion; width: Motion; height: Motion }
 const AXES = ['x', 'y', 'width', 'height'] as const
 
-/** What the stage's frame loop keeps between frames; plain mutable state, never rendered. */
-type Live = {
-  axes: Axes
-  seeded: boolean
-  spring: Spring | undefined
-  dragging: boolean
-  pip: Point | undefined
-  sheet: number | undefined
-}
-
-function viewport(): Viewport {
-  // The chat's top bar comes first in the document (a thread panel's bar follows it).
-  const header = document.querySelector('[data-slot="top-bar"]')?.getBoundingClientRect().bottom ?? 48
-  return { width: window.innerWidth, height: window.visualViewport?.height ?? window.innerHeight, top: header }
-}
-
-function rectOf(element: HTMLElement | undefined): Rect | undefined {
-  if (element === undefined) return undefined
-  const { x, y, width, height } = element.getBoundingClientRect()
-  return { x, y, width, height }
-}
+/** What a stage's frame loop keeps between frames; plain mutable state, never rendered. */
+type Live = { axes: Axes; seeded: boolean; moving: boolean; visible: boolean | undefined }
 
 const still = (value: number): Motion => ({ value, velocity: 0 })
 
@@ -60,36 +31,47 @@ function write(element: HTMLElement, axes: Axes): void {
   element.style.height = `${axes.height.value}px`
 }
 
-/** One frame: follow the target exactly, or spring towards it after a mode change or a throw. */
+/** One frame: follow the target exactly, or spring towards it after the App moved between its place and its page. */
 function advance(live: Live, target: Rect, seconds: number, reduced: boolean): boolean {
-  if (live.dragging) return true
-  if (!live.seeded || reduced || live.spring === undefined) {
+  if (!live.seeded || reduced || !live.moving) {
     live.axes = { x: still(target.x), y: still(target.y), width: still(target.width), height: still(target.height) }
     live.seeded = true
-    live.spring = undefined
+    live.moving = false
     return false
   }
-  const spring = live.spring
   let moving = false
   for (const axis of AXES) {
-    const next = stepSpring(live.axes[axis], target[axis], spring, seconds)
+    const next = stepSpring(live.axes[axis], target[axis], PLACE, seconds)
     live.axes[axis] = atRest(next, target[axis]) ? still(target[axis]) : next
     moving ||= !atRest(next, target[axis])
   }
-  if (!moving) live.spring = undefined
+  live.moving = moving
   return moving
 }
 
+/** The slot the stage follows, while it is laid out: one in a parked pane is not on screen anywhere. */
+function slotOf(element: HTMLElement | undefined): HTMLElement | undefined {
+  return element === undefined || element.closest('.workspace-parking') !== null ? undefined : element
+}
+
+function rectOf(element: HTMLElement): Rect {
+  const { x, y, width, height } = element.getBoundingClientRect()
+  return { x, y, width, height }
+}
+
+type StageMotion = {
+  readonly stage: RefObject<HTMLDivElement | null>
+  readonly live: RefObject<Live>
+  /** The slot to follow now. */
+  readonly slot: () => HTMLElement | undefined
+  readonly onTarget: (rect: Rect) => void
+  readonly onVisible: (visible: boolean) => void
+}
+
 /** Runs frames only while something moves; scrolling, resizing and slot changes ask for one more. */
-function useStageMotion(
-  stage: RefObject<HTMLDivElement | null>,
-  live: RefObject<Live>,
-  target: () => Rect | undefined,
-  onTarget: (rect: Rect) => void,
-  clip: (element: HTMLElement) => void,
-): () => void {
+function useStageMotion({ stage, live, slot, onTarget, onVisible }: StageMotion): () => void {
   const kickRef = useRef<() => void>(() => undefined)
-  const { onKick } = useApps()
+  const { onKick } = useAppHost()
   useEffect(() => {
     let raf = 0
     let last = 0
@@ -99,18 +81,20 @@ function useStageMotion(
       const seconds = last === 0 ? 1 / 60 : (now - last) / 1000
       last = now
       const element = stage.current
-      const rect = target()
       if (element === null) return
-      if (rect === undefined) {
+      const followed = slot()
+      if (followed === undefined) {
         element.dataset.hidden = ''
         live.current.seeded = false
+        onVisible(false)
         return
       }
       delete element.dataset.hidden
+      const rect = rectOf(followed)
       onTarget(rect)
       const moving = advance(live.current, rect, seconds, reduced.matches)
       write(element, live.current.axes)
-      clip(element)
+      onVisible(clipStage(element, followed))
       if (moving) raf = requestAnimationFrame(frame)
       else last = 0
     }
@@ -132,203 +116,148 @@ function useStageMotion(
       window.removeEventListener('pointermove', kick)
       window.visualViewport?.removeEventListener('resize', kick)
     }
-  }, [stage, live, target, onTarget, onKick, clip])
+  }, [stage, live, slot, onTarget, onVisible, onKick])
   return () => kickRef.current()
 }
 
-type Drag = { readonly start: Point; readonly origin: Rect; samples: (Point & { readonly time: number })[] }
-
-/** Release: throw picture-in-picture to the corner its momentum points at, or snap (or dismiss) the sheet. */
-function release(live: Live, drag: Drag, setMode: (mode: McpUiDisplayMode) => McpUiDisplayMode, sheet: boolean) {
-  const velocity = releaseVelocity(drag.samples)
-  const { axes } = live
-  const view = viewport()
-  if (sheet) {
-    const snaps = sheetSnaps(view)
-    const projected = axes.height.value - project(velocity.y)
-    if (projected < snaps[0] * 0.6) setMode('inline')
-    live.sheet = nearestSnap(projected, snaps)
-    axes.y = { value: axes.y.value, velocity: velocity.y }
-    axes.height = { value: axes.height.value, velocity: -velocity.y }
-    live.spring = SPRINGS.sheet
-    return
+/** Where an App is shown and how it moves: to its page beside its transcript, back, filling the workspace, or not. */
+function usePlacement(instance: Instance) {
+  const workspace = useWorkspace()
+  const host = useAppHost()
+  const { id, conversation } = instance.app
+  const key = appKey(id)
+  const paged = isOpen(workspace.state, key)
+  const filled = workspace.state.maximized === key
+  const page = () => {
+    const source = host.element(`app-inline:${id}`)?.closest<HTMLElement>('[data-workspace-item]')
+      ?.dataset.workspaceItem
+    workspace.open(key, 'beside', source)
   }
-  const projected = { x: axes.x.value + project(velocity.x), y: axes.y.value + project(velocity.y) }
-  live.pip = nearestCorner(projected, pipCorners(view))
-  axes.x = { value: axes.x.value, velocity: velocity.x }
-  axes.y = { value: axes.y.value, velocity: velocity.y }
-  live.spring = SPRINGS.momentum
-}
-
-/** 1:1 dragging by the chrome, from where it was grabbed; the sheet resists past its full height. */
-function useStageDrag(live: RefObject<Live>, kick: () => void, mode: McpUiDisplayMode, sheet: boolean) {
-  const drag = useRef<Drag>(undefined)
-  const { setMode } = useApps()
-  const grabbable = mode === 'pip' || sheet
-  const move = (event: ReactPointerEvent) => {
-    const current = drag.current
-    if (current === undefined) return
-    current.samples = [...current.samples.slice(-8), { x: event.clientX, y: event.clientY, time: event.timeStamp }]
-    const dx = event.clientX - current.start.x
-    const dy = event.clientY - current.start.y
-    const { axes } = live.current
-    if (sheet) {
-      const [, full] = sheetSnaps(viewport())
-      const wanted = current.origin.height - dy
-      const height = wanted > full ? full + rubberband(wanted - full, full) : Math.max(0, wanted)
-      axes.height = still(height)
-      axes.y = still(viewport().height - height)
-    } else {
-      axes.x = still(current.origin.x + dx)
-      axes.y = still(current.origin.y + dy)
+  /** Back in its transcript: the page closes, or, as the last pane, shows the App's conversation in its place. */
+  const inline = () => {
+    if (filled) workspace.maximize(undefined)
+    if (order(workspace.state).length > 1) workspace.close(key)
+    else workspace.open(conversationKey(conversation), 'here', key)
+  }
+  const fill = () => workspace.maximize(filled ? undefined : key)
+  /** What the App asked for: fullscreen is its page filling the workspace; inline is back in its transcript. */
+  const request = (mode: McpUiDisplayMode): McpUiDisplayMode => {
+    if (mode === 'fullscreen') {
+      if (!paged) page()
+      workspace.maximize(key)
+      return 'fullscreen'
     }
-    kick()
+    if (mode !== 'inline') return paged ? 'fullscreen' : 'inline'
+    if (paged) inline()
+    return 'inline'
   }
-  const down = (event: ReactPointerEvent<HTMLElement>) => {
-    const onButton = event.target instanceof Element && event.target.closest('button') !== null
-    if (!grabbable || event.button !== 0 || onButton) return
-    event.currentTarget.setPointerCapture(event.pointerId)
-    const { x, y, width, height } = live.current.axes
-    const point = { x: event.clientX, y: event.clientY }
-    drag.current = {
-      start: point,
-      origin: { x: x.value, y: y.value, width: width.value, height: height.value },
-      samples: [{ ...point, time: event.timeStamp }],
-    }
-    live.current.dragging = true
-  }
-  const up = () => {
-    const current = drag.current
-    if (current === undefined) return
-    drag.current = undefined
-    live.current.dragging = false
-    release(live.current, current, setMode, sheet)
-    kick()
-  }
-  return grabbable ? { onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up } : {}
+  return { paged, filled, page, inline, fill, request }
 }
 
-const MODE_ACTIONS: Record<McpUiDisplayMode, { readonly label: string; readonly icon: typeof XIcon }> = {
-  inline: { label: 'Back to workspace pane', icon: Minimize2Icon },
-  fullscreen: { label: 'Fullscreen', icon: PanelRightOpenIcon },
-  pip: { label: 'Picture in picture', icon: PictureInPicture2Icon },
-}
-
-function AppChrome({ session, drag }: { readonly session: AppSession; readonly drag: object }) {
-  const { available, phone, setMode, close } = useApps()
+function ChromeButton({ label, icon: Icon, onClick }: { label: string; icon: typeof XIcon; onClick: () => void }) {
   return (
-    <div className="app-chrome" data-grabbable={'onPointerDown' in drag || undefined} {...drag}>
-      <span className="app-chrome-title">App from {session.selection.serverId}</span>
-      {available
-        .filter((mode) => mode !== session.mode)
-        .map((mode) => {
-          const action = MODE_ACTIONS[mode]
-          const Icon = phone && mode === 'fullscreen' ? Maximize2Icon : action.icon
-          const label = phone && mode === 'fullscreen' ? 'Expand' : action.label
-          return (
-            <Button
-              key={mode}
-              variant="ghost"
-              size="icon-sm"
-              aria-label={label}
-              title={label}
-              onClick={() => setMode(mode)}
-            >
-              <Icon />
-            </Button>
-          )
-        })}
-      <Button variant="ghost" size="icon-sm" aria-label="Close the app" title="Close" onClick={close}>
-        <XIcon />
-      </Button>
+    <Button variant="ghost" size="icon-sm" aria-label={label} title={label} onClick={onClick}>
+      <Icon />
+    </Button>
+  )
+}
+
+/** The host's bar above the App: its name, to its page or back, filling the workspace from its page, and close. */
+function AppChrome({
+  instance,
+  place,
+}: {
+  readonly instance: Instance
+  readonly place: ReturnType<typeof usePlacement>
+}) {
+  const host = useAppHost()
+  return (
+    <div className="app-chrome">
+      <span className="app-chrome-title">{instance.app.title}</span>
+      {place.paged ? (
+        <ChromeButton label="Back in the conversation" icon={PanelLeftCloseIcon} onClick={place.inline} />
+      ) : (
+        <ChromeButton label="Open as a page" icon={PanelRightOpenIcon} onClick={place.page} />
+      )}
+      {place.paged && (
+        <ChromeButton
+          label={place.filled ? 'Stop filling the workspace' : 'Fill the workspace'}
+          icon={place.filled ? Minimize2Icon : Maximize2Icon}
+          onClick={place.fill}
+        />
+      )}
+      <ChromeButton label="Close the app" icon={XIcon} onClick={() => host.close(instance.app.id)} />
     </div>
   )
 }
 
-function measuredStage(session: AppSession, apps: ReturnType<typeof useApps>, live: Live): Rect | undefined {
-  const { mode, key } = session
-  if (apps.phone && mode === 'inline') return undefined
-  if (!apps.phone) {
-    const slot = apps.element(mode === 'fullscreen' ? 'workspace-fullscreen' : 'workspace-app')
-    if (
-      mode !== 'fullscreen' &&
-      slot?.closest<HTMLElement>('[data-workspace-visible]')?.dataset.workspaceVisible === 'false'
-    )
-      return undefined
-    return rectOf(slot)
-  }
-  const view = viewport()
-  return stageRect(mode, {
-    viewport: view,
-    phone: apps.phone,
-    inline: rectOf(apps.element(`inline:${key}`)),
-    panel: rectOf(apps.element('panel')),
-    pip: live.pip ?? pipCorners(view)[0],
-    sheet: live.sheet ?? sheetSnaps(view)[1],
-  })
-}
-
-function Stage({ session }: { readonly session: AppSession }) {
-  const apps = useApps()
-  const { mode } = session
-  const sheet = apps.phone && mode === 'fullscreen'
-  const stage = useRef<HTMLDivElement>(null)
-  const live = useRef<Live>({
-    axes: { x: still(0), y: still(0), width: still(0), height: still(0) },
-    seeded: false,
-    spring: undefined,
-    dragging: false,
-    pip: undefined,
-    sheet: undefined,
-  })
-  const [error, setError] = useState('')
-  const grants = useAppGrantAsks(session.selection.serverId)
+/** The stage's measured room: the App's page less the chrome, or its place's width up to most of the window. */
+function useRoom() {
   const [box, setBox] = useState({ width: 0, height: 0 })
-  const target = useRef<() => Rect | undefined>(() => undefined)
-  target.current = () => measuredStage(session, apps, live.current)
-  const [measure] = useState(() => () => target.current())
   const [onTarget] = useState(() => (rect: Rect) => {
     const width = Math.round(rect.width)
     const height = Math.round(rect.height) - CHROME_HEIGHT
     setBox((current) => (current.width === width && current.height === height ? current : { width, height }))
   })
-  const clipRef = useRef<(element: HTMLElement) => void>(() => undefined)
-  clipRef.current = (element) =>
-    clipStage(element, apps.phone || mode === 'fullscreen' ? undefined : apps.element('workspace-app'))
-  const [clip] = useState(() => (element: HTMLElement) => clipRef.current(element))
-  const kick = useStageMotion(stage, live, measure, onTarget, clip)
-  const drag = useStageDrag(live, kick, mode, sheet)
-  const previous = useRef(mode)
+  return { box, onTarget }
+}
+
+function Stage({ instance }: { readonly instance: Instance }) {
+  const host = useAppHost()
+  const { id } = instance.app
+  const { serverId } = instance.selection
+  const place = usePlacement(instance)
+  const name: SlotName = place.paged ? `app-page:${id}` : `app-inline:${id}`
+  const stage = useRef<HTMLDivElement>(null)
+  const live = useRef<Live>({
+    axes: { x: still(0), y: still(0), width: still(0), height: still(0) },
+    seeded: false,
+    moving: false,
+    visible: undefined,
+  })
+  const [error, setError] = useState('')
+  const grants = useAppGrantAsks(serverId)
+  const { box, onTarget } = useRoom()
+  const latest = useRef({ name, host })
+  latest.current = { name, host }
+  const [slot] = useState(() => () => slotOf(latest.current.host.element(latest.current.name)))
+  const [onVisible] = useState(() => (visible: boolean) => {
+    if (live.current.visible === visible) return
+    live.current.visible = visible
+    latest.current.host.seen(id, visible)
+  })
+  const kick = useStageMotion({ stage, live, slot, onTarget, onVisible })
+  const previous = useRef(place.paged)
   useEffect(() => {
-    if (previous.current === mode) return
-    previous.current = mode
-    live.current.spring = apps.phone ? SPRINGS.place : undefined
+    if (previous.current === place.paged) return
+    previous.current = place.paged
+    live.current.moving = live.current.seeded
     kick()
-  }, [mode, kick, apps.phone])
+  }, [place.paged, kick])
   const placement: AppPlacement = {
-    mode,
-    available: apps.available,
+    mode: place.paged ? 'fullscreen' : 'inline',
+    available: APP_MODES,
     width: box.width,
-    height: apps.phone && mode === 'inline' ? inlineHeight(10_000, window.innerHeight) : box.height,
+    height: place.paged ? box.height : inlineHeight(10_000, window.innerHeight),
   }
   return (
-    <div ref={stage} className="app-stage" data-mode={sheet ? 'sheet' : mode} data-hidden="">
-      <AppChrome session={session} drag={drag} />
+    <div ref={stage} className="app-stage" data-mode={place.paged ? 'page' : 'inline'} data-app={id} data-hidden="">
+      <AppChrome instance={instance} place={place} />
       {error && <Receipt tone="error">{error}. The ordinary tool result remains available.</Receipt>}
       {grants.card}
-      {session.link && (
-        <LinkOffer link={session.link} serverId={session.selection.serverId} onDone={() => apps.setLink(undefined)} />
+      {instance.link && (
+        <LinkOffer link={instance.link} serverId={serverId} onDone={() => host.setLink(id, undefined)} />
       )}
       <AppFrame
-        selection={session.selection}
+        selection={instance.selection}
         placement={placement}
         events={{
           report: setError,
-          resize: apps.setHeight,
-          close: apps.close,
-          requestMode: apps.setMode,
-          share: apps.setContext,
-          offerLink: apps.setLink,
+          resize: (height) => host.setHeight(id, height),
+          close: () => host.close(id),
+          requestMode: place.request,
+          share: (text) => host.setContext(id, text),
+          offerLink: (link) => host.setLink(id, link),
           askGrant: grants.ask,
         }}
       />
@@ -336,12 +265,8 @@ function Stage({ session }: { readonly session: AppSession }) {
   )
 }
 
-/**
- * The chat view's App places beside the conversation: the side panel while the App is in it on a desktop, and the
- * stage holding the single live App, wherever its display mode puts it. Nothing while no App is open.
- */
+/** Every live App's stage, above the workspace. */
 export function AppLayer() {
-  const { session } = useApps()
-  if (session === undefined) return null
-  return <Stage key={`${session.selection.serverId} ${session.key} ${session.selection.uri}`} session={session} />
+  const { instances } = useAppHost()
+  return [...instances.values()].map((instance) => <Stage key={instance.app.id} instance={instance} />)
 }

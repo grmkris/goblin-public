@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
-import type { ConversationView } from '@purrable/contracts'
+import type { AppView, ConversationView } from '@purrable/contracts'
 import {
   Duration,
   SidebarGroup,
@@ -12,15 +12,23 @@ import {
   SidebarMenuSub,
   SidebarMenuSubItem,
 } from '@purrable/ui'
-import { BotIcon, ChevronRightIcon, Columns2Icon, MessageCircleIcon, MessagesSquareIcon, PlusIcon } from 'lucide-react'
+import {
+  AppWindowIcon,
+  BotIcon,
+  ChevronRightIcon,
+  Columns2Icon,
+  MessageCircleIcon,
+  MessagesSquareIcon,
+  PlusIcon,
+} from 'lucide-react'
 import { threadTitle } from '../lib/threads.ts'
-import { conversationKey, isOpen } from '../lib/workspace.ts'
+import { type ItemKey, appKey, conversationKey, isOpen, itemOf } from '../lib/workspace.ts'
 import { type RowStatus, type TreeNode, buildTree, rowStatus } from '../lib/workspace-tree.ts'
 import { useWorkspace } from './workspace.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
-/** Whether a path shows the workspace: `/` or a conversation's `/c/<id>`. */
-export const onWorkspace = (path: string) => path === '/' || path.startsWith('/c/')
+/** Whether a path shows the workspace: `/`, a conversation's `/c/<id>` or an App's `/a/<id>`. */
+export const onWorkspace = (path: string) => path === '/' || path.startsWith('/c/') || path.startsWith('/a/')
 
 /** The icon of a conversation's kind: main, a thread or a subagent. */
 export function KindIcon({ kind }: { readonly kind: ConversationView['kind'] }) {
@@ -30,19 +38,18 @@ export function KindIcon({ kind }: { readonly kind: ConversationView['kind'] }) 
 
 /** The sidebar's tree, from the live workspace feed. */
 export function useWorkspaceTree() {
-  const { conversations } = useWorkspaceFeed()
-  return useMemo(() => buildTree(conversations), [conversations])
+  const { conversations, apps } = useWorkspaceFeed()
+  return useMemo(() => buildTree(conversations, apps), [conversations, apps])
 }
 
 /**
- * What a row does with its conversation: a click shows it in the focused pane (then the URL names it), and Open beside
- * puts it next to the focused pane, going to the workspace first from another page.
+ * What a row does with its conversation or App: a click shows it in the focused pane (then the URL names it), and Open
+ * beside puts it next to the focused pane, going to the workspace first from another page.
  */
-export function useRowActions(id: string) {
+export function useRowActions(key: ItemKey) {
   const workspace = useWorkspace()
   const navigate = useNavigate()
   const path = useRouterState({ select: (router) => router.location.pathname })
-  const key = conversationKey(id)
   return {
     key,
     open: isOpen(workspace.state, key),
@@ -50,7 +57,10 @@ export function useRowActions(id: string) {
     showHere: () => workspace.open(key, 'here'),
     openBeside: () => {
       workspace.open(key, 'beside')
-      if (!onWorkspace(path)) void navigate({ to: '/c/$conversationId', params: { conversationId: id } })
+      const item = itemOf(key)
+      if (onWorkspace(path) || item === undefined || item.kind === 'draft') return
+      if (item.kind === 'app') void navigate({ to: '/a/$appId', params: { appId: item.id } })
+      else void navigate({ to: '/c/$conversationId', params: { conversationId: item.id } })
     },
   }
 }
@@ -99,14 +109,43 @@ function ClosedFold({ nodes }: { readonly nodes: readonly TreeNode[] }) {
   )
 }
 
+/** One of a conversation's Apps: a click shows its page here, the side button beside, and it drags onto a pane. */
+function AppRow({ app }: { readonly app: AppView }) {
+  const row = useRowActions(appKey(app.id))
+  return (
+    <SidebarMenuSubItem>
+      <div className="tree-row" data-open={row.open}>
+        <SidebarMenuButton
+          size="sm"
+          render={<Link to="/a/$appId" params={{ appId: app.id }} data-drag-item={row.key} />}
+          onClick={row.showHere}
+          isActive={row.focused}
+        >
+          <AppWindowIcon aria-hidden />
+          <span className="tree-row-name">{app.title}</span>
+        </SidebarMenuButton>
+        <button
+          type="button"
+          className="tree-row-beside"
+          aria-label={`Open ${app.title} beside`}
+          title="Open beside"
+          onClick={row.openBeside}
+        >
+          <Columns2Icon aria-hidden />
+        </button>
+      </div>
+    </SidebarMenuSubItem>
+  )
+}
+
 /**
- * One conversation, then everything under it at any depth. Its row shows it here on a click, opens it beside on the
+ * One conversation, then its Apps and everything under it at any depth. Its row shows it here on a click, opens it beside on the
  * side button, and drags onto a pane to place it there.
  */
 function TreeRow({ node, nested = false }: { readonly node: TreeNode; readonly nested?: boolean }) {
   const { activity } = useWorkspaceFeed()
   const status = rowStatus(node, activity)
-  const row = useRowActions(node.view.id)
+  const row = useRowActions(conversationKey(node.view.id))
   const name = threadTitle(node.view)
   const Item = nested ? SidebarMenuSubItem : SidebarMenuItem
   return (
@@ -130,8 +169,11 @@ function TreeRow({ node, nested = false }: { readonly node: TreeNode; readonly n
       >
         <Columns2Icon aria-hidden />
       </button>
-      {node.children.length > 0 && (
+      {node.children.length + node.apps.length > 0 && (
         <SidebarMenuSub>
+          {node.apps.map((app) => (
+            <AppRow key={app.id} app={app} />
+          ))}
           {node.children.map((child) => (
             <TreeRow key={child.view.id} node={child} nested />
           ))}

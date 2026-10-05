@@ -1,51 +1,29 @@
 import { type ReactNode, createContext, use, useState } from 'react'
-import type { CallToolResult } from '@modelcontextprotocol/client'
 import { Button } from '@purrable/ui'
-import { failureText, isString, record, records, request } from '../../lib/boundary.ts'
-import type { McpTarget, ToolPart } from '../../lib/parts.ts'
-import { useApps } from '../apps/provider.tsx'
-import { AppSlot } from '../apps/slot.tsx'
+import { ApiFailure, failureText } from '../../lib/boundary.ts'
+import type { ToolPart } from '../../lib/parts.ts'
+import { useAppHost } from '../apps/host.tsx'
+import { AppPlace } from '../apps/slot.tsx'
+import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { ToolCard } from './tool-part.tsx'
 
-/** Rebuild the tool result an App expects from the (redacted) details the resident tool committed. */
-function resultOf(details: unknown): CallToolResult {
-  const value = record(details)
-  const structured = record(value?.structuredContent)
-  const meta = record(value?._meta)
-  return {
-    // SAFETY: the content blocks were committed from the remote CallToolResult by mcpModelResult (runtime).
-    content: records(value?.content) as CallToolResult['content'],
-    ...(structured === undefined ? {} : { structuredContent: structured }),
-    ...(meta === undefined ? {} : { _meta: meta }),
-  }
-}
-
-/** Opens the server's App view for this call, in the transcript (or the sheet, on a phone). */
-function AppButton({ part, target }: { readonly part: ToolPart; readonly target: McpTarget }) {
-  const { open } = useApps()
+/** Keeps this call's App (reopening it if it was closed) and shows it in place; says why when the tool has none. */
+function ShowApp({ conversation, callId }: { readonly conversation: string; readonly callId: string }) {
+  const { show } = useAppHost()
+  const { keepApp } = useWorkspaceFeed()
   const [error, setError] = useState('')
-  async function show(): Promise<void> {
+  async function keep(): Promise<void> {
     setError('')
     try {
-      const tools = records(await request(`/api/mcp/${encodeURIComponent(target.serverId)}/tools`))
-      const uri = tools.find((tool) => tool.name === target.name)?.appResource
-      if (!isString(uri)) {
-        setError('This tool has no app view.')
-        return
-      }
-      open(part.id, {
-        serverId: target.serverId,
-        uri,
-        arguments: target.arguments,
-        result: resultOf(part.result?.details),
-      })
+      show(await keepApp(conversation, callId))
     } catch (cause) {
-      setError(failureText(cause))
+      const none = cause instanceof ApiFailure && cause.tag === 'NotFound'
+      setError(none ? 'This tool has no app view.' : failureText(cause))
     }
   }
   return (
     <div className="flex flex-col gap-2">
-      <Button variant="outline" size="sm" onClick={() => void show()}>
+      <Button variant="outline" size="sm" onClick={() => void keep()}>
         Show app
       </Button>
       {error && <p className="text-sm text-muted-foreground">{error}</p>}
@@ -53,27 +31,40 @@ function AppButton({ part, target }: { readonly part: ToolPart; readonly target:
   )
 }
 
-/** Whether this transcript hosts Apps: the chat's does; a thread panel beside it leaves them to the full view. */
-const AppsHere = createContext(true)
+/** The conversation the transcript parts below belong to when they host Apps; nothing shows plain tool cards. */
+const AppsConversation = createContext<string | undefined>(undefined)
 
-/** Transcript parts below show MCP calls as plain cards, with no App (the chat beside them owns the one App). */
-export function WithoutApps({ children }: { readonly children: ReactNode }) {
-  return <AppsHere value={false}>{children}</AppsHere>
+/** Transcript parts below are `conversation`'s, with its Apps in place, or (without one) plain cards with no App. */
+export function AppsIn({
+  conversation,
+  children,
+}: {
+  readonly conversation: string | undefined
+  readonly children: ReactNode
+}) {
+  return <AppsConversation value={conversation}>{children}</AppsConversation>
 }
 
-/** A call to an owner's MCP server: the generic card, and its App once shown, in the row's place below it. */
+/** A call to an owner's MCP server: the generic card, and its App in the row's place below it. */
 export function McpToolPart({ part }: { readonly part: ToolPart }) {
-  return use(AppsHere) ? <McpToolWithApp part={part} /> : <ToolCard part={part} />
+  const conversation = use(AppsConversation)
+  return conversation === undefined ? (
+    <ToolCard part={part} />
+  ) : (
+    <McpToolWithApp part={part} conversation={conversation} />
+  )
 }
 
-function McpToolWithApp({ part }: { readonly part: ToolPart }) {
-  const { session } = useApps()
-  const showing = session?.key === part.id
-  const offerApp = part.target !== undefined && part.state === 'done' && !showing
+function McpToolWithApp({ part, conversation }: { readonly part: ToolPart; readonly conversation: string }) {
+  const { apps } = useWorkspaceFeed()
+  const callId = part.call.id
+  const app = apps.find((candidate) => candidate.conversation === conversation && candidate.callId === callId)
+  const open = app !== undefined && app.closedAt === undefined && part.state === 'done'
+  const offer = part.target !== undefined && part.state === 'done' && !open
   return (
     <div className="flex flex-col gap-2">
-      <ToolCard part={part}>{offerApp && part.target && <AppButton part={part} target={part.target} />}</ToolCard>
-      {showing && <AppSlot partKey={part.id} />}
+      <ToolCard part={part}>{offer && <ShowApp conversation={conversation} callId={callId} />}</ToolCard>
+      {open && <AppPlace app={app} />}
     </div>
   )
 }

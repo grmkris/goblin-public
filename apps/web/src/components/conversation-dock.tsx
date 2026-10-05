@@ -6,8 +6,7 @@ import { openInteractions } from '../lib/interactions.ts'
 import type { Part } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
 import { budgetFraction, contextTokens } from '../lib/usage.ts'
-import { SharedContextChip } from './apps/offers.tsx'
-import { useApps } from './apps/provider.tsx'
+import { SharedContextChips, useSharedContext } from './apps/offers.tsx'
 import { CapabilitiesButton } from './capabilities.tsx'
 import { MessageComposer } from './composer.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
@@ -27,14 +26,12 @@ export function Notice({ text }: { readonly text: string }) {
   )
 }
 
-/** The owner's message, with what the open App shares; the shared context is sent once, then cleared. */
-function useSendWithAppContext(send: Send): (input: string) => Promise<boolean> {
-  const { session, setContext } = useApps()
+/** The owner's message, with what the conversation's Apps share; shared context is sent once, then cleared. */
+export function useSendWithAppContext(conversation: string, send: Send): (input: string) => Promise<boolean> {
+  const shared = useSharedContext(conversation)
   return async (input) => {
-    const shared = session?.context
-    const context = shared === undefined ? [] : [{ serverId: session?.selection.serverId ?? '', text: shared }]
-    const sent = await send(input, undefined, context)
-    if (sent && shared !== undefined) setContext('')
+    const sent = await send(input, undefined, shared.context)
+    if (sent) shared.clear()
     return sent
   }
 }
@@ -83,7 +80,7 @@ export function ConversationDock({
 }) {
   const { projection, status, notice, send, stop } = conversation
   const running = projection?.running ?? false
-  const sendOwn = useSendWithAppContext(send)
+  const sendOwn = useSendWithAppContext(id, send)
   const usage = useUsageToday(running)
   const waiting = useMemo(() => openInteractions(parts), [parts])
   const context = useMemo(() => contextTokens(projection?.messages ?? []), [projection])
@@ -95,7 +92,7 @@ export function ConversationDock({
     exhausted: usage !== undefined && budgetFraction(usage) >= 1,
   })
   return (
-    <div className="chat-dock" ref={ref}>
+    <div className="chat-dock" ref={ref} data-app-cover>
       <Notice text={notice} />
       {notices.map((text) => (
         <Notice key={text} text={text} />
@@ -105,7 +102,7 @@ export function ConversationDock({
       ) : (
         <>
           <InteractionCards interactions={waiting} thread={id} onAnswer={send} />
-          <SharedContextChip />
+          <SharedContextChips conversation={id} />
           <div className="relative">
             {presence.state === 'waiting' && <PresenceBorder />}
             <MessageComposer

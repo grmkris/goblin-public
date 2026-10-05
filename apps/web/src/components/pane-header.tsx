@@ -35,7 +35,7 @@ export function PaneHeader({
 }) {
   return (
     <header className="pane-header" data-pane-header>
-      <div className="pane-pill">
+      <div className="pane-pill" data-app-cover>
         {first && <SidebarTrigger />}
         <button type="button" className="pane-grip" data-drag-item={item} aria-label={`Move ${title}`}>
           <GripVerticalIcon aria-hidden />

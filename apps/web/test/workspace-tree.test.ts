@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ConversationActivity, ConversationView } from '@purrable/contracts'
+import type { AppView, ConversationActivity, ConversationView } from '@purrable/contracts'
 import { type TreeNode, buildTree, isUnread, pathOf, railItems, rowStatus } from '../src/lib/workspace-tree.ts'
 
 const view = (id: string, extra: Partial<ConversationView> = {}): ConversationView => ({
@@ -71,6 +71,34 @@ describe('row status', () => {
     expect(isUnread(view('5', { lastReplyAt: 20, readAt: 20 }))).toBe(false)
     expect(isUnread(view('5', { lastReplyAt: 21, readAt: 20 }))).toBe(true)
     expect(isUnread(view('5'))).toBe(false)
+  })
+})
+
+const app = (id: string, conversation: string, extra: Partial<AppView> = {}): AppView => ({
+  id,
+  conversation,
+  callId: `call-${id}`,
+  serverId: 'board',
+  tool: 'show',
+  uri: 'ui://board/app.html',
+  title: `Board ${id}`,
+  createdAt: Number(id),
+  ...extra,
+})
+
+describe('Apps in the sidebar tree', () => {
+  it('lists each open App under its conversation, at any depth, and leaves closed ones out', () => {
+    const tree = buildTree(VIEWS, [app('1', '1'), app('2', '6'), app('3', '6', { closedAt: 9 }), app('4', '99')])
+    expect(tree.main?.apps.map(({ id }) => id)).toEqual(['1'])
+    const thread = tree.threads.find(({ view: { id } }) => id === '5')
+    expect(thread?.children[0]?.apps.map(({ id }) => id)).toEqual(['2'])
+    const rail = railItems(
+      tree,
+      new Map(),
+      () => false,
+      (id) => id !== '1',
+    )
+    expect(rail.apps.map(({ id }) => id)).toEqual(['2'])
   })
 })
 

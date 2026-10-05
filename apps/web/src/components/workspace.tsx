@@ -8,6 +8,7 @@ import {
   type ItemKey,
   type Where,
   type WorkspaceState,
+  appKey,
   closeItem,
   conversationKey,
   draftKey,
@@ -57,10 +58,11 @@ export function useWorkspace(): Workspace {
   return workspace
 }
 
-/** The conversation the URL names (`/c/<id>`), as an item. */
+/** The conversation (`/c/<id>`) or App (`/a/<id>`) the URL names, as an item. */
 const urlItem = (path: string): ItemKey | undefined => {
-  const id = /^\/c\/(\d{1,12})$/u.exec(path)?.[1]
-  return id === undefined ? undefined : conversationKey(id)
+  const [, kind, id] = /^\/([ca])\/(\d{1,12})$/u.exec(path) ?? []
+  if (id === undefined) return undefined
+  return kind === 'a' ? appKey(id) : conversationKey(id)
 }
 
 /** The signed-in user's id: the device keeps one workspace per person. */
@@ -115,7 +117,7 @@ function useStoredState(owner: string | undefined, url: ItemKey | undefined, tit
 }
 
 /**
- * The URL names the focused conversation (`/c/<id>`, replaced as focus moves, so Back leaves the workspace rather than
+ * The URL names the focused conversation or App (`/c/<id>`, `/a/<id>`, replaced as focus moves, so Back leaves the workspace rather than
  * stepping through panes); `/` takes the restored focus. A URL that names another item, from a link, Back or a typed
  * address, opens it beside the focused pane, or focuses it where it is.
  */
@@ -138,9 +140,10 @@ function useUrlFocus(
     const moved = focused.current !== state.focused
     focused.current = state.focused
     const item = itemOf(state.focused)
-    if (!ready || item?.kind !== 'conversation' || url === state.focused) return
-    if ((url !== undefined && moved) || path === '/')
-      void navigate({ to: '/c/$conversationId', params: { conversationId: item.id }, replace: true })
+    if (!ready || item === undefined || item.kind === 'draft' || url === state.focused) return
+    if ((url === undefined || !moved) && path !== '/') return
+    if (item.kind === 'app') void navigate({ to: '/a/$appId', params: { appId: item.id }, replace: true })
+    else void navigate({ to: '/c/$conversationId', params: { conversationId: item.id }, replace: true })
   }, [state.focused, url, path, ready, navigate])
 }
 
@@ -150,28 +153,32 @@ function useUrlFocus(
  */
 export function WorkspaceProvider({ enabled, children }: { readonly enabled: boolean; readonly children: ReactNode }) {
   const feed = useWorkspaceFeed()
-  const views = useRef(feed.conversations)
-  views.current = feed.conversations
+  const views = useRef(feed)
+  views.current = feed
   const title = useCallback((key: ItemKey): string => {
     const item = itemOf(key)
-    if (item?.kind === 'conversation') return threadTitle(views.current.find((view) => view.id === item.id))
-    return item?.kind === 'app' ? 'App' : 'New thread'
+    if (item?.kind === 'conversation')
+      return threadTitle(views.current.conversations.find((view) => view.id === item.id))
+    if (item?.kind === 'app') return views.current.apps.find((app) => app.id === item.id)?.title ?? 'App'
+    return 'New thread'
   }, [])
   const path = useRouterState({ select: (router) => router.location.pathname })
   const [state, setState, ready] = useStoredState(useOwner(enabled), urlItem(path), title)
   useUrlFocus(state, setState, title, ready)
   const roots = useRef(new Map<ItemKey, readonly Part[]>())
-  // Conversations that are gone (or drafts whose conversation is) close; titles follow the feed.
+  // Conversations that are gone, Apps that are closed (or drafts whose conversation is gone) close; titles follow.
   useEffect(() => {
     if (feed.conversations.length === 0) return
     const known = new Set(feed.conversations.map((view) => view.id))
+    const kept = new Set(feed.apps.filter((app) => app.closedAt === undefined).map((app) => app.id))
     const keep = (key: ItemKey) => {
       const item = itemOf(key)
       if (item?.kind === 'conversation') return known.has(item.id)
-      return item?.kind !== 'draft' || item.from === undefined || known.has(item.from.conversation)
+      if (item?.kind === 'app') return kept.has(item.id)
+      return item?.from === undefined || known.has(item.from.conversation)
     }
     setState((current) => retitle(prune(current, keep), title))
-  }, [feed.conversations, setState, title])
+  }, [feed.conversations, feed.apps, setState, title])
   const value = useMemo<Workspace>(
     () => ({
       state,

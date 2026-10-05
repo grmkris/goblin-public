@@ -12,8 +12,11 @@ import { type ItemKey, conversationKey, isOpen } from '../lib/workspace.ts'
 import { activityState } from '../lib/workspace-feed.ts'
 import { isUnread } from '../lib/workspace-tree.ts'
 import { MessageComposer } from './composer.tsx'
+import { SharedContextChips } from './apps/offers.tsx'
+import { useSendWithAppContext } from './conversation-dock.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
 import { useMarkRead, useOnScreen } from './on-screen.ts'
+import { AppsIn } from './parts/mcp-tool-part.tsx'
 import { PartView } from './parts/registry.tsx'
 import { postMessage, useConversation, useTranscript } from './use-conversation.ts'
 import { useWorkspace } from './workspace.tsx'
@@ -158,6 +161,7 @@ function InlineDock({
   readonly parts: readonly Part[]
 }) {
   const { projection, status, notice, send, stop } = conversation
+  const sendOwn = useSendWithAppContext(id, send)
   const running = projection?.running ?? false
   const waiting = useMemo(() => openInteractions(parts), [parts])
   const presence = presenceOf({ status, projection, parts, waiting: waiting.length, exhausted: false })
@@ -165,8 +169,9 @@ function InlineDock({
     <div className="inline-dock">
       <Notice text={notice} />
       <InteractionCards interactions={waiting} thread={id} onAnswer={send} />
+      <SharedContextChips conversation={id} />
       <MessageComposer
-        onSend={(input) => send(input)}
+        onSend={sendOwn}
         running={running}
         onStop={() => void stop()}
         placeholder="Reply in thread…"
@@ -216,15 +221,17 @@ function InlineThreadBody({ view, threads }: { readonly view: ConversationView; 
         </button>
       </header>
       <InlineThreadsProvider value={nested}>
-        <div className="inline-thread-parts">
-          {own.length === 0 && <p className="inline-thread-quiet">No replies yet</p>}
-          {own.map((part) => (
-            <div key={part.id} className="flex flex-col">
-              <PartView part={part} canSwitchModel={false} />
-              <MessageThreads part={part} threads={nested} />
-            </div>
-          ))}
-        </div>
+        <AppsIn conversation={view.id}>
+          <div className="inline-thread-parts">
+            {own.length === 0 && <p className="inline-thread-quiet">No replies yet</p>}
+            {own.map((part) => (
+              <div key={part.id} className="flex flex-col">
+                <PartView part={part} canSwitchModel={false} />
+                <MessageThreads part={part} threads={nested} />
+              </div>
+            ))}
+          </div>
+        </AppsIn>
       </InlineThreadsProvider>
       {!isClosed(view) && <InlineDock id={view.id} conversation={conversation} parts={parts} />}
     </section>

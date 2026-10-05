@@ -31,13 +31,13 @@ const weights = (state: WorkspaceState) => {
 describe('item keys', () => {
   it('name conversations, Apps and drafts, and nothing else', () => {
     expect(itemOf('c:7')).toEqual({ kind: 'conversation', id: '7' })
-    expect(itemOf('a:app-1')).toEqual({ kind: 'app', id: 'app-1' })
+    expect(itemOf('a:4')).toEqual({ kind: 'app', id: '4' })
     expect(itemOf('d:new')).toEqual({ kind: 'draft' })
     expect(itemOf(draftKey({ conversation: '1', entry: 40 }))).toEqual({
       kind: 'draft',
       from: { conversation: '1', entry: 40 },
     })
-    for (const bad of ['c:x', 'c:7:1', 'd:1:0', 'd:1:x', 'z:1', 'c:', 'a:'] as const)
+    for (const bad of ['c:x', 'c:7:1', 'd:1:0', 'd:1:x', 'z:1', 'c:', 'a:', 'a:app-1'] as const)
       expect(itemOf(bad)).toBeUndefined()
   })
 })
@@ -115,11 +115,11 @@ describe('closing and replacing', () => {
 })
 
 describe('the stored workspace', () => {
-  it('brings back conversation panes and their focus, never Apps or drafts', () => {
-    let state = open(open(initialWorkspace(), c('7')), 'a:app-1')
+  it('brings back conversation and App panes and their focus, never drafts', () => {
+    let state = open(open(initialWorkspace(), c('7')), 'a:4')
     state = openItem(state, draftKey(), 'New thread', 'beside', c('7'))
     const parsed = parseWorkspace(serializeWorkspace(state))
-    expect(parsed === undefined ? [] : leafOrder(parsed.doc)).toEqual([MAIN_KEY, c('7')])
+    expect(parsed === undefined ? [] : leafOrder(parsed.doc)).toEqual([MAIN_KEY, c('7'), 'a:4'])
     expect(parsed?.focused).toBe(MAIN_KEY)
   })
 

@@ -29,7 +29,7 @@ export function itemOf(key: ItemKey): Item | undefined {
   const [kind, first = '', second, ...rest] = key.split(':')
   if (rest.length > 0) return undefined
   if (kind === 'c' && second === undefined && DIGITS.test(first)) return { kind: 'conversation', id: first }
-  if (kind === 'a' && second === undefined && /^[\w.-]{1,128}$/u.test(first)) return { kind: 'app', id: first }
+  if (kind === 'a' && second === undefined && DIGITS.test(first)) return { kind: 'app', id: first }
   if (kind !== 'd') return undefined
   if (first === 'new' && second === undefined) return { kind: 'draft' }
   const entry = Number(second)
@@ -175,14 +175,14 @@ export function prune(state: WorkspaceState, keep: (key: ItemKey) => boolean): W
 export const workspaceStorageKey = (owner: string): string => `purrable:workspace:v2:${owner}`
 
 /**
- * A stored workspace: only conversation panes come back (Apps and drafts need what the owner did this time), bounded
- * as `parseLayoutDocument` bounds it, with a focus that is open.
+ * A stored workspace: conversation and App panes come back (drafts need what the owner did this time; an App comes
+ * back from the registry, never with a grant), bounded as `parseLayoutDocument` bounds it, with a focus that is open.
  */
 export function parseWorkspace(raw: string | null): WorkspaceState | undefined {
   if (raw === null || raw.length > 128_000) return undefined
   try {
     const value = record(JSON.parse(raw))
-    const doc = parseLayoutDocument(value?.doc, (key) => itemOf(key)?.kind === 'conversation')
+    const doc = parseLayoutDocument(value?.doc, (key) => itemOf(key)?.kind !== 'draft' && itemOf(key) !== undefined)
     if (doc === undefined) return undefined
     const items = leafOrder(doc)
     const focused = typeof value?.focused === 'string' && items.includes(value.focused) ? value.focused : items[0]

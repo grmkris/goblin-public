@@ -19,11 +19,12 @@ it at the edge it is dropped near (a split that would leave a half under 320×24
 the middle, opens there, trading places when the dragged item is already open. Escape cancels. Every structural
 change re-balances: each column of a row is as wide as the others.
 
-**The URL names only the focused conversation**, `/c/<id>`, replaced as focus moves so Back leaves the workspace
-rather than stepping through panes; `/` restores the device's focus. A deep link opens its conversation beside the
-focused pane. The arrangement is a device preference in localStorage (`purrable:workspace:v2:<owner>`), a bounded
-Trellis document of one-view panes (64 views, 128 KB, no stage, nothing floating); only conversation panes come back,
-since drafts and Apps need what the owner did this time, and a stored layout never grants anything.
+**The URL names only the focused conversation** (or, since ADR 0020, App: `/a/<id>`), `/c/<id>`, replaced as focus
+moves so Back leaves the workspace rather than stepping through panes; `/` restores the device's focus. A deep link
+opens its item beside the focused pane. The arrangement is a device preference in localStorage
+(`purrable:workspace:v2:<owner>`), a bounded Trellis document of one-view panes (64 views, 128 KB, no stage, nothing
+floating). Conversation and App panes come back; drafts do not, since they need what the owner did this time. A
+stored layout never grants anything.
 
 **Desktop and narrow screens.** At 75rem and wider, Trellis 0.3.0 lays out the panes after hydration as a controlled
 document: the store's document goes in, divider resizes and focus come out, and nothing else of Trellis is used (no
@@ -42,9 +43,8 @@ is, where it sits and what a click does. Unread is synced through the server, no
 `app_conversations` is the owner's read mark (`PUT /api/conversations/:id/read`), set once a pane has shown the
 conversation for a moment, and replies after it are unread.
 
-**Apps, for now.** The transcript's one live App opens in a pane beside the focused conversation on a desktop and in
-its bottom sheet on a phone; closing that pane closes the App, and fullscreen fills the workspace. Apps open only
-from main's transcript until durable Apps (several live, in any conversation) replace this.
+**Apps.** An App is an item too (`a:<id>`): its page, in a pane of its own. ADR 0020 (durable Apps, one iframe per
+instance) replaced the interim single App pane this decision first shipped with.
 
 Trellis is commercially licensed. Dan Fessler gave Purrable permission to use it without sponsorship until Purrable
 makes money, in exchange for crediting him and allowing him to showcase Purrable as a Trellis user. The workspace

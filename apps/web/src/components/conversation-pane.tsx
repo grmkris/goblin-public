@@ -1,5 +1,5 @@
 import { type ReactNode, useMemo, useRef, useState } from 'react'
-import { type ConversationView, MAIN_THREAD } from '@purrable/contracts'
+import type { ConversationView } from '@purrable/contracts'
 import { DropdownMenuItem, DropdownMenuSeparator, Input, useMediaQuery } from '@purrable/ui'
 import { Maximize2Icon, Minimize2Icon, PencilIcon, RotateCcwIcon, ShareIcon, XIcon } from 'lucide-react'
 import { failureText } from '../lib/boundary.ts'
@@ -14,7 +14,7 @@ import { Conversation } from './conversation.tsx'
 import { ConversationDock, Notice } from './conversation-dock.tsx'
 import { useModelChoice } from './model-picker.tsx'
 import { PaneHeader } from './pane-header.tsx'
-import { WithoutApps } from './parts/mcp-tool-part.tsx'
+import { AppsIn } from './parts/mcp-tool-part.tsx'
 import { PartView } from './parts/registry.tsx'
 import { useInlineThreads } from './inline-thread.tsx'
 import { postMessage, useConversation, useDockInsets, useTranscript } from './use-conversation.ts'
@@ -185,7 +185,7 @@ function ConversationHeader({
 
 /**
  * A conversation's transcript and dock. A branched thread starts at the message it branched from, shown above its
- * replies; every message carries the threads started from it, or Reply in thread. Apps open only from main for now.
+ * replies; every message carries the threads started from it, or Reply in thread. The owner's Apps live in place.
  */
 function ConversationBody({ view }: { readonly view: ConversationView }) {
   const { id } = view
@@ -217,13 +217,19 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
       canSwitchModel={(model.choice?.options.length ?? 0) > 1}
       threads={inline}
       {...(earlier && { onEarlier: earlier })}
-      {...(root.length > 0 && { lead: <ThreadRoot parts={root} replies={view.replies} /> })}
+      {...(root.length > 0 && {
+        lead: (
+          <AppsIn conversation={undefined}>
+            <ThreadRoot parts={root} replies={view.replies} />
+          </AppsIn>
+        ),
+      })}
     />
   )
   return (
     <section className="conversation-pane chat-pane" aria-label={nameOf(view)} ref={pane}>
       <ConversationHeader id={id} view={view} onShare={() => void conversation.send(SHARE_REQUEST)} />
-      {id === MAIN_THREAD ? transcript : <WithoutApps>{transcript}</WithoutApps>}
+      <AppsIn conversation={id}>{transcript}</AppsIn>
       <ConversationDock
         ref={dock}
         id={id}
