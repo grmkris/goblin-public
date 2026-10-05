@@ -21,12 +21,12 @@ export function serverState(server: Server): 'on' | 'some' | 'off' {
 
 /**
  * The view with one change made, shown until the server answers with the real one. A reset cannot be guessed here (it
- * copies main's switches), so it changes nothing until then.
+ * copies its parent's switches), so it changes nothing until then.
  */
 export function applyChange(view: View, change: CapabilityChange): View {
   if ('reset' in change) return view
   const { target, on } = change
-  const { sameAsMain: _unknown, ...rest } = view
+  const { sameAsParent: _unknown, ...rest } = view
   switch (target.kind) {
     case 'subagents':
       return { ...rest, subagents: on }

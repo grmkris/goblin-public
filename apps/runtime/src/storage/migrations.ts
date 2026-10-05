@@ -170,6 +170,18 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     tables: ['app_routine_runs'],
     sql: 'CREATE INDEX app_routine_event_spacing ON app_routine_runs (source, admitted_at)',
   },
+  {
+    // One Close replaces archiving; conversations form a tree walked by parent.
+    key: '20261017000000_conversation_tree',
+    tables: ['app_conversations'],
+    sql: [
+      'ALTER TABLE app_conversations ADD COLUMN closed_at INTEGER',
+      "ALTER TABLE app_conversations ADD COLUMN closed_by TEXT CHECK (closed_by IN ('owner', 'done'))",
+      'ALTER TABLE app_conversations ADD COLUMN keep_open_at INTEGER',
+      "UPDATE app_conversations SET closed_at = archived_at, closed_by = 'owner' WHERE archived_at IS NOT NULL",
+      'CREATE INDEX app_conversation_parent ON app_conversations (parent_session)',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

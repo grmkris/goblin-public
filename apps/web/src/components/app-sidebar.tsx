@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { MAIN_THREAD, type ThreadView } from '@purrable/contracts'
+import { type ConversationView, MAIN_THREAD } from '@purrable/contracts'
 import {
   Sidebar,
   SidebarContent,
@@ -31,8 +31,9 @@ import {
   SettingsIcon,
 } from 'lucide-react'
 import { signOut } from '../lib/session.tsx'
-import { type ThreadNode, threadTitle, threadTree } from '../lib/threads.ts'
-import { useThreads } from './threads.tsx'
+import { type ThreadNode, isClosed, threadTitle, threadTree } from '../lib/threads.ts'
+import { activityState } from '../lib/workspace-feed.ts'
+import { useWorkspaceFeed } from './workspace-feed.tsx'
 import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
 
 /** The conversation a path shows: main at `/`, a thread or subagent at `/t/:id`, none elsewhere. */
@@ -41,17 +42,19 @@ function conversationAt(path: string): string | undefined {
   return /^\/t\/([^/]+)/u.exec(path)?.[1]
 }
 
-const linkTo = (view: ThreadView) =>
+const linkTo = (view: ConversationView) =>
   view.id === MAIN_THREAD ? (
     <Link to="/" />
-  ) : view.kind === 'thread' && !view.archived ? (
+  ) : view.kind === 'thread' && !isClosed(view) ? (
     <Link to="/" search={{ thread: Number(view.id) }} />
   ) : (
     <Link to="/t/$threadId" params={{ threadId: view.id }} />
   )
 
-function Busy({ view }: { readonly view: ThreadView }) {
-  if (!view.busy) return null
+/** A spinner while the conversation works, or waits on its subagents. */
+function Busy({ view }: { readonly view: ConversationView }) {
+  const feed = useWorkspaceFeed()
+  if (activityState(feed, view.id) === 'idle') return null
   return (
     <SidebarMenuBadge>
       <span className="thread-busy" aria-label="Working" />
@@ -86,12 +89,12 @@ function ConversationItem({ node, current }: { readonly node: ThreadNode; readon
   )
 }
 
-/** Threads the owner archived: hidden behind a toggle, still reachable. */
-function ArchivedGroup({
+/** Threads the owner closed: hidden behind a toggle, still readable. */
+function ClosedGroup({
   views,
   current,
 }: {
-  readonly views: readonly ThreadView[]
+  readonly views: readonly ConversationView[]
   readonly current: string | undefined
 }) {
   const [open, setOpen] = useState(false)
@@ -100,10 +103,10 @@ function ArchivedGroup({
     <SidebarGroup>
       <SidebarGroupLabel
         render={<button type="button" aria-expanded={open} onClick={() => setOpen(!open)} />}
-        className="archived-toggle"
+        className="closed-toggle"
       >
         <ChevronRightIcon aria-hidden />
-        Archived ({views.length})
+        Closed ({views.length})
       </SidebarGroupLabel>
       {open && (
         <SidebarMenu>
@@ -117,12 +120,12 @@ function ArchivedGroup({
 }
 
 /**
- * Main, then the threads newest first (each with its subagents), then the archived ones. The "+" beside Threads opens
+ * Main, then the threads newest first (each with its subagents), then the closed ones. The "+" beside Threads opens
  * a new thread's draft beside main; nothing exists until its first message is sent.
  */
 function Conversations({ current, onNew }: { readonly current: string | undefined; readonly onNew: () => void }) {
-  const { views } = useThreads()
-  const tree = useMemo(() => threadTree(views), [views])
+  const { conversations } = useWorkspaceFeed()
+  const tree = useMemo(() => threadTree(conversations), [conversations])
   return (
     <>
       <SidebarGroup>
@@ -150,7 +153,7 @@ function Conversations({ current, onNew }: { readonly current: string | undefine
           </SidebarMenu>
         )}
       </SidebarGroup>
-      <ArchivedGroup views={tree.archived} current={current} />
+      <ClosedGroup views={tree.closed} current={current} />
     </>
   )
 }

@@ -104,7 +104,7 @@ async function active(base: string, who: Person, enabled: boolean) {
 
 async function activationCase(url: string) {
   const who = await person(url)
-  expect((await call(url, who, '/api/threads')).status).toBe(402)
+  expect((await call(url, who, '/api/conversations')).status).toBe(402)
   const checkout = await call(url, who, '/api/billing/checkout', {
     productId: 'attacker-product',
     userId: 'another-user',
@@ -114,11 +114,11 @@ async function activationCase(url: string) {
   expect(link.searchParams.get('product')).toBe('pdt_purrable_fixture')
   expect(link.searchParams.get('user')).toBe(who.userId)
   expect(link.searchParams.get('return')).toBe('https://purrable.test/subscribe/success')
-  expect((await call(url, who, '/api/threads')).status).toBe(402)
+  expect((await call(url, who, '/api/conversations')).status).toBe(402)
   const id = crypto.randomUUID()
   expect((await deliver(url, who, {}, id)).status).toBe(200)
   await active(url, who, true)
-  expect((await call(url, who, '/api/threads')).status).toBe(200)
+  expect((await call(url, who, '/api/conversations')).status).toBe(200)
   expect(await (await call(url, who, '/api/agent/usage')).json()).toMatchObject({ limit: 2_000_000 })
   expect((await call(url, who, '/api/billing/checkout', {})).status).toBe(409)
   expect((await deliver(url, who, { status: 'expired' }, id)).status).toBe(200)
@@ -163,7 +163,7 @@ async function cancellationCase(url: string) {
   const expired = crypto.randomUUID()
   await deliver(url, who, { status: 'cancelled', next_billing_date: new Date(Date.now() - DAY).toISOString() }, expired)
   await active(url, who, false)
-  expect((await call(url, who, '/api/threads')).status).toBe(402)
+  expect((await call(url, who, '/api/conversations')).status).toBe(402)
   const grace = Date.now() + DAY
   await deliver(url, who, {
     status: 'on_hold',
@@ -225,7 +225,7 @@ async function recoveryCase(url: string) {
     },
   })
   await lever(url, who, 'pending', { eventId: id, body })
-  expect((await call(url, who, '/api/threads')).status).toBe(402)
+  expect((await call(url, who, '/api/conversations')).status).toBe(402)
   await lever(url, who, 'cron')
   await active(url, who, true)
   expect(await lever(url, who, 'inbox', { eventId: id })).toMatchObject({ state: 'processed', attempts: 1 })

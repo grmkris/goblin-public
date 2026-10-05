@@ -32,7 +32,7 @@ export type PiStreamDependencies = {
 export type ReconnectScheduler = {
   readonly schedule: (run: () => void, delayMs: number) => () => void
 }
-const browserScheduler: ReconnectScheduler = {
+export const browserScheduler: ReconnectScheduler = {
   schedule: (run, delayMs) => {
     const handle = setTimeout(run, delayMs)
     return () => clearTimeout(handle)

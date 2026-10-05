@@ -1,7 +1,8 @@
 # Per-conversation capabilities, and main learns the names of threads started with "+"
 
 Accepted 2026-10-05 with the owner. Amends ADR 0007 (what reaches main from a thread) and ADR 0008 (skills switched on
-for a server can be narrowed per conversation).
+for a server can be narrowed per conversation). Amended by ADR 0017: a new thread copies the switches of the conversation
+it came from, and Reset restores those.
 
 **Main learns the name of a thread the owner starts with "+".** A thread branched from a message of main already
 shows under that message. A thread started empty, from the "+" beside Threads, used to leave no trace in main. Now,

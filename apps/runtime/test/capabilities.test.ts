@@ -67,7 +67,7 @@ describe("a conversation's switches as the owner sees them", () => {
     listed: (serverId: string) => (serverId === 'myplan' ? [tool('read'), tool('app_only', ['app'])] : undefined),
     skillSources: ['myplan'],
     own: [off('tool', 'mybrowser', 'open'), off('skills', 'myplan')],
-    main: [off('skills', 'myplan')],
+    inherited: [off('skills', 'myplan')],
   }
   it('lists servers with a granted tool, and only the tools the agent can call', () => {
     const view = capabilityView(input)
@@ -77,11 +77,11 @@ describe("a conversation's switches as the owner sees them", () => {
     ])
     expect(view.skills).toEqual([{ serverId: 'myplan', label: 'MyPlan', on: false }])
     expect(view.subagents).toBe(true)
-    expect(view.sameAsMain).toBe(false)
+    expect(view.sameAsParent).toBe(false)
   })
-  it("says whether a thread has main's switches, and says nothing about it for main", () => {
-    expect(capabilityView({ ...input, own: input.main }).sameAsMain).toBe(true)
-    expect(capabilityView({ ...input, kind: 'main', thread: '1' })).not.toHaveProperty('sameAsMain')
+  it("says whether a thread has its parent's switches, and says nothing about it for main", () => {
+    expect(capabilityView({ ...input, own: input.inherited }).sameAsParent).toBe(true)
+    expect(capabilityView({ ...input, kind: 'main', thread: '1' })).not.toHaveProperty('sameAsParent')
   })
   it('offers to switch only what it shows', () => {
     const view = capabilityView(input)

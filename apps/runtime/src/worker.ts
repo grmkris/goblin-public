@@ -1,6 +1,6 @@
 import * as Schema from 'effect/Schema'
 import * as Effect from 'effect/Effect'
-import { AppContext, CapabilityChange } from '@purrable/contracts'
+import { AppContext, CapabilityChange, CreateConversation, UpdateConversation } from '@purrable/contracts'
 import type { AgentRpc, RuntimeEnv } from './env.ts'
 import {
   handleAuth,
@@ -39,8 +39,6 @@ const Submit = Schema.Struct({
   appContext: Schema.optional(Schema.Array(AppContext).check(Schema.isMaxLength(2))),
 })
 const Stop = Schema.Struct({ operationId: Schema.optional(Bounded(200)) })
-const CreateThread = Schema.Struct({ from: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))) })
-const UpdateThread = Schema.Struct({ title: Schema.optional(Bounded(120)), archived: Schema.optional(Schema.Boolean) })
 const ToolCall = Schema.Struct({
   name: Bounded(256),
   arguments: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
@@ -144,8 +142,8 @@ async function agentRoute(request: Request, agent: DurableObjectStub<AgentRpc>, 
   return route(request, agent)
 }
 
-/** One conversation's routes, keyed `METHOD action`; the agent checks the thread is one of the owner's. */
-const threadRoutes: Readonly<
+/** One conversation's routes, keyed `METHOD action`; the agent checks the conversation is one of the owner's. */
+const conversationRoutes: Readonly<
   Record<string, (request: Request, agent: DurableObjectStub<AgentRpc>, thread: string) => Promise<Response>>
 > = {
   'POST messages': async (request, agent, thread) => {
@@ -154,26 +152,30 @@ const threadRoutes: Readonly<
   },
   'POST stop': async (request, agent, thread) =>
     json({ stopped: unwrap(await agent.stop(thread, (await readJson(request, Stop)).operationId)) }),
-  'GET events': (_request, agent, thread) => agent.fetch(`https://agent/threads/${thread}/events`),
+  'GET events': (_request, agent, thread) => agent.fetch(`https://agent/conversations/${thread}/events`),
   'GET preview': async (_request, agent, thread) => json(unwrap(await agent.threadPreview(thread))),
-  'GET snapshot': (_request, agent, thread) => agent.fetch(`https://agent/threads/${thread}/snapshot`),
+  'GET snapshot': (_request, agent, thread) => agent.fetch(`https://agent/conversations/${thread}/snapshot`),
   'GET history': (request, agent, thread) =>
-    agent.fetch(`https://agent/threads/${thread}/history${new URL(request.url).search}`),
+    agent.fetch(`https://agent/conversations/${thread}/history${new URL(request.url).search}`),
   'PATCH ': async (request, agent, thread) =>
-    json(unwrap(await agent.updateThread(thread, await readJson(request, UpdateThread)))),
+    json(unwrap(await agent.updateConversation(thread, await readJson(request, UpdateConversation)))),
   'GET capabilities': async (_request, agent, thread) => json(unwrap(await agent.conversationCapabilities(thread))),
   'PATCH capabilities': async (request, agent, thread) =>
     json(unwrap(await agent.setConversationCapability(thread, await readJson(request, CapabilityChange)))),
 }
 
-async function threadRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string): Promise<Response> {
-  if (path === '/api/threads' && request.method === 'GET') return json(unwrap(await agent.threads()))
-  if (path === '/api/threads' && request.method === 'POST')
-    return json(unwrap(await agent.createThread((await readJson(request, CreateThread)).from)), 201)
-  const [, thread = '', action = ''] = /^\/api\/threads\/(\d{1,12})(?:\/([a-z]+))?$/u.exec(path) ?? []
-  const route = threadRoutes[`${request.method} ${action}`]
-  if (thread === '' || route === undefined) throw new NotFound({ what: path })
-  return route(request, agent, thread)
+async function conversationRoute(
+  request: Request,
+  agent: DurableObjectStub<AgentRpc>,
+  path: string,
+): Promise<Response> {
+  if (path === '/api/conversations' && request.method === 'GET') return json(unwrap(await agent.conversations()))
+  if (path === '/api/conversations' && request.method === 'POST')
+    return json(unwrap(await agent.createConversation(await readJson(request, CreateConversation))), 201)
+  const [, id = '', action = ''] = /^\/api\/conversations\/(\d{1,12})(?:\/([a-z]+))?$/u.exec(path) ?? []
+  const route = conversationRoutes[`${request.method} ${action}`]
+  if (id === '' || route === undefined) throw new NotFound({ what: path })
+  return route(request, agent, id)
 }
 
 /** Completes an outbound OAuth authorization, then sends the owner back to the Connections page. */
@@ -282,7 +284,9 @@ async function ownerApiRequest(
 ): Promise<Response> {
   if (path.startsWith('/api/agent/')) return agentRoute(request, agent, path)
   if (path === '/api/routines' || path.startsWith('/api/routines/')) return routineRoute(request, agent, path)
-  if (path === '/api/threads' || path.startsWith('/api/threads/')) return threadRoute(request, agent, path)
+  if (path === '/api/workspace/events' && request.method === 'GET') return agent.fetch('https://agent/workspace/events')
+  if (path === '/api/conversations' || path.startsWith('/api/conversations/'))
+    return conversationRoute(request, agent, path)
   if (path.startsWith('/api/mcp/')) return mcpRoute(request, agent, path, env)
   if (path === '/api/clients' && request.method === 'GET') return json(await listInboundClients(env, userId))
   const revoke = /^\/api\/clients\/([\w.-]{1,200})$/u.exec(path)?.[1]

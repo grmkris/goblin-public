@@ -18,7 +18,7 @@ export async function postMessage(
 ): Promise<void> {
   // @effect-diagnostics-next-line cryptoRandomUUID:off -- A fresh idempotency key for this browser submission.
   const body = { input, operationId: operationId ?? crypto.randomUUID(), ...(appContext.length > 0 && { appContext }) }
-  await request(`/api/threads/${thread}/messages`, { body })
+  await request(`/api/conversations/${thread}/messages`, { body })
 }
 
 /**
@@ -33,8 +33,8 @@ export function useConversation(thread: string) {
   useEffect(() => {
     const attachment = new ConversationStream(
       {
-        snapshot: (signal) => request(`/api/threads/${thread}/snapshot`, { signal }),
-        events: () => new BrowserPiEvents(`/api/threads/${thread}/events`),
+        snapshot: (signal) => request(`/api/conversations/${thread}/snapshot`, { signal }),
+        events: () => new BrowserPiEvents(`/api/conversations/${thread}/events`),
       },
       setProjection,
       (next, detail) => {
@@ -67,7 +67,7 @@ export function useConversation(thread: string) {
   }
   async function stop(): Promise<void> {
     try {
-      await request(`/api/threads/${thread}/stop`, { body: {} })
+      await request(`/api/conversations/${thread}/stop`, { body: {} })
     } catch (error) {
       setNotice(failureText(error))
     }
@@ -85,7 +85,7 @@ function useHistory(thread: string, start: number | undefined, report: (text: st
   const [page, setPage] = useState<HistoryPage>({ entries: [], more: false })
   const load = useCallback(
     async (before: number): Promise<HistoryPage> => {
-      const data = record(await request(`/api/threads/${thread}/history?before=${before}`))
+      const data = record(await request(`/api/conversations/${thread}/history?before=${before}`))
       return { entries: records(data?.entries), more: data?.more === true }
     },
     [thread],

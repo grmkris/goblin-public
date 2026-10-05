@@ -1,10 +1,11 @@
-import { type RefObject, useEffect, useMemo, useRef } from 'react'
+import { type RefObject, useMemo, useRef } from 'react'
 import { type AppContext, MAIN_THREAD } from '@purrable/contracts'
 import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@purrable/ui'
 import { ShareIcon } from 'lucide-react'
 import { openInteractions } from '../lib/interactions.ts'
 import { presenceOf } from '../lib/presence.ts'
 import { budgetFraction, contextTokens } from '../lib/usage.ts'
+import { threadTitle } from '../lib/threads.ts'
 import { SharedContextChip } from './apps/offers.tsx'
 import { AppsProvider, useApps } from './apps/provider.tsx'
 import { CapabilitiesButton } from './capabilities.tsx'
@@ -18,14 +19,14 @@ import { type ThreadPanelControl } from './thread-panel.tsx'
 import { WorkspaceLayout } from './workspace-layout.tsx'
 import { WorkspaceProvider, useWorkspace } from './workspace-state.tsx'
 import { useInlineThreads } from './thread-replies.tsx'
-import { useThreads } from './threads.tsx'
+import { useWorkspaceFeed } from './workspace-feed.tsx'
 import { ModelPicker, useModelChoice } from './model-picker.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
 import { useConversation, useDockInsets, useTranscript } from './use-conversation.ts'
 import { useUsageToday } from './use-usage.ts'
 
-/** What "Share to main" asks a thread's agent; it answers with `share_to_main`. */
-const SHARE_REQUEST = 'Share what we concluded here with main.'
+/** What "Share to …" asks a thread's agent; it answers with `share_back`, into the conversation it came from. */
+const SHARE_REQUEST = 'Share what we concluded here with the conversation this thread came from.'
 
 function StreamNotice({ text }: { readonly text: string }) {
   return (
@@ -83,7 +84,7 @@ function ChatDock({
   readonly model: ModelChoice
 }) {
   const { projection, status, notice, send, stop } = conversation
-  const threads = useThreads()
+  const threads = useWorkspaceFeed()
   const running = projection?.running ?? false
   const sendOwn = useSendWithAppContext(send)
   const usage = useUsageToday(running)
@@ -131,12 +132,10 @@ const NOWHERE = () => undefined
 function ChatView({ thread, panel }: { readonly thread: string; readonly panel: ThreadPanelControl | undefined }) {
   const conversation = useConversation(thread)
   const { projection, report, send } = conversation
-  const threads = useThreads()
+  const threads = useWorkspaceFeed()
   const running = projection?.running ?? false
-  const { refresh } = threads
-  const kind = threads.views.find((candidate) => candidate.id === thread)?.kind
-  // A run starting or ending changes the list's busy marks (and a first exchange may have named the thread).
-  useEffect(refresh, [refresh, running])
+  const here = threads.conversations.find((candidate) => candidate.id === thread)
+  const parent = threads.conversations.find((candidate) => candidate.id === here?.parent)
   const model = useModelChoice(report)
   const view = useRef<HTMLElement>(null)
   const dock = useRef<HTMLDivElement>(null)
@@ -154,10 +153,10 @@ function ChatView({ thread, panel }: { readonly thread: string; readonly panel: 
           <ChatBar
             thread={thread}
             actions={
-              kind === 'thread' && (
+              here?.kind === 'thread' && (
                 <Button variant="ghost" size="sm" disabled={running} onClick={() => void send(SHARE_REQUEST)}>
                   <ShareIcon data-icon="inline-start" />
-                  Share to main
+                  Share to {parent?.kind === 'main' ? 'main' : threadTitle(parent)}
                 </Button>
               )
             }

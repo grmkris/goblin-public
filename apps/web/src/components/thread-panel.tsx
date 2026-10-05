@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useHydrated } from '@tanstack/react-router'
-import type { ThreadView } from '@purrable/contracts'
+import { type ConversationView, MAIN_THREAD } from '@purrable/contracts'
 import { Alert, AlertDescription, PresenceOrb, Sheet, SheetContent, SheetTitle } from '@purrable/ui'
 import { failureText } from '../lib/boundary.ts'
 import { openInteractions } from '../lib/interactions.ts'
@@ -14,7 +14,7 @@ import { Conversation } from './conversation.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
 import { WithoutApps } from './parts/mcp-tool-part.tsx'
 import { PartView } from './parts/registry.tsx'
-import { useThreads } from './threads.tsx'
+import { useWorkspaceFeed } from './workspace-feed.tsx'
 import { postMessage, useConversation, useDockInsets, useTranscript } from './use-conversation.ts'
 import { ThreadPaneHeader, type ThreadHost } from './thread-pane-header.tsx'
 
@@ -67,7 +67,7 @@ function ThreadBody({
   host,
   onClose,
 }: {
-  readonly view: ThreadView
+  readonly view: ConversationView
   readonly host: ThreadHost
   readonly onClose: () => void
 }) {
@@ -77,9 +77,6 @@ function ThreadBody({
   useDockInsets(pane, dock)
   const { parts } = useTranscript(view.id, projection, report, view.forkEntry ?? 0)
   const running = projection?.running ?? false
-  const { refresh } = useThreads()
-  // A run starting or ending changes the thread's reply count and busy mark (and a first exchange may name it).
-  useEffect(refresh, [refresh, running])
   const fork = view.forkEntry
   const root = fork === undefined ? [] : rootParts(parts, fork)
   const replies = fork === undefined ? parts : parts.filter((part) => entryOfPart(part.id) !== fork)
@@ -93,7 +90,7 @@ function ThreadBody({
           key={view.id}
           parts={replies}
           canSwitchModel={false}
-          {...(root.length > 0 && { lead: <ThreadRoot parts={root} replies={view.replies ?? 0} /> })}
+          {...(root.length > 0 && { lead: <ThreadRoot parts={root} replies={view.replies} /> })}
         />
       </WithoutApps>
       <div className="chat-dock" ref={dock}>
@@ -148,7 +145,7 @@ function DraftBody({
   readonly onClose: () => void
   readonly onStarted: (thread: string) => void
 }) {
-  const { create } = useThreads()
+  const { create } = useWorkspaceFeed()
   const [notice, setNotice] = useState('')
   const started = useRef<string | undefined>(undefined)
   const pane = useRef<HTMLElement>(null)
@@ -156,7 +153,7 @@ function DraftBody({
   useDockInsets(pane, dock)
   async function start(input: string): Promise<boolean> {
     // A retry after a failed send reuses the thread the first attempt started.
-    started.current ??= (await create(entry))?.id
+    started.current ??= (await create(entry === undefined ? undefined : { conversation: MAIN_THREAD, entry }))?.id
     const thread = started.current
     if (thread === undefined) return false
     try {
@@ -223,7 +220,7 @@ export function ThreadPane({
   readonly onClose: () => void
   readonly onStarted: (thread: string) => void
 }) {
-  const { views } = useThreads()
+  const { conversations: views } = useWorkspaceFeed()
   const view = target.kind === 'thread' ? views.find((candidate) => candidate.id === target.thread) : undefined
   const title = target.kind === 'draft' ? 'New thread' : threadTitle(view)
   let body: ReactNode

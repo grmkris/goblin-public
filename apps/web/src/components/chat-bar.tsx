@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react'
-import type { ThreadView } from '@purrable/contracts'
+import type { ConversationView } from '@purrable/contracts'
 import {
   Button,
   DropdownMenu,
@@ -11,12 +11,12 @@ import {
   TopBar,
   TopBarTitle,
 } from '@purrable/ui'
-import { ArchiveIcon, ArchiveRestoreIcon, EllipsisIcon, PencilIcon } from 'lucide-react'
-import { threadTitle } from '../lib/threads.ts'
-import { useThreads } from './threads.tsx'
+import { EllipsisIcon, PencilIcon, RotateCcwIcon, XIcon } from 'lucide-react'
+import { isClosed, threadTitle } from '../lib/threads.ts'
+import { useWorkspaceFeed } from './workspace-feed.tsx'
 
-function RenameForm({ view, onDone }: { readonly view: ThreadView; readonly onDone: () => void }) {
-  const { update } = useThreads()
+function RenameForm({ view, onDone }: { readonly view: ConversationView; readonly onDone: () => void }) {
+  const { update } = useWorkspaceFeed()
   return (
     <form
       className="thread-rename"
@@ -41,9 +41,13 @@ function RenameForm({ view, onDone }: { readonly view: ThreadView; readonly onDo
   )
 }
 
-/** Rename and Archive for a thread or subagent (main keeps its name and is never archived). */
-function ThreadMenu({ view, onRename }: { readonly view: ThreadView; readonly onRename: () => void }) {
-  const { update } = useThreads()
+/**
+ * Rename and Close for a thread or subagent (main keeps its name and never closes). Close stops it and everything under
+ * it; a closed one stays readable and reopens.
+ */
+function ThreadMenu({ view, onRename }: { readonly view: ConversationView; readonly onRename: () => void }) {
+  const { update } = useWorkspaceFeed()
+  const closed = isClosed(view)
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Thread actions" />}>
@@ -54,9 +58,9 @@ function ThreadMenu({ view, onRename }: { readonly view: ThreadView; readonly on
           <PencilIcon aria-hidden />
           Rename
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => void update(view.id, { archived: !view.archived })}>
-          {view.archived ? <ArchiveRestoreIcon aria-hidden /> : <ArchiveIcon aria-hidden />}
-          {view.archived ? 'Unarchive' : 'Archive'}
+        <DropdownMenuItem onClick={() => void update(view.id, { closed: !closed })}>
+          {closed ? <RotateCcwIcon aria-hidden /> : <XIcon aria-hidden />}
+          {closed ? 'Reopen' : 'Close'}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -68,8 +72,8 @@ function ThreadMenu({ view, onRename }: { readonly view: ThreadView; readonly on
  * `actions` (sharing with main), and the thread's menu.
  */
 export function ChatBar({ thread, actions }: { readonly thread: string; readonly actions?: ReactNode }) {
-  const { views } = useThreads()
-  const view = views.find((candidate) => candidate.id === thread)
+  const { conversations } = useWorkspaceFeed()
+  const view = conversations.find((candidate) => candidate.id === thread)
   const [renaming, setRenaming] = useState(false)
   return (
     <TopBar floating>

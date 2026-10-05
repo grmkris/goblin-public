@@ -1,22 +1,26 @@
-import type { ThreadView } from '@purrable/contracts'
+import type { ConversationView } from '@purrable/contracts'
 import { isString, record } from './boundary.ts'
 import type { Part, ToolPart } from './parts.ts'
 
 /** A conversation with the subagents it started, newest first. */
-export type ThreadNode = { readonly thread: ThreadView; readonly subagents: readonly ThreadView[] }
-/** The list the owner sees: main, then live threads newest first (each with its subagents), then archived ones. */
+export type ThreadNode = { readonly thread: ConversationView; readonly subagents: readonly ConversationView[] }
+/** The list the owner sees: main, then open threads newest first (each with its subagents), then closed ones. */
 export type ThreadTree = {
   readonly main: ThreadNode | undefined
   readonly threads: readonly ThreadNode[]
-  readonly archived: readonly ThreadView[]
+  readonly closed: readonly ConversationView[]
 }
 
-const newestFirst = (a: ThreadView, b: ThreadView) => b.createdAt - a.createdAt || Number(b.id) - Number(a.id)
+const newestFirst = (a: ConversationView, b: ConversationView) =>
+  b.createdAt - a.createdAt || Number(b.id) - Number(a.id)
+
+/** Whether a conversation is closed (it and everything under it run nothing until reopened). */
+export const isClosed = (view: ConversationView): boolean => view.closedAt !== undefined
 
 /** Arranges the registry for the thread list. A subagent sits under the conversation that started it. */
-export function threadTree(views: readonly ThreadView[]): ThreadTree {
-  const live = views.filter((view) => !view.archived)
-  const node = (thread: ThreadView): ThreadNode => ({
+export function threadTree(views: readonly ConversationView[]): ThreadTree {
+  const live = views.filter((view) => !isClosed(view))
+  const node = (thread: ConversationView): ThreadNode => ({
     thread,
     subagents: live.filter((view) => view.kind === 'subagent' && view.parent === thread.id).toSorted(newestFirst),
   })
@@ -27,21 +31,24 @@ export function threadTree(views: readonly ThreadView[]): ThreadTree {
       .filter((view) => view.kind === 'thread')
       .toSorted(newestFirst)
       .map(node),
-    archived: views.filter((view) => view.archived).toSorted(newestFirst),
+    closed: views.filter((view) => view.kind !== 'main' && isClosed(view)).toSorted(newestFirst),
   }
 }
 
 /** What to call a conversation: main is Main; a thread or subagent has its title, or a placeholder until it gets one. */
-export function threadTitle(view: ThreadView | undefined): string {
+export function threadTitle(view: ConversationView | undefined): string {
   if (view === undefined || view.kind === 'main') return 'Main'
   return view.title ?? (view.kind === 'subagent' ? 'Subagent' : 'New thread')
 }
 
-/** The live threads branched from each message of main (by entry id), newest first: what the reply rows show. */
-export function threadsByFork(views: readonly ThreadView[]): ReadonlyMap<number, readonly ThreadView[]> {
-  const byFork = new Map<number, ThreadView[]>()
+/** The open threads branched from each message of `parent` (by entry id), newest first: what the reply rows show. */
+export function threadsByFork(
+  views: readonly ConversationView[],
+  parent: string,
+): ReadonlyMap<number, readonly ConversationView[]> {
+  const byFork = new Map<number, ConversationView[]>()
   for (const view of views
-    .filter((candidate) => candidate.kind === 'thread' && !candidate.archived)
+    .filter((candidate) => candidate.kind === 'thread' && candidate.parent === parent && !isClosed(candidate))
     .toSorted(newestFirst))
     if (view.forkEntry !== undefined) byFork.set(view.forkEntry, [...(byFork.get(view.forkEntry) ?? []), view])
   return byFork

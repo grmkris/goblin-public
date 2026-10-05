@@ -1,16 +1,17 @@
 import { type ReactNode, use, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import type { ThreadView } from '@purrable/contracts'
+import { type ConversationView, MAIN_THREAD } from '@purrable/contracts'
 import { ChevronRightIcon, MessageSquareReplyIcon } from 'lucide-react'
 import type { Part } from '../lib/parts.ts'
-import { entryOfPart, threadsByFork } from '../lib/threads.ts'
+import { entryOfPart, isClosed, threadsByFork } from '../lib/threads.ts'
+import { activityState } from '../lib/workspace-feed.ts'
 import { OpenThread } from './parts/text-part.tsx'
 import { ThreadPreviewBlock } from './thread-preview.tsx'
-import { useThreads } from './threads.tsx'
+import { useWorkspaceFeed } from './workspace-feed.tsx'
 
 /** Main's threads as its transcript shows them: under the message each branched from, and how to start one. */
 export type InlineThreads = {
-  readonly at: ReadonlyMap<number, readonly ThreadView[]>
+  readonly at: ReadonlyMap<number, readonly ConversationView[]>
   readonly branchable: ReadonlySet<number>
   /** Opens the thread started from `entry` beside main, or a reply that starts one when it is sent. */
   readonly reply: (entry: number) => void
@@ -38,8 +39,8 @@ export function useInlineThreads(
   open: (thread: string) => void,
   draft: (entry: number) => void,
 ): InlineThreads {
-  const { views } = useThreads()
-  const at = useMemo(() => threadsByFork(views), [views])
+  const { conversations } = useWorkspaceFeed()
+  const at = useMemo(() => threadsByFork(conversations, MAIN_THREAD), [conversations])
   const now = useMinute()
   const reply = useCallback(
     (entry: number) => {
@@ -73,15 +74,16 @@ function OpenThreadButton({ thread, children }: { readonly thread: string; reado
  * replies), which opens it. Main's model saw only the name it had then.
  */
 export function ThreadStartedRow({ thread }: { readonly thread: string }) {
-  const { views } = useThreads()
+  const feed = useWorkspaceFeed()
   const now = useMinute()
-  const view = views.find((candidate) => candidate.id === thread)
+  const view = feed.conversations.find((candidate) => candidate.id === thread)
   const open = use(OpenThread)
-  if (view !== undefined && !view.archived)
+  if (view !== undefined && !isClosed(view))
     return (
       <div className="thread-rows" data-side="start">
         <ThreadPreviewBlock
           view={view}
+          working={activityState(feed, thread) !== 'idle'}
           now={now}
           started
           onOpen={open === undefined ? undefined : () => open(thread)}
@@ -107,6 +109,7 @@ function messageEntry(part: Part): number | undefined {
  * where there is one). Rows and the action line up with the message's side.
  */
 export function PartThreads({ part, threads }: { readonly part: Part; readonly threads: InlineThreads }) {
+  const feed = useWorkspaceFeed()
   const entry = messageEntry(part)
   if (entry === undefined || !threads.branchable.has(entry)) return null
   const side = part.kind === 'user' ? 'end' : 'start'
@@ -121,7 +124,13 @@ export function PartThreads({ part, threads }: { readonly part: Part; readonly t
   return (
     <div className="thread-rows" data-side={side}>
       {started.map((view) => (
-        <ThreadPreviewBlock key={view.id} view={view} now={threads.now} onOpen={() => threads.open(view.id)} />
+        <ThreadPreviewBlock
+          key={view.id}
+          view={view}
+          working={activityState(feed, view.id) !== 'idle'}
+          now={threads.now}
+          onOpen={() => threads.open(view.id)}
+        />
       ))}
     </div>
   )

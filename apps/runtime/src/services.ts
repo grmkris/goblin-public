@@ -19,6 +19,7 @@ import type { CapabilityProfiles } from './capabilities/profiles.ts'
 import type { RoutineStore } from './routines/store.ts'
 import type { RoutineRunStore } from './routines/runs.ts'
 import type { RoutineUsage } from './routines/usage.ts'
+import type { WorkspaceFeed } from './workspace/feed.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('purrable/Mcp') {}
@@ -37,6 +38,8 @@ export class RoutineRuns extends Context.Service<RoutineRuns, RoutineRunStore>()
 export class RoutineUsageProjection extends Context.Service<RoutineUsageProjection, RoutineUsage>()(
   'purrable/RoutineUsageProjection',
 ) {}
+/** The owner's conversations and what each is doing, as one live feed. */
+export class Workspace extends Context.Service<Workspace, WorkspaceFeed>()('purrable/Workspace') {}
 export type AgentServices =
   | Entitlements
   | Events
@@ -54,6 +57,7 @@ export type AgentServices =
   | Routines
   | RoutineRuns
   | RoutineUsageProjection
+  | Workspace
 
 export const agentLayer = (services: {
   readonly host: McpHost
@@ -69,6 +73,7 @@ export const agentLayer = (services: {
   readonly routines: RoutineStore
   readonly routineRuns: RoutineRunStore
   readonly routineUsage: RoutineUsage
+  readonly workspace: WorkspaceFeed
 }): Layer.Layer<Exclude<AgentServices, Entitlements | Events | EventStorage>> =>
   Layer.mergeAll(
     Layer.succeed(Mcp, services.host),
@@ -84,6 +89,7 @@ export const agentLayer = (services: {
     Layer.succeed(Routines, services.routines),
     Layer.succeed(RoutineRuns, services.routineRuns),
     Layer.succeed(RoutineUsageProjection, services.routineUsage),
+    Layer.succeed(Workspace, services.workspace),
   )
 
 /** Wrap a plain async step so its failure lands in the typed `AppError` channel. */

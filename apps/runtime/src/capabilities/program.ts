@@ -1,4 +1,4 @@
-import { type CapabilityChange, type ConversationCapabilities, MAIN_THREAD } from '@purrable/contracts'
+import type { CapabilityChange, ConversationCapabilities } from '@purrable/contracts'
 import * as Effect from 'effect/Effect'
 import { type AppError, InvalidInput } from '../http/errors.ts'
 import {
@@ -28,12 +28,12 @@ export const capabilitiesOf = (thread: string): Effect.Effect<ConversationCapabi
       listed: (serverId) => mcp.manager.snapshot(serverId)?.tools,
       skillSources: skills.sources(),
       own: capabilities.own(thread),
-      main: capabilities.own(MAIN_THREAD),
+      inherited: kind === 'thread' ? capabilities.inherited(thread) : [],
     })
   })
 
 /**
- * The owner switches something on or off in a conversation, or gives a thread main's switches again. Only what the
+ * The owner switches something on or off in a conversation, or gives a thread the switches of the one it came from. Only what the
  * conversation shows can be switched off; a subagent follows the conversations above it and main has no reset. A change
  * to subagents reaches Pi's tool filter for that conversation.
  */

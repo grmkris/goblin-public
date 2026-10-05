@@ -20,7 +20,7 @@ const view: ConversationCapabilities = {
   ],
   skills: [{ serverId: 'myskills', label: 'MySkills', on: true }],
   subagents: true,
-  sameAsMain: false,
+  sameAsParent: false,
 }
 
 describe('what a conversation lets its agent use, as the composer shows it', () => {
@@ -41,9 +41,9 @@ describe('what a conversation lets its agent use, as the composer shows it', () 
   it("shows a change at once, forgetting whether the thread still has main's setup, and leaves a reset to the agent", () => {
     const changed = applyChange(view, { target: { kind: 'skills', serverId: 'myskills' }, on: false })
     expect(changed.skills).toEqual([{ serverId: 'myskills', label: 'MySkills', on: false }])
-    expect(changed).not.toHaveProperty('sameAsMain')
+    expect(changed).not.toHaveProperty('sameAsParent')
     expect(applyChange(view, { target: { kind: 'subagents' }, on: false }).subagents).toBe(false)
-    expect(applyChange(view, { reset: 'main' })).toBe(view)
+    expect(applyChange(view, { reset: 'parent' })).toBe(view)
   })
   it("names a target after its server's label, or its id when the view does not have it", () => {
     expect(targetLabel({ kind: 'server', serverId: 'mybrowser' }, view)).toBe('MyTab')

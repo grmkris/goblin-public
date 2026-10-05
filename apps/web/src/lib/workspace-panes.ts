@@ -1,4 +1,4 @@
-import type { ThreadView } from '@purrable/contracts'
+import type { ConversationView } from '@purrable/contracts'
 import { record } from './boundary.ts'
 
 export type Pane =
@@ -34,8 +34,10 @@ export function closePane(state: PaneState, id: string): PaneState {
   if (id === 'main' || !state.panes.some((pane) => pane.id === id)) return state
   return { panes: state.panes.filter((pane) => pane.id !== id), focused: state.focused === id ? 'main' : state.focused }
 }
-export function reconcilePanes(state: PaneState, views: readonly ThreadView[], app: Pane | undefined): PaneState {
-  const live = new Set(views.filter((view) => !view.archived && view.kind !== 'main').map((view) => view.id))
+export function reconcilePanes(state: PaneState, views: readonly ConversationView[], app: Pane | undefined): PaneState {
+  const live = new Set(
+    views.filter((view) => view.closedAt === undefined && view.kind !== 'main').map((view) => view.id),
+  )
   const panes = state.panes.filter(
     (pane) =>
       pane.kind === 'main' ||

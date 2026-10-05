@@ -15,7 +15,8 @@ export type CapabilityInput = {
   /** The servers whose skills the owner turned on. */
   readonly skillSources: readonly string[]
   readonly own: readonly Exclusion[]
-  readonly main: readonly Exclusion[]
+  /** What Reset gives a thread: the switches of the conversation it came from. */
+  readonly inherited: readonly Exclusion[]
 }
 
 const labelOf = (server: ServerView): string => server.title ?? server.serverName ?? server.serverId
@@ -56,7 +57,7 @@ export function capabilityView(input: CapabilityInput): ConversationCapabilities
       on: scope.skills(serverId),
     })),
     subagents: scope.subagents(),
-    ...(input.kind === 'thread' && { sameAsMain: sameExclusions(input.own, input.main) }),
+    ...(input.kind === 'thread' && { sameAsParent: sameExclusions(input.own, input.inherited) }),
   }
 }
 

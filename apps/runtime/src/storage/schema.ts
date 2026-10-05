@@ -83,8 +83,10 @@ export const appUsageDaily = sqliteTable('app_usage_daily', {
 })
 
 /**
- * The conversations the owner can reach, keyed by Pi session id: main (Pi's root), threads and subagents. Pi owns
- * their transcripts; this is only what Pi does not keep: kind, title, where it came from, and whether it is archived.
+ * The conversations the owner can reach, keyed by Pi session id: main (Pi's root), threads and subagents, as a tree
+ * through `parent_session` (where a thread branched from, a subagent's spawner). Pi owns their transcripts; this is
+ * only what Pi does not keep: kind, title, where it came from, and whether it is closed. The retired `archived_at`
+ * column stays in the table (migrations are additive) and is no longer read.
  */
 export const appConversations = sqliteTable('app_conversations', {
   sessionId: text('session_id').primaryKey().notNull(),
@@ -93,7 +95,11 @@ export const appConversations = sqliteTable('app_conversations', {
   parentSession: text('parent_session'),
   forkEntry: integer('fork_entry'),
   createdAt: integer('created_at').notNull(),
-  archivedAt: integer('archived_at'),
+  /** Closed with everything under it: stays readable, refuses its spawner, reopens. Main is never closed. */
+  closedAt: integer('closed_at'),
+  closedBy: text('closed_by', { enum: ['owner', 'done'] }),
+  /** The owner engaged with a subagent (wrote to it, branched from it, pinned it), so it does not close itself. */
+  keepOpenAt: integer('keep_open_at'),
   /** A thread branched from main may zoom into main's memory below this message (the memory's size at the fork). */
   recallThrough: integer('recall_through'),
   /** A thread the owner started with "+" owes main a note naming it (`owed`) until that note is in (`written`). */

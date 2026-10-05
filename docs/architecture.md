@@ -108,10 +108,12 @@ program and encodes the exit. PiHarness and Pi Durable are experimental; Alchemy
 Conversations (`conversations.ts`): every agent has one **main** conversation, Pi's root session `1`, where the owner's
 browser and every inbound MCP client talk. A message from anyone but the owner's browser starts with an author tag
 block (`[from Claude Code]`, the `authorTag` contract), so the model and the web both know who wrote it. Side
-**threads** are Pi conversations of their own: branched from a message of main (a Pi fork at that entry, so the thread
-sees main up to there and main never sees the thread) or empty. `app_conversations` registers each one with its kind,
-title, origin and archive time; a session id reaches Pi only if it is registered there, so no request opens a
-conversation by guessing its number. Pi cannot delete a conversation, so archiving only hides a thread. The web
+**threads** are Pi conversations of their own: branched from a message of any open conversation (a Pi fork at that
+entry, so the thread sees its parent up to there and the parent never sees the thread), at any depth, or empty under
+main (ADR 0017). `app_conversations` registers each one as a tree (`parent_session`: where a thread branched from, a
+subagent's spawner) with its kind, title, origin and close time; a session id reaches Pi only if it is registered
+there, so no request opens a conversation by guessing its number. Pi cannot delete a conversation, so Close stops a
+conversation and everything under it and keeps it readable until Reopen; main never closes. The web
 lists them in the app's sidebar (`components/app-sidebar.tsx`, a sheet on phones): `/` is main and `/t/:id` a
 thread. Main attaches threads to their parent message with a connector rail and an indented preview
 (`components/thread-replies.tsx`). Blocks are expanded by default: the first five messages show their author, clipped
@@ -120,7 +122,7 @@ that device preference in guarded localStorage. An IntersectionObserver starts t
 only near the viewport, then polls while visible. After five messages only activity and the remaining count change.
 Owner-started threads get the same block. Open thread, the remaining-replies action and active sidebar threads
 open independent panes beside main (`/?thread=<id>`) with their own composers. The URL identifies the most recently
-opened thread; earlier panes stay open. `/t/:id` still gives the full conversation, including archived threads. Reply in thread opens a reply there
+opened thread; earlier panes stay open. `/t/:id` still gives the full conversation, including closed threads. Reply in thread opens a reply there
 (`/?reply=<entry>`) that branches the thread only when it is sent, because Pi cannot delete a conversation; the
 sidebar's "+" beside Threads opens an empty draft there (`/?new=true`) the same way. A thread started with "+" tells
 main its name once it has one (ADR 0010): main gets one `app.thread_started` note, `[thread started: "<title>"]`, and
@@ -128,23 +130,25 @@ its transcript shows a row for that thread. The owner API is conversation-scoped
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/threads` | List registered conversations, including archived ones. A live thread also carries where it branched (`forkEntry`) and its own `replies` and `lastReplyAt`, counted from Pi (`replies.ts`). |
-| `POST /api/threads` | Create an empty thread (`{}`) or branch main at an entry (`{ from: <entry> }`). |
-| `PATCH /api/threads/:id` | Rename or (un)archive a thread or subagent. Main cannot be changed this way. |
-| `GET /api/threads/:id/capabilities` | What the conversation lets its agent use (`ConversationCapabilities`): each server with a granted tool and those tools, each skills library, subagents, and for a thread whether it has main's switches. |
-| `PATCH /api/threads/:id/capabilities` | Switch one `CapabilityTarget` on or off there (only what is shown can be switched off), or `{ reset: 'main' }` a thread back to main's switches. A subagent's are not editable. |
-| `POST /api/threads/:id/messages` | Submit `input`, a stable `operationId` and optional `appContext`; returns 202 acceptance. |
-| `POST /api/threads/:id/stop` | Stop a conversation or one `operationId`. |
-| `GET /api/threads/:id/snapshot`, `GET /api/threads/:id/events` | Pi snapshot or SSE snapshot followed by committed batches. |
-| `GET /api/threads/:id/preview` | First five own messages (bounded text and quiet tool/thought lines), remaining replies and busy state; no inherited main history. |
-| `GET /api/threads/:id/history?before=<entry>` | Earlier entries, oldest first, with a `more` flag. |
+| `GET /api/workspace/events` | The workspace feed (SSE): a `WorkspaceSnapshot` of every conversation and what each that is not idle is doing (`working`, `waiting` on subagents), then batches of `WorkspaceChange` (`workspace/feed.ts`, from Pi's task graph and the registry's writes). |
+| `GET /api/conversations` | List registered conversations (`ConversationView`), closed ones included, each with its `parent`, where it branched (`forkEntry`), and its own `replies` and `lastReplyAt`, counted from Pi (`replies.ts`). |
+| `POST /api/conversations` | Create an empty thread (`{}`) or branch an open conversation at an entry (`{ from: { conversation, entry } }`). |
+| `PATCH /api/conversations/:id` | Rename, close or reopen (`closed`) a thread or subagent, or pin a subagent open (`keepOpen`). Closing stops it and everything under it; main cannot be changed this way. |
+| `GET /api/conversations/:id/capabilities` | What the conversation lets its agent use (`ConversationCapabilities`): each server with a granted tool and those tools, each skills library, subagents, and for a thread whether it has its parent's switches (`sameAsParent`). |
+| `PATCH /api/conversations/:id/capabilities` | Switch one `CapabilityTarget` on or off there (only what is shown can be switched off), or `{ reset: 'parent' }` a thread back to its parent's switches. A subagent's are not editable. |
+| `POST /api/conversations/:id/messages` | Submit `input`, a stable `operationId` and optional `appContext` to an open conversation; returns 202 acceptance. |
+| `POST /api/conversations/:id/stop` | Stop a conversation or one `operationId`, and the subagents it started (not its threads). |
+| `GET /api/conversations/:id/snapshot`, `GET /api/conversations/:id/events` | Pi snapshot or SSE snapshot followed by committed batches. |
+| `GET /api/conversations/:id/preview` | First five own messages (bounded text and quiet tool/thought lines), remaining replies and busy state; no inherited history. |
+| `GET /api/conversations/:id/history?before=<entry>` | Earlier entries, oldest first, with a `more` flag. |
 
 Every thread runs the `purrable.thread` extension (`pi/thread.ts`), added to that conversation alone when it is made;
-main never has it. It tells the model it is in a side thread and offers `share_to_main`: when the owner asks (the
-thread's "Share to main" button sends that request), the model writes a short note into main as a Pi write
-submission, an `app.shared` entry labelled `[from thread "<title>"]` that keeps the thread's id, so the label in
-main's transcript opens that thread. Main's model sees it from its next request and answers nothing, since a write
-starts no run. After each response an untitled thread is named by the memory model
+main never has it. It tells the model it is in a side thread and offers `share_back`: when the owner asks (the
+thread's "Share to …" button sends that request), the model writes a short note into the conversation the thread
+branched from as a Pi write submission, an `app.shared` entry labelled `[from thread "<title>"]` that keeps the
+thread's id, so the label in that transcript opens the thread. The parent's model sees it from its next request and
+answers nothing, since a write starts no run. A thread branched from a subagent is made a thread: it gets the host's
+extensions and `ask_user`, without the subagent's own selection and instructions. After each response an untitled thread is named by the memory model
 from its latest exchange, in the background; the owner can rename it. A thread started with "+" is created with
 `app_conversations.main_note = 'owed'`; once it has a title (the model's or the owner's) the same hook writes main
 an `app.thread_started` entry with request id `thread-started:<id>` and marks the note `written`. The note carries
@@ -163,8 +167,9 @@ restart from delivering or reporting twice. At most three subagents work at once
 **Capabilities** (ADR 0010, `capabilities/`): each conversation can switch off, for its own agent, a connected server,
 one granted tool of it, a skills library, or subagents. `app_conversation_capabilities` stores only what is off, so a
 tool granted later is on everywhere. `CapabilityProfiles.scope(session)` is the one gate: a conversation's own switches,
-and for a subagent those of every conversation above it, read live (an unregistered session may use nothing). A thread
-copies main's switches as it is registered; "Reset to main's setup" copies them again. What is off is hidden from the
+and for a subagent those of every conversation above it, read live, at any depth (an unregistered session, or a broken
+or cyclic chain of spawners, may use nothing). A thread copies the switches its parent works under as it is registered;
+"Reset to where it came from" copies them again. What is off is hidden from the
 model there: `mcp_list` leaves it out, the `skills` section does not list or fetch that library, and Pi's
 per-conversation tool filter (`configure({ tools: { remove } })`) drops `subagent`, whose section then hides too. A call
 that still arrives runs nothing: `mcp_call`, `skill_activate`, `skill_read` and `subagent` check the scope before
@@ -301,7 +306,7 @@ their title and close action; only sheets have the inner thread header. Narrow s
 and use the existing thread and App sheets. Server rendering shows main alone.
 
 Pane metadata and the bounded Trellis document use separate version-1 localStorage records, scoped to the authenticated
-owner and primary conversation on this device. Restore migrates old thread lists and prunes archived/missing threads,
+owner and primary conversation on this device. Restore migrates old thread lists and prunes closed/missing threads,
 unknown view types and stale App panes. App selections and grants never come from storage. Reset layout creates equal
 splits for the current panes. Tokens follow the local shadcn dark/light palette; the toolbar credits Trellis and Dan
 Fessler. See [ADR 0016](adr/0016-workspace-layout-with-trellis.md) for the license arrangement.
@@ -321,7 +326,7 @@ Two more requests are drawn by the host, where the App cannot reach (`lib/app-co
 open (https only, no credentials) becomes an offer with a real anchor, so only the owner's click opens it. Context
 the App shares for the agent (`ui/update-model-context`, text or structured content rendered as JSON, at most 8192
 JavaScript string units) waits in a removable chip above the composer and travels once, with the owner's next message,
-as `appContext` on `POST /api/threads/:id/messages`. The runtime (`pi/content.ts`) appends it after the owner's words as
+as `appContext` on `POST /api/conversations/:id/messages`. The runtime (`pi/content.ts`) appends it after the owner's words as
 a separate block shaped `{ origin: { serverId, trust: 'untrusted' }, appContext }`. The persona treats it as data, never as the owner
 speaking, and the transcript shows it as a note under their message.
 
@@ -357,7 +362,7 @@ bounded at its fork.
 The summarizer's tokens count toward the budget, and the builder stops once the budget is spent. The memory begins at
 activation: older history stays in Pi, out of the model's context once the first view lands. Once a view or a
 compaction starts a conversation's snapshot later, the web reads the earlier entries through
-`GET /api/threads/:id/history?before=<entry>`; it never shows the marker entries themselves. Settings shows how many
+`GET /api/conversations/:id/history?before=<entry>`; it never shows the marker entries themselves. Settings shows how many
 messages main remembers.
 
 ## Models

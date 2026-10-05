@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Schema } from 'effect'
 import { Link } from '@tanstack/react-router'
-import { ThreadPreview, type ThreadView } from '@purrable/contracts'
+import { type ConversationView, ThreadPreview } from '@purrable/contracts'
 import { ChevronDownIcon, ChevronRightIcon, MessagesSquareIcon } from 'lucide-react'
 import { failureText, request } from '../lib/boundary.ts'
 import { relativeTime, repliesLabel, threadTitle } from '../lib/threads.ts'
@@ -30,7 +30,7 @@ function usePreview(id: string) {
       if (!visible || pending) return
       pending = true
       try {
-        const data = decodePreview(await request(`/api/threads/${id}/preview`, { signal: controller.signal }))
+        const data = decodePreview(await request(`/api/conversations/${id}/preview`, { signal: controller.signal }))
         setPreview((current) => ({
           ...data,
           messages: current?.messages.length === 5 ? current.messages : data.messages,
@@ -98,18 +98,21 @@ export function PreviewMessages({ messages }: { readonly messages: ThreadPreview
 /** The rail belongs to the parent message; each thread keeps its own compact transcript and collapse preference. */
 export function ThreadPreviewBlock({
   view,
+  working,
   now,
   onOpen,
   started = false,
 }: {
-  readonly view: ThreadView
+  readonly view: ConversationView
+  /** Whether the thread works now, by the workspace feed (the preview's own read may be newer). */
+  readonly working: boolean
   readonly now: number
   readonly onOpen: (() => void) | undefined
   readonly started?: boolean
 }) {
   const { ref, preview, error } = usePreview(view.id)
   const { collapsed, toggle } = useCollapsed(view.id)
-  const busy = preview?.busy ?? view.busy
+  const busy = preview?.busy ?? working
   const last = view.lastReplyAt
   return (
     <div ref={ref} className="thread-preview">
@@ -119,7 +122,7 @@ export function ThreadPreviewBlock({
         <span className="thread-row-count">
           {repliesLabel(
             preview === undefined
-              ? (view.replies ?? 0)
+              ? view.replies
               : preview.more + preview.messages.filter((message) => message.text !== '').length,
           )}
         </span>

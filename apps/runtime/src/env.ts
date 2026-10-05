@@ -14,7 +14,9 @@ import type {
   ResidentStatus,
   ServerSuggestion,
   ServerView,
-  ThreadView,
+  ConversationView,
+  CreateConversation,
+  UpdateConversation,
   ThreadPreview,
   ToolView,
   UsageToday,
@@ -24,7 +26,6 @@ import type { MailBinding } from './auth/mail.ts'
 import type { ServerSource } from './mcp/servers.ts'
 import type { EventWebhook, EventWebhookResult } from './mcp/events.ts'
 import type { Doorbell } from './channel/doorbell.ts'
-import type { ThreadChange } from './conversations.ts'
 
 /** Owner-facing RPC of the Agent DO. The Worker authenticates the owner before calling any of these. */
 export interface AgentRpcMethods {
@@ -35,10 +36,10 @@ export interface AgentRpcMethods {
     appContext?: readonly AppContext[],
   ) => Promise<RpcResult<PiReceipt>>
   readonly stop: (thread: string, operationId?: string) => Promise<RpcResult<boolean>>
-  readonly threads: () => Promise<RpcResult<readonly ThreadView[]>>
+  readonly conversations: () => Promise<RpcResult<readonly ConversationView[]>>
   readonly threadPreview: (thread: string) => Promise<RpcResult<ThreadPreview>>
-  readonly createThread: (from?: number) => Promise<RpcResult<ThreadView>>
-  readonly updateThread: (thread: string, change: ThreadChange) => Promise<RpcResult<ThreadView>>
+  readonly createConversation: (input: CreateConversation) => Promise<RpcResult<ConversationView>>
+  readonly updateConversation: (id: string, change: UpdateConversation) => Promise<RpcResult<ConversationView>>
   readonly conversationCapabilities: (thread: string) => Promise<RpcResult<ConversationCapabilities>>
   readonly setConversationCapability: (
     thread: string,

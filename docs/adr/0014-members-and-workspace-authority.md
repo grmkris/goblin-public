@@ -48,7 +48,7 @@ backlog drains over subsequent ticks; this bounds each sweep, not total storage 
 Phase A closes every existing owner RPC to members and viewers. A membership does not renew resident authority,
 expose credentials or grant owner methods. Phase B must add immutable requester provenance, visibility filters,
 requester-directed questions, live D1 invalidation and the member ceiling inside ADR 0010's capability scope before
-opening shared execution. Routines, Events and subagents retain their own ceilings (ADRs 0011–0013); no policy can
+opening shared execution. Routines, Events and subagents retain their own ceilings (ADRs 0011, 0012 and 0017); no policy can
 widen owner grants. Member usage, including descendants and ancillary model work, must use the acting account's
 allowance rather than partitioning the owner's allowance.
 

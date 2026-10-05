@@ -48,10 +48,10 @@ main.shell {
   font-size: 0.75rem;
   line-height: 1.4;
 }
-.archived-toggle > svg {
+.closed-toggle > svg {
   transition: rotate 150ms;
 }
-.archived-toggle[aria-expanded='true'] > svg {
+.closed-toggle[aria-expanded='true'] > svg {
   rotate: 90deg;
 }
 /*

@@ -31,7 +31,7 @@ type Change = (change: CapabilityChange) => void
 export function useCapabilities(thread: string, running: boolean) {
   const [view, setView] = useState<View>()
   const [error, setError] = useState('')
-  const url = `/api/threads/${thread}/capabilities`
+  const url = `/api/conversations/${thread}/capabilities`
   const load = useCallback(() => {
     request(url)
       .then((data) => setView(decode(data)))
@@ -184,10 +184,10 @@ function CapabilitiesPanel({
         <Button
           type="button"
           variant="ghost"
-          disabled={view.sameAsMain === true}
-          onClick={() => onChange({ reset: 'main' })}
+          disabled={view.sameAsParent === true}
+          onClick={() => onChange({ reset: 'parent' })}
         >
-          Reset to main's setup
+          Reset to where it came from
         </Button>
       )}
     </>

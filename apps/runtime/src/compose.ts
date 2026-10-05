@@ -1,12 +1,13 @@
 import type { Extension, ToolRegistration } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
-import { drizzle } from 'drizzle-orm/durable-sqlite'
+import { type DrizzleSqliteDODatabase, drizzle } from 'drizzle-orm/durable-sqlite'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import { ModelBudget, UsageStore, modelTokenWeights } from './budget.ts'
 import { CapabilityProfiles, type PiTools } from './capabilities/profiles.ts'
 import { TelegramChannel } from './channel/channel.ts'
 import { nowMillis, nowSeconds } from './clock.ts'
-import { ConversationRegistry } from './conversations.ts'
+import { ConversationRegistry, type ThreadKit } from './conversations.ts'
+import { WorkspaceFeed } from './workspace/feed.ts'
 import type { RuntimeEnv } from './env.ts'
 import { CredentialCipher } from './mcp/cipher.ts'
 import { configuredServers } from './mcp/config.ts'
@@ -116,6 +117,12 @@ async function makeRoutines(input: ComposeInput) {
   return { routines, routineRuns, routineUsage }
 }
 
+/** The conversation registry, and the live workspace feed over it. */
+function conversationServices(db: DrizzleSqliteDODatabase, harness: PiHarness, kit: ThreadKit) {
+  const conversations = new ConversationRegistry(db, harness, kit, nowSeconds())
+  return { conversations, workspace: new WorkspaceFeed(harness, conversations) }
+}
+
 /**
  * The agent's services over its SQLite, built once per isolate on first use: MCP host and grants, budget and models,
  * main's memory, conversations, resident authority, skills and the Telegram channel. Migrations run first, and every
@@ -165,7 +172,7 @@ export async function composeServices(
   const capabilities = new CapabilityProfiles(db, input.subagentTool, retool(harness))
   const routineServices = await makeRoutines(input)
   const kit = { thread: input.thread, recall, memory, namer, capabilities }
-  const conversations = new ConversationRegistry(db, harness, kit, nowSeconds())
+  const conversations = conversationServices(db, harness, kit)
   const skills = new SkillLibrary(host.manager, skillState, nowMillis)
   const learner = new SkillLearner({
     drafts: new SqliteDraftLog(db),
@@ -185,7 +192,7 @@ export async function composeServices(
       agentLayer({
         host,
         resident,
-        conversations,
+        ...conversations,
         budget,
         models,
         memory,

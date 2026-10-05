@@ -155,7 +155,7 @@ function CapabilityCard({
   const { busy, error, replying } = useReplying()
   const reply = (on: boolean) =>
     void replying(async () => {
-      if (on) await request(`/api/threads/${thread}/capabilities`, { method: 'PATCH', body: { target, on } })
+      if (on) await request(`/api/conversations/${thread}/capabilities`, { method: 'PATCH', body: { target, on } })
       await onAnswer(on ? `Turned on ${label} here. Continue.` : 'Not now.', interactionOperation(interaction))
     })
   return (

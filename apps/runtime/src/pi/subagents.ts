@@ -27,6 +27,9 @@ import type { RunProgram } from './resident-mcp.ts'
 /** The tool that starts subagents: what a conversation with subagents switched off has filtered out (ADR 0010). */
 export const SUBAGENT_TOOL = 'subagent'
 
+/** The task that waits on a subagent's answer in its spawner: while one is live, the spawner waits on its helpers. */
+export const SUBAGENT_REPORTER = 'purrable.subagent-reporter'
+
 /** Subagents working at once, across the agent: each one spends the owner's budget on its own. */
 const MAX_RUNNING = 3
 
@@ -112,7 +115,7 @@ async function decideReport(tx: Tx, spawner: ConversationId, name: string, settl
  */
 function reporterTask(run: RunProgram): Reporter {
   return defineTask<ReporterInput, ReporterState, null>({
-    name: 'purrable.subagent-reporter',
+    name: SUBAGENT_REPORTER,
     version: 1,
     initial: () => ({ phase: 'deliver' }),
     phases: {

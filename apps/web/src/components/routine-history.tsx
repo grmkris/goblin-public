@@ -28,7 +28,7 @@ export function RoutineHistory({
     setPending(true)
     setError('')
     try {
-      if (run?.sessionId) await request(`/api/threads/${run.sessionId}/stop`, { body: {} })
+      if (run?.sessionId) await request(`/api/conversations/${run.sessionId}/stop`, { body: {} })
       else
         await request(`/api/routines/${id}/run`, {
           headers: { 'x-purrable-csrf': '1' },

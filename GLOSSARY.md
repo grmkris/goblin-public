@@ -7,8 +7,13 @@
   replay; `PiHarness` is its native Agents SDK adapter.
 - **Main conversation**: Pi's root session (`1`). The owner's browser, inbound MCP clients and Telegram talk in it, each
   message from anyone but the owner's browser labelled with its author.
-- **Thread**: a side conversation, branched from a message of main or empty. Nothing in it reaches main unless the
-  owner shares it: `share_to_main` writes a note main sees and does not answer.
+- **Thread**: a side conversation, branched from a message of any open conversation (main, a thread, a subagent) or
+  empty under main. Nothing in it reaches its parent unless the owner shares it: `share_back` writes a note there that
+  the parent sees and does not answer.
+- **Close**: what the owner does to a thread or subagent instead of deleting it: it and everything under it stop and
+  take no messages, stay readable, and Reopen brings one back. Main never closes.
+- **Workspace feed**: `GET /api/workspace/events`, one SSE stream per tab with every conversation and what each is
+  doing (`working`, or `waiting` on its subagents).
 - **Subagent**: a conversation main or a thread starts with the `subagent` tool to do a job in the background; its
   answer comes back to the spawner as an input labelled with its name.
 - **Memory view**: main's memory as the model reads it: an `app.memory` entry of one-line summaries targeting 48,000 bytes that

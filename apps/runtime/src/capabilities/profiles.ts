@@ -1,10 +1,9 @@
 import type { ToolRegistration } from '@earendil-works/pi-durable'
-import { type CapabilityTarget, MAIN_THREAD } from '@purrable/contracts'
+import { type CapabilityTarget, type ConversationKind, MAIN_THREAD, RoutineDefinition } from '@purrable/contracts'
 import { and, eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { appConversationCapabilities, appConversations, appChannel, appTelegramChannel } from '../storage/schema.ts'
 import { appRoutineRuns } from '../storage/routines.ts'
-import { RoutineDefinition } from '@purrable/contracts'
 import * as Schema from 'effect/Schema'
 
 type Kind = CapabilityTarget['kind']
@@ -66,13 +65,17 @@ export const sameExclusions = (one: readonly Exclusion[], other: readonly Exclus
   return keys.size === new Set(other.map(key)).size && other.every((exclusion) => keys.has(key(exclusion)))
 }
 
-/** How far up a subagent's spawners the scope is read; deeper than this is refused rather than followed. */
-const MAX_DEPTH = 8
+/** One conversation in a chain of spawners. */
+type Link = { readonly session: string; readonly kind: ConversationKind; readonly routineRunId: string | null }
+
+/** Rows per insert: five bound values each, under SQLite's limit of 100 per statement on Cloudflare. */
+const INSERT_ROWS = 20
 
 /**
  * Each conversation's switches (`app_conversation_capabilities`): only what is off is stored, so a tool granted later is
- * on everywhere until switched off. A thread copies main's switches when it is created. A subagent stores none: it is
- * bounded by every conversation above it, read live, so it can never do more than the one that started it.
+ * on everywhere until switched off. A thread copies the switches of the conversation it came from when it is created. A
+ * subagent stores none: it is bounded by every conversation above it, read live, so it can never do more than the one
+ * that started it.
  * `subagentTool` is what Pi's per-conversation tool filter removes when subagents are off; `retool` applies that
  * filter to a conversation in Pi (outside any SQLite transaction).
  */
@@ -116,21 +119,46 @@ export class CapabilityProfiles {
       .get()
   }
 
+  /**
+   * The conversations whose switches bound `session`: it, then each spawner while that is a subagent, up to the first
+   * conversation that is not (whose own switches are whole). Subagents nest without a depth limit; a conversation seen
+   * twice or a subagent without a spawner breaks the chain (`undefined`), and a broken chain may use nothing.
+   */
+  #chain(session: string) {
+    const chain: Link[] = []
+    const seen = new Set<string>()
+    for (let at: string | null = session; at !== null && !seen.has(at);) {
+      const row = this.#conversation(at)
+      if (row === undefined) return undefined
+      seen.add(at)
+      chain.push({ session: at, kind: row.kind, routineRunId: row.routineRunId })
+      if (row.kind !== 'subagent') return chain
+      at = row.parent
+    }
+    return undefined
+  }
+
+  /** What `session` works without: its own switches and, for a subagent, those of every spawner above it. */
+  #effective(session: string): readonly Exclusion[] | undefined {
+    return this.#chain(session)?.flatMap((link) => this.own(link.session))
+  }
+
   /** The scope of a registered conversation: its own switches, and for a subagent those of every spawner above it. */
   scope(session: string): CapabilityScope {
-    const start = this.#conversation(session)
-    if (start === undefined) return CLOSED
-    const exclusions = [...this.own(session)]
-    let current = start
-    for (let depth = 0; current.kind === 'subagent'; depth += 1) {
-      const above = current.parent === null ? undefined : this.#conversation(current.parent)
-      if (above === undefined || current.parent === null || depth >= MAX_DEPTH) return CLOSED
-      exclusions.push(...this.own(current.parent))
-      current = above
-    }
-    const scope = scopeOf(exclusions, start.kind !== 'subagent' && start.routineRunId === null)
-    if (current.routineRunId === null) return scope
-    const run = this.#db.select().from(appRoutineRuns).where(eq(appRoutineRuns.id, current.routineRunId)).get()
+    const chain = this.#chain(session)
+    const start = chain?.[0]
+    const root = chain?.at(-1)
+    if (chain === undefined || start === undefined || root === undefined) return CLOSED
+    const scope = scopeOf(
+      chain.flatMap((link) => this.own(link.session)),
+      start.kind !== 'subagent' && start.routineRunId === null,
+    )
+    return root.routineRunId === null ? scope : this.#routine(scope, root.routineRunId)
+  }
+
+  /** A routine's thread may use only the tools its definition allows, within the scope it would have anyway. */
+  #routine(scope: CapabilityScope, runId: string): CapabilityScope {
+    const run = this.#db.select().from(appRoutineRuns).where(eq(appRoutineRuns.id, runId)).get()
     if (run === undefined) return CLOSED
     const definition = Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(run.definitionJson))
     const channel = this.#db.select().from(appTelegramChannel).get() ?? this.#db.select().from(appChannel).get()
@@ -165,24 +193,41 @@ export class CapabilityProfiles {
         .run()
   }
 
-  /** Give `to` exactly the switches of `from` (a new thread copies main's; Reset copies them again). */
+  /**
+   * Give `to` exactly the switches `from` works under (a new thread copies its parent's; Reset copies them again). From
+   * a subagent that is its spawners' switches, since it stores none of its own.
+   */
   copy(from: string, to: string, now: number): void {
-    const rows = this.own(from).map((exclusion) => ({ ...exclusion, sessionId: to, offAt: now }))
+    const rows = (this.#effective(from) ?? this.own(from)).map((exclusion) => ({
+      ...exclusion,
+      sessionId: to,
+      offAt: now,
+    }))
     this.#db.transaction((tx) => {
       tx.delete(appConversationCapabilities).where(eq(appConversationCapabilities.sessionId, to)).run()
-      if (rows.length > 0) tx.insert(appConversationCapabilities).values(rows).run()
+      for (let start = 0; start < rows.length; start += INSERT_ROWS)
+        tx.insert(appConversationCapabilities)
+          .values(rows.slice(start, start + INSERT_ROWS))
+          .onConflictDoNothing()
+          .run()
     })
   }
 
-  /** A thread's switches back to main's, applied to Pi too. */
+  /** What Reset gives `thread`: the switches of the conversation it came from (main's for a thread started empty). */
+  inherited(thread: string): readonly Exclusion[] {
+    return this.#effective(this.#conversation(thread)?.parent ?? MAIN_THREAD) ?? []
+  }
+
+  /** A thread's switches back to those of the conversation it came from, applied to Pi too. */
   async reset(thread: string, now: number): Promise<void> {
-    this.copy(MAIN_THREAD, thread, now)
+    this.copy(this.#conversation(thread)?.parent ?? MAIN_THREAD, thread, now)
     await this.syncPi(thread)
   }
 
-  /** Pi's tool filter for `session`: without `subagent` when subagents are off there, else none. */
+  /** Pi's tool filter for `session`: without `subagent` when subagents are off where it works, else none. */
   piTools(session: string): PiTools {
-    return scopeOf(this.own(session), true).subagents() ? null : { remove: [this.#subagentTool] }
+    const effective = this.#effective(session)
+    return effective !== undefined && scopeOf(effective, true).subagents() ? null : { remove: [this.#subagentTool] }
   }
 
   /** Applies `session`'s tool filter to its Pi conversation, after the switches are stored. */

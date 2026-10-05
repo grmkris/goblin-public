@@ -3,19 +3,13 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { readCollapsed, ThreadPreviewBlock } from '../src/components/thread-preview.tsx'
 
-const view = {
-  id: '9',
-  kind: 'thread' as const,
-  archived: false,
-  busy: true,
-  createdAt: 0,
-  replies: 2,
-  title: 'Car search',
-}
+const view = { id: '9', kind: 'thread' as const, keepOpen: false, createdAt: 0, replies: 2, title: 'Car search' }
 
 describe('inline thread blocks', () => {
   it('renders expanded by default with a compact header, busy mark and an explicit opening action', () => {
-    const html = renderToStaticMarkup(createElement(ThreadPreviewBlock, { view, now: 0, onOpen: () => undefined }))
+    const html = renderToStaticMarkup(
+      createElement(ThreadPreviewBlock, { view, working: true, now: 0, onOpen: () => undefined }),
+    )
     expect(html).toContain('aria-expanded="true"')
     expect(html).toContain('2 replies')
     expect(html).toContain('Car search')
@@ -25,7 +19,7 @@ describe('inline thread blocks', () => {
   })
   it('gives owner-started threads the same expanded block', () => {
     const html = renderToStaticMarkup(
-      createElement(ThreadPreviewBlock, { view, now: 0, onOpen: () => undefined, started: true }),
+      createElement(ThreadPreviewBlock, { view, working: true, now: 0, onOpen: () => undefined, started: true }),
     )
     expect(html).toContain('You started a thread')
     expect(html).toContain('thread-preview-body')

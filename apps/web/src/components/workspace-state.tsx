@@ -18,7 +18,7 @@ import {
 import { record, request } from '../lib/boundary.ts'
 import { useApps } from './apps/provider.tsx'
 import type { ThreadPanelControl } from './thread-panel.tsx'
-import { useThreads } from './threads.tsx'
+import { useWorkspaceFeed } from './workspace-feed.tsx'
 
 const WIDE = '(min-width: 75rem)'
 type WorkspaceState = {
@@ -42,7 +42,7 @@ export function useWorkspace(): WorkspaceState {
 function useDeviceState(primary: string) {
   const [state, setState] = useState(initialPanes)
   const [key, setKey] = useState<string>()
-  const { views } = useThreads()
+  const { conversations: views } = useWorkspaceFeed()
   useEffect(() => {
     const controller = new AbortController()
     void request('/api/auth/get-session', { signal: controller.signal })
@@ -98,7 +98,7 @@ export function WorkspaceProvider({
   const hydrated = useHydrated()
   const wide = useMediaQuery(WIDE) && hydrated
   const { state, setState, key } = useDeviceState(primary)
-  const { views } = useThreads()
+  const { conversations: views } = useWorkspaceFeed()
   const { session, close: closeApp } = useApps()
   const currentApp = useMemo(
     () => (session === undefined ? undefined : appPane(session.selection.serverId, session.key)),

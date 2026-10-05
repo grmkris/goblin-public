@@ -1,5 +1,11 @@
-import { MAIN_THREAD, type ThreadPreview, type ThreadPreviewMessage, type ThreadView } from '@purrable/contracts'
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import {
+  type ConversationView,
+  MAIN_THREAD,
+  type ThreadPreview,
+  type ThreadPreviewMessage,
+  type UpdateConversation,
+} from '@purrable/contracts'
+import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { Conversation, EntryRecord, Extension } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
@@ -9,13 +15,27 @@ import type { MainMemory } from './memory/memory.ts'
 import type { CheapModel } from './memory/model.ts'
 import { authoredContent, threadStartedContent } from './pi/content.ts'
 import { BACKGROUND, conversationId, entryId } from './pi/context.ts'
-import { recentMessages } from './pi/transcript.ts'
+import { type ReplyStats, recentMessages } from './pi/transcript.ts'
 import { firstThreadMessages } from './thread-preview.ts'
 import { ReplyLedger } from './replies.ts'
 import { appConversations } from './storage/schema.ts'
 
 type Row = typeof appConversations.$inferSelect
-export type ThreadChange = { readonly title?: string | undefined; readonly archived?: boolean | undefined }
+
+/** What an update did: the conversation as it is now, and every conversation a Close closed (it and those below). */
+export type Updated = { readonly view: ConversationView; readonly closed: readonly string[] }
+
+/**
+ * `tree`: `id` and every conversation under it, as a recursive CTE. `UNION` drops repeats, so even a cycle in stored
+ * parents would end.
+ */
+const tree = (id: string) =>
+  sql`WITH RECURSIVE tree(id) AS (
+        SELECT ${id}
+        UNION
+        SELECT conversation.session_id FROM app_conversations AS conversation
+        JOIN tree ON conversation.parent_session = tree.id
+      )`
 
 /** Entries in one page of a conversation's history. */
 const HISTORY_PAGE = 40
@@ -33,10 +53,13 @@ const cleanTitle = (raw: string): string =>
     .trim()
     .slice(0, 60)
 
+/** How a conversation is named in a note it leaves elsewhere: an untitled one says so, never a made-up name. */
+const labelOf = (row: Row): string => (row.title === null ? `${row.kind} (untitled)` : `${row.kind} "${row.title}"`)
+
 /**
- * What threads need beyond the registry: their own extension, `recall` for the ones branched from main (they start
- * with main's memory view), the memory that bounds their zooms, the cheap model that names them, and the switches a
- * new thread copies from main.
+ * What threads need beyond the registry: their own extension, `recall` for the ones that see main's history (they
+ * start with main's memory view), the memory that bounds their zooms, the cheap model that names them, and the switches
+ * a new thread copies from the conversation it came from.
  */
 export type ThreadKit = {
   readonly thread: Extension
@@ -47,9 +70,10 @@ export type ThreadKit = {
 }
 
 /**
- * The agent's conversations the owner can reach. Pi owns every transcript; this registry is what Pi does not keep
- * (kind, title, origin, archived) and the gate in front of Pi: a session id reaches Pi only if it is registered here,
- * so no request can open a conversation by guessing its number.
+ * The agent's conversations the owner can reach, as a tree: main at the root, each thread under the conversation it
+ * branched from (main for one started empty), each subagent under its spawner. Pi owns every transcript; this registry
+ * is what Pi does not keep (kind, title, origin, closed) and the gate in front of Pi: a session id reaches Pi only if it
+ * is registered here, so no request can open a conversation by guessing its number.
  */
 export class ConversationRegistry {
   readonly #db: DrizzleSqliteDODatabase
@@ -58,6 +82,7 @@ export class ConversationRegistry {
   readonly #naming = new Set<string>()
   readonly #replies = new ReplyLedger()
   readonly #previews = new Map<string, readonly ThreadPreviewMessage[]>()
+  readonly #listeners = new Set<(ids: readonly string[]) => void>()
 
   constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, kit: ThreadKit, now: number) {
     this.#db = db
@@ -69,54 +94,93 @@ export class ConversationRegistry {
       .run()
   }
 
+  /** Calls `listener` after each write with the conversations it changed; returns what unsubscribes it. */
+  onChange(listener: (ids: readonly string[]) => void): () => void {
+    this.#listeners.add(listener)
+    return () => this.#listeners.delete(listener)
+  }
+
+  #changed(ids: readonly string[]): void {
+    if (ids.length > 0) for (const listener of this.#listeners) listener(ids)
+  }
+
   #row(id: string): Row | undefined {
     return this.#db.select().from(appConversations).where(eq(appConversations.sessionId, id)).get()
   }
 
+  /** A registered conversation's row; anything else is `NotFound`. */
+  #registered(id: string): Row {
+    const row = this.#row(id)
+    if (row === undefined) throw new NotFound({ what: 'conversation' })
+    return row
+  }
+
   /** The Pi session of a registered conversation; anything else is `NotFound`. */
   require(id: string): string {
-    if (this.#row(id) === undefined) throw new NotFound({ what: 'thread' })
+    return this.#registered(id).sessionId
+  }
+
+  /** The Pi session of a registered conversation that is open: a closed one is read, never written to. */
+  requireOpen(id: string): string {
+    if (this.#registered(id).closedAt !== null) throw new InvalidInput({ reason: 'conversation_closed' })
     return id
   }
 
   /** Whether a registered conversation is main, a thread or a subagent; anything else is `NotFound`. */
   kindOf(id: string): Row['kind'] {
-    const row = this.#row(id)
-    if (row === undefined) throw new NotFound({ what: 'thread' })
-    return row.kind
+    return this.#registered(id).kind
   }
 
-  /**
-   * Every registered conversation, oldest first (main is the oldest), with whether Pi is running it now and, for a
-   * live thread, its own activity.
-   */
-  async list(): Promise<readonly ThreadView[]> {
+  /** One registered conversation as the owner sees it; `undefined` when it is not registered. */
+  async view(id: string): Promise<ConversationView | undefined> {
+    const row = this.#row(id)
+    return row === undefined ? undefined : this.#describe(row)
+  }
+
+  /** Every registered conversation, oldest first (main is the oldest), closed ones included. */
+  async list(): Promise<readonly ConversationView[]> {
     const rows = this.#db.select().from(appConversations).orderBy(asc(appConversations.createdAt)).all()
     return Promise.all(rows.map(async (row) => this.#describe(row)))
   }
 
   /**
-   * A thread that sees main as it was at `entry` (a message in main) and continues on its own; main never sees it.
-   * Pi forks by reference, so nothing is copied.
+   * A thread that sees `parent` as it was at `entry` (a message in it) and continues on its own; the parent never sees
+   * it. Any open conversation branches: main, a thread or a subagent. Pi forks by reference, so nothing is copied. A
+   * thread from a subagent is the owner engaging with it, so that subagent stays open after it reports.
    */
-  async branch(entry: number, now: number): Promise<ThreadView> {
-    const main = await this.#conversation(MAIN_THREAD)
+  async branch(parent: string, entry: number, now: number): Promise<ConversationView> {
+    const from = this.#registered(this.requireOpen(parent))
+    const source = await this.#conversation(parent)
     const id = entryId(entry)
-    const [at] = (await main.entries({ minEntryId: id, maxEntryId: id }, 1, undefined, BACKGROUND)).items
+    const [at] = (await source.entries({ minEntryId: id, maxEntryId: id }, 1, undefined, BACKGROUND)).items
     if (at === undefined || !BRANCHABLE.has(at.kind)) throw new InvalidInput({ reason: 'branch_entry' })
-    const extensions = { add: [this.#kit.thread, this.#kit.recall] }
-    // The fork starts from main's agent as it was at that entry; its tool filter is set to main's switches now.
-    const agent = { extensions, tools: this.#kit.capabilities.piTools(MAIN_THREAD) }
-    const fork = await main.fork(at.id, { ownership: { kind: 'ownerless' }, agent }, BACKGROUND)
-    const recallThrough = this.#kit.memory.sizeAt(at.id)
+    const recallThrough = this.#recallAt(from, at.id)
+    const extensions = { add: recallThrough === null ? [this.#kit.thread] : [this.#kit.thread, this.#kit.recall] }
+    // The fork starts from the parent's agent as it was at that entry, made a thread: the host's extensions and the
+    // thread's (a subagent's own selection and instructions go), its tool filter set to the parent's switches now.
+    const agent = { extensions, instructions: null, tools: this.#kit.capabilities.piTools(parent) }
+    const fork = await source.fork(at.id, { ownership: { kind: 'ownerless' }, agent }, BACKGROUND)
+    if (from.kind === 'subagent') {
+      this.#db.update(appConversations).set({ keepOpenAt: now }).where(eq(appConversations.sessionId, parent)).run()
+      this.#changed([parent])
+    }
     return this.#insert(
-      { sessionId: String(fork.id), kind: 'thread', parentSession: MAIN_THREAD, forkEntry: at.id, recallThrough },
+      { sessionId: String(fork.id), kind: 'thread', parentSession: parent, forkEntry: at.id, recallThrough },
       now,
     )
   }
 
+  /**
+   * How far a thread branched from `from` at `entry` may zoom into main's memory: main's memory as it was there when it
+   * branches main, never further than its parent could; nothing when it never saw main (a subagent, a "+" thread).
+   */
+  #recallAt(from: Row, entry: number): number | null {
+    if (from.kind === 'main') return this.#kit.memory.sizeAt(entry)
+    return from.recallThrough === null ? null : Math.min(from.recallThrough, this.#kit.memory.sizeAt(entry))
+  }
+
   /** An empty thread the owner started; main learns its name once it has one (`announce`). */
-  async create(now: number): Promise<ThreadView> {
+  async create(now: number): Promise<ConversationView> {
     const session = await this.#harness.sessions.create()
     const tools = this.#kit.capabilities.piTools(MAIN_THREAD)
     await (
@@ -138,6 +202,7 @@ export class ConversationRegistry {
       .values({ sessionId: session, kind: 'subagent', title: name, parentSession: parent, createdAt: now })
       .onConflictDoNothing()
       .run()
+    this.#changed([session])
   }
 
   /** A task-created routine conversation starts empty and copies no main exclusions or announcement. */
@@ -155,6 +220,7 @@ export class ConversationRegistry {
       })
       .onConflictDoNothing()
       .run()
+    this.#changed([session])
   }
 
   /** Frozen passive report; acceptance records a Pi write, not a new main run or external notification. */
@@ -190,24 +256,19 @@ export class ConversationRegistry {
   }
 
   /**
-   * A note from a thread into main: main's model sees it, labelled with the thread, and no run starts. It goes in as
-   * a write submission (never a direct append), so a busy main places it at its next boundary.
+   * A note from a thread into the conversation it came from: that model sees it, labelled with the thread, and no run
+   * starts. It goes in as a write submission (never a direct append), so a busy parent places it at its next boundary.
+   * Returns how the parent is named, for the tool's answer.
    */
-  async shareToMain(thread: string, note: string, requestId: string): Promise<void> {
+  async shareBack(thread: string, note: string, requestId: string): Promise<string> {
     const row = this.#row(thread)
-    if (row === undefined || row.kind === 'main') throw new InvalidInput({ reason: 'share_from_main' })
-    // A thread shared from before its title is written is labelled as untitled, never with a made-up name.
-    const content = authoredContent(row.title === null ? 'thread (untitled)' : `thread "${row.title}"`, note)
+    if (row?.kind !== 'thread' || row.parentSession === null) throw new InvalidInput({ reason: 'share_back' })
+    const parent = this.#registered(row.parentSession)
+    const model = [{ role: 'user' as const, content: authoredContent(labelOf(row), note), timestamp: Date.now() }]
     await (
-      await this.#conversation(MAIN_THREAD)
-    ).submit(
-      {
-        type: 'write',
-        requestId,
-        entry: { kind: 'app.shared', data: { thread }, model: [{ role: 'user', content, timestamp: Date.now() }] },
-      },
-      BACKGROUND,
-    )
+      await this.#conversation(parent.sessionId)
+    ).submit({ type: 'write', requestId, entry: { kind: 'app.shared', data: { thread }, model } }, BACKGROUND)
+    return parent.kind === 'main' ? 'main' : labelOf(parent)
   }
 
   /**
@@ -252,6 +313,7 @@ export class ConversationRegistry {
         .set({ title })
         .where(and(eq(appConversations.sessionId, thread), isNull(appConversations.title)))
         .run()
+      this.#changed([thread])
     } finally {
       this.#naming.delete(thread)
     }
@@ -273,67 +335,127 @@ export class ConversationRegistry {
 
   /** A compact read of a registered thread; completed first-five previews stay stable in this isolate. */
   async preview(session: string): Promise<ThreadPreview> {
-    const row = this.#row(this.require(session))
-    if (row === undefined || row.kind !== 'thread') throw new NotFound({ what: 'thread' })
+    const row = this.#registered(session)
+    if (row.kind !== 'thread') throw new NotFound({ what: 'conversation' })
     const view = await this.#describe(row)
     const messages =
       this.#previews.get(session) ?? (await firstThreadMessages(await this.#conversation(session), row.forkEntry ?? 0))
     if (messages.length === 5) this.#previews.set(session, messages)
     const shownReplies = messages.filter((message) => message.text !== '').length
-    return { threadId: session, messages, more: Math.max(0, (view.replies ?? 0) - shownReplies), busy: view.busy }
+    const busy = await this.#harness.session(session).busy()
+    return { threadId: session, messages, more: Math.max(0, view.replies - shownReplies), busy }
   }
 
   async #conversation(session: string): Promise<Conversation> {
     const conversation = await (await this.#harness.pi()).conversation(conversationId(session), BACKGROUND)
-    if (conversation === undefined) throw new NotFound({ what: 'thread' })
+    if (conversation === undefined) throw new NotFound({ what: 'conversation' })
     return conversation
   }
 
-  /** Rename or (un)archive a thread or subagent; main keeps its name and is never archived. */
-  async update(id: string, change: ThreadChange, now: number): Promise<ThreadView> {
-    const row = this.#row(this.require(id))
-    if (row?.kind === 'main') throw new InvalidInput({ reason: 'main_thread' })
-    this.#db
-      .update(appConversations)
-      .set({
-        ...(change.title === undefined ? {} : { title: change.title }),
-        ...(change.archived === undefined ? {} : { archivedAt: change.archived ? now : null }),
-      })
-      .where(eq(appConversations.sessionId, id))
-      .run()
-    return this.#reload(id)
+  /**
+   * Rename, close or reopen, or pin a subagent open. Main keeps its name and never closes. Closing stops and closes the
+   * conversation with everything under it; reopening opens only the one asked for.
+   */
+  async update(id: string, change: UpdateConversation, now: number): Promise<Updated> {
+    const row = this.#registered(id)
+    if (row.kind === 'main') throw new InvalidInput({ reason: 'main_thread' })
+    if (change.keepOpen !== undefined && row.kind !== 'subagent') throw new InvalidInput({ reason: 'keep_open' })
+    const set = {
+      ...(change.title === undefined ? {} : { title: change.title }),
+      ...(change.keepOpen === undefined ? {} : { keepOpenAt: change.keepOpen ? now : null }),
+      ...(change.closed === false ? { closedAt: null, closedBy: null } : {}),
+    }
+    if (Object.keys(set).length > 0) {
+      this.#db.update(appConversations).set(set).where(eq(appConversations.sessionId, id)).run()
+      this.#changed([id])
+    }
+    const closed = change.closed === true ? await this.close(id, 'owner', now) : []
+    return { view: await this.#describe(this.#registered(id)), closed }
   }
 
-  /** Registers a new thread with main's switches, copied in the same synchronous step (no await between). */
-  async #insert(values: Omit<typeof appConversations.$inferInsert, 'createdAt'>, now: number): Promise<ThreadView> {
+  /** `id` and every conversation under it, any depth, closed ones included. */
+  subtree(id: string): readonly string[] {
+    return this.#db.all<{ id: string }>(sql`${tree(id)} SELECT id FROM tree`).map((row) => row.id)
+  }
+
+  /**
+   * Closes `id` and every open conversation under it in one statement, then stops each, background work included (a
+   * reporter waiting on a subagent, a thread's subagents): a closed conversation runs nothing. Returns what it closed.
+   */
+  async close(id: string, by: 'owner' | 'done', now: number): Promise<readonly string[]> {
+    if (this.kindOf(id) === 'main') throw new InvalidInput({ reason: 'main_thread' })
+    const closed = this.#db
+      .all<{ session_id: string }>(
+        sql`${tree(id)}
+            UPDATE app_conversations SET closed_at = ${now}, closed_by = ${by}
+            WHERE closed_at IS NULL AND session_id IN tree
+            RETURNING session_id`,
+      )
+      .map((row) => row.session_id)
+    this.#changed(closed)
+    await this.#stop(closed)
+    return closed
+  }
+
+  /**
+   * Stops every open subagent below `id`, through subagents of subagents: Stop in a conversation reaches the helpers it
+   * started. Threads branched from it are the owner's own and keep going.
+   */
+  async stopSubagents(id: string): Promise<void> {
+    const below = this.#db.all<{ session_id: string }>(
+      sql`WITH RECURSIVE tree(id) AS (
+            SELECT ${id}
+            UNION
+            SELECT conversation.session_id FROM app_conversations AS conversation
+            JOIN tree ON conversation.parent_session = tree.id
+            WHERE conversation.kind = 'subagent' AND conversation.closed_at IS NULL
+          )
+          SELECT id AS session_id FROM tree WHERE id <> ${id}`,
+    )
+    await this.#stop(below.map((row) => row.session_id))
+  }
+
+  /** Aborts each conversation across background boundaries: its runs, its queued inputs and its background tasks. */
+  async #stop(sessions: readonly string[]): Promise<void> {
+    const pi = await this.#harness.pi()
+    for (const session of sessions)
+      await (await pi.conversation(conversationId(session), BACKGROUND))?.abort(BACKGROUND, { background: true })
+  }
+
+  /** Registers a new thread with the switches its parent works under, copied in the same synchronous step. */
+  async #insert(
+    values: Omit<typeof appConversations.$inferInsert, 'createdAt'> & { readonly parentSession: string },
+    now: number,
+  ): Promise<ConversationView> {
     this.#db
       .insert(appConversations)
       .values({ ...values, createdAt: now })
       .run()
-    this.#kit.capabilities.copy(MAIN_THREAD, values.sessionId, now)
-    return this.#reload(values.sessionId)
+    this.#kit.capabilities.copy(values.parentSession, values.sessionId, now)
+    this.#changed([values.sessionId])
+    return this.#describe(this.#registered(values.sessionId))
   }
 
-  async #reload(id: string): Promise<ThreadView> {
-    const row = this.#row(id)
-    if (row === undefined) throw new NotFound({ what: 'thread' })
-    return this.#describe(row)
-  }
-
-  async #describe(row: Row): Promise<ThreadView> {
-    const busy = await this.#harness.session(row.sessionId).busy()
-    const view: ThreadView = {
+  /**
+   * A conversation as the owner sees it, with the messages written in it (not those it inherited). One whose Pi
+   * conversation is gone still lists, with no replies, so it never takes the whole list down.
+   */
+  async #describe(row: Row): Promise<ConversationView> {
+    const pi = await (await this.#harness.pi()).conversation(conversationId(row.sessionId), BACKGROUND)
+    const activity: ReplyStats =
+      pi === undefined ? { replies: 0 } : await this.#replies.stats(row.sessionId, pi, row.forkEntry ?? 0)
+    return {
       id: row.sessionId,
       kind: row.kind,
       ...(row.title === null ? {} : { title: row.title }),
       ...(row.parentSession === null ? {} : { parent: row.parentSession }),
-      busy,
-      archived: row.archivedAt !== null,
+      ...(row.forkEntry === null ? {} : { forkEntry: row.forkEntry }),
       createdAt: row.createdAt,
+      ...(row.closedAt === null ? {} : { closedAt: row.closedAt }),
+      ...(row.closedBy === null ? {} : { closedBy: row.closedBy }),
+      keepOpen: row.keepOpenAt !== null,
+      replies: activity.replies,
+      ...(activity.lastReplyAt === undefined ? {} : { lastReplyAt: activity.lastReplyAt }),
     }
-    if (row.kind !== 'thread' || row.archivedAt !== null) return view
-    const floor = row.forkEntry ?? 0
-    const activity = await this.#replies.stats(row.sessionId, await this.#conversation(row.sessionId), floor)
-    return { ...view, ...(row.forkEntry === null ? {} : { forkEntry: row.forkEntry }), ...activity }
   }
 }

@@ -2,7 +2,7 @@
  * Manual acceptance against the retained dev Worker (`smoke:dev`) or the local stack (`smoke:local`). Never imported
  * by CI or the deployed Worker. It reads the owner's state and changes one thing for the length of its agent turns:
  * with `PURRABLE_SMOKE_MODEL` set, the agent answers on that model, and the owner's own pick is put back afterwards,
- * whatever failed. Grants stay as the owner set them. Turns run in main and an archived side thread; the throwaway
+ * whatever failed. Grants stay as the owner set them. Turns run in main and a side thread closed afterwards; the throwaway
  * inbound client is revoked before the script exits.
  */
 import { Config, Effect, Option, Redacted, Schema } from 'effect'
@@ -22,7 +22,7 @@ const REDIRECT_URI = 'http://127.0.0.1:9/callback'
 const DEV_MARKER = 'PURRABLE_DEV_OK'
 const MCP_MARKER = 'PURRABLE_MCP_OK'
 const SMOKE_CLIENT_NAME = 'purrable-smoke'
-const MAIN_HISTORY = '/api/threads/1/history?before=2147483647'
+const MAIN_HISTORY = '/api/conversations/1/history?before=2147483647'
 
 type Step = { readonly step: string; readonly status: number }
 type Settings = {
@@ -283,14 +283,14 @@ async function poll(
 const waitForIdle = (dev: DevClient, thread: string): Promise<void> =>
   poll(
     dev,
-    `/api/threads/${encodeURIComponent(thread)}/snapshot`,
+    `/api/conversations/${encodeURIComponent(thread)}/snapshot`,
     (snapshot) => !snapshot['run'] && objects(snapshot['inbox']).length === 0,
     120_000,
     'thread_still_busy',
   )
 
 async function submitMessage(dev: DevClient, thread: string, input: string, step: string): Promise<void> {
-  const response = await dev.send(`/api/threads/${encodeURIComponent(thread)}/messages`, {
+  const response = await dev.send(`/api/conversations/${encodeURIComponent(thread)}/messages`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ input, operationId: operationId(step) }),
@@ -312,17 +312,17 @@ function entryText(entry: JsonObject): string {
 
 type ThreadCheck = { readonly thread: 'ok'; readonly shared: true }
 
-async function archiveThread(dev: DevClient, thread: string): Promise<void> {
-  const archived = await dev.send(`/api/threads/${encodeURIComponent(thread)}`, {
+async function closeThread(dev: DevClient, thread: string): Promise<void> {
+  const closed = await dev.send(`/api/conversations/${encodeURIComponent(thread)}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ archived: true }),
+    body: JSON.stringify({ closed: true }),
   })
-  if (!archived.ok) throw new Error('thread_archive_failed')
+  if (!closed.ok) throw new Error('thread_close_failed')
 }
 
 async function threadChecks(dev: DevClient): Promise<ThreadCheck> {
-  const created = await dev.json('/api/threads', {
+  const created = await dev.json('/api/conversations', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: '{}',
@@ -350,7 +350,7 @@ async function threadChecks(dev: DevClient): Promise<ThreadCheck> {
     await waitForIdle(dev, thread)
     return { thread: 'ok', shared: true }
   } finally {
-    await archiveThread(dev, thread)
+    await closeThread(dev, thread)
   }
 }
 
@@ -485,7 +485,7 @@ async function smokeDev(
   if (health['stage'] !== config.stage || health['service'] !== 'purrable') throw new Error('stage_health_mismatch')
   const signup = string(health['signup'])
   if (config.stage === 'prod' && (Redacted.value(config.email) === '' || Redacted.value(config.password) === '')) {
-    const probe = await dev.send('/api/threads', { owner: false })
+    const probe = await dev.send('/api/conversations', { owner: false })
     if (probe.status !== 401) throw new Error('anonymous_auth_probe_not_refused')
     return { stage: config.stage, signup, mode: 'read-only' }
   }
@@ -493,7 +493,7 @@ async function smokeDev(
   await dev.signIn(config.email, config.password)
   const resident = await dev.json('/api/agent/resident')
   if (resident['state'] !== 'active') throw new Error('resident_authority_inactive')
-  const snapshot = await dev.json('/api/threads/1/snapshot')
+  const snapshot = await dev.json('/api/conversations/1/snapshot')
   if (snapshot['type'] !== 'snapshot') throw new Error('main_snapshot_missing')
   const servers: ServerReport[] = []
   for (const server of await dev.list('/api/mcp/servers')) servers.push(await serverReport(dev, server))

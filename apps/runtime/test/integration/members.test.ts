@@ -253,20 +253,22 @@ async function resolutionCase(base: string) {
   expect(await state(base, owner)).toEqual(first)
   await pay(base, owner)
   await pay(base, stranger)
-  expect((await call(base, owner, '/api/threads')).status).toBe(200)
+  expect((await call(base, owner, '/api/conversations')).status).toBe(200)
   const thread = Schema.decodeUnknownSync(Schema.Struct({ id: Schema.String }))(
-    await (await call(base, owner, '/api/threads', {})).json(),
+    await (await call(base, owner, '/api/conversations', {})).json(),
   )
   const sentinel = `owner-thread-${crypto.randomUUID()}`
-  const renamed = await fetch(`${base}/api/threads/${thread.id}`, {
+  const renamed = await fetch(`${base}/api/conversations/${thread.id}`, {
     method: 'PATCH',
     headers: { cookie: owner.cookie, origin: 'https://purrable.test', 'content-type': 'application/json' },
     body: JSON.stringify({ title: sentinel }),
   })
   expect(renamed.status).toBe(200)
-  expect(await (await call(base, owner, '/api/threads')).text()).toContain(sentinel)
+  expect(await (await call(base, owner, '/api/conversations')).text()).toContain(sentinel)
   expect(
-    await (await call(base, stranger, `/api/threads?agent=${owner.userId}&workspaceId=${first.active?.id}`)).text(),
+    await (
+      await call(base, stranger, `/api/conversations?agent=${owner.userId}&workspaceId=${first.active?.id}`)
+    ).text(),
   ).not.toContain(sentinel)
   const foreign = (await state(base, stranger)).active?.id
   expect(
@@ -302,7 +304,7 @@ async function resolutionCase(base: string) {
       .status,
   ).toBe(200)
   expect(
-    (await call(base, owner, '/api/threads', undefined, { 'x-purrable-workspace': first.context ?? '' })).status,
+    (await call(base, owner, '/api/conversations', undefined, { 'x-purrable-workspace': first.context ?? '' })).status,
   ).toBe(409)
   expect(
     (await call(base, owner, '/api/members', undefined, { 'x-purrable-workspace': first.context ?? '' })).status,
@@ -358,12 +360,12 @@ async function existingAccountCase(base: string) {
   const left = await state(base, signedIn)
   expect(left.active).toBeNull()
   expect(left.workspaces.map((workspace) => workspace.id)).toEqual([personal.active?.id])
-  expect((await call(base, signedIn, '/api/threads')).status).toBe(404)
+  expect((await call(base, signedIn, '/api/conversations')).status).toBe(404)
   expect(
     (await call(base, signedIn, '/api/workspaces/active', { workspaceId: personal.active?.id, context: left.context }))
       .status,
   ).toBe(200)
-  expect((await call(base, signedIn, '/api/threads')).status).toBe(200)
+  expect((await call(base, signedIn, '/api/conversations')).status).toBe(200)
   expect(
     (await call(base, owner, '/api/members/me/leave', { version: 1, operationId: crypto.randomUUID() })).status,
   ).toBe(403)
@@ -437,11 +439,11 @@ async function membershipCase(base: string) {
       200,
     )
     expect((await state(base, invitee)).active).toMatchObject({ role, agentReady: false })
-    for (const path of ['/api/threads', '/api/agent/resident', '/api/mcp/servers'])
+    for (const path of ['/api/conversations', '/api/agent/resident', '/api/mcp/servers'])
       expect((await call(base, invitee, path)).status).toBe(403)
     await lever(base, invitee, 'revoke')
     expect((await state(base, invitee)).active).toBeNull()
-    expect((await call(base, invitee, '/api/threads')).status).toBe(404)
+    expect((await call(base, invitee, '/api/conversations')).status).toBe(404)
   }
 }
 harness.test(
@@ -460,11 +462,11 @@ async function deletionCase(base: string) {
   await pay(base, owner)
   await pay(base, other)
   await lever(base, other, 'member', { workspaceId: shared })
-  expect((await call(base, owner, '/api/threads')).status).toBe(200)
+  expect((await call(base, owner, '/api/conversations')).status).toBe(200)
   expect((await lever(base, owner, 'delete-fault')).status).toBe(500)
   expect((await state(base, owner)).active).toBeNull()
-  expect((await call(base, owner, '/api/threads')).status).toBe(404)
-  expect((await call(base, other, '/api/threads')).status).toBe(200)
+  expect((await call(base, owner, '/api/conversations')).status).toBe(404)
+  expect((await call(base, other, '/api/conversations')).status).toBe(200)
   const deleted = await (await lever(base, owner, 'delete')).json()
   expect(deleted).toMatchObject({ state: 'deleted', deletionPhase: 'destroyed' })
   expect((await state(base, owner)).workspaces).toEqual([])
@@ -475,7 +477,7 @@ async function deletionCase(base: string) {
   await lever(base, invitee, 'invitation-account')
   await lever(base, invitee, 'member', { workspaceId })
   expect(await (await lever(base, invitee, 'delete')).json()).toBeNull()
-  expect((await call(base, inviter, '/api/threads')).status).toBe(200)
+  expect((await call(base, inviter, '/api/conversations')).status).toBe(200)
 }
 harness.test(
   'native Members: owner destruction faults leave access closed; retry and foreign-member deletion preserve owners',
@@ -565,7 +567,7 @@ async function invitationCase(base: string) {
   ).toBe(200)
   expect((await roster(base, member)).members).toHaveLength(1)
   expect((await roster(base, member)).invitations).toEqual([])
-  expect((await call(base, member, '/api/threads')).status).toBe(403)
+  expect((await call(base, member, '/api/conversations')).status).toBe(403)
   const administrative = await roster(base, owner)
   const target = administrative.members.find((entry) => entry.userId === member.userId)
   const removed = await fetch(`${base}/api/members/${target?.id}`, {

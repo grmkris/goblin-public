@@ -15,8 +15,8 @@ import { parseWorkspaceDocument, pruneDocument } from '../src/lib/workspace-docu
 import { layout, createDocument } from '@danfessler/trellis'
 import { PANEL_TYPE } from '../src/lib/trellis-layout.ts'
 
-const main = { id: '1', kind: 'main' as const, busy: false, archived: false, createdAt: 0 }
-const thread = { id: '7', kind: 'thread' as const, busy: false, archived: false, createdAt: 0 }
+const main = { id: '1', kind: 'main' as const, keepOpen: false, replies: 0, createdAt: 0 }
+const thread = { id: '7', kind: 'thread' as const, keepOpen: false, replies: 0, createdAt: 0 }
 const document = () =>
   createDocument(
     layout.row([
@@ -70,9 +70,9 @@ describe('workspace pane reducers and persistence', () => {
     expect(workspaceStorageKey('alice', '1')).not.toBe(workspaceStorageKey('bob', '1'))
     expect(workspaceStorageKey('alice', '1')).not.toBe(workspaceStorageKey('alice', '2'))
   })
-  it('drops archived and vanished threads while retaining main', () => {
+  it('drops closed and vanished threads while retaining main', () => {
     const state = openPane(openPane(initialPanes(), threadPane('7')), threadPane('8'))
-    expect(reconcilePanes(state, [main, { ...thread, archived: true }], undefined)).toEqual(initialPanes())
+    expect(reconcilePanes(state, [main, { ...thread, closedAt: 10 }], undefined)).toEqual(initialPanes())
     expect(reconcilePanes(state, [main, thread], undefined)).toMatchObject({
       focused: 'main',
       panes: [initialPanes().panes[0], threadPane('7')],

@@ -11,6 +11,16 @@ import { URL as FileURL } from 'node:url'
 import Stack from './stack.ts'
 import { routineEventsCase } from './native-routines-events.ts'
 import { ThreadPreview } from '@purrable/contracts'
+import {
+  Listed,
+  ModelRequest,
+  Ok,
+  Refused,
+  feedChecks,
+  requestTurns,
+  subagentBranchChecks,
+  treeChecks,
+} from './conversation-checks.ts'
 
 const harness = Test.make({
   providers: Cloudflare.providers(),
@@ -465,13 +475,10 @@ const Rpc = Schema.Struct({
   unknownServer: Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) }),
   unknownApp: Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) }),
   noConversation: Schema.Struct({ ok: Schema.Literal(true), value: Schema.Array(Schema.Unknown) }),
-  threads: Schema.Struct({
-    ok: Schema.Literal(true),
-    value: Schema.Array(Schema.Struct({ id: Schema.String, kind: Schema.String, archived: Schema.Boolean })),
-  }),
+  threads: Ok(Schema.Array(Listed)),
   badBranch: Failure,
   unknownThread: Failure,
-  archived: Schema.Struct({ ok: Schema.Literal(true), value: Schema.Struct({ archived: Schema.Boolean }) }),
+  closed: Ok(Listed),
   mainUntouchable: Failure,
   usage: Schema.Struct({
     ok: Schema.Literal(true),
@@ -503,13 +510,13 @@ harness.test(
     expect(result.unknownApp.error._tag).toBe('NotFound')
     expect(result.noConversation.value).toEqual([])
     // Main is registered on first use; an empty thread joins it. Only registered conversations reach Pi.
-    expect(result.threads.value.map(({ kind, archived }) => ({ kind, archived }))).toEqual([
-      { kind: 'main', archived: false },
-      { kind: 'thread', archived: false },
+    expect(result.threads.value.map(({ kind, closedAt }) => ({ kind, closed: closedAt !== undefined }))).toEqual([
+      { kind: 'main', closed: false },
+      { kind: 'thread', closed: false },
     ])
     expect(result.badBranch.error._tag).toBe('InvalidInput')
     expect(result.unknownThread.error._tag).toBe('NotFound')
-    expect(result.archived.value.archived).toBe(true)
+    expect(result.closed.value).toMatchObject({ closedBy: 'owner', closedAt: expect.any(Number) })
     expect(result.mainUntouchable.error._tag).toBe('InvalidInput')
     // A fresh agent has spent nothing today; the budget table exists after migration.
     expect(result.usage.value).toMatchObject({ used: 0, limit: 300_000 })
@@ -571,14 +578,6 @@ const Destroy = Schema.Struct({
 /** A transcript's turns, without the system prompt and memory view entries placed among them for the model. */
 const turns = (lines: readonly string[]) =>
   lines.filter((line) => !line.startsWith('pi.system') && !line.startsWith('app.memory'))
-
-const ModelRequest = Schema.Struct({
-  messages: Schema.Array(Schema.Struct({ role: Schema.String, text: Schema.String })),
-  tools: Schema.Array(Schema.String),
-})
-/** A request's turns, without the system messages Pi places among them. */
-const requestTurns = (request: typeof ModelRequest.Type) =>
-  request.messages.filter(({ role }) => role !== 'system').map(({ text }) => text)
 
 const Activity = Schema.Struct({
   createdAt: Schema.Number,
@@ -673,8 +672,8 @@ harness.test(
       '[from thread (untitled)]\nthe word is lantern',
       'what did the thread say?',
     ])
-    expect(result.threadRequest.tools).toContain('share_to_main')
-    expect(result.mainRequest.tools).not.toContain('share_to_main')
+    expect(result.threadRequest.tools).toContain('share_back')
+    expect(result.mainRequest.tools).not.toContain('share_back')
     // The cheap model (scripted: it echoes the last line) was asked to name the thread's latest exchange.
     expect(result.title).toBe('echo: Agent: done: Shared with main.')
   }),
@@ -724,6 +723,9 @@ const Scopes = Schema.Struct({
   deep: Scope,
   orphan: Scope,
   unknown: Scope,
+  deepest: Scope,
+  cycle: Scope,
+  fromSubagent: Scope,
   serverBackOn: Scope,
   afterReset: Scope,
   own: Schema.Array(Schema.Unknown),
@@ -732,7 +734,7 @@ const Scopes = Schema.Struct({
 const closed = { editable: false, mail: false, send: false, read: false, write: false, skills: false, subagents: false }
 
 harness.test(
-  "local workerd: a thread copies main's switches and a subagent is bounded by every conversation above it",
+  "local workerd: a thread copies its parent's switches and a subagent is bounded by every conversation above it",
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `scopes-${yield* nextInt}`
@@ -743,6 +745,9 @@ harness.test(
     expect(result.deep).toEqual({ ...thread, editable: false, skills: false })
     expect(result.orphan).toEqual(closed)
     expect(result.unknown).toEqual(closed)
+    expect(result.deepest).toEqual({ ...thread, editable: false })
+    expect(result.cycle).toEqual(closed)
+    expect(result.fromSubagent).toEqual({ ...thread, skills: false })
     // A server switched back on keeps the tool switched off under it.
     expect(result.serverBackOn).toEqual({ ...thread, mail: true })
     expect(result.afterReset).toEqual({ ...thread, mail: true, send: true })
@@ -751,8 +756,6 @@ harness.test(
   }),
 )
 
-const Ok = <S extends Schema.Top>(value: S) => Schema.Struct({ ok: Schema.Literal(true), value })
-const Refused = Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) })
 const View = Schema.Struct({
   thread: Schema.String,
   kind: Schema.String,
@@ -766,7 +769,7 @@ const View = Schema.Struct({
   ),
   skills: Schema.Array(Schema.Unknown),
   subagents: Schema.Boolean,
-  sameAsMain: Schema.optional(Schema.Boolean),
+  sameAsParent: Schema.optional(Schema.Boolean),
 })
 const Tools = Schema.optional(Schema.Array(Schema.String))
 /** The seeded `notes` server as a conversation shows it, `write` switched as given. */
@@ -804,12 +807,12 @@ harness.test(
     const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/capabilities?name=${name}`))
     const result = yield* Schema.decodeUnknownEffect(CapabilityRun)(yield* Effect.promise(() => response.json()))
     expect(result.mainBefore.value).toMatchObject({ kind: 'main', servers: notes(true), skills: [], subagents: true })
-    expect(result.mainBefore.value.sameAsMain).toBeUndefined()
+    expect(result.mainBefore.value.sameAsParent).toBeUndefined()
     expect(result.mainAfter.value).toMatchObject({ servers: notes(false), subagents: false })
     for (const copied of [result.freshView.value, result.branchedView.value])
-      expect(copied).toMatchObject({ kind: 'thread', servers: notes(false), subagents: false, sameAsMain: true })
-    expect(result.freshOn.value).toMatchObject({ subagents: true, sameAsMain: false })
-    expect(result.reset.value).toMatchObject({ servers: notes(false), subagents: false, sameAsMain: true })
+      expect(copied).toMatchObject({ kind: 'thread', servers: notes(false), subagents: false, sameAsParent: true })
+    expect(result.freshOn.value).toMatchObject({ subagents: true, sameAsParent: false })
+    expect(result.reset.value).toMatchObject({ servers: notes(false), subagents: false, sameAsParent: true })
     expect(result.unknown.error._tag).toBe('InvalidInput')
     expect(result.mainReset.error._tag).toBe('InvalidInput')
     // Pi's tool filter follows the switch: no `subagent` where subagents are off.
@@ -894,6 +897,21 @@ harness.test(
     expect(result.childRequest.tools).not.toContain('ask_user')
   }),
 )
+
+// The conversation tree and the workspace feed (`conversation-checks.ts`).
+for (const [title, path, check] of [
+  ['a thread branches from a thread, and Close shuts it with everything under it until Reopen', 'tree', treeChecks],
+  ["a thread branched from a subagent is the owner's, and keeps it open", 'subagent-branch', subagentBranchChecks],
+  ['the workspace feed sends a snapshot, then each change and what each is doing', 'feed', feedChecks],
+] as const)
+  harness.test(
+    `local workerd: ${title}`,
+    Effect.gen(function* () {
+      const { url } = yield* stack
+      const name = `${path}-${yield* nextInt}`
+      yield* Effect.promise(() => check(baseUrl(url), name))
+    }),
+  )
 
 harness.test(
   'local workerd: deleting an agent erases its conversation and application state',

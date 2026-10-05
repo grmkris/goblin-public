@@ -186,28 +186,78 @@ export type InboundClient = typeof InboundClient.Type
 /** Pi's root conversation: the agent's one main conversation, where every channel and client talks. */
 export const MAIN_THREAD = '1'
 
+/** The kinds of conversation: Pi's root `main`, a side `thread` the owner branched or started, a `subagent`. */
+export const ConversationKind = Schema.Literals(['main', 'thread', 'subagent'])
+export type ConversationKind = typeof ConversationKind.Type
+
 /**
- * A conversation of the agent the owner can open: `main` (Pi's root), a side `thread` (branched from main or new),
- * or a `subagent` the agent started. `parent` is main for a thread and the spawner for a subagent. A live thread also
- * carries its activity: `forkEntry`, the entry of main it branched at (none when it started empty); `replies`, the
- * messages written in the thread itself (the owner's and the agent's, not the main history it inherited); and
- * `lastReplyAt`, when the newest was written. Times are in seconds.
+ * A conversation of the agent the owner can open. `parent` is the conversation it came from: the one a thread branched
+ * from (or main for one started empty) and the spawner of a subagent; only main has none. `forkEntry` is the entry of
+ * the parent a thread branched at. `replies` are the messages written in it (the owner's and the agent's, not the
+ * history it inherited) and `lastReplyAt` when the newest was. A closed conversation (`closedAt`, by the owner or
+ * `done` after a subagent's last report) stays readable and reopens; `keepOpen` stops a subagent closing itself.
+ * Times are in seconds. Whether it is working right now is not here: the workspace feed carries that.
  */
-export const ThreadView = Schema.Struct({
+export const ConversationView = Schema.Struct({
   id: Schema.String,
-  kind: Schema.Literals(['main', 'thread', 'subagent']),
+  kind: ConversationKind,
   title: Schema.optional(Schema.String),
   parent: Schema.optional(Schema.String),
-  busy: Schema.Boolean,
-  archived: Schema.Boolean,
-  createdAt: Schema.Number,
   forkEntry: Schema.optional(Schema.Number),
-  replies: Schema.optional(Schema.Number),
+  createdAt: Schema.Number,
+  closedAt: Schema.optional(Schema.Number),
+  closedBy: Schema.optional(Schema.Literals(['owner', 'done'])),
+  keepOpen: Schema.Boolean,
+  replies: Schema.Number,
   lastReplyAt: Schema.optional(Schema.Number),
 })
-export type ThreadView = typeof ThreadView.Type
+export type ConversationView = typeof ConversationView.Type
 
-/** A bounded, owner-scoped preview used under a message in the main transcript. */
+/** A thread from an entry of any open conversation, or (without `from`) an empty one under main. */
+export const CreateConversation = Schema.Struct({
+  from: Schema.optional(
+    Schema.Struct({
+      conversation: Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)),
+      entry: Schema.Int.check(Schema.isGreaterThan(0)),
+    }),
+  ),
+})
+export type CreateConversation = typeof CreateConversation.Type
+
+/** Rename, close or reopen (with everything under it), or pin a subagent open. */
+export const UpdateConversation = Schema.Struct({
+  title: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))),
+  closed: Schema.optional(Schema.Boolean),
+  keepOpen: Schema.optional(Schema.Boolean),
+})
+export type UpdateConversation = typeof UpdateConversation.Type
+
+/**
+ * What a conversation's agent is doing: `working` on a run, `waiting` with only its subagents at work, or `idle`.
+ * `since` (milliseconds) is when that began.
+ */
+export const ConversationActivity = Schema.Struct({
+  id: Schema.String,
+  state: Schema.Literals(['idle', 'working', 'waiting']),
+  since: Schema.Number,
+})
+export type ConversationActivity = typeof ConversationActivity.Type
+
+/** The workspace feed's first event: every conversation, and the ones not idle. */
+export const WorkspaceSnapshot = Schema.Struct({
+  conversations: Schema.Array(ConversationView),
+  activity: Schema.Array(ConversationActivity),
+})
+export type WorkspaceSnapshot = typeof WorkspaceSnapshot.Type
+
+/** One change the workspace feed sends after its snapshot: a conversation as it is now, or what it is doing. */
+export const WorkspaceChange = Schema.Union([
+  Schema.Struct({ type: Schema.Literal('conversation'), conversation: ConversationView }),
+  Schema.Struct({ type: Schema.Literal('activity'), activity: ConversationActivity }),
+])
+export type WorkspaceChange = typeof WorkspaceChange.Type
+
+/** A bounded, owner-scoped preview used under a message (until threads open inline, Phase 4). */
 export const ThreadPreviewMessage = Schema.Struct({
   role: Schema.Literals(['user', 'assistant']),
   text: Schema.String.check(Schema.isMaxLength(800)),
@@ -240,21 +290,21 @@ export const CapabilityTarget = Schema.Union([
 ])
 export type CapabilityTarget = typeof CapabilityTarget.Type
 
-/** Switch one thing on or off in a conversation, or give a thread main's switches again. */
+/** Switch one thing on or off in a conversation, or give a thread its parent's switches again. */
 export const CapabilityChange = Schema.Union([
   Schema.Struct({ target: CapabilityTarget, on: Schema.Boolean }),
-  Schema.Struct({ reset: Schema.Literal('main') }),
+  Schema.Struct({ reset: Schema.Literal('parent') }),
 ])
 export type CapabilityChange = typeof CapabilityChange.Type
 
 /**
  * What a conversation lets its agent use: each server with at least one granted tool (`on` is the server's switch,
- * each tool its own), each skills library the owner turned on, and whether it may start subagents. `sameAsMain`, on a
- * thread, says whether its switches are main's.
+ * each tool its own), each skills library the owner turned on, and whether it may start subagents. `sameAsParent`, on a
+ * thread, says whether its switches are those of the conversation it came from.
  */
 export const ConversationCapabilities = Schema.Struct({
   thread: Schema.String,
-  kind: Schema.Literals(['main', 'thread', 'subagent']),
+  kind: ConversationKind,
   servers: Schema.Array(
     Schema.Struct({
       serverId: Schema.String,
@@ -268,7 +318,7 @@ export const ConversationCapabilities = Schema.Struct({
   ),
   skills: Schema.Array(Schema.Struct({ serverId: Schema.String, label: Schema.String, on: Schema.Boolean })),
   subagents: Schema.Boolean,
-  sameAsMain: Schema.optional(Schema.Boolean),
+  sameAsParent: Schema.optional(Schema.Boolean),
 })
 export type ConversationCapabilities = typeof ConversationCapabilities.Type
 

@@ -3,7 +3,7 @@ import { createWorkspace, createDocument, layout, type WorkspaceHandle, type Vie
 import { useEffect, useLayoutEffect, useMemo, useRef, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { useHydrated } from '@tanstack/react-router'
-import type { ThreadView } from '@purrable/contracts'
+import type { ConversationView } from '@purrable/contracts'
 import type { Pane } from '../lib/workspace-panes.ts'
 import { balanceAround, evenDocument, PANEL_TYPE } from '../lib/trellis-layout.ts'
 import { parseWorkspaceDocument, pruneDocument } from '../lib/workspace-document.ts'
@@ -11,7 +11,7 @@ import { rootParts, threadTitle } from '../lib/threads.ts'
 import type { Part } from '../lib/parts.ts'
 import { MainThreadPanel, ThreadPane, type ThreadPanelControl } from './thread-panel.tsx'
 import { useWorkspace } from './workspace-state.tsx'
-import { useThreads } from './threads.tsx'
+import { useWorkspaceFeed } from './workspace-feed.tsx'
 import { useApps } from './apps/provider.tsx'
 import { WorkspaceAppSlot } from './apps/slot.tsx'
 
@@ -31,7 +31,7 @@ const TOKENS = {
   '--trellis-radius': 'var(--radius)',
 }
 
-function initialDocument(panes: readonly Pane[], views: readonly ThreadView[] = []) {
+function initialDocument(panes: readonly Pane[], views: readonly ConversationView[] = []) {
   const main = layout.stage(layout.view(MAIN_TYPE, { id: 'main', title: 'Main' }))
   const sides = panes
     .filter((pane) => pane.kind !== 'main')
@@ -63,7 +63,7 @@ type Props = {
 }
 type Live = {
   readonly control: ReturnType<typeof useWorkspace>
-  readonly views: readonly ThreadView[]
+  readonly views: readonly ConversationView[]
   readonly apps: ReturnType<typeof useApps>
 }
 type Resources = {
@@ -73,7 +73,7 @@ type Resources = {
   readonly handle: RefObject<WorkspaceHandle | null>
   readonly hosts: RefObject<Map<string, HTMLDivElement>>
 }
-function paneTitle(pane: Pane, views: readonly ThreadView[]): string {
+function paneTitle(pane: Pane, views: readonly ConversationView[]): string {
   if (pane.kind === 'main') return 'Main'
   if (pane.kind === 'thread') return threadTitle(views.find((view) => view.id === pane.thread))
   return pane.kind === 'app' ? `App · ${pane.serverId}` : 'New thread'
@@ -221,7 +221,7 @@ function mountWorkspace(root: HTMLElement, resources: Resources, latest: RefObje
     panelMenu: (menu) => menu.filter((item) => item === 'separator' || item.id !== 'hide'),
   })
 }
-function syncPane(workspace: WorkspaceHandle, pane: Pane, views: readonly ThreadView[]) {
+function syncPane(workspace: WorkspaceHandle, pane: Pane, views: readonly ConversationView[]) {
   const title = paneTitle(pane, views)
   if (workspace.view(pane.id) !== null) return workspace.setTitle(pane.id, title)
   const opened = workspace.open(pane.kind === 'main' ? MAIN_TYPE : PANEL_TYPE, {
@@ -286,7 +286,7 @@ function WorkspaceToolbar() {
 }
 function MountedWorkspace({ children, panel, parts }: Props) {
   const control = useWorkspace()
-  const { views } = useThreads()
+  const { conversations: views } = useWorkspaceFeed()
   const apps = useApps()
   const resources = useResources(control.state.panes)
   useTrellis(resources, { control, views, apps })

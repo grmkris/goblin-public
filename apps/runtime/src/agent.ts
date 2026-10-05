@@ -13,6 +13,7 @@ import { channelPorts } from './channel/turns.ts'
 import { type Doorbell, doorbellValid } from './channel/doorbell.ts'
 import { type RpcResult, encodeExit, unwrap } from './http/rpc.ts'
 import { piEventResponse } from './pi/events.ts'
+import { workspaceEventResponse } from './workspace/feed.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
 import { LITELLM_STREAMS, makePiModels } from './pi/model.ts'
 import { personaExtension } from './pi/persona.ts'
@@ -21,7 +22,6 @@ import { threadExtension } from './pi/thread.ts'
 import { memoryExtensions } from './pi/memory.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { skillsExtension } from './pi/skills.ts'
-import type { ThreadChange } from './conversations.ts'
 import { composeServices } from './compose.ts'
 import { capabilitiesOf, changeCapabilities } from './capabilities/program.ts'
 import { BACKGROUND } from './pi/context.ts'
@@ -49,13 +49,14 @@ import { setSkillEvents } from './skills/events.ts'
 import { suggestions } from './mcp/suggested.ts'
 import {
   askClient,
-  createOwnerThread,
+  createOwnerConversation,
   ownerRequest,
   ownerUsage,
-  registeredThread,
+  registeredConversation,
   setResident,
   submitOwner,
-  updateOwnerThread,
+  stopOwner,
+  updateOwnerConversation,
 } from './agent-program.ts'
 import { budgetExtension } from './pi/budget.ts'
 import { useModel, type Applied } from './agent-model.ts'
@@ -63,13 +64,15 @@ import { routinesExtension } from './pi/routines.ts'
 import { Routines } from './services.ts'
 import { editRoutine, proposeRoutine, routinesList, setRoutineSettings } from './routines/program.ts'
 import type {
+  CreateConversation,
   RoutineEdit,
   RoutineProposal,
   RoutineRevision,
   RoutineSettings,
   RoutineManualRun,
+  UpdateConversation,
 } from '@purrable/contracts'
-import { RoutineRuns } from './services.ts'
+import { RoutineRuns, Workspace } from './services.ts'
 import { requireRoutine, requireRoutineSession } from './routines/authority.ts'
 import { runView } from './routines/runs.ts'
 import type { RoutineSlot } from './routines/scheduler.ts'
@@ -247,7 +250,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     )
   }
 
-  threads() {
+  conversations() {
     return this.#owner(Conversations.use((conversations) => attempt(() => conversations.list())))
   }
 
@@ -280,13 +283,13 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return this.#owner(setRoutineSettings(settings))
   }
 
-  /** A thread branched from main at one of its messages (`from`, a Pi entry id), or an empty one. */
-  createThread(from?: number) {
-    return this.#owner(createOwnerThread(from))
+  /** A thread branched from a message of any open conversation, or an empty one. */
+  createConversation(input: CreateConversation) {
+    return this.#owner(createOwnerConversation(input))
   }
 
-  updateThread(thread: string, change: ThreadChange) {
-    return this.#owner(updateOwnerThread(thread, change))
+  updateConversation(id: string, change: UpdateConversation) {
+    return this.#owner(updateOwnerConversation(this.#routines, id, change))
   }
 
   /** What a conversation lets its agent use: its switches over the agent's servers, skills and subagents. */
@@ -327,19 +330,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
 
   stop(thread: string, operationId?: string) {
-    const harness = this.harness
-    const routines = this.#routines
-    return this.#owner(
-      Effect.gen(function* () {
-        const session = yield* registeredThread(thread)
-        const run = (yield* RoutineRuns).session(session)
-        if (run !== undefined) {
-          yield* attempt(() => routines.stop(run.id))
-          return true
-        }
-        return yield* attempt(() => harness.abort({ session, ...(operationId === undefined ? {} : { operationId }) }))
-      }),
-    )
+    return this.#owner(stopOwner({ harness: this.harness, routines: this.#routines, thread, operationId }))
   }
 
   mcpServers() {
@@ -592,13 +583,19 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
 
   /**
-   * `/threads/<id>/events` (SSE), `/threads/<id>/snapshot` and `/threads/<id>/history?before=<entry>`, for registered
-   * conversations only.
+   * `/conversations/<id>/events` (SSE), `/conversations/<id>/snapshot` and `/conversations/<id>/history?before=<entry>`,
+   * for registered conversations only.
    */
   override async onRequest(request: Request): Promise<Response> {
     const url = new URL(request.url)
-    const [, thread = '', view = ''] = /^\/threads\/(\d{1,12})\/(events|snapshot|history)$/u.exec(url.pathname) ?? []
-    const session = await this.#exit(registeredThread(thread))
+    if (url.pathname === '/workspace/events') {
+      const feed = await this.#exit(Workspace.useSync((workspace) => workspace))
+      return Exit.isSuccess(feed)
+        ? workspaceEventResponse(feed.value)
+        : Response.json({ error: 'Unavailable' }, { status: 503 })
+    }
+    const [, id = '', view = ''] = /^\/conversations\/(\d{1,12})\/(events|snapshot|history)$/u.exec(url.pathname) ?? []
+    const session = await this.#exit(registeredConversation(id))
     if (view === '' || Exit.isFailure(session)) return Response.json({ error: 'NotFound' }, { status: 404 })
     if (view === 'events') return piEventResponse(await this.harness.session(session.value).events())
     if (view === 'snapshot') return Response.json(await this.sessionSnapshot(session.value))

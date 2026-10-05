@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ThreadView } from '@purrable/contracts'
+import type { ConversationView } from '@purrable/contracts'
 import {
   branchPoints,
   entryOfPart,
@@ -11,46 +11,50 @@ import {
   threadsByFork,
 } from '../src/lib/threads.ts'
 
-const view = (id: string, extra: Partial<ThreadView> = {}): ThreadView => ({
+const view = (id: string, extra: Partial<ConversationView> = {}): ConversationView => ({
   id,
   kind: 'thread',
   parent: '1',
-  busy: false,
-  archived: false,
+  keepOpen: false,
+  replies: 0,
   createdAt: Number(id),
   ...extra,
 })
 const MAIN = view('1', { kind: 'main', createdAt: 0 })
 
 describe('the thread list', () => {
-  it('puts main first, live threads newest first with their subagents, and archived ones apart', () => {
+  it('puts main first, open threads newest first with their subagents, and closed ones apart', () => {
     const tree = threadTree([
       MAIN,
       view('5'),
       view('9'),
       view('6', { kind: 'subagent', parent: '5' }),
       view('7', { kind: 'subagent', parent: '1' }),
-      view('8', { archived: true }),
+      view('8', { closedAt: 10, closedBy: 'owner' }),
     ])
     expect(tree.main?.thread.id).toBe('1')
     expect(tree.main?.subagents.map(({ id }) => id)).toEqual(['7'])
     expect(tree.threads.map(({ thread }) => thread.id)).toEqual(['9', '5'])
     expect(tree.threads[1]?.subagents.map(({ id }) => id)).toEqual(['6'])
-    expect(tree.archived.map(({ id }) => id)).toEqual(['8'])
+    expect(tree.closed.map(({ id }) => id)).toEqual(['8'])
   })
 })
 
 describe('threads in main', () => {
-  it('groups live threads under the entry they branched from, newest first', () => {
-    const byFork = threadsByFork([
-      MAIN,
-      view('5', { forkEntry: 40 }),
-      view('9', { forkEntry: 40 }),
-      view('6', { forkEntry: 12 }),
-      view('7'),
-      view('8', { forkEntry: 40, archived: true }),
-      view('10', { kind: 'subagent', forkEntry: 40 }),
-    ])
+  it('groups open threads under the entry of the parent they branched from, newest first', () => {
+    const byFork = threadsByFork(
+      [
+        MAIN,
+        view('5', { forkEntry: 40 }),
+        view('9', { forkEntry: 40 }),
+        view('6', { forkEntry: 12 }),
+        view('7'),
+        view('8', { forkEntry: 40, closedAt: 10, closedBy: 'owner' }),
+        view('10', { kind: 'subagent', forkEntry: 40 }),
+        view('11', { parent: '9', forkEntry: 41 }),
+      ],
+      '1',
+    )
     expect(byFork.get(40)?.map(({ id }) => id)).toEqual(['9', '5'])
     expect(byFork.get(12)?.map(({ id }) => id)).toEqual(['6'])
     expect(byFork.size).toBe(2)
