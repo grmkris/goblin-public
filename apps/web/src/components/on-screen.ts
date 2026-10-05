@@ -33,13 +33,12 @@ export function useOnScreen(element: RefObject<HTMLElement | null>, threshold = 
 }
 
 /**
- * Marks a conversation read once it has been shown for a moment with replies the owner has not seen. The read mark is
- * the owner's: a member's view (`owner` false) never moves it.
+ * Marks a conversation read once it has been shown for a moment with replies the owner has not seen.
  */
-export function useMarkRead(view: ConversationView, shown: boolean, owner: boolean): void {
+export function useMarkRead(view: ConversationView, shown: boolean): void {
   const { markRead } = useWorkspaceFeed()
   const unread = isUnread(view)
-  const reading = owner && shown && unread
+  const reading = shown && unread
   useEffect(() => {
     if (!reading) return
     const timer = setTimeout(() => markRead(view.id), 800)

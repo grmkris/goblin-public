@@ -3,7 +3,6 @@ import { Link } from '@tanstack/react-router'
 import type { ConversationView } from '@purrable/contracts'
 import { Alert, AlertDescription, PresenceOrb } from '@purrable/ui'
 import { ChevronDownIcon, MessageSquareReplyIcon, MessagesSquareIcon, PanelRightOpenIcon, XIcon } from 'lucide-react'
-import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
 import { failureText } from '../lib/boundary.ts'
 import { openInteractions } from '../lib/interactions.ts'
 import type { Part } from '../lib/parts.ts'
@@ -45,9 +44,6 @@ export type InlineThreads = {
 }
 
 const InlineThreadsContext = createContext<InlineThreads | undefined>(undefined)
-
-/** Where nothing may branch: a member reading the owner's conversation. */
-export const NO_BRANCHES: ReadonlySet<number> = new Set()
 
 /** Now in seconds, updated each minute while the page is open. */
 function useMinute(): number {
@@ -162,14 +158,13 @@ function InlineDock({
   readonly parts: readonly Part[]
 }) {
   const { projection, status, notice, send, stop } = conversation
-  const { state: account } = useAccountWorkspaces()
   const running = projection?.running ?? false
   const waiting = useMemo(() => openInteractions(parts), [parts])
   const presence = presenceOf({ status, projection, parts, waiting: waiting.length, exhausted: false })
   return (
     <div className="inline-dock">
       <Notice text={notice} />
-      {account?.active?.role === 'owner' && <InteractionCards interactions={waiting} thread={id} onAnswer={send} />}
+      <InteractionCards interactions={waiting} thread={id} onAnswer={send} />
       <MessageComposer
         onSend={(input) => send(input)}
         running={running}
@@ -199,8 +194,6 @@ function messageEntry(part: Part): number | undefined {
 function InlineThreadBody({ view, threads }: { readonly view: ConversationView; readonly threads: InlineThreads }) {
   const block = useRef<HTMLElement>(null)
   const onScreen = useOnScreen(block)
-  const { state: account } = useAccountWorkspaces()
-  const owner = account?.active?.role === 'owner'
   const conversation = useConversation(view.id, onScreen)
   const { projection, report } = conversation
   const { parts, branchable } = useTranscript(view.id, projection, report, view.forkEntry)
@@ -208,8 +201,8 @@ function InlineThreadBody({ view, threads }: { readonly view: ConversationView; 
     () => (view.forkEntry === undefined ? parts : parts.filter((part) => entryOfPart(part.id) !== view.forkEntry)),
     [parts, view.forkEntry],
   )
-  const nested = useInlineThreads(view.id, threads.source, owner ? branchable : NO_BRANCHES)
-  useMarkRead(view, onScreen, owner)
+  const nested = useInlineThreads(view.id, threads.source, branchable)
+  useMarkRead(view, onScreen)
   return (
     <section className="inline-thread" aria-label={threadTitle(view)} ref={block}>
       <header className="inline-thread-header">
@@ -233,9 +226,7 @@ function InlineThreadBody({ view, threads }: { readonly view: ConversationView; 
           ))}
         </div>
       </InlineThreadsProvider>
-      {!isClosed(view) && view.canCompose !== false && account?.active?.role !== 'viewer' && (
-        <InlineDock id={view.id} conversation={conversation} parts={parts} />
-      )}
+      {!isClosed(view) && <InlineDock id={view.id} conversation={conversation} parts={parts} />}
     </section>
   )
 }

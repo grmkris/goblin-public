@@ -1,4 +1,3 @@
-import { MemberInteractionCards } from './member-interactions.tsx'
 import { useCallback, useEffect, useState } from 'react'
 import { Schema } from 'effect'
 import { InboundClient, MemoryStatus, ResidentStatus } from '@purrable/contracts'
@@ -27,8 +26,6 @@ import { useBilling } from '../lib/billing.tsx'
 import { PasskeysCard } from './passkeys.tsx'
 import { RoutinesCard } from './routines.tsx'
 import { useUsageToday } from './use-usage.ts'
-import { AccountWorkspaceCard, MembersCard } from './members.tsx'
-import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
 
 const decodeResident = Schema.decodeUnknownSync(ResidentStatus)
 const decodeClients = Schema.decodeUnknownSync(Schema.Array(InboundClient))
@@ -210,8 +207,8 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
       <CardHeader>
         <CardTitle>Delete account</CardTitle>
         <CardDescription>
-          Deletes your account, memberships and personal agent if you own one, including its conversations, MCP
-          connections, permissions and usage. Other workspace owners keep their agents. This cannot be undone.
+          Deletes your account and personal agent, including its conversations, MCP connections, permissions and usage.
+          Other workspace owners keep their agents. This cannot be undone.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -256,7 +253,6 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
 export function Settings() {
   const [error, setError] = useState('')
   const billing = useBilling()
-  const workspaces = useAccountWorkspaces()
   return (
     <div className="flex flex-col gap-6">
       {error && (
@@ -265,19 +261,16 @@ export function Settings() {
         </Alert>
       )}
       <BillingCard />
-      <AccountWorkspaceCard />
-      <MembersCard />
-      {billing.state?.active && workspaces.state?.active?.role === 'owner' && (
+      {billing.state?.active && (
         <>
           <ResidentCard onError={setError} />
           <UsageCard />
           <MemoryCard onError={setError} />
           <RoutinesCard />
-          <MemberInteractionCards />
         </>
       )}
       <PasskeysCard onError={setError} />
-      {billing.state?.active && workspaces.state?.active?.role === 'owner' && <ClientsCard onError={setError} />}
+      {billing.state?.active && <ClientsCard onError={setError} />}
       <DeleteAccountCard onError={setError} />
     </div>
   )

@@ -1,4 +1,3 @@
-import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
 import { type ReactNode, useMemo, useRef, useState } from 'react'
 import { type ConversationView, MAIN_THREAD } from '@purrable/contracts'
 import { DropdownMenuItem, DropdownMenuSeparator, Input, useMediaQuery } from '@purrable/ui'
@@ -17,7 +16,7 @@ import { useModelChoice } from './model-picker.tsx'
 import { PaneHeader } from './pane-header.tsx'
 import { WithoutApps } from './parts/mcp-tool-part.tsx'
 import { PartView } from './parts/registry.tsx'
-import { NO_BRANCHES, useInlineThreads } from './inline-thread.tsx'
+import { useInlineThreads } from './inline-thread.tsx'
 import { postMessage, useConversation, useDockInsets, useTranscript } from './use-conversation.ts'
 import { useWorkspace } from './workspace.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
@@ -108,13 +107,13 @@ function ConversationMenu({
   const closed = isClosed(view)
   return (
     <>
-      {view.kind !== 'main' && view.canCompose !== false && (
+      {view.kind !== 'main' && (
         <DropdownMenuItem onClick={onRename}>
           <PencilIcon aria-hidden />
           Rename
         </DropdownMenuItem>
       )}
-      {view.kind === 'thread' && view.canCompose !== false && !closed && (
+      {view.kind === 'thread' && !closed && (
         <DropdownMenuItem onClick={onShare}>
           <ShareIcon aria-hidden />
           Share to {parentName}
@@ -126,7 +125,7 @@ function ConversationMenu({
           {maximized ? 'Show all panes' : 'Fill the workspace'}
         </DropdownMenuItem>
       )}
-      {view.kind !== 'main' && view.canCompose !== false && (
+      {view.kind !== 'main' && (
         <>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => void update(view.id, { closed: !closed })}>
@@ -202,13 +201,11 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
   const reading = useOnScreen(pane, 0.5) && placed
   const conversation = useConversation(id, visible)
   const { projection, report } = conversation
-  const { state: account } = useAccountWorkspaces()
-  const canCompose = view.canCompose !== false && account?.active?.role !== 'viewer'
-  const model = useModelChoice(report, account?.active?.role === 'owner')
+  const model = useModelChoice(report)
   const fork = view.forkEntry
   const { parts, branchable, earlier } = useTranscript(id, projection, report, fork)
-  useMarkRead(view, reading, account?.active?.role === 'owner')
-  const inline = useInlineThreads(id, item, canCompose ? branchable : NO_BRANCHES)
+  useMarkRead(view, reading)
+  const inline = useInlineThreads(id, item, branchable)
   const root = fork === undefined ? [] : rootParts(parts, fork)
   const shown = useMemo(
     () => (fork === undefined ? parts : parts.filter((part) => entryOfPart(part.id) !== fork)),
@@ -226,7 +223,7 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
   return (
     <section className="conversation-pane chat-pane" aria-label={nameOf(view)} ref={pane}>
       <ConversationHeader id={id} view={view} onShare={() => void conversation.send(SHARE_REQUEST)} />
-      {id === MAIN_THREAD && account?.active?.role === 'owner' ? transcript : <WithoutApps>{transcript}</WithoutApps>}
+      {id === MAIN_THREAD ? transcript : <WithoutApps>{transcript}</WithoutApps>}
       <ConversationDock
         ref={dock}
         id={id}
@@ -234,7 +231,6 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
         model={model}
         parts={parts}
         closed={closedBy(view)}
-        readOnly={!canCompose}
         onReopen={() => void feed.update(id, { closed: false })}
         notices={feed.error === '' ? [] : [feed.error]}
       />

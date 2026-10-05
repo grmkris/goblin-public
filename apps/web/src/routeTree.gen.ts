@@ -20,7 +20,6 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SubscribeRouteImport } from './routes/subscribe'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as WorkspaceIndexRouteImport } from './routes/_workspace.index'
-import { Route as InviteInviteIdRouteImport } from './routes/invite.$inviteId'
 import { Route as SubscribeSuccessRouteImport } from './routes/subscribe.success'
 import { Route as WorkspaceCConversationIdRouteImport } from './routes/_workspace.c.$conversationId'
 
@@ -78,11 +77,6 @@ const WorkspaceIndexRoute = WorkspaceIndexRouteImport.update({
   path: '/',
   getParentRoute: () => WorkspaceRoute,
 } as any)
-const InviteInviteIdRoute = InviteInviteIdRouteImport.update({
-  id: '/invite/$inviteId',
-  path: '/invite/$inviteId',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SubscribeSuccessRoute = SubscribeSuccessRouteImport.update({
   id: '/success',
   path: '/success',
@@ -106,7 +100,6 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
   '/terms': typeof TermsRoute
-  '/invite/$inviteId': typeof InviteInviteIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/c/$conversationId': typeof WorkspaceCConversationIdRoute
 }
@@ -120,7 +113,6 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
   '/terms': typeof TermsRoute
-  '/invite/$inviteId': typeof InviteInviteIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/': typeof WorkspaceIndexRoute
   '/c/$conversationId': typeof WorkspaceCConversationIdRoute
@@ -137,7 +129,6 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
   '/terms': typeof TermsRoute
-  '/invite/$inviteId': typeof InviteInviteIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/_workspace/': typeof WorkspaceIndexRoute
   '/_workspace/c/$conversationId': typeof WorkspaceCConversationIdRoute
@@ -155,7 +146,6 @@ export interface FileRouteTypes {
     | '/settings'
     | '/subscribe'
     | '/terms'
-    | '/invite/$inviteId'
     | '/subscribe/success'
     | '/c/$conversationId'
   fileRoutesByTo: FileRoutesByTo
@@ -169,7 +159,6 @@ export interface FileRouteTypes {
     | '/settings'
     | '/subscribe'
     | '/terms'
-    | '/invite/$inviteId'
     | '/subscribe/success'
     | '/'
     | '/c/$conversationId'
@@ -185,7 +174,6 @@ export interface FileRouteTypes {
     | '/settings'
     | '/subscribe'
     | '/terms'
-    | '/invite/$inviteId'
     | '/subscribe/success'
     | '/_workspace/'
     | '/_workspace/c/$conversationId'
@@ -202,7 +190,6 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SubscribeRoute: typeof SubscribeRouteWithChildren
   TermsRoute: typeof TermsRoute
-  InviteInviteIdRoute: typeof InviteInviteIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -284,13 +271,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceIndexRouteImport
       parentRoute: typeof WorkspaceRoute
     }
-    '/invite/$inviteId': {
-      id: '/invite/$inviteId'
-      path: '/invite/$inviteId'
-      fullPath: '/invite/$inviteId'
-      preLoaderRoute: typeof InviteInviteIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/subscribe/success': {
       id: '/subscribe/success'
       path: '/success'
@@ -345,7 +325,6 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SubscribeRoute: SubscribeRouteWithChildren,
   TermsRoute: TermsRoute,
-  InviteInviteIdRoute: InviteInviteIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

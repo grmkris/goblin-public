@@ -3,9 +3,6 @@ import { useEffect, useState } from 'react'
 import { Button, Card, CardContent, CardHeader, CardTitle } from '@purrable/ui'
 import { OwnerGate } from '../components/owner-gate.tsx'
 import { useBilling } from '../lib/billing.tsx'
-import { Schema } from 'effect'
-import { InvitationPreview } from '@purrable/contracts'
-import { request } from '../lib/boundary.ts'
 export const Route = createFileRoute('/subscribe/success')({ component: SuccessPage })
 function SuccessPage() {
   return (
@@ -17,12 +14,6 @@ function SuccessPage() {
 function PaymentReturn() {
   const { state, error, refresh } = useBilling()
   const [waiting, setWaiting] = useState(true)
-  const [invitation, setInvitation] = useState<InvitationPreview | null>(null)
-  useEffect(() => {
-    void request('/api/invitations/admission')
-      .then((data) => setInvitation(Schema.decodeUnknownSync(Schema.NullOr(InvitationPreview))(data)))
-      .catch(() => undefined)
-  }, [])
   useEffect(() => {
     if (state?.active) return
     let attempts = 0
@@ -45,8 +36,8 @@ function PaymentReturn() {
           {state?.active ? (
             <>
               <p>Pro is active. You can open your agent and add a passkey in Settings.</p>
-              <a href={invitation ? `/invite/${invitation.id}` : '/'} className="underline">
-                {invitation ? 'Finish joining your workspace' : 'Open your agent'}
+              <a href="/" className="underline">
+                Open your agent
               </a>
               <a href="/settings" className="underline">
                 Add a passkey

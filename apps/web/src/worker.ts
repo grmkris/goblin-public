@@ -18,13 +18,6 @@ export default {
       url.pathname === '/mcp'
     )
       return runtime.fetch(request, env, ctx)
-    const response = await page.fetch(request)
-    if (url.pathname.startsWith('/invite/')) {
-      const secured = new Response(response.body, response)
-      secured.headers.set('cache-control', 'no-store')
-      secured.headers.set('referrer-policy', 'no-referrer')
-      return secured
-    }
-    return response
+    return page.fetch(request)
   },
 }

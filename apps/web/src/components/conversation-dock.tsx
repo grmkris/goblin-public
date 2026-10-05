@@ -1,5 +1,3 @@
-import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
-import { MemberInteractionCards } from './member-interactions.tsx'
 import { type RefObject, useMemo } from 'react'
 import type { AppContext } from '@purrable/contracts'
 import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@purrable/ui'
@@ -70,7 +68,6 @@ export function ConversationDock({
   parts,
   model,
   closed,
-  readOnly = false,
   onReopen,
   notices = [],
 }: {
@@ -79,14 +76,11 @@ export function ConversationDock({
   readonly conversation: ReturnType<typeof useConversation>
   readonly model: ReturnType<typeof useModelChoice>
   readonly parts: readonly Part[]
-  readonly readOnly?: boolean
   /** Who closed it, when it is closed. */
   readonly closed: 'owner' | 'done' | undefined
   readonly onReopen: () => void
   readonly notices?: readonly string[]
 }) {
-  const { state: account } = useAccountWorkspaces()
-  const owner = account?.active?.role === 'owner'
   const { projection, status, notice, send, stop } = conversation
   const running = projection?.running ?? false
   const sendOwn = useSendWithAppContext(send)
@@ -106,14 +100,12 @@ export function ConversationDock({
       {notices.map((text) => (
         <Notice key={text} text={text} />
       ))}
-      {readOnly ? (
-        <p className="pane-closed">Read only. The owner can read all workspace conversations.</p>
-      ) : closed !== undefined ? (
+      {closed !== undefined ? (
         <ClosedNotice by={closed} onReopen={onReopen} />
       ) : (
         <>
-          {owner ? <InteractionCards interactions={waiting} thread={id} onAnswer={send} /> : <MemberInteractionCards />}
-          {owner && <SharedContextChip />}
+          <InteractionCards interactions={waiting} thread={id} onAnswer={send} />
+          <SharedContextChip />
           <div className="relative">
             {presence.state === 'waiting' && <PresenceBorder />}
             <MessageComposer
@@ -126,8 +118,8 @@ export function ConversationDock({
                     <PresenceOrb state={presence.state} label={presence.label} />
                     <span className="truncate">{presence.label}</span>
                   </span>
-                  {owner && <ModelPicker choice={model.choice} onChoose={(picked) => void model.choose(picked)} />}
-                  {owner && <CapabilitiesButton thread={id} running={running} />}
+                  <ModelPicker choice={model.choice} onChoose={(picked) => void model.choose(picked)} />
+                  <CapabilitiesButton thread={id} running={running} />
                   <UsageIndicator
                     usage={usage}
                     context={context}

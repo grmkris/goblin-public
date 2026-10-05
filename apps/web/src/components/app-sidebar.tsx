@@ -13,26 +13,25 @@ import {
 } from '@purrable/ui'
 import { CatIcon, LogOutIcon, PlugIcon, SettingsIcon } from 'lucide-react'
 import { signOut } from '../lib/session.tsx'
-import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
+import { useBilling } from '../lib/billing.tsx'
+import { useSession } from '../lib/session.tsx'
 import { SidebarTree, onWorkspace } from './sidebar-tree.tsx'
 import { WorkspaceRail } from './workspace-rail.tsx'
 import { useWorkspace } from './workspace.tsx'
 
 /** Connections (the owner's), Settings and Sign out; folded to the rail, their icons alone. */
-function Pages({ path, rail, owner }: { readonly path: string; readonly rail: boolean; readonly owner: boolean }) {
+function Pages({ path, rail }: { readonly path: string; readonly rail: boolean }) {
   return (
     <SidebarMenu>
-      {owner && (
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            render={<Link to="/connections" aria-label="Connections" title={rail ? 'Connections' : undefined} />}
-            isActive={path === '/connections'}
-          >
-            <PlugIcon aria-hidden />
-            {!rail && <span>Connections</span>}
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      )}
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          render={<Link to="/connections" aria-label="Connections" title={rail ? 'Connections' : undefined} />}
+          isActive={path === '/connections'}
+        >
+          <PlugIcon aria-hidden />
+          {!rail && <span>Connections</span>}
+        </SidebarMenuButton>
+      </SidebarMenuItem>
       <SidebarMenuItem>
         <SidebarMenuButton
           render={<Link to="/settings" aria-label="Settings" title={rail ? 'Settings' : undefined} />}
@@ -61,7 +60,8 @@ export function AppSidebar() {
   const path = useRouterState({ select: (router) => router.location.pathname })
   const navigate = useNavigate()
   const { setOpenMobile, state: fold, isMobile } = useSidebar()
-  const { state } = useAccountWorkspaces()
+  const [state] = useSession()
+  const billing = useBilling()
   const workspace = useWorkspace()
   const rail = fold === 'collapsed' && !isMobile
   const close = useCallback(() => setOpenMobile(false), [setOpenMobile])
@@ -71,7 +71,7 @@ export function AppSidebar() {
     close()
     if (!onWorkspace(path)) void navigate({ to: '/' })
   }, [workspace, close, path, navigate])
-  const ready = state?.active?.agentReady === true
+  const ready = state === 'signed-in' && billing.state?.active === true
   return (
     <Sidebar label="Purrable">
       <SidebarHeader>
@@ -79,19 +79,13 @@ export function AppSidebar() {
           <CatIcon aria-hidden />
           {!rail && 'Purrable'}
         </Link>
-        {state?.active && !rail && (
-          <a href="/settings" className="px-2 text-sm text-muted-foreground">
-            {state.active.name} · {state.active.role}
-            <span className="block text-xs">Owned by {state.active.ownerName}</span>
-          </a>
-        )}
       </SidebarHeader>
       <SidebarContent>
         {ready && rail && <WorkspaceRail onNew={draft} />}
         {ready && !rail && <SidebarTree onNew={draft} />}
       </SidebarContent>
       <SidebarFooter>
-        <Pages path={path} rail={rail} owner={state?.active?.role === 'owner'} />
+        <Pages path={path} rail={rail} />
         {!rail && (
           <a className="sidebar-credit" href="https://github.com/DanFessler/trellis" target="_blank" rel="noreferrer">
             Workspace layout powered by Trellis by Dan Fessler

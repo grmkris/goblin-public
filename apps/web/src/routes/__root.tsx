@@ -7,7 +7,6 @@ import { WorkspaceFeedProvider } from '../components/workspace-feed.tsx'
 import { SessionProvider, useSession } from '../lib/session.tsx'
 import { readSidebarOpen } from '../lib/sidebar-state.ts'
 import { BillingProvider, useBilling } from '../lib/billing.tsx'
-import { AccountWorkspacesProvider, useAccountWorkspaces } from '../lib/account-workspaces.tsx'
 import css from '../styles.css?url'
 
 /** Follows the system's light or dark preference, before first paint and when it changes (as the myapps apps do). */
@@ -54,11 +53,9 @@ function Root() {
   return (
     <SessionProvider>
       <BillingProvider>
-        <AccountWorkspacesProvider>
-          <Shell>
-            <Outlet />
-          </Shell>
-        </AccountWorkspacesProvider>
+        <Shell>
+          <Outlet />
+        </Shell>
       </BillingProvider>
     </SessionProvider>
   )
@@ -72,13 +69,10 @@ function Root() {
 function Shell({ children }: { readonly children: ReactNode }) {
   const [state] = useSession()
   const billing = useBilling()
-  const workspaces = useAccountWorkspaces()
   const path = useRouterState({ select: (router) => router.location.pathname })
   const sidebarOpen = Route.useLoaderData()
-  if (state === 'signed-out' || AUTH_PAGES.has(path) || path.startsWith('/invite/'))
-    return <main className="shell">{children}</main>
-  const enabled =
-    state === 'signed-in' && billing.state?.active === true && workspaces.state?.active?.agentReady === true
+  if (state === 'signed-out' || AUTH_PAGES.has(path)) return <main className="shell">{children}</main>
+  const enabled = state === 'signed-in' && billing.state?.active === true
   return (
     <WorkspaceFeedProvider enabled={enabled}>
       <WorkspaceProvider enabled={enabled}>
