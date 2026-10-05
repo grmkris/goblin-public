@@ -284,3 +284,4 @@ export const authorTag = (author: string): string => `[from ${author.replaceAll(
 export const authorOf = (block: string): string | undefined => AUTHOR_TAG.exec(block)?.[1]
 
 export { BillingState } from './billing.ts'
+export * from './workspaces.ts'

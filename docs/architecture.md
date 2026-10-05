@@ -62,6 +62,19 @@ returns an encoded `RpcResult`; the Worker decodes it and maps the tagged error 
 (`http/errors.ts`, `http/respond.ts`). Failures are logged as one JSON line with route, request ID, status and
 error tag, never bodies or credentials.
 
+## Workspace authority
+
+Auth D1 also stores additive `app_*` workspace access metadata through Drizzle. Browser selection is session-bound
+and membership checked; only a verified workspace owner's ID names the Agent. Foreign IDs return 404, stale context
+returns 409, and selection writes require exact Origin plus `x-purrable-csrf: 1`. Hooks and inbound MCP remain bound
+to the verified owner's workspace. Ordinary accounts can provision a personal workspace; invitation-only accounts
+never fall back to a personal Agent. Existing objects and Pi history keep their original names.
+
+Members/viewers cannot reach owner RPCs in Phase A. Shared execution waits for trusted principal contexts, capability
+scope, visibility and acting-account usage in Phase B. The owner reads all; each member needs their own Pro plan.
+Deletion commits a closed workspace before native destruction and leaves failure retryable. Member account deletion
+revokes memberships without destroying another owner's Agent. See [ADR 0014](adr/0014-members-and-workspace-authority.md).
+
 ## The agent object
 
 `PersonalAgent extends Agent` and registers the native `PiHarness` with the Agent lifecycle. Pi owns transcripts,

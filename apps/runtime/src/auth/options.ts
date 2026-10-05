@@ -4,7 +4,7 @@ import { betterAuth, type BetterAuthPlugin } from 'better-auth'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { emailOTP, jwt } from 'better-auth/plugins'
 import type { RuntimeEnv } from '../env.ts'
-import { deleteAgentOf } from './account.ts'
+import { deleteAccountWorkspaces, registerAccount } from '../workspaces/lifecycle.ts'
 import { CODE_SEND, CODE_SIGN_IN, guardEmailCode } from './email-code.ts'
 import { codeMail, mailerOf, resetMail, verificationMail } from './mail.ts'
 import { passkeyPlugin } from './passkey.ts'
@@ -177,7 +177,15 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
     // Deleting an account erases its agent first (conversations, MCP credentials, grants, usage); D1 then cascades
     // the user's sessions, consents and tokens. Without the password it needs a sign-in from the last 10 minutes.
     session: { freshAge: 600 },
-    user: { deleteUser: { enabled: true, beforeDelete: (user: { id: string }) => deleteAgentOf(env, user.id) } },
+    user: {
+      deleteUser: {
+        enabled: true,
+        beforeDelete: (user: { id: string }) => deleteAccountWorkspaces(env, database, user.id),
+      },
+    },
+    databaseHooks: {
+      user: { create: { after: (user: { id: string }) => registerAccount(database, user.id, 'ordinary') } },
+    },
     rateLimit: { enabled: true, storage: 'database' as const, window: 60, max: 100, customRules: RATE_LIMITS },
     advanced: { ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] } },
     hooks: { before: beforeAuth(env, database) },

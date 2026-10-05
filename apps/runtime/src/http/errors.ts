@@ -13,6 +13,7 @@ export class GrantDenied extends Schema.TaggedError<GrantDenied>()('GrantDenied'
   name: Schema.String,
 }) {}
 export class NotFound extends Schema.TaggedError<NotFound>()('NotFound', { what: Schema.String }) {}
+export class Conflict extends Schema.TaggedError<Conflict>()('Conflict', { reason: Schema.String }) {}
 export class InvalidInput extends Schema.TaggedError<InvalidInput>()('InvalidInput', { reason: Schema.String }) {}
 export class PayloadTooLarge extends Schema.TaggedError<PayloadTooLarge>()('PayloadTooLarge', {
   limit: Schema.Number,
@@ -51,6 +52,7 @@ export const AppError = Schema.Union([
   Forbidden,
   GrantDenied,
   NotFound,
+  Conflict,
   InvalidInput,
   PayloadTooLarge,
   ResidentInactive,

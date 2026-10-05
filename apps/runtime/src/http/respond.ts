@@ -9,6 +9,7 @@ export const statusOf = (error: AppError): number =>
       Forbidden: () => 403,
       GrantDenied: () => 403,
       NotFound: () => 404,
+      Conflict: () => 409,
       InvalidInput: () => 400,
       PayloadTooLarge: () => 413,
       ResidentInactive: () => 409,

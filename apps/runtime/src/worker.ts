@@ -24,6 +24,8 @@ import { billingApi, billingDeps } from './billing/routes.ts'
 import { billingWebhook } from './billing/webhook.ts'
 import { runBillingCron } from './billing/cron.ts'
 import { billingMode, requireAccountPlan } from './billing/gates.ts'
+import { ownerWorkspace, sessionOwnerWorkspace } from './workspaces/resolution.ts'
+import { workspaceApi } from './workspaces/routes.ts'
 
 export { PersonalAgent } from './agent.ts'
 
@@ -64,7 +66,7 @@ const ChannelPick = Schema.Struct({ serverId: Bounded(64) })
 const ModelPick = Schema.Struct({ model: Bounded(128) })
 
 const json = (value: unknown, status = 200): Response => Response.json(value, { status })
-/** Every user has their own agent object, named by their user ID. */
+/** Only a verified workspace's owner user id supplies the native Agent name. */
 const agentOf = (env: RuntimeEnv, userId: string): DurableObjectStub<AgentRpc> => env.AGENTS.getByName(userId)
 
 type Route = (request: Request, agent: DurableObjectStub<AgentRpc>) => Promise<Response>
@@ -97,6 +99,7 @@ async function doorbellRoute(request: Request, env: RuntimeEnv, path: string): P
   if (request.method !== 'POST' || userId === '' || !(await hookTokenValid(env.CREDENTIAL_KEY, userId, token)))
     throw new NotFound({ what: path })
   await requireAccountPlan(env, userId)
+  await ownerWorkspace(env, userId)
   const body = await request.text()
   if (body.length > DOORBELL_BYTES) throw new InvalidInput({ reason: 'doorbell too large' })
   unwrap(
@@ -115,6 +118,7 @@ async function mcpEventsRoute(request: Request, env: RuntimeEnv, path: string): 
   if (request.method !== 'POST' || userId === '' || !(await eventsHookTokenValid(env.CREDENTIAL_KEY, userId, token)))
     throw new NotFound({ what: path })
   await requireAccountPlan(env, userId)
+  await ownerWorkspace(env, userId)
   const body = await readBytes(request, EVENT_BODY_BYTES)
   const result = unwrap(
     await agentOf(env, userId).mcpEventsWebhook({
@@ -253,11 +257,24 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
     const origin = request.headers.get('origin')
     if (origin !== null && origin !== new URL(env.APP_URL).origin) throw new Forbidden({ reason: 'origin' })
   }
-  const { userId } = await requireUserSession(request, env)
+  const session = await requireUserSession(request, env)
+  const { userId } = session
   const path = new URL(request.url).pathname
   if (path.startsWith('/api/billing/')) return Effect.runPromise(billingApi(request, env, userId))
+  if (path === '/api/workspaces' || path.startsWith('/api/workspaces/')) return workspaceApi(request, env, session)
   await requireAccountPlan(env, userId)
-  const agent = agentOf(env, userId)
+  const workspace = await sessionOwnerWorkspace(env, session, request.headers.get('x-purrable-workspace') ?? undefined)
+  const agent = agentOf(env, workspace.ownerUserId)
+  return ownerApiRequest(request, env, path, agent, userId)
+}
+
+async function ownerApiRequest(
+  request: Request,
+  env: RuntimeEnv,
+  path: string,
+  agent: DurableObjectStub<AgentRpc>,
+  userId: string,
+): Promise<Response> {
   if (path.startsWith('/api/agent/')) return agentRoute(request, agent, path)
   if (path === '/api/threads' || path.startsWith('/api/threads/')) return threadRoute(request, agent, path)
   if (path.startsWith('/api/mcp/')) return mcpRoute(request, agent, path, env)
