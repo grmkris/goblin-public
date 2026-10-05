@@ -1,3 +1,4 @@
+import { createContext, use } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AppWindowIcon } from 'lucide-react'
@@ -32,21 +33,38 @@ export function MessageText({ text }: { readonly text: string }) {
   )
 }
 
-/** The owner's words, as they typed them. */
-/** The owner's message; what an open App shared with it shows as a quiet note, never as their words. */
-/** A message in the user column: the owner's own, or one labelled with who wrote it (Telegram, an MCP client). */
+/** Opens a thread beside main: given where a note's thread label can lead somewhere (main, with its thread panel). */
+export const OpenThread = createContext<((thread: string) => void) | undefined>(undefined)
+
+/** Who wrote a message; the label of a note shared from a thread opens that thread where it can. */
+function Author({ author, thread }: { readonly author: string; readonly thread: string | undefined }) {
+  const open = use(OpenThread)
+  if (thread === undefined || open === undefined) return <p className="message-author">{author}</p>
+  return (
+    <button type="button" className="message-author message-author-link" onClick={() => open(thread)}>
+      {author}
+    </button>
+  )
+}
+
+/**
+ * A message in the user column: the owner's own, or one labelled with who wrote it (Telegram, an MCP client, a thread
+ * sharing a note). What an open App shared with it shows as a quiet note, never as their words.
+ */
 export function UserText({
   text,
   context = [],
   author,
+  thread,
 }: {
   readonly text: string
   readonly context?: readonly AppContext[]
   readonly author?: string | undefined
+  readonly thread?: string | undefined
 }) {
   return (
     <>
-      {author !== undefined && <p className="message-author">{author}</p>}
+      {author !== undefined && <Author author={author} thread={thread} />}
       <article className="bubble bubble-user">
         <p className="message-text">{text}</p>
       </article>

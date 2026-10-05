@@ -25,6 +25,8 @@ export type ChatMessage =
       readonly context?: readonly AppContext[]
       /** Who wrote it, when not the owner in this browser: Telegram, an MCP client, a subagent. */
       readonly author?: string
+      /** The thread a note shared into main came from. */
+      readonly thread?: string
       readonly timestamp?: number
     }
   | {
@@ -153,7 +155,7 @@ function assistantMessage(message: Record<string, unknown>, id: string, content:
   }
 }
 
-function entryMessage(message: Record<string, unknown>, id: string): ChatMessage[] {
+function entryMessage(message: Record<string, unknown>, id: string, thread?: string): ChatMessage[] {
   const content = text(message.content)
   if (message.role === 'toolResult')
     return [
@@ -173,7 +175,8 @@ function entryMessage(message: Record<string, unknown>, id: string): ChatMessage
     const shared = sharedContext(message.content)
     const context = shared.context.length === 0 ? {} : { context: shared.context }
     const author = shared.author === undefined ? {} : { author: shared.author }
-    return [{ id, role: 'user', text: shared.text, ...context, ...author, ...stamped(message) }]
+    const from = thread === undefined ? {} : { thread }
+    return [{ id, role: 'user', text: shared.text, ...context, ...author, ...from, ...stamped(message) }]
   }
   return []
 }
@@ -190,8 +193,11 @@ function messagesOf(entry: Record<string, unknown>): readonly ChatMessage[] {
   const cached = projected.get(entry)
   if (cached !== undefined) return cached
   if (MARKERS.has(identifier(entry.kind))) return []
+  // A note a thread shared into main names the thread it came from.
+  const shared = entry.kind === 'app.shared' ? record(entry.data)?.thread : undefined
+  const thread = isString(shared) ? shared : undefined
   const messages = records(entry.model).flatMap((message, index) =>
-    entryMessage(message, `${identifier(entry.id)}:${index}`),
+    entryMessage(message, `${identifier(entry.id)}:${index}`, thread),
   )
   projected.set(entry, messages)
   return messages

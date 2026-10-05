@@ -35,6 +35,8 @@ export type Part =
       readonly text: string
       readonly context?: readonly AppContext[]
       readonly author?: string
+      /** The thread a note shared into main came from. */
+      readonly thread?: string
     }
   | { readonly kind: 'reasoning'; readonly id: string; readonly text: string; readonly live: boolean }
   | { readonly kind: 'text'; readonly id: string; readonly text: string; readonly live: boolean }
@@ -119,6 +121,7 @@ export function conversationParts(projection: ConversationProjection): Part[] {
         text: message.text,
         ...(message.context && { context: message.context }),
         ...(message.author !== undefined && { author: message.author }),
+        ...(message.thread !== undefined && { thread: message.thread }),
       })
     else if (message.role === 'assistant') {
       for (const call of message.toolCalls) seen.add(call.id)

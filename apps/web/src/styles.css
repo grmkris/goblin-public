@@ -452,6 +452,18 @@ main.shell {
   color: var(--muted-foreground);
   font-size: 0.75rem;
 }
+/* A note shared from a thread: its label opens the thread. */
+.message-author-link {
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 150ms;
+}
+.message-author-link:hover,
+.message-author-link:focus-visible {
+  color: var(--foreground);
+  text-decoration-color: currentColor;
+}
 /* The desktop side panel the App fills in fullscreen mode, beside the conversation and under the header. */
 .app-panel {
   position: relative;

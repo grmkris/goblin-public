@@ -14,6 +14,7 @@ import type { ReactNode } from 'react'
 import { HistoryIcon } from 'lucide-react'
 import type { Part } from '../lib/parts.ts'
 import { PartView } from './parts/registry.tsx'
+import { OpenThread } from './parts/text-part.tsx'
 import { type InlineThreads, PartThreads } from './thread-replies.tsx'
 
 /**
@@ -39,39 +40,41 @@ export function Conversation({
 }) {
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
-      <MessageScroller>
-        <MessageScrollerViewport aria-label="Conversation">
-          <MessageScrollerContent>
-            {onEarlier !== undefined && (
-              <button type="button" className="history-action" onClick={onEarlier}>
-                <HistoryIcon aria-hidden />
-                Earlier messages
-              </button>
-            )}
-            {lead}
-            {parts.length === 0 && lead === undefined ? (
-              <Empty className="m-auto">
-                <EmptyHeader>
-                  <EmptyTitle>Your conversation starts here</EmptyTitle>
-                  <EmptyDescription>
-                    Ask anything. Your agent can use the tools you enable under Connections.
-                  </EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            ) : (
-              parts.map((part) => (
-                <MessageScrollerItem key={part.id} messageId={part.id} scrollAnchor={part.kind === 'user'}>
-                  <div className="flex flex-col">
-                    <PartView part={part} canSwitchModel={canSwitchModel} />
-                    {threads !== undefined && <PartThreads part={part} threads={threads} />}
-                  </div>
-                </MessageScrollerItem>
-              ))
-            )}
-          </MessageScrollerContent>
-        </MessageScrollerViewport>
-        <MessageScrollerButton direction="end" />
-      </MessageScroller>
+      <OpenThread value={threads?.open}>
+        <MessageScroller>
+          <MessageScrollerViewport aria-label="Conversation">
+            <MessageScrollerContent>
+              {onEarlier !== undefined && (
+                <button type="button" className="history-action" onClick={onEarlier}>
+                  <HistoryIcon aria-hidden />
+                  Earlier messages
+                </button>
+              )}
+              {lead}
+              {parts.length === 0 && lead === undefined ? (
+                <Empty className="m-auto">
+                  <EmptyHeader>
+                    <EmptyTitle>Your conversation starts here</EmptyTitle>
+                    <EmptyDescription>
+                      Ask anything. Your agent can use the tools you enable under Connections.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : (
+                parts.map((part) => (
+                  <MessageScrollerItem key={part.id} messageId={part.id} scrollAnchor={part.kind === 'user'}>
+                    <div className="flex flex-col">
+                      <PartView part={part} canSwitchModel={canSwitchModel} />
+                      {threads !== undefined && <PartThreads part={part} threads={threads} />}
+                    </div>
+                  </MessageScrollerItem>
+                ))
+              )}
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+          <MessageScrollerButton direction="end" />
+        </MessageScroller>
+      </OpenThread>
     </MessageScrollerProvider>
   )
 }

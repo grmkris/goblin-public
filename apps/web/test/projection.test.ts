@@ -51,6 +51,26 @@ describe('Pi committed state projected for the chat', () => {
     expect(user(tagged)).toEqual({ id: '2:0', role: 'user', text: 'Is the deploy green?', author: 'Claude Code' })
     expect(user(authorTag('Claude Code'))).toEqual({ id: '2:0', role: 'user', text: '[from Claude Code]' })
   })
+  it('names the thread a note shared into main came from', () => {
+    const content = [
+      { type: 'text', text: authorTag('thread "Car search"') },
+      { type: 'text', text: 'Three listings fit.' },
+    ]
+    const shared = projectSnapshot({
+      type: 'snapshot',
+      entries: [{ id: 9, kind: 'app.shared', data: { thread: '53' }, model: [{ role: 'user', content }] }],
+      tools: [],
+      inbox: [],
+    }).messages[0]
+    expect(shared).toEqual({
+      id: '9:0',
+      role: 'user',
+      text: 'Three listings fit.',
+      author: 'thread "Car search"',
+      thread: '53',
+    })
+    expect(user(content)).not.toHaveProperty('thread')
+  })
   it('projects committed tool progress and clears in-flight text after a run ends', () => {
     const snapshot = projectSnapshot({ type: 'snapshot', entries: [], tools: [], inbox: [] })
     const next = projectBatch(snapshot, [
