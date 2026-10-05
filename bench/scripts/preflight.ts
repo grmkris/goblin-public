@@ -88,7 +88,7 @@ export const preflight = Effect.fn('bench.preflight')(function* (
     return yield* fail('Native preflight gates failed; bulk run aborted. Inspect preflight.json.')
 })
 
-function validatePreflight({
+export function validatePreflight({
   native,
   answer,
   traces,
@@ -126,9 +126,9 @@ function validatePreflight({
       (!Array.isArray(payload['tools']) || payload['tools'].length === 0 || payload['tool_choice'] === 'auto'),
   )
   const capped = payloads.every(
-    (payload) =>
+    (payload, index) =>
       (payload['max_tokens'] ?? payload['max_completion_tokens']) ===
-      (payload['model'] === writerId ? 2448 : readerMaxOutputTokens),
+      (traces[index]?.scope === actor ? 2448 : readerMaxOutputTokens),
   )
   const usageBounded = traces.every((trace) => !trace.unknownUsage && !exceededReservation(trace))
   const passed =
