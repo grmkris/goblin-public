@@ -1,9 +1,15 @@
-import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Schema } from 'effect'
 import { AppView, ConversationView, type CreateConversation, type UpdateConversation } from '@purrable/contracts'
 import { failureText, request } from '../lib/boundary.ts'
 import { BrowserPiEvents } from '../lib/conversation-stream.ts'
-import { EMPTY_WORKSPACE, WorkspaceFeedConnection, type WorkspaceState, applyChanges } from '../lib/workspace-feed.ts'
+import {
+  EMPTY_WORKSPACE,
+  WorkspaceFeedConnection,
+  type WorkspaceState,
+  applyChanges,
+  withPendingApps,
+} from '../lib/workspace-feed.ts'
 
 const decodeView = Schema.decodeUnknownSync(ConversationView)
 const decodeApp = Schema.decodeUnknownSync(AppView)
@@ -24,8 +30,35 @@ type WorkspaceFeed = WorkspaceState & {
 const WorkspaceFeedContext = createContext<WorkspaceFeed | undefined>(undefined)
 
 /**
- * The owner's conversations, what each is doing and their kept Apps, for the whole app, from one live feed opened once someone is
- * signed in with an agent (`enabled`). Creating or changing a conversation shows at once; the feed confirms it.
+ * The feed's state, live while `enabled`, with the Apps the owner just kept or closed (`pending`) shown so over whatever
+ * the feed sends until it sends them so too.
+ */
+function useLiveFeed(enabled: boolean) {
+  const [state, setState] = useState<WorkspaceState>(EMPTY_WORKSPACE)
+  const [error, setError] = useState('')
+  const pending = useRef(new Map<string, AppView>())
+  useEffect(() => {
+    if (!enabled) return
+    const publish = (next: WorkspaceState) => {
+      const shown = withPendingApps(next, pending.current)
+      for (const id of shown.settled) pending.current.delete(id)
+      setState(shown.state)
+    }
+    const connection = new WorkspaceFeedConnection(
+      () => new BrowserPiEvents('/api/workspace/events'),
+      publish,
+      (problem) => setError(problem ?? ''),
+    )
+    connection.connect()
+    return () => connection.dispose()
+  }, [enabled])
+  return { state, setState, error, setError, pending }
+}
+
+/**
+ * The owner's conversations, what each is doing and their kept Apps, for the whole app, from one live feed opened once
+ * someone is signed in with an agent (`enabled`). Creating or changing a conversation shows at once; the feed confirms
+ * it.
  */
 export function WorkspaceFeedProvider({
   enabled,
@@ -34,18 +67,7 @@ export function WorkspaceFeedProvider({
   readonly enabled: boolean
   readonly children: ReactNode
 }) {
-  const [state, setState] = useState<WorkspaceState>(EMPTY_WORKSPACE)
-  const [error, setError] = useState('')
-  useEffect(() => {
-    if (!enabled) return
-    const connection = new WorkspaceFeedConnection(
-      () => new BrowserPiEvents('/api/workspace/events'),
-      setState,
-      (problem) => setError(problem ?? ''),
-    )
-    connection.connect()
-    return () => connection.dispose()
-  }, [enabled])
+  const { state, setState, error, setError, pending } = useLiveFeed(enabled)
   const markRead = useCallback((id: string) => {
     const at = Math.floor(Date.now() / 1000)
     setState((current) => {
@@ -62,6 +84,7 @@ export function WorkspaceFeedProvider({
     const show = (view: ConversationView) =>
       setState((current) => applyChanges(current, [{ type: 'conversation', conversation: view }]))
     const showApp = (app: AppView) => {
+      pending.current.set(app.id, app)
       setState((current) => applyChanges(current, [{ type: 'app', app }]))
       return app
     }
@@ -78,7 +101,8 @@ export function WorkspaceFeedProvider({
         try {
           showApp(decodeApp(await request(`/api/apps/${id}`, { method: 'PATCH', body: { closed: true } })))
         } catch (failure) {
-          if (before !== undefined) showApp(before)
+          pending.current.delete(id)
+          if (before !== undefined) setState((current) => applyChanges(current, [{ type: 'app', app: before }]))
           throw failure
         }
       },

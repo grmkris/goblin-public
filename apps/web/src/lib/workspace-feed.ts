@@ -55,6 +55,25 @@ export function applyChanges(state: WorkspaceState, changes: readonly WorkspaceC
   return { conversations, activity, apps }
 }
 
+/**
+ * `state` with the Apps the owner just kept or closed shown as they will be, until the feed itself shows them so: a
+ * change the feed sends meanwhile about something else must not bring a closed App back (and load it again). `settled`
+ * are the Apps the feed now agrees on, open or closed, which need no overlay any more.
+ */
+export function withPendingApps(
+  state: WorkspaceState,
+  pending: ReadonlyMap<string, AppView>,
+): { readonly state: WorkspaceState; readonly settled: readonly string[] } {
+  const settled: string[] = []
+  const changes: WorkspaceChange[] = []
+  for (const [id, app] of pending) {
+    const shown = state.apps.find((candidate) => candidate.id === id)
+    if (shown !== undefined && (shown.closedAt === undefined) === (app.closedAt === undefined)) settled.push(id)
+    else changes.push({ type: 'app', app })
+  }
+  return { state: changes.length === 0 ? state : applyChanges(state, changes), settled }
+}
+
 /** What a conversation's agent is doing now. */
 export const activityState = (state: WorkspaceState, id: string): ConversationActivity['state'] =>
   state.activity.get(id)?.state ?? 'idle'

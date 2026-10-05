@@ -8,6 +8,7 @@ import {
   activityState,
   applyChanges,
   fromSnapshot,
+  withPendingApps,
 } from '../src/lib/workspace-feed.ts'
 
 const view = (id: string, extra: Partial<ConversationView> = {}): ConversationView => ({
@@ -165,5 +166,26 @@ describe('the workspace feed connection', () => {
     connection.dispose()
     expect(queued).toHaveLength(0)
     expect(EMPTY_WORKSPACE.conversations).toEqual([])
+  })
+})
+
+describe('Apps the owner just changed', () => {
+  it('stay as the owner left them through unrelated feed changes, until the feed shows them so', () => {
+    const open = fromSnapshot({ conversations: [MAIN], activity: [], apps: [app('4'), app('5')] })
+    const closing = new Map([['4', app('4', { closedAt: 9 })]])
+    const meanwhile = applyChanges(open, [{ type: 'activity', activity: { id: '1', state: 'working', since: 2 } }])
+    const shown = withPendingApps(meanwhile, closing)
+    expect(shown.state.apps.find(({ id }) => id === '4')?.closedAt).toBe(9)
+    expect(shown.state.apps.find(({ id }) => id === '5')?.closedAt).toBeUndefined()
+    expect(shown.settled).toEqual([])
+    const confirmed = applyChanges(meanwhile, [{ type: 'app', app: app('4', { closedAt: 10 }) }])
+    expect(withPendingApps(confirmed, closing)).toEqual({ state: confirmed, settled: ['4'] })
+  })
+  it('show an App just kept before the feed lists it, and stop once it does', () => {
+    const empty = fromSnapshot({ conversations: [MAIN], activity: [], apps: [] })
+    const keeping = new Map([['6', app('6')]])
+    expect(withPendingApps(empty, keeping).state.apps.map(({ id }) => id)).toEqual(['6'])
+    const listed = applyChanges(empty, [{ type: 'app', app: app('6') }])
+    expect(withPendingApps(listed, keeping).settled).toEqual(['6'])
   })
 })
