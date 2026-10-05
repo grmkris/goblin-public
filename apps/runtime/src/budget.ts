@@ -5,12 +5,28 @@ import { BudgetExhausted } from './http/errors.ts'
 import { appUsageDaily } from './storage/schema.ts'
 
 const DAY_SECONDS = 86_400
-/** Model tokens a user's agent may spend per UTC day when `MODEL_DAILY_TOKENS` is not set. */
+/** Default for injected numeric native-fixture budgets; deployed allowances come from the account plan. */
 export const DEFAULT_DAILY_TOKENS = 300_000
 
 export const dailyTokenLimit = (value: string | undefined): number => {
   const parsed = Number(value)
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_DAILY_TOKENS
+}
+
+/** Optional per-model price multipliers. Missing or invalid entries keep the neutral weight of one. */
+export const modelTokenWeights = (value: string | undefined): Readonly<Record<string, number>> => {
+  if (value === undefined || value.trim() === '') return {}
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        ([model, weight]) => model.length > 0 && Number.isFinite(weight) && typeof weight === 'number' && weight > 0,
+      ),
+    )
+  } catch {
+    return {}
+  }
 }
 
 /** The UTC day containing `now` (seconds) as `YYYY-MM-DD`, and when it ends. */
@@ -53,24 +69,32 @@ export class UsageStore implements UsageLedger {
  */
 export class ModelBudget {
   readonly #ledger: UsageLedger
-  readonly #limit: number
-  constructor(ledger: UsageLedger, limit: number) {
+  readonly #limit: number | ((now: number) => Promise<number>)
+  readonly #weights: Readonly<Record<string, number>>
+  constructor(
+    ledger: UsageLedger,
+    limit: number | ((now: number) => Promise<number>),
+    weights: Readonly<Record<string, number>> = {},
+  ) {
     this.#ledger = ledger
     this.#limit = limit
+    this.#weights = weights
   }
 
-  today(now: number): UsageToday {
+  async today(now: number): Promise<UsageToday> {
     const { day, resetsAt } = utcDay(now)
-    return { used: this.#ledger.tokens(day), limit: this.#limit, resetsAt }
+    const limit = typeof this.#limit === 'number' ? this.#limit : await this.#limit(now)
+    return { used: this.#ledger.tokens(day), limit, resetsAt }
   }
 
-  record(tokens: number, now: number): void {
-    if (Number.isFinite(tokens) && tokens > 0) this.#ledger.add(utcDay(now).day, Math.round(tokens), now)
+  record(tokens: number, now: number, model?: string): void {
+    const weight = model === undefined ? 1 : (this.#weights[model] ?? 1)
+    if (Number.isFinite(tokens) && tokens > 0) this.#ledger.add(utcDay(now).day, Math.ceil(tokens * weight), now)
   }
 
   /** Fails with `BudgetExhausted` once today's spend has reached the limit. */
-  require(now: number): void {
-    const today = this.today(now)
+  async require(now: number): Promise<void> {
+    const today = await this.today(now)
     if (today.used >= today.limit) throw new BudgetExhausted({ limit: today.limit, resetsAt: today.resetsAt })
   }
 }

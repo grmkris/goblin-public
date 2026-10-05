@@ -24,6 +24,9 @@ export class BudgetExhausted extends Schema.TaggedError<BudgetExhausted>()('Budg
   limit: Schema.Number,
   resetsAt: Schema.Number,
 }) {}
+export class SubscriptionRequired extends Schema.TaggedError<SubscriptionRequired>()('SubscriptionRequired', {
+  subscribe: Schema.String,
+}) {}
 export class NeedsAuthorization extends Schema.TaggedError<NeedsAuthorization>()('NeedsAuthorization', {
   serverId: Schema.String,
 }) {}
@@ -52,6 +55,7 @@ export const AppError = Schema.Union([
   PayloadTooLarge,
   ResidentInactive,
   BudgetExhausted,
+  SubscriptionRequired,
   NeedsAuthorization,
   UpstreamMcp,
   Internal,

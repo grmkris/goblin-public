@@ -2,7 +2,10 @@ import type { Extension, ToolRegistration } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
-import { ModelBudget, UsageStore, dailyTokenLimit } from './budget.ts'
+import * as Effect from 'effect/Effect'
+import * as Layer from 'effect/Layer'
+import { Entitlements, type EntitlementPolicy } from './billing/gates.ts'
+import { ModelBudget, UsageStore, modelTokenWeights } from './budget.ts'
 import { CapabilityProfiles, type PiTools } from './capabilities/profiles.ts'
 import { TelegramChannel } from './channel/channel.ts'
 import { nowMillis, nowSeconds } from './clock.ts'
@@ -42,6 +45,7 @@ export type ComposeInput = {
   readonly subagentTool: ToolRegistration
   /** Schedules the Telegram replies alarm. */
   readonly scheduleReplies: () => void
+  readonly entitlements: EntitlementPolicy
 }
 
 /** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
@@ -79,11 +83,16 @@ export async function composeServices(
     // SAFETY: the platform fetch is the outbound MCP/OAuth boundary; tokens are added only by the SDK transport.
     fetch: globalThis.fetch.bind(globalThis),
   })
-  const budget = new ModelBudget(new UsageStore(db), dailyTokenLimit(env.MODEL_DAILY_TOKENS))
+  const budget = new ModelBudget(
+    new UsageStore(db),
+    async () => (await Effect.runPromise(input.entitlements.require())).dailyTokens,
+    modelTokenWeights(env.MODEL_TOKEN_WEIGHTS),
+  )
   const options = modelOptions(env.MODELS, env.MODEL_ID)
   const models = new ModelPicker(new ModelChoiceStore(db), options)
-  const namer = new CheapModel(input.pi.models, memoryModelId(env.MEMORY_MODEL, options), (tokens) =>
-    budget.record(tokens, nowSeconds()),
+  const cheapModelId = memoryModelId(env.MEMORY_MODEL, options)
+  const namer = new CheapModel(input.pi.models, cheapModelId, (tokens) =>
+    budget.record(tokens, nowSeconds(), cheapModelId),
   )
   const memory = new MainMemory(db, harness, namer)
   const { recall } = input.memory
@@ -105,6 +114,9 @@ export async function composeServices(
   })
   const channel = new TelegramChannel(db, cipher, input.scheduleReplies)
   return ManagedRuntime.make(
-    agentLayer({ host, resident, conversations, budget, models, memory, skills, learner, channel, capabilities }),
+    Layer.mergeAll(
+      agentLayer({ host, resident, conversations, budget, models, memory, skills, learner, channel, capabilities }),
+      Layer.succeed(Entitlements, input.entitlements),
+    ),
   )
 }

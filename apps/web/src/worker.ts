@@ -4,6 +4,8 @@ import { canonicalRedirect } from '@purrable/runtime/canonical'
 export { PersonalAgent } from '@purrable/runtime/agent'
 
 export default {
+  scheduled: (event: ScheduledController, env: Parameters<typeof runtime.scheduled>[1]) =>
+    runtime.scheduled(event, env),
   async fetch(request: Request, env: Parameters<typeof runtime.fetch>[1], ctx: ExecutionContext): Promise<Response> {
     const redirect = canonicalRedirect(request, env.APP_URL)
     if (redirect !== undefined) return redirect
@@ -15,7 +17,7 @@ export default {
       url.pathname === '/health' ||
       url.pathname === '/mcp'
     )
-      return runtime.fetch(request, env)
+      return runtime.fetch(request, env, ctx)
     return page.fetch(request)
   },
 }

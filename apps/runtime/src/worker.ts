@@ -1,4 +1,5 @@
 import * as Schema from 'effect/Schema'
+import * as Effect from 'effect/Effect'
 import { AppContext, CapabilityChange } from '@purrable/contracts'
 import type { AgentRpc, RuntimeEnv } from './env.ts'
 import {
@@ -17,6 +18,10 @@ import { unwrap } from './http/rpc.ts'
 import { handleInboundMcp } from './inbound/route.ts'
 import { hookTokenValid } from './channel/doorbell.ts'
 import { canonicalRedirect } from './http/canonical.ts'
+import { billingApi, billingDeps } from './billing/routes.ts'
+import { billingWebhook } from './billing/webhook.ts'
+import { runBillingCron } from './billing/cron.ts'
+import { billingMode, requireAccountPlan } from './billing/gates.ts'
 
 export { PersonalAgent } from './agent.ts'
 
@@ -89,6 +94,7 @@ async function doorbellRoute(request: Request, env: RuntimeEnv, path: string): P
   const [, userId = '', token = ''] = /^\/hooks\/myagent\/([\w-]{1,200})\/([\w-]{43})$/u.exec(path) ?? []
   if (request.method !== 'POST' || userId === '' || !(await hookTokenValid(env.CREDENTIAL_KEY, userId, token)))
     throw new NotFound({ what: path })
+  await requireAccountPlan(env, userId)
   const body = await request.text()
   if (body.length > DOORBELL_BYTES) throw new InvalidInput({ reason: 'doorbell too large' })
   unwrap(
@@ -225,6 +231,8 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   }
   const { userId } = await requireUserSession(request, env)
   const path = new URL(request.url).pathname
+  if (path.startsWith('/api/billing/')) return Effect.runPromise(billingApi(request, env, userId))
+  await requireAccountPlan(env, userId)
   const agent = agentOf(env, userId)
   if (path.startsWith('/api/agent/')) return agentRoute(request, agent, path)
   if (path === '/api/threads' || path.startsWith('/api/threads/')) return threadRoute(request, agent, path)
@@ -238,8 +246,24 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   throw new NotFound({ what: path })
 }
 
+async function admittedRoute(
+  request: Request,
+  env: RuntimeEnv,
+  ctx: Pick<ExecutionContext, 'waitUntil'>,
+): Promise<Response> {
+  const path = new URL(request.url).pathname
+  if (path === '/mcp') return handleInboundMcp(request, env)
+  if (path === '/hooks/dodo') return Effect.runPromise(billingWebhook(billingDeps(env), request, ctx))
+  if (path.startsWith('/hooks/')) return doorbellRoute(request, env, path)
+  if (path.startsWith('/api/')) return apiRequest(request, env)
+  throw new NotFound({ what: path })
+}
+
 export default {
-  async fetch(request: Request, env: RuntimeEnv): Promise<Response> {
+  async scheduled(_event: ScheduledController, env: RuntimeEnv): Promise<void> {
+    await Effect.runPromise(runBillingCron(billingDeps(env)))
+  },
+  async fetch(request: Request, env: RuntimeEnv, ctx: Pick<ExecutionContext, 'waitUntil'>): Promise<Response> {
     const redirect = canonicalRedirect(request, env.APP_URL)
     if (redirect !== undefined) return redirect
     const url = new URL(request.url)
@@ -250,16 +274,15 @@ export default {
         stage: env.STAGE,
         signup: signupMode(env.SIGNUP_MODE),
         mail: mailerOf(env) !== undefined,
+        billing: { mode: env.DODO_PAYMENTS_ENVIRONMENT ?? billingMode(env), configured: billingDeps(env) !== undefined },
       })
     if (url.pathname.startsWith('/.well-known/oauth-protected-resource'))
       return secured(Response.json(protectedResourceMetadata(env)))
     if (url.pathname.startsWith('/.well-known/') || url.pathname.startsWith('/api/auth/'))
       return handleAuth(request, env)
-    if (url.pathname === '/mcp') return handleInboundMcp(request, env)
-    const hook = url.pathname.startsWith('/hooks/')
-    if (!hook && !url.pathname.startsWith('/api/')) return Response.json({ error: 'NotFound' }, { status: 404 })
+
     try {
-      return secured(hook ? await doorbellRoute(request, env, url.pathname) : await apiRequest(request, env))
+      return secured(await admittedRoute(request, env, ctx))
     } catch (cause) {
       return failureResponse(cause, url.pathname, requestIdOf(request))
     }

@@ -263,3 +263,5 @@ export const authorTag = (author: string): string => `[from ${author.replaceAll(
 
 /** The author named by a leading tag block, if that is what the block is. */
 export const authorOf = (block: string): string | undefined => AUTHOR_TAG.exec(block)?.[1]
+
+export { BillingState } from './billing.ts'

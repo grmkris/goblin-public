@@ -414,6 +414,7 @@ are never pruned. Workers cannot pin resolved DNS IPs; trusted DNS is the docume
 | Agent DO SQLite | `app_mcp_event_grants`, `app_mcp_event_subscriptions`, `app_event_deliveries`, `app_mcp_event_consumers`, `app_event_consumer_receipts` | Drizzle: exact Events grants, leases, encrypted receipts and independent acknowledgements. |
 | Agent DO SQLite | `app_skill_catalog_state` | Drizzle: durable catalog invalidation generations. |
 | D1 `PurrableAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `passkey`, `oauth*` | Better Auth, `apps/runtime/migrations`. |
+| D1 `PurrableAuth` | `app_billing_accounts`, `app_billing_subscriptions`, `app_billing_inbox`, `app_billing_checkouts` | Drizzle: account payments and durable reconciliation. |
 
 Application tables are declared in `storage/schema.ts` and migrated inline in `storage/migrations.ts`.
 `app_client_sessions` was dropped when inbound clients moved to main; it is not a current table.
@@ -425,8 +426,8 @@ meet its contract (ADR 0001). SQLite transactions are short and never span model
 
 `apps/web/alchemy.run.ts` declares the Vite Worker, the `PersonalAgent` namespace and the D1 database; it is the only
 deployment entrypoint. The local stage runs in workerd with CLIProxy; the dev stage calls Railway LiteLLM with a
-dedicated model-limited, budget-capped key. Offered models and the per-agent token allowance come from stage
-configuration. The key's provider caps and shared quotas are managed outside this repository; source does not prove
+dedicated model-limited, budget-capped key. Offered models and price weights come from stage configuration; the per-account allowance comes from its plan or
+operator override. The key's provider caps and shared quotas are managed outside this repository; source does not prove
 their active values. Secrets are Worker secret bindings, never in the browser bundle.
 
 

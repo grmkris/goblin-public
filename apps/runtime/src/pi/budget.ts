@@ -1,6 +1,6 @@
 import { GenerationTask, ToolTask, defineExtension, hook } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
-import { Budget, nowSecondsEffect } from '../services.ts'
+import { Budget, attempt, nowSecondsEffect } from '../services.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
 const EXHAUSTED =
@@ -8,7 +8,8 @@ const EXHAUSTED =
 
 const spent = Effect.gen(function* () {
   const budget = yield* Budget
-  const today = budget.today(yield* nowSecondsEffect)
+  const now = yield* nowSecondsEffect
+  const today = yield* attempt(() => budget.today(now))
   return today.used >= today.limit
 })
 
@@ -26,13 +27,13 @@ export function budgetExtension(run: RunProgram) {
           await run(
             Effect.gen(function* () {
               const budget = yield* Budget
-              budget.record(message.usage.totalTokens, yield* nowSecondsEffect)
+              budget.record(message.usage.totalTokens, yield* nowSecondsEffect, message.model)
             }),
           )
         },
       }),
       hook(ToolTask, {
-        beforeTool: async () => ((await run(spent)) ? { block: EXHAUSTED } : undefined),
+        beforeTool: async () => ((await run(spent).catch(() => true)) ? { block: EXHAUSTED } : undefined),
       }),
     ],
   })

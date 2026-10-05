@@ -3,6 +3,7 @@ import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { type AppError, toAppError } from './http/errors.ts'
+import type { Entitlements } from './billing/gates.ts'
 import type { ModelBudget } from './budget.ts'
 import type { ModelPicker } from './models.ts'
 import type { McpHost } from './mcp/host.ts'
@@ -27,6 +28,7 @@ export class Channel extends Context.Service<Channel, TelegramChannel>()('purrab
 /** What each conversation switched off: the one gate every MCP, skills and subagent tool asks (ADR 0010). */
 export class Capabilities extends Context.Service<Capabilities, CapabilityProfiles>()('purrable/Capabilities') {}
 export type AgentServices =
+  | Entitlements
   | Mcp
   | Resident
   | Conversations
@@ -49,7 +51,7 @@ export const agentLayer = (services: {
   readonly learner: SkillLearner
   readonly channel: TelegramChannel
   readonly capabilities: CapabilityProfiles
-}): Layer.Layer<AgentServices> =>
+}): Layer.Layer<Exclude<AgentServices, Entitlements>> =>
   Layer.mergeAll(
     Layer.succeed(Mcp, services.host),
     Layer.succeed(Resident, services.resident),
@@ -84,5 +86,5 @@ export const requireResident: Effect.Effect<void, AppError, Resident> = Effect.g
 export const requireBudget: Effect.Effect<void, AppError, Budget> = Effect.gen(function* () {
   const budget = yield* Budget
   const now = yield* nowSecondsEffect
-  yield* attemptSync(() => budget.require(now))
+  yield* attempt(() => budget.require(now))
 })

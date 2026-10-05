@@ -42,6 +42,7 @@ import {
   requireBudget,
   requireResident,
 } from './services.ts'
+import { accountEntitlements, Entitlements, type EntitlementPolicy } from './billing/gates.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
 import { nowMillis, nowSeconds } from './clock.ts'
 import type { ServerSource } from './mcp/servers.ts'
@@ -112,6 +113,11 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     runApplicationMigrations(this.ctx.storage)
   }
 
+  /** Tests inject account authority here; the deployed object always reads its own account in auth D1. */
+  protected entitlementPolicy(): EntitlementPolicy {
+    return accountEntitlements(this.env, () => this.name)
+  }
+
   #services(): Promise<Runtime> {
     this.#runtime ??= composeServices({
       storage: this.ctx.storage,
@@ -122,6 +128,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       memory: this.#memory,
       subagentTool: this.#subagentTool,
       scheduleReplies: () => void this.schedule(5, 'channelReplies'),
+      entitlements: this.entitlementPolicy(),
     })
     this.#runtime.catch(() => {
       this.#runtime = undefined
@@ -138,7 +145,12 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
 
   async #runOrThrow<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<A> {
-    const exit = await this.#exit(program)
+    const exit = await this.#exit(
+      Effect.andThen(
+        Entitlements.use((plans) => plans.require()),
+        program,
+      ),
+    )
     if (Exit.isSuccess(exit)) return exit.value
     const result = encodeExit(exit)
     throw result.ok ? toAppError(undefined) : toAppError(result.error)
@@ -147,6 +159,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   /** An owner request: renew resident authority, then run the program. */
   async #owner<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
     const renewed = Effect.gen(function* () {
+      yield* Entitlements.use((plans) => plans.require())
       const resident = yield* Resident
       const now = yield* nowSecondsEffect
       resident.renew(now)
@@ -230,7 +243,8 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return this.#owner(
       Effect.gen(function* () {
         const budget = yield* Budget
-        return budget.today(yield* nowSecondsEffect)
+        const now = yield* nowSecondsEffect
+        return yield* attempt(() => budget.today(now))
       }),
     )
   }
@@ -520,7 +534,14 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   /** An inbound client request: no resident renewal (only the owner renews). */
   async #client<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
-    return encodeExit(await this.#exit(program))
+    return encodeExit(
+      await this.#exit(
+        Effect.andThen(
+          Entitlements.use((plans) => plans.require()),
+          program,
+        ),
+      ),
+    )
   }
 
   async sessionSnapshot(session: string): Promise<JsonObject> {

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { resolveStage } from '../../scripts/stage-config.ts'
 
 const root = fileURLToPath(new URL('./', import.meta.url))
+const runtimeStage = (name: string) => (name === 'local' || name === 'dev' || name === 'prod' ? name : 'test')
 
 export default Alchemy.Stack(
   'Purrable',
@@ -24,6 +25,11 @@ export default Alchemy.Stack(
       )
     if (stage.name === 'dev' && signupMode === 'open')
       return yield* Effect.die(new Error('dev_sign_up_must_be_closed_or_invite_only'))
+    const billingEnvironment = yield* Config.String('DODO_PAYMENTS_ENVIRONMENT').pipe(
+      Config.withDefault(stage.name === 'prod' ? 'live_mode' : 'test_mode'),
+    )
+    if ((stage.name === 'prod') !== (billingEnvironment === 'live_mode'))
+      return yield* Effect.die(new Error('Dodo stage and billing mode must match'))
     const db = yield* Cloudflare.D1.Database('PurrableAuth', {
       name: stage.resourceName('auth'),
       migrations: fileURLToPath(new URL('../../apps/runtime/migrations', import.meta.url)),
@@ -34,6 +40,7 @@ export default Alchemy.Stack(
       rootDir: root,
       main: 'src/worker.ts',
       workersDev: true,
+      crons: ['17 * * * *'],
       ...(domain === ''
         ? {}
         : {
@@ -67,10 +74,17 @@ export default Alchemy.Stack(
         MODELS: Config.String('PURRABLE_MODELS').pipe(Config.withDefault('')),
         MODEL_KEY: Config.Redacted('PURRABLE_MODEL_KEY').pipe(Config.withDefault(Redacted.make(''))),
         MODEL_DAILY_TOKENS: Config.String('PURRABLE_MODEL_DAILY_TOKENS').pipe(Config.withDefault('300000')),
+        MODEL_TOKEN_WEIGHTS: Config.String('PURRABLE_MODEL_TOKEN_WEIGHTS').pipe(Config.withDefault('{}')),
         MEMORY_MODEL: Config.String('PURRABLE_MEMORY_MODEL').pipe(Config.withDefault('')),
         MCP_SERVERS: Config.String('PURRABLE_MCP_SERVERS').pipe(Config.withDefault('[]')),
         CREDENTIAL_KEY: Config.Redacted('PURRABLE_CREDENTIAL_KEY'),
-        STAGE: stage.local ? 'local' : stage.name === 'dev' ? 'dev' : stage.name === 'prod' ? 'prod' : 'test',
+        DODO_PAYMENTS_ENVIRONMENT: billingEnvironment,
+        DODO_PAYMENTS_API_KEY: Config.Redacted('DODO_PAYMENTS_API_KEY').pipe(Config.withDefault(Redacted.make(''))),
+        DODO_PAYMENTS_WEBHOOK_KEY: Config.Redacted('DODO_PAYMENTS_WEBHOOK_KEY').pipe(
+          Config.withDefault(Redacted.make('')),
+        ),
+        DODO_PRODUCT_ID: Config.Redacted('DODO_PRODUCT_ID').pipe(Config.withDefault(Redacted.make(''))),
+        STAGE: runtimeStage(stage.name),
       },
     })
     return { url: web.url, authDatabase: db.databaseId }

@@ -126,9 +126,15 @@ export interface RuntimeEnv {
   readonly MEMORY_MODEL?: string
   /** Model tokens each user's agent may spend per UTC day; see `budget.ts` for the default. */
   readonly MODEL_DAILY_TOKENS?: string
+  /** JSON object of model id to price multiplier; omitted models count at one. */
+  readonly MODEL_TOKEN_WEIGHTS?: string
   /** JSON list of outbound MCP servers: `[{ serverId, endpoint, issuer?, resource? }]`. */
   readonly MCP_SERVERS?: string
   /** 32 random bytes, base64: encrypts outbound OAuth credentials at rest. */
   readonly CREDENTIAL_KEY: string
   readonly STAGE?: 'local' | 'dev' | 'prod' | 'test'
+  readonly DODO_PAYMENTS_API_KEY?: string
+  readonly DODO_PAYMENTS_WEBHOOK_KEY?: string
+  readonly DODO_PAYMENTS_ENVIRONMENT?: 'test_mode' | 'live_mode'
+  readonly DODO_PRODUCT_ID?: string
 }
