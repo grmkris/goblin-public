@@ -37,23 +37,26 @@ type Threads = {
   readonly views: readonly ThreadView[]
   readonly error: string
   readonly refresh: () => void
-  /** A thread branched from main at `from` (an entry id), or an empty one; the page moves to it. */
-  readonly create: (from?: number) => Promise<void>
+  /** A thread branched from main at `from` (an entry id), or an empty one; undefined when that failed (see `error`). */
+  readonly create: (from?: number) => Promise<ThreadView | undefined>
   readonly update: (id: string, change: ThreadChange) => Promise<void>
 }
 
 const ThreadsContext = createContext<Threads | undefined>(undefined)
 
-/** The agent's conversations for every view of the chat: the list, the bar and the branch action share them. */
-export function ThreadsProvider({ children }: { readonly children: ReactNode }) {
+/**
+ * The agent's conversations for the whole app (the sidebar, the chat bar, the reply rows), fetched once someone is
+ * signed in (`enabled`) and again whenever a view changes them.
+ */
+export function ThreadsProvider({ enabled, children }: { readonly enabled: boolean; readonly children: ReactNode }) {
   const [views, setViews] = useState<readonly ThreadView[]>([])
   const [error, setError] = useState('')
-  const navigate = useNavigate()
   const refresh = useCallback(() => {
+    if (!enabled) return
     request('/api/threads')
       .then((data) => setViews(decodeThreads(data)))
       .catch((failure: unknown) => setError(failureText(failure)))
-  }, [])
+  }, [enabled])
   useEffect(refresh, [refresh])
   const value = useMemo<Threads>(
     () => ({
@@ -64,9 +67,10 @@ export function ThreadsProvider({ children }: { readonly children: ReactNode }) 
         try {
           const view = decodeThread(await request('/api/threads', { body: from === undefined ? {} : { from } }))
           refresh()
-          await navigate({ to: '/t/$threadId', params: { threadId: view.id } })
+          return view
         } catch (failure) {
           setError(failureText(failure))
+          return undefined
         }
       },
       update: async (id, change) => {
@@ -78,9 +82,20 @@ export function ThreadsProvider({ children }: { readonly children: ReactNode }) 
         }
       },
     }),
-    [views, error, refresh, navigate],
+    [views, error, refresh],
   )
   return <ThreadsContext.Provider value={value}>{children}</ThreadsContext.Provider>
+}
+
+/** Moves the page to a conversation the owner just created (nothing when creating it failed). */
+export function useGoToThread(): (created: ThreadView | undefined) => void {
+  const navigate = useNavigate()
+  return useCallback(
+    (created) => {
+      if (created) void navigate({ to: '/t/$threadId', params: { threadId: created.id } })
+    },
+    [navigate],
+  )
 }
 
 export function useThreads(): Threads {
@@ -146,11 +161,12 @@ function ThreadItem({
 /** Main, then the threads newest first with their subagents, and the archived ones behind a toggle. */
 export function ThreadList({ current, onPick }: { readonly current: string; readonly onPick?: () => void }) {
   const { views, create } = useThreads()
+  const goTo = useGoToThread()
   const tree = useMemo(() => threadTree(views), [views])
   const [showArchived, setShowArchived] = useState(false)
   return (
     <nav className="thread-list" aria-label="Conversations">
-      <Button variant="outline" onClick={() => void create()}>
+      <Button variant="outline" onClick={() => void create().then(goTo)}>
         <MessageSquarePlusIcon data-icon="inline-start" />
         New thread
       </Button>

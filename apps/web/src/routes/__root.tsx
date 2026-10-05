@@ -2,6 +2,7 @@ import { HeadContent, Link, Outlet, Scripts, createRootRoute, useRouterState } f
 import type { ReactNode } from 'react'
 import { CatIcon, LogOutIcon, MessageCircleIcon, PlugIcon, SettingsIcon } from 'lucide-react'
 import { Button, DropdownMenuGroup, DropdownMenuItem, SiteHeader, SiteHeaderBrand } from '@purrable/ui'
+import { ThreadsProvider } from '../components/threads.tsx'
 import { SessionProvider, signOut, useSession } from '../lib/session.tsx'
 import css from '../styles.css?url'
 
@@ -35,12 +36,20 @@ const DESTINATIONS = [
 function Root() {
   return (
     <SessionProvider>
-      <Header />
-      <main className="shell">
-        <Outlet />
-      </main>
+      <SignedInThreads>
+        <Header />
+        <main className="shell">
+          <Outlet />
+        </main>
+      </SignedInThreads>
     </SessionProvider>
   )
+}
+
+/** The agent's conversations, loaded once someone is signed in. */
+function SignedInThreads({ children }: { readonly children: ReactNode }) {
+  const [state] = useSession()
+  return <ThreadsProvider enabled={state === 'signed-in'}>{children}</ThreadsProvider>
 }
 
 /** The shared myapps header, once someone is signed in and not in the middle of signing in. */
