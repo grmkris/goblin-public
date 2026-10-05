@@ -84,6 +84,22 @@ const mergedCookies = (...cookies: string[]): string =>
   ]
     .map(([name, value]) => `${name}=${value}`)
     .join('; ')
+const cookiesAfter = (current: string, response: Response): string => {
+  const cleared = response.headers
+    .getSetCookie()
+    .filter((cookie) => /;\s*max-age=0(?:;|$)/iu.test(cookie))
+    .map((cookie) => cookie.slice(0, cookie.indexOf('=')))
+  return mergedCookies(
+    current
+      .split(';')
+      .filter((cookie) => !cleared.some((name) => cookie.trim().startsWith(`${name}=`)))
+      .join('; '),
+    ...response.headers
+      .getSetCookie()
+      .filter((cookie) => !/;\s*max-age=0(?:;|$)/iu.test(cookie))
+      .map((cookie) => cookie.split(';')[0] ?? ''),
+  )
+}
 const roster = async (base: string, who: Person) =>
   Schema.decodeUnknownSync(MembersState)(await (await call(base, who, '/api/members')).json())
 const mail = async (base: string, who: Person, email: string) =>
@@ -435,7 +451,11 @@ async function invitationCase(base: string) {
   const accepted = await accept(base, member, invitation.receipt.id)
   expect(accepted.status).toBe(200)
   const original = await accepted.json()
-  expect(await (await accept(base, member, invitation.receipt.id)).json()).toEqual(original)
+  // Apply Set-Cookie exactly as a browser would before retrying a partially observed acceptance response.
+  const browserMember = { ...member, cookie: cookiesAfter(member.cookie, accepted) }
+  const retried = await accept(base, browserMember, invitation.receipt.id)
+  expect(retried.status).toBe(200)
+  expect(await retried.json()).toEqual(original)
   const joined = await state(base, member)
   expect(joined.workspaces).toHaveLength(1)
   expect(joined.workspaces[0]).toMatchObject({ role: 'member', agentReady: false })
@@ -465,7 +485,7 @@ async function invitationCase(base: string) {
   })
   expect(removed.status).toBe(200)
   expect((await state(base, member)).workspaces).toEqual([])
-  expect(await (await accept(base, member, invitation.receipt.id)).json()).toEqual(original)
+  expect(await (await accept(base, browserMember, invitation.receipt.id)).json()).toEqual(original)
   expect((await state(base, member)).workspaces).toEqual([])
 }
 harness.test(

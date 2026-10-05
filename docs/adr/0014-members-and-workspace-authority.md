@@ -31,6 +31,10 @@ unpaid exit and replays only the actor's original receipt. Sixteen active/pendin
 bound each workspace. Mail is sent after persistence; a failed or interrupted send requires explicit rotation and
 resend, with no claim of exactly-once delivery.
 
+Acceptance retains the admission cookie's original ten-minute expiry so a browser can retry after a partially
+observed response. A used admission returns only the original accepting account's receipt, with no membership
+change. Replays never renew that cookie or its D1 expiry.
+
 Phase A closes every existing owner RPC to members and viewers. A membership does not renew resident authority,
 expose credentials or grant owner methods. Phase B must add immutable requester provenance, visibility filters,
 requester-directed questions, live D1 invalidation and the member ceiling inside ADR 0010's capability scope before

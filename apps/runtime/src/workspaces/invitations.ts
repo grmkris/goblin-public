@@ -211,7 +211,9 @@ export async function acceptInvitation(
     canonicalEmail(session.email),
     id,
   )
-  return Response.json(receipt, { headers: { 'set-cookie': admissionCookie('', 0), 'cache-control': 'no-store' } })
+  // Keep the short-lived admission cookie so a retried POST can return the durable receipt after a lost response.
+  // It retains its original expiry; consumeInvitation returns only the accepting account's receipt, never access.
+  return Response.json(receipt, { headers: { 'cache-control': 'no-store' } })
 }
 
 export async function membersApi(request: Request, env: RuntimeEnv, session: UserSession): Promise<Response> {
