@@ -272,11 +272,12 @@ main.shell {
     --chat-inset-left: var(--sidebar-width-icon);
   }
 }
-/* One transcript with its composer: a centred column clear of the pane's pill and the dock. */
+/* One transcript with its composer: a centred 44rem column clear of the pane's pill and the dock. */
 .chat-pane {
   --chat-gutter: 1rem;
-  --message-scroller-max-width: 880px;
-  --message-scroller-gap: 0.75rem;
+  --chat-column: 44rem;
+  --message-scroller-max-width: calc(var(--chat-column) + 2 * var(--message-scroller-inset-x));
+  --message-scroller-gap: 0.875rem;
   --message-scroller-inset-x: max(var(--chat-gutter), var(--safe-left), var(--safe-right));
   --message-scroller-inset-top: calc(var(--top-bar-height) + 0.75rem);
   --message-scroller-inset-bottom: calc(var(--dock-height, 8rem) + var(--keyboard-inset, 0px) + 1.5rem);
@@ -287,13 +288,27 @@ main.shell {
     --chat-gutter: 2rem;
   }
 }
+/*
+ * The transcript fades out under the pill and above the composer instead of ending at a hard line, so the chrome
+ * floats over it. Apps are not masked: they clip to the pill's band and the dock (lib/app-occlusion.ts).
+ */
+.chat-pane [data-slot='message-scroller-viewport'] {
+  --dock-top: calc(100% - var(--dock-height, 8rem) - var(--keyboard-inset, 0px));
+  mask-image: linear-gradient(
+    to bottom,
+    transparent calc(var(--safe-top) + 1.25rem),
+    #000 calc(var(--safe-top) + 3.5rem),
+    #000 var(--dock-top),
+    transparent calc(var(--dock-top) + 1.5rem)
+  );
+}
 /* A conversation the agent is working in right now. */
 .thread-busy {
   flex: none;
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 9999px;
-  background: var(--primary);
+  background: var(--live);
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 /* The message a thread branched from, set apart from the replies under it by a rule with their count. */
@@ -471,13 +486,11 @@ main.shell {
   flex-direction: column;
   gap: 0.5rem;
   padding: 1.5rem var(--message-scroller-inset-x) max(0.75rem, env(safe-area-inset-bottom));
-  /* The content passing beside the composer fades out rather than ending at a hard line. */
-  background: linear-gradient(to bottom, transparent, color-mix(in oklab, var(--background) 88%, transparent) 2.5rem);
   pointer-events: none;
 }
 .chat-dock > * {
   width: 100%;
-  max-width: calc(880px - 2 * var(--message-scroller-inset-x));
+  max-width: var(--chat-column);
   margin-inline: auto;
   pointer-events: auto;
 }
@@ -1032,12 +1045,14 @@ summary {
 }
 /*
  * A pane's floating pill instead of a tab (components/pane-header.tsx): grip, where the item came from, its name and
- * menu, what it is doing, and close. Translucent, so the transcript reads beneath it as it scrolls.
+ * menu, what it is doing, and close. Translucent, so the transcript reads beneath it as it scrolls; a hairline ring at
+ * rest, lifted by a shadow only on the focused pane. Grip and close appear where a pointer can hover.
  */
 .pane-header {
   position: absolute;
   z-index: 30;
-  top: max(0.5rem, var(--safe-top));
+  top: 0;
+  padding-top: max(0.5rem, var(--safe-top));
   inset-inline: max(0.5rem, var(--safe-left)) 0.5rem;
   display: flex;
   pointer-events: none;
@@ -1048,30 +1063,71 @@ summary {
   gap: 0.125rem;
   min-width: 0;
   max-width: 100%;
-  height: 2.25rem;
-  padding-inline: 0.25rem;
-  border: 1px solid var(--border);
+  height: 1.875rem;
+  padding-inline: 0.1875rem;
   border-radius: 9999px;
-  background: color-mix(in oklab, var(--background) 82%, transparent);
-  backdrop-filter: blur(12px) saturate(160%);
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.06),
-    0 4px 12px rgb(0 0 0 / 0.04);
+  background: color-mix(in oklab, var(--background) 84%, transparent);
+  backdrop-filter: blur(14px) saturate(160%);
+  box-shadow: var(--ring-hairline);
   font-size: 0.8125rem;
   pointer-events: auto;
+  user-select: none;
+  transition: box-shadow 160ms ease;
 }
-.workspace-surface[data-workspace='wide'] .workspace-pane[data-focused='true'] .pane-pill {
-  border-color: color-mix(in oklab, var(--ring) 55%, var(--border));
+.workspace-pane[data-focused='true'] .pane-pill {
+  box-shadow: var(--ring-hairline), var(--shadow-2);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .pane-pill {
+    background: var(--background);
+    backdrop-filter: none;
+  }
+}
+@media (prefers-contrast: more) {
+  .pane-pill {
+    background: var(--background);
+    backdrop-filter: none;
+    box-shadow: 0 0 0 1px var(--foreground);
+  }
 }
 .pane-grip,
 .pane-crumb,
 .pane-title,
 .pane-pill > [data-slot='button'],
+.pane-close > [data-slot='button'],
 .pane-pill > [data-slot='sidebar-trigger'] {
   flex: none;
-  height: 1.75rem;
+  height: 1.5rem;
   border-radius: 9999px;
   outline-offset: 1px;
+}
+@media (pointer: coarse) {
+  .pane-pill {
+    height: 2.5rem;
+  }
+  .pane-grip,
+  .pane-crumb,
+  .pane-title,
+  .pane-pill > [data-slot='button'],
+  .pane-close > [data-slot='button'],
+  .pane-pill > [data-slot='sidebar-trigger'] {
+    height: 2.125rem;
+    min-height: 0;
+  }
+}
+@media (hover: hover) {
+  .pane-grip,
+  .pane-close {
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+  .workspace-pane:hover .pane-grip,
+  .workspace-pane:hover .pane-close,
+  .workspace-pane[data-focused='true'] .pane-close,
+  .pane-pill:focus-within .pane-grip,
+  .pane-pill:focus-within .pane-close {
+    opacity: 1;
+  }
 }
 .pane-grip {
   display: grid;
@@ -1109,8 +1165,9 @@ summary {
   overflow: hidden;
   padding-inline: 0.5rem;
   font-size: inherit;
-  font-weight: 600;
-  line-height: 1.75rem;
+  font-weight: 550;
+  line-height: 1.5rem;
+  transition: color 160ms ease;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1118,6 +1175,9 @@ summary {
   flex: none;
   width: 0.875rem;
   height: 0.875rem;
+  color: var(--muted-foreground);
+}
+.workspace-surface[data-workspace='wide'] .workspace-pane[data-focused='false'] .pane-title {
   color: var(--muted-foreground);
 }
 @media (hover: hover) {
@@ -1138,11 +1198,15 @@ summary {
 .pane-pill > .thread-busy {
   margin-inline: 0.375rem;
 }
+.pane-close {
+  display: flex;
+  flex: none;
+}
 .pane-rename {
   min-width: 10rem;
 }
 .pane-rename input {
-  height: 1.75rem;
+  height: 1.5rem;
   border-radius: 9999px;
 }
 /* Narrow screens move between panes by swiping the strip; there is nothing to drag. */

@@ -303,8 +303,9 @@ Several Apps run at once, in any conversation the owner views (`components/apps`
 loaded App, and `AppLayer` draws one fixed stage per instance outside the panes, never moved in the DOM, so nothing
 reparents an opaque frame or replaces its bridge. A stage follows its App's page while the App has one, else its place
 under its tool row (`app-inline:<id>`, `app-page:<id>` slots), frame by frame, including while panes scroll, and
-springs between the two (`lib/spring.ts`). It clips itself to the containers that scroll its slot and to the pane's
-pill and composer (`data-app-cover`, `lib/app-occlusion.ts`), which also keeps pointer events off what is hidden. An App
+springs between the two (`lib/spring.ts`). It clips itself to the containers that scroll its slot and to the band of
+the pane's pill and its composer (`data-app-cover`, `lib/app-occlusion.ts`), which also keeps pointer events off what is
+hidden; text fades out under the same chrome through a mask on the transcript. An App
 loads when its place comes on screen; beyond six instances the least recently seen unloads to a stub
 (`lib/app-residency.ts`), while one on screen never does. The advertised modes are inline and fullscreen: fullscreen is
 the App's page filling the workspace (Open as a page, then Fill the workspace), and on a phone the page is a pane in

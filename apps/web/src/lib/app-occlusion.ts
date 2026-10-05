@@ -54,7 +54,7 @@ function clipsOf(slot: HTMLElement): Rect[] {
 
 /**
  * Clips the stage to what of `slot` shows: inside the containers that scroll it, and under what its pane floats over
- * it (`data-app-cover`: the pill, the composer). Returns whether any of the App shows.
+ * it (`data-app-cover`: the band of its pill, the composer). Returns whether any of the App shows.
  */
 export function clipStage(stage: HTMLElement, slot: HTMLElement | undefined): boolean {
   if (slot === undefined) {
