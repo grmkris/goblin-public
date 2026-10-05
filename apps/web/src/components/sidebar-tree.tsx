@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type CSSProperties, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import type { ConversationView } from '@purrable/contracts'
 import {
@@ -21,9 +21,17 @@ import {
   MessagesSquareIcon,
   PlusIcon,
 } from 'lucide-react'
-import { threadTitle } from '../lib/threads.ts'
+import { isClosed, threadTitle } from '../lib/threads.ts'
 import { type ItemKey, appKey, conversationKey, isOpen, itemOf } from '../lib/workspace.ts'
-import { type AppRow, type RowStatus, type TreeNode, buildTree, foldApps, rowStatus } from '../lib/workspace-tree.ts'
+import {
+  type AppRow,
+  type RowStatus,
+  type TreeNode,
+  appHue,
+  buildTree,
+  foldApps,
+  rowStatus,
+} from '../lib/workspace-tree.ts'
 import { useWorkspace } from './workspace.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
@@ -43,6 +51,16 @@ export function useWorkspaceTree() {
   return useMemo(
     () => buildTree(conversations, apps, (id) => isOpen(state, conversationKey(id))),
     [conversations, apps, state],
+  )
+}
+
+/** An App's tile: its window icon on a square of its server's own hue. */
+export function AppTile({ serverId }: { readonly serverId: string }) {
+  const hue: CSSProperties & Record<'--hue', number> = { '--hue': appHue(serverId) }
+  return (
+    <span className="app-tile" style={hue} aria-hidden>
+      <AppWindowIcon />
+    </span>
   )
 }
 
@@ -125,7 +143,7 @@ function AppItem({ row: { app, name } }: { readonly row: AppRow }) {
           onClick={row.showHere}
           isActive={row.focused}
         >
-          <AppWindowIcon aria-hidden />
+          <AppTile serverId={app.serverId} />
           <span className="tree-row-name">{name}</span>
         </SidebarMenuButton>
         <button
@@ -173,7 +191,7 @@ function TreeRow({ node, nested = false }: { readonly node: TreeNode; readonly n
   const name = threadTitle(node.view)
   const Item = nested ? SidebarMenuSubItem : SidebarMenuItem
   return (
-    <Item className="tree-row" data-open={row.open} data-unread={status.unread}>
+    <Item className="tree-row" data-open={row.open} data-unread={status.unread} data-closed={isClosed(node.view)}>
       <SidebarMenuButton
         size={nested ? 'sm' : 'default'}
         render={<Link to="/c/$conversationId" params={{ conversationId: node.view.id }} data-drag-item={row.key} />}

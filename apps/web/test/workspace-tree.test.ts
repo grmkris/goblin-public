@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { AppView, ConversationActivity, ConversationView } from '@purrable/contracts'
 import {
   type TreeNode,
+  appHue,
   appNames,
   buildTree,
   foldApps,
@@ -150,5 +151,14 @@ describe('the folded rail', () => {
     expect(ids(rail.main)).toEqual(['1', '4'])
     expect(ids(rail.threads)).toEqual(['10', '5', '6', '7'])
     expect(ids(railItems(tree, new Map(), () => false).threads)).toEqual(['10'])
+  })
+})
+
+describe('App tiles', () => {
+  it('gives a server the same hue every time, and different servers different ones', () => {
+    expect(appHue('board')).toBe(appHue('board'))
+    expect(appHue('board')).not.toBe(appHue('maps'))
+    for (const id of ['board', 'maps', 'x', '']) expect(appHue(id)).toBeGreaterThanOrEqual(0)
+    expect(appHue('maps')).toBeLessThan(360)
   })
 })

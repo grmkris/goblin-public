@@ -65,6 +65,16 @@ export function foldApps(rows: readonly AppRow[], paged: (id: string) => boolean
 }
 
 /**
+ * A hue for an App's tile, the same every time for its server: tiles tell Apps apart at a glance, as app icons do.
+ * FNV-1a over the server id, spread over the colour wheel.
+ */
+export function appHue(serverId: string): number {
+  let hash = 0x811c9dc5
+  for (const char of serverId) hash = Math.imul(hash ^ (char.codePointAt(0) ?? 0), 0x01000193)
+  return (hash >>> 0) % 360
+}
+
+/**
  * `shown` says which conversations are open in a pane: a thread nobody ever wrote in (a send that failed) has no row
  * unless it is.
  */

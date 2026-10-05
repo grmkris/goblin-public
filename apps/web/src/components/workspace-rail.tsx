@@ -1,10 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@purrable/ui'
-import { AppWindowIcon, PlusIcon } from 'lucide-react'
+import { PlusIcon } from 'lucide-react'
 import { threadTitle } from '../lib/threads.ts'
 import { appKey, conversationKey, isOpen } from '../lib/workspace.ts'
 import { type AppRow, type RowStatus, type TreeNode, pathOf, railItems, rowStatus } from '../lib/workspace-tree.ts'
-import { KindIcon, useRowActions, useWorkspaceTree } from './sidebar-tree.tsx'
+import { AppTile, KindIcon, useRowActions, useWorkspaceTree } from './sidebar-tree.tsx'
 import { useWorkspace } from './workspace.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
@@ -81,7 +81,7 @@ function RailApp({ row: { app, name } }: { readonly row: AppRow }) {
           />
         }
       >
-        <AppWindowIcon aria-hidden />
+        <AppTile serverId={app.serverId} />
       </HoverCardTrigger>
       <HoverCardContent>
         <p className="font-medium">{name}</p>
