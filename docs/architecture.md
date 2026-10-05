@@ -19,15 +19,16 @@ flowchart LR
 
 ## Worker
 
-`apps/runtime/src/worker.ts` routes every request:
+`apps/web/src/worker.ts` sends pages to TanStack Start and the routes below to `apps/runtime/src/worker.ts`.
+Runtime paths below are relative to `apps/runtime/src/`; browser paths are relative to `apps/web/src/`.
 
 | Path | What happens |
 | --- | --- |
-| `/health` | Stage, service name and sign-up mode. |
+| `/health` | Stage, service name, sign-up mode and whether mail is configured. |
 | `/.well-known/oauth-protected-resource*` | Protected-resource metadata for `/mcp`. |
 | `/.well-known/*`, `/api/auth/*` | Better Auth: sign-up and sign-in, the OAuth authorization server for inbound clients. |
 | `/mcp` | Purrable's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented. |
-| `/api/*` | Owner API. A session cookie selects the signed-in user's agent; writes also need the app's own `Origin`. |
+| `/api/*` | Owner API. A session cookie selects the signed-in user's agent; writes reject an `Origin` header if it names another origin. |
 | `/hooks/myagent/<userId>/<token>` | myagent's Telegram doorbell. The token (an HMAC of the user id) is checked before the agent wakes. See Telegram. |
 
 ## Accounts
@@ -40,20 +41,20 @@ the same sign-up gate, already verified. Passwords remain as the fallback. A sig
 Settings (`auth/passkey.ts`, the myapps policy: Purrable's own host is the relying party, credentials are discoverable
 and must verify the person; adding one needs a sign-in from the last 10 minutes) and then sign in with one without
 typing an email. A passkey never creates an account, and an MCP client's authorization resumes after it like after
-any sign-in. With `PURRABLE_MAIL_SENDER` set (an address on an apex onboarded for Cloudflare Email Sending), a new account
-works only after its owner opens the one-hour link mailed to it (`auth/mail.ts`); the link signs them in. The same
-sender carries password-reset links (`/reset-password`); a reset signs every device out, and asking for one never
-reveals whether an address has an account. A deployed
-stage refuses to deploy `open` sign-up without a sender. Sign-up, verification mail and sign-in are rate limited per
-`cf-connecting-ip` in D1 (auth runs per request, so in-memory limits would reset every call). The agent a request
+any sign-in. With `PURRABLE_MAIL_SENDER` set (an address on an apex onboarded for Cloudflare Email Sending), a new
+password account needs email verification through an emailed code or the one-hour link (`auth/mail.ts`); the link
+signs them in. The same sender carries password-reset links (`/reset-password`); a reset signs every device out, and
+asking for one never reveals whether an address has an account. A deployed stage refuses to deploy `open` sign-up
+without a sender. Sign-up, verification mail and sign-in are rate limited per `cf-connecting-ip` in D1 (auth runs per
+request, so in-memory limits would reset every call). The agent a request
 reaches is always derived from authentication, the session's user ID or the inbound token's subject, never from the
-request.
+request alone. The Telegram hook instead verifies a token bound to its user ID before selecting an agent.
 
 Deleting an account (Settings; the password, or a sign-in within the last 10 minutes) first erases the user's agent through `Agent.destroy()`: every Pi,
 Agents and application table, its alarm, and its isolate. Only then does Better Auth delete the user, and D1 cascades
 their sessions, passkeys, consents and tokens. If erasing the agent fails, the account stays so the user can retry. Outbound
-OAuth tokens are forgotten, not revoked at the remote server; they lapse there on their own. Users share the deployment's model key and
-MCP server list; their conversations, connections, credentials, grants and resident authority are per agent.
+OAuth tokens are forgotten, not revoked at the remote server. Users share the deployment's model key and configured
+MCP server list; their added servers, conversations, connections, credentials, grants and resident authority are per agent.
 
 The owner API forwards to the agent object over DO RPC. Workers RPC drops custom error classes, so every DO method
 returns an encoded `RpcResult`; the Worker decodes it and maps the tagged error to a status in one place
@@ -65,7 +66,8 @@ error tag, never bodies or credentials.
 `PersonalAgent extends Agent` and registers the native `PiHarness` with the Agent lifecycle. Pi owns transcripts,
 tasks, submissions, recovery and tool replay. The object builds one Effect `ManagedRuntime` lazily, providing its
 services: `Mcp` (the MCP host), `Resident` (resident authority), `Conversations` (the conversation registry),
-`Budget` and `Models`. DO methods are thin: each runs one Effect program and encodes the exit.
+`Budget`, `Models`, `Memory`, `Skills`, `Learner` and `Channel` (`services.ts`). DO methods are thin: each runs one Effect
+program and encodes the exit. PiHarness and Pi Durable are experimental; Alchemy is a pinned beta and Drizzle an RC.
 
 Conversations (`conversations.ts`): every agent has one **main** conversation, Pi's root session `1`, where the owner's
 browser and every inbound MCP client talk. A message from anyone but the owner's browser starts with an author tag
@@ -75,7 +77,17 @@ sees main up to there and main never sees the thread) or empty. `app_conversatio
 title, origin and archive time; a session id reaches Pi only if it is registered there, so no request opens a
 conversation by guessing its number. Pi cannot delete a conversation, so archiving only hides a thread. The web
 lists them beside the chat (`components/threads.tsx`, a sheet on phones): `/` is main and `/t/:id` a thread, and each
-settled answer in main offers "Branch from here".
+settled answer in main offers "Branch from here". The owner API is conversation-scoped:
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/threads` | List registered conversations, including archived ones. |
+| `POST /api/threads` | Create an empty thread (`{}`) or branch main at an entry (`{ from: <entry> }`). |
+| `PATCH /api/threads/:id` | Rename or (un)archive a thread or subagent. Main cannot be changed this way. |
+| `POST /api/threads/:id/messages` | Submit `input`, a stable `operationId` and optional `appContext`; returns 202 acceptance. |
+| `POST /api/threads/:id/stop` | Stop a conversation or one `operationId`. |
+| `GET /api/threads/:id/snapshot`, `GET /api/threads/:id/events` | Pi snapshot or SSE snapshot followed by committed batches. |
+| `GET /api/threads/:id/history?before=<entry>` | Earlier entries, oldest first, with a `more` flag. |
 
 Every thread runs the `purrable.thread` extension (`pi/thread.ts`), added to that conversation alone when it is made;
 main never has it. It tells the model it is in a side thread and offers `share_to_main`: when the owner asks (the
@@ -88,12 +100,12 @@ Main and threads can start **subagents** with the `subagent` tool (`pi/subagents
 subagent example): `spawn`, `send`, `stop` and `status`. A subagent is a Pi conversation owned by a background anchor
 task of its spawner, so the spawner's Stop and idle waits do not reach it. It starts with the spawner's model and is
 given exactly the persona and the owner's MCP and budget extensions: the same grants, no subagents of its own, no
-`ask_user`. Each message goes through a reporter task that delivers it, waits for the answer and posts it into the
-spawner as an input labelled `[from subagent <name>]`, which the spawner answers; request ids keep a restart from
-delivering or reporting twice. At most three subagents work at once. The reporter registers the subagent in
+`ask_user` and no skills. Each message goes through a reporter task that delivers it, waits for the answer and posts
+it into the spawner as an input labelled `[from subagent <name>]`, which the spawner answers; request ids keep a
+restart from delivering or reporting twice. At most three subagents work at once. The reporter registers the subagent in
 `app_conversations` under its spawner, so the web lists it there and the tool row links to it.
 
-The system prompt is two static Pi extension sections (`pi/persona.ts`): who the agent is, and that remote content
+The persona contributes two static system-prompt sections (`pi/persona.ts`): who the agent is, and that remote content
 is untrusted data. The `mcp_list` and `mcp_call` tools (`pi/resident-mcp.ts`) are how the model reaches the owner's
 MCP servers; both require current resident authority, and `mcp_call` is marked unsafe to replay.
 
@@ -131,19 +143,21 @@ the border is absent. Colours come from the theme's `--presence-*` tokens, resol
 Servers come from `PURRABLE_MCP_SERVERS` (JSON: `serverId`, `endpoint`, optional `issuer` and `resource`) and from
 the owner, who may add up to sixteen by URL (`app_mcp_servers`, ADR 0006). An added endpoint is a public https
 address (`mcp/endpoint.ts`), and its server card labels it as the server's own claim. Configured servers win on ID
-and cannot be removed. Removing an added server forgets everything stored for it in one transaction. Connections
-also offers a shelf of suggested servers (`mcp/suggested.ts`), each checked by hand. One tap adds and connects. It also
-searches MCP registries that speak the generic registry API (`mcp/registry.ts`, `GET /api/mcp/catalog?q=`): the
-Official MCP Registry and GitHub's, built in, then up to eight the owner adds (`app_mcp_registries`). A registry is
-added only once it answers `/v0.1/servers`, and removing it keeps the servers added from it. Only the latest active entries with an https streamable-HTTP remote are shown,
-labelled by registry, each server once (the official registry first), cached for ten minutes. Endpoint placeholders
-are filled with one safe path segment each, and servers that want an API key are listed but cannot be added yet. An
-added entry records its registry, name and version. Connect
-first tries a server without sign-in, which many public servers need not have; if refused, it runs OAuth. The owner
-connects each one from the Connections page:
+and cannot be removed. Removing an added server forgets its row, endpoint binding, credentials, pending sign-ins and
+grants in one transaction. Connections also offers a shelf of suggested servers (`mcp/suggested.ts`), with source
+comments recording their connection checks. One tap adds and connects. It also searches MCP registries that speak
+the generic registry API (`mcp/registry.ts`, `GET /api/mcp/catalog?q=`): the Official MCP Registry and GitHub's, built
+in, then up to eight the owner adds (`app_mcp_registries`). A registry is
+added only once it answers `/v0.1/servers`, and removing it keeps the servers added from it. Search reads one page of
+up to twenty entries per registry and keeps https streamable-HTTP remotes, rejecting entries explicitly marked
+inactive or not latest. Missing status metadata is accepted. Results are labelled by registry, each server once
+(the official registry first), and cached for ten minutes. Endpoint placeholders are filled with one safe path
+segment each, and servers that require a secret header are listed but cannot be added yet. An added entry records
+its registry, name and version. The owner connects each server from the Connections page:
 
-1. `POST /api/mcp/:id/connect` runs the MCP SDK's `auth()` with our `StoredOAuthProvider`: discovery, dynamic client
-   registration, PKCE. It returns the remote authorization URL; the browser goes there.
+1. `POST /api/mcp/:id/connect` first tries without sign-in. If needed, it runs the MCP SDK's `auth()` with our
+   `StoredOAuthProvider`: discovery, dynamic client registration, PKCE. Only a flow needing consent returns a remote
+   authorization URL; otherwise it returns `{}`.
 2. The remote server redirects to `/api/mcp/oauth/callback`. The pending state is single-use and expires after ten
    minutes; the code is exchanged and the tokens stored.
 3. Client registration and tokens are AES-GCM encrypted at rest (`PURRABLE_CREDENTIAL_KEY`, bound to server ID and
@@ -162,9 +176,10 @@ once after a 401. A refused refresh marks the server `needs_auth` and the owner 
 Grants are per discovered tool (`app_mcp_grants`), toggled by the owner. A tool grant also grants its `ui://` App
 resource. "Allow app" (`PUT /api/mcp/app-grants`, `McpHost.setAppGrant`) grants an App as a whole: exactly the tools
 that declare its `ui://` resource, including the ones only the App may call, and the resource itself. Connections
-lists those tools under the switch, each still adjustable. Tool annotations from the server are shown but never grant anything. Disconnecting forgets credentials
-and keeps grants. When the model calls a tool that exists but is not granted, nothing runs. `mcp_call` returns an
-error result whose details are `{ kind: 'grant-required', serverId, name }`, and the model is told to wait.
+lists those tools under the switch, each still adjustable. Tool annotations from the server are shown but never
+grant anything. Disconnecting forgets credentials and keeps grants. When the model calls a tool that exists but is
+not granted, nothing runs. `mcp_call` returns an error result whose details are
+`{ kind: 'grant-required', serverId, name }`, and the model is told to wait.
 `mcpModelResult` details never carry a top-level `kind`, so remote content cannot forge one. The web turns that
 result into an owner-only Allow card.
 
@@ -173,20 +188,28 @@ result into an owner-only Allow card.
 Skills come from MCP servers that declare the MCP Skills extension, and only from those the owner turns them on for
 in Connections (`app_skill_sources`, ADR 0008). The client declares the extension; `McpConnectionManager.listSkills`,
 `getSkill` and `readSkillFile` speak `skills/list`, `skills/get` and `resources/read`, with the shapes decoded in
-`skills/protocol.ts` because the SDK has no Skills support yet.
+`skills/protocol.ts` because the SDK has no Skills support yet. The current library activates entries from
+`skills/list`; `getSkill` is available in the connection manager.
 
 `SkillLibrary` (`skills/library.ts`) keeps each enabled server's listing for its `ttlMs` (30 s to an hour) and names
 every skill `<server>:<name>`. The `purrable.skills` extension (main and threads, not subagents) renders that list in
-its `skills` section, never fetching at wake, and offers `skill_activate` and `skill_read`. Activation reads `SKILL.md`,
-checks size, SHA-256 and frontmatter against the entry (`skills/verify.ts`), and records the entry for the
-conversation (`app_skill_activations`). `skill_read` reads only files in that retained manifest, so a conversation
+its `skills` section, refreshing an expired listing when the section is evaluated, and offers `skill_activate` and
+`skill_read`. Activation reads `SKILL.md`, checks size, SHA-256 and frontmatter against the entry (`skills/verify.ts`),
+and records the entry for the conversation (`app_skill_activations`). `skill_read` reads only files in that retained
+manifest, so a conversation
 stays on the version it activated. Verified bytes are cached by digest (`app_skill_files`) and checked again on every
-read. An unreachable server keeps its last listing, or is reported unavailable.
+read. An unreachable server keeps its last listing while it remains cached in the isolate, or is reported unavailable.
+Dynamic skills are declined; skill scripts can be read but are never executed. Enabled skills are procedures the agent
+follows, but they grant no permissions and cannot override the owner. Disabling the server stops new activations and
+file reads; instructions already in a conversation stay there.
 
-After a final answer (`onYield`), the learner (`skills/learner.ts`) looks at the owner's last message. On a correction
-or a request to keep how something was done, a cheap model decides whether the exchange teaches a procedure. A
-procedure becomes a draft sent through the library's `skill_draft` tool, which the owner reviews in the library. At
-most five a day, never the same content twice, never a rejected draft again (`app_skill_drafts`).
+After a final answer (`onYield`), the learner (`skills/learner.ts`) looks at the latest user message. On a correction
+or a request to keep how something was done, the memory model decides whether the exchange teaches a procedure. A
+procedure becomes a draft sent through an enabled library's granted `skill_draft` tool, which the owner reviews in the
+library. At most five in a rolling 24 hours, never the same content twice, no new draft while one for that skill is open,
+and never a rejected draft again (`app_skill_drafts`). A grant for `skill_draft_status` lets the learner refresh review
+status. Draft payloads contain generated procedure text and brief evidence, with email- and secret-shaped strings
+scrubbed, and no transcript field. The learner's model call counts toward the budget.
 
 ## MCP Apps host
 
@@ -208,16 +231,16 @@ release they are thrown, by projected momentum, to the nearest corner or snap he
 the transcript. On a phone, inline means the App waits behind an Open button in the transcript.
 
 The App learns the host context (`lib/host-context.ts`): theme, our tokens as MCP Apps style variables, device,
-locale, its display mode, the modes on offer, and its box. The host re-sends it when any of these change. Inline, the
-App may ask for a height between 160px and 70% of the viewport. It may ask for another display mode and gets it if
-the screen offers that mode.
+locale and time zone, its display mode, the modes on offer, and its box. The host re-sends it when any of these change.
+Inline, the App may ask for a height between 160px and the larger of 240px or 70% of the viewport. It may ask for
+another display mode and gets it if the screen offers that mode.
 
 Two more requests are drawn by the host, where the App cannot reach (`lib/app-context.ts`). A link the App asks to
 open (https only, no credentials) becomes an offer with a real anchor, so only the owner's click opens it. Context
-the App shares for the agent (`ui/update-model-context`, text, at most 8 KB) waits in a removable chip above the
-composer and travels once, with the owner's next message, as `appContext` on `POST /api/threads/:id/messages`. The runtime
-(`pi/content.ts`) appends it after the owner's words as a separate block shaped
-`{ origin: { serverId, trust: 'untrusted' }, appContext }`. The persona treats it as data, never as the owner
+the App shares for the agent (`ui/update-model-context`, text or structured content rendered as JSON, at most 8192
+JavaScript string units) waits in a removable chip above the composer and travels once, with the owner's next message,
+as `appContext` on `POST /api/threads/:id/messages`. The runtime (`pi/content.ts`) appends it after the owner's words as
+a separate block shaped `{ origin: { serverId, trust: 'untrusted' }, appContext }`. The persona treats it as data, never as the owner
 speaking, and the transcript shows it as a note under their message.
 
 An App's own call to a tool the owner has not granted does not fail at once (`components/apps/grant-ask.tsx`). It
@@ -228,17 +251,20 @@ same call again. "Not now", or two minutes without an answer, returns the denial
 
 Main never ends, so it keeps a memory instead of an ever-longer context (`memory/`, after VictorTaelin's OptChat
 gist). Every message of main since the memory was activated is logged in `app_memory_log` with its Pi entry id:
+
 - the owner's and other authors' words;
 - the agent's replies, with their tool calls;
 - tool results.
 
-System entries and thinking are never logged.
+System entries and thinking are never logged. Memory text keeps at most 12 000 JavaScript string units from each
+message's head and tail, plus a truncation note (`memory/log.ts`); Pi retains the original entry. This also bounds a
+single-message `zoom`.
 
 A background builder task (`pi/memory.ts`), which main starts after each of its responses, summarizes each message in
 order into one line of about 512 bytes with the memory model. It then merges adjacent lines in pairs into a binary
 tree (`app_memory_nodes`). A short message, or a pair that fits, is its own line word for word, with no model call.
-The view folds the tree into 48 KB (`memory/tree.ts`): one line per recent message, and older lines covering more
-messages, merging the pair that is oldest relative to its size first. Only the merges the view needs are built.
+The view folds the tree toward 48 000 bytes (`memory/tree.ts`): one line per recent message, and older lines covering
+more messages, merging the pair that is oldest relative to its size first. Only the merges the view needs are built.
 
 The builder writes the view into main as an `app.memory` entry, a Pi write submission whose head is main's newest
 input, which is how Pi places a compaction. The model then sees the view and, verbatim, everything from that input
@@ -263,27 +289,30 @@ when that conversation already has the model. Every offered model is registered 
 Pi's `Models` under the one `purrable-litellm` provider. A failed model call shows its reason in the chat, and a
 quota or outage failure points at the picker.
 
-Housekeeping nobody asked the agent for (naming threads, summarizing main's memory) runs on the memory model, `PURRABLE_MEMORY_MODEL`: the
-cheapest offered model, or the default when it is unset or not offered (`memory/model.ts`). Its tokens count toward
-the owner's daily budget like any other.
+Housekeeping (thread titles, main's summaries and skill-draft decisions) runs on `PURRABLE_MEMORY_MODEL`. Set it to a
+cheap offered model; the code does not choose by price. Unset or not offered, it falls back to the default
+(`models.ts`, `memory/model.ts`). Its tokens count toward the owner's daily budget like any other.
 
 ## Model budget
 
 Users share the deployment's model key, so each agent has a daily token budget (`PURRABLE_MODEL_DAILY_TOKENS`,
 default 300 000, per UTC day). A Pi extension (`pi/budget.ts`) records every model response's tokens in
-`app_usage_daily`. Once the day is spent, new turns are refused with `BudgetExhausted` (429), from the browser and
-from `/mcp`, and tool calls inside a running turn are blocked, so a looping turn ends after one more reply. Pi
-reports and swallows exceptions thrown by hooks, so the in-turn lever is blocking tools, not throwing. Settings shows
-today's usage, and the composer shows it as a ring, re-read whenever a run ends. On wider screens the composer also
+`app_usage_daily`. Once the day is spent, new turns are refused with `BudgetExhausted`: HTTP 429 from the owner API,
+or a tool error from `/mcp`. Telegram submissions check the same budget. Tool calls inside a running turn are blocked,
+so a looping turn ends after one more reply. Pi reports and swallows exceptions thrown by hooks, so the in-turn lever
+is blocking tools, not throwing. Settings shows today's usage, and the composer shows it as a ring, re-read whenever
+a run ends. On wider screens the composer also
 shows how full the context was at the latest response, measured against the model's `contextWindow`. The model key's
 own cap stays the backstop.
 
 ## Resident authority
 
 The agent acts for the owner when the owner is not there, so it needs its own standing permission rather than a
-borrowed browser session. `ResidentAuthority` (`app_resident`) is active for 30 days and every owner API call renews
-it. Revoking it in Settings sticks: activity does not re-enable it, only the explicit toggle does. Every outbound MCP
-call, from the owner API or the model, checks it.
+borrowed browser session. `ResidentAuthority` (`app_resident`) is active for 30 days. Owner RPC calls renew the window;
+inbound calls and hooks do not. Revoking it in Settings sticks: activity does not re-enable it, only the explicit toggle
+does. Model MCP tools, skills, inbound `ask_agent` and scheduled Telegram pulls and replies require current authority.
+Owner MCP RPC methods renew it but do not call `requireResident`; their tool/resource calls still check exact grants
+(`agent.ts`, `pi/resident-mcp.ts`, `pi/skills.ts`).
 
 ## Inbound MCP
 
@@ -303,20 +332,30 @@ Purrable is an MCP server at `/mcp`, the protected resource of Better Auth's `mc
 The agent talks on Telegram through myagent with a bot of its own (ADR 0009). The owner connects myagent, binds that
 connection to the agent's bot in myagent, and picks it under Connections, "Use for Telegram" (`PUT /api/agent/channel`).
 That grants `inbox`, `send_message`, `subscribe` and `unsubscribe`, reads to the end of the inbox, and subscribes a
-doorbell with a fresh secret (`app_channel`, sealed). A doorbell's signature is checked by the agent, which then
-schedules `channelPull`: under resident authority it reads `inbox` from its cursor and submits each new owner message
-into main authored "Telegram" (`telegram-<id>`). `channelReplies` sends main's answers to those turns, and to subagent
+doorbell with a fresh secret (`app_channel`, sealed). At most one connection carries Telegram. The Worker checks the
+user-bound HMAC hook token before waking the agent; the agent checks myagent's signature with five minutes of allowed
+clock skew, then schedules `channelPull`: under resident authority it reads `inbox` from its cursor and submits each
+new owner message into main authored "Telegram" (`telegram-<id>`). `channelReplies` sends main's answers to those turns, and to subagent
 reports in main, with `send_message` (`app_channel_replies`): escaped plain text in pieces, the `ask_user` questions
 when a turn stopped on one, given up after a day. `channel/channel.ts` holds the store and the logic,
-`channel/doorbell.ts` the hook token and signature.
+`channel/doorbell.ts` the hook token and signature. Turning the channel off (`DELETE /api/agent/channel`) unsubscribes
+best effort and clears pending replies; the four tool grants remain. Purrable's hook and pull are implemented here;
+myagent's bot ownership and doorbell retry policy belong to that server.
 
 ## Storage
 
 | Store | Tables | Owner |
 | --- | --- | --- |
 | Agent DO SQLite | `pi_*`, `cf_agents_*` and the other vendor tables | Pi, Agents SDK. Never touched. |
-| Agent DO SQLite | `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants`, `app_resident`, `app_conversations`, `app_memory_log`, `app_memory_nodes`, `app_memory_state`, `app_skill_sources`, `app_skill_activations`, `app_skill_files`, `app_skill_drafts`, `app_channel`, `app_channel_replies`, `app_usage_daily`, `app_metadata` | Drizzle, inline migrations in `storage/migrations.ts` |
-| D1 `PurrableAuth` | `user`, `session`, `jwks`, `oauth*` | Better Auth, `apps/runtime/migrations` |
+| Agent DO SQLite | `app_mcp_servers`, `app_mcp_registries`, `app_mcp_endpoints`, `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants` | Drizzle: MCP metadata and authorization. |
+| Agent DO SQLite | `app_resident`, `app_conversations`, `app_model_choice`, `app_usage_daily`, `app_metadata` | Drizzle: agent metadata. |
+| Agent DO SQLite | `app_memory_log`, `app_memory_nodes`, `app_memory_state` | Drizzle: main's memory. |
+| Agent DO SQLite | `app_skill_sources`, `app_skill_activations`, `app_skill_files`, `app_skill_drafts` | Drizzle: skills and draft tracking. |
+| Agent DO SQLite | `app_channel`, `app_channel_replies` | Drizzle: Telegram cursor, secret and replies. |
+| D1 `PurrableAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `passkey`, `oauth*` | Better Auth, `apps/runtime/migrations`. |
+
+Application tables are declared in `storage/schema.ts` and migrated inline in `storage/migrations.ts`.
+`app_client_sessions` was dropped when inbound clients moved to main; it is not a current table.
 
 Better Auth lives in D1 because the Durable SQLite adapter's async transactions and affected-row semantics do not
 meet its contract (ADR 0001). SQLite transactions are short and never span model or network calls.
@@ -325,7 +364,6 @@ meet its contract (ADR 0001). SQLite transactions are short and never span model
 
 `apps/web/alchemy.run.ts` declares the Vite Worker, the `PersonalAgent` namespace and the D1 database; it is the only
 deployment entrypoint. The local stage runs in workerd with CLIProxy; the dev stage calls Railway LiteLLM with a
-dedicated key limited to the offered models (Gemini 3.8 Flash and four Alibaba Token Plan models) and $10 per 30 days.
-The Token Plan's weekly quota is shared with Hermes and the coding agents, and LiteLLM may not price those models, so
-the per-user daily budget is their real limit. Secrets are Worker secret bindings, never in the browser
-bundle.
+dedicated model-limited, budget-capped key. Offered models and the per-agent token allowance come from stage
+configuration. The key's provider caps and shared quotas are managed outside this repository; source does not prove
+their active values. Secrets are Worker secret bindings, never in the browser bundle.
