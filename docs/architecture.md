@@ -416,3 +416,7 @@ mail links and inbound MCP metadata also derive from that configured origin. Dev
 host changes; email codes remain the recovery path. Inbound clients re-authorize and outbound DCR clients reconnect.
 Mail subjects include the host outside prod; prod subjects have no stage prefix. Domain and sender acceptance are
 separate operator checks; local workerd proves the redirect behavior.
+
+The inbound Agents SDK handler explicitly allows only the configured `APP_URL` hostname for both Host and browser
+Origin validation. The SDK defaults otherwise reject browser requests on custom domains. A native workerd regression
+proves a custom-domain Origin succeeds and a foreign Origin is rejected.

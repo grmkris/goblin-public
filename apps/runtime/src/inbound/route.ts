@@ -4,6 +4,11 @@ import type { RuntimeEnv } from '../env.ts'
 import { unwrap } from '../http/rpc.ts'
 import { inboundServer } from './server.ts'
 
+export const inboundHosts = (appUrl: string) => ({
+  allowedHostnames: [new URL(appUrl).hostname],
+  allowedOriginHostnames: [new URL(appUrl).hostname],
+})
+
 const challenge = (env: RuntimeEnv): Response =>
   new Response(JSON.stringify({ error: 'Unauthenticated' }), {
     status: 401,
@@ -34,7 +39,12 @@ export const handleInboundMcp = async (request: Request, env: RuntimeEnv): Promi
           unwrap(await agent.askAsClient(name ?? 'an MCP client', input, operationId, waitMs)),
         recent: async (limit) => unwrap(await agent.recentMessages(limit)),
       }),
-    { route: '/mcp' },
+    {
+      route: '/mcp',
+      // The canonical host is configuration, not the request's Host/Origin. This keeps custom domains valid while
+      // retaining the SDK's DNS-rebinding protection; the Worker redirects alternate hosts before reaching here.
+      ...inboundHosts(env.APP_URL),
+    },
   )
   return handler.fetch(request, {
     authInfo: { token, clientId: principal.clientId, scopes: [...principal.scopes], expiresAt: principal.expiresAt },

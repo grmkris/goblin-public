@@ -1,4 +1,5 @@
 import { canonicalRedirect } from '../../src/http/canonical.ts'
+import { inboundHostProbe } from './inbound-host.ts'
 import { MAIN_THREAD, type ThreadView } from '@purrable/contracts'
 import { PersonalAgent } from '../../src/agent.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
@@ -588,6 +589,7 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
 
 export default {
   fetch(request: Request, env: Env): Promise<Response> {
+    if (new URL(request.url).pathname === '/inbound-host') return inboundHostProbe(request)
     if (new URL(request.url).pathname.startsWith('/canonical'))
       return Promise.resolve(canonicalRedirect(request, 'https://purrable.lol') ?? Response.json({ canonical: true }))
     return nativeFetch(request, env)

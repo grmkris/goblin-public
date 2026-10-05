@@ -723,3 +723,26 @@ harness.test(
     }
   }),
 )
+
+harness.test(
+  'local workerd: MCP custom-domain Origin passes and foreign Origin is refused',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const send = (origin: string) =>
+      fetch(`${baseUrl(url)}/inbound-host`, {
+        method: 'POST',
+        headers: {
+          origin,
+          accept: 'application/json, text/event-stream',
+          'content-type': 'application/json',
+          'mcp-protocol-version': '2025-06-18',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+      })
+    const valid = yield* Effect.promise(() => send('https://dev.purrable.lol'))
+    expect(valid.status).toBe(200)
+    expect(yield* Effect.promise(() => valid.text())).toContain('ask_agent')
+    const foreign = yield* Effect.promise(() => send('https://attacker.example'))
+    expect(foreign.status).toBe(403)
+  }),
+)
