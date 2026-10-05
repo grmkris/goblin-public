@@ -11,7 +11,8 @@ import { AppLayer } from './apps/stage.tsx'
 import { MessageComposer } from './composer.tsx'
 import { Conversation } from './conversation.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
-import { ThreadBar, ThreadList, useGoToThread, useThreads } from './threads.tsx'
+import { ChatBar } from './chat-bar.tsx'
+import { useGoToThread, useThreads } from './threads.tsx'
 import { ModelPicker, useModelChoice } from './model-picker.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
 import { useConversation, useDockInsets, useTranscript } from './use-conversation.ts'
@@ -82,11 +83,8 @@ function ChatView({ thread }: { readonly thread: string }) {
   })
   return (
     <section className="chat-view" aria-label="Chat" ref={view}>
-      <aside className="thread-column">
-        <ThreadList current={thread} />
-      </aside>
-      <div className="chat-conversation">
-        <ThreadBar
+      <div className="chat-conversation chat-pane">
+        <ChatBar
           thread={thread}
           actions={
             kind === 'thread' && (

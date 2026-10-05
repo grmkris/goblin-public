@@ -1,9 +1,10 @@
-import { HeadContent, Link, Outlet, Scripts, createRootRoute, useRouterState } from '@tanstack/react-router'
+import { HeadContent, Outlet, Scripts, createRootRoute, useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
-import { CatIcon, LogOutIcon, MessageCircleIcon, PlugIcon, SettingsIcon } from 'lucide-react'
-import { Button, DropdownMenuGroup, DropdownMenuItem, SiteHeader, SiteHeaderBrand } from '@purrable/ui'
+import { SidebarInset, SidebarProvider } from '@purrable/ui'
+import { AppSidebar } from '../components/app-sidebar.tsx'
 import { ThreadsProvider } from '../components/threads.tsx'
-import { SessionProvider, signOut, useSession } from '../lib/session.tsx'
+import { SessionProvider, useSession } from '../lib/session.tsx'
+import { readSidebarOpen } from '../lib/sidebar-state.ts'
 import css from '../styles.css?url'
 
 /** Follows the system's light or dark preference, before first paint and when it changes (as the myapps apps do). */
@@ -17,73 +18,53 @@ export const Route = createRootRoute({
       // The page background of each scheme.
       { name: 'theme-color', content: '#fafaf9', media: '(prefers-color-scheme: light)' },
       { name: 'theme-color', content: '#141619', media: '(prefers-color-scheme: dark)' },
+      // Added to the Home Screen it opens as an app: no browser chrome, the page drawn under a translucent status bar
+      // (the top bar pads itself with the safe area, and is right at a 0 inset too).
+      { name: 'mobile-web-app-capable', content: 'yes' },
+      { name: 'apple-mobile-web-app-capable', content: 'yes' },
+      { name: 'apple-mobile-web-app-title', content: 'Purrable' },
+      { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
       { title: 'Purrable' },
     ],
     links: [{ rel: 'stylesheet', href: css }],
   }),
+  loader: () => readSidebarOpen(),
   component: Root,
   shellComponent: Document,
 })
 /** Pages that are part of signing in: no app navigation there. */
 const AUTH_PAGES = new Set(['/login', '/consent', '/reset-password'])
 
-const DESTINATIONS = [
-  { label: 'Chat', icon: MessageCircleIcon, render: <Link to="/" activeOptions={{ exact: true }} /> },
-  { label: 'Connections', icon: PlugIcon, render: <Link to="/connections" /> },
-  { label: 'Settings', icon: SettingsIcon, render: <Link to="/settings" /> },
-]
-
 function Root() {
   return (
     <SessionProvider>
-      <SignedInThreads>
-        <Header />
-        <main className="shell">
-          <Outlet />
-        </main>
-      </SignedInThreads>
+      <Shell>
+        <Outlet />
+      </Shell>
     </SessionProvider>
   )
 }
 
-/** The agent's conversations, loaded once someone is signed in. */
-function SignedInThreads({ children }: { readonly children: ReactNode }) {
-  const [state] = useSession()
-  return <ThreadsProvider enabled={state === 'signed-in'}>{children}</ThreadsProvider>
-}
-
-/** The shared myapps header, once someone is signed in and not in the middle of signing in. */
-function Header() {
+/**
+ * The app around every page: the sidebar and the page beside it, once someone is (or may be) signed in. Signing in,
+ * and a visitor who is signed out, get the bare page. While the session is still being checked the shell already
+ * shows, so a signed-in owner's first paint does not jump.
+ */
+function Shell({ children }: { readonly children: ReactNode }) {
   const [state] = useSession()
   const path = useRouterState({ select: (router) => router.location.pathname })
-  if (state !== 'signed-in' || AUTH_PAGES.has(path)) return null
+  const sidebarOpen = Route.useLoaderData()
+  if (state === 'signed-out' || AUTH_PAGES.has(path)) return <main className="shell">{children}</main>
   return (
-    <SiteHeader
-      material
-      contentClassName="max-w-[880px]"
-      brand={
-        <SiteHeaderBrand render={<Link to="/" aria-label="Purrable home" />} mark={<CatIcon aria-hidden />}>
-          Purrable
-        </SiteHeaderBrand>
-      }
-      links={DESTINATIONS}
-      actions={
-        <Button variant="ghost" className="hidden md:inline-flex" onClick={() => void signOut()}>
-          <LogOutIcon data-icon="inline-start" />
-          Sign out
-        </Button>
-      }
-      menuItems={
-        <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => void signOut()}>
-            <LogOutIcon aria-hidden />
-            Sign out
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      }
-    />
+    <ThreadsProvider enabled={state === 'signed-in'}>
+      <SidebarProvider defaultOpen={sidebarOpen}>
+        <AppSidebar />
+        <SidebarInset>{children}</SidebarInset>
+      </SidebarProvider>
+    </ThreadsProvider>
   )
 }
+
 function Document({ children }: { readonly children: ReactNode }) {
   return (
     // The theme script sets the class and color scheme on <html> before React hydrates it.

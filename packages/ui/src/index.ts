@@ -79,7 +79,6 @@ export {
 } from './components/questionnaire.tsx'
 export { Reasoning, ReasoningContent, ReasoningTrigger } from './components/reasoning.tsx'
 export { Receipt } from './components/receipt.tsx'
-export { SiteHeader, SiteHeaderBrand, type SiteHeaderLink } from './components/site-header.tsx'
 export {
   SIDEBAR_COOKIE,
   Sidebar,

@@ -1,6 +1,6 @@
 @import '@purrable/ui/styles.css';
 
-/* The page column under the header; the gutters match the header's and clear the notch. */
+/* A page's column under its top bar; the gutters clear the notch. */
 .shell {
   max-width: 880px;
   margin: 0 auto;
@@ -11,117 +11,89 @@
     padding-inline: 2rem;
   }
 }
-/*
- * The chat fills the viewport under the floating header. The transcript scrolls beneath both the header and the
- * composer dock; `--dock-height` and `--keyboard-inset` are measured in chat.tsx.
- */
-:root {
-  --header-height: calc(3.5rem + env(safe-area-inset-top));
+/* While the session is being checked. */
+.gate-status {
+  margin: auto;
+  padding: 2rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
 }
-.chat-view {
-  --chat-gutter: 1rem;
-  /* The transcript column: as wide as the header's, clear of the header above and the composer below. */
-  --message-scroller-max-width: 880px;
-  --message-scroller-gap: 0.75rem;
-  --message-scroller-inset-x: max(var(--chat-gutter), env(safe-area-inset-left), env(safe-area-inset-right));
-  /* Clear of the header and the thread bar under it. */
-  --message-scroller-inset-top: calc(var(--header-height) + var(--thread-bar-height) + 0.5rem);
-  --thread-bar-height: 2.75rem;
-  --message-scroller-inset-bottom: calc(var(--dock-height, 8rem) + var(--keyboard-inset, 0px) + 1.5rem);
-  --message-scroller-end-offset: calc(var(--dock-height, 8rem) + var(--keyboard-inset, 0px) + 0.5rem);
-  position: fixed;
-  inset: 0;
+/* The sidebar's brand row: as tall as a menu row, so it lines up with the top bar beside it. */
+.sidebar-brand {
   display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2rem;
+  padding-inline: 0.5rem;
+  border-radius: var(--radius-md);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  outline: none;
+}
+.sidebar-brand:focus-visible {
+  box-shadow: 0 0 0 2px var(--sidebar-ring);
+}
+.sidebar-brand > svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+.sidebar-hint {
+  padding: 0.25rem 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.archived-toggle > svg {
+  transition: rotate 150ms;
+}
+.archived-toggle[aria-expanded='true'] > svg {
+  rotate: 90deg;
+}
+/*
+ * The chat fills the page beside the sidebar: fixed to the viewport (the composer's keyboard handling relies on it),
+ * its left edge following the sidebar as it slides. The transcript scrolls beneath the floating top bar and the
+ * composer dock; `--dock-height` and `--keyboard-inset` are measured in use-conversation.ts.
+ */
+.chat-view {
+  position: fixed;
+  inset: 0 0 0 var(--chat-inset-left, 0px);
+  display: flex;
+  transition: left 300ms var(--ease-sheet);
+}
+@media (min-width: 48rem) {
+  [data-slot='sidebar'][data-state='expanded'] ~ [data-slot='sidebar-inset'] {
+    --chat-inset-left: var(--sidebar-width);
+  }
 }
 .chat-conversation {
   position: relative;
   flex: 1;
   min-width: 0;
 }
-/* The conversation list: a column beside the chat from tablet width; on phones the thread bar opens it in a sheet. */
-.thread-column {
-  display: none;
+/* One transcript with its composer (the chat, the thread panel): a centred column clear of the top bar and the dock. */
+.chat-pane {
+  --chat-gutter: 1rem;
+  --message-scroller-max-width: 880px;
+  --message-scroller-gap: 0.75rem;
+  --message-scroller-inset-x: max(var(--chat-gutter), var(--safe-left), var(--safe-right));
+  --message-scroller-inset-top: calc(var(--top-bar-height) + 0.75rem);
+  --message-scroller-inset-bottom: calc(var(--dock-height, 8rem) + var(--keyboard-inset, 0px) + 1.5rem);
+  --message-scroller-end-offset: calc(var(--dock-height, 8rem) + var(--keyboard-inset, 0px) + 0.5rem);
 }
 @media (min-width: 48rem) {
-  .thread-column {
-    display: flex;
-    flex: none;
-    width: 15rem;
-    overflow-y: auto;
-    padding: calc(var(--header-height) + 0.75rem) 0.75rem 1rem max(0.75rem, env(safe-area-inset-left));
-    border-right: 1px solid var(--border);
+  .chat-pane {
+    --chat-gutter: 2rem;
   }
-}
-.thread-list {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding-inline: 0.25rem;
-}
-[data-slot='sheet-content'] .thread-list {
-  padding-inline: 0.75rem;
-}
-.thread-list ul {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-}
-.thread-children {
-  padding-left: 1rem;
-}
-.thread-link {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 2rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--radius-md);
-  color: var(--muted-foreground);
-  font-size: 0.875rem;
-}
-.thread-link:hover,
-.thread-link[data-active] {
-  background: var(--accent);
-  color: var(--accent-foreground);
-}
-.thread-link > svg {
-  flex: none;
-  width: 1rem;
-  height: 1rem;
 }
 /* A conversation the agent is working in right now. */
 .thread-busy {
   flex: none;
   width: 0.5rem;
   height: 0.5rem;
-  margin-left: auto;
   border-radius: 9999px;
   background: var(--primary);
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-/* The conversation's name under the floating header, with its actions. */
-.thread-bar {
-  position: absolute;
-  z-index: 26;
-  top: var(--header-height);
-  inset-inline: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  max-width: 880px;
-  height: var(--thread-bar-height);
-  margin-inline: auto;
-  padding-inline: var(--message-scroller-inset-x);
-}
-.thread-title {
-  min-width: 0;
-  margin-right: auto;
-  overflow: hidden;
-  font-size: 0.875rem;
-  font-weight: 500;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 .thread-rename {
   flex: 1;
@@ -183,11 +155,6 @@
   max-width: calc(880px - 2 * var(--message-scroller-inset-x));
   margin-inline: auto;
   pointer-events: auto;
-}
-@media (min-width: 48rem) {
-  .chat-view {
-    --chat-gutter: 2rem;
-  }
 }
 /* The App stage (components/apps): one fixed box holding the live App, positioned frame by frame over the slot its
    display mode names. Inline it passes under the header and the composer; picture-in-picture and the sheet float. */
@@ -343,7 +310,7 @@
   flex: none;
   width: 520px;
   height: 100%;
-  padding-top: var(--header-height);
+  padding-top: var(--top-bar-height);
   border-left: 1px solid var(--border);
   background: var(--background);
 }

@@ -41,7 +41,8 @@ type Live = {
 }
 
 function viewport(): Viewport {
-  const header = document.querySelector('[data-slot="site-header"]')?.getBoundingClientRect().bottom ?? 56
+  // The chat's top bar comes first in the document (a thread panel's bar follows it).
+  const header = document.querySelector('[data-slot="top-bar"]')?.getBoundingClientRect().bottom ?? 48
   return { width: window.innerWidth, height: window.visualViewport?.height ?? window.innerHeight, top: header }
 }
 

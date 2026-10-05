@@ -76,8 +76,8 @@ block (`[from Claude Code]`, the `authorTag` contract), so the model and the web
 sees main up to there and main never sees the thread) or empty. `app_conversations` registers each one with its kind,
 title, origin and archive time; a session id reaches Pi only if it is registered there, so no request opens a
 conversation by guessing its number. Pi cannot delete a conversation, so archiving only hides a thread. The web
-lists them beside the chat (`components/threads.tsx`, a sheet on phones): `/` is main and `/t/:id` a thread, and each
-settled answer in main offers "Branch from here". The owner API is conversation-scoped:
+lists them in the app's sidebar (`components/app-sidebar.tsx`, a sheet on phones): `/` is main and `/t/:id` a
+thread, and each settled answer in main offers "Branch from here". The owner API is conversation-scoped:
 
 | Route | Purpose |
 | --- | --- |
@@ -118,10 +118,13 @@ card or any other channel. A question counts as settled once a later user messag
 The browser follows a conversation over Server-Sent Events: a snapshot of committed Pi entries, then batches, with
 a heartbeat. On reconnect it starts again from a fresh snapshot.
 
-The chat view fills the screen under the header. The transcript scrolls in a `MessageScroller` (from
-`@shadcn/react`). Each of the owner's turns is a scroll anchor. The view follows a streaming reply only while the
-reader is at the end, and otherwise offers a jump back. The header and the composer float over the transcript as
-translucent chrome. Assistant Markdown is set by shadcn/typeset, whose append-stable rules keep earlier blocks still
+Every signed-in page sits beside the app's sidebar (shadcn's sidebar, ported to `packages/ui`): the conversations,
+then Connections, Settings and Sign out. On desktop it slides away (the toggle in each page's top bar, or ⌘/Ctrl+B)
+and a cookie remembers it, which the server reads so the first paint has the right layout; on phones it is a sheet.
+The chat view fills the page beside it. The transcript scrolls in a `MessageScroller` (from `@shadcn/react`). Each of
+the owner's turns is a scroll anchor. The view follows a streaming reply only while the reader is at the end, and
+otherwise offers a jump back. The top bar (the toggle, the conversation's name, its actions) and the composer float
+over the transcript as translucent chrome. Assistant Markdown is set by shadcn/typeset, whose append-stable rules keep earlier blocks still
 while a reply streams.
 
 When the agent waits on the owner, the request is pinned above the composer until their next message

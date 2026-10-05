@@ -142,7 +142,7 @@ function SidebarMenuBadge({ className, ...props }: ComponentProps<'div'>) {
       data-slot="sidebar-menu-badge"
       data-sidebar="menu-badge"
       className={cn(
-        'pointer-events-none absolute inset-y-0 right-1 flex min-w-5 items-center justify-center px-1 text-xs font-medium text-sidebar-foreground tabular-nums select-none peer-hover/menu-button:text-sidebar-accent-foreground peer-data-active/menu-button:text-sidebar-accent-foreground',
+        'pointer-events-none absolute top-0 right-1 flex h-8 min-w-5 items-center justify-center px-1 text-xs font-medium text-sidebar-foreground tabular-nums select-none peer-hover/menu-button:text-sidebar-accent-foreground peer-data-active/menu-button:text-sidebar-accent-foreground pointer-coarse:h-11',
         className,
       )}
       {...props}
