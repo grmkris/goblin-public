@@ -9,7 +9,7 @@ function Composer({ className, ...props }: React.ComponentProps<'form'>) {
     <form
       data-slot="composer"
       className={cn(
-        'material-chrome flex w-full flex-col gap-1 rounded-2xl border border-border p-1.5 shadow-lg shadow-black/5 transition-[border-color,box-shadow] duration-200 has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:shadow-black/10 dark:shadow-black/30',
+        'material-chrome flex w-full flex-col gap-1 rounded-2xl border border-border p-1.5 shadow-(--shadow-2) transition-[border-color,box-shadow] duration-200 has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:shadow-(--shadow-3)',
         className,
       )}
       {...props}

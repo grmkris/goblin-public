@@ -77,15 +77,15 @@ main.shell {
   width: 0.4375rem;
   height: 0.4375rem;
   border-radius: 9999px;
-  background: var(--primary);
+  background: var(--live);
 }
 /* Work under a conversation it is not doing itself, or waiting on its subagents: a ring that turns. */
 .tree-row-below,
 .tree-row-waiting {
   width: 0.625rem;
   height: 0.625rem;
-  border: 1.5px solid color-mix(in oklab, var(--primary) 30%, transparent);
-  border-top-color: var(--primary);
+  border: 1.5px solid var(--live-soft);
+  border-top-color: var(--live);
   border-radius: 9999px;
   animation: tree-turn 1s linear infinite;
 }
@@ -243,7 +243,7 @@ main.shell {
   height: 0.5rem;
   border: 1.5px solid var(--sidebar);
   border-radius: 9999px;
-  background: var(--primary);
+  background: var(--live);
   content: '';
 }
 .rail-item[data-state='working']::after {
@@ -1182,7 +1182,7 @@ summary {
   border: 1px solid var(--border);
   border-radius: 9999px;
   background: var(--background);
-  box-shadow: 0 6px 18px rgb(0 0 0 / 0.12);
+  box-shadow: var(--shadow-3);
   font-size: 0.8125rem;
   font-weight: 600;
   text-overflow: ellipsis;
