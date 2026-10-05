@@ -294,8 +294,9 @@ drafts do not. The sidebar footer credits Trellis and Dan Fessler; see
 
 Apps are kept (ADR 0020). A call the owner's agent makes to a tool that declares an App keeps it in the agent's
 registry (`apps/registry.ts`, `app_apps`, one per conversation and call); *Show app* on an older or closed one keeps it
-through `POST /api/apps`. The workspace feed lists them, the sidebar shows each under its conversation, and closing a
-conversation closes its Apps. `GET /api/apps/:id/launch` reads the call's arguments and redacted result back from the
+through `POST /api/apps`. The workspace feed lists them, the sidebar shows each under its conversation (numbered when
+one title repeats, all but those open as pages and the newest three folded), and closing a conversation closes its
+Apps. `GET /api/apps/:id/launch` reads the call's arguments and redacted result back from the
 transcript; keeping and launching grant nothing.
 
 Several Apps run at once, in any conversation the owner views (`components/apps`). `AppHost` holds one instance per
@@ -307,7 +308,9 @@ pill and composer (`data-app-cover`, `lib/app-occlusion.ts`), which also keeps p
 loads when its place comes on screen; beyond six instances the least recently seen unloads to a stub
 (`lib/app-residency.ts`), while one on screen never does. The advertised modes are inline and fullscreen: fullscreen is
 the App's page filling the workspace (Open as a page, then Fill the workspace), and on a phone the page is a pane in
-the strip. The App's × closes it. Grant cards, link offers and context sharing remain host-drawn, per App.
+the strip. In its transcript the host's bar above an App opens its page or closes it; on its page the pane's pill
+menu brings it back, fills the workspace or closes it. Grant cards, link offers and context sharing remain
+host-drawn, per App.
 
 The App learns the host context (`lib/host-context.ts`): theme, our tokens as MCP Apps style variables, device,
 locale and time zone, its display mode, the modes on offer, and its measured box. The host re-sends it when these change.
