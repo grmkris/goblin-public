@@ -20,9 +20,11 @@ it, and under its pane's pill and composer. An App loads when its place comes on
 
 **Inline, or a page.** In its transcript an App is as tall as it asked, between 160px and 70% of the window. *Open as
 a page* gives it a pane of its own (`a:<id>`, `/a/<id>`) beside its conversation, and its place there says so, with
-*Go to it* and *Show here*. *Fill the workspace* maximizes that pane. That is fullscreen, and it is what an App asking
-for fullscreen gets; asking for inline brings it back. The modes on offer are inline and fullscreen. On a phone the
-page is one more pane in the strip.
+*Go to it* and *Show here*. In its transcript the host's bar above the App names it and offers *Open as a page* and
+×; on its page the pane's pill names it and its menu offers *Back in the conversation*, *Fill the workspace* and
+*Close the app*, with no second bar. *Fill the workspace* maximizes that pane. That is fullscreen, and it is what an
+App asking for fullscreen gets; asking for inline brings it back. The modes on offer are inline and fullscreen. On a
+phone the page is one more pane in the strip.
 
 **At most six loaded.** Beyond six instances the least recently seen unloads (`lib/app-residency.ts`). An App on
 screen never unloads, so the cap is soft. An unloaded App's place shows a stub that loads it again.

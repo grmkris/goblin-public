@@ -2,7 +2,8 @@
 // workspace is maximizing that pane; that is what an App asking for fullscreen gets.
 import { useEffect, useMemo, useRef } from 'react'
 import type { AppView } from '@purrable/contracts'
-import { Button } from '@purrable/ui'
+import { Button, DropdownMenuItem, DropdownMenuSeparator } from '@purrable/ui'
+import { Maximize2Icon, Minimize2Icon, PanelLeftCloseIcon, XIcon } from 'lucide-react'
 import type { ItemKey } from '../../lib/workspace.ts'
 import { appNames } from '../../lib/workspace-tree.ts'
 import { usePlace } from '../conversation-pane.tsx'
@@ -10,6 +11,7 @@ import { PaneHeader } from '../pane-header.tsx'
 import { useWorkspace } from '../workspace.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { useAppHost } from './host.tsx'
+import { useAppPlacement } from './placement.ts'
 import { AppNote, useSlot } from './slot.tsx'
 
 /** Why the App is not on its page: it could not load, or it was unloaded to stay under the cap; and the way back. */
@@ -33,8 +35,34 @@ function PageNote({
   )
 }
 
+/** The page's pill menu: back in its conversation, filling the workspace (fullscreen) and back, and close. */
+function AppPageMenu({ app, item }: { readonly app: AppView; readonly item: ItemKey }) {
+  const host = useAppHost()
+  const place = useAppPlacement(app)
+  const { only } = usePlace(item)
+  return (
+    <>
+      <DropdownMenuItem onClick={place.inline}>
+        <PanelLeftCloseIcon aria-hidden />
+        Back in the conversation
+      </DropdownMenuItem>
+      {!only && (
+        <DropdownMenuItem onClick={place.fill}>
+          {place.filled ? <Minimize2Icon aria-hidden /> : <Maximize2Icon aria-hidden />}
+          {place.filled ? 'Show all panes' : 'Fill the workspace'}
+        </DropdownMenuItem>
+      )}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onClick={() => host.close(app.id)}>
+        <XIcon aria-hidden />
+        Close the app
+      </DropdownMenuItem>
+    </>
+  )
+}
+
 /**
- * The App's pill, and the room its stage fills. Opening the page loads the App; one unloaded later, while its pane was
+ * The App's pill, with what can be done with the App, and the room its stage fills. Opening the page loads the App; one unloaded later, while its pane was
  * out of sight, waits behind a note rather than loading again on its own.
  */
 export function AppPage({ item, id }: { readonly item: ItemKey; readonly id: string }) {
@@ -56,7 +84,13 @@ export function AppPage({ item, id }: { readonly item: ItemKey; readonly id: str
   const title = useMemo(() => appNames(apps).get(id), [apps, id]) ?? 'App'
   return (
     <section className="app-pane" aria-label={title}>
-      <PaneHeader item={item} title={title} first={first} onClose={only ? undefined : () => workspace.close(item)} />
+      <PaneHeader
+        item={item}
+        title={title}
+        first={first}
+        menu={app === undefined ? undefined : <AppPageMenu app={app} item={item} />}
+        onClose={only ? undefined : () => workspace.close(item)}
+      />
       {asleep && app !== undefined ? (
         <PageNote app={app} {...(problem === undefined ? {} : { problem })} onShow={() => show(app)} />
       ) : (

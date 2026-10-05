@@ -1,21 +1,19 @@
-// The App stages: one fixed box per live App, holding its iframe and the host's chrome above it. A stage never moves in
+// The App stages: one fixed box per live App, holding its iframe (and, in its transcript, the host's bar above it). A stage never moves in
 // the DOM; it follows its App's page while the App has one, else the App's place in its transcript, frame by frame,
 // and springs between the two when the App moves, so it leaves the transcript for its page and comes back along the
 // same path without reloading. It clips itself to what of that place shows, and tells the host whether any does.
 import { type RefObject, useEffect, useRef, useState } from 'react'
-import type { McpUiDisplayMode } from '@modelcontextprotocol/ext-apps/app-bridge'
-import { Maximize2Icon, Minimize2Icon, PanelLeftCloseIcon, PanelRightOpenIcon, XIcon } from 'lucide-react'
+import { PanelRightOpenIcon, XIcon } from 'lucide-react'
 import { Button, Receipt } from '@purrable/ui'
 import { clipStage } from '../../lib/app-occlusion.ts'
 import { CHROME_HEIGHT, type Rect } from '../../lib/app-stage.ts'
 import { APP_MODES, type AppPlacement, inlineHeight } from '../../lib/host-context.ts'
 import { atRest, type Motion, PLACE, stepSpring } from '../../lib/spring.ts'
-import { appKey, conversationKey, isOpen, order } from '../../lib/workspace.ts'
-import { useWorkspace } from '../workspace.tsx'
 import { AppFrame } from './frame.tsx'
 import { useAppGrantAsks } from './grant-ask.tsx'
 import { type Instance, type SlotName, useAppHost } from './host.tsx'
 import { LinkOffer } from './offers.tsx'
+import { useAppPlacement } from './placement.ts'
 
 type Axes = { x: Motion; y: Motion; width: Motion; height: Motion }
 const AXES = ['x', 'y', 'width', 'height'] as const
@@ -120,40 +118,6 @@ function useStageMotion({ stage, live, slot, onTarget, onVisible }: StageMotion)
   return () => kickRef.current()
 }
 
-/** Where an App is shown and how it moves: to its page beside its transcript, back, filling the workspace, or not. */
-function usePlacement(instance: Instance) {
-  const workspace = useWorkspace()
-  const host = useAppHost()
-  const { id, conversation } = instance.app
-  const key = appKey(id)
-  const paged = isOpen(workspace.state, key)
-  const filled = workspace.state.maximized === key
-  const page = () => {
-    const source = host.element(`app-inline:${id}`)?.closest<HTMLElement>('[data-workspace-item]')
-      ?.dataset.workspaceItem
-    workspace.open(key, 'beside', source)
-  }
-  /** Back in its transcript: the page closes, or, as the last pane, shows the App's conversation in its place. */
-  const inline = () => {
-    if (filled) workspace.maximize(undefined)
-    if (order(workspace.state).length > 1) workspace.close(key)
-    else workspace.open(conversationKey(conversation), 'here', key)
-  }
-  const fill = () => workspace.maximize(filled ? undefined : key)
-  /** What the App asked for: fullscreen is its page filling the workspace; inline is back in its transcript. */
-  const request = (mode: McpUiDisplayMode): McpUiDisplayMode => {
-    if (mode === 'fullscreen') {
-      if (!paged) page()
-      workspace.maximize(key)
-      return 'fullscreen'
-    }
-    if (mode !== 'inline') return paged ? 'fullscreen' : 'inline'
-    if (paged) inline()
-    return 'inline'
-  }
-  return { paged, filled, page, inline, fill, request }
-}
-
 function ChromeButton({ label, icon: Icon, onClick }: { label: string; icon: typeof XIcon; onClick: () => void }) {
   return (
     <Button variant="ghost" size="icon-sm" aria-label={label} title={label} onClick={onClick}>
@@ -162,41 +126,24 @@ function ChromeButton({ label, icon: Icon, onClick }: { label: string; icon: typ
   )
 }
 
-/** The host's bar above the App: its name, to its page or back, filling the workspace from its page, and close. */
-function AppChrome({
-  instance,
-  place,
-}: {
-  readonly instance: Instance
-  readonly place: ReturnType<typeof usePlacement>
-}) {
+/** The host's bar above the App in its transcript: its name, to its page, and close. On its page the pill does this. */
+function AppChrome({ instance, onPage }: { readonly instance: Instance; readonly onPage: () => void }) {
   const host = useAppHost()
   return (
     <div className="app-chrome">
       <span className="app-chrome-title">{instance.app.title}</span>
-      {place.paged ? (
-        <ChromeButton label="Back in the conversation" icon={PanelLeftCloseIcon} onClick={place.inline} />
-      ) : (
-        <ChromeButton label="Open as a page" icon={PanelRightOpenIcon} onClick={place.page} />
-      )}
-      {place.paged && (
-        <ChromeButton
-          label={place.filled ? 'Stop filling the workspace' : 'Fill the workspace'}
-          icon={place.filled ? Minimize2Icon : Maximize2Icon}
-          onClick={place.fill}
-        />
-      )}
+      <ChromeButton label="Open as a page" icon={PanelRightOpenIcon} onClick={onPage} />
       <ChromeButton label="Close the app" icon={XIcon} onClick={() => host.close(instance.app.id)} />
     </div>
   )
 }
 
-/** The stage's measured room: the App's page less the chrome, or its place's width up to most of the window. */
-function useRoom() {
+/** The stage's measured room: the App's page, or its place in the transcript less the host's bar above it. */
+function useRoom(chrome: RefObject<number>) {
   const [box, setBox] = useState({ width: 0, height: 0 })
   const [onTarget] = useState(() => (rect: Rect) => {
     const width = Math.round(rect.width)
-    const height = Math.round(rect.height) - CHROME_HEIGHT
+    const height = Math.round(rect.height) - chrome.current
     setBox((current) => (current.width === width && current.height === height ? current : { width, height }))
   })
   return { box, onTarget }
@@ -206,7 +153,7 @@ function Stage({ instance }: { readonly instance: Instance }) {
   const host = useAppHost()
   const { id } = instance.app
   const { serverId } = instance.selection
-  const place = usePlacement(instance)
+  const place = useAppPlacement(instance.app)
   const name: SlotName = place.paged ? `app-page:${id}` : `app-inline:${id}`
   const stage = useRef<HTMLDivElement>(null)
   const live = useRef<Live>({
@@ -217,7 +164,9 @@ function Stage({ instance }: { readonly instance: Instance }) {
   })
   const [error, setError] = useState('')
   const grants = useAppGrantAsks(serverId)
-  const { box, onTarget } = useRoom()
+  const chrome = useRef(CHROME_HEIGHT)
+  chrome.current = place.paged ? 0 : CHROME_HEIGHT
+  const { box, onTarget } = useRoom(chrome)
   const latest = useRef({ name, host })
   latest.current = { name, host }
   const [slot] = useState(() => () => slotOf(latest.current.host.element(latest.current.name)))
@@ -242,7 +191,7 @@ function Stage({ instance }: { readonly instance: Instance }) {
   }
   return (
     <div ref={stage} className="app-stage" data-mode={place.paged ? 'page' : 'inline'} data-app={id} data-hidden="">
-      <AppChrome instance={instance} place={place} />
+      {!place.paged && <AppChrome instance={instance} onPage={place.page} />}
       {error && <Receipt tone="error">{error}. The ordinary tool result remains available.</Receipt>}
       {grants.card}
       {instance.link && (
