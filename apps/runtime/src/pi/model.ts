@@ -12,7 +12,7 @@ type ModelEnvironment = Pick<RuntimeEnv, 'MODEL_ID' | 'MODEL_BASE_URL' | 'MODEL_
 export const MODEL_PROVIDER = 'purrable-litellm'
 
 /** The provider is configured at the Worker boundary; its key never enters Pi state. */
-function makePiModel(option: ModelOption, baseUrl: string): Model<'openai-completions'> {
+function makePiModel(option: ModelOption, baseUrl: string, contextWindow?: number): Model<'openai-completions'> {
   return {
     id: option.id,
     name: option.label,
@@ -21,7 +21,7 @@ function makePiModel(option: ModelOption, baseUrl: string): Model<'openai-comple
     baseUrl,
     input: option.images ? ['text', 'image'] : ['text'],
     reasoning: false,
-    contextWindow: option.contextWindow,
+    contextWindow: contextWindow ?? option.contextWindow,
     maxTokens: 8192,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   }
@@ -34,11 +34,15 @@ export const LITELLM_STREAMS: ProviderStreams = { stream, streamSimple }
  * Every offered model (`models.ts`), the default first; `model` is the default for new sessions. `streams` carries
  * the requests; only a test passes anything but LiteLLM's.
  */
-export function makePiModels(env: ModelEnvironment, streams: ProviderStreams = LITELLM_STREAMS) {
+export function makePiModels(
+  env: ModelEnvironment,
+  streams: ProviderStreams = LITELLM_STREAMS,
+  contextWindow?: number,
+) {
   const options = modelOptions(env.MODELS, env.MODEL_ID)
   const [first, ...rest] = options
-  const model = makePiModel(first, env.MODEL_BASE_URL)
-  const others = rest.map((option) => makePiModel(option, env.MODEL_BASE_URL))
+  const model = makePiModel(first, env.MODEL_BASE_URL, contextWindow)
+  const others = rest.map((option) => makePiModel(option, env.MODEL_BASE_URL, contextWindow))
   const provider = createProvider({
     id: MODEL_PROVIDER,
     name: 'Purrable LiteLLM',

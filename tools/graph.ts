@@ -36,8 +36,8 @@ export const nodes: readonly Node[] = [
     name: '@purrable/bench',
     role: 'bounded native memory benchmark and experiment workspace',
     runtime: 'tooling',
-    mayImport: [],
-    zones: { test: 'test' },
+    mayImport: ['@purrable/runtime'],
+    zones: { test: 'test', worker: 'cloud' },
     seam: { consumer: 'developers and CI', reason: 'benchmark runner is intentionally outside deployed applications' },
   },
   {

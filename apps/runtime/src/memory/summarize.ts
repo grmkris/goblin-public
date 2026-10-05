@@ -1,4 +1,4 @@
-import type { CheapModel } from './model.ts'
+import type { TextCompletion } from './model.ts'
 import { NODE_BYTES, byteLength } from './tree.ts'
 
 /** OptChat's compactor prompt (§4.4), for Purrable: its structure and priorities are the point, keep them. */
@@ -100,14 +100,20 @@ function cut(line: string): string {
  * The node's line: the source itself when it fits, else the cheap model's summary. An overlong reply is sent back
  * with where the limit falls (OptChat §4.3), and the shortest of the tries is kept: the view measures real sizes.
  */
-export async function summarize(model: CheapModel, context: readonly string[], step: Step, signal?: AbortSignal) {
+export async function summarize(
+  model: TextCompletion,
+  context: readonly string[],
+  step: Step,
+  signal?: AbortSignal,
+  promptOverride?: string,
+) {
   const source = free(step)
   if (source !== undefined) return source
   const ask = `${chat(context)}\n\n${instruction(step)}`
   const tries: string[] = []
   let prompt = ask
   while (tries.length < TRIES) {
-    const line = flat(await model.complete(COMPACT, prompt, 400, signal))
+    const line = flat(await model.complete(promptOverride ?? COMPACT, prompt, 400, signal))
     if (line === '') throw new Error('The memory model returned an empty line')
     tries.push(line)
     const bytes = byteLength(line)

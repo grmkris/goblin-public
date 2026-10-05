@@ -11,9 +11,20 @@ import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { BACKGROUND, entryId } from '../pi/context.ts'
 import { appMemoryLog, appMemoryNodes, appMemoryState } from '../storage/schema.ts'
 import { type LogMessage, logMessage, messageLine } from './log.ts'
-import type { CheapModel } from './model.ts'
+import type { TextCompletion } from './model.ts'
 import { type Step, summarize } from './summarize.ts'
-import { type Node, type Sizes, byteLength, childrenOf, firstOf, fold, nodeAt, nodeKey, renderLine } from './tree.ts'
+import {
+  type Node,
+  type Sizes,
+  VIEW_BYTES,
+  byteLength,
+  childrenOf,
+  firstOf,
+  fold,
+  nodeAt,
+  nodeKey,
+  renderLine,
+} from './tree.ts'
 
 const PAGE = 100
 /** Context the summarizer sees before a stretch, at most (the summarizer keeps the newest lines within its own cap). */
@@ -32,12 +43,19 @@ export type StepResult = 'more' | 'done'
 export class MainMemory {
   readonly #db: DrizzleSqliteDODatabase
   readonly #harness: PiHarness
-  readonly #model: CheapModel
+  readonly #model: TextCompletion
+  readonly #options: { readonly viewBytes?: number; readonly summaryPrompt?: string }
 
-  constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, model: CheapModel) {
+  constructor(
+    db: DrizzleSqliteDODatabase,
+    harness: PiHarness,
+    model: TextCompletion,
+    options: { readonly viewBytes?: number; readonly summaryPrompt?: string } = {},
+  ) {
     this.#db = db
     this.#harness = harness
     this.#model = model
+    this.#options = options
   }
 
   async #main(): Promise<Conversation> {
@@ -101,7 +119,7 @@ export class MainMemory {
     }
     const through = this.#newestInput()
     if (through === undefined || through === 0) return 'done'
-    const view = fold(through, sizes)
+    const view = fold(through, sizes, this.#options.viewBytes ?? VIEW_BYTES)
     if (view.wanted !== undefined) {
       await this.#build(view.wanted, sizes, signal)
       return 'more'
@@ -207,7 +225,7 @@ export class MainMemory {
       node.level === 0
         ? { kind: 'compress', message: messageLine(await this.#message(node.index)) }
         : this.#mergeStep(node)
-    const text = await summarize(this.#model, context, step, signal)
+    const text = await summarize(this.#model, context, step, signal, this.#options.summaryPrompt)
     this.#db
       .insert(appMemoryNodes)
       .values({ level: node.level, idx: node.index, text, bytes: byteLength(text) })

@@ -115,8 +115,8 @@
             }
           },
           {
-            // scripts/stage.ts builds and scrubs the child environment of every stage run (ADR 0001).
-            "include": ["scripts/stage.ts"],
+            // These loaders scrub the stage environment or force local-only placeholder cloud credentials.
+            "include": ["scripts/stage.ts", "bench/scripts/local.ts"],
             "options": { "diagnosticSeverity": { "processEnv": "off", "processEnvInEffect": "off" } }
           }
         ]

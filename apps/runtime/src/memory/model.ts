@@ -4,6 +4,11 @@ import { MODEL_PROVIDER } from '../pi/model.ts'
 /** Room for the thinking a model does before answering by default: it counts against `maxTokens`. */
 const THINKING_HEADROOM = 2048
 
+/** Narrow completion seam shared by resident memory and isolated benchmark writers. */
+export interface TextCompletion {
+  complete(system: string, user: string, maxTokens: number, signal?: AbortSignal): Promise<string>
+}
+
 /**
  * The deployment's cheap model for housekeeping nobody asked the agent for: naming threads, summarizing main into its
  * memory. It is one of the offered models (`PURRABLE_MEMORY_MODEL`), called on the same LiteLLM key, and every token

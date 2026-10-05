@@ -7,14 +7,23 @@
     "typecheck": "tsc -p tsconfig.json",
     "effect:check": "bun ../tools/effect-check.ts tsconfig.json",
     "test": "vitest run",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "@earendil-works/pi-ai": "1.0.1",
+    "@earendil-works/pi-durable": "1.0.1",
+    "@purrable/runtime": "workspace:*",
+    "agents": "0.26.0",
+    "drizzle-orm": "1.0.0-rc.5-ab785fc",
     "effect": "4.0.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20260928.1",
+    "@effect/platform-bun": "4.0.0",
     "@types/bun": "1.4.2",
     "@types/node": "22.18.0",
+    "alchemy": "2.0.0-beta.80",
     "typescript": "7.0.2",
     "vitest": "5.0.1"
   }

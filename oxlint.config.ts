@@ -104,6 +104,8 @@ export default defineConfig({
       files: ['**/vitest*.config.ts', '**/vite.config.ts', '**/test/support/**', 'scripts/stage.ts'],
       rules: { 'purrable/no-process-env': 'off' },
     },
+    // The isolated benchmark stack must replace ambient cloud credentials with local placeholders and restore them.
+    { files: ['bench/scripts/local.ts'], rules: { 'purrable/no-process-env': 'off' } },
     // nested package CSS import, which the plugin does not follow.
     {
       files: ['apps/web/src/**/*.tsx', 'packages/ui/src/**'],
