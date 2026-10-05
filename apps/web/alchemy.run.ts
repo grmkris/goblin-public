@@ -14,6 +14,7 @@ export default Alchemy.Stack(
   Effect.gen(function* () {
     const stage = resolveStage(yield* Alchemy.Stage)
     const appUrl = yield* Config.String('PURRABLE_APP_URL').pipe(Config.withDefault('http://localhost:18971'))
+    const domain = yield* Config.String('PURRABLE_DOMAIN').pipe(Config.withDefault(''))
     const signupMode = yield* Config.String('PURRABLE_SIGNUP_MODE').pipe(Config.withDefault('closed'))
     // An address on an apex onboarded for Cloudflare Email Sending; empty means no mail and no email verification.
     const mailSender = yield* Config.String('PURRABLE_MAIL_SENDER').pipe(Config.withDefault(''))
@@ -21,6 +22,8 @@ export default Alchemy.Stack(
       return yield* Effect.die(
         new Error('open sign-up on a deployed stage needs PURRABLE_MAIL_SENDER (email verification)'),
       )
+    if (stage.name === 'dev' && signupMode === 'open')
+      return yield* Effect.die(new Error('dev_sign_up_must_be_closed_or_invite_only'))
     const db = yield* Cloudflare.D1.Database('PurrableAuth', {
       name: stage.resourceName('auth'),
       migrations: fileURLToPath(new URL('../../apps/runtime/migrations', import.meta.url)),
@@ -31,6 +34,15 @@ export default Alchemy.Stack(
       rootDir: root,
       main: 'src/worker.ts',
       workersDev: true,
+      ...(domain === ''
+        ? {}
+        : {
+            domain: {
+              name: domain,
+              zoneId: '8335636aef2c6209a4327d7a282b31d2',
+              ...(stage.name === 'prod' ? { aliases: [`www.${domain}`] } : {}),
+            },
+          }),
       compatibility: { date: '2026-09-25', flags: ['nodejs_compat'] },
       dev: { port: 18971, strictPort: true },
       memo: {
@@ -58,7 +70,7 @@ export default Alchemy.Stack(
         MEMORY_MODEL: Config.String('PURRABLE_MEMORY_MODEL').pipe(Config.withDefault('')),
         MCP_SERVERS: Config.String('PURRABLE_MCP_SERVERS').pipe(Config.withDefault('[]')),
         CREDENTIAL_KEY: Config.Redacted('PURRABLE_CREDENTIAL_KEY'),
-        STAGE: stage.local ? 'local' : stage.name === 'dev' ? 'dev' : 'test',
+        STAGE: stage.local ? 'local' : stage.name === 'dev' ? 'dev' : stage.name === 'prod' ? 'prod' : 'test',
       },
     })
     return { url: web.url, authDatabase: db.databaseId }

@@ -1,3 +1,4 @@
+import { canonicalRedirect } from '../../src/http/canonical.ts'
 import { MAIN_THREAD, type ThreadView } from '@purrable/contracts'
 import { PersonalAgent } from '../../src/agent.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
@@ -559,30 +560,36 @@ async function destroySequence(env: Env, name: string): Promise<Response> {
   })
 }
 
+function nativeFetch(request: Request, env: Env): Promise<Response> {
+  const name = new URL(request.url).searchParams.get('name') ?? 'initialization'
+  if (new URL(request.url).pathname === '/rpc') return rpcSequence(env.AGENTS.getByName(name))
+  if (new URL(request.url).pathname === '/skills-cache')
+    return env.AGENTS.getByName(name)
+      .skillsCacheProbe()
+      .then((result) => Response.json(result))
+  if (new URL(request.url).pathname === '/destroy') return destroySequence(env, name)
+  if (new URL(request.url).pathname === '/branch') return branchSequence(env.AGENTS.getByName(name))
+  if (new URL(request.url).pathname === '/share') return shareSequence(env.AGENTS.getByName(name))
+  if (new URL(request.url).pathname === '/announce') return announceSequence(env.AGENTS.getByName(name))
+  if (new URL(request.url).pathname === '/capabilities') return capabilitySequence(env.AGENTS.getByName(name))
+  if (new URL(request.url).pathname === '/scopes')
+    return env.AGENTS.getByName(name)
+      .scopeProbe()
+      .then((result) => Response.json(result))
+  if (new URL(request.url).pathname === '/subagent') return subagentSequence(env.AGENTS.getByName(name))
+  if (new URL(request.url).pathname === '/memory') return memorySequence(env.AGENTS.getByName(name))
+  if (new URL(request.url).pathname === '/binding')
+    return env.AGENTS.getByName(name)
+      .bindingProbe()
+      .then((result) => Response.json(result))
+  if (new URL(request.url).pathname.startsWith('/lifecycle')) return env.LIFECYCLE.getByName(name).fetch(request)
+  return env.AGENTS.getByName(name).fetch(request)
+}
+
 export default {
   fetch(request: Request, env: Env): Promise<Response> {
-    const name = new URL(request.url).searchParams.get('name') ?? 'initialization'
-    if (new URL(request.url).pathname === '/rpc') return rpcSequence(env.AGENTS.getByName(name))
-    if (new URL(request.url).pathname === '/skills-cache')
-      return env.AGENTS.getByName(name)
-        .skillsCacheProbe()
-        .then((result) => Response.json(result))
-    if (new URL(request.url).pathname === '/destroy') return destroySequence(env, name)
-    if (new URL(request.url).pathname === '/branch') return branchSequence(env.AGENTS.getByName(name))
-    if (new URL(request.url).pathname === '/share') return shareSequence(env.AGENTS.getByName(name))
-    if (new URL(request.url).pathname === '/announce') return announceSequence(env.AGENTS.getByName(name))
-    if (new URL(request.url).pathname === '/capabilities') return capabilitySequence(env.AGENTS.getByName(name))
-    if (new URL(request.url).pathname === '/scopes')
-      return env.AGENTS.getByName(name)
-        .scopeProbe()
-        .then((result) => Response.json(result))
-    if (new URL(request.url).pathname === '/subagent') return subagentSequence(env.AGENTS.getByName(name))
-    if (new URL(request.url).pathname === '/memory') return memorySequence(env.AGENTS.getByName(name))
-    if (new URL(request.url).pathname === '/binding')
-      return env.AGENTS.getByName(name)
-        .bindingProbe()
-        .then((result) => Response.json(result))
-    if (new URL(request.url).pathname.startsWith('/lifecycle')) return env.LIFECYCLE.getByName(name).fetch(request)
-    return env.AGENTS.getByName(name).fetch(request)
+    if (new URL(request.url).pathname.startsWith('/canonical'))
+      return Promise.resolve(canonicalRedirect(request, 'https://purrable.lol') ?? Response.json({ canonical: true }))
+    return nativeFetch(request, env)
   },
 }

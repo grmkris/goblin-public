@@ -705,3 +705,21 @@ if (phase === 'read')
       )
     }),
   )
+
+harness.test(
+  'local workerd: canonical host redirects preserve methods, path and query',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    for (const method of ['GET', 'HEAD', 'POST']) {
+      const response = yield* Effect.promise(() =>
+        fetch(`${baseUrl(url)}/canonical/path?q=a%2Fb`, {
+          method,
+          redirect: 'manual',
+          ...(method === 'POST' ? { body: 'keep this body' } : {}),
+        }),
+      )
+      expect(response.status).toBe(method === 'POST' ? 308 : 301)
+      expect(response.headers.get('location')).toBe('https://purrable.lol/canonical/path?q=a%2Fb')
+    }
+  }),
+)

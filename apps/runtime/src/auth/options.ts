@@ -41,7 +41,7 @@ export const markLoopbackClientsNative = (body: unknown): void => {
 
 export type AuthEnvironment = Pick<
   RuntimeEnv,
-  'APP_URL' | 'BETTER_AUTH_SECRET' | 'SIGNUP_MODE' | 'SIGNUP_INVITE_CODE' | 'MAIL' | 'MAIL_SENDER' | 'AGENTS'
+  'APP_URL' | 'BETTER_AUTH_SECRET' | 'SIGNUP_MODE' | 'SIGNUP_INVITE_CODE' | 'MAIL' | 'MAIL_SENDER' | 'AGENTS' | 'STAGE'
 >
 
 /** Per-IP limits on the endpoints that create accounts or send mail; everything else keeps the default window. */
@@ -69,7 +69,15 @@ const accountEmailOptions = (env: AuthEnvironment, mailer: Mail) => {
   const send =
     (build: typeof verificationMail) =>
     async ({ user, url }: { user: { email: string }; url: string }) => {
-      await mailer.binding.send(build({ from: mailer.from, to: user.email, url, appUrl: env.APP_URL }))
+      await mailer.binding.send(
+        build({
+          from: mailer.from,
+          to: user.email,
+          url,
+          appUrl: env.APP_URL,
+          ...(env.STAGE === undefined ? {} : { stage: env.STAGE }),
+        }),
+      )
     }
   return {
     emailAndPassword: {
@@ -101,7 +109,15 @@ const codePlugins = (env: AuthEnvironment, mailer: Mail): BetterAuthPlugin[] =>
           storeOTP: 'hashed',
           sendVerificationOTP: async ({ email, otp, type }) => {
             if (type === 'sign-in')
-              await mailer.binding.send(codeMail({ from: mailer.from, to: email, code: otp, appUrl: env.APP_URL }))
+              await mailer.binding.send(
+                codeMail({
+                  from: mailer.from,
+                  to: email,
+                  code: otp,
+                  appUrl: env.APP_URL,
+                  ...(env.STAGE === undefined ? {} : { stage: env.STAGE }),
+                }),
+              )
           },
         }),
       ]

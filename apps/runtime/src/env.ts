@@ -128,5 +128,5 @@ export interface RuntimeEnv {
   readonly MCP_SERVERS?: string
   /** 32 random bytes, base64: encrypts outbound OAuth credentials at rest. */
   readonly CREDENTIAL_KEY: string
-  readonly STAGE?: 'local' | 'dev' | 'test'
+  readonly STAGE?: 'local' | 'dev' | 'prod' | 'test'
 }

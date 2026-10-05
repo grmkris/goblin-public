@@ -16,6 +16,7 @@ import { failureResponse, requestIdOf, secured } from './http/respond.ts'
 import { unwrap } from './http/rpc.ts'
 import { handleInboundMcp } from './inbound/route.ts'
 import { hookTokenValid } from './channel/doorbell.ts'
+import { canonicalRedirect } from './http/canonical.ts'
 
 export { PersonalAgent } from './agent.ts'
 
@@ -238,6 +239,8 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
 
 export default {
   async fetch(request: Request, env: RuntimeEnv): Promise<Response> {
+    const redirect = canonicalRedirect(request, env.APP_URL)
+    if (redirect !== undefined) return redirect
     const url = new URL(request.url)
     if (url.pathname === '/health')
       return Response.json({

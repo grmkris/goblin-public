@@ -5,24 +5,42 @@ import { resolveStage } from './stage-config.ts'
 
 const root = resolve(import.meta.dirname, '..')
 const command = Bun.argv[2] ?? 'dev'
-if (!['dev', 'deploy:dev', 'plan:dev', 'destroy:dev'].includes(command))
-  throw new Error('use_dev_deploy_dev_plan_dev_or_destroy_dev')
+if (!['dev', 'deploy:dev', 'plan:dev', 'destroy:dev', 'deploy:prod', 'plan:prod', 'smoke:prod'].includes(command))
+  throw new Error('unsupported_stage_command')
 // Destroying dev deletes the owner account, the agent's conversations and every stored MCP credential.
 if (command === 'destroy:dev' && !Bun.argv.includes('--confirm-reset'))
   throw new Error('destroy_dev_requires_--confirm-reset: it erases the owner account, conversations and credentials')
-const stage = resolveStage(command === 'dev' ? 'local' : 'dev')
+const stage = resolveStage(command === 'dev' ? 'local' : command.endsWith(':prod') ? 'prod' : 'dev')
+if (stage.name === 'prod' && process.env['PURRABLE_CONFIRM_PROD'] !== '1')
+  throw new Error('prod_requires_PURRABLE_CONFIRM_PROD=1')
 const config = resolve(root, '.local', `${stage.name}.env`)
 const shared = resolve(root, '.local/cloud.env')
 const childEnv: Record<string, string | undefined> = { ...process.env }
 for (const key of Object.keys(childEnv)) {
-  if (/^(CLOUDFLARE_|PURRABLE_|MYAGENT_|MYBROWSER_|MYPLAN_|MYINBOX_|MYTMUX_|LITELLM_|ALCHEMY_STAGE)/u.test(key))
+  if (/^(CLOUDFLARE_|PURRABLE_|DODO_|MYAGENT_|MYBROWSER_|MYPLAN_|MYINBOX_|MYTMUX_|LITELLM_|ALCHEMY_STAGE)/u.test(key))
     delete childEnv[key]
 }
 childEnv['PURRABLE_STAGE'] = stage.name
 childEnv['BUN_CONFIG_NO_ENVFILE'] = '1'
+if (command === 'smoke:prod') {
+  if ((statSync(config).mode & 0o077) !== 0) throw new Error('private_stage_file_requires_mode_600')
+  const smoke = Bun.spawn(['bun', '--env-file', config, resolve(root, 'scripts/smoke-dev.ts')], {
+    cwd: root,
+    env: childEnv,
+    stdio: ['inherit', 'inherit', 'inherit'],
+  })
+  process.exit(await smoke.exited)
+}
 const args = [
   resolve(root, 'node_modules/alchemy/bin/alchemy.js'),
-  { dev: 'dev', 'plan:dev': 'plan', 'deploy:dev': 'deploy', 'destroy:dev': 'destroy' }[command] ?? 'dev',
+  {
+    dev: 'dev',
+    'plan:dev': 'plan',
+    'deploy:dev': 'deploy',
+    'destroy:dev': 'destroy',
+    'deploy:prod': 'deploy',
+    'plan:prod': 'plan',
+  }[command] ?? 'dev',
   '--config',
   resolve(root, 'apps/web/alchemy.run.ts'),
   '--stage',
@@ -55,7 +73,7 @@ if (!stage.local) {
     if (existsSync(merged)) unlinkSync(merged)
   })
 }
-if (command === 'deploy:dev' || command === 'destroy:dev') args.push('--yes')
+if (command === 'deploy:dev' || command === 'deploy:prod' || command === 'destroy:dev') args.push('--yes')
 const child = Bun.spawn(['bun', ...args], {
   cwd: resolve(root, 'apps/web'),
   env: childEnv,

@@ -6,6 +6,7 @@
   "exports": {
     "./agent": "./src/agent.ts",
     "./worker": "./src/worker.ts",
+    "./canonical": "./src/http/canonical.ts",
     "./env": "./src/env.ts",
     "./memory": "./src/memory/benchmark.ts"
   },

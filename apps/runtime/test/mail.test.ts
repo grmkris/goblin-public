@@ -52,3 +52,22 @@ describe('sign-in code mail (unit)', () => {
     expect(mail.text).toContain('482913')
   })
 })
+
+describe('stage mail subjects', () => {
+  it('keeps dev marked and production unmarked, with no code or token in the subject', () => {
+    const base = {
+      from: 'hello@purrable.lol',
+      to: 'a@example.com',
+      code: '482913',
+      url: 'https://purrable.lol/api/auth/verify-email?token=abc',
+      appUrl: 'https://purrable.lol',
+      stage: 'prod' as const,
+    }
+    expect(codeMail(base).subject).toBe('Your Purrable sign-in code')
+    expect(resetMail(base).subject).toBe('Reset your Purrable password')
+    expect(verificationMail(base).subject).toBe('Confirm your email for Purrable')
+    expect(codeMail({ ...base, appUrl: 'https://dev.purrable.lol', stage: 'dev' }).subject).toBe(
+      '[dev.purrable.lol] Your Purrable sign-in code',
+    )
+  })
+})

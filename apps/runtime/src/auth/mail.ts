@@ -17,16 +17,22 @@ export const mailerOf = (env: { readonly MAIL?: MailBinding; readonly MAIL_SENDE
   return env.MAIL === undefined || !/^[^\s@]+@[^\s@]+$/u.test(from) ? undefined : { binding: env.MAIL, from }
 }
 
+type MailStage = { readonly stage?: 'local' | 'dev' | 'prod' | 'test' }
+const subjectPrefix = (input: MailStage & { readonly appUrl: string }): string =>
+  input.stage === 'prod' ? '' : `[${new URL(input.appUrl).host}] `
+
 /** A sign-in code. The subject never contains the code, so a lock-screen preview does not give it away. */
-export const codeMail = (input: {
-  readonly from: string
-  readonly to: string
-  readonly code: string
-  readonly appUrl: string
-}): MailMessage => ({
+export const codeMail = (
+  input: {
+    readonly from: string
+    readonly to: string
+    readonly code: string
+    readonly appUrl: string
+  } & MailStage,
+): MailMessage => ({
   from: input.from,
   to: input.to,
-  subject: `[${new URL(input.appUrl).host}] Your Purrable sign-in code`,
+  subject: `${subjectPrefix(input)}Your Purrable sign-in code`,
   text: [
     `Your Purrable sign-in code is ${input.code}`,
     '',
@@ -35,15 +41,17 @@ export const codeMail = (input: {
 })
 
 /** The password-reset mail; the link carries a one-hour, single-use token. Same host marking as confirmation. */
-export const resetMail = (input: {
-  readonly from: string
-  readonly to: string
-  readonly url: string
-  readonly appUrl: string
-}): MailMessage => ({
+export const resetMail = (
+  input: {
+    readonly from: string
+    readonly to: string
+    readonly url: string
+    readonly appUrl: string
+  } & MailStage,
+): MailMessage => ({
   from: input.from,
   to: input.to,
-  subject: `[${new URL(input.appUrl).host}] Reset your Purrable password`,
+  subject: `${subjectPrefix(input)}Reset your Purrable password`,
   text: [
     `Open this link to choose a new password for ${input.to}:`,
     '',
@@ -55,18 +63,19 @@ export const resetMail = (input: {
 })
 
 /**
- * The account-confirmation mail. Purrable has no production stage, so the subject always names the host the link
- * goes to: dev mail must never pass for production mail. The link carries a one-hour, single-use token.
+ * The account-confirmation mail. Dev subjects name their host; production subjects have no stage prefix. The link carries a one-hour, single-use token.
  */
-export const verificationMail = (input: {
-  readonly from: string
-  readonly to: string
-  readonly url: string
-  readonly appUrl: string
-}): MailMessage => ({
+export const verificationMail = (
+  input: {
+    readonly from: string
+    readonly to: string
+    readonly url: string
+    readonly appUrl: string
+  } & MailStage,
+): MailMessage => ({
   from: input.from,
   to: input.to,
-  subject: `[${new URL(input.appUrl).host}] Confirm your email for Purrable`,
+  subject: `${subjectPrefix(input)}Confirm your email for Purrable`,
   text: [
     `Open this link to confirm ${input.to} and finish creating your Purrable account:`,
     '',

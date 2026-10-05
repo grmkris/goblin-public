@@ -36,23 +36,20 @@ const settings = Effect.gen(function* () {
   return {
     stage: yield* Config.String('PURRABLE_STAGE'),
     url: yield* Config.String('PURRABLE_APP_URL'),
-    email: yield* Config.Redacted('PURRABLE_OWNER_EMAIL'),
-    password: yield* Config.Redacted('PURRABLE_OWNER_PASSWORD'),
+    email: yield* Config.Redacted('PURRABLE_OWNER_EMAIL').pipe(Config.withDefault(Redacted.make(''))),
+    password: yield* Config.Redacted('PURRABLE_OWNER_PASSWORD').pipe(Config.withDefault(Redacted.make(''))),
     /** The model the smoke's agent turns run on (dev: an Alibaba Token Plan model); unset: the owner's own pick. */
     smokeModel: Option.getOrUndefined(yield* Config.option(Config.String('PURRABLE_SMOKE_MODEL'))),
   }
 })
 
-/** Only the retained dev Worker or the local `bun dev` stack; anything else is refused. */
+/** Smoke follows the stage's configured APP_URL; local remains tied to the local stack. */
 function targetUrl(config: Settings): URL {
   const url = new URL(config.url)
-  const dev =
-    config.stage === 'dev' &&
-    url.protocol === 'https:' &&
-    /^purrable-dev\.[a-z0-9-]+\.workers\.dev$/u.test(url.hostname)
+  const deployed = (config.stage === 'dev' || config.stage === 'prod') && url.protocol === 'https:'
   const local = config.stage === 'local' && url.origin === 'http://localhost:18971'
-  if ((!dev && !local) || url.pathname !== '/' || url.search || url.hash || url.username || url.password)
-    throw new Error('dev_or_local_target_required')
+  if ((!deployed && !local) || url.pathname !== '/' || url.search || url.hash || url.username || url.password)
+    throw new Error('stage_app_origin_required')
   return url
 }
 
@@ -477,7 +474,9 @@ type Receipt = {
   readonly memory: MemoryCheck['memory']
 }
 
-async function smokeDev(steps: Step[]): Promise<Receipt> {
+async function smokeDev(
+  steps: Step[],
+): Promise<Receipt | { readonly stage: string; readonly signup: string; readonly mode: 'read-only' }> {
   const config = await Effect.runPromise(settings)
   if ((await stat(new URL(`../.local/${config.stage}.env`, import.meta.url))).mode & 0o077)
     throw new Error('private_stage_env_required')
@@ -485,6 +484,11 @@ async function smokeDev(steps: Step[]): Promise<Receipt> {
   const health = await dev.json('/health', { owner: false })
   if (health['stage'] !== config.stage || health['service'] !== 'purrable') throw new Error('stage_health_mismatch')
   const signup = string(health['signup'])
+  if (config.stage === 'prod' && (Redacted.value(config.email) === '' || Redacted.value(config.password) === '')) {
+    const probe = await dev.send('/api/threads', { owner: false })
+    if (probe.status !== 401) throw new Error('anonymous_auth_probe_not_refused')
+    return { stage: config.stage, signup, mode: 'read-only' }
+  }
   if (signup !== 'open') await refusedSignup(dev)
   await dev.signIn(config.email, config.password)
   const resident = await dev.json('/api/agent/resident')

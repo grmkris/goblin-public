@@ -404,3 +404,15 @@ deployment entrypoint. The local stage runs in workerd with CLIProxy; the dev st
 dedicated model-limited, budget-capped key. Offered models and the per-agent token allowance come from stage
 configuration. The key's provider caps and shared quotas are managed outside this repository; source does not prove
 their active values. Secrets are Worker secret bindings, never in the browser bundle.
+
+
+## Stage origins
+
+The `prod` stage has its own `purrable-prod-auth` D1, native Agent namespace, secret bindings and model key; `dev`
+retains its existing resources and data. Alchemy attaches the per-stage `PURRABLE_DOMAIN`, and prod's `www` alias.
+Both Worker entry points redirect alternate origins before auth, hooks or page rendering: 301 for GET/HEAD, 308 for
+other methods. Redirects preserve path/query and use only `APP_URL` as their authority. Passkey rpID, trusted origins,
+mail links and inbound MCP metadata also derive from that configured origin. Dev passkeys must be remade after the
+host changes; email codes remain the recovery path. Inbound clients re-authorize and outbound DCR clients reconnect.
+Mail subjects include the host outside prod; prod subjects have no stage prefix. Domain and sender acceptance are
+separate operator checks; local workerd proves the redirect behavior.
