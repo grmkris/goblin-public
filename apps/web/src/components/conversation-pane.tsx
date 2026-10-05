@@ -1,7 +1,16 @@
 import { type ReactNode, useMemo, useRef, useState } from 'react'
 import type { ConversationView } from '@purrable/contracts'
 import { DropdownMenuItem, DropdownMenuSeparator, Input, useMediaQuery } from '@purrable/ui'
-import { Maximize2Icon, Minimize2Icon, PencilIcon, RotateCcwIcon, ShareIcon, XIcon } from 'lucide-react'
+import {
+  GitBranchIcon,
+  Maximize2Icon,
+  MessageCircleIcon,
+  Minimize2Icon,
+  PencilIcon,
+  RotateCcwIcon,
+  ShareIcon,
+  XIcon,
+} from 'lucide-react'
 import { failureText } from '../lib/boundary.ts'
 import { WIDE_QUERY } from '../lib/breakpoints.ts'
 import type { Part } from '../lib/parts.ts'
@@ -16,6 +25,7 @@ import { useModelChoice } from './model-picker.tsx'
 import { PaneHeader } from './pane-header.tsx'
 import { AppsIn } from './parts/mcp-tool-part.tsx'
 import { PartView } from './parts/registry.tsx'
+import { Cause } from './parts/text-part.tsx'
 import { useInlineThreads } from './inline-thread.tsx'
 import { postMessage, useConversation, useDockInsets, useTranscript } from './use-conversation.ts'
 import { useWorkspace } from './workspace.tsx'
@@ -27,10 +37,27 @@ const SHARE_REQUEST = 'Share what we concluded here with the conversation this t
 /** What a pane says about a conversation's name: main is Main, the rest their titles. */
 const nameOf = (view: ConversationView | undefined) => (view?.kind === 'main' ? 'Main' : threadTitle(view))
 
-/** The message a thread branched from, then a rule with the count of what was said in the thread since. */
-function ThreadRoot({ parts, replies }: { readonly parts: readonly Part[]; readonly replies: number }) {
+/**
+ * The message a thread branched from, under where it came from, then a rule with the count of what was said in the
+ * thread since.
+ */
+function ThreadRoot({
+  parts,
+  replies,
+  from,
+}: {
+  readonly parts: readonly Part[]
+  readonly replies: number
+  readonly from: string
+}) {
   return (
     <div className="thread-root">
+      <p className="cause-line">
+        <GitBranchIcon aria-hidden />
+        <span>
+          Branched from <b>{from}</b>
+        </span>
+      </p>
       {parts.map((part) => (
         <PartView key={part.id} part={part} canSwitchModel={false} />
       ))}
@@ -214,9 +241,16 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
   useMarkRead(view, reading)
   const inline = useInlineThreads(id, item, branchable)
   const root = fork === undefined ? [] : rootParts(parts, fork)
+  const parentName = nameOf(feed.conversations.find((candidate) => candidate.id === view.parent))
+  // A subagent's first message is the task its spawner gave it: shown as that, not as the owner's words.
+  const first = parts[0]
+  const task =
+    view.kind === 'subagent' && earlier === undefined && first?.kind === 'user' && first.author === undefined
+      ? first
+      : undefined
   const shown = useMemo(
-    () => (fork === undefined ? parts : parts.filter((part) => entryOfPart(part.id) !== fork)),
-    [parts, fork],
+    () => parts.filter((part) => part !== task && (fork === undefined || entryOfPart(part.id) !== fork)),
+    [parts, fork, task],
   )
   const transcript = (
     <Conversation
@@ -228,8 +262,21 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
       {...(root.length > 0 && {
         lead: (
           <AppsIn conversation={undefined}>
-            <ThreadRoot parts={root} replies={view.replies} />
+            <ThreadRoot parts={root} replies={view.replies} from={parentName} />
           </AppsIn>
+        ),
+      })}
+      {...(task !== undefined && {
+        lead: (
+          <Cause
+            icon={<MessageCircleIcon aria-hidden />}
+            line={
+              <>
+                Task from <b>{parentName}</b>
+              </>
+            }
+            text={task.text}
+          />
         ),
       })}
     />
@@ -307,7 +354,7 @@ export function DraftPane({ item }: { readonly item: ItemKey }) {
   let lead: ReactNode = (
     <p className="thread-intro">A new thread. Main learns its name once it starts, not what is said in it.</p>
   )
-  if (from !== undefined) lead = <ThreadRoot parts={root} replies={0} />
+  if (from !== undefined) lead = <ThreadRoot parts={root} replies={0} from={nameOf(source)} />
   return (
     <section className="conversation-pane chat-pane" aria-label="New thread" ref={pane}>
       <PaneHeader

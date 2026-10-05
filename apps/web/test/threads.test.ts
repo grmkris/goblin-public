@@ -7,6 +7,7 @@ import {
   fromEntry,
   relativeTime,
   repliesLabel,
+  reporterOf,
   rootParts,
   threadsByFork,
 } from '../src/lib/threads.ts'
@@ -91,5 +92,14 @@ describe('threads in main', () => {
     expect(closedBy(view('6', { kind: 'subagent', closedAt: 10, closedBy: 'done' }))).toBe('done')
     // Archived before closing was recorded by whom: the owner archived it.
     expect(closedBy(view('7', { closedAt: 10 }))).toBe('owner')
+  })
+})
+
+describe('who reported', () => {
+  it('names the subagent a report came from, and nobody for any other author', () => {
+    expect(reporterOf('subagent venues')).toBe('venues')
+    expect(reporterOf('subagent ')).toBeUndefined()
+    expect(reporterOf('Telegram')).toBeUndefined()
+    expect(reporterOf(undefined)).toBeUndefined()
   })
 })

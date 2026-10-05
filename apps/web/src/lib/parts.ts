@@ -37,6 +37,8 @@ export type Part =
       readonly author?: string
       /** The thread a note shared into main came from. */
       readonly thread?: string
+      /** When it was written (epoch ms), where Pi knows. */
+      readonly at?: number
     }
   | { readonly kind: 'reasoning'; readonly id: string; readonly text: string; readonly live: boolean }
   | { readonly kind: 'text'; readonly id: string; readonly text: string; readonly live: boolean }
@@ -113,6 +115,19 @@ function liveParts(projection: ConversationProjection, context: Context, seen: R
   return parts
 }
 
+/** A message in the user column, with who wrote it and when, where those are known. */
+function userPart(message: Extract<ChatMessage, { role: 'user' }>): Part {
+  return {
+    kind: 'user',
+    id: message.id,
+    text: message.text,
+    ...(message.context && { context: message.context }),
+    ...(message.author !== undefined && { author: message.author }),
+    ...(message.thread !== undefined && { thread: message.thread }),
+    ...(message.timestamp !== undefined && { at: message.timestamp }),
+  }
+}
+
 /** The transcript as render parts: each tool result folds into the call that asked for it. */
 export function conversationParts(projection: ConversationProjection): Part[] {
   const results = new Map<string, ToolResultMessage>()
@@ -125,15 +140,7 @@ export function conversationParts(projection: ConversationProjection): Part[] {
   const seen = new Set<string>()
   const parts: Part[] = []
   for (const message of projection.messages) {
-    if (message.role === 'user')
-      parts.push({
-        kind: 'user',
-        id: message.id,
-        text: message.text,
-        ...(message.context && { context: message.context }),
-        ...(message.author !== undefined && { author: message.author }),
-        ...(message.thread !== undefined && { thread: message.thread }),
-      })
+    if (message.role === 'user') parts.push(userPart(message))
     else if (message.role === 'assistant') {
       for (const call of message.toolCalls) seen.add(call.id)
       parts.push(...assistantParts(message, context))

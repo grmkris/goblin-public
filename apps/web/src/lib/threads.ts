@@ -84,6 +84,11 @@ export function rootParts(parts: readonly Part[], entry: number): Part[] {
   return parts.filter((part) => (part.kind === 'text' || part.kind === 'user') && entryOfPart(part.id) === entry)
 }
 
+/** The subagent that wrote a message, from its author label (`subagent <name>`, pi/subagent-relay.ts). */
+export function reporterOf(author: string | undefined): string | undefined {
+  return author?.startsWith('subagent ') === true ? author.slice('subagent '.length) || undefined : undefined
+}
+
 /** The subagent a `subagent` call started or addressed, from the details of its result. */
 export function subagentOf(part: ToolPart): { readonly name: string; readonly thread: string } | undefined {
   const details = record(part.result?.details)

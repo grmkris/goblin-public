@@ -145,7 +145,11 @@ wrote. The subagent then closes as done unless the owner wrote to it, branched f
 from its spawner opens it again, while one the owner closed refuses its spawner. The owner's message to a subagent
 pins it open and steers it when it is busy. Stop and Close stop the relays carrying to each subagent before aborting
 it, so a job cut short reports nothing. The relay registers the subagent in `app_conversations` under its spawner, so
-the web lists it there and the tool row links to it.
+the web lists it there. In the spawner's transcript a spawn or send shows the subagent itself, live from the workspace
+feed (`components/parts/subagent-block.tsx`, `lib/subagent-state.ts`): its state and clock, how many work under it,
+and Stop (which asks first), Keep open, Dismiss or Reopen, opening to its task and its own subagents at any depth. A
+report reads as "<name> reported back" with the report quoted, a subagent's pane opens with "Task from <spawner>", and
+its composer steers it.
 
 **Capabilities** (ADR 0010, `capabilities/`): each conversation can switch off, for its own agent, a connected server,
 one granted tool of it, a skills library, or subagents. `app_conversation_capabilities` stores only what is off, so a
