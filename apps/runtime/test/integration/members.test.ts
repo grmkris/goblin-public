@@ -18,6 +18,7 @@ import {
   memberRelayAuthorityCase,
 } from './members-security.ts'
 import { memberToolsCase } from './members-tools.ts'
+import { appsCase } from './apps-case.ts'
 
 const harness = Test.make({
   providers: Cloudflare.providers(),
@@ -45,6 +46,14 @@ for (const [name, run] of [
       yield* Effect.promise(() => run(url, { person, call, pay, lever }))
     }),
   )
+// Apps need the Worker's owner API and an MCP fixture with an App, which this harness has.
+harness.test(
+  'native: an owner App is kept per call, launches from it, closes with its conversation and is granted live',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    yield* Effect.promise(() => appsCase(url, { person, call, pay, lever }))
+  }),
+)
 const Signup = Schema.Struct({ user: Schema.Struct({ id: Schema.String }) })
 interface Person {
   readonly userId: string

@@ -1,6 +1,13 @@
 import * as Schema from 'effect/Schema'
 import * as Effect from 'effect/Effect'
-import { AppContext, CapabilityChange, CreateConversation, UpdateConversation } from '@purrable/contracts'
+import {
+  AppContext,
+  CapabilityChange,
+  CreateApp,
+  CreateConversation,
+  UpdateApp,
+  UpdateConversation,
+} from '@purrable/contracts'
 import type { AgentRpc, RuntimeEnv } from './env.ts'
 import {
   handleAuth,
@@ -181,6 +188,17 @@ async function conversationRoute(
   return route(request, agent, id)
 }
 
+/** The owner's kept Apps (ADR 0020): keep one from a call, read what loads one, close or reopen one. */
+async function appRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string): Promise<Response> {
+  if (path === '/api/apps' && request.method === 'POST')
+    return json(unwrap(await agent.createApp(await readJson(request, CreateApp))), 201)
+  const [, id = '', action = ''] = /^\/api\/apps\/(\d{1,12})(?:\/(launch))?$/u.exec(path) ?? []
+  if (id !== '' && action === 'launch' && request.method === 'GET') return json(unwrap(await agent.launchApp(id)))
+  if (id !== '' && action === '' && request.method === 'PATCH')
+    return json(unwrap(await agent.updateApp(id, await readJson(request, UpdateApp))))
+  throw new NotFound({ what: path })
+}
+
 /** Completes an outbound OAuth authorization, then sends the owner back to the Connections page. */
 async function oauthCallback(request: Request, agent: DurableObjectStub<AgentRpc>, env: RuntimeEnv) {
   const params = new URL(request.url).searchParams
@@ -317,6 +335,7 @@ async function ownerApiRequest(
   if (path === '/api/workspace/events' && request.method === 'GET') return agent.fetch('https://agent/workspace/events')
   if (path === '/api/conversations' || path.startsWith('/api/conversations/'))
     return conversationRoute(request, agent, path)
+  if (path === '/api/apps' || path.startsWith('/api/apps/')) return appRoute(request, agent, path)
   if (path.startsWith('/api/mcp/')) return mcpRoute(request, agent, path, env)
   if (path === '/api/clients' && request.method === 'GET') return json(await listInboundClients(env, userId))
   const revoke = /^\/api\/clients\/([\w.-]{1,200})$/u.exec(path)?.[1]

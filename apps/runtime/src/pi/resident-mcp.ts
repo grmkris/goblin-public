@@ -3,10 +3,19 @@ import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { Type } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import { type AppError, type GrantDenied, NotFound } from '../http/errors.ts'
-import { toolOffered } from '../mcp/connection.ts'
+import { toolAppResource, toolOffered } from '../mcp/connection.ts'
 import { grantRequiredResult, mcpModelResult } from '../mcp/extension.ts'
 import type { McpHost } from '../mcp/host.ts'
-import { type AgentServices, Capabilities, Members, Mcp, attempt, requireResident } from '../services.ts'
+import {
+  type AgentServices,
+  Apps,
+  Capabilities,
+  Members,
+  Mcp,
+  attempt,
+  nowSecondsEffect,
+  requireResident,
+} from '../services.ts'
 import { capabilityOffResult, mcpOff } from './capabilities.ts'
 
 const executionAuthority = (session: string, authorize?: (session: string) => Promise<void>) =>
@@ -63,6 +72,21 @@ const memberApproval = (members: MemberController, session: string, callId: stri
       },
       control: { terminate: true as const },
     }
+  })
+
+/**
+ * An owner's call to a tool that renders an App keeps that App (ADR 0020), so it can be shown here, in its pane and in
+ * the sidebar. Keeping it grants nothing: the App's resource and calls need the owner's grants, live.
+ */
+const keepApp = (session: string, callId: string, input: { readonly serverId: string; readonly name: string }) =>
+  Effect.gen(function* () {
+    // A member's conversation keeps none: members never see the owner's Apps.
+    if ((yield* Members).access.origin(session) !== undefined) return
+    const tool = (yield* Mcp).manager.snapshot(input.serverId)?.tools.find(({ name }) => name === input.name)
+    const uri = tool === undefined ? undefined : toolAppResource(tool)
+    if (uri === undefined) return
+    const origin = { serverId: input.serverId, tool: input.name, uri, title: tool?.title ?? input.name }
+    ;(yield* Apps).register(session, callId, origin, yield* nowSecondsEffect)
   })
 
 function offered(
@@ -155,6 +179,7 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
                   ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
                 }),
               ).pipe(
+                Effect.tap(() => keepApp(session, api.callId, input)),
                 Effect.map((result) => mcpModelResult(input.serverId, result)),
                 Effect.catchTag('GrantDenied', (denied) =>
                   members.access.origin(session) === undefined

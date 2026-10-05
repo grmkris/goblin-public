@@ -4,6 +4,10 @@ import type { RpcResult } from './http/rpc.ts'
 import type { Grant, GrantCapability } from './mcp/grants.ts'
 import type {
   AppContext,
+  AppLaunch,
+  AppView,
+  CreateApp,
+  UpdateApp,
   CapabilityChange,
   CatalogEntry,
   ChannelStatus,
@@ -79,6 +83,9 @@ export interface AgentRpcMethods {
   readonly createConversation: (input: CreateConversation) => Promise<RpcResult<ConversationView>>
   readonly updateConversation: (id: string, change: UpdateConversation) => Promise<RpcResult<ConversationView>>
   readonly markRead: (id: string) => Promise<RpcResult<boolean>>
+  readonly createApp: (input: CreateApp) => Promise<RpcResult<AppView>>
+  readonly updateApp: (id: string, change: UpdateApp) => Promise<RpcResult<AppView>>
+  readonly launchApp: (id: string) => Promise<RpcResult<AppLaunch>>
   readonly conversationCapabilities: (thread: string) => Promise<RpcResult<ConversationCapabilities>>
   readonly setConversationCapability: (
     thread: string,

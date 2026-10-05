@@ -1,4 +1,5 @@
 import {
+  type AppView,
   type ConversationActivity,
   type ConversationView,
   WorkspaceChange,
@@ -7,13 +8,14 @@ import {
 import { Schema } from 'effect'
 import { type PiEventSource, type ReconnectScheduler, browserScheduler, reconnectDelay } from './conversation-stream.ts'
 
-/** The owner's conversations, oldest first, and what each one that is not idle is doing. */
+/** The owner's conversations, oldest first, what each one that is not idle is doing, and their kept Apps, oldest first. */
 export type WorkspaceState = {
   readonly conversations: readonly ConversationView[]
   readonly activity: ReadonlyMap<string, ConversationActivity>
+  readonly apps: readonly AppView[]
 }
 
-export const EMPTY_WORKSPACE: WorkspaceState = { conversations: [], activity: new Map() }
+export const EMPTY_WORKSPACE: WorkspaceState = { conversations: [], activity: new Map(), apps: [] }
 
 const oldestFirst = (a: ConversationView, b: ConversationView) =>
   a.createdAt - b.createdAt || Number(a.id) - Number(b.id)
@@ -24,27 +26,33 @@ export function fromSnapshot(snapshot: WorkspaceSnapshot): WorkspaceState {
   return {
     conversations: snapshot.conversations.toSorted(oldestFirst),
     activity: new Map(busy.map((activity) => [activity.id, activity])),
+    apps: snapshot.apps.toSorted(byId),
   }
 }
 
+const byId = (a: AppView, b: AppView) => Number(a.id) - Number(b.id)
+
+/** `items` with `item` in place of the one with its id, or added in `order`. */
+function upsert<T extends { readonly id: string }>(items: readonly T[], item: T, order: (a: T, b: T) => number) {
+  const index = items.findIndex(({ id }) => id === item.id)
+  return index === -1 ? [...items, item].toSorted(order) : items.with(index, item)
+}
+
 /**
- * The workspace after `changes`, in order: a conversation replaces the one with its id (a new one joins in order of
- * creation), and an activity replaces what its conversation was doing (idle drops it).
+ * The workspace after `changes`, in order: a conversation or App replaces the one with its id (a new one joins in
+ * order of creation), and an activity replaces what its conversation was doing (idle drops it).
  */
 export function applyChanges(state: WorkspaceState, changes: readonly WorkspaceChange[]): WorkspaceState {
-  let { conversations } = state
+  let { conversations, apps } = state
   const activity = new Map(state.activity)
   for (const change of changes) {
     if (change.type === 'activity') {
       if (change.activity.state === 'idle') activity.delete(change.activity.id)
       else activity.set(change.activity.id, change.activity)
-      continue
-    }
-    const view = change.conversation
-    const index = conversations.findIndex(({ id }) => id === view.id)
-    conversations = index === -1 ? [...conversations, view].toSorted(oldestFirst) : conversations.with(index, view)
+    } else if (change.type === 'app') apps = upsert(apps, change.app, byId)
+    else conversations = upsert(conversations, change.conversation, oldestFirst)
   }
-  return { conversations, activity }
+  return { conversations, activity, apps }
 }
 
 /** What a conversation's agent is doing now. */

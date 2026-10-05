@@ -1,0 +1,34 @@
+import type { CreateApp, UpdateApp } from '@purrable/contracts'
+import * as Effect from 'effect/Effect'
+import { NotFound } from '../http/errors.ts'
+import { toolAppResource } from '../mcp/connection.ts'
+import { Apps, Conversations, Mcp, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
+
+/**
+ * Keep the App of a call in one of the owner's conversations, read from its transcript: a call made before Apps were
+ * kept, or shown again after it was closed. Its tool must still render that App.
+ */
+export const createOwnerApp = ({ conversation, callId }: CreateApp) =>
+  Effect.gen(function* () {
+    const session = yield* Conversations.use((conversations) => attemptSync(() => conversations.require(conversation)))
+    const apps = yield* Apps
+    const call = yield* attempt(() => apps.call(session, callId))
+    const mcp = yield* Mcp
+    const snapshot = yield* attempt(() => mcp.manager.connect(call.serverId))
+    const tool = snapshot.tools.find(({ name }) => name === call.tool)
+    const uri = tool === undefined ? undefined : toolAppResource(tool)
+    if (uri === undefined) return yield* new NotFound({ what: 'app' })
+    const origin = { serverId: call.serverId, tool: call.tool, uri, title: tool?.title ?? call.tool }
+    return apps.register(session, callId, origin, yield* nowSecondsEffect)
+  })
+
+/** Close an App, or open it again. */
+export const updateOwnerApp = (id: string, change: UpdateApp) =>
+  Effect.gen(function* () {
+    const apps = yield* Apps
+    const now = yield* nowSecondsEffect
+    return yield* attemptSync(() => apps.update(id, change.closed, now))
+  })
+
+/** What the browser needs to load an App; it grants nothing (its calls are checked live). */
+export const launchOwnerApp = (id: string) => Apps.use((apps) => attempt(() => apps.launch(id)))

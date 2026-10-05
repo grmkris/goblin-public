@@ -8,6 +8,7 @@ import { TelegramChannel } from './channel/channel.ts'
 import { nowMillis, nowSeconds } from './clock.ts'
 import { ConversationRegistry, type ThreadKit } from './conversations.ts'
 import { WorkspaceFeed } from './workspace/feed.ts'
+import { AppRegistry } from './apps/registry.ts'
 import type { RuntimeEnv } from './env.ts'
 import { CredentialCipher } from './mcp/cipher.ts'
 import { configuredServers } from './mcp/config.ts'
@@ -116,10 +117,12 @@ async function makeRoutines(input: ComposeInput) {
   await installRoutineUsage(input.harness, routineUsage, routineRuns)
   return { routines, routineRuns, routineUsage }
 }
-/** The conversation registry, and the live workspace feed over it. */
+/** The conversation registry, the kept Apps (closed with their conversation), and the live workspace feed over both. */
 function conversationServices(db: DrizzleSqliteDODatabase, harness: PiHarness, kit: ThreadKit) {
   const conversations = new ConversationRegistry(db, harness, kit, nowSeconds())
-  return { conversations, workspace: new WorkspaceFeed(harness, conversations) }
+  const apps = new AppRegistry(db, harness)
+  conversations.onChange((ids) => apps.closeWithConversations(ids, nowSeconds()))
+  return { conversations, apps, workspace: new WorkspaceFeed(harness, conversations, apps) }
 }
 async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {
   const env = input.env

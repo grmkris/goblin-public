@@ -1,6 +1,7 @@
 import type { TaskGraph, TaskGraphWatch } from '@earendil-works/pi-durable'
 import type { ConversationActivity, WorkspaceChange, WorkspaceSnapshot } from '@purrable/contracts'
 import type { PiHarness } from 'agents/harness/pi'
+import type { AppRegistry } from '../apps/registry.ts'
 import type { ConversationRegistry } from '../conversations.ts'
 import { sseResponse } from '../http/sse.ts'
 import { BACKGROUND } from '../pi/context.ts'
@@ -33,16 +34,19 @@ type Listener = (changes: readonly WorkspaceChange[]) => void
 export class WorkspaceFeed {
   readonly #harness: PiHarness
   readonly #conversations: ConversationRegistry
+  readonly #apps: AppRegistry
   readonly #listeners = new Set<Listener>()
   #activity = new Map<string, ConversationActivity>()
   #watch: Promise<TaskGraphWatch> | undefined
 
-  constructor(harness: PiHarness, conversations: ConversationRegistry) {
+  constructor(harness: PiHarness, conversations: ConversationRegistry, apps: AppRegistry) {
     this.#harness = harness
     this.#conversations = conversations
+    this.#apps = apps
     conversations.onChange((ids) => {
       if (this.#listeners.size > 0) void this.#describe(ids)
     })
+    apps.onChange((changed) => this.#emit(changed.map((app) => ({ type: 'app' as const, app }))))
   }
 
   /**
@@ -64,7 +68,7 @@ export class WorkspaceFeed {
     try {
       await this.#watching()
       const conversations = await this.#conversations.list()
-      send('snapshot', { conversations, activity: [...this.#activity.values()] })
+      send('snapshot', { conversations, activity: [...this.#activity.values()], apps: this.#apps.list() })
     } catch (error) {
       await close()
       throw error

@@ -25,7 +25,8 @@ export function memberWorkspaceResponse(
           return allowed.has(id) ? [{ ...item, id }] : []
         })
         await members.access.verify(principal)
-        if (!closed) send('snapshot', { conversations, activity: filtered })
+        // A member never sees the owner's Apps.
+        if (!closed) send('snapshot', { conversations, activity: filtered, apps: [] })
       })
       void pending.catch(() => {
         closed = true

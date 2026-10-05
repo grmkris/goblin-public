@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ConversationView } from '@purrable/contracts'
+import type { AppView, ConversationView } from '@purrable/contracts'
 import type { PiEventSource, ReconnectScheduler } from '../src/lib/conversation-stream.ts'
 import {
   EMPTY_WORKSPACE,
@@ -39,6 +39,18 @@ class FixtureEvents implements PiEventSource {
   }
 }
 
+const app = (id: string, extra: Partial<AppView> = {}): AppView => ({
+  id,
+  conversation: '1',
+  callId: `call-${id}`,
+  serverId: 'notes',
+  tool: 'board',
+  uri: 'ui://notes/board.html',
+  title: 'Board',
+  createdAt: Number(id),
+  ...extra,
+})
+
 describe('the workspace feed state', () => {
   it('starts from the snapshot in order of creation and keeps only what is not idle', () => {
     const state = fromSnapshot({
@@ -47,6 +59,7 @@ describe('the workspace feed state', () => {
         { id: '5', state: 'working', since: 1 },
         { id: '1', state: 'idle', since: 1 },
       ],
+      apps: [],
     })
     expect(state.conversations.map(({ id }) => id)).toEqual(['1', '5'])
     expect(activityState(state, '5')).toBe('working')
@@ -55,7 +68,7 @@ describe('the workspace feed state', () => {
   })
 
   it('replaces a conversation by id, adds a new one in order, and moves activity in order', () => {
-    const start = fromSnapshot({ conversations: [MAIN, view('9')], activity: [] })
+    const start = fromSnapshot({ conversations: [MAIN, view('9')], activity: [], apps: [] })
     const next = applyChanges(start, [
       { type: 'conversation', conversation: view('5') },
       { type: 'conversation', conversation: view('9', { title: 'Car search', replies: 2 }) },
@@ -68,6 +81,17 @@ describe('the workspace feed state', () => {
     expect(activityState(next, '9')).toBe('idle')
     expect(activityState(next, '1')).toBe('waiting')
     expect(start.conversations).toHaveLength(2)
+  })
+
+  it('keeps Apps by id, in order, and replaces one that changed (closed)', () => {
+    const start = fromSnapshot({ conversations: [MAIN], activity: [], apps: [app('7'), app('3')] })
+    expect(start.apps.map(({ id }) => id)).toEqual(['3', '7'])
+    const next = applyChanges(start, [
+      { type: 'app', app: app('5') },
+      { type: 'app', app: app('7', { closedAt: 9 }) },
+    ])
+    expect(next.apps.map(({ id }) => id)).toEqual(['3', '5', '7'])
+    expect(next.apps.at(-1)?.closedAt).toBe(9)
   })
 })
 
@@ -104,14 +128,14 @@ describe('the workspace feed connection', () => {
     // A change before any snapshot has nothing to apply to.
     first?.emit('change', JSON.stringify([{ type: 'conversation', conversation: view('5') }]))
     expect(states).toEqual([])
-    first?.emit('snapshot', JSON.stringify({ conversations: [MAIN], activity: [] }))
+    first?.emit('snapshot', JSON.stringify({ conversations: [MAIN], activity: [], apps: [] }))
     first?.emit('change', JSON.stringify([{ type: 'conversation', conversation: view('5') }]))
     expect(states.at(-1)?.conversations.map(({ id }) => id)).toEqual(['1', '5'])
     first?.errorListener?.()
     expect(first?.closed).toBe(true)
     expect(problems.at(-1)).toBe('Connection interrupted')
     queued.shift()?.()
-    sources[1]?.emit('snapshot', JSON.stringify({ conversations: [MAIN], activity: [] }))
+    sources[1]?.emit('snapshot', JSON.stringify({ conversations: [MAIN], activity: [], apps: [] }))
     expect(states.at(-1)?.conversations.map(({ id }) => id)).toEqual(['1'])
     expect(problems.at(-1)).toBeUndefined()
     // The old stream's late frames are ignored.

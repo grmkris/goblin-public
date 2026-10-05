@@ -226,6 +226,15 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'ALTER TABLE app_thread_readers ADD COLUMN member_version INTEGER',
     ].join(BREAK),
   },
+  {
+    // Durable MCP Apps (ADR 0020): one per tool call, never a grant.
+    key: '20261017000300_apps',
+    tables: ['app_apps'],
+    sql: [
+      'CREATE TABLE app_apps (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, call_id TEXT NOT NULL, entry_id INTEGER, server_id TEXT NOT NULL, tool TEXT NOT NULL, resource_uri TEXT NOT NULL, title TEXT NOT NULL, created_at INTEGER NOT NULL, closed_at INTEGER)',
+      'CREATE UNIQUE INDEX app_apps_call ON app_apps (session_id, call_id)',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

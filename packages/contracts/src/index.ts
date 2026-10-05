@@ -247,17 +247,56 @@ export const ConversationActivity = Schema.Struct({
 })
 export type ConversationActivity = typeof ConversationActivity.Type
 
-/** The workspace feed's first event: every conversation, and the ones not idle. */
+/**
+ * A durable MCP App (ADR 0020): the App of one tool call in a conversation, kept so the owner can show it again and
+ * the sidebar lists it under that conversation. It holds no grant: the App's calls are checked live, every time.
+ */
+export const AppView = Schema.Struct({
+  id: Schema.String,
+  conversation: Schema.String,
+  callId: Schema.String,
+  serverId: Schema.String,
+  tool: Schema.String,
+  uri: Schema.String,
+  title: Schema.String,
+  createdAt: Schema.Number,
+  closedAt: Schema.optional(Schema.Number),
+})
+export type AppView = typeof AppView.Type
+
+/** Keep the App of a tool call made in `conversation` (one from before Apps were kept, or one the owner closed). */
+export const CreateApp = Schema.Struct({
+  conversation: Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)),
+  callId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+})
+export type CreateApp = typeof CreateApp.Type
+
+/** Close an App (its iframe goes everywhere) or reopen it. */
+export const UpdateApp = Schema.Struct({ closed: Schema.Boolean })
+export type UpdateApp = typeof UpdateApp.Type
+
+/** What the browser needs to load an App: where it comes from, and the call it shows with its (redacted) result. */
+export const AppLaunch = Schema.Struct({
+  serverId: Schema.String,
+  uri: Schema.String,
+  arguments: Schema.Record(Schema.String, Schema.Unknown),
+  result: Schema.Unknown,
+})
+export type AppLaunch = typeof AppLaunch.Type
+
+/** The workspace feed's first event: every conversation and App, and the conversations not idle. */
 export const WorkspaceSnapshot = Schema.Struct({
   conversations: Schema.Array(ConversationView),
   activity: Schema.Array(ConversationActivity),
+  apps: Schema.Array(AppView),
 })
 export type WorkspaceSnapshot = typeof WorkspaceSnapshot.Type
 
-/** One change the workspace feed sends after its snapshot: a conversation as it is now, or what it is doing. */
+/** One change the workspace feed sends after its snapshot: a conversation or App as it is now, or what one is doing. */
 export const WorkspaceChange = Schema.Union([
   Schema.Struct({ type: Schema.Literal('conversation'), conversation: ConversationView }),
   Schema.Struct({ type: Schema.Literal('activity'), activity: ConversationActivity }),
+  Schema.Struct({ type: Schema.Literal('app'), app: AppView }),
 ])
 export type WorkspaceChange = typeof WorkspaceChange.Type
 

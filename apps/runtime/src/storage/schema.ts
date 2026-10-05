@@ -325,3 +325,25 @@ export const appSkillCatalogState = sqliteTable('app_skill_catalog_state', {
   nextRetryAt: integer('next_retry_at').notNull(),
   lastError: text('last_error'),
 })
+
+/**
+ * Durable MCP Apps (ADR 0020): the App of one tool call, kept by conversation and call so the owner can show it again.
+ * It records where the App comes from and what to call it, never a grant. `entry_id` is where the call sits in Pi,
+ * once it has been found.
+ */
+export const appApps = sqliteTable(
+  'app_apps',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    sessionId: text('session_id').notNull(),
+    callId: text('call_id').notNull(),
+    entryId: integer('entry_id'),
+    serverId: text('server_id').notNull(),
+    tool: text('tool').notNull(),
+    resourceUri: text('resource_uri').notNull(),
+    title: text('title').notNull(),
+    createdAt: integer('created_at').notNull(),
+    closedAt: integer('closed_at'),
+  },
+  (t) => [uniqueIndex('app_apps_call').on(t.sessionId, t.callId)],
+)

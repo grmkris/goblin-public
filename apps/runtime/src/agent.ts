@@ -1,6 +1,7 @@
 import { Agent } from 'agents'
 import { type Extension } from '@earendil-works/pi-durable'
 import { type AppContext, type CapabilityChange, type JsonObject, MAIN_THREAD } from '@purrable/contracts'
+import type { CreateApp, UpdateApp } from '@purrable/contracts'
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
@@ -60,6 +61,7 @@ import {
   stopOwner,
   updateOwnerConversation,
 } from './agent-program.ts'
+import { createOwnerApp, launchOwnerApp, updateOwnerApp } from './apps/program.ts'
 import { budgetExtension } from './pi/budget.ts'
 import { chooseOwnerModel, useModel, type Applied } from './agent-model.ts'
 import { askingExtension } from './pi/ask-user.ts'
@@ -114,8 +116,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       routineRun(Members.use((members) => attempt(() => members.access.require(session)))),
     )
     // A subagent gets the persona, the owner's tools and subagents of its own, nothing else: no ask_user.
-    const subagentMembers = (self: Extension) => [personaExtension, principal, ...tools, self]
-    this.#subagents = subagentsExtension(routineRun, subagentMembers, execution)
+    this.#subagents = subagentsExtension(routineRun, (self) => [personaExtension, principal, ...tools, self], execution)
     const subagents = this.#subagents.extension
     this.#thread = threadExtension(run, routineRun)
     this.#memory = memoryExtensions(run)
@@ -312,6 +313,17 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   /** The owner has seen the conversation's newest reply. */
   markRead(id: string) {
     return this.#owner(markOwnerRead(id))
+  }
+
+  /** The owner's kept Apps (ADR 0020): keep one from a call, close or reopen it, or read what loads it. */
+  createApp(input: CreateApp) {
+    return this.#owner(createOwnerApp(input))
+  }
+  updateApp(id: string, change: UpdateApp) {
+    return this.#owner(updateOwnerApp(id, change))
+  }
+  launchApp(id: string) {
+    return this.#owner(launchOwnerApp(id))
   }
 
   /** What a conversation lets its agent use: its switches over the agent's servers, skills and subagents. */

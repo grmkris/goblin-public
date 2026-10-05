@@ -1,0 +1,91 @@
+import { expect } from 'vitest'
+import { Schema } from 'effect'
+import { AppLaunch, ConversationView, WorkspaceSnapshot } from '@purrable/contracts'
+import { BOARD } from './members-mcp.ts'
+import { waitFor, type Person, type Ports } from './members-phaseb.ts'
+
+/** An owner request with any method (the harness's `call` only GETs and POSTs). */
+const send = (base: string, who: Person, path: string, method: string, body?: unknown) =>
+  fetch(`${base}${path}`, {
+    method,
+    headers: {
+      cookie: who.cookie,
+      origin: 'https://purrable.test',
+      'content-type': 'application/json',
+      'x-purrable-csrf': '1',
+      'cf-connecting-ip': who.ip,
+      'x-mcp-caller': 'app',
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  })
+
+const grant = async (base: string, owner: Person, allowed: boolean) =>
+  expect(
+    (await send(base, owner, '/api/mcp/grants', 'PUT', { serverId: 'members-fixture', name: 'board', allowed })).status,
+  ).toBe(200)
+
+/** The workspace feed's first event: every conversation and App now. */
+async function snapshot(base: string, owner: Person): Promise<WorkspaceSnapshot> {
+  const response = await send(base, owner, '/api/workspace/events', 'GET')
+  const reader = response.body?.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  for (let read = await reader?.read(); read !== undefined && !read.done; read = await reader?.read()) {
+    buffer += decoder.decode(read.value, { stream: true })
+    const frame = buffer.split('\n\n').find((part) => part.includes('event: snapshot'))
+    const data = frame === undefined ? undefined : /^data: (.*)$/mu.exec(frame)?.[1]
+    if (data !== undefined) {
+      await reader?.cancel()
+      return Schema.decodeUnknownSync(WorkspaceSnapshot)(JSON.parse(data))
+    }
+  }
+  throw new Error('no workspace snapshot')
+}
+
+/**
+ * The owner's App is kept per call (ADR 0020): the call registers it under its conversation, launch reads the call
+ * back, Close of the conversation closes it, showing it again reopens the same App, and its resource is checked
+ * against the owner's grants live (reopening restores none).
+ */
+export async function appsCase(base: string, ports: Ports): Promise<void> {
+  const owner = await ports.person(base)
+  await ports.call(base, owner, '/__test/billing/override', { userId: owner.userId, dailyTokens: 1000 })
+  expect((await ports.call(base, owner, '/api/mcp/members-fixture/connect', {})).status).toBe(200)
+  await grant(base, owner, true)
+  const thread = Schema.decodeUnknownSync(ConversationView)(
+    await (await ports.call(base, owner, '/api/conversations', {})).json(),
+  )
+  const input = `call mcp_call ${JSON.stringify({ serverId: 'members-fixture', name: 'board', arguments: { marker: 'kept' } })}`
+  await ports.call(base, owner, `/api/conversations/${thread.id}/messages`, { input, operationId: crypto.randomUUID() })
+  await waitFor(base, owner, `/api/conversations/${thread.id}/snapshot`, 'fixture-board', ports)
+  const [app] = (await snapshot(base, owner)).apps
+  expect(app).toMatchObject({
+    conversation: thread.id,
+    serverId: 'members-fixture',
+    tool: 'board',
+    uri: BOARD,
+    title: 'Board',
+  })
+  if (app === undefined) throw new Error('no app kept')
+  const launch = Schema.decodeUnknownSync(AppLaunch)(
+    await (await send(base, owner, `/api/apps/${app.id}/launch`, 'GET')).json(),
+  )
+  expect(launch).toMatchObject({ serverId: 'members-fixture', uri: BOARD, arguments: { marker: 'kept' } })
+  expect(JSON.stringify(launch.result)).toContain('fixture-board')
+  const html = await send(base, owner, '/api/mcp/members-fixture/resources/read', 'POST', { uri: BOARD })
+  expect(html.status).toBe(200)
+
+  expect((await send(base, owner, `/api/conversations/${thread.id}`, 'PATCH', { closed: true })).status).toBe(200)
+  expect((await snapshot(base, owner)).apps[0]?.closedAt).toBeDefined()
+  const reopened = await (
+    await ports.call(base, owner, '/api/apps', { conversation: thread.id, callId: app.callId })
+  ).json()
+  expect(reopened).toMatchObject({ id: app.id })
+  expect(reopened).not.toHaveProperty('closedAt')
+
+  await grant(base, owner, false)
+  const denied = await send(base, owner, '/api/mcp/members-fixture/resources/read', 'POST', { uri: BOARD })
+  expect(denied.status).toBeGreaterThanOrEqual(400)
+  expect(await denied.text()).toContain('GrantDenied')
+  expect((await send(base, owner, '/api/apps/999999/launch', 'GET')).status).toBe(404)
+}
