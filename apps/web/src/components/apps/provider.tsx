@@ -3,6 +3,7 @@
 import { createContext, type ReactNode, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { McpUiDisplayMode } from '@modelcontextprotocol/ext-apps/app-bridge'
 import { useMediaQuery } from '@purrable/ui'
+import { WIDE_QUERY } from '../../lib/breakpoints.ts'
 import { availableModes } from '../../lib/host-context.ts'
 import type { AppSelection } from './frame.tsx'
 
@@ -75,7 +76,7 @@ function useSlots(kick: () => void) {
 
 export function AppsProvider({ children }: { readonly children: ReactNode }) {
   const [session, setSession] = useState<AppSession>()
-  const phone = !useMediaQuery('(min-width: 75rem)')
+  const phone = !useMediaQuery(WIDE_QUERY)
   const available = useMemo(() => availableModes(true), [])
   const listeners = useRef(new Set<() => void>())
   const kick = useCallback(() => {

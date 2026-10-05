@@ -9,7 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as WorkspaceRouteImport } from './routes/_workspace'
 import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as ConsentRouteImport } from './routes/consent'
 import { Route as LoginRouteImport } from './routes/login'
@@ -19,13 +19,13 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SubscribeRouteImport } from './routes/subscribe'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as WorkspaceIndexRouteImport } from './routes/_workspace.index'
 import { Route as InviteInviteIdRouteImport } from './routes/invite.$inviteId'
 import { Route as SubscribeSuccessRouteImport } from './routes/subscribe.success'
-import { Route as TThreadIdRouteImport } from './routes/t.$threadId'
+import { Route as WorkspaceCConversationIdRouteImport } from './routes/_workspace.c.$conversationId'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const WorkspaceRoute = WorkspaceRouteImport.update({
+  id: '/_workspace',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConnectionsRoute = ConnectionsRouteImport.update({
@@ -73,6 +73,11 @@ const TermsRoute = TermsRouteImport.update({
   path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkspaceIndexRoute = WorkspaceIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
 const InviteInviteIdRoute = InviteInviteIdRouteImport.update({
   id: '/invite/$inviteId',
   path: '/invite/$inviteId',
@@ -83,14 +88,15 @@ const SubscribeSuccessRoute = SubscribeSuccessRouteImport.update({
   path: '/success',
   getParentRoute: () => SubscribeRoute,
 } as any)
-const TThreadIdRoute = TThreadIdRouteImport.update({
-  id: '/t/$threadId',
-  path: '/t/$threadId',
-  getParentRoute: () => rootRouteImport,
-} as any)
+const WorkspaceCConversationIdRoute =
+  WorkspaceCConversationIdRouteImport.update({
+    id: '/c/$conversationId',
+    path: '/c/$conversationId',
+    getParentRoute: () => WorkspaceRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof WorkspaceIndexRoute
   '/connections': typeof ConnectionsRoute
   '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
@@ -102,10 +108,9 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/invite/$inviteId': typeof InviteInviteIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
-  '/t/$threadId': typeof TThreadIdRoute
+  '/c/$conversationId': typeof WorkspaceCConversationIdRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
   '/connections': typeof ConnectionsRoute
   '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
@@ -117,11 +122,12 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/invite/$inviteId': typeof InviteInviteIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
-  '/t/$threadId': typeof TThreadIdRoute
+  '/': typeof WorkspaceIndexRoute
+  '/c/$conversationId': typeof WorkspaceCConversationIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_workspace': typeof WorkspaceRouteWithChildren
   '/connections': typeof ConnectionsRoute
   '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
@@ -133,7 +139,8 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/invite/$inviteId': typeof InviteInviteIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
-  '/t/$threadId': typeof TThreadIdRoute
+  '/_workspace/': typeof WorkspaceIndexRoute
+  '/_workspace/c/$conversationId': typeof WorkspaceCConversationIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -150,10 +157,9 @@ export interface FileRouteTypes {
     | '/terms'
     | '/invite/$inviteId'
     | '/subscribe/success'
-    | '/t/$threadId'
+    | '/c/$conversationId'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
     | '/connections'
     | '/consent'
     | '/login'
@@ -165,10 +171,11 @@ export interface FileRouteTypes {
     | '/terms'
     | '/invite/$inviteId'
     | '/subscribe/success'
-    | '/t/$threadId'
+    | '/'
+    | '/c/$conversationId'
   id:
     | '__root__'
-    | '/'
+    | '/_workspace'
     | '/connections'
     | '/consent'
     | '/login'
@@ -180,11 +187,12 @@ export interface FileRouteTypes {
     | '/terms'
     | '/invite/$inviteId'
     | '/subscribe/success'
-    | '/t/$threadId'
+    | '/_workspace/'
+    | '/_workspace/c/$conversationId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  WorkspaceRoute: typeof WorkspaceRouteWithChildren
   ConnectionsRoute: typeof ConnectionsRoute
   ConsentRoute: typeof ConsentRoute
   LoginRoute: typeof LoginRoute
@@ -195,16 +203,15 @@ export interface RootRouteChildren {
   SubscribeRoute: typeof SubscribeRouteWithChildren
   TermsRoute: typeof TermsRoute
   InviteInviteIdRoute: typeof InviteInviteIdRoute
-  TThreadIdRoute: typeof TThreadIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
+    '/_workspace': {
+      id: '/_workspace'
+      path: ''
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+      preLoaderRoute: typeof WorkspaceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connections': {
@@ -270,6 +277,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_workspace/': {
+      id: '/_workspace/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof WorkspaceIndexRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
     '/invite/$inviteId': {
       id: '/invite/$inviteId'
       path: '/invite/$inviteId'
@@ -284,15 +298,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SubscribeSuccessRouteImport
       parentRoute: typeof SubscribeRoute
     }
-    '/t/$threadId': {
-      id: '/t/$threadId'
-      path: '/t/$threadId'
-      fullPath: '/t/$threadId'
-      preLoaderRoute: typeof TThreadIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_workspace/c/$conversationId': {
+      id: '/_workspace/c/$conversationId'
+      path: '/c/$conversationId'
+      fullPath: '/c/$conversationId'
+      preLoaderRoute: typeof WorkspaceCConversationIdRouteImport
+      parentRoute: typeof WorkspaceRoute
     }
   }
 }
+
+interface WorkspaceRouteChildren {
+  WorkspaceIndexRoute: typeof WorkspaceIndexRoute
+  WorkspaceCConversationIdRoute: typeof WorkspaceCConversationIdRoute
+}
+
+const WorkspaceRouteChildren: WorkspaceRouteChildren = {
+  WorkspaceIndexRoute: WorkspaceIndexRoute,
+  WorkspaceCConversationIdRoute: WorkspaceCConversationIdRoute,
+}
+
+const WorkspaceRouteWithChildren = WorkspaceRoute._addFileChildren(
+  WorkspaceRouteChildren,
+)
 
 interface SubscribeRouteChildren {
   SubscribeSuccessRoute: typeof SubscribeSuccessRoute
@@ -307,7 +335,7 @@ const SubscribeRouteWithChildren = SubscribeRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  WorkspaceRoute: WorkspaceRouteWithChildren,
   ConnectionsRoute: ConnectionsRoute,
   ConsentRoute: ConsentRoute,
   LoginRoute: LoginRoute,
@@ -318,7 +346,6 @@ const rootRouteChildren: RootRouteChildren = {
   SubscribeRoute: SubscribeRouteWithChildren,
   TermsRoute: TermsRoute,
   InviteInviteIdRoute: InviteInviteIdRoute,
-  TThreadIdRoute: TThreadIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

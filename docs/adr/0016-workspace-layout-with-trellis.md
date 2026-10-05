@@ -1,6 +1,7 @@
 # ADR 0016: Workspace layout with Trellis
 
-Accepted implementation decision, 2026-10-05.
+Accepted implementation decision, 2026-10-05. Its layout (the main stage, tabbed thread panes, sheets, `/t/:id` and
+`?thread=`) is superseded by ADR 0019 (panes for everything); its license and credit terms carry over there.
 
 Threads belong visibly to the main message they branch from: expanded inline previews show the first five own
 messages, clipped text and quiet tool/thought summaries. Replies continue live while fewer than five exist; past that,

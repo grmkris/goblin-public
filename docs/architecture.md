@@ -114,17 +114,15 @@ main (ADR 0017). `app_conversations` registers each one as a tree (`parent_sessi
 subagent's spawner) with its kind, title, origin and close time; a session id reaches Pi only if it is registered
 there, so no request opens a conversation by guessing its number. Pi cannot delete a conversation, so Close stops a
 conversation and everything under it and keeps it readable until Reopen; main never closes. The web
-lists them in the app's sidebar (`components/app-sidebar.tsx`, a sheet on phones): `/` is main and `/t/:id` a
-thread. Main attaches threads to their parent message with a connector rail and an indented preview
+lists them in the app's sidebar (`components/app-sidebar.tsx`, a sheet on phones) and shows each in a pane of its own
+(below); `/c/:id` names the focused one. A conversation attaches threads to their parent message with a connector rail and an indented preview
 (`components/thread-replies.tsx`). Blocks are expanded by default: the first five messages show their author, clipped
 text, and quiet thought/tool lines; a busy mark follows current activity. The owner can collapse each block, with
 that device preference in guarded localStorage. An IntersectionObserver starts the compact owner-scoped preview read
 only near the viewport, then polls while visible. After five messages only activity and the remaining count change.
-Owner-started threads get the same block. Open thread, the remaining-replies action and active sidebar threads
-open independent panes beside main (`/?thread=<id>`) with their own composers. The URL identifies the most recently
-opened thread; earlier panes stay open. `/t/:id` still gives the full conversation, including closed threads. Reply in thread opens a reply there
-(`/?reply=<entry>`) that branches the thread only when it is sent, because Pi cannot delete a conversation; the
-sidebar's "+" beside Threads opens an empty draft there (`/?new=true`) the same way. A thread started with "+" tells
+Owner-started threads get the same block. Open thread and the remaining-replies action open the thread beside its
+parent's pane. Reply in thread opens a draft pane beside it that branches the thread only when it is sent, because Pi
+cannot delete a conversation; the sidebar's "+" beside Threads opens an empty draft the same way. A thread started with "+" tells
 main its name once it has one (ADR 0010): main gets one `app.thread_started` note, `[thread started: "<title>"]`, and
 its transcript shows a row for that thread. The owner API is conversation-scoped:
 
@@ -192,12 +190,12 @@ The browser follows a conversation over Server-Sent Events: a snapshot of commit
 a heartbeat. On reconnect it starts again from a fresh snapshot.
 
 Every signed-in page sits beside the app's sidebar (shadcn's sidebar, ported to `packages/ui`): the conversations,
-then Connections, Settings and Sign out. On desktop it slides away (the toggle in each page's top bar, or ⌘/Ctrl+B)
-and a cookie remembers it, which the server reads so the first paint has the right layout; on phones it is a sheet.
-The chat view fills the page beside it. The transcript scrolls in a `MessageScroller` (from `@shadcn/react`). Each of
+then Connections, Settings and Sign out. On desktop it slides away (the toggle in a page's top bar or the first pane's
+pill, or ⌘/Ctrl+B) and a cookie remembers it, which the server reads so the first paint has the right layout; on
+phones it is a sheet. The workspace fills the page beside it. The transcript scrolls in a `MessageScroller` (from `@shadcn/react`). Each of
 the owner's turns is a scroll anchor. The view follows a streaming reply only while the reader is at the end, and
-otherwise offers a jump back. The top bar (the toggle, the conversation's name, its actions) and the composer float
-over the transcript as translucent chrome. Assistant Markdown is set by shadcn/typeset, whose append-stable rules keep earlier blocks still
+otherwise offers a jump back. The pane's pill (where it came from, its name and menu, its state) and the composer
+float over the transcript as translucent chrome. Assistant Markdown is set by shadcn/typeset, whose append-stable rules keep earlier blocks still
 while a reply streams.
 
 When the agent waits on the owner, the request is pinned above the composer until their next message
@@ -299,21 +297,26 @@ An App is a tool's `ui://` resource, served by the server that answered the call
 sandboxed frames (`lib/app-sandbox.ts`). The outer proxy only relays protocol messages to and from the host's origin.
 Its calls go through the owner API to the originating server and need that server's grant.
 
-The chat view has at most one live App (`components/apps`). At 75rem and wider, `components/workspace-layout.tsx`
-mounts Trellis 0.3.0 after hydration. Main is a nonclosable stage view. Thread/draft panes and the App slot can dock,
-float, tab and resize; stable portal hosts retain React pane state during rearrangement. Desktop thread tabs own
-their title and close action; only sheets have the inner thread header. Narrow screens render main
-and use the existing thread and App sheets. Server rendering shows main alone.
+Every conversation, a thread's draft and the transcript's App is a pane of its own (ADR 0019). The pane store
+(`lib/workspace.ts`) holds a Trellis document of one-view panes keyed by item (`c:<id>`, `d:…`, `a:<id>`), the focused
+item and an optional filled pane; `components/workspace.tsx` provides it to the whole app so the sidebar and every
+transcript link can open things, and keeps the URL (`/c/<id>`) on the focused conversation. At 75rem and wider
+`components/workspace-surface.tsx` mounts Trellis 0.3.0 after hydration as a controlled layout (no tabs, menus,
+floating, navigation or shortcuts) inside a sideways scroller about 400px a pane wide; narrower screens show one pane
+per screen in a snapping strip whose pane in view is the focused one. Each item renders once into a stable portal host
+that moves between panes, the strip and a parking lot, so streams and React state survive rearrangement. Each pane
+draws its own floating pill (`components/pane-header.tsx`); `components/workspace-drag.tsx` drags a pill's grip onto a
+pane to split it at an edge or swap with it (`lib/pane-drop.ts`). The arrangement is a bounded device preference
+(`purrable:workspace:v2:<owner>`, 64 views, no stage, nothing floating); only conversation panes come back from it.
+The sidebar footer credits Trellis and Dan Fessler; see [ADR 0016](adr/0016-workspace-layout-with-trellis.md) for the
+license arrangement.
 
-Pane metadata and the bounded Trellis document use separate version-1 localStorage records, scoped to the authenticated
-owner and primary conversation on this device. Restore migrates old thread lists and prunes closed/missing threads,
-unknown view types and stale App panes. App selections and grants never come from storage. Reset layout creates equal
-splits for the current panes. Tokens follow the local shadcn dark/light palette; the toolbar credits Trellis and Dan
-Fessler. See [ADR 0016](adr/0016-workspace-layout-with-trellis.md) for the license arrangement.
+The transcript has at most one live App (`components/apps`), from main only for now: a pane beside the focused
+conversation on a desktop, its bottom sheet on a phone. Closing the pane closes the App.
 
-The App iframe remains in the fixed `AppLayer` stage outside Trellis. Trellis moves an empty measured slot, so docking,
-undocking and responsive changes never reparent the opaque frame or replace its bridge. The stage follows that slot
-frame by frame; hidden tabs hide it, and clipping respects floating panes above it. Fullscreen fills the workspace
+The App iframe remains in the fixed `AppLayer` stage outside Trellis. Trellis moves an empty measured slot, so
+rearranging panes and responsive changes never reparent the opaque frame or replace its bridge. The stage follows that
+slot frame by frame, including while the panes scroll. Fullscreen fills the workspace
 surface. The advertised modes are inline (the desktop pane) and fullscreen. Narrow screens use a momentum/snapping
 bottom sheet for fullscreen; inline waits behind Open in the transcript. Changing selection tears down the old bridge
 and reconnects through the new originating server. Grant cards, link offers and context sharing remain host-drawn.

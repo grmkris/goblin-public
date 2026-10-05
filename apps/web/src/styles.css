@@ -55,11 +55,11 @@ main.shell {
   rotate: 90deg;
 }
 /*
- * The chat fills the page beside the sidebar: fixed to the viewport (the composer's keyboard handling relies on it),
- * its left edge following the sidebar as it slides. The transcript scrolls beneath the floating top bar and the
+ * The workspace fills the page beside the sidebar: fixed to the viewport (the composer's keyboard handling relies on
+ * it), its left edge following the sidebar as it slides. Each pane's transcript scrolls beneath its floating pill and
  * composer dock; `--dock-height` and `--keyboard-inset` are measured in use-conversation.ts.
  */
-.chat-view {
+.workspace {
   position: fixed;
   inset: 0 0 0 var(--chat-inset-left, 0px);
   display: flex;
@@ -70,12 +70,7 @@ main.shell {
     --chat-inset-left: var(--sidebar-width);
   }
 }
-.chat-conversation {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-}
-/* One transcript with its composer (the chat, the thread panel): a centred column clear of the top bar and the dock. */
+/* One transcript with its composer: a centred column clear of the pane's pill and the dock. */
 .chat-pane {
   --chat-gutter: 1rem;
   --message-scroller-max-width: 880px;
@@ -98,43 +93,6 @@ main.shell {
   border-radius: 9999px;
   background: var(--primary);
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-.thread-rename {
-  flex: 1;
-  max-width: 24rem;
-  margin-right: auto;
-}
-/*
- * A thread beside main (components/thread-panel.tsx): a column on the right that slides in from its edge, or, where
- * there is no room, a sheet from the right edge that covers the screen on a phone.
- */
-.thread-panel {
-  position: relative;
-  flex: none;
-  width: clamp(22rem, 34vw, 30rem);
-  height: 100%;
-  border-left: 1px solid var(--border);
-  background: var(--background);
-  transition:
-    translate 300ms var(--ease-sheet),
-    opacity 200ms;
-  @starting-style {
-    translate: 2rem 0;
-    opacity: 0;
-  }
-}
-.thread-pane {
-  --chat-gutter: 1rem;
-  --message-scroller-max-width: none;
-  position: relative;
-  height: 100%;
-}
-.thread-pane[data-thread-host='workspace'] {
-  --message-scroller-inset-top: 0.75rem;
-}
-[data-slot='sheet-content'] .thread-pane {
-  flex: 1;
-  min-height: 0;
 }
 /* The message a thread branched from, set apart from the replies under it by a rule with their count. */
 .thread-root {
@@ -823,36 +781,60 @@ summary {
   font-size: 0.75rem;
 }
 
-.workspace-layout,
-.workspace-surface,
-.workspace-trellis,
-.workspace-phone {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-}
-.workspace-layout,
-.workspace-phone {
-  display: flex;
-  flex-direction: column;
-}
 .workspace-surface {
+  position: relative;
   display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
+/* Wider than the screen allows, about 400px a pane, the layout scrolls sideways. */
+.workspace-scroller {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+}
 .workspace-trellis {
+  width: max(100%, calc(var(--workspace-columns, 1) * 25rem));
   height: 100%;
 }
+/* A narrow screen shows one pane at a time, snapping pane by pane. */
+.workspace-strip {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.workspace-cell {
+  flex: 0 0 100%;
+  min-width: 0;
+  height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
 .workspace-pane-host,
-.workspace-app-slot {
+.workspace-pane,
+.workspace-app-slot,
+.conversation-pane,
+.app-pane {
   position: relative;
   display: flex;
+  flex: 1;
   flex-direction: column;
   width: 100%;
   height: 100%;
   min-height: 0;
   min-width: 0;
+}
+.app-pane {
+  padding-top: var(--top-bar-height);
 }
 .workspace-parking {
   position: absolute;
@@ -861,29 +843,194 @@ summary {
   pointer-events: none;
   overflow: hidden;
 }
-.workspace-toolbar {
+/*
+ * A pane's floating pill instead of a tab (components/pane-header.tsx): grip, where the item came from, its name and
+ * menu, what it is doing, and close. Translucent, so the transcript reads beneath it as it scrolls.
+ */
+.pane-header {
+  position: absolute;
+  z-index: 30;
+  top: max(0.5rem, var(--safe-top));
+  inset-inline: max(0.5rem, var(--safe-left)) 0.5rem;
   display: flex;
+  pointer-events: none;
+}
+.pane-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  min-width: 0;
+  max-width: 100%;
+  height: 2.25rem;
+  padding-inline: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--background) 82%, transparent);
+  backdrop-filter: blur(12px) saturate(160%);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.06),
+    0 4px 12px rgb(0 0 0 / 0.04);
+  font-size: 0.8125rem;
+  pointer-events: auto;
+}
+.workspace-surface[data-workspace='wide'] .workspace-pane[data-focused='true'] .pane-pill {
+  border-color: color-mix(in oklab, var(--ring) 55%, var(--border));
+}
+.pane-grip,
+.pane-crumb,
+.pane-title,
+.pane-pill > [data-slot='button'],
+.pane-pill > [data-slot='sidebar-trigger'] {
   flex: none;
+  height: 1.75rem;
+  border-radius: 9999px;
+  outline-offset: 1px;
+}
+.pane-grip {
+  display: grid;
+  width: 1.25rem;
+  place-items: center;
+  color: var(--muted-foreground);
+  cursor: grab;
+  touch-action: none;
+}
+.pane-grip > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+.pane-crumb {
+  flex: 0 1 auto;
+  max-width: 9rem;
+  overflow: hidden;
+  padding-inline: 0.375rem;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pane-crumb-sep {
+  flex: none;
+  width: 0.75rem;
+  height: 0.75rem;
+  color: var(--muted-foreground);
+}
+.pane-title {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  overflow: hidden;
+  padding-inline: 0.5rem;
+  font-size: inherit;
+  font-weight: 600;
+  line-height: 1.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pane-title > svg {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--muted-foreground);
+}
+@media (hover: hover) {
+  .pane-crumb:hover,
+  button.pane-title:hover,
+  .pane-grip:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+}
+.pane-state {
+  flex: none;
+  padding-inline: 0.375rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.pane-pill > .thread-busy {
+  margin-inline: 0.375rem;
+}
+.pane-rename {
+  min-width: 10rem;
+}
+.pane-rename input {
+  height: 1.75rem;
+  border-radius: 9999px;
+}
+/* Narrow screens move between panes by swiping the strip; there is nothing to drag. */
+.workspace-surface[data-workspace='narrow'] .pane-grip {
+  display: none;
+}
+/* Dragging a pane (components/workspace-drag.tsx): where it would land, and its name under the pointer. */
+.pane-drag {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  cursor: grabbing;
+  pointer-events: none;
+}
+.pane-drag-preview {
+  position: fixed;
+  top: var(--preview-top);
+  left: var(--preview-left);
+  width: var(--preview-width);
+  height: var(--preview-height);
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklab, var(--primary) 10%, transparent);
+  transition:
+    left 120ms var(--ease-sheet),
+    top 120ms var(--ease-sheet),
+    width 120ms var(--ease-sheet),
+    height 120ms var(--ease-sheet);
+}
+.pane-drag-ghost {
+  position: fixed;
+  top: var(--drag-y);
+  left: var(--drag-x);
+  max-width: 16rem;
+  overflow: hidden;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: var(--background);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.12);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  translate: 0.75rem 0.75rem;
+}
+.pane-drag-ghost[data-refused='true'] {
+  opacity: 0.6;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pane-drag-preview {
+    transition: none;
+  }
+}
+/* A closed conversation's dock: why nothing runs, and the way back. */
+.pane-closed {
+  display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.375rem 0.75rem;
-  border-bottom: 1px solid var(--border);
+  gap: 0.75rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   background: var(--background);
   color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+.sidebar-credit {
+  padding: 0.25rem 0.5rem;
+  color: var(--muted-foreground);
   font-size: 0.6875rem;
+  line-height: 1.4;
 }
-.workspace-toolbar > button,
-.workspace-toolbar > a {
-  border-radius: var(--radius-sm);
-  outline-offset: 2px;
-}
-.workspace-toolbar > button:hover,
-.workspace-toolbar > a:hover {
+.sidebar-credit:hover {
   color: var(--foreground);
-}
-.workspace-pane-host .chat-conversation {
-  height: 100%;
 }
 /* Pane width, rather than screen width, controls the composer's secondary labels. */
 .chat-pane {

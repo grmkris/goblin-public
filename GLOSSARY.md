@@ -14,6 +14,8 @@
   take no messages, stay readable, and Reopen brings one back. Main never closes.
 - **Workspace feed**: `GET /api/workspace/events`, one SSE stream per tab with every conversation and what each is
   doing (`working`, or `waiting` on its subagents).
+- **Pane**: where the web shows one item (a conversation, a thread's unsent draft, the App), with a floating pill
+  instead of a tab (ADR 0019). An item is in at most one pane; closing the pane leaves the conversation going.
 - **Subagent**: a conversation main or a thread starts with the `subagent` tool to do a job in the background; its
   answer comes back to the spawner as an input labelled with its name.
 - **Memory view**: main's memory as the model reads it: an `app.memory` entry of one-line summaries targeting 48,000 bytes that
@@ -32,8 +34,8 @@
   subagents, narrowed by what was switched off there (`app_conversation_capabilities`). A new thread copies main's
   switches; a subagent is bounded by every conversation above it. Switches only narrow; they never grant.
 - **Inbound client**: an MCP client (Claude Code, another agent) the owner authorized to call Purrable's `/mcp`.
-- **MCP App**: a sandboxed `ui://` resource served through its originating MCP connection. One live App per chat view
-  moves between inline, panel/sheet and desktop picture-in-picture slots while its iframe stays in place.
+- **MCP App**: a sandboxed `ui://` resource served through its originating MCP connection. One live App moves between
+  its desktop pane, fullscreen and the phone sheet while its iframe stays in place.
 - **Skill**: a procedure (`SKILL.md` and its files) served by an MCP server through the MCP Skills extension. The agent
   lists and follows skills only from servers the owner turned skills on for; it activates them for a conversation, by
   handle `<server>:<name>`, and a skill never grants a permission (ADR 0008).

@@ -2,6 +2,7 @@ import { HeadContent, Outlet, Scripts, createRootRoute, useRouterState } from '@
 import type { ReactNode } from 'react'
 import { SidebarInset, SidebarProvider } from '@purrable/ui'
 import { AppSidebar } from '../components/app-sidebar.tsx'
+import { WorkspaceProvider } from '../components/workspace.tsx'
 import { WorkspaceFeedProvider } from '../components/workspace-feed.tsx'
 import { SessionProvider, useSession } from '../lib/session.tsx'
 import { readSidebarOpen } from '../lib/sidebar-state.ts'
@@ -76,14 +77,16 @@ function Shell({ children }: { readonly children: ReactNode }) {
   const sidebarOpen = Route.useLoaderData()
   if (state === 'signed-out' || AUTH_PAGES.has(path) || path.startsWith('/invite/'))
     return <main className="shell">{children}</main>
+  const enabled =
+    state === 'signed-in' && billing.state?.active === true && workspaces.state?.active?.agentReady === true
   return (
-    <WorkspaceFeedProvider
-      enabled={state === 'signed-in' && billing.state?.active === true && workspaces.state?.active?.agentReady === true}
-    >
-      <SidebarProvider defaultOpen={sidebarOpen}>
-        <AppSidebar />
-        <SidebarInset>{children}</SidebarInset>
-      </SidebarProvider>
+    <WorkspaceFeedProvider enabled={enabled}>
+      <WorkspaceProvider enabled={enabled}>
+        <SidebarProvider defaultOpen={sidebarOpen}>
+          <AppSidebar />
+          <SidebarInset>{children}</SidebarInset>
+        </SidebarProvider>
+      </WorkspaceProvider>
     </WorkspaceFeedProvider>
   )
 }

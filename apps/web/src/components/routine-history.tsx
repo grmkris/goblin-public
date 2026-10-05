@@ -65,7 +65,7 @@ export function RoutineHistory({
               {run.state} · {new Date(run.firedAt).toLocaleString()}
             </span>
             {run.sessionId && (
-              <Link className="underline" to="/t/$threadId" params={{ threadId: run.sessionId }}>
+              <Link className="underline" to="/c/$conversationId" params={{ conversationId: run.sessionId }}>
                 Open run
               </Link>
             )}

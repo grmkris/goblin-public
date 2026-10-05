@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useRouterState } from '@tanstack/react-router'
-import { type ConversationView, MAIN_THREAD } from '@purrable/contracts'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
+import type { ConversationView } from '@purrable/contracts'
 import {
   Sidebar,
   SidebarContent,
@@ -31,25 +31,18 @@ import {
   SettingsIcon,
 } from 'lucide-react'
 import { signOut } from '../lib/session.tsx'
-import { type ThreadNode, isClosed, threadTitle, threadTree } from '../lib/threads.ts'
+import { type ThreadNode, threadTitle, threadTree } from '../lib/threads.ts'
 import { activityState } from '../lib/workspace-feed.ts'
+import { conversationKey, itemOf } from '../lib/workspace.ts'
+import { useWorkspace } from './workspace.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
 
-/** The conversation a path shows: main at `/`, a thread or subagent at `/t/:id`, none elsewhere. */
-function conversationAt(path: string): string | undefined {
-  if (path === '/') return MAIN_THREAD
-  return /^\/t\/([^/]+)/u.exec(path)?.[1]
-}
+/** Whether a path shows the workspace: `/` or a conversation's `/c/<id>`. */
+const onWorkspace = (path: string) => path === '/' || path.startsWith('/c/')
 
-const linkTo = (view: ConversationView) =>
-  view.id === MAIN_THREAD ? (
-    <Link to="/" />
-  ) : view.kind === 'thread' && !isClosed(view) ? (
-    <Link to="/" search={{ thread: Number(view.id) }} />
-  ) : (
-    <Link to="/t/$threadId" params={{ threadId: view.id }} />
-  )
+/** A row's link: it shows the conversation in the focused pane, and the URL then names it. */
+const linkTo = (view: ConversationView) => <Link to="/c/$conversationId" params={{ conversationId: view.id }} />
 
 /** A spinner while the conversation works, or waits on its subagents. */
 function Busy({ view }: { readonly view: ConversationView }) {
@@ -64,11 +57,13 @@ function Busy({ view }: { readonly view: ConversationView }) {
 
 /** A conversation, with the subagents it started nested under it. */
 function ConversationItem({ node, current }: { readonly node: ThreadNode; readonly current: string | undefined }) {
+  const workspace = useWorkspace()
+  const showHere = (view: ConversationView) => () => workspace.open(conversationKey(view.id), 'here')
   const { thread } = node
   const Icon = thread.kind === 'main' ? MessageCircleIcon : MessagesSquareIcon
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton render={linkTo(thread)} isActive={thread.id === current}>
+      <SidebarMenuButton render={linkTo(thread)} onClick={showHere(thread)} isActive={thread.id === current}>
         <Icon aria-hidden />
         <span>{threadTitle(thread)}</span>
       </SidebarMenuButton>
@@ -77,7 +72,11 @@ function ConversationItem({ node, current }: { readonly node: ThreadNode; readon
         <SidebarMenuSub>
           {node.subagents.map((subagent) => (
             <SidebarMenuSubItem key={subagent.id}>
-              <SidebarMenuSubButton render={linkTo(subagent)} isActive={subagent.id === current}>
+              <SidebarMenuSubButton
+                render={linkTo(subagent)}
+                onClick={showHere(subagent)}
+                isActive={subagent.id === current}
+              >
                 <BotIcon aria-hidden />
                 <span>{threadTitle(subagent)}</span>
               </SidebarMenuSubButton>
@@ -121,10 +120,11 @@ function ClosedGroup({
 
 /**
  * Main, then the threads newest first (each with its subagents), then the closed ones. The "+" beside Threads opens
- * a new thread's draft beside main; nothing exists until its first message is sent.
+ * a new thread's draft beside the focused pane; nothing exists until its first message is sent.
  */
 function Conversations({ current, onNew }: { readonly current: string | undefined; readonly onNew: () => void }) {
   const { conversations } = useWorkspaceFeed()
+  const workspace = useWorkspace()
   const tree = useMemo(() => threadTree(conversations), [conversations])
   return (
     <>
@@ -134,10 +134,12 @@ function Conversations({ current, onNew }: { readonly current: string | undefine
       <SidebarGroup>
         <SidebarGroupLabel>Threads</SidebarGroupLabel>
         <SidebarGroupAction
-          render={<Link to="/" search={{ new: true }} />}
           aria-label="New thread"
           title="New thread"
-          onClick={onNew}
+          onClick={() => {
+            workspace.draft(undefined, [], workspace.state.focused)
+            onNew()
+          }}
         >
           <PlusIcon aria-hidden />
         </SidebarGroupAction>
@@ -160,14 +162,22 @@ function Conversations({ current, onNew }: { readonly current: string | undefine
 
 /**
  * The app's navigation: the brand on top, the conversations, then Connections, Settings and Sign out. On phones it is a
- * sheet that closes as soon as the page changes (or a new thread's draft opens beside main, which stays on `/`).
+ * sheet that closes as soon as the page changes or a new thread's draft opens.
  */
 export function AppSidebar() {
   const path = useRouterState({ select: (router) => router.location.pathname })
+  const navigate = useNavigate()
   const { setOpenMobile } = useSidebar()
   const { state } = useAccountWorkspaces()
+  const workspace = useWorkspace()
+  const focused = itemOf(workspace.state.focused)
+  const current = onWorkspace(path) && focused?.kind === 'conversation' ? focused.id : undefined
   const close = useCallback(() => setOpenMobile(false), [setOpenMobile])
   useEffect(() => close(), [path, close])
+  const opened = useCallback(() => {
+    close()
+    if (!onWorkspace(path)) void navigate({ to: '/' })
+  }, [close, path, navigate])
   return (
     <Sidebar label="Purrable">
       <SidebarHeader>
@@ -182,9 +192,7 @@ export function AppSidebar() {
           </a>
         )}
       </SidebarHeader>
-      <SidebarContent>
-        {state?.active?.agentReady && <Conversations current={conversationAt(path)} onNew={close} />}
-      </SidebarContent>
+      <SidebarContent>{state?.active?.agentReady && <Conversations current={current} onNew={opened} />}</SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -206,6 +214,9 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <a className="sidebar-credit" href="https://github.com/DanFessler/trellis" target="_blank" rel="noreferrer">
+          Workspace layout powered by Trellis by Dan Fessler
+        </a>
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

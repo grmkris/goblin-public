@@ -64,7 +64,7 @@ export function SubagentToolPart({ part }: { readonly part: ToolPart }) {
   return (
     <ToolCard part={part}>
       {subagent !== undefined && (
-        <Link to="/t/$threadId" params={{ threadId: subagent.thread }} className="tool-link">
+        <Link to="/c/$conversationId" params={{ conversationId: subagent.thread }} className="tool-link">
           <BotIcon aria-hidden />
           Open {subagent.name}
         </Link>

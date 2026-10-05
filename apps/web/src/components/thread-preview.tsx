@@ -151,7 +151,7 @@ export function ThreadPreviewBlock({
               </button>
             )}
             {onOpen === undefined ? (
-              <Link to="/t/$threadId" params={{ threadId: view.id }}>
+              <Link to="/c/$conversationId" params={{ conversationId: view.id }}>
                 Open thread
               </Link>
             ) : (

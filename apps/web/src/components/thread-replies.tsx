@@ -1,6 +1,6 @@
 import { type ReactNode, use, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { type ConversationView, MAIN_THREAD } from '@purrable/contracts'
+import type { ConversationView } from '@purrable/contracts'
 import { ChevronRightIcon, MessageSquareReplyIcon } from 'lucide-react'
 import type { Part } from '../lib/parts.ts'
 import { entryOfPart, isClosed, threadsByFork } from '../lib/threads.ts'
@@ -9,11 +9,11 @@ import { OpenThread } from './parts/text-part.tsx'
 import { ThreadPreviewBlock } from './thread-preview.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
-/** Main's threads as its transcript shows them: under the message each branched from, and how to start one. */
+/** A conversation's threads as its transcript shows them: under the message each branched from, and how to start one. */
 export type InlineThreads = {
   readonly at: ReadonlyMap<number, readonly ConversationView[]>
   readonly branchable: ReadonlySet<number>
-  /** Opens the thread started from `entry` beside main, or a reply that starts one when it is sent. */
+  /** Opens the thread started from `entry` beside the conversation, or a reply that starts one when it is sent. */
   readonly reply: (entry: number) => void
   readonly open: (thread: string) => void
   /** Now, in seconds, a minute at a time: what "2 minutes ago" is measured against. */
@@ -31,16 +31,17 @@ export function useMinute(): number {
 }
 
 /**
- * Inline threads for main: Reply in thread opens the thread already started from that message beside main, or a reply
- * that starts one when it is sent (`draft`).
+ * The inline threads of conversation `parent`: Reply in thread opens the thread already started from that message
+ * beside it, or a reply that starts one when it is sent (`draft`).
  */
 export function useInlineThreads(
+  parent: string,
   branchable: ReadonlySet<number>,
   open: (thread: string) => void,
   draft: (entry: number) => void,
 ): InlineThreads {
   const { conversations } = useWorkspaceFeed()
-  const at = useMemo(() => threadsByFork(conversations, MAIN_THREAD), [conversations])
+  const at = useMemo(() => threadsByFork(conversations, parent), [conversations, parent])
   const now = useMinute()
   const reply = useCallback(
     (entry: number) => {
@@ -53,12 +54,12 @@ export function useInlineThreads(
   return useMemo(() => ({ at, branchable, reply, open, now }), [at, branchable, reply, open, now])
 }
 
-/** Opens a thread beside main where the transcript can (`OpenThread`), or on its own page. */
+/** Opens a thread beside the transcript where it can (`OpenThread`), or as the focused pane. */
 function OpenThreadButton({ thread, children }: { readonly thread: string; readonly children: ReactNode }) {
   const open = use(OpenThread)
   if (open === undefined)
     return (
-      <Link to="/t/$threadId" params={{ threadId: thread }} className="thread-row">
+      <Link to="/c/$conversationId" params={{ conversationId: thread }} className="thread-row">
         {children}
       </Link>
     )
@@ -105,7 +106,7 @@ function messageEntry(part: Part): number | undefined {
 }
 
 /**
- * Under one message of main: the threads started from it, or, when there are none, Reply in thread (shown on hover
+ * Under one message: the threads started from it, or, when there are none, Reply in thread (shown on hover
  * where there is one). Rows and the action line up with the message's side.
  */
 export function PartThreads({ part, threads }: { readonly part: Part; readonly threads: InlineThreads }) {
