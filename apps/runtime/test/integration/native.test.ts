@@ -299,6 +299,36 @@ harness.test(
   }),
 )
 
+const Announce = Schema.Struct({
+  thread: Schema.String,
+  title: Schema.String,
+  first: Schema.Array(Schema.String),
+  notes: Schema.Array(Schema.Unknown),
+  main: Schema.Array(Schema.String),
+  request: ModelRequest,
+})
+
+harness.test(
+  'local workerd: a thread started with + tells main its name once, and a branched thread tells it nothing',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `announce-${yield* nextInt}`
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/announce?name=${name}`))
+    const result = yield* Schema.decodeUnknownEffect(Announce)(yield* Effect.promise(() => response.json()))
+    const note = `[thread started: "${result.title}"]`
+    expect(result.first).toEqual([`app.thread_started: ${JSON.stringify([{ type: 'text', text: note }])}`])
+    // One note however often the thread answers, naming the thread; the branched thread added none.
+    expect(result.notes).toEqual([{ thread: result.thread }])
+    // The note started no run in main: the next line in main is the owner's own question.
+    expect(turns(result.main).slice(2)).toEqual([
+      `app.thread_started: ${JSON.stringify([{ type: 'text', text: note }])}`,
+      'pi.user: "which threads did I start?"',
+      'pi.assistant: [{"type":"text","text":"echo: which threads did I start?"}]',
+    ])
+    expect(requestTurns(result.request)).toContain(note)
+  }),
+)
+
 const MemoryRun = Schema.Struct({
   summarized: Schema.Number,
   request: ModelRequest,

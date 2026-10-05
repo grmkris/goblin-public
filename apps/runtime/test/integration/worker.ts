@@ -185,6 +185,7 @@ type Entry = {
   readonly id: number
   readonly kind: string
   readonly head?: number
+  readonly data?: unknown
   readonly model?: readonly { readonly content?: unknown }[]
 }
 
@@ -266,12 +267,14 @@ const threadsUntil = (agent: DurableObjectStub<PersonalAgentProbe>, done: (views
 
 /**
  * A thread shares a note with main: main's next request carries it, labelled with the thread, and it started no run
- * of its own. Only the thread is offered `share_to_main`, and the thread is named after its first exchange.
+ * of its own. Only the thread is offered `share_to_main`, and the thread is named after its first exchange. The thread
+ * is branched, so main gets no note of its start (that is for threads started with "+": `announceSequence`).
  */
 async function shareSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
   await agent.submit(MAIN_THREAD, 'remember the word lantern', 'share-main')
   await agent.settle(MAIN_THREAD, 'share-main')
-  const thread = await agent.createThread()
+  const answer = ((await snapshotOf(agent, MAIN_THREAD)).entries ?? []).findLast(({ kind }) => kind === 'pi.assistant')
+  const thread = await agent.createThread(answer?.id)
   if (!thread.ok) return Response.json({ thread })
   const share = 'call share_to_main {"note":"the word is lantern"}'
   await agent.submit(thread.value.id, share, 'share-thread')
@@ -287,6 +290,46 @@ async function shareSequence(agent: DurableObjectStub<PersonalAgentProbe>): Prom
     title: (await threadsUntil(agent, (views) => views.some(({ id, title }) => id === thread.value.id && title))).find(
       ({ id }) => id === thread.value.id,
     )?.title,
+  })
+}
+
+/** Main's notes of threads started with "+", once they are in. */
+const notesUntil = (agent: DurableObjectStub<PersonalAgentProbe>, count: number) =>
+  until(
+    async () => (await transcript(agent, MAIN_THREAD)).filter((line) => line.startsWith('app.thread_started')),
+    (notes) => notes.length >= count,
+  )
+
+/**
+ * A thread started with "+" tells main its name, once, after its first exchange names it: main's model reads the
+ * note, no run starts for it, and a second exchange or a branched thread adds none.
+ */
+async function announceSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
+  await agent.submit(MAIN_THREAD, 'remember the word lantern', 'announce-main')
+  await agent.settle(MAIN_THREAD, 'announce-main')
+  const fresh = await agent.createThread()
+  if (!fresh.ok) return Response.json({ fresh })
+  await agent.submit(fresh.value.id, 'plan the trip', 'announce-thread')
+  await agent.settle(fresh.value.id, 'announce-thread')
+  const first = await notesUntil(agent, 1)
+  await agent.submit(fresh.value.id, 'and the hotel?', 'announce-thread-again')
+  await agent.settle(fresh.value.id, 'announce-thread-again')
+  const answer = ((await snapshotOf(agent, MAIN_THREAD)).entries ?? []).findLast(({ kind }) => kind === 'pi.assistant')
+  const branched = await agent.createThread(answer?.id)
+  if (!branched.ok) return Response.json({ branched })
+  await agent.submit(branched.value.id, 'what was the word?', 'announce-branch')
+  await agent.settle(branched.value.id, 'announce-branch')
+  await threadsUntil(agent, (views) => views.some(({ id, title }) => id === branched.value.id && title))
+  await agent.submit(MAIN_THREAD, 'which threads did I start?', 'announce-ask')
+  await agent.settle(MAIN_THREAD, 'announce-ask')
+  const mainEntries = (await historyOf(agent, MAIN_THREAD)).entries ?? []
+  return Response.json({
+    thread: fresh.value.id,
+    title: (await listedThread(agent, fresh.value.id))?.title,
+    first,
+    notes: mainEntries.filter(({ kind }) => kind === 'app.thread_started').map(({ data }) => data),
+    main: linesOf(mainEntries),
+    request: await agent.requestFor('which threads did I start?'),
   })
 }
 
@@ -378,6 +421,7 @@ export default {
     if (new URL(request.url).pathname === '/destroy') return destroySequence(env, name)
     if (new URL(request.url).pathname === '/branch') return branchSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/share') return shareSequence(env.AGENTS.getByName(name))
+    if (new URL(request.url).pathname === '/announce') return announceSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/subagent') return subagentSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/memory') return memorySequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/binding')

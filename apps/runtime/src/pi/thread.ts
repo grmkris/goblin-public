@@ -39,12 +39,17 @@ export function threadExtension(run: RunProgram) {
     hooks: [
       hook(GenerationTask, {
         // Fire and forget: naming never holds up the turn, and an untitled thread is retried on its next response.
+        // Then a thread started with "+" tells main its name; that needs no model, so it waits on no budget, and a
+        // thread the owner named before its first answer is announced too.
         afterResponse: (_message, api) => {
+          const thread = String(api.conversationId)
           void run(
             Effect.gen(function* () {
-              yield* requireBudget
               const conversations = yield* Conversations
-              yield* attempt(() => conversations.nameIfUntitled(String(api.conversationId)))
+              yield* Effect.ignore(
+                requireBudget.pipe(Effect.andThen(attempt(() => conversations.nameIfUntitled(thread)))),
+              )
+              yield* attempt(() => conversations.announce(thread))
             }),
           ).catch(() => undefined)
         },

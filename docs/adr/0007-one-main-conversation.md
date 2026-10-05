@@ -1,6 +1,6 @@
 # One main conversation that never ends, with side threads and subagents
 
-Accepted 2026-10-04 with the owner.
+Accepted 2026-10-04 with the owner. Amended by ADR 0010: main learns the name of a thread started with "+".
 
 **Each agent has one main conversation.** Main is Pi's root session. Everyone who reaches the agent talks there:
 - the owner's browser;

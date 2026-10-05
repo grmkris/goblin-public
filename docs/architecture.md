@@ -81,7 +81,10 @@ thread. Main shows its threads inline, as Slack does (`components/thread-replies
 branched from, a row with its reply count and last reply, and "Reply in thread" on the other messages of the owner
 and the agent. A row opens its thread beside main (`/?thread=<id>`, `components/thread-panel.tsx`): the message it
 branched from, then only what was said in the thread, with its own composer. Reply in thread opens a reply there
-(`/?reply=<entry>`) that branches the thread only when it is sent, because Pi cannot delete a conversation. The owner API is conversation-scoped:
+(`/?reply=<entry>`) that branches the thread only when it is sent, because Pi cannot delete a conversation; the
+sidebar's "+" beside Threads opens an empty draft there (`/?new=true`) the same way. A thread started with "+" tells
+main its name once it has one (ADR 0010): main gets one `app.thread_started` note, `[thread started: "<title>"]`, and
+its transcript shows a row for that thread. The owner API is conversation-scoped:
 
 | Route | Purpose |
 | --- | --- |
@@ -99,7 +102,11 @@ thread's "Share to main" button sends that request), the model writes a short no
 submission, an `app.shared` entry labelled `[from thread "<title>"]` that keeps the thread's id, so the label in
 main's transcript opens that thread. Main's model sees it from its next request and answers nothing, since a write
 starts no run. After each response an untitled thread is named by the memory model
-from its latest exchange, in the background; the owner can rename it.
+from its latest exchange, in the background; the owner can rename it. A thread started with "+" is created with
+`app_conversations.main_note = 'owed'`; once it has a title (the model's or the owner's) the same hook writes main
+an `app.thread_started` entry with request id `thread-started:<id>` and marks the note `written`. The note carries
+only the name, never what was said in the thread, and a later rename does not rewrite it. Branched threads already
+show under their message in main and get no note.
 
 Main and threads can start **subagents** with the `subagent` tool (`pi/subagents.ts`, after Pi Durable's background
 subagent example): `spawn`, `send`, `stop` and `status`. A subagent is a Pi conversation owned by a background anchor
@@ -260,7 +267,7 @@ same call again. "Not now", or two minutes without an answer, returns the denial
 Main never ends, so it keeps a memory instead of an ever-longer context (`memory/`, after VictorTaelin's OptChat
 gist). Every message of main since the memory was activated is logged in `app_memory_log` with its Pi entry id:
 
-- the owner's and other authors' words;
+- the owner's and other authors' words, notes shared from threads, and the notes naming threads started with "+";
 - the agent's replies, with their tool calls;
 - tool results.
 

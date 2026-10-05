@@ -96,6 +96,8 @@ export const appConversations = sqliteTable('app_conversations', {
   archivedAt: integer('archived_at'),
   /** A thread branched from main may zoom into main's memory below this message (the memory's size at the fork). */
   recallThrough: integer('recall_through'),
+  /** A thread the owner started with "+" owes main a note naming it (`owed`) until that note is in (`written`). */
+  mainNote: text('main_note', { enum: ['owed', 'written'] }),
 })
 
 /** Main's memory log: the messages it covers, in order, each pointing at its Pi entry (`memory/log.ts`). */

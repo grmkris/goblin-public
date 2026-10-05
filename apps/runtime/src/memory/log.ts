@@ -17,11 +17,17 @@ function capped(text: string): string {
   return `${text.slice(0, half)}\n[… ${text.length - CAP} characters cut …]\n${text.slice(-half)}`
 }
 
+/**
+ * Entries of main the memory keeps as `user`: the owner's words, a note shared from a thread, and the note naming a
+ * thread the owner started with "+".
+ */
+const USER_KINDS: ReadonlySet<string> = new Set(['pi.user', 'app.shared', 'app.thread_started'])
+
 /** The memory's message for a main entry, or none for entries it leaves out (system, compaction, its own views). */
 export function logMessage(entry: Pick<EntryRecord, 'kind' | 'model'>): LogMessage | undefined {
   const message = entry.model?.[0]
   if (message === undefined) return undefined
-  if ((entry.kind === 'pi.user' || entry.kind === 'app.shared') && message.role === 'user')
+  if (USER_KINDS.has(entry.kind) && message.role === 'user')
     return { kind: 'user', text: capped(textBlocks(message.content).join('\n')) }
   if (entry.kind === 'pi.assistant' && message.role === 'assistant') {
     const lines = message.content.flatMap((block) => {

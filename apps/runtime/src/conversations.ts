@@ -6,7 +6,7 @@ import type { PiHarness } from 'agents/harness/pi'
 import { InvalidInput, NotFound } from './http/errors.ts'
 import type { MainMemory } from './memory/memory.ts'
 import type { CheapModel } from './memory/model.ts'
-import { authoredContent } from './pi/content.ts'
+import { authoredContent, threadStartedContent } from './pi/content.ts'
 import { BACKGROUND, conversationId, entryId } from './pi/context.ts'
 import { recentMessages } from './pi/transcript.ts'
 import { ReplyLedger } from './replies.ts'
@@ -101,11 +101,11 @@ export class ConversationRegistry {
     )
   }
 
-  /** An empty thread. */
+  /** An empty thread the owner started; main learns its name once it has one (`announce`). */
   async create(now: number): Promise<ThreadView> {
     const session = await this.#harness.sessions.create()
     await (await this.#conversation(session.id)).configure({ extensions: { add: [this.#kit.thread] } }, BACKGROUND)
-    return this.#insert({ sessionId: session.id, kind: 'thread', parentSession: MAIN_THREAD }, now)
+    return this.#insert({ sessionId: session.id, kind: 'thread', parentSession: MAIN_THREAD, mainNote: 'owed' }, now)
   }
 
   /** How far `zoom` reaches into main's memory from `session`: all of it from main, up to its fork from a thread. */
@@ -149,6 +149,32 @@ export class ConversationRegistry {
       },
       BACKGROUND,
     )
+  }
+
+  /**
+   * Tells main, once, about a thread the owner started with "+": when it has a title (the cheap model's or the
+   * owner's), main gets a note naming it, which its model sees and which starts no run. Nothing said in the thread goes
+   * with it, and a later rename does not rewrite it. The write's request id makes a retry after a crash the same note.
+   */
+  async announce(thread: string): Promise<void> {
+    const row = this.#row(thread)
+    if (row?.kind !== 'thread' || row.mainNote !== 'owed' || row.title === null) return
+    const model = [{ role: 'user' as const, content: threadStartedContent(row.title), timestamp: Date.now() }]
+    await (
+      await this.#conversation(MAIN_THREAD)
+    ).submit(
+      {
+        type: 'write',
+        requestId: `thread-started:${thread}`,
+        entry: { kind: 'app.thread_started', data: { thread }, model },
+      },
+      BACKGROUND,
+    )
+    this.#db
+      .update(appConversations)
+      .set({ mainNote: 'written' })
+      .where(and(eq(appConversations.sessionId, thread), eq(appConversations.mainNote, 'owed')))
+      .run()
   }
 
   /** Names an untitled thread from its latest exchange with the cheap model; once at a time per thread. */

@@ -27,3 +27,15 @@ export function authoredContent(author: string, text: string): TextContent[] {
     { type: 'text', text },
   ]
 }
+
+/**
+ * Main's note that the owner started a thread with "+", as its model reads it: the thread's name and nothing from
+ * inside it. The name is the cheap model's or the owner's, so quotes, brackets and line breaks are taken out of it.
+ */
+export function threadStartedContent(title: string): TextContent[] {
+  const name = title
+    .replaceAll(/["[\]]/gu, ' ')
+    .replaceAll(/\s+/gu, ' ')
+    .trim()
+  return [{ type: 'text', text: `[thread started: "${name}"]` }]
+}

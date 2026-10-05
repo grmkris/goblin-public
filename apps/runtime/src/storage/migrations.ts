@@ -92,6 +92,12 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'CREATE TABLE app_channel_replies (operation_id TEXT PRIMARY KEY NOT NULL, created_at INTEGER NOT NULL, delivered_at INTEGER)',
     ].join(BREAK),
   },
+  {
+    // A thread the owner started with "+" owes main one note naming it once it has a title.
+    key: '20261016000000_thread_notes',
+    tables: ['app_conversations'],
+    sql: "ALTER TABLE app_conversations ADD COLUMN main_note TEXT CHECK (main_note IN ('owed', 'written'))",
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

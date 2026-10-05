@@ -1,6 +1,7 @@
 # Skills come from MCP servers the owner turns them on for, and the agent drafts new ones for review
 
-Accepted 2026-10-05 with the owner, in the MySkills plan (myplan "03 MySkills + Purrable — final plan").
+Accepted 2026-10-05 with the owner, in the MySkills plan (myplan "03 MySkills + Purrable — final plan"). Amended by
+ADR 0010: a conversation can switch a library off.
 
 **Skills are read over MCP, not installed.** The agent speaks the MCP Skills extension (`io.modelcontextprotocol/skills`,
 SEP-2640): `skills/list` and `skills/get` for entries, `resources/read` for files. The official TypeScript SDK has no
