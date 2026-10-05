@@ -139,6 +139,20 @@ export function conversationParts(projection: ConversationProjection): Part[] {
   return [...parts, ...liveParts(projection, context, seen)]
 }
 
+/** The agent's own tools, in words; any other is "Used" and its name. */
+const OWN_TOOLS: Readonly<Record<string, string>> = {
+  mcp_list: 'Looked up its tools',
+  share_back: 'Shared a note back',
+  skill_activate: 'Opened a skill',
+  skill_read: 'Read a skill',
+}
+
+/** How a tool call reads as one line: "Used" and the server, then the tool; the agent's own tools in words. */
+export function toolLine(part: ToolPart): { readonly lead: string; readonly server?: string; readonly tool?: string } {
+  if (part.target) return { lead: 'Used', server: part.target.serverId, tool: part.target.name }
+  return { lead: OWN_TOOLS[part.call.name] ?? `Used ${part.call.name || 'a tool'}` }
+}
+
 /** How long a tool has run (to `now` while it runs) or ran; undefined when its start or end is unknown. */
 export function elapsedMs(part: ToolPart, now: number): number | undefined {
   if (part.startedAt === undefined) return undefined

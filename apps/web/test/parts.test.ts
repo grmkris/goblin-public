@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { conversationParts, elapsedMs, type ToolPart, type ToolState } from '../src/lib/parts.ts'
+import { conversationParts, elapsedMs, toolLine, type ToolPart, type ToolState } from '../src/lib/parts.ts'
 import { projectBatch, projectSnapshot } from '../src/lib/projection.ts'
 
 const call = (id: string, args: Record<string, unknown> = {}) => ({
@@ -125,5 +125,21 @@ describe('how long a tool ran', () => {
   })
   it('never goes negative when clocks disagree', () => {
     expect(elapsedMs(toolAt('done', { startedAt: 5_000, endedAt: 4_000 }), 9_000)).toBe(0)
+  })
+})
+
+describe('a tool call as one line', () => {
+  it('names the server and the tool of an MCP call', () => {
+    const part: ToolPart = {
+      ...toolAt('done', {}),
+      call: { id: 'c', name: 'mcp_call', arguments: {} },
+      target: { serverId: 'board', name: 'move', arguments: {} },
+    }
+    expect(toolLine(part)).toEqual({ lead: 'Used', server: 'board', tool: 'move' })
+  })
+  it('says what the agent did with its own tools, and names any other', () => {
+    expect(toolLine(toolAt('done', {}))).toEqual({ lead: 'Looked up its tools' })
+    const other: ToolPart = { ...toolAt('done', {}), call: { id: 'c', name: 'remember', arguments: {} } }
+    expect(toolLine(other)).toEqual({ lead: 'Used remember' })
   })
 })

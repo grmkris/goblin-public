@@ -10,7 +10,7 @@ import {
   ToolCallTitle,
   ToolCallTrigger,
 } from '@purrable/ui'
-import { elapsedMs, type ToolPart } from '../../lib/parts.ts'
+import { elapsedMs, toolLine, type ToolPart } from '../../lib/parts.ts'
 import { subagentOf } from '../../lib/threads.ts'
 
 /** The current time, ticking once a second while `active`, so a running tool's clock advances. */
@@ -26,20 +26,30 @@ function useNow(active: boolean): number {
 }
 
 /**
- * A tool call as one quiet row: lifecycle dot, `server · tool`, and its running clock or final time. It opens to the
- * call's arguments and the result text; `children` add to the open card (an App view, for example).
+ * A tool call as one quiet line: lifecycle dot, "Used server · tool" (the agent's own tools in words), and its running
+ * clock or final time. It opens to the call's arguments and the result text; `children` add to the open part (an App
+ * view, for example).
  */
 export function ToolCard({ part, children }: { readonly part: ToolPart; readonly children?: ReactNode }) {
   const live = part.state === 'running' || part.state === 'pending'
   const now = useNow(live)
   const elapsed = elapsedMs(part, now)
-  const label = part.target ? `${part.target.serverId} · ${part.target.name}` : part.call.name || 'tool'
+  const { lead, server, tool } = toolLine(part)
   const args = part.target?.arguments ?? part.call.arguments
   return (
     <ToolCall>
       <ToolCallTrigger>
         <ToolCallStatus state={part.state} />
-        <ToolCallTitle>{label}</ToolCallTitle>
+        <ToolCallTitle>
+          {lead}
+          {server !== undefined && (
+            <>
+              {' '}
+              <b className="font-medium text-foreground">{server}</b>
+            </>
+          )}
+          {tool !== undefined && ` · ${tool}`}
+        </ToolCallTitle>
         <ToolCallMeta>
           {part.state === 'stopped' ? 'stopped' : elapsed !== undefined && <Duration ms={elapsed} running={live} />}
         </ToolCallMeta>
