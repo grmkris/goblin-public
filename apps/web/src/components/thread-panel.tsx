@@ -32,21 +32,26 @@ import { postMessage, useConversation, useDockInsets, useTranscript } from './us
 const SIDE_BY_SIDE = '(min-width: 75rem)'
 
 /**
- * The thread panel beside main, as the URL names it: a thread (`thread`), or a reply to one of main's messages that
- * starts a thread when it is sent (`draft`, that message's entry). `open` and `reply` show one; `close` goes back.
+ * The thread panel beside main, as the URL names it: a thread (`thread`), a reply to one of main's messages that
+ * starts a thread when it is sent (`draft`, that message's entry), or a new thread's draft (`fresh`). `open` and
+ * `reply` show one; `close` goes back.
  */
 export type ThreadPanelControl = {
   readonly thread: string | undefined
   readonly draft: number | undefined
+  readonly fresh: boolean
   readonly open: (thread: string) => void
   readonly reply: (entry: number) => void
   readonly close: () => void
 }
 
-/** What the panel shows: a thread, or the draft reply that starts one from a message of main. */
+/**
+ * What the panel shows: a thread, or a draft that starts one on its first send, from a message of main (`entry` and its
+ * `root` parts) or empty (the sidebar's "+").
+ */
 type PanelTarget =
   | { readonly kind: 'thread'; readonly thread: string }
-  | { readonly kind: 'draft'; readonly entry: number; readonly root: readonly Part[] }
+  | { readonly kind: 'draft'; readonly entry?: number; readonly root: readonly Part[] }
 
 /** The message a thread branched from, then a rule with the count of what was said in the thread since. */
 function ThreadRoot({ parts, replies }: { readonly parts: readonly Part[]; readonly replies: number }) {
@@ -149,9 +154,19 @@ function ThreadBody({ view, onClose }: { readonly view: ThreadView; readonly onC
 
 const NOTHING_TO_STOP = () => undefined
 
+/** What an empty draft says where a reply's draft shows the message it answers. */
+function NewThreadIntro() {
+  return (
+    <p className="thread-intro">
+      A new thread beside main. Main learns its name once it starts, not what is said in it.
+    </p>
+  )
+}
+
 /**
- * A reply to a message of main before any thread exists: sending it starts the thread from that message and moves the
- * panel to it, so a reply opened and left unsent leaves nothing behind (Pi cannot delete a conversation).
+ * A thread before it exists: a reply to a message of main (`entry`) or a new empty thread. Sending starts the thread
+ * (from that message, or empty) and moves the panel to it, so a draft opened and left unsent leaves nothing behind (Pi
+ * cannot delete a conversation).
  */
 function DraftBody({
   entry,
@@ -159,7 +174,7 @@ function DraftBody({
   onClose,
   onStarted,
 }: {
-  readonly entry: number
+  readonly entry: number | undefined
   readonly root: readonly Part[]
   readonly onClose: () => void
   readonly onStarted: (thread: string) => void
@@ -184,17 +199,18 @@ function DraftBody({
     onStarted(thread)
     return true
   }
+  const lead = entry === undefined ? <NewThreadIntro /> : <ThreadRoot parts={root} replies={0} />
   return (
     <section className="thread-pane chat-pane" aria-label="New thread" ref={pane}>
       <PanelBar title="New thread" onClose={onClose} />
-      <Conversation parts={[]} canSwitchModel={false} lead={<ThreadRoot parts={root} replies={0} />} />
+      <Conversation parts={[]} canSwitchModel={false} lead={lead} />
       <div className="chat-dock" ref={dock}>
         <Notice text={notice} />
         <MessageComposer
           onSend={start}
           running={false}
           onStop={NOTHING_TO_STOP}
-          placeholder="Reply in thread…"
+          placeholder={entry === undefined ? 'Message the new thread…' : 'Reply in thread…'}
           context={<span className="truncate text-xs text-muted-foreground">Sending starts a thread here</span>}
         />
       </div>
@@ -253,7 +269,13 @@ function ThreadPanel({
   let body: ReactNode
   if (target.kind === 'draft')
     body = (
-      <DraftBody key={target.entry} entry={target.entry} root={target.root} onClose={onClose} onStarted={onStarted} />
+      <DraftBody
+        key={target.entry ?? 'new'}
+        entry={target.entry}
+        root={target.root}
+        onClose={onClose}
+        onStarted={onStarted}
+      />
     )
   // Until the list has the thread the panel cannot tell where it branched, so it waits rather than show main's history.
   else if (view === undefined)
@@ -289,7 +311,7 @@ function useSharedRightColumn(panel: string | undefined, close: () => void): voi
 
 const NO_PANEL = () => undefined
 
-/** The panel beside main, when the URL opens a thread or a reply; `parts` are main's, for a draft's message. */
+/** The panel beside main, when the URL opens a thread, a reply or a new thread; `parts` are main's, for a reply. */
 export function MainThreadPanel({
   panel,
   parts,
@@ -301,7 +323,8 @@ export function MainThreadPanel({
   if (panel?.thread !== undefined) target = { kind: 'thread', thread: panel.thread }
   else if (panel?.draft !== undefined)
     target = { kind: 'draft', entry: panel.draft, root: rootParts(parts, panel.draft) }
-  const key = target?.kind === 'thread' ? target.thread : target && `draft:${target.entry}`
+  else if (panel?.fresh === true) target = { kind: 'draft', root: [] }
+  const key = target?.kind === 'thread' ? target.thread : target && `draft:${target.entry ?? 'new'}`
   useSharedRightColumn(key, panel?.close ?? NO_PANEL)
   if (panel === undefined || target === undefined) return null
   return <ThreadPanel target={target} onClose={panel.close} onStarted={panel.open} />

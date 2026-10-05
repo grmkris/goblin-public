@@ -79,6 +79,27 @@ function SidebarGroupLabel({ className, render, ...props }: useRender.ComponentP
   })
 }
 
+/**
+ * A small action at the end of a group's label (a "+" beside "Threads"). Its hit area grows to 44px on touch screens
+ * without changing how it looks.
+ */
+function SidebarGroupAction({ className, render, ...props }: useRender.ComponentProps<'button'>) {
+  return useRender({
+    defaultTagName: 'button',
+    props: mergeProps<'button'>(
+      {
+        className: cn(
+          'absolute top-3.5 right-3 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform after:absolute after:-inset-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:scale-90 pointer-coarse:after:-inset-3 [&>svg]:size-4 [&>svg]:shrink-0',
+          className,
+        ),
+      },
+      props,
+    ),
+    render,
+    state: { slot: 'sidebar-group-action', sidebar: 'group-action' },
+  })
+}
+
 function SidebarMenu({ className, ...props }: ComponentProps<'ul'>) {
   return (
     <ul
@@ -201,6 +222,7 @@ export {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupAction,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,

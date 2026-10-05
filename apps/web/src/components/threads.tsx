@@ -1,5 +1,4 @@
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 import { Schema } from 'effect'
 import { ThreadView } from '@purrable/contracts'
 import { failureText, request } from '../lib/boundary.ts'
@@ -60,17 +59,6 @@ export function ThreadsProvider({ enabled, children }: { readonly enabled: boole
     [views, error, refresh],
   )
   return <ThreadsContext.Provider value={value}>{children}</ThreadsContext.Provider>
-}
-
-/** Moves the page to a conversation the owner just created (nothing when creating it failed). */
-export function useGoToThread(): (created: ThreadView | undefined) => void {
-  const navigate = useNavigate()
-  return useCallback(
-    (created) => {
-      if (created) void navigate({ to: '/t/$threadId', params: { threadId: created.id } })
-    },
-    [navigate],
-  )
 }
 
 export function useThreads(): Threads {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { MAIN_THREAD, type ThreadView } from '@purrable/contracts'
 import {
@@ -6,6 +6,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupAction,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
@@ -26,12 +27,12 @@ import {
   MessageCircleIcon,
   MessagesSquareIcon,
   PlugIcon,
+  PlusIcon,
   SettingsIcon,
-  SquarePenIcon,
 } from 'lucide-react'
 import { signOut } from '../lib/session.tsx'
 import { type ThreadNode, threadTitle, threadTree } from '../lib/threads.ts'
-import { useGoToThread, useThreads } from './threads.tsx'
+import { useThreads } from './threads.tsx'
 
 /** The conversation a path shows: main at `/`, a thread or subagent at `/t/:id`, none elsewhere. */
 function conversationAt(path: string): string | undefined {
@@ -108,8 +109,11 @@ function ArchivedGroup({
   )
 }
 
-/** Main, then the threads newest first (each with its subagents), then the archived ones. */
-function Conversations({ current }: { readonly current: string | undefined }) {
+/**
+ * Main, then the threads newest first (each with its subagents), then the archived ones. The "+" beside Threads opens
+ * a new thread's draft beside main; nothing exists until its first message is sent.
+ */
+function Conversations({ current, onNew }: { readonly current: string | undefined; readonly onNew: () => void }) {
   const { views } = useThreads()
   const tree = useMemo(() => threadTree(views), [views])
   return (
@@ -119,8 +123,18 @@ function Conversations({ current }: { readonly current: string | undefined }) {
       </SidebarGroup>
       <SidebarGroup>
         <SidebarGroupLabel>Threads</SidebarGroupLabel>
+        <SidebarGroupAction
+          render={<Link to="/" search={{ new: true }} />}
+          aria-label="New thread"
+          title="New thread"
+          onClick={onNew}
+        >
+          <PlusIcon aria-hidden />
+        </SidebarGroupAction>
         {tree.threads.length === 0 ? (
-          <p className="sidebar-hint">Reply in thread on any message to talk it through on the side.</p>
+          <p className="sidebar-hint">
+            Start one with +, or reply in thread on any message to talk it through on the side.
+          </p>
         ) : (
           <SidebarMenu>
             {tree.threads.map((node) => (
@@ -135,15 +149,14 @@ function Conversations({ current }: { readonly current: string | undefined }) {
 }
 
 /**
- * The app's navigation: the brand and New thread on top, the conversations, then Connections, Settings and Sign out.
- * On phones it is a sheet that closes as soon as the page changes.
+ * The app's navigation: the brand on top, the conversations, then Connections, Settings and Sign out. On phones it is a
+ * sheet that closes as soon as the page changes (or a new thread's draft opens beside main, which stays on `/`).
  */
 export function AppSidebar() {
   const path = useRouterState({ select: (router) => router.location.pathname })
   const { setOpenMobile } = useSidebar()
-  const { create } = useThreads()
-  const goTo = useGoToThread()
-  useEffect(() => setOpenMobile(false), [path, setOpenMobile])
+  const close = useCallback(() => setOpenMobile(false), [setOpenMobile])
+  useEffect(() => close(), [path, close])
   return (
     <Sidebar label="Purrable">
       <SidebarHeader>
@@ -151,17 +164,9 @@ export function AppSidebar() {
           <CatIcon aria-hidden />
           Purrable
         </Link>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => void create().then(goTo)}>
-              <SquarePenIcon aria-hidden />
-              <span>New thread</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <Conversations current={conversationAt(path)} />
+        <Conversations current={conversationAt(path)} onNew={close} />
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>

@@ -154,6 +154,16 @@ main.shell {
   background: var(--border);
   content: '';
 }
+/* What a new thread's empty draft says before its first message. */
+.thread-intro {
+  max-width: 20rem;
+  margin: auto;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  text-align: center;
+  text-wrap: balance;
+}
 /* Quiet actions under a message, shown on hover where there is one. */
 .history-action {
   display: inline-flex;

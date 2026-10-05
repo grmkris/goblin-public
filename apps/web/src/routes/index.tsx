@@ -7,10 +7,10 @@ import type { ThreadPanelControl } from '../components/thread-panel.tsx'
 
 /**
  * The panel beside main: `?thread=<id>` shows a thread, `?reply=<entry>` a reply to that message of main that starts
- * one. The router reads search values as JSON, so both are numbers there (and the URL stays `?thread=53`); anything
- * else is no panel.
+ * one, and `?new=true` a new thread's draft (the sidebar's "+"). The router reads search values as JSON, so these are a
+ * number, a number and `true` there (and the URL stays `?thread=53`); anything else is no panel.
  */
-type HomeSearch = { readonly thread?: number; readonly reply?: number }
+type HomeSearch = { readonly thread?: number; readonly reply?: number; readonly new?: true }
 
 const positive = (value: unknown): number | undefined => {
   const number = Number(value)
@@ -22,7 +22,8 @@ export const Route = createFileRoute('/')({
     const thread = positive(search.thread)
     if (thread !== undefined) return { thread }
     const reply = positive(search.reply)
-    return reply === undefined ? {} : { reply }
+    if (reply !== undefined) return { reply }
+    return search.new === true ? { new: true } : {}
   },
   component: Home,
 })
@@ -35,7 +36,8 @@ function useThreadPanel(): ThreadPanelControl {
   const search = Route.useSearch()
   const thread = search.thread === undefined ? undefined : String(search.thread)
   const draft = search.reply
-  const showing = thread !== undefined || draft !== undefined
+  const fresh = search.new === true
+  const showing = thread !== undefined || draft !== undefined || fresh
   const navigate = useNavigate({ from: '/' })
   const router = useRouter()
   const openedHere = useRef(false)
@@ -54,7 +56,7 @@ function useThreadPanel(): ThreadPanelControl {
       router.history.back()
     } else void navigate({ search: {}, replace: true })
   }, [navigate, router])
-  return useMemo(() => ({ thread, draft, open, reply, close }), [thread, draft, open, reply, close])
+  return useMemo(() => ({ thread, draft, fresh, open, reply, close }), [thread, draft, fresh, open, reply, close])
 }
 
 function Home() {
