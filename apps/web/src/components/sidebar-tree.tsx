@@ -36,10 +36,14 @@ export function KindIcon({ kind }: { readonly kind: ConversationView['kind'] }) 
   return kind === 'subagent' ? <BotIcon aria-hidden /> : <MessagesSquareIcon aria-hidden />
 }
 
-/** The sidebar's tree, from the live workspace feed. */
+/** The sidebar's tree, from the live workspace feed; a thread nobody wrote in shows only while it is in a pane. */
 export function useWorkspaceTree() {
   const { conversations, apps } = useWorkspaceFeed()
-  return useMemo(() => buildTree(conversations, apps), [conversations, apps])
+  const { state } = useWorkspace()
+  return useMemo(
+    () => buildTree(conversations, apps, (id) => isOpen(state, conversationKey(id))),
+    [conversations, apps, state],
+  )
 }
 
 /**

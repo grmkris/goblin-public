@@ -16,7 +16,7 @@ const view = (id: string, extra: Partial<ConversationView> = {}): ConversationVi
   kind: 'thread',
   parent: '1',
   keepOpen: false,
-  replies: 0,
+  replies: 1,
   createdAt: Number(id),
   ...extra,
 })
@@ -51,6 +51,14 @@ describe('the sidebar tree', () => {
     expect(ids(tree.closedThreads)).toEqual(['8'])
   })
 
+  it('leaves out a thread nobody wrote in, unless it is open in a pane', () => {
+    const views = [MAIN, view('2'), view('3', { replies: 0 }), view('4', { parent: '2', replies: 0 })]
+    expect(ids(buildTree(views).threads)).toEqual(['2'])
+    expect(buildTree(views).threads[0]?.children).toEqual([])
+    const open = buildTree(views, [], (id) => id === '3' || id === '4')
+    expect(ids(open.threads)).toEqual(['3', '2'])
+    expect(ids(open.threads[1]?.children ?? [])).toEqual(['4'])
+  })
   it('ends on a cycle in stored parents instead of recursing forever', () => {
     const tree = buildTree([MAIN, view('5', { parent: '6' }), view('6', { parent: '5' }), view('7')])
     expect(ids(tree.threads)).toEqual(['7'])

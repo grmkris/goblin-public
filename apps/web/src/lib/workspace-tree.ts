@@ -64,12 +64,21 @@ export function foldApps(rows: readonly AppRow[], paged: (id: string) => boolean
   }
 }
 
-export function buildTree(views: readonly ConversationView[], apps: readonly AppView[] = []): WorkspaceTree {
+/**
+ * `shown` says which conversations are open in a pane: a thread nobody ever wrote in (a send that failed) has no row
+ * unless it is.
+ */
+export function buildTree(
+  views: readonly ConversationView[],
+  apps: readonly AppView[] = [],
+  shown: (id: string) => boolean = () => false,
+): WorkspaceTree {
   const names = appNames(apps)
   const appsOf = groupBy(apps.toSorted(byCreation).toReversed(), (app) =>
     app.closedAt === undefined ? app.conversation : undefined,
   )
-  const under = groupBy(views.toSorted(newestFirst), (view) => view.parent)
+  const listed = views.filter((view) => view.kind !== 'thread' || view.replies > 0 || shown(view.id))
+  const under = groupBy(listed.toSorted(newestFirst), (view) => view.parent)
   // Each conversation once, however its parents point: a cycle in stored data ends instead of recursing forever.
   const seen = new Set<string>()
   const node = (view: ConversationView, keep: (child: ConversationView) => boolean = () => true): TreeNode => {
@@ -84,7 +93,7 @@ export function buildTree(views: readonly ConversationView[], apps: readonly App
       closed: below.filter((child) => isClosed(child.view)),
     }
   }
-  const main = views.find((view) => view.kind === 'main')
+  const main = listed.find((view) => view.kind === 'main')
   const tree = main === undefined ? undefined : node(main, (child) => child.kind !== 'thread')
   const threads = (main === undefined ? [] : (under.get(main.id) ?? []))
     .filter((view) => view.kind === 'thread' && !seen.has(view.id))
