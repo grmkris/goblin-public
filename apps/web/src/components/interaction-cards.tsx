@@ -49,27 +49,64 @@ function useToolClaims(serverId: string, name: string): ToolView | undefined {
   return tool
 }
 
-/** Permission for one exact tool. Allowing it stays allowed until the owner turns it off under Connections. */
-function GrantCard({ interaction, onAnswer }: { readonly interaction: Grant; readonly onAnswer: Answer }) {
-  const { serverId, name } = interaction
-  const tool = useToolClaims(serverId, name)
+/** A card's reply in flight: its buttons wait while it is sent, and a failure is shown on the card. */
+function useReplying() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  async function reply(allowed: boolean): Promise<void> {
+  async function replying(send: () => Promise<unknown>): Promise<void> {
     setBusy(true)
     setError('')
     try {
-      if (allowed) await request('/api/mcp/grants', { method: 'PUT', body: { serverId, name, allowed } })
-      await onAnswer(
-        allowed ? `Allowed ${serverId} · ${name}. Continue.` : 'Not allowed.',
-        interactionOperation(interaction),
-      )
+      await send()
     } catch (cause) {
       setError(failureText(cause))
     } finally {
       setBusy(false)
     }
   }
+  return { busy, error, replying }
+}
+
+/** A card's failure, then its two answers: Not now, and the one that lets the agent go on. */
+function CardReplies({
+  busy,
+  error,
+  yes,
+  onReply,
+}: {
+  readonly busy: boolean
+  readonly error: string
+  readonly yes: string
+  readonly onReply: (yes: boolean) => void
+}) {
+  return (
+    <>
+      {error && <Receipt tone="error">{error}</Receipt>}
+      <AskCardActions>
+        <Button variant="ghost" disabled={busy} onClick={() => onReply(false)}>
+          Not now
+        </Button>
+        <Button disabled={busy} onClick={() => onReply(true)}>
+          {yes}
+        </Button>
+      </AskCardActions>
+    </>
+  )
+}
+
+/** Permission for one exact tool. Allowing it stays allowed until the owner turns it off under Connections. */
+function GrantCard({ interaction, onAnswer }: { readonly interaction: Grant; readonly onAnswer: Answer }) {
+  const { serverId, name } = interaction
+  const tool = useToolClaims(serverId, name)
+  const { busy, error, replying } = useReplying()
+  const reply = (allowed: boolean) =>
+    void replying(async () => {
+      if (allowed) await request('/api/mcp/grants', { method: 'PUT', body: { serverId, name, allowed } })
+      await onAnswer(
+        allowed ? `Allowed ${serverId} · ${name}. Continue.` : 'Not allowed.',
+        interactionOperation(interaction),
+      )
+    })
   return (
     <AskCard aria-label="Permission request">
       <AskCardHeader>
@@ -93,15 +130,7 @@ function GrantCard({ interaction, onAnswer }: { readonly interaction: Grant; rea
         </div>
       )}
       <AskCardDescription>Allowing it keeps it allowed until you turn it off under Connections.</AskCardDescription>
-      {error && <Receipt tone="error">{error}</Receipt>}
-      <AskCardActions>
-        <Button variant="ghost" disabled={busy} onClick={() => void reply(false)}>
-          Not now
-        </Button>
-        <Button disabled={busy} onClick={() => void reply(true)}>
-          Allow
-        </Button>
-      </AskCardActions>
+      <CardReplies busy={busy} error={error} yes="Allow" onReply={reply} />
     </AskCard>
   )
 }
@@ -123,20 +152,12 @@ function CapabilityCard({
   const { view } = useCapabilities(thread, false)
   const label = targetLabel(target, view)
   const where = thread === MAIN_THREAD ? 'in main' : 'in this thread'
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  async function reply(on: boolean): Promise<void> {
-    setBusy(true)
-    setError('')
-    try {
+  const { busy, error, replying } = useReplying()
+  const reply = (on: boolean) =>
+    void replying(async () => {
       if (on) await request(`/api/threads/${thread}/capabilities`, { method: 'PATCH', body: { target, on } })
       await onAnswer(on ? `Turned on ${label} here. Continue.` : 'Not now.', interactionOperation(interaction))
-    } catch (cause) {
-      setError(failureText(cause))
-    } finally {
-      setBusy(false)
-    }
-  }
+    })
   return (
     <AskCard aria-label="Switched off here">
       <AskCardHeader>
@@ -148,15 +169,7 @@ function CapabilityCard({
       <AskCardDescription>
         It is switched off {where}. Turning it on here changes only this conversation.
       </AskCardDescription>
-      {error && <Receipt tone="error">{error}</Receipt>}
-      <AskCardActions>
-        <Button variant="ghost" disabled={busy} onClick={() => void reply(false)}>
-          Not now
-        </Button>
-        <Button disabled={busy} onClick={() => void reply(true)}>
-          Turn on here
-        </Button>
-      </AskCardActions>
+      <CardReplies busy={busy} error={error} yes="Turn on here" onReply={reply} />
     </AskCard>
   )
 }
