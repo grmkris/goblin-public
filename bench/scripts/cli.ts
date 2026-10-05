@@ -30,6 +30,13 @@ function cutoffOption(): number {
   if (!Number.isSafeInteger(value) || value <= 0) throw new Error('Supply a positive integer --until-cutoff')
   return value
 }
+function thinkingOption(): 'provider-default' | 'disabled' | undefined {
+  const value = option('thinking')
+  if (value === undefined) return undefined
+  if (value !== 'provider-default' && value !== 'disabled')
+    throw new Error('Supply --thinking as provider-default or disabled')
+  return value
+}
 const root = resolve(import.meta.dirname, '../..')
 const runs = join(root, '.local/bench/runs')
 const runId = option('run')
@@ -138,14 +145,20 @@ const reviewCommand = Effect.fn('bench.reviewCommand')(function* () {
     return yield* importVotes(runDir(runId), option('packet') ?? 'recall', resolve(option('review') ?? ''))
   return yield* fail('Unknown review command')
 })
+const recallCommand = Effect.fn('bench.recallCommand')(function* () {
+  const model = option('model')
+  const thinking = thinkingOption()
+  return yield* createRecall(root, {
+    manifest: resolve(option('manifest') ?? ''),
+    name: option('name') ?? 'deepseek-recall-v2',
+    buildTrial: Number(option('build-trial')),
+    ...(model === undefined ? {} : { model }),
+    ...(thinking === undefined ? {} : { thinking }),
+  })
+})
 const artifactCommand = Effect.fn('bench.artifactCommand')(function* () {
   if (command === 'review-packet' || command === 'review-votes') return yield* reviewCommand()
-  if (command === 'recall')
-    return yield* createRecall(root, {
-      manifest: resolve(option('manifest') ?? ''),
-      name: option('name') ?? 'deepseek-recall-v2',
-      buildTrial: Number(option('build-trial')),
-    })
+  if (command === 'recall') return yield* recallCommand()
   if (command === 'canary') return yield* createCanary(root, option('corpus') ?? '', resolve(option('labels') ?? ''))
   if (command === 'review') return yield* recordReviews(runDir(runId), resolve(option('review') ?? ''))
   if (command === 'import') return yield* importCorpus(root, resolve(option('source') ?? ''), option('corpus') ?? '')

@@ -2,18 +2,24 @@ import { Effect, FileSystem } from 'effect'
 import { join } from 'node:path'
 import { Manifest, type Scenario } from '../src/schema.ts'
 import { loadCorpus } from './corpus.ts'
-import { validateManifest } from '../src/manifest.ts'
+import { ALLOWED_MODELS, validateManifest } from '../src/manifest.ts'
 import { readJson, writeJson, fail } from './store.ts'
 
-const model = 'deepseek-v4-pro-0813'
-function recallManifest(base: Manifest, scenario: Scenario, name: string, buildTrial: number): Manifest {
+const defaultModel = 'deepseek-v4-pro-0813'
+type Thinking = NonNullable<Manifest['transport']>['thinking']
+function recallManifest(
+  base: Manifest,
+  scenario: Scenario,
+  options: { name: string; buildTrial: number; model: string; thinking: Thinking },
+): Manifest {
+  const { name, buildTrial, model, thinking } = options
   return {
     ...base,
     name: name,
     split: 'development',
     profile: 'controlled',
     buildTrial: buildTrial,
-    transport: { contextWindowTokens: 131072, thinking: 'provider-default', readerMaxOutputTokens: 4096 },
+    transport: { contextWindowTokens: 131072, thinking, readerMaxOutputTokens: 4096 },
     variants: [
       { id: 'optchat', policy: 'optchat', writer: model, reader: model },
       { id: 'optchat-search', policy: 'optchat-search', writer: model, reader: model },
@@ -57,7 +63,13 @@ function recallManifest(base: Manifest, scenario: Scenario, name: string, buildT
 
 export const createRecall = Effect.fn('bench.createRecall')(function* (
   root: string,
-  options: { manifest: string; name: string; buildTrial: number },
+  options: {
+    manifest: string
+    name: string
+    buildTrial: number
+    model?: string
+    thinking?: Thinking
+  },
 ) {
   const base = yield* readJson(options.manifest, Manifest)
   if (
@@ -67,12 +79,20 @@ export const createRecall = Effect.fn('bench.createRecall')(function* (
   )
     return yield* fail('Use a simple experiment name and fresh build-trial larger than the source manifest')
   if (base.corpus === undefined) return yield* fail('Recall v2 requires a frozen real corpus')
+  const model = options.model ?? defaultModel
+  if (!ALLOWED_MODELS.includes(model)) return yield* fail(`Unsupported model ID: ${model}`)
+  const thinking = options.thinking ?? 'provider-default'
   const scenarios = yield* loadCorpus(root, base)
   const scenario = scenarios[0]
   const owner = scenario?.events[0]
   if (scenarios.length !== 1 || scenario === undefined || owner?.kind !== 'user')
     return yield* fail('Recall v2 requires one real session beginning with an owner request')
-  const manifest = recallManifest(base, scenario, options.name, options.buildTrial)
+  const manifest = recallManifest(base, scenario, {
+    name: options.name,
+    buildTrial: options.buildTrial,
+    model,
+    thinking,
+  })
   if (
     scenario.probes.length !== 6 ||
     [22, 32].some((cutoff) =>
@@ -93,5 +113,5 @@ export const createRecall = Effect.fn('bench.createRecall')(function* (
   yield* fs.makeDirectory(dir, { recursive: true, mode: 0o700 })
   if (yield* fs.exists(path)) return yield* fail('Experiment exists; preserve it and choose a fresh name')
   yield* writeJson(path, manifest)
-  return { path, answers: 24, model, stages: [22, 32], inferenceStarted: false }
+  return { path, answers: 24, model, thinking, stages: [22, 32], inferenceStarted: false }
 })

@@ -3,7 +3,7 @@
 Native Pi memory experiments in an isolated Alchemy/workerd stack. The starter compares the full GLM 5.3 / DeepSeek
 V4 Pro 0813 writer-reader matrix against Pi's own compactor and Pi plus lexical archive search: 3 development
 families × 2 cutoffs × 2 probes × 8 configurations = 96 answer episodes. Three distinct families remain held out.
-Model IDs are exact catalog routes: `glm-5.3`, `deepseek-v4-pro-0813`. Catalog discovery does not prove inference.
+Model IDs are exact catalog routes: `glm-5.3`, `deepseek-v4-pro-0813`, `deepseek-v4.1-flash`. Catalog discovery does not prove inference.
 
 ```sh
 bun run bench:plan --manifest bench/experiments/starter.json
@@ -252,6 +252,12 @@ bun run bench:plan --manifest .local/bench/experiments/deepseek-recall-v2.json
 The prepared iteration uses trial 9, above the preserved trials 0–8. Choose a new name and trial for another cold
 experiment. Creating or reporting a manifest performs no model inference. Existing runs, labels and strict reviews
 are preserved; the legacy `bench:review` path retains its original interpretation.
+
+`bench:recall` accepts `--model <catalog-route>` and `--thinking provider-default|disabled`. Defaults remain
+DeepSeek Pro with provider-default thinking. For the smaller DeepSeek route, use `--model deepseek-v4.1-flash`.
+Disabling thinking changes every writer and reader consistently and requires a fresh named trial. The first
+provider-default DeepSeek Pro preflight exhausted all 2448 writer completion tokens in reasoning, returned no text,
+and aborted before any benchmark answers. Preserve that failure; do not resume it or silently alter its settings.
 
 | Allowance                 | Attempts | Charged input | Completion including reasoning |
 | ------------------------- | -------: | ------------: | -----------------------------: |

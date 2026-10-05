@@ -3,7 +3,8 @@ import { buildPolicy, Manifest, type Scenario, type Variant } from './schema.ts'
 import { dataset, validateScenario } from './fixtures.ts'
 
 const MODELS = ['glm-5.3', 'deepseek-v4-pro-0813']
-const ALLOWED_MODELS = [...MODELS, 'qwen3.8-flash', 'grok-4.7']
+/** Catalog routes accepted by manifests; MODELS remains the small starter matrix. */
+export const ALLOWED_MODELS = [...MODELS, 'deepseek-v4.1-flash', 'qwen3.8-flash', 'grok-4.7']
 export function starterManifest(): Manifest {
   const optchat: Variant[] = MODELS.flatMap((writer) =>
     MODELS.map((reader) => ({
