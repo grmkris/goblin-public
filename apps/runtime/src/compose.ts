@@ -42,6 +42,9 @@ import { RoutineRunStore } from './routines/runs.ts'
 import { RoutineUsage, installRoutineUsage } from './routines/usage.ts'
 import * as Effect from 'effect/Effect'
 import type { EventHandler } from './mcp/events/dispatcher.ts'
+import { MemberAccess } from './members/access.ts'
+import { MemberController } from './members/controller.ts'
+import { MemberUsage } from './members/usage.ts'
 
 /** What the agent's services are built from: its storage and env, and the Pi pieces its constructor made. */
 export type ComposeInput = {
@@ -52,6 +55,7 @@ export type ComposeInput = {
   readonly thread: Extension
   readonly memory: ReturnType<typeof memoryExtensions>
   /** The `subagent` tool, which Pi's tool filter removes where subagents are switched off. */
+  readonly memberExtensions: readonly Extension[]
   readonly subagentTool: ToolRegistration
   /** Schedules the Telegram replies alarm. */
   readonly scheduleReplies: () => void
@@ -62,13 +66,11 @@ export type ComposeInput = {
   readonly routineEvent: EventHandler
   readonly mcpFetch: typeof fetch
 }
-
 /** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
 const retool = (harness: PiHarness) => async (session: string, tools: PiTools) => {
   const conversation = await (await harness.pi()).conversation(conversationId(session), BACKGROUND)
   await conversation?.configure({ tools }, BACKGROUND)
 }
-
 const authorizeEvents =
   (resident: ResidentAuthority, credentials: CredentialStore, store: SqliteEventStore, policy: EntitlementPolicy) =>
   async (serverId: string, name: string, argumentsJson: string): Promise<void> => {
@@ -78,7 +80,6 @@ const authorizeEvents =
       throw new Forbidden({ reason: 'event connection requires authorization' })
     if (!store.allows(serverId, name, argumentsJson)) throw new GrantDenied({ serverId, name })
   }
-
 async function makeEvents(
   input: ComposeInput,
   host: McpHost,
@@ -102,7 +103,6 @@ async function makeEvents(
   events.register('routine-trigger', input.routineEvent)
   return events
 }
-
 async function makeRoutines(input: ComposeInput) {
   const db = drizzle(input.storage)
   const routines = new RoutineStore(db, input.userId)
@@ -116,24 +116,13 @@ async function makeRoutines(input: ComposeInput) {
   await installRoutineUsage(input.harness, routineUsage, routineRuns)
   return { routines, routineRuns, routineUsage }
 }
-
 /** The conversation registry, and the live workspace feed over it. */
 function conversationServices(db: DrizzleSqliteDODatabase, harness: PiHarness, kit: ThreadKit) {
   const conversations = new ConversationRegistry(db, harness, kit, nowSeconds())
   return { conversations, workspace: new WorkspaceFeed(harness, conversations) }
 }
-
-/**
- * The agent's services over its SQLite, built once per isolate on first use: MCP host and grants, budget and models,
- * main's memory, conversations, resident authority, skills and the Telegram channel. Migrations run first, and every
- * server's endpoint binding is checked (a re-pointed server loses what it had).
- */
-export async function composeServices(
-  input: ComposeInput,
-): Promise<ManagedRuntime.ManagedRuntime<AgentServices, never>> {
-  const { env, harness } = input
-  runApplicationMigrations(input.storage)
-  const db = drizzle(input.storage)
+async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {
+  const env = input.env
   const servers = configuredServers(env.MCP_SERVERS)
   const added = new AddedServerStore(db)
   const reset = bindEndpoints(db, [...servers, ...added.list()], nowSeconds())
@@ -155,11 +144,33 @@ export async function composeServices(
     appUrl: env.APP_URL,
     fetch: input.mcpFetch,
   })
+  return { host, cipher, resident, eventStore, skillState, grants }
+}
+function makeBudgets(input: ComposeInput, db: DrizzleSqliteDODatabase) {
+  const env = input.env
+  const memberBudgets = new MemberUsage(env, input.userId, modelTokenWeights(env.MODEL_TOKEN_WEIGHTS))
   const budget = new ModelBudget(
     new UsageStore(db),
     async () => (await Effect.runPromise(input.entitlements.require())).dailyTokens,
     modelTokenWeights(env.MODEL_TOKEN_WEIGHTS),
+    (day) => memberBudgets.tokens(input.userId, day),
   )
+  return { memberBudgets, budget }
+}
+
+/**
+ * The agent's services over its SQLite, built once per isolate on first use: MCP host and grants, budget and models,
+ * main's memory, conversations, resident authority, skills and the Telegram channel. Migrations run first, and every
+ * server's endpoint binding is checked (a re-pointed server loses what it had).
+ */
+export async function composeServices(
+  input: ComposeInput,
+): Promise<ManagedRuntime.ManagedRuntime<AgentServices, never>> {
+  const { env, harness } = input
+  runApplicationMigrations(input.storage)
+  const db = drizzle(input.storage)
+  const { host, cipher, resident, eventStore, skillState, grants } = await makeHost(input, db)
+  const { memberBudgets, budget } = makeBudgets(input, db)
   const options = modelOptions(env.MODELS, env.MODEL_ID)
   const models = new ModelPicker(new ModelChoiceStore(db), options)
   const cheapModelId = memoryModelId(env.MEMORY_MODEL, options)
@@ -169,10 +180,31 @@ export async function composeServices(
   const memory = new MainMemory(db, harness, namer)
   const { recall } = input.memory
   await memory.activate([input.memory.memory, recall])
-  const capabilities = new CapabilityProfiles(db, input.subagentTool, retool(harness))
+  const memberAccess = new MemberAccess(db, env, input.userId)
+  const capabilities = new CapabilityProfiles(db, input.subagentTool, retool(harness), (session) =>
+    memberAccess.bound(session),
+  )
   const routineServices = await makeRoutines(input)
   const kit = { thread: input.thread, recall, memory, namer, capabilities }
   const conversations = conversationServices(db, harness, kit)
+  const members = new MemberController({
+    db,
+    env,
+    owner: input.userId,
+    access: memberAccess,
+    kit: {
+      harness,
+      registry: conversations.conversations,
+      capabilities,
+      extensions: input.memberExtensions,
+      modelId: () => models.current(),
+      host,
+      resident,
+    },
+    cipher,
+    usage: memberBudgets,
+  })
+  await members.install()
   const skills = new SkillLibrary(host.manager, skillState, nowMillis)
   const learner = new SkillLearner({
     drafts: new SqliteDraftLog(db),
@@ -201,6 +233,7 @@ export async function composeServices(
         channel,
         capabilities,
         ...routineServices,
+        members,
       }),
       Layer.succeed(Entitlements, input.entitlements),
       Layer.succeed(Events, events),

@@ -26,6 +26,7 @@ import * as Schema from 'effect/Schema'
 import { readBytes } from '../http/body.ts'
 import type {
   McpCallOptions,
+  SkillRequestOptions,
   McpCaller,
   McpConnectionSnapshot,
   McpManagerOptions,
@@ -407,7 +408,7 @@ export class McpConnectionManager {
    */
   async listSkills(
     serverId: string,
-    options: RequestOptions = {},
+    options: SkillRequestOptions = {},
   ): Promise<{ readonly skills: readonly SkillEntry[]; readonly ttlMs: number | undefined }> {
     const connection = await this.#skillsConnection(serverId, options)
     if (!offersSkills(connection.snapshot)) return { skills: [], ttlMs: undefined }
@@ -417,11 +418,8 @@ export class McpConnectionManager {
     for (let page = 0; page < (this.#options.maxPages ?? 64); page++) {
       const params = cursor === undefined ? {} : { cursor }
       const result = await timed({ step: 'skills', serverId }, () =>
-        this.#remote(connection, () =>
-          connection.client.request({ method: 'skills/list', params }, skillsListStandard, {
-            timeout: this.#options.timeoutMs ?? 30_000,
-            ...options,
-          }),
+        this.#skillRequest(connection, options, (guarded) =>
+          connection.client.request({ method: 'skills/list', params }, skillsListStandard, guarded),
         ),
       )
       skills.push(...result.skills)
@@ -433,14 +431,11 @@ export class McpConnectionManager {
   }
 
   /** One skill entry by URI (`skills/get`); an unknown URI is the server's `-32602`, mapped to an upstream error. */
-  async getSkill(serverId: string, uri: string, options: RequestOptions = {}): Promise<SkillsGetResult> {
+  async getSkill(serverId: string, uri: string, options: SkillRequestOptions = {}): Promise<SkillsGetResult> {
     const connection = await this.#skillsConnection(serverId, options)
     if (!offersSkills(connection.snapshot)) throw new UpstreamMcp({ serverId, reason: 'unsupported' })
-    return this.#remote(connection, () =>
-      connection.client.request({ method: 'skills/get', params: { uri } }, skillsGetStandard, {
-        timeout: this.#options.timeoutMs ?? 30_000,
-        ...options,
-      }),
+    return this.#skillRequest(connection, options, (guarded) =>
+      connection.client.request({ method: 'skills/get', params: { uri } }, skillsGetStandard, guarded),
     )
   }
 
@@ -448,22 +443,47 @@ export class McpConnectionManager {
    * One skill file through `resources/read`, from the server that lists the skill. The caller verifies the bytes
    * against the retained manifest (skills/verify.ts); this only bounds and fetches them.
    */
-  async readSkillFile(serverId: string, uri: string, options: RequestOptions = {}): Promise<ReadResourceResult> {
+  async readSkillFile(serverId: string, uri: string, options: SkillRequestOptions = {}): Promise<ReadResourceResult> {
     const connection = await this.#skillsConnection(serverId, options)
     if (!offersSkills(connection.snapshot)) throw new UpstreamMcp({ serverId, reason: 'unsupported' })
-    return this.#remote(
+    return this.#skillRequest(
       connection,
-      () => connection.client.readResource({ uri }, { timeout: this.#options.timeoutMs ?? 30_000, ...options }),
+      options,
+      (guarded) => connection.client.readResource({ uri }, guarded),
       this.#options.maxSkillFileBytes ?? 4_194_304,
     )
   }
 
   /** Skills are read only from servers the owner turned them on for; nothing is opened otherwise. */
-  async #skillsConnection(serverId: string, options: RequestOptions): Promise<Connection> {
+  async #skillsConnection(serverId: string, options: SkillRequestOptions): Promise<Connection> {
     this.server(serverId)
+    await options.authorize?.(serverId)
     if (this.#options.skillsEnabled?.(serverId) !== true)
       throw new Forbidden({ reason: `skills are not enabled for ${serverId}` })
     return this.#connection(serverId, options)
+  }
+
+  #skillRequest<T>(
+    connection: Connection,
+    options: SkillRequestOptions,
+    send: (request: RequestOptions) => Promise<T>,
+    max?: number,
+  ): Promise<T> {
+    const { authorize, ...request } = options
+    return this.#remote(
+      connection,
+      () =>
+        this.#dispatch.request(
+          async () => {
+            await authorize?.(connection.server.serverId)
+            if (this.#options.skillsEnabled?.(connection.server.serverId) !== true)
+              throw new Forbidden({ reason: 'skills disabled' })
+          },
+          { timeout: this.#options.timeoutMs ?? 30_000, ...request },
+          send,
+        ),
+      max,
+    )
   }
 
   async getPrompt(

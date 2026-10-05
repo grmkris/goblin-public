@@ -41,7 +41,7 @@ export function OwnerGate({
   if (planRequired && workspaces.state?.active?.agentReady !== true)
     return (
       <div className="shell">
-        <p>Shared agent access is being prepared. Your membership is saved.</p>
+        <p>Select a workspace in Settings to open its conversations.</p>
         <a href="/settings" className="underline">
           Manage your workspace in Settings
         </a>

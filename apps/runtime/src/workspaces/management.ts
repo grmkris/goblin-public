@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/d1'
 import { MemberPolicy } from '@purrable/contracts'
 import type { RuntimeEnv } from '../env.ts'
 import type { UserSession } from '../auth/service.ts'
+import { unwrap } from '../http/rpc.ts'
 import { readJson } from '../http/body.ts'
 import { Conflict, Forbidden, InvalidInput, NotFound } from '../http/errors.ts'
 import { requireAccountPlan } from '../billing/gates.ts'
@@ -138,6 +139,8 @@ export async function changeMember(
   await memberBatch(db, { principal, session, input, id, now, requestHash, remove, leave, policy })
   if (!(await replay(db, principal.workspace.id, input.operationId, requestHash)))
     throw new Conflict({ reason: 'member version changed' })
+  // D1 version fence is already durable. A failed abort remains blocked by every dispatch/stream check.
+  unwrap(await env.AGENTS.getByName(principal.workspace.ownerUserId).memberInvalidate(id))
   return Response.json({ ok: true })
 }
 

@@ -2,7 +2,7 @@
 // uses skills from, each under a host-assigned handle (`<serverId>:<name>`) so two servers' skills never replace one
 // another. Activation reads `SKILL.md` lazily, verifies it against the entry and records the entry for the
 // conversation; supporting files are read only from that retained manifest. Nothing is fetched at wake.
-import type { RequestOptions } from '@modelcontextprotocol/client'
+import type { SkillRequestOptions as RequestOptions } from '../mcp/types.ts'
 import { NotFound, UpstreamMcp } from '../http/errors.ts'
 import type { McpConnectionManager } from '../mcp/connection.ts'
 import type { SkillEntry } from './protocol.ts'

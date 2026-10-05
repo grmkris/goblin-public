@@ -1,7 +1,7 @@
 import { GenerationTask, defineExtension, defineTool, hook, section } from '@earendil-works/pi-durable'
 import { Type } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
-import { Conversations, attempt, requireBudget } from '../services.ts'
+import { Members, Conversations, attempt, requireBudget } from '../services.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
 const THREAD = [
@@ -28,6 +28,7 @@ export function threadExtension(run: RunProgram) {
         // The write carries the call's id as its request id, so a rerun finds the same note.
         replay: 'safe',
         execute: async ({ note }, api) => {
+          await run(Members.use((members) => attempt(() => members.require(String(api.conversationId)))))
           const parent = await run(
             Conversations.use((conversations) =>
               attempt(() => conversations.shareBack(String(api.conversationId), note, `share:${api.callId}`)),
@@ -46,6 +47,7 @@ export function threadExtension(run: RunProgram) {
           const thread = String(api.conversationId)
           void run(
             Effect.gen(function* () {
+              if ((yield* Members).access.origin(thread) !== undefined) return
               const conversations = yield* Conversations
               yield* Effect.ignore(
                 requireBudget.pipe(Effect.andThen(attempt(() => conversations.nameIfUntitled(thread)))),

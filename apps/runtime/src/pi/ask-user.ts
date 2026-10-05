@@ -14,7 +14,10 @@ const QuestionSchema = Type.Object({
   options: Type.Optional(Type.Array(OptionSchema, { maxItems: 8 })),
   allowOther: Type.Optional(Type.Boolean()),
 })
-const Parameters = Type.Object({ questions: Type.Array(QuestionSchema, { minItems: 1, maxItems: 5 }) })
+const Parameters = Type.Object({
+  questions: Type.Array(QuestionSchema, { minItems: 1, maxItems: 5 }),
+  answerer: Type.Optional(Type.Union([Type.Literal('requester'), Type.Literal('owner')])),
+})
 type Question = Static<typeof QuestionSchema>
 
 /** What is wrong with a set of questions the schema alone cannot catch: option counts and duplicate ids. */
@@ -63,7 +66,7 @@ const spec = (question: Question): QuestionSpec & JsonObject => ({
 })
 
 const ASKING = [
-  'When you cannot continue without a decision or a missing detail from the owner, ask with `ask_user` instead of in',
+  'When you cannot continue without a decision or a missing detail from the requester, ask with `ask_user` instead of in',
   'prose: short questions, with choices wherever you can offer them. Call it on its own and stop; the answers arrive',
   'as their next message. Ask only for real decisions, never to confirm something you were already asked to do.',
 ].join(' ')
@@ -73,31 +76,54 @@ const ASKING = [
  * no model call waits on a person; the answer is an ordinary next message, from the web card or any other channel.
  */
 export function askingExtension(
-  onQuestion?: (session: string, callId: string, questions: readonly QuestionSpec[]) => Promise<void>,
+  onQuestion?: (
+    session: string,
+    callId: string,
+    questions: readonly QuestionSpec[],
+    answerer: 'requester' | 'owner',
+  ) => Promise<
+    { readonly id: string; readonly answererUserId: string; readonly requestHash: string } | undefined | void
+  >,
+  name = 'purrable.routine-ask',
 ) {
   return defineExtension({
-    name: onQuestion === undefined ? 'purrable.ask' : 'purrable.routine-ask',
+    name: onQuestion === undefined ? 'purrable.ask' : name,
     sections: [section('asking', () => ASKING)],
     tools: [
       defineTool({
         name: 'ask_user',
         description:
-          'Ask the owner one to five short questions when you cannot continue without their decision or a missing detail. Offer 2-8 options for a choice. Call it alone, then stop: their answers arrive as their next message.',
+          'Ask the requester (default) or owner (answerer=owner) one to five short questions when you cannot continue without their decision or a missing detail. Offer 2-8 options for a choice. Call it alone, then stop: their answers arrive as their next message.',
         parameters: Parameters,
         replay: 'safe',
-        execute: async ({ questions }, api) => {
+        execute: async ({ questions, answerer }, api) => {
           const problems = questionProblems(questions)
           if (problems.length > 0)
             return { content: [{ type: 'text', text: `Not asked. ${problems.join(' ')}` }], isError: true }
-          if (onQuestion !== undefined) await onQuestion(String(api.conversationId), api.callId, questions.map(spec))
+          const routing = await onQuestion?.(
+            String(api.conversationId),
+            api.callId,
+            questions.map(spec),
+            answerer ?? 'requester',
+          )
           return {
             content: [
               {
                 type: 'text',
-                text: `Asked the owner:\n${questionText(questions)}\nTheir answers will arrive as their next message.`,
+                text: `Asked ${routing === undefined ? 'the owner' : 'the designated answerer'}:\n${questionText(questions)}\nTheir answers will arrive as their next message.`,
               },
             ],
-            details: { kind: 'question', questions: questions.map(spec) },
+            details: {
+              kind: 'question',
+              questions: questions.map(spec),
+              ...(routing === undefined
+                ? {}
+                : {
+                    interactionId: routing.id,
+                    answererUserId: routing.answererUserId,
+                    requestHash: routing.requestHash,
+                  }),
+            },
             control: { terminate: true },
           }
         },

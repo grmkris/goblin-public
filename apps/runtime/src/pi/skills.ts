@@ -3,10 +3,11 @@ import type { ToolExecutionResult } from '@earendil-works/pi-durable'
 import { Type } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import type { Catalog } from '../skills/library.ts'
-import { Capabilities, Learner, Skills, attempt, requireBudget, requireResident } from '../services.ts'
+import { Capabilities, Learner, Members, Skills, attempt, requireBudget, requireResident } from '../services.ts'
 import { logLearnOutcome, type LearnOutcome } from '../skills/learner.ts'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { capabilityOffResult } from './capabilities.ts'
+import { NotFound } from '../http/errors.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
 /** How many skills the prompt lists, and how much of each description. */
@@ -36,6 +37,16 @@ const listing = (catalog: Catalog): string | undefined => {
 
 const text = (value: string): ToolExecutionResult => ({ content: [{ type: 'text', text: value }] })
 
+const authorizeSkill = (run: RunProgram, session: string) => (serverId: string) =>
+  run(
+    Effect.gen(function* () {
+      yield* requireResident
+      const members = yield* Members
+      yield* attempt(() => members.require(session))
+      if (!(yield* Capabilities).scope(session).skills(serverId)) return yield* new NotFound({ what: 'skill scope' })
+    }),
+  )
+
 /**
  * The `skills` section: what the owner's skill servers list, from the library's cache, without the libraries this
  * conversation switched off.
@@ -53,7 +64,19 @@ const skillsSection = (run: RunProgram) =>
             )
             const sources = skills.sources().filter((serverId) => scope.skills(serverId))
             if (sources.length === 0) return { skills: [], unavailable: [] }
-            return yield* attempt(() => skills.catalog({ timeout: 5000 }, (serverId) => scope.skills(serverId)))
+            const catalog = yield* attempt(() =>
+              skills.catalog(
+                { timeout: 5000, authorize: authorizeSkill(run, String(input.conversationId)) },
+                (serverId) => scope.skills(serverId),
+              ),
+            )
+            const members = yield* Members
+            yield* attempt(() => members.require(String(input.conversationId)))
+            const current = (yield* Capabilities).scope(String(input.conversationId))
+            return {
+              skills: catalog.skills.filter((skill) => current.skills(skill.serverId)),
+              unavailable: catalog.unavailable.filter((id) => current.skills(id)),
+            }
           }),
         ),
       )
@@ -91,11 +114,10 @@ const activateTool = (run: RunProgram) =>
           if (off !== undefined) return off
           const skills = yield* Skills
           const loaded = yield* attempt(() =>
-            skills.activate(
-              String(api.conversationId),
-              skill,
-              context.abortSignal === undefined ? {} : { signal: context.abortSignal },
-            ),
+            skills.activate(String(api.conversationId), skill, {
+              authorize: authorizeSkill(run, String(api.conversationId)),
+              ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
+            }),
           )
           const files =
             loaded.files.length === 0
@@ -132,12 +154,10 @@ const readTool = (run: RunProgram) =>
           if (off !== undefined) return off
           const skills = yield* Skills
           const file = yield* attempt(() =>
-            skills.read(
-              String(api.conversationId),
-              skill,
-              path,
-              context.abortSignal === undefined ? {} : { signal: context.abortSignal },
-            ),
+            skills.read(String(api.conversationId), skill, path, {
+              authorize: authorizeSkill(run, String(api.conversationId)),
+              ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
+            }),
           )
           if (file.kind === 'text')
             return text(`<skill-file skill="${skill}" path="${path}">\n${file.text}\n</skill-file>`)
@@ -175,6 +195,7 @@ export function skillsExtension(
         onYield: (_answer, api) => {
           void run(
             Effect.gen(function* () {
+              if ((yield* Members).access.origin(String(api.conversationId)) !== undefined) return 'failed' as const
               yield* requireResident
               yield* requireBudget
               const learner = yield* Learner

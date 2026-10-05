@@ -26,9 +26,48 @@ import type { MailBinding } from './auth/mail.ts'
 import type { ServerSource } from './mcp/servers.ts'
 import type { EventWebhook, EventWebhookResult } from './mcp/events.ts'
 import type { Doorbell } from './channel/doorbell.ts'
+import type { MemberPolicy, WorkspaceRole } from '@purrable/contracts'
+
+/** Server-verified principal carried from auth D1 into a member execution context. */
+export type MemberPrincipal = {
+  readonly userId: string
+  readonly workspaceId: string
+  readonly ownerUserId: string
+  readonly memberId: string
+  readonly memberVersion: number
+  readonly role: WorkspaceRole
+  readonly policy: MemberPolicy
+  readonly context: string | null
+  readonly sessionId?: string
+}
+
+export type MemberRequest =
+  | { readonly action: 'list' | 'interactions' | 'usage' }
+  | { readonly action: 'create'; readonly from?: CreateConversation['from'] }
+  | { readonly action: 'readers'; readonly session: string; readonly readers: readonly string[] }
+  | {
+      readonly action: 'submit'
+      readonly session: string
+      readonly input: string
+      readonly operationId: string
+      readonly appContext: readonly AppContext[]
+    }
+  | {
+      readonly action: 'answer'
+      readonly id: string
+      readonly operationId: string
+      readonly requestHash: string
+      readonly input: string
+    }
+  | { readonly action: 'snapshot' | 'stop' | 'capabilities'; readonly session: string }
+  | { readonly action: 'history'; readonly session: string; readonly before: number }
+  | { readonly action: 'update'; readonly session: string; readonly change: UpdateConversation }
 
 /** Owner-facing RPC of the Agent DO. The Worker authenticates the owner before calling any of these. */
 export interface AgentRpcMethods {
+  readonly memberRequest: (principal: MemberPrincipal, request: MemberRequest) => Promise<RpcResult<string>>
+  readonly memberInvalidate: (memberId: string) => Promise<RpcResult<boolean>>
+  readonly accountUsage: () => Promise<RpcResult<UsageToday>>
   readonly submit: (
     thread: string,
     input: string,
@@ -131,6 +170,8 @@ export type AgentRpc = AgentRpcMethods & Rpc.DurableObjectBranded
 export type { GrantCapability }
 
 export interface RuntimeEnv {
+  /** Temporary checkpoint fence; only native fixtures opt in until the reviewed enablement commit. */
+  readonly MEMBER_EXECUTION_ENABLED?: '1'
   readonly AGENTS: DurableObjectNamespace<AgentRpc>
   readonly AUTH_DB: D1Database
   readonly APP_URL: string

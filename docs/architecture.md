@@ -575,3 +575,12 @@ originating authoritative poll; verification and termination create no model tur
 and requires owner reconfirmation. Pause/edit/archive retire the consumer; pause advances an Event revision so a
 retired receipt cannot become live again. Local signed-fixture proof is separate from real producer acceptance. See
 [ADR 0012](adr/0012-routines.md).
+
+Members Phase B's default-closed checkpoint creates separate Pi contexts per member policy version. The synchronous
+capability gate intersects live D1 policy with endpoint bindings, inherited exclusions and existing routine limits.
+Server-owned provenance drives prompts and descendants; labels are display data. Private contexts have no root
+memory/title/learner extensions. Application receipts bind submissions and interaction decisions to exact content,
+requester and membership version. The owner reads all contexts; readers receive no execution authority. The member's
+own account pays across workspaces, using committed Pi usage and monotonic D1 deltas. A timestamped DO application
+outbox retains pending projections across restarts. No provider request waits on a transaction or a person's answer.
+The enablement change and orchestrator review remain separate from this checkpoint.

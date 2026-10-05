@@ -646,12 +646,11 @@ harness.test(
       'pi.user: "what did the thread say?"',
       'pi.assistant: [{"type":"text","text":"echo: what did the thread say?"}]',
     ])
-    expect(requestTurns(result.mainRequest)).toEqual([
-      'remember the word lantern',
-      'echo: remember the word lantern',
-      '[from thread (untitled)]\nthe word is lantern',
-      'what did the thread say?',
-    ])
+    // Main's background memory builder may compact the earlier exchange before this request.
+    const requested = requestTurns(result.mainRequest)
+    expect(requested.join('\n')).toContain('remember the word lantern')
+    expect(requested.join('\n')).toContain('echo: remember the word lantern')
+    expect(requested.slice(-2)).toEqual(['[from thread (untitled)]\nthe word is lantern', 'what did the thread say?'])
     expect(result.threadRequest.tools).toContain('share_back')
     expect(result.mainRequest.tools).not.toContain('share_back')
     // The cheap model (scripted: it echoes the last line) was asked to name the thread's latest exchange.
@@ -674,7 +673,9 @@ harness.test(
     const { url } = yield* stack
     const name = `announce-${yield* nextInt}`
     const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/announce?name=${name}`))
-    const result = yield* Schema.decodeUnknownEffect(Announce)(yield* Effect.promise(() => response.json()))
+    const raw = yield* Effect.promise(() => response.json())
+    expect(raw).toHaveProperty('thread')
+    const result = yield* Schema.decodeUnknownEffect(Announce)(raw)
     const note = `[thread started: "${result.title}"]`
     expect(result.first).toEqual([`app.thread_started: ${JSON.stringify([{ type: 'text', text: note }])}`])
     // One note however often the thread answers, naming the thread; the branched thread added none.

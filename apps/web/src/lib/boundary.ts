@@ -54,6 +54,7 @@ export async function request(path: string, options: RequestOptions = {}): Promi
     credentials: 'same-origin',
     headers: {
       ...workspaceHeaders(),
+      ...(method === 'GET' ? {} : { 'x-purrable-csrf': '1' }),
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       ...headers,
     },

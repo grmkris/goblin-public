@@ -2,6 +2,7 @@ import type { Tool } from '@modelcontextprotocol/client'
 import type { ServerView } from '@purrable/contracts'
 import { describe, expect, it } from 'vitest'
 import { type Exclusion, sameExclusions, scopeOf } from '../src/capabilities/profiles.ts'
+import { memberScope } from '../src/capabilities/member.ts'
 import { capabilityView, offers } from '../src/capabilities/view.ts'
 
 const off = (kind: Exclusion['kind'], serverId = '', name = ''): Exclusion => ({ kind, serverId, name })
@@ -91,5 +92,44 @@ describe("a conversation's switches as the owner sees them", () => {
     expect(offers(view, { kind: 'skills', serverId: 'myplan' })).toBe(true)
     expect(offers(view, { kind: 'skills', serverId: 'mybrowser' })).toBe(false)
     expect(offers(view, { kind: 'subagents' })).toBe(true)
+  })
+})
+
+describe('member ceiling inside the conversation scope', () => {
+  const bound = {
+    role: 'member' as const,
+    policy: {
+      servers: [
+        { serverId: 'myplan', endpoint: 'https://myplan.test/mcp', tools: ['read', 'delete'] },
+        { serverId: 'telegram', endpoint: 'https://telegram.test/mcp', tools: ['send_message'] },
+      ],
+      skills: [{ serverId: 'myskills', endpoint: 'https://myskills.test/mcp' }],
+      mainHistory: 'own' as const,
+    },
+    endpoint: (id: string) => `https://${id}.test/mcp`,
+    telegramServer: 'telegram',
+  }
+  it('never widens exclusions, later grants, skills, or subagent switches', () => {
+    const scope = memberScope(scopeOf([off('tool', 'myplan', 'delete'), off('subagents')], true), bound)
+    expect(scope.tool('myplan', 'read')).toBe(true)
+    expect(scope.tool('myplan', 'delete')).toBe(false)
+    expect(scope.tool('myplan', 'later_grant')).toBe(false)
+    expect(scope.server('other')).toBe(false)
+    expect(scope.skills('myskills')).toBe(true)
+    expect(scope.skills('other')).toBe(false)
+    expect(scope.subagents()).toBe(false)
+    expect(scope.editable).toBe(false)
+  })
+  it('fences endpoint replacement and keeps Telegram owner-only even when invited', () => {
+    const scope = memberScope(scopeOf([], true), { ...bound, endpoint: () => 'https://replacement.test/mcp' })
+    expect(scope.server('myplan')).toBe(false)
+    expect(scope.skills('myskills')).toBe(false)
+    expect(memberScope(scopeOf([], true), bound).tool('telegram', 'send_message')).toBe(false)
+  })
+  it('viewers have no execution authority', () => {
+    const scope = memberScope(scopeOf([], true), { ...bound, role: 'viewer' })
+    expect([scope.server('myplan'), scope.tool('myplan', 'read'), scope.skills('myskills'), scope.subagents()]).toEqual(
+      [false, false, false, false],
+    )
   })
 })

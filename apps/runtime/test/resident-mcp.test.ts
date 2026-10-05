@@ -6,8 +6,8 @@ import type { AppError } from '../src/http/errors.ts'
 import { McpHost } from '../src/mcp/host.ts'
 import { type CapabilityScope, type Exclusion, scopeOf } from '../src/capabilities/profiles.ts'
 import { residentMcpExtension } from '../src/pi/resident-mcp.ts'
-import { type AgentServices, Capabilities, Mcp, Resident } from '../src/services.ts'
-import { ActiveResident, FixedProfiles } from './fixed-services.ts'
+import { type AgentServices, Capabilities, Mcp, Resident, Members } from '../src/services.ts'
+import { ActiveResident, FixedProfiles, OwnerMembers } from './fixed-services.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
 
 /** The tools the notes server ran, in order. */
@@ -54,11 +54,12 @@ const scopes: Readonly<Record<string, CapabilityScope>> = {
 }
 const layer = Layer.mergeAll(
   Layer.succeed(Mcp, host),
+  Layer.succeed(Members, new OwnerMembers()),
   Layer.succeed(Resident, resident),
   Layer.succeed(Capabilities, new FixedProfiles(scopes)),
 )
 const run = <A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<A> =>
-  // SAFETY: mcp_call and mcp_list need only the Mcp, Resident and Capabilities services provided here.
+  // SAFETY: mcp_call and mcp_list need only the Mcp, Resident, Members and Capabilities services provided here.
   Effect.runPromise(Effect.provide(program, layer) as Effect.Effect<A, AppError>)
 const tools = residentMcpExtension(run).tools ?? []
 const execute = (tool: string, input: Record<string, unknown>, conversationId: number) => {

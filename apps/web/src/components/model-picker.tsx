@@ -18,9 +18,10 @@ import { failureText, request } from '../lib/boundary.ts'
 const decodeChoice = Schema.decodeUnknownSync(ModelChoice)
 
 /** The user's model and what the deployment offers. A pick shows at once and is undone if the server refuses it. */
-export function useModelChoice(onError: (message: string) => void) {
+export function useModelChoice(onError: (message: string) => void, enabled = true) {
   const [choice, setChoice] = useState<ModelChoice>()
   useEffect(() => {
+    if (!enabled) return
     const controller = new AbortController()
     void request('/api/agent/model', { signal: controller.signal })
       .then((data) => setChoice(decodeChoice(data)))
@@ -28,7 +29,7 @@ export function useModelChoice(onError: (message: string) => void) {
         if (!controller.signal.aborted) onError(failureText(error))
       })
     return () => controller.abort()
-  }, [onError])
+  }, [onError, enabled])
   async function choose(model: string): Promise<void> {
     if (choice === undefined || model === choice.current) return
     const previous = choice

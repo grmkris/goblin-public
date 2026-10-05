@@ -12,12 +12,16 @@ export default Alchemy.Stack(
   },
   Effect.gen(function* () {
     const port = yield* Config.Port('PURRABLE_HARNESS_PORT')
+    const auth = yield* Cloudflare.D1.Database('NativeAccountUsage', {
+      migrations: fileURLToPath(new URL('../../migrations', import.meta.url).href),
+    })
     const worker = yield* Cloudflare.Worker('PurrableNativeRuntimeHarnessWorker', {
       main: fileURLToPath(new URL('./worker.ts', import.meta.url).href),
       compatibility: { date: '2026-09-25', flags: ['nodejs_compat'] },
       dev: { port, strictPort: true },
       env: {
         AGENTS: Cloudflare.DurableObject('PersonalAgentProbe'),
+        AUTH_DB: auth,
         LIFECYCLE: Cloudflare.DurableObject('NativeLifecycleProbe'),
         MODEL_BASE_URL: 'https://no-model-calls.invalid/v1',
         MODEL_ID: 'storage-only',

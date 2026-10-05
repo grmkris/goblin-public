@@ -5,7 +5,7 @@ import type { UserSession } from '../auth/service.ts'
 import { makeWorkspaceStore, type WorkspaceStore } from './store.ts'
 type Snapshot = Awaited<ReturnType<WorkspaceStore['snapshot']>>
 
-const view = (row: Awaited<ReturnType<WorkspaceStore['list']>>[number]): WorkspaceView => ({
+const view = (row: Awaited<ReturnType<WorkspaceStore['list']>>[number], enabled: boolean): WorkspaceView => ({
   id: row.workspace.id,
   name: row.workspace.name,
   ownerName: row.ownerName,
@@ -13,8 +13,7 @@ const view = (row: Awaited<ReturnType<WorkspaceStore['list']>>[number]): Workspa
   memberId: row.member.id,
   memberVersion: row.member.version,
   accessVersion: row.workspace.accessVersion,
-  // Member execution waits for verified provenance, capability scope and requester-owned budget integration.
-  agentReady: row.member.role === 'owner' && row.workspace.ownerUserId === row.member.userId,
+  agentReady: row.member.role === 'owner' || enabled,
 })
 
 /** Only ordinary accounts get a personal workspace. Invitation-only accounts never fall back to their user id. */
@@ -39,9 +38,9 @@ export async function workspaceState(env: RuntimeEnv, session: UserSession): Pro
   const snapshot = await loadSnapshot(makeWorkspaceStore(env.AUTH_DB), session.userId, session.sessionId)
   const active = snapshot.rows.find((row) => row.workspace.id === snapshot.selection?.workspaceId)
   return {
-    active: active === undefined ? null : view(active),
+    active: active === undefined ? null : view(active, env.MEMBER_EXECUTION_ENABLED === '1'),
     context: snapshot.selection?.context ?? null,
-    workspaces: snapshot.rows.map(view),
+    workspaces: snapshot.rows.map((row) => view(row, env.MEMBER_EXECUTION_ENABLED === '1')),
   }
 }
 export async function selectWorkspace(
@@ -73,7 +72,7 @@ export async function sessionWorkspace(env: RuntimeEnv, session: UserSession, co
   if (row === undefined) throw new NotFound({ what: 'workspace' })
   const current = snapshot.selection?.context ?? null
   if (context !== undefined && context !== current) throw new Conflict({ reason: 'workspace context changed' })
-  return { ...row, context: current, view: view(row) }
+  return { ...row, context: current, view: view(row, env.MEMBER_EXECUTION_ENABLED === '1') }
 }
 export async function sessionOwnerWorkspace(env: RuntimeEnv, session: UserSession, context?: string) {
   const principal = await sessionWorkspace(env, session, context)

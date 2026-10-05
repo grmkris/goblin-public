@@ -63,3 +63,19 @@ concurrent/replayed acceptance, proof rotation/expiry, one-read workspace resolu
 cleanup without Dodo, closed member/viewer RPCs and deletion failure/retry with real
 D1 and injected mail. Chromium fixture tests cover the Settings and invitation flows; they make no provider calls. Live paid invitations and Phase B privacy, provenance, budgets and invalidation acceptance
 remain separate gates before the complete Members milestone can be claimed.
+
+Phase B checkpoint adds principal-bound member main/private conversations, immutable requester receipts, the member
+ceiling inside `Capabilities.scope`, designated questions and sealed exact-action owner approvals. An owner reads
+all conversations but cannot submit an owner turn into a member context. Private creation bypasses root copying,
+memory recall and automatic title/learner work; forks require a readable source, and named readers receive no write
+permission. A membership version change fences old contexts and descendants. Member main replies use an application
+outbox for passive root records. Committed Pi usage is projected with cumulative D1 watermarks across workspaces into
+the acting account's allowance; viewers cannot execute. Telegram and inbound owner clients remain owner-only.
+
+This checkpoint defaults `MEMBER_EXECUTION_ENABLED` to closed; only the isolated native Members fixture opts in.
+Deployment configuration does not enable it. Opening shared execution requires a separate reviewed commit. Member
+HTTP writes require exact Origin and CSRF proof, and filtered streams revalidate D1 before batches and on idle ticks.
+Approval acceptance consumes the exact requester/version/hash receipt before a dispatch, checks current scope and
+owner grants again on transport retries, and never repeats a consumed dispatch after a crash. Wider permissions
+require a policy revision or Connections consent. Local fixtures do not establish provider billing, real mail,
+live membership acceptance or exactly-once external effects.

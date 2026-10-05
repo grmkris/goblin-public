@@ -182,6 +182,36 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'CREATE INDEX app_conversation_parent ON app_conversations (parent_session)',
     ].join(BREAK),
   },
+  {
+    key: '20261017000001_members_phase_b',
+    tables: [
+      'app_conversations',
+      'app_submission_origins',
+      'app_interactions',
+      'app_member_journal',
+      'app_thread_readers',
+    ],
+    sql: [
+      'ALTER TABLE app_conversations ADD COLUMN principal_user_id TEXT',
+      'ALTER TABLE app_conversations ADD COLUMN member_id TEXT',
+      'ALTER TABLE app_conversations ADD COLUMN member_version INTEGER',
+      'ALTER TABLE app_conversations ADD COLUMN context_epoch INTEGER',
+      "ALTER TABLE app_conversations ADD COLUMN member_purpose TEXT CHECK (member_purpose IN ('main', 'private'))",
+      "ALTER TABLE app_conversations ADD COLUMN visibility TEXT CHECK (visibility IN ('owner', 'member', 'all'))",
+      'CREATE INDEX app_conversation_principal ON app_conversations (principal_user_id, member_id)',
+      'ALTER TABLE app_submission_origins ADD COLUMN member_id TEXT',
+      'ALTER TABLE app_submission_origins ADD COLUMN member_version INTEGER',
+      'ALTER TABLE app_submission_origins ADD COLUMN scope_hash TEXT',
+      'ALTER TABLE app_interactions ADD COLUMN member_id TEXT',
+      'ALTER TABLE app_interactions ADD COLUMN member_version INTEGER',
+      'ALTER TABLE app_interactions ADD COLUMN approval_kind TEXT',
+      'ALTER TABLE app_interactions ADD COLUMN consumed_at INTEGER',
+      'ALTER TABLE app_interactions ADD COLUMN decision_hash TEXT',
+      'ALTER TABLE app_submission_origins ADD COLUMN request_hash TEXT',
+      'CREATE TABLE app_member_journal (id INTEGER PRIMARY KEY AUTOINCREMENT, source_key TEXT NOT NULL UNIQUE, session_id TEXT NOT NULL, user_id TEXT NOT NULL, kind TEXT NOT NULL, body TEXT NOT NULL, committed_at INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0)',
+      'CREATE TABLE app_thread_readers (session_id TEXT NOT NULL, user_id TEXT NOT NULL, granted_by_user_id TEXT NOT NULL, granted_at INTEGER NOT NULL, PRIMARY KEY (session_id, user_id))',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

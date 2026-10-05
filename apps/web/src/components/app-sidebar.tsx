@@ -195,12 +195,14 @@ export function AppSidebar() {
       <SidebarContent>{state?.active?.agentReady && <Conversations current={current} onNew={opened} />}</SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton render={<Link to="/connections" />} isActive={path === '/connections'}>
-              <PlugIcon aria-hidden />
-              <span>Connections</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+          {state?.active?.role === 'owner' && (
+            <SidebarMenuItem>
+              <SidebarMenuButton render={<Link to="/connections" />} isActive={path === '/connections'}>
+                <PlugIcon aria-hidden />
+                <span>Connections</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           <SidebarMenuItem>
             <SidebarMenuButton render={<Link to="/settings" />} isActive={path === '/settings'}>
               <SettingsIcon aria-hidden />

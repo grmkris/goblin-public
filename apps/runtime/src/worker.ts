@@ -26,8 +26,11 @@ import { runBillingCron } from './billing/cron.ts'
 import { billingMode, requireAccountPlan } from './billing/gates.ts'
 import { routineRoute } from './routines/routes.ts'
 import { routineOrigin } from './routines/csrf.ts'
-import { ownerWorkspace, sessionOwnerWorkspace } from './workspaces/resolution.ts'
+import { ownerWorkspace, sessionWorkspace } from './workspaces/resolution.ts'
 import { workspaceApi } from './workspaces/routes.ts'
+import { memberRoute } from './members/routes.ts'
+import type { MemberPrincipal } from './env.ts'
+import * as WorkspaceSchema from '@purrable/contracts'
 import { currentInvitation, invitationPreview, membersApi } from './workspaces/invitations.ts'
 
 export { PersonalAgent } from './agent.ts'
@@ -256,12 +259,33 @@ async function mcpRoute(request: Request, agent: DurableObjectStub<AgentRpc>, pa
   return route === undefined ? mcpServerRoute(request, agent, path) : route(request, agent)
 }
 
-/** Every /api route below belongs to the signed-in user and their agent: a cookie session, same-origin for writes. */
-async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> {
+function principalOf(
+  row: Awaited<ReturnType<typeof sessionWorkspace>>,
+  session: import('./auth/service.ts').UserSession,
+): MemberPrincipal {
+  return {
+    userId: session.userId,
+    workspaceId: row.workspace.id,
+    ownerUserId: row.workspace.ownerUserId,
+    memberId: row.member.id,
+    memberVersion: row.member.version,
+    role: row.member.role,
+    policy: Schema.decodeUnknownSync(WorkspaceSchema.MemberPolicy)(JSON.parse(row.member.policyJson)),
+    context: row.context,
+    sessionId: session.sessionId,
+  }
+}
+
+function apiOrigin(request: Request, env: RuntimeEnv): void {
   if (request.method !== 'GET') {
     const origin = request.headers.get('origin')
     if (origin !== null && origin !== new URL(env.APP_URL).origin) throw new Forbidden({ reason: 'origin' })
   }
+}
+
+/** Every /api route below belongs to the signed-in user and their agent: a cookie session, same-origin for writes. */
+async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> {
+  apiOrigin(request, env)
   const session = await requireUserSession(request, env)
   const { userId } = session
   const path = new URL(request.url).pathname
@@ -270,8 +294,14 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   if (path === '/api/workspaces' || path.startsWith('/api/workspaces/')) return workspaceApi(request, env, session)
   if (path.startsWith('/api/members') || path.startsWith('/api/invitations')) return membersApi(request, env, session)
   await requireAccountPlan(env, userId)
-  const workspace = await sessionOwnerWorkspace(env, session, request.headers.get('x-purrable-workspace') ?? undefined)
-  const agent = agentOf(env, workspace.ownerUserId)
+  const selected = await sessionWorkspace(env, session, request.headers.get('x-purrable-workspace') ?? undefined)
+  if (selected.member.role !== 'owner' && env.MEMBER_EXECUTION_ENABLED !== '1')
+    throw new Forbidden({ reason: 'shared agent access pending review' })
+  const agent = agentOf(env, selected.workspace.ownerUserId)
+  if (selected.member.role !== 'owner' || selected.workspace.ownerUserId !== userId)
+    return memberRoute(request, env, path, principalOf(selected, session), agent)
+  if (path === '/api/interactions' || path.startsWith('/api/interactions/'))
+    return memberRoute(request, env, path, principalOf(selected, session), agent)
   return ownerApiRequest(request, env, path, agent, userId)
 }
 

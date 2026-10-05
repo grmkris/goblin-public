@@ -5,6 +5,7 @@ import { Effect, Schema } from 'effect'
 import { InvitationView, MembersState, WorkspaceState } from '@purrable/contracts'
 import { expect } from 'vitest'
 import Stack from './members-stack.ts'
+import { memberContextsCase, memberViewerCase } from './members-phaseb.ts'
 
 const harness = Test.make({
   providers: Cloudflare.providers(),
@@ -438,16 +439,22 @@ async function membershipCase(base: string) {
     expect((await call(base, invitee, '/api/workspaces/active', { workspaceId: shared, context: null })).status).toBe(
       200,
     )
-    expect((await state(base, invitee)).active).toMatchObject({ role, agentReady: false })
-    for (const path of ['/api/conversations', '/api/agent/resident', '/api/mcp/servers'])
-      expect((await call(base, invitee, path)).status).toBe(403)
+    expect((await state(base, invitee)).active).toMatchObject({ role, agentReady: true })
+    // The checkpoint is deployable with shared execution closed; only this fixture opts in.
+    const closed = { 'x-fixture-members-closed': '1' }
+    expect((await call(base, invitee, '/api/conversations', undefined, closed)).status).toBe(403)
+    const closedState = await (await call(base, invitee, '/api/workspaces', undefined, closed)).json()
+    expect(closedState).toHaveProperty('active.agentReady', false)
+    expect((await call(base, invitee, '/api/conversations')).status).toBe(200)
+    for (const path of ['/api/agent/resident', '/api/mcp/servers'])
+      expect((await call(base, invitee, path)).status).toBe(404)
     await lever(base, invitee, 'revoke')
     expect((await state(base, invitee)).active).toBeNull()
     expect((await call(base, invitee, '/api/conversations')).status).toBe(404)
   }
 }
 harness.test(
-  'native Members: invitation-only accounts have no fallback; shared member/viewer RPCs stay closed',
+  'native Members: invitation-only accounts have no fallback; shared member/viewer reads are filtered and owner RPCs stay closed',
   Effect.gen(function* () {
     const { url } = yield* stack
     yield* Effect.promise(() => membershipCase(url))
@@ -555,7 +562,7 @@ async function invitationCase(base: string) {
   expect(await retried.json()).toEqual(original)
   const joined = await state(base, member)
   expect(joined.workspaces).toHaveLength(1)
-  expect(joined.workspaces[0]).toMatchObject({ role: 'member', agentReady: false })
+  expect(joined.workspaces[0]).toMatchObject({ role: 'member', agentReady: true })
   expect(joined.active).toBeNull()
   expect(
     (
@@ -567,7 +574,7 @@ async function invitationCase(base: string) {
   ).toBe(200)
   expect((await roster(base, member)).members).toHaveLength(1)
   expect((await roster(base, member)).invitations).toEqual([])
-  expect((await call(base, member, '/api/conversations')).status).toBe(403)
+  expect((await call(base, member, '/api/conversations')).status).toBe(200)
   const administrative = await roster(base, owner)
   const target = administrative.members.find((entry) => entry.userId === member.userId)
   const removed = await fetch(`${base}/api/members/${target?.id}`, {
@@ -662,5 +669,20 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     yield* Effect.promise(() => rotationCase(url))
+  }),
+)
+
+harness.test(
+  'native Members: principal contexts exclude owner sentinels, project passive main exchanges and retain owner reads',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    yield* Effect.promise(() => memberContextsCase(url, { person, call, pay, lever }))
+  }),
+)
+harness.test(
+  'native Members: viewers read permitted contexts but cannot compose, stop, administer or spend',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    yield* Effect.promise(() => memberViewerCase(url, { person, call, pay, lever }))
   }),
 )

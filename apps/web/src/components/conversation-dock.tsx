@@ -1,3 +1,5 @@
+import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
+import { MemberInteractionCards } from './member-interactions.tsx'
 import { type RefObject, useMemo } from 'react'
 import type { AppContext } from '@purrable/contracts'
 import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@purrable/ui'
@@ -39,6 +41,18 @@ function useSendWithAppContext(send: Send): (input: string) => Promise<boolean> 
   }
 }
 
+function ClosedNotice({ onReopen }: { readonly onReopen: () => void }) {
+  return (
+    <div className="pane-closed" role="status">
+      <span>Closed. It and everything under it run nothing until it is reopened.</span>
+      <Button variant="outline" size="sm" onClick={onReopen}>
+        <RotateCcwIcon data-icon="inline-start" />
+        Reopen
+      </Button>
+    </div>
+  )
+}
+
 /**
  * Under a conversation's transcript, floating over its bottom edge: what waits on the owner, then the composer with
  * what the agent is doing, the model, what it may use here and the day's usage. A closed conversation offers Reopen
@@ -51,6 +65,7 @@ export function ConversationDock({
   parts,
   model,
   closed,
+  readOnly = false,
   onReopen,
   notices = [],
 }: {
@@ -59,17 +74,19 @@ export function ConversationDock({
   readonly conversation: ReturnType<typeof useConversation>
   readonly model: ReturnType<typeof useModelChoice>
   readonly parts: readonly Part[]
+  readonly readOnly?: boolean
   readonly closed: boolean
   readonly onReopen: () => void
   readonly notices?: readonly string[]
 }) {
+  const { state: account } = useAccountWorkspaces()
+  const owner = account?.active?.role === 'owner'
   const { projection, status, notice, send, stop } = conversation
   const running = projection?.running ?? false
   const sendOwn = useSendWithAppContext(send)
   const usage = useUsageToday(running)
   const waiting = useMemo(() => openInteractions(parts), [parts])
   const context = useMemo(() => contextTokens(projection?.messages ?? []), [projection])
-  const contextWindow = model.choice?.options.find((option) => option.id === model.choice?.current)?.contextWindow
   const presence = presenceOf({
     status,
     projection,
@@ -83,18 +100,14 @@ export function ConversationDock({
       {notices.map((text) => (
         <Notice key={text} text={text} />
       ))}
-      {closed ? (
-        <div className="pane-closed" role="status">
-          <span>Closed. It and everything under it run nothing until it is reopened.</span>
-          <Button variant="outline" size="sm" onClick={onReopen}>
-            <RotateCcwIcon data-icon="inline-start" />
-            Reopen
-          </Button>
-        </div>
+      {readOnly ? (
+        <p className="pane-closed">Read only. The owner can read all workspace conversations.</p>
+      ) : closed ? (
+        <ClosedNotice onReopen={onReopen} />
       ) : (
         <>
-          <InteractionCards interactions={waiting} thread={id} onAnswer={send} />
-          <SharedContextChip />
+          {owner ? <InteractionCards interactions={waiting} thread={id} onAnswer={send} /> : <MemberInteractionCards />}
+          {owner && <SharedContextChip />}
           <div className="relative">
             {presence.state === 'waiting' && <PresenceBorder />}
             <MessageComposer
@@ -107,9 +120,15 @@ export function ConversationDock({
                     <PresenceOrb state={presence.state} label={presence.label} />
                     <span className="truncate">{presence.label}</span>
                   </span>
-                  <ModelPicker choice={model.choice} onChoose={(picked) => void model.choose(picked)} />
-                  <CapabilitiesButton thread={id} running={running} />
-                  <UsageIndicator usage={usage} context={context} contextWindow={contextWindow} />
+                  {owner && <ModelPicker choice={model.choice} onChoose={(picked) => void model.choose(picked)} />}
+                  {owner && <CapabilitiesButton thread={id} running={running} />}
+                  <UsageIndicator
+                    usage={usage}
+                    context={context}
+                    contextWindow={
+                      model.choice?.options.find((option) => option.id === model.choice?.current)?.contextWindow
+                    }
+                  />
                 </>
               }
             />

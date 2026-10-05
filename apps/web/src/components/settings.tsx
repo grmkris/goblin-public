@@ -1,3 +1,4 @@
+import { MemberInteractionCards } from './member-interactions.tsx'
 import { useCallback, useEffect, useState } from 'react'
 import { Schema } from 'effect'
 import { InboundClient, MemoryStatus, ResidentStatus } from '@purrable/contracts'
@@ -266,16 +267,17 @@ export function Settings() {
       <BillingCard />
       <AccountWorkspaceCard />
       <MembersCard />
-      {billing.state?.active && workspaces.state?.active?.agentReady && (
+      {billing.state?.active && workspaces.state?.active?.role === 'owner' && (
         <>
           <ResidentCard onError={setError} />
           <UsageCard />
           <MemoryCard onError={setError} />
           <RoutinesCard />
+          <MemberInteractionCards />
         </>
       )}
       <PasskeysCard onError={setError} />
-      {billing.state?.active && workspaces.state?.active?.agentReady && <ClientsCard onError={setError} />}
+      {billing.state?.active && workspaces.state?.active?.role === 'owner' && <ClientsCard onError={setError} />}
       <DeleteAccountCard onError={setError} />
     </div>
   )

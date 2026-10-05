@@ -53,3 +53,6 @@ export type McpCallOptions = RequestOptions & {
 }
 export type McpToolResult = CallToolResult
 export type McpPromptResult = GetPromptResult
+
+/** Skills transport authority is checked again for every HTTP dispatch, including refresh retries. */
+export type SkillRequestOptions = RequestOptions & { readonly authorize?: (serverId: string) => Promise<void> }

@@ -208,6 +208,8 @@ export const ConversationView = Schema.Struct({
   closedAt: Schema.optional(Schema.Number),
   closedBy: Schema.optional(Schema.Literals(['owner', 'done'])),
   keepOpen: Schema.Boolean,
+  requesterUserId: Schema.optional(Schema.String),
+  canCompose: Schema.optional(Schema.Boolean),
   replies: Schema.Number,
   lastReplyAt: Schema.optional(Schema.Number),
 })

@@ -22,6 +22,7 @@ export default Alchemy.Stack(
         BETTER_AUTH_SECRET: 'fixture-members-auth-secret-at-least-32-chars',
         SIGNUP_MODE: 'open',
         STAGE: 'test',
+        MEMBER_EXECUTION_ENABLED: '1',
         MODEL_BASE_URL: 'https://no-model-calls.invalid/v1',
         MODEL_ID: 'storage-only',
         MODEL_KEY: 'unused-fixture',

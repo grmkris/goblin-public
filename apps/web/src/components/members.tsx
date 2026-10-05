@@ -204,7 +204,13 @@ export function MembersCard() {
             </>
           ) : (
             <>
-              <p>Shared agent access is being prepared. Your {active.role} membership is saved.</p>
+              <p>
+                Your role is {active.role}.{' '}
+                {active.role === 'viewer'
+                  ? 'You can read permitted conversations.'
+                  : 'You can instruct the agent within your permissions.'}{' '}
+                The owner can read your conversations.
+              </p>
               <Button
                 variant="outline"
                 disabled={pending}

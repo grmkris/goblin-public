@@ -1,3 +1,4 @@
+import type { MemberController } from '../members/controller.ts'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { Type } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
@@ -5,7 +6,7 @@ import { type AppError, type GrantDenied, NotFound } from '../http/errors.ts'
 import { toolOffered } from '../mcp/connection.ts'
 import { grantRequiredResult, mcpModelResult } from '../mcp/extension.ts'
 import type { McpHost } from '../mcp/host.ts'
-import { type AgentServices, Capabilities, Mcp, attempt, requireResident } from '../services.ts'
+import { type AgentServices, Capabilities, Members, Mcp, attempt, requireResident } from '../services.ts'
 import { capabilityOffResult, mcpOff } from './capabilities.ts'
 
 const executionAuthority = (session: string, authorize?: (session: string) => Promise<void>) =>
@@ -46,6 +47,42 @@ const grantRequired = (mcp: McpHost, denied: GrantDenied, signal: AbortSignal | 
     return grantRequiredResult(denied.serverId, denied.name)
   })
 
+const memberApproval = (members: MemberController, session: string, callId: string, input: unknown) =>
+  attempt(async () => {
+    const receipt = await members.approval(session, callId, input)
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: 'Owner approval requested. No tool ran. The owner must review the member policy and existing grants.',
+        },
+      ],
+      details: {
+        kind: 'member-approval',
+        ...(receipt === undefined ? {} : { interactionId: receipt.id, requestHash: receipt.requestHash }),
+      },
+      control: { terminate: true as const },
+    }
+  })
+
+function offered(
+  listing: readonly import('@modelcontextprotocol/client').Tool[],
+  grants: ReturnType<McpHost['grants']>,
+  current: import('../capabilities/profiles.ts').CapabilityScope,
+  serverId: string,
+) {
+  return listing
+    .filter((tool) => toolOffered(tool, 'model') && current.tool(serverId, tool.name))
+    .map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+      granted: grants.some(
+        (grant) => grant.serverId === serverId && grant.capability === 'tool' && grant.name === tool.name,
+      ),
+    }))
+}
+
 /**
  * The resident agent's MCP tools. Each execution checks resident authority and the owner's exact grant; nothing is
  * resolved at wake. Remote descriptions, schemas and results are untrusted data.
@@ -75,21 +112,12 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
                     .map(({ serverId: id, status }) => ({ serverId: id, status })),
                 })
               if (!scope.server(serverId)) return yield* new NotFound({ what: `server ${serverId}` })
-              const grants = mcp.grants()
               const snapshot = yield* attempt(() =>
                 mcp.manager.connect(serverId, context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
               )
               yield* executionAuthority(String(api.conversationId), authorize)
-              const tools = snapshot.tools
-                .filter((tool) => toolOffered(tool, 'model') && scope.tool(serverId, tool.name))
-                .map((tool) => ({
-                  name: tool.name,
-                  description: tool.description,
-                  inputSchema: tool.inputSchema,
-                  granted: grants.some(
-                    (grant) => grant.serverId === serverId && grant.capability === 'tool' && grant.name === tool.name,
-                  ),
-                }))
+              const current = (yield* Capabilities).scope(String(api.conversationId))
+              const tools = offered(snapshot.tools, mcp.grants(), current, serverId)
               return text({ origin: serverId, trusted: false, tools })
             }),
           ),
@@ -113,7 +141,12 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
                 capabilities.scope(String(api.conversationId)),
               )
               const off = mcpOff(scope, input.serverId, input.name)
-              if (off !== undefined) return capabilityOffResult(off, scope)
+              const members = yield* Members
+              const session = String(api.conversationId)
+              if (off !== undefined)
+                return members.access.origin(session) === undefined
+                  ? capabilityOffResult(off, scope)
+                  : yield* memberApproval(members, session, api.callId, input)
               const mcp = yield* Mcp
               return yield* attempt(() =>
                 mcp.manager.callTool(input.serverId, input.name, input.arguments, {
@@ -123,7 +156,11 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
                 }),
               ).pipe(
                 Effect.map((result) => mcpModelResult(input.serverId, result)),
-                Effect.catchTag('GrantDenied', (denied) => grantRequired(mcp, denied, context.abortSignal)),
+                Effect.catchTag('GrantDenied', (denied) =>
+                  members.access.origin(session) === undefined
+                    ? grantRequired(mcp, denied, context.abortSignal)
+                    : memberApproval(members, session, api.callId, input),
+                ),
               )
             }),
           ),

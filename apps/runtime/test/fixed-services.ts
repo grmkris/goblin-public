@@ -24,3 +24,36 @@ export class FixedProfiles extends CapabilityProfiles {
     return this.#scopes[session] ?? scopeOf([], true)
   }
 }
+
+import { MemberAccess } from '../src/members/access.ts'
+import { MemberController } from '../src/members/controller.ts'
+class OwnerAccess extends MemberAccess {
+  constructor() {
+    // SAFETY: only overridden origin and require are called in these owner-only unit fixtures.
+    super(undefined as never, undefined as never, 'owner-fixture')
+  }
+  override origin(): undefined {
+    return undefined
+  }
+  override async require(): Promise<undefined> {
+    return undefined
+  }
+}
+/** Injected owner-only context authority; native tests exercise the real D1 member authority. */
+export class OwnerMembers extends MemberController {
+  constructor() {
+    // SAFETY: controller tests call only overridden require and OwnerAccess.origin; no storage, harness or cipher access.
+    super({
+      db: undefined,
+      env: undefined,
+      owner: 'owner-fixture',
+      access: new OwnerAccess(),
+      kit: { harness: undefined },
+      cipher: undefined,
+      usage: undefined,
+    } as never)
+  }
+  override async require(): Promise<undefined> {
+    return undefined
+  }
+}

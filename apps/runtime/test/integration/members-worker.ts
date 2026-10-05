@@ -106,9 +106,16 @@ export default {
         },
       }
       const withMail = request.headers.get('x-fixture-mail') === '1'
+      const executionEnv = (() => {
+        if (request.headers.get('x-fixture-members-closed') !== '1') return env
+        const { MEMBER_EXECUTION_ENABLED: _memberExecutionEnabled, ...closedEnv } = env
+        return closedEnv
+      })()
       return await runtime.fetch(
         input,
-        withMail ? { ...env, SIGNUP_MODE: 'closed', MAIL: mail, MAIL_SENDER: 'hello@purrable.lol' } : env,
+        withMail
+          ? { ...executionEnv, SIGNUP_MODE: 'closed', MAIL: mail, MAIL_SENDER: 'hello@purrable.lol' }
+          : executionEnv,
         ctx,
       )
     } catch (cause) {

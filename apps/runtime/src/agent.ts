@@ -1,22 +1,22 @@
 import { Agent } from 'agents'
-import { type Extension, ROOT_CONVERSATION_ID, type ToolRegistration } from '@earendil-works/pi-durable'
+import { type Extension, type ToolRegistration } from '@earendil-works/pi-durable'
 import { type AppContext, type CapabilityChange, type JsonObject, MAIN_THREAD } from '@purrable/contracts'
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
-import type { AgentRpcMethods, RuntimeEnv } from './env.ts'
+import type { AgentRpcMethods, MemberPrincipal, MemberRequest, RuntimeEnv } from './env.ts'
 import { type AppError, Forbidden, toAppError } from './http/errors.ts'
 import { type ChannelPorts, TelegramChannel, channelCall, logChannelFailure } from './channel/channel.ts'
 import { channelPorts } from './channel/turns.ts'
 import { type Doorbell, doorbellValid } from './channel/doorbell.ts'
 import { type RpcResult, encodeExit, unwrap } from './http/rpc.ts'
-import { piEventResponse } from './pi/events.ts'
-import { workspaceEventResponse } from './workspace/feed.ts'
+import { agentRequest, sessionSnapshot } from './agent-requests.ts'
+import { memberProgram, executionAuthority } from './members/program.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
 import { LITELLM_STREAMS, makePiModels } from './pi/model.ts'
-import { personaExtension } from './pi/persona.ts'
+import { personaExtension, principalExtension } from './pi/persona.ts'
 import { SUBAGENT_TOOL, subagentsExtension } from './pi/subagents.ts'
 import { threadExtension } from './pi/thread.ts'
 import { memoryExtensions } from './pi/memory.ts'
@@ -24,8 +24,6 @@ import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { skillsExtension } from './pi/skills.ts'
 import { composeServices } from './compose.ts'
 import { capabilitiesOf, changeCapabilities } from './capabilities/program.ts'
-import { BACKGROUND } from './pi/context.ts'
-import { recentMessages } from './pi/transcript.ts'
 import {
   type AgentServices,
   Channel,
@@ -38,6 +36,9 @@ import {
   attemptSync,
   nowSecondsEffect,
   requireResident,
+  Members,
+  Routines,
+  RoutineRuns,
 } from './services.ts'
 import { accountEntitlements, Entitlements, type EntitlementPolicy } from './billing/gates.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
@@ -51,17 +52,17 @@ import {
   askClient,
   createOwnerConversation,
   ownerRequest,
+  recentOwnerMessages,
   ownerUsage,
-  registeredConversation,
   setResident,
   submitOwner,
   stopOwner,
   updateOwnerConversation,
 } from './agent-program.ts'
 import { budgetExtension } from './pi/budget.ts'
-import { useModel, type Applied } from './agent-model.ts'
+import { chooseOwnerModel, useModel, type Applied } from './agent-model.ts'
+import { askingExtension } from './pi/ask-user.ts'
 import { routinesExtension } from './pi/routines.ts'
-import { Routines } from './services.ts'
 import { editRoutine, proposeRoutine, routinesList, setRoutineSettings } from './routines/program.ts'
 import type {
   CreateConversation,
@@ -72,8 +73,7 @@ import type {
   RoutineManualRun,
   UpdateConversation,
 } from '@purrable/contracts'
-import { RoutineRuns, Workspace } from './services.ts'
-import { requireRoutine, requireRoutineSession } from './routines/authority.ts'
+import { requireRoutine } from './routines/authority.ts'
 import { runView } from './routines/runs.ts'
 import type { RoutineSlot } from './routines/scheduler.ts'
 import {
@@ -95,21 +95,30 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   readonly #thread: Extension
   readonly #memory: ReturnType<typeof memoryExtensions>
   readonly #subagentTool: ToolRegistration
+  readonly #memberExtensions: readonly Extension[]
   readonly #applied: Applied = new Map()
   readonly #routines: RoutineController
   #runtime: Promise<Runtime> | undefined
   /** The Telegram pull in progress: one at a time (channelPull). */
   #pulling: Promise<void> = Promise.resolve()
-
   constructor(ctx: DurableObjectState, env: RuntimeEnv) {
     super(ctx, env)
     const run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program)
     const routineRun = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program, false)
-    this.#pi = makePiModels(env, this.modelStreams(), undefined, (id) => routineRun(requireRoutine(id)))
-    const residentTools = residentMcpExtension(run, (session) => routineRun(requireRoutineSession(session)))
-    const tools = [residentTools, budgetExtension(run)]
+    this.#pi = makePiModels(
+      env,
+      this.modelStreams(),
+      undefined,
+      (id) => routineRun(requireRoutine(id)),
+      (session) => this.#execution(session),
+    )
+    const residentTools = residentMcpExtension(routineRun, (session) => this.#execution(session))
+    const tools = [residentTools, budgetExtension(routineRun)]
+    const principal = principalExtension(async (session) =>
+      routineRun(Members.use((members) => attempt(() => members.access.require(session)))),
+    )
     // A subagent gets the persona and the owner's tools, nothing else: no subagents of its own, no ask_user.
-    const subagents = subagentsExtension(run, [personaExtension, ...tools])
+    const subagents = subagentsExtension(routineRun, [personaExtension, principal, ...tools])
     const subagentTool = subagents.tools?.find((tool) => tool.name === SUBAGENT_TOOL)
     if (subagentTool === undefined) throw new Error('The subagents extension has no subagent tool')
     this.#subagentTool = subagentTool
@@ -117,11 +126,25 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     this.#memory = memoryExtensions(run)
     const { memory, recall } = this.#memory
     const routineKit = routineExtensions(routineRun, residentTools, env.CREDENTIAL_KEY)
+    const memberAsk = askingExtension(
+      (session, callId, questions, answerer) =>
+        routineRun(Members.use((members) => attempt(() => members.question(session, callId, questions, answerer)))),
+      'purrable.member-ask',
+    )
+    this.#memberExtensions = [
+      personaExtension,
+      principal,
+      memberAsk,
+      ...tools,
+      skillsExtension(routineRun),
+      subagents,
+      this.#thread,
+    ]
     // Skills are for main and threads; a subagent gets only the extensions its spawner hands it.
     this.harness = makePiHarness(
       this.#pi,
-      [...tools, skillsExtension(run), subagents, routinesExtension(run)],
-      [this.#thread, memory, recall, ...routineKit.extra],
+      [...tools, skillsExtension(routineRun), subagents, routinesExtension(run), principal],
+      [this.#thread, memberAsk, memory, recall, ...routineKit.extra],
     )
     this.#routines = new RoutineController(routineRun, this.harness, routineKit.start, {
       storage: this.ctx.storage,
@@ -137,7 +160,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     })
     this.lifecycle.use(this.harness)
   }
-
   /** How model requests leave the object: LiteLLM. The integration harness overrides it with a scripted model. */
   protected modelStreams(): ProviderStreams {
     return LITELLM_STREAMS
@@ -147,7 +169,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     // SAFETY: SDK transport alone adds OAuth tokens; binding platform fetch preserves its execution context.
     return globalThis.fetch.bind(globalThis)
   }
-
   override async onStart(): Promise<void> {
     runApplicationMigrations(this.ctx.storage)
     // Reconstruct lease and receipt recovery without opening Pi or waiting on outbound network calls.
@@ -159,7 +180,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   protected entitlementPolicy(): EntitlementPolicy {
     return accountEntitlements(this.env, () => this.name)
   }
-
   #services(): Promise<Runtime> {
     this.#runtime ??= composeServices({
       storage: this.ctx.storage,
@@ -169,6 +189,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       thread: this.#thread,
       memory: this.#memory,
       subagentTool: this.#subagentTool,
+      memberExtensions: this.#memberExtensions,
       scheduleReplies: () => void this.schedule(5, 'channelReplies'),
       userId: this.name,
       entitlements: this.entitlementPolicy(),
@@ -182,7 +203,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     })
     return this.#runtime
   }
-
   /** One earliest Events wake. Agent schedules are durable and reconstructed independently of Pi. */
   async #scheduleWake(callback: 'mcpEventsWake' | 'routinesWake', at: number): Promise<void> {
     // listSchedules includes the currently executing wake; only future jobs can replace the next sweep.
@@ -194,21 +214,17 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     await this.schedule(new Date(seconds * 1000), callback, { at: seconds }, { idempotent: true })
     for (const job of pending) await this.cancelSchedule(job.id)
   }
-
   mcpEventsWebhook(input: EventWebhook) {
     return this.#client(Events.use((events) => events.receive(input)))
   }
-
   async mcpEventsWake(): Promise<void> {
     await this.#runOrThrow(Events.use((events) => events.maintain())).catch(() =>
       this.#scheduleWake('mcpEventsWake', Date.now() + 60_000),
     )
   }
-
   async routinesWake(): Promise<void> {
     await this.#routines.maintain().catch(() => this.#scheduleWake('routinesWake', Date.now() + 60_000))
   }
-
   async runRoutine(slot: RoutineSlot): Promise<void> {
     await this.#routines.fire(slot)
   }
@@ -236,6 +252,21 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   async #owner<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
     return encodeExit(await this.#exit(ownerRequest(program)))
   }
+  async #execution(session: string): Promise<void> {
+    await this.#runOrThrow(executionAuthority(session), false)
+  }
+  memberRequest(principal: MemberPrincipal, request: MemberRequest) {
+    return this.#member(memberProgram(this.harness, principal, request))
+  }
+  memberInvalidate(memberId: string) {
+    return this.#member(Members.use((members) => attempt(() => members.invalidate(memberId))))
+  }
+  accountUsage() {
+    return this.#member(ownerUsage)
+  }
+  async #member<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
+    return encodeExit(await this.#exit(program))
+  }
 
   /** The owner's message into a thread, with what an open App shared for the agent as separate untrusted blocks. */
   submit(thread: string, input: string, operationId: string, appContext: readonly AppContext[] = []) {
@@ -251,15 +282,12 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       }),
     )
   }
-
   conversations() {
     return this.#owner(Conversations.use((conversations) => attempt(() => conversations.list())))
   }
-
   threadPreview(thread: string) {
     return this.#owner(Conversations.use((conversations) => attempt(() => conversations.preview(thread))))
   }
-
   routines() {
     return this.#owner(routinesList)
   }
@@ -289,11 +317,9 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   createConversation(input: CreateConversation) {
     return this.#owner(createOwnerConversation(input))
   }
-
   updateConversation(id: string, change: UpdateConversation) {
     return this.#owner(updateOwnerConversation(this.#routines, id, change))
   }
-
   /** What a conversation lets its agent use: its switches over the agent's servers, skills and subagents. */
   conversationCapabilities(thread: string) {
     return this.#owner(capabilitiesOf(thread))
@@ -309,16 +335,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   /** Stores the pick and moves main to it at once; other threads follow on their next turn. */
   chooseModel(modelId: string) {
-    const model = useModel(this.harness, this.#applied, MAIN_THREAD)
-    return this.#owner(
-      Effect.gen(function* () {
-        const models = yield* Models
-        const now = yield* nowSecondsEffect
-        const choice = yield* attemptSync(() => models.choose(modelId, now))
-        yield* model
-        return choice
-      }),
-    )
+    return this.#owner(chooseOwnerModel(this.harness, this.#applied, modelId, MAIN_THREAD))
   }
 
   usageToday() {
@@ -326,9 +343,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
 
   memoryStatus() {
-    return this.#owner(
-      Memory.use((memory) => Effect.succeed({ messages: memory.size(), summarized: memory.viewThrough() })),
-    )
+    return this.#owner(Memory.useSync((memory) => ({ messages: memory.size(), summarized: memory.viewThrough() })))
   }
 
   stop(thread: string, operationId?: string) {
@@ -359,27 +374,21 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       Mcp.useSync((mcp) => suggestions(stage, new Set(mcp.manager.servers.map((server) => server.endpoint)))),
     )
   }
-
   mcpCatalog(query: string) {
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.searchCatalog(query))))
   }
-
   mcpRegistries() {
     return this.#owner(Mcp.useSync((mcp) => mcp.registries()))
   }
-
   mcpAddRegistry(url: string) {
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.addRegistry(url))))
   }
-
   mcpRemoveRegistry(url: string) {
     return this.#owner(Mcp.use((mcp) => attemptSync(() => mcp.removeRegistry(url))))
   }
-
   mcpAddServer(endpoint: string, source?: ServerSource) {
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.addServer(endpoint, source))))
   }
-
   mcpRemoveServer(serverId: string) {
     return this.#owner(
       Effect.gen(function* () {
@@ -397,19 +406,15 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       }),
     )
   }
-
   mcpTools(serverId: string, refresh: boolean) {
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.tools(serverId, refresh))))
   }
-
   mcpGrants() {
     return this.#owner(Mcp.useSync((mcp) => mcp.grants()))
   }
-
   mcpSetToolGrant(serverId: string, name: string, allowed: boolean) {
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.setToolGrant(serverId, name, allowed))))
   }
-
   /** Turn the agent's use of a server's skills on or off. */
   mcpSetSkills(serverId: string, enabled: boolean) {
     return this.#owner(setSkillEvents(serverId, enabled))
@@ -445,7 +450,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       }),
     )
   }
-
   /** Revoke or re-enable resident authority. Not an ordinary owner request: revoking must not renew first. */
   async residentSet(enabled: boolean) {
     return encodeExit(await this.#exit(setResident(enabled)))
@@ -461,7 +465,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       askClient({ harness: this.harness, applied: this.#applied, author, text: input, operationId, waitMs }),
     )
   }
-
   /** The Telegram channel's connection, or null when it is off. */
   channelStatus() {
     return this.#owner(Channel.use((channel) => Effect.succeed(channel.status())))
@@ -501,7 +504,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     )
   }
 
-  /** The channel and its ports under resident authority, for `work`; undefined when the channel is off. */
   async #onChannel<T>(work: (channel: TelegramChannel, ports: ChannelPorts) => Promise<T>): Promise<T | undefined> {
     const run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program)
     const { mcp, channel } = await run(
@@ -515,8 +517,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     const call = channelCall(mcp.manager, status.serverId)
     return work(channel, channelPorts(this.harness, call, run, useModel(this.harness, this.#applied, MAIN_THREAD)))
   }
-
-  /** Scheduled by a doorbell: read the new Telegram messages into main, one pull at a time. */
   async channelPull(): Promise<void> {
     this.#pulling = this.#pulling
       .then(() => this.#onChannel((channel, ports) => channel.pull(ports, nowSeconds())))
@@ -525,7 +525,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     await this.#pulling
   }
 
-  /** Scheduled: send the answers that are ready to Telegram; again in 15 s while some run, in 5 min after a failure. */
   async channelReplies(): Promise<void> {
     const again = await this.#onChannel(async (channel, ports) =>
       (await channel.deliver(ports, nowSeconds())) ? 15 : undefined,
@@ -535,23 +534,10 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     })
     if (again !== undefined) await this.schedule(again, 'channelReplies')
   }
-
-  /** Main's latest messages, newest last, for an inbound client (`get_recent_messages`). */
   recentMessages(limit: number) {
-    const harness = this.harness
-    return this.#client(
-      attempt(async () => {
-        const main = await (await harness.pi()).conversation(ROOT_CONVERSATION_ID, BACKGROUND)
-        return main === undefined ? [] : recentMessages(main, limit)
-      }),
-    )
+    return this.#client(recentOwnerMessages(this.harness, limit))
   }
 
-  /**
-   * Account deletion: close outbound connections, then erase this agent (every Pi, Agents and application table,
-   * the alarm) through `Agent.destroy()`, which also aborts the isolate so no in-memory state survives. Callers may
-   * see that abort instead of the result (`auth/account.ts`).
-   */
   async deleteAgentData(): Promise<RpcResult<true>> {
     const runtime = this.#runtime
     this.#runtime = undefined
@@ -563,49 +549,18 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     await this.destroy()
     return { ok: true, value: true }
   }
-
-  /** An inbound client request: no resident renewal (only the owner renews). */
-  async #client<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
-    return encodeExit(
-      await this.#exit(
-        Effect.andThen(
-          Entitlements.use((plans) => plans.require()),
-          program,
-        ),
+  #client<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
+    return this.#member(
+      Effect.andThen(
+        Entitlements.use((plans) => plans.require()),
+        program,
       ),
     )
   }
-
   async sessionSnapshot(session: string): Promise<JsonObject> {
-    const stream = await this.harness.session(session).events()
-    const snapshot = stream.snapshot
-    await stream.stop()
-    // SAFETY: Pi's snapshot is structured cloneable; JSON normalization narrows it to the shared RPC contract.
-    return JSON.parse(JSON.stringify(snapshot)) as JsonObject
+    return sessionSnapshot(this.harness, session)
   }
-
-  /**
-   * `/conversations/<id>/events` (SSE), `/conversations/<id>/snapshot` and `/conversations/<id>/history?before=<entry>`,
-   * for registered conversations only.
-   */
   override async onRequest(request: Request): Promise<Response> {
-    const url = new URL(request.url)
-    if (url.pathname === '/workspace/events') {
-      const feed = await this.#exit(Workspace.useSync((workspace) => workspace))
-      return Exit.isSuccess(feed)
-        ? workspaceEventResponse(feed.value)
-        : Response.json({ error: 'Unavailable' }, { status: 503 })
-    }
-    const [, id = '', view = ''] = /^\/conversations\/(\d{1,12})\/(events|snapshot|history)$/u.exec(url.pathname) ?? []
-    const session = await this.#exit(registeredConversation(id))
-    if (view === '' || Exit.isFailure(session)) return Response.json({ error: 'NotFound' }, { status: 404 })
-    if (view === 'events') return piEventResponse(await this.harness.session(session.value).events())
-    if (view === 'snapshot') return Response.json(await this.sessionSnapshot(session.value))
-    const before = Number(url.searchParams.get('before'))
-    if (!Number.isSafeInteger(before) || before < 1) return Response.json({ error: 'InvalidInput' }, { status: 400 })
-    const page = await this.#exit(
-      Conversations.use((conversations) => attempt(() => conversations.history(session.value, before))),
-    )
-    return Exit.isSuccess(page) ? Response.json(page.value) : Response.json({ error: 'NotFound' }, { status: 404 })
+    return agentRequest(request, this.harness, (program) => this.#exit(program))
   }
 }

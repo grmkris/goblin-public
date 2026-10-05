@@ -44,6 +44,7 @@ export function makePiModels(
   streams: ProviderStreams = LITELLM_STREAMS,
   contextWindow?: number,
   authorizeRoutine?: (runId: string) => Promise<void>,
+  authorizeMember?: (session: string) => Promise<void>,
 ) {
   const options = modelOptions(env.MODELS, env.MODEL_ID)
   const [first, ...rest] = options
@@ -64,22 +65,29 @@ export function makePiModels(
   })
   const models = createModels()
   models.setProvider(provider)
-  if (authorizeRoutine !== undefined) {
+  if (authorizeRoutine !== undefined || authorizeMember !== undefined) {
     const original = models.getModel.bind(models)
     models.getModel = (providerId, id) => {
       const runId = /^purrable-routine:(rr_[\w-]{1,100})$/u.exec(providerId)?.[1]
-      if (runId !== undefined && models.getProvider(providerId) === undefined) {
+      const memberSession = /^purrable-member:(\d{1,12})$/u.exec(providerId)?.[1]
+      const authorize =
+        runId !== undefined && authorizeRoutine !== undefined
+          ? () => authorizeRoutine(runId)
+          : memberSession !== undefined && authorizeMember !== undefined
+            ? () => authorizeMember(memberSession)
+            : undefined
+      if (authorize !== undefined && models.getProvider(providerId) === undefined) {
         models.setProvider(
           createProvider({
             id: providerId,
-            name: 'Purrable routine',
+            name: 'Purrable scoped execution',
             baseUrl: env.MODEL_BASE_URL,
             models: options.map((option) => makePiModel(option, env.MODEL_BASE_URL, contextWindow, providerId)),
             auth: {
               apiKey: {
-                name: 'Routine model authority',
+                name: 'Scoped model authority',
                 resolve: async () => {
-                  await authorizeRoutine(runId)
+                  await authorize()
                   return { auth: { apiKey: env.MODEL_KEY } }
                 },
               },

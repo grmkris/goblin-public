@@ -1,3 +1,4 @@
+import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
 import { type ReactNode, createContext, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LayoutDocument } from '@danfessler/trellis'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
@@ -66,6 +67,7 @@ const urlItem = (path: string): ItemKey | undefined => {
 /** The signed-in user's id: the device keeps one workspace per person. */
 function useOwner(enabled: boolean): string | undefined {
   const [owner, setOwner] = useState<string>()
+  const { state } = useAccountWorkspaces()
   useEffect(() => {
     if (!enabled) return
     const controller = new AbortController()
@@ -77,7 +79,9 @@ function useOwner(enabled: boolean): string | undefined {
       .catch(() => undefined)
     return () => controller.abort()
   }, [enabled])
-  return owner
+  return owner === undefined || state?.active === undefined || state.active === null
+    ? undefined
+    : `${owner}:${state.active.id}:${state.active.memberVersion}`
 }
 
 /**

@@ -477,7 +477,7 @@ const threadsUntil = (
 async function shareSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
   await agent.submit(MAIN_THREAD, 'remember the word lantern', 'share-main')
   await agent.settle(MAIN_THREAD, 'share-main')
-  const answer = ((await snapshotOf(agent, MAIN_THREAD)).entries ?? []).findLast(({ kind }) => kind === 'pi.assistant')
+  const answer = ((await historyOf(agent, MAIN_THREAD)).entries ?? []).findLast(({ kind }) => kind === 'pi.assistant')
   const thread = await branchMain(agent, answer?.id)
   if (!thread.ok) return Response.json({ thread })
   const share = 'call share_back {"note":"the word is lantern"}'
@@ -518,7 +518,7 @@ async function announceSequence(agent: DurableObjectStub<PersonalAgentProbe>): P
   const first = await notesUntil(agent, 1)
   await agent.submit(fresh.value.id, 'and the hotel?', 'announce-thread-again')
   await agent.settle(fresh.value.id, 'announce-thread-again')
-  const answer = ((await snapshotOf(agent, MAIN_THREAD)).entries ?? []).findLast(({ kind }) => kind === 'pi.assistant')
+  const answer = ((await historyOf(agent, MAIN_THREAD)).entries ?? []).findLast(({ kind }) => kind === 'pi.assistant')
   const branched = await branchMain(agent, answer?.id)
   if (!branched.ok) return Response.json({ branched })
   await agent.submit(branched.value.id, 'what was the word?', 'announce-branch')

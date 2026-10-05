@@ -5,6 +5,7 @@ import type { AppError } from './http/errors.ts'
 import { Entitlements } from './billing/gates.ts'
 import {
   Conversations,
+  Members,
   RoutineRuns,
   Budget,
   Resident,
@@ -18,6 +19,10 @@ import {
 import { Events } from './mcp/events.ts'
 import type { RoutineRunner } from './routines/runner.ts'
 import { useModel, type Applied } from './agent-model.ts'
+import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { BACKGROUND } from './pi/context.ts'
+import { recentMessages } from './pi/transcript.ts'
+import { Forbidden } from './http/errors.ts'
 import { authoredContent, ownerContent } from './pi/content.ts'
 
 /** The registration gate for every owner conversation request. */
@@ -112,6 +117,8 @@ export const submitOwner = (input: {
     const session = yield* Conversations.use((conversations) =>
       attemptSync(() => conversations.requireOpen(input.thread)),
     )
+    if ((yield* Members).access.origin(session) !== undefined)
+      return yield* new Forbidden({ reason: 'member conversation requester' })
     if (yield* attempt(() => input.routines.answer(session, input.operationId, input.text)))
       return { session, operationId: input.operationId, accepted: true }
     yield* useModel(input.harness, input.applied, session)
@@ -147,4 +154,10 @@ export const askClient = (input: {
     return result.status === 'done'
       ? { status: 'done' as const, operationId: input.operationId, text: result.text ?? '' }
       : { status: 'unanswered' as const, operationId: input.operationId, reason: result.reason ?? 'unanswered' }
+  })
+
+export const recentOwnerMessages = (harness: PiHarness, limit: number) =>
+  attempt(async () => {
+    const main = await (await harness.pi()).conversation(ROOT_CONVERSATION_ID, BACKGROUND)
+    return main === undefined ? [] : recentMessages(main, limit)
   })
