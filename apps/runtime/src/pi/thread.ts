@@ -3,6 +3,7 @@ import { Type } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import { Members, Conversations, attempt, requireBudget } from '../services.ts'
 import type { RunProgram } from './resident-mcp.ts'
+import { Entitlements } from '../billing/gates.ts'
 
 const THREAD = [
   'This is a side thread, apart from the conversation it branched from (your main conversation with the owner, unless',
@@ -15,7 +16,7 @@ const THREAD = [
  * What a side thread adds: knowing it is one, `share_back` (a note written into the conversation it came from, which
  * the model there sees without starting a run), and a title the cheap model writes after the first exchange.
  */
-export function threadExtension(run: RunProgram) {
+export function threadExtension(run: RunProgram, memberRun: RunProgram = run) {
   return defineExtension({
     name: 'purrable.thread',
     sections: [section('thread', () => THREAD)],
@@ -28,8 +29,11 @@ export function threadExtension(run: RunProgram) {
         // The write carries the call's id as its request id, so a rerun finds the same note.
         replay: 'safe',
         execute: async ({ note }, api) => {
-          await run(Members.use((members) => attempt(() => members.require(String(api.conversationId)))))
-          const parent = await run(
+          const member = await memberRun(
+            Members.use((members) => attempt(() => members.require(String(api.conversationId)))),
+          )
+          if (member === undefined) await run(Entitlements.use((plans) => plans.require()))
+          const parent = await memberRun(
             Conversations.use((conversations) =>
               attempt(() => conversations.shareBack(String(api.conversationId), note, `share:${api.callId}`)),
             ),

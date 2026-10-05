@@ -135,12 +135,18 @@ export class PersonalAgentProbe extends PersonalAgent {
    * The newest model request that answered `turn` (its last non-system message), as plain data: deep readonly types
    * do not cross the RPC stub. Matching the turn keeps the cheap model's own requests (thread titles) out of it.
    */
-  requestFor(turn: string): { messages: { role: string; text: string }[]; tools: string[] } | undefined {
+  requestFor(
+    turn: string,
+  ): { messages: { role: string; text: string }[]; systemPrompt: string; tools: string[] } | undefined {
     const request = this.seen.findLast(
       ({ messages }) => messages.findLast((message) => message.role !== 'system')?.text === turn,
     )
     if (request === undefined) return undefined
-    return { messages: request.messages.map(({ role, text }) => ({ role, text })), tools: [...request.tools] }
+    return {
+      messages: request.messages.map(({ role, text }) => ({ role, text })),
+      systemPrompt: request.systemPrompt,
+      tools: [...request.tools],
+    }
   }
 
   /** `/probe` reads storage; every other path is the real agent's (thread events and snapshots). */

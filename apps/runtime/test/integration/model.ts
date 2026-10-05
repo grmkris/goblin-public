@@ -1,5 +1,6 @@
 import { createModels, createProvider } from '@earendil-works/pi-ai/models'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
+import { getCurrentSystemPrompt } from '@earendil-works/pi-ai/utils/transcript'
 import type { AssistantMessage, Message, Model, ProviderStreams, ToolCall } from '@earendil-works/pi-ai'
 
 export const FIXTURE_INPUT = 'persist this lifecycle fixture input'
@@ -19,7 +20,11 @@ export const model: Model<'openai-completions'> = {
 /** One message of a request the scripted model received, as role and plain text. */
 export type SeenMessage = { readonly role: string; readonly text: string }
 /** A request the scripted model received: its messages and the names of the tools it was offered. */
-export type SeenRequest = { readonly messages: readonly SeenMessage[]; readonly tools: readonly string[] }
+export type SeenRequest = {
+  readonly messages: readonly SeenMessage[]
+  readonly systemPrompt: string
+  readonly tools: readonly string[]
+}
 
 const textOf = (message: Message): string =>
   typeof message.content === 'string'
@@ -72,6 +77,7 @@ export function scriptedStreams(
           .filter((part) => part !== null)
           .join('\n'),
       })),
+      systemPrompt: getCurrentSystemPrompt(context.messages),
       tools: offeredTools(context.messages),
     })
     const content = respond(context.messages)

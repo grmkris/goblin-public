@@ -6,6 +6,7 @@ import { WorkspaceChange, WorkspaceSnapshot } from '@purrable/contracts'
 /** A model request as the probe recorded it. */
 export const ModelRequest = Schema.Struct({
   messages: Schema.Array(Schema.Struct({ role: Schema.String, text: Schema.String })),
+  systemPrompt: Schema.String,
   tools: Schema.Array(Schema.String),
 })
 /** A request's turns, without the system messages Pi places among them. */
@@ -100,7 +101,8 @@ export async function subagentBranchChecks(base: string, name: string): Promise<
   expect(result.branch).toMatchObject({ kind: 'thread', parent: result.subagentAfter.id })
   expect(requestTurns(result.request)).toEqual(['find the word', 'echo: find the word', 'what did you find?'])
   expect(result.request.tools).toEqual(expect.arrayContaining(['share_back', 'ask_user', 'subagent']))
-  expect(result.request.messages.some(({ text }) => text.includes('You are the subagent'))).toBe(false)
+  // Historical section deltas remain in the fork; its current prompt must clear the subagent instructions.
+  expect(result.request.systemPrompt).not.toContain('You are the subagent')
   expect(result.subagentAfter.keepOpen).toBe(true)
   expect(result.closed.value.closedBy).toBe('owner')
   expect(result.branchAfter.closedBy).toBe('owner')
