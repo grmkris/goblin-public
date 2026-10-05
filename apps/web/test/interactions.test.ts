@@ -41,6 +41,15 @@ const asked = (questions: unknown): ToolPart => ({
   },
 })
 const user = (id: string): Part => ({ kind: 'user', id, text: 'hi' })
+/** A call of `name` with `args` whose result says something is switched off here. */
+const switchedOff = (name: string, args: Record<string, unknown>, details: unknown): ToolPart => ({
+  kind: 'tool',
+  id: 'tool:c1',
+  call: { id: 'c1', name, arguments: args },
+  state: 'error',
+  result: { id: 'r', role: 'tool', text: 'Off', toolCallId: 'c1', toolName: name, isError: true, details },
+})
+const off = (target: unknown) => ({ kind: 'capability-off', target })
 
 describe('what the agent waits on the owner for', () => {
   it('asks for permission only from Purrable’s own result for the exact tool that was called', () => {
@@ -64,7 +73,32 @@ describe('what the agent waits on the owner for', () => {
     expect(openInteractions(parts).map((item) => item.kind)).toEqual(['grant', 'question'])
     expect(openInteractions([...parts, user('u2')])).toEqual([])
   })
+  it('offers to turn on here only what the call asked for, and only from Purrable’s own result', () => {
+    const server = { kind: 'server', serverId: 'myplan' }
+    expect(interactionOf(mcpCall(off(server)))).toEqual({ kind: 'capability', callId: 'g1', target: server })
+    const tool = { kind: 'tool', serverId: 'myplan', name: 'document_edit' }
+    expect(interactionOf(mcpCall(off(tool)))).toEqual({ kind: 'capability', callId: 'g1', target: tool })
+    expect(interactionOf(mcpCall(off({ kind: 'server', serverId: 'mybrowser' })))).toBeUndefined()
+    expect(interactionOf(mcpCall(off({ ...tool, name: 'delete_everything' })))).toBeUndefined()
+    expect(
+      interactionOf(mcpCall({ ...off(server), origin: { serverId: 'myplan', trust: 'untrusted' } })),
+    ).toBeUndefined()
+    expect(interactionOf(mcpCall(off(server), false))).toBeUndefined()
+    const skills = { kind: 'skills', serverId: 'myskills' }
+    expect(interactionOf(switchedOff('skill_activate', { skill: 'myskills:review' }, off(skills)))).toMatchObject({
+      kind: 'capability',
+      target: skills,
+    })
+    expect(interactionOf(switchedOff('skill_read', { skill: 'other:review' }, off(skills)))).toBeUndefined()
+    expect(interactionOf(switchedOff('subagent', {}, off({ kind: 'subagents' })))).toMatchObject({
+      kind: 'capability',
+    })
+    expect(interactionOf(switchedOff('subagent', {}, off(server)))).toBeUndefined()
+  })
   it('gives each reply a stable submission id', () => {
+    expect(interactionOperation({ kind: 'capability', callId: 'c1', target: { kind: 'subagents' } })).toBe(
+      'capability:c1',
+    )
     expect(interactionOperation({ kind: 'question', callId: 'q1', questions: [] })).toBe('answer:q1')
     expect(interactionOperation({ kind: 'grant', callId: 'g1', serverId: 's', name: 'n' })).toBe('grant:g1')
   })

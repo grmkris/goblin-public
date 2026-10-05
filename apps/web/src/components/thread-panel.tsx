@@ -135,7 +135,7 @@ function ThreadBody({ view, onClose }: { readonly view: ThreadView; readonly onC
       </WithoutApps>
       <div className="chat-dock" ref={dock}>
         <Notice text={notice} />
-        <InteractionCards interactions={waiting} onAnswer={send} />
+        <InteractionCards interactions={waiting} thread={view.id} onAnswer={send} />
         <MessageComposer
           onSend={(input) => send(input)}
           running={running}

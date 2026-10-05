@@ -97,7 +97,7 @@ function ChatDock({
     <div className="chat-dock" ref={ref}>
       {notice && <StreamNotice text={notice} />}
       {threads.error && <StreamNotice text={threads.error} />}
-      <InteractionCards interactions={waiting} onAnswer={send} />
+      <InteractionCards interactions={waiting} thread={thread} onAnswer={send} />
       <SharedContextChip />
       <div className="relative">
         {presence.state === 'waiting' && <PresenceBorder />}

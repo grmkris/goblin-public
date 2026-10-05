@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Option, Schema } from 'effect'
-import { KeyRoundIcon, MessageCircleQuestionIcon } from 'lucide-react'
-import { ToolView } from '@purrable/contracts'
+import { KeyRoundIcon, MessageCircleQuestionIcon, PowerIcon } from 'lucide-react'
+import { MAIN_THREAD, ToolView } from '@purrable/contracts'
 import {
   AskCard,
   AskCardActions,
@@ -24,12 +24,15 @@ import {
   Receipt,
 } from '@purrable/ui'
 import { failureText, request } from '../lib/boundary.ts'
+import { targetLabel } from '../lib/capabilities.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
+import { useCapabilities } from './capabilities.tsx'
 
 /** Sends the owner's reply as their next message, under the interaction's stable operation id. */
 type Answer = (input: string, operationId: string) => Promise<boolean>
 type Question = Extract<Interaction, { kind: 'question' }>
 type Grant = Extract<Interaction, { kind: 'grant' }>
+type Capability = Extract<Interaction, { kind: 'capability' }>
 
 const decodeTools = Schema.decodeUnknownOption(Schema.Array(ToolView))
 
@@ -103,6 +106,61 @@ function GrantCard({ interaction, onAnswer }: { readonly interaction: Grant; rea
   )
 }
 
+/**
+ * Something switched off in this conversation that the agent tried to use. Turning it on changes this conversation
+ * only (never a grant), then tells the agent to continue.
+ */
+function CapabilityCard({
+  interaction,
+  thread,
+  onAnswer,
+}: {
+  readonly interaction: Capability
+  readonly thread: string
+  readonly onAnswer: Answer
+}) {
+  const { target } = interaction
+  const { view } = useCapabilities(thread, false)
+  const label = targetLabel(target, view)
+  const where = thread === MAIN_THREAD ? 'in main' : 'in this thread'
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  async function reply(on: boolean): Promise<void> {
+    setBusy(true)
+    setError('')
+    try {
+      if (on) await request(`/api/threads/${thread}/capabilities`, { method: 'PATCH', body: { target, on } })
+      await onAnswer(on ? `Turned on ${label} here. Continue.` : 'Not now.', interactionOperation(interaction))
+    } catch (cause) {
+      setError(failureText(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <AskCard aria-label="Switched off here">
+      <AskCardHeader>
+        <PowerIcon aria-hidden />
+        <p>
+          Your agent wants to use <strong className="font-medium">{label}</strong>
+        </p>
+      </AskCardHeader>
+      <AskCardDescription>
+        It is switched off {where}. Turning it on here changes only this conversation.
+      </AskCardDescription>
+      {error && <Receipt tone="error">{error}</Receipt>}
+      <AskCardActions>
+        <Button variant="ghost" disabled={busy} onClick={() => void reply(false)}>
+          Not now
+        </Button>
+        <Button disabled={busy} onClick={() => void reply(true)}>
+          Turn on here
+        </Button>
+      </AskCardActions>
+    </AskCard>
+  )
+}
+
 /** The agent's questions, one at a time with number shortcuts; the answers go back as one message. */
 function QuestionCard({ interaction, onAnswer }: { readonly interaction: Question; readonly onAnswer: Answer }) {
   const { questions } = interaction
@@ -155,19 +213,21 @@ function QuestionCard({ interaction, onAnswer }: { readonly interaction: Questio
   )
 }
 
-/** What the agent is waiting on, pinned above the composer until the owner replies. */
+/** What the agent is waiting on in `thread`, pinned above the composer until the owner replies. */
 export function InteractionCards({
   interactions,
+  thread,
   onAnswer,
 }: {
   readonly interactions: readonly Interaction[]
+  readonly thread: string
   readonly onAnswer: Answer
 }) {
-  return interactions.map((interaction) =>
-    interaction.kind === 'grant' ? (
-      <GrantCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
-    ) : (
-      <QuestionCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
-    ),
-  )
+  return interactions.map((interaction) => {
+    if (interaction.kind === 'grant')
+      return <GrantCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
+    if (interaction.kind === 'capability')
+      return <CapabilityCard key={interaction.callId} interaction={interaction} thread={thread} onAnswer={onAnswer} />
+    return <QuestionCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
+  })
 }

@@ -1,31 +1,53 @@
 import { Option, Schema } from 'effect'
-import { QuestionSpec } from '@purrable/contracts'
+import { CapabilityTarget, QuestionSpec } from '@purrable/contracts'
 import { isString, record } from './boundary.ts'
 import type { Part, ToolPart } from './parts.ts'
 
 /**
- * Something the agent is waiting on the owner for: answers to `ask_user` questions, or permission for an MCP tool it
- * may not call yet. Both settle with the owner's next message, from this web app or any other channel.
+ * Something the agent is waiting on the owner for: answers to `ask_user` questions, permission for an MCP tool it may
+ * not call yet, or something switched off in this conversation that it tried to use. Each settles with the owner's
+ * next message, from this web app or any other channel.
  */
 export type Interaction =
   | { readonly kind: 'question'; readonly callId: string; readonly questions: readonly QuestionSpec[] }
   | { readonly kind: 'grant'; readonly callId: string; readonly serverId: string; readonly name: string }
+  | { readonly kind: 'capability'; readonly callId: string; readonly target: CapabilityTarget }
 
 const decodeQuestions = Schema.decodeUnknownOption(Schema.Array(QuestionSpec))
+const decodeTarget = Schema.decodeUnknownOption(CapabilityTarget)
+
+/**
+ * Whether a switched-off target is what the call asked for: the server or tool of an `mcp_call`, the library a skill
+ * handle (`<server>:<name>`) comes from, or subagents for `subagent`. Anything else is not trusted.
+ */
+function asksFor(part: ToolPart, target: CapabilityTarget): boolean {
+  const { name, arguments: args } = part.call
+  if (name === 'mcp_call') {
+    const called = part.target
+    if (called === undefined || target.kind === 'skills' || target.kind === 'subagents') return false
+    return called.serverId === target.serverId && (target.kind === 'server' || called.name === target.name)
+  }
+  if (name === 'skill_activate' || name === 'skill_read')
+    return target.kind === 'skills' && isString(args.skill) && args.skill.split(':', 1)[0] === target.serverId
+  return name === 'subagent' && target.kind === 'subagents'
+}
 
 /**
  * The interaction a tool result asks for, if any. A grant request is trusted only from Purrable's own `mcp_call`
  * result: an error whose details carry `kind: 'grant-required'` for exactly the server and tool that were called, and
- * no `origin` (remote results always have one), so a server's content cannot conjure an Allow card.
+ * no `origin` (remote results always have one), so a server's content cannot conjure an Allow card. A request to turn
+ * something on here (`capability-off`) is trusted the same way, for exactly what the call asked for.
  */
 export function interactionOf(part: ToolPart): Interaction | undefined {
   const result = part.result
   const details = record(result?.details)
   if (result === undefined || details === undefined || 'origin' in details) return undefined
-  if (part.call.name === 'mcp_call' && result.isError && details.kind === 'grant-required') {
-    const target = part.target
-    if (target === undefined || details.serverId !== target.serverId || details.name !== target.name) return undefined
-    return { kind: 'grant', callId: part.call.id, serverId: target.serverId, name: target.name }
+  if (result.isError && details.kind === 'grant-required') return grantOf(part, details)
+  if (result.isError && details.kind === 'capability-off') {
+    const target = Option.getOrUndefined(decodeTarget(details.target))
+    return target !== undefined && asksFor(part, target)
+      ? { kind: 'capability', callId: part.call.id, target }
+      : undefined
   }
   if (part.call.name === 'ask_user' && !result.isError && details.kind === 'question')
     return Option.match(decodeQuestions(details.questions), {
@@ -33,6 +55,14 @@ export function interactionOf(part: ToolPart): Interaction | undefined {
       onSome: (questions) => ({ kind: 'question', callId: part.call.id, questions }),
     })
   return undefined
+}
+
+/** A grant request, only from `mcp_call` and only for exactly the server and tool that were called. */
+function grantOf(part: ToolPart, details: Record<string, unknown>): Interaction | undefined {
+  const target = part.target
+  if (part.call.name !== 'mcp_call' || target === undefined) return undefined
+  if (details.serverId !== target.serverId || details.name !== target.name) return undefined
+  return { kind: 'grant', callId: part.call.id, serverId: target.serverId, name: target.name }
 }
 
 /** The interactions still waiting: those after the owner's last message. Any later message settles them. */
@@ -45,9 +75,11 @@ export function openInteractions(parts: readonly Part[]): Interaction[] {
   })
 }
 
+const OPERATION = { question: 'answer', grant: 'grant', capability: 'capability' } as const
+
 /** Stable submission ids: a double click, a retry or a second tab submits the same answer once. */
 export const interactionOperation = (interaction: Interaction): string =>
-  `${interaction.kind === 'question' ? 'answer' : 'grant'}:${interaction.callId}`
+  `${OPERATION[interaction.kind]}:${interaction.callId}`
 
 /**
  * The owner's answers as their next message: one line per question, choices by their labels, a free answer after

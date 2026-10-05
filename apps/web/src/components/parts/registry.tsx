@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
-import { CircleAlertIcon, CircleStopIcon, KeyRoundIcon, MessageCircleQuestionIcon } from 'lucide-react'
+import { CircleAlertIcon, CircleStopIcon, KeyRoundIcon, MessageCircleQuestionIcon, PowerIcon } from 'lucide-react'
 import { Reasoning, ReasoningContent, ReasoningTrigger, Receipt } from '@purrable/ui'
+import { targetLabel } from '../../lib/capabilities.ts'
 import { type Interaction, interactionOf } from '../../lib/interactions.ts'
 import type { Part, ToolPart } from '../../lib/parts.ts'
 import { ThreadStartedRow } from '../thread-replies.tsx'
@@ -13,23 +14,37 @@ function Aside({ children }: { readonly children: ReactNode }) {
   return <div className="px-3.5">{children}</div>
 }
 
+/** What a receipt says about a request to the owner. */
+function InteractionLine({ interaction }: { readonly interaction: Interaction }) {
+  if (interaction.kind === 'grant')
+    return (
+      <Receipt>
+        <KeyRoundIcon aria-hidden />
+        <span>
+          Asked to use {interaction.serverId} · {interaction.name}
+        </span>
+      </Receipt>
+    )
+  if (interaction.kind === 'capability')
+    return (
+      <Receipt>
+        <PowerIcon aria-hidden />
+        <span>Asked to turn on {targetLabel(interaction.target)} here</span>
+      </Receipt>
+    )
+  return (
+    <Receipt>
+      <MessageCircleQuestionIcon aria-hidden />
+      <span>Asked you: {interaction.questions.map((question) => question.prompt).join(' · ')}</span>
+    </Receipt>
+  )
+}
+
 /** Where the agent asked the owner something: a quiet line here; the open request itself sits above the composer. */
 function InteractionReceipt({ interaction }: { readonly interaction: Interaction }) {
   return (
     <Aside>
-      {interaction.kind === 'grant' ? (
-        <Receipt>
-          <KeyRoundIcon aria-hidden />
-          <span>
-            Asked to use {interaction.serverId} · {interaction.name}
-          </span>
-        </Receipt>
-      ) : (
-        <Receipt>
-          <MessageCircleQuestionIcon aria-hidden />
-          <span>Asked you: {interaction.questions.map((question) => question.prompt).join(' · ')}</span>
-        </Receipt>
-      )}
+      <InteractionLine interaction={interaction} />
     </Aside>
   )
 }
