@@ -15,9 +15,6 @@ export const Route = createRootRoute({
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
-      // The page background of each scheme.
-      { name: 'theme-color', content: '#fafaf9', media: '(prefers-color-scheme: light)' },
-      { name: 'theme-color', content: '#141619', media: '(prefers-color-scheme: dark)' },
       // Added to the Home Screen it opens as an app: no browser chrome, the page drawn under a translucent status bar
       // (the top bar pads itself with the safe area, and is right at a 0 inset too).
       { name: 'mobile-web-app-capable', content: 'yes' },
@@ -26,7 +23,13 @@ export const Route = createRootRoute({
       { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
       { title: 'Purrable' },
     ],
-    links: [{ rel: 'stylesheet', href: css }],
+    links: [
+      { rel: 'stylesheet', href: css },
+      { rel: 'manifest', href: '/manifest.webmanifest' },
+      { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
+      { rel: 'icon', href: '/icon-192.png', type: 'image/png', sizes: '192x192' },
+      { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
+    ],
   }),
   loader: () => readSidebarOpen(),
   component: Root,
@@ -71,6 +74,9 @@ function Document({ children }: { readonly children: ReactNode }) {
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        {/* The page background of each scheme. Written here because the route head keeps one meta per name. */}
+        <meta name="theme-color" content="#fafaf9" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#141619" media="(prefers-color-scheme: dark)" />
         <HeadContent />
       </head>
       <body className="antialiased">

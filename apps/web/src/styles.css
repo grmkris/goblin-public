@@ -11,6 +11,10 @@
     padding-inline: 2rem;
   }
 }
+/* A page without the app around it (signing in): it starts below the status bar of a Home Screen app. */
+main.shell {
+  padding-top: max(1rem, var(--safe-top));
+}
 /* While the session is being checked. */
 .gate-status {
   margin: auto;
