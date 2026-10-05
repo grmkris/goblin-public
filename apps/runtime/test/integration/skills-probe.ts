@@ -9,6 +9,14 @@ import { SqliteSkillState } from '../../src/skills/store.ts'
 import { digestOf } from '../../src/skills/verify.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { appSkillFiles } from '../../src/storage/schema.ts'
+import { appSkillDrafts } from '../../src/storage/schema.ts'
+import { SkillLearner } from '../../src/skills/learner.ts'
+import { SqliteDraftLog } from '../../src/skills/store.ts'
+import { CheapModel } from '../../src/memory/model.ts'
+import { scriptedStreams } from './model.ts'
+import { makePiModels } from '../../src/pi/model.ts'
+import { conversationId } from '../../src/pi/context.ts'
+import type { PiHarness } from 'agents/harness/pi'
 
 /** Real SkillLibrary and SQLite cache in workerd; the network boundary alone is injected. */
 export async function skillsCacheProbe(storage: DurableObjectStorage) {
@@ -70,4 +78,140 @@ export async function skillsCacheProbe(storage: DurableObjectStorage) {
     reads,
     repaired: repaired !== undefined && new TextDecoder().decode(repaired) === new TextDecoder().decode(body),
   }
+}
+
+/** Reconstruct the library from SQLite, reading its retained version with a network boundary that must stay unused. */
+export async function skillsPersistedRead(storage: DurableObjectStorage) {
+  runApplicationMigrations(storage)
+  const state = new SqliteSkillState(drizzle(storage))
+  const activation = state.activations('cache-session')[0]
+  if (activation === undefined || activation.entry.resources === 'dynamic')
+    throw new Error('fixture activation missing')
+  const resource = activation.entry.resources[0]
+  if (resource === undefined) throw new Error('fixture manifest missing')
+  let networkCalls = 0
+  const manager = new McpConnectionManager({
+    servers: [{ serverId: 'skills', endpoint: 'https://skills.test/mcp' }],
+    skillsEnabled: (serverId) => state.enabled(serverId),
+    allows: () => false,
+    auth: () => ({ token: async () => '', onUnauthorized: async () => undefined }),
+    fetch: async () => {
+      networkCalls += 1
+      throw new Error('restart read must use verified persisted bytes')
+    },
+  })
+  const library = new SkillLibrary(manager, state, () => 2)
+  const file = await library.read('cache-session', 'skills:cache-test', 'SKILL.md')
+  const cached = state.file(resource.digest)
+  await manager.closeAll()
+  return {
+    activation,
+    digest: resource.digest,
+    cachedText: cached === undefined ? undefined : new TextDecoder().decode(cached),
+    file,
+    networkCalls,
+  }
+}
+
+/** Real workerd SQLite learner state and MCP transport, with a deterministic scripted cheap model and library double. */
+export async function skillsLearnerRejectionProbe(storage: DurableObjectStorage, harness: PiHarness) {
+  runApplicationMigrations(storage)
+  const db = drizzle(storage)
+  const state = new SqliteSkillState(db)
+  const body = new TextEncoder().encode(
+    '---\nname: rejection-proof\ndescription: Keep a checksum procedure.\n---\n\n# Checksum procedure\n',
+  )
+  const uri = 'skill://skv_222222222222222222222222/rejection-proof/SKILL.md'
+  const entry = {
+    uri,
+    frontmatter: { name: 'rejection-proof', description: 'Keep a checksum procedure.' },
+    resources: [{ uri, digest: await digestOf(body), size: body.byteLength }],
+  } as const
+  let submitted = 0
+  let statusCalls = 0
+  const handler = createMcpHandler(() => {
+    // oxlint-disable-next-line typescript/no-deprecated -- the low-level SDK serves this deterministic MySkills double.
+    const server = new Server(
+      { name: 'myskills-double', version: '1' },
+      { capabilities: { resources: {}, tools: {}, extensions: { [SKILLS_EXTENSION]: {} } } },
+    )
+    server.setRequestHandler(
+      'skills/list',
+      { params: Schema.toStandardSchemaV1(Schema.Record(Schema.String, Schema.Unknown)) },
+      () => ({ skills: [entry], ttlMs: 60_000 }),
+    )
+    server.setRequestHandler('resources/list', () => ({ resources: [] }))
+    server.setRequestHandler('resources/templates/list', () => ({ resourceTemplates: [] }))
+    server.setRequestHandler('resources/read', () => ({
+      contents: [{ uri, text: new TextDecoder().decode(body), mimeType: 'text/markdown' }],
+    }))
+    server.setRequestHandler('tools/list', () => ({
+      tools: [
+        { name: 'skill_draft', inputSchema: { type: 'object', properties: {} } },
+        { name: 'skill_draft_status', inputSchema: { type: 'object', properties: {} } },
+      ],
+    }))
+    server.setRequestHandler('tools/call', (request) => {
+      if (request.params.name === 'skill_draft') {
+        submitted += 1
+        return { content: [], structuredContent: { draftId: 'draft-rejected', status: 'open' } }
+      }
+      statusCalls += 1
+      return { content: [], structuredContent: { draftId: 'draft-rejected', status: 'rejected' } }
+    })
+    return server
+  })
+  const manager = new McpConnectionManager({
+    servers: [{ serverId: 'myskills', endpoint: 'https://myskills.test/mcp' }],
+    skillsEnabled: (serverId) => state.enabled(serverId),
+    allows: ({ serverId, capability, name }) =>
+      serverId === 'myskills' && capability === 'tool' && (name === 'skill_draft' || name === 'skill_draft_status'),
+    auth: () => ({ token: async () => '', onUnauthorized: async () => undefined }),
+    fetch: (input, init) => handler.fetch(new Request(input, init)),
+  })
+  state.setEnabled('myskills', true, 1)
+  const receipt = await harness.submit('Run the checksum procedure.', {
+    operationId: 'checksum-procedure',
+  })
+  await harness.wait(receipt.operationId)
+  const library = new SkillLibrary(manager, state, () => 1)
+  await library.activate(receipt.session, 'myskills:rejection-proof')
+  const corrected = await harness.submit('No, next time verify the checksum before submitting.', {
+    operationId: 'checksum-correction',
+  })
+  await harness.wait(corrected.operationId)
+  const decision = JSON.stringify({
+    action: 'improve',
+    skill: 'myskills:rejection-proof',
+    description: 'Verify checksums before submitting a report.',
+    body: '1. Calculate the checksum.\n2. Verify it before submitting.',
+    evidence: 'The owner corrected the order of checksum verification.',
+  })
+  const scripted = makePiModels(
+    { MODEL_ID: 'learner-fixture', MODEL_BASE_URL: 'https://no-model-calls.invalid', MODEL_KEY: 'unused' },
+    scriptedStreams(
+      () => undefined,
+      () => [{ type: 'text', text: decision }],
+    ),
+  )
+  const drafts = new SqliteDraftLog(db)
+  const learner = new SkillLearner({
+    drafts,
+    harness,
+    manager,
+    library,
+    state,
+    model: new CheapModel(scripted.models, scripted.model.id, () => undefined),
+    allows: (serverId, name) => serverId === 'myskills' && (name === 'skill_draft' || name === 'skill_draft_status'),
+    now: () => 1,
+  })
+  const first = await learner.consider(conversationId(receipt.session))
+  const repeated = await harness.submit('No, next time verify the checksum before submitting.', {
+    operationId: 'checksum-correction-repeat',
+  })
+  await harness.wait(repeated.operationId)
+  const second = await learner.consider(conversationId(receipt.session))
+  const row = db.select({ status: appSkillDrafts.status }).from(appSkillDrafts).all()
+  await manager.closeAll()
+  return { first, second, submitted, statusCalls, row }
 }

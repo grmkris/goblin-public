@@ -57,14 +57,17 @@ function reply(messages: readonly Message[]): AssistantMessage['content'] {
   return [tool]
 }
 
-/** The scripted model's transport; `seen` receives every request's messages. */
-export function scriptedStreams(seen: (request: SeenRequest) => void = () => undefined): ProviderStreams {
+/** The scripted model's transport; `seen` receives every request's messages and `respond` chooses its answer. */
+export function scriptedStreams(
+  seen: (request: SeenRequest) => void = () => undefined,
+  respond: (messages: readonly Message[]) => AssistantMessage['content'] = reply,
+): ProviderStreams {
   const stream: ProviderStreams['stream'] = (target, context) => {
     seen({
       messages: context.messages.map((message) => ({ role: message.role, text: textOf(message) })),
       tools: offeredTools(context.messages),
     })
-    const content = reply(context.messages)
+    const content = respond(context.messages)
     const message: AssistantMessage = {
       role: 'assistant',
       api: target.api,

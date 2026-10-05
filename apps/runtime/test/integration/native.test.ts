@@ -46,6 +46,23 @@ const SkillsCache = Schema.Struct({
   reads: Schema.Number,
   repaired: Schema.Boolean,
 })
+const SkillsLearnerRejection = Schema.Struct({
+  first: Schema.Literals(['skipped', 'none', 'duplicate', 'drafted', 'failed']),
+  second: Schema.Literals(['skipped', 'none', 'duplicate', 'drafted', 'failed']),
+  submitted: Schema.Number,
+  statusCalls: Schema.Number,
+  row: Schema.Array(Schema.Struct({ status: Schema.Literal('rejected') })),
+})
+const SkillsPersisted = Schema.Struct({
+  instance: Schema.String,
+  retained: Schema.Struct({
+    activation: Schema.Unknown,
+    digest: Schema.String,
+    cachedText: Schema.String,
+    file: Schema.Struct({ kind: Schema.Literal('text'), path: Schema.String, text: Schema.String }),
+    networkCalls: Schema.Number,
+  }),
+})
 const Evidence = Schema.Struct({
   name: Schema.String,
   operationId: Schema.String,
@@ -84,6 +101,52 @@ harness.test(
     expect(result.secondBody).toContain('# Cache test')
     expect(result.reads).toBe(2)
     expect(result.repaired).toBe(true)
+  }),
+)
+
+harness.test(
+  'local workerd: a rejected learner draft is refreshed and never submitted again',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `skills-learner-rejection-${yield* nextInt}`
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/lifecycle/skills-rejection?name=${name}`))
+    expect(response.status).toBe(200)
+    const result = yield* Schema.decodeUnknownEffect(SkillsLearnerRejection)(
+      yield* Effect.promise(() => response.json()),
+    )
+    expect(result).toEqual({
+      first: 'drafted',
+      second: 'duplicate',
+      submitted: 1,
+      statusCalls: 1,
+      row: [{ status: 'rejected' }],
+    })
+  }),
+)
+
+harness.test(
+  'local workerd: skill activation and verified bytes survive a Durable Object restart',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `skills-restart-${yield* nextInt}`
+    const get = lifecycleClient(url, name, 'unused')
+    const before = yield* get('/skills-write', SkillsPersisted)
+    yield* Effect.promise(() =>
+      fetch(`${baseUrl(url)}/lifecycle/skills-evict?name=${name}`).then(
+        () => undefined,
+        () => undefined,
+      ),
+    )
+    const after = yield* get('/skills-read', SkillsPersisted)
+    expect(after.instance).not.toBe(before.instance)
+    expect(after.retained).toEqual(before.retained)
+    expect(after.retained.networkCalls).toBe(0)
+    expect(after.retained.cachedText).toContain('# Cache test')
+    expect(after.retained.file.text).toBe(after.retained.cachedText)
+    expect(after.retained.digest).toMatch(/^sha256:[a-f0-9]{64}$/u)
+    const path = new FileURL('../../.alchemy/purrable-skills-restart.json', import.meta.url)
+    mkdirSync(new FileURL('./', path), { recursive: true })
+    writeFileSync(path, JSON.stringify({ environment: 'local-workerd-do-restart', before, after }, null, 2))
   }),
 )
 

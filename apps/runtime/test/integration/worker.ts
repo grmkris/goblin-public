@@ -21,7 +21,7 @@ import {
   appMcpOauthPending,
 } from '../../src/storage/schema.ts'
 import { CapabilityProfiles } from '../../src/capabilities/profiles.ts'
-import { skillsCacheProbe } from './skills-probe.ts'
+import { skillsCacheProbe, skillsLearnerRejectionProbe, skillsPersistedRead } from './skills-probe.ts'
 
 const notesAt = (endpoint: string) => [{ serverId: 'notes', endpoint }]
 
@@ -184,6 +184,15 @@ export class NativeLifecycleProbe extends Agent<Env> {
   override async onRequest(request: Request): Promise<Response> {
     const url = new URL(request.url)
     const operationId = url.searchParams.get('operationId') ?? 'missing-fixture-operation'
+    if (url.pathname === '/lifecycle/skills-rejection')
+      return Response.json(await skillsLearnerRejectionProbe(this.ctx.storage, this.harness))
+    if (url.pathname === '/lifecycle/skills-write') {
+      await skillsCacheProbe(this.ctx.storage)
+      return Response.json({ instance: this.instance, retained: await skillsPersistedRead(this.ctx.storage) })
+    }
+    if (url.pathname === '/lifecycle/skills-read')
+      return Response.json({ instance: this.instance, retained: await skillsPersistedRead(this.ctx.storage) })
+    if (url.pathname === '/lifecycle/skills-evict') this.ctx.abort('skills acceptance restart')
     if (url.pathname === '/lifecycle/submit')
       return Response.json(await this.harness.submit(FIXTURE_INPUT, { operationId }))
     if (url.pathname === '/lifecycle/wait') return Response.json(await this.harness.wait(operationId))

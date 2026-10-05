@@ -229,7 +229,9 @@ its `skills` section, refreshing an expired listing when the section is evaluate
 and records the entry for the conversation (`app_skill_activations`). `skill_read` reads only files in that retained
 manifest, so a conversation
 stays on the version it activated. Verified bytes are cached by digest (`app_skill_files`) and checked again on every
-read. A corrupted cache row is rejected and repaired by a verified refetch (local workerd regression evidence).
+read. A corrupted cache row is rejected and repaired by a verified refetch (local workerd regression evidence). A
+local workerd restart preserves the activation manifest and cached bytes, then reads the same version without a network
+call.
 An unreachable server keeps its last listing while it remains cached in the isolate, or is reported unavailable.
 Dynamic skills are declined; skill scripts can be read but are never executed. Enabled skills are procedures the agent
 follows, but they grant no permissions and cannot override the owner. Disabling the server stops new activations and
@@ -241,7 +243,8 @@ or a request to keep how something was done, the memory model decides whether th
 procedure becomes a draft sent through an enabled library's granted `skill_draft` tool, which the owner reviews in the
 library. The Worker logs the learner outcome and conversation id without transcript or draft content. At most five in a rolling 24 hours, never the same content twice, no new draft while one for that skill is open,
 and never a rejected draft again (`app_skill_drafts`). A grant for `skill_draft_status` lets the learner refresh review
-status. Draft payloads contain generated procedure text and brief evidence, with email- and secret-shaped strings
+status; a deterministic workerd test confirms a rejected draft is not submitted again for the same lesson. Draft
+payloads contain generated procedure text and brief evidence, with email- and secret-shaped strings
 scrubbed, and no transcript field. The learner's model call counts toward the budget.
 
 ## MCP Apps host
