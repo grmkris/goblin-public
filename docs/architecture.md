@@ -476,3 +476,12 @@ polls verified state and Settings opens the Dodo portal. `/terms`, `/privacy` an
 pending operator identity and legal review. Native workerd tests verify signup, injected checkout, activation,
 replay, stale updates, cancellation, grace and per-account allowances with real D1/Agent storage. They do not prove
 live Dodo delivery or merchant onboarding.
+
+## Isolated memory experiments
+
+The [benchmark workspace](../bench/README.md) replays private, redacted coding histories through native Pi write
+submissions in its own local workerd actors. OptChat, native compaction and lexical archive search share fixed source
+cutoffs and bounded API/retrieval allowances. Source tool calls are transcript evidence; the benchmark installs only
+recall/search tools and never executes historical commands. Expected claims stay on the coordinator host, outside
+worker requests. Private manifests, source hashes, API ledgers, native contexts and identity-bound semantic reviews
+make runs inspectable. This local recall experiment does not mutate a deployed user's agent or prove coding continuation.

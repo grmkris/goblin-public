@@ -6,6 +6,8 @@ import { dataset } from '../src/fixtures.ts'
 import { Answer } from '../src/schema.ts'
 import { ProbeResult, publicEvents } from '../src/protocol.ts'
 import { EpisodeResult, Resolved, Trace } from '../src/results.ts'
+import { applyReview, Review } from '../src/review.ts'
+import { loadCorpus } from './corpus.ts'
 import { scoreProbe } from '../src/scoring.ts'
 import { localStack } from './local.ts'
 import { relay, ProviderConfig, validateProvider, providerCatalog } from './relay.ts'
@@ -32,8 +34,8 @@ const post = Effect.fn('bench.native')(function* (url: string, path: string, act
   return yield* response.json
 })
 
-function evaluated(episode: Episode, native: ProbeResult, traces: readonly Trace[]): EpisodeResult {
-  const scenario = dataset().find((item) => item.id === episode.probe.scenarioId)
+function evaluated(resolved: Resolved, episode: Episode, native: ProbeResult, traces: readonly Trace[]): EpisodeResult {
+  const scenario = (resolved.scenarios ?? dataset()).find((item) => item.id === episode.probe.scenarioId)
   if (scenario === undefined) throw new Error('Unknown scenario')
   let answer: Answer | null = null
   try {
@@ -66,6 +68,7 @@ function evaluated(episode: Episode, native: ProbeResult, traces: readonly Trace
     forbiddenEndorsement,
     deliveredIds,
     detail: native.status,
+    ...(episode.probe.label === undefined ? {} : { reviewStatus: 'pending' as const }),
   }
 }
 
@@ -75,11 +78,11 @@ const executeEpisode = Effect.fn('bench.episode')(function* (
   episode: Episode,
   provider: Effect.Success<ReturnType<typeof relay>>,
 ) {
-  const scenario = dataset().find((item) => item.id === episode.probe.scenarioId)
+  const scenario = (resolved.scenarios ?? dataset()).find((item) => item.id === episode.probe.scenarioId)
   if (scenario === undefined) return yield* fail('Unknown scenario')
   const actor = artifactIdentity(resolved, scenario.id, episode.variant)
   provider.setScope(actor, 'build')
-  yield* post(url, 'build', actor, {
+  const build = yield* post(url, 'build', actor, {
     identity: actor,
     manifest: resolved.manifest,
     policy: episode.variant.policy === 'optchat' ? 'optchat' : 'standard',
@@ -97,7 +100,7 @@ const executeEpisode = Effect.fn('bench.episode')(function* (
     search: episode.variant.policy === 'standard-search',
   })
   const native = yield* Schema.decodeUnknownEffect(ProbeResult)(raw)
-  return { result: evaluated(episode, native, provider.traces(operationId)), native, actor }
+  return { result: evaluated(resolved, episode, native, provider.traces(operationId)), native, actor, build }
 })
 
 export const loadRun = Effect.fn('bench.loadRun')(function* (dir: string) {
@@ -107,7 +110,16 @@ export const loadRun = Effect.fn('bench.loadRun')(function* (dir: string) {
     (yield* fs.readDirectory(join(dir, 'episodes'))).filter((name) => name.endsWith('.json')).toSorted(),
     (name) => readJson(join(dir, 'episodes', name), EpisodeResult),
   )
-  return { resolved, results, traces: yield* readLedger(join(dir, 'attempts.jsonl'), Trace) }
+  const reviews = yield* readLedger(join(dir, 'reviews.jsonl'), Review)
+  const reviewed = yield* Effect.try({
+    try: () =>
+      results.map((result) => {
+        const review = reviews.findLast((item) => item.episodeId === result.id)
+        return review === undefined ? result : applyReview(resolved, result, review)
+      }),
+    catch: () => fail('Invalid semantic review ledger'),
+  })
+  return { resolved, results: reviewed, traces: yield* readLedger(join(dir, 'attempts.jsonl'), Trace) }
 })
 
 const openProvider = Effect.fn('bench.openProvider')(function* (options: {
@@ -155,7 +167,7 @@ export const run = Effect.fn('bench.run')(function* (options: {
   const provider = yield* openProvider(options)
   yield* admitHoldout(options.root, options.resolved)
   const { url } = yield* localStack
-  for (const episode of episodes(options.resolved.manifest)) {
+  for (const episode of episodes(options.resolved.manifest, options.resolved.scenarios)) {
     const episodePath = join(options.dir, 'episodes', `${episode.id}.json`)
     if (yield* fs.exists(episodePath)) continue
     const completed = yield* executeEpisode(url, options.resolved, episode, provider).pipe(Effect.result)
@@ -197,10 +209,13 @@ export const resolveRun = Effect.fn('bench.resolveRun')(function* (
   mode: Resolved['mode'],
 ) {
   const now = yield* DateTime.now
+  const scenarios = yield* loadCorpus(root, manifest)
+  if (manifest.corpus !== undefined && mode !== 'live') return yield* fail('Real corpora require --live')
   return {
     manifest,
     sourceHash: yield* sourceHash(root),
-    corpusHash: corpusHash(),
+    corpusHash: corpusHash(scenarios),
+    ...(manifest.corpus === undefined ? {} : { scenarios }),
     runId,
     mode,
     createdAt: DateTime.formatIso(now),

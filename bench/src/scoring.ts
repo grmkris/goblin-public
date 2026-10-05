@@ -29,6 +29,17 @@ export function scoreProbe(
   answer: Answer,
   deliveredIds: readonly string[],
 ): ProbeScore {
+  if (probe.label !== undefined) {
+    const allowed = new Set(scenario.events.slice(0, probe.cutoff).map((event) => event.id))
+    const delivered = new Set(deliveredIds)
+    return {
+      correct: false, // Semantic correctness requires the append-only host review; never compare prose literally.
+      evidenceComplete: answer.evidenceIds.some((id) => probe.label?.evidenceIds.includes(id)),
+      evidenceValid: answer.evidenceIds.every((id) => allowed.has(id) && delivered.has(id)),
+      abstentionCorrect: answer.abstain === probe.label.mustAbstain,
+      unsupported: false,
+    }
+  }
   const truth = groundTruth(scenario, probe)
   const mustAbstain = truth.length !== probe.keys.length
   const evidence = new Set(answer.evidenceIds)

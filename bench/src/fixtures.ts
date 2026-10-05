@@ -168,14 +168,18 @@ export function dataset(): Scenario[] {
 }
 
 /** Validation fails rather than repairing damaged source pairs or changing checkpoint cutoffs. */
-function validateEvents(events: readonly SourceEvent[]): string[] {
+export function validateEvents(events: readonly SourceEvent[]): string[] {
   const errors: string[] = []
   const ids = new Set<string>()
   const calls = new Set<string>()
   for (const event of events) {
     if (ids.has(event.id)) errors.push(`duplicate source ${event.id}`)
     ids.add(event.id)
-    if (event.kind === 'tool-call' && event.callId !== undefined) calls.add(event.callId)
+    if (event.kind === 'tool-call') {
+      if (event.callId === undefined || event.toolName === undefined || calls.has(event.callId))
+        errors.push(`invalid tool call ${event.id}`)
+      else calls.add(event.callId)
+    }
     if (event.kind === 'tool-result' && (event.callId === undefined || !calls.delete(event.callId)))
       errors.push(`unmatched tool result ${event.id}`)
   }
@@ -188,7 +192,20 @@ export function validateScenario(scenario: Scenario): string[] {
   for (const probe of scenario.probes) {
     if (probe.cutoff > scenario.events.length || probe.scenarioId !== scenario.id)
       errors.push(`invalid cutoff ${probe.id}`)
-    if (scenario.events[probe.cutoff - 1]?.kind !== 'assistant') errors.push(`checkpoint splits exchange ${probe.id}`)
+    errors.push(...validateEvents(scenario.events.slice(0, probe.cutoff)))
+    if (probe.label === undefined && scenario.events[probe.cutoff - 1]?.kind !== 'assistant')
+      errors.push(`checkpoint splits exchange ${probe.id}`)
+    errors.push(...labelErrors(scenario, probe))
   }
+  return errors
+}
+
+function labelErrors(scenario: Scenario, probe: Probe): string[] {
+  if (probe.label === undefined) return []
+  const allowed = new Set(scenario.events.slice(0, probe.cutoff).map((event) => event.id))
+  const errors: string[] = []
+  if (probe.label.evidenceIds.some((id) => !allowed.has(id))) errors.push(`future label evidence ${probe.id}`)
+  if (probe.label.requiredClaims.some((claim) => !probe.keys.includes(claim.key)))
+    errors.push(`invalid label key ${probe.id}`)
   return errors
 }

@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { Manifest, type Variant } from './schema.ts'
+import { Manifest, type Scenario, type Variant } from './schema.ts'
 import { dataset, validateScenario } from './fixtures.ts'
 
 const MODELS = ['glm-5.3', 'deepseek-v4-pro-0813']
@@ -56,7 +56,7 @@ function variantErrors(manifest: Manifest): string[] {
   return errors
 }
 
-function allowanceErrors(manifest: Manifest): string[] {
+function allowanceErrors(manifest: Manifest, scenarios: readonly Scenario[]): string[] {
   const errors: string[] = []
   const { allowance } = manifest
   if (
@@ -66,7 +66,13 @@ function allowanceErrors(manifest: Manifest): string[] {
     allowance.maxOutputTokens > 100_000
   )
     errors.push('allowance exceeds global ceilings')
-  if (manifest.scenarioIds.length * manifest.variants.length * 4 > allowance.maxAnswers)
+  if (
+    scenarios
+      .filter((scenario) => manifest.scenarioIds.includes(scenario.id))
+      .reduce((n, scenario) => n + scenario.probes.length, 0) *
+      manifest.variants.length >
+    allowance.maxAnswers
+  )
     errors.push('answer plan exceeds allowance')
   if (manifest.retrieval.maxCalls > 4 || manifest.retrieval.maxBytes > 4096)
     errors.push('retrieval exceeds shared ceiling')
@@ -79,13 +85,12 @@ function allowanceErrors(manifest: Manifest): string[] {
   return errors
 }
 
-export function validateManifest(manifest: Manifest): string[] {
-  const scenarios = dataset()
+export function validateManifest(manifest: Manifest, scenarios: readonly Scenario[] = dataset()): string[] {
   const errors = variantErrors(manifest)
   if (manifest.variants.length === 0 || manifest.scenarioIds.length === 0) errors.push('empty experiment')
   if (new Set(manifest.scenarioIds).size !== manifest.scenarioIds.length) errors.push('duplicate scenarios')
   const { pressure } = manifest
-  errors.push(...allowanceErrors(manifest))
+  errors.push(...allowanceErrors(manifest, scenarios))
   if (pressure.reserveTokens + pressure.keepRecentTokens >= pressure.contextWindowTokens)
     errors.push('invalid compaction pressure')
   for (const id of manifest.scenarioIds) {

@@ -22,7 +22,10 @@ export function summary(data: RunData) {
         correct: results.filter((result) => result.score.correct).length,
         accuracy: average(results),
         categories: categoryScores(results),
-        failures: results.filter((result) => !result.score.correct).length,
+        failures: results.filter(
+          (result) => result.status === 'failed' || (result.reviewStatus !== 'pending' && !result.score.correct),
+        ).length,
+        pendingReviews: results.filter((result) => result.reviewStatus === 'pending').length,
       },
     ]),
   )
@@ -61,7 +64,7 @@ export function compare(candidate: RunData, incumbent: RunData) {
   }
 }
 function complete(data: RunData): boolean {
-  const expected = episodes(data.resolved.manifest)
+  const expected = episodes(data.resolved.manifest, data.resolved.scenarios)
     .map((episode) => episode.id)
     .toSorted()
   const actual = data.results.map((result) => result.id).toSorted()
@@ -69,8 +72,10 @@ function complete(data: RunData): boolean {
     JSON.stringify(expected) === JSON.stringify(actual) && data.results.every((result) => result.status === 'completed')
   )
 }
+const pendingReviewReasons = (data: RunData): string[] =>
+  data.results.some((result) => result.reviewStatus === 'pending') ? ['Semantic reviews remain pending'] : []
 export function promotion(candidate: RunData, incumbent: RunData) {
-  const reasons: string[] = []
+  const reasons = pendingReviewReasons(candidate)
   if (candidate.resolved.mode !== 'live' || incumbent.resolved.mode !== 'live')
     reasons.push('Fake provider results cannot be promoted')
   if (candidate.resolved.manifest.split !== 'held-out' || incumbent.resolved.manifest.split !== 'held-out')
@@ -112,7 +117,7 @@ export function renderReport(data: RunData): string {
   const rows = data.results
     .map(
       (result) =>
-        `<tr><td>${escape(result.variant)}</td><td>${escape(result.id)}</td><td>${result.score.correct ? 'pass' : 'fail'}</td><td><details><summary>inspect</summary><pre>${escape(JSON.stringify(result, null, 2))}</pre><a href="traces/${encodeURIComponent(result.id)}.json">private episode trace</a></details></td></tr>`,
+        `<tr><td>${escape(result.variant)}</td><td>${escape(result.id)}</td><td>${result.reviewStatus === 'pending' ? 'review pending' : result.score.correct ? 'pass' : 'fail'}</td><td><details><summary>inspect</summary><pre>${escape(JSON.stringify(result, null, 2))}</pre><a href="traces/${encodeURIComponent(result.id)}.json">private episode trace</a></details></td></tr>`,
     )
     .join('')
   return `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Memory bench ${escape(data.resolved.runId)}</title><style>body{font:14px system-ui;margin:2rem;background:#111;color:#eee}table{border-collapse:collapse;width:100%}td,th{border:1px solid #444;padding:.4rem}details{max-width:50rem}pre{white-space:pre-wrap}a{color:#8bd}</style><h1>${escape(data.resolved.runId)}</h1><p>${escape(data.resolved.mode)} provider · source ${escape(data.resolved.sourceHash)} · corpus ${escape(data.resolved.corpusHash)}</p><pre>${escape(JSON.stringify({ scores: summary(data), cost: cost(data) }, null, 2))}</pre><table><thead><tr><th>variant</th><th>episode</th><th>result</th><th>trace</th></tr></thead><tbody>${rows}</tbody></table>`

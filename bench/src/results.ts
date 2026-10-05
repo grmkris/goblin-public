@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { Answer, Category, Manifest } from './schema.ts'
+import { Answer, Category, Manifest, Scenario } from './schema.ts'
 
 export const Score = Schema.Struct({
   correct: Schema.Boolean,
@@ -21,11 +21,16 @@ export const EpisodeResult = Schema.Struct({
   forbiddenEndorsement: Schema.Boolean,
   deliveredIds: Schema.Array(Schema.String),
   detail: Schema.String,
+  reviewStatus: Schema.optional(Schema.Literals(['pending', 'reviewed'])),
+  review: Schema.optional(
+    Schema.Struct({ reviewer: Schema.String, rationale: Schema.String, classification: Schema.Array(Schema.String) }),
+  ),
 })
 export type EpisodeResult = typeof EpisodeResult.Type
 export const Resolved = Schema.Struct({
   manifest: Manifest,
   sourceHash: Schema.String,
+  scenarios: Schema.optional(Schema.Array(Scenario)),
   corpusHash: Schema.String,
   runId: Schema.String,
   mode: Schema.Literals(['fake', 'live']),
@@ -49,5 +54,15 @@ export const Trace = Schema.Struct({
   request: Schema.String,
   response: Schema.String,
   at: Schema.String,
+  retryIndex: Schema.optional(Schema.Int),
+  latencyMs: Schema.optional(Schema.Number),
+  responseModel: Schema.optional(Schema.String),
+  responseId: Schema.optional(Schema.String),
+  requestId: Schema.optional(Schema.String),
+  reasoningTokens: Schema.optional(Schema.Number),
+  cacheReadTokens: Schema.optional(Schema.Number),
+  cacheWriteTokens: Schema.optional(Schema.Number),
+  reservedInput: Schema.optional(Schema.Number),
+  reservedOutput: Schema.optional(Schema.Number),
 })
 export type Trace = typeof Trace.Type

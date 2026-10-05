@@ -1,10 +1,10 @@
 import { dataset } from './fixtures.ts'
 import { starterManifest, validateManifest } from './manifest.ts'
-import type { Manifest, Probe, Variant } from './schema.ts'
+import type { Manifest, Probe, Scenario, Variant } from './schema.ts'
 
 export type Episode = { readonly id: string; readonly probe: Probe; readonly variant: Variant }
-export function episodes(manifest: Manifest): Episode[] {
-  return dataset()
+export function episodes(manifest: Manifest, scenarios: readonly Scenario[] = dataset()): Episode[] {
+  return scenarios
     .filter((scenario) => manifest.scenarioIds.includes(scenario.id))
     .flatMap((scenario) =>
       scenario.probes.flatMap((probe) =>
@@ -13,8 +13,8 @@ export function episodes(manifest: Manifest): Episode[] {
     )
 }
 
-export function plan(manifest: Manifest = starterManifest()) {
-  const cases = episodes(manifest)
+export function plan(manifest: Manifest = starterManifest(), scenarios: readonly Scenario[] = dataset()) {
+  const cases = episodes(manifest, scenarios)
   const builds = new Set(
     cases.map(
       ({ probe, variant }) =>
@@ -23,7 +23,7 @@ export function plan(manifest: Manifest = starterManifest()) {
   )
   return {
     manifest: manifest.name,
-    errors: validateManifest(manifest),
+    errors: validateManifest(manifest, scenarios),
     scenarios: manifest.scenarioIds.length,
     probes: cases.length / manifest.variants.length,
     variants: manifest.variants.length,

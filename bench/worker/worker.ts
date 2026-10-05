@@ -18,7 +18,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import { Schema } from 'effect'
 import { BuildRequest, ProbeRequest, type ProbeResult } from '../src/protocol.ts'
-import { replayEntry, requestScope } from './replay.ts'
+import { replayGroups, requestScope } from './replay.ts'
 import { Retrieval, searchExtension } from './retrieval.ts'
 
 interface Env {
@@ -41,6 +41,7 @@ export class BenchmarkAgent extends Agent<Env> {
   #memory: MainMemory | undefined
   #retrieval: Retrieval | undefined
   #cutoff = 0
+  #sourceCutoff = 0
   #registry: Registry | undefined
   #conversation = ''
 
@@ -85,7 +86,7 @@ export class BenchmarkAgent extends Agent<Env> {
         )
         registry.install(
           searchExtension(
-            () => config.events.slice(0, this.#cutoff),
+            () => config.events.slice(0, this.#sourceCutoff),
             (read, conversation) => this.#use(read, conversation),
           ),
         )
@@ -178,7 +179,7 @@ export class BenchmarkAgent extends Agent<Env> {
     }
     const stored = this.#stored()
     if (stored.checkpoints[String(config.events.length)] !== undefined)
-      return { reused: true, head: config.policy === 'optchat' ? 'app.memory' : 'pi.compaction' }
+      return this.#buildEvidence(await this.#root(), config, true)
     if (
       config.events.length < stored.config.events.length ||
       stored.config.events.some((event, at) => JSON.stringify(config.events[at]) !== JSON.stringify(event))
@@ -188,9 +189,9 @@ export class BenchmarkAgent extends Agent<Env> {
     await this.#harness.dispose()
     const main = await this.#root()
     if (config.policy === 'optchat') await this.#mainMemory().activate([])
-    for (const event of config.events) {
+    for (const group of replayGroups(config.events)) {
       const write = await main.submit(
-        { type: 'write', requestId: `source:${event.id}`, entry: replayEntry(event) },
+        { type: 'write', requestId: `source:${group.ids.join(':')}`, entry: group.entry },
         BACKGROUND,
       )
       await write.wait(BACKGROUND)
@@ -206,7 +207,19 @@ export class BenchmarkAgent extends Agent<Env> {
       ready: true,
       checkpoints: { ...stored.checkpoints, [String(config.events.length)]: placed.id },
     })
-    return { reused: false, head }
+    return this.#buildEvidence(main, config, false)
+  }
+
+  async #buildEvidence(main: Conversation, config: BuildRequest, reused: boolean) {
+    const context = await main.context(BACKGROUND)
+    return {
+      reused,
+      head: context.head?.kind,
+      groups: replayGroups(config.events).map((group, index) => ({ index, sourceIds: group.ids })),
+      memorySize: config.policy === 'optchat' ? this.#mainMemory().size() : null,
+      viewThrough: config.policy === 'optchat' ? this.#mainMemory().viewThrough() : null,
+      context: context.messages.map((message) => ({ role: message.role, text: JSON.stringify(message) })),
+    }
   }
 
   async #settle(main: Conversation, config: BuildRequest): Promise<void> {
@@ -218,7 +231,9 @@ export class BenchmarkAgent extends Agent<Env> {
           break
         }
       }
-      if (!settled || this.#mainMemory().viewThrough() < config.events.length - 4)
+      const groups = replayGroups(config.events)
+      const newestUser = groups.findLastIndex((group) => group.entry.kind === 'pi.user')
+      if (!settled || this.#mainMemory().size() !== groups.length || this.#mainMemory().viewThrough() < newestUser)
         throw new Error('Memory builder did not settle through the checkpoint')
     } else {
       const pi = await this.#harness.pi()
@@ -245,7 +260,7 @@ export class BenchmarkAgent extends Agent<Env> {
       input.recallGuide ?? undefined,
     )
     const search = searchExtension(
-      () => config.events.slice(0, this.#cutoff),
+      () => config.events.slice(0, this.#sourceCutoff),
       (read, conversation) => this.#use(read, conversation),
     )
     this.#registry?.install(recall)
@@ -263,7 +278,8 @@ export class BenchmarkAgent extends Agent<Env> {
       },
       BACKGROUND,
     )
-    this.#cutoff = input.cutoff
+    this.#sourceCutoff = input.cutoff
+    this.#cutoff = replayGroups(config.events.slice(0, input.cutoff)).length
     this.#conversation = String(fork.id)
     this.#retrieval = new Retrieval(config.manifest.retrieval.maxCalls, config.manifest.retrieval.maxBytes)
     try {

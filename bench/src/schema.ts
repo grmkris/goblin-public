@@ -24,10 +24,23 @@ export const SourceEvent = Schema.Struct({
   callId: Schema.optional(Id),
   toolName: Schema.optional(Id),
   fact: Schema.optional(Fact),
+  arguments: Schema.optional(Schema.JsonObject),
+  timestamp: Schema.optional(Schema.Number),
+  isError: Schema.optional(Schema.Boolean),
+  groupId: Schema.optional(Schema.String),
+  provenance: Schema.optional(
+    Schema.Struct({
+      line: Positive,
+      block: Schema.Int,
+      uuid: Schema.String,
+      parentUuid: Schema.NullOr(Schema.String),
+    }),
+  ),
 })
 export type SourceEvent = typeof SourceEvent.Type
 
 /** Questions carry no answer key; the evaluator retains the fact ledger on the host. */
+const ClaimLabel = Schema.Struct({ key: Id, meaning: Schema.String })
 export const Probe = Schema.Struct({
   id: Id,
   scenarioId: Id,
@@ -35,6 +48,15 @@ export const Probe = Schema.Struct({
   category: Category,
   question: Schema.String,
   keys: Schema.Array(Id),
+  label: Schema.optional(
+    Schema.Struct({
+      requiredClaims: Schema.Array(ClaimLabel),
+      evidenceIds: Schema.Array(Id),
+      mustAbstain: Schema.Boolean,
+      prohibitedClaims: Schema.Array(Schema.String),
+      rubric: Schema.String,
+    }),
+  ),
 })
 export type Probe = typeof Probe.Type
 
@@ -58,6 +80,7 @@ export type Variant = typeof Variant.Type
 export const Manifest = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   name: Id,
+  corpus: Schema.optional(Schema.Struct({ path: Schema.String, sha256: Schema.String })),
   split: Schema.Literals(['development', 'held-out']),
   profile: Schema.Literals(['controlled', 'production-compatibility']),
   scenarioIds: Schema.Array(Id),

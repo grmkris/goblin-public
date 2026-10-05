@@ -11,7 +11,7 @@ export function requestScope(messages: readonly Message[], artifact: string): st
 /** Preserve roles and original tool-call pairs, with a source citation marker carried through summaries. */
 export function replayEntry(event: ReplayEvent): EntryDraft {
   const text = `[source:${event.id}] ${event.text}`
-  const timestamp = 0
+  const timestamp = event.timestamp ?? 0
   if (event.kind === 'user') return { kind: 'pi.user', model: [{ role: 'user', content: text, timestamp }] }
   if (event.kind === 'tool-result')
     return {
@@ -22,7 +22,7 @@ export function replayEntry(event: ReplayEvent): EntryDraft {
           toolCallId: event.callId ?? '',
           toolName: event.toolName ?? '',
           content: [{ type: 'text', text }],
-          isError: false,
+          isError: event.isError ?? false,
           timestamp,
         },
       ],
@@ -36,11 +36,12 @@ export function replayEntry(event: ReplayEvent): EntryDraft {
     content:
       event.kind === 'tool-call'
         ? [
+            { type: 'text', text: `[source:${event.id}] Historical tool call (already recorded).` },
             {
               type: 'toolCall',
               id: event.callId ?? '',
               name: event.toolName ?? '',
-              arguments: { source: event.id, input: event.text },
+              arguments: event.arguments ?? { source: event.id, input: event.text },
             },
           ]
         : [{ type: 'text', text }],
@@ -55,4 +56,28 @@ export function replayEntry(event: ReplayEvent): EntryDraft {
     },
   }
   return { kind: 'pi.assistant', model: [assistant] }
+}
+
+/** Adjacent blocks from one streamed assistant response become one Pi message, including parallel calls. */
+export function replayGroups(events: readonly ReplayEvent[]) {
+  const groups: { ids: string[]; entry: EntryDraft; groupId: string | undefined }[] = []
+  for (const event of events) {
+    const entry = replayEntry(event)
+    const previous = groups.at(-1)
+    const before = previous?.entry.model?.[0]
+    const after = entry.model?.[0]
+    if (
+      event.groupId !== undefined &&
+      previous?.groupId === event.groupId &&
+      before?.role === 'assistant' &&
+      after?.role === 'assistant'
+    ) {
+      previous.entry = {
+        ...previous.entry,
+        model: [{ ...before, content: [...before.content, ...after.content], stopReason: after.stopReason }],
+      }
+      previous.ids.push(event.id)
+    } else groups.push({ ids: [event.id], entry, groupId: event.groupId })
+  }
+  return groups
 }

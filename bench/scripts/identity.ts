@@ -4,10 +4,10 @@ import { join } from 'node:path'
 import { dataset } from '../src/fixtures.ts'
 import { publicEvents } from '../src/protocol.ts'
 import type { Resolved } from '../src/results.ts'
-import type { Variant } from '../src/schema.ts'
+import type { Scenario, Variant } from '../src/schema.ts'
 
 export const digest = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex')
-export const corpusHash = (): string => digest(dataset())
+export const corpusHash = (scenarios: readonly Scenario[] = dataset()): string => digest(scenarios)
 export const sourceHash = Effect.fn('bench.sourceHash')(function* (root: string) {
   const fs = yield* FileSystem.FileSystem
   const files: string[] = []
@@ -38,7 +38,7 @@ export const sourceHash = Effect.fn('bench.sourceHash')(function* (root: string)
 
 /** Reader-independent OptChat builds, coupled native writers, and shared search/standard compaction roots. */
 export function artifactIdentity(resolved: Resolved, scenarioId: string, variant: Variant): string {
-  const scenario = dataset().find((item) => item.id === scenarioId)
+  const scenario = (resolved.scenarios ?? dataset()).find((item) => item.id === scenarioId)
   return digest({
     source: resolved.sourceHash,
     corpus: scenario === undefined ? '' : publicEvents(scenario.events),

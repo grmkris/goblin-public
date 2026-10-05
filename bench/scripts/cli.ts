@@ -2,6 +2,9 @@ import { BunServices, BunRuntime } from '@effect/platform-bun'
 import { Console, DateTime, Effect, FileSystem, Layer, Runtime } from 'effect'
 import { FetchHttpClient } from 'effect/http'
 import { join, resolve } from 'node:path'
+import { createCanary } from './canary.ts'
+import { recordReviews } from './review.ts'
+import { importCorpus, loadCorpus } from './corpus.ts'
 import { plan } from '../src/plan.ts'
 import { starterManifest, validateManifest } from '../src/manifest.ts'
 import { Manifest } from '../src/schema.ts'
@@ -55,7 +58,10 @@ const executeRun = Effect.fn('bench.command.run')(function* (manifest: Manifest)
     command === 'resume'
       ? yield* readJson(join(dir, 'resolved.json'), Resolved)
       : yield* resolveRun(root, manifest, id, args.includes('--live') ? 'live' : 'fake')
-  if (resolved.sourceHash !== (yield* sourceHash(root)) || resolved.corpusHash !== corpusHash())
+  if (
+    resolved.sourceHash !== (yield* sourceHash(root)) ||
+    resolved.corpusHash !== corpusHash(yield* loadCorpus(root, resolved.manifest))
+  )
     return yield* fail('Current source or corpus differs from this run; start a new run')
   if (command === 'resume' && resolved.mode === 'live' && !args.includes('--live'))
     return yield* fail('Resuming live inference requires --live')
@@ -101,13 +107,18 @@ const analyze = Effect.fn('bench.analyze')(function* () {
 })
 
 const program = Effect.gen(function* () {
+  if (command === 'canary') return yield* createCanary(root, option('corpus') ?? '', resolve(option('labels') ?? ''))
+  if (command === 'review') return yield* recordReviews(runDir(runId), resolve(option('review') ?? ''))
+  if (command === 'import') return yield* importCorpus(root, resolve(option('source') ?? ''), option('corpus') ?? '')
+  if (['report', 'compare', 'promote'].includes(command)) return yield* analyze()
   const manifest =
     option('manifest') === undefined ? starterManifest() : yield* readJson(resolve(option('manifest') ?? ''), Manifest)
-  const errors = validateManifest(manifest)
+  const scenarios = yield* loadCorpus(root, manifest)
+  const errors = validateManifest(manifest, scenarios)
   if (errors.length > 0) return yield* fail(errors.join('; '))
   switch (command) {
     case 'plan':
-      return plan(manifest)
+      return plan(manifest, scenarios)
     case 'validate':
       return { errors }
     case 'doctor':

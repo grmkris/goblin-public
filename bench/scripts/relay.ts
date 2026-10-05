@@ -1,5 +1,6 @@
 import { Config, DateTime, Effect, FileSystem, Redacted, Schema, Semaphore } from 'effect'
 import { HttpClient, HttpClientRequest } from 'effect/http'
+import { providerDetails } from '../src/provider-details.ts'
 import { Budget, usageOf, transientStatus, type Totals } from '../src/budget.ts'
 import { ChatRequest, fakeResponse } from '../src/fake.ts'
 import { Trace, type Resolved } from '../src/results.ts'
@@ -35,8 +36,13 @@ export const providerCatalog = Effect.fn('bench.providerCatalog')(function* (pro
   return catalog.data.map((model) => model.id)
 })
 type Label = { readonly scope: string; readonly phase: 'build' | 'answer' }
-type Reply = { readonly status: number; readonly text: string; readonly contentType: string }
-type Send = (payload: string, body: ChatRequest) => Effect.Effect<Reply, BenchError>
+type Reply = {
+  readonly status: number
+  readonly text: string
+  readonly contentType: string
+  readonly requestId?: string
+}
+type Send = (payload: string, body: ChatRequest, scope: string) => Effect.Effect<Reply, BenchError>
 type Accounting = { readonly path: string; readonly budget: Budget; readonly records: Trace[] }
 
 const restoredTotals = (traces: readonly Trace[]): Totals =>
@@ -49,11 +55,18 @@ const restoredTotals = (traces: readonly Trace[]): Totals =>
     { requests: 0, input: 0, output: 0 },
   )
 
-function liveTransport(client: HttpClient.HttpClient, provider: ProviderConfig, key: Redacted.Redacted): Send {
-  return (payload) =>
+function liveTransport(
+  client: HttpClient.HttpClient,
+  provider: ProviderConfig,
+  key: Redacted.Redacted,
+  runId: string,
+): Send {
+  return (payload, _body, scope) =>
     Effect.gen(function* () {
       const request = HttpClientRequest.post(`${provider.baseUrl.replace(/\/+$/u, '')}/chat/completions`).pipe(
         HttpClientRequest.bearerToken(Redacted.value(key)),
+        HttpClientRequest.setHeader('X-Session-ID', runId),
+        HttpClientRequest.setHeader('X-Bench-Operation-ID', scope),
         HttpClientRequest.bodyText(payload, 'application/json'),
       )
       const response = yield* client.execute(request)
@@ -61,6 +74,7 @@ function liveTransport(client: HttpClient.HttpClient, provider: ProviderConfig, 
         status: response.status,
         text: yield* response.text,
         contentType: response.headers['content-type'] ?? 'application/json',
+        ...(response.headers['x-request-id'] === undefined ? {} : { requestId: response.headers['x-request-id'] }),
       }
     }).pipe(
       Effect.timeout('120 seconds'),
@@ -81,7 +95,7 @@ const attempt = Effect.fn('bench.attempt')(function* (
   account: Accounting,
   label: Label,
   send: Send,
-  request: { payload: string; body: ChatRequest; output: number },
+  request: { payload: string; body: ChatRequest; output: number; retry: number },
 ) {
   const reservation = { input: new TextEncoder().encode(request.payload).length, output: request.output }
   if (!account.budget.reserve(reservation))
@@ -101,15 +115,20 @@ const attempt = Effect.fn('bench.attempt')(function* (
     request: request.payload,
     response: '',
     at: DateTime.formatIso(at),
+    retryIndex: request.retry,
+    reservedInput: reservation.input,
+    reservedOutput: reservation.output,
   }
   yield* appendJson(account.path, started)
   account.records.push(started)
-  const reply = yield* send(request.payload, request.body).pipe(
+  const reply = yield* send(request.payload, request.body, label.scope).pipe(
     Effect.catchTag('BenchError', () =>
-      Effect.succeed({ status: 503, text: 'Transport failed', contentType: 'application/json' }),
+      Effect.succeed<Reply>({ status: 503, text: 'Transport failed', contentType: 'application/json' }),
     ),
   )
+  const elapsed = DateTime.toEpochMillis(yield* DateTime.now) - DateTime.toEpochMillis(at)
   const usage = usageOf(reply.text)
+  const details = providerDetails(reply.text)
   account.budget.reconcile(reservation, usage)
   const finished: Trace = {
     ...started,
@@ -118,6 +137,13 @@ const attempt = Effect.fn('bench.attempt')(function* (
     output: usage?.output ?? reservation.output,
     unknownUsage: usage === undefined,
     response: reply.text,
+    latencyMs: elapsed,
+    ...(reply.requestId === undefined ? {} : { requestId: reply.requestId }),
+    ...(details.responseModel === undefined ? {} : { responseModel: details.responseModel }),
+    ...(details.responseId === undefined ? {} : { responseId: details.responseId }),
+    ...(details.reasoningTokens === undefined ? {} : { reasoningTokens: details.reasoningTokens }),
+    ...(details.cacheReadTokens === undefined ? {} : { cacheReadTokens: details.cacheReadTokens }),
+    ...(details.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: details.cacheWriteTokens }),
   }
   yield* appendJson(account.path, finished)
   account.records.push(finished)
@@ -144,7 +170,7 @@ const handleRequest = Effect.fn('bench.relay.request')(function* (
   const payload = JSON.stringify({ ...original, ...(body.stream ? { stream_options: { include_usage: true } } : {}) })
   let reply: Reply = { status: 503, text: '', contentType: 'application/json' }
   for (let retry = 0; retry < 2; retry += 1) {
-    reply = yield* attempt(account, label, send, { payload, body, output })
+    reply = yield* attempt(account, label, send, { payload, body, output, retry })
     if (!transientStatus(reply.status)) break
     if (retry === 0) yield* Effect.sleep('250 millis')
   }
@@ -166,7 +192,9 @@ export const relay = Effect.fn('bench.relay')(function* (
     records: [...previous],
   }
   const send =
-    provider === undefined ? fakeTransport : liveTransport(client, provider, yield* Config.Redacted(provider.keyEnv))
+    provider === undefined
+      ? fakeTransport
+      : liveTransport(client, provider, yield* Config.Redacted(provider.keyEnv), resolved.runId)
   const gate = Semaphore.makeUnsafe(1)
   let label: Label = { scope: 'unassigned', phase: 'build' }
   const labels = new Map<string, Label>()

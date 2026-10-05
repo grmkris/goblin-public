@@ -8,6 +8,10 @@ export const ReplayEvent = Schema.Struct({
   text: SourceEvent.fields.text,
   callId: SourceEvent.fields.callId,
   toolName: SourceEvent.fields.toolName,
+  arguments: SourceEvent.fields.arguments,
+  timestamp: SourceEvent.fields.timestamp,
+  isError: SourceEvent.fields.isError,
+  groupId: SourceEvent.fields.groupId,
 })
 export type ReplayEvent = typeof ReplayEvent.Type
 export const BuildRequest = Schema.Struct({
@@ -29,7 +33,7 @@ export const ProbeRequest = Schema.Struct({
 export type ProbeRequest = typeof ProbeRequest.Type
 
 export function publicEvents(events: readonly SourceEvent[]): ReplayEvent[] {
-  return events.map(({ fact: _fact, ...event }) => event)
+  return events.map(({ fact: _fact, provenance: _provenance, ...event }) => event)
 }
 
 export const ProbeResult = Schema.Struct({
