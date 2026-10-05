@@ -4,6 +4,7 @@ import { failureText, isNumber, record, records, request } from '../lib/boundary
 import { BrowserPiEvents, ConversationStream, type StreamStatus } from '../lib/conversation-stream.ts'
 import { conversationParts } from '../lib/parts.ts'
 import { type ConversationProjection, entryMessages, historyStart } from '../lib/projection.ts'
+import { fromEntry } from '../lib/threads.ts'
 
 /**
  * One conversation of the agent as the browser follows it: a Pi snapshot, then the event stream (reconnecting on
@@ -102,21 +103,28 @@ function useHistory(thread: string, start: number | undefined, report: (text: st
   return { entries: page.entries, earlier }
 }
 
-/** The transcript's parts: the history pages loaded so far, then the snapshot and what streamed since. */
+/**
+ * The transcript's parts: the history pages loaded so far, then the snapshot and what streamed since. With `floor` (a
+ * branched thread in its panel) it starts at that entry, the message the thread branched from, and reads no history
+ * from before it.
+ */
 export function useTranscript(
   thread: string,
   projection: ConversationProjection | undefined,
   report: (text: string) => void,
+  floor?: number,
 ) {
-  const history = useHistory(thread, projection === undefined ? undefined : historyStart(projection), report)
-  const parts = useMemo(
-    () =>
-      projection === undefined
-        ? []
-        : conversationParts({ ...projection, messages: [...entryMessages(history.entries), ...projection.messages] }),
-    [projection, history.entries],
-  )
-  return { parts, earlier: history.earlier }
+  const start = projection === undefined ? undefined : historyStart(projection)
+  const needed = floor === undefined || (start !== undefined && start > floor) ? start : undefined
+  const history = useHistory(thread, needed, report)
+  const parts = useMemo(() => {
+    if (projection === undefined) return []
+    const messages = [...entryMessages(history.entries), ...projection.messages]
+    return conversationParts({ ...projection, messages: floor === undefined ? messages : fromEntry(messages, floor) })
+  }, [projection, history.entries, floor])
+  const oldest = history.entries[0]?.id
+  const reachedFloor = floor !== undefined && isNumber(oldest) && oldest <= floor
+  return { parts, earlier: reachedFloor ? undefined : history.earlier }
 }
 
 /**

@@ -37,10 +37,24 @@ export function threadTitle(view: ThreadView | undefined): string {
   return view.title ?? (view.kind === 'subagent' ? 'Subagent' : 'New thread')
 }
 
+/** "3 replies", "1 reply", "No replies yet". */
+export function repliesLabel(count: number): string {
+  if (count === 0) return 'No replies yet'
+  return count === 1 ? '1 reply' : `${count} replies`
+}
+
 /** The Pi entry a transcript part belongs to (part ids start with the entry id), for branching from it. */
 export function entryOfPart(id: string): number | undefined {
   const entry = Number(id.split(':')[0])
   return Number.isSafeInteger(entry) && entry > 0 ? entry : undefined
+}
+
+/**
+ * A branched thread as its panel shows it: the message it branched from (entry `floor`), then what was said in the
+ * thread itself, without the main history before it. Message ids start with their entry id.
+ */
+export function fromEntry<M extends { readonly id: string }>(messages: readonly M[], floor: number): M[] {
+  return messages.filter((message) => (entryOfPart(message.id) ?? 0) >= floor)
 }
 
 /** The subagent a `subagent` call started or addressed, from the details of its result. */

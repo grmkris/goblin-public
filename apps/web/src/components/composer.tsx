@@ -10,11 +10,14 @@ export function MessageComposer({
   running,
   onStop,
   context,
+  placeholder = 'Ask your agent…',
 }: {
   readonly onSend: (input: string) => Promise<boolean>
   readonly running: boolean
   readonly onStop: () => void
   readonly context: ReactNode
+  /** What the empty field says while the agent is idle (while it works it offers a follow-up). */
+  readonly placeholder?: string
 }) {
   const [input, setInput] = useState('')
   const [pending, setPending] = useState(false)
@@ -42,7 +45,7 @@ export function MessageComposer({
             void submit()
           }
         }}
-        placeholder={running ? 'Add a follow-up…' : 'Ask your agent…'}
+        placeholder={running ? 'Add a follow-up…' : placeholder}
         disabled={pending}
       />
       <ComposerActions>

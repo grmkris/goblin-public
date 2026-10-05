@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type ReactNode, createContext, use, useState } from 'react'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import { Button } from '@purrable/ui'
 import { failureText, isString, record, records, request } from '../../lib/boundary.ts'
@@ -53,8 +53,20 @@ function AppButton({ part, target }: { readonly part: ToolPart; readonly target:
   )
 }
 
+/** Whether this transcript hosts Apps: the chat's does; a thread panel beside it leaves them to the full view. */
+const AppsHere = createContext(true)
+
+/** Transcript parts below show MCP calls as plain cards, with no App (the chat beside them owns the one App). */
+export function WithoutApps({ children }: { readonly children: ReactNode }) {
+  return <AppsHere value={false}>{children}</AppsHere>
+}
+
 /** A call to an owner's MCP server: the generic card, and its App once shown, in the row's place below it. */
 export function McpToolPart({ part }: { readonly part: ToolPart }) {
+  return use(AppsHere) ? <McpToolWithApp part={part} /> : <ToolCard part={part} />
+}
+
+function McpToolWithApp({ part }: { readonly part: ToolPart }) {
   const { session } = useApps()
   const showing = session?.key === part.id
   const offerApp = part.target !== undefined && part.state === 'done' && !showing

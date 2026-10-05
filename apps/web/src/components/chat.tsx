@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { type RefObject, useEffect, useMemo, useRef } from 'react'
 import { type AppContext, MAIN_THREAD } from '@purrable/contracts'
 import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@purrable/ui'
 import { ShareIcon } from 'lucide-react'
@@ -11,7 +11,9 @@ import { AppLayer } from './apps/stage.tsx'
 import { MessageComposer } from './composer.tsx'
 import { Conversation } from './conversation.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
+import type { Part } from '../lib/parts.ts'
 import { ChatBar } from './chat-bar.tsx'
+import { ThreadPanel, useSharedRightColumn } from './thread-panel.tsx'
 import { useGoToThread, useThreads } from './threads.tsx'
 import { ModelPicker, useModelChoice } from './model-picker.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
@@ -33,12 +35,19 @@ function StreamNotice({ text }: { readonly text: string }) {
  * The chat with one of the agent's conversations (`thread`; main is `MAIN_THREAD`): the transcript fills the screen
  * under the header, the conversation list sits beside it, and the composer floats over its bottom edge.
  */
-export function Chat({ thread }: { readonly thread: string }) {
+export function Chat({ thread, panel }: { readonly thread: string; readonly panel?: ThreadPanelControl }) {
   return (
     <AppsProvider key={thread}>
-      <ChatView thread={thread} />
+      <ChatView thread={thread} panel={panel} />
     </AppsProvider>
   )
+}
+
+/** The thread panel beside main: the thread it shows (none when closed), and how to open and close it. */
+export type ThreadPanelControl = {
+  readonly thread: string | undefined
+  readonly open: (thread: string) => void
+  readonly close: () => void
 }
 
 type Send = (input: string, operationId?: string, appContext?: readonly AppContext[]) => Promise<boolean>
@@ -55,24 +64,30 @@ function useSendWithAppContext(send: Send): (input: string) => Promise<boolean> 
   }
 }
 
-function ChatView({ thread }: { readonly thread: string }) {
-  const { projection, status, notice, report, send, stop } = useConversation(thread)
+type ChatConversation = ReturnType<typeof useConversation>
+type ModelChoice = ReturnType<typeof useModelChoice>
+
+/** The composer floating over the transcript's bottom edge, with what waits on the owner above it. */
+function ChatDock({
+  ref,
+  conversation,
+  parts,
+  waiting,
+  model,
+}: {
+  readonly ref: RefObject<HTMLDivElement | null>
+  readonly conversation: ChatConversation
+  readonly parts: readonly Part[]
+  readonly waiting: ReturnType<typeof openInteractions>
+  readonly model: ModelChoice
+}) {
+  const { projection, status, notice, send, stop } = conversation
   const threads = useThreads()
-  const goTo = useGoToThread()
   const running = projection?.running ?? false
-  const { refresh, create } = threads
-  const kind = threads.views.find((candidate) => candidate.id === thread)?.kind
-  // A run starting or ending changes the list's busy marks (and a first exchange may have named the thread).
-  useEffect(refresh, [refresh, running])
   const sendOwn = useSendWithAppContext(send)
-  const { choice, choose } = useModelChoice(report)
-  const view = useRef<HTMLElement>(null)
-  const dock = useRef<HTMLDivElement>(null)
-  useDockInsets(view, dock)
-  const { parts, earlier } = useTranscript(thread, projection, report)
-  const waiting = useMemo(() => openInteractions(parts), [parts])
   const usage = useUsageToday(running)
   const context = useMemo(() => contextTokens(projection?.messages ?? []), [projection])
+  const { choice, choose } = model
   const contextWindow = choice?.options.find((option) => option.id === choice.current)?.contextWindow
   const presence = presenceOf({
     status,
@@ -81,6 +96,53 @@ function ChatView({ thread }: { readonly thread: string }) {
     waiting: waiting.length,
     exhausted: usage !== undefined && budgetFraction(usage) >= 1,
   })
+  return (
+    <div className="chat-dock" ref={ref}>
+      {notice && <StreamNotice text={notice} />}
+      {threads.error && <StreamNotice text={threads.error} />}
+      <InteractionCards interactions={waiting} onAnswer={send} />
+      <SharedContextChip />
+      <div className="relative">
+        {presence.state === 'waiting' && <PresenceBorder />}
+        <MessageComposer
+          onSend={sendOwn}
+          running={running}
+          onStop={() => void stop()}
+          context={
+            <>
+              <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
+                <PresenceOrb state={presence.state} label={presence.label} />
+                <span className="truncate">{presence.label}</span>
+              </span>
+              <ModelPicker choice={choice} onChoose={(picked) => void choose(picked)} />
+              <UsageIndicator usage={usage} context={context} contextWindow={contextWindow} />
+            </>
+          }
+        />
+      </div>
+    </div>
+  )
+}
+
+const NO_PANEL = () => undefined
+
+function ChatView({ thread, panel }: { readonly thread: string; readonly panel: ThreadPanelControl | undefined }) {
+  const conversation = useConversation(thread)
+  const { projection, report, send } = conversation
+  const threads = useThreads()
+  const goTo = useGoToThread()
+  const running = projection?.running ?? false
+  const { refresh, create } = threads
+  const kind = threads.views.find((candidate) => candidate.id === thread)?.kind
+  // A run starting or ending changes the list's busy marks (and a first exchange may have named the thread).
+  useEffect(refresh, [refresh, running])
+  const model = useModelChoice(report)
+  const view = useRef<HTMLElement>(null)
+  const dock = useRef<HTMLDivElement>(null)
+  useDockInsets(view, dock)
+  const { parts, earlier } = useTranscript(thread, projection, report)
+  const waiting = useMemo(() => openInteractions(parts), [parts])
+  useSharedRightColumn(panel?.thread, panel?.close ?? NO_PANEL)
   return (
     <section className="chat-view" aria-label="Chat" ref={view}>
       <div className="chat-conversation chat-pane">
@@ -98,35 +160,13 @@ function ChatView({ thread }: { readonly thread: string }) {
         <Conversation
           key={thread}
           parts={parts}
-          canSwitchModel={(choice?.options.length ?? 0) > 1}
+          canSwitchModel={(model.choice?.options.length ?? 0) > 1}
           {...(earlier && { onEarlier: earlier })}
           {...(thread === MAIN_THREAD && { onBranch: (entry: number) => void create(entry).then(goTo) })}
         />
-        <div className="chat-dock" ref={dock}>
-          {notice && <StreamNotice text={notice} />}
-          {threads.error && <StreamNotice text={threads.error} />}
-          <InteractionCards interactions={waiting} onAnswer={send} />
-          <SharedContextChip />
-          <div className="relative">
-            {presence.state === 'waiting' && <PresenceBorder />}
-            <MessageComposer
-              onSend={sendOwn}
-              running={running}
-              onStop={() => void stop()}
-              context={
-                <>
-                  <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-                    <PresenceOrb state={presence.state} label={presence.label} />
-                    <span className="truncate">{presence.label}</span>
-                  </span>
-                  <ModelPicker choice={choice} onChoose={(model) => void choose(model)} />
-                  <UsageIndicator usage={usage} context={context} contextWindow={contextWindow} />
-                </>
-              }
-            />
-          </div>
-        </div>
+        <ChatDock ref={dock} conversation={conversation} parts={parts} waiting={waiting} model={model} />
       </div>
+      {panel?.thread !== undefined && <ThreadPanel thread={panel.thread} onClose={panel.close} />}
       <AppLayer />
     </section>
   )

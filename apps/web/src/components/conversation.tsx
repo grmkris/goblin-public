@@ -10,6 +10,7 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from '@purrable/ui'
+import type { ReactNode } from 'react'
 import { HistoryIcon, SplitIcon } from 'lucide-react'
 import type { Part } from '../lib/parts.ts'
 import { entryOfPart } from '../lib/threads.ts'
@@ -38,12 +39,15 @@ export function Conversation({
   canSwitchModel,
   onBranch,
   onEarlier,
+  lead,
 }: {
   readonly parts: readonly Part[]
   readonly canSwitchModel: boolean
   readonly onBranch?: (entry: number) => void
   /** Loads the page of history before the oldest part shown, while there is one. */
   readonly onEarlier?: () => void
+  /** What comes before the parts (a thread's root message); with it, no empty state is shown. */
+  readonly lead?: ReactNode
 }) {
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
@@ -56,7 +60,8 @@ export function Conversation({
                 Earlier messages
               </button>
             )}
-            {parts.length === 0 ? (
+            {lead}
+            {parts.length === 0 && lead === undefined ? (
               <Empty className="m-auto">
                 <EmptyHeader>
                   <EmptyTitle>Your conversation starts here</EmptyTitle>
