@@ -39,6 +39,15 @@ export {
 } from './components/field.tsx'
 export { Input } from './components/input.tsx'
 export { Label } from './components/label.tsx'
+export { Collapsible, CollapsibleContent, CollapsibleTrigger } from './components/collapsible.tsx'
+export {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from './components/popover.tsx'
 export { Meter } from './components/meter.tsx'
 export {
   MessageScroller,

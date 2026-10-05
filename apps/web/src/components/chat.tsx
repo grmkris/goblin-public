@@ -7,6 +7,7 @@ import { presenceOf } from '../lib/presence.ts'
 import { budgetFraction, contextTokens } from '../lib/usage.ts'
 import { SharedContextChip } from './apps/offers.tsx'
 import { AppsProvider, useApps } from './apps/provider.tsx'
+import { CapabilitiesButton } from './capabilities.tsx'
 import { AppLayer } from './apps/stage.tsx'
 import { MessageComposer } from './composer.tsx'
 import { Conversation } from './conversation.tsx'
@@ -64,12 +65,14 @@ type ModelChoice = ReturnType<typeof useModelChoice>
 /** The composer floating over the transcript's bottom edge, with what waits on the owner above it. */
 function ChatDock({
   ref,
+  thread,
   conversation,
   parts,
   waiting,
   model,
 }: {
   readonly ref: RefObject<HTMLDivElement | null>
+  readonly thread: string
   readonly conversation: ChatConversation
   readonly parts: readonly Part[]
   readonly waiting: ReturnType<typeof openInteractions>
@@ -109,6 +112,7 @@ function ChatDock({
                 <span className="truncate">{presence.label}</span>
               </span>
               <ModelPicker choice={choice} onChoose={(picked) => void choose(picked)} />
+              <CapabilitiesButton thread={thread} running={running} />
               <UsageIndicator usage={usage} context={context} contextWindow={contextWindow} />
             </>
           }
@@ -159,7 +163,14 @@ function ChatView({ thread, panel }: { readonly thread: string; readonly panel: 
           {...(earlier && { onEarlier: earlier })}
           {...(inlineThreads && { threads: inlineThreads })}
         />
-        <ChatDock ref={dock} conversation={conversation} parts={parts} waiting={waiting} model={model} />
+        <ChatDock
+          ref={dock}
+          thread={thread}
+          conversation={conversation}
+          parts={parts}
+          waiting={waiting}
+          model={model}
+        />
       </div>
       <MainThreadPanel panel={panel} parts={parts} />
       <AppLayer />

@@ -20,6 +20,7 @@ import type { Part } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
 import { entryOfPart, repliesLabel, rootParts, threadTitle } from '../lib/threads.ts'
 import { useApps } from './apps/provider.tsx'
+import { CapabilitiesButton } from './capabilities.tsx'
 import { MessageComposer } from './composer.tsx'
 import { Conversation } from './conversation.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
@@ -141,10 +142,13 @@ function ThreadBody({ view, onClose }: { readonly view: ThreadView; readonly onC
           onStop={() => void stop()}
           placeholder="Reply in thread…"
           context={
-            <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-              <PresenceOrb state={presence.state} label={presence.label} />
-              <span className="truncate">{presence.label}</span>
-            </span>
+            <>
+              <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
+                <PresenceOrb state={presence.state} label={presence.label} />
+                <span className="truncate">{presence.label}</span>
+              </span>
+              <CapabilitiesButton thread={view.id} running={running} />
+            </>
           }
         />
       </div>
