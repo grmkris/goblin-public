@@ -18,9 +18,11 @@ import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import { Schema } from 'effect'
 import { transportModel } from '../src/transport.ts'
-import { BuildRequest, ProbeRequest, type ProbeResult } from '../src/protocol.ts'
+import { BuildRequest, ProbeRequest, type Delivery, type ProbeResult } from '../src/protocol.ts'
 import { replayGroups, requestScope } from './replay.ts'
 import { Retrieval, searchExtension } from './retrieval.ts'
+import type { RetrievalOutput } from './archive.ts'
+import { contextSources, delivery } from './sources.ts'
 
 interface Env {
   readonly BENCH: DurableObjectNamespace<BenchmarkAgent>
@@ -44,8 +46,11 @@ export class BenchmarkAgent extends Agent<Env> {
   #cutoff = 0
   #sourceCutoff = 0
   readonly #transportWindows = new Map<string, number>()
+  #readerMaxTokens: number | undefined
   #registry: Registry | undefined
   #conversation = ''
+  #contextSources: ReturnType<typeof contextSources> = []
+  readonly #contextDeliveries = new Map<string, Delivery>()
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -63,7 +68,8 @@ export class BenchmarkAgent extends Agent<Env> {
         }
         const { config } = this.#stored()
         const { pressure, profile } = config.manifest
-        const modelIds = [...new Set([config.writer, 'glm-5.3', 'deepseek-v4-pro-0813'])]
+        this.#readerMaxTokens = config.manifest.transport?.readerMaxOutputTokens
+        const modelIds = [...new Set([config.writer, ...config.manifest.variants.map((variant) => variant.reader)])]
         const { models, options } = makePiModels(
           {
             MODEL_ID: config.writer,
@@ -84,14 +90,14 @@ export class BenchmarkAgent extends Agent<Env> {
         this.#registry = registry
         registry.install(
           recallExtension(
-            (id, n, conversation) => this.#use(() => this.#mainMemory().zoom(id, n, this.#cutoff), conversation),
+            (id, n, conversation) => this.#zoom(id, n, conversation),
             config.manifest.recallGuide ?? undefined,
           ),
         )
         registry.install(
           searchExtension(
             () => config.events.slice(0, this.#sourceCutoff),
-            (read, conversation) => this.#use(read, conversation),
+            (operation, read, conversation) => this.#use(operation, read, conversation),
           ),
         )
         return Harness.open(
@@ -129,16 +135,26 @@ export class BenchmarkAgent extends Agent<Env> {
   }
   #streams(artifact: string): ProviderStreams {
     return {
-      stream: (model, context, options) =>
-        LITELLM_STREAMS.stream(transportModel(model, this.#transportWindows), context, {
+      stream: (model, context, options) => {
+        this.#recordContext(context.messages)
+        return LITELLM_STREAMS.stream(transportModel(model, this.#transportWindows), context, {
           ...options,
+          ...(requestScope(context.messages, artifact) !== artifact && this.#readerMaxTokens !== undefined
+            ? { maxTokens: this.#readerMaxTokens }
+            : {}),
           headers: withScope(options?.headers, requestScope(context.messages, artifact)),
-        }),
-      streamSimple: (model, context, options) =>
-        LITELLM_STREAMS.streamSimple(transportModel(model, this.#transportWindows), context, {
+        })
+      },
+      streamSimple: (model, context, options) => {
+        this.#recordContext(context.messages)
+        return LITELLM_STREAMS.streamSimple(transportModel(model, this.#transportWindows), context, {
           ...options,
+          ...(requestScope(context.messages, artifact) !== artifact && this.#readerMaxTokens !== undefined
+            ? { maxTokens: this.#readerMaxTokens }
+            : {}),
           headers: withScope(options?.headers, requestScope(context.messages, artifact)),
-        }),
+        })
+      },
     }
   }
   #save(value: typeof Stored.Type) {
@@ -152,10 +168,37 @@ export class BenchmarkAgent extends Agent<Env> {
     if (this.#memory === undefined) throw new Error('Memory has not opened')
     return this.#memory
   }
-  #use(read: () => Promise<string>, conversation: string) {
+  #use(
+    operation: 'zoom' | 'archive_search' | 'archive_read',
+    read: () => Promise<RetrievalOutput>,
+    conversation: string,
+  ) {
     if (this.#retrieval === undefined || conversation !== this.#conversation)
       throw new Error('No active authorized probe retrieval allowance')
-    return this.#retrieval.get(read)
+    return this.#retrieval.get(operation, read)
+  }
+  #recordContext(messages: readonly import('@earendil-works/pi-ai').Message[]) {
+    const present = new Set(messages.map((message) => JSON.stringify(message)))
+    for (const source of this.#contextSources)
+      if (present.has(source.message)) for (const item of source.deliveries) this.#contextDeliveries.set(item.id, item)
+  }
+  #zoom(id: number, n: number, conversation: string) {
+    return this.#use(
+      'zoom',
+      async () => {
+        const text = await this.#mainMemory().zoom(id, n, this.#cutoff)
+        const events = this.#stored().config.events.slice(0, this.#sourceCutoff)
+        const group = n === 1 ? replayGroups(events)[id] : undefined
+        const originals =
+          group === undefined
+            ? []
+            : events.filter(
+                (event) => group.ids.includes(event.id) && text.includes(`[source:${event.id}] ${event.text}`),
+              )
+        return { text, deliveries: originals.map((event) => delivery(event, 'zoom')) }
+      },
+      conversation,
+    )
   }
 
   async #root(): Promise<Conversation> {
@@ -260,12 +303,12 @@ export class BenchmarkAgent extends Agent<Env> {
     const main = await this.#root()
     // Resolve extension objects from the same definitions used by the native registry.
     const recall = recallExtension(
-      (id, n, conversation) => this.#use(() => this.#mainMemory().zoom(id, n, this.#cutoff), conversation),
+      (id, n, conversation) => this.#zoom(id, n, conversation),
       input.recallGuide ?? undefined,
     )
     const search = searchExtension(
       () => config.events.slice(0, this.#sourceCutoff),
-      (read, conversation) => this.#use(read, conversation),
+      (operation, read, conversation) => this.#use(operation, read, conversation),
     )
     this.#registry?.install(recall)
     this.#registry?.install(search)
@@ -277,7 +320,7 @@ export class BenchmarkAgent extends Agent<Env> {
           model: { provider: MODEL_PROVIDER, modelId: input.reader },
           thinkingLevel: 'off',
           instructions: `${INSTRUCTIONS}\nBENCH_OPERATION_ID=${input.id}`,
-          extensions: config.policy === 'optchat' ? [recall] : input.search ? [search] : [],
+          extensions: [...(config.policy === 'optchat' ? [recall] : []), ...(input.search ? [search] : [])],
         },
       },
       BACKGROUND,
@@ -287,11 +330,13 @@ export class BenchmarkAgent extends Agent<Env> {
     this.#conversation = String(fork.id)
     this.#retrieval = new Retrieval(config.manifest.retrieval.maxCalls, config.manifest.retrieval.maxBytes)
     try {
+      this.#contextSources = contextSources(await fork.context(BACKGROUND), config.events.slice(0, input.cutoff))
       const result = await this.#harness.prompt(input.question, { session: String(fork.id), operationId: input.id })
       return {
         status: result.status,
         text: result.text ?? '',
         retrieval: this.#retrieval.trace,
+        deliveries: [...this.#contextDeliveries.values(), ...this.#retrieval.deliveries],
         context: (await fork.context(BACKGROUND)).messages.map((message) => ({
           role: message.role,
           text:
@@ -305,6 +350,8 @@ export class BenchmarkAgent extends Agent<Env> {
     } finally {
       this.#retrieval = undefined
       this.#conversation = ''
+      this.#contextSources = []
+      this.#contextDeliveries.clear()
     }
   }
 }

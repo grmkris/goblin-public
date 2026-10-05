@@ -1,6 +1,6 @@
 import { dataset } from './fixtures.ts'
 import { starterManifest, validateManifest } from './manifest.ts'
-import type { Manifest, Probe, Scenario, Variant } from './schema.ts'
+import { buildPolicy, type Manifest, type Probe, type Scenario, type Variant } from './schema.ts'
 
 export type Episode = { readonly id: string; readonly probe: Probe; readonly variant: Variant }
 export function episodes(manifest: Manifest, scenarios: readonly Scenario[] = dataset()): Episode[] {
@@ -18,7 +18,7 @@ export function plan(manifest: Manifest = starterManifest(), scenarios: readonly
   const builds = new Set(
     cases.map(
       ({ probe, variant }) =>
-        `${probe.scenarioId}.${probe.cutoff}.${variant.policy === 'optchat' ? 'optchat' : 'standard'}.${variant.writer ?? variant.reader}`,
+        `${probe.scenarioId}.${probe.cutoff}.${buildPolicy(variant.policy)}.${variant.writer ?? variant.reader}`,
     ),
   )
   return {

@@ -36,10 +36,27 @@ export function publicEvents(events: readonly SourceEvent[]): ReplayEvent[] {
   return events.map(({ fact: _fact, provenance: _provenance, ...event }) => event)
 }
 
+export const Delivery = Schema.Struct({
+  id: Schema.String,
+  kind: SourceEvent.fields.kind,
+  offsetBytes: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  endBytes: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  totalBytes: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  text: Schema.String,
+  origin: Schema.Literals(['context', 'zoom', 'search', 'read']),
+})
+export type Delivery = typeof Delivery.Type
+export const RetrievalRecord = Schema.Struct({
+  operation: Schema.Literals(['zoom', 'archive_search', 'archive_read']),
+  text: Schema.String,
+  denied: Schema.Boolean,
+})
+export type RetrievalRecord = typeof RetrievalRecord.Type
 export const ProbeResult = Schema.Struct({
   status: Schema.Literals(['done', 'unanswered']),
   text: Schema.String,
-  retrieval: Schema.Array(Schema.Struct({ text: Schema.String, denied: Schema.Boolean })),
+  retrieval: Schema.Array(RetrievalRecord),
+  deliveries: Schema.Array(Delivery),
   context: Schema.Array(Schema.Struct({ role: Schema.String, text: Schema.String })),
 })
 export type ProbeResult = typeof ProbeResult.Type

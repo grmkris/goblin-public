@@ -62,7 +62,7 @@ export function replayEntry(event: ReplayEvent): EntryDraft {
 export function replayGroups(events: readonly ReplayEvent[]) {
   const groups: { ids: string[]; entry: EntryDraft; groupId: string | undefined }[] = []
   for (const event of events) {
-    const entry = replayEntry(event)
+    const entry = { ...replayEntry(event), data: { benchSourceIds: [event.id] } }
     const previous = groups.at(-1)
     const before = previous?.entry.model?.[0]
     const after = entry.model?.[0]
@@ -74,6 +74,7 @@ export function replayGroups(events: readonly ReplayEvent[]) {
     ) {
       previous.entry = {
         ...previous.entry,
+        data: { benchSourceIds: [...previous.ids, event.id] },
         model: [{ ...before, content: [...before.content, ...after.content], stopReason: after.stopReason }],
       }
       previous.ids.push(event.id)

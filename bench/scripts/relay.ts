@@ -36,7 +36,7 @@ export const providerCatalog = Effect.fn('bench.providerCatalog')(function* (pro
   )(yield* response.json)
   return catalog.data.map((model) => model.id)
 })
-type Label = { readonly scope: string; readonly phase: 'build' | 'answer' }
+type Label = { readonly scope: string; readonly phase: Trace['phase'] }
 type Reply = {
   readonly status: number
   readonly text: string
@@ -44,7 +44,12 @@ type Reply = {
   readonly requestId?: string
 }
 type Send = (payload: string, body: ChatRequest, scope: string) => Effect.Effect<Reply, BenchError>
-type Accounting = { readonly path: string; readonly budget: Budget; readonly records: Trace[] }
+type Accounting = {
+  readonly path: string
+  readonly budget: Budget
+  readonly records: Trace[]
+  readonly preflightBudget: Budget | undefined
+}
 
 const restoredTotals = (traces: readonly Trace[]): Totals =>
   [...new Map(traces.map((trace) => [trace.attempt, trace])).values()].reduce(
@@ -99,12 +104,14 @@ const attempt = Effect.fn('bench.attempt')(function* (
   request: { payload: string; body: ChatRequest; output: number; retry: number },
 ) {
   const reservation = { input: new TextEncoder().encode(request.payload).length, output: request.output }
-  if (!account.budget.reserve(reservation))
+  const phaseBudget = label.phase === 'preflight' ? account.preflightBudget : undefined
+  if (phaseBudget?.accepts(reservation) === false || !account.budget.reserve(reservation))
     return {
       status: 402,
       text: '{"error":{"message":"Benchmark allowance exhausted"}}',
       contentType: 'application/json',
     }
+  phaseBudget?.reserve(reservation)
   const at = yield* DateTime.now
   const started: Trace = {
     ...label,
@@ -131,6 +138,7 @@ const attempt = Effect.fn('bench.attempt')(function* (
   const usage = usageOf(reply.text)
   const details = providerDetails(reply.text)
   account.budget.reconcile(reservation, usage)
+  phaseBudget?.reconcile(reservation, usage)
   const finished: Trace = {
     ...started,
     status: reply.status,
@@ -192,6 +200,13 @@ export const relay = Effect.fn('bench.relay')(function* (
     path,
     budget: new Budget(resolved.manifest.allowance, restoredTotals(previous)),
     records: [...previous],
+    preflightBudget:
+      resolved.manifest.preflight === undefined
+        ? undefined
+        : new Budget(
+            { ...resolved.manifest.allowance, ...resolved.manifest.preflight },
+            restoredTotals(previous.filter((record) => record.phase === 'preflight')),
+          ),
   }
   const send =
     provider === undefined

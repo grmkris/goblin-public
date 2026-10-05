@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { dataset } from '../src/fixtures.ts'
 import { publicEvents } from '../src/protocol.ts'
 import type { Resolved } from '../src/results.ts'
-import type { Scenario, Variant } from '../src/schema.ts'
+import { buildPolicy, type Scenario, type Variant } from '../src/schema.ts'
 
 export const digest = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 export const corpusHash = (scenarios: readonly Scenario[] = dataset()): string => digest(scenarios)
@@ -43,7 +43,7 @@ export function artifactIdentity(resolved: Resolved, scenarioId: string, variant
     source: resolved.sourceHash,
     corpus: scenario === undefined ? '' : publicEvents(scenario.events),
     mode: resolved.mode,
-    policy: variant.policy === 'optchat' ? 'optchat' : 'standard',
+    policy: buildPolicy(variant.policy),
     writer: variant.writer ?? variant.reader,
     profile: resolved.manifest.profile,
     pressure: resolved.manifest.pressure,

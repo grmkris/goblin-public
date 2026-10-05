@@ -5,6 +5,7 @@ import { episodes } from '../src/plan.ts'
 import { groundTruth, scoreProbe } from '../src/scoring.ts'
 import { cost, promotion, renderReport } from '../src/report.ts'
 import type { RunData } from '../src/results.ts'
+import type { Probe } from '../src/schema.ts'
 
 function greenRun(): RunData {
   const manifest = {
@@ -79,4 +80,79 @@ test('reports escape model text and unknown prices are not zero', () => {
   expect(report).not.toContain('<script>')
   expect(report).toContain('&lt;script&gt;')
   expect(cost(good).runSpend).toBeNull()
+})
+
+test('paired diagnostics require complete reviewed coverage, a delivered search gain and no loss', async () => {
+  const { paired } = await import('../src/paired.ts')
+  const good = greenRun()
+  const categories: readonly Probe['category'][] = ['latest-state', 'evidence', 'abstention']
+  const scenario = {
+    id: 'paired-fixture',
+    family: 'paired-fixture',
+    split: 'development' as const,
+    events: [],
+    probes: [22, 32].flatMap((cutoff) =>
+      categories.map((category) => ({
+        id: `pair.${cutoff}.${category}`,
+        scenarioId: 'paired-fixture',
+        cutoff,
+        category,
+        question: '',
+        keys: [],
+      })),
+    ),
+  }
+  const manifest = {
+    ...good.resolved.manifest,
+    corpus: { path: 'private-fixture', sha256: '' },
+    scenarioIds: [scenario.id],
+    variants: [
+      { id: 'base', policy: 'optchat' as const, writer: 'qwen3.8-flash', reader: 'grok-4.7' },
+      { id: 'search', policy: 'optchat-search' as const, writer: 'qwen3.8-flash', reader: 'grok-4.7' },
+    ],
+  }
+  const original = good.results[0]!
+  // SAFETY: the fixture manifest's variants and scenario are constructed immediately above.
+  const results = episodes(manifest, [scenario]).map((episode, index) => ({
+    ...original,
+    id: episode.id,
+    variant: episode.variant.id,
+    category: episode.probe.category,
+    score: { ...original.score, correct: index !== 0 },
+    reviewStatus: 'reviewed' as const,
+    review: { reviewer: 'test', rationale: 'Injected report fixture only', classification: [], searchSupported: true },
+    answer: { claims: [], evidenceIds: ['source'], abstain: false },
+    deliveries: [
+      {
+        id: 'source',
+        kind: 'user' as const,
+        offsetBytes: 0,
+        endBytes: 1,
+        totalBytes: 1,
+        text: 'x',
+        origin: 'search' as const,
+      },
+    ],
+  }))
+  const data = { ...good, resolved: { ...good.resolved, manifest, scenarios: [scenario] }, results }
+  expect(paired(data)[0]).toMatchObject({
+    gains: 1,
+    losses: 0,
+    comparablePairs: 6,
+    searchSupportedGains: 1,
+    promising: true,
+  })
+  expect(paired({ ...data, results: results.slice(1) })[0]).toMatchObject({ promising: false, allReviewed: false })
+  expect(paired({ ...data, results: results.map((result) => ({ ...result, deliveries: [] })) })[0]).toMatchObject({
+    promising: false,
+    searchSupportedGains: 0,
+  })
+  expect(
+    paired({
+      ...data,
+      results: results.map((result, index) =>
+        index === 3 ? { ...result, score: { ...result.score, correct: false } } : result,
+      ),
+    })[0],
+  ).toMatchObject({ promising: false, losses: 1 })
 })

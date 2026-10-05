@@ -12,10 +12,46 @@ test('native workerd: Pi compaction and OptChat settle, probes fork without chan
     Effect.scoped(
       Effect.gen(function* () {
         const seen: { body: ChatRequest; scope: string | null }[] = []
+        let injected = false
         const relay = yield* Effect.promise(() =>
           serveLocal(18873, async (request) => {
             const body = Schema.decodeUnknownSync(ChatRequest)(await request.json())
             seen.push({ body, scope: request.headers.get('x-bench-scope') })
+            if (request.headers.get('x-bench-scope') === 'search-0' && !injected) {
+              injected = true
+              const chunk = {
+                id: 'injected-tool-round',
+                object: 'chat.completion.chunk',
+                created: 0,
+                model: body.model,
+                choices: [
+                  {
+                    index: 0,
+                    delta: {
+                      role: 'assistant',
+                      tool_calls: [
+                        {
+                          index: 0,
+                          id: 'archive-1',
+                          type: 'function',
+                          function: { name: 'archive_search', arguments: '{"query":"retry limit"}' },
+                        },
+                      ],
+                    },
+                    finish_reason: null,
+                  },
+                ],
+              }
+              const end = {
+                ...chunk,
+                choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+                usage: { prompt_tokens: 20, completion_tokens: 10 },
+              }
+              return new Response(
+                `data: ${JSON.stringify(chunk)}\n\ndata: ${JSON.stringify(end)}\n\ndata: [DONE]\n\n`,
+                { headers: { 'content-type': 'text/event-stream' } },
+              )
+            }
             return fakeResponse(body)
           }),
         )
@@ -34,15 +70,26 @@ test('native workerd: Pi compaction and OptChat settle, probes fork without chan
             if (!response.ok) throw new Error(await response.text())
             return response.json()
           })
-        for (const [at, policy] of ['optchat', 'standard'].entries()) {
+        for (const { at, policy, reader, writer, head } of [
+          { at: 0, policy: 'optchat', reader: 'grok-4.7', writer: 'qwen3.8-flash', head: 'app.memory' },
+          { at: 1, policy: 'standard', reader: 'glm-5.3', writer: 'glm-5.3', head: 'pi.compaction' },
+        ]) {
           const actor = Math.abs(yield* Random.nextInt)
             .toString(16)
             .padStart(64, '0')
-          const reader = policy === 'optchat' ? 'deepseek-v4-pro-0813' : 'glm-5.3'
-          const config = { identity: actor, manifest, policy, writer: 'glm-5.3', events }
+          const configured = {
+            ...manifest,
+            transport: {
+              contextWindowTokens: 131072,
+              thinking: 'provider-default' as const,
+              readerMaxOutputTokens: 4096,
+            },
+            variants: [{ id: 'native', policy: 'optchat-search' as const, writer, reader }],
+          }
+          const config = { identity: actor, manifest: configured, policy, writer, events }
           const buildStart = seen.length
           const built: unknown = yield* call(actor, 'build', config)
-          expect(built).toMatchObject({ reused: false, head: policy === 'optchat' ? 'app.memory' : 'pi.compaction' })
+          expect(built).toMatchObject({ reused: false, head })
           expect(seen.length).toBeGreaterThan(buildStart)
           expect(seen.slice(buildStart).every(({ scope }) => scope === actor)).toBe(true)
           const probeStart = seen.length
@@ -59,6 +106,17 @@ test('native workerd: Pi compaction and OptChat settle, probes fork without chan
           expect(result.status).toBe('done')
           expect(seen.length).toBeGreaterThan(probeStart)
           expect(seen.slice(probeStart).every(({ scope }) => scope === `probe-${at}`)).toBe(true)
+          if (policy === 'optchat')
+            yield* checkSearch(seen, () =>
+              call(actor, 'probe', {
+                id: 'search-0',
+                reader,
+                question: 'What is the retry limit?',
+                search: true,
+                cutoff: 64,
+                recallGuide: null,
+              }),
+            )
           const again: unknown = yield* call(actor, 'build', config)
           expect(again).toMatchObject({ reused: true })
           expect(JSON.stringify(result.context)).not.toContain('fact')
@@ -86,3 +144,19 @@ test('native workerd: Pi compaction and OptChat settle, probes fork without chan
     ),
   )
 }, 240_000)
+
+const checkSearch = Effect.fn('bench.test.search')(function* (
+  seen: { body: ChatRequest; scope: string | null }[],
+  call: () => Effect.Effect<unknown>,
+) {
+  const beforeSearch = seen.length
+  const searched = yield* Schema.decodeUnknownEffect(ProbeResult)(yield* call())
+  expect(searched.status).toBe('done')
+  expect(searched.retrieval.some((item) => item.operation === 'archive_search' && !item.denied)).toBe(true)
+  expect(searched.deliveries.some((item) => item.origin === 'search')).toBe(true)
+  const requests = seen.slice(beforeSearch)
+  expect(requests).toHaveLength(2)
+  expect(requests.every(({ body }) => body.max_tokens === 4096 || body.max_completion_tokens === 4096)).toBe(true)
+  const offered = JSON.stringify(requests[0]?.body.tools)
+  for (const name of ['zoom', 'archive_search', 'archive_read']) expect(offered).toContain(name)
+})

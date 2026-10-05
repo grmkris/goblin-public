@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 import { Answer, Category, Manifest, Scenario } from './schema.ts'
+import { Delivery, RetrievalRecord } from './protocol.ts'
 
 export const Score = Schema.Struct({
   correct: Schema.Boolean,
@@ -20,10 +21,17 @@ export const EpisodeResult = Schema.Struct({
   unauthorizedReads: Schema.Boolean,
   forbiddenEndorsement: Schema.Boolean,
   deliveredIds: Schema.Array(Schema.String),
+  deliveries: Schema.optional(Schema.Array(Delivery)),
+  retrieval: Schema.optional(Schema.Array(RetrievalRecord)),
   detail: Schema.String,
   reviewStatus: Schema.optional(Schema.Literals(['pending', 'reviewed'])),
   review: Schema.optional(
-    Schema.Struct({ reviewer: Schema.String, rationale: Schema.String, classification: Schema.Array(Schema.String) }),
+    Schema.Struct({
+      reviewer: Schema.String,
+      rationale: Schema.String,
+      classification: Schema.Array(Schema.String),
+      searchSupported: Schema.optional(Schema.Boolean),
+    }),
   ),
 })
 export type EpisodeResult = typeof EpisodeResult.Type
@@ -45,7 +53,7 @@ export type RunData = {
 export const Trace = Schema.Struct({
   scope: Schema.String,
   model: Schema.String,
-  phase: Schema.Literals(['build', 'answer']),
+  phase: Schema.Literals(['preflight', 'build', 'answer']),
   attempt: Schema.Int,
   status: Schema.Int,
   input: Schema.Number,

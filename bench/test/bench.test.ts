@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { dataset, validateScenario } from '../src/fixtures.ts'
 import { decodeManifest, starterManifest, validateManifest } from '../src/manifest.ts'
+import { artifactIdentity } from '../scripts/identity.ts'
 import { plan } from '../src/plan.ts'
 import { groundTruth, scoreProbe } from '../src/scoring.ts'
 
@@ -8,6 +9,26 @@ const staging = dataset()[0]!
 const first = staging.probes[0]!
 
 describe('bounded experiment planning', () => {
+  it('shares the OptChat tree with source search and keeps the starter matrix unchanged', () => {
+    const baseline = { id: 'baseline', policy: 'optchat' as const, writer: 'qwen3.8-flash', reader: 'grok-4.7' }
+    const candidate = { ...baseline, id: 'candidate', policy: 'optchat-search' as const }
+    const manifest = { ...starterManifest(), scenarioIds: ['staging'], variants: [baseline, candidate] }
+    expect(validateManifest(manifest)).toEqual([])
+    expect(plan(manifest)).toMatchObject({ variants: 2, answers: 8, checkpoints: 2 })
+    const resolved = {
+      manifest,
+      sourceHash: 'source',
+      corpusHash: 'corpus',
+      runId: 'run',
+      mode: 'live' as const,
+      createdAt: '',
+    }
+    expect(artifactIdentity(resolved, 'staging', baseline)).toBe(artifactIdentity(resolved, 'staging', candidate))
+    expect(plan(starterManifest()).variants).toBe(8)
+    expect(validateManifest({ ...manifest, variants: [{ ...candidate, writer: undefined }] })).toContain(
+      'candidate needs a writer',
+    )
+  })
   it('declares 96 paired episodes and preserves source tool pairs', () => {
     expect(validateManifest(decodeManifest(starterManifest()))).toEqual([])
     expect(plan()).toMatchObject({ scenarios: 3, probes: 12, variants: 8, answers: 96 })

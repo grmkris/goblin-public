@@ -6,6 +6,11 @@ import { clampMaxTokensToContext } from '@earendil-works/pi-ai/api/simple-option
 import { requestPayload, transportModel } from '../src/transport.ts'
 import type { Model } from '@earendil-works/pi-ai'
 
+test('native tool requests preserve provider-default thinking and use automatic tool choice', () => {
+  const original = { tools: [{ type: 'function' }], tool_choice: 'required', max_tokens: 4096 }
+  expect(JSON.parse(requestPayload(original, 'provider-default'))).toEqual({ ...original, tool_choice: 'auto' })
+})
+
 const ledger = resolve(import.meta.dirname, '../../.local/bench/runs/real-claude-canary-01/attempts.jsonl')
 // The optional regression reuses the observed failed API request rather than manufacturing a large conversation.
 test.skipIf(!existsSync(ledger))(

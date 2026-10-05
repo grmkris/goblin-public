@@ -1,6 +1,7 @@
 import type { RunData, EpisodeResult, Trace } from './results.ts'
 import { sameTransport } from './transport.ts'
 import { episodes } from './plan.ts'
+import { paired } from './paired.ts'
 
 const escape = (text: string): string =>
   text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
@@ -62,6 +63,43 @@ export function accounting(data: RunData) {
     chargedTokens: tokens(attempts),
     reportedTokens: tokens(reported),
   }
+}
+/** Shared construction and preflight costs remain separate from each reader arm. */
+export function phaseAccounting(data: RunData) {
+  const groups = Map.groupBy(attemptsOf(data), (trace) =>
+    trace.phase === 'answer'
+      ? (data.results.find((result) => trace.scope === `${data.resolved.runId}.${result.id}`)?.variant ??
+        'unassigned-answer')
+      : trace.phase,
+  )
+  return Object.fromEntries(
+    [...groups].map(([phase, traces]) => [
+      phase,
+      {
+        ...accounting({ ...data, traces }),
+        latencyMs: traces.reduce((n, trace) => n + (trace.latencyMs ?? 0), 0),
+        latencyCoverage: traces.filter((trace) => trace.latencyMs !== undefined).length,
+        details: Object.fromEntries(
+          ['reasoningTokens', 'cacheReadTokens', 'cacheWriteTokens'].map((field) => {
+            const values = traces.flatMap((trace) =>
+              field === 'reasoningTokens'
+                ? (trace.reasoningTokens ?? [])
+                : field === 'cacheReadTokens'
+                  ? (trace.cacheReadTokens ?? [])
+                  : (trace.cacheWriteTokens ?? []),
+            )
+            return [
+              field,
+              {
+                tokens: values.length === 0 ? null : values.reduce((n, value) => n + value, 0),
+                coveredRequests: values.length,
+              },
+            ]
+          }),
+        ),
+      },
+    ]),
+  )
 }
 export function cost(data: RunData) {
   const attempts = attemptsOf(data)
@@ -154,5 +192,5 @@ export function renderReport(data: RunData): string {
         `<tr><td>${escape(result.variant)}</td><td>${escape(result.id)}</td><td>${result.status === 'failed' ? 'runtime failure' : result.reviewStatus === 'pending' ? 'review pending' : result.score.correct ? 'pass' : 'fail'}</td><td><details><summary>inspect</summary><pre>${escape(JSON.stringify(result, null, 2))}</pre><a href="${result.status === 'failed' ? 'failures.jsonl' : `traces/${encodeURIComponent(result.id)}.json`}">private ${result.status === 'failed' ? 'failure ledger' : 'episode trace'}</a></details></td></tr>`,
     )
     .join('')
-  return `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Memory bench ${escape(data.resolved.runId)}</title><style>body{font:14px system-ui;margin:2rem;background:#111;color:#eee}table{border-collapse:collapse;width:100%}td,th{border:1px solid #444;padding:.4rem}details{max-width:50rem}pre{white-space:pre-wrap}a{color:#8bd}</style><h1>${escape(data.resolved.runId)}</h1><p>${escape(data.resolved.mode)} provider · source ${escape(data.resolved.sourceHash)} · corpus ${escape(data.resolved.corpusHash)}</p><p>Accuracy covers completed, scored answers; real answers require semantic review. Inspect completion and review coverage before comparing variants. Charged tokens include retained reservations when provider usage is unknown.</p><pre>${escape(JSON.stringify({ plannedAnswers: episodes(data.resolved.manifest, data.resolved.scenarios).length, scores: summary(data), accounting: accounting(data), cost: cost(data) }, null, 2))}</pre><table><thead><tr><th>variant</th><th>episode</th><th>result</th><th>trace</th></tr></thead><tbody>${rows}</tbody></table>`
+  return `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Memory bench ${escape(data.resolved.runId)}</title><style>body{font:14px system-ui;margin:2rem;background:#111;color:#eee}table{border-collapse:collapse;width:100%}td,th{border:1px solid #444;padding:.4rem}details{max-width:50rem}pre{white-space:pre-wrap}a{color:#8bd}</style><h1>${escape(data.resolved.runId)}</h1><p>${escape(data.resolved.mode)} provider · source ${escape(data.resolved.sourceHash)} · corpus ${escape(data.resolved.corpusHash)}</p><p>Accuracy covers completed, scored answers; real answers require semantic review. Inspect completion and review coverage before comparing variants. Charged tokens include retained reservations when provider usage is unknown.</p><pre>${escape(JSON.stringify({ plannedAnswers: episodes(data.resolved.manifest, data.resolved.scenarios).length, scores: summary(data), accounting: accounting(data), phases: phaseAccounting(data), paired: paired(data), cost: cost(data) }, null, 2))}</pre><table><thead><tr><th>variant</th><th>episode</th><th>result</th><th>trace</th></tr></thead><tbody>${rows}</tbody></table>`
 }

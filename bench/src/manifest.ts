@@ -1,8 +1,9 @@
 import { Schema } from 'effect'
-import { Manifest, type Scenario, type Variant } from './schema.ts'
+import { buildPolicy, Manifest, type Scenario, type Variant } from './schema.ts'
 import { dataset, validateScenario } from './fixtures.ts'
 
 const MODELS = ['glm-5.3', 'deepseek-v4-pro-0813']
+const ALLOWED_MODELS = [...MODELS, 'qwen3.8-flash', 'grok-4.7']
 export function starterManifest(): Manifest {
   const optchat: Variant[] = MODELS.flatMap((writer) =>
     MODELS.map((reader) => ({
@@ -65,10 +66,14 @@ function variantErrors(manifest: Manifest): string[] {
   for (const variant of manifest.variants) {
     if (ids.has(variant.id)) errors.push(`duplicate variant ${variant.id}`)
     ids.add(variant.id)
-    if (!MODELS.includes(variant.reader) || (variant.writer !== undefined && !MODELS.includes(variant.writer)))
+    if (
+      !ALLOWED_MODELS.includes(variant.reader) ||
+      (variant.writer !== undefined && !ALLOWED_MODELS.includes(variant.writer))
+    )
       errors.push(`${variant.id} selects an unconfigured model ID`)
-    if (variant.policy === 'optchat' && variant.writer === undefined) errors.push(`${variant.id} needs a writer`)
-    if (variant.policy !== 'optchat' && variant.writer !== undefined)
+    if (buildPolicy(variant.policy) === 'optchat' && variant.writer === undefined)
+      errors.push(`${variant.id} needs a writer`)
+    if (buildPolicy(variant.policy) === 'standard' && variant.writer !== undefined)
       errors.push(`${variant.id} native writer must remain coupled to reader`)
   }
   return errors
@@ -108,6 +113,7 @@ export function validateManifest(manifest: Manifest, scenarios: readonly Scenari
   if (manifest.variants.length === 0 || manifest.scenarioIds.length === 0) errors.push('empty experiment')
   if (new Set(manifest.scenarioIds).size !== manifest.scenarioIds.length) errors.push('duplicate scenarios')
   const { pressure } = manifest
+  errors.push(...preflightErrors(manifest, scenarios))
   errors.push(...allowanceErrors(manifest, scenarios))
   if (pressure.reserveTokens + pressure.keepRecentTokens >= pressure.contextWindowTokens)
     errors.push('invalid compaction pressure')
@@ -118,4 +124,21 @@ export function validateManifest(manifest: Manifest, scenarios: readonly Scenari
     else errors.push(...validateScenario(scenario))
   }
   return errors
+}
+
+function preflightErrors(manifest: Manifest, scenarios: readonly Scenario[]): string[] {
+  const preflight = manifest.preflight
+  if (preflight === undefined) return []
+  const scenario = scenarios.find((item) => item.id === preflight.scenarioId)
+  const source = scenario?.events.slice(0, preflight.cutoff).find((item) => item.id === preflight.sourceId)
+  const realSource =
+    manifest.corpus !== undefined && source?.kind === 'user' && new TextEncoder().encode(source.text).length > 512
+  const transport =
+    manifest.transport?.thinking === 'provider-default' && manifest.transport.readerMaxOutputTokens !== undefined
+  const selected = manifest.scenarioIds.includes(preflight.scenarioId) && manifest.variants[0]?.writer !== undefined
+  return [
+    ...(realSource ? [] : ['preflight requires an original real owner event large enough for the actual summarizer']),
+    ...(transport ? [] : ['preflight requires explicit reader output and provider-default thinking']),
+    ...(selected ? [] : ['preflight requires a selected scenario and writer']),
+  ]
 }

@@ -8,13 +8,14 @@ import { importCorpus, loadCorpus } from './corpus.ts'
 import { plan } from '../src/plan.ts'
 import { starterManifest, validateManifest } from '../src/manifest.ts'
 import { Manifest } from '../src/schema.ts'
+import { paired } from '../src/paired.ts'
 import { Resolved } from '../src/results.ts'
 import { corpusHash, sourceHash } from './identity.ts'
 import { ProviderConfig, validateProvider, providerCatalog } from './relay.ts'
 import { readJson, fail, json, writeJson, appendJson, lockRun } from './store.ts'
 import { Schema } from 'effect'
 import { run, resolveRun, loadRun } from './runner.ts'
-import { compare, renderReport, promotion } from '../src/report.ts'
+import { compare, renderReport, promotion, accounting, summary, phaseAccounting } from '../src/report.ts'
 
 const [command = 'plan', ...args] = Bun.argv.slice(2)
 function option(name: string): string | undefined {
@@ -82,7 +83,13 @@ const analyze = Effect.fn('bench.analyze')(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = join(runDir(runId), 'report.html')
     yield* fs.writeFileString(path, renderReport(data), { mode: 0o600 })
-    return { path }
+    yield* writeJson(join(runDir(runId), 'report.json'), {
+      scores: summary(data),
+      accounting: accounting(data),
+      phases: phaseAccounting(data),
+      paired: paired(data),
+    })
+    return { path, paired: paired(data).map(({ rows: _rows, ...decision }) => decision) }
   }
   if (command === 'compare') return compare(data, yield* loadRun(runDir(option('against'))))
   if (command === 'promote') {

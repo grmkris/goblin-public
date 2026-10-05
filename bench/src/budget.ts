@@ -16,18 +16,25 @@ export class Budget {
     return { ...this.#totals }
   }
   reserve(reservation: Reservation): boolean {
-    const next = {
+    if (!this.accepts(reservation)) return false
+    this.#totals = this.#next(reservation)
+    return true
+  }
+  #next(reservation: Reservation): Totals {
+    return {
       requests: this.#totals.requests + 1,
       input: this.#totals.input + reservation.input,
       output: this.#totals.output + reservation.output,
     }
+  }
+  accepts(reservation: Reservation): boolean {
+    const next = this.#next(reservation)
     if (
       next.requests > this.#limits.maxRequests ||
       next.input > this.#limits.maxInputTokens ||
       next.output > this.#limits.maxOutputTokens
     )
       return false
-    this.#totals = next
     return true
   }
   reconcile(reserved: Reservation, actual: Reservation | undefined): void {

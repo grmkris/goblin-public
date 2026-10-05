@@ -2,7 +2,10 @@ import * as Schema from 'effect/Schema'
 
 const Id = Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9_.:-]+$/u))
 const Positive = Schema.Int.check(Schema.isGreaterThan(0))
-export const Policy = Schema.Literals(['optchat', 'standard', 'standard-search'])
+export const Policy = Schema.Literals(['optchat', 'optchat-search', 'standard', 'standard-search'])
+/** Retrieval changes answer policy, never the shared writer artifact. */
+export const buildPolicy = (policy: typeof Policy.Type): 'optchat' | 'standard' =>
+  policy === 'optchat' || policy === 'optchat-search' ? 'optchat' : 'standard'
 export const Category = Schema.Literals([
   'latest-state',
   'rationale',
@@ -86,6 +89,7 @@ export const Manifest = Schema.Struct({
     Schema.Struct({
       contextWindowTokens: Positive,
       thinking: Schema.Literals(['provider-default', 'disabled']),
+      readerMaxOutputTokens: Schema.optional(Positive.check(Schema.isLessThanOrEqualTo(8192))),
     }),
   ),
   profile: Schema.Literals(['controlled', 'production-compatibility']),
@@ -106,6 +110,17 @@ export const Manifest = Schema.Struct({
   }),
   retrieval: Schema.Struct({ maxCalls: Positive, maxBytes: Positive }),
   buildTrial: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  preflight: Schema.optional(
+    Schema.Struct({
+      scenarioId: Id,
+      cutoff: Positive,
+      sourceId: Id,
+      query: Schema.String,
+      maxRequests: Positive.check(Schema.isLessThanOrEqualTo(6)),
+      maxInputTokens: Positive.check(Schema.isLessThanOrEqualTo(50_000)),
+      maxOutputTokens: Positive.check(Schema.isLessThanOrEqualTo(10_000)),
+    }),
+  ),
   summaryPrompt: Schema.NullOr(Schema.String),
   recallGuide: Schema.NullOr(Schema.String),
   rates: Schema.Array(

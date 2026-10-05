@@ -127,3 +127,59 @@ Across trials 01, 02 and 04, budget charges total 983363 input tokens against th
 reservations. No further full trial fits that remainder. Private reviews, the report and findings remain in the run
 directory; frozen manifests and API traces are preserved. Future runs need a fresh trial with separately accounted
 allowances and provider-default thinking. Optional regressions use these actual artifacts without inference.
+
+## Paired OptChat/source-search pilot
+
+`optchat-search` uses the same writer tree, starting context and `zoom` as `optchat`, with `archive_search` and
+`archive_read` added. Both arms share construction across cutoffs; the default GLM/DeepSeek matrix stays unchanged.
+Explicit manifests may also select the exact `qwen3.8-flash` and `grok-4.7` routes. The worker registers readers from
+the manifest. `transport.readerMaxOutputTokens` optionally caps each reader completion independently of the writer;
+old manifests retain their previous output default. Tool requests use `tool_choice: auto`.
+
+Search ranks lexical matches in original text and recorded paired-call metadata, returning at most four original
+excerpts within 2048 serialized UTF-8 bytes. A filename can locate its recorded Read result. `archive_read` accepts
+`id`, optional `offsetBytes` and optional `maxBytes` (default and maximum 2048 for the complete serialized response,
+including metadata and escaping). Responses include source kind, exact byte range, original size, truncation and
+continuation offset; tool results include their recorded call and error status. Missing/future IDs both return
+`Source unavailable.` Zoom, search and read share the same four-call/4096-byte allowance. Denied calls count.
+
+Reader source receipts come from native replay-entry metadata for raw starting messages actually sent to the
+adapter, and original ranges returned by successful retrieval. Summary source markers and generated IDs never
+establish that an original was read. Zoom receipts require an original leaf body; opening a summary is not original
+source delivery. Host scoring verifies each receipt against the exact authorized source bytes. Private episode
+artifacts retain delivered excerpts for semantic review. A passing review must consider what the reader actually
+received; `searchSupported: true` additionally requires a cited search/read receipt. Older evidence remains readable.
+
+The approved private manifest is `.local/bench/experiments/optchat-search-pilot-01.json`: unchanged six labeled
+probes at cutoffs 22/32, two arms, Qwen Flash writer and Grok reader. It caps the new trial at 12 answers, 200 upstream
+attempts, 1M charged input, 50k completion/reasoning and concurrency one. Controlled pressure is 8192/2048/1024 with
+a 4096-byte view, transport capacity 131072, provider-default thinking and reader output 4096. Writer calls retain
+2448 completion tokens. Existing run manifests, labels and ledgers are not changed.
+
+An optional manifest `preflight` declares a real scenario prefix, original owner source ID, lexical query and smaller
+request/input/output ceilings. The pilot uses the first three original events (including the 567-byte owner request),
+so the actual summarizer adapter must call Qwen. A native Grok fork must search, receive that original and return
+strict source-cited JSON. The preflight caps six attempts/50k charged input/10k completion **inside** the overall
+allowance, records `preflight.json`, and aborts bulk inference on failure. Failed preflight/episodes are never rerun
+implicitly. No alternate model or larger allowance is selected automatically.
+
+```sh
+bun run bench:plan --manifest .local/bench/experiments/optchat-search-pilot-01.json
+bun run bench:doctor --manifest .local/bench/experiments/optchat-search-pilot-01.json
+heavy bun run bench:run --live --manifest .local/bench/experiments/optchat-search-pilot-01.json --run optchat-search-pilot-01
+bun run bench:review --run optchat-search-pilot-01 --review /absolute/private/path/reviews.json
+bun run bench:report --run optchat-search-pilot-01
+```
+
+Reports produce HTML and `report.json`, with per-probe paired outcomes, retrieval operations, completion/review
+coverage, gains/losses and search-supported gains. Accounting separates preflight, shared construction and each
+answer arm, with reported/charged tokens, observed reasoning/cache coverage and latency. Dollar cost remains unknown
+without dated prices. Pin the implementation and private corpus in an isolated local snapshot before live inference;
+concurrent source edits must not change a running trial's identity.
+
+All 12 answers must complete and be reviewed before a quality conclusion. Search is promising only with at least
+one strict paired gain, no losses, at least one gain supported by delivered search/read evidence, both candidate
+abstentions passing, and zero candidate malformed answers, invalid citations, unsupported claims, future leakage or
+unauthorized reads. A tie demonstrates no benefit. Some questions are answerable from recent raw context: inspect
+receipt origins before attributing a gain to search. This tiny development sample is diagnostic and cannot establish
+statistical/model superiority or authorize promotion.

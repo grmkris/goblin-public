@@ -21,13 +21,13 @@ test('SSE accounting includes completion tokens and missing usage stays unknown'
 })
 test('zoom/search share UTF-8 byte and call ceilings, including rejected retrievals', async () => {
   const retrieval = new Retrieval(2, 4)
-  expect(await retrieval.get(async () => '猫')).toBe('猫')
-  expect(await retrieval.get(async () => '猫')).toContain('byte limit')
-  expect(await retrieval.get(async () => 'a')).toContain('call limit')
+  expect(await retrieval.get('zoom', async () => ({ text: '猫', deliveries: [] }))).toBe('猫')
+  expect(await retrieval.get('archive_search', async () => ({ text: '猫', deliveries: [] }))).toContain('byte limit')
+  expect(await retrieval.get('archive_read', async () => ({ text: 'a', deliveries: [] }))).toContain('call limit')
   expect(retrieval.trace).toEqual([
-    { text: '猫', denied: false },
-    { text: '', denied: true },
-    { text: '', denied: true },
+    { operation: 'zoom', text: '猫', denied: false },
+    { operation: 'archive_search', text: '', denied: true },
+    { operation: 'archive_read', text: '', denied: true },
   ])
 })
 

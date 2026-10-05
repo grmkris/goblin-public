@@ -4,6 +4,7 @@ import type { Manifest } from './schema.ts'
 export function requestPayload(original: Readonly<Record<string, unknown>>, thinking: 'provider-default' | 'disabled') {
   return JSON.stringify({
     ...original,
+    ...(Array.isArray(original['tools']) && original['tools'].length > 0 ? { tool_choice: 'auto' } : {}),
     ...(original['stream'] === true ? { stream_options: { include_usage: true } } : {}),
     ...(thinking === 'disabled' ? { enable_thinking: false, thinking: { type: 'disabled' } } : {}),
   })

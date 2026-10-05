@@ -8,6 +8,7 @@ export const Review = Schema.Struct({
   reviewer: Schema.String,
   rationale: Schema.String,
   evidenceIds: Schema.Array(Schema.String),
+  searchSupported: Schema.optional(Schema.Boolean),
   classification: Schema.Array(
     Schema.Literals([
       'summary-omission',
@@ -36,6 +37,7 @@ export function applyReview(resolved: Resolved, result: EpisodeResult, review: R
   if (probe?.label === undefined || scenario === undefined) throw new Error('Review requires a real labeled probe')
   const allowed = new Set(scenario.events.slice(0, probe.cutoff).map((event) => event.id))
   if (review.evidenceIds.some((id) => !allowed.has(id))) throw new Error('Review evidence exceeds prefix')
+  validateDeliveryReview(result, review)
   if (review.rationale.trim() === '' || review.reviewer.trim() === '')
     throw new Error('Review requires an identified reviewer and rationale')
   const score = {
@@ -64,6 +66,27 @@ export function applyReview(resolved: Resolved, result: EpisodeResult, review: R
       reviewer: review.reviewer,
       rationale: review.rationale,
       classification: review.classification,
+      searchSupported: review.searchSupported === true,
     },
   }
+}
+
+function validateDeliveryReview(result: EpisodeResult, review: Review) {
+  if (
+    result.deliveries !== undefined &&
+    review.score.correct &&
+    result.answer?.claims.length !== 0 &&
+    review.evidenceIds.some((id) => !result.deliveredIds.includes(id))
+  )
+    throw new Error('Passing review cites originals not delivered to the reader')
+  if (
+    review.searchSupported === true &&
+    !result.deliveries?.some(
+      (item) =>
+        (item.origin === 'search' || item.origin === 'read') &&
+        review.evidenceIds.includes(item.id) &&
+        result.answer?.evidenceIds.includes(item.id),
+    )
+  )
+    throw new Error('Search-supported review requires cited search/read delivery')
 }
