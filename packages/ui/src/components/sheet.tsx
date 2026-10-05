@@ -1,5 +1,5 @@
-// Adapted from grmkris/myapps packages/ui/src/components/sheet.tsx (8bb08f1), without its keyboard-aware bottom
-// sheet: Purrable opens sheets from the side.
+// Adapted from grmkris/myapps packages/ui/src/components/sheet.tsx (8bb08f1), with its keyboard-aware bottom sheet
+// (content-sized; the `full` size is left out) and Purrable's `pane` variant for sheets opened from the side.
 import * as React from 'react'
 import { Dialog as SheetPrimitive } from '@base-ui/react/dialog'
 import { XIcon } from 'lucide-react'
@@ -36,6 +36,14 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
 }
 
 /**
+ * A bottom sheet rests on the software keyboard instead of under it: `--keyboard-inset` (the strip the keyboard
+ * covers, where a page publishes it; 0 otherwise) lifts it and comes off its height, and its bottom padding clears the
+ * home indicator. A call site's own `max-h-*`, `h-*` or padding wins.
+ */
+const BOTTOM_SHEET =
+  'bottom-(--keyboard-inset,0px) h-auto max-h-[calc(100dvh-6rem-var(--keyboard-inset,0px))] rounded-t-xl pr-[env(safe-area-inset-right)] pb-[max(0px,calc(env(safe-area-inset-bottom)-var(--keyboard-inset,0px)))] pl-[env(safe-area-inset-left)]'
+
+/**
  * `pane` holds a whole view of its own (a thread beside the chat): the full width of a phone, a column above it,
  * sliding fully in from its edge on the sheet curve instead of the default nudge and fade.
  */
@@ -62,6 +70,7 @@ function SheetContent({
         data-side={side}
         className={cn(
           'fixed z-50 flex flex-col gap-4 bg-popover bg-clip-padding text-sm text-popover-foreground shadow-lg transition duration-200 ease-in-out data-ending-style:opacity-0 data-starting-style:opacity-0 data-[side=bottom]:inset-x-0 data-[side=bottom]:border-t data-[side=bottom]:data-ending-style:translate-y-[2.5rem] data-[side=bottom]:data-starting-style:translate-y-[2.5rem] data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-3/4 data-[side=left]:border-r data-[side=left]:data-ending-style:translate-x-[-2.5rem] data-[side=left]:data-starting-style:translate-x-[-2.5rem] data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-3/4 data-[side=right]:border-l data-[side=right]:data-ending-style:translate-x-[2.5rem] data-[side=right]:data-starting-style:translate-x-[2.5rem] data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:border-b data-[side=top]:data-ending-style:translate-y-[-2.5rem] data-[side=top]:data-starting-style:translate-y-[-2.5rem] data-[side=left]:sm:max-w-sm data-[side=right]:sm:max-w-sm',
+          side === 'bottom' && BOTTOM_SHEET,
           variant === 'pane' && PANE,
           className,
         )}
