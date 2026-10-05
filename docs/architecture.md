@@ -229,7 +229,8 @@ its `skills` section, refreshing an expired listing when the section is evaluate
 and records the entry for the conversation (`app_skill_activations`). `skill_read` reads only files in that retained
 manifest, so a conversation
 stays on the version it activated. Verified bytes are cached by digest (`app_skill_files`) and checked again on every
-read. An unreachable server keeps its last listing while it remains cached in the isolate, or is reported unavailable.
+read. A corrupted cache row is rejected and repaired by a verified refetch (local workerd regression evidence).
+An unreachable server keeps its last listing while it remains cached in the isolate, or is reported unavailable.
 Dynamic skills are declined; skill scripts can be read but are never executed. Enabled skills are procedures the agent
 follows, but they grant no permissions and cannot override the owner. Disabling the server stops new activations and
 file reads; instructions already in a conversation stay there. A conversation can switch one library off for itself

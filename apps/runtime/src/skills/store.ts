@@ -117,7 +117,11 @@ export class SqliteSkillState implements SkillState {
     this.#db
       .insert(appSkillFiles)
       .values({ digest, content: toBase64(bytes), storedAt: now })
-      .onConflictDoNothing()
+      // A verified refetch repairs a cache row that was corrupted after it was written.
+      .onConflictDoUpdate({
+        target: appSkillFiles.digest,
+        set: { content: toBase64(bytes), storedAt: now },
+      })
       .run()
   }
 }

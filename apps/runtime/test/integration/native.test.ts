@@ -40,6 +40,12 @@ const Operation = Schema.Struct({
 const LifecycleRead = Schema.Struct({ instance: Schema.String, messages: Schema.Array(Schema.Unknown) })
 const Reopen = Schema.Struct({ replacedPiInstance: Schema.Boolean, messages: Schema.Array(Schema.Unknown) })
 const Sessions = Schema.Struct({ sessions: Schema.Array(Schema.Struct({ id: Schema.String, busy: Schema.Boolean })) })
+const SkillsCache = Schema.Struct({
+  firstBody: Schema.String,
+  secondBody: Schema.String,
+  reads: Schema.Number,
+  repaired: Schema.Boolean,
+})
 const Evidence = Schema.Struct({
   name: Schema.String,
   operationId: Schema.String,
@@ -65,6 +71,21 @@ function lifecycleClient(url: string, name: string, operationId: string) {
       return yield* Schema.decodeUnknownEffect(schema)(raw)
     })
 }
+
+harness.test(
+  'local workerd: a corrupted skill cache row is rejected, refetched and repaired',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    const name = `skills-cache-${yield* nextInt}`
+    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/skills-cache?name=${name}`))
+    expect(response.status).toBe(200)
+    const result = yield* Schema.decodeUnknownEffect(SkillsCache)(yield* Effect.promise(() => response.json()))
+    expect(result.firstBody).toContain('# Cache test')
+    expect(result.secondBody).toContain('# Cache test')
+    expect(result.reads).toBe(2)
+    expect(result.repaired).toBe(true)
+  }),
+)
 
 harness.test(
   'local workerd: actual PersonalAgent startup and additive app migration preserve vendor schemas',

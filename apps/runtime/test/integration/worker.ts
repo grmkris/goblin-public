@@ -21,12 +21,17 @@ import {
   appMcpOauthPending,
 } from '../../src/storage/schema.ts'
 import { CapabilityProfiles } from '../../src/capabilities/profiles.ts'
+import { skillsCacheProbe } from './skills-probe.ts'
 
 const notesAt = (endpoint: string) => [{ serverId: 'notes', endpoint }]
 
 /** The actual PersonalAgent on a scripted model (no network): every request it makes is kept for the test to read. */
 export class PersonalAgentProbe extends PersonalAgent {
   readonly seen: SeenRequest[] = []
+
+  skillsCacheProbe() {
+    return skillsCacheProbe(this.ctx.storage)
+  }
 
   protected override modelStreams(): ProviderStreams {
     return scriptedStreams((request) => this.seen.push(request))
@@ -549,6 +554,10 @@ export default {
   fetch(request: Request, env: Env): Promise<Response> {
     const name = new URL(request.url).searchParams.get('name') ?? 'initialization'
     if (new URL(request.url).pathname === '/rpc') return rpcSequence(env.AGENTS.getByName(name))
+    if (new URL(request.url).pathname === '/skills-cache')
+      return env.AGENTS.getByName(name)
+        .skillsCacheProbe()
+        .then((result) => Response.json(result))
     if (new URL(request.url).pathname === '/destroy') return destroySequence(env, name)
     if (new URL(request.url).pathname === '/branch') return branchSequence(env.AGENTS.getByName(name))
     if (new URL(request.url).pathname === '/share') return shareSequence(env.AGENTS.getByName(name))
