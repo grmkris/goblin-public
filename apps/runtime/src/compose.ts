@@ -40,6 +40,7 @@ import { RoutineStore } from './routines/store.ts'
 import { RoutineRunStore } from './routines/runs.ts'
 import { RoutineUsage, installRoutineUsage } from './routines/usage.ts'
 import * as Effect from 'effect/Effect'
+import type { EventHandler } from './mcp/events/dispatcher.ts'
 
 /** What the agent's services are built from: its storage and env, and the Pi pieces its constructor made. */
 export type ComposeInput = {
@@ -57,6 +58,8 @@ export type ComposeInput = {
   readonly entitlements: EntitlementPolicy
   readonly scheduleEvents: (at: number) => Promise<void>
   readonly pullTelegram: () => Promise<void>
+  readonly routineEvent: EventHandler
+  readonly mcpFetch: typeof fetch
 }
 
 /** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
@@ -83,7 +86,7 @@ async function makeEvents(
   cipher: CredentialCipher,
 ): Promise<McpEvents> {
   const env = input.env
-  return new McpEvents({
+  const events = new McpEvents({
     manager: host.manager,
     store: eventStore,
     cipher,
@@ -95,6 +98,8 @@ async function makeEvents(
       resident.require(nowSeconds())
     },
   })
+  events.register('routine-trigger', input.routineEvent)
+  return events
 }
 
 async function makeRoutines(input: ComposeInput) {
@@ -141,8 +146,7 @@ export async function composeServices(
     grants,
     skillsEnabled: (serverId) => skillState.enabled(serverId),
     appUrl: env.APP_URL,
-    // SAFETY: the platform fetch is the outbound MCP/OAuth boundary; tokens are added only by the SDK transport.
-    fetch: globalThis.fetch.bind(globalThis),
+    fetch: input.mcpFetch,
   })
   const budget = new ModelBudget(
     new UsageStore(db),

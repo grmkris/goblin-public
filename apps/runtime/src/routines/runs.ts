@@ -25,11 +25,67 @@ export type Firing = {
   readonly source: RoutineRun['source']
   readonly firedAt: number
   readonly schedule?: { expectedAt: number; nextAt: number | null; missed: number } | undefined
+  readonly event?:
+    | {
+        readonly eventId: string
+        readonly subscriptionId: string
+        readonly webhookId: string
+        readonly dataSealed: string
+      }
+    | undefined
 }
 export const definitionOf = (run: RoutineRun): RoutineDefinition =>
   Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(run.definitionJson))
 export const runView = (run: RoutineRun): RoutineRunView => Schema.decodeUnknownSync(RoutineRunView)(run)
 const LIVE = ['admitted', 'running', 'waiting_owner'] as const
+
+function requireSameFiring(previous: RoutineRun, firing: Firing): void {
+  const sameEvent =
+    firing.source === 'event' &&
+    previous.source === 'event' &&
+    previous.routineId === firing.routineId &&
+    previous.eventId === firing.event?.eventId
+  if (
+    !sameEvent &&
+    (previous.routineId !== firing.routineId ||
+      previous.revision !== firing.revision ||
+      previous.source !== firing.source)
+  )
+    throw new Conflict({ reason: 'run operation id reused' })
+}
+
+function newRun(firing: Firing, id: string, skip: string | undefined, at: number, definitionJson: string): RoutineRun {
+  const definition = Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(definitionJson))
+  return {
+    id,
+    routineId: firing.routineId,
+    revision: firing.revision,
+    operationId: firing.operationId,
+    source: firing.source,
+    firedAt: firing.firedAt,
+    eventId: firing.event?.eventId ?? null,
+    subscriptionId: firing.event?.subscriptionId ?? null,
+    webhookId: firing.event?.webhookId ?? null,
+    definitionJson,
+    eventDataSealed: firing.event?.dataSealed ?? null,
+    sessionId: null,
+    admittedAt: at,
+    deadlineAt: at + definition.budget.runtimeSeconds * 1000,
+    state: skip === undefined ? 'admitted' : 'skipped',
+    outcome: skip ?? null,
+    summary: skip ?? null,
+    reportRequestId: `routine-report:${id}`,
+    reportAcceptedAt: null,
+    notificationText: skip === undefined ? null : `Routine skipped: ${skip}`,
+    notificationState: 'none',
+    notificationReceipt: null,
+    notificationServerId: null,
+    notificationAttempts: 0,
+    notificationNextAt: 0,
+    createdAt: at,
+    updatedAt: at,
+  }
+}
 
 /** Application metadata only: Pi owns the run task and conversation. No transaction spans an await. */
 export class RoutineRunStore {
@@ -183,44 +239,17 @@ export class RoutineRunStore {
         .where(eq(appRoutineRuns.operationId, firing.operationId))
         .get()
       if (previous !== undefined) {
-        if (
-          previous.routineId !== firing.routineId ||
-          previous.revision !== firing.revision ||
-          previous.source !== firing.source
-        )
-          throw new Conflict({ reason: 'run operation id reused' })
+        requireSameFiring(previous, firing)
         return { run: previous, created: false }
       }
       const routine = new RoutineStore(this.db, this.owner).get(firing.routineId)
       if (routine.revision !== firing.revision || routine.state !== 'active' || routine.confirmedAt === null)
         throw new Conflict({ reason: 'routine is not active at this revision' })
-      if (skip === undefined) this.#requireSlot(routine.id)
-      const definition = Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(routine.definitionJson))
-      const run: RoutineRun = {
-        id,
-        ...firing,
-        eventId: null,
-        subscriptionId: null,
-        webhookId: null,
-        definitionJson: routine.definitionJson,
-        eventDataSealed: null,
-        sessionId: null,
-        admittedAt: at,
-        deadlineAt: at + definition.budget.runtimeSeconds * 1000,
-        state: skip === undefined ? 'admitted' : 'skipped',
-        outcome: skip ?? null,
-        summary: skip ?? null,
-        reportRequestId: `routine-report:${id}`,
-        reportAcceptedAt: null,
-        notificationText: skip === undefined ? null : `Routine skipped: ${skip}`,
-        notificationState: 'none',
-        notificationReceipt: null,
-        notificationServerId: null,
-        notificationAttempts: 0,
-        notificationNextAt: 0,
-        createdAt: at,
-        updatedAt: at,
+      if (skip === undefined) {
+        this.#requireSlot(routine.id)
+        if (firing.source === 'event') this.#requireEventSpacing(at)
       }
+      const run = newRun(firing, id, skip, at, routine.definitionJson)
       this.db.insert(appRoutineRuns).values(run).run()
       if (firing.schedule !== undefined)
         new RoutineStore(this.db, this.owner).advance(
@@ -234,6 +263,15 @@ export class RoutineRunStore {
         .run()
       return { run, created: true }
     })
+  }
+  #requireEventSpacing(at: number): void {
+    const latest = this.db
+      .select({ at: sql<number | null>`MAX(${appRoutineRuns.admittedAt})` })
+      .from(appRoutineRuns)
+      .where(and(eq(appRoutineRuns.source, 'event'), sql`${appRoutineRuns.state} != 'skipped'`))
+      .get()?.at
+    if (latest !== null && latest !== undefined && latest > at - 60_000)
+      throw new Conflict({ reason: 'event run spacing limit' })
   }
   #requireSlot(routineId: string): void {
     const live = this.live()

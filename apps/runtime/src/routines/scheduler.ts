@@ -16,6 +16,14 @@ const Pending = Schema.Struct({
   firedAt: Schema.Number,
   operationId: Schema.String,
   source: Schema.Literals(['manual', 'once', 'cron', 'event']),
+  event: Schema.optional(
+    Schema.Struct({
+      eventId: Schema.String,
+      subscriptionId: Schema.String,
+      webhookId: Schema.String,
+      dataSealed: Schema.String,
+    }),
+  ),
   schedule: Schema.optional(
     Schema.Struct({ expectedAt: Schema.Number, nextAt: Schema.NullOr(Schema.Number), missed: Schema.Int }),
   ),
@@ -103,7 +111,7 @@ export class RoutineScheduler {
     } catch (error) {
       if (
         !(error instanceof Conflict) ||
-        (error.reason !== 'routine already running' && error.reason !== 'running routine limit')
+        !['routine already running', 'running routine limit', 'event run spacing limit'].includes(error.reason)
       )
         throw error
     }

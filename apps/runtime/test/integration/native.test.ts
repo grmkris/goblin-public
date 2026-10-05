@@ -9,6 +9,7 @@ import { expect } from 'vitest'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { URL as FileURL } from 'node:url'
 import Stack from './stack.ts'
+import { routineEventsCase } from './native-routines-events.ts'
 import { ThreadPreview } from '@purrable/contracts'
 
 const harness = Test.make({
@@ -120,6 +121,11 @@ const RoutineRecovered = Schema.Struct({
   retainedSchedules: Schema.Number,
 })
 const routineRecoveryPath = new FileURL('../../.alchemy/purrable-routine-reconstruction.json', import.meta.url)
+
+harness.test(
+  'local workerd: signed routine Events freeze metadata, dedupe and coalesce, recover gaps and retire revisions',
+  stack.pipe(Effect.flatMap(({ url }) => routineEventsCase(url))),
+)
 
 harness.test(
   'local workerd: routine Telegram flag, frozen retries and remote receipt remain separate from Pi acceptance',

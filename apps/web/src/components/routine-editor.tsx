@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { Schema } from 'effect'
-import { RoutineView, type RoutineDefinition } from '@purrable/contracts'
+import { RoutineView, RoutineTrigger, type RoutineDefinition } from '@purrable/contracts'
 import {
   Alert,
   AlertDescription,
@@ -38,7 +38,7 @@ type EditorProps = {
 function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
   const id = useId()
   const initial = routine?.definition ?? defaults(timezone)
-  const [kind, setKind] = useState<'once' | 'cron'>(initial.trigger.kind === 'cron' ? 'cron' : 'once')
+  const [kind, setKind] = useState<RoutineDefinition['trigger']['kind']>(initial.trigger.kind)
   const [tools, setTools] = useState<readonly { serverId: string; name: string }[]>([])
   const [selected, setSelected] = useState(initial.allowedTools)
   const [notify, setNotify] = useState(initial.notifyTelegram)
@@ -57,23 +57,32 @@ function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
       const value = data.get(name)
       return typeof value === 'string' ? value : ''
     }
-    const definition: RoutineDefinition = {
-      title: field('title'),
-      prompt: field('prompt'),
-      timezone: field('timezone'),
-      trigger:
-        kind === 'cron' ? { kind: 'cron', expression: field('trigger') } : { kind: 'once', at: field('trigger') },
-      notifyTelegram: notify,
-      allowedTools: selected,
-      budget: {
-        tokensPerRun: Number(field('tokensPerRun')),
-        tokensPerDay: Number(field('tokensPerDay')),
-        runtimeSeconds: Number(field('runtimeSeconds')),
-      },
-    }
     setPending(true)
     setError('')
     try {
+      const definition: RoutineDefinition = {
+        title: field('title'),
+        prompt: field('prompt'),
+        timezone: field('timezone'),
+        trigger:
+          kind === 'cron'
+            ? { kind: 'cron', expression: field('trigger') }
+            : kind === 'event'
+              ? Schema.decodeUnknownSync(RoutineTrigger)({
+                  kind: 'event',
+                  serverId: field('eventServer'),
+                  name: field('eventName'),
+                  arguments: JSON.parse(field('eventArguments')),
+                })
+              : { kind: 'once', at: field('trigger') },
+        notifyTelegram: notify,
+        allowedTools: selected,
+        budget: {
+          tokensPerRun: Number(field('tokensPerRun')),
+          tokensPerDay: Number(field('tokensPerDay')),
+          runtimeSeconds: Number(field('runtimeSeconds')),
+        },
+      }
       const body = { definition, operationId: crypto.randomUUID(), ...(routine ? { revision: routine.revision } : {}) }
       onSaved(
         decodeView(
@@ -97,10 +106,48 @@ function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
   return { id, initial, kind, setKind, available, selected, setSelected, notify, setNotify, pending, error, save }
 }
 type Kit = ReturnType<typeof useRoutineEditor>
-function triggerValue(initial: RoutineDefinition, kind: 'once' | 'cron') {
+function triggerValue(initial: RoutineDefinition, kind: RoutineDefinition['trigger']['kind']) {
   if (initial.trigger.kind !== kind) return ''
   if (initial.trigger.kind === 'cron') return initial.trigger.expression
   return initial.trigger.kind === 'once' ? initial.trigger.at : ''
+}
+function EventFields({ kit }: { readonly kit: Kit }) {
+  const trigger = kit.initial.trigger
+  return (
+    <>
+      <Field>
+        <FieldLabel htmlFor={`${kit.id}-event-server`}>Connected server ID</FieldLabel>
+        <Input
+          id={`${kit.id}-event-server`}
+          name="eventServer"
+          defaultValue={trigger.kind === 'event' ? trigger.serverId : ''}
+          required
+          maxLength={64}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={`${kit.id}-event-name`}>Exact event name</FieldLabel>
+        <Input
+          id={`${kit.id}-event-name`}
+          name="eventName"
+          defaultValue={trigger.kind === 'event' ? trigger.name : ''}
+          placeholder="mail.received"
+          required
+          maxLength={256}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={`${kit.id}-event-args`}>Exact event filters (JSON object)</FieldLabel>
+        <Textarea
+          id={`${kit.id}-event-args`}
+          name="eventArguments"
+          defaultValue={trigger.kind === 'event' ? JSON.stringify(trigger.arguments) : '{}'}
+          required
+          maxLength={16_384}
+        />
+      </Field>
+    </>
+  )
 }
 function DefinitionFields({ kit }: { readonly kit: Kit }) {
   const { id, initial, kind, setKind } = kit
@@ -131,20 +178,32 @@ function DefinitionFields({ kit }: { readonly kit: Kit }) {
         >
           Cron schedule
         </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={kind === 'event' ? 'secondary' : 'outline'}
+          onClick={() => setKind('event')}
+        >
+          MCP Event
+        </Button>
       </div>
-      <Field>
-        <FieldLabel htmlFor={`${id}-trigger`}>
-          {kind === 'cron' ? 'Five-field cron (at least 15 minutes apart)' : 'Date and time with UTC offset'}
-        </FieldLabel>
-        <Input
-          key={kind}
-          id={`${id}-trigger`}
-          name="trigger"
-          required
-          defaultValue={triggerValue(initial, kind)}
-          placeholder={kind === 'cron' ? '0 9 * * 1-5' : '2026-10-06T09:00:00+02:00'}
-        />
-      </Field>
+      {kind === 'event' ? (
+        <EventFields kit={kit} />
+      ) : (
+        <Field>
+          <FieldLabel htmlFor={`${id}-trigger`}>
+            {kind === 'cron' ? 'Five-field cron (at least 15 minutes apart)' : 'Date and time with UTC offset'}
+          </FieldLabel>
+          <Input
+            key={kind}
+            id={`${id}-trigger`}
+            name="trigger"
+            required
+            defaultValue={triggerValue(initial, kind)}
+            placeholder={kind === 'cron' ? '0 9 * * 1-5' : '2026-10-06T09:00:00+02:00'}
+          />
+        </Field>
+      )}
       <Field>
         <FieldLabel htmlFor={`${id}-timezone`}>Timezone</FieldLabel>
         <Input id={`${id}-timezone`} name="timezone" defaultValue={initial.timezone} required />

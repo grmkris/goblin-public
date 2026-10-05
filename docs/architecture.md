@@ -551,6 +551,17 @@ Committed `pi.usage` counters, including compaction, project into app-only cumul
 receipts. Replay does not charge twice; a model response already in flight may overshoot a cap. Settlement freezes a
 scrubbed summary and one `app.routine` parent write with a stable request ID. Telegram reporting is separate authorized
 plumbing with frozen bytes/server, stable operation ID, five bounded attempts over at most 15 minutes, and a separate
-remote acceptance receipt. Pi acceptance does not establish external delivery. Additive migrations …210/…211 modify
-only application tables. Event-trigger activation and live dev acceptance remain separate work. See
+remote acceptance receipt. Pi acceptance does not establish external delivery. Additive migrations …210/…211/…212 modify
+only application tables.
+
+Event confirmation grants the exact connected server/name/canonical-arguments selector after authenticated review;
+its arguments must satisfy the producer descriptor schema. `routines/events.ts` binds `routine:<id>` and the current
+revision to ADR 0011's static dispatcher. Shared leases survive until their last consumer retires. Each admitted
+occurrence claims a losslessly escaped event ID, seals scrubbed bounded metadata, and labels it as untrusted data
+in the fresh run input. Replays remain no-ops across revised consumers, even after ingress receipts expire. At most
+one event run per minute is admitted across the agent; busy or spacing conflicts replace one sealed pending firing,
+whose durable handoff and consumer acknowledgment commit together. Gap controls show recovery health and use the
+originating authoritative poll; verification and termination create no model turn. Termination pauses the routine
+and requires owner reconfirmation. Pause/edit/archive retire the consumer; pause advances an Event revision so a
+retired receipt cannot become live again. Local signed-fixture proof is separate from real producer acceptance. See
 [ADR 0012](adr/0012-routines.md).

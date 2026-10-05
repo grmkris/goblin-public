@@ -1,4 +1,4 @@
-import { integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 export const appRoutines = sqliteTable('app_routines', {
   id: text('id').primaryKey().notNull(),
@@ -57,7 +57,11 @@ export const appRoutineRuns = sqliteTable(
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
-  (t) => [uniqueIndex('app_routine_operation').on(t.operationId), uniqueIndex('app_routine_session').on(t.sessionId)],
+  (t) => [
+    uniqueIndex('app_routine_operation').on(t.operationId),
+    uniqueIndex('app_routine_session').on(t.sessionId),
+    index('app_routine_event_spacing').on(t.source, t.admittedAt),
+  ],
 )
 export const appRoutineUsage = sqliteTable(
   'app_routine_usage',

@@ -102,6 +102,9 @@ function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
             : `${trigger.serverId} · ${trigger.name}`}{' '}
         · {definition.timezone}
       </p>
+      {trigger.kind === 'event' && (
+        <p className="whitespace-pre-wrap break-all text-sm">Event filters: {JSON.stringify(trigger.arguments)}</p>
+      )}
       <p className="text-sm">Next: {localTime(routine.nextFireAt, definition.timezone)}</p>
       <p className="text-sm text-muted-foreground">
         {definition.budget.tokensPerRun.toLocaleString()} tokens/run · {definition.budget.tokensPerDay.toLocaleString()}{' '}

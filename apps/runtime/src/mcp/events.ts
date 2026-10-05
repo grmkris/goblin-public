@@ -16,6 +16,8 @@ import {
   type Subscription,
 } from './events/store.ts'
 import { challengeResponse, isOccurrence, type WebhookHeaders } from './events/webhook.ts'
+import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/client/validators/cf-worker'
+import type { JsonSchemaType } from '@modelcontextprotocol/client'
 
 const attempt = <A>(run: () => Promise<A>): Effect.Effect<A, AppError> =>
   Effect.tryPromise({ try: run, catch: toAppError })
@@ -93,10 +95,14 @@ export class McpEvents {
           throw new InvalidInput({ reason: 'event consumer revision cannot be rebound' })
       }
       const descriptors = await this.#client.list(input.serverId, input.name, input.arguments)
-      if (
-        !descriptors.some((d) => d.name === input.name && d.delivery.includes('webhook') && d.delivery.includes('poll'))
+      const descriptor = descriptors.find(
+        (d) => d.name === input.name && d.delivery.includes('webhook') && d.delivery.includes('poll'),
       )
-        throw new InvalidInput({ reason: 'event not available with poll and webhook' })
+      if (descriptor === undefined) throw new InvalidInput({ reason: 'event not available with poll and webhook' })
+      // SAFETY: the bounded descriptor is decoded as an object; the SDK validator treats its JSON schema as data.
+      const schema = descriptor.inputSchema as JsonSchemaType
+      if (!new CfWorkerJsonSchemaValidator().getValidator(schema)(input.arguments).valid)
+        throw new InvalidInput({ reason: 'event arguments do not match its descriptor' })
       const row = await this.#client.prepare(input.serverId, input.name, input.arguments)
       this.store.bind({
         consumerId: input.consumerId,

@@ -205,7 +205,15 @@ export class RoutineStore {
       if (current.revision !== revision) throw new Conflict({ reason: 'stale routine revision' })
       this.#db
         .update(appRoutines)
-        .set({ state: 'paused', scheduleId: null, nextFireAt: null, pendingTrigger: null, updatedAt: at })
+        .set({
+          state: 'paused',
+          // A retired Events consumer revision must never be revived by Resume.
+          revision: decode(current.definitionJson).trigger.kind === 'event' ? revision + 1 : revision,
+          scheduleId: null,
+          nextFireAt: null,
+          pendingTrigger: null,
+          updatedAt: at,
+        })
         .where(eq(appRoutines.id, routineId))
         .run()
       const response = { routine: this.#view(this.get(routineId)), operationId }
@@ -250,6 +258,13 @@ export class RoutineStore {
 
   scheduling(): Row[] {
     return this.#db.select().from(appRoutines).all()
+  }
+  eventHealth(id: string, revision: number, health: string | null, at: number): void {
+    this.#db
+      .update(appRoutines)
+      .set({ health, updatedAt: at })
+      .where(and(eq(appRoutines.id, id), eq(appRoutines.revision, revision)))
+      .run()
   }
   advance(
     input: { id: string; revision: number; expectedAt: number; nextAt: number | null; missed: number },
@@ -296,7 +311,14 @@ export class RoutineStore {
     const row = this.get(id)
     this.#db
       .update(appRoutines)
-      .set({ pendingTrigger: null, state: row.nextFireAt === null ? 'completed' : row.state, updatedAt: at })
+      .set({
+        pendingTrigger: null,
+        state:
+          row.state === 'active' && row.nextFireAt === null && decode(row.definitionJson).trigger.kind !== 'event'
+            ? 'completed'
+            : row.state,
+        updatedAt: at,
+      })
       .where(and(eq(appRoutines.id, id), eq(appRoutines.pendingTrigger, sealed)))
       .run()
   }

@@ -9,6 +9,8 @@ import { routineQuestionProbe, routineStopProbe, routineRecoveryWrite, routineRe
 import { routineScheduleProbe } from './routines-scheduling.ts'
 import { routineUsageProbe } from './routines-usage.ts'
 import { routineNotificationProbe } from './routines-notifications.ts'
+import { routineEventsProbe } from './routines-events.ts'
+import { EventsFixture } from '../mcp/events-fixture.ts'
 import { PersonalAgent } from '../../src/agent.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { listTables } from '../../src/storage/vendor.ts'
@@ -50,6 +52,7 @@ const notesAt = (endpoint: string) => [{ serverId: 'notes', endpoint }]
 export class PersonalAgentProbe extends PersonalAgent {
   readonly seen: SeenRequest[] = []
   readonly instance = String(Effect.runSync(nextInt))
+  readonly routineProducer = new EventsFixture()
 
   protected override entitlementPolicy(): EntitlementPolicy {
     return { state: fixturePlan, require: fixturePlan }
@@ -88,6 +91,15 @@ export class PersonalAgentProbe extends PersonalAgent {
   }
   async routineNotificationProbe(): Promise<Response> {
     return Response.json(await routineNotificationProbe(this.ctx.storage, this.name))
+  }
+  async routineEventsProbe(): Promise<Response> {
+    return Response.json(await routineEventsProbe(this.ctx.storage, this, this.routineProducer, this.seen))
+  }
+  protected override mcpFetch(): typeof fetch {
+    return (input, init) =>
+      new URL(input instanceof Request ? input.url : String(input)).hostname === 'routine-events.test'
+        ? this.routineProducer.fetch(input, init)
+        : fetch(input, init)
   }
 
   skillsCacheProbe() {
@@ -660,6 +672,8 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return agent.routineUsageProbe()
     case '/routine-notifications':
       return agent.routineNotificationProbe()
+    case '/routine-events':
+      return agent.routineEventsProbe()
     case '/rpc':
       return rpcSequence(agent)
     case '/skills-cache':

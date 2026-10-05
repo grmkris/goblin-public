@@ -165,6 +165,11 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'ALTER TABLE app_routine_runs ADD COLUMN notification_next_at INTEGER NOT NULL DEFAULT 0',
     ].join(BREAK),
   },
+  {
+    key: '20261016000212_routine_event_spacing',
+    tables: ['app_routine_runs'],
+    sql: 'CREATE INDEX app_routine_event_spacing ON app_routine_runs (source, admitted_at)',
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

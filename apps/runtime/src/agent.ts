@@ -139,6 +139,11 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   protected modelStreams(): ProviderStreams {
     return LITELLM_STREAMS
   }
+  /** The normal platform boundary; tests inject an official SDK fixture without changing authorization. */
+  protected mcpFetch(): typeof fetch {
+    // SAFETY: SDK transport alone adds OAuth tokens; binding platform fetch preserves its execution context.
+    return globalThis.fetch.bind(globalThis)
+  }
 
   override async onStart(): Promise<void> {
     runApplicationMigrations(this.ctx.storage)
@@ -166,6 +171,8 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       entitlements: this.entitlementPolicy(),
       scheduleEvents: (at) => this.#scheduleWake('mcpEventsWake', at),
       pullTelegram: () => this.channelPull(),
+      routineEvent: (context) => this.#routines.consumeEvent(context),
+      mcpFetch: this.mcpFetch(),
     })
     this.#runtime.catch(() => {
       this.#runtime = undefined

@@ -1,6 +1,6 @@
 # ADR 0012: Confirmed routines and isolated run threads
 
-Status: scheduled execution implemented and locally verified; deployed acceptance pending.
+Status: scheduled and Event execution implemented; native workerd verified. Phase 1 deployed on dev; phase 2 deployment and real producer acceptance pending.
 
 ## Decision
 
@@ -16,9 +16,9 @@ two executing, one live or waiting run per routine, a 15-minute cron minimum, on
 Account entitlements gate the feature. No action renews resident authority in the background.
 
 Confirmation first persists provenance and `activating`, then reconciles a dated schedule. A failed arm remains
-visible and recovery retries only confirmed revisions. Application migrations …210/…211 are additive and leave
+visible and recovery retries only confirmed revisions. Application migrations …210/…211/…212 are additive and leave
 Pi/Agents tables untouched. Shared submission origins and sealed interaction receipts support routine execution
-and subsequent Members extensions. Event proposals may be stored; Events activation remains the next slice.
+and subsequent Members extensions. Event confirmation grants only the exact server/name/canonical-arguments selector after descriptor-schema validation at subscription.
 
 Five-field numeric cron uses one Worker-compatible parser and IANA `Intl` projection. It supports lists, ranges and
 steps; unsupported macros and seconds fail visibly. Daily slots must be at least 15 minutes apart, including the
@@ -43,8 +43,18 @@ block model calls because Pi swallows hook exceptions. MCP tool dispatch repeats
 Token caps cannot stop a response already in flight or make provider accounting exact. Pause blocks
 new admission while admitted snapshots may settle; archive cancels only owned schedules/work and retains history.
 
-Planned Events bindings use ADR 0011's shared dispatcher, consumer revisions, acknowledgments and ref-counted leases. Event
-payloads are untrusted data and never instructions or permission. Controls create health/reconciliation work only.
+Events bindings use ADR 0011's shared dispatcher, consumer revisions, acknowledgments and reference-counted leases.
+The exact owner-reviewed selector is subscribed through the originating authorized connection. Occurrence IDs use
+lossless escaping in `routine:<id>:<eventId>`; existing run receipts dedupe replay across revision changes, including
+after ingress receipt retention expires. Metadata is scrubbed, bounded to 1600 characters, encrypted with the run
+operation/revision as associated data, then labelled as untrusted data in the fresh run input. The run provider and
+MCP scope still check authority at action time; payloads grant nothing.
+
+The agent admits at most one event run per minute. A busy/spacing conflict persists one sealed pending firing and
+acknowledges its consumer in one short app transaction, after arming recovery. Replays never replace it again. Gap
+controls show health and let shared Events poll the exact selector. Verification and termination create no model
+turn; termination pauses the definition and requires fresh owner confirmation. Pause advances Event revisions,
+edit clears confirmation, and archive retires only that consumer. Other consumers retain a shared remote lease.
 
 ## Evidence
 
@@ -56,6 +66,9 @@ execution, running limits, one pending burst and archive fences. They do not est
 provider billing or deployed acceptance. Separate workerd processes also recover a retained question in the same Pi session. Native compaction charges 45
 fixture tokens once; replay on the next UTC day charges zero. The injected model overshoots a 1000-token cap by
 10 tokens from its single in-flight response. Injected Telegram retries reuse identical bytes and distinguish the
-remote receipt from the passive main write. These fixture values do not measure a real provider or Telegram host.
+remote receipt from the passive main write. Signed Event fixtures also prove shared leases, bad signatures, replay,
+metadata sealing/scrubbing/labelling, per-agent spacing, pending coalescing/drain, descriptor argument rejection,
+gap/poll recovery, termination/reconfirmation and edit retirement. Labelling is structural evidence, not a model
+injection-resistance claim. These fixture values do not measure a real provider or Telegram host.
 
 Related: [ADR 0010](0010-per-conversation-capabilities-and-thread-notes.md), [ADR 0011](0011-mcp-events.md).

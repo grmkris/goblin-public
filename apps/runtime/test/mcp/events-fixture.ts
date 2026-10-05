@@ -19,6 +19,7 @@ export class EventsFixture {
   readonly inbox: { id: string; text: string; direction: string }[] = []
   skills: readonly SkillEntry[] = []
   readonly files = new Map<string, string>()
+  inputSchema: Record<string, unknown> = { type: 'object' }
   cursor = '0'
   now = Date.now()
   ttlMs = 3_600_000
@@ -56,7 +57,7 @@ export class EventsFixture {
       events: ['message.received', 'question.answered', 'skills.updated', 'skills.list_changed'].map((name) => ({
         name,
         description: name,
-        inputSchema: { type: 'object' },
+        inputSchema: this.inputSchema,
         payloadSchema: { type: 'object' },
         delivery: ['poll', 'webhook'],
       })),

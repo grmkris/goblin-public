@@ -2,15 +2,13 @@
 
 Where planned features attach, plus the remaining cleanup. Each new feature needs its own decision when it is built.
 
-## Routines
+## Routines acceptance
 
-Scheduled work for the agent, for example "every morning, summarize today's plan".
-
-- Store routines in an `app_routines` table (id, cron, prompt, enabled) and schedule them with the Agents SDK
-  `this.schedule(cron, 'runRoutine', { id })` from `PersonalAgent`.
-- `runRoutine` submits to Pi with operation ID `routine:${id}:${firedAt}` to deduplicate submissions for one firing.
-  Acceptance still does not prove exactly-once external effects. Decide whether it uses main or its own conversation.
-- Routines run under resident authority. If it has lapsed, record the skip and show it, do not fail silently.
+Confirmed reminders, cron and MCP Events now run in fresh Pi conversations, report passively to main and obey
+resident authority, current grants and confirmed scope. Settings provides exact revision review, caps and run
+history. [ADR 0012](adr/0012-routines.md) records native fixtures and the remaining deployed acceptance. Real
+producer Events, Railway provider accounting and Telegram completion need separate receipts; local fixtures do
+not establish them.
 
 ## Write approvals
 
