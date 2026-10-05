@@ -314,6 +314,8 @@ correctness, evidence completeness/validity, abstention and unsupported content.
 by the answer, not sources the grader read privately. `searchSupported` requires a cited delivered search/read
 receipt. Machine grading is an explicit local reviewer step; the packet/export/import commands do not call a judge
 API or allocate hidden judge spend. Reviewer identity/kind is an attestation, not authenticated proof of a human.
+When the rubric requires abstention and no claims, absence of factual citations is valid; positive factual answers
+still require cited originals for complete evidence. Review changes never rewrite the recorded strict scores.
 
 Votes append to `semantic-reviews.jsonl` and bind packet/run/source/corpus/result identity. Exact duplicate vote IDs
 are idempotent; altered IDs/content, changed answers, duplicate vote kinds and out-of-prefix evidence are rejected.

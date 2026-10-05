@@ -102,6 +102,27 @@ test('prefix and actual cited source receipts constrain search support', () => {
   )
 })
 
+test('correct abstention needs no factual citations, while positive claims still do', () => {
+  const label = {
+    requiredClaims: [{ key: 'approved-plan', meaning: 'No approved plan exists in the prefix.' }],
+    evidenceIds: ['owner'],
+    mustAbstain: true,
+    prohibitedClaims: [],
+    rubric: 'Return abstain=true and no claims.',
+  }
+  const noClaims = {
+    ...item,
+    label,
+    category: 'abstention' as const,
+    rawAnswer: '{"claims":[],"evidenceIds":[],"abstain":true}',
+  }
+  const review = { ...vote, evidenceIds: [], searchSupported: false }
+  expect(validateVote(noClaims, review, [])).toEqual([])
+  expect(validateVote({ ...noClaims, label: { ...label, mustAbstain: false } }, review, [])).toContain(
+    'Complete factual evidence requires cited originals',
+  )
+})
+
 test('packet reuse, sealed import, idempotency and answer tampering with injected filesystem', async () => {
   const resolved = Schema.decodeUnknownSync(Resolved)({
     manifest: {

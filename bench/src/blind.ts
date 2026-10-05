@@ -65,7 +65,12 @@ function evidenceReasons(item: BlindCase, vote: VoteInput): string[] {
     )
   )
     reasons.push('Valid evidence requires IDs cited in the original answer and delivered to the reader')
-  if (vote.score.evidenceComplete && (item.label?.requiredClaims.length ?? 0) > 0 && vote.evidenceIds.length === 0)
+  if (
+    vote.score.evidenceComplete &&
+    item.label?.mustAbstain !== true &&
+    (item.label?.requiredClaims.length ?? 0) > 0 &&
+    vote.evidenceIds.length === 0
+  )
     reasons.push('Complete factual evidence requires cited originals')
   return reasons
 }
