@@ -184,6 +184,21 @@ answer arm, with reported/charged tokens, observed reasoning/cache coverage and 
 without dated prices. Pin the implementation and private corpus in an isolated local snapshot before live inference;
 concurrent source edits must not change a running trial's identity.
 
+Efficiency tables cover every planned answer, including runtime failures, unfinished attempts and unstarted answers.
+They count unique upstream API attempts (settlement replaces its reservation), transient retries separately from
+ordinary model turns, and allowed/denied retrieval calls by tool plus returned UTF-8 bytes. Reader totals include all
+recorded answer work; preflight and shared memory construction remain separate. Missing retrieval logs, dated prices,
+reasoning/cache details and timing stay unknown, with explicit measurement coverage. Input/output charges include
+retained unknown-usage reservations; reported totals include only known provider usage. Cost per correct answer is
+unknown when no answer passes. Estimated spend uses the manifest's dated input/output prices; it is not a bill.
+
+`apiLatencyMs` sums measured response durations and excludes tool execution and coordinator overhead;
+`completeApiLatencyMs` is unknown when any attempt lacks timing. New results record monotonic coordinator timing:
+`answerMs` runs from submitting the probe to receiving its native result, including tools and all model turns;
+`buildMs` measures checkpoint readiness (which may reuse cached memory); `episodeMs` includes both and evaluation.
+Failed execution records total episode time even when stage timings are unavailable. Older live evidence has no
+coordinator timing, so it cannot establish end-to-end delivery speed or TTFT. Reporting never issues model calls.
+
 All 12 answers must complete and be reviewed before a quality conclusion. Search is promising only with at least
 one strict paired gain, no losses, at least one gain supported by delivered search/read evidence, both candidate
 abstentions passing, and zero candidate malformed answers, invalid citations, unsupported claims, future leakage or

@@ -3,6 +3,7 @@ import { sameTransport } from './transport.ts'
 import { episodes } from './plan.ts'
 import { paired } from './paired.ts'
 import { exceededReservation } from './budget.ts'
+import { efficiency } from './metrics.ts'
 
 const escape = (text: string): string =>
   text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
@@ -67,9 +68,10 @@ export function accounting(data: RunData) {
 }
 /** Shared construction and preflight costs remain separate from each reader arm. */
 export function phaseAccounting(data: RunData) {
+  const planned = episodes(data.resolved.manifest, data.resolved.scenarios)
   const groups = Map.groupBy(attemptsOf(data), (trace) =>
     trace.phase === 'answer'
-      ? (data.results.find((result) => trace.scope === `${data.resolved.runId}.${result.id}`)?.variant ??
+      ? (planned.find((episode) => trace.scope === `${data.resolved.runId}.${episode.id}`)?.variant.id ??
         'unassigned-answer')
       : trace.phase,
   )
@@ -187,6 +189,113 @@ export function promotion(candidate: RunData, incumbent: RunData) {
     cost: cost(candidate),
   }
 }
+const seconds = (value: number | null): string => (value === null ? 'unmeasured' : `${(value / 1000).toFixed(2)} s`)
+const display = (value: number | null): string => (value === null ? 'unknown' : value.toLocaleString('en-US'))
+const table = (caption: string, headers: readonly string[], rows: readonly (readonly string[])[]): string =>
+  `<div class="scroll"><table><caption>${escape(caption)}</caption><thead><tr>${headers.map((header) => `<th>${escape(header)}</th>`).join('')}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escape(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+
+type Arms = ReturnType<typeof efficiency>
+function readerTable(arms: Arms): string {
+  return table(
+    'Reader efficiency by variant',
+    [
+      'variant',
+      'completed / planned',
+      'strict passes / scored',
+      'API attempts (retries)',
+      'tool calls (denied)',
+      'tool coverage',
+      'input tokens',
+      'completion tokens',
+      'API time',
+      'API timing coverage',
+      'answer time coverage',
+      'estimated spend',
+    ],
+    Object.entries(arms).map(([variant, arm]) => [
+      variant,
+      `${arm.completedAnswers} / ${arm.plannedAnswers}`,
+      `${arm.correctAnswers} / ${arm.reviewedAnswers}`,
+      `${arm.apiAttempts} (${arm.apiRetries})`,
+      `${display(arm.toolCalls.total)} (${display(arm.deniedToolCalls.total)})`,
+      `${arm.toolCalls.covered} / ${arm.plannedAnswers}`,
+      display(arm.chargedInputTokens),
+      display(arm.chargedOutputTokens),
+      seconds(arm.apiLatencyMs),
+      `${arm.apiLatencyCoverage} / ${arm.apiAttempts}`,
+      `${arm.answerMs.covered} / ${arm.plannedAnswers}`,
+      arm.spend === null ? 'unknown' : arm.spend.toFixed(6),
+    ]),
+  )
+}
+function answerTable(arms: Arms): string {
+  return table(
+    'Every planned answer, including unstarted and failed work',
+    [
+      'variant',
+      'cutoff',
+      'question category',
+      'outcome',
+      'API attempts (retries)',
+      'tool calls (denied)',
+      'input tokens',
+      'completion tokens',
+      'API time',
+      'API timing coverage',
+      'answer time',
+      'checkpoint + answer time',
+    ],
+    Object.entries(arms).flatMap(([variant, arm]) =>
+      arm.answers.map((row) => [
+        variant,
+        String(row.cutoff),
+        row.category,
+        row.outcome,
+        `${row.apiAttempts} (${row.apiRetries})`,
+        `${display(row.toolCalls)} (${display(row.deniedToolCalls)})`,
+        display(row.chargedInputTokens),
+        display(row.chargedOutputTokens),
+        seconds(row.apiLatencyMs),
+        `${row.apiLatencyCoverage} / ${row.apiAttempts}`,
+        seconds(row.answerMs),
+        seconds(row.episodeMs),
+      ]),
+    ),
+  )
+}
+function sharedTable(data: RunData): string {
+  return table(
+    'Preflight and shared memory construction (excluded from reader totals)',
+    [
+      'phase',
+      'API attempts',
+      'charged input',
+      'charged completion',
+      'reported input',
+      'reported completion',
+      'unknown usage attempts',
+      'API time',
+      'API timing coverage',
+    ],
+    Object.entries(phaseAccounting(data))
+      .filter(([phase]) => phase === 'preflight' || phase === 'build' || phase === 'unassigned-answer')
+      .map(([phase, metrics]) => [
+        phase,
+        String(metrics.requests),
+        display(metrics.chargedTokens.input),
+        display(metrics.chargedTokens.output),
+        display(metrics.reportedTokens.input),
+        display(metrics.reportedTokens.output),
+        String(metrics.unknownUsageRequests),
+        metrics.latencyCoverage === 0 ? 'unmeasured' : seconds(metrics.latencyMs),
+        `${metrics.latencyCoverage} / ${metrics.requests}`,
+      ]),
+  )
+}
+function renderEfficiency(data: RunData): string {
+  const arms = efficiency(data)
+  return `${readerTable(arms)}${answerTable(arms)}${sharedTable(data)}<p>API time sums recorded response durations; coverage counts measured attempts. Answer time includes retrieval and model turns after the checkpoint is ready. Checkpoint + answer time also includes checkpoint readiness and evaluation. Older runs have no coordinator timing. Unknown retrieval logs and prices remain unknown. Completion tokens include reasoning; reasoning/cache details and retries have measurement coverage in JSON. These totals include failures and unfinished work. Cost per correct answer is unknown when no answer passes. TTFT is unmeasured.</p>`
+}
 export function renderReport(data: RunData): string {
   const rows = data.results
     .map(
@@ -194,5 +303,5 @@ export function renderReport(data: RunData): string {
         `<tr><td>${escape(result.variant)}</td><td>${escape(result.id)}</td><td>${result.status === 'failed' ? 'runtime failure' : result.reviewStatus === 'pending' ? 'review pending' : result.score.correct ? 'pass' : 'fail'}</td><td><details><summary>inspect</summary><pre>${escape(JSON.stringify(result, null, 2))}</pre><a href="${result.status === 'failed' ? 'failures.jsonl' : `traces/${encodeURIComponent(result.id)}.json`}">private ${result.status === 'failed' ? 'failure ledger' : 'episode trace'}</a></details></td></tr>`,
     )
     .join('')
-  return `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Memory bench ${escape(data.resolved.runId)}</title><style>body{font:14px system-ui;margin:2rem;background:#111;color:#eee}table{border-collapse:collapse;width:100%}td,th{border:1px solid #444;padding:.4rem}details{max-width:50rem}pre{white-space:pre-wrap}a{color:#8bd}</style><h1>${escape(data.resolved.runId)}</h1><p>${escape(data.resolved.mode)} provider · source ${escape(data.resolved.sourceHash)} · corpus ${escape(data.resolved.corpusHash)}</p><p>Accuracy covers completed, scored answers; real answers require semantic review. Inspect completion and review coverage before comparing variants. Charged tokens include retained reservations when provider usage is unknown.</p><pre>${escape(JSON.stringify({ plannedAnswers: episodes(data.resolved.manifest, data.resolved.scenarios).length, scores: summary(data), accounting: accounting(data), phases: phaseAccounting(data), paired: paired(data), cost: cost(data) }, null, 2))}</pre><table><thead><tr><th>variant</th><th>episode</th><th>result</th><th>trace</th></tr></thead><tbody>${rows}</tbody></table>`
+  return `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Memory bench ${escape(data.resolved.runId)}</title><style>body{font:14px system-ui;margin:2rem;background:#111;color:#eee}table{border-collapse:collapse;width:100%;margin:1rem 0}caption{text-align:left;font-weight:bold;margin:.5rem 0}td,th{border:1px solid #444;padding:.4rem}details{max-width:80rem}pre{white-space:pre-wrap}a{color:#8bd}.scroll{overflow-x:auto}</style><h1>${escape(data.resolved.runId)}</h1><p>${escape(data.resolved.mode)} provider · source ${escape(data.resolved.sourceHash)} · corpus ${escape(data.resolved.corpusHash)}</p><p>Accuracy covers completed, scored answers; real answers require semantic review. Inspect completion and review coverage before comparing variants. Charged tokens include retained reservations when provider usage is unknown.</p>${renderEfficiency(data)}<details><summary>Accounting and paired diagnostic details</summary><pre>${escape(JSON.stringify({ plannedAnswers: episodes(data.resolved.manifest, data.resolved.scenarios).length, scores: summary(data), accounting: accounting(data), phases: phaseAccounting(data), efficiency: efficiency(data), paired: paired(data), cost: cost(data) }, null, 2))}</pre></details><table><thead><tr><th>variant</th><th>episode</th><th>result</th><th>trace</th></tr></thead><tbody>${rows}</tbody></table>`
 }

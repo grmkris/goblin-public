@@ -24,6 +24,13 @@ export const EpisodeResult = Schema.Struct({
   deliveries: Schema.optional(Schema.Array(Delivery)),
   retrieval: Schema.optional(Schema.Array(RetrievalRecord)),
   detail: Schema.String,
+  timing: Schema.optional(
+    Schema.Struct({
+      episodeMs: Schema.Number,
+      buildMs: Schema.optional(Schema.Number),
+      answerMs: Schema.optional(Schema.Number),
+    }),
+  ),
   reviewStatus: Schema.optional(Schema.Literals(['pending', 'reviewed'])),
   review: Schema.optional(
     Schema.Struct({

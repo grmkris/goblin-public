@@ -1,4 +1,4 @@
-import { DateTime, Effect, FileSystem, Schema, Result } from 'effect'
+import { DateTime, Duration, Effect, FileSystem, Schema, Result } from 'effect'
 import { join } from 'node:path'
 import { episodes, type Episode } from '../src/plan.ts'
 import { dataset } from '../src/fixtures.ts'
@@ -32,25 +32,34 @@ const executeEpisode = Effect.fn('bench.episode')(function* (
   if (blocked.has(actor))
     return yield* fail('Checkpoint build previously failed in this run; dependent episodes remain blocked')
   provider.setScope(actor, 'build')
-  const build = yield* post(url, 'build', actor, {
+  const [buildDuration, build] = yield* post(url, 'build', actor, {
     identity: actor,
     manifest: resolved.manifest,
     policy: buildPolicy(episode.variant.policy),
     writer: episode.variant.writer ?? episode.variant.reader,
     events: publicEvents(scenario.events.slice(0, episode.probe.cutoff)),
-  }).pipe(Effect.tapError(() => blocked.record(actor)))
+  }).pipe(
+    Effect.tapError(() => blocked.record(actor)),
+    Effect.timed,
+  )
   const operationId = `${resolved.runId}.${episode.id}`
   provider.setScope(operationId, 'answer')
-  const raw = yield* post(url, 'probe', actor, {
+  const [answerDuration, raw] = yield* post(url, 'probe', actor, {
     id: operationId,
     reader: episode.variant.reader,
     cutoff: episode.probe.cutoff,
     recallGuide: resolved.manifest.recallGuide,
     question: `${episode.probe.question}\nUse claim keys: ${episode.probe.keys.join(', ')}.`,
     search: episode.variant.policy === 'standard-search' || episode.variant.policy === 'optchat-search',
-  })
+  }).pipe(Effect.timed)
   const native = yield* Schema.decodeUnknownEffect(ProbeResult)(raw)
-  return { result: evaluated(resolved, episode, native), native, actor, build }
+  return {
+    result: evaluated(resolved, episode, native),
+    native,
+    actor,
+    build,
+    timing: { buildMs: Duration.toMillis(buildDuration), answerMs: Duration.toMillis(answerDuration) },
+  }
 })
 
 export const loadRun = Effect.fn('bench.loadRun')(function* (dir: string) {
@@ -130,10 +139,15 @@ export const run = Effect.fn('bench.run')(function* (options: {
   for (const episode of episodes(options.resolved.manifest, options.resolved.scenarios)) {
     const episodePath = join(options.dir, 'episodes', `${episode.id}.json`)
     if (yield* fs.exists(episodePath)) continue
-    const completed = yield* executeEpisode(url, options.resolved, episode, provider, blocked).pipe(Effect.result)
+    const [duration, completed] = yield* executeEpisode(url, options.resolved, episode, provider, blocked).pipe(
+      Effect.result,
+      Effect.timed,
+    )
+    const episodeMs = Duration.toMillis(duration)
     if (Result.isSuccess(completed)) {
-      yield* writeJson(join(options.dir, 'traces', `${episode.id}.json`), completed.success)
-      yield* writeJson(episodePath, completed.success.result)
+      const result = { ...completed.success.result, timing: { episodeMs, ...completed.success.timing } }
+      yield* writeJson(join(options.dir, 'traces', `${episode.id}.json`), { ...completed.success, result })
+      yield* writeJson(episodePath, result)
     } else {
       const result: EpisodeResult = {
         id: episode.id,
@@ -148,6 +162,7 @@ export const run = Effect.fn('bench.run')(function* (options: {
         forbiddenEndorsement: false,
         deliveredIds: [],
         detail: 'Execution failed; inspect attempts and native logs',
+        timing: { episodeMs },
       }
       yield* writeJson(episodePath, result)
       yield* appendJson(join(options.dir, 'failures.jsonl'), { id: episode.id, error: json(completed.failure) })

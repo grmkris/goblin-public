@@ -16,6 +16,7 @@ import { readJson, fail, json, writeJson, appendJson, lockRun } from './store.ts
 import { Schema } from 'effect'
 import { run, resolveRun, loadRun } from './runner.ts'
 import { compare, renderReport, promotion, accounting, summary, phaseAccounting } from '../src/report.ts'
+import { efficiency } from '../src/metrics.ts'
 
 const [command = 'plan', ...args] = Bun.argv.slice(2)
 function option(name: string): string | undefined {
@@ -87,6 +88,7 @@ const analyze = Effect.fn('bench.analyze')(function* () {
       scores: summary(data),
       accounting: accounting(data),
       phases: phaseAccounting(data),
+      efficiency: efficiency(data),
       paired: paired(data),
     })
     return { path, paired: paired(data).map(({ rows: _rows, ...decision }) => decision) }

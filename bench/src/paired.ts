@@ -1,5 +1,6 @@
 import type { EpisodeResult, RunData } from './results.ts'
 import { episodes } from './plan.ts'
+import { answerMetrics } from './metrics.ts'
 
 const reviewed = (result: EpisodeResult | undefined): boolean =>
   result?.status === 'completed' && result.reviewStatus === 'reviewed'
@@ -14,16 +15,16 @@ const outcome = (result: EpisodeResult | undefined): string =>
           ? 'pass'
           : 'fail'
 const operations = (result: EpisodeResult | undefined) => ({
-  calls: result?.retrieval?.length ?? 0,
-  denied: result?.retrieval?.filter((item) => item.denied).length ?? 0,
+  calls: result?.retrieval?.length ?? null,
+  denied: result?.retrieval?.filter((item) => item.denied).length ?? null,
   returnedBytes:
     result?.retrieval
       ?.filter((item) => !item.denied)
-      .reduce((n, item) => n + new TextEncoder().encode(item.text).length, 0) ?? 0,
+      .reduce((n, item) => n + new TextEncoder().encode(item.text).length, 0) ?? null,
   byTool: Object.fromEntries(
     ['zoom', 'archive_search', 'archive_read'].map((tool) => [
       tool,
-      result?.retrieval?.filter((item) => item.operation === tool).length ?? 0,
+      result?.retrieval?.filter((item) => item.operation === tool).length ?? null,
     ]),
   ),
   citedOrigins:
@@ -56,6 +57,8 @@ function pairRow(data: RunData, probe: import('./schema.ts').Probe, baseline: st
     searchSupportedGain: gain && searchSupported,
     baselineRetrieval: operations(before),
     candidateRetrieval: operations(after),
+    baselineEfficiency: answerMetrics(data, `${probe.id}.${baseline}`),
+    candidateEfficiency: answerMetrics(data, `${probe.id}.${candidate}`),
   }
 }
 

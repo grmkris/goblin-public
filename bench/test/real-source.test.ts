@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { Schema } from 'effect'
 import { expect, test } from 'vitest'
@@ -14,6 +14,7 @@ import { Manifest } from '../src/schema.ts'
 import { EpisodeResult, Resolved, Trace } from '../src/results.ts'
 import { accounting, summary } from '../src/report.ts'
 import { applyReview, Review } from '../src/review.ts'
+import { answerMetrics, efficiency } from '../src/metrics.ts'
 
 const dir = resolve(import.meta.dirname, '../../.local/bench/corpora/purrable-claude-canary')
 const sourcePath = resolve(dir, 'source.jsonl')
@@ -131,5 +132,56 @@ test.skipIf(!existsSync(pilotPath))(
     if (writer === undefined) throw new Error('Missing actual Qwen preflight receipt')
     expect(exceededReservation(writer)).toBe(true)
     expect(rows.filter(exceededReservation).map((trace) => trace.attempt)).toEqual([1, 5])
+  },
+)
+
+const pairedPath = resolve(dir, '../../runs/optchat-search-pilot-03-qwen-no-thinking-live')
+test.skipIf(!existsSync(resolve(pairedPath, 'resolved.json')))(
+  'actual partial paired run retains the 71-attempt loop and all six unstarted answers',
+  () => {
+    const resolved = Schema.decodeUnknownSync(Resolved)(
+      JSON.parse(readFileSync(resolve(pairedPath, 'resolved.json'), 'utf8')),
+    )
+    const traces = readFileSync(resolve(pairedPath, 'attempts.jsonl'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => Schema.decodeUnknownSync(Trace)(JSON.parse(line)))
+    const reviews = readFileSync(resolve(pairedPath, 'reviews.jsonl'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => Schema.decodeUnknownSync(Review)(JSON.parse(line)))
+    const results = readdirSync(resolve(pairedPath, 'episodes'))
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => {
+        const result = Schema.decodeUnknownSync(EpisodeResult)(
+          JSON.parse(readFileSync(resolve(pairedPath, 'episodes', name), 'utf8')),
+        )
+        const review = reviews.findLast((item) => item.episodeId === result.id)
+        return review === undefined ? result : applyReview(resolved, result, review)
+      })
+    const data = { resolved, traces, results }
+    expect(
+      answerMetrics(data, 'purrable-claude-canary.22.abstention.optchat.qwen3.8-flash.qwen3.8-flash'),
+    ).toMatchObject({
+      outcome: 'fail',
+      apiAttempts: 71,
+      apiRetries: 0,
+      toolCalls: 70,
+      deniedToolCalls: 66,
+      chargedInputTokens: 692265,
+      chargedOutputTokens: 2925,
+      apiLatencyMs: 101226,
+      apiLatencyCoverage: 71,
+      answerMs: null,
+      episodeMs: null,
+    })
+    const arms = Object.values(efficiency(data))
+    expect(arms.map((arm) => arm.unstartedAnswers)).toEqual([3, 3])
+    expect(arms.map((arm) => arm.completedAnswers)).toEqual([3, 3])
+    expect(arms.map((arm) => arm.correctAnswers)).toEqual([0, 0])
+    expect(arms.map((arm) => arm.chargedInputTokens)).toEqual([713490, 69359])
+    expect(arms.map((arm) => arm.apiAttempts)).toEqual([74, 9])
+    expect(arms.map((arm) => arm.toolCalls.total)).toEqual([71, 6])
+    expect(arms.map((arm) => arm.spend)).toEqual([null, null])
   },
 )
