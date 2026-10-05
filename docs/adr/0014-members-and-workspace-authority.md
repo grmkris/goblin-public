@@ -1,6 +1,6 @@
 # ADR 0014: Members and workspace authority
 
-Status: accepted; Phase A implemented, member execution is held for Phase B.
+Status: accepted; Phase A and B implemented with local native evidence. Dev enablement awaits the orchestrator's second review and deployment acceptance.
 
 The approved 2026-10-05 plan allows a user to join another user's agent. Each member needs their own active Pro
 plan and pays from their own allowance. The owner can read every conversation in their workspace. Roles are member
@@ -45,10 +45,10 @@ expiry queries, even without Dodo configuration. It retains every unexpired admi
 for acceptance retries, and all rate buckets younger than one hour to preserve invitation-send counters. An expiry
 backlog drains over subsequent ticks; this bounds each sweep, not total storage under sustained abuse.
 
-Phase A closes every existing owner RPC to members and viewers. A membership does not renew resident authority,
-expose credentials or grant owner methods. Phase B must add immutable requester provenance, visibility filters,
-requester-directed questions, live D1 invalidation and the member ceiling inside ADR 0010's capability scope before
-opening shared execution. Routines, Events and subagents retain their own ceilings (ADRs 0011, 0012 and 0017); no policy can
+Every existing owner RPC remains closed to members and viewers. A membership does not renew resident authority,
+expose credentials or grant owner methods. Shared execution uses immutable requester provenance, visibility filters,
+requester-directed questions, live D1 invalidation and the member ceiling inside ADR 0010's capability scope.
+Routines, Events and subagents retain their own ceilings (ADRs 0011, 0012 and 0017); no policy can
 widen owner grants. Member usage, including descendants and ancillary model work, must use the acting account's
 allowance rather than partitioning the owner's allowance.
 
@@ -60,11 +60,12 @@ owners. Retained transcripts are removed with the workspace; forgetting OAuth cr
 
 Local workerd tests prove stable owner routing, selection/CSRF fences, paid email-bound invitation acceptance,
 concurrent/replayed acceptance, proof rotation/expiry, one-read workspace resolution without writes, bounded cron
-cleanup without Dodo, closed member/viewer RPCs and deletion failure/retry with real
-D1 and injected mail. Chromium fixture tests cover the Settings and invitation flows; they make no provider calls. Live paid invitations and Phase B privacy, provenance, budgets and invalidation acceptance
-remain separate gates before the complete Members milestone can be claimed.
+cleanup without Dodo, closed owner RPCs and deletion failure/retry with real D1 and injected mail. Chromium fixture
+tests cover the Settings and invitation flows; they make no provider calls. Native Phase B tests cover privacy,
+provenance, acting-account allowance, designated questions and invalidation. Live paid invitations and deployed
+acceptance remain separate gates before the complete Members milestone can be claimed.
 
-Phase B checkpoint adds principal-bound member main/private conversations, immutable requester receipts, the member
+Phase B adds principal-bound member main/private conversations, immutable requester receipts, the member
 ceiling inside `Capabilities.scope`, designated questions and sealed exact-action owner approvals. An owner reads
 all conversations but cannot submit an owner turn into a member context. Private creation bypasses root copying,
 memory recall and automatic title/learner work; forks require a readable source, and named readers receive no write
@@ -72,8 +73,8 @@ permission. A membership version change fences old contexts and descendants. Mem
 outbox for passive root records. Committed Pi usage is projected with cumulative D1 watermarks across workspaces into
 the acting account's allowance; viewers cannot execute. Telegram and inbound owner clients remain owner-only.
 
-This checkpoint defaults `MEMBER_EXECUTION_ENABLED` to closed; only the isolated native Members fixture opts in.
-Deployment configuration does not enable it. Opening shared execution requires a separate reviewed commit. Member
+The runtime defaults `MEMBER_EXECUTION_ENABLED` to closed; the reviewed Alchemy Worker binding explicitly enables it
+on configured stages, while the isolated native Members fixture opts in and its closed regression strips the binding. Member
 HTTP writes require exact Origin and CSRF proof, and filtered streams revalidate D1 before batches and on idle ticks.
 Approval acceptance consumes the exact requester/version/hash receipt before a dispatch, checks current scope and
 owner grants again on transport retries, and never repeats a consumed dispatch after a crash. Wider permissions

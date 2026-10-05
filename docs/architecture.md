@@ -87,13 +87,13 @@ Dodo is unconfigured. It retains unexpired acceptance-retry proofs and all rate 
 Larger expired backlogs drain over later ticks.
 
 The browser projects D1 workspace state in Settings and the sidebar. Selection performs a full navigation to close
-streams, App frames and conversation caches; focus rechecks the opaque session context. Agent cards, conversations
-and credentials stay closed for shared memberships. Invitation pages clear fragment proofs before exchange, provide
+streams, App frames and conversation caches; focus rechecks the opaque session context. Shared members see permitted
+conversations; credentials and owner administration stay owner-only. Invitation pages clear fragment proofs before exchange, provide
 email-bound sign-in, and resume joining after the invitee's own plan activates. Owner permission checkboxes begin
 empty and server tools are independent of skill-library choices; viewers receive no execution permissions.
 
-Members/viewers cannot reach owner RPCs in Phase A. Shared execution waits for trusted principal contexts, capability
-scope, visibility and acting-account usage in Phase B. The owner reads all; each member needs their own Pro plan.
+Members/viewers cannot reach owner RPCs. Shared execution uses principal contexts, capability scope, filtered
+visibility and acting-account usage. The owner reads all; each member needs their own Pro plan.
 Deletion commits a closed workspace before native destruction and leaves failure retryable. Member account deletion
 revokes memberships without destroying another owner's Agent. See [ADR 0014](adr/0014-members-and-workspace-authority.md).
 
@@ -524,8 +524,9 @@ dev-only override, which grants nothing on prod. Operator overrides may supply t
 
 Each Agent's usage ledger still records its owner's UTC-day spend, while the allowance now comes from that account's
 plan (2M/day for Pro). Optional configured model price multipliers count weighted tokens in Pi replies and cheap
-memory/title calls, with weight one for omitted models. The price schedule needs operator review. Member attribution
-across another owner's Agent will be added with Members; M1 accounts for the current one-owner agent model.
+memory/title calls, with weight one for omitted models. The price schedule needs operator review. Shared member
+contexts project committed Pi usage into that member's account-wide allowance, including descendants; the workspace
+owner's model usage remains separate.
 
 The browser reads billing state before mounting agent pages; unpaid accounts reach `/subscribe`. The return page
 polls verified state and Settings opens the Dodo portal. `/terms`, `/privacy` and `/refunds` are draft public pages,
@@ -583,14 +584,15 @@ and requires owner reconfirmation. Pause/edit/archive retire the consumer; pause
 retired receipt cannot become live again. Local signed-fixture proof is separate from real producer acceptance. See
 [ADR 0012](adr/0012-routines.md).
 
-Members Phase B's default-closed checkpoint creates separate Pi contexts per member policy version. The synchronous
+Members Phase B creates separate Pi contexts per member policy version. The synchronous
 capability gate intersects live D1 policy with endpoint bindings, inherited exclusions and existing routine limits.
 Server-owned provenance drives prompts and descendants; labels are display data. Private contexts have no root
 memory/title/learner extensions. Application receipts bind submissions and interaction decisions to exact content,
 requester and membership version. The owner reads all contexts; readers receive no execution authority. The member's
 own account pays across workspaces, using committed Pi usage and monotonic D1 deltas. A timestamped DO application
 outbox retains pending projections across restarts. No provider request waits on a transaction or a person's answer.
-The enablement change and orchestrator review remain separate from this checkpoint.
+The reviewed Alchemy Worker binding enables shared execution on configured stages; omitting the binding keeps the
+fail-closed behavior used by native closed-access tests.
 Named readers bind the reader's membership ID and version; every read also checks the creator's context version.
 Questions and approvals write private decision receipts. The questionnaire sends answers to the designated-answerer
 endpoint. Viewer access requests target the owner and spend no model tokens. A revocation queues an invalidation
