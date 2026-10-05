@@ -42,6 +42,10 @@ export async function memberRoute(
   if (path === '/api/agent/usage' && request.method === 'GET') return response(agent, principal, { action: 'usage' })
   if (path === '/api/interactions' && request.method === 'GET')
     return response(agent, principal, { action: 'interactions' })
+  if (path === '/api/access-requests' && request.method === 'POST') {
+    const body = await readJson(request, Schema.Struct({ operationId: Bounded(200), message: Bounded(2000) }))
+    return response(agent, principal, { action: 'request-access', ...body }, 202)
+  }
   const interaction = /^\/api\/interactions\/([^/]{1,200})\/answer$/u.exec(path)?.[1]
   if (interaction !== undefined && request.method === 'POST') {
     const body = await readJson(request, Answer)

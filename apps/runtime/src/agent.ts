@@ -106,24 +106,19 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     super(ctx, env)
     const run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program)
     const routineRun = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program, false)
-    this.#pi = makePiModels(
-      env,
-      this.modelStreams(),
-      undefined,
-      (id) => routineRun(requireRoutine(id)),
-      (session) => this.#execution(session),
-    )
-    const residentTools = residentMcpExtension(routineRun, (session) => this.#execution(session))
+    const execution = this.#execution.bind(this)
+    this.#pi = makePiModels(env, this.modelStreams(), undefined, (id) => routineRun(requireRoutine(id)), execution)
+    const residentTools = residentMcpExtension(routineRun, execution)
     const tools = [residentTools, budgetExtension(routineRun)]
     const principal = principalExtension(async (session) =>
       routineRun(Members.use((members) => attempt(() => members.access.require(session)))),
     )
     // A subagent gets the persona and the owner's tools, nothing else: no subagents of its own, no ask_user.
-    const subagents = subagentsExtension(routineRun, [personaExtension, principal, ...tools])
+    const subagents = subagentsExtension(routineRun, [personaExtension, principal, ...tools], execution)
     const subagentTool = subagents.tools?.find((tool) => tool.name === SUBAGENT_TOOL)
     if (subagentTool === undefined) throw new Error('The subagents extension has no subagent tool')
     this.#subagentTool = subagentTool
-    this.#thread = threadExtension(run)
+    this.#thread = threadExtension(run, routineRun)
     this.#memory = memoryExtensions(run)
     const { memory, recall } = this.#memory
     const routineKit = routineExtensions(routineRun, residentTools, env.CREDENTIAL_KEY)

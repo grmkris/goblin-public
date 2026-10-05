@@ -42,6 +42,7 @@ export type MemberPrincipal = {
 
 export type MemberRequest =
   | { readonly action: 'list' | 'interactions' | 'usage' }
+  | { readonly action: 'request-access'; readonly operationId: string; readonly message: string }
   | { readonly action: 'create'; readonly from?: CreateConversation['from'] }
   | { readonly action: 'readers'; readonly session: string; readonly readers: readonly string[] }
   | {

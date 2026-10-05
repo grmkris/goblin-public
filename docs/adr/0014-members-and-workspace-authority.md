@@ -79,3 +79,9 @@ Approval acceptance consumes the exact requester/version/hash receipt before a d
 owner grants again on transport retries, and never repeats a consumed dispatch after a crash. Wider permissions
 require a policy revision or Connections consent. Local fixtures do not establish provider billing, real mail,
 live membership acceptance or exactly-once external effects.
+
+Named readers are membership/version bound and cannot revive a fenced creator context. Member policy changes,
+leave and removal queue an invalidation in the same D1 batch; mutation retries and the hourly cron retry failed
+aborts without recreating a deleted owner's Agent. Late cleanup cancels only interactions from fenced versions.
+Question/approval outcomes are private durable receipts; viewer access requests only record an owner response and
+never start model work. Native fixtures verify these boundaries; real delivery and provider billing remain unproven.

@@ -4,6 +4,7 @@ import type { RuntimeEnv } from '../env.ts'
 import { deleteAgentOf } from '../auth/account.ts'
 import { members, workspaces } from './schema.ts'
 import { databaseOperation, makeWorkspaceStore } from './store.ts'
+import { queuedAccountInvalidations, retryMemberInvalidations } from './invalidation.ts'
 
 export async function registerAccount(database: D1Database, userId: string, kind: 'ordinary' | 'invitation') {
   await makeWorkspaceStore(database).recordAccount(userId, kind, Date.now())
@@ -23,12 +24,14 @@ export async function deleteAccountWorkspaces(
     .set({ state: 'removed', removedAt: now, version: sql`${members.version} + 1` })
     .where(and(eq(members.userId, userId), eq(members.state, 'active'), sql`${members.role} <> 'owner'`))
   if (owned === undefined) {
-    await databaseOperation(() => revokeMemberships.run())
+    await databaseOperation(() => db.batch([revokeMemberships, queuedAccountInvalidations(db, userId)]))
+    await retryMemberInvalidations({ AUTH_DB: database, AGENTS: env.AGENTS })
     return
   }
   await databaseOperation(() =>
     db.batch([
       revokeMemberships,
+      queuedAccountInvalidations(db, userId),
       db
         .update(workspaces)
         .set({
@@ -40,6 +43,7 @@ export async function deleteAccountWorkspaces(
         .where(and(eq(workspaces.id, owned.id), eq(workspaces.state, 'active'))),
     ]),
   )
+  await retryMemberInvalidations({ AUTH_DB: database, AGENTS: env.AGENTS })
   if (owned.deletionPhase !== 'destroyed') await deleteAgentOf(env, owned.ownerUserId)
   await databaseOperation(() =>
     db

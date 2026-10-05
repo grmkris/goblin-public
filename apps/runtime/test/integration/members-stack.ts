@@ -26,6 +26,7 @@ export default Alchemy.Stack(
         MODEL_BASE_URL: 'https://no-model-calls.invalid/v1',
         MODEL_ID: 'storage-only',
         MODEL_KEY: 'unused-fixture',
+        MCP_SERVERS: '[{"serverId":"members-fixture","endpoint":"https://members-fixture.test/mcp"}]',
         CREDENTIAL_KEY: 'cHVycmFibGUtdGVzdC1rZXktMzItYnl0ZXMtbG9uZyE=',
       },
     })

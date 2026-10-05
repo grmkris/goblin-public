@@ -346,7 +346,7 @@ async function admittedRoute(
 
 export default {
   async scheduled(_event: ScheduledController, env: RuntimeEnv): Promise<void> {
-    await Effect.runPromise(runBillingCron(billingDeps(env), env.AUTH_DB))
+    await Effect.runPromise(runBillingCron(billingDeps(env), env.AUTH_DB, env.AGENTS))
   },
   async fetch(request: Request, env: RuntimeEnv, ctx: Pick<ExecutionContext, 'waitUntil'>): Promise<Response> {
     const redirect = canonicalRedirect(request, env.APP_URL)

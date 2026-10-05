@@ -1,5 +1,6 @@
 import {
   AssistantEntry,
+  AgentDoc,
   type ConversationId,
   type EntryId,
   type EntryRecord,
@@ -19,7 +20,7 @@ import {
 import { type Static, Type } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import { MAIN_THREAD } from '@purrable/contracts'
-import { Capabilities, Channel, Conversations, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
+import { Capabilities, Channel, Conversations, Members, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
 import { capabilityOffResult } from './capabilities.ts'
 import { authoredContent } from './content.ts'
 import type { RunProgram } from './resident-mcp.ts'
@@ -113,7 +114,7 @@ async function decideReport(tx: Tx, spawner: ConversationId, name: string, settl
  * Delivers one message to a subagent, waits for its answer and posts it into the spawner as an input it answers.
  * Request ids keep a restart from delivering or reporting twice.
  */
-function reporterTask(run: RunProgram): Reporter {
+function reporterTask(run: RunProgram, authorize: (session: string) => Promise<void>): Reporter {
   return defineTask<ReporterInput, ReporterState, null>({
     name: SUBAGENT_REPORTER,
     version: 1,
@@ -122,6 +123,7 @@ function reporterTask(run: RunProgram): Reporter {
       deliver: async (reporter, runtime, context) => {
         const { name, conversationId, message } = reporter.input
         const parent = String(runtime.conversationId)
+        await authorize(parent)
         await run(
           Effect.gen(function* () {
             const conversations = yield* Conversations
@@ -131,6 +133,19 @@ function reporterTask(run: RunProgram): Reporter {
         )
         const subagent = await runtime.conversation(conversationId, context)
         if (subagent === undefined) throw new Error(`Subagent ${name} has no conversation`)
+        await authorize(parent)
+        await authorize(String(conversationId))
+        const principal = await run(Members.use((members) => attempt(() => members.require(String(conversationId)))))
+        if (principal !== undefined) {
+          const model = (await runtime.snapshot(AgentDoc, conversationId, context))?.model
+          await authorize(String(conversationId))
+          if (model !== undefined && model !== null)
+            await runtime.commit(async (tx) => {
+              await configure(tx, conversationId, {
+                model: { provider: `purrable-member:${conversationId}`, modelId: model.modelId },
+              })
+            }, context)
+        }
         const submission = await subagent.submit(
           { type: 'input', content: message, whenBusy: 'followUp', requestId: `subagent:${reporter.id}` },
           context,
@@ -140,9 +155,11 @@ function reporterTask(run: RunProgram): Reporter {
       },
       // A follow-up input: it starts a turn when the spawner is idle, or waits for its current answer.
       report: async (reporter, runtime, context) => {
+        await authorize(String(runtime.conversationId))
         const { report } = reporter.state.checkpoint
         if (report !== undefined) {
           const spawner = await runtime.conversation(runtime.conversationId, context)
+          await authorize(String(runtime.conversationId))
           await spawner?.submit(
             {
               type: 'input',
@@ -205,8 +222,12 @@ async function status(api: Api, agents: Agents, name: string | undefined, contex
  * through a reporter task, and the answer comes back to the spawner as an input. The app registry lists each subagent
  * under its spawner, so the owner can open it.
  */
-export function subagentsExtension(run: RunProgram, members: readonly Extension[]) {
-  const Reporter = reporterTask(run)
+export function subagentsExtension(
+  run: RunProgram,
+  members: readonly Extension[],
+  authorize: (session: string) => Promise<void> = async () => undefined,
+) {
+  const Reporter = reporterTask(run, authorize)
 
   /** A conversation for a new subagent, owned by an anchor of the spawner and given exactly `members`. */
   async function spawn(tx: Tx, name: string): Promise<ConversationId> {
@@ -220,6 +241,7 @@ export function subagentsExtension(run: RunProgram, members: readonly Extension[
   /** spawn and send: one commit starts the subagent if new, and a reporter for the message. */
   async function deliver(api: Api, action: 'spawn' | 'send', name: string, message: string, context: CallContext) {
     const working = await run(Conversations.use((conversations) => attempt(() => conversations.runningSubagents())))
+    await authorize(String(api.conversationId))
     if (working >= MAX_RUNNING) return reply(`${MAX_RUNNING} subagents are already working; wait for one to report.`)
     const result = await api.commit(async (tx) => {
       const state = await tx.doc(Subagents, api.conversationId)
@@ -247,12 +269,21 @@ export function subagentsExtension(run: RunProgram, members: readonly Extension[
     replay: 'unsafe',
     execute: async ({ action, name, message }: Args, api, context) => {
       const { agents } = (await api.snapshot(Subagents, api.conversationId, context)) ?? { agents: {} }
-      if (action === 'status') return status(api, agents, name, context)
+      await authorize(String(api.conversationId))
+      if (action === 'status') {
+        const result = await status(api, agents, name, context)
+        await authorize(String(api.conversationId))
+        return result
+      }
       if (name === undefined) return reply(`${action} needs a name.`)
       const agent = known(agents, name)
       if (action !== 'spawn' && agent === undefined) return reply(`No subagent named ${name}.`)
       if (action === 'stop') {
-        if (agent !== undefined) await (await api.conversation(agent.conversationId, context))?.abort(context)
+        if (agent !== undefined) {
+          const child = await api.conversation(agent.conversationId, context)
+          await authorize(String(api.conversationId))
+          await child?.abort(context)
+        }
         return reply(`Stopped ${name}.`, name, agent?.conversationId)
       }
       if (message === undefined) return reply(`${action} needs a message.`)

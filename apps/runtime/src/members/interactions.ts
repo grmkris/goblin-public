@@ -26,8 +26,12 @@ export class MemberInteractions {
     readonly session: string
     readonly callId: string
     readonly principal: MemberPrincipal
-    readonly kind: 'question' | 'approval'
-    readonly intent: { readonly questions?: readonly QuestionSpec[]; readonly tool?: unknown }
+    readonly kind: 'question' | 'approval' | 'access'
+    readonly intent: {
+      readonly questions?: readonly QuestionSpec[]
+      readonly tool?: unknown
+      readonly message?: string
+    }
     readonly answerer: 'requester' | 'owner'
   }) {
     const { session, callId, principal, kind, intent, answerer } = input
@@ -39,6 +43,7 @@ export class MemberInteractions {
       session,
       kind,
       intent,
+      answerer,
     })
     const requestHash = await hash(bytes)
     const sealed = await this.#cipher.encrypt(bytes, id)
@@ -130,11 +135,17 @@ export class MemberInteractions {
       return { row, replay: false }
     })
   }
-  cancel(memberId: string): void {
+  cancel(memberId: string, memberVersion: number): void {
     this.#db
       .update(appInteractions)
       .set({ state: 'cancelled' })
-      .where(and(eq(appInteractions.memberId, memberId), eq(appInteractions.state, 'pending')))
+      .where(
+        and(
+          eq(appInteractions.memberId, memberId),
+          eq(appInteractions.memberVersion, memberVersion),
+          eq(appInteractions.state, 'pending'),
+        ),
+      )
       .run()
   }
 }

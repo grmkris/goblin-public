@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type { PiHarness } from 'agents/harness/pi'
@@ -15,7 +15,7 @@ export const memberJournal = sqliteTable('app_member_journal', {
   key: text('source_key').notNull().unique(),
   session: text('session_id').notNull(),
   user: text('user_id').notNull(),
-  kind: text('kind', { enum: ['usage', 'exchange'] }).notNull(),
+  kind: text('kind', { enum: ['usage', 'exchange', 'decision'] }).notNull(),
   body: text('body').notNull(),
   at: integer('committed_at').notNull(),
   done: integer('done').notNull().default(0),
@@ -32,15 +32,45 @@ export class MemberJournal {
   ) {}
   capture(row: Row): void {
     this.db.insert(memberJournal).values(row).onConflictDoNothing().run()
-    this.#pending = this.#pending.catch(() => undefined).then(() => this.flush())
-    void this.#pending.catch(() => undefined)
+    void this.flush().catch(() => undefined)
   }
   async flush(): Promise<void> {
-    for (const row of this.db.select().from(memberJournal).where(eq(memberJournal.done, 0)).all()) {
+    this.#pending = this.#pending.catch(() => undefined).then(() => this.#drain())
+    await this.#pending
+  }
+  async #drain(): Promise<void> {
+    for (const row of this.db
+      .select()
+      .from(memberJournal)
+      .where(eq(memberJournal.done, 0))
+      .orderBy(asc(memberJournal.id))
+      .all()) {
       if (row.kind === 'usage') await this.usage.project(row.user, row.session, JSON.parse(row.body), row.at)
-      else {
+      else if (row.kind === 'decision') {
+        const context = await (await this.harness.pi()).conversation(conversationId(row.session), BACKGROUND)
+        if (context === undefined) throw new Error('Missing interaction conversation')
+        await context.submit(
+          {
+            type: 'write',
+            requestId: row.key,
+            entry: {
+              kind: 'app.member_decision',
+              data: JSON.parse(row.body),
+              model: [
+                {
+                  role: 'user',
+                  content: JSON.stringify({ trust: 'quoted', receipt: JSON.parse(row.body) }),
+                  timestamp: row.at,
+                },
+              ],
+            },
+          },
+          BACKGROUND,
+        )
+      } else {
         const root = await (await this.harness.pi()).conversation(conversationId('1'), BACKGROUND)
-        await root?.submit(
+        if (root === undefined) throw new Error('Missing root conversation')
+        await root.submit(
           {
             type: 'write',
             requestId: row.key,
@@ -57,7 +87,6 @@ export class MemberJournal {
     }
   }
   async ready(): Promise<void> {
-    await this.#pending
     await this.flush()
   }
   #committed(change: CommitChange, seq: string, access: MemberAccess): void {

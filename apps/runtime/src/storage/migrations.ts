@@ -218,6 +218,14 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     tables: ['app_conversations'],
     sql: 'ALTER TABLE app_conversations ADD COLUMN read_at INTEGER',
   },
+  {
+    key: '20261017000234_members_readers',
+    tables: ['app_thread_readers'],
+    sql: [
+      'ALTER TABLE app_thread_readers ADD COLUMN member_id TEXT',
+      'ALTER TABLE app_thread_readers ADD COLUMN member_version INTEGER',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

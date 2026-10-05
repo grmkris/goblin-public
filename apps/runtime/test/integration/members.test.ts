@@ -6,6 +6,17 @@ import { InvitationView, MembersState, WorkspaceState } from '@purrable/contract
 import { expect } from 'vitest'
 import Stack from './members-stack.ts'
 import { memberContextsCase, memberViewerCase } from './members-phaseb.ts'
+import {
+  questionRoutingCase,
+  privateReadersCase,
+  viewerRequestCase,
+  memberAllowanceCase,
+  memberStreamRevocationCase,
+  lateInvalidationCase,
+  historyDowngradeCase,
+  memberDescendantsCase,
+} from './members-security.ts'
+import { memberToolsCase } from './members-tools.ts'
 
 const harness = Test.make({
   providers: Cloudflare.providers(),
@@ -14,6 +25,24 @@ const harness = Test.make({
   dev: true,
 })
 const stack = harness.beforeAll(harness.deploy(Stack))
+for (const [name, run] of [
+  ['designated questions reject wrong actors, hashes and changed replays', questionRoutingCase],
+  ['private named readers cannot compose or revive a fenced creator context', privateReadersCase],
+  ['viewer access requests target the owner without model spend', viewerRequestCase],
+  ['MCP calls intersect grants and member bounds; one-use approvals never replay effects', memberToolsCase],
+  ['shared work charges the existing acting account and blocks an exhausted allowance', memberAllowanceCase],
+  ['idle member stream closes on live revocation', memberStreamRevocationCase],
+  ['late invalidation preserves questions from the current membership version', lateInvalidationCase],
+  ['history downgrade fences the old context and starts without root history', historyDowngradeCase],
+  ['subagents retain member provenance, scoped providers and acting-account usage', memberDescendantsCase],
+] as const)
+  harness.test(
+    `native Members: ${name}`,
+    Effect.gen(function* () {
+      const { url } = yield* stack
+      yield* Effect.promise(() => run(url, { person, call, pay, lever }))
+    }),
+  )
 const Signup = Schema.Struct({ user: Schema.Struct({ id: Schema.String }) })
 interface Person {
   readonly userId: string

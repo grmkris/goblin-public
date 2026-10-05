@@ -26,6 +26,7 @@ export const memberProgram = (harness: PiHarness, principal: MemberPrincipal, re
       const session = yield* attempt(() => members.session(principal, request.session))
       const view = yield* capabilitiesOf(session)
       yield* attempt(() => members.access.verify(principal))
+      yield* attempt(() => members.session(principal, request.session))
       const scope = (yield* Capabilities).scope(session)
       return JSON.stringify({
         ...view,

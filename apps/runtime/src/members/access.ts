@@ -110,7 +110,7 @@ export class MemberAccess {
     return (
       origin !== undefined &&
       ((origin.principalUserId === principal.userId && origin.memberVersion === principal.memberVersion) ||
-        isReader(this.#db, session, principal.userId))
+        isReader(this.#db, session, principal))
     )
   }
 }

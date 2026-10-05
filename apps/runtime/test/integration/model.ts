@@ -65,7 +65,13 @@ export function scriptedStreams(
 ): ProviderStreams {
   const stream: ProviderStreams['stream'] = (target, context) => {
     seen({
-      messages: context.messages.map((message) => ({ role: message.role, text: textOf(message) })),
+      messages: context.messages.map((message) => ({
+        role: message.role,
+        // Pi's named sections are part of the actual prompt, even when system.content is empty.
+        text: [textOf(message), ...(message.role === 'system' ? Object.values(message.sections ?? {}) : [])]
+          .filter((part) => part !== null)
+          .join('\n'),
+      })),
       tools: offeredTools(context.messages),
     })
     const content = respond(context.messages)

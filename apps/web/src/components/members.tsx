@@ -18,6 +18,7 @@ import {
 import { failureText, request } from '../lib/boundary.ts'
 import { useAccountWorkspaces } from '../lib/account-workspaces.tsx'
 import { useBilling } from '../lib/billing.tsx'
+import { MemberAccessRequest } from './member-access-request.tsx'
 
 const decode = Schema.decodeUnknownSync(MembersState)
 const write = (path: string, body: unknown, method: 'POST' | 'DELETE' | 'PATCH' = 'POST') =>
@@ -211,6 +212,7 @@ export function MembersCard() {
                   : 'You can instruct the agent within your permissions.'}{' '}
                 The owner can read your conversations.
               </p>
+              {active.role === 'viewer' && active.agentReady && <MemberAccessRequest />}
               <Button
                 variant="outline"
                 disabled={pending}

@@ -2,8 +2,8 @@ import { expect } from 'vitest'
 import { Schema } from 'effect'
 import { WorkspaceState } from '@purrable/contracts'
 
-type Person = { readonly userId: string; readonly cookie: string; readonly ip: string; readonly email: string }
-type Ports = {
+export type Person = { readonly userId: string; readonly cookie: string; readonly ip: string; readonly email: string }
+export type Ports = {
   readonly person: (base: string) => Promise<Person>
   readonly call: (
     base: string,
@@ -20,7 +20,13 @@ const Receipt = Schema.decodeUnknownSync(Schema.Struct({ session: Schema.String 
 const View = Schema.decodeUnknownSync(
   Schema.Array(Schema.Struct({ id: Schema.String, title: Schema.optional(Schema.String) })),
 )
-async function waitFor(base: string, who: Person, path: string, expected: string, ports: Ports): Promise<string> {
+export async function waitFor(
+  base: string,
+  who: Person,
+  path: string,
+  expected: string,
+  ports: Ports,
+): Promise<string> {
   for (let attempt = 0; attempt < 100; attempt++) {
     const response = await ports.call(base, who, path)
     expect(response.status).toBe(200)
@@ -76,6 +82,13 @@ export async function memberContextsCase(base: string, ports: Ports): Promise<vo
   const text = await waitFor(base, member, '/api/conversations/1/snapshot', 'echo: member-private-hello', ports)
   expect(text).not.toContain(sentinel)
   expect(text).not.toContain(ownSecret)
+  const observed = Schema.decodeUnknownSync(Schema.Array(Schema.Unknown))(
+    await (await ports.lever(base, owner, 'model-stats')).json(),
+  )
+  const memberRequest = JSON.stringify(observed.at(-1))
+  expect(memberRequest).not.toContain(sentinel)
+  expect(memberRequest).not.toContain(ownSecret)
+  expect(memberRequest).toContain('authenticated requester is member')
   expect((await ports.call(base, member, `/api/conversations/${id}/snapshot`)).status).toBe(404)
   const ownerRead = await waitFor(
     base,

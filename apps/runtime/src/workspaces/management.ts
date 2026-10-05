@@ -4,7 +4,7 @@ import { drizzle } from 'drizzle-orm/d1'
 import { MemberPolicy } from '@purrable/contracts'
 import type { RuntimeEnv } from '../env.ts'
 import type { UserSession } from '../auth/service.ts'
-import { unwrap } from '../http/rpc.ts'
+import { queuedInvalidation, retryMemberInvalidations } from './invalidation.ts'
 import { readJson } from '../http/body.ts'
 import { Conflict, Forbidden, InvalidInput, NotFound } from '../http/errors.ts'
 import { requireAccountPlan } from '../billing/gates.ts'
@@ -117,7 +117,10 @@ export async function changeMember(
   memberChangeInput(input, remove)
   const db = drizzle(env.AUTH_DB)
   const context = request.headers.get('x-purrable-workspace') ?? undefined
-  if (leave && (await replayLeave(db, session, context, input))) return Response.json({ ok: true })
+  if (leave && (await replayLeave(db, session, context, input))) {
+    await retryMemberInvalidations(env)
+    return Response.json({ ok: true })
+  }
   const principal = await sessionWorkspace(env, session, context)
   guardMemberChange(principal, session, leave)
   if (!leave) await requireAccountPlan(env, session.userId)
@@ -132,15 +135,17 @@ export async function changeMember(
   if (target === undefined || target.role === 'owner') throw new NotFound({ what: 'member' })
   const action = leave ? 'leave' : remove ? 'remove' : 'change'
   const requestHash = await hash(JSON.stringify({ action, id, input }))
-  if (await replay(db, principal.workspace.id, input.operationId, requestHash)) return Response.json({ ok: true })
+  if (await replay(db, principal.workspace.id, input.operationId, requestHash)) {
+    await retryMemberInvalidations(env)
+    return Response.json({ ok: true })
+  }
   const policy =
     input.policy === undefined ? undefined : await freezePolicy(env, principal.workspace.ownerUserId, input.policy)
   const now = Date.now()
   await memberBatch(db, { principal, session, input, id, now, requestHash, remove, leave, policy })
   if (!(await replay(db, principal.workspace.id, input.operationId, requestHash)))
     throw new Conflict({ reason: 'member version changed' })
-  // D1 version fence is already durable. A failed abort remains blocked by every dispatch/stream check.
-  unwrap(await env.AGENTS.getByName(principal.workspace.ownerUserId).memberInvalidate(id))
+  await retryMemberInvalidations(env)
   return Response.json({ ok: true })
 }
 
@@ -202,6 +207,7 @@ async function memberBatch(
         .update(workspaces)
         .set({ accessVersion: sql`${workspaces.accessVersion} + 1`, updatedAt: now })
         .where(and(eq(workspaces.id, principal.workspace.id), exists(marker))),
+      queuedInvalidation(db, principal.workspace.ownerUserId, id, input.operationId),
     ]),
   )
 }

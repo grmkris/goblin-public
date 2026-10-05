@@ -591,3 +591,11 @@ requester and membership version. The owner reads all contexts; readers receive 
 own account pays across workspaces, using committed Pi usage and monotonic D1 deltas. A timestamped DO application
 outbox retains pending projections across restarts. No provider request waits on a transaction or a person's answer.
 The enablement change and orchestrator review remain separate from this checkpoint.
+Named readers bind the reader's membership ID and version; every read also checks the creator's context version.
+Questions and approvals write private decision receipts. The questionnaire sends answers to the designated-answerer
+endpoint. Viewer access requests target the owner and spend no model tokens. A revocation queues an invalidation
+in the same D1 batch; mutation retries and the billing cron retry pending aborts. Cleanup cancels only fenced
+membership versions, so a delayed receipt cannot cancel a question in a new context. Dispatch still reads live D1
+while invalidation is pending; idle streams recheck every five seconds. Already dispatched effects remain unknown.
+Allowances use committed Pi usage, including member descendants, rather than provider billing. In-flight responses
+can overshoot the allowance; the next dispatch checks the updated acting-account total.

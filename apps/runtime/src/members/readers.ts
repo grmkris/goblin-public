@@ -11,15 +11,24 @@ export const threadReaders = sqliteTable(
     user: text('user_id').notNull(),
     by: text('granted_by_user_id').notNull(),
     at: integer('granted_at').notNull(),
+    memberId: text('member_id'),
+    memberVersion: integer('member_version'),
   },
   (t) => [primaryKey({ columns: [t.session, t.user] })],
 )
-export function isReader(db: DrizzleSqliteDODatabase, session: string, user: string): boolean {
+export function isReader(db: DrizzleSqliteDODatabase, session: string, principal: MemberPrincipal): boolean {
   return (
     db
       .select()
       .from(threadReaders)
-      .where(and(eq(threadReaders.session, session), eq(threadReaders.user, user)))
+      .where(
+        and(
+          eq(threadReaders.session, session),
+          eq(threadReaders.user, principal.userId),
+          eq(threadReaders.memberId, principal.memberId),
+          eq(threadReaders.memberVersion, principal.memberVersion),
+        ),
+      )
       .get() !== undefined
   )
 }
@@ -30,15 +39,19 @@ export async function setReaders(
   session: string,
   readers: readonly string[],
 ): Promise<void> {
-  for (const user of readers) {
+  const selected: { user: string; memberId: string; memberVersion: number }[] = []
+  for (const user of new Set(readers)) {
     const member = (await makeWorkspaceStore(env.AUTH_DB).list(user)).find(
       (r) => r.workspace.id === principal.workspaceId,
     )
     if (member === undefined) throw new NotFound({ what: 'reader membership' })
+    selected.push({ user, memberId: member.member.id, memberVersion: member.member.version })
   }
   db.transaction(() => {
     db.delete(threadReaders).where(eq(threadReaders.session, session)).run()
-    for (const user of readers)
-      db.insert(threadReaders).values({ session, user, by: principal.userId, at: Date.now() }).run()
+    for (const reader of selected)
+      db.insert(threadReaders)
+        .values({ session, ...reader, by: principal.userId, at: Date.now() })
+        .run()
   })
 }

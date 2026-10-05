@@ -24,6 +24,9 @@ import { setReaders } from './readers.ts'
 import type { McpHost } from '../mcp/host.ts'
 import type { ResidentAuthority } from '../resident.ts'
 import { unwrap } from '../http/rpc.ts'
+import { answerMember } from './answers.ts'
+import { limitProof } from '../workspaces/proof.ts'
+import { importMemberHistory } from './history.ts'
 
 type Kit = {
   readonly harness: PiHarness
@@ -72,7 +75,8 @@ export class MemberController {
       principal = await this.access.require(session)
     } catch (error) {
       const origin = this.access.origin(session)
-      if (origin?.memberId !== null && origin !== undefined) this.interactions.cancel(origin.memberId)
+      if (origin?.memberId !== null && origin?.memberVersion !== null && origin !== undefined)
+        this.interactions.cancel(origin.memberId, origin.memberVersion)
       void (await (await this.#kit.harness.pi()).conversation(conversationId(session), BACKGROUND))?.abort(BACKGROUND, {
         background: true,
       })
@@ -85,6 +89,7 @@ export class MemberController {
   }
   async usage(principal: MemberPrincipal) {
     await this.access.verify(principal)
+    await this.#journal.ready()
     const plan = await requireAccountPlan(this.#env, principal.userId)
     const { day, resetsAt } = utcDay(Math.floor(Date.now() / 1000))
     const owned = await makeWorkspaceStore(this.#env.AUTH_DB).owned(principal.userId)
@@ -92,7 +97,6 @@ export class MemberController {
     return { day, resetsAt, limit: plan.dailyTokens, used: await this.#usage.tokens(principal.userId, day) }
   }
   async invalidate(memberId: string): Promise<boolean> {
-    this.interactions.cancel(memberId)
     const pi = await this.#kit.harness.pi()
     for (const row of this.#db.select().from(appConversations).all()) {
       if (this.access.origin(row.sessionId)?.memberId !== memberId) continue
@@ -100,6 +104,8 @@ export class MemberController {
         await this.access.require(row.sessionId, false)
         continue
       } catch {
+        const version = this.access.origin(row.sessionId)?.memberVersion
+        if (version !== undefined && version !== null) this.interactions.cancel(memberId, version)
         await (
           await pi.conversation(conversationId(row.sessionId), BACKGROUND)
         )?.abort(BACKGROUND, { background: true })
@@ -131,7 +137,11 @@ export class MemberController {
         ),
       )
       .get()
-    if (existing !== undefined) return existing.sessionId
+    if (existing !== undefined) {
+      const context = await (await this.#kit.harness.pi()).conversation(conversationId(existing.sessionId), BACKGROUND)
+      if (context !== undefined) await importMemberHistory(this.#db, this.#kit.harness, context, live, this.access)
+      return existing.sessionId
+    }
     const pending = this.#creating.get(key)
     if (pending !== undefined) return pending
     const creating = this.create(live, 'main')
@@ -186,50 +196,15 @@ export class MemberController {
       { model: { provider: `purrable-member:${session}`, modelId: this.#kit.modelId() } },
       BACKGROUND,
     )
-    if (purpose === 'main' && principal.policy.mainHistory === 'all') await this.#history(context, principal)
+    if (purpose === 'main') await importMemberHistory(this.#db, this.#kit.harness, context, principal, this.access)
     await this.access.verify(principal)
     return session
-  }
-  async #history(
-    context: import('@earendil-works/pi-durable').Conversation,
-    principal: MemberPrincipal,
-  ): Promise<void> {
-    const pi = await this.#kit.harness.pi()
-    const root = await pi.conversation(conversationId(MAIN_THREAD), BACKGROUND)
-    const entries = []
-    let cursor: Parameters<NonNullable<typeof root>['entries']>[2]
-    do {
-      const page = await root?.entries({}, 200, cursor, BACKGROUND)
-      await this.access.verify(principal)
-      entries.push(...(page?.items ?? []))
-      cursor = page?.next
-    } while (cursor !== undefined)
-    for (const entry of entries.toReversed()) {
-      if (entry.model === undefined) continue
-      await this.access.verify(principal)
-      await context.submit(
-        {
-          type: 'write',
-          requestId: `history:${entry.id}`,
-          entry: {
-            kind: 'app.member_history',
-            data: { sourceEntry: entry.id, trust: 'quoted' },
-            model: [
-              {
-                role: 'user',
-                content: JSON.stringify({ trust: 'quoted', history: entry.model }),
-                timestamp: Date.now(),
-              },
-            ],
-          },
-        },
-        BACKGROUND,
-      )
-    }
   }
   async session(principal: MemberPrincipal, requested: string): Promise<string> {
     await this.access.verify(principal)
     const session = requested === MAIN_THREAD ? await this.main(principal) : requested
+    // A named reader cannot revive an origin fenced by removal or a policy/history downgrade.
+    await this.access.require(session, false)
     if (!this.access.readable(principal, session)) throw new NotFound({ what: 'conversation' })
     return this.#kit.registry.require(session)
   }
@@ -302,24 +277,31 @@ export class MemberController {
     await this.access.verify(principal)
     const main = await this.main(principal)
     const views = await this.#kit.registry.list()
+    const readable = []
+    for (const view of views) {
+      try {
+        await this.access.require(view.id, false)
+        if (this.access.readable(principal, view.id)) readable.push(view)
+      } catch {
+        continue
+      }
+    }
     await this.access.verify(principal)
-    return views
-      .filter((view) => this.access.readable(principal, view.id))
-      .map((view) => {
-        const { parent, ...base } = view
-        const rest = {
-          ...base,
-          canCompose: principal.role === 'member' && this.access.origin(view.id)?.principalUserId === principal.userId,
-        }
-        return view.id === main
-          ? { ...rest, id: MAIN_THREAD, kind: 'main' as const, title: 'Main' }
-          : {
-              ...rest,
-              ...(parent !== undefined && this.access.readable(principal, parent)
-                ? { parent: parent === main ? MAIN_THREAD : parent }
-                : {}),
-            }
-      })
+    return readable.map((view) => {
+      const { parent, ...base } = view
+      const rest = {
+        ...base,
+        canCompose: principal.role === 'member' && this.access.origin(view.id)?.principalUserId === principal.userId,
+      }
+      return view.id === main
+        ? { ...rest, id: MAIN_THREAD, kind: 'main' as const, title: 'Main' }
+        : {
+            ...rest,
+            ...(parent !== undefined && this.access.readable(principal, parent)
+              ? { parent: parent === main ? MAIN_THREAD : parent }
+              : {}),
+          }
+    })
   }
   async listInteractions(principal: MemberPrincipal) {
     const rows = await this.interactions.list(principal.userId)
@@ -352,6 +334,20 @@ export class MemberController {
       answerer: 'owner',
     })
   }
+  async requestAccess(principal: MemberPrincipal, operationId: string, message: string) {
+    await this.access.verify(principal)
+    const session = await this.main(principal)
+    await limitProof(this.#env.AUTH_DB, `access-request:${principal.memberId}`, 10, 3_600_000)
+    await this.access.verify(principal)
+    return this.interactions.create({
+      session,
+      callId: `access:${operationId}`,
+      principal,
+      kind: 'access',
+      intent: { message },
+      answerer: 'owner',
+    })
+  }
   async authorizeTool(session: string, input: { serverId: string; name: string }): Promise<void> {
     await this.require(session)
     this.#kit.resident.require(Math.floor(Date.now() / 1000))
@@ -378,27 +374,6 @@ export class MemberController {
       throw new NotFound({ what: 'conversation creator' })
   }
   async answer(actor: string, id: string, operationId: string, expectedHash: string, text: string): Promise<boolean> {
-    const row = this.interactions.require(id)
-    const principal = await this.require(row.sessionId)
-    if (principal === undefined || principal.memberVersion !== row.memberVersion)
-      throw new NotFound({ what: 'interaction epoch' })
-    const decisionHash = await hash(text)
-    await this.require(row.sessionId)
-    if (row.approvalKind === 'approval' && text !== 'deny' && text !== 'allow_once')
-      throw new Conflict({ reason: 'approval decision' })
-    const input =
-      row.approvalKind === 'approval' && text === 'allow_once' ? await this.interactions.tool(row) : undefined
-    if (input !== undefined) await this.authorizeTool(row.sessionId, input)
-    const decision = this.interactions.consume(id, actor, operationId, expectedHash, decisionHash)
-    if (!decision.replay && input !== undefined) {
-      // Receipt is already consumed: a dispatch/crash outcome is unknown; retries never resend it.
-      await this.#kit.host.manager.callTool(input.serverId, input.name, input.arguments, {
-        caller: 'model',
-        authorize: () => this.authorizeTool(row.sessionId, input),
-      })
-    }
-    if (!decision.replay && row.approvalKind === 'question')
-      await this.submit(principal, row.sessionId, text, `interaction:${id}:${operationId}`)
-    return true
+    return answerMember(this, this.#kit.host, this.#journal, { actor, id, operationId, expectedHash, text })
   }
 }

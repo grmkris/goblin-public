@@ -19,6 +19,8 @@ export async function memberDispatch(input: Input): Promise<unknown> {
       return members.usage(principal)
     case 'interactions':
       return members.listInteractions(principal)
+    case 'request-access':
+      return members.requestAccess(principal, request.operationId, request.message)
     case 'submit':
       return members.submit(principal, request.session, request.input, request.operationId, request.appContext)
     case 'answer':
