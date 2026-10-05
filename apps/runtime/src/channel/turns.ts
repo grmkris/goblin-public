@@ -1,12 +1,12 @@
 // The Telegram channel's view of the agent (ADR 0009): main as the owner's Telegram, and how its turns end.
-import { MAIN_THREAD } from '@purrable/contracts'
+import { MAIN_THREAD, TELEGRAM_AUTHOR } from '@purrable/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
 import { authoredContent } from '../pi/content.ts'
 import { askedText } from '../pi/transcript.ts'
 import { type AgentServices, attempt, requireBudget } from '../services.ts'
-import { type ChannelPorts, TELEGRAM } from './channel.ts'
+import type { ChannelPorts } from './channel.ts'
 
 type Run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<A>
 
@@ -39,7 +39,9 @@ export const channelPorts = (
       Effect.gen(function* () {
         yield* requireBudget
         yield* useModel
-        yield* attempt(() => harness.submit(authoredContent(TELEGRAM, text), { session: MAIN_THREAD, operationId }))
+        yield* attempt(() =>
+          harness.submit(authoredContent(TELEGRAM_AUTHOR, text), { session: MAIN_THREAD, operationId }),
+        )
       }),
     ),
   answer: (operationId) => answerOf(harness, operationId),

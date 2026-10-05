@@ -357,6 +357,9 @@ export const authorTag = (author: string): string => `[from ${author.replaceAll(
 /** The author named by a leading tag block, if that is what the block is. */
 export const authorOf = (block: string): string | undefined => AUTHOR_TAG.exec(block)?.[1]
 
+/** The author of a message the owner sent from Telegram: their own words, from their phone. */
+export const TELEGRAM_AUTHOR = 'Telegram'
+
 export { BillingState } from './billing.ts'
 export {
   RoutineTrigger,

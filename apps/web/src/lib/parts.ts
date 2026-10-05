@@ -1,4 +1,4 @@
-import type { AppContext } from '@purrable/contracts'
+import { type AppContext, TELEGRAM_AUTHOR } from '@purrable/contracts'
 import { isString, record } from './boundary.ts'
 import type { ChatMessage, ConversationProjection, LiveTool, ToolCallView, TurnFailure } from './projection.ts'
 
@@ -44,6 +44,15 @@ export type Part =
   | { readonly kind: 'failure'; readonly id: string; readonly failure: TurnFailure }
   /** A thread the owner started with "+", where main noted it. */
   | { readonly kind: 'thread-started'; readonly id: string; readonly thread: string }
+
+/**
+ * A turn the owner took: words typed in this app or sent from Telegram. Messages from an MCP client, a subagent's
+ * report, a routine's note and a thread's share-back carry another author and are not turns. In a subagent's or a
+ * routine's own conversation the message that starts each run has no author, so it is that conversation's turn.
+ */
+export function isOwnTurn(part: Part): boolean {
+  return part.kind === 'user' && (part.author === undefined || part.author === TELEGRAM_AUTHOR)
+}
 
 /** The MCP server, tool and arguments of an `mcp_call`, when the call has that shape. */
 export function mcpTarget(call: ToolCallView): McpTarget | undefined {

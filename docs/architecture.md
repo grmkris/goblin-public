@@ -174,7 +174,9 @@ Every signed-in page sits beside the app's sidebar (shadcn's sidebar, ported to 
 then Connections, Settings and Sign out. On desktop it folds to an icon rail (the toggle in a page's top bar or the
 first pane's pill, its edge, or ⌘/Ctrl+B) and a cookie remembers it, which the server reads so the first paint has the right layout; on
 phones it is a sheet. The workspace fills the page beside it. The transcript scrolls in a `MessageScroller` (from `@shadcn/react`). Each of
-the owner's turns is a scroll anchor. The view follows a streaming reply only while the reader is at the end, and
+the owner's turns (typed in the app or sent from Telegram, `isOwnTurn` in `lib/parts.ts`) is a scroll anchor; a
+message from an MCP client, a subagent, a routine or a thread's share-back arrives without moving the view. Until its
+snapshot arrives a pane shows nothing, so a conversation opens at its end. The view follows a streaming reply only while the reader is at the end, and
 otherwise offers a jump back. The pane's pill (where it came from, its name and menu, its state) and the composer
 float over the transcript as translucent chrome. Assistant Markdown is set by shadcn/typeset, whose append-stable rules keep earlier blocks still
 while a reply streams.

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { conversationParts, elapsedMs, toolLine, type ToolPart, type ToolState } from '../src/lib/parts.ts'
+import {
+  conversationParts,
+  elapsedMs,
+  isOwnTurn,
+  type Part,
+  toolLine,
+  type ToolPart,
+  type ToolState,
+} from '../src/lib/parts.ts'
 import { projectBatch, projectSnapshot } from '../src/lib/projection.ts'
 
 const call = (id: string, args: Record<string, unknown> = {}) => ({
@@ -141,5 +149,26 @@ describe('a tool call as one line', () => {
     expect(toolLine(toolAt('done', {}))).toEqual({ lead: 'Looked up its tools' })
     const other: ToolPart = { ...toolAt('done', {}), call: { id: 'c', name: 'remember', arguments: {} } }
     expect(toolLine(other)).toEqual({ lead: 'Used remember' })
+  })
+})
+
+const user = (author?: string): Part => ({
+  kind: 'user',
+  id: 'u',
+  text: 'hi',
+  ...(author !== undefined && { author }),
+})
+
+describe("the owner's own turns", () => {
+  it('counts what the owner typed here or sent from Telegram', () => {
+    expect(isOwnTurn(user())).toBe(true)
+    expect(isOwnTurn(user('Telegram'))).toBe(true)
+  })
+  it('leaves out messages from an MCP client, a subagent, a routine or a thread', () => {
+    for (const author of ['Claude Code', 'subagent scout', 'Routine', 'thread "Car search"'])
+      expect(isOwnTurn(user(author))).toBe(false)
+  })
+  it('is never a reply', () => {
+    expect(isOwnTurn({ kind: 'text', id: 't', text: 'hi', live: false })).toBe(false)
   })
 })

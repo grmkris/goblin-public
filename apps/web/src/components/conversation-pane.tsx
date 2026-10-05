@@ -216,6 +216,7 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
       parts={shown}
       canSwitchModel={(model.choice?.options.length ?? 0) > 1}
       threads={inline}
+      loading={projection === undefined}
       {...(earlier && { onEarlier: earlier })}
       {...(root.length > 0 && {
         lead: (

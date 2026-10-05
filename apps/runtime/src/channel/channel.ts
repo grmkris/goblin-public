@@ -13,8 +13,6 @@ import type { CredentialCipher } from '../mcp/cipher.ts'
 import type { McpConnectionManager } from '../mcp/connection.ts'
 import { appChannel, appChannelReplies, appTelegramChannel } from '../storage/schema.ts'
 
-/** The author main shows on a message that came from Telegram. */
-export const TELEGRAM = 'Telegram'
 /** The tools a server must offer to carry the channel, all granted when the owner turns it on. */
 export const CHANNEL_TOOLS = ['inbox', 'send_message'] as const
 export const DOORBELL_TOOLS = ['subscribe', 'unsubscribe'] as const
