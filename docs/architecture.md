@@ -77,7 +77,11 @@ sees main up to there and main never sees the thread) or empty. `app_conversatio
 title, origin and archive time; a session id reaches Pi only if it is registered there, so no request opens a
 conversation by guessing its number. Pi cannot delete a conversation, so archiving only hides a thread. The web
 lists them in the app's sidebar (`components/app-sidebar.tsx`, a sheet on phones): `/` is main and `/t/:id` a
-thread, and each settled answer in main offers "Branch from here". The owner API is conversation-scoped:
+thread. Main shows its threads inline, as Slack does (`components/thread-replies.tsx`): under the message each one
+branched from, a row with its reply count and last reply, and "Reply in thread" on the other messages of the owner
+and the agent. A row opens its thread beside main (`/?thread=<id>`, `components/thread-panel.tsx`): the message it
+branched from, then only what was said in the thread, with its own composer. Reply in thread opens a reply there
+(`/?reply=<entry>`) that branches the thread only when it is sent, because Pi cannot delete a conversation. The owner API is conversation-scoped:
 
 | Route | Purpose |
 | --- | --- |

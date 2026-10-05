@@ -169,22 +169,116 @@
   align-self: flex-start;
   align-items: center;
   gap: 0.375rem;
-  margin-top: 0.25rem;
+  min-height: 1.75rem;
+  margin-top: 0.125rem;
+  padding-inline: 0.5rem;
+  border-radius: var(--radius-md);
   color: var(--muted-foreground);
   font-size: 0.75rem;
+}
+.message-action[data-side='end'] {
+  align-self: flex-end;
 }
 .message-action > svg {
   width: 0.875rem;
   height: 0.875rem;
 }
+.message-action:active {
+  background: var(--muted);
+}
 @media (hover: hover) {
   .message-action {
     opacity: 0;
-    transition: opacity 150ms;
+    transition:
+      opacity 150ms,
+      background-color 150ms;
   }
   :hover > .message-action,
   .message-action:focus-visible {
     opacity: 1;
+  }
+  .message-action:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+}
+/*
+ * Threads under the message they branched from, as Slack shows them: the reply count stands out, the name and the
+ * last reply follow quietly, and the whole row answers the press at once.
+ */
+.thread-rows {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  max-width: 100%;
+  margin-top: 0.25rem;
+}
+.thread-rows[data-side='end'] {
+  align-items: flex-end;
+}
+.thread-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  min-height: 2rem;
+  padding: 0.25rem 0.375rem 0.25rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 0.625rem;
+  font-size: 0.8125rem;
+  text-align: left;
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    scale 100ms ease-out;
+}
+.thread-row:hover,
+.thread-row:focus-visible {
+  border-color: var(--border);
+  background: var(--card);
+}
+.thread-row:active {
+  scale: 0.98;
+}
+.thread-row > svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--muted-foreground);
+}
+.thread-row-count {
+  flex: none;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.thread-row-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.thread-row-chevron {
+  opacity: 0;
+  translate: -0.25rem 0;
+  transition:
+    opacity 150ms,
+    translate 150ms;
+}
+.thread-row:hover > .thread-row-chevron,
+.thread-row:focus-visible > .thread-row-chevron {
+  opacity: 1;
+  translate: 0 0;
+}
+@media (hover: none) {
+  .thread-row {
+    min-height: 2.75rem;
+    border-color: var(--border);
+  }
+  .thread-row-chevron {
+    opacity: 1;
+    translate: 0 0;
   }
 }
 .chat-dock {

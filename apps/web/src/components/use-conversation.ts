@@ -4,7 +4,22 @@ import { failureText, isNumber, record, records, request } from '../lib/boundary
 import { BrowserPiEvents, ConversationStream, type StreamStatus } from '../lib/conversation-stream.ts'
 import { conversationParts } from '../lib/parts.ts'
 import { type ConversationProjection, entryMessages, historyStart } from '../lib/projection.ts'
-import { fromEntry } from '../lib/threads.ts'
+import { branchPoints, fromEntry } from '../lib/threads.ts'
+
+/**
+ * Submits the owner's message to a conversation. A stable `operationId` makes a retry the same message (answers to a
+ * question or permission request); a typed message gets a fresh one.
+ */
+export async function postMessage(
+  thread: string,
+  input: string,
+  operationId?: string,
+  appContext: readonly AppContext[] = [],
+): Promise<void> {
+  // @effect-diagnostics-next-line cryptoRandomUUID:off -- A fresh idempotency key for this browser submission.
+  const body = { input, operationId: operationId ?? crypto.randomUUID(), ...(appContext.length > 0 && { appContext }) }
+  await request(`/api/threads/${thread}/messages`, { body })
+}
 
 /**
  * One conversation of the agent as the browser follows it: a Pi snapshot, then the event stream (reconnecting on
@@ -43,13 +58,7 @@ export function useConversation(thread: string) {
   /** `operationId` is stable for replies to a question or permission request; a typed message gets a fresh one. */
   async function send(input: string, operationId?: string, appContext: readonly AppContext[] = []): Promise<boolean> {
     try {
-      // @effect-diagnostics-next-line cryptoRandomUUID:off -- A fresh idempotency key for this browser submission.
-      const body = {
-        input,
-        operationId: operationId ?? crypto.randomUUID(),
-        ...(appContext.length > 0 && { appContext }),
-      }
-      await request(`/api/threads/${thread}/messages`, { body })
+      await postMessage(thread, input, operationId, appContext)
       return true
     } catch (error) {
       setNotice(failureText(error))
@@ -106,7 +115,7 @@ function useHistory(thread: string, start: number | undefined, report: (text: st
 /**
  * The transcript's parts: the history pages loaded so far, then the snapshot and what streamed since. With `floor` (a
  * branched thread in its panel) it starts at that entry, the message the thread branched from, and reads no history
- * from before it.
+ * from before it. `branchable` holds the entries a thread may start from.
  */
 export function useTranscript(
   thread: string,
@@ -122,9 +131,14 @@ export function useTranscript(
     const messages = [...entryMessages(history.entries), ...projection.messages]
     return conversationParts({ ...projection, messages: floor === undefined ? messages : fromEntry(messages, floor) })
   }, [projection, history.entries, floor])
+  // Which of the parts' entries a thread can branch from (a shared note in main cannot).
+  const branchable = useMemo(
+    () => branchPoints([...history.entries, ...(projection?.entries ?? [])]),
+    [projection, history.entries],
+  )
   const oldest = history.entries[0]?.id
   const reachedFloor = floor !== undefined && isNumber(oldest) && oldest <= floor
-  return { parts, earlier: reachedFloor ? undefined : history.earlier }
+  return { parts, branchable, earlier: reachedFloor ? undefined : history.earlier }
 }
 
 /**

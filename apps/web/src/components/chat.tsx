@@ -13,8 +13,9 @@ import { Conversation } from './conversation.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
 import type { Part } from '../lib/parts.ts'
 import { ChatBar } from './chat-bar.tsx'
-import { ThreadPanel, useSharedRightColumn } from './thread-panel.tsx'
-import { useGoToThread, useThreads } from './threads.tsx'
+import { MainThreadPanel, type ThreadPanelControl } from './thread-panel.tsx'
+import { useInlineThreads } from './thread-replies.tsx'
+import { useThreads } from './threads.tsx'
 import { ModelPicker, useModelChoice } from './model-picker.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
 import { useConversation, useDockInsets, useTranscript } from './use-conversation.ts'
@@ -41,13 +42,6 @@ export function Chat({ thread, panel }: { readonly thread: string; readonly pane
       <ChatView thread={thread} panel={panel} />
     </AppsProvider>
   )
-}
-
-/** The thread panel beside main: the thread it shows (none when closed), and how to open and close it. */
-export type ThreadPanelControl = {
-  readonly thread: string | undefined
-  readonly open: (thread: string) => void
-  readonly close: () => void
 }
 
 type Send = (input: string, operationId?: string, appContext?: readonly AppContext[]) => Promise<boolean>
@@ -124,15 +118,14 @@ function ChatDock({
   )
 }
 
-const NO_PANEL = () => undefined
+const NOWHERE = () => undefined
 
 function ChatView({ thread, panel }: { readonly thread: string; readonly panel: ThreadPanelControl | undefined }) {
   const conversation = useConversation(thread)
   const { projection, report, send } = conversation
   const threads = useThreads()
-  const goTo = useGoToThread()
   const running = projection?.running ?? false
-  const { refresh, create } = threads
+  const { refresh } = threads
   const kind = threads.views.find((candidate) => candidate.id === thread)?.kind
   // A run starting or ending changes the list's busy marks (and a first exchange may have named the thread).
   useEffect(refresh, [refresh, running])
@@ -140,9 +133,11 @@ function ChatView({ thread, panel }: { readonly thread: string; readonly panel: 
   const view = useRef<HTMLElement>(null)
   const dock = useRef<HTMLDivElement>(null)
   useDockInsets(view, dock)
-  const { parts, earlier } = useTranscript(thread, projection, report)
+  const { parts, branchable, earlier } = useTranscript(thread, projection, report)
   const waiting = useMemo(() => openInteractions(parts), [parts])
-  useSharedRightColumn(panel?.thread, panel?.close ?? NO_PANEL)
+  // Threads start from main and show under its messages; a thread does not branch further.
+  const inline = useInlineThreads(branchable, panel?.open ?? NOWHERE, panel?.reply ?? NOWHERE)
+  const inlineThreads = thread === MAIN_THREAD && panel !== undefined ? inline : undefined
   return (
     <section className="chat-view" aria-label="Chat" ref={view}>
       <div className="chat-conversation chat-pane">
@@ -162,11 +157,11 @@ function ChatView({ thread, panel }: { readonly thread: string; readonly panel: 
           parts={parts}
           canSwitchModel={(model.choice?.options.length ?? 0) > 1}
           {...(earlier && { onEarlier: earlier })}
-          {...(thread === MAIN_THREAD && { onBranch: (entry: number) => void create(entry).then(goTo) })}
+          {...(inlineThreads && { threads: inlineThreads })}
         />
         <ChatDock ref={dock} conversation={conversation} parts={parts} waiting={waiting} model={model} />
       </div>
-      {panel?.thread !== undefined && <ThreadPanel thread={panel.thread} onClose={panel.close} />}
+      <MainThreadPanel panel={panel} parts={parts} />
       <AppLayer />
     </section>
   )
