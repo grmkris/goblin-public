@@ -33,11 +33,8 @@ spawner like the spawner's own: it steers the current run when the subagent is b
 a turn. The report quotes what the owner wrote (one line, at most 300 characters), so the spawner knows it was asked.
 The owner's operation id is the delivered submission's request id, so their browser waits on it as on any message.
 
-**Authority is checked again around every wait.** The tool checks the calling conversation's authority (a member's
-access, resident authority, the plan; ADR 0014) after each read and before what it changes or answers; a relay checks
-the spawner and the subagent before it delivers and the spawner before it reports, so a member revoked while their
-subagent works never hears its answer. A member's subagent works on that member's provider, charged to the acting
-account.
+**Owner authority gates background work.** The tool and relay use the Agent's account plan gate. Resident authority
+is checked before tool execution, relay delivery and reporting. Subagents use the owner's provider and daily budget.
 
 **Stop and Close cascade, and a job cut short reports nothing.** Stop in a conversation, the tool's `stop`, and the
 owner's Close first stop the relays carrying messages to each subagent they reach, then abort the subagents across

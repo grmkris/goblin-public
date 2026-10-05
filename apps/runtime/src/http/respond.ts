@@ -10,7 +10,6 @@ export const statusOf = (error: AppError): number =>
       GrantDenied: () => 403,
       NotFound: () => 404,
       Conflict: () => 409,
-      RateLimited: () => 429,
       InvalidInput: () => 400,
       PayloadTooLarge: () => 413,
       ResidentInactive: () => 409,

@@ -2,7 +2,6 @@ import { APIError, type createAuthMiddleware } from 'better-auth/api'
 import { Predicate } from 'effect'
 import type { AuthEnvironment } from './options.ts'
 import { canonicalEmail, signupAllowed, signupMode } from './signup.ts'
-import { admissionToken, readAdmission } from '../workspaces/proof.ts'
 
 type HookContext = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0]
 
@@ -48,19 +47,7 @@ export async function guardEmailCode(
   context.body.email = email
   const known = await context.context.internalAdapter.findUserByEmail(email)
   const presented = context.headers?.get('x-invite-code') ?? ''
-  let admission
-  try {
-    admission = await readAdmission(database, context.headers, email)
-  } catch {
-    if (admissionToken(context.headers) !== undefined)
-      throw new APIError('FORBIDDEN', { message: 'Invitation admission required.' })
-  }
-  const invited = admission?.admission.state === 'active'
-  if (
-    known === null &&
-    !invited &&
-    !signupAllowed(signupMode(env.SIGNUP_MODE), env.SIGNUP_INVITE_CODE ?? '', presented)
-  )
+  if (known === null && !signupAllowed(signupMode(env.SIGNUP_MODE), env.SIGNUP_INVITE_CODE ?? '', presented))
     throw new APIError('FORBIDDEN', { message: 'Sign-up is closed.' })
   if (sending && now - (await lastCodeAt(database, email)) < CODE_COOLDOWN_MS)
     throw new APIError('TOO_MANY_REQUESTS', { message: 'A code was just sent. Wait a minute before asking again.' })

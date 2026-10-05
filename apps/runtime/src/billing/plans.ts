@@ -4,7 +4,6 @@ export const PRO = {
   priceCents: 1000,
   interval: 'monthly',
   dailyTokens: 2_000_000,
-  members: true,
   routines: true,
   subagents: true,
 } as const

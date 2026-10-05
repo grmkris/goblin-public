@@ -5,7 +5,6 @@ import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { appConversationCapabilities, appConversations, appChannel, appTelegramChannel } from '../storage/schema.ts'
 import { appRoutineRuns } from '../storage/routines.ts'
 import * as Schema from 'effect/Schema'
-import { memberScope, type MemberBound } from './member.ts'
 
 type Kind = CapabilityTarget['kind']
 
@@ -84,18 +83,15 @@ export class CapabilityProfiles {
   readonly #db: DrizzleSqliteDODatabase
   readonly #subagentTool: ToolRegistration
   readonly #retool: (session: string, tools: PiTools) => Promise<void>
-  readonly #member: (session: string) => MemberBound | null | undefined
 
   constructor(
     db: DrizzleSqliteDODatabase,
     subagentTool: ToolRegistration,
     retool: (session: string, tools: PiTools) => Promise<void>,
-    member: (session: string) => MemberBound | null | undefined = () => null,
   ) {
     this.#db = db
     this.#subagentTool = subagentTool
     this.#retool = retool
-    this.#member = member
   }
 
   /** What `session` switched off itself. */
@@ -157,10 +153,7 @@ export class CapabilityProfiles {
       chain.flatMap((link) => this.own(link.session)),
       start.kind !== 'subagent' && start.routineRunId === null,
     )
-    const bounded = root.routineRunId === null ? scope : this.#routine(scope, root.routineRunId)
-    // null is an owner context; undefined is a member context whose live authority is not hydrated.
-    const member = this.#member(session)
-    return member === null ? bounded : member === undefined ? CLOSED : memberScope(bounded, member)
+    return root.routineRunId === null ? scope : this.#routine(scope, root.routineRunId)
   }
 
   /** A routine's thread may use only the tools its definition allows, within the scope it would have anyway. */

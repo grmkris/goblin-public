@@ -71,23 +71,20 @@ export class ModelBudget {
   readonly #ledger: UsageLedger
   readonly #limit: number | ((now: number) => Promise<number>)
   readonly #weights: Readonly<Record<string, number>>
-  readonly #external: (day: string) => Promise<number>
   constructor(
     ledger: UsageLedger,
     limit: number | ((now: number) => Promise<number>),
     weights: Readonly<Record<string, number>> = {},
-    external: (day: string) => Promise<number> = async () => 0,
   ) {
     this.#ledger = ledger
     this.#limit = limit
     this.#weights = weights
-    this.#external = external
   }
 
   async today(now: number): Promise<UsageToday> {
     const { day, resetsAt } = utcDay(now)
     const limit = typeof this.#limit === 'number' ? this.#limit : await this.#limit(now)
-    return { used: this.#ledger.tokens(day) + (await this.#external(day)), limit, resetsAt }
+    return { used: this.#ledger.tokens(day), limit, resetsAt }
   }
 
   record(tokens: number, now: number, model?: string): void {

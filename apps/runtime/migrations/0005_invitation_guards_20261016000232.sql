@@ -1,3 +1,4 @@
+-- Dormant leftovers of Members (withdrawn 2026-10-05); retain applied tables and migration history.
 ALTER TABLE app_workspace_members ADD COLUMN last_operation_id TEXT;
 ALTER TABLE app_workspace_invitations ADD COLUMN last_operation_id TEXT;
 CREATE TABLE app_workspace_rate_limits (

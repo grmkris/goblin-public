@@ -17,8 +17,7 @@ Account entitlements gate the feature. No action renews resident authority in th
 
 Confirmation first persists provenance and `activating`, then reconciles a dated schedule. A failed arm remains
 visible and recovery retries only confirmed revisions. Application migrations …210/…211/…212 are additive and leave
-Pi/Agents tables untouched. Shared submission origins and sealed interaction receipts support routine execution
-and subsequent Members extensions. Event confirmation grants only the exact server/name/canonical-arguments selector after descriptor-schema validation at subscription.
+Pi/Agents tables untouched. Shared submission origins and sealed interaction receipts support routine execution. Event confirmation grants only the exact server/name/canonical-arguments selector after descriptor-schema validation at subscription.
 
 Five-field numeric cron uses one Worker-compatible parser and IANA `Intl` projection. It supports lists, ranges and
 steps; unsupported macros and seconds fail visibly. Daily slots must be at least 15 minutes apart, including the

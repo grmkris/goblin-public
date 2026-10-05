@@ -4,7 +4,6 @@ import type { RuntimeEnv } from '../env.ts'
 import { unwrap } from '../http/rpc.ts'
 import { inboundServer } from './server.ts'
 import { requireAccountPlan } from '../billing/gates.ts'
-import { ownerWorkspace } from '../workspaces/resolution.ts'
 
 export const inboundHosts = (appUrl: string) => ({
   allowedHostnames: [new URL(appUrl).hostname],
@@ -33,8 +32,7 @@ export const handleInboundMcp = async (request: Request, env: RuntimeEnv): Promi
   }
   // The token's subject is the user who consented; the client talks to that user's agent only.
   await requireAccountPlan(env, principal.subject)
-  const workspace = await ownerWorkspace(env, principal.subject)
-  const agent = env.AGENTS.getByName(workspace.ownerUserId)
+  const agent = env.AGENTS.getByName(principal.subject)
   const name = await clientName(principal.clientId, env)
   const handler = createMcpHandler(
     () =>

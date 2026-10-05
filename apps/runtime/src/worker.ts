@@ -33,12 +33,6 @@ import { runBillingCron } from './billing/cron.ts'
 import { billingMode, requireAccountPlan } from './billing/gates.ts'
 import { routineRoute } from './routines/routes.ts'
 import { routineOrigin } from './routines/csrf.ts'
-import { ownerWorkspace, sessionWorkspace } from './workspaces/resolution.ts'
-import { workspaceApi } from './workspaces/routes.ts'
-import { memberRoute } from './members/routes.ts'
-import type { MemberPrincipal } from './env.ts'
-import * as WorkspaceSchema from '@purrable/contracts'
-import { currentInvitation, invitationPreview, membersApi } from './workspaces/invitations.ts'
 
 export { PersonalAgent } from './agent.ts'
 
@@ -77,7 +71,7 @@ const ChannelPick = Schema.Struct({ serverId: Bounded(64) })
 const ModelPick = Schema.Struct({ model: Bounded(128) })
 
 const json = (value: unknown, status = 200): Response => Response.json(value, { status })
-/** Only a verified workspace's owner user id supplies the native Agent name. */
+/** Only the authenticated user ID supplies the native Agent name. */
 const agentOf = (env: RuntimeEnv, userId: string): DurableObjectStub<AgentRpc> => env.AGENTS.getByName(userId)
 
 type Route = (request: Request, agent: DurableObjectStub<AgentRpc>) => Promise<Response>
@@ -110,7 +104,6 @@ async function doorbellRoute(request: Request, env: RuntimeEnv, path: string): P
   if (request.method !== 'POST' || userId === '' || !(await hookTokenValid(env.CREDENTIAL_KEY, userId, token)))
     throw new NotFound({ what: path })
   await requireAccountPlan(env, userId)
-  await ownerWorkspace(env, userId)
   const body = await request.text()
   if (body.length > DOORBELL_BYTES) throw new InvalidInput({ reason: 'doorbell too large' })
   unwrap(
@@ -129,7 +122,6 @@ async function mcpEventsRoute(request: Request, env: RuntimeEnv, path: string): 
   if (request.method !== 'POST' || userId === '' || !(await eventsHookTokenValid(env.CREDENTIAL_KEY, userId, token)))
     throw new NotFound({ what: path })
   await requireAccountPlan(env, userId)
-  await ownerWorkspace(env, userId)
   const body = await readBytes(request, EVENT_BODY_BYTES)
   const result = unwrap(
     await agentOf(env, userId).mcpEventsWebhook({
@@ -277,23 +269,6 @@ async function mcpRoute(request: Request, agent: DurableObjectStub<AgentRpc>, pa
   return route === undefined ? mcpServerRoute(request, agent, path) : route(request, agent)
 }
 
-function principalOf(
-  row: Awaited<ReturnType<typeof sessionWorkspace>>,
-  session: import('./auth/service.ts').UserSession,
-): MemberPrincipal {
-  return {
-    userId: session.userId,
-    workspaceId: row.workspace.id,
-    ownerUserId: row.workspace.ownerUserId,
-    memberId: row.member.id,
-    memberVersion: row.member.version,
-    role: row.member.role,
-    policy: Schema.decodeUnknownSync(WorkspaceSchema.MemberPolicy)(JSON.parse(row.member.policyJson)),
-    context: row.context,
-    sessionId: session.sessionId,
-  }
-}
-
 function apiOrigin(request: Request, env: RuntimeEnv): void {
   if (request.method !== 'GET') {
     const origin = request.headers.get('origin')
@@ -309,18 +284,8 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   const path = new URL(request.url).pathname
   if (path === '/api/routines' || path.startsWith('/api/routines/')) routineOrigin(request, env.APP_URL)
   if (path.startsWith('/api/billing/')) return Effect.runPromise(billingApi(request, env, userId))
-  if (path === '/api/workspaces' || path.startsWith('/api/workspaces/')) return workspaceApi(request, env, session)
-  if (path.startsWith('/api/members') || path.startsWith('/api/invitations')) return membersApi(request, env, session)
   await requireAccountPlan(env, userId)
-  const selected = await sessionWorkspace(env, session, request.headers.get('x-purrable-workspace') ?? undefined)
-  if (selected.member.role !== 'owner' && env.MEMBER_EXECUTION_ENABLED !== '1')
-    throw new Forbidden({ reason: 'shared agent access pending review' })
-  const agent = agentOf(env, selected.workspace.ownerUserId)
-  if (selected.member.role !== 'owner' || selected.workspace.ownerUserId !== userId)
-    return memberRoute(request, env, path, principalOf(selected, session), agent)
-  if (path === '/api/interactions' || path.startsWith('/api/interactions/'))
-    return memberRoute(request, env, path, principalOf(selected, session), agent)
-  return ownerApiRequest(request, env, path, agent, userId)
+  return ownerApiRequest(request, env, path, agentOf(env, userId), userId)
 }
 
 async function ownerApiRequest(
@@ -353,9 +318,6 @@ async function admittedRoute(
 ): Promise<Response> {
   const path = new URL(request.url).pathname
   if (path === '/mcp') return handleInboundMcp(request, env)
-  if (path === '/api/invitations/admission' && request.method === 'GET') return currentInvitation(env, request)
-  const previewId = /^\/api\/invitations\/([\w-]{1,200})\/preview$/u.exec(path)?.[1]
-  if (previewId !== undefined && request.method === 'POST') return invitationPreview(env, request, previewId)
   if (path === '/hooks/dodo') return Effect.runPromise(billingWebhook(billingDeps(env), request, ctx))
   if (path.startsWith('/hooks/mcp-events/')) return mcpEventsRoute(request, env, path)
   if (path.startsWith('/hooks/')) return doorbellRoute(request, env, path)
@@ -365,7 +327,7 @@ async function admittedRoute(
 
 export default {
   async scheduled(_event: ScheduledController, env: RuntimeEnv): Promise<void> {
-    await Effect.runPromise(runBillingCron(billingDeps(env), env.AUTH_DB, env.AGENTS))
+    await Effect.runPromise(runBillingCron(billingDeps(env)))
   },
   async fetch(request: Request, env: RuntimeEnv, ctx: Pick<ExecutionContext, 'waitUntil'>): Promise<Response> {
     const redirect = canonicalRedirect(request, env.APP_URL)

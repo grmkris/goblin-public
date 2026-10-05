@@ -7,17 +7,16 @@ import type { ProviderStreams } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
-import type { AgentRpcMethods, MemberPrincipal, MemberRequest, RuntimeEnv } from './env.ts'
+import type { AgentRpcMethods, RuntimeEnv } from './env.ts'
 import { type AppError, Forbidden, toAppError } from './http/errors.ts'
 import { type ChannelPorts, TelegramChannel, channelCall, logChannelFailure } from './channel/channel.ts'
 import { channelPorts } from './channel/turns.ts'
 import { type Doorbell, doorbellValid } from './channel/doorbell.ts'
 import { type RpcResult, encodeExit, unwrap } from './http/rpc.ts'
 import { agentRequest, sessionSnapshot } from './agent-requests.ts'
-import { memberProgram, executionAuthority } from './members/program.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
 import { LITELLM_STREAMS, makePiModels } from './pi/model.ts'
-import { personaExtension, principalExtension } from './pi/persona.ts'
+import { personaExtension } from './pi/persona.ts'
 import { type SubagentKit, subagentsExtension } from './pi/subagents.ts'
 import { threadExtension } from './pi/thread.ts'
 import { memoryExtensions } from './pi/memory.ts'
@@ -37,7 +36,6 @@ import {
   attemptSync,
   nowSecondsEffect,
   requireResident,
-  Members,
   Routines,
   RoutineRuns,
 } from './services.ts'
@@ -64,7 +62,6 @@ import {
 import { createOwnerApp, launchOwnerApp, updateOwnerApp } from './apps/program.ts'
 import { budgetExtension } from './pi/budget.ts'
 import { chooseOwnerModel, useModel, type Applied } from './agent-model.ts'
-import { askingExtension } from './pi/ask-user.ts'
 import { routinesExtension } from './pi/routines.ts'
 import { editRoutine, proposeRoutine, routinesList, setRoutineSettings } from './routines/program.ts'
 import type {
@@ -76,7 +73,7 @@ import type {
   RoutineManualRun,
   UpdateConversation,
 } from '@purrable/contracts'
-import { requireRoutine } from './routines/authority.ts'
+import { requireRoutine, requireRoutineSession } from './routines/authority.ts'
 import { runView } from './routines/runs.ts'
 import type { RoutineSlot } from './routines/scheduler.ts'
 import {
@@ -98,7 +95,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   readonly #thread: Extension
   readonly #memory: ReturnType<typeof memoryExtensions>
   readonly #subagents: SubagentKit
-  readonly #memberExtensions: readonly Extension[]
   readonly #applied: Applied = new Map()
   readonly #routines: RoutineController
   #runtime: Promise<Runtime> | undefined
@@ -108,39 +104,21 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     super(ctx, env)
     const run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program)
     const routineRun = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program, false)
-    const execution = this.#execution.bind(this)
-    this.#pi = makePiModels(env, this.modelStreams(), undefined, (id) => routineRun(requireRoutine(id)), execution)
-    const residentTools = residentMcpExtension(routineRun, execution)
-    const tools = [residentTools, budgetExtension(routineRun)]
-    const principal = principalExtension(async (session) =>
-      routineRun(Members.use((members) => attempt(() => members.access.require(session)))),
-    )
+    this.#pi = makePiModels(env, this.modelStreams(), undefined, (id) => routineRun(requireRoutine(id)))
+    const residentTools = residentMcpExtension(run, (session) => routineRun(requireRoutineSession(session)))
+    const tools = [residentTools, budgetExtension(run)]
     // A subagent gets the persona, the owner's tools and subagents of its own, nothing else: no ask_user.
-    this.#subagents = subagentsExtension(routineRun, (self) => [personaExtension, principal, ...tools, self], execution)
+    this.#subagents = subagentsExtension(run, (self) => [personaExtension, ...tools, self])
     const subagents = this.#subagents.extension
-    this.#thread = threadExtension(run, routineRun)
+    this.#thread = threadExtension(run)
     this.#memory = memoryExtensions(run)
     const { memory, recall } = this.#memory
     const routineKit = routineExtensions(routineRun, residentTools, env.CREDENTIAL_KEY)
-    const memberAsk = askingExtension(
-      (session, callId, questions, answerer) =>
-        routineRun(Members.use((members) => attempt(() => members.question(session, callId, questions, answerer)))),
-      'purrable.member-ask',
-    )
-    this.#memberExtensions = [
-      personaExtension,
-      principal,
-      memberAsk,
-      ...tools,
-      skillsExtension(routineRun),
-      subagents,
-      this.#thread,
-    ]
     // Skills are for main and threads; a subagent gets only the extensions its spawner hands it.
     this.harness = makePiHarness(
       this.#pi,
-      [...tools, skillsExtension(routineRun), subagents, routinesExtension(run), principal],
-      [this.#thread, memberAsk, memory, recall, ...routineKit.extra],
+      [...tools, skillsExtension(run), subagents, routinesExtension(run)],
+      [this.#thread, memory, recall, ...routineKit.extra],
     )
     this.#routines = new RoutineController(routineRun, this.harness, routineKit.start, {
       storage: this.ctx.storage,
@@ -185,7 +163,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       thread: this.#thread,
       memory: this.#memory,
       subagentTool: this.#subagents.tool,
-      memberExtensions: this.#memberExtensions,
       scheduleReplies: () => void this.schedule(5, 'channelReplies'),
       userId: this.name,
       entitlements: this.entitlementPolicy(),
@@ -248,22 +225,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   async #owner<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
     return encodeExit(await this.#exit(ownerRequest(program)))
   }
-  async #execution(session: string): Promise<void> {
-    await this.#runOrThrow(executionAuthority(session), false)
-  }
-  memberRequest(principal: MemberPrincipal, request: MemberRequest) {
-    return this.#member(memberProgram(this.harness, principal, request))
-  }
-  memberInvalidate(memberId: string) {
-    return this.#member(Members.use((members) => attempt(() => members.invalidate(memberId))))
-  }
-  accountUsage() {
-    return this.#member(ownerUsage)
-  }
-  async #member<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
-    return encodeExit(await this.#exit(program))
-  }
-
   /** The owner's message into a thread, with what an open App shared for the agent as separate untrusted blocks. */
   submit(thread: string, input: string, operationId: string, appContext: readonly AppContext[] = []) {
     const runtime = {
@@ -555,11 +516,13 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     await this.destroy()
     return { ok: true, value: true }
   }
-  #client<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
-    return this.#member(
-      Effect.andThen(
-        Entitlements.use((plans) => plans.require()),
-        program,
+  async #client<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
+    return encodeExit(
+      await this.#exit(
+        Effect.andThen(
+          Entitlements.use((plans) => plans.require()),
+          program,
+        ),
       ),
     )
   }

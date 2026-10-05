@@ -183,6 +183,7 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     ].join(BREAK),
   },
   {
+    // Dormant leftovers of Members (withdrawn 2026-10-05); applied entries and data stay.
     key: '20261017000001_members_phase_b',
     tables: [
       'app_conversations',
@@ -219,6 +220,7 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     sql: 'ALTER TABLE app_conversations ADD COLUMN read_at INTEGER',
   },
   {
+    // Dormant Members reader columns; retain the applied migration.
     key: '20261017000234_members_readers',
     tables: ['app_thread_readers'],
     sql: [

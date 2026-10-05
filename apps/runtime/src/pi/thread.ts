@@ -1,7 +1,7 @@
 import { GenerationTask, defineExtension, defineTool, hook, section } from '@earendil-works/pi-durable'
 import { Type } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
-import { Members, Conversations, attempt, requireBudget } from '../services.ts'
+import { Conversations, attempt, requireBudget } from '../services.ts'
 import type { RunProgram } from './resident-mcp.ts'
 import { Entitlements } from '../billing/gates.ts'
 
@@ -16,7 +16,7 @@ const THREAD = [
  * What a side thread adds: knowing it is one, `share_back` (a note written into the conversation it came from, which
  * the model there sees without starting a run), and a title the cheap model writes after the first exchange.
  */
-export function threadExtension(run: RunProgram, memberRun: RunProgram = run) {
+export function threadExtension(run: RunProgram) {
   return defineExtension({
     name: 'purrable.thread',
     sections: [section('thread', () => THREAD)],
@@ -29,11 +29,8 @@ export function threadExtension(run: RunProgram, memberRun: RunProgram = run) {
         // The write carries the call's id as its request id, so a rerun finds the same note.
         replay: 'safe',
         execute: async ({ note }, api) => {
-          const member = await memberRun(
-            Members.use((members) => attempt(() => members.require(String(api.conversationId)))),
-          )
-          if (member === undefined) await run(Entitlements.use((plans) => plans.require()))
-          const parent = await memberRun(
+          await run(Entitlements.use((plans) => plans.require()))
+          const parent = await run(
             Conversations.use((conversations) =>
               attempt(() => conversations.shareBack(String(api.conversationId), note, `share:${api.callId}`)),
             ),
@@ -51,7 +48,6 @@ export function threadExtension(run: RunProgram, memberRun: RunProgram = run) {
           const thread = String(api.conversationId)
           void run(
             Effect.gen(function* () {
-              if ((yield* Members).access.origin(thread) !== undefined) return
               const conversations = yield* Conversations
               yield* Effect.ignore(
                 requireBudget.pipe(Effect.andThen(attempt(() => conversations.nameIfUntitled(thread)))),

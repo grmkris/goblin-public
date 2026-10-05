@@ -3,7 +3,7 @@ import type { ToolExecutionResult } from '@earendil-works/pi-durable'
 import { Type } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import type { Catalog } from '../skills/library.ts'
-import { Capabilities, Learner, Members, Skills, attempt, requireBudget, requireResident } from '../services.ts'
+import { Capabilities, Learner, Skills, attempt, requireBudget, requireResident } from '../services.ts'
 import { logLearnOutcome, type LearnOutcome } from '../skills/learner.ts'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { capabilityOffResult } from './capabilities.ts'
@@ -41,8 +41,6 @@ const authorizeSkill = (run: RunProgram, session: string) => (serverId: string) 
   run(
     Effect.gen(function* () {
       yield* requireResident
-      const members = yield* Members
-      yield* attempt(() => members.require(session))
       if (!(yield* Capabilities).scope(session).skills(serverId)) return yield* new NotFound({ what: 'skill scope' })
     }),
   )
@@ -70,8 +68,6 @@ const skillsSection = (run: RunProgram) =>
                 (serverId) => scope.skills(serverId),
               ),
             )
-            const members = yield* Members
-            yield* attempt(() => members.require(String(input.conversationId)))
             const current = (yield* Capabilities).scope(String(input.conversationId))
             return {
               skills: catalog.skills.filter((skill) => current.skills(skill.serverId)),
@@ -195,7 +191,6 @@ export function skillsExtension(
         onYield: (_answer, api) => {
           void run(
             Effect.gen(function* () {
-              if ((yield* Members).access.origin(String(api.conversationId)) !== undefined) return 'failed' as const
               yield* requireResident
               yield* requireBudget
               const learner = yield* Learner

@@ -1,0 +1,40 @@
+/** Native auth D1 + owner Agent fixture; test levers never enter the deployed Worker. */
+import { Effect } from 'effect'
+import runtime from '../../src/worker.ts'
+import type { RuntimeEnv } from '../../src/env.ts'
+import { failureResponse } from '../../src/http/respond.ts'
+import { makeBillingStore } from '../../src/billing/store.ts'
+import { liveApi } from '../../src/billing/dodo.ts'
+import { billingTestRoute } from '../../src/billing/test-route.ts'
+import { PersonalAgent } from '../../src/agent.ts'
+import { scriptedStreams } from './model.ts'
+import { AppsMcpFixture } from './apps-mcp.ts'
+
+export class OwnerAgent extends PersonalAgent {
+  readonly #mcp = new AppsMcpFixture()
+  protected override modelStreams() {
+    return scriptedStreams()
+  }
+  protected override mcpFetch(): typeof fetch {
+    return this.#mcp.fetch
+  }
+}
+export default {
+  async fetch(request: Request, env: RuntimeEnv, ctx: ExecutionContext) {
+    const url = new URL(request.url)
+    const input = new Request(new URL(url.pathname + url.search, env.APP_URL), request)
+    try {
+      if (url.pathname.startsWith('/__test/billing/'))
+        return await Effect.runPromise(
+          billingTestRoute(input, env, {
+            store: makeBillingStore(env.AUTH_DB),
+            dodo: liveApi('test_mode', 'unused', 'unused'),
+            productId: 'unused',
+          }),
+        )
+      return await runtime.fetch(input, env, ctx)
+    } catch (cause) {
+      return failureResponse(cause, url.pathname, 'owner-fixture')
+    }
+  },
+}

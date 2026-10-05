@@ -1,5 +1,4 @@
 import {
-  AgentDoc,
   type ConversationId,
   type EntryId,
   type Harness,
@@ -9,9 +8,7 @@ import {
   type Task,
   type TaskId,
   type TaskRecord,
-  type TaskRuntime,
   type Tx,
-  configure,
   defineDoc,
   defineTask,
 } from '@earendil-works/pi-durable'
@@ -20,7 +17,7 @@ import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { MAIN_THREAD } from '@purrable/contracts'
-import { Channel, Conversations, Members, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
+import { Channel, Conversations, attempt, attemptSync, nowSecondsEffect, requireResident } from '../services.ts'
 import { authoredContent } from './content.ts'
 import { BACKGROUND, entryId } from './context.ts'
 import type { RunProgram } from './resident-mcp.ts'
@@ -175,57 +172,25 @@ async function decide(tx: Tx, spawner: ConversationId, self: TaskId, input: Rela
   return toReport(true, [...quotes.map((quote) => `The owner wrote to it: "${quote}"`), text].join('\n\n'))
 }
 
-/** Checks that a conversation may still act now: its member's access, resident authority, the plan (ADR 0014). */
-export type Authorize = (session: string) => Promise<void>
-
-/**
- * A member's subagent works on that member's provider, so its usage is charged to the acting account (ADR 0014).
- * Authority is checked again after the read, right before the change.
- */
-type RelayRuntime = TaskRuntime<RelayInput, RelayState, null, object>
-type RelayContext = Parameters<RelayRuntime['commit']>[1]
-
-async function memberModel(
-  run: RunProgram,
-  authorize: Authorize,
-  runtime: RelayRuntime,
-  child: ConversationId,
-  context: RelayContext,
-) {
-  const principal = await run(Members.use((members) => attempt(() => members.require(String(child)))))
-  if (principal === undefined) return
-  const model = (await runtime.snapshot(AgentDoc, child, context))?.model
-  await authorize(String(child))
-  if (model === undefined || model === null) return
-  const change = { model: { provider: `purrable-member:${child}`, modelId: model.modelId } }
-  await runtime.commit(async (tx) => {
-    await configure(tx, child, change)
-  }, context)
-}
-
 /**
  * Carries one message to a subagent (its spawner's or the owner's), then waits until the subagent is done: idle, with
  * none of its own helpers still at work, so it reports its final answer, never "waiting on my helpers". The answer goes
  * to the spawner as an input it answers, and only there. Then the subagent closes as done unless the owner wrote in
  * it, branched from it or pinned it. Request ids keep a restart from delivering or reporting twice.
  */
-export function relayTask(run: RunProgram, authorize: Authorize): Relay {
+export function relayTask(run: RunProgram): Relay {
   return defineTask<RelayInput, RelayState, null>({
     name: SUBAGENT_RELAY,
     version: 1,
     initial: () => ({ phase: 'deliver' }),
     phases: {
-      // Authority is checked again around each wait: a member revoked meanwhile delivers and reports nothing.
       deliver: async (relay, runtime, context) => {
         const { name, conversationId, content, whenBusy, origin, requestId } = relay.input
         const parent = String(runtime.conversationId)
-        await authorize(parent)
         if (origin === 'spawner') await run(register(String(conversationId), parent, name))
         const subagent = await runtime.conversation(conversationId, context)
         if (subagent === undefined) throw new Error(`Subagent ${name} has no conversation`)
-        await authorize(parent)
-        await authorize(String(conversationId))
-        await memberModel(run, authorize, runtime, conversationId, context)
+        await run(requireResident)
         const submission = await subagent.submit(
           { type: 'input', content, whenBusy, requestId: requestId ?? `subagent:${relay.id}` },
           context,
@@ -257,10 +222,9 @@ export function relayTask(run: RunProgram, authorize: Authorize): Relay {
       report: async (relay, runtime, context) => {
         const { report, close } = relay.state.checkpoint
         const { name, conversationId, origin } = relay.input
-        await authorize(String(runtime.conversationId))
         if (report !== undefined) {
           const spawner = await runtime.conversation(runtime.conversationId, context)
-          await authorize(String(runtime.conversationId))
+          await run(requireResident)
           await spawner?.submit(
             {
               type: 'input',

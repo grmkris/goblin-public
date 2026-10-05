@@ -9,9 +9,9 @@ import { SkillLearner, type LearnOutcome } from '../src/skills/learner.ts'
 import { skillsExtension } from '../src/pi/skills.ts'
 import type { RunProgram } from '../src/pi/resident-mcp.ts'
 import { ModelBudget } from '../src/budget.ts'
-import { Budget, Learner, Resident, Members } from '../src/services.ts'
+import { Budget, Learner, Resident } from '../src/services.ts'
 import type { AppError } from '../src/http/errors.ts'
-import { ActiveResident, OwnerMembers } from './fixed-services.ts'
+import { ActiveResident } from './fixed-services.ts'
 import { SkillLibrary } from '../src/skills/library.ts'
 import { SKILLS_EXTENSION } from '../src/skills/protocol.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
@@ -146,12 +146,11 @@ describe('the skill learner (unit)', () => {
     const outcomes: LearnOutcome[] = []
     const layer = Layer.mergeAll(
       Layer.succeed(Learner, learner()),
-      Layer.succeed(Members, new OwnerMembers()),
       Layer.succeed(Resident, new ActiveResident()),
       Layer.succeed(Budget, new ModelBudget({ tokens: () => 0, add: () => undefined }, 300_000)),
     )
     const run: RunProgram = <A>(program: Parameters<RunProgram>[0]) =>
-      // SAFETY: onYield uses only Learner, Members, Resident and Budget, provided by this test's layer.
+      // SAFETY: onYield uses only Learner, Resident and Budget, provided by this test's layer.
       Effect.runPromise(Effect.provide(program, layer) as Effect.Effect<A, AppError>)
     const extension = skillsExtension(run, (_conversation, outcome) => outcomes.push(outcome))
     const hooks = extension.hooks?.[0]?.handlers

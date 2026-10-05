@@ -175,7 +175,7 @@ function CapabilityCard({
 }
 
 /** The agent's questions, one at a time with number shortcuts; the answers go back as one message. */
-export function QuestionCard({ interaction, onAnswer }: { readonly interaction: Question; readonly onAnswer: Answer }) {
+function QuestionCard({ interaction, onAnswer }: { readonly interaction: Question; readonly onAnswer: Answer }) {
   const { questions } = interaction
   const several = questions.length > 1
   return (

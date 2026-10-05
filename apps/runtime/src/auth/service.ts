@@ -5,13 +5,9 @@ import { Unauthenticated } from '../http/errors.ts'
 import { authIssuer, createAuth, mcpResource } from './options.ts'
 import { clientFromClaims, type ClientPrincipal, type TokenClaims } from './principal.ts'
 
-export type UserSession = {
+type UserSession = {
   readonly userId: string
-  readonly sessionId: string
   readonly expiresAt: number
-  readonly email: string
-  readonly emailVerified: boolean
-  readonly createdAt: number
 }
 
 /**
@@ -25,11 +21,7 @@ export const requireUserSession = async (request: Request, env: RuntimeEnv): Pro
     throw new Unauthenticated({ reason: 'session required' })
   return {
     userId: session.user.id,
-    sessionId: session.session.id,
     expiresAt: Math.floor(session.session.expiresAt.getTime() / 1000),
-    email: session.user.email,
-    emailVerified: session.user.emailVerified,
-    createdAt: session.session.createdAt.getTime(),
   }
 }
 

@@ -1,2 +1,3 @@
+-- Dormant leftovers of Members (withdrawn 2026-10-05); retain applied tables and migration history.
 CREATE INDEX app_invite_admissions_expiry ON app_invite_admissions(expires_at);
 CREATE INDEX app_workspace_rate_limit_window ON app_workspace_rate_limits(window_start);

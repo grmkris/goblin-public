@@ -8,10 +8,10 @@ import { makeBillingStore } from './store.ts'
 import type { Internal } from '../http/errors.ts'
 
 export const billingMode = (env: RuntimeEnv) => (env.STAGE === 'prod' ? 'live_mode' : 'test_mode')
-/** The feature gate shared by Worker admission, budget, members, routines and subagents. */
+/** The feature gate shared by Worker admission, budget, routines and subagents. */
 export interface EntitlementPolicy {
   readonly require: (
-    feature?: 'agent' | 'members' | 'routines' | 'subagents',
+    feature?: 'agent' | 'routines' | 'subagents',
   ) => Effect.Effect<AccountPlan, Internal | SubscriptionRequired>
   readonly state: () => Effect.Effect<AccountPlan, Internal>
 }

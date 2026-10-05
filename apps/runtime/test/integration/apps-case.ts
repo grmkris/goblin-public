@@ -1,8 +1,8 @@
 import { expect } from 'vitest'
 import { Schema } from 'effect'
 import { AppLaunch, ConversationView, WorkspaceSnapshot } from '@purrable/contracts'
-import { BOARD } from './members-mcp.ts'
-import { waitFor, type Person, type Ports } from './members-phaseb.ts'
+import { BOARD } from './apps-mcp.ts'
+import { person, call, waitFor, type Person } from './owner-requests.ts'
 
 /** An owner request with any method (the harness's `call` only GETs and POSTs). */
 const send = (base: string, who: Person, path: string, method: string, body?: unknown) =>
@@ -21,7 +21,7 @@ const send = (base: string, who: Person, path: string, method: string, body?: un
 
 const grant = async (base: string, owner: Person, allowed: boolean) =>
   expect(
-    (await send(base, owner, '/api/mcp/grants', 'PUT', { serverId: 'members-fixture', name: 'board', allowed })).status,
+    (await send(base, owner, '/api/mcp/grants', 'PUT', { serverId: 'apps-fixture', name: 'board', allowed })).status,
   ).toBe(200)
 
 /** The workspace feed's first event: every conversation and App now. */
@@ -47,21 +47,21 @@ async function snapshot(base: string, owner: Person): Promise<WorkspaceSnapshot>
  * back, Close of the conversation closes it, showing it again reopens the same App, and its resource is checked
  * against the owner's grants live (reopening restores none).
  */
-export async function appsCase(base: string, ports: Ports): Promise<void> {
-  const owner = await ports.person(base)
-  await ports.call(base, owner, '/__test/billing/override', { userId: owner.userId, dailyTokens: 1000 })
-  expect((await ports.call(base, owner, '/api/mcp/members-fixture/connect', {})).status).toBe(200)
+export async function appsCase(base: string): Promise<void> {
+  const owner = await person(base)
+  await call(base, owner, '/__test/billing/override', { userId: owner.userId, dailyTokens: 1000 })
+  expect((await call(base, owner, '/api/mcp/apps-fixture/connect', {})).status).toBe(200)
   await grant(base, owner, true)
   const thread = Schema.decodeUnknownSync(ConversationView)(
-    await (await ports.call(base, owner, '/api/conversations', {})).json(),
+    await (await call(base, owner, '/api/conversations', {})).json(),
   )
-  const input = `call mcp_call ${JSON.stringify({ serverId: 'members-fixture', name: 'board', arguments: { marker: 'kept' } })}`
-  await ports.call(base, owner, `/api/conversations/${thread.id}/messages`, { input, operationId: crypto.randomUUID() })
-  await waitFor(base, owner, `/api/conversations/${thread.id}/snapshot`, 'fixture-board', ports)
+  const input = `call mcp_call ${JSON.stringify({ serverId: 'apps-fixture', name: 'board', arguments: { marker: 'kept' } })}`
+  await call(base, owner, `/api/conversations/${thread.id}/messages`, { input, operationId: crypto.randomUUID() })
+  await waitFor(base, owner, `/api/conversations/${thread.id}/snapshot`, 'fixture-board')
   const [app] = (await snapshot(base, owner)).apps
   expect(app).toMatchObject({
     conversation: thread.id,
-    serverId: 'members-fixture',
+    serverId: 'apps-fixture',
     tool: 'board',
     uri: BOARD,
     title: 'Board',
@@ -70,21 +70,19 @@ export async function appsCase(base: string, ports: Ports): Promise<void> {
   const launch = Schema.decodeUnknownSync(AppLaunch)(
     await (await send(base, owner, `/api/apps/${app.id}/launch`, 'GET')).json(),
   )
-  expect(launch).toMatchObject({ serverId: 'members-fixture', uri: BOARD, arguments: { marker: 'kept' } })
+  expect(launch).toMatchObject({ serverId: 'apps-fixture', uri: BOARD, arguments: { marker: 'kept' } })
   expect(JSON.stringify(launch.result)).toContain('fixture-board')
-  const html = await send(base, owner, '/api/mcp/members-fixture/resources/read', 'POST', { uri: BOARD })
+  const html = await send(base, owner, '/api/mcp/apps-fixture/resources/read', 'POST', { uri: BOARD })
   expect(html.status).toBe(200)
 
   expect((await send(base, owner, `/api/conversations/${thread.id}`, 'PATCH', { closed: true })).status).toBe(200)
   expect((await snapshot(base, owner)).apps[0]?.closedAt).toBeDefined()
-  const reopened = await (
-    await ports.call(base, owner, '/api/apps', { conversation: thread.id, callId: app.callId })
-  ).json()
+  const reopened = await (await call(base, owner, '/api/apps', { conversation: thread.id, callId: app.callId })).json()
   expect(reopened).toMatchObject({ id: app.id })
   expect(reopened).not.toHaveProperty('closedAt')
 
   await grant(base, owner, false)
-  const denied = await send(base, owner, '/api/mcp/members-fixture/resources/read', 'POST', { uri: BOARD })
+  const denied = await send(base, owner, '/api/mcp/apps-fixture/resources/read', 'POST', { uri: BOARD })
   expect(denied.status).toBeGreaterThanOrEqual(400)
   expect(await denied.text()).toContain('GrantDenied')
   expect((await send(base, owner, '/api/apps/999999/launch', 'GET')).status).toBe(404)

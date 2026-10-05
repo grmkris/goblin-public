@@ -14,12 +14,11 @@ import {
 } from '@earendil-works/pi-durable'
 import { type Static, Type, type UserMessage } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
-import { Capabilities, Conversations, attempt, nowSecondsEffect } from '../services.ts'
+import { Capabilities, Conversations, attempt, nowSecondsEffect, requireResident } from '../services.ts'
 import { capabilityOffResult } from './capabilities.ts'
 import { BACKGROUND, conversationId } from './context.ts'
 import type { RunProgram } from './resident-mcp.ts'
 import {
-  type Authorize,
   type Relay,
   type Subagent,
   Subagents,
@@ -120,10 +119,9 @@ async function admit(run: RunProgram, agent: Subagent | undefined, name: string)
  * Stop: its current work and everything its own subagents are doing, through every level. What was on its way to it
  * stops first, so nothing reports the job cut short.
  */
-async function stop(run: RunProgram, authorize: Authorize, api: Api, agent: Subagent, context: CallContext) {
+async function stop(run: RunProgram, api: Api, agent: Subagent, context: CallContext) {
   const session = String(agent.conversationId)
   const child = await api.conversation(agent.conversationId, context)
-  await authorize(String(api.conversationId))
   await run(Conversations.use((conversations) => attempt(() => conversations.stopSubagents(session))))
   await child?.abort(context, { background: true })
 }
@@ -137,10 +135,9 @@ type Deliver = (
 ) => Promise<ReturnType<typeof reply>>
 
 /**
- * The `subagent` tool: spawn, send, stop and status, behind the conversation's subagents switch. The caller's
- * authority is checked again after each read, before what it changes or answers.
+ * The `subagent` tool: spawn, send, stop and status, behind the conversation's subagents switch.
  */
-function subagentTool(run: RunProgram, authorize: Authorize, deliver: Deliver) {
+function subagentTool(run: RunProgram, deliver: Deliver) {
   return defineTool({
     name: SUBAGENT_TOOL,
     description: [
@@ -153,18 +150,17 @@ function subagentTool(run: RunProgram, authorize: Authorize, deliver: Deliver) {
     // the call was interrupted and can check with status.
     replay: 'unsafe',
     execute: async ({ action, name, message }: Args, api, context) => {
+      await run(requireResident)
       const { agents } = (await api.snapshot(Subagents, api.conversationId, context)) ?? { agents: {} }
-      await authorize(String(api.conversationId))
       if (action === 'status') {
         const result = await status(api, agents, name, context)
-        await authorize(String(api.conversationId))
         return result
       }
       if (name === undefined) return reply(`${action} needs a name.`)
       const agent = known(agents, name)
       if (action !== 'spawn' && agent === undefined) return reply(`No subagent named ${name}.`)
       if (action === 'stop') {
-        if (agent !== undefined) await stop(run, authorize, api, agent, context)
+        if (agent !== undefined) await stop(run, api, agent, context)
         return reply(`Stopped ${name}.`, name, agent?.conversationId)
       }
       if (message === undefined) return reply(`${action} needs a message.`)
@@ -232,12 +228,8 @@ export type SubagentKit = {
  * and only the final answer comes back to the spawner. The registry lists each subagent under its spawner, so the
  * owner can open it.
  */
-export function subagentsExtension(
-  run: RunProgram,
-  members: (self: Extension) => readonly Extension[],
-  authorize: Authorize = async () => undefined,
-): SubagentKit {
-  const Relay = relayTask(run, authorize)
+export function subagentsExtension(run: RunProgram, members: (self: Extension) => readonly Extension[]): SubagentKit {
+  const Relay = relayTask(run)
 
   /** A conversation for a new subagent, owned by an anchor of the spawner and given exactly its members. */
   async function spawn(tx: Tx, name: string): Promise<ConversationId> {
@@ -250,7 +242,6 @@ export function subagentsExtension(
 
   /** spawn and send: one commit starts the subagent if new, and a relay for the message. */
   async function deliver(api: Api, action: 'spawn' | 'send', name: string, message: string, context: CallContext) {
-    await authorize(String(api.conversationId))
     const roster = await api.snapshot(Subagents, api.conversationId, context)
     const admitted = await admit(run, roster === undefined ? undefined : known(roster.agents, name), name)
     if (admitted.refused !== undefined) return reply(admitted.refused)
@@ -271,7 +262,7 @@ export function subagentsExtension(
     return reply(result, name, current?.conversationId)
   }
 
-  const tool = subagentTool(run, authorize, deliver)
+  const tool = subagentTool(run, deliver)
   const extension: Extension = defineExtension({
     name: 'purrable.subagents',
     // Only where the tool is offered: a conversation with subagents switched off has it filtered out.

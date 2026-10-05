@@ -11,7 +11,6 @@ import type { AppError } from './http/errors.ts'
 import { Entitlements } from './billing/gates.ts'
 import {
   Conversations,
-  Members,
   RoutineRuns,
   Budget,
   Resident,
@@ -28,7 +27,6 @@ import { useModel, type Applied } from './agent-model.ts'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { BACKGROUND } from './pi/context.ts'
 import { recentMessages } from './pi/transcript.ts'
-import { Forbidden } from './http/errors.ts'
 import { authoredContent, ownerContent } from './pi/content.ts'
 import type { SubagentKit } from './pi/subagents.ts'
 
@@ -159,8 +157,6 @@ export const submitOwner = (input: OwnerSubmit) =>
     yield* requireBudget
     const conversations = yield* Conversations
     const session = yield* attemptSync(() => conversations.requireOpen(input.thread))
-    if ((yield* Members).access.origin(session) !== undefined)
-      return yield* new Forbidden({ reason: 'member conversation requester' })
     if (yield* attempt(() => input.routines.answer(session, input.operationId, input.text)))
       return { session, operationId: input.operationId, accepted: true }
     yield* useModel(input.harness, input.applied, session)

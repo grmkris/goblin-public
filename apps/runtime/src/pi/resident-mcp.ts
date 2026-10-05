@@ -1,4 +1,3 @@
-import type { MemberController } from '../members/controller.ts'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { Type } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
@@ -6,16 +5,7 @@ import { type AppError, type GrantDenied, NotFound } from '../http/errors.ts'
 import { toolAppResource, toolOffered } from '../mcp/connection.ts'
 import { grantRequiredResult, mcpModelResult } from '../mcp/extension.ts'
 import type { McpHost } from '../mcp/host.ts'
-import {
-  type AgentServices,
-  Apps,
-  Capabilities,
-  Members,
-  Mcp,
-  attempt,
-  nowSecondsEffect,
-  requireResident,
-} from '../services.ts'
+import { type AgentServices, Apps, Capabilities, Mcp, attempt, nowSecondsEffect, requireResident } from '../services.ts'
 import { capabilityOffResult, mcpOff } from './capabilities.ts'
 
 const executionAuthority = (session: string, authorize?: (session: string) => Promise<void>) =>
@@ -56,32 +46,12 @@ const grantRequired = (mcp: McpHost, denied: GrantDenied, signal: AbortSignal | 
     return grantRequiredResult(denied.serverId, denied.name)
   })
 
-const memberApproval = (members: MemberController, session: string, callId: string, input: unknown) =>
-  attempt(async () => {
-    const receipt = await members.approval(session, callId, input)
-    return {
-      content: [
-        {
-          type: 'text' as const,
-          text: 'Owner approval requested. No tool ran. The owner must review the member policy and existing grants.',
-        },
-      ],
-      details: {
-        kind: 'member-approval',
-        ...(receipt === undefined ? {} : { interactionId: receipt.id, requestHash: receipt.requestHash }),
-      },
-      control: { terminate: true as const },
-    }
-  })
-
 /**
  * An owner's call to a tool that renders an App keeps that App (ADR 0020), so it can be shown here, in its pane and in
  * the sidebar. Keeping it grants nothing: the App's resource and calls need the owner's grants, live.
  */
 const keepApp = (session: string, callId: string, input: { readonly serverId: string; readonly name: string }) =>
   Effect.gen(function* () {
-    // A member's conversation keeps none: members never see the owner's Apps.
-    if ((yield* Members).access.origin(session) !== undefined) return
     const tool = (yield* Mcp).manager.snapshot(input.serverId)?.tools.find(({ name }) => name === input.name)
     const uri = tool === undefined ? undefined : toolAppResource(tool)
     if (uri === undefined) return
@@ -165,12 +135,8 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
                 capabilities.scope(String(api.conversationId)),
               )
               const off = mcpOff(scope, input.serverId, input.name)
-              const members = yield* Members
               const session = String(api.conversationId)
-              if (off !== undefined)
-                return members.access.origin(session) === undefined
-                  ? capabilityOffResult(off, scope)
-                  : yield* memberApproval(members, session, api.callId, input)
+              if (off !== undefined) return capabilityOffResult(off, scope)
               const mcp = yield* Mcp
               return yield* attempt(() =>
                 mcp.manager.callTool(input.serverId, input.name, input.arguments, {
@@ -181,11 +147,7 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
               ).pipe(
                 Effect.tap(() => keepApp(session, api.callId, input)),
                 Effect.map((result) => mcpModelResult(input.serverId, result)),
-                Effect.catchTag('GrantDenied', (denied) =>
-                  members.access.origin(session) === undefined
-                    ? grantRequired(mcp, denied, context.abortSignal)
-                    : memberApproval(members, session, api.callId, input),
-                ),
+                Effect.catchTag('GrantDenied', (denied) => grantRequired(mcp, denied, context.abortSignal)),
               )
             }),
           ),

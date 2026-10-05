@@ -13,7 +13,6 @@ import { dropRelaysTo } from './pi/subagent-relay.ts'
 import { type ReplyStats, recentMessages } from './pi/transcript.ts'
 import { ReplyLedger } from './replies.ts'
 import { appConversations } from './storage/schema.ts'
-import type { MemberPrincipal } from './env.ts'
 
 type Row = typeof appConversations.$inferSelect
 
@@ -187,40 +186,6 @@ export class ConversationRegistry {
   recallLimit(session: string, mainSize: number): number {
     const row = this.#row(session)
     return row?.kind === 'main' ? mainSize : (row?.recallThrough ?? 0)
-  }
-
-  /** Member contexts are registered internally: no main copy, memory recall or title announcement. */
-  registerMember(input: {
-    readonly session: string
-    readonly principal: MemberPrincipal
-    readonly title: string
-    readonly visibility: 'member' | 'all'
-    readonly now: number
-    readonly purpose: 'main' | 'private'
-    readonly parent?: string
-    readonly forkEntry?: number
-  }) {
-    const { session, principal, title, visibility, now, purpose } = input
-    this.#db
-      .insert(appConversations)
-      .values({
-        sessionId: session,
-        kind: 'thread',
-        parentSession: input.parent ?? MAIN_THREAD,
-        forkEntry: input.forkEntry,
-        title,
-        principalUserId: principal.userId,
-        memberId: principal.memberId,
-        memberVersion: principal.memberVersion,
-        contextEpoch: principal.memberVersion,
-        memberPurpose: purpose,
-        visibility,
-        mainNote: null,
-        createdAt: now,
-      })
-      .onConflictDoNothing()
-      .run()
-    this.#changed([session])
   }
 
   /** Registers a subagent's conversation under the one that started it; a relay repeats it, so it is idempotent. */
@@ -488,7 +453,6 @@ export class ConversationRegistry {
       ...(row.closedAt === null ? {} : { closedAt: row.closedAt }),
       ...(row.closedBy === null ? {} : { closedBy: row.closedBy }),
       keepOpen: row.keepOpenAt !== null,
-      ...(row.principalUserId === null ? {} : { requesterUserId: row.principalUserId, canCompose: false }),
       replies: activity.replies,
       ...(activity.lastReplyAt === undefined ? {} : { lastReplyAt: activity.lastReplyAt }),
       ...(row.readAt === null ? {} : { readAt: row.readAt }),

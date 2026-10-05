@@ -20,7 +20,6 @@ import type { RoutineStore } from './routines/store.ts'
 import type { RoutineRunStore } from './routines/runs.ts'
 import type { RoutineUsage } from './routines/usage.ts'
 import type { WorkspaceFeed } from './workspace/feed.ts'
-import type { MemberController } from './members/controller.ts'
 import type { AppRegistry } from './apps/registry.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
@@ -42,7 +41,6 @@ export class RoutineUsageProjection extends Context.Service<RoutineUsageProjecti
 ) {}
 /** The owner's conversations and what each is doing, as one live feed. */
 export class Workspace extends Context.Service<Workspace, WorkspaceFeed>()('purrable/Workspace') {}
-export class Members extends Context.Service<Members, MemberController>()('purrable/Members') {}
 /** The owner's kept MCP Apps (ADR 0020). */
 export class Apps extends Context.Service<Apps, AppRegistry>()('purrable/Apps') {}
 export type AgentServices =
@@ -63,7 +61,6 @@ export type AgentServices =
   | RoutineRuns
   | RoutineUsageProjection
   | Workspace
-  | Members
   | Apps
 
 export const agentLayer = (services: {
@@ -81,7 +78,6 @@ export const agentLayer = (services: {
   readonly routineRuns: RoutineRunStore
   readonly routineUsage: RoutineUsage
   readonly workspace: WorkspaceFeed
-  readonly members: MemberController
   readonly apps: AppRegistry
 }): Layer.Layer<Exclude<AgentServices, Entitlements | Events | EventStorage>> =>
   Layer.mergeAll(
@@ -99,7 +95,6 @@ export const agentLayer = (services: {
     Layer.succeed(RoutineRuns, services.routineRuns),
     Layer.succeed(RoutineUsageProjection, services.routineUsage),
     Layer.succeed(Workspace, services.workspace),
-    Layer.succeed(Members, services.members),
     Layer.succeed(Apps, services.apps),
   )
 

@@ -43,9 +43,6 @@ import { RoutineRunStore } from './routines/runs.ts'
 import { RoutineUsage, installRoutineUsage } from './routines/usage.ts'
 import * as Effect from 'effect/Effect'
 import type { EventHandler } from './mcp/events/dispatcher.ts'
-import { MemberAccess } from './members/access.ts'
-import { MemberController } from './members/controller.ts'
-import { MemberUsage } from './members/usage.ts'
 
 /** What the agent's services are built from: its storage and env, and the Pi pieces its constructor made. */
 export type ComposeInput = {
@@ -56,7 +53,6 @@ export type ComposeInput = {
   readonly thread: Extension
   readonly memory: ReturnType<typeof memoryExtensions>
   /** The `subagent` tool, which Pi's tool filter removes where subagents are switched off. */
-  readonly memberExtensions: readonly Extension[]
   readonly subagentTool: ToolRegistration
   /** Schedules the Telegram replies alarm. */
   readonly scheduleReplies: () => void
@@ -151,14 +147,12 @@ async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {
 }
 function makeBudgets(input: ComposeInput, db: DrizzleSqliteDODatabase) {
   const env = input.env
-  const memberBudgets = new MemberUsage(env, input.userId, modelTokenWeights(env.MODEL_TOKEN_WEIGHTS))
   const budget = new ModelBudget(
     new UsageStore(db),
     async () => (await Effect.runPromise(input.entitlements.require())).dailyTokens,
     modelTokenWeights(env.MODEL_TOKEN_WEIGHTS),
-    (day) => memberBudgets.tokens(input.userId, day),
   )
-  return { memberBudgets, budget }
+  return budget
 }
 
 /**
@@ -173,7 +167,7 @@ export async function composeServices(
   runApplicationMigrations(input.storage)
   const db = drizzle(input.storage)
   const { host, cipher, resident, eventStore, skillState, grants } = await makeHost(input, db)
-  const { memberBudgets, budget } = makeBudgets(input, db)
+  const budget = makeBudgets(input, db)
   const options = modelOptions(env.MODELS, env.MODEL_ID)
   const models = new ModelPicker(new ModelChoiceStore(db), options)
   const cheapModelId = memoryModelId(env.MEMORY_MODEL, options)
@@ -183,31 +177,10 @@ export async function composeServices(
   const memory = new MainMemory(db, harness, namer)
   const { recall } = input.memory
   await memory.activate([input.memory.memory, recall])
-  const memberAccess = new MemberAccess(db, env, input.userId)
-  const capabilities = new CapabilityProfiles(db, input.subagentTool, retool(harness), (session) =>
-    memberAccess.bound(session),
-  )
+  const capabilities = new CapabilityProfiles(db, input.subagentTool, retool(harness))
   const routineServices = await makeRoutines(input)
   const kit = { thread: input.thread, recall, memory, namer, capabilities }
   const conversations = conversationServices(db, harness, kit)
-  const members = new MemberController({
-    db,
-    env,
-    owner: input.userId,
-    access: memberAccess,
-    kit: {
-      harness,
-      registry: conversations.conversations,
-      capabilities,
-      extensions: input.memberExtensions,
-      modelId: () => models.current(),
-      host,
-      resident,
-    },
-    cipher,
-    usage: memberBudgets,
-  })
-  await members.install()
   const skills = new SkillLibrary(host.manager, skillState, nowMillis)
   const learner = new SkillLearner({
     drafts: new SqliteDraftLog(db),
@@ -236,7 +209,6 @@ export async function composeServices(
         channel,
         capabilities,
         ...routineServices,
-        members,
       }),
       Layer.succeed(Entitlements, input.entitlements),
       Layer.succeed(Events, events),

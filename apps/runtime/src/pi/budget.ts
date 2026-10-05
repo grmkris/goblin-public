@@ -1,6 +1,6 @@
 import { GenerationTask, ToolTask, defineExtension, hook } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
-import { Budget, Members, attempt, nowSecondsEffect } from '../services.ts'
+import { Budget, attempt, nowSecondsEffect } from '../services.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
 const EXHAUSTED =
@@ -23,11 +23,9 @@ export function budgetExtension(run: RunProgram) {
     name: 'purrable.budget',
     hooks: [
       hook(GenerationTask, {
-        afterResponse: async (message, api) => {
+        afterResponse: async (message) => {
           await run(
             Effect.gen(function* () {
-              const members = yield* Members
-              if (members.access.origin(String(api.conversationId)) !== undefined) return
               const budget = yield* Budget
               budget.record(message.usage.totalTokens, yield* nowSecondsEffect, message.model)
             }),
@@ -35,16 +33,7 @@ export function budgetExtension(run: RunProgram) {
         },
       }),
       hook(ToolTask, {
-        beforeTool: async (_call, api) => {
-          try {
-            const member = await run(
-              Members.use((members) => attempt(() => members.require(String(api.conversationId)))),
-            )
-            return member !== undefined || !(await run(spent)) ? undefined : { block: EXHAUSTED }
-          } catch {
-            return { block: EXHAUSTED }
-          }
-        },
+        beforeTool: async () => ((await run(spent).catch(() => true)) ? { block: EXHAUSTED } : undefined),
       }),
     ],
   })

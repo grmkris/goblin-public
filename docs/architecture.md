@@ -62,41 +62,6 @@ returns an encoded `RpcResult`; the Worker decodes it and maps the tagged error 
 (`http/errors.ts`, `http/respond.ts`). Failures are logged as one JSON line with route, request ID, status and
 error tag, never bodies or credentials.
 
-## Workspace authority
-
-Auth D1 also stores additive `app_*` workspace access metadata through Drizzle. Browser selection is session-bound
-and membership checked; only a verified workspace owner's ID names the Agent. Foreign IDs return 404, stale context
-returns 409, and selection writes require exact Origin plus `x-purrable-csrf: 1`. Hooks and inbound MCP remain bound
-to the verified owner's workspace. Ordinary accounts can provision a personal workspace; invitation-only accounts
-never fall back to a personal Agent. Existing objects and Pi history keep their original names.
-
-Established workspace resolution makes one live joined D1 read and no writes. The query binds admission kind,
-ownership, active memberships and session selection to the authenticated user. Only cold provisioning and initial
-owner selection write; revocation and deleting workspaces are read afresh on every request.
-
-Invitations store only hashes of a fragment secret and separate strong code. Public proof exchange requires exact
-Origin and CSRF headers, is rate limited, and issues a ten-minute HttpOnly admission bound to the email and current
-invitation version. Closed signup checks that admission at OTP send/verify and account creation. Acceptance requires
-a fresh verified session and the acting account's plan, then commits membership and proof consumption in a D1 batch.
-Operation receipts and version CAS protect owner changes; replay never restores removed access. Resend rotates
-proofs. Transactions finish before mail or owner grant RPCs, and members cannot invoke owner grant validation while
-leaving. The workspace limits pending/active invitees to sixteen and mail attempts to ten per hour.
-
-The hourly cron removes up to 1000 expired admissions and 1000 rate buckets using expiry indexes, including when
-Dodo is unconfigured. It retains unexpired acceptance-retry proofs and all rate buckets younger than one hour.
-Larger expired backlogs drain over later ticks.
-
-The browser projects D1 workspace state in Settings and the sidebar. Selection performs a full navigation to close
-streams, App frames and conversation caches; focus rechecks the opaque session context. Shared members see permitted
-conversations; credentials and owner administration stay owner-only. Invitation pages clear fragment proofs before exchange, provide
-email-bound sign-in, and resume joining after the invitee's own plan activates. Owner permission checkboxes begin
-empty and server tools are independent of skill-library choices; viewers receive no execution permissions.
-
-Members/viewers cannot reach owner RPCs. Shared execution uses principal contexts, capability scope, filtered
-visibility and acting-account usage. The owner reads all; each member needs their own Pro plan.
-Deletion commits a closed workspace before native destruction and leaves failure retryable. Member account deletion
-revokes memberships without destroying another owner's Agent. See [ADR 0014](adr/0014-members-and-workspace-authority.md).
-
 ## The agent object
 
 `PersonalAgent extends Agent` and registers the native `PiHarness` with the Agent lifecycle. Pi owns transcripts,
@@ -135,7 +100,7 @@ its transcript shows a row for that thread. The owner API is conversation-scoped
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/workspace/events` | The workspace feed (SSE): a `WorkspaceSnapshot` of every conversation and kept App and what each conversation that is not idle is doing (`working`, `waiting` on subagents), then batches of `WorkspaceChange` (`workspace/feed.ts`, from Pi's task graph and the registries' writes). A member's feed lists no Apps. |
+| `GET /api/workspace/events` | The workspace feed (SSE): a `WorkspaceSnapshot` of every conversation and kept App and what each conversation that is not idle is doing (`working`, `waiting` on subagents), then batches of `WorkspaceChange` (`workspace/feed.ts`, from Pi's task graph and the registries' writes). |
 | `POST /api/apps` | Keep the App of a call in a conversation (`{ conversation, callId }`): one made before Apps were kept, or one closed. The call must be an `mcp_call` whose tool still renders that App; the same call keeps the same App. |
 | `GET /api/apps/:id/launch` | What loads an App (`AppLaunch`): its server and `ui://` resource, and the call's arguments and redacted result read back from Pi. It grants nothing. |
 | `PATCH /api/apps/:id` | Close or reopen an App (`{ closed }`). Closing a conversation closes its Apps. |
@@ -488,6 +453,10 @@ are never pruned. Workers cannot pin resolved DNS IPs; trusted DNS is the docume
 | D1 `PurrableAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `passkey`, `oauth*` | Better Auth, `apps/runtime/migrations`. |
 | D1 `PurrableAuth` | `app_billing_accounts`, `app_billing_subscriptions`, `app_billing_inbox`, `app_billing_checkouts` | Drizzle: account payments and durable reconciliation. |
 
+The withdrawn Members feature left dormant auth D1 tables and DO columns/tables. Applied migration files and keys
+remain intact to preserve real data and migration history; the runtime no longer reads or writes that access metadata.
+See [ADR 0014](adr/0014-members-and-workspace-authority.md) for the withdrawal.
+
 Application tables are declared in `storage/schema.ts` and migrated inline in `storage/migrations.ts`.
 `app_client_sessions` was dropped when inbound clients moved to main; it is not a current table.
 
@@ -540,9 +509,7 @@ dev-only override, which grants nothing on prod. Operator overrides may supply t
 
 Each Agent's usage ledger still records its owner's UTC-day spend, while the allowance now comes from that account's
 plan (2M/day for Pro). Optional configured model price multipliers count weighted tokens in Pi replies and cheap
-memory/title calls, with weight one for omitted models. The price schedule needs operator review. Shared member
-contexts project committed Pi usage into that member's account-wide allowance, including descendants; the workspace
-owner's model usage remains separate.
+memory/title calls, with weight one for omitted models. The price schedule needs operator review.
 
 The browser reads billing state before mounting agent pages; unpaid accounts reach `/subscribe`. The return page
 polls verified state and Settings opens the Dodo portal. `/terms`, `/privacy` and `/refunds` are draft public pages,
@@ -599,21 +566,3 @@ originating authoritative poll; verification and termination create no model tur
 and requires owner reconfirmation. Pause/edit/archive retire the consumer; pause advances an Event revision so a
 retired receipt cannot become live again. Local signed-fixture proof is separate from real producer acceptance. See
 [ADR 0012](adr/0012-routines.md).
-
-Members Phase B creates separate Pi contexts per member policy version. The synchronous
-capability gate intersects live D1 policy with endpoint bindings, inherited exclusions and existing routine limits.
-Server-owned provenance drives prompts and descendants; labels are display data. Private contexts have no root
-memory/title/learner extensions. Application receipts bind submissions and interaction decisions to exact content,
-requester and membership version. The owner reads all contexts; readers receive no execution authority. The member's
-own account pays across workspaces, using committed Pi usage and monotonic D1 deltas. A timestamped DO application
-outbox retains pending projections across restarts. No provider request waits on a transaction or a person's answer.
-The reviewed Alchemy Worker binding enables shared execution on configured stages; omitting the binding keeps the
-fail-closed behavior used by native closed-access tests.
-Named readers bind the reader's membership ID and version; every read also checks the creator's context version.
-Questions and approvals write private decision receipts. The questionnaire sends answers to the designated-answerer
-endpoint. Viewer access requests target the owner and spend no model tokens. A revocation queues an invalidation
-in the same D1 batch; mutation retries and the billing cron retry pending aborts. Cleanup cancels only fenced
-membership versions, so a delayed receipt cannot cancel a question in a new context. Dispatch still reads live D1
-while invalidation is pending; idle streams recheck every five seconds. Already dispatched effects remain unknown.
-Allowances use committed Pi usage, including member descendants, rather than provider billing. In-flight responses
-can overshoot the allowance; the next dispatch checks the updated acting-account total.

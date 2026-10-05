@@ -1,6 +1,11 @@
 # ADR 0014: Members and workspace authority
 
-Status: accepted; Phase A and B implemented with local native evidence. Dev enablement awaits the orchestrator's second review and deployment acceptance.
+Status: **Withdrawn 2026-10-05**. Kris dropped Members after the
+[Phase B security review](https://example.invalid/private-reference) identified unsafe owner-labelled
+member projections. All feature code is removed; git history retains the implementation. Every user again reaches
+only their own Agent. Applied auth D1 and DO migrations and their data remain dormant under the additive rule.
+
+The decision below is historical and no longer describes the runtime.
 
 The approved 2026-10-05 plan allows a user to join another user's agent. Each member needs their own active Pro
 plan and pays from their own allowance. The owner can read every conversation in their workspace. Roles are member

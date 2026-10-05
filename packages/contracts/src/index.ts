@@ -208,8 +208,6 @@ export const ConversationView = Schema.Struct({
   closedAt: Schema.optional(Schema.Number),
   closedBy: Schema.optional(Schema.Literals(['owner', 'done'])),
   keepOpen: Schema.Boolean,
-  requesterUserId: Schema.optional(Schema.String),
-  canCompose: Schema.optional(Schema.Boolean),
   replies: Schema.Number,
   lastReplyAt: Schema.optional(Schema.Number),
   /** When the owner last saw the newest reply (seconds): a later `lastReplyAt` is unread. */
@@ -360,7 +358,6 @@ export const authorTag = (author: string): string => `[from ${author.replaceAll(
 export const authorOf = (block: string): string | undefined => AUTHOR_TAG.exec(block)?.[1]
 
 export { BillingState } from './billing.ts'
-export * from './workspaces.ts'
 export {
   RoutineTrigger,
   RoutineDefinition,

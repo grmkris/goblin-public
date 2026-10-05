@@ -2,11 +2,10 @@ import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import { type AppError } from './http/errors.ts'
-import { type AgentServices, Conversations, Members, Workspace, attempt } from './services.ts'
+import { type AgentServices, Conversations, Workspace, attempt } from './services.ts'
 import { registeredConversation } from './agent-program.ts'
 import { piEventResponse } from './pi/events.ts'
 import { workspaceEventResponse } from './workspace/feed.ts'
-import { memberStreamRequest } from './members/stream-request.ts'
 import type { JsonObject } from '@purrable/contracts'
 
 type Execute = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<Exit.Exit<A, AppError>>
@@ -19,15 +18,6 @@ export async function sessionSnapshot(harness: PiHarness, session: string): Prom
 }
 export async function agentRequest(request: Request, harness: PiHarness, execute: Execute): Promise<Response> {
   const url = new URL(request.url)
-  if (url.pathname.startsWith('/members/')) {
-    const services = await execute(
-      Effect.gen(function* () {
-        return { members: yield* Members, workspace: yield* Workspace }
-      }),
-    )
-    if (Exit.isFailure(services)) return Response.json({ error: 'Unavailable' }, { status: 503 })
-    return memberStreamRequest(request, harness, services.value.members, services.value.workspace)
-  }
   if (url.pathname === '/workspace/events') {
     const feed = await execute(Workspace.useSync((workspace) => workspace))
     return Exit.isSuccess(feed)

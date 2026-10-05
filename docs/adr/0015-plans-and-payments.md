@@ -4,8 +4,8 @@ Accepted implementation decision, 2026-10-05. Live payment and legal acceptance 
 
 Purrable accounts sign up before paying. Pro costs $10/month through Dodo Payments, with no trial or free tier,
 and grants 2M weighted tokens per account per UTC day. Unsubscribed accounts can sign in and manage account/billing
-settings, but cannot reach their Agent through the owner API, MCP or a hook. Members, routines and subagents use the
-same `Entitlements` service; their tunable limits and member usage attribution belong to their own milestones.
+settings, but cannot reach their Agent through the owner API, MCP or a hook. Routines and subagents use the
+same `Entitlements` service; their tunable limits belong to their own milestones.
 
 Billing application tables live in auth D1 through Drizzle, alongside isolated Better Auth identity tables. Pi
 continues to own Agent transcripts and execution. The billing migration is additive and grants only the existing
@@ -27,8 +27,7 @@ cancellation. Deleting an account is separate and does not automatically cancel 
 
 Price multipliers are explicit stage configuration and default to one. Both Pi replies and cheap memory/title calls
 record weighted spend. Native tests prove per-account limits and weighted counting; the production price schedule is
-pending operator input. M1's usage ledger belongs to each owner's Agent; Members will charge the acting member's own
-allowance when using another owner's Agent.
+pending operator input. The usage ledger belongs to each owner's Agent.
 
 Local workerd tests use actual Better Auth D1, real Agent storage and an injected Dodo client, proving signup,
 checkout without entitlement, verified activation, paid admission, replay, stale updates, cancellation/grace and

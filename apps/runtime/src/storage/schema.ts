@@ -107,13 +107,6 @@ export const appConversations = sqliteTable('app_conversations', {
   /** A thread the owner started with "+" owes main a note naming it (`owed`) until that note is in (`written`). */
   mainNote: text('main_note', { enum: ['owed', 'written'] }),
   routineRunId: text('routine_run_id'),
-  /** Principal provenance for member-owned execution contexts; null means owner context. */
-  principalUserId: text('principal_user_id'),
-  memberId: text('member_id'),
-  memberVersion: integer('member_version'),
-  contextEpoch: integer('context_epoch'),
-  memberPurpose: text('member_purpose', { enum: ['main', 'private'] }),
-  visibility: text('visibility', { enum: ['owner', 'member', 'all'] }),
 })
 
 /**
