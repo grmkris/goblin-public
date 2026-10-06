@@ -13,6 +13,8 @@ import { type ChannelPorts, TelegramChannel, channelCall, logChannelFailure } fr
 import { channelPorts } from './channel/turns.ts'
 import { type Doorbell, doorbellValid } from './channel/doorbell.ts'
 import { type RpcResult, encodeExit, unwrap } from './http/rpc.ts'
+import { FileStore } from './files/store.ts'
+import { filesExtension } from './pi/files.ts'
 import { agentRequest, sessionSnapshot } from './agent-requests.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
 import { LITELLM_STREAMS, makePiModels } from './pi/model.ts'
@@ -117,7 +119,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     // Skills are for main and threads; a subagent gets only the extensions its spawner hands it.
     this.harness = makePiHarness(
       this.#pi,
-      [...tools, skillsExtension(run), subagents, routinesExtension(run)],
+      [...tools, skillsExtension(run), filesExtension(run), subagents, routinesExtension(run)],
       [this.#thread, memory, recall, ...routineKit.extra],
     )
     this.#routines = new RoutineController(routineRun, this.harness, routineKit.start, {
@@ -226,14 +228,20 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return encodeExit(await this.#exit(ownerRequest(program)))
   }
   /** The owner's message into a thread, with what an open App shared for the agent as separate untrusted blocks. */
-  submit(thread: string, input: string, operationId: string, appContext: readonly AppContext[] = []) {
+  submit(
+    thread: string,
+    input: string,
+    operationId: string,
+    appContext: readonly AppContext[] = [],
+    attachments: readonly string[] = [],
+  ) {
     const runtime = {
       harness: this.harness,
       applied: this.#applied,
       routines: this.#routines,
       subagents: this.#subagents,
     }
-    return this.#owner(submitOwner({ ...runtime, thread, text: input, operationId, appContext }))
+    return this.#owner(submitOwner({ ...runtime, thread, text: input, operationId, appContext, attachments }))
   }
   conversations() {
     return this.#owner(Conversations.use((conversations) => attempt(() => conversations.list())))
@@ -505,7 +513,11 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return this.#client(recentOwnerMessages(this.harness, limit))
   }
 
+  /** Erases the agent: its files in R2 first (a failure leaves everything to retry), then services and storage. */
   async deleteAgentData(): Promise<RpcResult<true>> {
+    const files = new FileStore(this.ctx.storage.sql, this.env.FILES, () => this.name)
+    const purged = await Effect.runPromiseExit(attempt(() => files.purge()))
+    if (Exit.isFailure(purged)) return encodeExit(Exit.map(purged, (): true => true))
     const runtime = this.#runtime
     this.#runtime = undefined
     if (runtime !== undefined) {

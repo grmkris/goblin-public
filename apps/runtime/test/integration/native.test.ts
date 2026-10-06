@@ -10,6 +10,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { URL as FileURL } from 'node:url'
 import Stack from './stack.ts'
 import { routineEventsCase, routineSchedulingCase } from './native-routines-events.ts'
+import { filesCase } from './native-files.ts'
 import {
   Listed,
   ModelRequest,
@@ -337,6 +338,10 @@ harness.test(
 harness.test(
   'local workerd: native dated routine alarms dedupe and collapse cron downtime before rearming',
   stack.pipe(Effect.flatMap(({ url }) => routineSchedulingCase(url))),
+)
+harness.test(
+  'local workerd: owner files keep small ones in SQLite, spill larger ones to R2 and erase them with the account',
+  stack.pipe(Effect.flatMap(({ url }) => filesCase(url))),
 )
 harness.test(
   'local workerd: Events discovery, challenge, signed Telegram, replay, gap, refresh, termination and cleanup',

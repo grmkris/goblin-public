@@ -34,6 +34,7 @@ export default Alchemy.Stack(
       name: stage.resourceName('auth'),
       migrations: fileURLToPath(new URL('../../apps/runtime/migrations', import.meta.url)),
     })
+    const files = yield* Cloudflare.R2.Bucket('Files', { name: stage.resourceName('files') })
     const agents = Cloudflare.DurableObject('PersonalAgent', { className: 'PersonalAgent' })
     const web = yield* Cloudflare.Website.Vite('Web', {
       name: stage.workerName,
@@ -59,6 +60,7 @@ export default Alchemy.Stack(
       env: {
         AGENTS: agents,
         AUTH_DB: db,
+        FILES: files,
         APP_URL: appUrl,
         BETTER_AUTH_SECRET: Config.Redacted('GOBLIN_BETTER_AUTH_SECRET'),
         SIGNUP_MODE: signupMode,

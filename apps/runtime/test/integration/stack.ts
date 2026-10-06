@@ -12,6 +12,7 @@ export default Alchemy.Stack(
   },
   Effect.gen(function* () {
     const port = yield* Config.Port('GOBLIN_HARNESS_PORT')
+    const files = yield* Cloudflare.R2.Bucket('NativeFiles')
     const auth = yield* Cloudflare.D1.Database('NativeAccountUsage', {
       migrations: fileURLToPath(new URL('../../migrations', import.meta.url).href),
     })
@@ -22,6 +23,7 @@ export default Alchemy.Stack(
       env: {
         AGENTS: Cloudflare.DurableObject('PersonalAgentProbe'),
         AUTH_DB: auth,
+        FILES: files,
         LIFECYCLE: Cloudflare.DurableObject('NativeLifecycleProbe'),
         MODEL_BASE_URL: 'https://no-model-calls.invalid/v1',
         MODEL_ID: 'storage-only',

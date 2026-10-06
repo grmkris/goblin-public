@@ -32,7 +32,8 @@ import { BACKGROUND, conversationId } from './pi/context.ts'
 import type { PiModels } from './pi/harness.ts'
 import type { memoryExtensions } from './pi/memory.ts'
 import { ResidentAuthority } from './resident.ts'
-import { type AgentServices, agentLayer } from './services.ts'
+import { type AgentServices, Files, agentLayer } from './services.ts'
+import { FileStore } from './files/store.ts'
 import { SkillLearner } from './skills/learner.ts'
 import { SkillLibrary } from './skills/library.ts'
 import { SqliteDraftLog, SqliteSkillState } from './skills/store.ts'
@@ -213,6 +214,7 @@ export async function composeServices(
       Layer.succeed(Entitlements, input.entitlements),
       Layer.succeed(Events, events),
       Layer.succeed(EventStorage, eventStore),
+      Layer.succeed(Files, new FileStore(input.storage.sql, env.FILES, () => input.userId)),
     ),
   )
 }

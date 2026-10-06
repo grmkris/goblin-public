@@ -2,6 +2,7 @@ import type { PiHarness } from 'agents/harness/pi'
 import {
   MAIN_THREAD,
   type AppContext,
+  type Attachment,
   type ConversationView,
   type CreateConversation,
   type UpdateConversation,
@@ -11,6 +12,7 @@ import type { AppError } from './http/errors.ts'
 import { Entitlements } from './billing/gates.ts'
 import {
   Conversations,
+  Files,
   RoutineRuns,
   Budget,
   Resident,
@@ -125,14 +127,36 @@ type OwnerSubmit = {
   text: string
   operationId: string
   appContext: readonly AppContext[]
+  /** Paths of the owner's files attached to the message. */
+  attachments: readonly string[]
 }
+
+/** The owner's attached files as they are now: each must exist, or the message is refused. */
+const attachedFiles = (paths: readonly string[]) =>
+  paths.length === 0
+    ? Effect.succeed<readonly Attachment[]>([])
+    : Files.use((files) =>
+        attempt(() =>
+          Promise.all(
+            paths.map(async (path): Promise<Attachment> => {
+              const { name, size, mimeType } = await files.stat(path)
+              return { path, name, size, mimeType }
+            }),
+          ),
+        ),
+      )
 
 /**
  * The owner's message to a subagent: the subagent stays open after its job (the owner engaged with it), and the
  * message goes through a relay in its spawner, so the answer reports up with the owner's words quoted. While the
  * subagent works, the message steers it.
  */
-const sendToSubagent = (input: OwnerSubmit, view: ConversationView, spawner: string) =>
+const sendToSubagent = (
+  input: OwnerSubmit,
+  view: ConversationView,
+  spawner: string,
+  attachments: readonly Attachment[],
+) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
     const now = yield* nowSecondsEffect
@@ -143,7 +167,7 @@ const sendToSubagent = (input: OwnerSubmit, view: ConversationView, spawner: str
       subagent: view.id,
       spawner,
       title: view.title ?? 'subagent',
-      content: ownerContent(input.text, input.appContext),
+      content: ownerContent(input.text, input.appContext, attachments),
       text: input.text,
       operationId: input.operationId,
       busy,
@@ -159,12 +183,13 @@ export const submitOwner = (input: OwnerSubmit) =>
     const session = yield* attemptSync(() => conversations.requireOpen(input.thread))
     if (yield* attempt(() => input.routines.answer(session, input.operationId, input.text)))
       return { session, operationId: input.operationId, accepted: true }
+    const attachments = yield* attachedFiles(input.attachments)
     yield* useModel(input.harness, input.applied, session)
     const view = yield* attempt(() => conversations.view(session))
-    if (view?.kind === 'subagent' && view.parent !== undefined) return yield* sendToSubagent(input, view, view.parent)
-    return yield* attempt(() =>
-      input.harness.submit(ownerContent(input.text, input.appContext), { session, operationId: input.operationId }),
-    )
+    if (view?.kind === 'subagent' && view.parent !== undefined)
+      return yield* sendToSubagent(input, view, view.parent, attachments)
+    const content = ownerContent(input.text, input.appContext, attachments)
+    return yield* attempt(() => input.harness.submit(content, { session, operationId: input.operationId }))
   })
 
 export const askClient = (input: {

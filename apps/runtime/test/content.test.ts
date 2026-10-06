@@ -21,6 +21,21 @@ describe('the owner message with App context', () => {
   })
 })
 
+describe('the owner message with attached files', () => {
+  it('lists the files in one block after the words, before any App context', () => {
+    const file = { path: '/uploads/sales.csv', name: 'sales.csv', size: 120, mimeType: 'text/csv' }
+    const content = ownerContent('totals?', [{ serverId: 'myplan', text: 'note' }], [file])
+    expect(content).toEqual([
+      { type: 'text', text: 'totals?' },
+      { type: 'text', text: JSON.stringify({ attachments: [file] }) },
+      {
+        type: 'text',
+        text: JSON.stringify({ origin: { serverId: 'myplan', trust: 'untrusted' }, appContext: 'note' }),
+      },
+    ])
+  })
+})
+
 describe("main's note of a thread started with +", () => {
   it('names the thread, with nothing in the name that could close the line or start another', () => {
     expect(threadStartedContent('Car search')).toEqual([{ type: 'text', text: '[thread started: "Car search"]' }])

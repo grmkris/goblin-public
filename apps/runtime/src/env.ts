@@ -37,6 +37,7 @@ export interface AgentRpcMethods {
     input: string,
     operationId: string,
     appContext?: readonly AppContext[],
+    attachments?: readonly string[],
   ) => Promise<RpcResult<PiReceipt>>
   readonly stop: (thread: string, operationId?: string) => Promise<RpcResult<boolean>>
   readonly conversations: () => Promise<RpcResult<readonly ConversationView[]>>
@@ -139,6 +140,8 @@ export type { GrantCapability }
 export interface RuntimeEnv {
   readonly AGENTS: DurableObjectNamespace<AgentRpc>
   readonly AUTH_DB: D1Database
+  /** The owner's larger files (over 128 KiB), under `agents/<user>/` (ADR 0022). */
+  readonly FILES: R2Bucket
   readonly APP_URL: string
   readonly BETTER_AUTH_SECRET: string
   /** Cloudflare Email Sending; with `MAIL_SENDER` it turns on email verification (`auth/mail.ts`). */

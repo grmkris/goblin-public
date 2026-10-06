@@ -7,6 +7,7 @@ export default Alchemy.Stack(
   { providers: Cloudflare.providers(), state: Alchemy.localState() },
   Effect.gen(function* () {
     const port = (yield* Config.Port('GOBLIN_HARNESS_PORT')) + 10
+    const files = yield* Cloudflare.R2.Bucket('BillingFiles')
     const auth = yield* Cloudflare.D1.Database('BillingAuth', {
       migrations: fileURLToPath(new URL('../../migrations', import.meta.url).href),
     })
@@ -17,6 +18,7 @@ export default Alchemy.Stack(
       env: {
         AGENTS: Cloudflare.DurableObject('BillingAgent'),
         AUTH_DB: auth,
+        FILES: files,
         APP_URL: 'https://goblin.test',
         BETTER_AUTH_SECRET: 'fixture-billing-auth-secret-at-least-32-chars',
         SIGNUP_MODE: 'open',

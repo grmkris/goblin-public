@@ -3,7 +3,7 @@
  * by CI or the deployed Worker. It reads the owner's state and changes one thing for the length of its agent turns:
  * with `GOBLIN_SMOKE_MODEL` set, the agent answers on that model, and the owner's own pick is put back afterwards,
  * whatever failed. Grants stay as the owner set them. Turns run in main and a side thread closed afterwards; the throwaway
- * inbound client is revoked before the script exits.
+ * inbound client is revoked before the script exits, and the one file it uploads is deleted again.
  */
 import { Config, Effect, Option, Redacted, Schema } from 'effect'
 import { createHash, randomBytes } from 'node:crypto'
@@ -442,6 +442,32 @@ async function withModel<T>(dev: DevClient, model: string | undefined, work: () 
   }
 }
 
+type FileCheck = { readonly files: 'ok' }
+
+/** Why a file that was just uploaded does not read back as it was, or nothing. */
+async function fileReadBack(dev: DevClient, path: string, target: string, body: string): Promise<string | undefined> {
+  const listing = await dev.json('/api/files?dir=%2Fuploads')
+  if (!objects(listing['entries']).some((entry) => entry['path'] === path)) return 'file_not_listed'
+  const read = await dev.send(target)
+  return read.ok && (await read.text()) === body ? undefined : 'file_read_mismatch'
+}
+
+/** The owner's files (ADR 0022): a small text file uploads, lists, downloads byte for byte and is deleted. */
+async function fileChecks(dev: DevClient): Promise<FileCheck> {
+  const path = `/uploads/smoke-${base64url(randomBytes(6))}.txt`
+  const target = `/api/files/content?path=${encodeURIComponent(path)}`
+  const body = `goblin smoke ${new Date().toISOString()}\n`
+  const csrf = { 'x-goblin-csrf': '1' }
+  const put = await dev.send(target, { method: 'PUT', headers: { ...csrf, 'content-type': 'text/plain' }, body })
+  if (put.status !== 201) throw new Error('file_upload_failed')
+  const failure = await fileReadBack(dev, path, target, body).catch(() => 'file_read_failed')
+  // Delete it whatever the read found, then report.
+  const deleted = await dev.send(target, { method: 'DELETE', headers: csrf })
+  if (failure !== undefined) throw new Error(failure)
+  if (!deleted.ok) throw new Error('file_delete_failed')
+  return { files: 'ok' }
+}
+
 /** Unless sign-up is open, a registration without the invite code must be refused (and so writes nothing). */
 async function refusedSignup(dev: DevClient, steps: Step[]): Promise<void> {
   const response = await dev.send('/api/auth/email-otp/send-verification-otp', {
@@ -471,6 +497,7 @@ type Receipt = {
   readonly shared: ThreadCheck['shared']
   readonly subagent: SubagentCheck['subagent']
   readonly memory: MemoryCheck['memory']
+  readonly files: FileCheck['files']
 }
 
 async function smokeDev(
@@ -494,6 +521,7 @@ async function smokeDev(
   if (resident['state'] !== 'active') throw new Error('resident_authority_inactive')
   const snapshot = await dev.json('/api/conversations/1/snapshot')
   if (snapshot['type'] !== 'snapshot') throw new Error('main_snapshot_missing')
+  const { files } = await fileChecks(dev)
   const servers: ServerReport[] = []
   for (const server of await dev.list('/api/mcp/servers')) servers.push(await serverReport(dev, server))
   const client = await InboundClient.register(dev)
@@ -506,7 +534,7 @@ async function smokeDev(
       return { inbound, ...thread, ...subagent, ...memory }
     })
     const model = config.smokeModel ?? 'owner pick'
-    return { stage: config.stage, model, signup, resident: string(resident['state']), servers, ...checks }
+    return { stage: config.stage, model, signup, resident: string(resident['state']), servers, files, ...checks }
   } finally {
     // Never leave the throwaway client authorized, whatever failed above.
     await dev.send(`/api/clients/${encodeURIComponent(client.clientId)}`, { method: 'DELETE' })

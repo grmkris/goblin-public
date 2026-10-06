@@ -26,11 +26,15 @@ const VENDOR_TABLES = new Set([
   '_cf_METADATA',
 ])
 
+/** `@cloudflare/shell`'s file tables: `cf_workspace_<namespace>` and their indexes (the owner's files, ADR 0022). */
+const SHELL_PREFIX = 'cf_workspace_'
+
 export function isVendorTable(name: string): boolean {
   return (
     VENDOR_TABLES.has(name) ||
     name.startsWith('pi_') ||
     name.startsWith('cf_agent') ||
+    name.startsWith(SHELL_PREFIX) ||
     name.startsWith('_cf_') ||
     name.startsWith('__drizzle')
   )

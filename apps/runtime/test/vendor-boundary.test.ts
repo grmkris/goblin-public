@@ -6,6 +6,7 @@ describe('SQLite ownership boundary', () => {
     expect(isVendorTable('pi_submissions')).toBe(true)
     expect(isVendorTable('cf_agents_jobs')).toBe(true)
     expect(isVendorTable('_cf_KV')).toBe(true)
+    expect(isVendorTable('cf_workspace_files')).toBe(true)
   })
 
   it('requires application-owned app_ tables', () => {

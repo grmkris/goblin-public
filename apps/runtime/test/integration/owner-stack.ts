@@ -9,6 +9,7 @@ export const ownerStack = (name: string, offset: number) =>
     { providers: Cloudflare.providers(), state: Alchemy.localState() },
     Effect.gen(function* () {
       const port = (yield* Config.Port('GOBLIN_HARNESS_PORT')) + offset
+      const files = yield* Cloudflare.R2.Bucket('OwnerFiles')
       const auth = yield* Cloudflare.D1.Database('OwnerAuth', {
         migrations: fileURLToPath(new URL('../../migrations', import.meta.url).href),
       })
@@ -19,6 +20,7 @@ export const ownerStack = (name: string, offset: number) =>
         env: {
           AGENTS: Cloudflare.DurableObject('OwnerAgent'),
           AUTH_DB: auth,
+          FILES: files,
           APP_URL: 'https://goblin.test',
           BETTER_AUTH_SECRET: 'fixture-owner-auth-secret-at-least-32-chars',
           SIGNUP_MODE: 'open',

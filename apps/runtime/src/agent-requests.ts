@@ -6,6 +6,7 @@ import { type AgentServices, Conversations, Workspace, attempt } from './service
 import { registeredConversation } from './agent-program.ts'
 import { piEventResponse } from './pi/events.ts'
 import { workspaceEventResponse } from './workspace/feed.ts'
+import { filesRequest } from './files/routes.ts'
 import type { JsonObject } from '@goblin/contracts'
 
 type Execute = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<Exit.Exit<A, AppError>>
@@ -24,6 +25,7 @@ export async function agentRequest(request: Request, harness: PiHarness, execute
       ? workspaceEventResponse(feed.value)
       : Response.json({ error: 'Unavailable' }, { status: 503 })
   }
+  if (url.pathname === '/files' || url.pathname.startsWith('/files/')) return filesRequest(request, url, execute)
   return conversationRequest(url, harness, execute)
 }
 async function conversationRequest(url: URL, harness: PiHarness, execute: Execute): Promise<Response> {

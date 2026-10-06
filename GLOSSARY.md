@@ -35,6 +35,10 @@
 - **Capabilities**: what one conversation lets its agent use (ADR 0010): the owner's grants, skills libraries and
   subagents, narrowed by what was switched off there (`app_conversation_capabilities`). A new thread copies main's
   switches; a subagent is bounded by every conversation above it. Switches only narrow; they never grant.
+- **Files**: the owner's files (ADR 0022): `/uploads`, what they uploaded or attached to a message, and `/agent`, what
+  the agent wrote. Kept in the agent's SQLite through Shell's Workspace, larger ones in R2; the agent writes only
+  `/agent`.
+- **Attachment**: a file the owner sent with a message: its path rides with the words, and the message shows it.
 - **Inbound client**: an MCP client (Claude Code, another agent) the owner authorized to call goblin's `/mcp`.
 - **MCP App**: a sandboxed `ui://` resource served through its originating MCP connection. One live App moves between
   its desktop pane, fullscreen and the phone sheet while its iframe stays in place.

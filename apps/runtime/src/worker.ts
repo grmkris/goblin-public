@@ -5,6 +5,7 @@ import {
   CapabilityChange,
   CreateApp,
   CreateConversation,
+  FilePath,
   UpdateApp,
   UpdateConversation,
 } from '@goblin/contracts'
@@ -32,7 +33,7 @@ import { billingWebhook } from './billing/webhook.ts'
 import { runBillingCron } from './billing/cron.ts'
 import { billingMode, requireAccountPlan } from './billing/gates.ts'
 import { routineRoute } from './routines/routes.ts'
-import { routineOrigin } from './routines/csrf.ts'
+import { browserWrite } from './http/csrf.ts'
 
 export { PersonalAgent } from './agent.ts'
 
@@ -41,6 +42,7 @@ const Submit = Schema.Struct({
   input: Bounded(20_000),
   operationId: Bounded(200),
   appContext: Schema.optional(Schema.Array(AppContext).check(Schema.isMaxLength(2))),
+  attachments: Schema.optional(Schema.Array(FilePath).check(Schema.isMaxLength(8))),
 })
 const Stop = Schema.Struct({ operationId: Schema.optional(Bounded(200)) })
 const ToolCall = Schema.Struct({
@@ -150,7 +152,8 @@ const conversationRoutes: Readonly<
 > = {
   'POST messages': async (request, agent, thread) => {
     const body = await readJson(request, Submit)
-    return json(unwrap(await agent.submit(thread, body.input, body.operationId, body.appContext ?? [])), 202)
+    const { input, operationId, appContext = [], attachments = [] } = body
+    return json(unwrap(await agent.submit(thread, input, operationId, appContext, attachments)), 202)
   },
   'POST stop': async (request, agent, thread) =>
     json({ stopped: unwrap(await agent.stop(thread, (await readJson(request, Stop)).operationId)) }),
@@ -282,11 +285,14 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   const session = await requireUserSession(request, env)
   const { userId } = session
   const path = new URL(request.url).pathname
-  if (path === '/api/routines' || path.startsWith('/api/routines/')) routineOrigin(request, env.APP_URL)
+  if (path.startsWith('/api/routines') || path.startsWith('/api/files')) browserWrite(request, env.APP_URL)
   if (path.startsWith('/api/billing/')) return Effect.runPromise(billingApi(request, env, userId))
   await requireAccountPlan(env, userId)
   return ownerApiRequest(request, env, path, agentOf(env, userId), userId)
 }
+
+/** `path` is `prefix` or a path below it. */
+const under = (path: string, prefix: string): boolean => path === prefix || path.startsWith(`${prefix}/`)
 
 async function ownerApiRequest(
   request: Request,
@@ -296,11 +302,12 @@ async function ownerApiRequest(
   userId: string,
 ): Promise<Response> {
   if (path.startsWith('/api/agent/')) return agentRoute(request, agent, path)
-  if (path === '/api/routines' || path.startsWith('/api/routines/')) return routineRoute(request, agent, path)
+  if (under(path, '/api/routines')) return routineRoute(request, agent, path)
   if (path === '/api/workspace/events' && request.method === 'GET') return agent.fetch('https://agent/workspace/events')
-  if (path === '/api/conversations' || path.startsWith('/api/conversations/'))
-    return conversationRoute(request, agent, path)
-  if (path === '/api/apps' || path.startsWith('/api/apps/')) return appRoute(request, agent, path)
+  if (under(path, '/api/files'))
+    return agent.fetch(new Request(`https://agent${path.slice('/api'.length)}${new URL(request.url).search}`, request))
+  if (under(path, '/api/conversations')) return conversationRoute(request, agent, path)
+  if (under(path, '/api/apps')) return appRoute(request, agent, path)
   if (path.startsWith('/api/mcp/')) return mcpRoute(request, agent, path, env)
   if (path === '/api/clients' && request.method === 'GET') return json(await listInboundClients(env, userId))
   const revoke = /^\/api\/clients\/([\w.-]{1,200})$/u.exec(path)?.[1]

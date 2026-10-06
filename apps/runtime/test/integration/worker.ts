@@ -36,6 +36,7 @@ import { CapabilityProfiles } from '../../src/capabilities/profiles.ts'
 import { skillsCacheProbe, skillsLearnerRejectionProbe, skillsPersistedRead } from './skills-probe.ts'
 import { exchange, historyOf, linesOf, snapshotOf, threadsUntil, transcript, until } from './probe-reads.ts'
 import { subagentChainSequence, subagentCloseSequence, subagentOwnerSequence } from './subagent-probe.ts'
+import { filesSequence, filesStoreProbe } from './files-probe.ts'
 
 const fixturePlan = () =>
   Effect.succeed({
@@ -66,6 +67,10 @@ export class PersonalAgentProbe extends PersonalAgent {
 
   routinesProbe() {
     return routinesProbe(this.ctx.storage)
+  }
+
+  filesStoreProbe() {
+    return filesStoreProbe(this.ctx.storage.sql, this.env.FILES, this.name)
   }
   async routineExecutionProbe(): Promise<Response> {
     return Response.json(await routineExecutionProbe(this.ctx.storage, this, this.seen))
@@ -333,6 +338,7 @@ export class NativeLifecycleProbe extends Agent<Env> {
 interface Env {
   readonly AGENTS: DurableObjectNamespace<PersonalAgentProbe>
   readonly LIFECYCLE: DurableObjectNamespace<NativeLifecycleProbe>
+  readonly FILES: R2Bucket
 }
 
 /** Owner RPC through a real stub: resident authority renews, revocation is sticky, errors cross as AppError data. */
@@ -852,6 +858,10 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return memorySequence(agent)
     case '/binding':
       return agent.bindingProbe().then((result) => Response.json(result))
+    case '/files-store':
+      return agent.filesStoreProbe().then((result) => Response.json(result))
+    case '/files-sequence':
+      return filesSequence(agent, env.FILES, name).then((result) => Response.json(result))
     default:
       return url.pathname.startsWith('/lifecycle') ? env.LIFECYCLE.getByName(name).fetch(request) : agent.fetch(request)
   }

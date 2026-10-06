@@ -361,6 +361,7 @@ export const authorOf = (block: string): string | undefined => AUTHOR_TAG.exec(b
 export const TELEGRAM_AUTHOR = 'Telegram'
 
 export { BillingState } from './billing.ts'
+export { Attachment, FILE_LIMITS, FILE_PATH, FileDirectory, FileEntry, FileListing, FilePath } from './files.ts'
 export {
   RoutineTrigger,
   RoutineDefinition,

@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@better-auth/mcp": "1.7.6",
+    "@cloudflare/shell": "0.4.3",
     "@earendil-works/pi-ai": "1.0.1",
     "@earendil-works/pi-durable": "1.0.1",
     "@goblin/contracts": "workspace:*",

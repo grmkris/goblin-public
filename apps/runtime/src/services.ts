@@ -21,6 +21,7 @@ import type { RoutineRunStore } from './routines/runs.ts'
 import type { RoutineUsage } from './routines/usage.ts'
 import type { WorkspaceFeed } from './workspace/feed.ts'
 import type { AppRegistry } from './apps/registry.ts'
+import type { FileStore } from './files/store.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('goblin/Mcp') {}
@@ -43,6 +44,7 @@ export class RoutineUsageProjection extends Context.Service<RoutineUsageProjecti
 export class Workspace extends Context.Service<Workspace, WorkspaceFeed>()('goblin/Workspace') {}
 /** The owner's kept MCP Apps (ADR 0020). */
 export class Apps extends Context.Service<Apps, AppRegistry>()('goblin/Apps') {}
+export class Files extends Context.Service<Files, FileStore>()('goblin/Files') {}
 export type AgentServices =
   | Entitlements
   | Events
@@ -62,6 +64,7 @@ export type AgentServices =
   | RoutineUsageProjection
   | Workspace
   | Apps
+  | Files
 
 export const agentLayer = (services: {
   readonly host: McpHost
@@ -79,7 +82,7 @@ export const agentLayer = (services: {
   readonly routineUsage: RoutineUsage
   readonly workspace: WorkspaceFeed
   readonly apps: AppRegistry
-}): Layer.Layer<Exclude<AgentServices, Entitlements | Events | EventStorage>> =>
+}): Layer.Layer<Exclude<AgentServices, Entitlements | Events | EventStorage | Files>> =>
   Layer.mergeAll(
     Layer.succeed(Mcp, services.host),
     Layer.succeed(Resident, services.resident),
