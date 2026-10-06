@@ -424,14 +424,17 @@ React's automatic JSX runtime and refuses imports the frame does not provide; th
 goblin's theme, in its own Dynamic Worker) compiles exactly the classes the view uses. Both are kept per release
 (`app_agent_views`). Before a release activates, the render check (`packages/app/src/render.ts`, a Dynamic Worker
 with the view as its CommonJS module and a shim for each import) renders the view once with the state the release
-starts with, goblin's components for real and charts, maps, diagrams and icons as stand-ins. A view that throws fails the
-build with its line of `view.tsx` and changes nothing that runs; one that reads a browser-only global while rendering,
-or a check that did not run, activates with `viewWarning`. The first release with a view adds the app to the App
+starts with, goblin's components and the DOM-free mdxcn figures/parser for real, and charts, maps, diagrams and
+icons as stand-ins. A view that throws fails the build with its line of `view.tsx` and changes nothing that runs;
+one that reads a browser-only global while rendering, or a check that did not run, activates with `viewWarning`.
+The first release with a view adds the app to the App
 registry under its home conversation
 (`apps/registry.ts`), and every revision after that reaches the workspace feed. The web host loads it like an MCP App,
 in the same double sandbox (`lib/app-sandbox.ts`): a document of goblin's stylesheets, the app's own, and its module,
 over the frame bundles from `packages/app/dist/runtime` (React, the UI SDK and goblin's components in `core.js`;
-charts, maps, diagrams and icons only when the view imports them), served as hashed assets. The frame has no network
+charts, maps, diagrams, mdxcn and icons only when the view imports them), served as hashed assets. mdxcn uses
+`@goblin/kit/mdxcn` through the same import allowlist, library contract and frame registry, on core's React and
+kit CSS; it adds no network or app capability. The frame has no network
 (`connect-src 'none'`); it loads scripts from goblin's origin only, and tiles from OpenStreetMap only for maps. The
 bridge (`lib/agent-app-bridge.ts`) sends the state as tool results carrying `goblin/state` (the newest revision wins),
 routes the view's action calls to `POST /api/apps/:id/call` with the frame's operation id (`ui:<app>:<uuid>`), and

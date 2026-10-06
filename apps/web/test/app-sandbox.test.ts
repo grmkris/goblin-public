@@ -71,6 +71,7 @@ const assets = {
     charts: 'https://goblin.example.test/assets/charts-1.js',
     maps: 'https://goblin.example.test/assets/maps-1.js',
     diagrams: 'https://goblin.example.test/assets/diagrams-1.js',
+    mdxcn: 'https://goblin.example.test/assets/mdxcn-1.js',
     icons: 'https://goblin.example.test/assets/icons-1.js',
   },
   styles: { ui: '.ui{}', maps: '.leaflet{}' },
@@ -96,6 +97,14 @@ describe("an agent app's frame", () => {
     // The module cannot end its script element early.
     expect(html).toContain('return "<\\/script><b>"')
     expect(html.match(/<\/script>/gu)).toHaveLength(3)
+  })
+  it('loads mdxcn on the core React without adding a network capability or other bundles', () => {
+    const html = agentAppHtml({ module: 'exports.default = function View() {}', css: '', libs: ['mdxcn'] }, assets)
+    expect(html.indexOf('core-1.js')).toBeLessThan(html.indexOf('mdxcn-1.js'))
+    expect(html).not.toContain('maps-1.js')
+    expect(html).not.toContain('charts-1.js')
+    expect(html).not.toContain('openstreetmap')
+    expect(html).toContain("connect-src 'none'")
   })
   it('may submit forms (to its handlers only), while an MCP App keeps scripts alone', () => {
     expect(appSandbox('agent')).toBe('allow-scripts allow-forms')

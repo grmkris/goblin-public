@@ -12,5 +12,6 @@ export const VIEW_IMPORTS: Readonly<Record<string, string | null>> = {
   'react-leaflet': 'maps',
   leaflet: 'maps',
   '@goblin/kit/diagram': 'diagrams',
+  '@goblin/kit/mdxcn': 'mdxcn',
   'lucide-react': 'icons',
 }

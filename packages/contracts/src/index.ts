@@ -321,7 +321,7 @@ export const McpAppLaunch = Schema.Struct({
 })
 
 /** The frame runtime bundles an agent app's view loads besides `core`. */
-export const AgentAppLib = Schema.Literals(['charts', 'maps', 'diagrams', 'icons'])
+export const AgentAppLib = Schema.Literals(['charts', 'maps', 'diagrams', 'mdxcn', 'icons'])
 export type AgentAppLib = typeof AgentAppLib.Type
 
 /** An agent app: its view's built module and CSS, the libraries it uses, and its state now. */

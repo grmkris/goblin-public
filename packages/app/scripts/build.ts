@@ -2,7 +2,7 @@
 // strings: the SDK, the release entry, the transpiler, the style compiler with the stylesheets it compiles, and the
 // agent's docs, with one hash over the code (part of every release id). dist/runtime/ holds what an app's frame loads:
 // core.js (React, the UI SDK, goblin's components), ui.css (their styles and the kit's), and charts.js, maps.js (+
-// maps.css), diagrams.js and icons.js, which share core's React through the frame's module registry.
+// maps.css), diagrams.js, mdxcn.js and icons.js, which share core's React through the frame's module registry.
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { type Sheets, candidates, compileCss } from '../src/css.ts'
@@ -111,7 +111,7 @@ for (const file of (await readdir(`${root}docs`)).toSorted())
 const frame: Record<string, string> = {
   'ui.css': `${await compileCss(sheets, await componentWords())}\n${await text(`${packages}kit/src/kit.css`)}`,
 }
-for (const name of ['core', 'charts', 'maps', 'diagrams', 'icons']) {
+for (const name of ['core', 'charts', 'maps', 'diagrams', 'mdxcn', 'icons']) {
   const bundle = await frameBundle(name)
   frame[`${name}.js`] = bundle.js
   if (bundle.css !== '') frame[`${name}.css`] = bundle.css
