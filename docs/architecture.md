@@ -193,7 +193,7 @@ phones it is a sheet. The workspace fills the page beside it. The transcript scr
 released yet; `bun run check:patches` proves the patch is installed). Each of
 the owner's turns (typed in the app or sent from Telegram, `isOwnTurn` in `lib/parts.ts`) is a scroll anchor; a
 message from an MCP client, a subagent, a routine or a thread's share-back arrives without moving the view. Until its
-snapshot arrives a pane shows nothing, so a conversation opens at its end. A turn map in the transcript's right gutter
+snapshot arrives a pane shows nothing. Ordinary conversations open at their end; Main opens at today's latest owner turn or at Home on a new day. A turn map in the transcript's right gutter
 (`components/turn-map.tsx`) marks each of the owner's turns where it sits, with a band for what is on screen; hovering it
 lists the turns and a click jumps to one. Without a fine pointer, or in a narrow window, an edge tab opens the list as a
 bottom sheet. The view follows a streaming reply only while the reader is at the end, and
@@ -362,9 +362,9 @@ transcript; keeping and launching grant nothing.
 
 Several Apps run at once, in any conversation the owner views (`components/apps`). `AppHost` holds one instance per
 loaded App, and `AppLayer` draws one fixed stage per instance outside the panes, never moved in the DOM, so nothing
-reparents an opaque frame or replaces its bridge. A stage follows its App's page while the App has one, else its place
-under its tool row (`app-inline:<id>`, `app-page:<id>` slots), frame by frame, including while panes scroll, and
-springs between the two (`lib/spring.ts`). It clips itself to the containers that scroll its slot and to the band of
+reparents an opaque frame or replaces its bridge. A stage follows its App's page, then its Home tile, then its place
+under its tool row (`app-page:<id>`, `app-home:<id>`, `app-inline:<id>` slots), frame by frame, including while panes scroll, and
+springs between these places (`lib/spring.ts`). It clips itself to the containers that scroll its slot and to the band of
 the pane's pill and its composer (`data-app-cover`, `lib/app-occlusion.ts`), which also keeps pointer events off what is
 hidden; text fades out under the same chrome through a mask on the transcript. An App
 loads when its place comes on screen; beyond six instances the least recently seen unloads to a stub
@@ -378,8 +378,8 @@ Apps group and on the Apps page (`/apps`, `/apps/<name>`: `components/apps-page.
 host-drawn, per App.
 
 The App learns the host context (`lib/host-context.ts`): theme, our tokens as MCP Apps style variables, device,
-locale and time zone, its display mode, the modes on offer, and its measured box. The host re-sends it when these change.
-On its page the App fills the pane; in its transcript its own height request is bounded (160px to 70% of the window).
+locale and time zone, its display mode, surface and tile size, the modes on offer, and its measured box. The host re-sends it when these change.
+On its page the App fills the pane; Home supplies a fixed tile box and card background; in its transcript its own height request is bounded (160px to 70% of the window).
 
 Two more requests are drawn by the host, where the App cannot reach (`lib/app-context.ts`). A link the App asks to
 open (https only, no credentials) becomes an offer with a real anchor, so only the owner's click opens it. Context
@@ -814,3 +814,11 @@ originating authoritative poll; verification and termination create no model tur
 and requires owner reconfirmation. Pause/edit/archive retire the consumer; pause advances an Event revision so a
 retired receipt cannot become live again. Local signed-fixture proof is separate from real producer acceptance. See
 [ADR 0012](adr/0012-routines.md).
+
+## Home surface
+
+Main alone renders Home below the newest transcript row, inside the MessageScroller and above the fixed dock (ADR 0025). Today's latest owner turn is the landing anchor; otherwise Main opens Home. The turn map's Home mark reaches the scroller's end, with the last grid row within 24 px of the dock and no jump arrow. Reserved turn space sits above Home. Home is never a new-message anchor. Fixed tile spans and rows keep frame loads and content updates from shifting earlier messages.
+
+`HomeService` (`home/service.ts`) owns `app_home` and `app_home_operations`, separate from Pi and app state. `HomeLayout` in contracts is an ordered list, revision and bounded note/app/conversation tiles: 24 tiles, eight distinct agent apps with a view, 60-character note titles and 4 KiB markdown. `/api/home` reads or edits only the authenticated owner's agent. Every atomic edit has an operation id and expected revision: replays return the stored receipt; stale writes return the current layout. `home_read` and `home_edit` are offered on Main and threads, never routine/subagent runs. The agent manages its own tiles; changing an owner tile returns an ask. The owner UI calls the same service. Undo refuses to overwrite an intervening edit. App deletion drops its placement in the same service operation. The workspace snapshot includes Home and each change sends the full layout to every tab.
+
+`app-home:<id>` joins the stage slots, with page > Home > inline precedence. One canonical iframe and bridge remain in the fixed App layer. Displaced places show stubs. Home has fixed room and ignores resize requests; `useHost()` exposes surface, tile size, width and height to an agent-app view. Nearby tiles load lazily, closed and dormant frames wait for Show, and the existing six-instance soft cap retains visible Apps. Remove keeps the app, Close leaves its tile, and release changes reload in place. Placement never grants a power or MCP authority. MCP App tiles remain deferred.

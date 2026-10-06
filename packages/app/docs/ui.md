@@ -163,6 +163,7 @@ An app has one live frame, shared by its chat, Home and page. `useHost()` from `
 `{ surface: 'inline' | 'home' | 'page', tileSize?: 'small' | 'medium' | 'large' | 'wide', width, height }`. On Home,
 width and height are fixed; resize requests do not change the tile. Use a compact glance view, a handful of rows and
 one primary action. Open gives the owner the full page without resetting React state or the action bridge.
+Home supplies the tile's card colour as the frame background and places the frame flush under its label. Draw the glance contents directly; reserve an outer Card for the full-page variant.
 
 ```tsx
 const host = useHost()

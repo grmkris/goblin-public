@@ -1,8 +1,8 @@
 # Home Surface and Agent-Controlled Widgets
 
-Status: **Approved for delivery to dev (2026-10-06)**. Reviewed against the code on 2026-10-06; the review's changes are
+Status: **Implemented for dev (2026-10-06)**. Reviewed against the code on 2026-10-06; the review's changes are
 folded into the sections below, its answers to the open questions are in section 10, the visual and motion direction is
-section 11 and the definition of "delivered" is section 12. Nothing here is implemented unless marked as current code.
+section 11 and the definition of "delivered" is section 12. Slices 1–5 describe the implementation; the items under Later remain deferred.
 The delivery target is `https://dev.goblin.surf`; production stays a separate owner step.
 
 ## 1. Goal
@@ -54,10 +54,10 @@ The existing code already supplies most of the runtime pieces:
 - `ConversationDock` owns the composer, interaction cards, App context chips, presence and usage state ([conversation-dock.tsx](../apps/web/src/components/conversation-dock.tsx#L100-L183)).
 - `TurnMap` on the transcript's right edge lists the owner's turns and jumps between them ([turn-map.tsx](../apps/web/src/components/turn-map.tsx)); Home becomes its last mark.
 - `AppHost` keeps one loaded instance per App, with a soft cap and lazy residency ([host.tsx](../apps/web/src/components/apps/host.tsx#L30-L72)).
-- `Stage` currently follows either `app-inline:<id>` or `app-page:<id>` and springs between them with the house `PLACE` spring (damping 1, response 0.4, [spring.ts](../apps/web/src/lib/spring.ts)) without reloading ([stage.tsx](../apps/web/src/components/apps/stage.tsx#L172-L240)); Home needs a third placement, and the tile ↔ page move reuses that spring as is.
-- `AppPlacement` and `hostContext` ([host-context.ts](../apps/web/src/lib/host-context.ts)) give a frame its display mode and size; this is where the Home surface hint goes.
+- `Stage` follows `app-page:<id>`, then `app-home:<id>`, then `app-inline:<id>` and springs between them with the house `PLACE` spring (damping 1, response 0.4, [spring.ts](../apps/web/src/lib/spring.ts)) without reloading ([stage.tsx](../apps/web/src/components/apps/stage.tsx)).
+- `AppPlacement` and `hostContext` ([host-context.ts](../apps/web/src/lib/host-context.ts)) give a frame its display mode, surface, tile size and fixed room; Home also supplies the tile's card colour.
 - The workspace feed already streams conversations, activity and Apps ([workspace/feed.ts](../apps/runtime/src/workspace/feed.ts#L35-L58), [contracts](../packages/contracts/src/index.ts#L442-L458)).
-- `AppView` identifies an App and its source, but has no Home placement or layout metadata ([contracts](../packages/contracts/src/index.ts#L287-L299)).
+- `AppView` identifies an App and its source; `HomeLayout` holds its separate placement metadata ([contracts](../packages/contracts/src/index.ts)).
 - App erase and rehome live in [agent-apps/erase.ts](../apps/runtime/src/agent-apps/erase.ts) and [manage.ts](../apps/runtime/src/agent-apps/manage.ts); deleting an App must drop its tile in the same operation.
 
 The root workspace route currently restores the device’s pane arrangement; it is not a dedicated dashboard ([`_workspace.tsx`](../apps/web/src/routes/_workspace.tsx#L1-L17)).
