@@ -8,7 +8,8 @@
     "./worker": "./src/worker.ts",
     "./canonical": "./src/http/canonical.ts",
     "./env": "./src/env.ts",
-    "./memory": "./src/memory/benchmark.ts"
+    "./memory": "./src/memory/benchmark.ts",
+    "./telemetry": "./src/telemetry/benchmark.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
