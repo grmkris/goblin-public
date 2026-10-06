@@ -46,6 +46,9 @@ describe('typed tools (unit, ADR 0027)', () => {
       content: [{ type: 'text', text: '{"legs":2,"note":"Tallinn to Riga"}' }],
       details: { kind: 'trip', legs: 2, structuredContent: { legs: 2, note: 'Tallinn to Riga' } },
     })
+    // The offered schema lets an optional field be null (its JSON form); it decodes as absent.
+    const unset = await call(trips, { from: { name: 'A', lat: 0 }, to: { name: 'B', lat: 0 }, days: null })
+    expect(unset.details).toMatchObject({ structuredContent: { legs: 1 } })
     const long = await call(trips, { from: { name: 'A', lat: 0 }, to: { name: 'B', lat: 0 }, days: 9 })
     expect(long.control).toEqual({ terminate: true })
   })

@@ -78,7 +78,8 @@ export function typedTool<I, O>(tool: TypedTool<I, O>): ToolRegistration {
   const inputSchema = jsonSchemaOf(tool.input)
   const outputSchema = jsonSchemaOf(tool.output)
   signatures.set(tool.name, { name: tool.name, description: tool.description, inputSchema, outputSchema })
-  const decode = Schema.decodeUnknownSync(tool.input)
+  // The model is offered the input's JSON form (an optional field may be null), so arguments decode through it.
+  const decode = Schema.decodeUnknownSync(Schema.toCodecJson(tool.input))
   const encode = Schema.encodeSync(Schema.toCodecJson(tool.output))
   return defineTool({
     name: tool.name,
