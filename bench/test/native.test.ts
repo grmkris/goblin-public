@@ -1,6 +1,6 @@
 import { Effect, Schema, Random } from 'effect'
 import { expect, test } from 'vitest'
-import { localStack } from '../scripts/local.ts'
+import { localTestStack } from '../scripts/local.ts'
 import { serveLocal } from '../scripts/http-server.ts'
 import { fakeResponse, ChatRequest } from '../src/fake.ts'
 import { starterManifest } from '../src/manifest.ts'
@@ -14,7 +14,7 @@ test('native workerd: Pi compaction and OptChat settle, probes fork without chan
         const seen: { body: ChatRequest; scope: string | null }[] = []
         let injected = false
         const relay = yield* Effect.promise(() =>
-          serveLocal(18873, async (request) => {
+          serveLocal(0, async (request) => {
             const body = Schema.decodeUnknownSync(ChatRequest)(await request.json())
             seen.push({ body, scope: request.headers.get('x-bench-scope') })
             if (request.headers.get('x-bench-scope') === 'search-0' && !injected) {
@@ -56,7 +56,7 @@ test('native workerd: Pi compaction and OptChat settle, probes fork without chan
           }),
         )
         yield* Effect.addFinalizer(() => Effect.promise(() => relay.stop()))
-        const { url } = yield* localStack
+        const { url } = yield* localTestStack(`${relay.url}/v1`)
         const manifest = { ...starterManifest(), pressure: { ...starterManifest().pressure, viewBytes: 1024 } }
         const scenario = dataset()[0]
         if (scenario === undefined) throw new Error('fixture missing')
