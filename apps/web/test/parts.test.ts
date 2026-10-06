@@ -145,6 +145,14 @@ describe('a tool call as one line', () => {
     }
     expect(toolLine(part)).toEqual({ lead: 'Used', server: 'board', tool: 'move' })
   })
+  it('names the app and the member of an app_call', () => {
+    const appCall = { id: 'c', name: 'app_call', arguments: { app: 'reading-list', member: 'add', input: {} } }
+    expect(toolLine({ ...toolAt('done', {}), call: appCall })).toEqual({
+      lead: 'Used',
+      server: 'reading-list',
+      tool: 'add',
+    })
+  })
   it('says what the agent did with its own tools, and names any other', () => {
     expect(toolLine(toolAt('done', {}))).toEqual({ lead: 'Looked up its tools' })
     const other: ToolPart = { ...toolAt('done', {}), call: { id: 'c', name: 'remember', arguments: {} } }

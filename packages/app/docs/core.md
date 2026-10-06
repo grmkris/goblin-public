@@ -1,7 +1,8 @@
 # Agent apps
 
-An app is a small program you write for the owner. It keeps durable JSON state on goblin's server, and each action
-or view you define becomes a tool you can call (`app_<name>__<action>`). Build or change one with `app_build`. Add a
+An app is a small program you write for the owner. It keeps durable JSON state on goblin's server, and you call each
+action or view you define with `app_call` (`{"app": "<name>", "member": "<action>", "input": {...}}`). Build or change
+one with `app_build`. Add a
 `view.tsx` and the owner can open it as a live UI (topic `ui`).
 
 ## app.ts

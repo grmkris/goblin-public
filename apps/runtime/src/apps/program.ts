@@ -103,7 +103,7 @@ export const changeAgentApp = (name: string, change: AgentAppChange) =>
     return yield* agentAppDetail(name)
   })
 
-/** The owner deletes an agent app, confirmed by its name: its tools, schedules, files and data go, and its App. */
+/** The owner deletes an agent app, confirmed by its name: its schedules, files and data go, and its App. */
 export const deleteAgentApp = (name: string, input: DeleteAgentApp) =>
   Effect.gen(function* () {
     if (input.confirm !== name) return yield* new InvalidInput({ reason: `type ${name} to delete it` })

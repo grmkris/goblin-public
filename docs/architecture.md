@@ -401,8 +401,8 @@ same call again. "Not now", or two minutes without an answer, returns the denial
 
 ## Agent apps
 
-The agent builds apps for the owner (ADR 0021): small programs with durable JSON state whose actions and views become
-its tools. `app_build` takes an app's files (`app.ts`, up to five more, TypeScript, importing only `@goblin/app` and
+The agent builds apps for the owner (ADR 0021): small programs with durable JSON state whose actions and views it
+calls with `app_call`. `app_build` takes an app's files (`app.ts`, up to five more, TypeScript, importing only `@goblin/app` and
 each other); `agent-apps/build.ts` transpiles them with sucrase in the toolchain's own Dynamic Worker, runs the
 release's `describe()` in the release's isolate, checks the manifest (`agent-apps/manifest.ts`: names, schemas of the
 `s.*` subset, `initial` fitting `state.schema`), and on an upgrade keeps the state when it fits the new schema or
@@ -414,13 +414,14 @@ at once, and wall timeouts.
 A call (`agent-apps/dispatch.ts`) checks its input against the member's schema; an action's `prepare` runs once
 with a read-only state snapshot and the app's powers (its own files in Shell's namespace `app_<name>`, a log line),
 then in the app's queue `run` reads the current state and returns the next, which is checked and committed as one
-revision with the operation's receipt. A replayed operation id returns its receipt. Each app is one Pi extension,
-`goblin.app.<name>`, with a tool per action and view (`app_<name>__<member>`, `agent-apps/toolset.ts`); the harness
-selects them for main and threads through a getter (`pi/harness.ts`), so a new or changed app is offered from the
-next model request, and the agent object installs them before Pi opens, so a restarted agent offers them at once. A
-call pins the release it began on (`goblin.release` memo) and refuses to run on newer code. Subagents and routine runs
-set their own exact extension lists and get no app tools. `goblin.apps` (`pi/apps.ts`) offers `app_docs`, `app_build`,
-`app_inspect`, `app_rollback` and `code_run`, and lists the apps in the prompt. The SDK, release entry, transpiler and
+revision with the operation's receipt. A replayed operation id returns its receipt. The agent calls every app through
+one typed tool, `app_call(app, member, input)` (`agent-apps/toolset.ts`, ADR 0027), so the tool list stays the same
+whatever apps exist and a build leaves the prompt the provider caches alone; an action the app keeps for its view is
+refused, and a state or value over 8 KB comes back as a valid summary (its size and fields). The `<apps>` part of the
+trailing context block lists each app's members with their typed inputs. A call pins the release it began on
+(`goblin.release` memo) and refuses to run on newer code. Subagents and routine runs set their own exact extension
+lists and get no `app_call`. `goblin.apps` (`pi/apps.ts`) offers `app_docs`, `app_build`, `app_inspect`,
+`app_rollback` and `code_run`. The SDK, release entry, transpiler and
 docs are `packages/app`, built into `dist/toolchain.js` (loaded only while building).
 
 An app with a `view.tsx` has a UI (`packages/app/docs/ui.md`). The transpiler makes the view one CommonJS module with

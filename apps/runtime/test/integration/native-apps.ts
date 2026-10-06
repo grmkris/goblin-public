@@ -18,7 +18,7 @@ export function appsCase(url: string) {
       v1: {
         status: 'active',
         version: 1,
-        tools: ['app_counter__add', 'app_counter__fail', 'app_counter__total'],
+        members: ['add', 'fail', 'total'],
         revision: 1,
       },
       first: { ok: true, value: { kind: 'action', revision: 2, state: { count: 2 } } },
@@ -36,7 +36,7 @@ export function appsCase(url: string) {
       fixed: 'unchanged',
       rolledBack: { ok: true, value: { version: 1, restored: 'snapshot' } },
       afterRollback: { count: 5 },
-      restored: ['goblin.app.counter'],
+      restored: ['goblin.app-call'],
       changes: true,
       script: { ok: true, value: { answer: 42, text: 'forty-two' }, logs: ['wrote 1'] },
       offline: { ok: false, refused: true },
@@ -130,22 +130,16 @@ export function appsCase(url: string) {
     expect(turn).toMatchObject({
       built: expect.stringContaining('"status":"active","app":"tally"'),
       called: 'done: {"revision":2,"state":{"count":4}}',
-      // The build changed the trailing context block, not the system prompt the provider caches.
+      // The build changed the trailing context block, not the system prompt or the tools the provider caches.
       samePrompt: true,
+      sameTools: true,
       listedBefore: false,
       listedAfter: true,
     })
-    // Built in one turn, offered from the next request: main selects app extensions through the settings getter.
+    // Built in one turn, called from the next through the one app_call tool (ADR 0027).
     expect(turn).toHaveProperty(
       'offered',
-      expect.arrayContaining([
-        'app_build',
-        'code_run',
-        'app_tally__add',
-        'app_tally__total',
-        'mcp_suggest',
-        'mcp_request_server',
-      ]),
+      expect.arrayContaining(['app_build', 'code_run', 'app_call', 'mcp_suggest', 'mcp_request_server']),
     )
   })
 }

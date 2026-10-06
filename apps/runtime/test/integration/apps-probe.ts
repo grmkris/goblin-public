@@ -115,7 +115,9 @@ export async function appsEngineProbe(storage: DurableObjectStorage, env: Runtim
   const offline = await runScript(apps.isolates, apps.ownerFiles, "return (await fetch('https://example.com')).status")
   return {
     v1:
-      v1.status === 'active' ? { status: v1.status, version: v1.version, tools: v1.tools, revision: v1.revision } : v1,
+      v1.status === 'active'
+        ? { status: v1.status, version: v1.version, members: v1.members, revision: v1.revision }
+        : v1,
     first,
     second,
     replay,
@@ -144,6 +146,8 @@ export async function appsEngineProbe(storage: DurableObjectStorage, env: Runtim
 
 /** A system prompt without the memory's guide, which joins it once, when main's first memory view lands. */
 const withoutMemory = (prompt: string) => prompt.replace(/\n*<memory>[\s\S]*?<\/memory>/u, '')
+/** The tools without the memory's `zoom`, which joins them at the same moment. */
+const withoutZoom = (tools: readonly string[] | undefined) => (tools ?? []).filter((tool) => tool !== 'zoom')
 
 /**
  * The agent builds an app through Pi with the scripted model, and its tool is offered and works from the very next
@@ -159,7 +163,10 @@ export async function appsTurnProbe(harness: PiHarness, seen: () => readonly See
   const before = main().length
   await harness.submit(`call app_build ${build}`, { session: '1', operationId: 'apps-build' })
   const built = await harness.wait('apps-build', { session: '1' })
-  await harness.submit('call app_tally__add {"by":4}', { session: '1', operationId: 'apps-call' })
+  await harness.submit('call app_call {"app":"tally","member":"add","input":{"by":4}}', {
+    session: '1',
+    operationId: 'apps-call',
+  })
   const called = await harness.wait('apps-call', { session: '1' })
   const [first] = main().slice(before)
   const last = main().at(-1)
@@ -168,6 +175,8 @@ export async function appsTurnProbe(harness: PiHarness, seen: () => readonly See
     called: called.text ?? '',
     offered: [...(last?.tools ?? [])],
     samePrompt: first !== undefined && withoutMemory(first.systemPrompt) === withoutMemory(last?.systemPrompt ?? ''),
+    sameTools:
+      first !== undefined && JSON.stringify(withoutZoom(first.tools)) === JSON.stringify(withoutZoom(last?.tools)),
     listedBefore: first?.context?.includes('- tally (') ?? false,
     listedAfter: last?.context?.includes('- tally (') ?? false,
   }

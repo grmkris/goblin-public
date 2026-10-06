@@ -13,7 +13,6 @@ import { AppFiles } from './files.ts'
 import { Isolates } from './isolates.ts'
 import { mismatches } from './json.ts'
 import { type Manifest, type Power, type PowerKind, requestedPowers } from './manifest.ts'
-import { toolName } from './names.ts'
 import { type Send, egress } from './egress.ts'
 import { eraseApp } from './erase.ts'
 import { AppJobs, type JobSchedules, type JobView } from './jobs.ts'
@@ -74,11 +73,30 @@ export type AgentAppInfo = {
 const isAgentAppLib = Schema.is(AgentAppLib)
 const clip = (text: string, bytes: number) => (text.length <= bytes ? text : `${text.slice(0, bytes)}… (cut)`)
 
-/** An input schema's field names. */
-const fields = (schema: Readonly<Record<string, unknown>>) =>
-  Object.keys(typeof schema.properties === 'object' && schema.properties !== null ? schema.properties : {}).join(', ')
+const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
-/** One line per member: `name(input fields)`. */
+/** A schema as a short type: `string`, `integer[]`, `"a" | "b"`, `{ title: string }`; nested objects two deep. */
+function typeOf(schema: unknown, depth: number): string {
+  if (!isObject(schema)) return 'unknown'
+  if (Array.isArray(schema.enum)) return schema.enum.map((value) => JSON.stringify(value)).join(' | ')
+  if (Array.isArray(schema.anyOf)) return schema.anyOf.map((option) => typeOf(option, depth + 1)).join(' | ')
+  if (schema.type === 'array') return `${typeOf(schema.items, depth + 1)}[]`
+  if (schema.type === 'object' && isObject(schema.properties))
+    return depth < 2 ? `{ ${fields(schema, depth + 1)} }` : 'object'
+  return typeof schema.type === 'string' ? schema.type : 'unknown'
+}
+
+/** An input schema's fields with their types; an optional one ends in `?`. */
+function fields(schema: Readonly<Record<string, unknown>>, depth = 0): string {
+  const required = new Set(Array.isArray(schema.required) ? schema.required : [])
+  const properties = isObject(schema.properties) ? Object.entries(schema.properties) : []
+  return properties
+    .map(([name, field]) => `${name}${required.has(name) ? '' : '?'}: ${typeOf(field, depth)}`)
+    .join(', ')
+}
+
+/** One line per member: `name(input fields)`, called with `app_call`. */
 function signatures(manifest: Manifest): string {
   const actions = Object.entries(manifest.actions).map(
     ([name, action]) => `${name}(${fields(action.input)})${action.agent ? '' : ' [UI only]'}`,
@@ -154,7 +172,6 @@ export class AgentApps {
       toolchain: deps.toolchain,
       now: deps.now,
       activated: async (app) => {
-        this.#toolset.install(app)
         this.#changed(app)
         await this.#reconcile(app)
       },
@@ -171,7 +188,7 @@ export class AgentApps {
     this.#toolset.attach(registry)
   }
 
-  /** Before Pi opens: the application tables exist, and every app's tools are installed. */
+  /** Before Pi opens: the application tables exist, and `app_call` is installed. */
   restore(): void {
     runApplicationMigrations(this.#deps.storage)
     this.#toolset.restore()
@@ -301,7 +318,7 @@ export class AgentApps {
           waiting.length === 0
             ? ''
             : ` Not approved by the owner yet: ${waiting.map((power) => `${power.kind} ${power.target}`).join(', ')}.`
-        return `- ${app.name} (v${String(version)}, "${app.title}"${view}): ${signatures(manifest)}. Tools: ${toolName(app.name, '…')}.${schedulesText(this.jobs.list(app.name))}${asks}${failing}`
+        return `- ${app.name} (v${String(version)}, "${app.title}"${view}): ${signatures(manifest)}.${schedulesText(this.jobs.list(app.name))}${asks}${failing}`
       })
       .join('\n')
   }
@@ -375,7 +392,6 @@ export class AgentApps {
       if (!fits && snapshot === undefined)
         throw new InvalidInput({ reason: 'the current state does not fit that version, and no snapshot from it does' })
       this.store.rollback({ app, release, state: snapshot?.state, now: this.#deps.now() })
-      this.#toolset.install(app)
       this.#changed(app)
       await this.#reconcile(app)
       return { release, version: row.seq, restored: snapshot === undefined ? 'kept' : 'snapshot' }
@@ -465,13 +481,12 @@ export class AgentApps {
   }
 
   /**
-   * Erases an app (the owner deletes it): its tools first, so the agent stops calling it, then its schedules, its
-   * files and every row it has. An action in flight finds it gone.
+   * Erases an app (the owner deletes it): its schedules, its files and every row it has. A call in flight, or the
+   * agent's next `app_call`, finds it gone.
    */
   async remove(app: string): Promise<void> {
     this.dispatch.active(app)
     await this.#queues.run(app, async () => {
-      this.#toolset.uninstall(app)
       await this.jobs.removeApp(app)
       await this.files(app).purge()
       eraseApp(drizzle(this.#deps.storage), app)

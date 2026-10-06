@@ -2,7 +2,7 @@ import { InvalidInput, NotFound } from '../http/errors.ts'
 import { type Isolates, type ReleaseApi, type Rendered, isolateFailure } from './isolates.ts'
 import { jsonBytes, mismatches, plainJson } from './json.ts'
 import { type Manifest, type Power, readManifest, requestedPowers } from './manifest.ts'
-import { APP_NAME, toolName } from './names.ts'
+import { APP_NAME } from './names.ts'
 import type { AppQueues } from './queue.ts'
 import type { AgentAppStore, AppViewCode } from './store.ts'
 
@@ -35,7 +35,7 @@ export type BuildResult =
       readonly app: string
       readonly release: string
       readonly version: number
-      readonly tools: readonly string[]
+      readonly members: readonly string[]
       readonly revision: number
       readonly migrated: boolean
       /** Whether the app has a view (`view.tsx`) the owner can open. */
@@ -128,11 +128,12 @@ function approvalOf(store: AgentAppStore, manifest: Manifest) {
   return powers.length === 0 ? {} : { approval: { app: manifest.name, title: manifest.title, powers } }
 }
 
-const toolsOf = (app: string, manifest: Manifest) => [
+/** The members the agent calls with `app_call`: its views, and its actions not kept for the view. */
+const membersOf = (manifest: Manifest) => [
   ...Object.entries(manifest.actions)
     .filter(([, action]) => action.agent)
-    .map(([name]) => toolName(app, name)),
-  ...Object.keys(manifest.views).map((name) => toolName(app, name)),
+    .map(([name]) => name),
+  ...Object.keys(manifest.views),
 ]
 
 /** The state a candidate's view was rendered with, as its problem names it. */
@@ -179,7 +180,7 @@ type BuilderDeps = {
 /**
  * Builds and activates agent app releases (ADR 0021): transpile in the toolchain isolate, `describe()` in the release's
  * own isolate, check the manifest, compile the view's styles, check that the current state fits (or migrates), then
- * make it active and re-install its tools. A failed build is kept with its problems and changes nothing that runs.
+ * make it active. A failed build is kept with its problems and changes nothing that runs.
  */
 export class AppBuilder {
   readonly #deps: BuilderDeps
@@ -271,7 +272,7 @@ export class AppBuilder {
         app: request.name,
         release,
         version,
-        tools: toolsOf(request.name, manifest),
+        members: membersOf(manifest),
         revision,
         migrated: state.migrated,
         ui: view.view !== undefined,

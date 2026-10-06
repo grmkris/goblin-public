@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { mismatches, plainJson, schemaProblems } from '../src/agent-apps/json.ts'
 import { readManifest, requestedPowers, storedManifest } from '../src/agent-apps/manifest.ts'
 import { backoff, lastSlot, nextSlot } from '../src/agent-apps/jobs.ts'
-import { toolName } from '../src/agent-apps/names.ts'
 import { AppQueues, problemText } from '../src/agent-apps/queue.ts'
 import { InvalidInput } from '../src/http/errors.ts'
 
@@ -125,9 +124,6 @@ describe('manifests', () => {
       'schedules (add): at is "HH:MM" (UTC).',
       'schedules (add) input: /by: must be >= 1',
     ])
-  })
-  it('name tools so they cannot shadow host tools', () => {
-    expect(toolName('reading-list', 'addBook')).toBe('app_reading_list__addBook')
   })
 })
 
