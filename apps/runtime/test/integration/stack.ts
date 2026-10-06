@@ -29,6 +29,8 @@ export default Alchemy.Stack(
         MODEL_BASE_URL: 'https://no-model-calls.invalid/v1',
         MODEL_ID: 'storage-only',
         MODEL_KEY: 'unused-storage-fixture',
+        // The fixture's turns are a few tokens: fold main into its memory view after every one.
+        MEMORY_FOLD_TOKENS: '0',
         APP_URL: 'https://goblin.test',
         // A fixed 32-byte test key: encrypts nothing real in this harness.
         CREDENTIAL_KEY: 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE=',

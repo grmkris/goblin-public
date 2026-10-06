@@ -201,7 +201,8 @@ export async function composeServices(
       auxReporter(input.telemetry, purpose),
     )
   const namer = cheap('naming')
-  const memory = new MainMemory(db, harness, cheap('memory'))
+  const fold = Number(env.MEMORY_FOLD_TOKENS ?? Number.NaN)
+  const memory = new MainMemory(db, harness, cheap('memory'), Number.isFinite(fold) ? { foldTokens: fold } : {})
   const { recall } = input.memory
   await memory.activate([input.memory.memory, recall])
   const capabilities = new CapabilityProfiles(db, input.subagentTool, retool(harness))

@@ -487,14 +487,18 @@ single-message `zoom`.
 A background builder task (`pi/memory.ts`), which main starts after each of its responses, summarizes each message in
 order into one line of about 512 bytes with the memory model. It then merges adjacent lines in pairs into a binary
 tree (`app_memory_nodes`). A short message, or a pair that fits, is its own line word for word, with no model call.
-The view folds the tree toward 48 000 bytes (`memory/tree.ts`): one line per recent message, and older lines covering
-more messages, merging the pair that is oldest relative to its size first. Only the merges the view needs are built.
+An empty reply uses up one of a line's three tries; when all three come back empty, the line keeps its source cut to
+size, so one message cannot stall the builder. The view folds the tree toward 48 000 bytes (`memory/tree.ts`): one
+line per recent message, and older lines covering more messages, merging the pair that is oldest relative to its size
+first. Only the merges the view needs are built.
 
 The builder writes the view into main as an `app.memory` entry, a Pi write submission whose head is main's newest
 input, which is how Pi places a compaction. The model then sees the view and, verbatim, everything from that input
-on, so nothing waits for the summarizer. `zoom(id, n)` (the `goblin.recall` extension) opens a line into the two
-under it, down to a single message. It is offered in main and in threads branched from it; a branched thread is
-bounded at its fork.
+on, so nothing waits for the summarizer. A new view rewrites the start of main's context, which empties the
+provider's prompt cache, so the builder places one only once main has run past the last view by an estimated 30 000
+tokens (`FOLD_TOKENS`, `memory/memory.ts`); until then the newer messages stay verbatim after the old view.
+`zoom(id, n)` (the `goblin.recall` extension) opens a line into the two under it, down to a single message. It is
+offered in main and in threads branched from it; a branched thread is bounded at its fork.
 
 The summarizer's tokens count toward the budget, and the builder stops once the budget is spent. The memory begins at
 activation: older history stays in Pi, out of the model's context once the first view lands. Once a view or a

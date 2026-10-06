@@ -5,6 +5,7 @@ import {
   ROOT_CONVERSATION_ID,
   type Tx,
 } from '@earendil-works/pi-durable'
+import { estimateMessageTokens } from '@earendil-works/pi-ai/utils/estimate'
 import type { PiHarness } from 'agents/harness/pi'
 import { and, count, desc, eq, inArray, lte } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
@@ -30,6 +31,31 @@ const PAGE = 100
 /** Context the summarizer sees before a stretch, at most (the summarizer keeps the newest lines within its own cap). */
 const CONTEXT_LINES = 40
 
+/**
+ * How far main may run past its view, in estimated tokens the model reads verbatim, before a new view folds it in. A
+ * new view rewrites the start of main's context, so placing one after every turn kept the provider's prompt cache cold;
+ * past this much, the shorter context is worth the cache it costs.
+ */
+export const FOLD_TOKENS = 30_000
+
+/**
+ * The estimated tokens of main's entries as the model reads them after the view. The view itself is written after its
+ * head, and it is the part a new view replaces, so it does not count.
+ */
+export const tailTokens = (entries: readonly EntryRecord[]): number =>
+  entries
+    .filter((entry) => entry.kind !== 'app.memory')
+    .flatMap((entry) => entry.model ?? [])
+    .reduce((sum, message) => sum + estimateMessageTokens(message), 0)
+
+/** Settings of the memory: the view's size, the summary prompt and how often a view is placed. */
+export type MemoryOptions = {
+  readonly viewBytes?: number
+  readonly summaryPrompt?: string
+  /** {@link FOLD_TOKENS} by default; 0 places a view whenever there is a newer input. */
+  readonly foldTokens?: number
+}
+
 /** What one builder step did: there is more to build, or the memory has caught up. */
 export type StepResult = 'more' | 'done'
 
@@ -44,14 +70,9 @@ export class MainMemory {
   readonly #db: DrizzleSqliteDODatabase
   readonly #harness: PiHarness
   readonly #model: TextCompletion
-  readonly #options: { readonly viewBytes?: number; readonly summaryPrompt?: string }
+  readonly #options: MemoryOptions
 
-  constructor(
-    db: DrizzleSqliteDODatabase,
-    harness: PiHarness,
-    model: TextCompletion,
-    options: { readonly viewBytes?: number; readonly summaryPrompt?: string } = {},
-  ) {
+  constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, model: TextCompletion, options: MemoryOptions = {}) {
     this.#db = db
     this.#harness = harness
     this.#model = model
@@ -106,7 +127,8 @@ export class MainMemory {
 
   /**
    * One unit of work: log main's new entries, then summarize the first message not summarized yet, else build the
-   * merge the view waits for, else place a view that reaches further than the last one.
+   * merge the view waits for, else place a view that reaches further than the last one, once main has run far enough
+   * past the last one ({@link FOLD_TOKENS}).
    */
   async step(signal: AbortSignal): Promise<StepResult> {
     await this.#collect()
@@ -124,8 +146,33 @@ export class MainMemory {
       await this.#build(view.wanted, sizes, signal)
       return 'more'
     }
-    if (through > this.viewThrough()) await this.#place(view.parts, view.bytes, through)
+    if (through > this.viewThrough() && (await this.#pastFold())) await this.#place(view.parts, view.bytes, through)
     return 'done'
+  }
+
+  /**
+   * Whether what the model reads verbatim after the current view (from its head, or from activation before the first
+   * view) is past the fold threshold. Reads main newest first and stops as soon as it is.
+   */
+  async #pastFold(): Promise<boolean> {
+    const limit = this.#options.foldTokens ?? FOLD_TOKENS
+    const state = this.#state()
+    if (limit <= 0 || state === undefined) return true
+    const head =
+      state.viewThrough === 0
+        ? undefined
+        : this.#db.select().from(appMemoryLog).where(eq(appMemoryLog.idx, state.viewThrough)).get()
+    const from = entryId(head === undefined ? state.originEntry + 1 : head.entryId)
+    const main = await this.#main()
+    let tokens = 0
+    let cursor: Parameters<Conversation['entries']>[2]
+    do {
+      const page = await main.entries({ minEntryId: from }, PAGE, cursor, BACKGROUND)
+      tokens += tailTokens(page.items)
+      if (tokens > limit) return true
+      cursor = page.next
+    } while (cursor !== undefined)
+    return false
   }
 
   /** Line `id+n` opened into the two lines under it, or message `id` whole when `n` is 1; `limit` bounds the ids. */

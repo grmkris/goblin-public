@@ -91,14 +91,23 @@ function instruction(step: Step): string {
     : `${scale}Merge these two lines into one, in at most ${NODE_BYTES} bytes:\n${step.lines.map(flat).join('\n')}`
 }
 
-/** A line cut at the node size, without splitting a character. */
-function cut(line: string): string {
-  return new TextDecoder().decode(new TextEncoder().encode(line).slice(0, NODE_BYTES)).replace(/�$/u, '')
+/** A line cut at `bytes` (the node size), without splitting a character. */
+function cut(line: string, bytes = NODE_BYTES): string {
+  return new TextDecoder().decode(new TextEncoder().encode(line).slice(0, bytes)).replace(/�$/u, '')
+}
+
+/** The source itself, cut to fit a node: what a node holds when the model gave nothing to keep. */
+function fallback(step: Step): string {
+  if (step.kind === 'compress') return cut(flat(step.message))
+  const half = Math.floor(NODE_BYTES / 2) - 1
+  return step.lines.map((line) => cut(flat(line), half)).join(' ')
 }
 
 /**
  * The node's line: the source itself when it fits, else the cheap model's summary. An overlong reply is sent back
- * with where the limit falls (OptChat §4.3), and the shortest of the tries is kept: the view measures real sizes.
+ * with where the limit falls (OptChat §4.3), and the shortest of the tries is kept: the view measures real sizes. An
+ * empty reply uses up a try; when every try came back empty, the node keeps its source cut to size, so one stubborn
+ * message cannot stall the memory (the run ledger records each call's finish reason and tokens).
  */
 export async function summarize(
   model: TextCompletion,
@@ -112,13 +121,14 @@ export async function summarize(
   const ask = `${chat(context)}\n\n${instruction(step)}`
   const tries: string[] = []
   let prompt = ask
-  while (tries.length < TRIES) {
+  for (let attempt = 0; attempt < TRIES; attempt += 1) {
     const line = flat(await model.complete(promptOverride ?? COMPACT, prompt, 400, signal))
-    if (line === '') throw new Error('The memory model returned an empty line')
+    if (line === '') continue
     tries.push(line)
     const bytes = byteLength(line)
     if (bytes <= NODE_BYTES) break
     prompt = `${ask}\n\nYour line was ${bytes} bytes; the limit is ${NODE_BYTES}. It must end where it is cut here:\n${cut(line)}| ← LIMIT`
   }
+  if (tries.length === 0) return fallback(step)
   return tries.reduce((shortest, line) => (byteLength(line) < byteLength(shortest) ? line : shortest))
 }
