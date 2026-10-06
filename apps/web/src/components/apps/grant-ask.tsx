@@ -77,7 +77,7 @@ function AppGrantCard({
     }
   }
   return (
-    <div className="app-offer" role="alertdialog" aria-label="Permission request from the app">
+    <div className="app-offer app-grant" role="alertdialog" aria-label="Permission request from the app">
       <KeyRoundIcon aria-hidden />
       <span className="truncate">
         The app wants to use{' '}

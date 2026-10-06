@@ -76,13 +76,15 @@ type StageMotion = {
   readonly onVisible: (visible: boolean) => void
 }
 
-/** Runs frames only while something moves; scrolling, resizing and slot changes ask for one more. */
+/** Let layout observers settle after each kick; scrolling, resizing and slot changes can move a fixed-size slot. */
 function useStageMotion({ stage, live, slot, onTarget, onVisible }: StageMotion): () => void {
   const kickRef = useRef<() => void>(() => undefined)
   const { onKick } = useAppHost()
   useEffect(() => {
     let raf = 0
     let last = 0
+    let quiet = 0
+    let target: Rect | undefined
     const reduced = matchMedia('(prefers-reduced-motion: reduce)')
     const frame = (now: number) => {
       raf = 0
@@ -101,13 +103,18 @@ function useStageMotion({ stage, live, slot, onTarget, onVisible }: StageMotion)
       delete element.dataset.hidden
       const rect = rectOf(followed)
       onTarget(rect)
+      quiet = target !== undefined && AXES.every((axis) => rect[axis] === target?.[axis]) ? quiet + 1 : 0
+      target = rect
       const moving = advance(live.current, rect, seconds, reduced.matches)
       write(element, live.current.axes)
       onVisible(clipStage(element, followed))
-      if (moving) raf = requestAnimationFrame(frame)
+      // A viewport change can reflow the Home row one or two frames after its first measurement.
+      // Keep a short settled tail so reduced-motion stages do not retain their old slot rectangle.
+      if (moving || quiet < 8) raf = requestAnimationFrame(frame)
       else last = 0
     }
     const kick = () => {
+      quiet = 0
       if (raf === 0) raf = requestAnimationFrame(frame)
     }
     kickRef.current = kick
