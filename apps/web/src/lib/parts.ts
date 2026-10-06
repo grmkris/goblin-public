@@ -16,6 +16,11 @@ export type McpTarget = {
   readonly name: string
   readonly arguments: Record<string, unknown>
 }
+/**
+ * What an `app_build` call made active: the app, its version, whether it has a view, and whether this call is where
+ * the transcript shows that view (the newest such build of the app; ADR 0021).
+ */
+export type AppBuilt = { readonly app: string; readonly version: number; readonly ui: boolean; readonly place: boolean }
 /** One tool call with its result folded in. Times are epoch ms: started from the live start or the asking message. */
 export type ToolPart = {
   readonly kind: 'tool'
@@ -26,6 +31,7 @@ export type ToolPart = {
   readonly state: ToolState
   readonly startedAt?: number
   readonly endedAt?: number
+  readonly built?: AppBuilt
 }
 /** What the transcript renders, in order. Every part has a stable id for the scroller. */
 export type Part =
@@ -130,6 +136,38 @@ function userPart(message: Extract<ChatMessage, { role: 'user' }>): Part {
   }
 }
 
+/** The app an `app_build` call's result says it made active, read from the result's JSON. */
+export function builtApp(
+  call: ToolCallView,
+  result: ToolResultMessage | undefined,
+): Omit<AppBuilt, 'place'> | undefined {
+  if (call.name !== 'app_build' || result === undefined || result.isError) return undefined
+  let value: unknown
+  try {
+    value = JSON.parse(result.text)
+  } catch {
+    return undefined
+  }
+  const built = record(value)
+  if (built?.status !== 'active' || !isString(built.app) || typeof built.version !== 'number') return undefined
+  return { app: built.app, version: built.version, ui: built.ui === true }
+}
+
+/** Each `app_build` with what it made, and per app the newest build with a view marked as the place it shows. */
+function placeApps(parts: readonly Part[]): Part[] {
+  const placed = new Set<string>()
+  return parts
+    .toReversed()
+    .map((part) => {
+      const built = part.kind === 'tool' ? builtApp(part.call, part.result) : undefined
+      if (part.kind !== 'tool' || built === undefined) return part
+      const place = built.ui && !placed.has(built.app)
+      if (place) placed.add(built.app)
+      return { ...part, built: { ...built, place } }
+    })
+    .toReversed()
+}
+
 /** The transcript as render parts: each tool result folds into the call that asked for it. */
 export function conversationParts(projection: ConversationProjection): Part[] {
   const results = new Map<string, ToolResultMessage>()
@@ -154,7 +192,7 @@ export function conversationParts(projection: ConversationProjection): Part[] {
         toolPart({ id: message.toolCallId, name: message.toolName, arguments: {} }, context, message.timestamp),
       )
   }
-  return [...parts, ...liveParts(projection, context, seen)]
+  return placeApps([...parts, ...liveParts(projection, context, seen)])
 }
 
 /** The agent's own tools, in words; any other is "Used" and its name. */

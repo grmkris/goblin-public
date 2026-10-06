@@ -1,8 +1,9 @@
-// The workspace's live MCP Apps (ADR 0020). A kept App the owner is looking at has one live instance: its iframe in a
-// fixed stage (stage.tsx) that follows the App's page while it has one, else its place in its transcript. The stage
+// The workspace's live Apps (ADRs 0020, 0021). A kept App the owner is looking at has one live instance: its iframe in
+// a fixed stage (stage.tsx) that follows the App's page while it has one, else its place in its transcript. The stage
 // never moves in the DOM, so an App goes between the two without reloading. At most LIVE_APPS stay loaded: beyond
-// that the least recently seen unloads and its place shows a stub. Nothing here grants anything; the App's resource
-// and every call it makes go through the owner's grants, live (frame.tsx).
+// that the least recently seen unloads and its place shows a stub. Nothing here grants anything: an MCP App's
+// resource and every call it makes go through the owner's grants, live, and an agent app's view calls only its own
+// actions (frame.tsx). An agent app's new release reloads its frame; a new state is pushed into it.
 import { createContext, type ReactNode, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Schema } from 'effect'
 import { type AppView, AppLaunch } from '@goblin/contracts'
@@ -79,8 +80,14 @@ function resultOf(details: unknown): CallToolResult {
 
 async function launch(app: AppView): Promise<AppSelection> {
   const loaded = decodeLaunch(await request(`/api/apps/${app.id}/launch`))
-  if (loaded.kind !== 'mcp') throw new Error('This App cannot be shown here yet.')
-  return { serverId: loaded.serverId, uri: loaded.uri, arguments: loaded.arguments, result: resultOf(loaded.result) }
+  if (loaded.kind === 'agent') return { kind: 'agent', id: app.id, launch: loaded }
+  return {
+    kind: 'mcp',
+    serverId: loaded.serverId,
+    uri: loaded.uri,
+    arguments: loaded.arguments,
+    result: resultOf(loaded.result),
+  }
 }
 
 const without = <T,>(map: ReadonlyMap<string, T>, ids: readonly string[]): ReadonlyMap<string, T> => {
@@ -91,6 +98,12 @@ const without = <T,>(map: ReadonlyMap<string, T>, ids: readonly string[]): Reado
 }
 
 const withItem = <T,>(map: ReadonlyMap<string, T>, id: string, value: T) => new Map(map).set(id, value)
+
+/** An agent app whose loaded view is an older release than the feed says it runs. */
+const outdated = (instance: Instance, app: AppView) =>
+  instance.selection.kind === 'agent' &&
+  app.source.kind === 'agent' &&
+  app.source.release !== instance.selection.launch.release
 
 /** `instances` with one instance changed by `change`; unchanged when it is not loaded. */
 function patched(
@@ -180,13 +193,29 @@ function useResidency(apps: readonly AppView[]) {
     [balance],
   )
   useEffect(balance, [instances.size, balance])
-  // The feed is the truth about which Apps are kept: a closed one unloads, and a renamed one shows its new name.
+  /** Loads an agent app's new release in place of the old one. */
+  const reload = useCallback((app: AppView) => {
+    if (loading.current.has(app.id)) return
+    loading.current.add(app.id)
+    launch(app)
+      .then((selection) =>
+        setInstances((current) => patched(current, app.id, (instance) => ({ ...instance, app, selection }))),
+      )
+      .catch((cause: unknown) => setProblems((current) => withItem(current, app.id, failureText(cause))))
+      .finally(() => loading.current.delete(app.id))
+  }, [])
+  // The feed is the truth about which Apps are kept: a closed one unloads, a renamed one shows its new name, and an
+  // agent app on a new release loads it.
   useEffect(() => {
     const open = new Map(apps.filter((app) => app.closedAt === undefined).map((app) => [app.id, app]))
     unload(
       [...latest.current.keys()].filter((id) => !open.has(id)),
       false,
     )
+    for (const [id, instance] of latest.current) {
+      const app = open.get(id)
+      if (app !== undefined && outdated(instance, app)) reload(app)
+    }
     setInstances((current) => {
       let next = current
       for (const [id, instance] of current) {
@@ -195,7 +224,7 @@ function useResidency(apps: readonly AppView[]) {
       }
       return next
     })
-  }, [apps, unload])
+  }, [apps, unload, reload])
   return { instances, setInstances, dormant, problems, setProblems, show, seen, unload }
 }
 

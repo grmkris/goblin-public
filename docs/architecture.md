@@ -394,7 +394,21 @@ call pins the release it began on (`goblin.release` memo) and refuses to run on 
 set their own exact extension lists and get no app tools. `goblin.apps` (`pi/apps.ts`) offers `app_docs`, `app_build`,
 `app_inspect`, `app_rollback` and `code_run`, and lists the apps in the prompt. The SDK, release entry, transpiler and
 docs are `packages/app`, built into `dist/toolchain.js` (loaded only while building). The owner deletes apps and
-sees them outside the transcript from M4 on.
+sees them outside the transcript in a later milestone.
+
+An app with a `view.tsx` has a UI (`packages/app/docs/ui.md`). The transpiler makes the view one CommonJS module with
+React's automatic JSX runtime and refuses imports the frame does not provide; the style compiler (Tailwind's, with
+goblin's theme, in its own Dynamic Worker) compiles exactly the classes the view uses. Both are kept per release
+(`app_agent_views`). The first release with a view adds the app to the App registry under its home conversation
+(`apps/registry.ts`), and every revision after that reaches the workspace feed. The web host loads it like an MCP App,
+in the same double sandbox (`lib/app-sandbox.ts`): a document of goblin's stylesheets, the app's own, and its module,
+over the frame bundles from `packages/app/dist/runtime` (React, the UI SDK and goblin's components in `core.js`;
+charts, maps, diagrams and icons only when the view imports them), served as hashed assets. The frame has no network
+(`connect-src 'none'`); it loads scripts from goblin's origin only, and tiles from OpenStreetMap only for maps. The
+bridge (`lib/agent-app-bridge.ts`) sends the state as tool results carrying `goblin/state` (the newest revision wins),
+routes the view's action calls to `POST /api/apps/:id/call` with the frame's operation id (`ui:<app>:<uuid>`), and
+reports the view's failures, which the agent sees in its apps section and in `app_inspect`. A new release reloads the
+frame; a new revision is pushed into it. In the transcript the view shows under the newest build of it with one.
 
 ## Files
 

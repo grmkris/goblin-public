@@ -34,6 +34,9 @@ function ShowApp({ conversation, callId }: { readonly conversation: string; read
 /** The conversation the transcript parts below belong to when they host Apps; nothing shows plain tool cards. */
 const AppsConversation = createContext<string | undefined>(undefined)
 
+/** The conversation whose Apps the transcript parts here show in place; none outside one (plain cards only). */
+export const useAppsConversation = (): string | undefined => use(AppsConversation)
+
 /** Transcript parts below are `conversation`'s, with its Apps in place, or (without one) plain cards with no App. */
 export function AppsIn({
   conversation,

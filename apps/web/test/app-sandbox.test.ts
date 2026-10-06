@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { appCsp, isSandboxMessage, sandboxHtml, sandboxProxy } from '../src/lib/app-sandbox.ts'
+import {
+  agentAppCsp,
+  agentAppHtml,
+  appCsp,
+  isSandboxMessage,
+  sandboxHtml,
+  sandboxProxy,
+} from '../src/lib/app-sandbox.ts'
 
 describe('MCP App sandbox boundary', () => {
   it('permits only declared HTTPS/WSS origins and rejects directive injection', () => {
@@ -53,5 +60,45 @@ describe('MCP App sandbox boundary', () => {
     expect(isSandboxMessage({ source, origin: 'https://attacker.test' }, source)).toBe(false)
     source.close()
     other.close()
+  })
+})
+
+const assets = {
+  origin: 'https://goblin.example.test',
+  scripts: {
+    core: 'https://goblin.example.test/assets/core-1.js',
+    charts: 'https://goblin.example.test/assets/charts-1.js',
+    maps: 'https://goblin.example.test/assets/maps-1.js',
+    diagrams: 'https://goblin.example.test/assets/diagrams-1.js',
+    icons: 'https://goblin.example.test/assets/icons-1.js',
+  },
+  styles: { ui: '.ui{}', maps: '.leaflet{}' },
+}
+
+describe("an agent app's frame", () => {
+  it('has no network, loads scripts only from goblin and tiles only for maps', () => {
+    const plain = agentAppCsp(assets.origin, [])
+    expect(plain).toContain("connect-src 'none'")
+    expect(plain).toContain("script-src 'unsafe-inline' https://goblin.example.test;")
+    expect(plain).not.toContain('openstreetmap')
+    expect(agentAppCsp(assets.origin, ['maps'])).toContain('img-src data: blob: https://tile.openstreetmap.org;')
+  })
+  it('loads the core and the bundles the view needs, then runs its module on the first state', () => {
+    const html = agentAppHtml(
+      { module: 'exports.default = function View() { return "</script><b>" }', css: '.p-4{}', libs: ['maps'] },
+      assets,
+    )
+    expect(html.indexOf('core-1.js')).toBeLessThan(html.indexOf('maps-1.js'))
+    expect(html).not.toContain('charts-1.js')
+    expect(html).toContain('<style>.leaflet{}</style><style>.p-4{}</style>')
+    expect(html).toContain('__goblinStart(function () {')
+    // The module cannot end its script element early.
+    expect(html).toContain('return "<\\/script><b>"')
+    expect(html.match(/<\/script>/gu)).toHaveLength(3)
+  })
+  it("lets the proxy load goblin's own bundles from its origin", () => {
+    expect(sandboxProxy('http://localhost:18971')).toContain(
+      "script-src 'unsafe-inline' https: http://localhost:18971;",
+    )
   })
 })

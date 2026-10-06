@@ -172,3 +172,34 @@ describe("the owner's own turns", () => {
     expect(isOwnTurn({ kind: 'text', id: 't', text: 'hi', live: false })).toBe(false)
   })
 })
+
+const build = (id: string) => ({ type: 'toolCall', id, name: 'app_build', arguments: { name: 'tapper' } })
+const built = (id: number, toolCallId: string, text: string) => ({
+  id,
+  model: [{ role: 'toolResult', toolCallId, toolName: 'app_build', isError: false, content: text, timestamp: 4_500 }],
+})
+const active = (version: number, ui: boolean) =>
+  JSON.stringify({ status: 'active', app: 'tapper', release: 'r_1', version, tools: [], revision: 1, ui })
+
+describe('app builds in the transcript', () => {
+  it('shows an app view under the newest build that has one, and reads failed builds as none', () => {
+    const parts = conversationParts(
+      snapshot([
+        asking(1, [build('b1')]),
+        built(2, 'b1', active(1, true)),
+        asking(3, [build('b2')]),
+        built(4, 'b2', JSON.stringify({ status: 'failed', app: 'tapper', problems: [] })),
+        asking(5, [build('b3')]),
+        built(6, 'b3', active(2, true)),
+        asking(7, [build('b4')]),
+        built(8, 'b4', active(3, false)),
+      ]),
+    ).filter((part): part is ToolPart => part.kind === 'tool')
+    expect(parts.map((part) => part.built)).toEqual([
+      { app: 'tapper', version: 1, ui: true, place: false },
+      undefined,
+      { app: 'tapper', version: 2, ui: true, place: true },
+      { app: 'tapper', version: 3, ui: false, place: false },
+    ])
+  })
+})

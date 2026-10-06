@@ -3,7 +3,8 @@
  * `bun run check:files`, not only at the end of a session. It is an AST rule rather than a text scan so that type-only
  * imports count too.
  *
- * - `no-cross-boundary-import`: a `@goblin/*` import must be a declared edge of the importing workspace, and a
+ * - `no-cross-boundary-import`: a `@goblin/*` import must be a declared edge of the importing workspace (a browser file
+ *   takes a cloud workspace's built files only as assets, `?url` or `?raw`, never its code), and a
  *   runtime-bound module (`bun`, `bun:*`, `@effect/platform-bun`, `cloudflare:*`, `node:*`) must suit the runtime of the
  *   importing file (its workspace's runtime, or the zone's: `scripts/` is tooling, `test/` is test, root files are
  *   tooling, and a node's own `zones` override both).
@@ -64,6 +65,9 @@ const fixFor: Record<Family, string> = {
 const workspaceOf = (specifier: string): string | undefined =>
   specifier.startsWith('@goblin/') ? specifier.split('/').slice(0, 2).join('/') : undefined
 
+/** An asset import: the file's URL or text goes into the bundle, never its code. */
+const isAsset = (specifier: string): boolean => /\?(?:url|raw)$/u.test(specifier)
+
 type Sourced =
   | ESTree.ImportDeclaration
   | ESTree.ExportAllDeclaration
@@ -89,13 +93,12 @@ export const noCrossBoundaryImport = defineRule({
       const target = workspaceOf(specifier)
       if (target !== undefined) {
         // The web workspace may import the runtime only from its Worker adapter. Browser routes/components must
-        // remain browser-only even though the package edge is needed by `src/worker.ts`.
-        if (
-          target === placement.node.name ||
-          (placement.node.mayImport.includes(target) &&
-            !(placement.runtime === 'browser' && nodes.find((item) => item.name === target)?.runtime === 'cloud'))
-        )
-          return
+        // remain browser-only even though the package edge is needed by `src/worker.ts`; a built asset is no code.
+        const cloudCode =
+          placement.runtime === 'browser' &&
+          nodes.find((item) => item.name === target)?.runtime === 'cloud' &&
+          !isAsset(specifier)
+        if (target === placement.node.name || (placement.node.mayImport.includes(target) && !cloudCode)) return
         const allowed = placement.node.mayImport.length === 0 ? 'none' : placement.node.mayImport.join(', ')
         context.report({
           messageId: 'workspace',

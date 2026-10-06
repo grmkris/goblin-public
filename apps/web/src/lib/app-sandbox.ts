@@ -1,3 +1,4 @@
+import type { AgentAppLaunch, AgentAppLib } from '@goblin/contracts'
 import { isString, record } from './boundary.ts'
 
 function domains(value: unknown): string[] {
@@ -30,17 +31,64 @@ export function appCsp(metadata: unknown): string {
       .join(' ') || "'none'"
   return `default-src 'none'; script-src 'unsafe-inline' ${resources}; style-src 'unsafe-inline' ${resources}; img-src data: blob: ${resources}; font-src data: ${resources}; media-src data: blob: ${resources}; connect-src ${connect}; frame-src ${frames}; base-uri 'none'; form-action 'none'; object-src 'none'`
 }
+const attribute = (value: string) => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;')
+
 export function sandboxHtml(html: string, metadata: unknown): string {
-  const policy = appCsp(metadata).replaceAll('&', '&amp;').replaceAll('"', '&quot;')
-  return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${policy}">${html}`
+  return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${attribute(appCsp(metadata))}">${html}`
+}
+
+/** The one host an agent app's map may load tiles from. */
+const TILES = 'https://tile.openstreetmap.org'
+
+/** What an agent app's frame loads from goblin: its bundles' URLs on `origin`, and goblin's stylesheets. */
+export type FrameAssets = {
+  readonly origin: string
+  readonly scripts: Readonly<Record<'core' | AgentAppLib, string>>
+  readonly styles: { readonly ui: string; readonly maps: string }
+}
+
+/**
+ * An agent app's frame policy (ADR 0021): scripts only inline (its own module) and goblin's bundles, no network at
+ * all, and images from the tile host only when it draws maps.
+ */
+export function agentAppCsp(origin: string, libs: readonly AgentAppLib[]): string {
+  const tiles = libs.includes('maps') ? ` ${TILES}` : ''
+  return `default-src 'none'; script-src 'unsafe-inline' ${origin}; style-src 'unsafe-inline'; img-src data: blob:${tiles}; font-src data:; media-src data: blob:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'`
+}
+
+/** Text inside a `<script>` or `<style>` element that cannot end it early (`<\/` reads as `</` in JS and CSS). */
+const inert = (text: string) => text.replaceAll(/<\/(script|style)/giu, '<\\/$1')
+
+/**
+ * An agent app's view as a document: goblin's styles and the app's own, the frame bundles it needs, and its module
+ * (CommonJS from the transpiler) run once the first state arrives.
+ */
+export function agentAppHtml(view: AgentAppLaunch['ui'], assets: FrameAssets): string {
+  const scripts = ['core' as const, ...view.libs].map(
+    (lib) => `<script src="${attribute(assets.scripts[lib])}"></script>`,
+  )
+  const styles = [assets.styles.ui, view.libs.includes('maps') ? assets.styles.maps : '', view.css]
+  const start = `__goblinStart(function () { var module = { exports: {} }; (function (require, module, exports) {\n${inert(view.module)}\n})(__goblinRequire, module, module.exports); return module.exports.default })`
+  return [
+    '<!doctype html><html><head><meta charset="utf-8">',
+    `<meta http-equiv="Content-Security-Policy" content="${attribute(agentAppCsp(assets.origin, view.libs))}">`,
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    ...styles.filter((css) => css !== '').map((css) => `<style>${inert(css)}</style>`),
+    '</head><body><div id="root"></div>',
+    ...scripts,
+    `<script>${start}</script>`,
+    '</body></html>',
+  ].join('')
 }
 export function isSandboxMessage(event: Pick<MessageEvent, 'origin' | 'source'>, source: unknown): boolean {
   return event.source === source && event.origin === 'null'
 }
 /** Opaque proxy and inner frame cannot access the host's cookies, DOM or storage. Only protocol messages leave the proxy. */
 export function sandboxProxy(hostOrigin: string): string {
-  const origin = JSON.stringify(new URL(hostOrigin).origin).replaceAll('<', '\\u003c')
-  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https:; style-src 'unsafe-inline' https:; img-src data: blob: https:; font-src data: https:; media-src data: blob: https:; connect-src https: wss:; frame-src about: https:"><style>html,body,iframe{border:0;margin:0;width:100%;height:100%;background:transparent}</style></head><body><script>
+  const host = new URL(hostOrigin).origin
+  const origin = JSON.stringify(host).replaceAll('<', '\\u003c')
+  // The inner frame inherits this policy too: an agent app's bundles come from the host's own origin.
+  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https: ${attribute(host)}; style-src 'unsafe-inline' https:; img-src data: blob: https:; font-src data: https:; media-src data: blob: https:; connect-src https: wss:; frame-src about: https:"><style>html,body,iframe{border:0;margin:0;width:100%;height:100%;background:transparent}</style></head><body><script>
 const hostOrigin=${origin};let frame;
 window.addEventListener('message',event=>{
  if(event.source===window.parent && event.origin===hostOrigin){

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { InMemoryTransport } from '@modelcontextprotocol/client'
 import { App } from '@modelcontextprotocol/ext-apps'
 import { createAppBridge, type AppCalls } from '../src/lib/app-bridge.ts'
+import type { AgentAppCalls } from '../src/lib/agent-app-bridge.ts'
 import type { FrameEvents } from '../src/components/apps/frame.tsx'
 
 const events: FrameEvents = {
@@ -13,12 +14,24 @@ const events: FrameEvents = {
   offerLink: () => undefined,
   askGrant: async () => false,
 }
-async function pair(serverId: string, calls: AppCalls) {
-  const bridge = createAppBridge(
-    { serverId, uri: `ui://${serverId}/app`, arguments: {}, result: { content: [] } },
+/** An MCP App's frame reaches no agent app route. */
+const noAgent: AgentAppCalls = {
+  call: async () => {
+    throw new Error('not an agent app')
+  },
+  state: async () => {
+    throw new Error('not an agent app')
+  },
+  report: async () => {
+    throw new Error('not an agent app')
+  },
+}
+async function pair(serverId: string, calls: Omit<AppCalls, 'agent'>) {
+  const { bridge } = createAppBridge(
+    { kind: 'mcp', serverId, uri: `ui://${serverId}/app`, arguments: {}, result: { content: [] } },
     '',
     { displayMode: 'inline' },
-    calls,
+    { ...calls, agent: noAgent },
     events,
   )
   const app = new App({ name: 'Fixture', version: '1' }, {}, { autoResize: false })
@@ -38,7 +51,7 @@ async function pair(serverId: string, calls: AppCalls) {
 describe('official MCP App bridge stays bound to its originating connection', () => {
   it('reconnects the same originating App after teardown without retaining the old bridge', async () => {
     const reached: string[] = []
-    const calls: AppCalls = {
+    const calls: Omit<AppCalls, 'agent'> = {
       tool: async (serverId, params) => {
         reached.push(`${serverId}:${params.name}`)
         return { content: [{ type: 'text', text: serverId }] }
@@ -65,7 +78,7 @@ describe('official MCP App bridge stays bound to its originating connection', ()
 
   it('continues tool/resource calls after placement updates and reconnects a new selection cleanly', async () => {
     const reached: string[] = []
-    const calls: AppCalls = {
+    const calls: Omit<AppCalls, 'agent'> = {
       tool: async (serverId, params) => {
         reached.push(`${serverId}:${params.name}`)
         return { content: [{ type: 'text', text: serverId }] }
@@ -97,5 +110,78 @@ describe('official MCP App bridge stays bound to its originating connection', ()
       await second.close()
     }
     expect(reached).toEqual(['notes:read', 'notes:data://value', 'notes:data://value', 'other:read'])
+  })
+})
+
+/** An agent app's frame reaches no MCP server. */
+const notMcp = async (): Promise<never> => {
+  throw new Error('not an MCP App')
+}
+
+/** Resolves once `ready` holds, checking every few milliseconds for at most a second. */
+async function until(ready: () => boolean): Promise<void> {
+  for (let tries = 0; tries < 200 && !ready(); tries++) await new Promise((resolve) => setTimeout(resolve, 5))
+  expect(ready()).toBe(true)
+}
+
+describe('an agent app bridge', () => {
+  it('starts the view with its state, calls actions with the frame op, pushes newer state and reports', async () => {
+    const reached: unknown[] = []
+    const agent: AgentAppCalls = {
+      call: async (id, call) => {
+        reached.push(['call', id, call])
+        return call.name === 'bad'
+          ? { ok: false, error: 'bad failed: Error: nope' }
+          : { ok: true, revision: 3, release: 'r_1', state: { n: 3 } }
+      },
+      state: async (id) => {
+        reached.push(['state', id])
+        return { revision: 5, release: 'r_1', state: { n: 5 } }
+      },
+      report: async (id, message) => {
+        reached.push(['report', id, message])
+      },
+    }
+    const launch = { kind: 'agent' as const, name: 'tapper', release: 'r_1', revision: 2, state: { n: 2 } }
+    const { bridge, push } = createAppBridge(
+      { kind: 'agent', id: '7', launch: { ...launch, ui: { module: '', css: '', libs: [] } } },
+      '',
+      { displayMode: 'inline' },
+      { agent, tool: notMcp, resource: notMcp },
+      events,
+    )
+    const app = new App({ name: 'Fixture', version: '1' }, {}, { autoResize: false })
+    const states: unknown[] = []
+    app.addEventListener('toolresult', (result) => states.push(result._meta?.['goblin/state']))
+    const [host, client] = InMemoryTransport.createLinkedPair()
+    await bridge.connect(host)
+    await app.connect(client)
+    try {
+      await until(() => states.length === 1)
+      expect(states[0]).toEqual({ revision: 2, release: 'r_1', state: { n: 2 } })
+      const op = crypto.randomUUID()
+      const answered = await app.callServerTool({
+        name: 'tap',
+        arguments: { by: 1 },
+        _meta: { 'goblin/op': `ui:${op}` },
+      })
+      expect(answered._meta).toEqual({ 'goblin/state': { revision: 3, release: 'r_1', state: { n: 3 } } })
+      expect(await app.callServerTool({ name: 'bad', arguments: {} })).toMatchObject({
+        isError: true,
+        content: [{ type: 'text', text: 'bad failed: Error: nope' }],
+      })
+      push?.want(3)
+      push?.want(5)
+      await until(() => states.length === 2)
+      expect(states[1]).toEqual({ revision: 5, release: 'r_1', state: { n: 5 } })
+      await app.sendLog({ level: 'error', data: 'TypeError: boom' })
+      await until(() => reached.some((entry) => Array.isArray(entry) && entry[0] === 'report'))
+      expect(reached[0]).toEqual(['call', '7', { name: 'tap', arguments: { by: 1 }, op }])
+      expect(reached.filter((entry) => Array.isArray(entry) && entry[0] === 'state')).toHaveLength(1)
+      expect(reached.at(-1)).toEqual(['report', '7', 'TypeError: boom'])
+    } finally {
+      await app.close()
+      await bridge.close()
+    }
   })
 })

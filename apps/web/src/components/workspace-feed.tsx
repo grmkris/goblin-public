@@ -25,6 +25,8 @@ type WorkspaceFeed = WorkspaceState & {
   readonly keepApp: (conversation: string, callId: string) => Promise<AppView>
   /** Closes a kept App: its iframe goes everywhere, and its place offers to show it again. Throws on failure. */
   readonly closeApp: (id: string) => Promise<void>
+  /** Opens a closed App again (an agent app, whose view the owner closed). */
+  readonly reopenApp: (id: string) => Promise<AppView>
 }
 
 const WorkspaceFeedContext = createContext<WorkspaceFeed | undefined>(undefined)
@@ -106,6 +108,8 @@ export function WorkspaceFeedProvider({
           throw failure
         }
       },
+      reopenApp: async (id) =>
+        showApp(decodeApp(await request(`/api/apps/${id}`, { method: 'PATCH', body: { closed: false } }))),
       create: async (from) => {
         try {
           const view = decodeView(await request('/api/conversations', { body: from === undefined ? {} : { from } }))

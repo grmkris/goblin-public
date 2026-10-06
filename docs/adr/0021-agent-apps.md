@@ -41,9 +41,18 @@ resource and call, one per conversation and call, as ADR 0020 kept them) or `age
 The table replaced `app_apps`, whose rows it copied with their ids, so `a:<id>` panes, `/a/<id>` and stored layouts keep
 working. The workspace feed's `AppView` and the launch say which source an App has.
 
-**Still to come** (the same plan, later milestones): app UIs in the MCP Apps host with live state; powers beyond
-files (web fetch, the owner's MCP tools, model calls, Telegram, other apps) with owner approvals; scheduled jobs; the
-Apps section and page, fullscreen with the chat docked; owner deletion.
+**Views.** An app may have a UI: `view.tsx`, one React component drawn with goblin's components, the kit and Tailwind
+classes. It is built with the release (transpiled to one CommonJS module, its classes compiled with goblin's theme in
+an isolate of their own) and runs in the same double sandbox as an MCP App, as an opaque frame with no network that
+loads only goblin's frame bundles. The view gets the app's state live, newest revision first, and changes it only
+through the app's own actions, as the owner, with an operation id of its own; it calls no other app, no server and no
+tool (an amendment of ADR 0005 for agent apps). Its failures go to the app's events, where the agent sees them in its
+apps section; goblin does not write them into a conversation. Closing an agent app's view closes its stage and page
+only; the app and its tools stay.
+
+**Still to come** (the same plan, later milestones): powers beyond files (web fetch, the owner's MCP tools, model
+calls, Telegram, other apps) with owner approvals; scheduled jobs; the Apps section and page, fullscreen with the chat
+docked; owner deletion; sharing a view's context with the agent.
 
 Consequences:
 - Dynamic Workers are an open beta on Workers Paid; their pricing and limits may change.

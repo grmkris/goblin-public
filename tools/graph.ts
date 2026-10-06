@@ -52,7 +52,7 @@ export const nodes: readonly Node[] = [
     name: '@goblin/web',
     role: 'TanStack Start web projection and sandboxed MCP Apps host',
     runtime: 'browser',
-    mayImport: ['@goblin/contracts', '@goblin/kit', '@goblin/ui', '@goblin/runtime'],
+    mayImport: ['@goblin/app', '@goblin/contracts', '@goblin/kit', '@goblin/ui', '@goblin/runtime'],
     zones: { 'src/worker.ts': 'cloud' },
   },
   {

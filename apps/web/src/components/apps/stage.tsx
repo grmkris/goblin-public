@@ -9,7 +9,7 @@ import { clipStage } from '../../lib/app-occlusion.ts'
 import { CHROME_HEIGHT, type Rect } from '../../lib/app-stage.ts'
 import { APP_MODES, type AppPlacement, inlineHeight } from '../../lib/host-context.ts'
 import { atRest, type Motion, PLACE, stepSpring } from '../../lib/spring.ts'
-import { AppFrame } from './frame.tsx'
+import { AppFrame, selectionOrigin } from './frame.tsx'
 import { useAppGrantAsks } from './grant-ask.tsx'
 import { type Instance, type SlotName, useAppHost } from './host.tsx'
 import { LinkOffer } from './offers.tsx'
@@ -152,7 +152,7 @@ function useRoom(chrome: RefObject<number>) {
 function Stage({ instance }: { readonly instance: Instance }) {
   const host = useAppHost()
   const { id } = instance.app
-  const { serverId } = instance.selection
+  const origin = selectionOrigin(instance.selection)
   const place = useAppPlacement(instance.app)
   const name: SlotName = place.paged ? `app-page:${id}` : `app-inline:${id}`
   const stage = useRef<HTMLDivElement>(null)
@@ -163,7 +163,7 @@ function Stage({ instance }: { readonly instance: Instance }) {
     visible: undefined,
   })
   const [error, setError] = useState('')
-  const grants = useAppGrantAsks(serverId)
+  const grants = useAppGrantAsks(origin)
   const chrome = useRef(CHROME_HEIGHT)
   chrome.current = place.paged ? 0 : CHROME_HEIGHT
   const { box, onTarget } = useRoom(chrome)
@@ -194,11 +194,10 @@ function Stage({ instance }: { readonly instance: Instance }) {
       {!place.paged && <AppChrome instance={instance} onPage={place.page} />}
       {error && <Receipt tone="error">{error}. The ordinary tool result remains available.</Receipt>}
       {grants.card}
-      {instance.link && (
-        <LinkOffer link={instance.link} serverId={serverId} onDone={() => host.setLink(id, undefined)} />
-      )}
+      {instance.link && <LinkOffer link={instance.link} serverId={origin} onDone={() => host.setLink(id, undefined)} />}
       <AppFrame
         selection={instance.selection}
+        {...(instance.app.source.kind === 'agent' && { revision: instance.app.source.revision })}
         placement={placement}
         events={{
           report: setError,

@@ -24,7 +24,7 @@ import {
 import { ChevronRightIcon } from 'lucide-react'
 import { failureText, isString, record, records, request } from '../lib/boundary.ts'
 import { serverTitle } from '../lib/labels.ts'
-import { McpApp, type AppSelection } from './apps/frame.tsx'
+import { McpApp, type McpSelection } from './apps/frame.tsx'
 
 type ConsoleFormProps = {
   readonly servers: readonly ServerView[]
@@ -81,7 +81,7 @@ export function ToolConsole({ servers }: { readonly servers: readonly ServerView
   const [name, setName] = useState('')
   const [args, setArgs] = useState('{}')
   const [result, setResult] = useState('')
-  const [selection, setSelection] = useState<AppSelection>()
+  const [selection, setSelection] = useState<McpSelection>()
   const closeApp = useCallback(() => setSelection(undefined), [])
   const [error, setError] = useState('')
   const [calling, setCalling] = useState(false)
@@ -99,6 +99,7 @@ export function ToolConsole({ servers }: { readonly servers: readonly ServerView
       const uri = records(await request(`${base}/tools`)).find((tool) => tool.name === name)?.appResource
       if (isString(uri))
         setSelection({
+          kind: 'mcp',
           serverId: target,
           uri,
           arguments: parsed,

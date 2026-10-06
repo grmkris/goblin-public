@@ -15,12 +15,19 @@ tester.run('no-cross-boundary-import', noCrossBoundaryImport, {
     { code: "import { env } from 'cloudflare:workers'", filename: at('apps/runtime/src/agent.ts') },
     { code: "import { x } from '@goblin/ui'", filename: at('apps/web/src/route.tsx') },
     { code: "import { x } from '@goblin/runtime/worker'", filename: at('apps/web/src/worker.ts') },
+    { code: "import core from '@goblin/app/runtime/core.js?url'", filename: at('apps/web/src/lib/a.ts') },
+    { code: "const ui = import('@goblin/app/runtime/ui.css?raw')", filename: at('apps/web/src/lib/a.ts') },
     { code: "import { readFile } from 'node:fs'", filename: at('tools/test/a.test.ts') },
     { code: "import { $ } from 'bun'", filename: at('tools/check.ts') },
   ],
   invalid: [
     {
       code: "import { x } from '@goblin/runtime'",
+      filename: at('apps/web/src/route.tsx'),
+      errors: [{ messageId: 'workspace' }],
+    },
+    {
+      code: "import { x } from '@goblin/app/toolchain'",
       filename: at('apps/web/src/route.tsx'),
       errors: [{ messageId: 'workspace' }],
     },
