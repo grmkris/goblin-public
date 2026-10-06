@@ -1,10 +1,13 @@
 import { RunAttribute, type RunAttributes, type RunEvent } from '@goblin/contracts/telemetry'
 import type { RunSink } from './events.ts'
 
-/** The part of a Cloudflare span the sink uses (`cloudflare:workers` `tracing`), injected so tests need no workerd. */
+/**
+ * The part of a Cloudflare span the sink uses (`cloudflare:workers` `tracing`), injected so tests need no workerd. An
+ * older local workerd's span has no `setStatus`; the status is in `goblin.status` either way.
+ */
 export type TraceSpan = {
   setAttributes(attributes: Record<string, string | number | boolean | undefined>): unknown
-  setStatus(status: { readonly code: 'unset' | 'ok' | 'error'; readonly message?: string }): unknown
+  setStatus?: (status: { readonly code: 'unset' | 'ok' | 'error'; readonly message?: string }) => unknown
   end(): void
 }
 export type Tracer = { startSpan(name: string): TraceSpan }
@@ -59,7 +62,7 @@ export class TraceSink implements RunSink {
       'goblin.duration_ms': event.endedAt === undefined ? undefined : Math.max(0, event.endedAt - event.startedAt),
     })
     const message = text(event.attributes[RunAttribute.error]) || text(event.attributes[RunAttribute.reason])
-    span.setStatus(event.status === 'ok' ? { code: 'ok' } : { code: 'error', message })
+    span.setStatus?.(event.status === 'ok' ? { code: 'ok' } : { code: 'error', message })
     span.end()
   }
 }

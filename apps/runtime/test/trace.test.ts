@@ -73,6 +73,16 @@ describe('run events as trace spans (unit, ADR 0024)', () => {
     ])
   })
 
+  it('ends the span where the runtime has no setStatus', () => {
+    let ended = false
+    const sink = new TraceSink(
+      { startSpan: () => ({ setAttributes: () => undefined, end: () => (ended = true) }) },
+      () => 'user-1',
+    )
+    sink.ended(event({ status: 'ok', endedAt: 30 }))
+    expect(ended).toBe(true)
+  })
+
   it('ends a call that started in an earlier invocation as well, and leaves other events out', () => {
     const { spans, tracer } = fakeTracer()
     const sink = new TraceSink(tracer, () => 'user-1')
