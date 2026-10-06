@@ -1,36 +1,20 @@
-import { Type } from '@earendil-works/pi-ai'
-import { defineExtension, defineTool, section, type ToolExecutionResult } from '@earendil-works/pi-durable'
-import { HomeEdit } from '@goblin/contracts'
+import { defineExtension, section } from '@earendil-works/pi-durable'
+import { HomeEdit, HomeEditResult, HomeRead } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { readHomeLayout, editHomeLayout } from '../home/program.ts'
 import { problemText } from '../agent-apps/queue.ts'
 import type { RunProgram } from './resident-mcp.ts'
+import { typedTool } from './typed-tool.ts'
 
-const size = Type.Union([Type.Literal('small'), Type.Literal('medium'), Type.Literal('large'), Type.Literal('wide')])
-const id = Type.String({ minLength: 1, maxLength: 100 })
-const base = { id, size }
-const note = { title: Type.String({ maxLength: 60 }), markdown: Type.String({ maxLength: 4096 }) }
-const tile = Type.Union([
-  Type.Object({ ...base, kind: Type.Literal('app'), appId: Type.String({ pattern: '^\\d{1,12}$' }) }),
-  Type.Object({ ...base, kind: Type.Literal('conversations') }),
-  Type.Object({ ...base, kind: Type.Literal('note'), ...note }),
-])
-const index = Type.Integer({ minimum: 0, maximum: 24 })
-const parameters = Type.Object({
-  operationId: Type.String({ minLength: 1, maxLength: 200 }),
-  expectedRevision: Type.Integer({ minimum: 0 }),
-  ops: Type.Array(
-    Type.Union([
-      Type.Object({ kind: Type.Literal('add'), tile, index: Type.Optional(index) }),
-      Type.Object({ kind: Type.Literal('move'), id, index }),
-      Type.Object({ kind: Type.Literal('resize'), id, size }),
-      Type.Object({ kind: Type.Literal('update'), id, ...note }),
-      Type.Object({ kind: Type.Literal('remove'), id }),
-    ]),
-    { minItems: 0, maxItems: 72 },
-  ),
+/** An edit the agent may make: the owner's Undo (`undoOf`) is not one. */
+const AgentEdit = Schema.Struct({
+  operationId: HomeEdit.fields.operationId,
+  expectedRevision: HomeEdit.fields.expectedRevision,
+  ops: HomeEdit.fields.ops,
 })
-const text = (value: unknown) => [{ type: 'text' as const, text: JSON.stringify(value) }]
+
+const OWNER_QUESTION = 'May I change these owner-placed Home tiles? Use the Home approval card or Edit Home.'
+
 /** Main and ordinary threads can arrange Main's Home. Subagents and routine runs select their own extensions. */
 export function homeExtension(run: RunProgram) {
   return defineExtension({
@@ -43,47 +27,38 @@ export function homeExtension(run: RunProgram) {
       ),
     ],
     tools: [
-      defineTool({
+      typedTool({
         name: 'home_read',
         description: 'Read Main’s Home layout, revision, and agent Apps available to place (id, name, hasView).',
-        parameters: Type.Object({}),
+        input: Schema.Struct({}),
+        output: HomeRead,
         replay: 'safe',
-        execute: async () => ({ content: text(await run(readHomeLayout)) }),
+        execute: async () => run(readHomeLayout),
       }),
-      defineTool({
+      typedTool({
         name: 'home_edit',
         description:
           'Arrange Main’s Home with one atomic ordered edit. Supply the revision from home_read and a stable operationId. You can change your own tiles; owner tiles require their approval.',
-        parameters,
+        input: AgentEdit,
+        output: HomeEditResult,
         replay: 'safe',
-        execute: async (input): Promise<ToolExecutionResult> => {
-          try {
-            const edit = Schema.decodeUnknownSync(HomeEdit)(input)
-            const result = await run(editHomeLayout(edit, 'agent'))
-            if (result.kind === 'owner-required')
-              return {
-                content: text({
-                  ...result,
-                  question: 'May I change these owner-placed Home tiles? Use the Home approval card or Edit Home.',
-                }),
-                details: { kind: 'home-owner-required', edit: JSON.parse(JSON.stringify(edit)) },
-                control: { terminate: true },
-              }
+        execute: async (edit) => run(editHomeLayout(edit, 'agent')),
+        text: (result) =>
+          JSON.stringify(result.kind === 'owner-required' ? { ...result, question: OWNER_QUESTION } : result),
+        details: (result, edit) => {
+          if (result.kind === 'owner-required')
+            return { kind: 'home-owner-required', edit: JSON.parse(JSON.stringify(edit)) }
+          if (result.kind === 'applied')
             return {
-              content: text(result),
-              ...(result.kind === 'applied' && {
-                details: {
-                  kind: 'home-receipt',
-                  operationId: result.operationId,
-                  tileIds: [...result.tileIds],
-                  message: result.message,
-                },
-              }),
+              kind: 'home-receipt',
+              operationId: result.operationId,
+              tileIds: [...result.tileIds],
+              message: result.message,
             }
-          } catch (cause) {
-            return { content: [{ type: 'text', text: problemText(cause) }], isError: true }
-          }
+          return {}
         },
+        terminate: (result) => result.kind === 'owner-required',
+        failure: problemText,
       }),
     ],
   })

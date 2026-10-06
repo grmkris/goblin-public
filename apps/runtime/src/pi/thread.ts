@@ -1,9 +1,10 @@
-import { GenerationTask, defineExtension, defineTool, hook, section } from '@earendil-works/pi-durable'
-import { Type } from '@earendil-works/pi-ai'
+import { GenerationTask, defineExtension, hook, section } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
+import * as Schema from 'effect/Schema'
 import { Conversations, attempt, requireBudget } from '../services.ts'
 import type { RunProgram } from './resident-mcp.ts'
 import { Entitlements } from '../billing/gates.ts'
+import { typedTool } from './typed-tool.ts'
 
 const THREAD = [
   'This is a side thread, apart from the conversation it branched from (your main conversation with the owner, unless',
@@ -21,11 +22,12 @@ export function threadExtension(run: RunProgram) {
     name: 'goblin.thread',
     sections: [section('thread', () => THREAD)],
     tools: [
-      defineTool({
+      typedTool({
         name: 'share_back',
         description:
           'Share a note from this thread with the conversation it branched from, only when the owner asks you to. That conversation sees it as context and does not answer it.',
-        parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 4000 }) }),
+        input: Schema.Struct({ note: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4000)) }),
+        output: Schema.Struct({ sharedWith: Schema.String }),
         // The write carries the call's id as its request id, so a rerun finds the same note.
         replay: 'safe',
         execute: async ({ note }, api) => {
@@ -35,8 +37,9 @@ export function threadExtension(run: RunProgram) {
               attempt(() => conversations.shareBack(String(api.conversationId), note, `share:${api.callId}`)),
             ),
           )
-          return { content: [{ type: 'text', text: `Shared with ${parent}.` }] }
+          return { sharedWith: parent }
         },
+        text: ({ sharedWith }) => `Shared with ${sharedWith}.`,
       }),
     ],
     hooks: [

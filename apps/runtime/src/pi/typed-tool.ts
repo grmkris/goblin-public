@@ -58,8 +58,8 @@ export type TypedTool<I, O> = {
   readonly execute: (input: I, api: ToolExecutionApi, context: Context) => Promise<O>
   /** What the model reads of the output (and the input it answers); its JSON by default. */
   readonly text?: (output: O, input: I) => string
-  /** Fields beside `structuredContent` in the result's details: the ones the web reads. */
-  readonly details?: (output: O) => Readonly<Record<string, JsonValue>>
+  /** Fields beside `structuredContent` in the result's details (the ones the web reads), from the output and input. */
+  readonly details?: (output: O, input: I) => Readonly<Record<string, JsonValue>>
   /** End the run once this result is recorded (a question to the owner, a proposal to review). */
   readonly terminate?: (output: O) => boolean
   /** The text of a failure; {@link describeError} by default. */
@@ -114,7 +114,7 @@ export function typedTool<I, O>(tool: TypedTool<I, O>): ToolRegistration {
       const structuredContent = encode(output) as JsonValue
       return {
         content: [{ type: 'text', text: tool.text?.(output, input) ?? JSON.stringify(structuredContent) }],
-        details: { ...tool.details?.(output), structuredContent },
+        details: { ...tool.details?.(output, input), structuredContent },
         ...(tool.terminate?.(output) === true ? { control: { terminate: true } } : {}),
       }
     },
