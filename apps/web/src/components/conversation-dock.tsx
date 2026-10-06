@@ -15,7 +15,12 @@ import { UsageIndicator } from './usage-indicator.tsx'
 import type { useConversation } from './use-conversation.ts'
 import { useUsageToday } from './use-usage.ts'
 
-type Send = (input: string, operationId?: string, appContext?: readonly AppContext[]) => Promise<boolean>
+type Send = (
+  input: string,
+  operationId?: string,
+  appContext?: readonly AppContext[],
+  attachments?: readonly string[],
+) => Promise<boolean>
 
 export function Notice({ text }: { readonly text: string }) {
   if (text === '') return null
@@ -26,11 +31,17 @@ export function Notice({ text }: { readonly text: string }) {
   )
 }
 
-/** The owner's message, with what the conversation's Apps share; shared context is sent once, then cleared. */
-export function useSendWithAppContext(conversation: string, send: Send): (input: string) => Promise<boolean> {
+/**
+ * The owner's message, with the files they attached and what the conversation's Apps share; shared context is sent
+ * once, then cleared.
+ */
+export function useSendWithAppContext(
+  conversation: string,
+  send: Send,
+): (input: string, attachments?: readonly string[]) => Promise<boolean> {
   const shared = useSharedContext(conversation)
-  return async (input) => {
-    const sent = await send(input, undefined, shared.context)
+  return async (input, attachments = []) => {
+    const sent = await send(input, undefined, shared.context, attachments)
     if (sent) shared.clear()
     return sent
   }
@@ -149,6 +160,7 @@ export function ConversationDock({
             {presence.state === 'waiting' && <PresenceBorder />}
             <MessageComposer
               onSend={sendOwn}
+              attach
               running={running}
               onStop={() => void stop()}
               {...(placeholder !== undefined && { placeholder })}

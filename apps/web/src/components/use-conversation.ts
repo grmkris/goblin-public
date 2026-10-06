@@ -16,9 +16,15 @@ export async function postMessage(
   input: string,
   operationId?: string,
   appContext: readonly AppContext[] = [],
+  attachments: readonly string[] = [],
 ): Promise<void> {
-  // @effect-diagnostics-next-line cryptoRandomUUID:off -- A fresh idempotency key for this browser submission.
-  const body = { input, operationId: operationId ?? crypto.randomUUID(), ...(appContext.length > 0 && { appContext }) }
+  const body = {
+    input,
+    // @effect-diagnostics-next-line cryptoRandomUUID:off -- A fresh idempotency key for this browser submission.
+    operationId: operationId ?? crypto.randomUUID(),
+    ...(appContext.length > 0 && { appContext }),
+    ...(attachments.length > 0 && { attachments }),
+  }
   await request(`/api/conversations/${thread}/messages`, { body })
 }
 
@@ -64,9 +70,14 @@ export function useConversation(thread: string, visible = true) {
   }, [thread])
   useEffect(() => lease.current?.setVisible(visible), [visible])
   /** `operationId` is stable for replies to a question or permission request; a typed message gets a fresh one. */
-  async function send(input: string, operationId?: string, appContext: readonly AppContext[] = []): Promise<boolean> {
+  async function send(
+    input: string,
+    operationId?: string,
+    appContext: readonly AppContext[] = [],
+    attachments: readonly string[] = [],
+  ): Promise<boolean> {
     try {
-      await postMessage(thread, input, operationId, appContext)
+      await postMessage(thread, input, operationId, appContext, attachments)
       setFailure('')
       return true
     } catch (error) {

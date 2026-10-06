@@ -2,9 +2,10 @@ import { type ReactNode, createContext, use } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AppWindowIcon, CornerDownRightIcon } from 'lucide-react'
-import type { AppContext } from '@goblin/contracts'
+import type { AppContext, Attachment } from '@goblin/contracts'
 import { contextPreview } from '../../lib/app-context.ts'
 import { relativeTime, reporterOf } from '../../lib/threads.ts'
+import { MessageFiles } from '../attachments.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 
 /**
@@ -109,18 +110,20 @@ function SubagentReport({
 
 /**
  * A message in the user column: the owner's own, or one labelled with who wrote it (Telegram, an MCP client, a thread
- * sharing a note). A subagent's report is not in that column: it reads as the subagent reporting back. What an open
- * App shared with a message shows as a quiet note, never as their words.
+ * sharing a note). A subagent's report is not in that column: it reads as the subagent reporting back. The files it
+ * carried sit under it; what an open App shared with it shows as a quiet note, never as their words.
  */
 export function UserText({
   text,
   context = [],
+  attachments = [],
   author,
   thread,
   at,
 }: {
   readonly text: string
   readonly context?: readonly AppContext[]
+  readonly attachments?: readonly Attachment[]
   readonly author?: string | undefined
   readonly thread?: string | undefined
   readonly at?: number | undefined
@@ -133,6 +136,7 @@ export function UserText({
       <article className="bubble bubble-user">
         <p className="message-text">{text}</p>
       </article>
+      <MessageFiles files={attachments} />
       {context.map((shared) => (
         <p key={shared.serverId} className="shared-context" title={shared.text}>
           <AppWindowIcon aria-hidden />

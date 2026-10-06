@@ -91,6 +91,7 @@ export function failureText(error: unknown): string {
     UpstreamMcp: 'The MCP server did not respond as expected.',
     NotFound: 'Not found.',
     InvalidInput: 'The request was not valid.',
+    PayloadTooLarge: 'That is more than your storage takes: 25 MB a file, 512 MB in all.',
   }
   return known[error.tag] ?? `Request failed (${error.tag})`
 }

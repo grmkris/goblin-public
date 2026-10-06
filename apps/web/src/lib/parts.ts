@@ -1,4 +1,4 @@
-import { type AppContext, TELEGRAM_AUTHOR } from '@goblin/contracts'
+import { type AppContext, type Attachment, TELEGRAM_AUTHOR } from '@goblin/contracts'
 import { isString, record } from './boundary.ts'
 import type { ChatMessage, ConversationProjection, LiveTool, ToolCallView, TurnFailure } from './projection.ts'
 
@@ -34,6 +34,7 @@ export type Part =
       readonly id: string
       readonly text: string
       readonly context?: readonly AppContext[]
+      readonly attachments?: readonly Attachment[]
       readonly author?: string
       /** The thread a note shared into main came from. */
       readonly thread?: string
@@ -122,6 +123,7 @@ function userPart(message: Extract<ChatMessage, { role: 'user' }>): Part {
     id: message.id,
     text: message.text,
     ...(message.context && { context: message.context }),
+    ...(message.attachments && { attachments: message.attachments }),
     ...(message.author !== undefined && { author: message.author }),
     ...(message.thread !== undefined && { thread: message.thread }),
     ...(message.timestamp !== undefined && { at: message.timestamp }),

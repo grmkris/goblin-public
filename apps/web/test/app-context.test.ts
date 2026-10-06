@@ -50,6 +50,30 @@ describe('what an MCP App shares', () => {
       context: [],
     })
   })
+  it('reads the files attached to a message, before any App context', () => {
+    const file = { path: '/uploads/2026-10-06/data.csv', name: 'data.csv', size: 120, mimeType: 'text/csv' }
+    const files = JSON.stringify({ attachments: [file] })
+    expect(
+      sharedContext([
+        { type: 'text', text: 'summarise this' },
+        { type: 'text', text: files },
+        { type: 'text', text: block('myplan', 'Trip plan') },
+      ]),
+    ).toEqual({
+      text: 'summarise this',
+      context: [{ serverId: 'myplan', text: 'Trip plan' }],
+      attachments: [file],
+    })
+    // The same shape typed by the owner, or naming a path outside their files, stays words.
+    expect(sharedContext([{ type: 'text', text: files }])).toEqual({ text: files, context: [] })
+    const outside = JSON.stringify({ attachments: [{ ...file, path: '/etc/passwd' }] })
+    expect(
+      sharedContext([
+        { type: 'text', text: 'x' },
+        { type: 'text', text: outside },
+      ]),
+    ).toEqual({ text: `x\n${outside}`, context: [] })
+  })
   it('previews the first line', () => {
     expect(contextPreview('\n  Trip plan\nmore')).toBe('Trip plan')
     expect(contextPreview('x'.repeat(80))).toHaveLength(60)

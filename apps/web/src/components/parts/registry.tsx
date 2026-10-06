@@ -71,6 +71,7 @@ export function PartView({ part, canSwitchModel }: { readonly part: Part; readon
         <UserText
           text={part.text}
           context={part.context ?? []}
+          attachments={part.attachments ?? []}
           author={part.author}
           thread={part.thread}
           at={part.at}
