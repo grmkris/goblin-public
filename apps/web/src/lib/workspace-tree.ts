@@ -21,6 +21,8 @@ export type WorkspaceTree = {
   readonly main: TreeNode | undefined
   readonly threads: readonly TreeNode[]
   readonly closedThreads: readonly TreeNode[]
+  /** The open agent apps, newest first: they live with the agent, not under a conversation (ADR 0021). */
+  readonly agentApps: readonly AppRow[]
 }
 
 const newestFirst = (a: ConversationView, b: ConversationView) =>
@@ -81,6 +83,14 @@ export function appHue(serverId: string): number {
   return (hash >>> 0) % 360
 }
 
+/** The open agent apps, newest first, each by its title. */
+const agentAppRows = (apps: readonly AppView[]): AppRow[] =>
+  apps
+    .filter((app) => app.source.kind === 'agent' && app.closedAt === undefined)
+    .toSorted(byCreation)
+    .toReversed()
+    .map((app) => ({ app, name: app.title }))
+
 /**
  * `shown` says which conversations are open in a pane: a thread nobody ever wrote in (a send that failed) has no row
  * unless it is.
@@ -91,8 +101,9 @@ export function buildTree(
   shown: (id: string) => boolean = () => false,
 ): WorkspaceTree {
   const names = appNames(apps)
+  // An agent app lives with the agent (its own sidebar group); only MCP Apps sit under their conversation.
   const appsOf = groupBy(apps.toSorted(byCreation).toReversed(), (app) =>
-    app.closedAt === undefined ? app.conversation : undefined,
+    app.closedAt === undefined && app.source.kind === 'mcp' ? app.conversation : undefined,
   )
   const listed = views.filter((view) => view.kind !== 'thread' || view.replies > 0 || shown(view.id))
   const under = groupBy(listed.toSorted(newestFirst), (view) => view.parent)
@@ -119,6 +130,7 @@ export function buildTree(
     main: tree,
     threads: threads.filter((thread) => !isClosed(thread.view)),
     closedThreads: threads.filter((thread) => isClosed(thread.view)),
+    agentApps: agentAppRows(apps),
   }
 }
 
@@ -207,7 +219,7 @@ export function railItems(
   return {
     main: tree.main === undefined ? [] : [tree.main, ...walk(tree.main.children)],
     threads: walk(tree.threads),
-    apps: all.flatMap((node) => node.apps.filter(({ app }) => paged(app.id))),
+    apps: [...all.flatMap((node) => node.apps), ...tree.agentApps].filter(({ app }) => paged(app.id)),
   }
 }
 

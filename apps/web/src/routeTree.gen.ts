@@ -19,6 +19,8 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SubscribeRouteImport } from './routes/subscribe'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as WorkspaceIndexRouteImport } from './routes/_workspace.index'
+import { Route as AppsIndexRouteImport } from './routes/apps.index'
+import { Route as AppsNameRouteImport } from './routes/apps.$name'
 import { Route as SubscribeSuccessRouteImport } from './routes/subscribe.success'
 import { Route as WorkspaceAAppIdRouteImport } from './routes/_workspace.a.$appId'
 import { Route as WorkspaceCConversationIdRouteImport } from './routes/_workspace.c.$conversationId'
@@ -72,6 +74,16 @@ const WorkspaceIndexRoute = WorkspaceIndexRouteImport.update({
   path: '/',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const AppsIndexRoute = AppsIndexRouteImport.update({
+  id: '/apps/',
+  path: '/apps/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppsNameRoute = AppsNameRouteImport.update({
+  id: '/apps/$name',
+  path: '/apps/$name',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SubscribeSuccessRoute = SubscribeSuccessRouteImport.update({
   id: '/success',
   path: '/success',
@@ -99,7 +111,9 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
   '/terms': typeof TermsRoute
+  '/apps/$name': typeof AppsNameRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
+  '/apps/': typeof AppsIndexRoute
   '/a/$appId': typeof WorkspaceAAppIdRoute
   '/c/$conversationId': typeof WorkspaceCConversationIdRoute
 }
@@ -112,8 +126,10 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
   '/terms': typeof TermsRoute
+  '/apps/$name': typeof AppsNameRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/': typeof WorkspaceIndexRoute
+  '/apps': typeof AppsIndexRoute
   '/a/$appId': typeof WorkspaceAAppIdRoute
   '/c/$conversationId': typeof WorkspaceCConversationIdRoute
 }
@@ -128,8 +144,10 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
   '/terms': typeof TermsRoute
+  '/apps/$name': typeof AppsNameRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/_workspace/': typeof WorkspaceIndexRoute
+  '/apps/': typeof AppsIndexRoute
   '/_workspace/a/$appId': typeof WorkspaceAAppIdRoute
   '/_workspace/c/$conversationId': typeof WorkspaceCConversationIdRoute
 }
@@ -145,7 +163,9 @@ export interface FileRouteTypes {
     | '/settings'
     | '/subscribe'
     | '/terms'
+    | '/apps/$name'
     | '/subscribe/success'
+    | '/apps/'
     | '/a/$appId'
     | '/c/$conversationId'
   fileRoutesByTo: FileRoutesByTo
@@ -158,8 +178,10 @@ export interface FileRouteTypes {
     | '/settings'
     | '/subscribe'
     | '/terms'
+    | '/apps/$name'
     | '/subscribe/success'
     | '/'
+    | '/apps'
     | '/a/$appId'
     | '/c/$conversationId'
   id:
@@ -173,8 +195,10 @@ export interface FileRouteTypes {
     | '/settings'
     | '/subscribe'
     | '/terms'
+    | '/apps/$name'
     | '/subscribe/success'
     | '/_workspace/'
+    | '/apps/'
     | '/_workspace/a/$appId'
     | '/_workspace/c/$conversationId'
   fileRoutesById: FileRoutesById
@@ -189,6 +213,8 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SubscribeRoute: typeof SubscribeRouteWithChildren
   TermsRoute: typeof TermsRoute
+  AppsNameRoute: typeof AppsNameRoute
+  AppsIndexRoute: typeof AppsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -263,6 +289,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceIndexRouteImport
       parentRoute: typeof WorkspaceRoute
     }
+    '/apps/': {
+      id: '/apps/'
+      path: '/apps'
+      fullPath: '/apps/'
+      preLoaderRoute: typeof AppsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/apps/$name': {
+      id: '/apps/$name'
+      path: '/apps/$name'
+      fullPath: '/apps/$name'
+      preLoaderRoute: typeof AppsNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/subscribe/success': {
       id: '/subscribe/success'
       path: '/success'
@@ -325,6 +365,8 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SubscribeRoute: SubscribeRouteWithChildren,
   TermsRoute: TermsRoute,
+  AppsNameRoute: AppsNameRoute,
+  AppsIndexRoute: AppsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -12,18 +12,28 @@ import {
   SidebarRail,
   useSidebar,
 } from '@goblin/ui'
-import { LogOutIcon, PlugIcon, SettingsIcon } from 'lucide-react'
+import { LayoutGridIcon, LogOutIcon, PlugIcon, SettingsIcon } from 'lucide-react'
 import { signOut } from '../lib/session.tsx'
 import { useBilling } from '../lib/billing.tsx'
 import { useSession } from '../lib/session.tsx'
+import { SidebarApps } from './sidebar-apps.tsx'
 import { SidebarTree, onWorkspace } from './sidebar-tree.tsx'
 import { WorkspaceRail } from './workspace-rail.tsx'
 import { useWorkspace } from './workspace.tsx'
 
-/** Connections (the owner's), Settings and Sign out; folded to the rail, their icons alone. */
+/** Apps, Connections (the owner's), Settings and Sign out; folded to the rail, their icons alone. */
 function Pages({ path, rail }: { readonly path: string; readonly rail: boolean }) {
   return (
     <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          render={<Link to="/apps" aria-label="Apps" title={rail ? 'Apps' : undefined} />}
+          isActive={path === '/apps' || path.startsWith('/apps/')}
+        >
+          <LayoutGridIcon aria-hidden />
+          {!rail && <span>Apps</span>}
+        </SidebarMenuButton>
+      </SidebarMenuItem>
       <SidebarMenuItem>
         <SidebarMenuButton
           render={<Link to="/connections" aria-label="Connections" title={rail ? 'Connections' : undefined} />}
@@ -53,7 +63,7 @@ function Pages({ path, rail }: { readonly path: string; readonly rail: boolean }
 }
 
 /**
- * The app's navigation: the brand on top, the conversations, then Connections, Settings and Sign out. On a desktop it
+ * The app's navigation: the brand on top, the conversations, then Apps, Connections, Settings and Sign out. On a desktop it
  * folds to an icon rail (never away); on phones it is a sheet that closes as soon as the page changes or a new
  * thread's draft opens.
  */
@@ -84,6 +94,7 @@ export function AppSidebar() {
       <SidebarContent>
         {ready && rail && <WorkspaceRail onNew={draft} />}
         {ready && !rail && <SidebarTree onNew={draft} />}
+        {ready && !rail && <SidebarApps />}
       </SidebarContent>
       <SidebarFooter>
         <Pages path={path} rail={rail} />

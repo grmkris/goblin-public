@@ -103,6 +103,11 @@ const app = (id: string, conversation: string, extra: Partial<AppView> = {}): Ap
   ...extra,
 })
 
+/** What makes an App an agent app. */
+const agent = (id: string): Partial<AppView> => ({
+  source: { kind: 'agent', name: `app-${id}`, release: 'r_1', version: 1, revision: 0, jobs: [] },
+})
+
 describe('Apps in the sidebar tree', () => {
   it('lists each open App under its conversation, newest first, at any depth, and leaves closed ones out', () => {
     const tree = buildTree(VIEWS, [app('1', '1'), app('2', '6'), app('3', '6', { closedAt: 9 }), app('4', '99')])
@@ -114,6 +119,19 @@ describe('Apps in the sidebar tree', () => {
       new Map(),
       () => false,
       (id) => id !== '1',
+    )
+    expect(rail.apps.map(({ app: { id } }) => id)).toEqual(['2'])
+  })
+  it('lists agent apps apart from the conversations, newest first, and the rail shows those open as pages', () => {
+    const tree = buildTree(VIEWS, [app('1', '1'), app('2', '1', agent('2')), app('3', '5', agent('3'))])
+    expect(tree.main?.apps.map(({ app: { id } }) => id)).toEqual(['1'])
+    expect(tree.threads.flatMap((node) => node.apps)).toEqual([])
+    expect(tree.agentApps.map(({ app: { id } }) => id)).toEqual(['3', '2'])
+    const rail = railItems(
+      tree,
+      new Map(),
+      () => false,
+      (id) => id === '2',
     )
     expect(rail.apps.map(({ app: { id } }) => id)).toEqual(['2'])
   })
