@@ -12,7 +12,7 @@ import {
 import type { CallToolResult, ReadResourceResult } from '@modelcontextprotocol/client'
 import type { AgentAppLaunch } from '@goblin/contracts'
 import { Alert, AlertDescription } from '@goblin/ui'
-import { agentAppHtml, isSandboxMessage, sandboxHtml, sandboxProxy } from '../../lib/app-sandbox.ts'
+import { agentAppHtml, appSandbox, isSandboxMessage, sandboxHtml, sandboxProxy } from '../../lib/app-sandbox.ts'
 import { createAppBridge } from '../../lib/app-bridge.ts'
 import { type StatePush, agentAppCalls } from '../../lib/agent-app-bridge.ts'
 import { isString, record, records, request, text } from '../../lib/boundary.ts'
@@ -205,7 +205,7 @@ export function AppFrame({
     <iframe
       ref={iframe}
       title={selection.kind === 'mcp' ? `MCP App from ${selection.serverId}` : `App ${selection.launch.name}`}
-      sandbox="allow-scripts"
+      sandbox={appSandbox(selection.kind)}
       referrerPolicy="no-referrer"
       className={height === undefined ? 'app-stage-frame' : 'mcp-app-frame'}
       height={height}

@@ -3,6 +3,7 @@ import {
   agentAppCsp,
   agentAppHtml,
   appCsp,
+  appSandbox,
   isSandboxMessage,
   sandboxHtml,
   sandboxProxy,
@@ -48,7 +49,7 @@ describe('MCP App sandbox boundary', () => {
   it('prepends restrictive CSP and creates nested opaque frames without same-origin authority', () => {
     expect(sandboxHtml('<h1>App</h1>', {})).toContain("connect-src 'none'")
     const html = sandboxProxy('https://goblin.example.test')
-    expect(html).toContain("frame.setAttribute('sandbox','allow-scripts')")
+    expect(html).toContain("frame.setAttribute('sandbox',event.data.params.sandbox===")
     expect(html).not.toContain('allow-same-origin')
     expect(html).toContain("event.origin==='null'")
     expect(html).toContain('event.origin===hostOrigin')
@@ -95,6 +96,14 @@ describe("an agent app's frame", () => {
     // The module cannot end its script element early.
     expect(html).toContain('return "<\\/script><b>"')
     expect(html.match(/<\/script>/gu)).toHaveLength(3)
+  })
+  it('may submit forms (to its handlers only), while an MCP App keeps scripts alone', () => {
+    expect(appSandbox('agent')).toBe('allow-scripts allow-forms')
+    expect(appSandbox('mcp')).toBe('allow-scripts')
+    expect(agentAppCsp(assets.origin, [])).toContain("form-action 'none'")
+    expect(sandboxProxy('https://goblin.example.test')).toContain(
+      "'allow-scripts allow-forms'?'allow-scripts allow-forms':'allow-scripts'",
+    )
   })
   it("lets the proxy load goblin's own bundles from its origin", () => {
     expect(sandboxProxy('http://localhost:18971')).toContain(

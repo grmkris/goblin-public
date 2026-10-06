@@ -2,6 +2,7 @@ import { AppBridge, type McpUiHostContext } from '@modelcontextprotocol/ext-apps
 import type { CallToolResult, ReadResourceResult } from '@modelcontextprotocol/client'
 import type { AppSelection, FrameEvents, McpSelection } from '../components/apps/frame.tsx'
 import { contextText, safeLink } from './app-context.ts'
+import { appSandbox } from './app-sandbox.ts'
 import { grantDenied } from '../components/apps/grant-ask.tsx'
 import { type AgentAppCalls, type StatePush, agentBridge } from './agent-app-bridge.ts'
 
@@ -73,7 +74,7 @@ export function createAppBridge(
   bridge.addEventListener('requestteardown', () => events.close())
   bridge.addEventListener('sandboxready', () => {
     void bridge
-      .sendSandboxResourceReady({ html, sandbox: 'allow-scripts' })
+      .sendSandboxResourceReady({ html, sandbox: appSandbox(selection.kind) })
       .catch(() => events.report('App resource could not be loaded'))
   })
   if (selection.kind === 'mcp') {

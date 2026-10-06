@@ -80,6 +80,14 @@ export function agentAppHtml(view: AgentAppLaunch['ui'], assets: FrameAssets): s
     '</body></html>',
   ].join('')
 }
+/**
+ * The sandbox of an App's frames. An agent app's view may use forms: without `allow-forms` a browser refuses a form's
+ * submission before its `submit` event, so the view's handler would never run; its CSP (`form-action 'none'`) still
+ * stops any real submission. An MCP App keeps scripts only.
+ */
+export const appSandbox = (kind: 'mcp' | 'agent'): string =>
+  kind === 'agent' ? 'allow-scripts allow-forms' : 'allow-scripts'
+
 export function isSandboxMessage(event: Pick<MessageEvent, 'origin' | 'source'>, source: unknown): boolean {
   return event.source === source && event.origin === 'null'
 }
@@ -95,7 +103,7 @@ window.addEventListener('message',event=>{
   if(event.data?.method==='ui/notifications/sandbox-resource-ready'){
    if(frame)return;
    if(typeof event.data.params?.html!=='string')return;
-   frame=document.createElement('iframe');frame.setAttribute('sandbox','allow-scripts');frame.setAttribute('referrerpolicy','no-referrer');frame.srcdoc=event.data.params.html;document.body.append(frame);
+   frame=document.createElement('iframe');frame.setAttribute('sandbox',event.data.params.sandbox==='allow-scripts allow-forms'?'allow-scripts allow-forms':'allow-scripts');frame.setAttribute('referrerpolicy','no-referrer');frame.srcdoc=event.data.params.html;document.body.append(frame);
   }else if(frame?.contentWindow)frame.contentWindow.postMessage(event.data,'*');
  }else if(frame && event.source===frame.contentWindow && event.origin==='null')window.parent.postMessage(event.data,hostOrigin);
 });
