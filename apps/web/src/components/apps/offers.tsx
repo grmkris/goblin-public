@@ -55,7 +55,8 @@ export function DownloadOffer({
     // SAFETY: a fresh Uint8Array owns a plain ArrayBuffer, which is what a Blob part needs.
     const made = URL.createObjectURL(new Blob([file.bytes as Uint8Array<ArrayBuffer>], { type: file.type }))
     setUrl(made)
-    return () => URL.revokeObjectURL(made)
+    // The browser reads the file after the click, so the URL outlives the offer by a minute.
+    return () => void window.setTimeout(() => URL.revokeObjectURL(made), 60_000)
   }, [file])
   return (
     <div className="app-offer" role="status">
@@ -69,7 +70,8 @@ export function DownloadOffer({
         nativeButton={false}
         disabled={url === undefined}
         render={<a href={url} download={file.name} />}
-        onClick={onDone}
+        // The offer goes once the click has started the download: a link gone mid-click saves nothing.
+        onClick={() => void window.setTimeout(onDone, 0)}
       >
         Save
       </Button>
