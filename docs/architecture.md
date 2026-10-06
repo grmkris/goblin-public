@@ -109,8 +109,10 @@ its transcript shows a row for that thread. The owner API is conversation-scoped
 | `GET /api/apps/:id/state` | An agent app's state now, with its revision and release (`AppSnapshot`). |
 | `POST /api/apps/:id/call` | An action an agent app's view calls (`AppCall`: name, arguments, the frame's operation id). Answers the state after it, or the app's own error (`AppCallResult`). |
 | `POST /api/apps/:id/diagnostics` | A failure an agent app's view reported (`AppDiagnostic`); kept with the app's events at most every ten seconds. |
-| `GET /api/agent-apps/:name/powers` | The powers an agent app's running release asks for, each pending, approved or revoked (`AppPower`). |
-| `PUT /api/agent-apps/:name/powers` | The owner approves or revokes one of them (`AppPowerChange`). Only the owner answers; the agent cannot. |
+| `GET /api/agent-apps` | The owner's agent apps, newest change first, those without a view too (`AgentAppSummary`). |
+| `GET /api/agent-apps/:name` | One agent app in full: versions, powers, schedules, today's use, files, recent events (`AgentAppDetail`). |
+| `POST /api/agent-apps/:name` | A change by the owner (`AgentAppChange`): roll back, pause or resume a schedule, run one now, move its home, allow or revoke a power. Only the owner answers a power; the agent cannot. |
+| `DELETE /api/agent-apps/:name` | Erases an agent app once the owner typed its name (`DeleteAgentApp`): tools, schedules, files and rows. |
 | `GET /api/conversations` | List registered conversations (`ConversationView`), closed ones included, each with its `parent`, where it branched (`forkEntry`), and its own `replies` and `lastReplyAt`, counted from Pi (`replies.ts`). |
 | `POST /api/conversations` | Create an empty thread (`{}`) or branch an open conversation at an entry (`{ from: { conversation, entry } }`). |
 | `PATCH /api/conversations/:id` | Rename, close or reopen (`closed`) a thread or subagent, or pin a subagent open (`keepOpen`). Closing stops it and everything under it; main cannot be changed this way. |
@@ -359,9 +361,12 @@ the pane's pill and its composer (`data-app-cover`, `lib/app-occlusion.ts`), whi
 hidden; text fades out under the same chrome through a mask on the transcript. An App
 loads when its place comes on screen; beyond six instances the least recently seen unloads to a stub
 (`lib/app-residency.ts`), while one on screen never does. The advertised modes are inline and fullscreen: fullscreen is
-the App's page filling the workspace (Open as a page, then Fill the workspace), and on a phone the page is a pane in
-the strip. In its transcript the host's bar above an App opens its page or closes it; on its page the pane's pill
-menu brings it back, fills the workspace or closes it. Grant cards, link offers and context sharing remain
+the App's page filling the workspace with its conversation docked beside it (`WorkspaceState.docked`, the device's
+`dock` share and fold; `dockedDocument` in `lib/trellis-layout.ts`), and on a phone the page fills the screen with the
+conversation in a bottom sheet (`ChatSheet` in `workspace-surface.tsx`); either way the conversation's own pane host
+moves there (ADR 0021). In its transcript the host's bar above an App opens its page or closes it; on its page the
+pane's pill menu brings it back, goes full screen with the chat or closes it. Agent apps are listed in the sidebar's
+Apps group and on the Apps page (`/apps`, `/apps/<name>`: `components/apps-page.tsx`, `components/app-manage.tsx`). Grant cards, link offers and context sharing remain
 host-drawn, per App.
 
 The App learns the host context (`lib/host-context.ts`): theme, our tokens as MCP Apps style variables, device,

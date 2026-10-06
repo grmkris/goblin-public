@@ -94,6 +94,41 @@ export function singlePane(view: string, title: string): LayoutDocument {
   }
 }
 
+/** A document of `view` filling the workspace with `docked` beside it on the right, taking `share` of the width. */
+export function dockedDocument(
+  view: string,
+  title: string,
+  docked: string,
+  dockedTitle: string,
+  share: number,
+): LayoutDocument {
+  return {
+    schema: 1,
+    version: LAYOUT_VERSION,
+    root: {
+      kind: 'split',
+      id: `s:dock:${view}`,
+      axis: 'x',
+      weights: [1 - share, share],
+      children: [
+        { kind: 'panel', id: `p:${view}`, views: [view], selected: view },
+        { kind: 'panel', id: `p:${docked}`, views: [docked], selected: docked },
+      ],
+    },
+    floating: [],
+    hidden: [],
+    views: { [view]: { type: PANE_TYPE, title }, [docked]: { type: PANE_TYPE, title: dockedTitle } },
+  }
+}
+
+/** The docked pane's share of a document `dockedDocument` made and the owner resized, or undefined for any other. */
+export function dockedShare(document: LayoutDocument): number | undefined {
+  const { root } = document
+  if (root?.kind !== 'split' || root.children.length !== 2) return undefined
+  const [main = 0, docked = 0] = root.weights
+  return main + docked > 0 ? docked / (main + docked) : undefined
+}
+
 /** Remove a panel from a layout, giving its share to the nearest remaining sibling. */
 function removeChild(node: SplitNode, direct: number): LayoutNode | null {
   const children = node.children.filter((_, index) => index !== direct)

@@ -1,5 +1,6 @@
 // Where an App is shown and how it moves (ADR 0020): its page beside its transcript, back, filling the workspace from
-// its page; and what an App asking for a display mode gets. Used by its stage's bar and its page's pill.
+// its page with its conversation docked beside it (ADR 0021); and what an App asking for a display mode gets. Used by
+// its stage's bar and its page's pill.
 import type { McpUiDisplayMode } from '@modelcontextprotocol/ext-apps/app-bridge'
 import type { AppView } from '@goblin/contracts'
 import { appKey, conversationKey, isOpen, order } from '../../lib/workspace.ts'
@@ -25,12 +26,14 @@ export function useAppPlacement(app: AppView) {
     if (order(workspace.state).length > 1) workspace.close(key)
     else workspace.open(conversationKey(conversation), 'here', key)
   }
-  const fill = () => workspace.maximize(filled ? undefined : key)
+  const docked = conversationKey(conversation)
+  /** Fills the workspace with the App and its conversation docked beside it, or gives the panes back. */
+  const fill = () => workspace.maximize(filled ? undefined : key, docked)
   /** What the App asked for: fullscreen is its page filling the workspace; inline is back in its transcript. */
   const request = (mode: McpUiDisplayMode): McpUiDisplayMode => {
     if (mode === 'fullscreen') {
       if (!paged) page()
-      workspace.maximize(key)
+      workspace.maximize(key, docked)
       return 'fullscreen'
     }
     if (mode !== 'inline') return paged ? 'fullscreen' : 'inline'

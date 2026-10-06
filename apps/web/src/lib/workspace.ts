@@ -46,6 +46,22 @@ export type WorkspaceState = {
   readonly doc: LayoutDocument
   readonly focused: ItemKey
   readonly maximized?: ItemKey
+  /** While an App fills the workspace, its conversation docked beside it (ADR 0021). */
+  readonly docked?: ItemKey
+  /** This device's docked chat: shown or folded away, and its share of the workspace's width. */
+  readonly dock?: Dock
+}
+
+/** The docked chat beside a full-screen App: shown or not, and its share of the width. */
+export type Dock = { readonly open: boolean; readonly share: number }
+export const DEFAULT_DOCK: Dock = { open: true, share: 0.3 }
+/** The narrowest and widest the docked chat may be, as shares of the workspace. */
+const DOCK_SHARE = { min: 0.18, max: 0.6 } as const
+
+/** The dock as the owner set it, its share kept between the narrowest and widest. */
+export const dockOf = (state: WorkspaceState): Dock => {
+  const dock = state.dock ?? DEFAULT_DOCK
+  return { open: dock.open, share: Math.min(Math.max(dock.share, DOCK_SHARE.min), DOCK_SHARE.max) }
 }
 
 /**
@@ -67,7 +83,7 @@ export const order = (state: WorkspaceState): ItemKey[] => leafOrder(state.doc)
 export const isOpen = (state: WorkspaceState, key: ItemKey): boolean => key in state.doc.views
 
 const settle = (state: WorkspaceState, doc: LayoutDocument, focused: ItemKey): WorkspaceState => {
-  const { maximized: _cleared, ...rest } = state
+  const { maximized: _cleared, docked: _undocked, ...rest } = state
   return { ...rest, doc: balanced(doc), focused }
 }
 
@@ -136,11 +152,21 @@ export function replaceItem(state: WorkspaceState, from: ItemKey, to: ItemKey, t
   }
 }
 
-/** One pane fills the workspace, or (with `undefined`) all of them share it again. */
-export function maximizeItem(state: WorkspaceState, key: ItemKey | undefined): WorkspaceState {
-  const { maximized: _cleared, ...rest } = state
-  return key === undefined || !isOpen(state, key) ? rest : { ...rest, maximized: key, focused: key }
+/**
+ * One pane fills the workspace, or (with `undefined`) all of them share it again. An App fills it with its conversation
+ * `docked` beside it.
+ */
+export function maximizeItem(state: WorkspaceState, key: ItemKey | undefined, docked?: ItemKey): WorkspaceState {
+  const { maximized: _cleared, docked: _undocked, ...rest } = state
+  if (key === undefined || !isOpen(state, key)) return rest
+  return { ...rest, maximized: key, focused: key, ...(docked !== undefined && docked !== key && { docked }) }
 }
+
+/** Shows or folds the docked chat, or sets its share of the width. */
+export const withDock = (state: WorkspaceState, change: Partial<Dock>): WorkspaceState => ({
+  ...state,
+  dock: { ...dockOf(state), ...change },
+})
 
 /** The document Trellis reports after the owner resized panes: taken as is when it shows the same items. */
 export function resized(state: WorkspaceState, doc: LayoutDocument): WorkspaceState {
@@ -186,7 +212,12 @@ export function parseWorkspace(raw: string | null): WorkspaceState | undefined {
     if (doc === undefined) return undefined
     const items = leafOrder(doc)
     const focused = typeof value?.focused === 'string' && items.includes(value.focused) ? value.focused : items[0]
-    return focused === undefined ? undefined : { doc, focused }
+    const dock = record(value?.dock)
+    const kept =
+      typeof dock?.open === 'boolean' && typeof dock.share === 'number'
+        ? { dock: { open: dock.open, share: dock.share } }
+        : {}
+    return focused === undefined ? undefined : { doc, focused, ...kept }
   } catch {
     return undefined
   }
@@ -194,4 +225,4 @@ export function parseWorkspace(raw: string | null): WorkspaceState | undefined {
 
 /** What `parseWorkspace` reads back. */
 export const serializeWorkspace = (state: WorkspaceState): string =>
-  JSON.stringify({ doc: state.doc, focused: state.focused })
+  JSON.stringify({ doc: state.doc, focused: state.focused, ...(state.dock !== undefined && { dock: state.dock }) })

@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { AppView } from '@goblin/contracts'
 import { Button, DropdownMenuItem, DropdownMenuSeparator } from '@goblin/ui'
-import { Maximize2Icon, Minimize2Icon, PanelLeftCloseIcon, XIcon } from 'lucide-react'
-import type { ItemKey } from '../../lib/workspace.ts'
-import { appNames, appOrigin } from '../../lib/workspace-tree.ts'
+import { Maximize2Icon, MessageSquareIcon, Minimize2Icon, PanelLeftCloseIcon, XIcon } from 'lucide-react'
+import { type ItemKey, dockOf } from '../../lib/workspace.ts'
+import { appNames, appOrigin, isUnread } from '../../lib/workspace-tree.ts'
 import { usePlace } from '../conversation-pane.tsx'
 import { PaneHeader } from '../pane-header.tsx'
 import { AppTile } from '../sidebar-tree.tsx'
@@ -36,29 +36,45 @@ function PageNote({
   )
 }
 
-/** The page's pill menu: back in its conversation, filling the workspace (fullscreen) and back, and close. */
-function AppPageMenu({ app, item }: { readonly app: AppView; readonly item: ItemKey }) {
+/**
+ * The page's pill menu: back in its conversation, full screen with its conversation docked beside it (ADR 0021) and
+ * back, and close.
+ */
+function AppPageMenu({ app }: { readonly app: AppView }) {
   const host = useAppHost()
   const place = useAppPlacement(app)
-  const { only } = usePlace(item)
   return (
     <>
       <DropdownMenuItem onClick={place.inline}>
         <PanelLeftCloseIcon aria-hidden />
         Back in the conversation
       </DropdownMenuItem>
-      {!only && (
-        <DropdownMenuItem onClick={place.fill}>
-          {place.filled ? <Minimize2Icon aria-hidden /> : <Maximize2Icon aria-hidden />}
-          {place.filled ? 'Show all panes' : 'Fill the workspace'}
-        </DropdownMenuItem>
-      )}
+      <DropdownMenuItem onClick={place.fill}>
+        {place.filled ? <Minimize2Icon aria-hidden /> : <Maximize2Icon aria-hidden />}
+        {place.filled ? 'Show all panes' : 'Full screen with the chat'}
+      </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={() => host.close(app.id)}>
         <XIcon aria-hidden />
         Close the app
       </DropdownMenuItem>
     </>
+  )
+}
+
+/** While the App fills the workspace: shows or folds its docked chat, with a dot when it has unread replies. */
+function DockToggle({ app }: { readonly app: AppView }) {
+  const workspace = useWorkspace()
+  const { conversations } = useWorkspaceFeed()
+  const { open } = dockOf(workspace.state)
+  const view = conversations.find((each) => each.id === app.conversation)
+  return (
+    <span className="dock-toggle" data-unread={!open && view !== undefined && isUnread(view)}>
+      <Button size="sm" variant="ghost" aria-pressed={open} onClick={() => workspace.setDock({ open: !open })}>
+        <MessageSquareIcon aria-hidden />
+        {open ? 'Hide chat' : 'Chat'}
+      </Button>
+    </span>
   )
 }
 
@@ -90,9 +106,14 @@ export function AppPage({ item, id }: { readonly item: ItemKey; readonly id: str
         title={title}
         first={first}
         {...(app !== undefined && {
-          menu: <AppPageMenu app={app} item={item} />,
+          menu: <AppPageMenu app={app} />,
           mark: <AppTile origin={appOrigin(app)} />,
-          status: <span className="pane-state">{appOrigin(app)}</span>,
+          status: (
+            <>
+              <span className="pane-state">{appOrigin(app)}</span>
+              {workspace.state.maximized === item && workspace.state.docked !== undefined && <DockToggle app={app} />}
+            </>
+          ),
         })}
         onClose={only ? undefined : () => workspace.close(item)}
       />

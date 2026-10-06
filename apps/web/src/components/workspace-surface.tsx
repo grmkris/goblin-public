@@ -7,14 +7,15 @@ import {
   DEFAULT_KEYMAP,
   createWorkspace,
 } from '@danfessler/trellis'
-import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useHydrated } from '@tanstack/react-router'
-import { useMediaQuery } from '@goblin/ui'
+import { Button, Sheet, SheetContent, SheetTitle, useMediaQuery } from '@goblin/ui'
+import { MessageSquareIcon } from 'lucide-react'
 import { WIDE_QUERY } from '../lib/breakpoints.ts'
 import { PANE_MIN } from '../lib/pane-drop.ts'
-import { PANE_TYPE, columnCount, singlePane } from '../lib/trellis-layout.ts'
-import { type ItemKey, type WorkspaceState, isOpen, itemOf, order } from '../lib/workspace.ts'
+import { PANE_TYPE, columnCount, dockedDocument, dockedShare, singlePane } from '../lib/trellis-layout.ts'
+import { type ItemKey, type WorkspaceState, dockOf, isOpen, itemOf, order } from '../lib/workspace.ts'
 import { AppHost, useAppHost } from './apps/host.tsx'
 import { AppPage } from './apps/page.tsx'
 import { AppLayer } from './apps/stage.tsx'
@@ -84,9 +85,24 @@ function useHosts(items: readonly ItemKey[], parking: Parking): Hosts {
   return hosts
 }
 
-/** The document Trellis shows: the layout, or the one pane that fills the workspace. */
-const shownDocument = (state: WorkspaceState, title: (key: ItemKey) => string): LayoutDocument =>
-  state.maximized === undefined ? state.doc : singlePane(state.maximized, title(state.maximized))
+/**
+ * The document Trellis shows: the layout, or the one pane that fills the workspace, an App's with its conversation
+ * docked beside it unless the owner folded the dock away.
+ */
+function shownDocument(state: WorkspaceState, title: (key: ItemKey) => string): LayoutDocument {
+  const { maximized, docked } = state
+  if (maximized === undefined) return state.doc
+  const dock = dockOf(state)
+  return docked === undefined || !dock.open
+    ? singlePane(maximized, title(maximized))
+    : dockedDocument(maximized, title(maximized), docked, title(docked), dock.share)
+}
+
+/** The items with a host: every pane's, and the conversation docked beside a full-screen App. */
+const hostedItems = (state: WorkspaceState): ItemKey[] => {
+  const items = order(state)
+  return state.docked === undefined || items.includes(state.docked) ? items : [...items, state.docked]
+}
 
 type Live = { readonly workspace: ReturnType<typeof useWorkspace>; readonly apps: ReturnType<typeof useAppHost> }
 
@@ -109,9 +125,13 @@ function connect(handle: WorkspaceHandle, latest: RefObject<Live>, applied: RefO
   const offChange = handle.on('change', (doc) => {
     const { workspace } = latest.current
     const seen = JSON.stringify(doc)
-    if (workspace.state.maximized !== undefined || seen === applied.current) return
+    if (seen === applied.current) return
     applied.current = seen
-    workspace.resized(doc)
+    if (workspace.state.maximized === undefined) workspace.resized(doc)
+    else if (workspace.state.docked !== undefined) {
+      const share = dockedShare(doc)
+      if (share !== undefined) workspace.setDock({ share })
+    }
   })
   const offFocus = handle.on('focus', (id) => {
     if (id !== null && isOpen(latest.current.workspace.state, id)) latest.current.workspace.focus(id)
@@ -228,6 +248,62 @@ function StripCell({
   return <div className="workspace-cell" ref={hold} />
 }
 
+/**
+ * On a phone, the conversation docked beside a full-screen App, in a sheet from the bottom (ADR 0021): half the screen
+ * or, with its handle, nearly all of it. The conversation's own pane moves in while it is open, so its stream and draft
+ * go on; folded away, a Chat button brings it back.
+ */
+function ChatSheet({
+  item,
+  hosts,
+  parking,
+}: {
+  readonly item: ItemKey
+  readonly hosts: Hosts
+  readonly parking: Parking
+}) {
+  const workspace = useWorkspace()
+  const { open } = dockOf(workspace.state)
+  const [full, setFull] = useState(false)
+  const hold = useCallback(
+    (body: HTMLDivElement | null) => {
+      const host = hosts.current.get(item)
+      if (body === null || host === undefined) return
+      place(host, body)
+      return () => {
+        if (parking.current) place(host, parking.current)
+      }
+    },
+    [item, hosts, parking],
+  )
+  return (
+    <>
+      {!open && (
+        <div className="chat-sheet-button">
+          <Button onClick={() => workspace.setDock({ open: true })}>
+            <MessageSquareIcon aria-hidden />
+            Chat
+          </Button>
+        </div>
+      )}
+      <Sheet open={open} onOpenChange={(next) => workspace.setDock({ open: next })}>
+        <SheetContent side="bottom" showCloseButton={false}>
+          <div className="chat-sheet" data-full={full}>
+            <SheetTitle className="sr-only">{workspace.titleOf(item)}</SheetTitle>
+            <button
+              type="button"
+              className="chat-sheet-handle"
+              aria-label={full ? 'Half height' : 'Full height'}
+              onClick={() => setFull(!full)}
+            />
+            <div className="chat-sheet-body" ref={hold} />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
+  )
+}
+
 /** Which cell of the strip is in view. */
 const cellAt = (strip: HTMLElement) => Math.round(strip.scrollLeft / Math.max(1, strip.clientWidth))
 
@@ -272,6 +348,14 @@ function NarrowStrip({
     if (shown !== undefined && shown !== focused) workspace.focus(shown)
     apps.kick()
   }
+  const { maximized, docked } = workspace.state
+  if (maximized !== undefined && docked !== undefined)
+    return (
+      <div className="workspace-strip">
+        <StripCell item={maximized} hosts={hosts} parking={parking} />
+        <ChatSheet item={docked} hosts={hosts} parking={parking} />
+      </div>
+    )
   return (
     <div className="workspace-strip" ref={strip} onScrollEnd={settle}>
       {items.map((item) => (
@@ -306,7 +390,8 @@ function Surface() {
   const wide = useMediaQuery(WIDE_QUERY)
   const parking = useRef<HTMLDivElement>(null)
   const items = useMemo(() => order(workspace.state), [workspace.state])
-  const hosts = useHosts(items, parking)
+  const hosted = useMemo(() => hostedItems(workspace.state), [workspace.state])
+  const hosts = useHosts(hosted, parking)
   return (
     <div className="workspace-surface" data-workspace={wide ? 'wide' : 'narrow'}>
       <div className="workspace-parking" ref={parking} inert aria-hidden />
@@ -316,7 +401,7 @@ function Surface() {
       ) : (
         <NarrowStrip items={items} hosts={hosts} parking={parking} />
       )}
-      {items.map((item) => {
+      {hosted.map((item) => {
         const host = hosts.current.get(item)
         return host === undefined ? null : createPortal(<PaneContents item={item} />, host, item)
       })}

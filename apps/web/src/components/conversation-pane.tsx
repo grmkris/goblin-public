@@ -250,8 +250,8 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
   const pane = useRef<HTMLElement>(null)
   const dock = useRef<HTMLDivElement>(null)
   useDockInsets(pane, dock)
-  const { maximized } = workspace.state
-  const placed = maximized === undefined || maximized === item
+  const { maximized, docked } = workspace.state
+  const placed = maximized === undefined || maximized === item || docked === item
   const visible = useOnScreen(pane) && placed
   const reading = useOnScreen(pane, 0.5) && placed
   const conversation = useConversation(id, visible)

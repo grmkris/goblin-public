@@ -17,6 +17,8 @@ import {
   isOpen,
   itemOf,
   maximizeItem,
+  withDock,
+  type Dock,
   openItem,
   parseWorkspace,
   prune,
@@ -43,7 +45,10 @@ type Workspace = {
   readonly focus: (key: ItemKey) => void
   /** The pane showing `from` shows `to` in its place: a draft once its thread exists. */
   readonly replace: (from: ItemKey, to: ItemKey) => void
-  readonly maximize: (key: ItemKey | undefined) => void
+  /** One pane fills the workspace (an App's with its conversation `docked` beside it), or none does. */
+  readonly maximize: (key: ItemKey | undefined, docked?: ItemKey) => void
+  /** Shows or folds the docked chat beside a full-screen App, or sets its share of the width. */
+  readonly setDock: (change: Partial<Dock>) => void
   /** The layout after the owner resized panes in Trellis. */
   readonly resized: (doc: LayoutDocument) => void
   /** A draft beside `source`: a reply to a message (shown above the draft as `root`), or a new empty thread. */
@@ -197,7 +202,8 @@ export function WorkspaceProvider({ enabled, children }: { readonly enabled: boo
         roots.current.delete(from)
         setState((current) => replaceItem(current, from, to, title(to)))
       },
-      maximize: (key) => setState((current) => maximizeItem(current, key)),
+      maximize: (key, docked) => setState((current) => maximizeItem(current, key, docked)),
+      setDock: (change) => setState((current) => withDock(current, change)),
       resized: (doc) => setState((current) => resized(current, doc)),
       draft: (from, root, source) => {
         const key = draftKey(from)

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { columnCount, leafOrder } from '../src/lib/trellis-layout.ts'
+import { columnCount, dockedDocument, dockedShare, leafOrder } from '../src/lib/trellis-layout.ts'
 import {
   MAIN_KEY,
   closeItem,
+  appKey,
   conversationKey,
+  dockOf,
   draftKey,
   initialWorkspace,
   itemOf,
@@ -15,6 +17,7 @@ import {
   replaceItem,
   resized,
   serializeWorkspace,
+  withDock,
   type WorkspaceState,
 } from '../src/lib/workspace.ts'
 
@@ -106,6 +109,25 @@ describe('closing and replacing', () => {
     expect(state.maximized).toBe(MAIN_KEY)
     expect(open(state, c('9')).maximized).toBeUndefined()
     expect(maximizeItem(state, undefined).maximized).toBeUndefined()
+  })
+
+  it('fills the workspace with an App and its conversation docked beside it, until the next change', () => {
+    const state = maximizeItem(open(initialWorkspace(), appKey('4')), appKey('4'), c('7'))
+    expect(state).toMatchObject({ maximized: appKey('4'), docked: c('7'), focused: appKey('4') })
+    expect(maximizeItem(state, undefined).docked).toBeUndefined()
+    expect(open(state, c('9')).docked).toBeUndefined()
+    expect(maximizeItem(state, appKey('4'), appKey('4')).docked).toBeUndefined()
+  })
+
+  it('keeps the dock on this device, its share between the narrowest and widest', () => {
+    expect(dockOf(initialWorkspace())).toEqual({ open: true, share: 0.3 })
+    const folded = withDock(withDock(initialWorkspace(), { share: 0.95 }), { open: false })
+    expect(dockOf(folded)).toEqual({ open: false, share: 0.6 })
+    expect(parseWorkspace(serializeWorkspace(folded))?.dock).toEqual({ open: false, share: 0.6 })
+    const doc = dockedDocument(appKey('4'), 'Board', c('7'), 'Trip', 0.25)
+    expect(leafOrder(doc)).toEqual([appKey('4'), c('7')])
+    expect(dockedShare(doc)).toBeCloseTo(0.25)
+    expect(dockedShare(initialWorkspace().doc)).toBeUndefined()
   })
 
   it('takes a resize from Trellis only when it shows the same items', () => {

@@ -59,7 +59,7 @@ and through the agent's own authority (the owner's plan and current resident aut
 owner's exact grant). Fetches go only to exact approved hosts over https on 443, never to goblin's own domain, with
 redirects checked again, no cookies, 20 a call and bounded sizes and time. Apps call apps at most three deep. What an
 app brings in from outside is data: its tool results say so once it can reach out. The agent cannot approve; the owner
-answers on the card (`PUT /api/agent-apps/:name/powers`).
+answers on the card or the app's page (a `power` change on `/api/agent-apps/:name`).
 
 **Downloads.** A view offers the owner a file (`download()`, MCP Apps' `ui/download-file`); the host draws it with a
 Save button and saves nothing without the owner's click.
@@ -78,8 +78,24 @@ doubling to six hours, and ten in a row pause the schedule until a new release. 
 authority lapses, runs are skipped and recorded as waiting. The feed carries each schedule's state; the App's bar
 shows it, and the agent's apps section lists it.
 
-**Still to come** (the same plan, later milestones): the Apps section and page with pause, resume and run now,
-fullscreen with the chat docked; owner deletion; sharing a view's context with the agent.
+**The owner's apps.** Agent apps live with the agent, not under a conversation: the sidebar lists those with a view
+in their own Apps group (MCP Apps stay under their conversations), and the Apps page (`/apps`) lists every one, those
+without a view too, with what needs the owner. An app's own page (`/apps/<name>`) opens it, moves its home to another
+open conversation, pauses, resumes or runs a schedule now, allows or revokes its powers, goes back to an earlier
+version, shows today's use, its files and recent events, and deletes it once the owner types its name: its tools go
+first, then its native schedules, its files (R2 too) and every row, and the feed drops its App (`app-removed`). Closing
+an app's home conversation moves its home to main; the app and its schedules go on. Routes: `GET /api/agent-apps`, and
+`GET`, `POST` (`AgentAppChange`) and `DELETE` (`DeleteAgentApp`) on `/api/agent-apps/:name`; the build card's Allow is
+a `power` change.
+
+**Full screen with the chat.** *Fill the workspace* (ADR 0020) becomes *Full screen with the chat*, for both kinds of
+App: the App's page fills the workspace with its conversation docked on the right (about 30% of the width, resizable,
+folded away with *Hide chat*, a dot on *Chat* while it has unread replies). The dock is a preference of the device. On a
+phone the App fills the screen and its conversation opens in a sheet from the bottom, half the screen or nearly all of
+it. The conversation's own pane moves into the dock or the sheet, so its stream and draft go on.
+
+**Still to come** (the same plan, later milestones): sharing a view's context with the agent; a render check of a view
+at build time.
 
 Consequences:
 - Dynamic Workers are an open beta on Workers Paid; their pricing and limits may change.
