@@ -207,5 +207,29 @@ function labelErrors(scenario: Scenario, probe: Probe): string[] {
   if (probe.label.evidenceIds.some((id) => !allowed.has(id))) errors.push(`future label evidence ${probe.id}`)
   if (probe.label.requiredClaims.some((claim) => !probe.keys.includes(claim.key)))
     errors.push(`invalid label key ${probe.id}`)
+  errors.push(...rangeErrors(scenario, probe))
+  return errors
+}
+
+function rangeErrors(scenario: Scenario, probe: Probe): string[] {
+  if (probe.label === undefined) return []
+  const errors: string[] = []
+  for (const range of probe.label.evidenceRanges ?? []) {
+    const source = scenario.events.slice(0, probe.cutoff).find((event) => event.id === range.id)
+    const bytes = new TextEncoder().encode(source?.text ?? '')
+    if (
+      !probe.label.evidenceIds.includes(range.id) ||
+      range.offsetBytes >= range.endBytes ||
+      range.endBytes > bytes.length
+    )
+      errors.push(`invalid label evidence range ${probe.id}`)
+    else {
+      try {
+        new TextDecoder('utf-8', { fatal: true }).decode(bytes.slice(range.offsetBytes, range.endBytes))
+      } catch {
+        errors.push(`label evidence range splits UTF-8 ${probe.id}`)
+      }
+    }
+  }
   return errors
 }

@@ -19,6 +19,8 @@ import { compare, renderReport, promotion, reportData } from '../src/report.ts'
 import { factorial } from '../src/factorial.ts'
 import { createRecall } from './recall.ts'
 import { exportPacket, importVotes } from './blind.ts'
+import { Corpus } from '../src/corpus.ts'
+import { planCampaign, runCampaign, reportCampaign } from './campaign.ts'
 
 const [command = 'plan', ...args] = Bun.argv.slice(2)
 function option(name: string): string | undefined {
@@ -36,6 +38,18 @@ function thinkingOption(): 'provider-default' | 'disabled' | undefined {
   if (value !== 'provider-default' && value !== 'disabled')
     throw new Error('Supply --thinking as provider-default or disabled')
   return value
+}
+function importOptions() {
+  const kind = Schema.decodeUnknownSync(Corpus.fields.kind)(option('kind') ?? 'claude-jsonl')
+  const targets = (option('targets') ?? '16000,32000').split(',').map(Number)
+  if (
+    targets.length === 0 ||
+    targets.some(
+      (value, at) => !Number.isSafeInteger(value) || value <= 0 || (at > 0 && value <= (targets[at - 1] ?? 0)),
+    )
+  )
+    throw new Error('Supply strictly increasing positive integer --targets separated by commas')
+  return { kind, targets }
 }
 const root = resolve(import.meta.dirname, '../..')
 const runs = join(root, '.local/bench/runs')
@@ -161,11 +175,23 @@ const artifactCommand = Effect.fn('bench.artifactCommand')(function* () {
   if (command === 'recall') return yield* recallCommand()
   if (command === 'canary') return yield* createCanary(root, option('corpus') ?? '', resolve(option('labels') ?? ''))
   if (command === 'review') return yield* recordReviews(runDir(runId), resolve(option('review') ?? ''))
-  if (command === 'import') return yield* importCorpus(root, resolve(option('source') ?? ''), option('corpus') ?? '')
+  if (command === 'import') {
+    const { kind, targets } = importOptions()
+    return yield* importCorpus(root, resolve(option('source') ?? ''), option('corpus') ?? '', kind, targets)
+  }
   if (['report', 'compare', 'promote'].includes(command)) return yield* analyze()
   return yield* fail('Unknown artifact command')
 })
 const program = Effect.gen(function* () {
+  if (command === 'campaign-report') return yield* reportCampaign(runDir(runId))
+  if (['campaign-plan', 'campaign-run', 'campaign-resume'].includes(command)) {
+    if (command !== 'campaign-plan' && !args.includes('--live'))
+      return yield* fail('Real campaign execution requires --live')
+    const path = resolve(option('campaign') ?? '')
+    return command === 'campaign-plan'
+      ? yield* planCampaign(root, path)
+      : yield* runCampaign(root, path, command === 'campaign-resume')
+  }
   if (
     ['review-packet', 'review-votes', 'recall', 'canary', 'review', 'import', 'report', 'compare', 'promote'].includes(
       command,

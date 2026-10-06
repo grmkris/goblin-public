@@ -1,5 +1,72 @@
 # Memory benchmark workspace
 
+## Real-history overnight campaign
+
+The campaign coordinator freezes several real-corpus manifests behind one identity and durable API budget. The
+approved private campaign is `.local/bench/experiments/real-history-overnight-v1/campaign.json`: Claude prefixes at
+19k/36k/66k/129k/258k source tokens, and one genuine Hermes Telegram DM at 32k/66k/113k. Each checkpoint has five
+curated probes for exact detail, recorded rationale, latest state, superseded beliefs (`negative-constraint`) and
+absent owner approval. No unrelated sessions, padding or generated histories enter the live experiment.
+
+DeepSeek Flash is the common reader. Core arms are native Pi compaction, native/search, Qwen-written OptChat, and
+that same tree/search. The first checkpoint of each corpus also compares DeepSeek and Muse writers. Arm order is
+deterministically counterbalanced per probe. `modelTransport` pins route-specific thinking: Qwen/DeepSeek disabled,
+Muse provider default. Native replay compacts closed tool exchanges in at most 65536 serialized bytes, extending
+the same persisted actor. Search pairs reuse the same checkpoint without model calls. Probe forks never append their
+questions or answers to the persistent source history.
+
+Native scheduling uses a 32768-token window, 8192-token reserve and 2048 recent tokens; the calibrated native
+compactor has 6144 output tokens. This avoids scheduling another summary immediately for a short recall probe.
+OptChat keeps its maintained 4096-byte view. The transport capacity is independently 131072 tokens. These settings
+are part of the immutable campaign identity; reports retain the actual rendered contexts and all reader compactions.
+
+| Phase                   | Upstream attempts | Input ceiling | Completion including reasoning |
+| ----------------------- | ----------------: | ------------: | -----------------------------: |
+| Preflight               |                60 |        150000 |                          25000 |
+| Memory construction     |              1400 |       7800000 |                         280000 |
+| Answers                 |               440 |       1650000 |                          95000 |
+| Independent Muse review |               100 |        400000 |                         100000 |
+| Total                   |              2000 |      10000000 |                         500000 |
+
+All phases, failed attempts and one transient retry use the same append-only `attempts.jsonl`; there is one active
+upstream request and at most six attempts per answer. Each stage also declares its own envelope. The earlier
+three-phase proposal has been rebalanced inside the same total so judging is accounted for. Unknown usage retains
+the full reservation and halts further admission immediately. Breaches also halt admission. Legacy manifests retain
+their smaller ceilings.
+
+```sh
+bun run bench:campaign-plan --campaign .local/bench/experiments/real-history-overnight-v1/campaign.json
+heavy bun run bench:campaign-run --live --campaign .local/bench/experiments/real-history-overnight-v1/campaign.json
+bun run bench:campaign-report --run real-history-overnight-v1
+heavy bun run bench:campaign-resume --live --campaign .local/bench/experiments/real-history-overnight-v1/campaign.json
+```
+
+Freeze the checked implementation locally before live inference, preserving private corpus/provider paths. Every
+writer route must pass native real-source preflight with the common reader. Stages advance only after at least 90%
+answer completion, known settled usage, no breaches, monotonic build receipts and successful machine review.
+Failure receipts are terminal; resume never reruns a failed or unfinished answer, preflight or judge request.
+Resume rechecks completed stage totals, operational gates and sealed reviews against their ordered receipts before
+opening providers. Completed stages and builds reuse their durable receipts. `progress.jsonl` exposes stage progress without source
+payloads, and `builds.jsonl` records cold/extended/reused work, newly processed source count, API attempt IDs and time.
+
+Muse reviews shuffled, blinded original answers in batches per question. Audited original label ranges and cited
+delivery receipts bound its evidence; it does not read the entire transcript for every answer. `blind/*.packet.json`
+contains the full authorized prefix for independent human review, with separate sealed mapping and vote templates.
+The coordinator never repairs malformed answers or judge output. Machine scores are diagnostic. Audit a balanced
+sample across corpora, lengths, categories and arms, plus all disagreements; import independent human votes and
+adjudicate disagreements with the existing review tools. Unaudited cases remain unresolved.
+
+`campaign-report.json` separates build, reader, preflight and judging usage; reports per-corpus/length/category/model
+quality, paired gains/losses/ties, API latency, coordinator time and retrieval attempts/bytes/denials. Context
+summaries count serialized messages actually sent and reported prompt tokens, without exposing source text in the
+summary. Full private contexts remain in API/native traces. Construction amortization
+uses completed answers sharing that memory; warm reuse is not a zero cold-build cost. Dollar prices and TTFT remain
+unknown. Product criteria require at least ten percentage points recall gain on both long histories, no category
+loss above five points, no increase in unsupported claims or leakage, and latency/amortized cost below twice native.
+Writers within five points of the best quality can compete on cost. Search gains require original cited delivery;
+ties favor native. Two histories provide exploratory product evidence, not statistical generality or deployment
+authorization. No campaign path promotes a production configuration.
+
 Native Pi memory experiments in an isolated Alchemy/workerd stack. The starter compares the full GLM 5.3 / DeepSeek
 V4 Pro 0813 writer-reader matrix against Pi's own compactor and Pi plus lexical archive search: 3 development
 families × 2 cutoffs × 2 probes × 8 configurations = 96 answer episodes. Three distinct families remain held out.

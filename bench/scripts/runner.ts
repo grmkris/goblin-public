@@ -23,17 +23,23 @@ const executeEpisode = Effect.fn('bench.episode')(function* (
   resolved: Resolved,
   episode: Episode,
   provider: Effect.Success<ReturnType<typeof relay>>,
-  blocked: {
-    has: (actor: string) => boolean
-    record: (actor: string) => Effect.Effect<void, unknown, FileSystem.FileSystem>
+  options: {
+    dir: string
+    stage?: number
+    blocked: {
+      has: (actor: string) => boolean
+      record: (actor: string) => Effect.Effect<void, unknown, FileSystem.FileSystem>
+    }
   },
 ) {
+  const { blocked } = options
   const scenario = (resolved.scenarios ?? dataset()).find((item) => item.id === episode.probe.scenarioId)
   if (scenario === undefined) return yield* fail('Unknown scenario')
   const actor = artifactIdentity(resolved, scenario.id, episode.variant)
   if (blocked.has(actor))
     return yield* fail('Checkpoint build previously failed in this run; dependent episodes remain blocked')
-  provider.setScope(actor, 'build', episode.probe.cutoff)
+  provider.setScope(actor, 'build', options.stage ?? episode.probe.cutoff)
+  const before = new Set(provider.traces(actor).map((trace) => trace.attempt))
   const [buildDuration, build] = yield* post(url, 'build', actor, {
     identity: actor,
     manifest: resolved.manifest,
@@ -44,8 +50,19 @@ const executeEpisode = Effect.fn('bench.episode')(function* (
     Effect.tapError(() => blocked.record(actor)),
     Effect.timed,
   )
+  yield* appendJson(join(options.dir, 'builds.jsonl'), {
+    episodeId: episode.id,
+    actor,
+    stage: options.stage ?? episode.probe.cutoff,
+    build,
+    buildMs: Duration.toMillis(buildDuration),
+    attempts: provider
+      .traces(actor)
+      .filter((trace) => !before.has(trace.attempt))
+      .map((trace) => trace.attempt),
+  })
   const operationId = `${resolved.runId}.${episode.id}`
-  provider.setScope(operationId, 'answer', episode.probe.cutoff)
+  provider.setScope(operationId, 'answer', options.stage ?? episode.probe.cutoff)
   const [answerDuration, raw] = yield* post(url, 'probe', actor, {
     id: operationId,
     reader: episode.variant.reader,
@@ -124,15 +141,16 @@ const openProvider = Effect.fn('bench.openProvider')(function* (options: {
   return yield* relay(options.resolved, join(options.dir, 'attempts.jsonl'), providerConfig)
 })
 
-type RunOptions = {
+export type RunOptions = {
   dir: string
   root: string
   resolved: Resolved
   resume: boolean
   providerPath?: string
   untilCutoff?: number
+  stage?: number
 }
-const initializeRun = Effect.fn('bench.initializeRun')(function* (options: RunOptions) {
+export const initializeRun = Effect.fn('bench.initializeRun')(function* (options: RunOptions) {
   const fs = yield* FileSystem.FileSystem
   yield* lockRun(options.dir)
   const path = join(options.dir, 'resolved.json')
@@ -146,18 +164,19 @@ const initializeRun = Effect.fn('bench.initializeRun')(function* (options: RunOp
     yield* writeJson(path, options.resolved)
   }
 })
-const saveEpisode = Effect.fn('bench.saveEpisode')(function* (
+export const saveEpisode = Effect.fn('bench.saveEpisode')(function* (
   options: RunOptions,
   episode: Episode,
   url: string,
   provider: Effect.Success<ReturnType<typeof relay>>,
-  blocked: Parameters<typeof executeEpisode>[4],
+  blocked: Parameters<typeof executeEpisode>[4]['blocked'],
 ) {
   const episodePath = join(options.dir, 'episodes', `${episode.id}.json`)
-  const [duration, completed] = yield* executeEpisode(url, options.resolved, episode, provider, blocked).pipe(
-    Effect.result,
-    Effect.timed,
-  )
+  const [duration, completed] = yield* executeEpisode(url, options.resolved, episode, provider, {
+    blocked,
+    dir: options.dir,
+    ...(options.stage === undefined ? {} : { stage: options.stage }),
+  }).pipe(Effect.result, Effect.timed)
   const episodeMs = Duration.toMillis(duration)
   if (Result.isSuccess(completed)) {
     const result = { ...completed.success.result, timing: { episodeMs, ...completed.success.timing } }

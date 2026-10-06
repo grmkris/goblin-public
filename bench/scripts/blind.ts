@@ -60,8 +60,9 @@ export const exportPacket = Effect.fn('bench.exportPacket')(function* (
   dir: string,
   name: string,
   cutoff: number | undefined,
+  options: { readonly alreadyLocked?: boolean; readonly episodeIds?: readonly string[] } = {},
 ) {
-  yield* lockRun(dir)
+  if (options.alreadyLocked !== true) yield* lockRun(dir)
   if (!/^[a-zA-Z0-9_.-]+$/u.test(name)) return yield* fail('Use a simple packet name')
   const data = yield* loadRun(dir)
   const fs = yield* FileSystem.FileSystem
@@ -72,6 +73,7 @@ export const exportPacket = Effect.fn('bench.exportPacket')(function* (
   }
   const selected = episodes(data.resolved.manifest, data.resolved.scenarios)
     .filter((episode) => cutoff === undefined || episode.probe.cutoff <= cutoff)
+    .filter((episode) => options.episodeIds === undefined || options.episodeIds.includes(episode.id))
     .filter((episode) => data.results.some((result) => result.id === episode.id && result.status === 'completed'))
   if (selected.length === 0) return yield* fail('No completed real answers to review')
   const entries = yield* Effect.forEach(selected, (episode) => packetEntry(dir, data, episode.id))
@@ -153,8 +155,13 @@ const bindVote = Effect.fn('bench.bindVote')(function* (
     packetHash: map.packetHash,
   } satisfies SemanticVote
 })
-export const importVotes = Effect.fn('bench.importVotes')(function* (dir: string, name: string, path: string) {
-  yield* lockRun(dir)
+export const importVotes = Effect.fn('bench.importVotes')(function* (
+  dir: string,
+  name: string,
+  path: string,
+  alreadyLocked = false,
+) {
+  if (!alreadyLocked) yield* lockRun(dir)
   const data = yield* loadRun(dir)
   const { packet, map } = yield* readPacket(dir, name)
   const votes = yield* readJson(path, Schema.Array(VoteInput))

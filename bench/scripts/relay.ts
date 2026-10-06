@@ -136,7 +136,13 @@ function budgetsFor(account: Accounting, label: Label): Budget[] {
 function admitAttempt(account: Accounting, label: Label, reservation: { input: number; output: number }): boolean {
   const budgets = budgetsFor(account, label)
   const missingStage = label.phase !== 'preflight' && account.stageBudgets.size > 0 && budgets.length !== 3
-  if (missingStage || answerLimitReached(account, label) || account.records.some(exceededReservation)) return false
+  const latest = [...new Map(account.records.map((record) => [record.attempt, record])).values()]
+  if (
+    missingStage ||
+    answerLimitReached(account, label) ||
+    latest.some((record) => record.unknownUsage || record.status === 0 || exceededReservation(record))
+  )
+    return false
   if (!budgets.every((budget) => budget.accepts(reservation))) return false
   for (const budget of budgets) budget.reserve(reservation)
   return true
@@ -296,6 +302,7 @@ export const relay = Effect.fn('bench.relay')(function* (
   const allowed = new Set(
     resolved.manifest.variants.flatMap((variant) => [variant.reader, variant.writer ?? variant.reader]),
   )
+  if (resolved.manifest.campaignId !== undefined) allowed.add('muse-spark-1.3-contributor')
   const handle = (request: Request) =>
     handleRequest(
       request,
