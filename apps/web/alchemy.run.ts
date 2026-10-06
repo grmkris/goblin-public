@@ -7,6 +7,18 @@ import { fileURLToPath } from 'node:url'
 import { resolveStage } from '../../scripts/stage-config.ts'
 
 const root = fileURLToPath(new URL('./', import.meta.url))
+
+/** The model gateway, model choice and daily budget the Worker reads (docs/development.md). */
+const modelEnv = {
+  MODEL_BASE_URL: Config.String('GOBLIN_MODEL_BASE_URL').pipe(Config.withDefault('http://127.0.0.1:8317/v1')),
+  MODEL_ID: Config.String('GOBLIN_MODEL_ID').pipe(Config.withDefault('gemini-3.8-flash')),
+  MODELS: Config.String('GOBLIN_MODELS').pipe(Config.withDefault('')),
+  MODEL_KEY: Config.Redacted('GOBLIN_MODEL_KEY').pipe(Config.withDefault(Redacted.make(''))),
+  MODEL_DAILY_TOKENS: Config.String('GOBLIN_MODEL_DAILY_TOKENS').pipe(Config.withDefault('300000')),
+  MODEL_TOKEN_WEIGHTS: Config.String('GOBLIN_MODEL_TOKEN_WEIGHTS').pipe(Config.withDefault('{}')),
+  MEMORY_MODEL: Config.String('GOBLIN_MEMORY_MODEL').pipe(Config.withDefault('')),
+}
+
 const runtimeStage = (name: string) => (name === 'local' || name === 'dev' || name === 'prod' ? name : 'test')
 
 export default Alchemy.Stack(
@@ -73,13 +85,7 @@ export default Alchemy.Stack(
               MAIL_SENDER: mailSender,
             }),
         SIGNUP_INVITE_CODE: Config.Redacted('GOBLIN_SIGNUP_INVITE_CODE').pipe(Config.withDefault(Redacted.make(''))),
-        MODEL_BASE_URL: Config.String('GOBLIN_MODEL_BASE_URL').pipe(Config.withDefault('http://127.0.0.1:8317/v1')),
-        MODEL_ID: Config.String('GOBLIN_MODEL_ID').pipe(Config.withDefault('gemini-3.8-flash')),
-        MODELS: Config.String('GOBLIN_MODELS').pipe(Config.withDefault('')),
-        MODEL_KEY: Config.Redacted('GOBLIN_MODEL_KEY').pipe(Config.withDefault(Redacted.make(''))),
-        MODEL_DAILY_TOKENS: Config.String('GOBLIN_MODEL_DAILY_TOKENS').pipe(Config.withDefault('300000')),
-        MODEL_TOKEN_WEIGHTS: Config.String('GOBLIN_MODEL_TOKEN_WEIGHTS').pipe(Config.withDefault('{}')),
-        MEMORY_MODEL: Config.String('GOBLIN_MEMORY_MODEL').pipe(Config.withDefault('')),
+        ...modelEnv,
         MCP_SERVERS: Config.String('GOBLIN_MCP_SERVERS').pipe(Config.withDefault('[]')),
         CREDENTIAL_KEY: Config.Redacted('GOBLIN_CREDENTIAL_KEY'),
         DODO_PAYMENTS_ENVIRONMENT: billingEnvironment,
@@ -89,6 +95,7 @@ export default Alchemy.Stack(
         ),
         DODO_PRODUCT_ID: Config.Redacted('DODO_PRODUCT_ID').pipe(Config.withDefault(Redacted.make(''))),
         STAGE: runtimeStage(stage.name),
+        OPERATORS: Config.String('GOBLIN_OPERATORS').pipe(Config.withDefault('')),
       },
     })
     return { url: web.url, authDatabase: db.databaseId }

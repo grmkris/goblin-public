@@ -22,3 +22,17 @@ export const unwrap = <A>(result: RpcResult<A>): A => {
   if (result.ok) return result.value
   throw Schema.decodeUnknownSync(AppError)(result.error)
 }
+
+const RpcJson = Schema.Union([
+  // A void result crosses as `{ ok: true }`: JSON drops an undefined value.
+  Schema.Struct({ ok: Schema.Literal(true), value: Schema.optional(Schema.Unknown) }),
+  Schema.Struct({ ok: Schema.Literal(false), error: Schema.Unknown }),
+])
+const decodeRpcJson = Schema.decodeUnknownSync(RpcJson)
+
+/** An `RpcResult` that crossed as JSON (an agent's internal fetch route): its value, or its rebuilt `AppError`. */
+export const unwrapJson = (json: unknown): unknown => {
+  const result = decodeRpcJson(json)
+  if (result.ok) return result.value
+  throw Schema.decodeUnknownSync(AppError)(result.error)
+}

@@ -1,5 +1,5 @@
 import { createMcpHandler } from 'agents/mcp/server'
-import { clientName, verifyClientToken } from '../auth/index.ts'
+import { challengeOf, clientName, verifyClientToken } from '../auth/index.ts'
 import type { RuntimeEnv } from '../env.ts'
 import { unwrap } from '../http/rpc.ts'
 import { inboundServer } from './server.ts'
@@ -10,25 +10,16 @@ export const inboundHosts = (appUrl: string) => ({
   allowedOriginHostnames: [new URL(appUrl).hostname],
 })
 
-const challenge = (env: RuntimeEnv): Response =>
-  new Response(JSON.stringify({ error: 'Unauthenticated' }), {
-    status: 401,
-    headers: {
-      'content-type': 'application/json',
-      'www-authenticate': `Bearer resource_metadata="${new URL('/.well-known/oauth-protected-resource/mcp', env.APP_URL).href}"`,
-    },
-  })
-
 /** `/mcp`: verify the client's bearer token, then serve the stateless MCP handler bound to that client. */
 export const handleInboundMcp = async (request: Request, env: RuntimeEnv): Promise<Response> => {
   const header = request.headers.get('authorization') ?? ''
-  if (!header.startsWith('Bearer ')) return challenge(env)
+  if (!header.startsWith('Bearer ')) return challengeOf(env.APP_URL, 'ask')
   const token = header.slice('Bearer '.length)
   let principal: Awaited<ReturnType<typeof verifyClientToken>>
   try {
     principal = await verifyClientToken(token, env)
   } catch {
-    return challenge(env)
+    return challengeOf(env.APP_URL, 'ask')
   }
   // The token's subject is the user who consented; the client talks to that user's agent only.
   await requireAccountPlan(env, principal.subject)

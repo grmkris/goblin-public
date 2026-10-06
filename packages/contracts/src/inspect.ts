@@ -6,27 +6,47 @@ import { RunEvent, RunEventStatus } from './telemetry.ts'
  * Read-only inspection of one agent (ADR 0024): its conversations, a conversation's entries, its turns and their
  * timelines, and what went wrong. Full content for conversations, bounded and paged; no reads call a model.
  */
-const Session = Schema.String.check(Schema.isPattern(/^\d{1,12}$/u))
-const Limit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))
-/** Epoch milliseconds. */
-const Since = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const Session = Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)).annotate({
+  description: 'A conversation id as `inspect_conversations` lists it; "1" is the main conversation.',
+})
+const Limit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 })).annotate({
+  description: 'At most this many, 1 to 100.',
+})
+const Since = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).annotate({
+  description: 'Only what started since this time, in epoch milliseconds. Without it, the last day.',
+})
 
-export const InspectQuery = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal('conversations') }),
-  Schema.Struct({
-    kind: Schema.Literal('conversation'),
+/** What each query takes apart from its kind: the inputs of the inspection tools. */
+export const InspectInput = {
+  conversations: Schema.Struct({}),
+  conversation: Schema.Struct({
     conversation: Session,
-    /** Entries before this entry id; the newest page without it. */
-    before: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
+    before: Schema.optional(
+      Schema.Int.check(Schema.isGreaterThan(0)).annotate({
+        description: 'Entries before this entry id, from the last page; the newest page without it.',
+      }),
+    ),
   }),
-  Schema.Struct({
-    kind: Schema.Literal('turns'),
+  turns: Schema.Struct({
     conversation: Schema.optional(Session),
     since: Schema.optional(Since),
     limit: Schema.optional(Limit),
   }),
-  Schema.Struct({ kind: Schema.Literal('turn'), operationId: Schema.String.check(Schema.isMaxLength(200)) }),
-  Schema.Struct({ kind: Schema.Literal('problems'), since: Schema.optional(Since), limit: Schema.optional(Limit) }),
+  turn: Schema.Struct({
+    operationId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)).annotate({
+      description: "The turn's operation id, from `inspect_turns` or `inspect_problems`.",
+    }),
+  }),
+  problems: Schema.Struct({ since: Schema.optional(Since), limit: Schema.optional(Limit) }),
+}
+export type InspectKind = keyof typeof InspectInput
+
+export const InspectQuery = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal('conversations'), ...InspectInput.conversations.fields }),
+  Schema.Struct({ kind: Schema.Literal('conversation'), ...InspectInput.conversation.fields }),
+  Schema.Struct({ kind: Schema.Literal('turns'), ...InspectInput.turns.fields }),
+  Schema.Struct({ kind: Schema.Literal('turn'), ...InspectInput.turn.fields }),
+  Schema.Struct({ kind: Schema.Literal('problems'), ...InspectInput.problems.fields }),
 ])
 export type InspectQuery = typeof InspectQuery.Type
 
@@ -123,3 +143,29 @@ export type TurnTimeline = typeof TurnTimeline.Type
 /** What went wrong since `since`, newest first: failed, blocked and interrupted events, unanswered turns among them. */
 export const InspectProblems = Schema.Struct({ since: Schema.Number, problems: Schema.Array(RunEvent) })
 export type InspectProblems = typeof InspectProblems.Type
+
+/** What each query answers. */
+export const InspectResult = {
+  conversations: InspectConversations,
+  conversation: InspectEntries,
+  turns: InspectTurns,
+  turn: TurnTimeline,
+  problems: InspectProblems,
+}
+
+/** The user an operator reads: their user id or account email. */
+export const OperatorTarget = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(320)).annotate({
+  description: "The user to read: their user id, or their account's email address.",
+})
+
+/** One read an operator made, kept in the operator's own agent (ADR 0024). Ids and the query only, never content. */
+export const OperatorReadInput = Schema.Struct({
+  user: Schema.String,
+  clientId: Schema.String,
+  clientName: Schema.optional(Schema.String),
+  tool: Schema.String,
+  arguments: Schema.String.check(Schema.isMaxLength(1000)),
+})
+export const OperatorRead = Schema.Struct({ at: Schema.Number, ...OperatorReadInput.fields })
+export const OperatorReads = Schema.Struct({ reads: Schema.Array(OperatorRead) })
+export type OperatorReads = typeof OperatorReads.Type

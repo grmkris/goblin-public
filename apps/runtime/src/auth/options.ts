@@ -7,10 +7,16 @@ import type { RuntimeEnv } from '../env.ts'
 import { deleteAgentOf } from './account.ts'
 import { CODE_SEND, CODE_SIGN_IN, guardEmailCode } from './email-code.ts'
 import { codeMail, mailerOf } from './mail.ts'
+import {
+  type Endpoint,
+  INSPECT_SCOPE,
+  OPERATOR_SCOPE,
+  SIGN_IN_SCOPES,
+  resourceOf,
+  resourceScopes,
+} from './resources.ts'
 
 const AUTH_BASE_PATH = '/api/auth'
-const MCP_SCOPES = ['openid', 'profile', 'email', 'offline_access'] as const
-export const mcpResource = (appUrl: string): string => `${appUrl.replace(/\/$/u, '')}/mcp`
 export const authIssuer = (appUrl: string): string => `${appUrl.replace(/\/$/u, '')}${AUTH_BASE_PATH}`
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
@@ -110,6 +116,12 @@ const beforeAuth = (env: AuthEnvironment, database: D1Database) =>
     await guardEmailCode(context, env, database, Date.now())
   })
 
+const protectedResource = (appUrl: string) => (endpoint: Endpoint) => ({
+  identifier: resourceOf(appUrl, endpoint),
+  name: endpoint === 'ask' ? 'goblin' : `goblin ${endpoint}`,
+  allowedScopes: [...resourceScopes(endpoint)],
+})
+
 /**
  * Better Auth is instantiated per request: Worker I/O promises cannot outlive their request. The D1 adapter owns
  * auth tables; application Drizzle never adopts/migrates them. mcp() already includes OAuth provider functionality.
@@ -118,18 +130,27 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
   // Better Auth 1.7.6 swallows mail callback errors. Its after hook must refuse success and erase an undelivered
   // code. This state belongs to one auth instance/request, never the Worker isolate or another user's request.
   const delivery: MailDelivery = { failed: false }
-  const resource = mcpResource(env.APP_URL)
+  const resource = resourceOf(env.APP_URL, 'ask')
+  const inspection = [resourceOf(env.APP_URL, 'inspect'), resourceOf(env.APP_URL, 'operator')]
   const oauthPlugin = mcp({
     resource,
-    scopes: [...MCP_SCOPES],
+    // Each endpoint is its own audience, and a token for it carries only its own scopes (ADR 0024). Config is the
+    // source of truth for these rows: `merge` applies a changed scope list to rows an earlier deploy created.
+    resources: (['ask', 'inspect', 'operator'] as const).map(protectedResource(env.APP_URL)),
+    resourceSeedMode: 'merge',
+    scopes: [...SIGN_IN_SCOPES, INSPECT_SCOPE, OPERATOR_SCOPE],
     loginPage: '/login',
     consentPage: '/consent',
     // MCP clients (Claude Code and others) register themselves before the owner signs in. Registration grants
-    // nothing: every new client needs the owner's consent, and only the /mcp resource can be requested.
+    // nothing: every client needs the owner's consent for the resource and scope it asks for, and the consent page
+    // says which. New clients may ask for any of the three endpoints; the inspection scopes are only ever granted
+    // for the inspection endpoints.
     allowDynamicClientRegistration: true,
     allowUnauthenticatedClientRegistration: true,
-    clientRegistrationAllowedResources: [resource],
-    clientRegistrationDefaultScopes: [...MCP_SCOPES],
+    clientRegistrationDefaultResources: inspection,
+    clientRegistrationAllowedResources: [resource, ...inspection],
+    clientRegistrationDefaultScopes: [...SIGN_IN_SCOPES],
+    clientRegistrationAllowedScopes: [INSPECT_SCOPE, OPERATOR_SCOPE],
   })
   return {
     appName: 'goblin',

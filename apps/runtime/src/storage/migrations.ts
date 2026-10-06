@@ -307,6 +307,15 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'CREATE INDEX app_run_events_started ON app_run_events (started_at)',
     ].join(BREAK),
   },
+  {
+    // An operator's own record of the agents they read (ADR 0024).
+    key: '20261020000000_operator_reads',
+    tables: ['app_operator_reads'],
+    sql: [
+      'CREATE TABLE app_operator_reads (id TEXT PRIMARY KEY NOT NULL, at INTEGER NOT NULL, user_id TEXT NOT NULL, client_id TEXT NOT NULL, client_name TEXT, tool TEXT NOT NULL, arguments TEXT NOT NULL)',
+      'CREATE INDEX app_operator_reads_at ON app_operator_reads (at)',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

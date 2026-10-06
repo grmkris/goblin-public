@@ -30,7 +30,7 @@ const AskInput = Schema.Struct({
 const RecentInput = Schema.Struct({
   limit: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 50 }))),
 })
-const standard = <S extends Schema.Top & Schema.ConstraintDecoder<unknown>>(schema: S) =>
+export const standard = <S extends Schema.Top & Schema.ConstraintDecoder<unknown>>(schema: S) =>
   Schema.toStandardJSONSchemaV1(Schema.toStandardSchemaV1(schema))
 
 const text = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] })

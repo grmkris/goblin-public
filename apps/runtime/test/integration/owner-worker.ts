@@ -24,6 +24,8 @@ export default {
   async fetch(request: Request, env: RuntimeEnv, ctx: ExecutionContext) {
     const url = new URL(request.url)
     const input = new Request(new URL(url.pathname + url.search, env.APP_URL), request)
+    // The deployed Worker sees its own host; the MCP endpoints check it (DNS-rebinding protection).
+    input.headers.set('host', new URL(env.APP_URL).host)
     env = fixtureAuth(request, env)
     try {
       const authProbe = await authFixtureRoute(input, env)

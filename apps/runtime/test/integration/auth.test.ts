@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { expect } from 'vitest'
 import Stack from './auth-stack.ts'
 import { person, call } from './owner-requests.ts'
+import { inspectAuthCase } from './auth-inspect.ts'
 
 const harness = Test.make({
   providers: Cloudflare.providers(),
@@ -210,5 +211,12 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     yield* Effect.promise(() => oauthCase(url))
+  }),
+)
+harness.test(
+  'inspection endpoints: own audience and scope, consent revocation, operator allowlist and audit (ADR 0024)',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    yield* Effect.promise(() => inspectAuthCase(url))
   }),
 )

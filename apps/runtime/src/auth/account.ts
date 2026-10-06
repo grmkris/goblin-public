@@ -16,3 +16,12 @@ export const deleteAgentOf = async (
     if (!(cause instanceof Error) || !/destroyed/u.test(cause.message)) throw cause
   }
 }
+
+/** The id of the account a user id or email names, for an operator's read (ADR 0024). Never lists accounts. */
+export const userIdOf = async (env: Pick<RuntimeEnv, 'AUTH_DB'>, user: string): Promise<string | undefined> => {
+  const email = user.includes('@')
+  const row = await env.AUTH_DB.prepare(`SELECT id FROM user WHERE ${email ? 'email' : 'id'} = ?`)
+    .bind(email ? user.trim().toLowerCase() : user)
+    .first<{ id: string }>()
+  return row?.id
+}
