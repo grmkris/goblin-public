@@ -51,4 +51,35 @@ describe('auth store migrations (unit)', () => {
     ])
     expect(db.prepare('SELECT COUNT(*) AS links FROM oauthClientResource').get()).toEqual({ links: 0 })
   })
+
+  it('carries daily token overrides over as Credits, at 2,500 tokens per Credit', () => {
+    const credits = migrations.findIndex((name) => name.startsWith('0010_daily_credits'))
+    expect(credits).toBeGreaterThan(0)
+    const db = new DatabaseSync(':memory:')
+    apply(db, migrations.slice(0, credits))
+    const user = db.prepare(
+      'INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, 1, ?, ?)',
+    )
+    const account = db.prepare(
+      "INSERT INTO app_billing_accounts (user_id, plan_override, override_stage, daily_tokens, created_at, updated_at) VALUES (?, 'pro', 'dev', ?, 0, 0)",
+    )
+    for (const [id, tokens] of [
+      ['pro', 2_000_000],
+      ['unlimited', 1_000_000_000_000],
+      ['tiny', 17],
+      ['plain', null],
+    ] as const) {
+      user.run(id, id, `${id}@goblin.test`, NOW, NOW)
+      account.run(id, tokens)
+    }
+
+    apply(db, migrations.slice(credits))
+
+    expect(db.prepare('SELECT user_id, daily_credits FROM app_billing_accounts ORDER BY user_id').all()).toEqual([
+      { user_id: 'plain', daily_credits: null },
+      { user_id: 'pro', daily_credits: 800 },
+      { user_id: 'tiny', daily_credits: 1 },
+      { user_id: 'unlimited', daily_credits: 400_000_000 },
+    ])
+  })
 })
