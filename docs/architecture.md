@@ -332,7 +332,7 @@ drafts do not. The sidebar footer credits Trellis and Dan Fessler; see
 [ADR 0016](adr/0016-workspace-layout-with-trellis.md) for the license arrangement.
 
 Apps are kept (ADR 0020). A call the owner's agent makes to a tool that declares an App keeps it in the agent's
-registry (`apps/registry.ts`, `app_apps`, one per conversation and call); *Show app* on an older or closed one keeps it
+registry (`apps/registry.ts`, `app_registry`, one per conversation and call); *Show app* on an older or closed one keeps it
 through `POST /api/apps`. The workspace feed lists them, the sidebar shows each under its conversation (numbered when
 one title repeats, all but those open as pages and the newest three folded), and closing a conversation closes its
 Apps. `GET /api/apps/:id/launch` reads the call's arguments and redacted result back from the
@@ -535,6 +535,7 @@ are never pruned. Workers cannot pin resolved DNS IPs; trusted DNS is the docume
 | R2 `files` | `agents/<userId>/files/…`, `agents/<userId>/app_<name>/…` | Shell: the owner's and each app's files over 128 KiB. Deleting the account empties the prefix. |
 | Agent DO SQLite | `app_agent_apps`, `app_agent_releases`, `app_agent_artifacts`, `app_agent_state`, `app_agent_snapshots`, `app_agent_receipts`, `app_agent_events` | Drizzle: agent apps, their releases and code, state and revisions, rollback snapshots, receipts and events (ADR 0021). |
 | Agent DO SQLite | `cf_workspace_app_<name>` | Shell: each agent app's own files. |
+| Agent DO SQLite | `app_registry` | Drizzle: every App the workspace shows, by source: an MCP App per conversation and call, an agent app per name (ADR 0020, 0021). `app_apps`, its predecessor, was copied in with the same ids and is no longer read. |
 | D1 `goblinAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `oauth*` | Better Auth, `apps/runtime/migrations`. |
 | D1 `goblinAuth` | `app_billing_accounts`, `app_billing_subscriptions`, `app_billing_inbox`, `app_billing_checkouts` | Drizzle: account payments and durable reconciliation. |
 

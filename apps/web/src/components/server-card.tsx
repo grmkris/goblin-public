@@ -269,7 +269,7 @@ export function ServerCard({ server, onReload, onMessage, channel }: ServerCardP
       <CardHeader>
         <CardTitle>
           <span className="server-title">
-            <AppTile serverId={server.serverId} />
+            <AppTile origin={server.serverId} />
             {serverTitle(server)}
           </span>
         </CardTitle>

@@ -19,6 +19,7 @@ import {
   type RowStatus,
   type TreeNode,
   appHue,
+  appOrigin,
   buildTree,
   busyUnder,
   foldApps,
@@ -72,8 +73,8 @@ function useFoldedRows(owner: string | undefined) {
 const FoldedRows = createContext<ReturnType<typeof useFoldedRows>>({ folded: new Set(), toggle: () => undefined })
 
 /** An App's tile: its window icon on a square of its server's own hue. */
-export function AppTile({ serverId }: { readonly serverId: string }) {
-  const hue: CSSProperties & Record<'--hue', number> = { '--hue': appHue(serverId) }
+export function AppTile({ origin }: { readonly origin: string }) {
+  const hue: CSSProperties & Record<'--hue', number> = { '--hue': appHue(origin) }
   return (
     <span className="app-tile" style={hue} aria-hidden>
       <AppWindowIcon />
@@ -170,7 +171,7 @@ function AppItem({ row: { app, name } }: { readonly row: AppRow }) {
           onClick={row.showHere}
           isActive={row.focused}
         >
-          <AppTile serverId={app.serverId} />
+          <AppTile origin={appOrigin(app)} />
           <span className="tree-row-name">{name}</span>
         </SidebarMenuButton>
         <button

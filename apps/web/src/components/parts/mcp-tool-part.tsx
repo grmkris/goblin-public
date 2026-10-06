@@ -58,7 +58,10 @@ export function McpToolPart({ part }: { readonly part: ToolPart }) {
 function McpToolWithApp({ part, conversation }: { readonly part: ToolPart; readonly conversation: string }) {
   const { apps } = useWorkspaceFeed()
   const callId = part.call.id
-  const app = apps.find((candidate) => candidate.conversation === conversation && candidate.callId === callId)
+  const app = apps.find(
+    (candidate) =>
+      candidate.conversation === conversation && candidate.source.kind === 'mcp' && candidate.source.callId === callId,
+  )
   const open = app !== undefined && app.closedAt === undefined && part.state === 'done'
   const offer = part.target !== undefined && part.state === 'done' && !open
   return (

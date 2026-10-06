@@ -36,9 +36,14 @@ on. goblin never claims exactly-once effects: `prepare` may repeat when a call i
 or a view returns 256 KiB; tool results to the model 8 KiB; wall times 3 s to describe or migrate, 5 s to run or
 select, 30 s to prepare; eight isolate calls at once.
 
-**Still to come** (the same plan, later milestones): app UIs in the MCP Apps host with live state and one registry
-for both kinds of App; powers beyond files (web fetch, the owner's MCP tools, model calls, Telegram, other apps) with
-owner approvals; scheduled jobs; the Apps section and page, fullscreen with the chat docked; owner deletion.
+**One registry.** Every App the workspace shows is a row of `app_registry` with a source: `mcp` (server, tool, `ui://`
+resource and call, one per conversation and call, as ADR 0020 kept them) or `agent` (the app's name, one row per app).
+The table replaced `app_apps`, whose rows it copied with their ids, so `a:<id>` panes, `/a/<id>` and stored layouts keep
+working. The workspace feed's `AppView` and the launch say which source an App has.
+
+**Still to come** (the same plan, later milestones): app UIs in the MCP Apps host with live state; powers beyond
+files (web fetch, the owner's MCP tools, model calls, Telegram, other apps) with owner approvals; scheduled jobs; the
+Apps section and page, fullscreen with the chat docked; owner deletion.
 
 Consequences:
 - Dynamic Workers are an open beta on Workers Paid; their pricing and limits may change.

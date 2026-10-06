@@ -5,7 +5,7 @@ panel, the phone sheet and picture-in-picture) and ADR 0019's interim App pane. 
 host-drawn offers and grant rules stand.
 
 **An App is kept.** A call the owner's agent makes in an owner conversation to a tool that declares an App
-(`_meta.ui.resourceUri`) keeps that App in the agent's registry (`apps/registry.ts`, `app_apps`): one per conversation
+(`_meta.ui.resourceUri`) keeps that App in the agent's registry (`apps/registry.ts`, `app_registry` since ADR 0021): one per conversation
 and call, with its server, tool, `ui://` resource and title. *Show app* on an older call, or on one whose App was
 closed, keeps it then (`POST /api/apps`), once the tool still declares that App. `GET /api/apps/:id/launch` reads the
 call's arguments and its committed, redacted result back from the transcript. Closing a conversation closes its Apps.

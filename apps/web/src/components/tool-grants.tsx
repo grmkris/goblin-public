@@ -86,7 +86,7 @@ function AppGroup({
   return (
     <li className="grant-app">
       <div className="grant-row">
-        <AppTile serverId={serverId} />
+        <AppTile origin={serverId} />
         <span className="grant-text">
           <span id={id} className="grant-name">
             Its App

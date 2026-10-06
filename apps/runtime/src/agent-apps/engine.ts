@@ -107,6 +107,17 @@ export class AgentApps {
     this.#toolset.restore()
   }
 
+  /** What the App registry shows of an app: its release, that release's number and its state's revision. */
+  info(app: string): { readonly release: string; readonly version: number; readonly revision: number } | undefined {
+    const row = this.store.app(app)
+    if (row === undefined) return undefined
+    return {
+      release: row.activeRelease,
+      version: this.store.release(row.activeRelease)?.seq ?? 0,
+      revision: this.store.state(app)?.revision ?? 0,
+    }
+  }
+
   extensions(): readonly Extension[] {
     return this.#toolset.extensions()
   }

@@ -79,6 +79,7 @@ function resultOf(details: unknown): CallToolResult {
 
 async function launch(app: AppView): Promise<AppSelection> {
   const loaded = decodeLaunch(await request(`/api/apps/${app.id}/launch`))
+  if (loaded.kind !== 'mcp') throw new Error('This App cannot be shown here yet.')
   return { serverId: loaded.serverId, uri: loaded.uri, arguments: loaded.arguments, result: resultOf(loaded.result) }
 }
 

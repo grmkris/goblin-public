@@ -45,10 +45,7 @@ class FixtureEvents implements PiEventSource {
 const app = (id: string, extra: Partial<AppView> = {}): AppView => ({
   id,
   conversation: '1',
-  callId: `call-${id}`,
-  serverId: 'notes',
-  tool: 'board',
-  uri: 'ui://notes/board.html',
+  source: { kind: 'mcp', callId: `call-${id}`, serverId: 'notes', tool: 'board', uri: 'ui://notes/board.html' },
   title: 'Board',
   createdAt: Number(id),
   ...extra,

@@ -15,7 +15,7 @@ import { type Doorbell, doorbellValid } from './channel/doorbell.ts'
 import { type RpcResult, encodeExit, unwrap } from './http/rpc.ts'
 import { FileStore } from './files/store.ts'
 import { filesExtension } from './pi/files.ts'
-import { agentApps } from './agent-apps/engine.ts'
+import { type AgentApps, agentApps } from './agent-apps/engine.ts'
 import { appsExtension } from './pi/apps.ts'
 import { agentRequest, sessionSnapshot } from './agent-requests.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
@@ -101,6 +101,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   readonly #subagents: SubagentKit
   readonly #applied: Applied = new Map()
   readonly #routines: RoutineController
+  readonly #apps: AgentApps
   #runtime: Promise<Runtime> | undefined
   /** The Telegram pull in progress: one at a time (channelPull). */
   #pulling: Promise<void> = Promise.resolve()
@@ -120,6 +121,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     const routineKit = routineExtensions(routineRun, residentTools, env.CREDENTIAL_KEY)
     // Skills and apps are for main and threads; a subagent gets only the extensions its spawner hands it.
     const apps = agentApps(ctx.storage, env, () => this.name)
+    this.#apps = apps
     this.harness = makePiHarness(
       this.#pi,
       [...tools, skillsExtension(run), filesExtension(run), appsExtension(apps), subagents, routinesExtension(run)],
@@ -176,6 +178,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       pullTelegram: () => this.channelPull(),
       routineEvent: (context) => this.#routines.consumeEvent(context),
       mcpFetch: this.mcpFetch(),
+      agentApps: this.#apps,
     })
     this.#runtime.catch(() => {
       this.#runtime = undefined

@@ -245,20 +245,35 @@ export const ConversationActivity = Schema.Struct({
 })
 export type ConversationActivity = typeof ConversationActivity.Type
 
-/**
- * A durable MCP App (ADR 0020): the App of one tool call in a conversation, kept so the owner can show it again and
- * the sidebar lists it under that conversation. It holds no grant: the App's calls are checked live, every time.
- */
-export const AppView = Schema.Struct({
-  id: Schema.String,
-  conversation: Schema.String,
+/** Where a kept MCP App comes from: the tool call it shows, on its server, rendering a `ui://` resource. */
+export const McpAppSource = Schema.Struct({
+  kind: Schema.Literal('mcp'),
   callId: Schema.String,
   serverId: Schema.String,
   tool: Schema.String,
   uri: Schema.String,
+})
+
+/** An agent app (ADR 0021): its name, the release it runs and the revision its state is at. */
+export const AgentAppSource = Schema.Struct({
+  kind: Schema.Literal('agent'),
+  name: Schema.String,
+  release: Schema.String,
+  version: Schema.Number,
+  revision: Schema.Number,
+})
+
+/**
+ * An App the workspace shows (ADRs 0020, 0021): an MCP App kept from a tool call in a conversation, or an agent app
+ * with its home conversation. It holds no grant: an App's calls are checked live, every time.
+ */
+export const AppView = Schema.Struct({
+  id: Schema.String,
+  conversation: Schema.String,
   title: Schema.String,
   createdAt: Schema.Number,
   closedAt: Schema.optional(Schema.Number),
+  source: Schema.Union([McpAppSource, AgentAppSource]),
 })
 export type AppView = typeof AppView.Type
 
@@ -273,13 +288,30 @@ export type CreateApp = typeof CreateApp.Type
 export const UpdateApp = Schema.Struct({ closed: Schema.Boolean })
 export type UpdateApp = typeof UpdateApp.Type
 
-/** What the browser needs to load an App: where it comes from, and the call it shows with its (redacted) result. */
-export const AppLaunch = Schema.Struct({
+/** What the browser needs to load an App. An MCP App: its server and resource, and the call it shows with its result. */
+export const McpAppLaunch = Schema.Struct({
+  kind: Schema.Literal('mcp'),
   serverId: Schema.String,
   uri: Schema.String,
   arguments: Schema.Record(Schema.String, Schema.Unknown),
   result: Schema.Unknown,
 })
+
+/** The frame runtime bundles an agent app's view loads besides `core`. */
+export const AgentAppLib = Schema.Literals(['charts', 'maps', 'diagrams'])
+export type AgentAppLib = typeof AgentAppLib.Type
+
+/** An agent app: its view's built module and CSS, the libraries it uses, and its state now. */
+export const AgentAppLaunch = Schema.Struct({
+  kind: Schema.Literal('agent'),
+  name: Schema.String,
+  release: Schema.String,
+  revision: Schema.Number,
+  state: Schema.Unknown,
+  ui: Schema.Struct({ module: Schema.String, css: Schema.String, libs: Schema.Array(AgentAppLib) }),
+})
+
+export const AppLaunch = Schema.Union([McpAppLaunch, AgentAppLaunch])
 export type AppLaunch = typeof AppLaunch.Type
 
 /** The workspace feed's first event: every conversation and App, and the conversations not idle. */

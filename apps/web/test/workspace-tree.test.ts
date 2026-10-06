@@ -97,10 +97,7 @@ describe('row status', () => {
 const app = (id: string, conversation: string, extra: Partial<AppView> = {}): AppView => ({
   id,
   conversation,
-  callId: `call-${id}`,
-  serverId: 'board',
-  tool: 'show',
-  uri: 'ui://board/app.html',
+  source: { kind: 'mcp', callId: `call-${id}`, serverId: 'board', tool: 'show', uri: 'ui://board/app.html' },
   title: `Board ${id}`,
   createdAt: Number(id),
   ...extra,

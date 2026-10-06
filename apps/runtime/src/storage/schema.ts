@@ -319,28 +319,6 @@ export const appSkillCatalogState = sqliteTable('app_skill_catalog_state', {
   lastError: text('last_error'),
 })
 
-/**
- * Durable MCP Apps (ADR 0020): the App of one tool call, kept by conversation and call so the owner can show it again.
- * It records where the App comes from and what to call it, never a grant. `entry_id` is where the call sits in Pi,
- * once it has been found.
- */
-export const appApps = sqliteTable(
-  'app_apps',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    sessionId: text('session_id').notNull(),
-    callId: text('call_id').notNull(),
-    entryId: integer('entry_id'),
-    serverId: text('server_id').notNull(),
-    tool: text('tool').notNull(),
-    resourceUri: text('resource_uri').notNull(),
-    title: text('title').notNull(),
-    createdAt: integer('created_at').notNull(),
-    closedAt: integer('closed_at'),
-  },
-  (t) => [uniqueIndex('app_apps_call').on(t.sessionId, t.callId)],
-)
-
 /** Agent apps (ADR 0021): what the agent built, by name, with its active release and its home conversation. */
 export const appAgentApps = sqliteTable('app_agent_apps', {
   name: text('name').primaryKey(),
@@ -429,4 +407,32 @@ export const appAgentEvents = sqliteTable(
     createdAt: integer('created_at').notNull(),
   },
   (table) => [index('app_agent_events_app').on(table.app, table.id)],
+)
+
+/**
+ * Every App the workspace shows (ADRs 0020, 0021), one id space for both kinds: an MCP App kept from a tool call
+ * (`source = 'mcp'`: call, server, tool, resource; `entry_id` is where the call sits in Pi, once found), or an agent
+ * app (`'agent'`: its name). It records where an App comes from and what to call it, never a grant. The retired
+ * `app_apps` table, its earlier MCP-only form, was copied here with the same ids and is no longer read.
+ */
+export const appRegistry = sqliteTable(
+  'app_registry',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    source: text('source', { enum: ['mcp', 'agent'] }).notNull(),
+    sessionId: text('session_id').notNull(),
+    callId: text('call_id'),
+    entryId: integer('entry_id'),
+    serverId: text('server_id'),
+    tool: text('tool'),
+    resourceUri: text('resource_uri'),
+    name: text('name'),
+    title: text('title').notNull(),
+    createdAt: integer('created_at').notNull(),
+    closedAt: integer('closed_at'),
+  },
+  (table) => [
+    uniqueIndex('app_registry_call').on(table.sessionId, table.callId),
+    uniqueIndex('app_registry_name').on(table.name),
+  ],
 )

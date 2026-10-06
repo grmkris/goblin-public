@@ -64,6 +64,13 @@ export function foldApps(rows: readonly AppRow[], paged: (id: string) => boolean
   }
 }
 
+/** Where an App comes from, as its tile and caption name it: an MCP App's server, or an agent app's own name. */
+export const appOrigin = (app: AppView): string => (app.source.kind === 'mcp' ? app.source.serverId : app.source.name)
+
+/** An App's caption under its name: the server it came from, or that the agent built it. */
+export const appCaption = (app: AppView): string =>
+  app.source.kind === 'mcp' ? `App from ${app.source.serverId}` : `Built by your agent · v${app.source.version}`
+
 /**
  * A hue for an App's tile, the same every time for its server: tiles tell Apps apart at a glance, as app icons do.
  * FNV-1a over the server id, spread over the colour wheel.

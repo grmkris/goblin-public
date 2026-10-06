@@ -263,6 +263,17 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'CREATE INDEX app_agent_events_app ON app_agent_events (app, id)',
     ].join(BREAK),
   },
+  {
+    // One registry for MCP Apps and agent apps (ADR 0021): app_apps copied with the same ids, then no longer read.
+    key: '20261018000100_app_registry',
+    tables: ['app_registry'],
+    sql: [
+      `CREATE TABLE app_registry (id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL CHECK (source IN ('mcp', 'agent')), session_id TEXT NOT NULL, call_id TEXT, entry_id INTEGER, server_id TEXT, tool TEXT, resource_uri TEXT, name TEXT, title TEXT NOT NULL, created_at INTEGER NOT NULL, closed_at INTEGER, CHECK ((source = 'mcp' AND call_id IS NOT NULL AND server_id IS NOT NULL AND tool IS NOT NULL AND resource_uri IS NOT NULL AND name IS NULL) OR (source = 'agent' AND name IS NOT NULL AND call_id IS NULL AND server_id IS NULL AND tool IS NULL AND resource_uri IS NULL)))`,
+      'CREATE UNIQUE INDEX app_registry_call ON app_registry (session_id, call_id)',
+      'CREATE UNIQUE INDEX app_registry_name ON app_registry (name)',
+      `INSERT INTO app_registry (id, source, session_id, call_id, entry_id, server_id, tool, resource_uri, title, created_at, closed_at) SELECT id, 'mcp', session_id, call_id, entry_id, server_id, tool, resource_uri, title, created_at, closed_at FROM app_apps ORDER BY id`,
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

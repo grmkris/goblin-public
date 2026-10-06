@@ -3,7 +3,16 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@goblin/ui'
 import { PlusIcon } from 'lucide-react'
 import { threadTitle } from '../lib/threads.ts'
 import { appKey, conversationKey, isOpen } from '../lib/workspace.ts'
-import { type AppRow, type RowStatus, type TreeNode, pathOf, railItems, rowStatus } from '../lib/workspace-tree.ts'
+import {
+  type AppRow,
+  type RowStatus,
+  type TreeNode,
+  appCaption,
+  appOrigin,
+  pathOf,
+  railItems,
+  rowStatus,
+} from '../lib/workspace-tree.ts'
 import { KindMark } from './pane-nav.tsx'
 import { AppTile, useRowActions, useWorkspaceTree } from './sidebar-tree.tsx'
 import { useWorkspace } from './workspace.tsx'
@@ -82,11 +91,11 @@ function RailApp({ row: { app, name } }: { readonly row: AppRow }) {
           />
         }
       >
-        <AppTile serverId={app.serverId} />
+        <AppTile origin={appOrigin(app)} />
       </HoverCardTrigger>
       <HoverCardContent>
         <p className="font-medium">{name}</p>
-        <p className="text-xs text-muted-foreground">App from {app.serverId} · open as a page</p>
+        <p className="text-xs text-muted-foreground">{appCaption(app)} · open as a page</p>
         <p className="text-xs text-muted-foreground">Click to go to it; drag it onto a pane to place it there.</p>
       </HoverCardContent>
     </HoverCard>

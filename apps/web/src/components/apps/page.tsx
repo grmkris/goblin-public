@@ -5,7 +5,7 @@ import type { AppView } from '@goblin/contracts'
 import { Button, DropdownMenuItem, DropdownMenuSeparator } from '@goblin/ui'
 import { Maximize2Icon, Minimize2Icon, PanelLeftCloseIcon, XIcon } from 'lucide-react'
 import type { ItemKey } from '../../lib/workspace.ts'
-import { appNames } from '../../lib/workspace-tree.ts'
+import { appNames, appOrigin } from '../../lib/workspace-tree.ts'
 import { usePlace } from '../conversation-pane.tsx'
 import { PaneHeader } from '../pane-header.tsx'
 import { AppTile } from '../sidebar-tree.tsx'
@@ -91,8 +91,8 @@ export function AppPage({ item, id }: { readonly item: ItemKey; readonly id: str
         first={first}
         {...(app !== undefined && {
           menu: <AppPageMenu app={app} item={item} />,
-          mark: <AppTile serverId={app.serverId} />,
-          status: <span className="pane-state">{app.serverId}</span>,
+          mark: <AppTile origin={appOrigin(app)} />,
+          status: <span className="pane-state">{appOrigin(app)}</span>,
         })}
         onClose={only ? undefined : () => workspace.close(item)}
       />

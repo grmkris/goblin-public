@@ -61,23 +61,22 @@ export async function appsCase(base: string): Promise<void> {
   const [app] = (await snapshot(base, owner)).apps
   expect(app).toMatchObject({
     conversation: thread.id,
-    serverId: 'apps-fixture',
-    tool: 'board',
-    uri: BOARD,
     title: 'Board',
+    source: { kind: 'mcp', serverId: 'apps-fixture', tool: 'board', uri: BOARD },
   })
   if (app === undefined) throw new Error('no app kept')
   const launch = Schema.decodeUnknownSync(AppLaunch)(
     await (await send(base, owner, `/api/apps/${app.id}/launch`, 'GET')).json(),
   )
-  expect(launch).toMatchObject({ serverId: 'apps-fixture', uri: BOARD, arguments: { marker: 'kept' } })
-  expect(JSON.stringify(launch.result)).toContain('fixture-board')
+  expect(launch).toMatchObject({ kind: 'mcp', serverId: 'apps-fixture', uri: BOARD, arguments: { marker: 'kept' } })
+  expect(JSON.stringify(launch.kind === 'mcp' ? launch.result : null)).toContain('fixture-board')
   const html = await send(base, owner, '/api/mcp/apps-fixture/resources/read', 'POST', { uri: BOARD })
   expect(html.status).toBe(200)
 
   expect((await send(base, owner, `/api/conversations/${thread.id}`, 'PATCH', { closed: true })).status).toBe(200)
   expect((await snapshot(base, owner)).apps[0]?.closedAt).toBeDefined()
-  const reopened = await (await call(base, owner, '/api/apps', { conversation: thread.id, callId: app.callId })).json()
+  const callId = app.source.kind === 'mcp' ? app.source.callId : ''
+  const reopened = await (await call(base, owner, '/api/apps', { conversation: thread.id, callId })).json()
   expect(reopened).toMatchObject({ id: app.id })
   expect(reopened).not.toHaveProperty('closedAt')
 

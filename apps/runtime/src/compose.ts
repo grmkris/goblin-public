@@ -9,6 +9,7 @@ import { nowMillis, nowSeconds } from './clock.ts'
 import { ConversationRegistry, type ThreadKit } from './conversations.ts'
 import { WorkspaceFeed } from './workspace/feed.ts'
 import { AppRegistry } from './apps/registry.ts'
+import type { AgentApps } from './agent-apps/engine.ts'
 import type { RuntimeEnv } from './env.ts'
 import { CredentialCipher } from './mcp/cipher.ts'
 import { configuredServers } from './mcp/config.ts'
@@ -63,6 +64,8 @@ export type ComposeInput = {
   readonly pullTelegram: () => Promise<void>
   readonly routineEvent: EventHandler
   readonly mcpFetch: typeof fetch
+  /** The agent's apps, made before Pi opened (their tools are Pi's). */
+  readonly agentApps: AgentApps
 }
 /** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
 const retool = (harness: PiHarness) => async (session: string, tools: PiTools) => {
@@ -115,9 +118,10 @@ async function makeRoutines(input: ComposeInput) {
   return { routines, routineRuns, routineUsage }
 }
 /** The conversation registry, the kept Apps (closed with their conversation), and the live workspace feed over both. */
-function conversationServices(db: DrizzleSqliteDODatabase, harness: PiHarness, kit: ThreadKit) {
+function conversationServices(db: DrizzleSqliteDODatabase, input: ComposeInput, kit: ThreadKit) {
+  const { harness } = input
   const conversations = new ConversationRegistry(db, harness, kit, nowSeconds())
-  const apps = new AppRegistry(db, harness)
+  const apps = new AppRegistry(db, harness, (name) => input.agentApps.info(name))
   conversations.onChange((ids) => apps.closeWithConversations(ids, nowSeconds()))
   return { conversations, apps, workspace: new WorkspaceFeed(harness, conversations, apps) }
 }
@@ -181,7 +185,7 @@ export async function composeServices(
   const capabilities = new CapabilityProfiles(db, input.subagentTool, retool(harness))
   const routineServices = await makeRoutines(input)
   const kit = { thread: input.thread, recall, memory, namer, capabilities }
-  const conversations = conversationServices(db, harness, kit)
+  const conversations = conversationServices(db, input, kit)
   const skills = new SkillLibrary(host.manager, skillState, nowMillis)
   const learner = new SkillLearner({
     drafts: new SqliteDraftLog(db),
