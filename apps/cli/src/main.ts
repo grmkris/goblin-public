@@ -19,7 +19,6 @@ const HELP = `goblin: inspect your goblin agent from the terminal (ADR 0024)
   goblin logout
 
   --origin URL   default https://dev.goblin.surf (or GOBLIN_ORIGIN)
-  --operator     use /mcp/operator; pass --user <id or email> to every command
   --json         print the tool's structured result
   --open         open the sign-in page in a browser
   --port N       the sign-in callback's loopback port (default 18979)`

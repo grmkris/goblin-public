@@ -131,17 +131,18 @@ async function discoveryCase(base: string) {
   expect(await (await fetch(`${base}/.well-known/oauth-protected-resource`)).json()).toMatchObject({
     resource: `${APP}/mcp`,
   })
-  const challenge = await fetch(`${base}/mcp/operator`, { method: 'POST' })
+  const challenge = await fetch(`${base}/mcp/inspect`, { method: 'POST' })
   expect(challenge.status).toBe(401)
   expect(challenge.headers.get('www-authenticate')).toBe(
-    `Bearer resource_metadata="${APP}/.well-known/oauth-protected-resource/mcp/operator", scope="goblin:operator offline_access"`,
+    `Bearer resource_metadata="${APP}/.well-known/oauth-protected-resource/mcp/inspect", scope="goblin:inspect offline_access"`,
   )
+  // Operator access was withdrawn (ADR 0024 amendment): there is no such endpoint.
+  expect((await fetch(`${base}/mcp/operator`, { method: 'POST' })).status).toBe(404)
 }
 
 /**
  * ADR 0024 end to end on the real Worker, D1 auth store and agents: an owner's inspection token reads their own
- * agent and nothing else, tokens never cross endpoints, revoking consent ends access, and the operator endpoint
- * serves allowlisted operators only, recording every read in the operator's own agent.
+ * agent and nothing else, tokens never cross endpoints, and revoking consent ends access.
  */
 export async function inspectAuthCase(base: string) {
   await discoveryCase(base)
@@ -163,7 +164,6 @@ export async function inspectAuthCase(base: string) {
   }
   // A token is good at its own endpoint only.
   expect((await post(base, '/mcp', inspect.access)).status).toBe(401)
-  expect((await post(base, '/mcp/operator', inspect.access)).status).toBe(401)
   expect((await post(base, '/mcp/inspect', ask.access)).status).toBe(401)
   // A refreshed token keeps the endpoint's audience and scope.
   const refreshed = await token(base, owner, {
@@ -182,36 +182,4 @@ export async function inspectAuthCase(base: string) {
   })
   expect(revoked.status).toBe(200)
   expect((await post(base, '/mcp/inspect', refreshed.access_token)).status).toBe(401)
-
-  await operatorCase(base, owner)
-}
-
-async function operatorCase(base: string, target: Person) {
-  const operator = await person(base)
-  const grant = await authorize(base, operator, '/mcp/operator', 'goblin:operator offline_access')
-  const forbidden = await post(base, '/mcp/operator', grant.access)
-  expect(forbidden.status).toBe(403)
-  const listed = { 'x-fixture-operators': `someone-else, ${operator.userId}` }
-  const client = await connect(base, '/mcp/operator', grant.access, listed)
-  try {
-    const read = await client.callTool({ name: 'inspect_conversations', arguments: { user: target.email } })
-    expect(read.isError, JSON.stringify(read)).toBeFalsy()
-    expect(read.structuredContent).toMatchObject({ conversations: expect.any(Array) })
-    const nobody = await client.callTool({ name: 'inspect_turns', arguments: { user: 'nobody@fixture.test' } })
-    expect(nobody).toMatchObject({ isError: true, content: [{ text: '{"_tag":"NotFound","what":"user"}' }] })
-    const record = await client.callTool({ name: 'operator_reads', arguments: {} })
-    expect(record.structuredContent).toMatchObject({
-      reads: [
-        {
-          user: target.userId,
-          clientId: grant.clientId,
-          clientName: 'inspect-fixture /mcp/operator',
-          tool: 'inspect_conversations',
-          arguments: '{"kind":"conversations"}',
-        },
-      ],
-    })
-  } finally {
-    await client.close()
-  }
 }

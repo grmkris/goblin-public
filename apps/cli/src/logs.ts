@@ -67,7 +67,7 @@ async function workerOf(args: Args, origin: string): Promise<string> {
 
 /**
  * `goblin logs <id>`: the stage Worker's Workers Logs lines that mention an operation or conversation id, oldest
- * first. Reads Cloudflare with the operator's own `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; the Worker never
+ * first. Reads Cloudflare with your own `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; the Worker never
  * sees them.
  */
 export async function logs(args: Args, origin: string, now: number): Promise<string> {

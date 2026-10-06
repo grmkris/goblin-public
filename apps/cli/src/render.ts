@@ -4,7 +4,6 @@ import {
   type InspectEntry,
   InspectProblems,
   InspectTurns,
-  OperatorReads,
   type TurnSummary,
   TurnTimeline,
 } from '@goblin/contracts/inspect'
@@ -110,12 +109,6 @@ const RENDERERS: Readonly<Record<string, (value: unknown) => string | undefined>
         problems.length === 0
           ? 'No problems in that window.'
           : problems.map((event) => `${eventLine(event)}  ${event.operationId ?? ''}`).join('\n'),
-      ),
-    ),
-  reads: (value) =>
-    Option.getOrUndefined(
-      Option.map(Schema.decodeUnknownOption(OperatorReads)(value), ({ reads }) =>
-        reads.map((read) => `${time(read.at)}  ${read.user}  ${read.tool}  ${read.arguments}`).join('\n'),
       ),
     ),
 }

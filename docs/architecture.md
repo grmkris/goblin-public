@@ -25,11 +25,10 @@ Runtime paths below are relative to `apps/runtime/src/`; browser paths are relat
 | Path | What happens |
 | --- | --- |
 | `/health` | Stage, service name, sign-up mode and whether mail is configured. |
-| `/.well-known/oauth-protected-resource*` | Protected-resource metadata, one document per endpoint: `/mcp` (also the bare path), `/mcp/inspect`, `/mcp/operator`. |
+| `/.well-known/oauth-protected-resource*` | Protected-resource metadata, one document per endpoint: `/mcp` (also the bare path) and `/mcp/inspect`. |
 | `/.well-known/*`, `/api/auth/*` | Better Auth: sign-up and sign-in, the OAuth authorization server for inbound clients. |
 | `/mcp` | goblin's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented. |
 | `/mcp/inspect` | Read-only inspection of the consenting user's own agent (ADR 0024); its own audience and `goblin:inspect` scope. |
-| `/mcp/operator` | Read-only inspection of any user's agent for allowlisted operators (ADR 0024); `goblin:operator` scope. |
 | `/api/*` | Owner API. A session cookie selects the signed-in user's agent; writes reject an `Origin` header if it names another origin. |
 | `/hooks/mcp-events/<userId>/<token>` | Signed MCP Events; the user-bound route token is checked before object lookup. |
 | `/hooks/myagent/<userId>/<token>` | Legacy Telegram doorbell fallback for servers without Events. |
@@ -48,8 +47,7 @@ workerd captures `.eml` files through Alchemy's simulator. Better Auth 1.7.6 swa
 request-scoped delivery flag and after hook erase an undelivered code and return 503. No account or session is created
 by sending a code. The browser's OAuth provider client carries the authorization query through OTP login to consent.
 
-The agent a request reaches derives from the session's user ID or the inbound token's subject; the one exception is
-`/mcp/operator`, below. The Telegram hook
+The agent a request reaches derives from the session's user ID or the inbound token's subject. The Telegram hook
 verifies a token bound to its user ID before selecting an agent. Deleting an account requires a sign-in from the last
 600 seconds, with an explicit Settings confirmation. It first erases the user's agent through `Agent.destroy()`:
 Pi, Agents and application tables, its alarm and isolate. Only then does Better Auth delete the user and D1 cascade
@@ -543,11 +541,11 @@ goblin is an MCP server at `/mcp`, the protected resource of Better Auth's `mcp(
 - Revoking a client in Settings deletes the consent, disables the client and revokes its refresh tokens; its next
   call gets a 401.
 
-Two more protected resources serve inspection (ADR 0024, `auth/resources.ts`, `inbound/inspect-route.ts`). Each is
-its own audience with its own metadata, and a token for one is refused by the others. Better Auth keeps each
-resource's allowed scopes, so `goblin:inspect` and `goblin:operator` are only ever granted for their own endpoint. An
-unauthenticated request gets a 401 naming the endpoint's metadata and exactly the scope to ask for. They are separate
-resources, not step-up scopes on `/mcp`, because MCP clients handle a first-connect challenge reliably and
+Another protected resource serves inspection (ADR 0024, `auth/resources.ts`, `inbound/inspect-route.ts`). It is its
+own audience with its own metadata, and a token for one endpoint is refused by the other. Better Auth keeps each
+resource's allowed scopes, so `goblin:inspect` is only ever granted for `/mcp/inspect`. An unauthenticated request gets
+a 401 naming the endpoint's metadata and exactly the scope to ask for. It is a separate resource, not a step-up scope
+on `/mcp`, because MCP clients handle a first-connect challenge reliably and
 `insufficient_scope` step-up not yet. A token passes only if the standing consent still lists the endpoint's scope and
 resource, so revoking or narrowing consent ends inspection at once.
 
@@ -555,13 +553,8 @@ resource, so revoking or narrowing consent ends inspection at once.
   `inspect_turns`, `inspect_turn` and `inspect_problems`, with the contract's input and output schemas
   (`inbound/inspect-server.ts`). Everything is read-only, and the server tells clients that returned text is data,
   never instructions.
-- `/mcp/operator` serves the same tools with a required `user` (id or email), plus `operator_reads`, for the user ids
-  in the stage's `OPERATORS` (`GOBLIN_OPERATORS`), checked on every request; anyone else gets a 403. Before each read
-  the Worker records it in the operator's own agent (`app_operator_reads`, kept a year: target, client, tool, query)
-  and refuses the read if that fails, then logs an `operator_read` line with ids only. The user is not shown the read;
-  the privacy page discloses operator access.
-- The consent page names what the requested resource grants: asking the agent, reading your conversations and runs,
-  or reading anyone's as an operator.
+- The consent page names what the requested resource grants: asking the agent, or reading your conversations and
+  runs.
 
 ## MCP Events and Telegram
 

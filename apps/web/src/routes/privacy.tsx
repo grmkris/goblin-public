@@ -25,9 +25,7 @@ function Privacy() {
       <p>
         Your agent keeps a record of how each turn ran (the same timings, counts, names and outcomes, never content) for
         30 days. An app you connect to goblin over MCP gets only what you allow on the consent screen: asking your
-        agent, or reading your conversations and how each turn ran without changing anything. goblin's operators, a
-        short list of accounts set for each deployment, can read any agent's conversations and runs in the same
-        read-only way to investigate problems; every such read is recorded on the operator's side.
+        agent, or reading your conversations and how each turn ran without changing anything.
       </p>
       <p>
         Your agent data remains until you delete your account. Deletion erases its conversations, connections and app

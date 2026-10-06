@@ -214,7 +214,7 @@ harness.test(
   }),
 )
 harness.test(
-  'inspection endpoints: own audience and scope, consent revocation, operator allowlist and audit (ADR 0024)',
+  'inspection endpoint: own audience and scope, refresh and consent revocation (ADR 0024)',
   Effect.gen(function* () {
     const { url } = yield* stack
     yield* Effect.promise(() => inspectAuthCase(url))

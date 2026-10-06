@@ -360,8 +360,7 @@ async function admittedRoute(
 ): Promise<Response> {
   const path = new URL(request.url).pathname
   if (path === '/mcp') return handleInboundMcp(request, env)
-  if (path === '/mcp/inspect') return handleInspectMcp(request, env, 'inspect')
-  if (path === '/mcp/operator') return handleInspectMcp(request, env, 'operator')
+  if (path === '/mcp/inspect') return handleInspectMcp(request, env)
   if (path === '/hooks/dodo') return Effect.runPromise(billingWebhook(billingDeps(env), request, ctx))
   if (path.startsWith('/hooks/mcp-events/')) return mcpEventsRoute(request, env, path)
   if (path.startsWith('/hooks/')) return doorbellRoute(request, env, path)

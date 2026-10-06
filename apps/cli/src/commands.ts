@@ -16,10 +16,10 @@ const propertyOf = (value: unknown): Property => (typeof value === 'object' && v
 /** `operationId` as a flag: `operation-id`. */
 const flagOf = (property: string) => property.replaceAll(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)
 /** Flags the CLI itself reads; never a tool's argument. */
-const GLOBAL = new Set(['origin', 'operator', 'json', 'help', 'port', 'open'])
+const GLOBAL = new Set(['origin', 'json', 'help', 'port', 'open'])
 
-/** A tool's command: `inspect_turn` is `goblin turn`, `operator_reads` is `goblin reads`. */
-export const commandOf = (tool: string): string => tool.replace(/^(inspect|operator)_/u, '')
+/** A tool's command: `inspect_turn` is `goblin turn`; other tools keep their names. */
+export const commandOf = (tool: string): string => tool.replace(/^inspect_/u, '')
 
 function coerce(text: string, property: Property, name: string, now: number): unknown {
   // A time is given the way people say it: `--since 6h` is six hours ago.
@@ -35,8 +35,8 @@ function coerce(text: string, property: Property, name: string, now: number): un
 
 /**
  * The tool's arguments from the command line, read against its own input schema: required properties in order take
- * the positional words (`goblin turn telegram-12`), every property takes its flag (`--operation-id`, `--since 6h`), and
- * `--user` fills `user` on the operator endpoint. Unknown flags and missing required values are usage errors.
+ * the positional words (`goblin turn telegram-12`) and every property takes its flag (`--operation-id`, `--since 6h`).
+ * Unknown flags and missing required values are usage errors.
  */
 export function argumentsFor(tool: ToolInfo, args: Args, now: number): Record<string, unknown> {
   const properties = tool.inputSchema.properties ?? {}
@@ -46,7 +46,7 @@ export function argumentsFor(tool: ToolInfo, args: Args, now: number): Record<st
     if (!GLOBAL.has(flag) && !known.has(flag)) throw new UsageError(`${commandOf(tool.name)} has no --${flag}`)
   const result: Record<string, unknown> = {}
   const positionals = [...args.positionals]
-  for (const name of required.filter((property) => property !== 'user')) {
+  for (const name of required) {
     const word = positionals.shift()
     if (word !== undefined) result[name] = coerce(word, propertyOf(properties[name]), name, now)
   }

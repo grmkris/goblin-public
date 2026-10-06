@@ -6,7 +6,7 @@ export type Args = {
 }
 
 /** Flags that never take a value. */
-const SWITCHES = new Set(['json', 'operator', 'help', 'open'])
+const SWITCHES = new Set(['json', 'help', 'open'])
 
 export class UsageError extends Error {
   override readonly name = 'UsageError'

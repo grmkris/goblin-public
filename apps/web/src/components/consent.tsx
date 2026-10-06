@@ -7,14 +7,11 @@ import { AuthShell } from './auth-shell.tsx'
 type ClientInfo = { readonly name: string; readonly uri?: string }
 
 /** What a consent grants, by the protected resource the client asked for (ADR 0024). */
-type Grant = 'ask' | 'inspect' | 'operator'
+type Grant = 'ask' | 'inspect'
 const grantOf = (resources: readonly string[]): Grant => {
   const paths = resources.map((resource) => (URL.canParse(resource) ? new URL(resource).pathname : ''))
-  if (paths.includes('/mcp/operator')) return 'operator'
-  if (paths.includes('/mcp/inspect')) return 'inspect'
-  return 'ask'
+  return paths.includes('/mcp/inspect') ? 'inspect' : 'ask'
 }
-const READ_ONLY = 'It cannot send messages or change anything. Revoke it any time in Settings.'
 const GRANTS: Readonly<
   Record<Grant, { readonly verb: string; readonly can: readonly string[]; readonly footer: string }>
 > = {
@@ -33,15 +30,7 @@ const GRANTS: Readonly<
       'read all your conversations in full, including tool calls and their results;',
       'read how each turn ran: model calls, tool calls, retries, errors and timings.',
     ],
-    footer: READ_ONLY,
-  },
-  operator: {
-    verb: "inspect any user's agent as an operator",
-    can: [
-      "read any user's conversations and runs, if your account is on this deployment's operator list;",
-      'every read is recorded in your own agent.',
-    ],
-    footer: READ_ONLY,
+    footer: 'It cannot send messages or change anything. Revoke it any time in Settings.',
   },
 }
 

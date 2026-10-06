@@ -152,20 +152,3 @@ export const InspectResult = {
   turn: TurnTimeline,
   problems: InspectProblems,
 }
-
-/** The user an operator reads: their user id or account email. */
-export const OperatorTarget = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(320)).annotate({
-  description: "The user to read: their user id, or their account's email address.",
-})
-
-/** One read an operator made, kept in the operator's own agent (ADR 0024). Ids and the query only, never content. */
-export const OperatorReadInput = Schema.Struct({
-  user: Schema.String,
-  clientId: Schema.String,
-  clientName: Schema.optional(Schema.String),
-  tool: Schema.String,
-  arguments: Schema.String.check(Schema.isMaxLength(1000)),
-})
-export const OperatorRead = Schema.Struct({ at: Schema.Number, ...OperatorReadInput.fields })
-export const OperatorReads = Schema.Struct({ reads: Schema.Array(OperatorRead) })
-export type OperatorReads = typeof OperatorReads.Type

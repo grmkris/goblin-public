@@ -11,8 +11,6 @@ const DEFAULT_PORT = 18979
 
 export type Settings = {
   readonly origin: string
-  /** `/mcp/operator` instead of `/mcp/inspect`. */
-  readonly operator: boolean
   readonly endpoint: URL
   readonly scope: string
   readonly redirect: URL
@@ -32,12 +30,10 @@ export async function settingsOf(args: Args): Promise<Settings> {
   if (!URL.canParse(origin)) throw new UsageError(`--origin ${origin} is not a URL`)
   const port = Number(flagText(args, 'port') ?? DEFAULT_PORT)
   if (!Number.isInteger(port) || port < 1024 || port > 65_535) throw new UsageError('--port takes 1024 to 65535')
-  const operator = args.flags.get('operator') === true
   return {
     origin,
-    operator,
-    endpoint: new URL(operator ? '/mcp/operator' : '/mcp/inspect', origin),
-    scope: operator ? 'goblin:operator offline_access' : 'goblin:inspect offline_access',
+    endpoint: new URL('/mcp/inspect', origin),
+    scope: 'goblin:inspect offline_access',
     redirect: new URL(`http://127.0.0.1:${port}/callback`),
     store: join(environment.configHome, 'goblin', 'credentials.json'),
     json: args.flags.get('json') === true,

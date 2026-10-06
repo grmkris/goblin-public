@@ -1,6 +1,6 @@
 # Observing conversations
 
-Accepted 2026-10-06 with the owner. Amends the per-owner rule in the root `AGENTS.md` for one operator capability.
+Accepted 2026-10-06 with the owner; amended the same day (see Amendments).
 
 **Pi stays the record; goblin adds a run ledger and telemetry beside it.** Pi already keeps each message, tool call,
 tool result and, on every model response, the model, token usage, stop reason and error. It does not keep how long a
@@ -28,22 +28,11 @@ talks to the agent never sees inspection. We use a separate resource instead of 
 `/mcp` because MCP clients, Claude Code included, do not yet step up reliably; they do request the scope a resource's
 first challenge names.
 
-**Operators may inspect any agent.** This is the one exception to "a user only ever reaches their own agent".
-- `/mcp/operator` is another protected resource with the scope `goblin:operator`. It serves the same read tools, and
-  each names the target user.
-- A request succeeds only when the signed-in user is listed in the stage's `GOBLIN_OPERATORS`, checked on every
-  request. Nothing in a request can make someone an operator.
-- Operators read full content, as the owner does. Every operator read is recorded in the operator's own agent and in
-  a log line: who, which client, which user, what, when.
-- Users are not shown these reads. The privacy policy states that operators can read agents to debug them.
-- Operator tools never write, submit or call a model.
-
 **The agent can diagnose itself.** A read-only `diagnose` tool gives the resident agent its own recent problems and
 one turn's timeline, so the owner can ask "why did that fail?" in any channel. It grants nothing.
 
-**A terminal client, not a second API.** The `goblin` CLI is an MCP client of `/mcp/inspect` (or `/mcp/operator`).
-Its commands come from the tools' own schemas, and it joins Workers Logs using the operator's Cloudflare token on
-their machine. The Worker never holds a Cloudflare API token.
+**A terminal client, not a second API.** The `goblin` CLI is an MCP client of `/mcp/inspect`. Its commands come
+from the tools' own schemas, and it joins Workers Logs using the developer's own Cloudflare token on their machine. The Worker never holds a Cloudflare API token.
 
 Consequences:
 - Debugging a turn is: recent problems, then the turn's timeline, then the conversation, then the logs by the same
@@ -53,3 +42,10 @@ Consequences:
 - The ledger and log lines cost a few writes per model attempt and tool call; Cloudflare logs and traces keep seven
   days.
 - Telegram group chats need their own design: today mygram accepts only the owner's private chat.
+
+## Amendments
+
+- **2026-10-06: operator access withdrawn.** The first cut let stage-allowlisted operators read any user's agent
+  through `/mcp/operator`, each read recorded on the operator's side. It was removed before anyone used it
+  (`GOBLIN_OPERATORS` stayed empty, so `app_operator_reads` never held a row; the table stays dormant). "A user only
+  ever reaches their own agent" holds again without exception. An admin capability needs its own design first.

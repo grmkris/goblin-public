@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { consentCovers } from '../../src/auth/principal.ts'
-import {
-  challengeOf,
-  endpointOfMetadata,
-  operatorsOf,
-  protectedResourceMetadata,
-  resourceOf,
-} from '../../src/auth/resources.ts'
+import { challengeOf, endpointOfMetadata, protectedResourceMetadata, resourceOf } from '../../src/auth/resources.ts'
 
 const APP = 'https://goblin.test'
 const ISSUER = `${APP}/api/auth`
@@ -21,10 +15,6 @@ describe('inspection resources (unit, ADR 0024)', () => {
       scopes_supported: ['goblin:inspect', 'offline_access'],
       resource_name: 'goblin inspection',
     })
-    expect(protectedResourceMetadata(APP, ISSUER, 'operator').scopes_supported).toEqual([
-      'goblin:operator',
-      'offline_access',
-    ])
     expect(protectedResourceMetadata(APP, ISSUER, 'ask').scopes_supported).toEqual([
       'openid',
       'profile',
@@ -35,7 +25,8 @@ describe('inspection resources (unit, ADR 0024)', () => {
 
   it('reads the endpoint from the metadata path, defaulting to /mcp', () => {
     expect(endpointOfMetadata('/.well-known/oauth-protected-resource/mcp/inspect')).toBe('inspect')
-    expect(endpointOfMetadata('/.well-known/oauth-protected-resource/mcp/operator/')).toBe('operator')
+    expect(endpointOfMetadata('/.well-known/oauth-protected-resource/mcp/inspect/')).toBe('inspect')
+    expect(endpointOfMetadata('/.well-known/oauth-protected-resource/mcp/operator')).toBe('ask')
     expect(endpointOfMetadata('/.well-known/oauth-protected-resource/mcp')).toBe('ask')
     expect(endpointOfMetadata('/.well-known/oauth-protected-resource')).toBe('ask')
     expect(endpointOfMetadata('/.well-known/oauth-protected-resource/mcp/elsewhere')).toBe('ask')
@@ -56,16 +47,9 @@ describe('inspection resources (unit, ADR 0024)', () => {
     const resource = `${APP}/mcp/inspect`
     const granted = { scopes: '["goblin:inspect","offline_access"]', resources: `["${resource}"]` }
     expect(consentCovers(granted, 'goblin:inspect', resource)).toBe(true)
-    expect(consentCovers(granted, 'goblin:operator', `${APP}/mcp/operator`)).toBe(false)
     expect(consentCovers({ ...granted, resources: `["${APP}/mcp"]` }, 'goblin:inspect', resource)).toBe(false)
     expect(consentCovers({ ...granted, resources: null }, 'goblin:inspect', resource)).toBe(false)
     expect(consentCovers({ scopes: 'goblin:inspect', resources: 'garbage' }, 'goblin:inspect', resource)).toBe(false)
     expect(consentCovers({ scopes: null, resources: null }, undefined, `${APP}/mcp`)).toBe(true)
-  })
-
-  it('reads operators from configuration only, ignoring blanks', () => {
-    expect([...operatorsOf(' user-a, user-b\nuser-c ,, ')]).toEqual(['user-a', 'user-b', 'user-c'])
-    expect(operatorsOf(undefined).size).toBe(0)
-    expect(operatorsOf('').size).toBe(0)
   })
 })

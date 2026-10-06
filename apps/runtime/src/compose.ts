@@ -32,14 +32,13 @@ import { CheapModel } from './memory/model.ts'
 import type { RunTelemetry } from './telemetry/events.ts'
 import { RunLedger } from './telemetry/ledger.ts'
 import { Inspector } from './inspect/inspector.ts'
-import { OperatorReadLog } from './inspect/operator-log.ts'
 import { type AuxPurpose, auxReporter, mcpReporter } from './telemetry/report.ts'
 import { ModelChoiceStore, ModelPicker, memoryModelId, modelOptions } from './models.ts'
 import { BACKGROUND, conversationId } from './pi/context.ts'
 import type { PiModels } from './pi/harness.ts'
 import type { memoryExtensions } from './pi/memory.ts'
 import { ResidentAuthority } from './resident.ts'
-import { type AgentServices, AppEngine, Files, Inspect, OperatorLog, agentLayer } from './services.ts'
+import { type AgentServices, AppEngine, Files, Inspect, agentLayer } from './services.ts'
 import { FileStore } from './files/store.ts'
 import { SkillLearner } from './skills/learner.ts'
 import { SkillLibrary } from './skills/library.ts'
@@ -245,7 +244,6 @@ export async function composeServices(
       Layer.succeed(Files, new FileStore(input.storage.sql, env.FILES, () => input.userId)),
       Layer.succeed(AppEngine, input.agentApps),
       Layer.succeed(Inspect, new Inspector(new RunLedger(db), conversations.conversations, harness)),
-      Layer.succeed(OperatorLog, new OperatorReadLog(db)),
     ),
   )
 }

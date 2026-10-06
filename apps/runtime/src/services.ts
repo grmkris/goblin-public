@@ -24,7 +24,6 @@ import type { AppRegistry } from './apps/registry.ts'
 import type { FileStore } from './files/store.ts'
 import type { AgentApps } from './agent-apps/engine.ts'
 import type { Inspector } from './inspect/inspector.ts'
-import type { OperatorReadLog } from './inspect/operator-log.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('goblin/Mcp') {}
@@ -52,8 +51,6 @@ export class Files extends Context.Service<Files, FileStore>()('goblin/Files') {
 export class AppEngine extends Context.Service<AppEngine, AgentApps>()('goblin/AppEngine') {}
 /** Read-only inspection of the agent's conversations and runs (ADR 0024). */
 export class Inspect extends Context.Service<Inspect, Inspector>()('goblin/Inspect') {}
-/** The reads this agent's owner made as an operator (ADR 0024). */
-export class OperatorLog extends Context.Service<OperatorLog, OperatorReadLog>()('goblin/OperatorLog') {}
 export type AgentServices =
   | Entitlements
   | Events
@@ -76,7 +73,6 @@ export type AgentServices =
   | Files
   | AppEngine
   | Inspect
-  | OperatorLog
 
 export const agentLayer = (services: {
   readonly host: McpHost
@@ -94,9 +90,7 @@ export const agentLayer = (services: {
   readonly routineUsage: RoutineUsage
   readonly workspace: WorkspaceFeed
   readonly apps: AppRegistry
-}): Layer.Layer<
-  Exclude<AgentServices, Entitlements | Events | EventStorage | Files | AppEngine | Inspect | OperatorLog>
-> =>
+}): Layer.Layer<Exclude<AgentServices, Entitlements | Events | EventStorage | Files | AppEngine | Inspect>> =>
   Layer.mergeAll(
     Layer.succeed(Mcp, services.host),
     Layer.succeed(Resident, services.resident),

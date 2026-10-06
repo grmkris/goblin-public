@@ -525,18 +525,3 @@ export const appRunEvents = sqliteTable(
     index('app_run_events_started').on(table.startedAt),
   ],
 )
-
-/** Reads this agent's owner made as an operator (ADR 0024): whose agent, which tool and query, never content. */
-export const appOperatorReads = sqliteTable(
-  'app_operator_reads',
-  {
-    id: text('id').primaryKey().notNull(),
-    at: integer('at').notNull(),
-    userId: text('user_id').notNull(),
-    clientId: text('client_id').notNull(),
-    clientName: text('client_name'),
-    tool: text('tool').notNull(),
-    arguments: text('arguments').notNull(),
-  },
-  (table) => [index('app_operator_reads_at').on(table.at)],
-)

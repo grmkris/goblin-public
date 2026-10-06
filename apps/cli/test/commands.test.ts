@@ -14,10 +14,6 @@ const problems: ToolInfo = {
   name: 'inspect_problems',
   inputSchema: { properties: { since: { type: 'integer' }, limit: { type: 'integer' } } },
 }
-const operatorTurns: ToolInfo = {
-  name: 'inspect_turns',
-  inputSchema: { properties: { user: { type: 'string' }, limit: { type: 'integer' } }, required: ['user'] },
-}
 const NOW = 1_000_000_000
 
 describe('goblin command lines (unit)', () => {
@@ -35,12 +31,7 @@ describe('goblin command lines (unit)', () => {
   })
 
   it('names commands after their tools', () => {
-    expect(['inspect_turn', 'inspect_problems', 'operator_reads', 'other'].map(commandOf)).toEqual([
-      'turn',
-      'problems',
-      'reads',
-      'other',
-    ])
+    expect(['inspect_turn', 'inspect_problems', 'ask_agent'].map(commandOf)).toEqual(['turn', 'problems', 'ask_agent'])
   })
 
   it("reads a tool's arguments against its own schema", () => {
@@ -55,7 +46,6 @@ describe('goblin command lines (unit)', () => {
     expect(argumentsFor(problems, parseArgs(['problems', '--since', '1700000000000']), NOW)).toEqual({
       since: 1_700_000_000_000,
     })
-    expect(argumentsFor(operatorTurns, parseArgs(['turns', '--user', 'a@b.test']), NOW)).toEqual({ user: 'a@b.test' })
   })
 
   it('refuses what the schema does not take', () => {
@@ -64,7 +54,6 @@ describe('goblin command lines (unit)', () => {
     expect(fails(turn, ['turn', 'a', 'b'])).toThrow('unexpected b')
     expect(fails(problems, ['problems', '--limit', 'many'])).toThrow('--limit takes a number')
     expect(fails(problems, ['problems', '--verbose', 'yes'])).toThrow('problems has no --verbose')
-    expect(fails(operatorTurns, ['turns'])).toThrow('turns needs --user')
     expect(() => windowOf('soon')).toThrow(UsageError)
   })
 

@@ -7,14 +7,7 @@ import type { RuntimeEnv } from '../env.ts'
 import { deleteAgentOf } from './account.ts'
 import { CODE_SEND, CODE_SIGN_IN, guardEmailCode } from './email-code.ts'
 import { codeMail, mailerOf } from './mail.ts'
-import {
-  type Endpoint,
-  INSPECT_SCOPE,
-  OPERATOR_SCOPE,
-  SIGN_IN_SCOPES,
-  resourceOf,
-  resourceScopes,
-} from './resources.ts'
+import { type Endpoint, INSPECT_SCOPE, SIGN_IN_SCOPES, resourceOf, resourceScopes } from './resources.ts'
 
 const AUTH_BASE_PATH = '/api/auth'
 export const authIssuer = (appUrl: string): string => `${appUrl.replace(/\/$/u, '')}${AUTH_BASE_PATH}`
@@ -131,14 +124,14 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
   // code. This state belongs to one auth instance/request, never the Worker isolate or another user's request.
   const delivery: MailDelivery = { failed: false }
   const resource = resourceOf(env.APP_URL, 'ask')
-  const inspection = [resourceOf(env.APP_URL, 'inspect'), resourceOf(env.APP_URL, 'operator')]
+  const inspection = [resourceOf(env.APP_URL, 'inspect')]
   const oauthPlugin = mcp({
     resource,
     // Each endpoint is its own audience, and a token for it carries only its own scopes (ADR 0024). Config is the
     // source of truth for these rows: `merge` applies a changed scope list to rows an earlier deploy created.
-    resources: (['ask', 'inspect', 'operator'] as const).map(protectedResource(env.APP_URL)),
+    resources: (['ask', 'inspect'] as const).map(protectedResource(env.APP_URL)),
     resourceSeedMode: 'merge',
-    scopes: [...SIGN_IN_SCOPES, INSPECT_SCOPE, OPERATOR_SCOPE],
+    scopes: [...SIGN_IN_SCOPES, INSPECT_SCOPE],
     loginPage: '/login',
     consentPage: '/consent',
     // MCP clients (Claude Code and others) register themselves before the owner signs in. Registration grants
@@ -150,7 +143,7 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
     clientRegistrationDefaultResources: inspection,
     clientRegistrationAllowedResources: [resource, ...inspection],
     clientRegistrationDefaultScopes: [...SIGN_IN_SCOPES],
-    clientRegistrationAllowedScopes: [INSPECT_SCOPE, OPERATOR_SCOPE],
+    clientRegistrationAllowedScopes: [INSPECT_SCOPE],
   })
   return {
     appName: 'goblin',

@@ -5,11 +5,9 @@ import type { MailMessage } from '../../src/auth/mail.ts'
 const outbox = new Map<string, MailMessage>()
 export function fixtureAuth(request: Request, env: RuntimeEnv): RuntimeEnv {
   const mode = request.headers.get('x-fixture-signup')
-  const operators = request.headers.get('x-fixture-operators')
   return {
     ...env,
     ...(mode === 'open' || mode === 'invite' || mode === 'closed' ? { SIGNUP_MODE: mode } : {}),
-    ...(operators === null ? {} : { OPERATORS: operators }),
     SIGNUP_INVITE_CODE: 'fixture-invite',
     MAIL_SENDER: 'hello@goblin.test',
     MAIL: {

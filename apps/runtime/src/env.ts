@@ -184,8 +184,6 @@ export interface RuntimeEnv {
   /** 32 random bytes, base64: encrypts outbound OAuth credentials at rest. */
   readonly CREDENTIAL_KEY: string
   readonly STAGE?: 'local' | 'dev' | 'prod' | 'test'
-  /** User ids allowed on `/mcp/operator` (ADR 0024), comma or space separated. Empty: no operators. */
-  readonly OPERATORS?: string
   readonly DODO_PAYMENTS_API_KEY?: string
   readonly DODO_PAYMENTS_WEBHOOK_KEY?: string
   readonly DODO_PAYMENTS_ENVIRONMENT?: 'test_mode' | 'live_mode'

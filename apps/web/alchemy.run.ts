@@ -95,7 +95,6 @@ export default Alchemy.Stack(
         ),
         DODO_PRODUCT_ID: Config.Redacted('DODO_PRODUCT_ID').pipe(Config.withDefault(Redacted.make(''))),
         STAGE: runtimeStage(stage.name),
-        OPERATORS: Config.String('GOBLIN_OPERATORS').pipe(Config.withDefault('')),
       },
     })
     return { url: web.url, authDatabase: db.databaseId }

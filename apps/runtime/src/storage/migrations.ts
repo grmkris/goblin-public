@@ -308,7 +308,8 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     ].join(BREAK),
   },
   {
-    // An operator's own record of the agents they read (ADR 0024).
+    // An operator's own record of the agents they read (ADR 0024). Dormant since operator access was withdrawn on
+    // 2026-10-06: no row was ever written; the table and this history stay, as with Members.
     key: '20261020000000_operator_reads',
     tables: ['app_operator_reads'],
     sql: [
