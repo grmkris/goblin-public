@@ -58,7 +58,7 @@
 - **Skill draft**: a skill the agent proposed to the owner's skills library (MySkills) after a correction; the owner
   accepts or rejects it there.
 - **Operation ID**: the stable key that makes a submission idempotent. Acceptance is not external completion.
-- **Model budget**: tokens a user's agent may spend per UTC day; past it, the owner submit API returns 429, inbound
+- **Model budget**: estimated Token Plan Credits a user's agent may spend per UTC day (ADR 0026); past it, the owner submit API returns 429, inbound
   `ask_agent` fails and tools inside a running turn are blocked.
 - **Sign-up mode**: `open`, `invite` (an invite code is required) or `closed`; deployed stages default to `closed`.
 - **D1**: Cloudflare SQLite holding Better Auth's tables only (users, sessions, inbound OAuth clients and tokens).

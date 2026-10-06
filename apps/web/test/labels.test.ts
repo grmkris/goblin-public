@@ -34,7 +34,7 @@ describe('labels', () => {
       active: true,
       source: 'subscription',
       until: 1,
-      dailyTokens: 2_000_000,
+      dailyCredits: 800,
       status: 'active',
       hasCustomer: true,
       cancelAtPeriodEnd: false,

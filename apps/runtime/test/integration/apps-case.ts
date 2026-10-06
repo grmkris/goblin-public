@@ -49,7 +49,7 @@ async function snapshot(base: string, owner: Person): Promise<WorkspaceSnapshot>
  */
 export async function appsCase(base: string): Promise<void> {
   const owner = await person(base)
-  await call(base, owner, '/__test/billing/override', { userId: owner.userId, dailyTokens: 1000 })
+  await call(base, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
   expect((await call(base, owner, '/api/mcp/apps-fixture/connect', {})).status).toBe(200)
   await grant(base, owner, true)
   const thread = Schema.decodeUnknownSync(ConversationView)(

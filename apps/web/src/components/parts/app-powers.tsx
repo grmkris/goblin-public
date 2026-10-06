@@ -16,7 +16,7 @@ export function powerText(power: Pick<AppPower, 'kind' | 'target'>): string {
     case 'app':
       return `Use your app ${power.target}`
     case 'llm':
-      return 'Ask a model (it counts toward your daily tokens)'
+      return 'Ask a model (it counts toward your daily Credits)'
     case 'notify':
       return 'Message you on Telegram (at most 10 a day)'
   }

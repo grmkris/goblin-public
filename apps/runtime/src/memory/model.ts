@@ -1,4 +1,5 @@
 import type { Models } from '@earendil-works/pi-ai'
+import type { TokenUse } from '../budget-credits.ts'
 import { nowMillis } from '../clock.ts'
 import { MODEL_PROVIDER } from '../pi/model.ts'
 import type { AuxCall } from '../telemetry/report.ts'
@@ -19,11 +20,11 @@ export interface TextCompletion {
 export class CheapModel {
   readonly #models: Models
   readonly #id: string
-  readonly #spent: (tokens: number) => void
+  readonly #spent: (use: TokenUse) => void
   readonly #report: (call: AuxCall) => void
 
   /** `report` hears every call's response or error (the run ledger, ADR 0024). */
-  constructor(models: Models, id: string, spent: (tokens: number) => void, report: (call: AuxCall) => void = () => {}) {
+  constructor(models: Models, id: string, spent: (use: TokenUse) => void, report: (call: AuxCall) => void = () => {}) {
     this.#models = models
     this.#id = id
     this.#spent = spent
@@ -46,7 +47,7 @@ export class CheapModel {
         throw error
       })
     this.#report({ startedAt, message })
-    this.#spent(message.usage.totalTokens)
+    this.#spent(message.usage)
     if (message.stopReason === 'error' || message.stopReason === 'aborted')
       throw new Error(message.errorMessage ?? `Memory model ${message.stopReason}`)
     return message.content

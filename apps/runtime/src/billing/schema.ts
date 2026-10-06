@@ -6,7 +6,10 @@ export const billingAccounts = sqliteTable('app_billing_accounts', {
   customerId: text('customer_id'),
   planOverride: text('plan_override', { enum: ['pro'] }),
   overrideStage: text('override_stage'),
+  /** Retired by `daily_credits` (migration 0010); kept, unread. */
   dailyTokens: integer('daily_tokens'),
+  /** An operator's daily allowance for this account, in estimated Token Plan Credits; unset, the plan's applies. */
+  dailyCredits: integer('daily_credits'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 })

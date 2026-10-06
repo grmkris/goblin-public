@@ -3,7 +3,8 @@ export const PRO = {
   id: 'pro',
   priceCents: 1000,
   interval: 'monthly',
-  dailyTokens: 2_000_000,
+  /** Estimated Token Plan Credits a day (ADR 0026): about 2 million tokens at Alibaba's example rates. */
+  dailyCredits: 800,
   routines: true,
   subagents: true,
 } as const

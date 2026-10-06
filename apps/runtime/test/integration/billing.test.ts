@@ -80,7 +80,7 @@ async function activationCase(url: string) {
   expect((await deliver(url, who, {}, id)).status).toBe(200)
   await active(url, who, true)
   expect((await call(url, who, '/api/conversations')).status).toBe(200)
-  expect(await (await call(url, who, '/api/agent/usage')).json()).toMatchObject({ limit: 2_000_000 })
+  expect(await (await call(url, who, '/api/agent/usage')).json()).toMatchObject({ limit: 800 })
   expect((await call(url, who, '/api/billing/checkout', {})).status).toBe(409)
   expect((await deliver(url, who, { status: 'expired' }, id)).status).toBe(200)
   await active(url, who, true)
@@ -155,11 +155,11 @@ harness.test(
 async function allowanceCase(url: string) {
   const first = await person(url)
   const second = await person(url)
-  await lever(url, first, 'override', { dailyTokens: 17 })
-  await lever(url, second, 'override', { dailyTokens: 1234 })
+  await lever(url, first, 'override', { dailyCredits: 17 })
+  await lever(url, second, 'override', { dailyCredits: 1234 })
   expect(await (await call(url, first, '/api/agent/usage')).json()).toMatchObject({ used: 0, limit: 17 })
   expect(await (await call(url, second, '/api/agent/usage')).json()).toMatchObject({ used: 0, limit: 1234 })
-  expect(await lever(url, first, 'as-prod')).toMatchObject({ active: false, dailyTokens: 0 })
+  expect(await lever(url, first, 'as-prod')).toMatchObject({ active: false, dailyCredits: 0 })
   const stranger = await person(url)
   expect((await call(url, stranger, '/api/agent/usage')).status).toBe(402)
 }

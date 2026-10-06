@@ -537,9 +537,14 @@ cheap offered model; the code does not choose by price. Unset or not offered, it
 
 ## Model budget
 
-Users share the deployment's model key, so each agent has a daily token budget (`GOBLIN_MODEL_DAILY_TOKENS`,
-default 300 000, per UTC day). A Pi extension (`pi/budget.ts`) records every model response's tokens in
-`app_usage_daily`. Once the day is spent, new turns are refused with `BudgetExhausted`: HTTP 429 from the owner API,
+Users share the deployment's model key, so each agent has a daily budget in estimated Alibaba Token Plan Credits,
+the unit the plan bills (ADR 0026), per UTC day: Pro's 800, or the account's operator override (`daily_credits`). A
+Pi extension (`pi/budget.ts`) records every model response's tokens in `app_usage_daily` and prices them in
+thousandths of a Credit at its model's rate (`budget-credits.ts`): by default about 5 000 fresh input, 50 000 cached
+input or 830 output tokens per Credit, Alibaba's own example, with per-model overrides and aliases in
+`GOBLIN_MODEL_CREDIT_RATES` (Gemini 3.8 Flash is priced as Qwen 3.8 Flash). The cheap model's calls (titles, memory,
+skill drafts, an app's `llm` power) and routine runs (`routines/usage.ts`, from Pi's `pi.usage`) count the same way.
+Compaction summaries in main and threads are not counted yet. Once the day is spent, new turns are refused with `BudgetExhausted`: HTTP 429 from the owner API,
 or a tool error from `/mcp`. Telegram submissions check the same budget. Tool calls inside a running turn are blocked,
 so a looping turn ends after one more reply. Pi reports and swallows exceptions thrown by hooks, so the in-turn lever
 is blocking tools, not throwing. Settings shows today's usage, and the composer shows it as a ring, re-read whenever
@@ -721,7 +726,7 @@ meet its contract (ADR 0001). SQLite transactions are short and never span model
 `apps/web/alchemy.run.ts` declares the Vite Worker, the `PersonalAgent` namespace, the D1 database, the `FILES` R2
 bucket and the `LOADER` Worker Loader (Dynamic Workers, open beta, Workers Paid); it is the only deployment
 entrypoint. `scripts/stage.ts` builds `packages/app`'s toolchain before Alchemy runs. The local stage runs in workerd with CLIProxy; the dev stage calls Railway LiteLLM with a
-dedicated model-limited, budget-capped key. Offered models and price weights come from stage configuration; the per-account allowance comes from its plan or
+dedicated model-limited, budget-capped key. Offered models and Credit rates come from stage configuration; the per-account allowance comes from its plan or
 operator override. The key's provider caps and shared quotas are managed outside this repository; source does not prove
 their active values. Secrets are Worker secret bindings, never in the browser bundle. Every stage turns on Workers
 Logs (with invocation logs) and Workers Traces for every request (`scripts/stage-config.ts`); Cloudflare keeps both
@@ -763,8 +768,8 @@ grace end or three days after the period end; missing dates fail closed. Existin
 dev-only override, which grants nothing on prod. Operator overrides may supply their own allowance.
 
 Each Agent's usage ledger still records its owner's UTC-day spend, while the allowance now comes from that account's
-plan (2M/day for Pro). Optional configured model price multipliers count weighted tokens in Pi replies and cheap
-memory/title calls, with weight one for omitted models. The price schedule needs operator review.
+plan (800 Credits a day for Pro, ADR 0026), at the Credit rates the stage configures; the defaults are Alibaba's
+example rates and need operator review against the plan's real billing.
 
 The browser reads billing state before mounting agent pages; unpaid accounts reach `/subscribe`. The return page
 polls verified state and Settings opens the Dodo portal. `/terms`, `/privacy` and `/refunds` are draft public pages,
@@ -813,8 +818,8 @@ every model dispatch, including compaction. MCP checks repeat at the HTTP dispat
 local correlation headers removed before egress. Main Stop leaves background runs alone; run Stop and archive fence
 and abort owned conversations. Questions use sealed shared interaction receipts and authenticated same-session answers.
 
-Committed `pi.usage` counters, including compaction, project into app-only cumulative watermarks and weighted UTC-day
-receipts. Replay does not charge twice; a model response already in flight may overshoot a cap. Settlement freezes a
+Committed `pi.usage` counters, including compaction, project into app-only cumulative watermarks and UTC-day
+receipts: tokens for the routine's own caps, Credits for the owner's daily budget. Replay does not charge twice; a model response already in flight may overshoot a cap. Settlement freezes a
 scrubbed summary and one `app.routine` parent write with a stable request ID. Telegram reporting is separate authorized
 plumbing with frozen bytes/server, stable operation ID, five bounded attempts over at most 15 minutes, and a separate
 remote acceptance receipt. Pi acceptance does not establish external delivery. Additive migrations …210/…211/…212 modify

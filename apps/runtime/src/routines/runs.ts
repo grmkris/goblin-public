@@ -397,8 +397,11 @@ export class RoutineRunStore {
       .get()
     return totals ?? { run: 0, day: 0 }
   }
-  /** Committed usage deltas have stable receipt keys; retries never charge the run or account twice. */
-  recordUsage(id: string, key: string, tokens: number, weight: number, at: number): void {
+  /**
+   * Committed usage deltas have stable receipt keys; retries never charge the run or account twice. The run's own caps
+   * count `tokens`; the owner's daily budget counts `milliCredits` (ADR 0026).
+   */
+  recordUsage(id: string, key: string, tokens: number, milliCredits: number, at: number): void {
     if (!Number.isFinite(tokens) || tokens <= 0) return
     this.db.transaction(() => {
       const exists = this.db
@@ -408,16 +411,22 @@ export class RoutineRunStore {
         .get()
       if (exists !== undefined) return
       const utcDay = new Date(at).toISOString().slice(0, 10)
+      const spent = Math.ceil(tokens)
+      const now = Math.floor(at / 1000)
       this.db
         .insert(appRoutineUsage)
-        .values({ runId: id, sourceKey: key, utcDay, tokens: Math.ceil(tokens * weight), committedAt: at })
+        .values({ runId: id, sourceKey: key, utcDay, tokens: spent, committedAt: at })
         .run()
       this.db
         .insert(appUsageDaily)
-        .values({ day: utcDay, tokens: Math.ceil(tokens * weight), updatedAt: Math.floor(at / 1000) })
+        .values({ day: utcDay, tokens: spent, milliCredits, updatedAt: now })
         .onConflictDoUpdate({
           target: appUsageDaily.day,
-          set: { tokens: sql`${appUsageDaily.tokens} + ${Math.ceil(tokens * weight)}` },
+          set: {
+            tokens: sql`${appUsageDaily.tokens} + ${spent}`,
+            milliCredits: sql`${appUsageDaily.milliCredits} + ${milliCredits}`,
+            updatedAt: now,
+          },
         })
         .run()
     })

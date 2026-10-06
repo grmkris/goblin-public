@@ -34,14 +34,17 @@ const decodeMemory = Schema.decodeUnknownSync(MemoryStatus)
 const day = (seconds: number): string =>
   new Date(seconds * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })
 
-/** Today's model budget: tokens spent against the daily limit, rolling as they change. */
+/** Today's model budget: Credits spent against the daily limit (ADR 0026), rolling as they change. */
 function UsageCard() {
   const usage = useUsageToday()
   return (
     <Card>
       <CardHeader>
         <CardTitle>Today's usage</CardTitle>
-        <CardDescription>Tokens your agent used today. It starts again at 00:00 UTC.</CardDescription>
+        <CardDescription>
+          Model Credits your agent used today. Writing costs more than reading, and context the model has seen before
+          costs much less. It starts again at 00:00 UTC.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         {usage === undefined ? (
@@ -51,7 +54,7 @@ function UsageCard() {
             <p className="flex items-baseline gap-1.5 text-sm text-muted-foreground">
               <Count value={usage.used} size="display" />
               <span>
-                of <Count value={usage.limit} /> tokens
+                of <Count value={usage.limit} /> Credits
               </span>
               <Count value={budgetFraction(usage)} percent className="ml-auto" />
             </p>

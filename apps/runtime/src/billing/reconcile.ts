@@ -10,7 +10,8 @@ export interface AccountPlan {
   readonly active: boolean
   readonly source: 'override' | 'subscription' | 'none'
   readonly until: number | null
-  readonly dailyTokens: number
+  /** The daily model allowance in estimated Token Plan Credits (ADR 0026). */
+  readonly dailyCredits: number
   readonly status: string
   readonly hasCustomer: boolean
   readonly cancelAtPeriodEnd: boolean
@@ -27,7 +28,7 @@ const effectivePlan = (
       active: true,
       source: 'override',
       until: null,
-      dailyTokens: account.dailyTokens ?? PRO.dailyTokens,
+      dailyCredits: account.dailyCredits ?? PRO.dailyCredits,
       status: 'operator override',
       hasCustomer,
       cancelAtPeriodEnd: false,
@@ -41,7 +42,7 @@ const effectivePlan = (
       active: false,
       source: 'none',
       until: null,
-      dailyTokens: 0,
+      dailyCredits: 0,
       status: latest?.status ?? 'unsubscribed',
       hasCustomer,
       cancelAtPeriodEnd: latest?.cancelAtPeriodEnd === 1,
@@ -50,7 +51,7 @@ const effectivePlan = (
     active: true,
     source: 'subscription',
     until: subscriptionAccessUntil(active, now),
-    dailyTokens: PRO.dailyTokens,
+    dailyCredits: PRO.dailyCredits,
     status: active.status,
     hasCustomer,
     cancelAtPeriodEnd: active.cancelAtPeriodEnd === 1,

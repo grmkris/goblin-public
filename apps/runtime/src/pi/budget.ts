@@ -14,9 +14,10 @@ const spent = Effect.gen(function* () {
 })
 
 /**
- * The user's daily model budget inside a turn. Every response's tokens are recorded; once the budget is spent, tool
- * calls are blocked, so a turn looping through tools ends after one more reply. New turns are refused at submission
- * (agent.ts). Pi reports and swallows hook exceptions, so blocking a tool is the lever, not throwing.
+ * The user's daily model budget inside a turn. Every response's tokens are recorded and priced in Credits at its
+ * model's rate (ADR 0026); once the budget is spent, tool calls are blocked, so a turn looping through tools ends after
+ * one more reply. New turns are refused at submission (agent.ts). Pi reports and swallows hook exceptions, so blocking
+ * a tool is the lever, not throwing.
  */
 export function budgetExtension(run: RunProgram) {
   return defineExtension({
@@ -27,7 +28,7 @@ export function budgetExtension(run: RunProgram) {
           await run(
             Effect.gen(function* () {
               const budget = yield* Budget
-              budget.record(message.usage.totalTokens, yield* nowSecondsEffect, message.model)
+              budget.record(message.usage, yield* nowSecondsEffect, message.model)
             }),
           )
         },

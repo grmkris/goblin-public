@@ -2,7 +2,8 @@ import type { Extension, ToolRegistration } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import { type DrizzleSqliteDODatabase, drizzle } from 'drizzle-orm/durable-sqlite'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
-import { ModelBudget, UsageStore, modelTokenWeights } from './budget.ts'
+import { ModelBudget, UsageStore } from './budget.ts'
+import { creditRates } from './budget-credits.ts'
 import { CapabilityProfiles, type PiTools } from './capabilities/profiles.ts'
 import { TelegramChannel } from './channel/channel.ts'
 import { nowMillis, nowSeconds } from './clock.ts'
@@ -116,12 +117,7 @@ async function makeRoutines(input: ComposeInput) {
   const db = drizzle(input.storage)
   const routines = new RoutineStore(db, input.userId)
   const routineRuns = new RoutineRunStore(db, input.userId)
-  const routineUsage = new RoutineUsage(
-    db,
-    routineRuns,
-    modelTokenWeights(input.env.MODEL_TOKEN_WEIGHTS),
-    input.harness,
-  )
+  const routineUsage = new RoutineUsage(db, routineRuns, creditRates(input.env.MODEL_CREDIT_RATES), input.harness)
   await installRoutineUsage(input.harness, routineUsage, routineRuns)
   return { routines, routineRuns, routineUsage }
 }
@@ -170,8 +166,8 @@ function makeBudgets(input: ComposeInput, db: DrizzleSqliteDODatabase) {
   const env = input.env
   const budget = new ModelBudget(
     new UsageStore(db),
-    async () => (await Effect.runPromise(input.entitlements.require())).dailyTokens,
-    modelTokenWeights(env.MODEL_TOKEN_WEIGHTS),
+    async () => (await Effect.runPromise(input.entitlements.require())).dailyCredits,
+    creditRates(env.MODEL_CREDIT_RATES),
   )
   return budget
 }
@@ -197,7 +193,7 @@ export async function composeServices(
     new CheapModel(
       input.pi.models,
       cheapModelId,
-      (tokens) => budget.record(tokens, nowSeconds(), cheapModelId),
+      (use) => budget.record(use, nowSeconds(), cheapModelId),
       auxReporter(input.telemetry, purpose),
     )
   const namer = cheap('naming')

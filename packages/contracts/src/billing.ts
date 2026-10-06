@@ -5,7 +5,8 @@ export const BillingState = Schema.Struct({
   active: Schema.Boolean,
   source: Schema.Literals(['override', 'subscription', 'none']),
   until: Schema.NullOr(Schema.Number),
-  dailyTokens: Schema.Number,
+  /** The daily model allowance in estimated Token Plan Credits (ADR 0026). */
+  dailyCredits: Schema.Number,
   status: Schema.String,
   hasCustomer: Schema.Boolean,
   cancelAtPeriodEnd: Schema.Boolean,

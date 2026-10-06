@@ -11,7 +11,7 @@ const Command = Schema.Struct({
   userId: Schema.String,
   eventId: Schema.optional(Schema.String),
   at: Schema.optional(Schema.Number),
-  dailyTokens: Schema.optional(Schema.Number),
+  dailyCredits: Schema.optional(Schema.Number),
   body: Schema.optional(Schema.String),
 })
 export const billingTestRoute = Effect.fn('billing.fixture')(function* (
@@ -19,7 +19,7 @@ export const billingTestRoute = Effect.fn('billing.fixture')(function* (
   env: RuntimeEnv,
   deps: BillingDeps,
 ) {
-  const { userId, eventId, at, dailyTokens, body } = yield* attempt(() => readJson(request, Command))
+  const { userId, eventId, at, dailyCredits, body } = yield* attempt(() => readJson(request, Command))
   const action = new URL(request.url).pathname.split('/').at(-1)
   if (action === 'pending' && eventId !== undefined && body !== undefined) {
     const timestamp = String(Math.floor((yield* Clock.currentTimeMillis) / 1000))
@@ -40,9 +40,9 @@ export const billingTestRoute = Effect.fn('billing.fixture')(function* (
   if (action === 'override') {
     yield* attempt(() =>
       env.AUTH_DB.prepare(
-        "INSERT INTO app_billing_accounts (user_id, plan_override, override_stage, daily_tokens, created_at, updated_at) VALUES (?, 'pro', 'test', ?, 0, 0) ON CONFLICT(user_id) DO UPDATE SET plan_override = 'pro', override_stage = 'test', daily_tokens = excluded.daily_tokens",
+        "INSERT INTO app_billing_accounts (user_id, plan_override, override_stage, daily_credits, created_at, updated_at) VALUES (?, 'pro', 'test', ?, 0, 0) ON CONFLICT(user_id) DO UPDATE SET plan_override = 'pro', override_stage = 'test', daily_credits = excluded.daily_credits",
       )
-        .bind(userId, dailyTokens ?? 100)
+        .bind(userId, dailyCredits ?? 100)
         .run(),
     )
     return Response.json({ ok: true })

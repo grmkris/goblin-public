@@ -325,6 +325,16 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       "CREATE TABLE app_home_operations (operation_id TEXT PRIMARY KEY NOT NULL, actor TEXT NOT NULL CHECK (actor IN ('owner', 'agent')), result TEXT NOT NULL, before TEXT NOT NULL)",
     ].join(BREAK),
   },
+  {
+    // The daily budget counts estimated Token Plan Credits (ADR 0026). Tokens recorded before stay; a day spent before
+    // the switch starts its Credits at zero.
+    key: '20261022000100_usage_credits',
+    tables: ['app_usage_daily', 'app_routine_usage_projection'],
+    sql: [
+      'ALTER TABLE app_usage_daily ADD COLUMN milli_credits INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE app_routine_usage_projection ADD COLUMN milli_credits INTEGER NOT NULL DEFAULT 0',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

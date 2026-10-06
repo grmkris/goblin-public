@@ -48,7 +48,7 @@ const fixturePlan = () =>
     active: true,
     source: 'override' as const,
     until: null,
-    dailyTokens: 300_000,
+    dailyCredits: 300_000,
     status: 'fixture',
     hasCustomer: false,
     cancelAtPeriodEnd: false,

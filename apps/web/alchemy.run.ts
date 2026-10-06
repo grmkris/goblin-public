@@ -14,8 +14,7 @@ const modelEnv = {
   MODEL_ID: Config.String('GOBLIN_MODEL_ID').pipe(Config.withDefault('gemini-3.8-flash')),
   MODELS: Config.String('GOBLIN_MODELS').pipe(Config.withDefault('')),
   MODEL_KEY: Config.Redacted('GOBLIN_MODEL_KEY').pipe(Config.withDefault(Redacted.make(''))),
-  MODEL_DAILY_TOKENS: Config.String('GOBLIN_MODEL_DAILY_TOKENS').pipe(Config.withDefault('300000')),
-  MODEL_TOKEN_WEIGHTS: Config.String('GOBLIN_MODEL_TOKEN_WEIGHTS').pipe(Config.withDefault('{}')),
+  MODEL_CREDIT_RATES: Config.String('GOBLIN_MODEL_CREDIT_RATES').pipe(Config.withDefault('')),
   MEMORY_MODEL: Config.String('GOBLIN_MEMORY_MODEL').pipe(Config.withDefault('')),
 }
 

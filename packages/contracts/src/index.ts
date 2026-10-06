@@ -110,7 +110,10 @@ export const ResidentStatus = Schema.Struct({
 })
 export type ResidentStatus = typeof ResidentStatus.Type
 
-/** Model tokens the user's agent spent today (UTC) against its daily limit, and when the day resets (epoch seconds). */
+/**
+ * What the user's agent spent on models today (UTC) against its daily limit, both in estimated Token Plan Credits
+ * (ADR 0026), and when the day resets (epoch seconds).
+ */
 export const UsageToday = Schema.Struct({ used: Schema.Number, limit: Schema.Number, resetsAt: Schema.Number })
 export type UsageToday = typeof UsageToday.Type
 

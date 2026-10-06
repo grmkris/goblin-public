@@ -177,10 +177,11 @@ export interface RuntimeEnv {
   readonly MEMORY_MODEL?: string
   /** Native fixture only: tokens main runs past its memory view before a new one (`memory.ts` `FOLD_TOKENS`). */
   readonly MEMORY_FOLD_TOKENS?: string
-  /** Native fixture allowance only; deployed accounts use their plan or account override. */
-  readonly MODEL_DAILY_TOKENS?: string
-  /** JSON object of model id to price multiplier; omitted models count at one. */
-  readonly MODEL_TOKEN_WEIGHTS?: string
+  /**
+   * JSON `{ default?, models?, aliases? }` of tokens per estimated Token Plan Credit by model (`budget-credits.ts`);
+   * unset, Alibaba's example rates apply to every model.
+   */
+  readonly MODEL_CREDIT_RATES?: string
   /** JSON list of outbound MCP servers: `[{ serverId, endpoint, issuer?, resource? }]`. */
   readonly MCP_SERVERS?: string
   /** 32 random bytes, base64: encrypts outbound OAuth credentials at rest. */

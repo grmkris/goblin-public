@@ -294,7 +294,7 @@ describe('run telemetry outside Pi (unit)', () => {
     const namer = new CheapModel(
       cheapModels(replies),
       model.id,
-      (tokens) => (spent += tokens),
+      (use) => (spent += use.input + use.output + use.cacheRead + use.cacheWrite),
       auxReporter(telemetry, 'naming'),
     )
     await expect(namer.complete('Name this thread.', 'we talked about trips', 20)).resolves.toBe('Trip plans')

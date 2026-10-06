@@ -50,7 +50,7 @@ export function BillingCard() {
     <Card>
       <CardHeader>
         <CardTitle>Pro</CardTitle>
-        <CardDescription>$10 a month · 2 million weighted tokens a day</CardDescription>
+        <CardDescription>$10 a month · 800 model Credits a day</CardDescription>
         <CardAction>{state !== undefined && <StatusLabel label={planStatus(state)} />}</CardAction>
       </CardHeader>
       <CardContent>
@@ -121,11 +121,11 @@ export function Subscribe() {
         <ul className="plan-points">
           <li>Talk to it in your browser, and connect the tools you choose it may use.</li>
           <li>Give it work to carry on with: routines run at a time, on a schedule or when a server sends an event.</li>
-          <li>2 million weighted tokens a day, starting again at midnight UTC.</li>
+          <li>800 model Credits a day, about 2 million tokens, starting again at midnight UTC.</li>
         </ul>
         <p className="server-note">
-          Billed monthly; your agent stays available until the end of the paid period. Model prices affect how quickly
-          the allowance is used.
+          Billed monthly; your agent stays available until the end of the paid period. Credits price model use the way
+          the model plan does: writing costs more than reading, and context the model has seen before costs much less.
         </p>
         {(error || failure) && (
           <Alert variant="destructive">

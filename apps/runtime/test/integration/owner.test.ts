@@ -42,7 +42,7 @@ async function ownerRoutingCase(url: string): Promise<void> {
   const owner = await person(url)
   const other = await person(url)
   for (const who of [owner, other])
-    await call(url, who, '/__test/billing/override', { userId: who.userId, dailyTokens: 1000 })
+    await call(url, who, '/__test/billing/override', { userId: who.userId, dailyCredits: 1000 })
   const thread = Schema.decodeUnknownSync(ConversationView)(
     await (await call(url, owner, '/api/conversations', {})).json(),
   )

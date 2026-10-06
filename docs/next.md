@@ -25,7 +25,7 @@ policy.
 - A production stage: its own D1, credential key and model key; nothing is shared with dev.
 - Dev is live at `https://dev.goblin.surf`: its fresh auth D1 and PersonalAgent namespace were verified empty before
   bootstrap, the owner signed in with delivered OTP from `hello@goblin.surf` (SPF, DKIM and DMARC passed), and signup
-  is closed after bootstrap. The owner has an explicit dev-only Pro override of 2M weighted tokens per UTC day. The
+  is closed after bootstrap. The owner has an explicit dev-only Pro override of its daily allowance (in Credits since ADR 0026). The
   dedicated provider key separately caps aggregate spending at $10 per 30 days and restricts offered models. Live
   acceptance passed health, closed-signup refusal, OTP browser login, desktop/mobile layout, OAuth/MCP consent, model
   turns, thread sharing, subagents, memory and client revocation. Reopening signup needs a global account-admission

@@ -221,7 +221,7 @@ export async function inspectAuthCase(base: string) {
   expect(inspection(await toolsOf(base, narrowed.access))).toEqual([])
 
   // Revoking the client in Settings (an account with a plan) ends every token.
-  await call(base, owner, '/__test/billing/override', { userId: owner.userId, dailyTokens: 1000 })
+  await call(base, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
   const revoked = await fetch(`${base}/api/clients/${clientId}`, {
     method: 'DELETE',
     headers: { cookie: owner.cookie, origin: APP, 'x-goblin-csrf': '1', 'cf-connecting-ip': owner.ip },

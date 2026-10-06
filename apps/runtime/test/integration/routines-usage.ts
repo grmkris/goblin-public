@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite'
 import type { RoutineDefinition } from '@goblin/contracts'
 import { RoutineRunStore } from '../../src/routines/runs.ts'
 import { RoutineUsage } from '../../src/routines/usage.ts'
+import { DEFAULT_RATES } from '../../src/budget-credits.ts'
 import { BACKGROUND, conversationId } from '../../src/pi/context.ts'
 import { unwrap } from '../../src/http/rpc.ts'
 import type { SeenRequest } from './model.ts'
@@ -67,14 +68,14 @@ export async function routineUsageProbe(
   const compacted = await pi.waitForTask(task, BACKGROUND)
   await waitFor(store, run.id, 'completed')
   const used = store.used(run.id, Date.now()).run
-  const projection = new RoutineUsage(db, store, {}, agent.harness)
+  const projection = new RoutineUsage(db, store, DEFAULT_RATES, agent.harness)
   const snapshot = await pi.snapshot(UsageDoc, child.id, BACKGROUND)
   projection.project(session, snapshot, Date.now() + 86_400_000)
   projection.project(session, snapshot, Date.now() + 86_400_000)
   const afterReplay = store.used(run.id, Date.now()).run
   const capped = await start(agent, 'call mcp_list {}', 'overshoot')
   await waitFor(store, capped.id, 'running')
-  store.recordUsage(capped.id, 'fixture-previous-usage', 995, 1, Date.now())
+  store.recordUsage(capped.id, 'fixture-previous-usage', 995, 0, Date.now())
   await waitFor(store, capped.id, 'failed')
   const capRequests = seen.filter((request) =>
     request.messages.some((message) => message.text.includes('Confirmed routine: Native slow routine overshoot')),

@@ -147,7 +147,7 @@ describe('the skill learner (unit)', () => {
     const layer = Layer.mergeAll(
       Layer.succeed(Learner, learner()),
       Layer.succeed(Resident, new ActiveResident()),
-      Layer.succeed(Budget, new ModelBudget({ tokens: () => 0, add: () => undefined }, 300_000)),
+      Layer.succeed(Budget, new ModelBudget({ milliCredits: () => 0, add: () => undefined }, 300_000)),
     )
     const run: RunProgram = <A>(program: Parameters<RunProgram>[0]) =>
       // SAFETY: onYield uses only Learner, Resident and Budget, provided by this test's layer.

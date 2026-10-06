@@ -97,7 +97,7 @@ const say = (base: string, owner: Person, thread: string, tool: string, input: u
  */
 export async function agentAppViewCase(base: string): Promise<void> {
   const owner = await person(base)
-  await call(base, owner, '/__test/billing/override', { userId: owner.userId, dailyTokens: 1000 })
+  await call(base, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
   const thread = Schema.decodeUnknownSync(ConversationView)(
     await (await call(base, owner, '/api/conversations', {})).json(),
   )
