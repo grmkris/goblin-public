@@ -55,7 +55,7 @@ export type TypedTool<I, O> = {
   readonly input: Schema.Codec<I, unknown>
   readonly output: Schema.Codec<O, unknown>
   readonly replay: 'safe' | 'unsafe'
-  readonly execute: (input: I, api: ToolExecutionApi, context: Context) => Promise<O>
+  readonly execute: (input: I, api: ToolExecutionApi, context: Context) => Promise<O | ReadyResult>
   /** What the model reads of the output (and the input it answers); its JSON by default. */
   readonly text?: (output: O, input: I) => string
   /** Fields beside `structuredContent` in the result's details (the ones the web reads), from the output and input. */
@@ -64,6 +64,18 @@ export type TypedTool<I, O> = {
   readonly terminate?: (output: O) => boolean
   /** The text of a failure; {@link describeError} by default. */
   readonly failure?: (cause: unknown) => string
+}
+
+/**
+ * A result a typed tool returns as it is, in place of its output: a refusal the web trusts by its details
+ * (`capability-off`), or content the output does not carry (an image's bytes, which `structuredContent` would store
+ * twice). It has no `structuredContent`.
+ */
+export class ReadyResult {
+  readonly result: ToolExecutionResult
+  constructor(result: ToolExecutionResult) {
+    this.result = result
+  }
 }
 
 /** The signatures of the typed tools defined so far, by name: what `/mcp` and codemode will list. */
@@ -104,12 +116,13 @@ export function typedTool<I, O>(tool: TypedTool<I, O>): ToolRegistration {
       } catch (cause) {
         return failed(`The arguments do not match ${tool.name}'s input: ${describeError(cause)}`)
       }
-      let output: O
+      let output: O | ReadyResult
       try {
         output = await tool.execute(input, api, context)
       } catch (cause) {
         return failed(tool.failure?.(cause) ?? describeError(cause))
       }
+      if (output instanceof ReadyResult) return output.result
       // SAFETY: the JSON codec's encoded side is JSON.
       const structuredContent = encode(output) as JsonValue
       return {

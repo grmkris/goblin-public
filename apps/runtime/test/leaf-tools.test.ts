@@ -4,7 +4,10 @@ import { describe, expect, it } from 'vitest'
 import { filesExtension } from '../src/pi/files.ts'
 import { homeExtension } from '../src/pi/home.ts'
 import type { RunProgram } from '../src/pi/resident-mcp.ts'
+import { serversExtension } from '../src/pi/servers.ts'
+import { skillsExtension } from '../src/pi/skills.ts'
 import { threadExtension } from '../src/pi/thread.ts'
+import { ReadyResult } from '../src/pi/typed-tool.ts'
 
 type Arguments = Parameters<typeof validateToolArguments>[1]['arguments']
 
@@ -79,5 +82,44 @@ describe('leaf tools (unit, ADR 0027)', () => {
     })
     expect(shared.content).toEqual([{ type: 'text', text: 'Shared with 12.' }])
     expect(shared.details).toEqual({ structuredContent: { sharedWith: '12' } })
+  })
+
+  it('skill_activate shows the verified skill in its tags, and skill_read returns an image as content as it is', async () => {
+    const loaded = { handle: 'lib:review', origin: 'lib', body: '# Review\n', files: [{ path: 'a.md', size: 3 }] }
+    const activated = await call(tool(skillsExtension(runner(loaded)), 'skill_activate'), { skill: 'lib:review' })
+    expect(activated.content).toEqual([
+      {
+        type: 'text',
+        text: '<skill handle="lib:review" origin="lib">\n\n# Review\n\n</skill>\n\nFiles you may read with skill_read: a.md (3 bytes)',
+      },
+    ])
+    expect(activated.details).toEqual({ structuredContent: loaded })
+
+    const image = { content: [{ type: 'image' as const, data: 'AAAA', mimeType: 'image/png' }] }
+    const read = await call(tool(skillsExtension(runner(new ReadyResult(image))), 'skill_read'), {
+      skill: 'lib:review',
+      path: 'a.png',
+    })
+    expect(read).toEqual(image)
+  })
+
+  it('mcp_suggest returns what it found as untrusted data', async () => {
+    const found = {
+      trusted: false,
+      suggested: [],
+      registries: [
+        {
+          name: 'Weather',
+          endpoint: 'https://w.example/mcp',
+          registry: 'Official',
+          verified: true,
+          needsKey: false,
+          added: false,
+        },
+      ],
+    }
+    const suggested = await call(tool(serversExtension(runner(found), undefined), 'mcp_suggest'), { query: 'weather' })
+    expect(suggested.details).toEqual({ structuredContent: found })
+    expect(suggested.content).toEqual([{ type: 'text', text: JSON.stringify(found) }])
   })
 })

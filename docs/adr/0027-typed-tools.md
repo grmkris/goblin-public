@@ -7,9 +7,11 @@ Effect Schemas. The model is offered the input as one self-contained JSON Schema
 the arguments are decoded through the same JSON form before the tool runs (an optional field may arrive as `null`),
 and arguments that do not fit are an error result the model can fix. The output is encoded as JSON and kept as
 `details.structuredContent`, beside the `details` fields the web reads (`kind` and the rest), the shape Pi's MCP tools
-use; the model reads the output's JSON or a sentence the tool writes. Every typed tool's signature (name, description,
-input and output schema) is listed for the callers that will want types: goblin's `/mcp` and codemode, which gets its
-own design.
+use; the model reads the output's JSON or a sentence the tool writes. A tool may return a ready result in place of its
+output, without `structuredContent`: a refusal the web trusts by its details (`capability-off`), or content its output
+does not carry (an image's bytes, which would be stored twice). Every typed tool's signature (name, description, input
+and output schema) is listed for the callers that will want types: goblin's `/mcp` and codemode, which gets its own
+design.
 
 **A tool does one thing.** A tool that took an `action` and optional fields per action becomes one tool per action
 (`routine` becomes `routine_propose`, `routine_list` and `routine_pause`), so each has an exact input and output and

@@ -1,7 +1,6 @@
-import { GenerationTask, defineExtension, defineTool, hook, section } from '@earendil-works/pi-durable'
-import type { ToolExecutionResult } from '@earendil-works/pi-durable'
-import { Type } from '@earendil-works/pi-ai'
+import { GenerationTask, defineExtension, hook, section } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
+import * as Schema from 'effect/Schema'
 import type { Catalog } from '../skills/library.ts'
 import { Capabilities, Learner, Skills, attempt, requireBudget, requireResident } from '../services.ts'
 import { logLearnOutcome, type LearnOutcome } from '../skills/learner.ts'
@@ -10,6 +9,7 @@ import { capabilityOffResult } from './capabilities.ts'
 import { withContext } from './context-tail.ts'
 import { NotFound } from '../http/errors.ts'
 import type { RunProgram } from './resident-mcp.ts'
+import { ReadyResult, typedTool } from './typed-tool.ts'
 
 /** How many skills the prompt lists, and how much of each description. */
 const MAX_LISTED = 100
@@ -36,7 +36,26 @@ const listing = (catalog: Catalog): string | undefined => {
   return [GUIDE, '', ...(lines.length === 0 ? ['No skills are listed.'] : lines), ...more, ...down].join('\n')
 }
 
-const text = (value: string): ToolExecutionResult => ({ content: [{ type: 'text', text: value }] })
+const Handle = Schema.String.check(Schema.isMinLength(3), Schema.isMaxLength(300))
+
+/** A loaded skill: its handle, the library it came from, its verified instructions and the files it may read. */
+const Loaded = Schema.Struct({
+  handle: Schema.String,
+  origin: Schema.String,
+  body: Schema.String,
+  files: Schema.Array(Schema.Struct({ path: Schema.String, size: Schema.Number })),
+})
+
+/** A skill file as text, or what it is when it is not text (an image is returned as content, not here). */
+const SkillFile = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal('text'), path: Schema.String, text: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal('binary'),
+    path: Schema.String,
+    size: Schema.Number,
+    mimeType: Schema.optionalKey(Schema.String),
+  }),
+])
 
 const authorizeSkill = (run: RunProgram, session: string) => (serverId: string) =>
   run(
@@ -97,18 +116,19 @@ const skillsOff = (session: string, handle: string) =>
 
 /** `skill_activate`: load one verified `SKILL.md` into the conversation. */
 const activateTool = (run: RunProgram) =>
-  defineTool({
+  typedTool({
     name: 'skill_activate',
     description:
       'Load a skill listed under <skills> in the goblin-context block by its handle (for example `myskills:code-review`). Returns its verified instructions and the files it may read. Activate before following a skill.',
-    parameters: Type.Object({ skill: Type.String({ minLength: 3, maxLength: 300 }) }),
+    input: Schema.Struct({ skill: Handle }),
+    output: Loaded,
     replay: 'safe',
     execute: async ({ skill }, api, context) =>
       run(
         Effect.gen(function* () {
           yield* requireResident
           const off = yield* skillsOff(String(api.conversationId), skill)
-          if (off !== undefined) return off
+          if (off !== undefined) return new ReadyResult(off)
           const skills = yield* Skills
           const loaded = yield* attempt(() =>
             skills.activate(String(api.conversationId), skill, {
@@ -116,40 +136,41 @@ const activateTool = (run: RunProgram) =>
               ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
             }),
           )
-          const files =
-            loaded.files.length === 0
-              ? 'This skill has no other files.'
-              : `Files you may read with skill_read: ${loaded.files.map((file) => `${file.path} (${file.size} bytes)`).join(', ')}`
-          // Blank lines keep the tags from opening an HTML block, so the body still reads as Markdown.
-          return text(
-            [
-              `<skill handle="${loaded.skill.handle}" origin="${loaded.skill.serverId}">`,
-              loaded.body.trim(),
-              '</skill>',
-              files,
-            ].join('\n\n'),
-          )
+          return {
+            handle: loaded.skill.handle,
+            origin: loaded.skill.serverId,
+            body: loaded.body,
+            files: loaded.files.map(({ path, size }) => ({ path, size })),
+          }
         }),
       ),
+    text: ({ handle, origin, body, files }) =>
+      // Blank lines keep the tags from opening an HTML block, so the body still reads as Markdown.
+      [
+        `<skill handle="${handle}" origin="${origin}">`,
+        body.trim(),
+        '</skill>',
+        files.length === 0
+          ? 'This skill has no other files.'
+          : `Files you may read with skill_read: ${files.map((file) => `${file.path} (${file.size} bytes)`).join(', ')}`,
+      ].join('\n\n'),
   })
 
 /** `skill_read`: one file of a skill this conversation activated, checked against its retained manifest. */
 const readTool = (run: RunProgram) =>
-  defineTool({
+  typedTool({
     name: 'skill_read',
     description:
       'Read one file of a skill you activated in this conversation, by its path relative to the skill (for example `references/checklist.md`).',
-    parameters: Type.Object({
-      skill: Type.String({ minLength: 3, maxLength: 300 }),
-      path: Type.String({ minLength: 1, maxLength: 1024 }),
-    }),
+    input: Schema.Struct({ skill: Handle, path: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024)) }),
+    output: SkillFile,
     replay: 'safe',
     execute: async ({ skill, path }, api, context) =>
       run(
         Effect.gen(function* () {
           yield* requireResident
           const off = yield* skillsOff(String(api.conversationId), skill)
-          if (off !== undefined) return off
+          if (off !== undefined) return new ReadyResult(off)
           const skills = yield* Skills
           const file = yield* attempt(() =>
             skills.read(String(api.conversationId), skill, path, {
@@ -157,20 +178,26 @@ const readTool = (run: RunProgram) =>
               ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
             }),
           )
-          if (file.kind === 'text')
-            return text(`<skill-file skill="${skill}" path="${path}">\n\n${file.text}\n\n</skill-file>`)
           if (file.kind === 'image')
-            return {
+            return new ReadyResult({
               content: [
                 { type: 'text', text: `Image ${path} from skill ${skill}.` },
                 { type: 'image', data: file.data, mimeType: file.mimeType },
               ],
-            }
-          return text(
-            `${path} is a binary file (${file.size} bytes${file.mimeType === undefined ? '' : `, ${file.mimeType}`}); it cannot be shown or run here.`,
-          )
+            })
+          if (file.kind === 'text') return file
+          return {
+            kind: file.kind,
+            path: file.path,
+            size: file.size,
+            ...(file.mimeType === undefined ? {} : { mimeType: file.mimeType }),
+          }
         }),
       ),
+    text: (file, { skill, path }) =>
+      file.kind === 'text'
+        ? `<skill-file skill="${skill}" path="${path}">\n\n${file.text}\n\n</skill-file>`
+        : `${path} is a binary file (${file.size} bytes${file.mimeType === undefined ? '' : `, ${file.mimeType}`}); it cannot be shown or run here.`,
   })
 
 /**
