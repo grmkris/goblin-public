@@ -53,6 +53,18 @@ describe('tool output presentation', () => {
       outputBlocks({ text: '{"ok":true}', details: { structuredContent: { different: true }, content: [] } }),
     ).toEqual([{ kind: 'json', value: { ok: true } }])
   })
+  it('marks a Markdown result for formatting and keeps its text exactly', () => {
+    const page = '# Notes\n\n```ts\nconst a = 1\n```\n'
+    expect(outputBlocks({ text: page, details: undefined })).toEqual([{ kind: 'markdown', text: page }])
+  })
+  it('formats Markdown prose that accompanies structured MCP output', () => {
+    const value = { count: 1 }
+    const prose = '| Name | Count |\n| --- | --- |\n| a | 1 |'
+    expect(outputBlocks({ text: 'raw', details: envelope([text(prose)], value) })).toEqual([
+      { kind: 'json', value },
+      { kind: 'markdown', text: prose },
+    ])
+  })
   it('falls back to the original text for an empty MCP result', () => {
     expect(outputBlocks({ text: 'No data', details: envelope([]) })).toEqual([{ kind: 'text', text: 'No data' }])
   })

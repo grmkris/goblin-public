@@ -1,10 +1,12 @@
 import { Schema } from 'effect'
 import type { JsonValue } from '@goblin/contracts'
 import { isString, record, records } from './boundary.ts'
+import { looksLikeMarkdown } from './markdown.ts'
 
+/** One part of a tool's output: a JSON value, Markdown to format, or text shown as it is. */
 type PayloadBlock =
   | { readonly kind: 'json'; readonly value: JsonValue }
-  | { readonly kind: 'text'; readonly text: string }
+  | { readonly kind: 'markdown' | 'text'; readonly text: string }
 
 const isJson = Schema.is(Schema.MutableJson)
 
@@ -16,7 +18,7 @@ function textBlock(text: string): PayloadBlock {
   } catch {
     // Tool results may be ordinary text, errors or incomplete JSON; all remain readable.
   }
-  return { kind: 'text', text }
+  return { kind: looksLikeMarkdown(text) ? 'markdown' : 'text', text }
 }
 
 function isMcpEnvelope(details: Record<string, unknown> | undefined): details is Record<string, unknown> {
