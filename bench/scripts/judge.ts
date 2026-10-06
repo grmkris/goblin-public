@@ -59,14 +59,14 @@ export function judgeCase(item: typeof BlindCase.Type) {
       'Audited prefix labels plus original evidence ranges and cited delivery receipts. Unlisted prefix text is not shown; machine conclusions remain diagnostic.',
   }
 }
-const reviewBatch = Effect.fn('bench.judgeBatch')(function* (
+export const reviewBatch = Effect.fn('bench.judgeBatch')(function* (
   items: readonly (typeof BlindCase.Type)[],
   config: Campaign['judge'],
   provider: Effect.Success<ReturnType<typeof relay>>,
   operation: string,
-  stage: number,
+  label: { readonly stage?: number; readonly phase: 'judge' | 'preflight' },
 ) {
-  provider.setScope(operation, 'judge', stage)
+  provider.setScope(operation, label.phase, label.stage)
   const client = yield* HttpClient.HttpClient
   const cases = yield* Effect.try({
     try: () => items.map(judgeCase),
@@ -85,7 +85,7 @@ const reviewBatch = Effect.fn('bench.judgeBatch')(function* (
     ],
   })
   const response = yield* client.execute(
-    HttpClientRequest.post(`${provider.url}/chat/completions`).pipe(
+    HttpClientRequest.post(`${provider.url}/v1/chat/completions`).pipe(
       HttpClientRequest.setHeader('x-bench-scope', operation),
       HttpClientRequest.bodyText(payload, 'application/json'),
     ),
@@ -127,7 +127,10 @@ export const judgeStage = Effect.fn('bench.judgeStage')(function* (options: {
     const operation = `${options.campaign.name}.judge.${options.stage}.${at}`
     if (options.provider.allTraces().some((t) => t.scope === operation))
       return yield* fail('Unfinished judge request is preserved; no implicit rerun')
-    const judgments = yield* reviewBatch(items, options.campaign.judge, options.provider, operation, options.stage)
+    const judgments = yield* reviewBatch(items, options.campaign.judge, options.provider, operation, {
+      stage: options.stage,
+      phase: 'judge',
+    })
     for (const judgment of judgments)
       votes.push({
         ...judgment,

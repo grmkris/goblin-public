@@ -3,7 +3,7 @@
 ## Real-history overnight campaign
 
 The campaign coordinator freezes several real-corpus manifests behind one identity and durable API budget. The
-approved private campaign is `.local/bench/experiments/real-history-overnight-v1/campaign.json`: Claude prefixes at
+corrected private campaign is `.local/bench/experiments/real-history-overnight-v2/campaign.json`: Claude prefixes at
 19k/36k/66k/129k/258k source tokens, and one genuine Hermes Telegram DM at 32k/66k/113k. Each checkpoint has five
 curated probes for exact detail, recorded rationale, latest state, superseded beliefs (`negative-constraint`) and
 absent owner approval. No unrelated sessions, padding or generated histories enter the live experiment.
@@ -22,11 +22,19 @@ are part of the immutable campaign identity; reports retain the actual rendered 
 
 | Phase                   | Upstream attempts | Input ceiling | Completion including reasoning |
 | ----------------------- | ----------------: | ------------: | -----------------------------: |
-| Preflight               |                60 |        150000 |                          25000 |
-| Memory construction     |              1400 |       7800000 |                         280000 |
-| Answers                 |               440 |       1650000 |                          95000 |
+| Preflight               |                50 |        136565 |                          23028 |
+| Memory construction     |              1326 |       7090393 |                         260371 |
+| Answers                 |               412 |       1952802 |                          82567 |
 | Independent Muse review |               100 |        400000 |                         100000 |
-| Total                   |              2000 |      10000000 |                         500000 |
+| Corrected trial total   |              1888 |       9579760 |                         465966 |
+
+The retained v1 trial completed 27/30 answers at its first checkpoint. Conservative input-byte reservations denied
+the last three calls; judging then hit an internal URL without `/v1`, before any judge upstream request. That trial
+remains terminal and unchanged. V2 corrects the route and resizes stage envelopes using those measured contexts.
+It moves 500k input allowance from construction to readers and 10k output allowance from readers to construction.
+`retained-budget.json` deducts all 112 prior attempts, 420240 input and 34034 completion tokens from the corrected
+trial's caps: the combined ceiling remains 2000 attempts, 10M input and 500k completion. Corpora, questions, models,
+pressure, tools and prompts are unchanged. V2 is a fresh run; prior answers and failed receipts are never rewritten.
 
 All phases, failed attempts and one transient retry use the same append-only `attempts.jsonl`; there is one active
 upstream request and at most six attempts per answer. Each stage also declares its own envelope. The earlier
@@ -35,14 +43,17 @@ the full reservation and halts further admission immediately. Breaches also halt
 their smaller ceilings.
 
 ```sh
-bun run bench:campaign-plan --campaign .local/bench/experiments/real-history-overnight-v1/campaign.json
-heavy bun run bench:campaign-run --live --campaign .local/bench/experiments/real-history-overnight-v1/campaign.json
-bun run bench:campaign-report --run real-history-overnight-v1
-heavy bun run bench:campaign-resume --live --campaign .local/bench/experiments/real-history-overnight-v1/campaign.json
+bun run bench:campaign-plan --campaign .local/bench/experiments/real-history-overnight-v2/campaign.json
+heavy bun run bench:campaign-run --live --campaign .local/bench/experiments/real-history-overnight-v2/campaign.json
+bun run bench:campaign-report --run real-history-overnight-v2
+heavy bun run bench:campaign-resume --live --campaign .local/bench/experiments/real-history-overnight-v2/campaign.json
 ```
 
 Freeze the checked implementation locally before live inference, preserving private corpus/provider paths. Every
-writer route must pass native real-source preflight with the common reader. Stages advance only after at least 90%
+writer route must pass native real-source preflight with the common reader.
+The judge additionally reviews the three actual preflight answers against their original owner source inside the
+preflight allowance. Structured votes, reported route identity and bounded usage must pass before construction;
+these votes are transport diagnostics and never become benchmark scores. Stages advance only after at least 90%
 answer completion, known settled usage, no breaches, monotonic build receipts and successful machine review.
 Failure receipts are terminal; resume never reruns a failed or unfinished answer, preflight or judge request.
 Resume rechecks completed stage totals, operational gates and sealed reviews against their ordered receipts before

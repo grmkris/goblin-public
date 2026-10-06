@@ -11,6 +11,7 @@ import {
   CampaignBuild,
   buildContinuity,
   restoredCampaignErrors,
+  settledAttempts,
 } from '../src/campaign.ts'
 import { Manifest, type Scenario } from '../src/schema.ts'
 import { validateManifest } from '../src/manifest.ts'
@@ -23,7 +24,10 @@ import { initializeRun, saveEpisode, loadRun } from './runner.ts'
 import { ProviderConfig, validateProvider, providerCatalog, relay } from './relay.ts'
 import { localStack } from './local.ts'
 import { preflight } from './preflight.ts'
-import { judgeStage } from './judge.ts'
+import { judgeStage, reviewBatch } from './judge.ts'
+import { BlindCase } from '../src/blind.ts'
+import { ProbeResult, publicEvents } from '../src/protocol.ts'
+import { exceededReservation } from '../src/budget.ts'
 import { campaignReport } from '../src/campaign-report.ts'
 
 export const resolveCampaign = Effect.fn('bench.resolveCampaign')(function* (root: string, path: string) {
@@ -135,6 +139,82 @@ const campaignPreflight = Effect.fn('bench.campaignPreflight')(function* (
       variants: [{ id: `preflight.${writer}`, policy: 'optchat' as const, writer, reader: 'deepseek-v4.1-flash' }],
     }
     yield* preflight(path, url, { ...value.resolved, runId: name, manifest }, provider)
+  }
+  yield* judgePreflight(dir, value, provider, writers)
+})
+const judgePreflight = Effect.fn('bench.judgePreflight')(function* (
+  dir: string,
+  value: typeof CampaignResolved.Type,
+  provider: Effect.Success<ReturnType<typeof relay>>,
+  writers: readonly string[],
+) {
+  const path = join(dir, 'preflights/judge.json')
+  const fs = yield* FileSystem.FileSystem
+  if (yield* fs.exists(path)) {
+    if (!(yield* readJson(path, Schema.Struct({ passed: Schema.Boolean }))).passed)
+      return yield* fail('Recorded judge preflight failed; no implicit rerun')
+    return
+  }
+  const operation = `${value.campaign.name}.preflight.judge`
+  if (provider.allTraces().some((t) => t.scope === operation))
+    return yield* fail('Judge preflight lacks a terminal receipt; preserve its attempts')
+  const checked = yield* checkJudgePreflight(dir, value, provider, writers, operation).pipe(Effect.result)
+  const receipt = Result.isSuccess(checked) ? checked.success : { passed: false, error: json(checked.failure) }
+  yield* writeJson(path, receipt)
+  if (!receipt.passed) return yield* fail('Real-answer judge preflight failed; bulk construction remains closed')
+})
+const checkJudgePreflight = Effect.fn('bench.checkJudgePreflight')(function* (
+  dir: string,
+  value: typeof CampaignResolved.Type,
+  provider: Effect.Success<ReturnType<typeof relay>>,
+  writers: readonly string[],
+  operation: string,
+) {
+  const config = value.manifests[0]?.preflight
+  const scenario = value.resolved.scenarios?.find((s) => s.id === config?.scenarioId)
+  if (config === undefined || scenario === undefined) return yield* fail('Missing real-source judge preflight')
+  const items: BlindCase[] = []
+  for (const writer of writers) {
+    const receipt = yield* readJson(
+      join(dir, 'preflights', writer, 'preflight.json'),
+      Schema.Struct({ native: ProbeResult }),
+    )
+    items.push({
+      caseId: fingerprint({ operation, writer }),
+      category: 'evidence',
+      question: 'Describe the original owner request and cite its source event.',
+      label: {
+        requiredClaims: [
+          { key: 'owner-request', meaning: 'Describe the original owner request shown in the evidence.' },
+        ],
+        evidenceIds: [config.sourceId],
+        mustAbstain: false,
+        prohibitedClaims: [],
+        rubric:
+          'Compare the real native preflight answer against its original owner source; this is a transport and judge-format check, not a benchmark score.',
+      },
+      prefix: publicEvents(scenario.events.slice(0, config.cutoff)),
+      delivered: receipt.native.deliveries,
+      rawAnswer: receipt.native.text,
+    })
+  }
+  const votes = yield* reviewBatch(items, value.campaign.judge, provider, operation, { phase: 'preflight' })
+  const traces = settledAttempts(provider.allTraces().filter((t) => t.scope === operation))
+  const passed =
+    traces.length > 0 &&
+    traces.every(
+      (t) =>
+        t.status === 200 &&
+        !t.unknownUsage &&
+        !exceededReservation(t) &&
+        t.responseModel === value.campaign.judge.model,
+    )
+  return {
+    passed,
+    votes,
+    actualAnswers: items.length,
+    operation,
+    note: 'Actual native preflight answers and their original source; diagnostic route, structure, identity and usage check only.',
   }
 })
 const runStage = Effect.fn('bench.campaignStage')(function* (options: {

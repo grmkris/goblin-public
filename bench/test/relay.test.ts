@@ -4,6 +4,7 @@ import { expect, test } from 'vitest'
 import { relay } from '../scripts/relay.ts'
 import { starterManifest } from '../src/manifest.ts'
 import { Trace } from '../src/results.ts'
+import { reviewBatch } from '../scripts/judge.ts'
 
 // Injected transport and ledger validate admission only, never benchmark quality.
 test('preflight subceiling stays inside the shared durable allowance', async () => {
@@ -253,6 +254,58 @@ test('an unresolved upstream attempt blocks every later phase after restoration'
         )
         expect(response.status).toBe(402)
         expect(provider.totals()).toEqual({ requests: 1, input: 100, output: 20 })
+      }),
+    ).pipe(Effect.provide(Layer.merge(fs, FetchHttpClient.layer))),
+  )
+})
+
+test('machine review reaches the authenticated relay route and spends its judge allowance before parsing', async () => {
+  const fs = ledgerLayer()
+  const limits = { maxRequests: 2, maxInputTokens: 10000, maxOutputTokens: 10000 }
+  const base = starterManifest()
+  const resolved = {
+    manifest: {
+      ...base,
+      campaignId: 'judge-routing',
+      allowance: {
+        ...base.allowance,
+        phases: { preflight: limits, build: limits, answer: limits, judge: limits },
+        stages: [{ cutoff: 1, build: limits, answer: limits, judge: limits }],
+      },
+    },
+    sourceHash: '',
+    corpusHash: '',
+    runId: 'judge-routing',
+    mode: 'fake' as const,
+    createdAt: '',
+  }
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const provider = yield* relay(resolved, 'attempts', undefined)
+        // Injected transport returns ordinary text. Parsing may fail, but the real judge request must reach admission.
+        yield* reviewBatch(
+          [],
+          { model: 'muse-spark-1.3-contributor', maxOutputTokens: 4096 },
+          provider,
+          'judge-routing.case',
+          { stage: 1, phase: 'judge' },
+        ).pipe(Effect.result)
+        expect(provider.totals().requests).toBe(1)
+        expect(provider.traces('judge-routing.case')).toEqual([
+          expect.objectContaining({ phase: 'judge', stage: 1, model: 'muse-spark-1.3-contributor', status: 200 }),
+        ])
+        yield* reviewBatch(
+          [],
+          { model: 'muse-spark-1.3-contributor', maxOutputTokens: 4096 },
+          provider,
+          'judge-routing.preflight',
+          { phase: 'preflight' },
+        ).pipe(Effect.result)
+        expect(provider.totals().requests).toBe(2)
+        expect(provider.traces('judge-routing.preflight')).toEqual([
+          expect.objectContaining({ phase: 'preflight', model: 'muse-spark-1.3-contributor', status: 200 }),
+        ])
       }),
     ).pipe(Effect.provide(Layer.merge(fs, FetchHttpClient.layer))),
   )
