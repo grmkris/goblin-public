@@ -1,5 +1,10 @@
 import type { Manifest } from './schema.ts'
 
+/** Per-route settings preserve the global fallback for all existing manifests. */
+export function modelTransport(manifest: Manifest, model: string) {
+  return manifest.modelTransport?.find((item) => item.model === model) ?? manifest.transport
+}
+
 /** Explicit disabling is opt-in: some routes (including GLM) require provider-default thinking. */
 export function requestPayload(original: Readonly<Record<string, unknown>>, thinking: 'provider-default' | 'disabled') {
   return JSON.stringify({
@@ -18,4 +23,4 @@ export function transportModel<T extends { readonly id: string; readonly context
   return { ...model, contextWindow: windows.get(model.id) ?? model.contextWindow }
 }
 export const sameTransport = (left: Manifest, right: Manifest): boolean =>
-  JSON.stringify(left.transport) === JSON.stringify(right.transport)
+  JSON.stringify([left.transport, left.modelTransport]) === JSON.stringify([right.transport, right.modelTransport])

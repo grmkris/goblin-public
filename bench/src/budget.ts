@@ -49,7 +49,7 @@ export class Budget {
   }
 }
 
-export function phaseLimits(manifest: Manifest, phase: 'preflight' | 'build' | 'answer'): AllowanceLimits {
+export function phaseLimits(manifest: Manifest, phase: 'preflight' | 'build' | 'answer' | 'judge'): AllowanceLimits {
   return manifest.allowance.phases?.[phase] ?? manifest.allowance
 }
 

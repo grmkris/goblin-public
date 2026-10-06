@@ -1,6 +1,6 @@
 import { Config, DateTime, Effect, FileSystem, Redacted, Schema, Semaphore } from 'effect'
 import { HttpClient, HttpClientRequest } from 'effect/http'
-import { requestPayload } from '../src/transport.ts'
+import { modelTransport, requestPayload } from '../src/transport.ts'
 import { providerDetails } from '../src/provider-details.ts'
 import {
   Budget,
@@ -57,7 +57,10 @@ type Accounting = {
   readonly budget: Budget
   readonly records: Trace[]
   readonly phaseBudgets: Readonly<Record<Trace['phase'], Budget>>
-  readonly stageBudgets: ReadonlyMap<number, { readonly build: Budget; readonly answer: Budget }>
+  readonly stageBudgets: ReadonlyMap<
+    number,
+    { readonly build: Budget; readonly answer: Budget; readonly judge: Budget }
+  >
   readonly answerRequestLimit: number
 }
 
@@ -202,7 +205,7 @@ const handleRequest = Effect.fn('bench.relay.request')(function* (
   account: Accounting,
   label: Label,
   send: Send,
-  rules: { allowed: ReadonlySet<string>; thinking: 'provider-default' | 'disabled' },
+  rules: { allowed: ReadonlySet<string>; manifest: Resolved['manifest'] },
 ) {
   if (request.method !== 'POST' || new URL(request.url).pathname !== '/v1/chat/completions')
     return new Response('not found', { status: 404 })
@@ -214,7 +217,7 @@ const handleRequest = Effect.fn('bench.relay.request')(function* (
   const output = body.max_completion_tokens ?? body.max_tokens ?? 8192
   if (!Number.isSafeInteger(output) || output <= 0 || output > 8192)
     return new Response('invalid output reservation', { status: 400 })
-  const payload = requestPayload(original, rules.thinking)
+  const payload = requestPayload(original, modelTransport(rules.manifest, body.model)?.thinking ?? 'provider-default')
 
   let reply: Reply = { status: 503, text: '', contentType: 'application/json' }
   for (let retry = 0; retry < 2; retry += 1) {
@@ -246,6 +249,10 @@ function restoreAccounting(resolved: Resolved, path: string, previous: readonly 
         phaseLimits(resolved.manifest, 'answer'),
         restoredTotals(previous.filter((record) => record.phase === 'answer')),
       ),
+      judge: new Budget(
+        phaseLimits(resolved.manifest, 'judge'),
+        restoredTotals(previous.filter((record) => record.phase === 'judge')),
+      ),
     },
     stageBudgets: new Map(
       (resolved.manifest.allowance.stages ?? []).map((stage) => [
@@ -258,6 +265,10 @@ function restoreAccounting(resolved: Resolved, path: string, previous: readonly 
           answer: new Budget(
             stage.answer,
             restoredTotals(previous.filter((record) => record.stage === stage.cutoff && record.phase === 'answer')),
+          ),
+          judge: new Budget(
+            stage.judge ?? stage.answer,
+            restoredTotals(previous.filter((record) => record.stage === stage.cutoff && record.phase === 'judge')),
           ),
         },
       ]),
@@ -291,7 +302,7 @@ export const relay = Effect.fn('bench.relay')(function* (
       account,
       labels.get(request.headers.get('x-bench-scope') ?? '') ?? { scope: 'unassigned', phase: 'build' },
       send,
-      { allowed, thinking: resolved.manifest.transport?.thinking ?? 'provider-default' },
+      { allowed, manifest: resolved.manifest },
     ).pipe(gate.withPermits(1), Effect.provideService(FileSystem.FileSystem, fs))
   const server = yield* Effect.acquireRelease(
     io(() => startServer(handle)),

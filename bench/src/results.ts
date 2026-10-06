@@ -65,7 +65,7 @@ export type RunData = {
 export const Trace = Schema.Struct({
   scope: Schema.String,
   model: Schema.String,
-  phase: Schema.Literals(['preflight', 'build', 'answer']),
+  phase: Schema.Literals(['preflight', 'build', 'answer', 'judge']),
   stage: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
   attempt: Schema.Int,
   status: Schema.Int,

@@ -4,7 +4,13 @@ import { dataset, validateScenario } from './fixtures.ts'
 
 const MODELS = ['glm-5.3', 'deepseek-v4-pro-0813']
 /** Catalog routes accepted by manifests; MODELS remains the small starter matrix. */
-export const ALLOWED_MODELS = [...MODELS, 'deepseek-v4.1-flash', 'qwen3.8-flash', 'grok-4.7']
+export const ALLOWED_MODELS = [
+  ...MODELS,
+  'deepseek-v4.1-flash',
+  'qwen3.8-flash',
+  'muse-spark-1.3-contributor',
+  'grok-4.7',
+]
 export function starterManifest(): Manifest {
   const optchat: Variant[] = MODELS.flatMap((writer) =>
     MODELS.map((reader) => ({
@@ -83,11 +89,12 @@ function variantErrors(manifest: Manifest): string[] {
 function allowanceErrors(manifest: Manifest, scenarios: readonly Scenario[]): string[] {
   const errors: string[] = []
   const { allowance } = manifest
+  const campaign = manifest.campaignId !== undefined
   if (
     allowance.maxAnswers > 200 ||
-    allowance.maxRequests > 1000 ||
-    allowance.maxInputTokens > 1_000_000 ||
-    allowance.maxOutputTokens > 100_000
+    allowance.maxRequests > (campaign ? 2000 : 1000) ||
+    allowance.maxInputTokens > (campaign ? 10_000_000 : 1_000_000) ||
+    allowance.maxOutputTokens > (campaign ? 500_000 : 100_000)
   )
     errors.push('allowance exceeds global ceilings')
   if (
@@ -98,7 +105,10 @@ function allowanceErrors(manifest: Manifest, scenarios: readonly Scenario[]): st
     allowance.maxAnswers
   )
     errors.push('answer plan exceeds allowance')
-  if (manifest.retrieval.maxCalls > 4 || manifest.retrieval.maxBytes > 4096)
+  if (
+    manifest.retrieval.maxCalls > 4 ||
+    manifest.retrieval.maxBytes > (manifest.retrieval.format === 'compact-v2' ? 8192 : 4096)
+  )
     errors.push('retrieval exceeds shared ceiling')
   errors.push(...stagedAllowanceErrors(manifest, scenarios))
   if (
@@ -116,7 +126,9 @@ function stagedAllowanceErrors(manifest: Manifest, scenarios: readonly Scenario[
   const keys = ['maxRequests', 'maxInputTokens', 'maxOutputTokens'] as const
   if (
     phases !== undefined &&
-    keys.some((key) => Object.values(phases).reduce((n, limits) => n + limits[key], 0) > manifest.allowance[key])
+    keys.some(
+      (key) => Object.values(phases).reduce((n, limits) => n + (limits?.[key] ?? 0), 0) > manifest.allowance[key],
+    )
   )
     errors.push('phase allowances exceed global ceiling')
   if (stages === undefined) return errors
@@ -141,8 +153,23 @@ function stagedAllowanceErrors(manifest: Manifest, scenarios: readonly Scenario[
   return errors
 }
 
+function transportErrors(manifest: Manifest): string[] {
+  const errors: string[] = []
+  if (
+    manifest.modelTransport !== undefined &&
+    (new Set(manifest.modelTransport.map((item) => item.model)).size !== manifest.modelTransport.length ||
+      manifest.modelTransport.some((item) => !ALLOWED_MODELS.includes(item.model)))
+  )
+    errors.push('invalid per-model transport settings')
+  if (
+    manifest.campaignId !== undefined &&
+    (manifest.allowance.concurrency !== 1 || manifest.allowance.phases?.judge === undefined)
+  )
+    errors.push('campaign requires one upstream request and an explicit judge allowance')
+  return errors
+}
 export function validateManifest(manifest: Manifest, scenarios: readonly Scenario[] = dataset()): string[] {
-  const errors = variantErrors(manifest)
+  const errors = [...variantErrors(manifest), ...transportErrors(manifest)]
   if (manifest.variants.length === 0 || manifest.scenarioIds.length === 0) errors.push('empty experiment')
   if (new Set(manifest.scenarioIds).size !== manifest.scenarioIds.length) errors.push('duplicate scenarios')
   const { pressure } = manifest

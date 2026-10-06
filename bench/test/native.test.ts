@@ -112,6 +112,7 @@ test('native workerd: Pi compaction and OptChat settle, probes fork without chan
             .padStart(64, '0')
           const configured = {
             ...manifest,
+            ...(policy === 'standard' ? { replay: { maxBatchBytes: 16384 } } : {}),
             transport: {
               contextWindowTokens: 131072,
               thinking: 'provider-default' as const,
@@ -123,7 +124,13 @@ test('native workerd: Pi compaction and OptChat settle, probes fork without chan
           const config = { identity: actor, manifest: configured, policy, writer, events }
           const buildStart = seen.length
           const built: unknown = yield* call(actor, 'build', config)
-          expect(built).toMatchObject({ reused: false, head })
+          expect(built).toMatchObject({
+            reused: false,
+            head,
+            status: 'cold',
+            previousSourceCount: 0,
+            newlyProcessedSourceCount: 64,
+          })
           expect(seen.length).toBeGreaterThan(buildStart)
           expect(seen.slice(buildStart).every(({ scope }) => scope === actor)).toBe(true)
           checkOutputLimits(seen.slice(buildStart), expectedLimit)
@@ -153,11 +160,17 @@ test('native workerd: Pi compaction and OptChat settle, probes fork without chan
                 recallGuide: null,
               }),
             )
+          const warmStart = seen.length
           const again: unknown = yield* call(actor, 'build', config)
-          expect(again).toMatchObject({ reused: true })
+          expect(again).toMatchObject({ reused: true, status: 'reused', newlyProcessedSourceCount: 0 })
+          expect(seen.length).toBe(warmStart)
           expect(JSON.stringify(result.context)).not.toContain('fact')
           expect(JSON.stringify(result.context)).not.toContain('staging.e300')
-          yield* call(actor, 'build', { ...config, events: publicEvents(scenario.events.slice(0, 128)) })
+          const extended: unknown = yield* call(actor, 'build', {
+            ...config,
+            events: publicEvents(scenario.events.slice(0, 128)),
+          })
+          expect(extended).toMatchObject({ status: 'extended', previousSourceCount: 64, newlyProcessedSourceCount: 64 })
           const before = seen.length
           const prior = yield* Schema.decodeUnknownEffect(ProbeResult)(
             yield* call(actor, 'probe', {

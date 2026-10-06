@@ -132,3 +132,27 @@ test.skipIf(!existsSync(path))('frozen original Read results remain searchable w
   expect(read.deliveries.every((item) => validDelivery(item, prefix))).toBe(true)
   expect(archiveRead(prefix.slice(0, 22), 'claude.l99.b0').unavailable).toBe(true)
 })
+
+test.skipIf(!existsSync(path))(
+  'actual CSS search failure now delivers values and leaves room for a continuation read',
+  async () => {
+    const corpus = Schema.decodeUnknownSync(Corpus)(JSON.parse(readFileSync(path, 'utf8')))
+    const prefix = corpus.scenarios[0]!.events.slice(0, 32)
+    const budget = new Retrieval(4, 8192, true)
+    for (const query of ['.shell max-width padding styles.css', 'shell safe-area-inset-left padding inline']) {
+      const response = await budget.get('archive_search', async (allowance) => archiveSearch(prefix, query, allowance))
+      expect(response).toContain('remainingBytes')
+      expect(budget.trace.at(-1)?.denied).toBe(false)
+    }
+    const read = await budget.get('archive_read', async (allowance) =>
+      archiveRead(prefix, 'claude.l99.b0', 0, Math.min(600, allowance.maxBytes), true),
+    )
+    expect(read).toContain('880px')
+    expect(budget.trace.every((item) => !item.denied)).toBe(true)
+    expect(budget.trace.reduce((n, item) => n + byteLength(item.text), 0)).toBeLessThanOrEqual(8192)
+    expect(budget.deliveries.every((item) => validDelivery(item, prefix))).toBe(true)
+    expect(
+      archiveSearch(prefix, 'styles.css', { maxBytes: 2048, compact: true }).deliveries.length,
+    ).toBeLessThanOrEqual(2)
+  },
+)

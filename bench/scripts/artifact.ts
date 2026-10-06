@@ -24,6 +24,7 @@ export const corpusHash = (scenarios: readonly Scenario[] = dataset()): string =
 export function artifactIdentity(resolved: Resolved, scenarioId: string, variant: Variant): string {
   const scenario = (resolved.scenarios ?? dataset()).find((item) => item.id === scenarioId)
   return digest({
+    ...(resolved.manifest.campaignId === undefined ? {} : { campaign: resolved.manifest.campaignId }),
     source: resolved.sourceHash,
     corpus: scenario === undefined ? '' : publicEvents(scenario.events),
     mode: resolved.mode,
@@ -31,7 +32,9 @@ export function artifactIdentity(resolved: Resolved, scenarioId: string, variant
     writer: variant.writer ?? variant.reader,
     profile: resolved.manifest.profile,
     pressure: resolved.manifest.pressure,
+    ...(resolved.manifest.replay === undefined ? {} : { replay: resolved.manifest.replay }),
     transport: resolved.manifest.transport,
+    ...(resolved.manifest.modelTransport === undefined ? {} : { modelTransport: resolved.manifest.modelTransport }),
     trial: resolved.manifest.buildTrial,
     prompt: resolved.manifest.summaryPrompt,
   })

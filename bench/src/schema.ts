@@ -60,6 +60,15 @@ export const Probe = Schema.Struct({
     Schema.Struct({
       requiredClaims: Schema.Array(ClaimLabel),
       evidenceIds: Schema.Array(Id),
+      evidenceRanges: Schema.optional(
+        Schema.Array(
+          Schema.Struct({
+            id: Id,
+            offsetBytes: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+            endBytes: Positive,
+          }),
+        ),
+      ),
       mustAbstain: Schema.Boolean,
       prohibitedClaims: Schema.Array(Schema.String),
       rubric: Schema.String,
@@ -88,6 +97,7 @@ export type Variant = typeof Variant.Type
 export const Manifest = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   name: Id,
+  campaignId: Schema.optional(Id),
   corpus: Schema.optional(Schema.Struct({ path: Schema.String, sha256: Schema.String })),
   split: Schema.Literals(['development', 'held-out']),
   transport: Schema.optional(
@@ -98,7 +108,19 @@ export const Manifest = Schema.Struct({
       nativeCompactionMaxOutputTokens: Schema.optional(Positive.check(Schema.isLessThanOrEqualTo(8192))),
     }),
   ),
+  modelTransport: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        model: Schema.String,
+        thinking: Schema.Literals(['provider-default', 'disabled']),
+        contextWindowTokens: Positive,
+        readerMaxOutputTokens: Positive.check(Schema.isLessThanOrEqualTo(8192)),
+        nativeCompactionMaxOutputTokens: Positive.check(Schema.isLessThanOrEqualTo(8192)),
+      }),
+    ),
+  ),
   profile: Schema.Literals(['controlled', 'production-compatibility']),
+  replay: Schema.optional(Schema.Struct({ maxBatchBytes: Positive.check(Schema.isLessThanOrEqualTo(262144)) })),
   scenarioIds: Schema.Array(Id),
   variants: Schema.Array(Variant),
   pressure: Schema.Struct({
@@ -119,6 +141,7 @@ export const Manifest = Schema.Struct({
         preflight: AllowanceLimits,
         build: AllowanceLimits,
         answer: AllowanceLimits,
+        judge: Schema.optional(AllowanceLimits),
       }),
     ),
     stages: Schema.optional(
@@ -127,11 +150,16 @@ export const Manifest = Schema.Struct({
           cutoff: Positive,
           build: AllowanceLimits,
           answer: AllowanceLimits,
+          judge: Schema.optional(AllowanceLimits),
         }),
       ),
     ),
   }),
-  retrieval: Schema.Struct({ maxCalls: Positive, maxBytes: Positive }),
+  retrieval: Schema.Struct({
+    maxCalls: Positive,
+    maxBytes: Positive,
+    format: Schema.optional(Schema.Literal('compact-v2')),
+  }),
   buildTrial: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   preflight: Schema.optional(
     Schema.Struct({

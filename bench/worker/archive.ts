@@ -16,7 +16,7 @@ function pairedCall(events: readonly ReplayEvent[], event: ReplayEvent) {
     : { id: call.id, toolName: call.toolName, arguments: call.arguments, text: call.text }
 }
 
-function record(events: readonly ReplayEvent[], source: Delivery) {
+function record(events: readonly ReplayEvent[], source: Delivery, compact = false) {
   const event = events.find((item) => item.id === source.id)
   return {
     ...source,
@@ -24,7 +24,12 @@ function record(events: readonly ReplayEvent[], source: Delivery) {
     truncated: source.offsetBytes > 0 || source.endBytes < source.totalBytes,
     nextOffsetBytes: source.endBytes < source.totalBytes ? source.endBytes : null,
     ...(event?.kind === 'tool-result'
-      ? { isError: event.isError ?? false, pairedCall: pairedCall(events, event) }
+      ? {
+          isError: event.isError ?? false,
+          pairedCall: compact
+            ? { id: pairedCall(events, event)?.id, toolName: event.toolName }
+            : pairedCall(events, event),
+        }
       : {}),
   }
 }
@@ -35,15 +40,16 @@ function fit(
   event: ReplayEvent,
   origin: Delivery['origin'],
   offset: number,
-  limit: number,
+  options: { readonly limit: number; readonly compact: boolean },
 ) {
+  const { limit, compact } = options
   let low = 0
   let high = Math.min(limit, byteLength(event.text))
   let best: Delivery | undefined
   while (low <= high) {
     const length = Math.floor((low + high) / 2)
     const source = delivery(event, origin, offset, length)
-    if (byteLength(JSON.stringify(record(events, source))) <= limit) {
+    if (byteLength(JSON.stringify(record(events, source, compact))) <= limit) {
       best = source
       low = length + 1
     } else high = length - 1
@@ -52,7 +58,11 @@ function fit(
 }
 
 /** Deterministic lexical ranking includes the recorded paired call, so a filename can find its Read result. */
-export function archiveSearch(events: readonly ReplayEvent[], query: string): RetrievalOutput {
+export function archiveSearch(
+  events: readonly ReplayEvent[],
+  query: string,
+  options: { readonly maxBytes: number; readonly compact: boolean } = { maxBytes: 2048, compact: false },
+): RetrievalOutput {
   const terms = query.toLowerCase().split(/\W+/u).filter(Boolean)
   const ranked = events
     .map((event, index) => {
@@ -61,7 +71,7 @@ export function archiveSearch(events: readonly ReplayEvent[], query: string): Re
     })
     .filter(({ score }) => score > 0)
     .toSorted((a, b) => b.score - a.score || b.index - a.index)
-    .slice(0, 4)
+    .slice(0, options.compact ? 2 : 4)
   const deliveries = ranked.flatMap(({ event }) => {
     const at =
       terms
@@ -69,18 +79,21 @@ export function archiveSearch(events: readonly ReplayEvent[], query: string): Re
         .filter((index) => index >= 0)
         .toSorted((a, b) => a - b)[0] ?? 0
     const offset = Math.max(0, byteLength(event.text.slice(0, at)) - 96)
-    const source = fit(
-      events,
-      event,
-      'search',
-      offset,
-      Math.floor((2048 - 14 - ranked.length) / Math.max(1, ranked.length)),
-    )
+    const source = fit(events, event, 'search', offset, {
+      limit: Math.max(
+        0,
+        Math.floor((Math.min(2048, options.maxBytes) - 14 - ranked.length) / Math.max(1, ranked.length)),
+      ),
+      compact: options.compact,
+    })
     return source === undefined ? [] : [source]
   })
   return deliveries.length === 0
     ? empty('No matching source events.')
-    : { text: JSON.stringify({ matches: deliveries.map((source) => record(events, source)) }), deliveries }
+    : {
+        text: JSON.stringify({ matches: deliveries.map((source) => record(events, source, options.compact)) }),
+        deliveries,
+      }
 }
 
 /** Unavailable and future IDs have the same response; only the passed authorized prefix is consulted. */
@@ -89,11 +102,14 @@ export function archiveRead(
   id: string,
   offsetBytes = 0,
   maxBytes = 2048,
+  compact = false,
 ): RetrievalOutput {
   const event = events.find((item) => item.id === id)
   if (event === undefined) return empty('Source unavailable.', true)
   if (offsetBytes >= byteLength(event.text)) return empty('End of source.')
   const limit = Math.min(maxBytes, 2048)
-  const source = fit(events, event, 'read', offsetBytes, limit)
-  return source === undefined ? empty('', true) : { text: JSON.stringify(record(events, source)), deliveries: [source] }
+  const source = fit(events, event, 'read', offsetBytes, { limit, compact })
+  return source === undefined
+    ? empty('', true)
+    : { text: JSON.stringify(record(events, source, compact)), deliveries: [source] }
 }

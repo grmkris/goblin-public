@@ -4,6 +4,7 @@ import { join, resolve, sep } from 'node:path'
 import { Corpus } from '../src/corpus.ts'
 import { dataset } from '../src/fixtures.ts'
 import { importClaude, sourceCheckpoints } from '../src/import.ts'
+import { HermesExport, importHermes } from '../src/hermes.ts'
 import { redactor } from './redaction.ts'
 import type { Manifest } from '../src/schema.ts'
 import { fail, readJson, writeJson } from './store.ts'
@@ -30,7 +31,13 @@ export const loadCorpus = Effect.fn('bench.loadCorpus')(function* (root: string,
 })
 
 /** Private local tooling: environment credential values are used only as redaction literals. */
-export const importCorpus = Effect.fn('bench.importCorpus')(function* (root: string, sourcePath: string, id: string) {
+export const importCorpus = Effect.fn('bench.importCorpus')(function* (
+  root: string,
+  sourcePath: string,
+  id: string,
+  kind: Corpus['kind'] = 'claude-jsonl',
+  targets: readonly number[] = [16_000, 32_000],
+) {
   if (!/^[a-zA-Z0-9_.-]+$/u.test(id)) return yield* fail('Supply a simple corpus ID')
   const fs = yield* FileSystem.FileSystem
   const dir = join(root, '.local/bench/corpora', id)
@@ -44,19 +51,25 @@ export const importCorpus = Effect.fn('bench.importCorpus')(function* (root: str
     [...new Set(names)].map((name) => Config.Redacted(name).pipe(Config.withDefault(Redacted.make('')))),
   )
 
-  const redaction = redactor(credentials.map(Redacted.value))
+  const identities =
+    kind === 'hermes-sqlite-export'
+      ? (yield* Schema.decodeUnknownEffect(HermesExport)(
+          yield* Effect.try({ try: (): unknown => JSON.parse(source), catch: () => fail('Invalid Hermes snapshot') }),
+        )).privateIdentifiers
+      : []
+  const redaction = redactor(credentials.map(Redacted.value), identities)
   const imported = yield* Effect.try({
-    try: () => importClaude(source, redaction.redact),
+    try: () => (kind === 'claude-jsonl' ? importClaude : importHermes)(source, redaction.redact),
     catch: () => fail('Source import failed; malformed, unsupported, or unmatched source records'),
   })
   const checkpoints = yield* Effect.try({
-    try: () => sourceCheckpoints(imported.events, [16_000, 32_000]),
-    catch: () => fail('Source lacks complete 16k/32k checkpoints'),
+    try: () => sourceCheckpoints(imported.events, targets),
+    catch: () => fail('Source lacks complete requested checkpoints'),
   })
   const corpus = yield* Schema.decodeUnknownEffect(Corpus)({
     schemaVersion: 1,
     id,
-    kind: 'claude-jsonl',
+    kind,
     sourceHash: sha256(source),
     redactedHash: sha256(JSON.stringify(imported.events)),
     sourceLines: imported.lines,
@@ -67,7 +80,9 @@ export const importCorpus = Effect.fn('bench.importCorpus')(function* (root: str
   })
   yield* fs.makeDirectory(dir, { recursive: true, mode: 0o700 })
   // Snapshot and map never leave the private host corpus directory.
-  yield* fs.writeFileString(join(dir, 'source.jsonl'), source, { mode: 0o600 })
+  yield* fs.writeFileString(join(dir, kind === 'claude-jsonl' ? 'source.jsonl' : 'source.json'), source, {
+    mode: 0o600,
+  })
   yield* writeJson(join(dir, 'redaction-map.json'), redaction.mapping())
   yield* writeJson(join(dir, 'corpus.json'), corpus)
   return {

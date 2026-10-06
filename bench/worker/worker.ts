@@ -17,11 +17,10 @@ import {
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import { Schema } from 'effect'
-import { transportModel } from '../src/transport.ts'
+import { modelTransport, transportModel } from '../src/transport.ts'
 import { BuildRequest, ProbeRequest, type Delivery, type ProbeResult } from '../src/protocol.ts'
-import { replayGroups, requestScope } from './replay.ts'
-import { Retrieval, searchExtension } from './retrieval.ts'
-import type { RetrievalOutput } from './archive.ts'
+import { compatibleReplay, replayBatches, replayGroups, requestScope } from './replay.ts'
+import { Retrieval, searchExtension, type RetrievalRead } from './retrieval.ts'
 import { contextSources, delivery } from './sources.ts'
 
 interface Env {
@@ -33,6 +32,7 @@ const Stored = Schema.Struct({
   ready: Schema.Boolean,
   checkpoints: Schema.Record(Schema.String, Schema.Int),
   activeProbe: Schema.optional(Schema.String),
+  processedSourceCount: Schema.optional(Schema.Int),
 })
 const decode = Schema.decodeUnknownSync(Stored)
 const INSTRUCTIONS =
@@ -47,8 +47,6 @@ export class BenchmarkAgent extends Agent<Env> {
   #cutoff = 0
   #sourceCutoff = 0
   readonly #transportWindows = new Map<string, number>()
-  #readerMaxTokens: number | undefined
-  #nativeCompactionMaxTokens: number | undefined
   #registry: Registry | undefined
   #conversation = ''
   #contextSources: ReturnType<typeof contextSources> = []
@@ -70,9 +68,6 @@ export class BenchmarkAgent extends Agent<Env> {
         }
         const { config } = this.#stored()
         const { pressure, profile } = config.manifest
-        this.#readerMaxTokens = config.manifest.transport?.readerMaxOutputTokens
-        this.#nativeCompactionMaxTokens =
-          config.policy === 'standard' ? config.manifest.transport?.nativeCompactionMaxOutputTokens : undefined
         const modelIds = [...new Set([config.writer, ...config.manifest.variants.map((variant) => variant.reader)])]
         const { models, options } = makePiModels(
           {
@@ -85,7 +80,10 @@ export class BenchmarkAgent extends Agent<Env> {
           profile === 'controlled' ? pressure.contextWindowTokens : undefined,
         )
         for (const option of options)
-          this.#transportWindows.set(option.id, config.manifest.transport?.contextWindowTokens ?? option.contextWindow)
+          this.#transportWindows.set(
+            option.id,
+            modelTransport(config.manifest, option.id)?.contextWindowTokens ?? option.contextWindow,
+          )
         this.#memory = new MainMemory(this.#db, this.#harness, new CheapModel(models, config.writer, () => undefined), {
           ...(profile === 'controlled' ? { viewBytes: pressure.viewBytes } : {}),
           ...(config.manifest.summaryPrompt === null ? {} : { summaryPrompt: config.manifest.summaryPrompt }),
@@ -142,7 +140,7 @@ export class BenchmarkAgent extends Agent<Env> {
       stream: (model, context, options) => {
         this.#recordContext(context.messages)
         const scope = this.#stored().activeProbe ?? requestScope(context.messages, artifact)
-        const maxTokens = scope === artifact ? this.#nativeCompactionMaxTokens : this.#readerMaxTokens
+        const maxTokens = this.#maxTokens(model.id, scope, artifact)
         return LITELLM_STREAMS.stream(transportModel(model, this.#transportWindows), context, {
           ...options,
           ...(maxTokens === undefined ? {} : { maxTokens }),
@@ -152,7 +150,7 @@ export class BenchmarkAgent extends Agent<Env> {
       streamSimple: (model, context, options) => {
         this.#recordContext(context.messages)
         const scope = this.#stored().activeProbe ?? requestScope(context.messages, artifact)
-        const maxTokens = scope === artifact ? this.#nativeCompactionMaxTokens : this.#readerMaxTokens
+        const maxTokens = this.#maxTokens(model.id, scope, artifact)
         return LITELLM_STREAMS.streamSimple(transportModel(model, this.#transportWindows), context, {
           ...options,
           ...(maxTokens === undefined ? {} : { maxTokens }),
@@ -168,15 +166,17 @@ export class BenchmarkAgent extends Agent<Env> {
       .onConflictDoUpdate({ target: appMetadata.id, set: { value: JSON.stringify(value) } })
       .run()
   }
+  #maxTokens(model: string, scope: string, artifact: string) {
+    const { config } = this.#stored()
+    const transport = modelTransport(config.manifest, model)
+    if (scope !== artifact) return transport?.readerMaxOutputTokens
+    return config.policy === 'standard' ? transport?.nativeCompactionMaxOutputTokens : undefined
+  }
   #mainMemory() {
     if (this.#memory === undefined) throw new Error('Memory has not opened')
     return this.#memory
   }
-  #use(
-    operation: 'zoom' | 'archive_search' | 'archive_read',
-    read: () => Promise<RetrievalOutput>,
-    conversation: string,
-  ) {
+  #use(operation: 'zoom' | 'archive_search' | 'archive_read', read: RetrievalRead, conversation: string) {
     if (this.#retrieval === undefined || conversation !== this.#conversation)
       throw new Error('No active authorized probe retrieval allowance')
     return this.#retrieval.get(operation, read)
@@ -230,25 +230,19 @@ export class BenchmarkAgent extends Agent<Env> {
     }
     const stored = this.#stored()
     if (stored.activeProbe !== undefined) throw new Error('A persisted probe is still active')
+    if (!compatibleReplay(stored.config, config)) throw new Error('Replay prefix mismatch')
     if (stored.checkpoints[String(config.events.length)] !== undefined)
-      return this.#buildEvidence(await this.#root(), config, true)
-    if (
-      config.events.length < stored.config.events.length ||
-      stored.config.events.some((event, at) => JSON.stringify(config.events[at]) !== JSON.stringify(event))
-    )
-      throw new Error('Replay prefix mismatch')
-    this.#save({ config, ready: false, checkpoints: stored.checkpoints })
+      return this.#buildEvidence(await this.#root(), config, {
+        status: 'reused',
+        previousSourceCount: config.events.length,
+        newlyProcessedSourceCount: 0,
+      })
+    const previousSourceCount = stored.processedSourceCount ?? (stored.ready ? stored.config.events.length : 0)
+    this.#save({ config, ready: false, checkpoints: stored.checkpoints, processedSourceCount: previousSourceCount })
     await this.#harness.dispose()
     const main = await this.#root()
     if (config.policy === 'optchat') await this.#mainMemory().activate([])
-    for (const group of replayGroups(config.events)) {
-      const write = await main.submit(
-        { type: 'write', requestId: `source:${group.ids.join(':')}`, entry: group.entry },
-        BACKGROUND,
-      )
-      await write.wait(BACKGROUND)
-    }
-    await this.#settle(main, config)
+    await this.#appendSource(main, config, previousSourceCount)
     const head = (await main.context(BACKGROUND)).head?.kind
     if (head !== (config.policy === 'optchat' ? 'app.memory' : 'pi.compaction'))
       throw new Error('Checkpoint lacks a settled memory view')
@@ -258,14 +252,49 @@ export class BenchmarkAgent extends Agent<Env> {
       config,
       ready: true,
       checkpoints: { ...stored.checkpoints, [String(config.events.length)]: placed.id },
+      processedSourceCount: config.events.length,
     })
-    return this.#buildEvidence(main, config, false)
+    return this.#buildEvidence(main, config, {
+      status: previousSourceCount === 0 ? 'cold' : 'extended',
+      previousSourceCount,
+      newlyProcessedSourceCount: config.events.length - previousSourceCount,
+    })
+  }
+  async #appendSource(main: Conversation, config: BuildRequest, previousSourceCount: number) {
+    const later = config.events.slice(previousSourceCount)
+    const batches =
+      config.policy === 'standard' && config.manifest.replay !== undefined
+        ? replayBatches(later, config.manifest.replay.maxBatchBytes)
+        : [replayGroups(later)]
+    let processedSourceCount = previousSourceCount
+    for (const batch of batches) {
+      for (const group of batch) {
+        const write = await main.submit(
+          { type: 'write', requestId: `source:${group.ids.join(':')}`, entry: group.entry },
+          BACKGROUND,
+        )
+        await write.wait(BACKGROUND)
+        processedSourceCount += group.ids.length
+      }
+      await this.#settle(main, { ...config, events: config.events.slice(0, processedSourceCount) })
+      this.#save({ ...this.#stored(), processedSourceCount })
+    }
   }
 
-  async #buildEvidence(main: Conversation, config: BuildRequest, reused: boolean) {
+  async #buildEvidence(
+    main: Conversation,
+    config: BuildRequest,
+    receipt: {
+      readonly status: 'cold' | 'extended' | 'reused'
+      readonly previousSourceCount: number
+      readonly newlyProcessedSourceCount: number
+    },
+  ) {
     const context = await main.context(BACKGROUND)
     return {
-      reused,
+      reused: receipt.status === 'reused',
+      ...receipt,
+      sourceCount: config.events.length,
       head: context.head?.kind,
       groups: replayGroups(config.events).map((group, index) => ({ index, sourceIds: group.ids })),
       memorySize: config.policy === 'optchat' ? this.#mainMemory().size() : null,
@@ -333,7 +362,11 @@ export class BenchmarkAgent extends Agent<Env> {
     this.#sourceCutoff = input.cutoff
     this.#cutoff = replayGroups(config.events.slice(0, input.cutoff)).length
     this.#conversation = String(fork.id)
-    this.#retrieval = new Retrieval(config.manifest.retrieval.maxCalls, config.manifest.retrieval.maxBytes)
+    this.#retrieval = new Retrieval(
+      config.manifest.retrieval.maxCalls,
+      config.manifest.retrieval.maxBytes,
+      config.manifest.retrieval.format === 'compact-v2',
+    )
     try {
       // Pi compaction builds its own system prompt, so attribution must survive without the answer instructions.
       this.#save({ ...this.#stored(), activeProbe: input.id })

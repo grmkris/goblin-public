@@ -66,6 +66,20 @@ Executable continuation, deployed load and autonomous tuning are later extension
 
 ## Real-session canary
 
+Hermes histories use a read-only SQLite transaction export from one completed Telegram DM; export only the fields
+selected by [hermes-export.py](scripts/hermes-export.py), redirect stdout into a mode-600 private file, and import
+with `--kind hermes-sqlite-export --targets 32000,64000`. Original compacted records remain evidence. The importer
+omits hidden/meta records, rewound messages and compression replay copies while retaining the full original tool
+results, IDs, roles and timestamps. It rejects damaged pairs and unsupported display kinds. Source length is measured
+after reconstruction and redaction; the 2026-10-06 selected DM has about 113k genuine source tokens, not the inflated
+160k estimate obtained by counting compressed copies. It must not be padded to 128k with invented or unrelated turns.
+
+The explicit `retrieval.format: "compact-v2"` retains at most two search matches, short paired-call metadata and exact
+original byte ranges, and includes remaining calls/bytes in its charged serialized response. It permits an 8192-byte
+shared allowance; individual reads remain capped at 2048 bytes and fit the remaining allowance. Existing manifests
+retain their 4096-byte allowance and prior response format. A private regression reproduces the actual CSS search
+failure and verifies that two searches leave room to read the original `880px` and safe-area padding declarations.
+
 `bench:import` freezes a private Claude JSONL snapshot, deterministic redaction map, normalized visible events,
 line/block provenance, omissions, source compaction boundaries and complete checkpoints after 16k/32k estimated
 source tokens (UTF-8 bytes / 4). It rejects damaged JSON, sidechains, unknown visible blocks, duplicate IDs and

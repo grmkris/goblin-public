@@ -4,7 +4,7 @@ import { Scenario } from './schema.ts'
 export const Corpus = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   id: Schema.String,
-  kind: Schema.Literal('claude-jsonl'),
+  kind: Schema.Literals(['claude-jsonl', 'hermes-sqlite-export']),
   sourceHash: Schema.String,
   redactedHash: Schema.String,
   sourceLines: Schema.Int,
