@@ -181,7 +181,10 @@ phones it is a sheet. The workspace fills the page beside it. The transcript scr
 released yet; `bun run check:patches` proves the patch is installed). Each of
 the owner's turns (typed in the app or sent from Telegram, `isOwnTurn` in `lib/parts.ts`) is a scroll anchor; a
 message from an MCP client, a subagent, a routine or a thread's share-back arrives without moving the view. Until its
-snapshot arrives a pane shows nothing, so a conversation opens at its end. The view follows a streaming reply only while the reader is at the end, and
+snapshot arrives a pane shows nothing, so a conversation opens at its end. A turn map in the transcript's right gutter
+(`components/turn-map.tsx`) marks each of the owner's turns where it sits, with a band for what is on screen; hovering it
+lists the turns and a click jumps to one. Without a fine pointer, or in a narrow window, an edge tab opens the list as a
+bottom sheet. The view follows a streaming reply only while the reader is at the end, and
 otherwise offers a jump back. The pane's pill (where it came from, its name and menu, its state) and the composer
 float over the transcript as translucent chrome. Assistant Markdown is set by shadcn/typeset, whose append-stable rules keep earlier blocks still
 while a reply streams.

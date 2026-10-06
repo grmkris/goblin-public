@@ -50,7 +50,7 @@ export type Part =
  * report, a routine's note and a thread's share-back carry another author and are not turns. In a subagent's or a
  * routine's own conversation the message that starts each run has no author, so it is that conversation's turn.
  */
-export function isOwnTurn(part: Part): boolean {
+export function isOwnTurn(part: Part): part is Extract<Part, { readonly kind: 'user' }> {
   return part.kind === 'user' && (part.author === undefined || part.author === TELEGRAM_AUTHOR)
 }
 

@@ -57,6 +57,7 @@ export {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
+  useMessageScroller,
 } from './components/message-scroller.tsx'
 export { Separator } from './components/separator.tsx'
 export {

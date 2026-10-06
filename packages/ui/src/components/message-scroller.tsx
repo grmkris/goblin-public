@@ -9,7 +9,7 @@
 // at the wrong height and yanked to the end (shadcn-ui/ui#11175). The cost is painting every row: main's memory view
 // keeps its snapshot short, but a thread renders everything since its last compaction.
 import type * as React from 'react'
-import { MessageScroller as MessageScrollerPrimitive } from '@shadcn/react/message-scroller'
+import { MessageScroller as MessageScrollerPrimitive, useMessageScroller } from '@shadcn/react/message-scroller'
 import { ArrowDownIcon } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { Button } from './button'
@@ -117,4 +117,6 @@ export {
   MessageScrollerContent,
   MessageScrollerItem,
   MessageScrollerButton,
+  /** Scroll commands for the transcript around it: `scrollToMessage`, `scrollToStart`, `scrollToEnd`. */
+  useMessageScroller,
 }
