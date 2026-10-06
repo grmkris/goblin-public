@@ -7,6 +7,7 @@ import { WorkspaceFeedProvider } from '../components/workspace-feed.tsx'
 import { SessionProvider, useSession } from '../lib/session.tsx'
 import { readSidebarOpen } from '../lib/sidebar-state.ts'
 import { BillingProvider, useBilling } from '../lib/billing.tsx'
+import { startupImages } from '../lib/startup-images.ts'
 import css from '../styles.css?url'
 
 /** Follows the system's light or dark preference, before first paint and when it changes (as the myapps apps do). */
@@ -31,6 +32,8 @@ export const Route = createRootRoute({
       { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
       { rel: 'icon', href: '/icon-192.png', type: 'image/png', sizes: '192x192' },
       { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
+      // What a Home Screen app shows while it opens: iOS takes only an exact match for its screen.
+      ...startupImages().map(({ href, media }) => ({ rel: 'apple-touch-startup-image', href, media })),
     ],
   }),
   loader: () => readSidebarOpen(),

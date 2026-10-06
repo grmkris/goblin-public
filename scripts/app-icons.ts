@@ -2,11 +2,13 @@
  * `bun run icons`: the app's icons, drawn from the one cat mark (lucide's `cat`, ISC) so the sizes never drift apart.
  * Writes committed files to apps/web/public: the 180px Home Screen icon iOS uses, the manifest's 192/512/1024 icons and
  * a maskable one for Android (the mark inside its safe zone), all on the page's opaque background, which iOS needs
- * (it composites transparency on black), and an SVG favicon that follows the light or dark scheme.
+ * (it composites transparency on black), an SVG favicon that follows the light or dark scheme, and the startup image
+ * for every iPhone and iPad screen a Home Screen app opens on (apps/web/src/lib/startup-images.ts).
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import sharp from 'sharp'
+import { startupImages } from '../apps/web/src/lib/startup-images.ts'
 
 const OUT = resolve(import.meta.dirname, '../apps/web/public')
 /** The light theme's --background and --foreground, and the dark --foreground (packages/ui/src/styles.css). */
@@ -35,6 +37,21 @@ function square(size: number, scale: number): string {
   ].join('')
 }
 
+/**
+ * A startup image: the page's background, which the first paint keeps, with the mark small at its centre, clear of the
+ * status bar, the notch and the home indicator on every screen.
+ */
+function splash(width: number, height: number): string {
+  const glyph = Math.round(Math.min(width, height) * 0.16)
+  const [x, y] = [(width - glyph) / 2, (height - glyph) / 2]
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+    `<rect width="${width}" height="${height}" fill="${PAPER}"/>`,
+    `<g transform="translate(${x} ${y}) scale(${glyph / 24})" stroke="${INK}" ${STROKE}>${paths}</g>`,
+    '</svg>',
+  ].join('')
+}
+
 const FAVICON = [
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ${STROKE}>`,
   `<style>g{stroke:${INK}}@media (prefers-color-scheme:dark){g{stroke:${INK_DARK}}}</style>`,
@@ -59,3 +76,11 @@ for (const [name, size, scale] of PNGS) {
 }
 writeFileSync(resolve(OUT, 'favicon.svg'), `${FAVICON}\n`)
 console.log('favicon.svg')
+mkdirSync(resolve(OUT, 'splash'), { recursive: true })
+for (const image of startupImages()) {
+  const { width, height } = image.pixels
+  await sharp(Buffer.from(splash(width, height)))
+    .png({ compressionLevel: 9, palette: true })
+    .toFile(resolve(OUT, image.file))
+}
+console.log(`splash/ ${startupImages().length} startup images`)
