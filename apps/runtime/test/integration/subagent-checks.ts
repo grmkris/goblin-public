@@ -31,7 +31,7 @@ export async function chainChecks(base: string, name: string): Promise<void> {
   expect(reportsFrom(result.leadLines, 'digger')).toHaveLength(1)
   expect(result.lead).toMatchObject({ kind: 'subagent', parent: '1', closedBy: 'done' })
   expect(result.digger).toMatchObject({ kind: 'subagent', parent: result.lead.id, closedBy: 'done' })
-  expect(result.leadRequest.tools).toContain('subagent')
+  expect(result.leadRequest.tools).toContain('subagent_spawn')
   expect(result.leadRequest.tools).not.toContain('ask_user')
 }
 

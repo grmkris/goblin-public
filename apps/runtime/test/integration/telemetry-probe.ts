@@ -19,7 +19,7 @@ export async function telemetryProbe(
   turn: (text: string, operationId: string) => Promise<unknown>,
   inspect: Inspect,
 ): Promise<string> {
-  await turn('call subagent {"action":"status"}', 'telemetry-turn')
+  await turn('call subagent_status {}', 'telemetry-turn')
   const rows = storage.sql
     .exec<Row>(
       'SELECT kind, status, operation_id, attributes FROM app_run_events WHERE operation_id = ? ORDER BY started_at, id',

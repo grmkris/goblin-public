@@ -16,7 +16,7 @@ export function telemetryCase(url: string) {
         {
           kind: 'tool.call',
           status: 'ok',
-          attributes: { [RunAttribute.toolName]: 'subagent', [RunAttribute.toolFamily]: 'subagent' },
+          attributes: { [RunAttribute.toolName]: 'subagent_status', [RunAttribute.toolFamily]: 'subagent' },
         },
         { kind: 'model.attempt', status: 'ok', attributes: { [RunAttribute.finishReason]: 'stop' } },
       ],
@@ -51,9 +51,9 @@ export function telemetryCase(url: string) {
               expect.objectContaining({ role: 'user', text: expect.stringContaining('call subagent') }),
               expect.objectContaining({
                 role: 'assistant',
-                toolCalls: [expect.objectContaining({ name: 'subagent' })],
+                toolCalls: [expect.objectContaining({ name: 'subagent_status' })],
               }),
-              expect.objectContaining({ tool: expect.objectContaining({ name: 'subagent', isError: false }) }),
+              expect.objectContaining({ tool: expect.objectContaining({ name: 'subagent_status', isError: false }) }),
             ]),
           },
         },

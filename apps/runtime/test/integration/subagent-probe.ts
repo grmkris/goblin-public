@@ -4,9 +4,9 @@ import type { PersonalAgentProbe } from './worker.ts'
 
 type Probe = DurableObjectStub<PersonalAgentProbe>
 
-/** What the scripted model reads as a call of the `subagent` tool. */
-const subagentCall = (args: { action: string; name: string; message?: string }) =>
-  `call subagent ${JSON.stringify(args)}`
+/** What the scripted model reads as a call of the subagent tool for `action`. */
+const subagentCall = ({ action, ...args }: { action: string; name: string; message?: string }) =>
+  `call subagent_${action} ${JSON.stringify(args)}`
 
 const named = (views: readonly ConversationView[], title: string) => views.find((view) => view.title === title)
 

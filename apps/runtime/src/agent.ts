@@ -183,7 +183,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       pi: this.#pi,
       thread: this.#thread,
       memory: this.#memory,
-      subagentTool: this.#subagents.tool,
+      subagentTools: this.#subagents.tools,
       scheduleReplies: () => void this.schedule(5, 'channelReplies'),
       userId: this.name,
       entitlements: this.entitlementPolicy(),

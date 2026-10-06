@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ConversationView } from '@goblin/contracts'
+import type { ToolPart } from '../src/lib/parts.ts'
 import {
   branchPoints,
   closedBy,
@@ -9,6 +10,8 @@ import {
   repliesLabel,
   reporterOf,
   rootParts,
+  subagentAction,
+  subagentOf,
   threadsByFork,
 } from '../src/lib/threads.ts'
 
@@ -101,5 +104,31 @@ describe('who reported', () => {
     expect(reporterOf('subagent ')).toBeUndefined()
     expect(reporterOf('Telegram')).toBeUndefined()
     expect(reporterOf(undefined)).toBeUndefined()
+  })
+})
+
+/** A subagent tool call as the projection gives it, with the details of its result. */
+const subagentCall = (
+  name: string,
+  args: Record<string, unknown>,
+  details: Record<string, unknown> = {},
+): ToolPart => ({
+  kind: 'tool',
+  id: 'tool:c1',
+  call: { id: 'c1', name, arguments: args },
+  state: 'done',
+  result: { id: 'r', role: 'tool', text: 'Started scout.', toolCallId: 'c1', toolName: name, isError: false, details },
+})
+
+describe('subagent calls', () => {
+  it('read the action from the tool, or from the single subagent tool of stored transcripts', () => {
+    expect(subagentAction(subagentCall('subagent_spawn', { name: 'scout' }))).toBe('spawn')
+    expect(subagentAction(subagentCall('subagent', { action: 'send', name: 'scout' }))).toBe('send')
+    expect(subagentAction(subagentCall('mcp_call', {}))).toBeUndefined()
+    const details = { name: 'scout', conversationId: 12, structuredContent: { name: 'scout', outcome: 'started' } }
+    expect(subagentOf(subagentCall('subagent_spawn', { name: 'scout' }, details))).toEqual({
+      name: 'scout',
+      thread: '12',
+    })
   })
 })

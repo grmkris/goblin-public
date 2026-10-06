@@ -14,7 +14,7 @@ import {
 import { failureText, request } from '../../lib/boundary.ts'
 import type { ToolPart } from '../../lib/parts.ts'
 import { type SubagentState, isBusy, subagentLabel, subagentState, workingUnder } from '../../lib/subagent-state.ts'
-import { subagentOf, threadTitle } from '../../lib/threads.ts'
+import { subagentAction, subagentOf, threadTitle } from '../../lib/threads.ts'
 import { useNow } from '../use-now.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { OpenThread } from './text-part.tsx'
@@ -270,13 +270,14 @@ function SubagentRow({
 }
 
 /**
- * The `subagent` tool where it started or wrote to a subagent: the subagent itself, live from the workspace feed. A
+ * A subagent call that started or wrote to a subagent: the subagent itself, live from the workspace feed. A
  * call still running, one that failed, a stop or a status check stays a plain tool line.
  */
 export function SubagentBlock({ part }: { readonly part: ToolPart }) {
   const feed = useWorkspaceFeed()
   const subagent = subagentOf(part)
-  const { action, message } = part.call.arguments
+  const action = subagentAction(part)
+  const { message } = part.call.arguments
   const view = feed.conversations.find((candidate) => candidate.id === subagent?.thread)
   if (view === undefined || (action !== 'spawn' && action !== 'send')) return <ToolCard part={part} />
   return (

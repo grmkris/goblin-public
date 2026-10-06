@@ -139,38 +139,41 @@ an `app.thread_started` entry with request id `thread-started:<id>` and marks th
 only the name, never what was said in the thread, and a later rename does not rewrite it. Branched threads already
 show under their message in main and get no note.
 
-Main and threads can start **subagents** with the `subagent` tool (`pi/subagents.ts`, after Pi Durable's background
-subagent example): `spawn`, `send`, `stop` and `status`. A subagent is a Pi conversation owned by a background anchor
-task of its spawner, so the spawner's Stop and idle waits do not reach it. It starts with the spawner's model and is
-given exactly the persona, the owner's MCP and budget extensions and the subagents extension again: the same grants,
-subagents of its own at any depth, no `ask_user` and no skills (ADR 0018). Each message, the spawner's or the owner's,
-goes through a relay task in the spawner (`pi/subagent-relay.ts`): it delivers the message, waits until the subagent is
-done (idle, with none of its own relays live; it parks on those), then posts the newest answer once into the spawner as
-an input labelled `[from subagent <name>]`, which the spawner answers. Request ids keep a restart from delivering or
-reporting twice; of several messages on their way to one subagent only the last relay reports, quoting what the owner
-wrote. The subagent then closes as done unless the owner wrote to it, branched from it or pinned it; a later message
-from its spawner opens it again, while one the owner closed refuses its spawner. The owner's message to a subagent
-pins it open and steers it when it is busy. Stop and Close stop the relays carrying to each subagent before aborting
-it, so a job cut short reports nothing. The relay registers the subagent in `app_conversations` under its spawner, so
-the web lists it there. In the spawner's transcript a spawn or send shows the subagent itself, live from the workspace
-feed (`components/parts/subagent-block.tsx`, `lib/subagent-state.ts`): its state and clock, how many work under it,
-and Stop (which asks first), Keep open, Dismiss or Reopen, opening to its task and its own subagents at any depth. A
+Main and threads can start **subagents** with the subagent tools (`pi/subagents.ts`, after Pi Durable's background
+subagent example): `subagent_spawn`, `subagent_send`, `subagent_stop` and `subagent_status`, one typed tool per action
+(ADR 0027). A subagent is a Pi conversation owned by a background anchor task of its spawner, so the spawner's Stop
+and idle waits do not reach it. It starts with the spawner's model and is given exactly the persona, the owner's MCP
+and budget extensions and the subagents extension again: the same grants, subagents of its own at any depth, no
+`ask_user` and no skills (ADR 0018). Each message, the spawner's or the owner's, goes through a relay task in the
+spawner (`pi/subagent-relay.ts`): it delivers the message, waits until the subagent is done (idle, with none of its
+own relays live; it parks on those), then posts the newest answer once into the spawner as an input labelled `[from
+subagent <name>]`, which the spawner answers. Request ids keep a restart from delivering or reporting twice; of
+several messages on their way to one subagent only the last relay reports, quoting what the owner wrote. The subagent
+then closes as done unless the owner wrote to it, branched from it or pinned it; a later message from its spawner
+opens it again, while one the owner closed refuses its spawner. The owner's message to a subagent pins it open and
+steers it when it is busy. Stop and Close stop the relays carrying to each subagent before aborting it, so a job cut
+short reports nothing. The relay registers the subagent in `app_conversations` under its spawner, so the web lists it
+there. In the spawner's transcript a spawn or send shows the subagent itself, live from the workspace feed
+(`components/parts/subagent-block.tsx`, `lib/subagent-state.ts`): its state and clock, how many work under it, and
+Stop (which asks first), Keep open, Dismiss or Reopen, opening to its task and its own subagents at any depth. A
 report reads as "<name> reported back" with the report quoted, a subagent's pane opens with "Task from <spawner>", and
 its composer steers it.
 
 **Capabilities** (ADR 0010, `capabilities/`): each conversation can switch off, for its own agent, a connected server,
 one granted tool of it, a skills library, or subagents. `app_conversation_capabilities` stores only what is off, so a
-tool granted later is on everywhere. `CapabilityProfiles.scope(session)` is the one gate: a conversation's own switches,
-and for a subagent those of every conversation above it, read live, at any depth (an unregistered session, or a broken
-or cyclic chain of spawners, may use nothing). A thread copies the switches its parent works under as it is registered;
-"Reset to where it came from" copies them again. What is off is hidden from the
-model there: `mcp_list` leaves it out, the `skills` section does not list or fetch that library, and Pi's
-per-conversation tool filter (`configure({ tools: { remove } })`) drops `subagent`, whose section then hides too. A call
-that still arrives runs nothing: `mcp_call`, `skill_activate`, `skill_read` and `subagent` check the scope before
-anything else (before the grant check or any connection) and return an error result with details
-`{ kind: 'capability-off', target }` (`pi/capabilities.ts`), which the web turns into an owner-only "Turn on here"
-card. In a subagent the result has words only. The owner's console and an App's own calls carry no conversation and
-are not narrowed; Telegram and inbound clients talk in main, so main's switches cover them.
+tool granted later is on everywhere. `CapabilityProfiles.scope(session)` is the one gate: a conversation's own
+switches, and for a subagent those of every conversation above it, read live, at any depth (an unregistered session,
+or a broken or cyclic chain of spawners, may use nothing). A thread copies the switches its parent works under as it
+is registered; "Reset to where it came from" copies them again. What is off is hidden from the model there: `mcp_list`
+leaves it out, the `skills` section does not list or fetch that library, and Pi's per-conversation tool filter
+(`configure({ tools: { remove } })`) drops the subagent tools, whose section then hides too; Pi stores the filter as
+tool names, so when those names changed every filtering conversation's filter was applied again once
+(`CapabilityProfiles.retoolOnce`). A call that still arrives runs nothing: `mcp_call`, `skill_activate`, `skill_read`,
+`subagent_spawn` and `subagent_send` check the scope before anything else (before the grant check or any connection)
+and return an error result with details `{ kind: 'capability-off', target }` (`pi/capabilities.ts`), which the web
+turns into an owner-only "Turn on here" card. In a subagent the result has words only. The owner's console and an
+App's own calls carry no conversation and are not narrowed; Telegram and inbound clients talk in main, so main's
+switches cover them.
 
 The persona contributes two static system-prompt sections (`pi/persona.ts`): who the agent is, and that remote content
 is untrusted data. The system prompt holds only text that does not change between requests: pi-ai folds every

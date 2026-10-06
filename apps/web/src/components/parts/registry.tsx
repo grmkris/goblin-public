@@ -11,6 +11,7 @@ import { Reasoning, ReasoningContent, ReasoningTrigger, Receipt } from '@goblin/
 import { targetLabel } from '../../lib/capabilities.ts'
 import { type Interaction, interactionOf } from '../../lib/interactions.ts'
 import type { Part, ToolPart } from '../../lib/parts.ts'
+import { subagentAction } from '../../lib/threads.ts'
 import { ThreadStartedRow } from '../inline-thread.tsx'
 import { HomeReceipt } from '../home/receipt.tsx'
 import { AppBuildPart } from './app-build-part.tsx'
@@ -80,7 +81,7 @@ function ToolView({ part }: { readonly part: ToolPart }) {
   if (part.call.name === 'home_edit') return <HomeReceipt part={part} />
   // `routine` is the single tool older transcripts used (ADR 0027).
   if (part.call.name === 'routine_propose' || part.call.name === 'routine') return <RoutineProposalPart part={part} />
-  return part.call.name === 'subagent' ? <SubagentBlock part={part} /> : <GenericToolPart part={part} />
+  return subagentAction(part) === undefined ? <GenericToolPart part={part} /> : <SubagentBlock part={part} />
 }
 
 /** One transcript part. `canSwitchModel`: another model is on offer, so a provider failure can point at the picker. */

@@ -89,10 +89,20 @@ export function reporterOf(author: string | undefined): string | undefined {
   return author?.startsWith('subagent ') === true ? author.slice('subagent '.length) || undefined : undefined
 }
 
-/** The subagent a `subagent` call started or addressed, from the details of its result. */
+/**
+ * What a subagent call did: `spawn`, `send`, `stop` or `status`, from the tool's name (`subagent_spawn`), or from the
+ * `action` argument of the single `subagent` tool stored transcripts still hold; undefined for any other tool.
+ */
+export function subagentAction(part: ToolPart): string | undefined {
+  const { name, arguments: args } = part.call
+  if (name.startsWith('subagent_')) return name.slice('subagent_'.length)
+  return name === 'subagent' && isString(args.action) ? args.action : undefined
+}
+
+/** The subagent a subagent call started or addressed, from the details of its result. */
 export function subagentOf(part: ToolPart): { readonly name: string; readonly thread: string } | undefined {
   const details = record(part.result?.details)
-  if (part.call.name !== 'subagent' || details === undefined) return undefined
+  if (subagentAction(part) === undefined || details === undefined) return undefined
   const { name, conversationId } = details
   return isString(name) && typeof conversationId === 'number' ? { name, thread: String(conversationId) } : undefined
 }

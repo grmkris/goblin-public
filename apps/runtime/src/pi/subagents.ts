@@ -9,11 +9,11 @@ import {
   configure,
   defineExtension,
   defineTask,
-  defineTool,
   section,
 } from '@earendil-works/pi-durable'
-import { type Static, Type, type UserMessage } from '@earendil-works/pi-ai'
+import type { UserMessage } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
+import * as Schema from 'effect/Schema'
 import { Capabilities, Conversations, attempt, nowSecondsEffect, requireResident } from '../services.ts'
 import { capabilityOffResult } from './capabilities.ts'
 import { BACKGROUND, conversationId } from './context.ts'
@@ -28,16 +28,18 @@ import {
   quoted,
   relayTask,
 } from './subagent-relay.ts'
+import { ReadyResult, typedTool } from './typed-tool.ts'
 
-/** The tool that starts subagents: what a conversation with subagents switched off has filtered out (ADR 0010). */
-export const SUBAGENT_TOOL = 'subagent'
+/** The subagent tools: what a conversation with subagents switched off has filtered out (ADR 0010, ADR 0027). */
+const SUBAGENT_TOOLS: readonly string[] = ['subagent_spawn', 'subagent_send', 'subagent_stop', 'subagent_status']
 
 const GUIDE = [
-  'The `subagent` tool starts subagents: helpers that work in the background, each in a conversation of its own, with',
-  "the owner's tools and grants, and subagents of their own when a job splits. Use one for a job that takes a while or",
-  "can be done apart from the conversation. A subagent's final answer comes back to you as a message starting",
+  '`subagent_spawn` starts a subagent: a helper that works in the background, in a conversation of its own, with the',
+  "owner's tools and grants, and subagents of its own when a job splits. Use one for a job that takes a while or can",
+  "be done apart from the conversation. A subagent's final answer comes back to you as a message starting",
   '`[from subagent <name>]`, once it and its own helpers are done: tell whoever you answer what matters in it. A',
-  'subagent closes when its job is done; send to it again and it picks up where it left off.',
+  'subagent closes when its job is done; `subagent_send` gives it another job and it picks up where it left off.',
+  '`subagent_stop` stops one and its own subagents; `subagent_status` says who is working.',
 ].join(' ')
 
 const instructions = (name: string) =>
@@ -64,47 +66,83 @@ const Anchor = defineTask<null, { phase: 'done' }, null>({
     runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), context),
 })
 
-const Args = Type.Object({
-  action: Type.Union([Type.Literal('spawn'), Type.Literal('send'), Type.Literal('stop'), Type.Literal('status')]),
-  name: Type.Optional(Type.String({ pattern: '^[A-Za-z0-9_-]{1,40}$' })),
-  message: Type.Optional(Type.String({ minLength: 1, maxLength: 8000 })),
-})
-type Args = Static<typeof Args>
 type Api = ToolExecutionApi
 type CallContext = Parameters<Api['commit']>[1]
 type Agents = Readonly<Record<string, Subagent>>
 
 const known = (agents: Agents, name: string) => (Object.hasOwn(agents, name) ? agents[name] : undefined)
 
-/** The tool's answer; the details link the call to the subagent's conversation in the web. */
-const reply = (text: string, name?: string, conversation?: ConversationId) => ({
-  content: [{ type: 'text' as const, text }],
-  ...(conversation === undefined || name === undefined ? {} : { details: { name, conversationId: conversation } }),
+const Name = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{1,40}$/u))
+const Message = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(8000))
+
+/**
+ * What a call did to a subagent, and its conversation once it has one: the web shows that conversation in place of
+ * the call.
+ */
+const Done = Schema.Struct({
+  name: Schema.String,
+  outcome: Schema.Literals(['started', 'exists', 'sent', 'reopened', 'closed-by-owner', 'stopped', 'unknown']),
+  conversationId: Schema.optionalKey(Schema.Number),
+})
+type Done = typeof Done.Type
+
+const said = ({ name, outcome }: Done): string => {
+  switch (outcome) {
+    case 'started':
+      return `Started ${name}.`
+    case 'exists':
+      return `${name} already exists; use subagent_send.`
+    case 'sent':
+      return `Sent to ${name}.`
+    case 'reopened':
+      return `Sent to ${name}; it had closed when its job was done and is open again.`
+    case 'closed-by-owner':
+      return `The owner closed ${name}; it takes no messages until they reopen it.`
+    case 'stopped':
+      return `Stopped ${name}.`
+    case 'unknown':
+      return `No subagent named ${name}.`
+  }
+}
+
+/** The details that link the call to the subagent's conversation in the web. */
+const linked = ({ name, conversationId: thread }: Done) =>
+  thread === undefined ? {} : { name, conversationId: thread }
+
+const done = (name: string, outcome: Done['outcome'], agent: Subagent | undefined): Done => ({
+  name,
+  outcome,
+  ...(agent === undefined ? {} : { conversationId: agent.conversationId }),
+})
+
+const Working = Schema.Struct({
+  subagents: Schema.Array(Schema.Struct({ name: Schema.String, working: Schema.Boolean })),
 })
 
 /** Who is working: one subagent, or every subagent this conversation started. */
 async function status(api: Api, agents: Agents, name: string | undefined, context: CallContext) {
-  const lines: string[] = []
+  const subagents: { name: string; working: boolean }[] = []
   for (const each of name === undefined ? Object.keys(agents) : [name]) {
     const agent = known(agents, each)
     if (agent === undefined) continue
-    const busy = (await api.snapshot(LiveDoc, agent.conversationId, context))?.run !== undefined
-    lines.push(`${each}: ${busy ? 'working' : 'idle'}`)
+    subagents.push({
+      name: each,
+      working: (await api.snapshot(LiveDoc, agent.conversationId, context))?.run !== undefined,
+    })
   }
-  return reply(lines.length === 0 ? 'No subagents.' : lines.join('\n'))
+  return { subagents }
 }
 
 /**
  * Whether the spawner may send to a subagent: not one the owner closed, until they reopen it; one closed because its
  * job was done opens again for the next one.
  */
-async function admit(run: RunProgram, agent: Subagent | undefined, name: string) {
-  if (agent === undefined) return { reopened: false }
+async function admit(run: RunProgram, agent: Subagent | undefined): Promise<'open' | 'reopened' | 'closed-by-owner'> {
+  if (agent === undefined) return 'open'
   const session = String(agent.conversationId)
   const view = await run(Conversations.use((conversations) => attempt(() => conversations.view(session))))
-  if (view?.closedBy === 'owner')
-    return { refused: `The owner closed ${name}; it takes no messages until they reopen it.`, reopened: false }
-  if (view?.closedBy !== 'done') return { reopened: false }
+  if (view?.closedBy === 'owner') return 'closed-by-owner'
+  if (view?.closedBy !== 'done') return 'open'
   await run(
     Effect.gen(function* () {
       const conversations = yield* Conversations
@@ -112,7 +150,7 @@ async function admit(run: RunProgram, agent: Subagent | undefined, name: string)
       yield* attempt(() => conversations.update(session, { closed: false }, now))
     }),
   )
-  return { reopened: true }
+  return 'reopened'
 }
 
 /**
@@ -132,44 +170,73 @@ type Deliver = (
   name: string,
   message: string,
   context: CallContext,
-) => Promise<ReturnType<typeof reply>>
+) => Promise<Done>
 
 /**
- * The `subagent` tool: spawn, send, stop and status, behind the conversation's subagents switch.
+ * The subagent tools, one per action, behind the conversation's subagents switch: spawn and send start work, so an
+ * interrupted call is not rerun (repeating one could start newer work twice; the model sees the interruption and can
+ * check with subagent_status), and neither is a stop.
  */
-function subagentTool(run: RunProgram, deliver: Deliver) {
-  return defineTool({
-    name: SUBAGENT_TOOL,
-    description: [
-      'Manage background subagents. spawn (name, message) starts one on a job; send (name, message) gives it another',
-      'after its current answer; stop (name) aborts its current work and its own subagents; status (name, or none for',
-      'all) says who is working. Final answers are reported back to you when they arrive.',
-    ].join(' '),
-    parameters: Args,
-    // An interrupted call is not rerun: repeating a spawn or a stop could start or stop newer work. The model sees
-    // the call was interrupted and can check with status.
-    replay: 'unsafe',
-    execute: async ({ action, name, message }: Args, api, context) => {
-      await run(requireResident)
-      const { agents } = (await api.snapshot(Subagents, api.conversationId, context)) ?? { agents: {} }
-      if (action === 'status') {
-        const result = await status(api, agents, name, context)
-        return result
-      }
-      if (name === undefined) return reply(`${action} needs a name.`)
-      const agent = known(agents, name)
-      if (action !== 'spawn' && agent === undefined) return reply(`No subagent named ${name}.`)
-      if (action === 'stop') {
-        if (agent !== undefined) await stop(run, api, agent, context)
-        return reply(`Stopped ${name}.`, name, agent?.conversationId)
-      }
-      if (message === undefined) return reply(`${action} needs a message.`)
-      // Pi's tool filter hides this tool where subagents are switched off; a call that still arrives starts nothing.
-      const scope = await run(Capabilities.useSync((capabilities) => capabilities.scope(String(api.conversationId))))
-      if (!scope.subagents()) return capabilityOffResult({ kind: 'subagents' }, scope)
-      return deliver(api, action, name, message, context)
-    },
-  })
+function subagentTools(run: RunProgram, deliver: Deliver): readonly ToolRegistration[] {
+  const roster = async (api: Api, context: CallContext): Promise<Agents> => {
+    await run(requireResident)
+    return (await api.snapshot(Subagents, api.conversationId, context))?.agents ?? {}
+  }
+  /** Pi's tool filter hides these tools where subagents are switched off; a call that still arrives starts nothing. */
+  const off = async (api: Api) => {
+    const scope = await run(Capabilities.useSync((capabilities) => capabilities.scope(String(api.conversationId))))
+    return scope.subagents() ? undefined : new ReadyResult(capabilityOffResult({ kind: 'subagents' }, scope))
+  }
+  const common = { output: Done, text: said, details: linked } as const
+  return [
+    typedTool({
+      name: 'subagent_spawn',
+      description: 'Start a subagent named `name` on a job (`message`). Its final answer is reported back to you.',
+      input: Schema.Struct({ name: Name, message: Message }),
+      ...common,
+      replay: 'unsafe',
+      execute: async ({ name, message }, api, context) => {
+        await roster(api, context)
+        return (await off(api)) ?? deliver(api, 'spawn', name, message, context)
+      },
+    }),
+    typedTool({
+      name: 'subagent_send',
+      description: 'Give a subagent another job (`message`), after its current answer.',
+      input: Schema.Struct({ name: Name, message: Message }),
+      ...common,
+      replay: 'unsafe',
+      execute: async ({ name, message }, api, context) => {
+        if (known(await roster(api, context), name) === undefined) return done(name, 'unknown', undefined)
+        return (await off(api)) ?? deliver(api, 'send', name, message, context)
+      },
+    }),
+    typedTool({
+      name: 'subagent_stop',
+      description: "Stop a subagent's current work and everything its own subagents are doing.",
+      input: Schema.Struct({ name: Name }),
+      ...common,
+      replay: 'unsafe',
+      execute: async ({ name }, api, context) => {
+        const agent = known(await roster(api, context), name)
+        if (agent === undefined) return done(name, 'unknown', undefined)
+        await stop(run, api, agent, context)
+        return done(name, 'stopped', agent)
+      },
+    }),
+    typedTool({
+      name: 'subagent_status',
+      description: 'Say which subagents are working: one by `name`, or every one you started.',
+      input: Schema.Struct({ name: Schema.optionalKey(Name) }),
+      output: Working,
+      replay: 'safe',
+      execute: async ({ name }, api, context) => status(api, await roster(api, context), name, context),
+      text: ({ subagents }) =>
+        subagents.length === 0
+          ? 'No subagents.'
+          : subagents.map(({ name, working }) => `${name}: ${working ? 'working' : 'idle'}`).join('\n'),
+    }),
+  ]
 }
 
 /** The owner's message to a subagent, as `ownerSend` carries it. */
@@ -213,7 +280,8 @@ async function ownerRelay(relay: Relay, pi: Harness, send: OwnerSend): Promise<b
 
 export type SubagentKit = {
   readonly extension: Extension
-  readonly tool: ToolRegistration
+  /** The subagent tools, which a conversation with subagents switched off has filtered out. */
+  readonly tools: readonly ToolRegistration[]
   /**
    * The owner's message to a subagent, carried like the spawner's by a relay in the spawner, so the answer reports up.
    * False when that operation is already on its way or delivered.
@@ -222,7 +290,7 @@ export type SubagentKit = {
 }
 
 /**
- * Background subagents behind one `subagent` tool, after Pi Durable's example 23. A subagent is a conversation owned by
+ * Background subagents behind the `subagent_*` tools, after Pi Durable's example 23. A subagent is a conversation owned by
  * an anchor task of its spawner, given exactly `members(extension)`: the owner's tools and this extension again, so it
  * can start subagents of its own, at any depth (no `ask_user`). Each message goes through a relay task (`relayTask`),
  * and only the final answer comes back to the spawner. The registry lists each subagent under its spawner, so the
@@ -243,36 +311,34 @@ export function subagentsExtension(run: RunProgram, members: (self: Extension) =
   /** spawn and send: one commit starts the subagent if new, and a relay for the message. */
   async function deliver(api: Api, action: 'spawn' | 'send', name: string, message: string, context: CallContext) {
     const roster = await api.snapshot(Subagents, api.conversationId, context)
-    const admitted = await admit(run, roster === undefined ? undefined : known(roster.agents, name), name)
-    if (admitted.refused !== undefined) return reply(admitted.refused)
-    const result = await api.commit(async (tx) => {
+    const before = roster === undefined ? undefined : known(roster.agents, name)
+    const admitted = await admit(run, before)
+    if (admitted === 'closed-by-owner') return done(name, admitted, before)
+    const outcome = await api.commit(async (tx) => {
       const state = await tx.doc(Subagents, api.conversationId)
       const existing = known(state.agents, name)
-      if (action === 'spawn' && existing !== undefined) return `${name} already exists; use send.`
+      if (action === 'spawn' && existing !== undefined) return 'exists' as const
       const child = existing?.conversationId ?? (await spawn(tx, name))
       state.agents[name] ??= { conversationId: child, reported: [] }
       const input = { name, conversationId: child, content: message, origin: 'spawner', whenBusy: 'followUp' } as const
       await tx.createTask(Relay, input, background)
-      if (action === 'spawn') return `Started ${name}.`
-      return admitted.reopened
-        ? `Sent to ${name}; it had closed when its job was done and is open again.`
-        : `Sent to ${name}.`
+      if (action === 'spawn') return 'started' as const
+      return admitted === 'reopened' ? ('reopened' as const) : ('sent' as const)
     }, context)
-    const current = (await api.snapshot(Subagents, api.conversationId, context))?.agents[name]
-    return reply(result, name, current?.conversationId)
+    return done(name, outcome, (await api.snapshot(Subagents, api.conversationId, context))?.agents[name])
   }
 
-  const tool = subagentTool(run, deliver)
+  const tools = subagentTools(run, deliver)
   const extension: Extension = defineExtension({
     name: 'goblin.subagents',
     // Only where the tool is offered: a conversation with subagents switched off has it filtered out.
     sections: [
       section('subagents', (input) =>
-        input.agent.tools.some((offered) => offered.name === SUBAGENT_TOOL) ? GUIDE : undefined,
+        input.agent.tools.some((offered) => SUBAGENT_TOOLS.includes(offered.name)) ? GUIDE : undefined,
       ),
     ],
     tasks: [Anchor, Relay],
-    tools: [tool],
+    tools,
   })
-  return { extension, tool, ownerSend: (pi, send) => ownerRelay(Relay, pi, send) }
+  return { extension, tools, ownerSend: (pi, send) => ownerRelay(Relay, pi, send) }
 }

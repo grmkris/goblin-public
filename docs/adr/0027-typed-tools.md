@@ -14,9 +14,10 @@ and output schema) is listed for the callers that will want types: goblin's `/mc
 design.
 
 **A tool does one thing.** A tool that took an `action` and optional fields per action becomes one tool per action
-(`routine` becomes `routine_propose`, `routine_list` and `routine_pause`), so each has an exact input and output and
-the model cannot send a field the action ignores or miss one it needs. A routine is proposed as a typed
-`RoutineDefinition`, not a JSON string.
+(`routine` becomes `routine_propose`, `routine_list` and `routine_pause`; `subagent` becomes `subagent_spawn`,
+`subagent_send`, `subagent_stop` and `subagent_status`), so each has an exact input and output and the model cannot
+send a field the action ignores or miss one it needs. A routine is proposed as a typed `RoutineDefinition`, not a JSON
+string.
 
 **Apps are called through one tool.** `app_call(app, member, input)` replaces the tools each app added
 (`app_<name>__<member>`): the tool list no longer changes when an app is built, renamed or deleted, which kept the
@@ -28,4 +29,6 @@ show is summarized as valid JSON rather than cut mid-text.
 Consequences:
 - Tools move to `typedTool` one at a time; the web renders old and new tool names, so stored transcripts still read.
 - A call to an old tool name that Pi recovers after the switch fails once with an unknown-tool error.
+- Pi keeps a conversation's tool filter as tool names, so the filters that removed `subagent` where subagents are
+  switched off are applied again once with the new names (`CapabilityProfiles.retoolOnce`).
 - Tool annotations, descriptions and remote content stay untrusted data: types describe shape, never permission.

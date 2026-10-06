@@ -2,6 +2,7 @@ import { Option, Schema } from 'effect'
 import { CapabilityTarget, QuestionSpec } from '@goblin/contracts'
 import { isString, record } from './boundary.ts'
 import type { Part, ToolPart } from './parts.ts'
+import { subagentAction } from './threads.ts'
 
 /**
  * Something the agent is waiting on the owner for: answers to `ask_user` questions, permission for an MCP tool it may
@@ -25,7 +26,7 @@ const decodeTarget = Schema.decodeUnknownOption(CapabilityTarget)
 
 /**
  * Whether a switched-off target is what the call asked for: the server or tool of an `mcp_call`, the library a skill
- * handle (`<server>:<name>`) comes from, or subagents for `subagent`. Anything else is not trusted.
+ * handle (`<server>:<name>`) comes from, or subagents for a subagent tool. Anything else is not trusted.
  */
 function asksFor(part: ToolPart, target: CapabilityTarget): boolean {
   const { name, arguments: args } = part.call
@@ -36,7 +37,7 @@ function asksFor(part: ToolPart, target: CapabilityTarget): boolean {
   }
   if (name === 'skill_activate' || name === 'skill_read')
     return target.kind === 'skills' && isString(args.skill) && args.skill.split(':', 1)[0] === target.serverId
-  return name === 'subagent' && target.kind === 'subagents'
+  return subagentAction(part) !== undefined && target.kind === 'subagents'
 }
 
 /**

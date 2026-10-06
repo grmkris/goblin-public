@@ -12,6 +12,7 @@ import Stack from './stack.ts'
 import { routineEventsCase, routineSchedulingCase } from './native-routines-events.ts'
 import { filesCase } from './native-files.ts'
 import { appsCase } from './native-apps.ts'
+import { scopesCase } from './native-scopes.ts'
 import { telemetryCase } from './native-telemetry.ts'
 import {
   Listed,
@@ -87,6 +88,8 @@ const Evidence = Schema.Struct({
 })
 
 const baseUrl = (url: string): string => url.replace(/\/+$/u, '')
+/** The subagent tools among a request's tools. */
+const offered = (tools: readonly string[] = []) => tools.filter((tool) => tool.startsWith('subagent'))
 
 harness.test(
   'local workerd: routine definitions retain exact confirmations, replay IDs and revision fences',
@@ -703,51 +706,9 @@ harness.test(
   }),
 )
 
-const Scope = Schema.Struct({
-  editable: Schema.Boolean,
-  mail: Schema.Boolean,
-  send: Schema.Boolean,
-  read: Schema.Boolean,
-  write: Schema.Boolean,
-  skills: Schema.Boolean,
-  subagents: Schema.Boolean,
-})
-const Scopes = Schema.Struct({
-  thread: Scope,
-  deep: Scope,
-  orphan: Scope,
-  unknown: Scope,
-  deepest: Scope,
-  cycle: Scope,
-  fromSubagent: Scope,
-  serverBackOn: Scope,
-  afterReset: Scope,
-  own: Schema.Array(Schema.Unknown),
-  retooled: Schema.Array(Schema.String),
-})
-const closed = { editable: false, mail: false, send: false, read: false, write: false, skills: false, subagents: false }
-
 harness.test(
   "local workerd: a thread copies its parent's switches and a subagent is bounded by every conversation above it",
-  Effect.gen(function* () {
-    const { url } = yield* stack
-    const name = `scopes-${yield* nextInt}`
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/scopes?name=${name}`))
-    const result = yield* Schema.decodeUnknownEffect(Scopes)(yield* Effect.promise(() => response.json()))
-    const thread = { editable: true, mail: false, send: false, read: true, write: false, skills: true, subagents: true }
-    expect(result.thread).toEqual(thread)
-    expect(result.deep).toEqual({ ...thread, editable: false, skills: false })
-    expect(result.orphan).toEqual(closed)
-    expect(result.unknown).toEqual(closed)
-    expect(result.deepest).toEqual({ ...thread, editable: false })
-    expect(result.cycle).toEqual(closed)
-    expect(result.fromSubagent).toEqual({ ...thread, skills: false })
-    // A server switched back on keeps the tool switched off under it.
-    expect(result.serverBackOn).toEqual({ ...thread, mail: true })
-    expect(result.afterReset).toEqual({ ...thread, mail: true, send: true })
-    expect(result.own).toEqual([{ kind: 'tool', serverId: 'notes', name: 'write' }])
-    expect(result.retooled).toEqual(['900'])
-  }),
+  stack.pipe(Effect.flatMap(({ url }) => scopesCase(url))),
 )
 
 const View = Schema.Struct({
@@ -809,12 +770,17 @@ harness.test(
     expect(result.reset.value).toMatchObject({ servers: notes(false), subagents: false, sameAsParent: true })
     expect(result.unknown.error._tag).toBe('InvalidInput')
     expect(result.mainReset.error._tag).toBe('InvalidInput')
-    // Pi's tool filter follows the switch: no `subagent` where subagents are off.
+    // Pi's tool filter follows the switch: no subagent tool where subagents are off.
     expect(result.tools.main).toContain('mcp_call')
-    expect(result.tools.main).not.toContain('subagent')
-    expect(result.tools.thread).toContain('subagent')
-    expect(result.tools.branch).not.toContain('subagent')
-    expect(result.tools.reset).not.toContain('subagent')
+    expect(offered(result.tools.main)).toEqual([])
+    expect(offered(result.tools.thread)).toEqual([
+      'subagent_spawn',
+      'subagent_send',
+      'subagent_stop',
+      'subagent_status',
+    ])
+    expect(offered(result.tools.branch)).toEqual([])
+    expect(offered(result.tools.reset)).toEqual([])
     // The switched-off tool ran nothing: the gate answered before the grant check or any connection to notes.test.
     expect(result.off.text).toContain('Off in this conversation: notes · write. Nothing ran.')
     expect(result.offDetails).toEqual({
@@ -885,8 +851,8 @@ harness.test(
       `pi.user: ${JSON.stringify(report)}`,
       'pi.assistant: [{"type":"text","text":"echo: echo: find the word"}]',
     ])
-    expect(result.mainRequest.tools).toEqual(expect.arrayContaining(['subagent', 'ask_user', 'mcp_call']))
-    expect(result.childRequest.tools).toEqual(expect.arrayContaining(['mcp_list', 'mcp_call', 'subagent']))
+    expect(result.mainRequest.tools).toEqual(expect.arrayContaining(['subagent_spawn', 'ask_user', 'mcp_call']))
+    expect(result.childRequest.tools).toEqual(expect.arrayContaining(['mcp_list', 'mcp_call', 'subagent_spawn']))
     expect(result.childRequest.tools).not.toContain('ask_user')
   }),
 )

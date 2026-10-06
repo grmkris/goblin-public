@@ -2,13 +2,19 @@ import type { ToolRegistration } from '@earendil-works/pi-durable'
 import { type CapabilityTarget, type ConversationKind, MAIN_THREAD, RoutineDefinition } from '@goblin/contracts'
 import { and, eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import { appConversationCapabilities, appConversations, appChannel, appTelegramChannel } from '../storage/schema.ts'
+import {
+  appConversationCapabilities,
+  appConversations,
+  appChannel,
+  appMetadata,
+  appTelegramChannel,
+} from '../storage/schema.ts'
 import { appRoutineRuns } from '../storage/routines.ts'
 import * as Schema from 'effect/Schema'
 
 type Kind = CapabilityTarget['kind']
 
-/** A conversation's Pi tool filter: the `subagent` tool removed, or none (`null` clears an inherited one). */
+/** A conversation's Pi tool filter: the subagent tools removed, or none (`null` clears an inherited one). */
 export type PiTools = { readonly remove: readonly ToolRegistration[] } | null
 
 /** One thing switched off in a conversation, as stored: `serverId` empty for subagents, `name` set only for a tool. */
@@ -76,21 +82,21 @@ const INSERT_ROWS = 20
  * on everywhere until switched off. A thread copies the switches of the conversation it came from when it is created. A
  * subagent stores none: it is bounded by every conversation above it, read live, so it can never do more than the one
  * that started it.
- * `subagentTool` is what Pi's per-conversation tool filter removes when subagents are off; `retool` applies that
+ * `subagentTools` are what Pi's per-conversation tool filter removes when subagents are off; `retool` applies that
  * filter to a conversation in Pi (outside any SQLite transaction).
  */
 export class CapabilityProfiles {
   readonly #db: DrizzleSqliteDODatabase
-  readonly #subagentTool: ToolRegistration
+  readonly #subagentTools: readonly ToolRegistration[]
   readonly #retool: (session: string, tools: PiTools) => Promise<void>
 
   constructor(
     db: DrizzleSqliteDODatabase,
-    subagentTool: ToolRegistration,
+    subagentTools: readonly ToolRegistration[],
     retool: (session: string, tools: PiTools) => Promise<void>,
   ) {
     this.#db = db
-    this.#subagentTool = subagentTool
+    this.#subagentTools = subagentTools
     this.#retool = retool
   }
 
@@ -224,14 +230,33 @@ export class CapabilityProfiles {
     await this.syncPi(thread)
   }
 
-  /** Pi's tool filter for `session`: without `subagent` when subagents are off where it works, else none. */
+  /** Pi's tool filter for `session`: without the subagent tools when subagents are off where it works, else none. */
   piTools(session: string): PiTools {
     const effective = this.#effective(session)
-    return effective !== undefined && scopeOf(effective, true).subagents() ? null : { remove: [this.#subagentTool] }
+    return effective !== undefined && scopeOf(effective, true).subagents() ? null : { remove: this.#subagentTools }
   }
 
   /** Applies `session`'s tool filter to its Pi conversation, after the switches are stored. */
   async syncPi(session: string): Promise<void> {
     await this.#retool(session, this.piTools(session))
+  }
+
+  /**
+   * Applies every filtering conversation's tool filter to Pi again, once per `marker`. Pi keeps a filter as tool
+   * names, so one stored before the tools it names changed (`subagent` became the `subagent_*` tools) removes nothing
+   * until it is applied again. The marker is written after every conversation is done, so a failure retries them all.
+   */
+  async retoolOnce(marker: string, now: number): Promise<void> {
+    if (this.#db.select().from(appMetadata).where(eq(appMetadata.id, marker)).get() !== undefined) return
+    // Registered conversations only: one not registered yet (a new agent's main) has no switches to apply.
+    for (const { session } of this.#db.select({ session: appConversations.sessionId }).from(appConversations).all()) {
+      const tools = this.piTools(session)
+      if (tools !== null) await this.#retool(session, tools)
+    }
+    this.#db
+      .insert(appMetadata)
+      .values({ id: marker, value: String(now) })
+      .onConflictDoNothing()
+      .run()
   }
 }

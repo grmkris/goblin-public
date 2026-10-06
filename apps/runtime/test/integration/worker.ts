@@ -299,7 +299,7 @@ export class PersonalAgentProbe extends PersonalAgent {
       execute: async () => ({ content: [] }),
     })
     const retooled: string[] = []
-    const profiles = new CapabilityProfiles(db, tool, async (session) => void retooled.push(session))
+    const profiles = new CapabilityProfiles(db, [tool], async (session) => void retooled.push(session))
     profiles.set(MAIN_THREAD, { kind: 'tool', serverId: 'notes', name: 'write' }, false, 1)
     profiles.copy(MAIN_THREAD, '900', 2)
     profiles.set('900', { kind: 'server', serverId: 'mail' }, false, 2)
@@ -346,7 +346,15 @@ export class PersonalAgentProbe extends PersonalAgent {
     profiles.set('900', { kind: 'server', serverId: 'mail' }, true, 3)
     const serverBackOn = view('900')
     await profiles.reset('900', 4)
-    return { ...before, serverBackOn, afterReset: view('900'), own: profiles.own('900'), retooled }
+    const afterReset = view('900')
+    const reset = [...retooled]
+    // Once per marker: every conversation that filters the subagent tools (subagents off, or a broken chain) again.
+    profiles.set('960', { kind: 'subagents' }, false, 5)
+    await profiles.retoolOnce('retool:probe', 5)
+    const once = retooled.slice(reset.length).toSorted()
+    await profiles.retoolOnce('retool:probe', 6)
+    const again = retooled.length - reset.length - once.length
+    return { ...before, serverBackOn, afterReset, own: profiles.own('900'), retooled: reset, once, again }
   }
 }
 
@@ -618,7 +626,7 @@ async function capabilitySequence(agent: DurableObjectStub<PersonalAgentProbe>):
  * its answer comes back into main as an input labelled with it, which main answers.
  */
 async function subagentSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
-  const spawn = `call subagent ${JSON.stringify({ action: 'spawn', name: 'scout', message: 'find the word' })}`
+  const spawn = `call subagent_spawn ${JSON.stringify({ name: 'scout', message: 'find the word' })}`
   await agent.submit(MAIN_THREAD, spawn, 'subagent-spawn')
   const spawned = await agent.settle(MAIN_THREAD, 'subagent-spawn')
   const main = await until(
@@ -667,7 +675,7 @@ async function treeSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promi
   })
   if (!nested.ok) return Response.json({ nested })
   await exchange(agent, nested.value.id, 'and in the nested thread?', 'tree-nested')
-  const spawn = `call subagent ${JSON.stringify({ action: 'spawn', name: 'digger', message: 'Native slow job' })}`
+  const spawn = `call subagent_spawn ${JSON.stringify({ name: 'digger', message: 'Native slow job' })}`
   await exchange(agent, outer.value.id, spawn, 'tree-spawn')
   const subagent = (await threadsUntil(agent, (views) => views.some(({ parent }) => parent === outer.value.id))).find(
     ({ kind, parent }) => kind === 'subagent' && parent === outer.value.id,
@@ -705,7 +713,7 @@ async function treeSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promi
  * subagents, without the subagent's instructions), it reads the subagent's work, and the subagent stays open for it.
  */
 async function subagentBranchSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
-  const spawn = `call subagent ${JSON.stringify({ action: 'spawn', name: 'scout', message: 'find the word' })}`
+  const spawn = `call subagent_spawn ${JSON.stringify({ name: 'scout', message: 'find the word' })}`
   await exchange(agent, MAIN_THREAD, spawn, 'subagent-branch-spawn')
   const listed = (await threadsUntil(agent, (views) => views.some(({ kind }) => kind === 'subagent'))).find(
     ({ kind }) => kind === 'subagent',
@@ -724,7 +732,7 @@ async function subagentBranchSequence(agent: DurableObjectStub<PersonalAgentProb
   if (!branch.ok) return Response.json({ branch })
   await exchange(agent, branch.value.id, 'what did you find?', 'subagent-branch-ask')
   // The subagent already offered `subagent`, so the thread's request lists only what it adds: use the tool instead.
-  const status = await exchange(agent, branch.value.id, 'call subagent {"action":"status"}', 'subagent-branch-status')
+  const status = await exchange(agent, branch.value.id, 'call subagent_status {}', 'subagent-branch-status')
   const subagentAfter = (await agent.conversations()).ok ? await listedThread(agent, listed.id) : undefined
   const closed = await agent.updateConversation(listed.id, { closed: true })
   return Response.json({

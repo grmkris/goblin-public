@@ -90,10 +90,14 @@ describe('what the agent waits on the owner for', () => {
       target: skills,
     })
     expect(interactionOf(switchedOff('skill_read', { skill: 'other:review' }, off(skills)))).toBeUndefined()
-    expect(interactionOf(switchedOff('subagent', {}, off({ kind: 'subagents' })))).toMatchObject({
-      kind: 'capability',
-    })
-    expect(interactionOf(switchedOff('subagent', {}, off(server)))).toBeUndefined()
+    // The subagent tools, and the single `subagent` tool stored transcripts still hold.
+    for (const [name, args] of [
+      ['subagent_spawn', {}],
+      ['subagent', { action: 'spawn' }],
+    ] as const) {
+      expect(interactionOf(switchedOff(name, args, off({ kind: 'subagents' })))).toMatchObject({ kind: 'capability' })
+      expect(interactionOf(switchedOff(name, args, off(server)))).toBeUndefined()
+    }
   })
   it('gives each reply a stable submission id', () => {
     expect(interactionOperation({ kind: 'capability', callId: 'c1', target: { kind: 'subagents' } })).toBe(

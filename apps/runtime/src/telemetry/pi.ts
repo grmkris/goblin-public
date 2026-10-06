@@ -131,7 +131,7 @@ export const sourceOf = (operationId: string): string =>
 const familyOf = (tool: string): string =>
   tool === 'mcp_call' || tool === 'mcp_list'
     ? 'mcp'
-    : tool === 'subagent'
+    : tool === 'subagent' || tool.startsWith('subagent_')
       ? 'subagent'
       : tool === 'zoom'
         ? 'memory'

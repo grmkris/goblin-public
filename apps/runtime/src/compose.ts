@@ -22,7 +22,7 @@ import { installEventConsumers } from './mcp/events/consumers.ts'
 import { Events, McpEvents } from './mcp/events.ts'
 import { EventStorage, SqliteEventStore } from './mcp/events/store.ts'
 import { eventsHookToken, eventsHookUrl } from './mcp/events/route-token.ts'
-import { GrantDenied, Forbidden } from './http/errors.ts'
+import { GrantDenied, Forbidden, toAppError } from './http/errors.ts'
 import * as Layer from 'effect/Layer'
 import { McpHost } from './mcp/host.ts'
 import { logEndpointsReset } from './mcp/log.ts'
@@ -61,8 +61,8 @@ export type ComposeInput = {
   readonly pi: PiModels
   readonly thread: Extension
   readonly memory: ReturnType<typeof memoryExtensions>
-  /** The `subagent` tool, which Pi's tool filter removes where subagents are switched off. */
-  readonly subagentTool: ToolRegistration
+  /** The subagent tools, which Pi's tool filter removes where subagents are switched off. */
+  readonly subagentTools: readonly ToolRegistration[]
   /** Schedules the Telegram replies alarm. */
   readonly scheduleReplies: () => void
   readonly userId: string
@@ -201,7 +201,9 @@ export async function composeServices(
   const memory = new MainMemory(db, harness, cheap('memory'), Number.isFinite(fold) ? { foldTokens: fold } : {})
   const { recall } = input.memory
   await memory.activate([input.memory.memory, recall])
-  const capabilities = new CapabilityProfiles(db, input.subagentTool, retool(harness))
+  const capabilities = new CapabilityProfiles(db, input.subagentTools, retool(harness))
+  // Once per agent: tool filters stored while subagents were one `subagent` tool name the four that replaced it.
+  void capabilities.retoolOnce('retool:subagent-tools', nowSeconds()).catch(toAppError)
   const routineServices = await makeRoutines(input)
   const kit = { thread: input.thread, recall, memory, namer, capabilities }
   const conversations = conversationServices(db, input, kit)
