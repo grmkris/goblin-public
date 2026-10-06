@@ -20,7 +20,14 @@ export type McpTarget = {
  * What an `app_build` call made active: the app, its version, whether it has a view, and whether this call is where
  * the transcript shows that view (the newest such build of the app; ADR 0021).
  */
-export type AppBuilt = { readonly app: string; readonly version: number; readonly ui: boolean; readonly place: boolean }
+export type AppBuilt = {
+  readonly app: string
+  readonly version: number
+  readonly ui: boolean
+  readonly place: boolean
+  /** The app's title, when the build waits for the owner to allow powers it asks for. */
+  readonly asks?: string
+}
 /** One tool call with its result folded in. Times are epoch ms: started from the live start or the asking message. */
 export type ToolPart = {
   readonly kind: 'tool'
@@ -150,7 +157,8 @@ export function builtApp(
   }
   const built = record(value)
   if (built?.status !== 'active' || !isString(built.app) || typeof built.version !== 'number') return undefined
-  return { app: built.app, version: built.version, ui: built.ui === true }
+  const title = record(built.approval)?.title
+  return { app: built.app, version: built.version, ui: built.ui === true, ...(isString(title) && { asks: title }) }
 }
 
 /** Each `app_build` with what it made, and per app the newest build with a view marked as the place it shows. */

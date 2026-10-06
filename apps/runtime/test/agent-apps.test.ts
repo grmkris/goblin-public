@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mismatches, plainJson, schemaProblems } from '../src/agent-apps/json.ts'
-import { readManifest } from '../src/agent-apps/manifest.ts'
+import { readManifest, requestedPowers, storedManifest } from '../src/agent-apps/manifest.ts'
 import { toolName } from '../src/agent-apps/names.ts'
 import { AppQueues, problemText } from '../src/agent-apps/queue.ts'
 import { InvalidInput } from '../src/http/errors.ts'
@@ -26,6 +26,8 @@ const counter = {
     },
   },
   views: { total: { description: 'The count.', input: object({}), select: true } },
+  egress: [],
+  uses: { tools: [], apps: [], llm: false, notify: false },
 }
 
 describe('app schemas', () => {
@@ -67,6 +69,36 @@ describe('manifests', () => {
     expect(problems({ ...counter, actions: {}, views: {} })).toEqual(['An app needs at least one action or view.'])
     expect(problems({ ...counter, actions: { add: { ...counter.actions.add, run: false } } })[0]).toContain('needs run')
     expect(problems({ name: 'counter' })[0]).toContain('default export')
+  })
+  it('read the powers an app asks for, and refuse hosts, tools and apps that are not names', () => {
+    const asking = {
+      ...counter,
+      egress: ['api.example.com'],
+      uses: { tools: ['notes/list'], apps: ['reading-list'], llm: true, notify: false },
+    }
+    const read = readManifest(asking, 'counter')
+    expect('manifest' in read ? requestedPowers(read.manifest) : read).toEqual([
+      { kind: 'egress', target: 'api.example.com' },
+      { kind: 'tool', target: 'notes/list' },
+      { kind: 'app', target: 'reading-list' },
+      { kind: 'llm', target: '*' },
+    ])
+    expect(problems({ ...counter, egress: ['https://api.example.com/x', '10.0.0.1', 'localhost'] })).toEqual([
+      'egress: "https://api.example.com/x" is not a host name like api.example.com (no scheme, path or IP address).',
+      'egress: "10.0.0.1" is not a host name like api.example.com (no scheme, path or IP address).',
+      'egress: "localhost" is not a host name like api.example.com (no scheme, path or IP address).',
+    ])
+    expect(problems({ ...asking, uses: { ...asking.uses, tools: ['list'], apps: ['counter'] } })).toEqual([
+      'uses.tools: "list" is not "<server>/<tool>".',
+      'uses.apps: an app does not call itself.',
+    ])
+  })
+  it('read a manifest stored before powers as asking for none', () => {
+    const { egress: _egress, uses: _uses, ...before } = counter
+    expect(storedManifest(JSON.stringify(before))).toMatchObject({
+      egress: [],
+      uses: { tools: [], apps: [], llm: false, notify: false },
+    })
   })
   it('name tools so they cannot shadow host tools', () => {
     expect(toolName('reading-list', 'addBook')).toBe('app_reading_list__addBook')

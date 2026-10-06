@@ -50,9 +50,26 @@ tool (an amendment of ADR 0005 for agent apps). Its failures go to the app's eve
 apps section; goblin does not write them into a conversation. Closing an agent app's view closes its stage and page
 only; the app and its tools stay.
 
-**Still to come** (the same plan, later milestones): powers beyond files (web fetch, the owner's MCP tools, model
-calls, Telegram, other apps) with owner approvals; scheduled jobs; the Apps section and page, fullscreen with the chat
-docked; owner deletion; sharing a view's context with the agent.
+**Powers and approvals.** Beyond its state and files, an app reaches only what it declares (`egress` hosts, and
+`uses`: the owner's MCP tools as `<server>/<tool>`, other apps, model calls, Telegram) and the owner approves. A
+release that asks for powers still becomes active; its build result carries the ones waiting, which the web shows as
+a card under the build, and the agent's apps section lists them. A power is checked when it is used, in `prepare`
+only: approved and not revoked, within the app's daily caps (2,000 fetches, 20,000 model tokens, 10 notifications),
+and through the agent's own authority (the owner's plan and current resident authority; an MCP tool also needs the
+owner's exact grant). Fetches go only to exact approved hosts over https on 443, never to goblin's own domain, with
+redirects checked again, no cookies, 20 a call and bounded sizes and time. Apps call apps at most three deep. What an
+app brings in from outside is data: its tool results say so once it can reach out. The agent cannot approve; the owner
+answers on the card (`PUT /api/agent-apps/:name/powers`).
+
+**Downloads.** A view offers the owner a file (`download()`, MCP Apps' `ui/download-file`); the host draws it with a
+Save button and saves nothing without the owner's click.
+
+**Finding servers.** `mcp_suggest` searches goblin's suggested servers and the owner's registries (results are
+untrusted data), and `mcp_request_server` asks the owner to add one: a card with its name, address and the agent's
+reason, trusted only from that tool's own result, whose Add and connect runs the usual add and sign-in flow.
+
+**Still to come** (the same plan, later milestones): scheduled jobs; the Apps section and page, fullscreen with the
+chat docked; owner deletion; sharing a view's context with the agent.
 
 Consequences:
 - Dynamic Workers are an open beta on Workers Paid; their pricing and limits may change.

@@ -37,7 +37,7 @@ import { skillsCacheProbe, skillsLearnerRejectionProbe, skillsPersistedRead } fr
 import { exchange, historyOf, linesOf, snapshotOf, threadsUntil, transcript, until } from './probe-reads.ts'
 import { subagentChainSequence, subagentCloseSequence, subagentOwnerSequence } from './subagent-probe.ts'
 import { filesSequence, filesStoreProbe } from './files-probe.ts'
-import { appsEngineProbe, appsTurnProbe } from './apps-probe.ts'
+import { appsEngineProbe, appsPowersProbe, appsTurnProbe } from './apps-probe.ts'
 
 const fixturePlan = () =>
   Effect.succeed({
@@ -77,6 +77,10 @@ export class PersonalAgentProbe extends PersonalAgent {
   /** As JSON text: the results carry app values, typed `unknown`, which RPC types cannot carry. */
   async appsEngineProbe(): Promise<string> {
     return JSON.stringify(await appsEngineProbe(this.ctx.storage, this.env, this.name))
+  }
+
+  async appsPowersProbe(): Promise<string> {
+    return JSON.stringify(await appsPowersProbe(this.ctx.storage, this.env, this.name))
   }
 
   async appsTurnProbe(): Promise<string> {
@@ -873,6 +877,10 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
     case '/apps-engine':
       return agent
         .appsEngineProbe()
+        .then((json) => new Response(json, { headers: { 'content-type': 'application/json' } }))
+    case '/apps-powers':
+      return agent
+        .appsPowersProbe()
         .then((json) => new Response(json, { headers: { 'content-type': 'application/json' } }))
     case '/apps-turn':
       return agent

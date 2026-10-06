@@ -1,4 +1,4 @@
-import type { AppCall, AppDiagnostic, CreateApp, UpdateApp } from '@goblin/contracts'
+import type { AppCall, AppDiagnostic, AppPowerChange, CreateApp, UpdateApp } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import { NotFound } from '../http/errors.ts'
 import { toolAppResource } from '../mcp/connection.ts'
@@ -54,3 +54,12 @@ export const callAgentApp = (id: string, call: AppCall) =>
 /** A failure an agent app's view reported, kept where the agent sees it. */
 export const reportAgentApp = (id: string, diagnostic: AppDiagnostic) =>
   Effect.flatMap(agentApp(id), ({ name, engine }) => attemptSync(() => engine.viewError(name, diagnostic.message)))
+
+/** The powers an agent app asks for, with the owner's answers. */
+export const agentAppPowers = (name: string) => AppEngine.use((engine) => attemptSync(() => engine.powers(name)))
+
+/** The owner approves or revokes one power of an agent app. */
+export const answerAgentAppPower = (name: string, change: AppPowerChange) =>
+  AppEngine.use((engine) =>
+    attemptSync(() => engine.answer(name, { kind: change.kind, target: change.target }, change.allowed)),
+  )

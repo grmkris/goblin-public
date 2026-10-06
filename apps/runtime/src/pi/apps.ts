@@ -9,7 +9,10 @@ const GUIDE = [
   'your tools (`app_<name>__<action>`). Use one when the owner wants something kept and worked on over time (a list,',
   'a tracker, a log, a calculation over their data). Read `app_docs` (topic `core`) before your first build. Build or',
   'change one with `app_build`; for small fixes send `edits`. If a build fails, read its problems and fix them. An',
-  'app with a `view.tsx` (topic `ui`) shows the owner a live UI, under your build in the chat and as a page.',
+  'app with a `view.tsx` (topic `ui`) shows the owner a live UI, under your build in the chat and as a page. An app',
+  "reaches the internet, the owner's MCP tools, a model, Telegram or other apps only with powers the owner approves",
+  '(topic `powers`). When a task needs a service the owner has not connected, look with `mcp_suggest` and ask them',
+  'with `mcp_request_server`.',
   "`code_run` runs a one-off JavaScript snippet over the owner's files for calculations; it keeps nothing.",
 ].join(' ')
 
@@ -28,7 +31,8 @@ function appsSection(apps: AgentApps): string {
 const docsTool = (apps: AgentApps) =>
   defineTool({
     name: 'app_docs',
-    description: 'Read how to write an app: topic "core" (start here), "ui" (its view), "files" or "examples".',
+    description:
+      'Read how to write an app: topic "core" (start here), "ui" (its view), "powers" (fetch, tools, model, Telegram, other apps), "files" or "examples".',
     parameters: Type.Object({ topic: Type.Optional(Type.String({ maxLength: 40 })) }),
     replay: 'safe',
     execute: async ({ topic }) => text(await apps.docs(topic ?? 'core')),

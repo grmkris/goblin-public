@@ -43,6 +43,44 @@ export function appsCase(url: string) {
     })
     // The app's own error comes back with its stack, pointing into its own module.
     expect(JSON.stringify(engine)).toMatch(/fail\.run failed: Error: nope\\n {4}at run \(app\.js:\d+/u)
+    const powers = yield* probe(url, '/apps-powers')
+    expect(powers).toMatchObject({
+      approval: {
+        app: 'weather',
+        title: 'Weather',
+        powers: [
+          { kind: 'egress', target: 'api.weather.test' },
+          { kind: 'egress', target: 'moved.weather.test' },
+          { kind: 'egress', target: 'x.goblin.test' },
+          { kind: 'tool', target: 'notes/list' },
+          { kind: 'llm', target: '*' },
+          { kind: 'notify', target: '*' },
+        ],
+      },
+      refused: expect.stringContaining('api.weather.test is not approved'),
+      fetched: { kind: 'action', revision: 2, state: { temp: 21 } },
+      unlisted: expect.stringContaining('evil.test is not approved'),
+      offList: expect.stringContaining('evil.test is not approved'),
+      onList: { kind: 'action', state: { temp: 21 } },
+      own: expect.stringContaining('does not reach goblin itself'),
+      plain: expect.stringContaining('only https://'),
+      revoked: expect.stringContaining('api.weather.test is not approved'),
+      askedBefore: expect.stringContaining('llm * is not approved'),
+      asked: 'ran',
+      seen: [
+        ['complete', 'Say hi', 1024],
+        ['notify', expect.stringMatching(/^app-weather-p-10-1$/u), 'It is warm'],
+        ['tool', 'notes', 'list', { limit: 1 }],
+      ],
+      readerApproval: { app: 'reader', powers: [{ kind: 'app', target: 'weather' }] },
+      read: { kind: 'action', state: { seen: 21 } },
+      powers: expect.arrayContaining([
+        { kind: 'egress', target: 'api.weather.test', status: 'revoked' },
+        { kind: 'llm', target: '*', status: 'approved' },
+      ]),
+      // Every fetch an app attempts counts toward its day, refused ones too.
+      usage: { egress: 8, notify: 1 },
+    })
     const turn = yield* probe(url, '/apps-turn')
     expect(turn).toMatchObject({
       built: expect.stringContaining('"status":"active","app":"tally"'),

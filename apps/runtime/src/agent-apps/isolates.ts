@@ -8,13 +8,29 @@ const CONCURRENCY = 8
 /** What an isolate call returns: a value, or the app's own error as text. */
 export type Outcome = { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly error: string }
 
-/** What the host lends an app's `prepare` (an `RpcTarget`): its own files and a log line into its events. */
+/**
+ * What the host lends an app's `prepare` (an `RpcTarget`): its own files, a log line into its events, and its approved
+ * powers. Values of any shape cross as JSON text.
+ */
 export interface AppPowersApi {
   filesRead(path: string): Promise<string | null>
   filesWrite(path: string, text: string): Promise<void>
   filesList(dir: string): Promise<readonly { readonly path: string; readonly size: number }[]>
   filesDelete(path: string): Promise<boolean>
   log(line: string): Promise<void>
+  fetch(
+    url: string,
+    init: { readonly method?: string; readonly headers?: Readonly<Record<string, string>>; readonly body?: string },
+  ): Promise<{
+    readonly status: number
+    readonly url: string
+    readonly headers: Readonly<Record<string, string>>
+    readonly body: string
+  }>
+  toolsCall(tool: string, args: string): Promise<string>
+  llmComplete(prompt: string, options: { readonly system?: string; readonly maxTokens?: number }): Promise<string>
+  notify(text: string): Promise<void>
+  appsCall(app: string, member: string, input: string): Promise<string>
 }
 
 /** When `run` runs and the seed of its ids and random numbers (the same on a retry). */

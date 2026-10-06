@@ -8,6 +8,8 @@ import type {
   AppContext,
   AppDiagnostic,
   AppLaunch,
+  AppPower,
+  AppPowerChange,
   AppSnapshot,
   AppView,
   CreateApp,
@@ -54,6 +56,8 @@ export interface AgentRpcMethods {
   readonly appSnapshot: (id: string) => Promise<RpcResult<AppSnapshot>>
   readonly appCall: (id: string, call: AppCall) => Promise<RpcResult<AppCallResult>>
   readonly appDiagnostic: (id: string, diagnostic: AppDiagnostic) => Promise<RpcResult<{ readonly kept: boolean }>>
+  readonly appPowers: (name: string) => Promise<RpcResult<readonly AppPower[]>>
+  readonly answerAppPower: (name: string, change: AppPowerChange) => Promise<RpcResult<readonly AppPower[]>>
   readonly conversationCapabilities: (thread: string) => Promise<RpcResult<ConversationCapabilities>>
   readonly setConversationCapability: (
     thread: string,

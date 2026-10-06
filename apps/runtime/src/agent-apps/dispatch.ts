@@ -1,9 +1,8 @@
 import { Conflict, InvalidInput, NotFound } from '../http/errors.ts'
-import type { AppFiles } from './files.ts'
 import { type Isolates, type Outcome, isolateFailure } from './isolates.ts'
 import { mismatches, plainJson } from './json.ts'
-import type { Manifest } from './manifest.ts'
-import { AppPowers } from './powers.ts'
+import { type Manifest, storedManifest } from './manifest.ts'
+import type { AppPowers } from './powers.ts'
 import { AppCodeError, type AppQueues } from './queue.ts'
 import type { AgentAppStore } from './store.ts'
 
@@ -20,6 +19,8 @@ export type CallRequest = {
   readonly op: string
   /** The release the call was made against; a call must not run on code that changed under it. */
   readonly release?: string | undefined
+  /** How many apps' `prepare` this call is inside of (an app calling another), 0 for the agent, a view or a job. */
+  readonly depth?: number
 }
 export type CallResult =
   | { readonly kind: 'action'; readonly revision: number; readonly state?: unknown }
@@ -29,7 +30,8 @@ type DispatchDeps = {
   readonly store: AgentAppStore
   readonly isolates: Isolates
   readonly queues: AppQueues
-  readonly files: (app: string) => AppFiles
+  /** What one `prepare` of `app` may reach, for the call `op` at `depth`. */
+  readonly powers: (app: string, op: string, depth: number) => AppPowers
   readonly now: () => number
   /** The app's state moved to a new revision. */
   readonly changed: (app: string) => void
@@ -68,8 +70,7 @@ export class AppDispatch {
     if (known !== undefined) return known
     const row = this.#deps.store.release(release)
     if (row?.manifest == null) throw new NotFound({ what: `release ${release}` })
-    // SAFETY: only `activate` writes a manifest, and only one `readManifest` accepted.
-    const manifest = JSON.parse(row.manifest) as Manifest
+    const manifest = storedManifest(row.manifest)
     this.#manifests.set(release, manifest)
     return manifest
   }
@@ -105,9 +106,7 @@ export class AppDispatch {
     let prepared: unknown = null
     if (action.prepare) {
       const snapshot = this.#state(request.app)
-      const powers = new AppPowers(this.#deps.files(request.app), (line) =>
-        store.event(request.app, 'log', line, this.#deps.now()),
-      )
+      const powers = this.#deps.powers(request.app, request.op, request.depth ?? 0)
       const out = await this.#isolate(MS.prepare, `prepare of ${request.member}`, () =>
         api.prepare(request.member, input, snapshot.state, this.#deps.now(), powers),
       )

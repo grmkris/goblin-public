@@ -109,6 +109,8 @@ its transcript shows a row for that thread. The owner API is conversation-scoped
 | `GET /api/apps/:id/state` | An agent app's state now, with its revision and release (`AppSnapshot`). |
 | `POST /api/apps/:id/call` | An action an agent app's view calls (`AppCall`: name, arguments, the frame's operation id). Answers the state after it, or the app's own error (`AppCallResult`). |
 | `POST /api/apps/:id/diagnostics` | A failure an agent app's view reported (`AppDiagnostic`); kept with the app's events at most every ten seconds. |
+| `GET /api/agent-apps/:name/powers` | The powers an agent app's running release asks for, each pending, approved or revoked (`AppPower`). |
+| `PUT /api/agent-apps/:name/powers` | The owner approves or revokes one of them (`AppPowerChange`). Only the owner answers; the agent cannot. |
 | `GET /api/conversations` | List registered conversations (`ConversationView`), closed ones included, each with its `parent`, where it branched (`forkEntry`), and its own `replies` and `lastReplyAt`, counted from Pi (`replies.ts`). |
 | `POST /api/conversations` | Create an empty thread (`{}`) or branch an open conversation at an entry (`{ from: { conversation, entry } }`). |
 | `PATCH /api/conversations/:id` | Rename, close or reopen (`closed`) a thread or subagent, or pin a subagent open (`keepOpen`). Closing stops it and everything under it; main cannot be changed this way. |
@@ -417,6 +419,17 @@ routes the view's action calls to `POST /api/apps/:id/call` with the frame's ope
 reports the view's failures, which the agent sees in its apps section and in `app_inspect`. A new release reloads the
 frame; a new revision is pushed into it. In the transcript the view shows under the newest build of it with one.
 
+Beyond its state and files, an app reaches only the powers it declares and the owner approves (ADR 0021):
+`ctx.fetch` to exact `egress` hosts (`agent-apps/egress.ts`: https on 443, never goblin's own domain, redirects checked
+again, no cookies, bounded), and through the agent (`agent-apps/ports.ts`, connected in `compose.ts`) the owner's MCP
+tools under their exact grants, the cheap model within the owner's budget, Telegram through their channel, and other
+apps' actions and views (`agent-apps/engine.ts` composes each `prepare`'s `AppPowers`). Every use checks the approval
+(`app_agent_powers`), the app's daily cap (`app_agent_usage`) and, for what goes through the agent, the owner's plan
+and resident authority. A build lists the powers still waiting; the web draws them as a card under it
+(`components/parts/app-powers.tsx`). A view offers files to save through the host's download offer. The agent looks
+for MCP servers with `mcp_suggest` and asks the owner to add one with `mcp_request_server` (`pi/servers.ts`), a card
+whose Add and connect runs the usual flow.
+
 ## Files
 
 The owner's files (ADR 0022, `files/store.ts`): `@cloudflare/shell`'s Workspace over the agent's SQLite, with files
@@ -557,7 +570,7 @@ are never pruned. Workers cannot pin resolved DNS IPs; trusted DNS is the docume
 | Agent DO SQLite | `app_skill_catalog_state` | Drizzle: durable catalog invalidation generations. |
 | Agent DO SQLite | `cf_workspace_files` | `@cloudflare/shell`'s Workspace: the owner's files (ADR 0022), vendor-owned like `pi_*`. |
 | R2 `files` | `agents/<userId>/files/…`, `agents/<userId>/app_<name>/…` | Shell: the owner's and each app's files over 128 KiB. Deleting the account empties the prefix. |
-| Agent DO SQLite | `app_agent_apps`, `app_agent_releases`, `app_agent_artifacts`, `app_agent_views`, `app_agent_state`, `app_agent_snapshots`, `app_agent_receipts`, `app_agent_events` | Drizzle: agent apps, their releases, code and views, state and revisions, rollback snapshots, receipts and events (ADR 0021). |
+| Agent DO SQLite | `app_agent_apps`, `app_agent_releases`, `app_agent_artifacts`, `app_agent_views`, `app_agent_state`, `app_agent_snapshots`, `app_agent_receipts`, `app_agent_events`, `app_agent_powers`, `app_agent_usage` | Drizzle: agent apps, their releases, code and views, state and revisions, rollback snapshots, receipts, events, the owner's answers to their powers and their daily usage (ADR 0021). |
 | Agent DO SQLite | `cf_workspace_app_<name>` | Shell: each agent app's own files. |
 | Agent DO SQLite | `app_registry` | Drizzle: every App the workspace shows, by source: an MCP App per conversation and call, an agent app per name (ADR 0020, 0021). `app_apps`, its predecessor, was copied in with the same ids and is no longer read. |
 | D1 `goblinAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `oauth*` | Better Auth, `apps/runtime/migrations`. |

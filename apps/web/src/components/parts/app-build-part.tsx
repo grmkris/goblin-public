@@ -6,6 +6,7 @@ import type { ToolPart } from '../../lib/parts.ts'
 import { appKey } from '../../lib/workspace.ts'
 import { useAppHost } from '../apps/host.tsx'
 import { AppPlace } from '../apps/slot.tsx'
+import { AppPowers } from './app-powers.tsx'
 import { useWorkspace } from '../workspace.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { useAppsConversation } from './mcp-tool-part.tsx'
@@ -51,6 +52,7 @@ export function AppBuildPart({ part }: { readonly part: ToolPart }) {
   const inline = conversation !== undefined && built?.place === true && app !== undefined && app.closedAt === undefined
   return (
     <div className="flex flex-col gap-2">
+      {built?.asks !== undefined && <AppPowers app={built.app} title={built.asks} />}
       <ToolCard part={part}>
         {app !== undefined && !inline && (
           <OpenApp app={app} here={built?.place === true && conversation !== undefined} />

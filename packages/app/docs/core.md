@@ -47,7 +47,8 @@ export default defineApp({
 - `run(input, ctx, prepared)` is pure: it returns the whole next state and does nothing else. It may run again for
   the same call, so no I/O. `ctx.state` (current), `ctx.now` (ms since epoch), `ctx.id()` and `ctx.random()`.
 - `prepare(input, ctx)` is optional and runs once, before `run`; whatever it returns is `run`'s third argument. It is
-  the only place for I/O: `ctx.files` (the app's own files) and `ctx.log(...)`. `ctx.state` is read-only there.
+  the only place for I/O: `ctx.files` (the app's own files), `ctx.log(...)`, and the powers the owner approved
+  (`ctx.fetch`, `ctx.tools`, `ctx.llm`, `ctx.notify`, `ctx.apps`: topic `powers`). `ctx.state` is read-only there.
 - `select(input, ctx)` returns data from `ctx.state` for a view; it changes nothing.
 - Throw an `Error` with a clear message to refuse a call; nothing changes.
 - State is plain JSON and must match `state.schema`. Leave optional fields out rather than setting `undefined`.
@@ -65,4 +66,4 @@ Call `app_build` again with the same `name`, sending only the files that change 
 schema or migrate into it, or the build fails and the running version stays. `app_inspect` shows the source, the
 state, recent events and errors; `app_rollback` goes back to an earlier version.
 
-More: `app_docs({ topic })` with `ui`, `files` or `examples`.
+More: `app_docs({ topic })` with `ui`, `powers`, `files` or `examples`.

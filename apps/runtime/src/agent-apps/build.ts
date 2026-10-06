@@ -1,7 +1,7 @@
 import { InvalidInput, NotFound } from '../http/errors.ts'
 import { type Isolates, type ReleaseApi, isolateFailure } from './isolates.ts'
 import { jsonBytes, mismatches, plainJson } from './json.ts'
-import { type Manifest, readManifest } from './manifest.ts'
+import { type Manifest, type Power, readManifest, requestedPowers } from './manifest.ts'
 import { APP_NAME, toolName } from './names.ts'
 import type { AppQueues } from './queue.ts'
 import type { AgentAppStore, AppViewCode } from './store.ts'
@@ -38,6 +38,8 @@ export type BuildResult =
       readonly migrated: boolean
       /** Whether the app has a view (`view.tsx`) the owner can open. */
       readonly ui: boolean
+      /** Powers it asks for that the owner has not approved: they fail until approved (shown to the owner here). */
+      readonly approval?: { readonly app: string; readonly title: string; readonly powers: readonly Power[] }
     }
   | { readonly status: 'unchanged'; readonly app: string; readonly release: string }
   | {
@@ -106,6 +108,12 @@ async function releaseId(files: Readonly<Record<string, string>>, toolchain: str
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('')
     .slice(0, 16)}`
+}
+
+/** The powers a manifest asks for that the owner has not approved yet, as the owner's card shows them. */
+function approvalOf(store: AgentAppStore, manifest: Manifest) {
+  const powers = requestedPowers(manifest).filter((power) => !store.approved(manifest.name, power))
+  return powers.length === 0 ? {} : { approval: { app: manifest.name, title: manifest.title, powers } }
 }
 
 const toolsOf = (app: string, manifest: Manifest) => [
@@ -227,6 +235,7 @@ export class AppBuilder {
         revision,
         migrated: state.migrated,
         ui: view.view !== undefined,
+        ...approvalOf(store, manifest),
       }
     })
   }

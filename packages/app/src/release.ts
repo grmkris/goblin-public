@@ -6,13 +6,65 @@ import app from './app.js'
 
 type Result = { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly error: string }
 
-/** What the host lends `prepare`: the app's own files, and a log line into the app's events. */
+/** What the host lends `prepare`: the app's own files, a log line into its events, and its approved powers. */
 interface Powers {
   filesRead(path: string): Promise<string | null>
   filesWrite(path: string, text: string): Promise<void>
   filesList(dir: string): Promise<readonly { readonly path: string; readonly size: number }[]>
   filesDelete(path: string): Promise<boolean>
   log(line: string): Promise<void>
+  fetch(
+    url: string,
+    init: { method?: string; headers?: Record<string, string>; body?: string },
+  ): Promise<{ status: number; url: string; headers: Record<string, string>; body: string }>
+  toolsCall(tool: string, args: string): Promise<string>
+  llmComplete(prompt: string, options: { system?: string; maxTokens?: number }): Promise<string>
+  notify(text: string): Promise<void>
+  appsCall(app: string, member: string, input: string): Promise<string>
+}
+
+/** What `ctx.fetch` answers: a small Response, its body already read as text. */
+const response = (answer: { status: number; url: string; headers: Record<string, string>; body: string }) =>
+  Object.freeze({
+    status: answer.status,
+    ok: answer.status >= 200 && answer.status < 300,
+    url: answer.url,
+    headers: Object.freeze({ ...answer.headers }),
+    text: async () => answer.body,
+    json: async (): Promise<unknown> => JSON.parse(answer.body),
+  })
+
+/** `ctx` in `prepare`: the state as it is, the time, and what the host lends. */
+function prepareContext(state: unknown, now: number, powers: Powers) {
+  const files = Object.freeze({
+    read: (path: string) => powers.filesRead(path),
+    write: (path: string, text: string) => powers.filesWrite(path, text),
+    list: (dir = '/') => powers.filesList(dir),
+    delete: (path: string) => powers.filesDelete(path),
+  })
+  return Object.freeze({
+    state: frozen(state),
+    now,
+    files,
+    log: (...parts: readonly unknown[]) => void powers.log(words(...parts)),
+    fetch: async (url: unknown, init: { method?: string; headers?: Record<string, string>; body?: string } = {}) =>
+      response(await powers.fetch(String(url), init)),
+    tools: Object.freeze({
+      call: async (tool: string, args: unknown = {}): Promise<unknown> =>
+        JSON.parse(await powers.toolsCall(tool, JSON.stringify(args))),
+    }),
+    llm: Object.freeze({
+      complete: (prompt: string, options: { system?: string; maxTokens?: number } = {}) =>
+        powers.llmComplete(prompt, options),
+    }),
+    notify: (text: unknown) => powers.notify(String(text)),
+    apps: Object.freeze({
+      call: async (target: string, action: string, input: unknown = {}): Promise<unknown> =>
+        JSON.parse(await powers.appsCall(target, action, JSON.stringify(input))),
+      view: async (target: string, name: string, input: unknown = {}): Promise<unknown> =>
+        JSON.parse(await powers.appsCall(target, name, JSON.stringify(input))),
+    }),
+  })
 }
 
 type Fn = (...args: readonly unknown[]) => unknown
@@ -49,6 +101,9 @@ function generator(seed: number): () => number {
 }
 
 const EMPTY_INPUT = { type: 'object', properties: {}, additionalProperties: false }
+
+const strings = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 
 const words = (...parts: readonly unknown[]) =>
   parts.map((part) => (typeof part === 'string' ? part : JSON.stringify(part))).join(' ')
@@ -88,6 +143,13 @@ export class App extends WorkerEntrypoint {
           },
         ]),
       ),
+      egress: strings(field(app, 'egress')),
+      uses: {
+        tools: strings(field(field(app, 'uses'), 'tools')),
+        apps: strings(field(field(app, 'uses'), 'apps')),
+        llm: field(field(app, 'uses'), 'llm') === true,
+        notify: field(field(app, 'uses'), 'notify') === true,
+      },
     }
   }
 
@@ -104,16 +166,8 @@ export class App extends WorkerEntrypoint {
   async prepare(action: string, input: unknown, state: unknown, now: number, powers: Powers): Promise<Result> {
     const prepare = field(field(field(app, 'actions'), action), 'prepare')
     if (!isFn(prepare)) return { ok: true, value: null }
-    const files = Object.freeze({
-      read: (path: string) => powers.filesRead(path),
-      write: (path: string, text: string) => powers.filesWrite(path, text),
-      list: (dir = '/') => powers.filesList(dir),
-      delete: (path: string) => powers.filesDelete(path),
-    })
-    const log = (...parts: readonly unknown[]) => void powers.log(words(...parts))
-    const ctx = Object.freeze({ state: frozen(state), now, files, log })
     try {
-      return { ok: true, value: (await prepare(input, ctx)) ?? null }
+      return { ok: true, value: (await prepare(input, prepareContext(state, now, powers))) ?? null }
     } catch (cause) {
       return failure(cause)
     }

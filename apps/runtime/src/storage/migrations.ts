@@ -280,6 +280,15 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     tables: ['app_agent_views'],
     sql: 'CREATE TABLE app_agent_views (release TEXT PRIMARY KEY NOT NULL, module TEXT NOT NULL, css TEXT NOT NULL, libs TEXT NOT NULL)',
   },
+  {
+    // Agent app powers with the owner's approvals, and each app's daily usage (ADR 0021).
+    key: '20261018000300_agent_app_powers',
+    tables: ['app_agent_powers', 'app_agent_usage'],
+    sql: [
+      `CREATE TABLE app_agent_powers (app TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('egress', 'tool', 'app', 'llm', 'notify')), target TEXT NOT NULL, requested_by TEXT NOT NULL, approved_at INTEGER, revoked_at INTEGER, PRIMARY KEY (app, kind, target))`,
+      `CREATE TABLE app_agent_usage (app TEXT NOT NULL, day TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('egress', 'tokens', 'notify', 'job')), amount INTEGER NOT NULL, PRIMARY KEY (app, day, kind))`,
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

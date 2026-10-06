@@ -334,6 +334,23 @@ export const AppCallResult = Schema.Union([
 ])
 export type AppCallResult = typeof AppCallResult.Type
 
+/** A power an agent app asks for (ADR 0021): a host to fetch from, an MCP tool, another app, model calls, Telegram. */
+export const AppPowerKind = Schema.Literals(['egress', 'tool', 'app', 'llm', 'notify'])
+export const AppPower = Schema.Struct({
+  kind: AppPowerKind,
+  target: Schema.String.check(Schema.isMaxLength(260)),
+  status: Schema.Literals(['pending', 'approved', 'revoked']),
+})
+export type AppPower = typeof AppPower.Type
+
+/** The owner approves (`allowed`) or revokes one power an agent app asks for. */
+export const AppPowerChange = Schema.Struct({
+  kind: AppPowerKind,
+  target: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(260)),
+  allowed: Schema.Boolean,
+})
+export type AppPowerChange = typeof AppPowerChange.Type
+
 /** A failure an agent app's view reported (an uncaught error, a render that threw). */
 export const AppDiagnostic = Schema.Struct({ message: Schema.String.check(Schema.isMaxLength(4000)) })
 export type AppDiagnostic = typeof AppDiagnostic.Type

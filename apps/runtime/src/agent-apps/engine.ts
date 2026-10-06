@@ -12,10 +12,13 @@ import { AppDispatch } from './dispatch.ts'
 import { AppFiles } from './files.ts'
 import { Isolates } from './isolates.ts'
 import { mismatches } from './json.ts'
-import type { Manifest } from './manifest.ts'
+import { type Manifest, type Power, type PowerKind, requestedPowers } from './manifest.ts'
 import { toolName } from './names.ts'
+import { type Send, egress } from './egress.ts'
+import type { AppServices } from './ports.ts'
+import { AppPowers } from './powers.ts'
 import { AppCodeError, AppQueues } from './queue.ts'
-import { AgentAppStore } from './store.ts'
+import { AgentAppStore, type UsageKind, isApproved } from './store.ts'
 import { AppToolset } from './toolset.ts'
 
 export type AgentAppsDeps = {
@@ -28,6 +31,10 @@ export type AgentAppsDeps = {
   readonly toolchain: () => Promise<Toolchain & { readonly DOCS: Readonly<Record<string, string>> }>
   /** The owner's files, which `code_run` reads and writes under /agent. */
   readonly ownerFiles: FileStore
+  /** How an app's `ctx.fetch` reaches the internet (tests replace it). */
+  readonly fetch: Send
+  /** goblin's own URL: an app never fetches from its domain. */
+  readonly appUrl: string
 }
 
 /** What `app_inspect` can include besides the summary. */
@@ -36,6 +43,15 @@ export type InspectPart = 'source' | 'state' | 'events' | 'releases'
 const INSPECT_BYTES = 24 * 1024
 /** How often a view's failure is kept, at most. */
 const REPORT_MS = 10_000
+/** What one app may spend in a UTC day (ADR 0021): fetches, model tokens, notifications. */
+const DAILY = { egress: 2000, tokens: 20_000, notify: 10 } as const
+/** The longest model answer an app gets, the longest notification, and how deep apps call apps. */
+const MAX_ANSWER_TOKENS = 1024
+const MAX_NOTIFY = 1000
+const MAX_DEPTH = 3
+
+/** A power an app asks for, with the owner's answer. */
+export type PowerView = Power & { readonly status: 'pending' | 'approved' | 'revoked' }
 
 /** An agent app as the App registry shows it (ADR 0021). */
 export type AgentAppInfo = {
@@ -86,6 +102,7 @@ export class AgentApps {
   readonly #files = new Map<string, AppFiles>()
   readonly #listeners = new Set<(app: string) => void>()
   readonly #reported = new Map<string, number>()
+  #services: AppServices | undefined
 
   constructor(deps: AgentAppsDeps) {
     this.#deps = deps
@@ -97,7 +114,7 @@ export class AgentApps {
       store: this.store,
       isolates,
       queues: this.#queues,
-      files: (app) => this.#filesOf(app),
+      powers: (app, op, depth) => this.#powers(app, op, depth),
       now: deps.now,
       changed: (app) => this.#changed(app),
     })
@@ -113,6 +130,11 @@ export class AgentApps {
         this.#changed(app)
       },
     })
+  }
+
+  /** Gives the apps' powers what they reach through the agent: called once its services are made. */
+  connect(services: AppServices): void {
+    this.#services = services
   }
 
   /** Gives the toolset Pi's registry: called once, when the harness is made. */
@@ -138,6 +160,32 @@ export class AgentApps {
       revision: this.store.state(app)?.revision ?? 0,
       ui: this.store.view(row.activeRelease) !== undefined,
     }
+  }
+
+  /** The powers the app's running release asks for, and the owner's answer to each. */
+  powers(app: string): readonly PowerView[] {
+    const manifest = this.dispatch.manifest(this.dispatch.active(app))
+    const rows = new Map(this.store.powers(app).map((row) => [`${row.kind} ${row.target}`, row]))
+    return requestedPowers(manifest).map((power) => {
+      const row = rows.get(`${power.kind} ${power.target}`)
+      const status = isApproved(row) ? 'approved' : row?.revokedAt == null ? 'pending' : 'revoked'
+      return { ...power, status }
+    })
+  }
+
+  /** The owner approves or revokes one power the app asks for. */
+  answer(app: string, power: Power, allowed: boolean): readonly PowerView[] {
+    if (!this.powers(app).some((each) => each.kind === power.kind && each.target === power.target))
+      throw new NotFound({ what: `${app} does not ask for ${power.kind} ${power.target}` })
+    this.store.answer(app, power, allowed, this.#deps.now())
+    this.store.event(
+      app,
+      'log',
+      `owner ${allowed ? 'approved' : 'revoked'} ${power.kind} ${power.target}`,
+      this.#deps.now(),
+    )
+    this.#changed(app)
+    return this.powers(app)
   }
 
   /** The app's state now, with its revision and the release that runs it. */
@@ -218,7 +266,12 @@ export class AgentApps {
         const view = this.store.view(app.activeRelease) === undefined ? '' : ', with a view'
         const [last] = this.store.events(app.name, 1)
         const failing = last?.kind === 'error' ? ` Last error: ${last.detail.slice(0, 300)}` : ''
-        return `- ${app.name} (v${String(version)}, "${app.title}"${view}): ${signatures(manifest)}. Tools: ${toolName(app.name, '…')}.${failing}`
+        const waiting = this.powers(app.name).filter((power) => power.status !== 'approved')
+        const asks =
+          waiting.length === 0
+            ? ''
+            : ` Not approved by the owner yet: ${waiting.map((power) => `${power.kind} ${power.target}`).join(', ')}.`
+        return `- ${app.name} (v${String(version)}, "${app.title}"${view}): ${signatures(manifest)}. Tools: ${toolName(app.name, '…')}.${asks}${failing}`
       })
       .join('\n')
   }
@@ -298,6 +351,69 @@ export class AgentApps {
     })
   }
 
+  /** What one `prepare` of `app` may reach (ADR 0021): its files and log, and each power the owner approved. */
+  #powers(app: string, op: string, depth: number): AppPowers {
+    const now = this.#deps.now
+    const allowed = (kind: PowerKind, target: string) => {
+      if (!this.store.approved(app, { kind, target }))
+        throw new AppCodeError(
+          `${kind} ${target} is not approved for ${app}. Declare it in the app (egress or uses); the owner approves it.`,
+        )
+    }
+    const within = (kind: UsageKind, amount: number, cap: number) => {
+      if (!this.store.spend(app, kind, amount, cap, now()))
+        throw new AppCodeError(`${app} reached today's limit of ${String(cap)} ${kind === 'egress' ? 'fetches' : kind}`)
+    }
+    const services = () => {
+      if (this.#services === undefined) throw new AppCodeError('the agent is still starting; try again')
+      return this.#services
+    }
+    let calls = 0
+    return new AppPowers({
+      files: this.#filesOf(app),
+      log: (line) => this.store.event(app, 'log', line, now()),
+      fetch: async (url, init) => {
+        within('egress', 1, DAILY.egress)
+        return egress(this.#deps.fetch, url, init, {
+          approved: (host) => this.store.approved(app, { kind: 'egress', target: host }),
+          appUrl: this.#deps.appUrl,
+        })
+      },
+      tool: async (tool, args) => {
+        allowed('tool', tool)
+        const [serverId = '', name = ''] = tool.split('/', 2)
+        return services().tool(serverId, name, args)
+      },
+      llm: async (prompt, options) => {
+        allowed('llm', '*')
+        within('tokens', 0, DAILY.tokens - 1)
+        const maxTokens = Math.min(Math.max(Math.trunc(options.maxTokens ?? 512), 1), MAX_ANSWER_TOKENS)
+        const answer = await services().complete(options.system ?? '', prompt.slice(0, 20_000), maxTokens)
+        this.store.spend(app, 'tokens', Math.ceil((prompt.length + answer.length) / 4), Number.MAX_SAFE_INTEGER, now())
+        return answer
+      },
+      notify: async (text) => {
+        allowed('notify', '*')
+        within('notify', 1, DAILY.notify)
+        calls += 1
+        await services().notify(`app-${app}-${op}-${String(calls)}`.slice(0, 200), text.slice(0, MAX_NOTIFY))
+      },
+      app: async (target, member, input) => {
+        allowed('app', target)
+        if (depth + 1 > MAX_DEPTH) throw new AppCodeError(`apps call apps at most ${String(MAX_DEPTH)} deep`)
+        calls += 1
+        const result = await this.dispatch.call({
+          app: target,
+          member,
+          input,
+          op: `app:${op}:${String(calls)}`,
+          depth: depth + 1,
+        })
+        return result.kind === 'view' ? result.value : (result.state ?? this.store.state(target)?.state)
+      },
+    })
+  }
+
   #filesOf(app: string): AppFiles {
     const known = this.#files.get(app)
     if (known !== undefined) return known
@@ -311,8 +427,16 @@ export class AgentApps {
   }
 }
 
-/** The agent object's apps: over its SQLite, its Worker Loader and the stage's files bucket, owned by `owner`. */
-export function agentApps(storage: DurableObjectStorage, env: RuntimeEnv, owner: () => string): AgentApps {
+/**
+ * The agent object's apps: over its SQLite, its Worker Loader and the stage's files bucket, owned by `owner`. Tests
+ * pass `outside` to stand in for the internet.
+ */
+export function agentApps(
+  storage: DurableObjectStorage,
+  env: RuntimeEnv,
+  owner: () => string,
+  outside: Send = (url, init) => fetch(url, init),
+): AgentApps {
   return new AgentApps({
     storage,
     loader: env.LOADER,
@@ -321,5 +445,7 @@ export function agentApps(storage: DurableObjectStorage, env: RuntimeEnv, owner:
     now: nowMillis,
     toolchain: () => import('@goblin/app/toolchain'),
     ownerFiles: new FileStore(storage.sql, env.FILES, owner),
+    fetch: outside,
+    appUrl: env.APP_URL,
   })
 }

@@ -1,6 +1,7 @@
 import { createRegistry } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import { agentApps } from '../../src/agent-apps/engine.ts'
+import type { Send } from '../../src/agent-apps/egress.ts'
 import { AppFiles } from '../../src/agent-apps/files.ts'
 import { problemText } from '../../src/agent-apps/queue.ts'
 import { runScript } from '../../src/agent-apps/script.ts'
@@ -153,4 +154,140 @@ export async function appsTurnProbe(harness: PiHarness, offered: () => readonly 
   await harness.submit('call app_tally__add {"by":4}', { session: '1', operationId: 'apps-call' })
   const called = await harness.wait('apps-call', { session: '1' })
   return { built: built.text ?? '', called: called.text ?? '', offered: [...offered()] }
+}
+
+const WEATHER = `import { defineApp, s } from '@goblin/app'
+
+export default defineApp({
+  name: 'weather',
+  title: 'Weather',
+  description: 'The temperature now.',
+  egress: ['api.weather.test', 'moved.weather.test', 'x.goblin.test'],
+  uses: { llm: true, notify: true, tools: ['notes/list'] },
+  state: { schema: s.object({ temp: s.nullable(s.number()) }), initial: { temp: null } },
+  actions: {
+    refresh: {
+      description: 'Fetch the temperature.',
+      input: s.object({ from: s.string() }),
+      prepare: async (input, ctx) => (await (await ctx.fetch(input.from)).json()).temp,
+      run: (input, ctx, temp) => ({ temp }),
+    },
+    ask: {
+      description: 'Ask the model, tell the owner and read a note list.',
+      input: s.object({}),
+      prepare: async (input, ctx) => {
+        const answer = await ctx.llm.complete('Say hi', { maxTokens: 5000 })
+        await ctx.notify('It is warm')
+        const notes = await ctx.tools.call('notes/list', { limit: 1 })
+        return { answer, notes }
+      },
+      run: (input, ctx) => ctx.state,
+    },
+  },
+  views: { now: { description: 'The temperature.', input: s.object({}), select: (input, ctx) => ctx.state.temp } },
+})
+`
+
+const READER = `import { defineApp, s } from '@goblin/app'
+
+export default defineApp({
+  name: 'reader',
+  title: 'Reader',
+  description: 'Reads the weather app.',
+  uses: { apps: ['weather'] },
+  state: { schema: s.object({ seen: s.nullable(s.number()) }), initial: { seen: null } },
+  actions: {
+    read: {
+      description: 'Read the weather app.',
+      input: s.object({}),
+      prepare: async (input, ctx) => ctx.apps.view('weather', 'now'),
+      run: (input, ctx, seen) => ({ seen }),
+    },
+  },
+  views: {},
+})
+`
+
+/** The internet as the powers probe sees it: one API, one redirect off the approved list, one redirect onto it. */
+const internet: Send = async (url) => {
+  if (url.hostname === 'api.weather.test') return Response.json({ temp: 21 })
+  if (url.pathname === '/away') return new Response(null, { status: 302, headers: { location: 'https://evil.test/x' } })
+  if (url.pathname === '/home')
+    return new Response(null, { status: 301, headers: { location: 'https://api.weather.test/now' } })
+  return new Response('not here', { status: 404 })
+}
+
+type Outcome = Awaited<ReturnType<typeof outcome>>
+/** A call that should be refused, as its reason; one that ran, as `ran`. */
+const said = (result: Outcome) => (result.ok ? 'ran' : result.error.slice(0, 200))
+/** A call that should run, as its value; one refused, as its reason. */
+const valueOf = (result: Outcome) => (result.ok ? result.value : result.error)
+/** What an active build asks the owner to approve. */
+const approvalOf = (built: Awaited<ReturnType<ReturnType<typeof agentApps>['build']>>) =>
+  built.status === 'active' ? built.approval : built
+
+/**
+ * Agent app powers (ADR 0021): a build lists what the owner has not approved; nothing runs before they approve; an
+ * approved host is fetched while unapproved hosts, redirects off the list and goblin's own domain are refused; a
+ * revocation takes effect at once; one app reads another it may; the model, Telegram and MCP tools go through the
+ * agent's services within the app's caps.
+ */
+export async function appsPowersProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string) {
+  const apps = agentApps(storage, env, () => owner, internet)
+  apps.attach(createRegistry())
+  apps.restore()
+  const seen: unknown[] = []
+  apps.connect({
+    tool: async (serverId, name, args) => {
+      seen.push(['tool', serverId, name, args])
+      return { content: [{ type: 'text', text: 'one note' }] }
+    },
+    complete: async (system, prompt, maxTokens) => {
+      seen.push(['complete', prompt, maxTokens])
+      return 'hi'
+    },
+    notify: async (op, text) => {
+      seen.push(['notify', op, text])
+    },
+  })
+  const caller = { session: '1', callId: 'powers-1' }
+  const built = await apps.build({ name: 'weather', files: { 'app.ts': WEATHER } }, caller)
+  const call = (app: string, member: string, input: unknown, op: string) =>
+    outcome(() => apps.dispatch.call({ app, member, input, op }))
+  const refused = await call('weather', 'refresh', { from: 'https://api.weather.test/now' }, 'p-1')
+  for (const target of ['api.weather.test', 'moved.weather.test', 'x.goblin.test'])
+    apps.answer('weather', { kind: 'egress', target }, true)
+  const fetched = await call('weather', 'refresh', { from: 'https://api.weather.test/now' }, 'p-2')
+  const unlisted = await call('weather', 'refresh', { from: 'https://evil.test/now' }, 'p-3')
+  const offList = await call('weather', 'refresh', { from: 'https://moved.weather.test/away' }, 'p-4')
+  const onList = await call('weather', 'refresh', { from: 'https://moved.weather.test/home' }, 'p-5')
+  const own = await call('weather', 'refresh', { from: 'https://x.goblin.test/now' }, 'p-6')
+  const plain = await call('weather', 'refresh', { from: 'http://api.weather.test/now' }, 'p-7')
+  apps.answer('weather', { kind: 'egress', target: 'api.weather.test' }, false)
+  const revoked = await call('weather', 'refresh', { from: 'https://api.weather.test/now' }, 'p-8')
+  const askedBefore = await call('weather', 'ask', {}, 'p-9')
+  for (const kind of ['llm', 'notify'] as const) apps.answer('weather', { kind, target: '*' }, true)
+  apps.answer('weather', { kind: 'tool', target: 'notes/list' }, true)
+  const asked = await call('weather', 'ask', {}, 'p-10')
+  const reader = await apps.build({ name: 'reader', files: { 'app.ts': READER } }, caller)
+  apps.answer('reader', { kind: 'app', target: 'weather' }, true)
+  const read = await call('reader', 'read', {}, 'p-11')
+  return {
+    approval: approvalOf(built),
+    refused: said(refused),
+    fetched: valueOf(fetched),
+    unlisted: said(unlisted),
+    offList: said(offList),
+    onList: valueOf(onList),
+    own: said(own),
+    plain: said(plain),
+    revoked: said(revoked),
+    askedBefore: said(askedBefore),
+    asked: said(asked),
+    seen,
+    readerApproval: approvalOf(reader),
+    read: valueOf(read),
+    powers: apps.powers('weather'),
+    usage: apps.store.usage('weather', Date.now()),
+  }
 }

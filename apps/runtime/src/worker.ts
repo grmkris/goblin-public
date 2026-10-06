@@ -4,6 +4,7 @@ import {
   AppCall,
   AppContext,
   AppDiagnostic,
+  AppPowerChange,
   CapabilityChange,
   CreateApp,
   CreateConversation,
@@ -197,6 +198,15 @@ const appRoutes: Readonly<Record<string, AppRoute>> = {
     json(unwrap(await agent.appDiagnostic(id, await readJson(request, AppDiagnostic)))),
 }
 
+/** An agent app by name (ADR 0021): the powers it asks for, and the owner's answer to one. */
+async function agentAppRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string): Promise<Response> {
+  const name = /^\/api\/agent-apps\/([a-z][a-z0-9-]{1,23})\/powers$/u.exec(path)?.[1]
+  if (name !== undefined && request.method === 'GET') return json(unwrap(await agent.appPowers(name)))
+  if (name !== undefined && request.method === 'PUT')
+    return json(unwrap(await agent.answerAppPower(name, await readJson(request, AppPowerChange))))
+  throw new NotFound({ what: path })
+}
+
 /** The owner's Apps (ADRs 0020, 0021): keep an MCP App from a call, then each App's own routes. */
 async function appRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string): Promise<Response> {
   if (path === '/api/apps' && request.method === 'POST')
@@ -298,7 +308,7 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   const session = await requireUserSession(request, env)
   const { userId } = session
   const path = new URL(request.url).pathname
-  if (under(path, '/api/routines') || under(path, '/api/files') || under(path, '/api/apps'))
+  if (['/api/routines', '/api/files', '/api/apps', '/api/agent-apps'].some((prefix) => under(path, prefix)))
     browserWrite(request, env.APP_URL)
   if (path.startsWith('/api/billing/')) return Effect.runPromise(billingApi(request, env, userId))
   await requireAccountPlan(env, userId)
@@ -322,6 +332,7 @@ async function ownerApiRequest(
     return agent.fetch(new Request(`https://agent${path.slice('/api'.length)}${new URL(request.url).search}`, request))
   if (under(path, '/api/conversations')) return conversationRoute(request, agent, path)
   if (under(path, '/api/apps')) return appRoute(request, agent, path)
+  if (under(path, '/api/agent-apps')) return agentAppRoute(request, agent, path)
   if (path.startsWith('/api/mcp/')) return mcpRoute(request, agent, path, env)
   if (path === '/api/clients' && request.method === 'GET') return json(await listInboundClients(env, userId))
   const revoke = /^\/api\/clients\/([\w.-]{1,200})$/u.exec(path)?.[1]

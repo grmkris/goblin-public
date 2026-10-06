@@ -1,7 +1,7 @@
 import { Agent } from 'agents'
 import { type Extension } from '@earendil-works/pi-durable'
 import { type AppContext, type CapabilityChange, type JsonObject, MAIN_THREAD } from '@goblin/contracts'
-import type { AppCall, AppDiagnostic, CreateApp, UpdateApp } from '@goblin/contracts'
+import type { AppCall, AppDiagnostic, AppPowerChange, CreateApp, UpdateApp } from '@goblin/contracts'
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
@@ -64,14 +64,7 @@ import {
   stopOwner,
   updateOwnerConversation,
 } from './agent-program.ts'
-import {
-  agentAppSnapshot,
-  callAgentApp,
-  createOwnerApp,
-  launchOwnerApp,
-  reportAgentApp,
-  updateOwnerApp,
-} from './apps/program.ts'
+import * as AppPrograms from './apps/program.ts'
 import { budgetExtension } from './pi/budget.ts'
 import { chooseOwnerModel, useModel, type Applied } from './agent-model.ts'
 import { routinesExtension } from './pi/routines.ts'
@@ -298,22 +291,28 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   /** The owner's kept Apps (ADR 0020): keep one from a call, close or reopen it, or read what loads it. */
   createApp(input: CreateApp) {
-    return this.#owner(createOwnerApp(input))
+    return this.#owner(AppPrograms.createOwnerApp(input))
   }
   updateApp(id: string, change: UpdateApp) {
-    return this.#owner(updateOwnerApp(id, change))
+    return this.#owner(AppPrograms.updateOwnerApp(id, change))
   }
   launchApp(id: string) {
-    return this.#owner(launchOwnerApp(id))
+    return this.#owner(AppPrograms.launchOwnerApp(id))
   }
   appSnapshot(id: string) {
-    return this.#owner(agentAppSnapshot(id))
+    return this.#owner(AppPrograms.agentAppSnapshot(id))
   }
   appCall(id: string, call: AppCall) {
-    return this.#owner(callAgentApp(id, call))
+    return this.#owner(AppPrograms.callAgentApp(id, call))
   }
   appDiagnostic(id: string, diagnostic: AppDiagnostic) {
-    return this.#owner(reportAgentApp(id, diagnostic))
+    return this.#owner(AppPrograms.reportAgentApp(id, diagnostic))
+  }
+  appPowers(name: string) {
+    return this.#owner(AppPrograms.agentAppPowers(name))
+  }
+  answerAppPower(name: string, change: AppPowerChange) {
+    return this.#owner(AppPrograms.answerAgentAppPower(name, change))
   }
 
   /** What a conversation lets its agent use: its switches over the agent's servers, skills and subagents. */

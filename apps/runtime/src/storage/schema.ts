@@ -418,6 +418,35 @@ export const appAgentEvents = sqliteTable(
 )
 
 /**
+ * The powers an app asked for and what the owner said (ADR 0021): a host to fetch from, an MCP tool, another app,
+ * model calls, notifications. A power is usable while approved and not revoked; it stays when a release stops asking.
+ */
+export const appAgentPowers = sqliteTable(
+  'app_agent_powers',
+  {
+    app: text('app').notNull(),
+    kind: text('kind', { enum: ['egress', 'tool', 'app', 'llm', 'notify'] }).notNull(),
+    target: text('target').notNull(),
+    requestedBy: text('requested_by').notNull(),
+    approvedAt: integer('approved_at'),
+    revokedAt: integer('revoked_at'),
+  },
+  (table) => [primaryKey({ columns: [table.app, table.kind, table.target] })],
+)
+
+/** What an app spent per UTC day: fetches, model tokens, notifications, job runs; its daily caps read it. */
+export const appAgentUsage = sqliteTable(
+  'app_agent_usage',
+  {
+    app: text('app').notNull(),
+    day: text('day').notNull(),
+    kind: text('kind', { enum: ['egress', 'tokens', 'notify', 'job'] }).notNull(),
+    amount: integer('amount').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.app, table.day, table.kind] })],
+)
+
+/**
  * Every App the workspace shows (ADRs 0020, 0021), one id space for both kinds: an MCP App kept from a tool call
  * (`source = 'mcp'`: call, server, tool, resource; `entry_id` is where the call sits in Pi, once found), or an agent
  * app (`'agent'`: its name). It records where an App comes from and what to call it, never a grant. The retired

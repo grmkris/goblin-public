@@ -1,17 +1,19 @@
 import { and, desc, eq, inArray, lt, notInArray } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import { Conflict } from '../http/errors.ts'
+import { Conflict, NotFound } from '../http/errors.ts'
 import {
   appAgentApps,
   appAgentArtifacts,
   appAgentEvents,
+  appAgentPowers,
+  appAgentUsage,
   appAgentReceipts,
   appAgentReleases,
   appAgentSnapshots,
   appAgentState,
   appAgentViews,
 } from '../storage/schema.ts'
-import type { Manifest } from './manifest.ts'
+import { type Manifest, type Power, requestedPowers } from './manifest.ts'
 
 type Db = DrizzleSqliteDODatabase
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0]
@@ -23,6 +25,15 @@ export type EventKind = (typeof appAgentEvents.$inferSelect)['kind']
 export type AppRow = typeof appAgentApps.$inferSelect
 export type ReleaseRow = typeof appAgentReleases.$inferSelect
 export type StateRow = { readonly revision: number; readonly state: unknown; readonly release: string }
+export type PowerRow = typeof appAgentPowers.$inferSelect
+export type UsageKind = (typeof appAgentUsage.$inferSelect)['kind']
+
+/** Whether the owner's answer to a power is yes now. */
+export const isApproved = (row: PowerRow | undefined): boolean =>
+  row?.approvedAt != null && (row.revokedAt == null || row.revokedAt < row.approvedAt)
+
+/** The UTC day a time falls on, as usage counts it. */
+const dayOf = (now: number) => new Date(now).toISOString().slice(0, 10)
 
 /** A release's view: its CommonJS module, its stylesheet, and the frame bundles it needs besides the core. */
 export type AppViewCode = { readonly module: string; readonly css: string; readonly libs: readonly string[] }
@@ -113,6 +124,72 @@ export class AgentAppStore {
     const result: unknown = JSON.parse(row.result)
     const revision = typeof result === 'object' && result !== null && 'revision' in result ? result.revision : undefined
     return typeof revision === 'number' ? { revision } : undefined
+  }
+
+  /** Every power the app asked for, with the owner's answers. */
+  powers(app: string): readonly PowerRow[] {
+    return this.#db.select().from(appAgentPowers).where(eq(appAgentPowers.app, app)).all()
+  }
+
+  /** Whether the owner approved this power of the app, and has not revoked it. */
+  approved(app: string, power: Power): boolean {
+    return isApproved(
+      this.#db
+        .select()
+        .from(appAgentPowers)
+        .where(
+          and(
+            eq(appAgentPowers.app, app),
+            eq(appAgentPowers.kind, power.kind),
+            eq(appAgentPowers.target, power.target),
+          ),
+        )
+        .get(),
+    )
+  }
+
+  /** The owner approves or revokes a power the app asked for. */
+  answer(app: string, power: Power, allowed: boolean, now: number): PowerRow {
+    const [row] = this.#db
+      .update(appAgentPowers)
+      .set(allowed ? { approvedAt: now, revokedAt: null } : { revokedAt: now })
+      .where(
+        and(eq(appAgentPowers.app, app), eq(appAgentPowers.kind, power.kind), eq(appAgentPowers.target, power.target)),
+      )
+      .returning()
+      .all()
+    if (row === undefined) throw new NotFound({ what: `${app} never asked for ${power.kind} ${power.target}` })
+    return row
+  }
+
+  /** Counts `amount` of today's `kind` for the app unless that passes `cap`; false (and nothing counted) when it would. */
+  spend(app: string, kind: UsageKind, amount: number, cap: number, now: number): boolean {
+    return this.#db.transaction((tx) => {
+      const day = dayOf(now)
+      const where = and(eq(appAgentUsage.app, app), eq(appAgentUsage.day, day), eq(appAgentUsage.kind, kind))
+      const spent = tx.select({ amount: appAgentUsage.amount }).from(appAgentUsage).where(where).get()?.amount ?? 0
+      if (spent + amount > cap) return false
+      tx.insert(appAgentUsage)
+        .values({ app, day, kind, amount: spent + amount })
+        .onConflictDoUpdate({
+          target: [appAgentUsage.app, appAgentUsage.day, appAgentUsage.kind],
+          set: { amount: spent + amount },
+        })
+        .run()
+      return true
+    })
+  }
+
+  /** Today's usage of each kind, for the app's detail. */
+  usage(app: string, now: number): Readonly<Partial<Record<UsageKind, number>>> {
+    return Object.fromEntries(
+      this.#db
+        .select({ kind: appAgentUsage.kind, amount: appAgentUsage.amount })
+        .from(appAgentUsage)
+        .where(and(eq(appAgentUsage.app, app), eq(appAgentUsage.day, dayOf(now))))
+        .all()
+        .map((row) => [row.kind, row.amount]),
+    )
   }
 
   events(app: string, limit = 20): readonly { kind: EventKind; detail: string; createdAt: number }[] {
@@ -222,6 +299,7 @@ export class AgentAppStore {
         })
         .run()
       if (activation.view !== undefined) this.#saveView(tx, release, activation.view)
+      this.#ask(tx, app, release, requestedPowers(activation.manifest))
       if (current !== undefined)
         tx.insert(appAgentSnapshots)
           .values({ app, release: current.release, revision: current.revision, state: current.state, createdAt: now })
@@ -334,6 +412,18 @@ export class AgentAppStore {
       this.#event(tx, input.app, 'rollback', `${input.release} active again`, input.now)
       this.#pruneSnapshots(tx, input.app)
     })
+  }
+
+  /** Records the powers a release asks for; the owner's earlier answers stand. */
+  #ask(tx: Tx, app: string, release: string, powers: readonly Power[]): void {
+    for (const power of powers)
+      tx.insert(appAgentPowers)
+        .values({ app, kind: power.kind, target: power.target, requestedBy: release })
+        .onConflictDoUpdate({
+          target: [appAgentPowers.app, appAgentPowers.kind, appAgentPowers.target],
+          set: { requestedBy: release },
+        })
+        .run()
   }
 
   #saveView(tx: Tx, release: string, code: AppViewCode): void {

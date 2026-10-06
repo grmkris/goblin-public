@@ -10,6 +10,7 @@ import { ConversationRegistry, type ThreadKit } from './conversations.ts'
 import { WorkspaceFeed } from './workspace/feed.ts'
 import { AppRegistry } from './apps/registry.ts'
 import type { AgentApps } from './agent-apps/engine.ts'
+import { appServices } from './agent-apps/ports.ts'
 import type { RuntimeEnv } from './env.ts'
 import { CredentialCipher } from './mcp/cipher.ts'
 import { configuredServers } from './mcp/config.ts'
@@ -203,6 +204,9 @@ export async function composeServices(
     now: nowMillis,
   })
   const channel = new TelegramChannel(db, cipher, input.scheduleReplies)
+  input.agentApps.connect(
+    appServices({ host, resident, entitlements: input.entitlements, budget, model: namer, channel }),
+  )
   const events = await makeEvents(input, host, resident, eventStore, cipher)
   installEventConsumers(events, channel, skills, input.pullTelegram)
   return ManagedRuntime.make(
