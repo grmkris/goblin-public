@@ -51,7 +51,14 @@ export function appsCase(url: string) {
     // Built in one turn, offered from the next request: main selects app extensions through the settings getter.
     expect(turn).toHaveProperty(
       'offered',
-      expect.arrayContaining(['app_build', 'code_run', 'app_tally__add', 'app_tally__total']),
+      expect.arrayContaining([
+        'app_build',
+        'code_run',
+        'app_tally__add',
+        'app_tally__total',
+        'mcp_suggest',
+        'mcp_request_server',
+      ]),
     )
   })
 }

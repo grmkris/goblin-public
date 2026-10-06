@@ -5,13 +5,20 @@ import type { Part, ToolPart } from './parts.ts'
 
 /**
  * Something the agent is waiting on the owner for: answers to `ask_user` questions, permission for an MCP tool it may
- * not call yet, or something switched off in this conversation that it tried to use. Each settles with the owner's
- * next message, from this web app or any other channel.
+ * not call yet, something switched off in this conversation that it tried to use, or an MCP server it asks them to
+ * add. Each settles with the owner's next message, from this web app or any other channel.
  */
 export type Interaction =
   | { readonly kind: 'question'; readonly callId: string; readonly questions: readonly QuestionSpec[] }
   | { readonly kind: 'grant'; readonly callId: string; readonly serverId: string; readonly name: string }
   | { readonly kind: 'capability'; readonly callId: string; readonly target: CapabilityTarget }
+  | {
+      readonly kind: 'server'
+      readonly callId: string
+      readonly endpoint: string
+      readonly name: string
+      readonly reason: string
+    }
 
 const decodeQuestions = Schema.decodeUnknownOption(Schema.Array(QuestionSpec))
 const decodeTarget = Schema.decodeUnknownOption(CapabilityTarget)
@@ -49,6 +56,8 @@ export function interactionOf(part: ToolPart): Interaction | undefined {
       ? { kind: 'capability', callId: part.call.id, target }
       : undefined
   }
+  if (part.call.name === 'mcp_request_server' && !result.isError && details.kind === 'server-request')
+    return serverOf(part, details)
   if (part.call.name === 'ask_user' && !result.isError && details.kind === 'question')
     return Option.match(decodeQuestions(details.questions), {
       onNone: () => undefined,
@@ -65,6 +74,19 @@ function grantOf(part: ToolPart, details: Record<string, unknown>): Interaction 
   return { kind: 'grant', callId: part.call.id, serverId: target.serverId, name: target.name }
 }
 
+/** A request to add a server, only from `mcp_request_server` and only for an https endpoint without credentials. */
+function serverOf(part: ToolPart, details: Record<string, unknown>): Interaction | undefined {
+  const { endpoint, name, reason } = details
+  if (!isString(endpoint) || !isString(name) || !isString(reason)) return undefined
+  try {
+    const url = new URL(endpoint)
+    if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') return undefined
+  } catch {
+    return undefined
+  }
+  return { kind: 'server', callId: part.call.id, endpoint, name: name.slice(0, 80), reason: reason.slice(0, 300) }
+}
+
 /** The interactions still waiting: those after the owner's last message. Any later message settles them. */
 export function openInteractions(parts: readonly Part[]): Interaction[] {
   const lastUser = parts.findLastIndex((part) => part.kind === 'user')
@@ -75,7 +97,7 @@ export function openInteractions(parts: readonly Part[]): Interaction[] {
   })
 }
 
-const OPERATION = { question: 'answer', grant: 'grant', capability: 'capability' } as const
+const OPERATION = { question: 'answer', grant: 'grant', capability: 'capability', server: 'server' } as const
 
 /** Stable submission ids: a double click, a retry or a second tab submits the same answer once. */
 export const interactionOperation = (interaction: Interaction): string =>

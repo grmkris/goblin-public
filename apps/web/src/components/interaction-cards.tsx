@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Option, Schema } from 'effect'
-import { KeyRoundIcon, MessageCircleQuestionIcon, PowerIcon } from 'lucide-react'
+import { KeyRoundIcon, MessageCircleQuestionIcon, PlugIcon, PowerIcon } from 'lucide-react'
 import { MAIN_THREAD, ToolView } from '@goblin/contracts'
 import {
   AskCard,
@@ -27,6 +27,7 @@ import { failureText, request } from '../lib/boundary.ts'
 import { targetLabel } from '../lib/capabilities.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
 import { useCapabilities } from './capabilities.tsx'
+import { addAndConnect } from './server-add.tsx'
 
 /** Sends the owner's reply as their next message, under the interaction's stable operation id. */
 type Answer = (input: string, operationId: string) => Promise<boolean>
@@ -91,6 +92,44 @@ function CardReplies({
         </Button>
       </AskCardActions>
     </>
+  )
+}
+
+type ServerRequest = Extract<Interaction, { kind: 'server' }>
+
+/**
+ * A server the agent asks the owner to add (ADR 0021): its name, address and the agent's reason. Adding it uses the
+ * usual flow (its sign-in, then the tools they allow); the agent adds nothing itself.
+ */
+function ServerRequestCard({
+  interaction,
+  onAnswer,
+}: {
+  readonly interaction: ServerRequest
+  readonly onAnswer: Answer
+}) {
+  const { endpoint, name, reason } = interaction
+  const { busy, error, replying } = useReplying()
+  const reply = (yes: boolean) =>
+    void replying(async () => {
+      await onAnswer(
+        yes ? `Adding ${name} (${endpoint}); I will choose its tools. Continue once it is connected.` : 'Not now.',
+        interactionOperation(interaction),
+      )
+      if (yes) await addAndConnect(endpoint, name)
+    })
+  return (
+    <AskCard aria-label="Server request">
+      <AskCardHeader>
+        <PlugIcon aria-hidden />
+        <p>
+          Your agent asks you to add <strong className="font-medium">{name}</strong>
+        </p>
+      </AskCardHeader>
+      <AskCardDescription className="break-all">{endpoint}</AskCardDescription>
+      <AskCardDescription>Its reason: {reason}</AskCardDescription>
+      <CardReplies busy={busy} error={error} yes="Add and connect" onReply={reply} />
+    </AskCard>
   )
 }
 
@@ -241,6 +280,8 @@ export function InteractionCards({
       return <GrantCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
     if (interaction.kind === 'capability')
       return <CapabilityCard key={interaction.callId} interaction={interaction} thread={thread} onAnswer={onAnswer} />
+    if (interaction.kind === 'server')
+      return <ServerRequestCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
     return <QuestionCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
   })
 }

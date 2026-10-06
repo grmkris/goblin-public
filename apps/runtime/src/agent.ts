@@ -17,6 +17,7 @@ import { FileStore } from './files/store.ts'
 import { filesExtension } from './pi/files.ts'
 import { type AgentApps, agentApps } from './agent-apps/engine.ts'
 import { appsExtension } from './pi/apps.ts'
+import { serversExtension } from './pi/servers.ts'
 import { agentRequest, sessionSnapshot } from './agent-requests.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
 import { LITELLM_STREAMS, makePiModels } from './pi/model.ts'
@@ -129,12 +130,9 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     // Skills and apps are for main and threads; a subagent gets only the extensions its spawner hands it.
     const apps = agentApps(ctx.storage, env, () => this.name)
     this.#apps = apps
-    this.harness = makePiHarness(
-      this.#pi,
-      [...tools, skillsExtension(run), filesExtension(run), appsExtension(apps), subagents, routinesExtension(run)],
-      [this.#thread, memory, recall, ...routineKit.extra],
-      apps,
-    )
+    const base = [...tools, skillsExtension(run), filesExtension(run), appsExtension(apps)]
+    const own = [serversExtension(run, env.STAGE), subagents, routinesExtension(run)]
+    this.harness = makePiHarness(this.#pi, [...base, ...own], [this.#thread, memory, recall, ...routineKit.extra], apps)
     this.#routines = new RoutineController(routineRun, this.harness, routineKit.start, {
       storage: this.ctx.storage,
       owner: () => this.name,

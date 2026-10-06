@@ -114,3 +114,29 @@ describe('what the agent waits on the owner for', () => {
     )
   })
 })
+
+const requested = (details: unknown, name = 'mcp_request_server'): ToolPart => ({
+  kind: 'tool',
+  id: 'tool:s1',
+  call: { id: 's1', name, arguments: {} },
+  state: 'done',
+  result: { id: 'r', role: 'tool', text: 'Asked', toolCallId: 's1', toolName: name, isError: false, details },
+})
+const server = { kind: 'server-request', endpoint: 'https://mcp.example.com/mcp', name: 'Example', reason: 'For maps' }
+
+describe('a request to add a server', () => {
+  it("is trusted only from mcp_request_server's own result, for an https endpoint", () => {
+    expect(interactionOf(requested(server))).toEqual({
+      kind: 'server',
+      callId: 's1',
+      endpoint: 'https://mcp.example.com/mcp',
+      name: 'Example',
+      reason: 'For maps',
+    })
+    expect(interactionOperation({ kind: 'server', callId: 's1', endpoint: '', name: '', reason: '' })).toBe('server:s1')
+    expect(interactionOf(requested(server, 'mcp_call'))).toBeUndefined()
+    expect(interactionOf(requested({ ...server, origin: { serverId: 'evil' } }))).toBeUndefined()
+    expect(interactionOf(requested({ ...server, endpoint: 'http://mcp.example.com/mcp' }))).toBeUndefined()
+    expect(interactionOf(requested({ ...server, endpoint: 'https://user:pw@mcp.example.com/' }))).toBeUndefined()
+  })
+})

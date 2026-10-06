@@ -1,5 +1,12 @@
 import type { ReactNode } from 'react'
-import { CircleAlertIcon, CircleStopIcon, KeyRoundIcon, MessageCircleQuestionIcon, PowerIcon } from 'lucide-react'
+import {
+  CircleAlertIcon,
+  CircleStopIcon,
+  KeyRoundIcon,
+  MessageCircleQuestionIcon,
+  PlugIcon,
+  PowerIcon,
+} from 'lucide-react'
 import { Reasoning, ReasoningContent, ReasoningTrigger, Receipt } from '@goblin/ui'
 import { targetLabel } from '../../lib/capabilities.ts'
 import { type Interaction, interactionOf } from '../../lib/interactions.ts'
@@ -33,6 +40,13 @@ function InteractionLine({ interaction }: { readonly interaction: Interaction })
       <Receipt>
         <PowerIcon aria-hidden />
         <span>Asked to turn on {targetLabel(interaction.target)} here</span>
+      </Receipt>
+    )
+  if (interaction.kind === 'server')
+    return (
+      <Receipt>
+        <PlugIcon aria-hidden />
+        <span>Asked you to add {interaction.name}</span>
       </Receipt>
     )
   return (

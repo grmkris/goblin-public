@@ -2,7 +2,7 @@
 // sign-in at all. Descriptions are ours, not the servers'. The shelf only adds them; grants still start empty.
 import type { ServerSuggestion } from '@goblin/contracts'
 
-type Stage = 'local' | 'dev' | 'prod' | 'test'
+export type Stage = 'local' | 'dev' | 'prod' | 'test'
 
 type Suggested = {
   readonly id: string
