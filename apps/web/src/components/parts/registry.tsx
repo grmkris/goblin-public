@@ -12,6 +12,7 @@ import { targetLabel } from '../../lib/capabilities.ts'
 import { type Interaction, interactionOf } from '../../lib/interactions.ts'
 import type { Part, ToolPart } from '../../lib/parts.ts'
 import { ThreadStartedRow } from '../inline-thread.tsx'
+import { HomeReceipt } from '../home/receipt.tsx'
 import { AppBuildPart } from './app-build-part.tsx'
 import { McpToolPart } from './mcp-tool-part.tsx'
 import { AssistantText, UserText } from './text-part.tsx'
@@ -76,6 +77,7 @@ function ToolView({ part }: { readonly part: ToolPart }) {
   if (interaction !== undefined) return <InteractionReceipt interaction={interaction} />
   if (part.target) return <McpToolPart part={part} />
   if (part.built !== undefined) return <AppBuildPart part={part} />
+  if (part.call.name === 'home_edit') return <HomeReceipt part={part} />
   if (part.call.name === 'routine') return <RoutineProposalPart part={part} />
   return part.call.name === 'subagent' ? <SubagentBlock part={part} /> : <GenericToolPart part={part} />
 }

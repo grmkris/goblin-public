@@ -1,7 +1,20 @@
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Button, Composer, ComposerActions, ComposerInput } from '@goblin/ui'
 import { ArrowUpIcon, SquareIcon } from 'lucide-react'
 import { AttachButton, PendingFiles, useAttachments } from './attachments.tsx'
+
+function useDraftValue(
+  draft: { readonly text: string } | undefined,
+  setInput: (text: string) => void,
+  form: React.RefObject<HTMLFormElement | null>,
+) {
+  useEffect(() => {
+    if (draft !== undefined) {
+      setInput(draft.text)
+      form.current?.querySelector('textarea')?.focus()
+    }
+  }, [draft, form, setInput])
+}
 
 /** The message field: Enter sends, Shift+Enter breaks the line, and an input method's Enter only composes. */
 function Field({
@@ -61,6 +74,20 @@ function CompactButtons({
   )
 }
 
+type MessageComposerProps = {
+  readonly onSend: (input: string, attachments: readonly string[]) => Promise<boolean>
+  readonly running: boolean
+  readonly onStop: () => void
+  readonly context?: ReactNode
+  readonly attach?: boolean
+  /** What the empty field says while the agent is idle (while it works it offers a follow-up). */
+  readonly placeholder?: string
+  readonly compact?: boolean
+  /** What the send button says ("Steer" for a subagent). */
+  readonly draft?: { readonly text: string } | undefined
+  readonly sendLabel?: string
+}
+
 /**
  * The floating composer. Enter sends, Shift+Enter breaks the line; while the agent works a message queues as a
  * follow-up and Stop is offered. `context` sits on the left of the actions (status, model picker). `attach` offers a
@@ -76,19 +103,11 @@ export function MessageComposer({
   compact = false,
   attach = false,
   sendLabel = 'Send',
-}: {
-  readonly onSend: (input: string, attachments: readonly string[]) => Promise<boolean>
-  readonly running: boolean
-  readonly onStop: () => void
-  readonly context?: ReactNode
-  readonly attach?: boolean
-  /** What the empty field says while the agent is idle (while it works it offers a follow-up). */
-  readonly placeholder?: string
-  readonly compact?: boolean
-  /** What the send button says ("Steer" for a subagent). */
-  readonly sendLabel?: string
-}) {
+  draft,
+}: MessageComposerProps) {
   const [input, setInput] = useState('')
+  const form = useRef<HTMLFormElement>(null)
+  useDraftValue(draft, setInput, form)
   const [pending, setPending] = useState(false)
   const attachments = useAttachments()
   async function submit(): Promise<void> {
@@ -114,6 +133,7 @@ export function MessageComposer({
   const cannotSend = pending || attachments.uploading || !input.trim()
   return (
     <Composer
+      ref={form}
       onSubmit={(event) => {
         event.preventDefault()
         void submit()

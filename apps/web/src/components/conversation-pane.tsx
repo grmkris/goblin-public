@@ -242,7 +242,13 @@ function composerOf(view: ConversationView, conversations: readonly Conversation
  * A conversation's transcript and dock. A branched thread starts at the message it branched from, shown above its
  * replies; every message carries the threads started from it, or Reply in thread. The owner's Apps live in place.
  */
+function useHomeDraft(view: ConversationView) {
+  const [draft, setDraft] = useState<{ readonly text: string }>()
+  return { draft, home: view.kind === 'main' ? { onDraft: (text: string) => setDraft({ text }) } : undefined }
+}
+
 function ConversationBody({ view }: { readonly view: ConversationView }) {
+  const { draft, home } = useHomeDraft(view)
   const { id } = view
   const item = conversationKey(id)
   const workspace = useWorkspace()
@@ -276,6 +282,7 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
   const transcript = (
     <Conversation
       parts={shown}
+      home={home}
       canSwitchModel={(model.choice?.options.length ?? 0) > 1}
       threads={inline}
       loading={projection === undefined}
@@ -308,6 +315,7 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
       <AppsIn conversation={id}>{transcript}</AppsIn>
       <ConversationDock
         ref={dock}
+        draft={draft}
         id={id}
         conversation={conversation}
         model={model}
