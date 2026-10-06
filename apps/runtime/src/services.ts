@@ -24,6 +24,7 @@ import type { AppRegistry } from './apps/registry.ts'
 import type { FileStore } from './files/store.ts'
 import type { AgentApps } from './agent-apps/engine.ts'
 import type { Inspector } from './inspect/inspector.ts'
+import type { HomeService } from './home/service.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('goblin/Mcp') {}
@@ -51,6 +52,7 @@ export class Files extends Context.Service<Files, FileStore>()('goblin/Files') {
 export class AppEngine extends Context.Service<AppEngine, AgentApps>()('goblin/AppEngine') {}
 /** Read-only inspection of the agent's conversations and runs (ADR 0024). */
 export class Inspect extends Context.Service<Inspect, Inspector>()('goblin/Inspect') {}
+export class Home extends Context.Service<Home, HomeService>()('goblin/Home') {}
 export type AgentServices =
   | Entitlements
   | Events
@@ -73,6 +75,7 @@ export type AgentServices =
   | Files
   | AppEngine
   | Inspect
+  | Home
 
 export const agentLayer = (services: {
   readonly host: McpHost
@@ -90,6 +93,7 @@ export const agentLayer = (services: {
   readonly routineUsage: RoutineUsage
   readonly workspace: WorkspaceFeed
   readonly apps: AppRegistry
+  readonly home: HomeService
 }): Layer.Layer<Exclude<AgentServices, Entitlements | Events | EventStorage | Files | AppEngine | Inspect>> =>
   Layer.mergeAll(
     Layer.succeed(Mcp, services.host),
@@ -107,6 +111,7 @@ export const agentLayer = (services: {
     Layer.succeed(RoutineUsageProjection, services.routineUsage),
     Layer.succeed(Workspace, services.workspace),
     Layer.succeed(Apps, services.apps),
+    Layer.succeed(Home, services.home),
   )
 
 /** Wrap a plain async step so its failure lands in the typed `AppError` channel. */

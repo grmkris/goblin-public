@@ -2,6 +2,7 @@ import type { TaskGraph, TaskGraphWatch } from '@earendil-works/pi-durable'
 import type { ConversationActivity, WorkspaceChange, WorkspaceSnapshot } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import type { AppRegistry } from '../apps/registry.ts'
+import type { HomeService } from '../home/service.ts'
 import type { ConversationRegistry } from '../conversations.ts'
 import { sseResponse } from '../http/sse.ts'
 import { BACKGROUND } from '../pi/context.ts'
@@ -35,19 +36,22 @@ export class WorkspaceFeed {
   readonly #harness: PiHarness
   readonly #conversations: ConversationRegistry
   readonly #apps: AppRegistry
+  readonly #home: HomeService
   readonly #listeners = new Set<Listener>()
   #activity = new Map<string, ConversationActivity>()
   #watch: Promise<TaskGraphWatch> | undefined
 
-  constructor(harness: PiHarness, conversations: ConversationRegistry, apps: AppRegistry) {
+  constructor(harness: PiHarness, conversations: ConversationRegistry, apps: AppRegistry, home: HomeService) {
     this.#harness = harness
     this.#conversations = conversations
     this.#apps = apps
+    this.#home = home
     conversations.onChange((ids) => {
       if (this.#listeners.size > 0) void this.#describe(ids)
     })
     apps.onChange((changed) => this.#emit(changed.map((app) => ({ type: 'app' as const, app }))))
     apps.onRemove((id) => this.#emit([{ type: 'app-removed' as const, id }]))
+    home.onChange((layout) => this.#emit([{ type: 'home' as const, home: layout }]))
   }
 
   /**
@@ -69,7 +73,12 @@ export class WorkspaceFeed {
     try {
       await this.#watching()
       const conversations = await this.#conversations.list()
-      send('snapshot', { conversations, activity: [...this.#activity.values()], apps: this.#apps.list() })
+      send('snapshot', {
+        conversations,
+        activity: [...this.#activity.values()],
+        apps: this.#apps.list(),
+        home: this.#home.layout(),
+      })
     } catch (error) {
       await close()
       throw error

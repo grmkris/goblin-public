@@ -1,5 +1,6 @@
 import { eq, inArray } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
+import { dropHomeApp } from '../home/store.ts'
 import {
   appAgentApps,
   appAgentArtifacts,
@@ -12,6 +13,7 @@ import {
   appAgentState,
   appAgentUsage,
   appAgentViews,
+  appRegistry,
 } from '../storage/schema.ts'
 
 /**
@@ -21,6 +23,8 @@ import {
  */
 export function eraseApp(db: DrizzleSqliteDODatabase, app: string): void {
   db.transaction((tx) => {
+    const placement = tx.select({ id: appRegistry.id }).from(appRegistry).where(eq(appRegistry.name, app)).get()
+    if (placement !== undefined) dropHomeApp(tx, String(placement.id))
     const releases = tx
       .select({ id: appAgentReleases.id })
       .from(appAgentReleases)

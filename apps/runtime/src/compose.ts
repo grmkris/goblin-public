@@ -50,6 +50,7 @@ import { RoutineRunStore } from './routines/runs.ts'
 import { RoutineUsage, installRoutineUsage } from './routines/usage.ts'
 import * as Effect from 'effect/Effect'
 import type { EventHandler } from './mcp/events/dispatcher.ts'
+import { HomeService } from './home/service.ts'
 
 /** What the agent's services are built from: its storage and env, and the Pi pieces its constructor made. */
 export type ComposeInput = {
@@ -136,7 +137,8 @@ function conversationServices(db: DrizzleSqliteDODatabase, input: ComposeInput, 
   })
   conversations.onChange((ids) => apps.closeWithConversations(ids, nowSeconds()))
   agentApps.onChange((name) => apps.agentChanged(name, nowSeconds()))
-  return { conversations, apps, workspace: new WorkspaceFeed(harness, conversations, apps) }
+  const home = new HomeService(db, apps, agentApps)
+  return { conversations, apps, home, workspace: new WorkspaceFeed(harness, conversations, apps, home) }
 }
 async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {
   const env = input.env

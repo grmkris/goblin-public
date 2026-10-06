@@ -1,5 +1,6 @@
 import {
   AppView,
+  HomeLayout,
   ConversationActivity,
   ConversationView,
   WorkspaceChange,
@@ -13,6 +14,7 @@ export type WorkspaceState = {
   readonly conversations: readonly ConversationView[]
   readonly activity: ReadonlyMap<string, ConversationActivity>
   readonly apps: readonly AppView[]
+  readonly home?: HomeLayout
 }
 
 export const EMPTY_WORKSPACE: WorkspaceState = { conversations: [], activity: new Map(), apps: [] }
@@ -27,10 +29,13 @@ export function fromSnapshot(snapshot: WorkspaceSnapshot): WorkspaceState {
     conversations: snapshot.conversations.toSorted(oldestFirst),
     activity: new Map(busy.map((activity) => [activity.id, activity])),
     apps: snapshot.apps.toSorted(byId),
+    ...(snapshot.home === undefined ? {} : { home: snapshot.home }),
   }
 }
 
 const byId = (a: AppView, b: AppView) => Number(a.id) - Number(b.id)
+const newestHome = (current: HomeLayout | undefined, next: HomeLayout): HomeLayout =>
+  next.revision >= (current?.revision ?? -1) ? next : (current ?? next)
 
 /** `items` with `item` in place of the one with its id, or added in `order`. */
 function upsert<T extends { readonly id: string }>(items: readonly T[], item: T, order: (a: T, b: T) => number) {
@@ -43,7 +48,7 @@ function upsert<T extends { readonly id: string }>(items: readonly T[], item: T,
  * order of creation), a removed App goes, and an activity replaces what its conversation was doing (idle drops it).
  */
 export function applyChanges(state: WorkspaceState, changes: readonly WorkspaceChange[]): WorkspaceState {
-  let { conversations, apps } = state
+  let { conversations, apps, home } = state
   const activity = new Map(state.activity)
   for (const change of changes) {
     if (change.type === 'activity') {
@@ -51,9 +56,10 @@ export function applyChanges(state: WorkspaceState, changes: readonly WorkspaceC
       else activity.set(change.activity.id, change.activity)
     } else if (change.type === 'app') apps = upsert(apps, change.app, byId)
     else if (change.type === 'app-removed') apps = apps.filter((app) => app.id !== change.id)
+    else if (change.type === 'home') home = newestHome(home, change.home)
     else conversations = upsert(conversations, change.conversation, oldestFirst)
   }
-  return { conversations, activity, apps }
+  return { conversations, activity, apps, ...(home === undefined ? {} : { home }) }
 }
 
 /**
@@ -81,7 +87,7 @@ export const activityState = (state: WorkspaceState, id: string): ConversationAc
 
 const Items = Schema.Array(Schema.Unknown)
 const decodeSnapshotFrame = Schema.decodeUnknownSync(
-  Schema.Struct({ conversations: Items, activity: Items, apps: Items }),
+  Schema.Struct({ conversations: Items, activity: Items, apps: Items, home: Schema.optional(HomeLayout) }),
 )
 const decodeChangeFrame = Schema.decodeUnknownSync(Items)
 const decodeConversation = Schema.decodeUnknownOption(ConversationView)
@@ -103,6 +109,7 @@ export function decodeSnapshot(data: unknown): WorkspaceSnapshot {
     conversations: readable(frame.conversations, decodeConversation),
     activity: readable(frame.activity, decodeActivity),
     apps: readable(frame.apps, decodeApp),
+    ...(frame.home !== undefined && { home: frame.home }),
   }
 }
 

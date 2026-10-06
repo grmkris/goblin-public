@@ -127,7 +127,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     const apps = agentApps(ctx.storage, env, () => this.name, { schedules: this.#jobSchedules() })
     this.#apps = apps
     this.#telemetry = agentTelemetry(ctx.storage, () => this.name, run)
-    const base = [...tools, skillsExtension(run), filesExtension(run), appsExtension(apps)]
+    const base = [...tools, skillsExtension(run), filesExtension(run), ...appsExtension(apps, run)]
     const own = [serversExtension(run, env.STAGE), subagents, routinesExtension(run), this.#telemetry.diagnose]
     const extras = [this.#thread, memory, recall, ...routineKit.extra]
     this.harness = makePiHarness(this.#pi, [...base, ...own], extras, apps, this.#telemetry.recorder)

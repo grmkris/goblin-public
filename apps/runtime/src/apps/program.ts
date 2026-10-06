@@ -13,7 +13,7 @@ import { appDetail, appSummaries, changeApp } from '../agent-apps/manage.ts'
 import { nowMillis } from '../clock.ts'
 import { InvalidInput, NotFound } from '../http/errors.ts'
 import { toolAppResource } from '../mcp/connection.ts'
-import { AppEngine, Apps, Conversations, Mcp, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
+import { AppEngine, Apps, Conversations, Home, Mcp, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
 
 /**
  * Keep the App of a call in one of the owner's conversations, read from its transcript: a call made before Apps were
@@ -110,5 +110,6 @@ export const deleteAgentApp = (name: string, input: DeleteAgentApp) =>
     const engine = yield* AppEngine
     yield* attempt(() => engine.remove(name))
     yield* Apps.use((apps) => attemptSync(() => apps.removeAgent(name)))
+    yield* Home.use((home) => attemptSync(() => home.appRemoved()))
     return { deleted: name }
   })

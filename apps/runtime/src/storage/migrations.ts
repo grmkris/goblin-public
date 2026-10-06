@@ -317,6 +317,14 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'CREATE INDEX app_operator_reads_at ON app_operator_reads (at)',
     ].join(BREAK),
   },
+  {
+    key: '20261021000000_home',
+    tables: ['app_home', 'app_home_operations'],
+    sql: [
+      'CREATE TABLE app_home (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), revision INTEGER NOT NULL, layout TEXT NOT NULL)',
+      "CREATE TABLE app_home_operations (operation_id TEXT PRIMARY KEY NOT NULL, actor TEXT NOT NULL CHECK (actor IN ('owner', 'agent')), result TEXT NOT NULL, before TEXT NOT NULL)",
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

@@ -41,6 +41,7 @@ import { appsEngineProbe, appsPowersProbe, appsTurnProbe } from './apps-probe.ts
 import { appsJobsProbe } from './apps-jobs-probe.ts'
 import { telemetryProbe } from './telemetry-probe.ts'
 import { JOB_CALLBACK, type JobSchedules } from '../../src/agent-apps/jobs.ts'
+import { homeProbe, retainedHome } from './home-probe.ts'
 
 const fixturePlan = () =>
   Effect.succeed({
@@ -71,6 +72,12 @@ export class PersonalAgentProbe extends PersonalAgent {
 
   routinesProbe() {
     return routinesProbe(this.ctx.storage)
+  }
+  async homeProbe(): Promise<string> {
+    return JSON.stringify(await homeProbe(this.ctx.storage, this.env, this.name, this.harness))
+  }
+  async homeRetained(): Promise<string> {
+    return JSON.stringify(retainedHome(this.ctx.storage))
   }
 
   filesStoreProbe() {
@@ -846,6 +853,8 @@ async function destroySequence(env: Env, name: string): Promise<Response> {
 
 /** The agent apps probes, which answer JSON text (their results carry app values RPC types cannot). */
 const APPS_PROBES: Readonly<Record<string, (agent: DurableObjectStub<PersonalAgentProbe>) => Promise<string>>> = {
+  '/home-probe': (agent) => agent.homeProbe(),
+  '/home-retained': (agent) => agent.homeRetained(),
   '/apps-engine': (agent) => agent.appsEngineProbe(),
   '/apps-powers': (agent) => agent.appsPowersProbe(),
   '/apps-turn': (agent) => agent.appsTurnProbe(),

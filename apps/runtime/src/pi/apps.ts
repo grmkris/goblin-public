@@ -3,6 +3,8 @@ import { defineExtension, defineTool, section } from '@earendil-works/pi-durable
 import type { AgentApps } from '../agent-apps/engine.ts'
 import { problemText } from '../agent-apps/queue.ts'
 import { runScript } from '../agent-apps/script.ts'
+import { homeExtension } from './home.ts'
+import type { RunProgram } from './resident-mcp.ts'
 
 const GUIDE = [
   'You can build apps for the owner: small programs with durable state on the server, whose actions and views become',
@@ -124,10 +126,11 @@ const codeTool = (apps: AgentApps) =>
   })
 
 /** `app_docs`, `app_build`, `app_inspect`, `app_rollback` and `code_run`, on main and threads (ADR 0021). */
-export function appsExtension(apps: AgentApps) {
-  return defineExtension({
+export function appsExtension(apps: AgentApps, run: RunProgram) {
+  const extension = defineExtension({
     name: 'goblin.apps',
     sections: [section('apps', () => appsSection(apps))],
     tools: [docsTool(apps), buildTool(apps), inspectTool(apps), rollbackTool(apps), codeTool(apps)],
   })
+  return [extension, homeExtension(run)]
 }

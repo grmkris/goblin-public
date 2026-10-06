@@ -1,4 +1,6 @@
 import * as Schema from 'effect/Schema'
+import { HomeLayout } from './home.ts'
+export * from './home.ts'
 
 export type JsonObject = { readonly [key: string]: JsonValue }
 export type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject
@@ -444,11 +446,13 @@ export const WorkspaceSnapshot = Schema.Struct({
   conversations: Schema.Array(ConversationView),
   activity: Schema.Array(ConversationActivity),
   apps: Schema.Array(AppView),
+  home: Schema.optional(HomeLayout),
 })
 export type WorkspaceSnapshot = typeof WorkspaceSnapshot.Type
 
 /** One change the workspace feed sends after its snapshot: a conversation or App as it is now, or what one is doing. */
 export const WorkspaceChange = Schema.Union([
+  Schema.Struct({ type: Schema.Literal('home'), home: HomeLayout }),
   Schema.Struct({ type: Schema.Literal('conversation'), conversation: ConversationView }),
   Schema.Struct({ type: Schema.Literal('activity'), activity: ConversationActivity }),
   Schema.Struct({ type: Schema.Literal('app'), app: AppView }),

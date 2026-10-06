@@ -9,6 +9,7 @@ import { workspaceEventResponse } from './workspace/feed.ts'
 import { filesRequest } from './files/routes.ts'
 import { inspectRequest } from './inspect/request.ts'
 import type { JsonObject } from '@goblin/contracts'
+import { homeRequest } from './home/routes.ts'
 
 type Execute = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<Exit.Exit<A, AppError>>
 export async function sessionSnapshot(harness: PiHarness, session: string): Promise<JsonObject> {
@@ -20,6 +21,7 @@ export async function sessionSnapshot(harness: PiHarness, session: string): Prom
 }
 export async function agentRequest(request: Request, harness: PiHarness, execute: Execute): Promise<Response> {
   const url = new URL(request.url)
+  if (url.pathname === '/home') return homeRequest(request, execute)
   if (url.pathname === '/workspace/events') {
     const feed = await execute(Workspace.useSync((workspace) => workspace))
     return Exit.isSuccess(feed)

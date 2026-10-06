@@ -316,7 +316,9 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   const session = await requireUserSession(request, env)
   const { userId } = session
   const path = new URL(request.url).pathname
-  if (['/api/routines', '/api/files', '/api/apps', '/api/agent-apps'].some((prefix) => under(path, prefix)))
+  if (
+    ['/api/routines', '/api/files', '/api/apps', '/api/agent-apps', '/api/home'].some((prefix) => under(path, prefix))
+  )
     browserWrite(request, env.APP_URL)
   if (path.startsWith('/api/billing/')) return Effect.runPromise(billingApi(request, env, userId))
   await requireAccountPlan(env, userId)
@@ -334,6 +336,7 @@ async function ownerApiRequest(
   userId: string,
 ): Promise<Response> {
   if (path.startsWith('/api/agent/')) return agentRoute(request, agent, path)
+  if (path === '/api/home') return agent.fetch(new Request('https://agent/home', request))
   if (under(path, '/api/routines')) return routineRoute(request, agent, path)
   if (path === '/api/workspace/events' && request.method === 'GET') return agent.fetch('https://agent/workspace/events')
   if (under(path, '/api/files'))
