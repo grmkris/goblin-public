@@ -24,6 +24,8 @@ import {
 const scope = globalThis as typeof globalThis & {
   __goblinRequire?: (name: string) => unknown
   __goblinStart?: (load: () => unknown) => Promise<void>
+  /** Errors kept by the frame's first script until the start reports them (`app-sandbox.ts`). */
+  __goblinEarly?: string[] | null
 }
 provide({
   react: React,
@@ -52,18 +54,33 @@ function followTheme(): void {
   void connected().then(() => applyTheme(app.getHostContext()))
 }
 
+/** The view module's component, or one that throws what loading it threw, so the boundary shows and reports it. */
+function viewOf(load: () => unknown): React.ComponentType | string {
+  let View: unknown
+  try {
+    View = load()
+  } catch (cause) {
+    return function FailedView(): never {
+      throw cause
+    }
+  }
+  // SAFETY: a function default export of the view module is its component.
+  return typeof View === 'function' ? (View as React.ComponentType) : 'view.tsx must export default a React component.'
+}
+
 scope.__goblinStart = async (load) => {
+  const early = scope.__goblinEarly ?? []
+  scope.__goblinEarly = null
+  for (const message of early) report(message)
   window.addEventListener('error', (event) => report(`${event.message} (${event.filename}:${String(event.lineno)})`))
   window.addEventListener('unhandledrejection', (event) => report(`Unhandled: ${String(event.reason)}`))
   followTheme()
   await firstState()
-  const View = load()
+  const view = viewOf(load)
   const root = document.getElementById('root')
-  if (typeof View !== 'function' || root === null) {
-    report('view.tsx must export default a React component.')
+  if (typeof view === 'string' || root === null) {
+    report(typeof view === 'string' ? view : 'The view has no root element.')
     return
   }
-  // SAFETY: a function default export of the view module is its component.
-  const component = View as React.ComponentType
-  ReactDOMClient.createRoot(root).render(React.createElement(ErrorBoundary, null, React.createElement(component)))
+  ReactDOMClient.createRoot(root).render(React.createElement(ErrorBoundary, null, React.createElement(view)))
 }

@@ -1,4 +1,5 @@
 // The module registry of an app's frame: what each bundle provides and what the view's code requires from it.
+import { VIEW_IMPORTS } from '../view-imports.ts'
 
 type Registry = Record<string, unknown>
 // SAFETY: the registry is the frame's own global; the core and every bundle create or share it here.
@@ -12,8 +13,13 @@ export function provide(added: Registry): void {
   Object.assign(modules, added)
 }
 
-/** A module of the frame by name; the transpiler already refused names that are not among them. */
+/**
+ * A module of the frame by name; the transpiler already refused names that are not among them. A name a view may
+ * import but the frame lacks means its bundle failed to load, and the error says which.
+ */
 export function frameRequire(name: string): unknown {
   if (name in modules) return modules[name]
-  throw new Error(`"${name}" is not available in an app's view.`)
+  if (!(name in VIEW_IMPORTS)) throw new Error(`"${name}" is not available in an app's view.`)
+  const bundle = VIEW_IMPORTS[name] ?? 'core'
+  throw new Error(`"${name}" is unavailable: goblin's ${bundle} bundle failed to load in this frame.`)
 }

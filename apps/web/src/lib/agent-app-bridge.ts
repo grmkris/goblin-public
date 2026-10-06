@@ -112,7 +112,10 @@ export function agentBridge(
     if (level !== 'error' && level !== 'critical' && level !== 'alert' && level !== 'emergency') return
     // The view shows its own failure in the frame; the agent hears of it here.
     const message = (isString(data) ? data : JSON.stringify(data)).slice(0, 4000)
-    void calls.report(id, message).catch(() => undefined)
+    void calls.report(id, message).catch((cause: unknown) => {
+      // Telling the agent failed; leave a trace here rather than nothing.
+      console.warn(`goblin: an app view's error did not reach the agent: ${failureText(cause)}`)
+    })
   })
   bridge.addEventListener('initialized', () => {
     void bridge

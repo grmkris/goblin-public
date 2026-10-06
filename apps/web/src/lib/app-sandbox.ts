@@ -60,8 +60,15 @@ export function agentAppCsp(origin: string, libs: readonly AgentAppLib[]): strin
 const inert = (text: string) => text.replaceAll(/<\/(script|style)/giu, '<\\/$1')
 
 /**
+ * Runs before any bundle: keeps every error until the core's start reports them, so a bundle that fails as it loads
+ * (a script that throws, or one that never arrives) is not lost before the frame can speak to the host. The core takes
+ * the list and sets it to `null`, after which its own listeners report.
+ */
+const EARLY_ERRORS = `window.__goblinEarly=[];(function(){function keep(m){var q=window.__goblinEarly;if(q)q.push(String(m).slice(0,1000))}addEventListener('error',function(e){var t=e.target;if(t&&t.tagName==='SCRIPT')keep('Could not load '+String(t.src).split('/').pop());else keep((e.message||'Error')+(e.filename?' ('+e.filename.split('/').pop()+':'+e.lineno+')':''))},true);addEventListener('unhandledrejection',function(e){keep('Unhandled: '+String(e.reason))})})()`
+
+/**
  * An agent app's view as a document: goblin's styles and the app's own, the frame bundles it needs, and its module
- * (CommonJS from the transpiler) run once the first state arrives.
+ * (CommonJS from the transpiler) run once the first state arrives. Errors before the core starts are kept for it.
  */
 export function agentAppHtml(view: AgentAppLaunch['ui'], assets: FrameAssets): string {
   const scripts = ['core' as const, ...view.libs].map(
@@ -75,6 +82,7 @@ export function agentAppHtml(view: AgentAppLaunch['ui'], assets: FrameAssets): s
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     ...styles.filter((css) => css !== '').map((css) => `<style>${inert(css)}</style>`),
     '</head><body><div id="root"></div>',
+    `<script>${EARLY_ERRORS}</script>`,
     ...scripts,
     `<script>${start}</script>`,
     '</body></html>',

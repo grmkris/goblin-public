@@ -96,7 +96,13 @@ describe("an agent app's frame", () => {
     expect(html).toContain('__goblinStart(function () {')
     // The module cannot end its script element early.
     expect(html).toContain('return "<\\/script><b>"')
-    expect(html.match(/<\/script>/gu)).toHaveLength(3)
+    expect(html.match(/<\/script>/gu)).toHaveLength(4)
+  })
+  it('keeps errors from before the core starts, so a bundle that fails as it loads is reported', () => {
+    const html = agentAppHtml({ module: 'exports.default = function View() {}', css: '', libs: ['diagrams'] }, assets)
+    expect(html.indexOf('window.__goblinEarly=[]')).toBeLessThan(html.indexOf('core-1.js'))
+    expect(html).toContain("addEventListener('error'")
+    expect(html).toContain("addEventListener('unhandledrejection'")
   })
   it('loads mdxcn on the core React without adding a network capability or other bundles', () => {
     const html = agentAppHtml({ module: 'exports.default = function View() {}', css: '', libs: ['mdxcn'] }, assets)

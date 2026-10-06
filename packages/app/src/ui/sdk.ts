@@ -141,9 +141,24 @@ export async function share(text: string): Promise<void> {
   await connect().updateModelContext({ content: [{ type: 'text', text: text.slice(0, 8000) }] })
 }
 
-/** Reports a UI failure to the host, which tells the agent (no more than one notice in a while). */
+/** How long a report waits for the rest of its burst: a bundle that failed, then the view that needed it. */
+const BURST_MS = 300
+let queued: string[] = []
+
+/**
+ * Reports a UI failure to the host, which tells the agent. The host keeps one notice in a while, so failures that
+ * come together go out together, once the frame is connected (a notice sent before that would be dropped).
+ */
 export function report(message: string): void {
-  void connect().sendLog({ level: 'error', data: message.slice(0, 2000) })
+  queued.push(message)
+  if (queued.length > 1) return
+  void connected()
+    .then(() => new Promise((resolve) => setTimeout(resolve, BURST_MS)))
+    .then(() => {
+      const burst = [...new Set(queued)].join('\n')
+      queued = []
+      return connect().sendLog({ level: 'error', data: burst.slice(0, 2000) })
+    })
 }
 
 /** Shows what went wrong instead of a blank frame, and reports it. */

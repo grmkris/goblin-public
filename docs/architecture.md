@@ -438,7 +438,11 @@ kit CSS; it adds no network or app capability. The frame has no network
 (`connect-src 'none'`); it loads scripts from goblin's origin only, and tiles from OpenStreetMap only for maps. The
 bridge (`lib/agent-app-bridge.ts`) sends the state as tool results carrying `goblin/state` (the newest revision wins),
 routes the view's action calls to `POST /api/apps/:id/call` with the frame's operation id (`ui:<app>:<uuid>`), and
-reports the view's failures, which the agent sees in its apps section and in `app_inspect`. A new release reloads the
+reports the view's failures, which the agent sees in its apps section and in `app_inspect`. The frame's first script
+keeps errors from before the core runs (a bundle that throws as it loads or never arrives), a view import whose bundle
+failed names that bundle, a view module that throws shows the error card instead of a blank frame, and failures that
+come together go out as one notice once the frame is connected (`packages/app/src/ui/core.ts`, `sdk.ts`). A bundle's
+own message reads "Script error." because the frame is a different origin from the bundles. A new release reloads the
 frame; a new revision is pushed into it. In the transcript the view shows under the newest build of it with one.
 
 Beyond its state and files, an app reaches only the powers it declares and the owner approves (ADR 0021):
