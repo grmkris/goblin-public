@@ -623,7 +623,10 @@ Outside Pi, the agent's services report to the same telemetry (`telemetry/report
 - An unexpected failure logs its name and a bounded message where it becomes `Internal` (`http/errors.ts`).
 
 Each event goes to `app_run_events` (kept 30 days) and to one Workers Log line when it ends (`event: "run"`, its ids,
-`ms`, and attributes named after the OpenTelemetry GenAI conventions, `contracts/src/telemetry.ts`). Never content:
+`ms`, and attributes named after the OpenTelemetry GenAI conventions, `contracts/src/telemetry.ts`). Model and tool
+calls also become spans in the Cloudflare trace of the invocation that ran them (`chat {model}`,
+`execute_tool {tool}`, `telemetry/trace.ts`), with the same attributes and the agent, conversation and operation ids;
+an event that ends in a later invocation stays in the ledger and the log only. Never content:
 ids, sizes, counts, timings, outcomes and bounded error text. At start the agent marks whatever the last run left
 `started` as interrupted and logs one `recovery` event; an event that ends after a restart says it resumed. Pi faults
 the user's task if a commit listener throws, so the recorder and every sink are guarded and only log their own
