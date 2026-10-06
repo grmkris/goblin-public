@@ -1,5 +1,6 @@
-import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
-import { Type } from '@earendil-works/pi-ai'
+import { defineExtension, section } from '@earendil-works/pi-durable'
+import * as Schema from 'effect/Schema'
+import { typedTool } from '../pi/typed-tool.ts'
 
 /** OptChat's view guide (§7.2), for goblin: how to read the memory and when to zoom. Static, so caches hold. */
 const GUIDE = [
@@ -22,16 +23,18 @@ export function recallExtension(zoom: (id: number, n: number, conversation: stri
     name: 'goblin.recall',
     sections: [section('memory', () => guide)],
     tools: [
-      defineTool({
+      typedTool({
         name: 'zoom',
         description:
           'Open the line id+n of your memory into the two lines of n/2 under it; n = 1 gives the message whole.',
-        parameters: Type.Object({ id: Type.Integer({ minimum: 0 }), n: Type.Integer({ minimum: 1 }) }),
+        input: Schema.Struct({
+          id: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+          n: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+        }),
+        output: Schema.Struct({ lines: Schema.String }),
         replay: 'safe',
-        execute: async ({ id, n }, api) => {
-          const text = await zoom(id, n, String(api.conversationId))
-          return { content: [{ type: 'text', text }] }
-        },
+        execute: async ({ id, n }, api) => ({ lines: await zoom(id, n, String(api.conversationId)) }),
+        text: ({ lines }) => lines,
       }),
     ],
   })
