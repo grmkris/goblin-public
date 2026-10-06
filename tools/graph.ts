@@ -41,6 +41,13 @@ export const nodes: readonly Node[] = [
     seam: { consumer: 'developers and CI', reason: 'benchmark runner is intentionally outside deployed applications' },
   },
   {
+    dir: 'apps/cli',
+    name: '@goblin/cli',
+    role: "the goblin terminal client: an MCP client of the Worker's inspection endpoints, and Workers Logs",
+    runtime: 'daemon',
+    mayImport: ['@goblin/contracts'],
+  },
+  {
     dir: 'apps/runtime',
     name: '@goblin/runtime',
     role: 'resident Cloudflare Agent and authorized MCP host',

@@ -99,10 +99,11 @@
             }
           },
           {
-            // Operator scripts and repository tooling: stdout and files are their interface, and host orchestration
-            // reads the clock, sleeps and calls HTTP directly. Inside an Effect program the *InEffect variants still
-            // gate; environment reads stay governed by Config and the stage env files (processEnv is not relaxed).
-            "include": ["**/scripts/**/*", "tools/**/*"],
+            // Operator scripts, repository tooling and the goblin CLI: stdout and files are their interface, and host
+            // orchestration reads the clock, sleeps and calls HTTP directly. Inside an Effect program the *InEffect
+            // variants still gate; environment reads stay governed by Config and the stage env files (processEnv is
+            // not relaxed).
+            "include": ["**/scripts/**/*", "tools/**/*", "apps/cli/src/**/*"],
             "options": {
               "diagnosticSeverity": {
                 "globalConsole": "off",

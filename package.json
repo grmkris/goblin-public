@@ -54,6 +54,7 @@
     "bench:doctor": "bun bench/scripts/cli.ts doctor",
     "check:files": "bun tools/check-files.ts",
     "check:patches": "bun tools/check-patches.ts",
+    "goblin": "bun apps/cli/src/main.ts",
     "graph": "bun tools/check-graph.ts",
     "check:fast": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run lint && bun run typecheck && bun run test:unit",
     "check": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run graph && bun run typecheck && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run build",

@@ -22,6 +22,24 @@
         "typescript": "7.0.2",
       },
     },
+    "apps/cli": {
+      "name": "@goblin/cli",
+      "version": "0.1.0",
+      "bin": {
+        "goblin": "./src/main.ts",
+      },
+      "dependencies": {
+        "@goblin/contracts": "workspace:*",
+        "@modelcontextprotocol/client": "2.2.0",
+        "effect": "4.0.0",
+      },
+      "devDependencies": {
+        "@types/bun": "1.4.2",
+        "@types/node": "22.18.0",
+        "typescript": "7.0.2",
+        "vitest": "5.0.1",
+      },
+    },
     "apps/runtime": {
       "name": "@goblin/runtime",
       "version": "0.1.0",
@@ -526,6 +544,8 @@
     "@goblin/app": ["@goblin/app@workspace:packages/app"],
 
     "@goblin/bench": ["@goblin/bench@workspace:bench"],
+
+    "@goblin/cli": ["@goblin/cli@workspace:apps/cli"],
 
     "@goblin/contracts": ["@goblin/contracts@workspace:packages/contracts"],
 
