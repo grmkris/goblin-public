@@ -45,7 +45,7 @@ export const nodes: readonly Node[] = [
     name: '@goblin/runtime',
     role: 'resident Cloudflare Agent and authorized MCP host',
     runtime: 'cloud',
-    mayImport: ['@goblin/contracts'],
+    mayImport: ['@goblin/app', '@goblin/contracts'],
   },
   {
     dir: 'apps/web',
@@ -60,6 +60,13 @@ export const nodes: readonly Node[] = [
     name: '@goblin/contracts',
     role: 'runtime-independent cross-runtime schemas and contracts',
     runtime: 'shared',
+    mayImport: [],
+  },
+  {
+    dir: 'packages/app',
+    name: '@goblin/app',
+    role: 'agent app SDK and toolchain, run inside Dynamic Workers',
+    runtime: 'cloud',
     mayImport: [],
   },
   {

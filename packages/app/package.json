@@ -1,0 +1,28 @@
+{
+  "name": "@goblin/app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./toolchain": {
+      "types": "./src/toolchain.d.ts",
+      "default": "./dist/toolchain.js"
+    }
+  },
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "effect:check": "bun ../../tools/effect-check.ts tsconfig.json",
+    "test": "vitest run",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "sucrase": "3.35.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260928.1",
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  }
+}

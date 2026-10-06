@@ -1,4 +1,4 @@
-import { integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 /** Pi owns conversations; these tables hold application state only. Every name keeps the `app_` prefix. */
 export const appMetadata = sqliteTable('app_metadata', {
@@ -339,4 +339,94 @@ export const appApps = sqliteTable(
     closedAt: integer('closed_at'),
   },
   (t) => [uniqueIndex('app_apps_call').on(t.sessionId, t.callId)],
+)
+
+/** Agent apps (ADR 0021): what the agent built, by name, with its active release and its home conversation. */
+export const appAgentApps = sqliteTable('app_agent_apps', {
+  name: text('name').primaryKey(),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  homeSession: text('home_session').notNull(),
+  activeRelease: text('active_release').notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+/** Every build of an app: its sources and manifest, active, retired (rollback targets) or failed with diagnostics. */
+export const appAgentReleases = sqliteTable(
+  'app_agent_releases',
+  {
+    id: text('id').primaryKey(),
+    app: text('app').notNull(),
+    seq: integer('seq'),
+    status: text('status', { enum: ['active', 'retired', 'failed'] }).notNull(),
+    manifest: text('manifest'),
+    source: text('source').notNull(),
+    toolchain: text('toolchain').notNull(),
+    diagnostics: text('diagnostics'),
+    note: text('note'),
+    session: text('session'),
+    callId: text('call_id'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [index('app_agent_releases_app').on(table.app, table.createdAt)],
+)
+
+/** A release's built code, kept apart from its row (Durable Object SQLite rows stay small). */
+export const appAgentArtifacts = sqliteTable(
+  'app_agent_artifacts',
+  {
+    release: text('release').notNull(),
+    kind: text('kind', { enum: ['backend'] }).notNull(),
+    content: text('content').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.release, table.kind] })],
+)
+
+/** An app's state and its revision, which moves by one with every change. */
+export const appAgentState = sqliteTable('app_agent_state', {
+  app: text('app').primaryKey(),
+  revision: integer('revision').notNull(),
+  state: text('state').notNull(),
+  release: text('release').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+/** The state as it was when another release took over, the last ten per app: what a rollback can return to. */
+export const appAgentSnapshots = sqliteTable(
+  'app_agent_snapshots',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    app: text('app').notNull(),
+    release: text('release').notNull(),
+    revision: integer('revision').notNull(),
+    state: text('state').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [index('app_agent_snapshots_app').on(table.app, table.id)],
+)
+
+/** What a call with a stable operation id returned, so its replay returns the same (seven days). */
+export const appAgentReceipts = sqliteTable(
+  'app_agent_receipts',
+  {
+    op: text('op').primaryKey(),
+    app: text('app').notNull(),
+    result: text('result').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [index('app_agent_receipts_created').on(table.createdAt)],
+)
+
+/** What happened to an app, newest last: builds, calls, errors and its own log lines, the last 200 per app. */
+export const appAgentEvents = sqliteTable(
+  'app_agent_events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    app: text('app').notNull(),
+    kind: text('kind', { enum: ['build', 'failed', 'call', 'error', 'log', 'rollback'] }).notNull(),
+    detail: text('detail').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [index('app_agent_events_app').on(table.app, table.id)],
 )

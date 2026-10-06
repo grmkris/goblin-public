@@ -21,7 +21,8 @@
   },
   "treatConfigHintsAsErrors": false,
   "ignore": ["tools/oxlint/anti-slop/**"],
-  "ignoreDependencies": ["@effect/language-service"],
+  // `cloudflare:workers` is a Workers runtime module (RpcTarget, WorkerEntrypoint), not a package.
+  "ignoreDependencies": ["@effect/language-service", "cloudflare"],
   "workspaces": {
     ".": {
       "entry": ["scripts/**/*.ts!"],
@@ -38,6 +39,10 @@
     },
     "apps/web": {
       "entry": ["alchemy.run.ts!", "src/worker.ts!"],
+    },
+    "packages/app": {
+      // Bundled by scripts/build.ts into dist/toolchain.js; nothing imports them as modules.
+      "entry": ["src/sdk.ts!", "src/release.ts!", "src/transpile.ts!"],
     },
   },
   "ignoreExportsUsedInFile": true,

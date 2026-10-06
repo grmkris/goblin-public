@@ -28,6 +28,7 @@ describe('goblin quality tooling', () => {
       '@goblin/runtime',
       '@goblin/web',
       '@goblin/contracts',
+      '@goblin/app',
       '@goblin/kit',
       '@goblin/ui',
       '@goblin/tools',

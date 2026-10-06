@@ -75,6 +75,12 @@ if (!stage.local) {
   })
 }
 if (command === 'deploy:dev' || command === 'deploy:prod' || command === 'destroy:dev') args.push('--yes')
+// The agent app toolchain (packages/app/dist) is bundled into the Worker, so it is built first (ADR 0021).
+const toolchain = Bun.spawn(['bun', 'run', 'build'], {
+  cwd: resolve(root, 'packages/app'),
+  stdio: ['ignore', 'inherit', 'inherit'],
+})
+if ((await toolchain.exited) !== 0) throw new Error('agent_app_toolchain_build_failed')
 const child = Bun.spawn(['bun', ...args], {
   cwd: resolve(root, 'apps/web'),
   env: childEnv,

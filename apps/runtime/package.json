@@ -22,6 +22,7 @@
     "@cloudflare/shell": "0.4.3",
     "@earendil-works/pi-ai": "1.0.1",
     "@earendil-works/pi-durable": "1.0.1",
+    "@goblin/app": "workspace:*",
     "@goblin/contracts": "workspace:*",
     "@modelcontextprotocol/client": "2.2.0",
     "@modelcontextprotocol/server": "2.2.0",
@@ -29,6 +30,7 @@
     "better-auth": "1.7.6",
     "drizzle-orm": "1.0.0-rc.5-ab785fc",
     "effect": "4.0.0",
+    "typebox": "1.3.27",
     "yaml": "2.9.1"
   },
   "devDependencies": {

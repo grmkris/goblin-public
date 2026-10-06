@@ -39,6 +39,11 @@
   the agent wrote. Kept in the agent's SQLite through Shell's Workspace, larger ones in R2; the agent writes only
   `/agent`.
 - **Attachment**: a file the owner sent with a message: its path rides with the words, and the message shows it.
+- **Agent app**: a small program the agent wrote and goblin runs (ADR 0021): durable JSON state, actions and views
+  that are the agent's tools (`app_<name>__<member>`), its own files. Not an MCP App, which a server serves.
+- **Release**: one build of an agent app, named by a hash of its sources and toolchain; one is active, earlier ones
+  can be rolled back to, failed ones keep their problems.
+- **Revision**: the number of an agent app's state, one more with every change an action commits.
 - **Block**: a fenced `mermaid, `chart or ```map block in the agent's reply, drawn in place (ADR 0023).
 - **Kit**: `@goblin/kit`, the one implementation of the drawn blocks, for the chat now and agent apps later.
 - **Inbound client**: an MCP client (Claude Code, another agent) the owner authorized to call goblin's `/mcp`.

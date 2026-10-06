@@ -21,6 +21,7 @@ export const ownerStack = (name: string, offset: number) =>
           AGENTS: Cloudflare.DurableObject('OwnerAgent'),
           AUTH_DB: auth,
           FILES: files,
+          LOADER: Cloudflare.WorkerLoader(),
           APP_URL: 'https://goblin.test',
           BETTER_AUTH_SECRET: 'fixture-owner-auth-secret-at-least-32-chars',
           SIGNUP_MODE: 'open',

@@ -237,6 +237,32 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'CREATE UNIQUE INDEX app_apps_call ON app_apps (session_id, call_id)',
     ].join(BREAK),
   },
+  {
+    // Agent apps (ADR 0021): releases, state, snapshots, receipts and events.
+    key: '20261018000000_agent_apps',
+    tables: [
+      'app_agent_apps',
+      'app_agent_releases',
+      'app_agent_artifacts',
+      'app_agent_state',
+      'app_agent_snapshots',
+      'app_agent_receipts',
+      'app_agent_events',
+    ],
+    sql: [
+      'CREATE TABLE app_agent_apps (name TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, home_session TEXT NOT NULL, active_release TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
+      `CREATE TABLE app_agent_releases (id TEXT PRIMARY KEY NOT NULL, app TEXT NOT NULL, seq INTEGER, status TEXT NOT NULL CHECK (status IN ('active', 'retired', 'failed')), manifest TEXT, source TEXT NOT NULL, toolchain TEXT NOT NULL, diagnostics TEXT, note TEXT, session TEXT, call_id TEXT, created_at INTEGER NOT NULL)`,
+      'CREATE INDEX app_agent_releases_app ON app_agent_releases (app, created_at)',
+      `CREATE TABLE app_agent_artifacts (release TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('backend')), content TEXT NOT NULL, PRIMARY KEY (release, kind))`,
+      'CREATE TABLE app_agent_state (app TEXT PRIMARY KEY NOT NULL, revision INTEGER NOT NULL, state TEXT NOT NULL, release TEXT NOT NULL, updated_at INTEGER NOT NULL)',
+      'CREATE TABLE app_agent_snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, app TEXT NOT NULL, release TEXT NOT NULL, revision INTEGER NOT NULL, state TEXT NOT NULL, created_at INTEGER NOT NULL)',
+      'CREATE INDEX app_agent_snapshots_app ON app_agent_snapshots (app, id)',
+      'CREATE TABLE app_agent_receipts (op TEXT PRIMARY KEY NOT NULL, app TEXT NOT NULL, result TEXT NOT NULL, created_at INTEGER NOT NULL)',
+      'CREATE INDEX app_agent_receipts_created ON app_agent_receipts (created_at)',
+      `CREATE TABLE app_agent_events (id INTEGER PRIMARY KEY AUTOINCREMENT, app TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('build', 'failed', 'call', 'error', 'log', 'rollback')), detail TEXT NOT NULL, created_at INTEGER NOT NULL)`,
+      'CREATE INDEX app_agent_events_app ON app_agent_events (app, id)',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

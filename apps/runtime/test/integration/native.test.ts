@@ -11,6 +11,7 @@ import { URL as FileURL } from 'node:url'
 import Stack from './stack.ts'
 import { routineEventsCase, routineSchedulingCase } from './native-routines-events.ts'
 import { filesCase } from './native-files.ts'
+import { appsCase } from './native-apps.ts'
 import {
   Listed,
   ModelRequest,
@@ -342,6 +343,10 @@ harness.test(
 harness.test(
   'local workerd: owner files keep small ones in SQLite, spill larger ones to R2 and erase them with the account',
   stack.pipe(Effect.flatMap(({ url }) => filesCase(url))),
+)
+harness.test(
+  'local workerd: agent apps build, call with receipts, migrate, refuse a broken build, roll back and restore',
+  stack.pipe(Effect.flatMap(({ url }) => appsCase(url))),
 )
 harness.test(
   'local workerd: Events discovery, challenge, signed Telegram, replay, gap, refresh, termination and cleanup',

@@ -37,6 +37,7 @@ import { skillsCacheProbe, skillsLearnerRejectionProbe, skillsPersistedRead } fr
 import { exchange, historyOf, linesOf, snapshotOf, threadsUntil, transcript, until } from './probe-reads.ts'
 import { subagentChainSequence, subagentCloseSequence, subagentOwnerSequence } from './subagent-probe.ts'
 import { filesSequence, filesStoreProbe } from './files-probe.ts'
+import { appsEngineProbe, appsTurnProbe } from './apps-probe.ts'
 
 const fixturePlan = () =>
   Effect.succeed({
@@ -71,6 +72,15 @@ export class PersonalAgentProbe extends PersonalAgent {
 
   filesStoreProbe() {
     return filesStoreProbe(this.ctx.storage.sql, this.env.FILES, this.name)
+  }
+
+  /** As JSON text: the results carry app values, typed `unknown`, which RPC types cannot carry. */
+  async appsEngineProbe(): Promise<string> {
+    return JSON.stringify(await appsEngineProbe(this.ctx.storage, this.env, this.name))
+  }
+
+  async appsTurnProbe(): Promise<string> {
+    return JSON.stringify(await appsTurnProbe(this.harness, () => this.seen.at(-1)?.tools ?? []))
   }
   async routineExecutionProbe(): Promise<Response> {
     return Response.json(await routineExecutionProbe(this.ctx.storage, this, this.seen))
@@ -860,6 +870,14 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return agent.bindingProbe().then((result) => Response.json(result))
     case '/files-store':
       return agent.filesStoreProbe().then((result) => Response.json(result))
+    case '/apps-engine':
+      return agent
+        .appsEngineProbe()
+        .then((json) => new Response(json, { headers: { 'content-type': 'application/json' } }))
+    case '/apps-turn':
+      return agent
+        .appsTurnProbe()
+        .then((json) => new Response(json, { headers: { 'content-type': 'application/json' } }))
     case '/files-sequence':
       return filesSequence(agent, env.FILES, name).then((result) => Response.json(result))
     default:

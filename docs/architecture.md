@@ -282,7 +282,8 @@ read. A corrupted cache row is rejected and repaired by a verified refetch (loca
 local workerd restart preserves the activation manifest and cached bytes, then reads the same version without a network
 call.
 An unreachable server keeps its last listing while it remains cached in the isolate, or is reported unavailable.
-Dynamic skills are declined; skill scripts can be read but are never executed. Enabled skills are procedures the agent
+Dynamic skills are declined; skill scripts can be read but are never executed (the only code goblin runs for the agent
+is its own apps' and `code_run`'s, in Dynamic Workers; see Agent apps). Enabled skills are procedures the agent
 follows, but they grant no permissions and cannot override the owner. Disabling the server stops new activations and
 file reads; instructions already in a conversation stay there. A conversation can switch one library off for itself
 (Capabilities): its section leaves the library out without fetching it, and its activations and reads are refused.
@@ -366,6 +367,31 @@ The persona treats it as data, never as the owner speaking, and the transcript s
 An App's own call to a tool the owner has not granted does not fail at once (`components/apps/grant-ask.tsx`). It
 waits on a card the host draws in the App's chrome, naming the exact tool. Allow grants that one tool and runs the
 same call again. "Not now", or two minutes without an answer, returns the denial to the App.
+
+## Agent apps
+
+The agent builds apps for the owner (ADR 0021): small programs with durable JSON state whose actions and views become
+its tools. `app_build` takes an app's files (`app.ts`, up to five more, TypeScript, importing only `@goblin/app` and
+each other); `agent-apps/build.ts` transpiles them with sucrase in the toolchain's own Dynamic Worker, runs the
+release's `describe()` in the release's isolate, checks the manifest (`agent-apps/manifest.ts`: names, schemas of the
+`s.*` subset, `initial` fitting `state.schema`), and on an upgrade keeps the state when it fits the new schema or
+runs `state.migrate`. Only then does the release become active, as one transaction (`agent-apps/store.ts`); a failed
+build is kept with its problems and changes nothing that runs. Every app release, the transpiler and `code_run` run
+through `agent-apps/isolates.ts` over the `LOADER` binding: no network, no bindings, a CPU limit, at most eight calls
+at once, and wall timeouts.
+
+A call (`agent-apps/dispatch.ts`) checks its input against the member's schema; an action's `prepare` runs once
+with a read-only state snapshot and the app's powers (its own files in Shell's namespace `app_<name>`, a log line),
+then in the app's queue `run` reads the current state and returns the next, which is checked and committed as one
+revision with the operation's receipt. A replayed operation id returns its receipt. Each app is one Pi extension,
+`goblin.app.<name>`, with a tool per action and view (`app_<name>__<member>`, `agent-apps/toolset.ts`); the harness
+selects them for main and threads through a getter (`pi/harness.ts`), so a new or changed app is offered from the
+next model request, and the agent object installs them before Pi opens, so a restarted agent offers them at once. A
+call pins the release it began on (`goblin.release` memo) and refuses to run on newer code. Subagents and routine runs
+set their own exact extension lists and get no app tools. `goblin.apps` (`pi/apps.ts`) offers `app_docs`, `app_build`,
+`app_inspect`, `app_rollback` and `code_run`, and lists the apps in the prompt. The SDK, release entry, transpiler and
+docs are `packages/app`, built into `dist/toolchain.js` (loaded only while building). The owner deletes apps and
+sees them outside the transcript from M4 on.
 
 ## Files
 
@@ -506,7 +532,9 @@ are never pruned. Workers cannot pin resolved DNS IPs; trusted DNS is the docume
 | Agent DO SQLite | `app_mcp_event_grants`, `app_mcp_event_subscriptions`, `app_event_deliveries`, `app_mcp_event_consumers`, `app_event_consumer_receipts` | Drizzle: exact Events grants, leases, encrypted receipts and independent acknowledgements. |
 | Agent DO SQLite | `app_skill_catalog_state` | Drizzle: durable catalog invalidation generations. |
 | Agent DO SQLite | `cf_workspace_files` | `@cloudflare/shell`'s Workspace: the owner's files (ADR 0022), vendor-owned like `pi_*`. |
-| R2 `files` | `agents/<userId>/files/…` | Shell: the owner's files over 128 KiB. Deleting the account empties the prefix. |
+| R2 `files` | `agents/<userId>/files/…`, `agents/<userId>/app_<name>/…` | Shell: the owner's and each app's files over 128 KiB. Deleting the account empties the prefix. |
+| Agent DO SQLite | `app_agent_apps`, `app_agent_releases`, `app_agent_artifacts`, `app_agent_state`, `app_agent_snapshots`, `app_agent_receipts`, `app_agent_events` | Drizzle: agent apps, their releases and code, state and revisions, rollback snapshots, receipts and events (ADR 0021). |
+| Agent DO SQLite | `cf_workspace_app_<name>` | Shell: each agent app's own files. |
 | D1 `goblinAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `oauth*` | Better Auth, `apps/runtime/migrations`. |
 | D1 `goblinAuth` | `app_billing_accounts`, `app_billing_subscriptions`, `app_billing_inbox`, `app_billing_checkouts` | Drizzle: account payments and durable reconciliation. |
 
@@ -522,8 +550,9 @@ meet its contract (ADR 0001). SQLite transactions are short and never span model
 
 ## Infrastructure
 
-`apps/web/alchemy.run.ts` declares the Vite Worker, the `PersonalAgent` namespace, the D1 database and the `FILES` R2
-bucket; it is the only deployment entrypoint. The local stage runs in workerd with CLIProxy; the dev stage calls Railway LiteLLM with a
+`apps/web/alchemy.run.ts` declares the Vite Worker, the `PersonalAgent` namespace, the D1 database, the `FILES` R2
+bucket and the `LOADER` Worker Loader (Dynamic Workers, open beta, Workers Paid); it is the only deployment
+entrypoint. `scripts/stage.ts` builds `packages/app`'s toolchain before Alchemy runs. The local stage runs in workerd with CLIProxy; the dev stage calls Railway LiteLLM with a
 dedicated model-limited, budget-capped key. Offered models and price weights come from stage configuration; the per-account allowance comes from its plan or
 operator override. The key's provider caps and shared quotas are managed outside this repository; source does not prove
 their active values. Secrets are Worker secret bindings, never in the browser bundle.

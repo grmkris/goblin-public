@@ -61,6 +61,7 @@ export default Alchemy.Stack(
         AGENTS: agents,
         AUTH_DB: db,
         FILES: files,
+        LOADER: Cloudflare.WorkerLoader(),
         APP_URL: appUrl,
         BETTER_AUTH_SECRET: Config.Redacted('GOBLIN_BETTER_AUTH_SECRET'),
         SIGNUP_MODE: signupMode,
