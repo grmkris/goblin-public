@@ -8,6 +8,7 @@
 import { Config, Effect, Option, Redacted, Schema } from 'effect'
 import { createHash, randomBytes } from 'node:crypto'
 import { chmod, readFile, stat, writeFile } from 'node:fs/promises'
+import { appChecks } from './smoke-apps.ts'
 
 const ObjectSchema = Schema.Record(Schema.String, Schema.MutableJson)
 type JsonObject = typeof ObjectSchema.Type
@@ -498,6 +499,7 @@ type Receipt = {
   readonly subagent: SubagentCheck['subagent']
   readonly memory: MemoryCheck['memory']
   readonly files: FileCheck['files']
+  readonly app: 'ok'
 }
 
 async function smokeDev(
@@ -531,7 +533,8 @@ async function smokeDev(
       const thread = await threadChecks(dev)
       const subagent = await subagentChecks(dev)
       const memory = await memoryChecks(dev)
-      return { inbound, ...thread, ...subagent, ...memory }
+      const app = await appChecks(dev, { submit: submitMessage, idle: waitForIdle, close: closeThread })
+      return { inbound, ...thread, ...subagent, ...memory, ...app }
     })
     const model = config.smokeModel ?? 'owner pick'
     return { stage: config.stage, model, signup, resident: string(resident['state']), servers, files, ...checks }
