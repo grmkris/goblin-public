@@ -23,8 +23,11 @@ policy.
 - `app_metadata` is created by the application migrations, but its `AppMetadata` service is used only by the
   integration test worker; remove it or give it a job.
 - A production stage: its own D1, credential key and model key; nothing is shared with dev.
-- Dev uses `dev.goblin.surf`, email OTP from `hello@goblin.surf`, and a private owner bootstrap followed by closed
-  sign-up. Its owner receives an explicit dev-only Pro override of 2M weighted tokens per UTC day. The dedicated
-  provider key separately caps aggregate spending at $10 per 30 days and restricts offered models. Reopening signup
-  needs a global account-admission policy and provider capacity review. Production payment acceptance and merchant
-  onboarding remain separate work; dev's operator override grants nothing on prod.
+- Dev is live at `https://dev.goblin.surf`: its fresh auth D1 and PersonalAgent namespace were verified empty before
+  bootstrap, the owner signed in with delivered OTP from `hello@goblin.surf` (SPF, DKIM and DMARC passed), and signup
+  is closed after bootstrap. The owner has an explicit dev-only Pro override of 2M weighted tokens per UTC day. The
+  dedicated provider key separately caps aggregate spending at $10 per 30 days and restricts offered models. Live
+  acceptance passed health, closed-signup refusal, OTP browser login, desktop/mobile layout, OAuth/MCP consent, model
+  turns, thread sharing, subagents, memory and client revocation. Reopening signup needs a global account-admission
+  policy and provider capacity review. Production payment acceptance and merchant onboarding remain separate work;
+  dev's operator override grants nothing on prod.
