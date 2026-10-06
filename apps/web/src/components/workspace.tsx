@@ -33,6 +33,8 @@ import { useWorkspaceFeed } from './workspace-feed.tsx'
 type From = { readonly conversation: string; readonly entry: number }
 
 type Workspace = {
+  /** The signed-in owner's id once known: device preferences are kept per owner. */
+  readonly owner: string | undefined
   readonly state: WorkspaceState
   /** Opens an item in a pane (`lib/workspace.ts` `openItem`): `source` is the pane it was opened from. */
   readonly open: (key: ItemKey, where: Where, source?: ItemKey) => void
@@ -164,7 +166,8 @@ export function WorkspaceProvider({ enabled, children }: { readonly enabled: boo
     return 'New thread'
   }, [])
   const path = useRouterState({ select: (router) => router.location.pathname })
-  const [state, setState, ready] = useStoredState(useOwner(enabled), urlItem(path), title)
+  const owner = useOwner(enabled)
+  const [state, setState, ready] = useStoredState(owner, urlItem(path), title)
   useUrlFocus(state, setState, title, ready)
   const roots = useRef(new Map<ItemKey, readonly Part[]>())
   // Conversations that are gone, Apps that are closed (or drafts whose conversation is gone) close; titles follow.
@@ -182,6 +185,7 @@ export function WorkspaceProvider({ enabled, children }: { readonly enabled: boo
   }, [feed.conversations, feed.apps, setState, title])
   const value = useMemo<Workspace>(
     () => ({
+      owner,
       state,
       open: (key, where, source) => setState((current) => openItem(current, key, title(key), where, source)),
       close: (key) => {
@@ -203,7 +207,7 @@ export function WorkspaceProvider({ enabled, children }: { readonly enabled: boo
       draftRoot: (key) => roots.current.get(key) ?? [],
       titleOf: title,
     }),
-    [state, setState, title],
+    [owner, state, setState, title],
   )
   return <WorkspaceContext value={value}>{children}</WorkspaceContext>
 }

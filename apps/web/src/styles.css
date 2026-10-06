@@ -206,6 +206,79 @@ main.shell {
     display: none;
   }
 }
+/*
+ * A row that started others folds them away with the chevron at its end (Open beside moves in beside it); folded, it
+ * counts the conversations at work under it. The chevron is as tall as its row, so it is easy to hit by touch too.
+ */
+.tree-row[data-below='true'] > [data-slot='sidebar-menu-button'] {
+  padding-right: 1.75rem;
+}
+.tree-row[data-below='true'] > .tree-row-beside {
+  right: 1.75rem;
+}
+.tree-row-disclose {
+  position: absolute;
+  top: 0;
+  right: 0.125rem;
+  display: grid;
+  width: 1.5rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--muted-foreground);
+}
+[data-slot='sidebar-menu-sub'] .tree-row > .tree-row-disclose {
+  height: 1.75rem;
+}
+.tree-row[data-closed='true'] > .tree-row-disclose {
+  height: 1.5rem;
+}
+@media (pointer: coarse) {
+  .tree-row-disclose,
+  [data-slot='sidebar-menu-sub'] .tree-row > .tree-row-disclose {
+    width: 2.5rem;
+    height: 2.75rem;
+  }
+  .tree-row[data-below='true'] > [data-slot='sidebar-menu-button'] {
+    padding-right: 2.75rem;
+  }
+}
+.tree-row-disclose > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  transition: rotate 150ms;
+}
+.tree-row-disclose[aria-expanded='true'] > svg {
+  rotate: 90deg;
+}
+@media (hover: hover) {
+  .tree-row-disclose:hover {
+    background: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
+  }
+}
+.tree-row-under {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--live);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.tree-row-under::before {
+  width: 0.625rem;
+  height: 0.625rem;
+  border: 1.5px solid var(--live-soft);
+  border-top-color: var(--live);
+  border-radius: 9999px;
+  animation: tree-turn 1s linear infinite;
+  content: '';
+}
+@media (prefers-reduced-motion: reduce) {
+  .tree-row-under::before {
+    animation: none;
+  }
+}
 /* An open conversation's row is set apart a little from those not in any pane. */
 .tree-row[data-open='true'] > [data-slot='sidebar-menu-button'] .tree-row-name {
   font-weight: 500;
@@ -227,6 +300,12 @@ main.shell {
 .closed-fold > svg {
   width: 0.75rem;
   height: 0.75rem;
+}
+@media (pointer: coarse) {
+  .closed-fold {
+    height: 2.75rem;
+    font-size: 0.8125rem;
+  }
 }
 @media (hover: hover) {
   .closed-fold:hover {

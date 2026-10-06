@@ -142,6 +142,34 @@ export function rowStatus(node: TreeNode, activity: Activity): RowStatus {
   }
 }
 
+/** How many conversations under `node`, at any depth, are working or waiting on their own subagents. */
+export const busyUnder = (node: TreeNode, activity: Activity): number =>
+  node.children.reduce((sum, child) => sum + (activity.has(child.view.id) ? 1 : 0) + busyUnder(child, activity), 0)
+
+const unreadUnder = (node: TreeNode): boolean =>
+  node.children.some((child) => isUnread(child.view) || unreadUnder(child))
+
+/**
+ * A row's open children as the sidebar lists them: the ones to show, and the subagents that have settled, which fold
+ * under "n idle" until asked for. Settled: not at work and nothing at work under it, its replies and theirs read, not
+ * in a pane (`shown`) and not kept open by the owner. A subagent that needs a look never folds away.
+ */
+export function settle(
+  node: TreeNode,
+  activity: Activity,
+  shown: (id: string) => boolean,
+): { readonly live: readonly TreeNode[]; readonly idle: readonly TreeNode[] } {
+  const idle = (child: TreeNode): boolean =>
+    child.view.kind === 'subagent' &&
+    !child.view.keepOpen &&
+    !activity.has(child.view.id) &&
+    busyUnder(child, activity) === 0 &&
+    !isUnread(child.view) &&
+    !unreadUnder(child) &&
+    !shown(child.view.id)
+  return { live: node.children.filter((child) => !idle(child)), idle: node.children.filter(idle) }
+}
+
 /** Whether a row belongs on the folded rail: open in a pane, at work (or above work), or with unread replies. */
 const active = (node: TreeNode, activity: Activity, open: (id: string) => boolean): boolean => {
   const status = rowStatus(node, activity)

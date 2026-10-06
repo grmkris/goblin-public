@@ -82,7 +82,9 @@ there, so no request opens a conversation by guessing its number. Pi cannot dele
 conversation and everything under it and keeps it readable until Reopen; main never closes. The web
 lists them in the app's sidebar as a tree at any depth (`components/sidebar-tree.tsx` over the pure
 `lib/workspace-tree.ts`): main with its subagents and theirs, then each thread with everything under it, closed ones
-folded into "n closed"; a thread nobody wrote in (a first send that failed) has no row unless it is in a pane, and an
+folded into "n closed" and settled subagents (idle, nothing at work under them, everything read, not in a pane, not
+kept open; `settle`) into "n idle". Any row that started others has a chevron that folds them away, remembered per
+owner in the browser, and a folded row counts the work under it; a thread nobody wrote in (a first send that failed) has no row unless it is in a pane, and an
 App shows as a tile in its server's own hue. A row shows how long its agent has been working, a turning ring for work under it and a dot
 for unread replies; a click shows it in the focused pane, its side button opens it beside, and it drags onto a pane
 like a pane's grip. Folded on a desktop the sidebar is a 56px rail (`components/workspace-rail.tsx`) of main and the

@@ -5,11 +5,13 @@ import {
   appHue,
   appNames,
   buildTree,
+  busyUnder,
   foldApps,
   isUnread,
   pathOf,
   railItems,
   rowStatus,
+  settle,
 } from '../src/lib/workspace-tree.ts'
 
 const view = (id: string, extra: Partial<ConversationView> = {}): ConversationView => ({
@@ -160,5 +162,39 @@ describe('App tiles', () => {
     expect(appHue('board')).not.toBe(appHue('maps'))
     for (const id of ['board', 'maps', 'x', '']) expect(appHue(id)).toBeGreaterThanOrEqual(0)
     expect(appHue('maps')).toBeLessThan(360)
+  })
+})
+
+describe('settled subagents', () => {
+  const sub = (id: string, extra: Partial<ConversationView> = {}) => view(id, { kind: 'subagent', ...extra })
+  const views = [
+    MAIN,
+    sub('2', { lastReplyAt: 10, readAt: 10 }),
+    sub('3', { lastReplyAt: 20, readAt: 10 }),
+    sub('4'),
+    sub('5', { keepOpen: true }),
+    sub('6'),
+    sub('7'),
+    sub('8', { parent: '7' }),
+    view('9', { parent: '7' }),
+    sub('10', { lastReplyAt: 10, readAt: 10 }),
+    sub('11', { parent: '10', lastReplyAt: 30 }),
+  ]
+  const activity = new Map([working('4'), working('8')])
+  const main = buildTree(views).main
+
+  it('fold away once idle, read (theirs too), out of every pane and not kept open; the rest stay', () => {
+    const { live, idle } = settle(
+      main ?? { view: MAIN, apps: [], children: [], closed: [] },
+      activity,
+      (id) => id === '6',
+    )
+    expect(ids(idle)).toEqual(['2'])
+    expect(ids(live).toSorted()).toEqual(['10', '3', '4', '5', '6', '7'])
+  })
+
+  it('count the work under a row at any depth', () => {
+    expect(main && busyUnder(main, activity)).toBe(2)
+    expect(main && busyUnder(main, new Map())).toBe(0)
   })
 })
