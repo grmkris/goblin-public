@@ -547,8 +547,8 @@ goblin is an MCP server at `/mcp`, the one protected resource of Better Auth's `
   and every scope, so a new connection asks for inspection and the owner decides on the consent page. Clients
   connected before inspection joined `/mcp` get it after reconnecting once; migration
   `0009_mcp_inspection_scope` lets clients registered earlier ask for it.
-- Revoking a client in Settings deletes the consent, disables the client and revokes its refresh tokens; its next
-  call gets a 401. Consenting again without `goblin:inspect` ends inspection for tokens already issued.
+- Revoking a client in Settings deletes your consent to it and revokes its refresh tokens for you (`auth/clients.ts`);
+  its next call gets a 401. Consenting again without `goblin:inspect` ends inspection for tokens already issued.
 
 ## MCP Events and Telegram
 
