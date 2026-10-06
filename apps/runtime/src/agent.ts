@@ -51,7 +51,7 @@ import type { ServerSource } from './mcp/servers.ts'
 import { Events, type EventWebhook } from './mcp/events.ts'
 import { enableTelegram, disableTelegram } from './channel/program.ts'
 import { setSkillEvents } from './skills/events.ts'
-import { suggestions } from './mcp/suggested.ts'
+import { disconnectOwnerServer, ownerServers, removeOwnerServer, suggestedServers } from './mcp/program.ts'
 import {
   askClient,
   createOwnerConversation,
@@ -346,13 +346,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
 
   mcpServers() {
-    return this.#owner(
-      Effect.gen(function* () {
-        const mcp = yield* Mcp
-        const events = yield* Events
-        return mcp.servers().map((server) => ({ ...server, eventHealth: events.health(server.serverId) }))
-      }),
-    )
+    return this.#owner(ownerServers)
   }
 
   mcpConnect(serverId: string) {
@@ -364,10 +358,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
 
   mcpSuggested() {
-    const stage = this.env.STAGE
-    return this.#owner(
-      Mcp.useSync((mcp) => suggestions(stage, new Set(mcp.manager.servers.map((server) => server.endpoint)))),
-    )
+    return this.#owner(suggestedServers(this.env.STAGE))
   }
   mcpCatalog(query: string) {
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.searchCatalog(query))))
@@ -385,21 +376,10 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.addServer(endpoint, source))))
   }
   mcpRemoveServer(serverId: string) {
-    return this.#owner(
-      Effect.gen(function* () {
-        yield* (yield* Events).disableServer(serverId)
-        return yield* Mcp.use((mcp) => attempt(async () => (await mcp.removeServer(serverId), null)))
-      }),
-    )
+    return this.#owner(removeOwnerServer(serverId))
   }
-
   mcpDisconnect(serverId: string) {
-    return this.#owner(
-      Effect.gen(function* () {
-        yield* (yield* Events).disableServer(serverId)
-        return yield* Mcp.use((mcp) => attempt(async () => (await mcp.disconnect(serverId), null)))
-      }),
-    )
+    return this.#owner(disconnectOwnerServer(serverId))
   }
   mcpTools(serverId: string, refresh: boolean) {
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.tools(serverId, refresh))))
