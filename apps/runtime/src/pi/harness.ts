@@ -2,7 +2,7 @@ import { PiHarness } from 'agents/harness/pi'
 import { createRegistry, Harness } from '@earendil-works/pi-durable'
 import type { Extension, Registry, Session } from '@earendil-works/pi-durable'
 import { askUserExtension } from './ask-user.ts'
-import type { makePiModels } from './model.ts'
+import { MAX_OUTPUT_TOKENS, type makePiModels } from './model.ts'
 import { personaExtension } from './persona.ts'
 
 export type PiModels = ReturnType<typeof makePiModels>
@@ -50,6 +50,9 @@ export function makePiHarness(
     get extensions() {
       return [...defaults, ...apps.extensions()]
     },
+    // pi-ai clamps each request's output limit to what the context leaves, less 4,096. Compacting once the context
+    // leaves less than a full answer keeps every answer's limit at MAX_OUTPUT_TOKENS.
+    compaction: { reserveTokens: MAX_OUTPUT_TOKENS + 4096 },
   }
   return new PiHarness({
     harness: async ({ storage, context }) => {

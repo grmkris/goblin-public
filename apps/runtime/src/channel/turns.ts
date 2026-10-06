@@ -4,23 +4,29 @@ import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
 import { authoredContent } from '../pi/content.ts'
-import { askedText } from '../pi/transcript.ts'
+import { askedText, cutOff } from '../pi/transcript.ts'
 import { type AgentServices, attempt, requireBudget } from '../services.ts'
 import type { ChannelPorts } from './channel.ts'
 
 type Run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<A>
 
+/** What Telegram adds to an answer that reached the output limit, as the web transcript's receipt says. */
+const CUT_OFF = '(Cut off at the output limit. Ask it to continue.)'
+
 /**
  * How a turn of main ended, as Telegram should hear it: its final text, or what it asked the owner when it stopped on
- * a question; undefined while it runs.
+ * a question, and whether it was cut off; undefined while it runs.
  */
 async function answerOf(harness: PiHarness, operationId: string): Promise<string | undefined> {
   const session = MAIN_THREAD
   const result = await harness.wait(operationId, { session, signal: AbortSignal.timeout(200) }).catch(() => undefined)
   if (result === undefined) return undefined
   if (result.status === 'unanswered') return `(No answer: ${result.reason ?? 'the turn ended without one'}.)`
-  const text = result.text?.trim() ?? ''
-  return text === '' ? askedText(await harness.messages({ session })) : text
+  const entries = await harness.messages({ session })
+  const final = result.text?.trim() ?? ''
+  const text = final === '' ? askedText(entries) : final
+  if (!cutOff(entries)) return text
+  return text === '' ? CUT_OFF : `${text}\n\n${CUT_OFF}`
 }
 
 /**

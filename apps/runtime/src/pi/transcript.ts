@@ -88,6 +88,16 @@ export async function recentMessages(conversation: Conversation, limit: number):
   return transcriptMessages(newestFirst.toReversed(), limit)
 }
 
+/** Whether the newest turn of `entries` (oldest first) was cut off: its last answer stopped at the output limit. */
+export function cutOff(entries: readonly EntryRecord[]): boolean {
+  for (const entry of entries.toReversed()) {
+    if (entry.kind === 'pi.user') return false
+    for (const message of (entry.model ?? []).toReversed())
+      if (message.role === 'assistant') return message.stopReason === 'length'
+  }
+  return false
+}
+
 /**
  * What the newest turn of `entries` (oldest first) asked the owner with `ask_user`, as the tool reported it; empty
  * when that turn asked nothing. A turn that ends in a question has no final text of its own.

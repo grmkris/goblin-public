@@ -189,6 +189,11 @@ describe('Pi committed state projected for the chat', () => {
     expect(assistant({ stopReason: 'stop' })).toMatchObject({
       failure: { text: 'The model returned an empty answer.', provider: false },
     })
+    expect(assistant({ stopReason: 'length', content: [{ type: 'text', text: 'The first half' }] })).toMatchObject({
+      text: 'The first half',
+      failure: { text: 'Cut off at the output limit. Ask it to continue.', provider: false, cutOff: true },
+    })
+    expect(assistant({ stopReason: 'length' })).toMatchObject({ failure: { cutOff: true } })
     expect(assistant({ stopReason: 'stop', content: [{ type: 'text', text: 'Hi' }] })).not.toHaveProperty('failure')
     expect(
       assistant({ stopReason: 'toolUse', content: [{ type: 'toolCall', id: 'c', name: 'mcp_list', arguments: {} }] }),

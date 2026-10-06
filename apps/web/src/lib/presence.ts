@@ -56,6 +56,7 @@ export function presenceOf({ status, projection, parts, waiting, exhausted }: Pr
   if (projection.running) return runningPresence(projection, parts)
   if (exhausted) return { state: 'exhausted', label: "Today's budget is spent" }
   const last = parts.at(-1)
+  if (last?.kind === 'failure' && last.failure.cutOff === true) return { state: 'error', label: 'Cut off' }
   if (last?.kind === 'failure' && last.failure.stopped !== true) return { state: 'error', label: 'No answer' }
   return { state: 'idle', label: 'Ready' }
 }

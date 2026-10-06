@@ -2,7 +2,7 @@ import type { AssistantMessage, Message } from '@earendil-works/pi-ai'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { describe, expect, it } from 'vitest'
 import { conversationId, entryId } from '../src/pi/context.ts'
-import { replyStats } from '../src/pi/transcript.ts'
+import { cutOff, replyStats } from '../src/pi/transcript.ts'
 import { ReplyLedger } from '../src/replies.ts'
 
 const MAIN = '1'
@@ -88,5 +88,16 @@ describe('thread replies (unit)', () => {
 
   it('reports nothing for a thread nobody has written in yet', async () => {
     expect(await new ReplyLedger().stats(THREAD, conversationOf([]), 0)).toEqual({ replies: 0 })
+  })
+
+  it('knows a turn whose last answer reached the output limit, and only the newest turn', () => {
+    const limited = entry(5, MAIN, 'pi.assistant', {
+      ...answer([{ type: 'text', text: 'The first ha' }], 12),
+      stopReason: 'length',
+    })
+    expect(cutOff([said(4, MAIN, 'user', 11), limited])).toBe(true)
+    expect(cutOff([said(4, MAIN, 'user', 11), said(5, MAIN, 'assistant', 12)])).toBe(false)
+    expect(cutOff([said(4, MAIN, 'user', 11), limited, said(6, MAIN, 'user', 13)])).toBe(false)
+    expect(cutOff([])).toBe(false)
   })
 })

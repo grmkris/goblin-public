@@ -513,6 +513,12 @@ when that conversation already has the model. Every offered model is registered 
 Pi's `Models` under the one `goblin-litellm` provider. A failed model call shows its reason in the chat, and a
 quota or outage failure points at the picker.
 
+Every response may run to 32 768 tokens (`MAX_OUTPUT_TOKENS`, `pi/model.ts`): reasoning models spend part of it
+thinking. pi-ai sends the limit on every request, less whatever the context leaves short of the window, so Pi
+compacts while the context still leaves a whole answer (`reserveTokens` in `pi/harness.ts`). An answer that reaches
+the limit ends with `stopReason: 'length'`: the chat shows "Cut off at the output limit" under what it wrote, and
+Telegram adds the same line.
+
 Housekeeping (thread titles, main's summaries and skill-draft decisions) runs on `GOBLIN_MEMORY_MODEL`. Set it to a
 cheap offered model; the code does not choose by price. Unset or not offered, it falls back to the default
 (`models.ts`, `memory/model.ts`). Its tokens count toward the owner's daily budget like any other.

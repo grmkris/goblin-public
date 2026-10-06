@@ -78,10 +78,16 @@ export type ConversationProjection = {
 }
 
 /**
- * Why a turn has no answer. `provider`: the model's provider refused or is down, so another model may answer.
- * `stopped`: the owner stopped it, which is a choice rather than a failure.
+ * Why a turn has no answer, or no whole one. `provider`: the model's provider refused or is down, so another model may
+ * answer. `stopped`: the owner stopped it, which is a choice rather than a failure. `cutOff`: the answer reached the
+ * output limit, so what came before it stands and the agent can continue.
  */
-export type TurnFailure = { readonly text: string; readonly provider: boolean; readonly stopped?: true }
+export type TurnFailure = {
+  readonly text: string
+  readonly provider: boolean
+  readonly stopped?: true
+  readonly cutOff?: true
+}
 
 /** The provider's raw error, in a sentence the owner can act on; the first line of anything unrecognised. */
 export function failureReason(raw: string): TurnFailure {
@@ -100,7 +106,7 @@ export function failureReason(raw: string): TurnFailure {
   }
 }
 
-/** A turn that ended without an answer says why, instead of rendering nothing. */
+/** A turn that ended without an answer, or was cut short, says why instead of rendering nothing. */
 function assistantFailure(
   message: Record<string, unknown>,
   content: string,
@@ -108,6 +114,8 @@ function assistantFailure(
 ): TurnFailure | undefined {
   if (message.stopReason === 'error') return failureReason(isString(message.errorMessage) ? message.errorMessage : '')
   if (message.stopReason === 'aborted') return { text: 'Stopped before answering.', provider: false, stopped: true }
+  if (message.stopReason === 'length')
+    return { text: 'Cut off at the output limit. Ask it to continue.', provider: false, cutOff: true }
   if (content === '' && calls.length === 0 && message.stopReason === 'stop')
     return { text: 'The model returned an empty answer.', provider: false }
   return undefined

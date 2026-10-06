@@ -53,10 +53,15 @@ describe('the agent’s presence', () => {
     expect(presenceOf({ ...base, projection: { ...live, partial: 'Hel' } }).state).toBe('responding')
     expect(presenceOf({ ...base, projection: live }).state).toBe('thinking')
   })
-  it('settles into how the last turn ended; stopping is not an error', () => {
+  it('settles into how the last turn ended; stopping is not an error, a cut-off answer says so', () => {
     expect(presenceOf({ ...base, exhausted: true, projection: projection() }).state).toBe('exhausted')
     expect(presenceOf({ ...base, projection: projection(), parts: [failure()] }).state).toBe('error')
     expect(presenceOf({ ...base, projection: projection(), parts: [failure(true)] }).state).toBe('idle')
+    const cutOff: Part = { kind: 'failure', id: 'f2', failure: { text: 'Cut off', provider: false, cutOff: true } }
+    expect(presenceOf({ ...base, projection: projection(), parts: [cutOff] })).toEqual({
+      state: 'error',
+      label: 'Cut off',
+    })
     expect(presenceOf({ ...base, projection: projection() })).toEqual({ state: 'idle', label: 'Ready' })
   })
 })

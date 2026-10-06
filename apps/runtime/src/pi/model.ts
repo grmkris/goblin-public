@@ -11,6 +11,13 @@ type ModelEnvironment = Pick<RuntimeEnv, 'MODEL_ID' | 'MODEL_BASE_URL' | 'MODEL_
 /** Every model is served by the deployment's LiteLLM under one provider id; `session.setModel` names it. */
 export const MODEL_PROVIDER = 'goblin-litellm'
 
+/**
+ * The most a model writes in one response. pi-ai sends it on every request (clamped to what the context leaves), and
+ * reasoning models spend part of it thinking, so it is generous: at 8,192 glm-5.3 and qwen3.8-max ran out mid-answer.
+ * A response cut here ends with `stopReason: 'length'`, which the owner sees.
+ */
+export const MAX_OUTPUT_TOKENS = 32_768
+
 /** The provider is configured at the Worker boundary; its key never enters Pi state. */
 function makePiModel(
   option: ModelOption,
@@ -27,7 +34,7 @@ function makePiModel(
     input: option.images ? ['text', 'image'] : ['text'],
     reasoning: false,
     contextWindow: contextWindow ?? option.contextWindow,
-    maxTokens: 8192,
+    maxTokens: MAX_OUTPUT_TOKENS,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   }
 }
