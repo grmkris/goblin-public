@@ -48,7 +48,8 @@ export type StartupImage = {
 export const startupImages = (): readonly StartupImage[] =>
   SCREENS.flatMap(([width, height, ratio]) =>
     (['portrait', 'landscape'] as const).map((orientation) => {
-      const file = `splash/${width}x${height}@${ratio}-${orientation}.png`
+      // No `@` in the name: Cloudflare answers it with a redirect to `%40`, and a startup image should need none.
+      const file = `splash/${width}x${height}-${ratio}x-${orientation}.png`
       const [across, down] = orientation === 'portrait' ? [width, height] : [height, width]
       return {
         file,
