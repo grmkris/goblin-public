@@ -1,3 +1,4 @@
+import { authFixtureRoute, fixtureAuth } from './auth-fixture.ts'
 import { Effect } from 'effect'
 import runtime from '../../src/worker.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
@@ -37,7 +38,10 @@ export default {
     const canonical = new URL(url.pathname + url.search, env.APP_URL)
     const input = new Request(canonical, request)
     const deps = { store: makeBillingStore(env.AUTH_DB), dodo, productId: 'pdt_goblin_fixture' }
+    env = fixtureAuth(request, env)
     try {
+      const authProbe = await authFixtureRoute(input, env)
+      if (authProbe !== undefined) return authProbe
       if (url.pathname === '/hooks/dodo') return await Effect.runPromise(billingWebhook(deps, input, ctx))
       if (url.pathname.startsWith('/__test/billing/'))
         return await Effect.runPromise(billingTestRoute(input, env, deps))

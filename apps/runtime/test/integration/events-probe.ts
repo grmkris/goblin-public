@@ -16,7 +16,7 @@ import type { EventEnvelope } from '../../src/mcp/events/protocol.ts'
 import { SqliteSkillState } from '../../src/skills/store.ts'
 import { eventsSkillsProbe, eventsRecoveryProbe } from './events-recovery.ts'
 
-const KEY = 'cHVycmFibGUtdGVzdC1rZXktMzItYnl0ZXMtbG9uZyE='
+const KEY = 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE='
 const occurrence = (fixture: EventsFixture, eventId: string): EventEnvelope => ({
   eventId,
   name: 'message.received',

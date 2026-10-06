@@ -28,7 +28,7 @@ export default Alchemy.Stack(
         MODEL_KEY: 'unused-storage-fixture',
         APP_URL: 'https://goblin.test',
         // A fixed 32-byte test key: encrypts nothing real in this harness.
-        CREDENTIAL_KEY: 'cHVycmFibGUtdGVzdC1rZXktMzItYnl0ZXMtbG9uZyE=',
+        CREDENTIAL_KEY: 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE=',
       },
     })
     return { url: worker.url.as<string>() }

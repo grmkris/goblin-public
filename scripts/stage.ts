@@ -57,8 +57,9 @@ if (stage.local) {
   childEnv['GOBLIN_BETTER_AUTH_SECRET'] = 'goblin-local-only-secret-not-for-cloudflare-00000000000000000'
   childEnv['GOBLIN_MODEL_KEY'] = process.env['CLIPROXY_API_KEY'] ?? ''
   // Local-only defaults; .local/local.env values override them.
-  childEnv['GOBLIN_CREDENTIAL_KEY'] = 'cHVycmFibGUtbG9jYWwtb25seS1rZXktMzItYnl0ZSE='
+  childEnv['GOBLIN_CREDENTIAL_KEY'] = 'Z29ibGluLWxvY2FsLW9ubHkta2V5ISEhISEhISEhISE='
   childEnv['GOBLIN_SIGNUP_MODE'] = 'open'
+  childEnv['GOBLIN_MAIL_SENDER'] = 'hello@goblin.test'
   if (existsSync(config)) addEnvFile(config)
 } else {
   addEnvFile(shared)

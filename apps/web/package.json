@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@better-auth/oauth-provider": "1.7.6",
-    "@better-auth/passkey": "1.7.6",
     "@danfessler/trellis": "0.3.0",
     "@goblin/contracts": "workspace:*",
     "@goblin/runtime": "workspace:*",

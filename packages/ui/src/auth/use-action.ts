@@ -1,5 +1,5 @@
 // Adapted from grmkris/myapps packages/ui/src/auth (9616f76): the sign-in look Kristjan uses across his apps.
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { AuthActionResult } from './contract.ts'
 
 export interface ActionState {
@@ -13,8 +13,11 @@ export interface ActionState {
 /** Busy and error state around one app callback at a time. */
 export function useAction(fallback: string): ActionState {
   const [busy, setBusy] = useState(false)
+  const running = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const run = async (action: () => Promise<AuthActionResult>): Promise<boolean> => {
+    if (running.current) return false
+    running.current = true
     setBusy(true)
     setError(null)
     try {
@@ -25,6 +28,7 @@ export function useAction(fallback: string): ActionState {
       setError(fallback)
       return false
     } finally {
+      running.current = false
       setBusy(false)
     }
   }

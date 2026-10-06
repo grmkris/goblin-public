@@ -1,3 +1,4 @@
+import { person, call, type Person } from './owner-requests.ts'
 import * as Alchemy from 'alchemy'
 import * as Cloudflare from 'alchemy/Cloudflare'
 import * as Test from 'alchemy/Test/Vitest'
@@ -13,48 +14,8 @@ const harness = Test.make({
 })
 const stack = harness.beforeAll(harness.deploy(Stack))
 const KEY = 'whsec_Zml4dHVyZS1iaWxsaW5nLXNpZ25pbmcta2V5'
-const Signup = Schema.Struct({ user: Schema.Struct({ id: Schema.String }) })
 const Checkout = Schema.Struct({ checkoutUrl: Schema.String })
 const DAY = 86_400_000
-interface Person {
-  readonly userId: string
-  readonly cookie: string
-  readonly ip: string
-}
-async function person(base: string): Promise<Person> {
-  // Each fixture is a distinct client; retained local D1 keeps Better Auth's per-IP signup limiter between runs.
-  const ip = `2001:db8:${Array.from(crypto.getRandomValues(new Uint16Array(4)), (n) => n.toString(16)).join(':')}:0:1`
-  const response = await fetch(`${base}/api/auth/sign-up/email`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', origin: 'https://goblin.test', 'cf-connecting-ip': ip },
-    body: JSON.stringify({
-      email: `${crypto.randomUUID()}@fixture.test`,
-      name: 'Billing fixture',
-      password: 'fixture-password-12345',
-    }),
-  })
-  expect(response.status).toBe(200)
-  const data = Schema.decodeUnknownSync(Signup)(await response.json())
-  return {
-    userId: data.user.id,
-    ip,
-    cookie: response.headers
-      .getSetCookie()
-      .map((value) => value.split(';')[0])
-      .join('; '),
-  }
-}
-const call = (base: string, who: Person, path: string, body?: unknown) =>
-  fetch(`${base}${path}`, {
-    method: body === undefined ? 'GET' : 'POST',
-    headers: {
-      cookie: who.cookie,
-      origin: 'https://goblin.test',
-      'content-type': 'application/json',
-      'cf-connecting-ip': who.ip,
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  })
 const lever = async (base: string, who: Person, action: string, extra: Record<string, unknown> = {}) =>
   (await call(base, who, `/__test/billing/${action}`, { userId: who.userId, ...extra })).json()
 async function deliver(

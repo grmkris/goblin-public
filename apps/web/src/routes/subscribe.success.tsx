@@ -30,15 +30,7 @@ function PaymentReturn() {
   }, [state?.active, refresh])
   if (state?.active)
     return (
-      <AuthShell
-        title="Your agent is ready"
-        description="Pro is active."
-        footer={
-          <p>
-            Sign in faster next time: <Link to="/settings">add a passkey</Link> in Settings.
-          </p>
-        }
-      >
+      <AuthShell title="Your agent is ready" description="Pro is active.">
         <Button size="lg" className="w-full" nativeButton={false} render={<Link to="/" />}>
           Open your agent
         </Button>

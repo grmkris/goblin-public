@@ -1,3 +1,4 @@
+import { authFixtureRoute, fixtureAuth } from './auth-fixture.ts'
 /** Native auth D1 + owner Agent fixture; test levers never enter the deployed Worker. */
 import { Effect } from 'effect'
 import runtime from '../../src/worker.ts'
@@ -23,7 +24,10 @@ export default {
   async fetch(request: Request, env: RuntimeEnv, ctx: ExecutionContext) {
     const url = new URL(request.url)
     const input = new Request(new URL(url.pathname + url.search, env.APP_URL), request)
+    env = fixtureAuth(request, env)
     try {
+      const authProbe = await authFixtureRoute(input, env)
+      if (authProbe !== undefined) return authProbe
       if (url.pathname.startsWith('/__test/billing/'))
         return await Effect.runPromise(
           billingTestRoute(input, env, {

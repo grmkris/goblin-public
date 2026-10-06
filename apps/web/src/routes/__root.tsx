@@ -41,16 +41,7 @@ export const Route = createRootRoute({
   shellComponent: Document,
 })
 /** Pages that are part of signing in: no app navigation there. */
-const AUTH_PAGES = new Set([
-  '/login',
-  '/consent',
-  '/reset-password',
-  '/subscribe',
-  '/subscribe/success',
-  '/terms',
-  '/privacy',
-  '/refunds',
-])
+const AUTH_PAGES = new Set(['/login', '/consent', '/subscribe', '/subscribe/success', '/terms', '/privacy', '/refunds'])
 
 function Root() {
   return (

@@ -14,7 +14,7 @@ import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import type { EventsFixture } from '../mcp/events-fixture.ts'
 import type { SeenRequest } from './model.ts'
 
-const KEY = 'cHVycmFibGUtdGVzdC1rZXktMzItYnl0ZXMtbG9uZyE='
+const KEY = 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE='
 const definition: RoutineDefinition = {
   title: 'Native event routine',
   prompt: 'Return a short notification summary.',

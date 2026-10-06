@@ -34,28 +34,24 @@ Runtime paths below are relative to `apps/runtime/src/`; browser paths are relat
 
 ## Accounts
 
-Anyone may sign up when `GOBLIN_SIGNUP_MODE` is `open`; with `invite` the request needs the
-`GOBLIN_SIGNUP_INVITE_CODE` in an `x-invite-code` header; `closed` (the default for deployed stages) refuses every
-sign-up. When the deployment sends mail, the usual way in is a six-digit code mailed to the address (ten minutes, five
-tries, one per address per minute; `auth/email-code.ts`): a known address signs in, a new one gets an account through
-the same sign-up gate, already verified. Passwords remain as the fallback. A signed-in user can add passkeys in
-Settings (`auth/passkey.ts`, the myapps policy: goblin's own host is the relying party, credentials are discoverable
-and must verify the person; adding one needs a sign-in from the last 10 minutes) and then sign in with one without
-typing an email. A passkey never creates an account, and an MCP client's authorization resumes after it like after
-any sign-in. With `GOBLIN_MAIL_SENDER` set (an address on an apex onboarded for Cloudflare Email Sending), a new
-password account needs email verification through an emailed code or the one-hour link (`auth/mail.ts`); the link
-signs them in. The same sender carries password-reset links (`/reset-password`); a reset signs every device out, and
-asking for one never reveals whether an address has an account. A deployed stage refuses to deploy `open` sign-up
-without a sender. Sign-up, verification mail and sign-in are rate limited per `cf-connecting-ip` in D1 (auth runs per
-request, so in-memory limits would reset every call). The agent a request
-reaches is always derived from authentication, the session's user ID or the inbound token's subject, never from the
-request alone. The Telegram hook instead verifies a token bound to its user ID before selecting an agent.
+Email OTP is the sole login method. A six-digit code expires after 600 seconds, permits five attempts and is stored
+hashed in Better Auth's verification table. Sending is limited to one code per address per minute and ten sends per
+IP per hour; sign-in permits twenty attempts per IP per five minutes. D1 holds rate limits because auth is created
+per request. `GOBLIN_SIGNUP_MODE=open` admits new addresses; `invite` requires `GOBLIN_SIGNUP_INVITE_CODE` in the
+`x-invite-code` header on both send and verify; `closed` permits only existing accounts. A successful OTP creates an
+email-verified account or signs its owner in. Password, reset, verification-link and passkey endpoints are unavailable.
 
-Deleting an account (Settings; the password, or a sign-in within the last 10 minutes) first erases the user's agent through `Agent.destroy()`: every Pi,
-Agents and application table, its alarm, and its isolate. Only then does Better Auth delete the user, and D1 cascades
-their sessions, passkeys, consents and tokens. If erasing the agent fails, the account stays so the user can retry. Outbound
-OAuth tokens are forgotten, not revoked at the remote server. Users share the deployment's model key and configured
-MCP server list; their added servers, conversations, connections, credentials, grants and resident authority are per agent.
+Every stage requires a mail sender. Deployed mail uses Cloudflare Email Sending from `hello@goblin.surf`; local
+workerd captures `.eml` files through Alchemy's simulator. Better Auth 1.7.6 swallows mail callback errors, so a
+request-scoped delivery flag and after hook erase an undelivered code and return 503. No account or session is created
+by sending a code. The browser's OAuth provider client carries the authorization query through OTP login to consent.
+
+The agent a request reaches derives from the session's user ID or the inbound token's subject. The Telegram hook
+verifies a token bound to its user ID before selecting an agent. Deleting an account requires a sign-in from the last
+600 seconds, with an explicit Settings confirmation. It first erases the user's agent through `Agent.destroy()`:
+Pi, Agents and application tables, its alarm and isolate. Only then does Better Auth delete the user and D1 cascade
+sessions, consents and tokens. Agent-erasure failure leaves the account intact for retry. Outbound OAuth tokens are
+forgotten, not revoked remotely. Conversations, credentials, grants and resident authority belong to one user.
 
 The owner API forwards to the agent object over DO RPC. Workers RPC drops custom error classes, so every DO method
 returns an encoded `RpcResult`; the Worker decodes it and maps the tagged error to a status in one place
@@ -482,7 +478,7 @@ are never pruned. Workers cannot pin resolved DNS IPs; trusted DNS is the docume
 | Agent DO SQLite | `app_channel`, `app_telegram_channel`, `app_channel_replies` | Drizzle: Telegram transport checkpoints and replies. |
 | Agent DO SQLite | `app_mcp_event_grants`, `app_mcp_event_subscriptions`, `app_event_deliveries`, `app_mcp_event_consumers`, `app_event_consumer_receipts` | Drizzle: exact Events grants, leases, encrypted receipts and independent acknowledgements. |
 | Agent DO SQLite | `app_skill_catalog_state` | Drizzle: durable catalog invalidation generations. |
-| D1 `goblinAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `passkey`, `oauth*` | Better Auth, `apps/runtime/migrations`. |
+| D1 `goblinAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `oauth*` | Better Auth, `apps/runtime/migrations`. |
 | D1 `goblinAuth` | `app_billing_accounts`, `app_billing_subscriptions`, `app_billing_inbox`, `app_billing_checkouts` | Drizzle: account payments and durable reconciliation. |
 
 The withdrawn Members feature left dormant auth D1 tables and DO columns/tables. Applied migration files and keys
@@ -506,14 +502,13 @@ their active values. Secrets are Worker secret bindings, never in the browser bu
 
 ## Stage origins
 
-The `prod` stage has its own `goblin-prod-auth` D1, native Agent namespace, secret bindings and model key; `dev`
-retains its existing resources and data. Alchemy attaches the per-stage `GOBLIN_DOMAIN`, and prod's `www` alias.
-Both Worker entry points redirect alternate origins before auth, hooks or page rendering: 301 for GET/HEAD, 308 for
-other methods. Redirects preserve path/query and use only `APP_URL` as their authority. Passkey rpID, trusted origins,
-mail links and inbound MCP metadata also derive from that configured origin. Dev passkeys must be remade after the
-host changes; email codes remain the recovery path. Inbound clients re-authorize and outbound DCR clients reconnect.
-Mail subjects include the host outside prod; prod subjects have no stage prefix. Domain and sender acceptance are
-separate operator checks; local workerd proves the redirect behavior.
+Dev runs at `https://dev.goblin.surf`; the apex is reserved for future production. The fresh Goblin stack creates
+`goblin-dev-auth`, an empty native Agent namespace and new auth/encryption secrets. It imports no users, transcripts,
+connections or grants. Production will use separate resources and secrets. `GOBLIN_DOMAIN` and `GOBLIN_ZONE_ID` attach
+the stage's custom domain; prod additionally has a `www` alias. Both Worker entry points redirect alternate origins
+before auth, hooks or rendering: 301 for GET/HEAD, 308 otherwise, preserving path/query with `APP_URL` as authority.
+Auth trusted origins and inbound MCP metadata derive from that origin. Dev mail subjects include its host; prod
+subjects have no prefix. Domain reachability and actual OTP delivery require separate live checks.
 
 The inbound Agents SDK handler explicitly allows only the configured `APP_URL` hostname for both Host and browser
 Origin validation. The SDK defaults otherwise reject browser requests on custom domains. A native workerd regression

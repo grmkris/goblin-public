@@ -6,10 +6,7 @@ import { emailOTP, jwt } from 'better-auth/plugins'
 import type { RuntimeEnv } from '../env.ts'
 import { deleteAgentOf } from './account.ts'
 import { CODE_SEND, CODE_SIGN_IN, guardEmailCode } from './email-code.ts'
-import { codeMail, mailerOf, resetMail, verificationMail } from './mail.ts'
-import { passkeyPlugin } from './passkey.ts'
-import { canonicalEmail, signupAllowed, signupMode } from './signup.ts'
-import { passwordHasher } from './password.ts'
+import { codeMail, mailerOf } from './mail.ts'
 
 const AUTH_BASE_PATH = '/api/auth'
 const MCP_SCOPES = ['openid', 'profile', 'email', 'offline_access'] as const
@@ -46,81 +43,55 @@ export type AuthEnvironment = Pick<
 
 /** Per-IP limits on the endpoints that create accounts or send mail; everything else keeps the default window. */
 const RATE_LIMITS = {
-  '/sign-up/email': { window: 3600, max: 10 },
-  '/send-verification-email': { window: 3600, max: 5 },
-  '/sign-in/email': { window: 300, max: 20 },
   '/delete-user': { window: 300, max: 5 },
-  '/request-password-reset': { window: 3600, max: 5 },
-  '/reset-password': { window: 300, max: 10 },
   [CODE_SEND]: { window: 3600, max: 10 },
   [CODE_SIGN_IN]: { window: 300, max: 20 },
-  '/passkey/verify-authentication': { window: 300, max: 20 },
-  '/passkey/verify-registration': { window: 3600, max: 10 },
 } as const
-type Mail = ReturnType<typeof mailerOf>
 
-/**
- * Password accounts, and with a mail sender: confirmation before an account works (the link signs the user in) and
- * reset links that sign every device out. Without a sender there is no mail, so neither exists.
- */
-const accountEmailOptions = (env: AuthEnvironment, mailer: Mail) => {
-  const base = { enabled: true, minPasswordLength: 12, maxPasswordLength: 256, password: passwordHasher }
-  if (mailer === undefined) return { emailAndPassword: { ...base, requireEmailVerification: false } }
-  const send =
-    (build: typeof verificationMail) =>
-    async ({ user, url }: { user: { email: string }; url: string }) => {
-      await mailer.binding.send(
-        build({
-          from: mailer.from,
-          to: user.email,
-          url,
-          appUrl: env.APP_URL,
-          ...(env.STAGE === undefined ? {} : { stage: env.STAGE }),
-        }),
-      )
-    }
-  return {
-    emailAndPassword: {
-      ...base,
-      requireEmailVerification: true,
-      resetPasswordTokenExpiresIn: 3600,
-      revokeSessionsOnPasswordReset: true,
-      sendResetPassword: send(resetMail),
+/** Six-digit sign-in codes: ten minutes, five attempts, stored hashed. Mail is required to send a code. */
+type MailDelivery = { failed: boolean }
+const codePlugin = (env: AuthEnvironment, delivery: MailDelivery) =>
+  emailOTP({
+    otpLength: 6,
+    expiresIn: 600,
+    allowedAttempts: 5,
+    storeOTP: 'hashed',
+    sendVerificationOTP: async ({ email, otp }) => {
+      try {
+        const mailer = mailerOf(env)
+        if (mailer === undefined) {
+          delivery.failed = true
+          return
+        }
+        await mailer.binding.send(
+          codeMail({
+            from: mailer.from,
+            to: email,
+            code: otp,
+            appUrl: env.APP_URL,
+            ...(env.STAGE === undefined ? {} : { stage: env.STAGE }),
+          }),
+        )
+      } catch {
+        delivery.failed = true
+      }
     },
-    emailVerification: {
-      sendOnSignUp: true,
-      sendOnSignIn: true,
-      autoSignInAfterVerification: true,
-      expiresIn: 3600,
-      sendVerificationEmail: send(verificationMail),
-    },
-  }
-}
+  })
 
-/** Sign-in by a six-digit emailed code (ten minutes, five tries, stored hashed), when the deployment sends mail. */
-const codePlugins = (env: AuthEnvironment, mailer: Mail): BetterAuthPlugin[] =>
-  mailer === undefined
-    ? []
-    : [
-        emailOTP({
-          otpLength: 6,
-          expiresIn: 600,
-          allowedAttempts: 5,
-          storeOTP: 'hashed',
-          sendVerificationOTP: async ({ email, otp, type }) => {
-            if (type === 'sign-in')
-              await mailer.binding.send(
-                codeMail({
-                  from: mailer.from,
-                  to: email,
-                  code: otp,
-                  appUrl: env.APP_URL,
-                  ...(env.STAGE === undefined ? {} : { stage: env.STAGE }),
-                }),
-              )
-          },
-        }),
-      ]
+/** Email codes are the sole identity proof. Unsupported account methods cannot create credentials or send mail. */
+const unavailableMethod = (path: string): boolean =>
+  path.startsWith('/sign-up') ||
+  path.startsWith('/passkey/') ||
+  [
+    '/sign-in/email',
+    '/request-password-reset',
+    '/reset-password',
+    '/change-password',
+    '/set-password',
+    '/send-verification-email',
+    '/verify-email',
+    '/change-email',
+  ].some((route) => path === route || path.startsWith(`${route}/`))
 
 /** Every gate Better Auth's own options cannot express, before any endpoint runs. */
 const beforeAuth = (env: AuthEnvironment, database: D1Database) =>
@@ -129,22 +100,14 @@ const beforeAuth = (env: AuthEnvironment, database: D1Database) =>
       markLoopbackClientsNative(context.body)
       return
     }
-    // Deleting needs the password, or a sign-in within the last 10 minutes (`freshAge`), the only proof a code-only
-    // account can give. The emailed-token path is never offered.
+    if (unavailableMethod(context.path ?? '')) throw new APIError('NOT_FOUND', { message: 'Not found' })
+    // Deletion requires a fresh OTP session; no token or password bypass is available.
     if (context.path?.startsWith('/delete-user')) {
-      if (context.path !== '/delete-user' || context.body?.token !== undefined)
+      if (context.path !== '/delete-user' || context.body?.token !== undefined || context.body?.password !== undefined)
         throw new APIError('BAD_REQUEST', { message: 'Invalid request' })
       return
     }
-    if (await guardEmailCode(context, env, database, Date.now())) return
-    if (!context.path?.startsWith('/sign-up')) return
-    const presented = context.headers?.get('x-invite-code') ?? ''
-    if (
-      context.path !== '/sign-up/email' ||
-      !signupAllowed(signupMode(env.SIGNUP_MODE), env.SIGNUP_INVITE_CODE ?? '', presented)
-    )
-      throw new APIError('FORBIDDEN', { message: 'Sign-up is closed.' })
-    if (Predicate.isString(context.body?.email)) context.body.email = canonicalEmail(context.body.email)
+    await guardEmailCode(context, env, database, Date.now())
   })
 
 /**
@@ -152,6 +115,9 @@ const beforeAuth = (env: AuthEnvironment, database: D1Database) =>
  * auth tables; application Drizzle never adopts/migrates them. mcp() already includes OAuth provider functionality.
  */
 const authOptions = (env: AuthEnvironment, database: D1Database) => {
+  // Better Auth 1.7.6 swallows mail callback errors. Its after hook must refuse success and erase an undelivered
+  // code. This state belongs to one auth instance/request, never the Worker isolate or another user's request.
+  const delivery: MailDelivery = { failed: false }
   const resource = mcpResource(env.APP_URL)
   const oauthPlugin = mcp({
     resource,
@@ -173,9 +139,9 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
     database,
     trustedOrigins: [env.APP_URL],
     logger: { disabled: true },
-    ...accountEmailOptions(env, mailerOf(env)),
+    emailAndPassword: { enabled: false },
     // Deleting an account erases its agent first (conversations, MCP credentials, grants, usage); D1 then cascades
-    // the user's sessions, consents and tokens. Without the password it needs a sign-in from the last 10 minutes.
+    // the user's sessions, consents and tokens. It requires a sign-in from the last 10 minutes.
     session: { freshAge: 600 },
     user: {
       deleteUser: {
@@ -185,13 +151,19 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
     },
     rateLimit: { enabled: true, storage: 'database' as const, window: 60, max: 100, customRules: RATE_LIMITS },
     advanced: { ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] } },
-    hooks: { before: beforeAuth(env, database) },
+    hooks: {
+      before: beforeAuth(env, database),
+      after: createAuthMiddleware(async (context) => {
+        if (context.path !== CODE_SEND || !delivery.failed) return
+        await context.context.internalAdapter.deleteVerificationByIdentifier(`sign-in-otp-${context.body.email}`)
+        throw new APIError('SERVICE_UNAVAILABLE', { message: 'Could not send a sign-in code. Try again.' })
+      }),
+    },
     plugins: [
       jwt({ disableSettingJwtHeader: true, jwt: { issuer: authIssuer(env.APP_URL), audience: resource } }),
       // SAFETY: Better Auth 1.7.6 MCP endpoint metadata types violate exactOptionalPropertyTypes; runtime shape is the pinned official plugin.
       oauthPlugin as BetterAuthPlugin,
-      ...codePlugins(env, mailerOf(env)),
-      passkeyPlugin(env.APP_URL),
+      codePlugin(env, delivery),
     ],
   }
 }

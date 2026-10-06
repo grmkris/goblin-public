@@ -7,7 +7,7 @@
  */
 import { Config, Effect, Option, Redacted, Schema } from 'effect'
 import { createHash, randomBytes } from 'node:crypto'
-import { chmod, stat, writeFile } from 'node:fs/promises'
+import { chmod, readFile, stat, writeFile } from 'node:fs/promises'
 
 const ObjectSchema = Schema.Record(Schema.String, Schema.MutableJson)
 type JsonObject = typeof ObjectSchema.Type
@@ -29,7 +29,7 @@ type Settings = {
   readonly stage: string
   readonly url: string
   readonly email: Redacted.Redacted
-  readonly password: Redacted.Redacted
+  readonly sessionFile: string
 }
 
 const settings = Effect.gen(function* () {
@@ -37,7 +37,7 @@ const settings = Effect.gen(function* () {
     stage: yield* Config.String('GOBLIN_STAGE'),
     url: yield* Config.String('GOBLIN_APP_URL'),
     email: yield* Config.Redacted('GOBLIN_OWNER_EMAIL').pipe(Config.withDefault(Redacted.make(''))),
-    password: yield* Config.Redacted('GOBLIN_OWNER_PASSWORD').pipe(Config.withDefault(Redacted.make(''))),
+    sessionFile: yield* Config.String('GOBLIN_SMOKE_SESSION_FILE').pipe(Config.withDefault('')),
     /** The model the smoke's agent turns run on (dev: an Alibaba Token Plan model); unset: the owner's own pick. */
     smokeModel: Option.getOrUndefined(yield* Config.option(Config.String('GOBLIN_SMOKE_MODEL'))),
   }
@@ -96,22 +96,18 @@ class DevClient {
     return objects(await response.json())
   }
 
-  async signIn(email: Redacted.Redacted, password: Redacted.Redacted): Promise<void> {
-    const response = await this.send('/api/auth/sign-in/email', {
-      method: 'POST',
-      owner: false,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: Redacted.value(email), password: Redacted.value(password) }),
-    })
-    if (!response.ok) throw new Error('owner_sign_in_failed')
-    this.#cookie = response.headers
-      .getSetCookie()
-      .flatMap((value) => {
-        const pair = value.split(';')[0]
-        return pair?.includes('session_token=') ? [pair] : []
-      })
-      .join('; ')
-    if (!this.#cookie) throw new Error('owner_session_missing')
+  async useSession(file: string, email: Redacted.Redacted): Promise<void> {
+    if (!file || (await stat(file)).mode & 0o077) throw new Error('private_otp_session_file_required')
+    const saved = Schema.decodeUnknownSync(Schema.Struct({ origin: Schema.String, cookie: Schema.String }))(
+      JSON.parse(await readFile(file, 'utf8')),
+    )
+    if (saved.origin !== this.origin || !saved.cookie.includes('session_token='))
+      throw new Error('session_origin_mismatch')
+    this.#cookie = saved.cookie
+    const session = await this.json('/api/auth/get-session')
+    const owner = object(session['user'])
+    if (string(owner['email']) !== Redacted.value(email)) throw new Error('session_owner_mismatch')
+    if (Date.parse(string(object(session['session'])['expiresAt'])) <= Date.now()) throw new Error('session_expired')
   }
 }
 
@@ -448,14 +444,13 @@ async function withModel<T>(dev: DevClient, model: string | undefined, work: () 
 
 /** Unless sign-up is open, a registration without the invite code must be refused (and so writes nothing). */
 async function refusedSignup(dev: DevClient, steps: Step[]): Promise<void> {
-  const response = await dev.send('/api/auth/sign-up/email', {
+  const response = await dev.send('/api/auth/email-otp/send-verification-otp', {
     method: 'POST',
     owner: false,
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       email: `smoke-${base64url(randomBytes(6)).toLowerCase()}@example.invalid`,
-      password: base64url(randomBytes(18)),
-      name: 'smoke',
+      type: 'sign-in',
     }),
   })
   if (response.status === 429) {
@@ -488,13 +483,13 @@ async function smokeDev(
   const health = await dev.json('/health', { owner: false })
   if (health['stage'] !== config.stage || health['service'] !== 'goblin') throw new Error('stage_health_mismatch')
   const signup = string(health['signup'])
-  if (config.stage === 'prod' && (Redacted.value(config.email) === '' || Redacted.value(config.password) === '')) {
+  if (config.stage === 'prod' && (Redacted.value(config.email) === '' || config.sessionFile === '')) {
     const probe = await dev.send('/api/conversations', { owner: false })
     if (probe.status !== 401) throw new Error('anonymous_auth_probe_not_refused')
     return { stage: config.stage, signup, mode: 'read-only' }
   }
   if (signup !== 'open') await refusedSignup(dev, steps)
-  await dev.signIn(config.email, config.password)
+  await dev.useSession(config.sessionFile, config.email)
   const resident = await dev.json('/api/agent/resident')
   if (resident['state'] !== 'active') throw new Error('resident_authority_inactive')
   const snapshot = await dev.json('/api/conversations/1/snapshot')

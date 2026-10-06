@@ -9,7 +9,7 @@ export type MailMessage = {
   readonly text: string
 }
 
-/** A configured sender: the binding plus the `From` address it is allowed to use. Absent: no mail, no verification. */
+/** A configured sender: the binding plus the `From` address it is allowed to use. Absent: code sending is unavailable. */
 export type Mailer = { readonly binding: MailBinding; readonly from: string }
 
 export const mailerOf = (env: { readonly MAIL?: MailBinding; readonly MAIL_SENDER?: string }): Mailer | undefined => {
@@ -37,50 +37,5 @@ export const codeMail = (
     `Your goblin sign-in code is ${input.code}`,
     '',
     'It expires in 10 minutes and works once. If you did not try to sign in, ignore this email.',
-  ].join('\n'),
-})
-
-/** The password-reset mail; the link carries a one-hour, single-use token. Same host marking as confirmation. */
-export const resetMail = (
-  input: {
-    readonly from: string
-    readonly to: string
-    readonly url: string
-    readonly appUrl: string
-  } & MailStage,
-): MailMessage => ({
-  from: input.from,
-  to: input.to,
-  subject: `${subjectPrefix(input)}Reset your goblin password`,
-  text: [
-    `Open this link to choose a new password for ${input.to}:`,
-    '',
-    input.url,
-    '',
-    'The link works once and expires in one hour. Every device signed in to the account is signed out. If you did not',
-    'ask for this, ignore this email: your password stays as it is.',
-  ].join('\n'),
-})
-
-/**
- * The account-confirmation mail. Dev subjects name their host; production subjects have no stage prefix. The link carries a one-hour, single-use token.
- */
-export const verificationMail = (
-  input: {
-    readonly from: string
-    readonly to: string
-    readonly url: string
-    readonly appUrl: string
-  } & MailStage,
-): MailMessage => ({
-  from: input.from,
-  to: input.to,
-  subject: `${subjectPrefix(input)}Confirm your email for goblin`,
-  text: [
-    `Open this link to confirm ${input.to} and finish creating your goblin account:`,
-    '',
-    input.url,
-    '',
-    'The link works once and expires in one hour. If you did not sign up for goblin, ignore this email.',
   ].join('\n'),
 })

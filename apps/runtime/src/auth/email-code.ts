@@ -40,6 +40,8 @@ export async function guardEmailCode(
 ): Promise<boolean> {
   const path = context.path ?? ''
   if (!isCodePath(path)) return false
+  if (!Predicate.isObject(context.body) || !Predicate.isString(context.body.email))
+    throw new APIError('BAD_REQUEST', { message: 'Invalid request' })
   const sending = path === CODE_SEND
   if (!sending && path !== CODE_SIGN_IN) throw new APIError('NOT_FOUND', { message: 'Not found' })
   if (sending && context.body?.type !== 'sign-in') throw new APIError('BAD_REQUEST', { message: 'Invalid request' })

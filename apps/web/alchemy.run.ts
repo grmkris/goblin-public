@@ -16,13 +16,13 @@ export default Alchemy.Stack(
     const stage = resolveStage(yield* Alchemy.Stage)
     const appUrl = yield* Config.String('GOBLIN_APP_URL').pipe(Config.withDefault('http://localhost:18971'))
     const domain = yield* Config.String('GOBLIN_DOMAIN').pipe(Config.withDefault(''))
+    const zoneId = domain === '' ? '' : yield* Config.String('GOBLIN_ZONE_ID')
     const signupMode = yield* Config.String('GOBLIN_SIGNUP_MODE').pipe(Config.withDefault('closed'))
-    // An address on an apex onboarded for Cloudflare Email Sending; empty means no mail and no email verification.
-    const mailSender = yield* Config.String('GOBLIN_MAIL_SENDER').pipe(Config.withDefault(''))
-    if (signupMode === 'open' && mailSender === '' && !stage.local)
-      return yield* Effect.die(
-        new Error('open sign-up on a deployed stage needs GOBLIN_MAIL_SENDER (email verification)'),
-      )
+    // An address on a domain onboarded for Cloudflare Email Sending; local uses its mail simulator.
+    const mailSender = yield* Config.String('GOBLIN_MAIL_SENDER').pipe(
+      Config.withDefault(stage.local ? 'hello@goblin.test' : ''),
+    )
+    if (mailSender === '') return yield* Effect.die(new Error('OTP login requires GOBLIN_MAIL_SENDER'))
     if (stage.name === 'dev' && signupMode === 'open')
       return yield* Effect.die(new Error('dev_sign_up_must_be_closed_or_invite_only'))
     const billingEnvironment = yield* Config.String('DODO_PAYMENTS_ENVIRONMENT').pipe(
@@ -46,7 +46,7 @@ export default Alchemy.Stack(
         : {
             domain: {
               name: domain,
-              zoneId: '8335636aef2c6209a4327d7a282b31d2',
+              zoneId,
               ...(stage.name === 'prod' ? { aliases: [`www.${domain}`] } : {}),
             },
           }),

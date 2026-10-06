@@ -23,9 +23,8 @@ policy.
 - `app_metadata` is created by the application migrations, but its `AppMetadata` service is used only by the
   integration test worker; remove it or give it a job.
 - A production stage: its own D1, credential key and model key; nothing is shared with dev.
-- Dev sign-up is closed (since 2026-10-04, with a 5M-token daily budget per user) because every account draws on the
-  one $10/30-day model key, and the Alibaba models on a weekly Token Plan bucket shared with Hermes. Reopening it needs
-  what is not built: a per-user override (raise one account's limit instead of everyone's; today the budget is per
-  agent with one limit for the deployment), a global cap on new accounts per day (sign-up rate limits are per IP), and
-  a mail domain of goblin's own (dev sends from `goblin@mytab.lol`). Passkeys are bound to the host they were made
-  on: moving dev to its own domain leaves them unusable there (people sign in with a code and add new ones).
+- Dev uses `dev.goblin.surf`, email OTP from `hello@goblin.surf`, and a private owner bootstrap followed by closed
+  sign-up. Its owner receives an explicit dev-only Pro override of 2M weighted tokens per UTC day. The dedicated
+  provider key separately caps aggregate spending at $10 per 30 days and restricts offered models. Reopening signup
+  needs a global account-admission policy and provider capacity review. Production payment acceptance and merchant
+  onboarding remain separate work; dev's operator override grants nothing on prod.

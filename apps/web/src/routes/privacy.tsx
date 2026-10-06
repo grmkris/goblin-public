@@ -6,8 +6,8 @@ function Privacy() {
     <LegalPage title="Privacy policy">
       <p>
         We process your account email, name, sign-in credentials and sessions; conversations, uploaded context, tool
-        results, usage and settings; and the permissions and credentials of services you connect. Passkeys store public
-        credential data, not your device biometric data.
+        results, usage and settings; and the permissions and credentials of services you connect. Sign-in codes are
+        stored hashed and expire after 10 minutes.
       </p>
       <p>
         Cloudflare hosts goblin and sends sign-in mail. Model requests go through our model gateway to the selected

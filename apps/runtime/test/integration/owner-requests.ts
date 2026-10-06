@@ -11,14 +11,20 @@ export interface Person {
 export async function person(base: string): Promise<Person> {
   const ip = `2001:db8:${Array.from(crypto.getRandomValues(new Uint16Array(4)), (n) => n.toString(16)).join(':')}:0:1`
   const email = `${crypto.randomUUID()}@fixture.test`
-  const response = await fetch(`${base}/api/auth/sign-up/email`, {
+  const headers = { origin: 'https://goblin.test', 'content-type': 'application/json', 'cf-connecting-ip': ip }
+  const sent = await fetch(`${base}/api/auth/email-otp/send-verification-otp`, {
     method: 'POST',
-    headers: { origin: 'https://goblin.test', 'content-type': 'application/json', 'cf-connecting-ip': ip },
-    body: JSON.stringify({
-      email,
-      name: 'Owner fixture',
-      password: 'fixture-password-12345',
-    }),
+    headers,
+    body: JSON.stringify({ email, type: 'sign-in' }),
+  })
+  expect(sent.status).toBe(200)
+  const mail = Schema.decodeUnknownSync(Schema.Struct({ code: Schema.String }))(
+    await (await fetch(`${base}/__test/auth/mail?email=${encodeURIComponent(email)}`)).json(),
+  )
+  const response = await fetch(`${base}/api/auth/sign-in/email-otp`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ email, otp: mail.code }),
   })
   expect(response.status).toBe(200)
   return {

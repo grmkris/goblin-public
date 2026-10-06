@@ -13,10 +13,7 @@ import {
   CardTitle,
   Count,
   Field,
-  FieldDescription,
   FieldGroup,
-  FieldLabel,
-  Input,
   Meter,
   Skeleton,
   Switch,
@@ -27,7 +24,6 @@ import { budgetFraction } from '../lib/usage.ts'
 import { BillingCard } from './billing.tsx'
 import { useBilling } from '../lib/billing.tsx'
 import { PageSection } from './page-section.tsx'
-import { PasskeysCard } from './passkeys.tsx'
 import { RoutinesSection } from './routines.tsx'
 import { StatusLabel } from './status-label.tsx'
 import { useUsageToday } from './use-usage.ts'
@@ -210,25 +206,22 @@ function ClientsCard({ onError }: { readonly onError: (message: string) => void 
   )
 }
 
-/** Permanent: the account, its agent's conversations, MCP connections and grants. The password confirms it. */
+/** Permanent: the account, its agent's conversations, MCP connections and grants. A fresh code sign-in confirms it. */
 function DeleteAccountCard({ onError }: { readonly onError: (message: string) => void }) {
   const [open, setOpen] = useState(false)
-  const [password, setPassword] = useState('')
   const [pending, setPending] = useState(false)
   async function remove(): Promise<void> {
     setPending(true)
     try {
-      await request('/api/auth/delete-user', { body: password ? { password } : {} })
+      await request('/api/auth/delete-user', { body: {} })
       window.location.assign('/')
     } catch (error) {
-      // Better Auth answers a wrong password with 400 and its own code, not an AppError tag.
       onError(
-        error instanceof ApiFailure && error.status === 400
-          ? 'That password is not right, or your sign-in is older than 10 minutes. Sign in again, then retry.'
+        error instanceof ApiFailure && (error.status === 400 || error.status === 401)
+          ? 'Sign in again with an emailed code, then delete within 10 minutes.'
           : failureText(error),
       )
     } finally {
-      setPassword('')
       setPending(false)
     }
   }
@@ -250,19 +243,9 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
             }}
           >
             <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="delete-password">Your password, if your account has one</FieldLabel>
-                <Input
-                  id="delete-password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-                <FieldDescription>
-                  Without a password, sign in again with a code first: deleting works for 10 minutes after.
-                </FieldDescription>
-              </Field>
+              <p className="text-sm text-muted-foreground">
+                Sign in again with an emailed code first. Deleting works for 10 minutes after signing in.
+              </p>
               <Field orientation="horizontal">
                 <Button type="submit" variant="destructive" pending={pending}>
                   Delete my account
@@ -308,9 +291,6 @@ export function Settings() {
         </PageSection>
       )}
       {active && <RoutinesSection />}
-      <PageSection id="sign-in" title="Signing in">
-        <PasskeysCard onError={setError} />
-      </PageSection>
       {active && (
         <PageSection
           id="clients"
