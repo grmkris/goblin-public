@@ -41,8 +41,20 @@
       "entry": ["alchemy.run.ts!", "src/worker.ts!"],
     },
     "packages/app": {
-      // Bundled by scripts/build.ts into dist/toolchain.js; nothing imports them as modules.
-      "entry": ["src/sdk.ts!", "src/release.ts!", "src/transpile.ts!"],
+      // scripts/build.ts reads tw-animate-css's stylesheet from node_modules by path (its package exports CSS only).
+      "ignoreDependencies": ["tw-animate-css"],
+      // Bundled by scripts/build.ts into dist/toolchain.js and dist/runtime/; nothing imports them as modules.
+      "entry": [
+        "src/sdk.ts!",
+        "src/release.ts!",
+        "src/transpile.ts!",
+        "src/style.ts!",
+        "src/ui/core.ts!",
+        "src/ui/charts.ts!",
+        "src/ui/maps.ts!",
+        "src/ui/diagrams.ts!",
+        "src/ui/icons.ts!",
+      ],
     },
   },
   "ignoreExportsUsedInFile": true,

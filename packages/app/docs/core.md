@@ -1,7 +1,8 @@
 # Agent apps
 
 An app is a small program you write for the owner. It keeps durable JSON state on goblin's server, and each action
-or view you define becomes a tool you can call (`app_<name>__<action>`). Build or change one with `app_build`.
+or view you define becomes a tool you can call (`app_<name>__<action>`). Build or change one with `app_build`. Add a
+`view.tsx` and the owner can open it as a live UI (topic `ui`).
 
 ## app.ts
 
@@ -53,7 +54,8 @@ export default defineApp({
 - Schemas: `s.string({min,max})`, `s.number({int,min,max})`, `s.boolean()`, `s.enum([...])`, `s.array(item,{max})`,
   `s.object({...})`, `s.record(value)`, `s.optional(schema)` (inside `s.object`), `s.nullable(schema)`.
 - Inputs are `s.object(...)`. Action and view names are camelCase. At most 12 actions and views.
-- Imports: only `@goblin/app` and your own files (`import { score } from './lib'`). No npm packages.
+- Imports: only `@goblin/app` and your own files (`import { score } from './lib'`). No npm packages. `view.tsx` has
+  its own imports (topic `ui`).
 - `agent: false` on an action hides it from your tools (for actions only the app's own UI should call).
 
 ## Changing an app
@@ -63,4 +65,4 @@ Call `app_build` again with the same `name`, sending only the files that change 
 schema or migrate into it, or the build fails and the running version stays. `app_inspect` shows the source, the
 state, recent events and errors; `app_rollback` goes back to an earlier version.
 
-More: `app_docs({ topic })` with `files` or `examples`.
+More: `app_docs({ topic })` with `ui`, `files` or `examples`.

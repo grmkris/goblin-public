@@ -1,16 +1,41 @@
 // The transpiler of agent app sources, run in a Dynamic Worker of its own (ADR 0021). sucrase strips TypeScript and
-// keeps line numbers, so a runtime stack points at the line the agent wrote. Imports are checked here: an app imports
-// only `@goblin/app` and its own files, which become `./<name>.js` modules side by side.
+// keeps line numbers, so a runtime stack points at the line the agent wrote. Imports are checked here: the server side
+// imports only `@goblin/app` and its own files, which become `./<name>.js` modules side by side; the view (`view.tsx`)
+// becomes one CommonJS module that requires only what its frame provides.
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { transform } from 'sucrase'
 
 /** A problem in one of the app's files, with the line when it is known. */
 export type Diagnostic = { readonly file: string; readonly line?: number; readonly message: string }
-/** The modules, when there are no diagnostics. */
-type Transpiled = { readonly modules: Readonly<Record<string, string>>; readonly diagnostics: readonly Diagnostic[] }
+/**
+ * The server modules and the view's module ('' without a view) with the frame bundles it needs, when there are no
+ * diagnostics.
+ */
+type Transpiled = {
+  readonly modules: Readonly<Record<string, string>>
+  readonly view: string
+  readonly libs: readonly string[]
+  readonly diagnostics: readonly Diagnostic[]
+}
 
 const ALLOWED = new Set(['@goblin/app'])
 const SOURCE = /^[a-z][a-z0-9-]{0,31}\.(?:ts|js)$/u
+const VIEW = 'view.tsx'
+/** What a view may require, and the frame bundle that provides it besides the core (null: the core). */
+const VIEW_IMPORTS: Readonly<Record<string, string | null>> = {
+  react: null,
+  'react/jsx-runtime': null,
+  '@goblin/app': null,
+  '@goblin/ui': null,
+  '@goblin/kit/chart': 'charts',
+  recharts: 'charts',
+  '@goblin/kit/map': 'maps',
+  'react-leaflet': 'maps',
+  leaflet: 'maps',
+  '@goblin/kit/diagram': 'diagrams',
+  'lucide-react': 'icons',
+}
+const REQUIRE = /\brequire\(\s*(['"])([^'"\n]+)\1\s*\)/gu
 const SPECIFIER = /(\b(?:import|export)\b[^'"`;]*?\bfrom\s*|\bimport\s*)(['"])([^'"\n]+)\2/gu
 const DYNAMIC = /\bimport\s*\(/gu
 
@@ -57,19 +82,62 @@ function transpiled(file: string, source: string, stems: ReadonlySet<string>, di
   }
 }
 
+/**
+ * The view as one CommonJS module with React's automatic JSX runtime, and the frame bundles its requires need. Its
+ * imports of types (from `./app`, say) disappear; anything else outside the frame's modules is a problem.
+ */
+function viewModule(source: string, diagnostics: Diagnostic[]): { readonly code: string; readonly libs: string[] } {
+  let code: string
+  try {
+    code = transform(source, {
+      transforms: ['typescript', 'jsx', 'imports'],
+      jsxRuntime: 'automatic',
+      production: true,
+      filePath: VIEW,
+    }).code
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause)
+    const line = syntaxLine(message)
+    diagnostics.push({ file: VIEW, ...(line === undefined ? {} : { line }), message })
+    return { code: '', libs: [] }
+  }
+  for (const match of code.matchAll(DYNAMIC))
+    diagnostics.push({ file: VIEW, line: lineAt(code, match.index), message: 'import() is not available in a view.' })
+  const libs = new Set<string>()
+  for (const match of code.matchAll(REQUIRE)) {
+    const name = match[2] ?? ''
+    const lib = VIEW_IMPORTS[name]
+    if (lib === undefined)
+      diagnostics.push({
+        file: VIEW,
+        line: lineAt(code, match.index),
+        message: `Cannot import "${name}" in the view: it imports ${Object.keys(VIEW_IMPORTS).join(', ')}, and types from its app.`,
+      })
+    else if (lib !== null) libs.add(lib)
+  }
+  return { code, libs: [...libs].toSorted() }
+}
+
+const failed = (diagnostics: readonly Diagnostic[]): Transpiled => ({ modules: {}, view: '', libs: [], diagnostics })
+
 export class Transpile extends WorkerEntrypoint {
-  /** The app's files as modules named `<name>.js`, and every problem found (none when it worked). */
+  /** The app's files as modules named `<name>.js` and its view, and every problem found (none when it worked). */
   transpile(files: Readonly<Record<string, string>>): Transpiled {
-    const names = Object.keys(files)
+    const { [VIEW]: viewSource, ...server } = files
+    const names = Object.keys(server)
     const diagnostics: Diagnostic[] = names
       .filter((file) => !SOURCE.test(file))
-      .map((file) => ({ file, message: 'File names are lowercase, like app.ts or lib.ts.' }))
-    if (diagnostics.length > 0) return { modules: {}, diagnostics }
+      .map((file) => ({ file, message: 'File names are lowercase, like app.ts or lib.ts; the UI is view.tsx.' }))
+    if (diagnostics.length > 0) return failed(diagnostics)
     const stems = new Set(names.map(stem))
     const modules = Object.fromEntries(
-      Object.entries(files).map(([file, source]) => [`${stem(file)}.js`, transpiled(file, source, stems, diagnostics)]),
+      Object.entries(server).map(([file, source]) => [
+        `${stem(file)}.js`,
+        transpiled(file, source, stems, diagnostics),
+      ]),
     )
-    return diagnostics.length > 0 ? { modules: {}, diagnostics } : { modules, diagnostics }
+    const view = viewSource === undefined ? { code: '', libs: [] } : viewModule(viewSource, diagnostics)
+    return diagnostics.length > 0 ? failed(diagnostics) : { modules, view: view.code, libs: view.libs, diagnostics }
   }
 }
 

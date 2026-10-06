@@ -65,9 +65,10 @@ export const nodes: readonly Node[] = [
   {
     dir: 'packages/app',
     name: '@goblin/app',
-    role: 'agent app SDK and toolchain, run inside Dynamic Workers',
+    role: 'agent app SDK and toolchain, run inside Dynamic Workers, and the frame runtime of app views',
     runtime: 'cloud',
-    mayImport: [],
+    mayImport: ['@goblin/kit', '@goblin/ui'],
+    zones: { 'src/ui': 'browser' },
   },
   {
     dir: 'packages/kit',
