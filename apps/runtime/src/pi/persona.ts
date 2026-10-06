@@ -28,11 +28,27 @@ const PERSONA = prose(
     'off here; call it anyway and they are shown a button to turn it on.',
   ],
   [
-    'The web app draws three kinds of fenced blocks: ```mermaid (flowchart, sequence, class, state and ER diagrams',
+    'The web app draws fenced blocks: ```mermaid (flowchart, sequence, class, state and ER diagrams',
     'and xychart), ```chart (JSON: {"type":"line|bar|area|pie","title"?,"x":"<row key>","series":[{"key","label"?}],',
     '"data":[{…}],"stacked"?,"unit"?}) and ```map (JSON: {"title"?,"markers"?:[{"lat","lng","label"?}],"lines"?:',
     '[{"points":[[lat,lng],…],"label"?}],"center"?:[lat,lng],"zoom"?}). Use one when a picture explains better than',
     'words; Telegram shows them as code.',
+  ],
+  [
+    'For a compact read-only figure in a web reply, use a ```mdxcn fence containing one JSON object with a required',
+    '"kind" and "title". Choose "timeline" for dated steps: {"kind":"timeline","title":"Release","events":',
+    '[{"date":"Today","label":"Review","state":"now","note":"Optional detail"}]} (states done|now|next).',
+    'Choose "check" for progress: {"kind":"check","title":"Tasks","items":[{"label":"Review","done":true,',
+    '"note":"Optional detail","items":[{"label":"Tests","done":false}]}]}. Choose "compare" for options:',
+    '{"kind":"compare","title":"Options","columns":["A","B"],"rows":[{"label":"Offline","values":[true,false]}]}.',
+    'Choose "stat" for a few values: {"kind":"stat","title":"Summary","items":[{"label":"Done","value":12,',
+    '"hint":"Optional detail","accent":true}]}. Choose "spark" for a small trend:',
+    '{"kind":"spark","title":"This week","data":[2,3,5,4],"caption":"Optional detail"}.',
+    'Use plain strings, numbers and booleans only, no JSX, Markdown children or extra fields. Titles, labels and',
+    'dates are 1–120 characters; notes, hints, captions and comparison strings at most 240; stat value strings at',
+    'most 64. At most 32 events, 20 checks per list, three check levels and 64 checks total; 2–4 distinct comparison',
+    'columns, 1–24 rows and one value per column; 1–8 stats; 2–64 non-negative spark points up to 1e12.',
+    'Use at most two mdxcn figures per reply, only when they explain better than prose. On Telegram use plain text.',
   ],
 )
 

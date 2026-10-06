@@ -12,49 +12,65 @@ import { RichBlock } from './blocks.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 
 type PreProps = { readonly node?: ExtraProps['node']; readonly children?: ReactNode }
+const BlockContext = createContext<{
+  readonly open: number | undefined
+  readonly live: boolean
+  readonly figures: boolean
+}>({ open: undefined, live: false, figures: false })
 
 /**
- * A code block, or the diagram, chart or map it describes (```mermaid, ```chart, ```map). `open` is where a fence the
+ * A code block, or the figure it describes (```mermaid, ```chart, ```map, ```mdxcn). `open` is where a fence the
  * streaming reply has not closed yet begins: that block stays code until it is whole.
  */
-function codeBlock(open: number | undefined) {
-  return function Pre({ node, children }: PreProps) {
-    const plain = <pre>{children}</pre>
-    const code = node?.children[0]
-    if (code?.type !== 'element' || code.tagName !== 'code') return plain
-    const kind = blockKind(code.properties.className)
-    if (kind === undefined || (open !== undefined && (node?.position?.start.offset ?? 0) >= open)) return plain
-    const source = code.children.map((child) => (child.type === 'text' ? child.value : '')).join('')
-    return <RichBlock kind={kind} source={source} code={plain} />
-  }
+function Pre({ node, children }: PreProps) {
+  const { open, live, figures } = use(BlockContext)
+  const plain = <pre>{children}</pre>
+  const code = node?.children[0]
+  if (code?.type !== 'element' || code.tagName !== 'code') return plain
+  const kind = blockKind(code.properties.className)
+  if (kind === 'mdxcn' && !figures) return plain
+  const unfinished = open !== undefined && (node?.position?.start.offset ?? 0) >= open
+  if (kind === undefined || (unfinished && (live || kind === 'mdxcn'))) return plain
+  const source = code.children.map((child) => (child.type === 'text' ? child.value : '')).join('')
+  return <RichBlock kind={kind} source={source} code={plain} />
 }
 
 /**
  * Assistant text as GitHub-flavoured Markdown, set by shadcn/typeset. Raw HTML is never rendered; links open in a new
  * tab without a referrer; wide tables scroll sideways instead of widening the conversation. ```mermaid, ```chart and
- * ```map blocks are drawn (ADR 0023); while `live`, the block still streaming stays code.
+ * ```map blocks are drawn (ADR 0023); assistant replies also draw ```mdxcn. While `live`, an open fence stays code.
  */
-export function MessageText({ text, live = false }: { readonly text: string; readonly live?: boolean }) {
+export function MessageText({
+  text,
+  live = false,
+  figures = false,
+}: {
+  readonly text: string
+  readonly live?: boolean
+  readonly figures?: boolean
+}) {
   return (
     <div className="typeset typeset-chat">
-      <Markdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noreferrer noopener">
-              {children}
-            </a>
-          ),
-          table: ({ children }) => (
-            <div className="typeset-scroll">
-              <table>{children}</table>
-            </div>
-          ),
-          pre: codeBlock(live ? openFenceAt(text) : undefined),
-        }}
-      >
-        {text}
-      </Markdown>
+      <BlockContext value={{ open: openFenceAt(text), live, figures }}>
+        <Markdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            a: ({ href, children }) => (
+              <a href={href} target="_blank" rel="noreferrer noopener">
+                {children}
+              </a>
+            ),
+            table: ({ children }) => (
+              <div className="typeset-scroll">
+                <table>{children}</table>
+              </div>
+            ),
+            pre: Pre,
+          }}
+        >
+          {text}
+        </Markdown>
+      </BlockContext>
     </div>
   )
 }
@@ -173,7 +189,7 @@ export function UserText({
 export function AssistantText({ text, live = false }: { readonly text: string; readonly live?: boolean }) {
   return (
     <article className="bubble bubble-assistant">
-      <MessageText text={text} live={live} />
+      <MessageText text={text} live={live} figures />
     </article>
   )
 }

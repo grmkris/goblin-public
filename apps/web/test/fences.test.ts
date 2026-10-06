@@ -6,6 +6,7 @@ describe('block kinds', () => {
     expect(blockKind(['language-mermaid'])).toBe('mermaid')
     expect(blockKind('language-chart')).toBe('chart')
     expect(blockKind(['hljs', 'language-map'])).toBe('map')
+    expect(blockKind('language-mdxcn')).toBe('mdxcn')
     expect(blockKind(['language-ts'])).toBeUndefined()
     expect(blockKind(undefined)).toBeUndefined()
   })
@@ -16,6 +17,11 @@ describe('open fences', () => {
     const text = 'Here:\n```mermaid\ngraph LR\n  A --> B'
     expect(openFenceAt(text)).toBe(6)
     expect(openFenceAt(`${text}\n\`\`\`\nDone.`)).toBeUndefined()
+  })
+  it('keeps an mdxcn figure as code until its streaming fence closes', () => {
+    const text = 'Progress:\n```mdxcn\n{"kind":"stat","title":"Done","items":[{"label":"Tasks","value":3}]}'
+    expect(openFenceAt(text)).toBe(10)
+    expect(openFenceAt(`${text}\n\`\`\``)).toBeUndefined()
   })
   it('close only on the same character, at least as long, with nothing after it', () => {
     expect(openFenceAt('````chart\n{}\n```\n')).toBe(0)

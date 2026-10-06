@@ -313,15 +313,23 @@ scrubbed, and no transcript field. The learner's model call counts toward the bu
 
 ## Chat blocks
 
-The agent's replies draw three kinds of fenced block (ADR 0023): ```mermaid diagrams, and ```chart and ```map with a
-JSON spec (`ChartSpec`, `MapSpec` in `packages/kit/src/specs.ts`). `MessageText` (`components/parts/text-part.tsx`)
-hands such a block to `RichBlock` (`components/parts/blocks.tsx`), which loads that kind's module from `@goblin/kit`
+The agent's replies draw fenced blocks (ADR 0023): ```mermaid diagrams, and ```chart, ```map and ```mdxcn with a
+JSON spec (`ChartSpec`, `MapSpec` in `packages/kit/src/specs.ts`, `MdxcnSpec` in `mdxcn-spec.ts`). `MessageText`
+(`components/parts/text-part.tsx`) hands such a block to `RichBlock` (`components/parts/blocks.tsx`), which loads that kind's module from `@goblin/kit`
 on first use and shows the plain code block whenever the source does not parse or drawing fails. While a reply
 streams, the block whose fence is still open stays code (`lib/fences.ts`). A diagram is beautiful-mermaid's SVG as an
 `<img>` data URI with the theme's tokens resolved to concrete colours, so nothing in it runs or loads; it redraws when
 the theme changes. Charts are Recharts in the five `--chart-*` tokens; maps are Leaflet over OpenStreetMap's
-raster tiles, quieted to the theme by a CSS filter, the one host a block fetches from. The persona tells the model the
-three shapes; Telegram shows them as code.
+raster tiles, quieted to the theme by a CSS filter, the one host a block fetches from. The persona gives the model the
+mdxcn JSON grammar and a two-figure limit; Telegram shows drawn fences as code.
+
+mdxcn's `MdxcnSpec`/`mdxcnSpec` (`packages/kit/src/mdxcn-spec.ts`) validate a bounded union of timeline, check,
+compare, stat and spark. `@goblin/kit/mdxcn` exports the parser and the five read-only components. Unknown kinds,
+extra fields, oversized or malformed specs remain code. Only `AssistantText` opts into mdxcn: tool Markdown and
+shared notes do not draw it. The MIT adaptation and upstream revision are recorded in `packages/kit/vendor/mdxcn/`.
+Its frame maps graph tokens to the theme's semantic/chart tokens; container queries keep timelines readable in
+narrow panes, comparison tables scroll internally, stat grids wrap and CSS entrance animations respect reduced
+motion. It has no network or MDX compiler, and requires no migration.
 
 ## MCP Apps host
 

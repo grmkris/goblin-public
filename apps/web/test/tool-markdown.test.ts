@@ -46,4 +46,9 @@ describe('formatted tool Markdown', () => {
   it('leaves a diagram fence as code', () => {
     expect(render('```mermaid\ngraph TD; A-->B\n```')).toContain('<pre><code class="language-mermaid">')
   })
+  it('leaves mdxcn as ordinary code even when the spec is valid', () => {
+    const html = render('```mdxcn\n{"kind":"stat","title":"Done","items":[{"label":"Tasks","value":3}]}\n```')
+    expect(html).toContain('<pre><code class="language-mdxcn">')
+    expect(html).not.toContain('kit-mdxcn')
+  })
 })
