@@ -3,7 +3,9 @@
 Status: **Implemented for dev (2026-10-06)**. Reviewed against the code on 2026-10-06; the review's changes are
 folded into the sections below, its answers to the open questions are in section 10, the visual and motion direction is
 section 11 and the definition of "delivered" is section 12. Slices 1–5 describe the implementation; the items under Later remain deferred.
-The delivery target is `https://dev.goblin.surf`; production stays a separate owner step.
+The delivery target is `https://dev.goblin.surf`; production stays a separate owner step. Round 2 adds agent-made
+figure snapshots, owner-pinned MCP Apps and a MyInbox scheduled-app pattern. MyGram's local/dev suggestion is unchanged
+while its bot/account setup remains an owner decision.
 
 ## 1. Goal
 
@@ -13,8 +15,7 @@ Make Main feel like a home surface for the owner:
 - the newest exchange sits above the lower edge instead of being pressed against the composer;
 - a bento grid appears between the newest exchange and the input;
 - the agent can add, remove, arrange and update widgets in that grid;
-- widgets can be host-built components, agent-built app views, or MCP Apps from connected servers (MCP Apps come
-  after the first delivery; see section 8).
+- widgets are host-rendered notes and recent conversations, agent-built app views, or MCP Apps pinned by the owner.
 
 Home is a **glance surface**: one look answers "what needs me now?", one action can happen in place, and deep work
 opens the App's page. Tiles are widgets in the iOS sense, not miniature copies of full apps.
@@ -69,7 +70,7 @@ On Main, the vertical order should be:
 ```text
 older messages
 current exchange
-Home header (“Home · Tuesday, 6 October”  ·  Edit)
+Home header (“Home · Tuesday, 6 October”  ·  Ask for a tile  ·  Edit)
 Home bento grid
 composer dock
 ```
@@ -98,8 +99,10 @@ currently measure message content only.
 If “previous conversations” means threads and other conversations rather than earlier messages, Home provides a
 recent-conversations tile backed by the workspace feed. The transcript itself remains conversation-scoped.
 
-**Empty Home.** With no tiles, the header shows one quiet row of three starter prompts (“Build me a reading list”,
-“Put my recent conversations on Home”, “Keep a note for today”). Choosing one fills the composer; it never sends.
+**Empty Home.** With no tiles, the copy says “Your agent can build tiles: trackers, charts, your inbox. Ask it.”
+The prompts are “Track my reading on Home”, “Chart my spending this month on Home” and “Put my inbox on Home”.
+Choosing one fills the composer; it never sends. The quiet Ask for a tile header button and edit-mode placeholder
+fill “Add a tile to Home that ” and focus the composer.
 
 ## 5. Widget model
 
@@ -138,10 +141,14 @@ Built-in tiles for the first delivery are the two that need no data adapter and 
 - **Recent conversations:** from the workspace feed; tapping a row opens that conversation's pane.
 - **Note:** a title and markdown the agent (or owner) writes, rendered like a transcript message: markdown as data, no
   raw HTML, links through the existing link handling. It gives the agent a cheap way to put something on Home without
-  building an app (“today: dentist 15:00, call Ana”).
+  building an app (“today: dentist 15:00, call Ana”). It renders the same stat, spark, timeline, compare, check and
+  chart figures as chat. Home figures draw flat on the tile card and fit its fixed body, with clip/fade as a fallback;
+  a snapshot names when the data was true.
 
-Lists, metrics and charts come through agent apps, which already have `@goblin/ui` and the chart, map and diagram kit.
-Built-in metric/chart tiles, calendar and inbox wait for a selected data source with its own adapter and refresh policy.
+There are no built-in metric or chart tiles. Snapshot figures live in notes; lists and live data use agent apps with
+`@goblin/ui` and the kit. MyInbox is the chosen inbox source: an agent app declares the connected `message_list` tool,
+validates and keeps the newest five messages, and refreshes every 15 minutes with freshness and last-good error
+handling. There is no platform inbox adapter. See the `app_docs` `examples` topic.
 
 **Agent app views on Home.** The host context gains a surface hint (`surface: 'home'`, the tile size and its fixed
 width and height), exposed by the app SDK, so a view can render a glance variant: a headline, at most a handful of rows
@@ -168,7 +175,10 @@ Two tools instead of six:
 
 Authority (presentation only; placing a tile never grants a server, tool, power or credential):
 
-- The agent may add tiles and may move, resize, update or remove the tiles it placed. Applied immediately.
+- The agent may add notes, recent conversations and agent apps with views, then move, resize, update or remove the
+  tiles it placed. Applied immediately. MCP App adds require the owner and an open registry row; before the transaction,
+  launch must be retrievable and the current tool must still declare its resource. Existing closed MCP tiles never
+  block an unrelated edit.
 - Removing or changing an owner-placed tile needs the owner: `home_edit` returns an ask instead of applying.
 - Every agent edit leaves a receipt in the transcript (“Placed Reading list on Home”) with **Show** (scroll to the tile
   and ring it once) and **Undo** (apply the inverse operations under a new operation ID). Forgiveness instead of
@@ -210,6 +220,10 @@ Add a `HomeSurface` component to the Main conversation. It:
 - **Close vs remove.** The tile menu's “Remove from Home” drops the placement and leaves the App alive. The App's own
   “Close app” unloads it; its tile then shows “Closed · Show”. A deleted App's tile disappears with it. Nothing
   reloads silently.
+- **MCP Show.** A closed MCP tile reopens through the keep-call POST, which re-verifies the tool; agent apps use the
+  existing reopen PATCH. The label uses registry-derived origin and numbered titles, rendered as untrusted text.
+- **Grant cards.** On Home the host card overlays the fixed frame, names the tool and offers Allow, Not now and Open.
+  Frame and stage must fit the tile body after springs and resize reflow settle, including reduced motion.
 - **Releases.** An upgrade or rollback reloads the frame in place (current behaviour); the tile keeps its position.
 
 The six-instance residency cap is currently soft: visible Apps are not evicted. See [ADR 0020](./adr/0020-durable-apps-one-iframe-per-instance.md).
@@ -253,16 +267,24 @@ browser receipt where the slice has UI (section 12).
 - README, `docs/architecture.md`, `docs/development.md`, `packages/app/docs/ui.md` and the affected skills.
 - The full acceptance run of section 9 on dev, with receipts.
 
+### Round 2
+
+- Agent-made snapshot figures in notes; Ask for a tile and refreshed starter prompts fill without sending.
+- Owner-only open MCP App pinning, originating-resource verification, retained closed tiles and CSRF-protected writes.
+- MyInbox suggestions and an agent-app pattern with a 15-minute refresh schedule; local fixture acceptance is distinct
+  from owner sign-in and real-message acceptance on dev.
+
 ### Later
 
-- MCP App tiles, only after verifying originating-server and grant behaviour from Home; pinnable only after the owner
-  explicitly keeps one.
-- Built-in metric and chart tiles with explicit data adapters; calendar or inbox once a source is chosen.
 - Independent App instances.
+- Server-side App-to-server route binding on `/api/apps/:id/mcp/...`; the current browser bridge is origin-bound.
+- Calendar sources through agent apps when selected. Built-in metric/chart adapters are not planned.
 
 ## 9. Acceptance criteria
 
-Delivered when all of these pass on dev (`https://dev.goblin.surf`, owner session) as well as locally:
+Run the applicable checks locally and on dev (`https://dev.goblin.surf`, owner session). When an MCP App server or
+MyInbox is not connected, record the corresponding live checks as owner steps; use the no-auth local fixtures for
+protocol and browser acceptance:
 
 - “Build me a reading list and put it on Home” creates an agent app and a visible Home tile, with a receipt in the
   transcript.
@@ -280,6 +302,12 @@ Delivered when all of these pass on dev (`https://dev.goblin.surf`, owner sessio
 - Removing a tile drops its placement but does not delete the underlying app; deleting the app removes its tile.
 - The agent cannot remove an owner-placed tile without asking; Undo restores the layout before an agent edit.
 - No placement operation grants an MCP server, tool, power or credential.
+- An agent cannot pin an MCP App; the owner pins an open App after launch and current tool-resource verification.
+  Closing the App or its thread leaves the tile and does not block other edits; Show re-verifies.
+- A revoked grant denies the next App tool call without changing layout or restoring a grant.
+- The settled stage, frame and grant card stay inside the tile body in all four size/theme runs.
+- A scheduled fixture inbox app validates and keeps the newest five messages, retains last-good data on failure and
+  draws freshness/errors on Home. Real-inbox acceptance follows owner connection and power approval.
 - Replaying a layout operation does not duplicate a tile, and concurrent edits reject stale revisions.
 - Closing, upgrading and rolling back an App leave Home in a consistent state.
 - Every tile action is reachable by keyboard; reduced motion replaces springs with short cross-fades.
@@ -314,9 +342,10 @@ over tiles; one canonical stage with page > Home > inline precedence.
    undone.
 4. **Device-local or shared drag?** Shared: order and size are server state. Edit mode is per device. There are no
    coordinates to keep per device.
-5. **First data source?** Recent conversations (already in the feed, no new grants) and notes; tasks and lists come as
-   agent apps. Calendar and inbox later.
-6. **Pin MCP Apps only after the owner keeps one?** Yes, when MCP App tiles land (after this delivery).
+5. **Data sources?** Recent conversations use the feed, snapshots use notes, and live data uses agent apps. MyInbox is
+   the inbox source, refreshed on a 15-minute app schedule; there is no built-in adapter.
+6. **Pin MCP Apps only after the owner keeps one?** Yes. Only the owner adds an open MCP App, after its call and current
+   resource declaration are rechecked. Placement grants nothing.
 7. **Tile click?** Interactive in place; Open (the tile title or its ↗) springs to the App page; the tile menu holds the
    rest.
 8. **Separate Home route?** No. `/` keeps restoring the workspace; Home lives in Main.
@@ -330,7 +359,7 @@ gradients, no accent colour of its own. The transcript is the paper; Home is the
 columns, 0.75 rem gap, a fixed row height of about 9.5 rem. Below 640 px: 2 columns; `wide` becomes 2×1 and `large`
 2×2. `grid-auto-flow: dense` packs the ordered list. Insets add `env(safe-area-inset-left/right)` in landscape.
 
-**Header.** “Home” (13 px, weight 600, tracking 0.01 em) with the date in muted text and tabular figures, Edit as a
+**Header.** “Home” (13 px, weight 600, tracking 0.01 em) with the date in muted text and tabular figures, Ask for a tile beside Edit as a
 ghost button on the right. Above it a hairline that fades out at both ends instead of a full-width rule.
 
 **Tiles.** `--card` on the background with a `--hairline` border, `radius-2xl`, and a two-layer shadow in light mode
@@ -373,8 +402,9 @@ never a translucent surface on another translucent surface.
 
 - **Live URL:** `https://dev.goblin.surf` (owner session). Production is not part of this delivery.
 - **Delivered** means: every slice on `main`, deployed to dev, `smoke:dev` green, the section 9 run passed with
-  receipts and screenshots in `.local/goblin-acceptance/home-*`, docs and ADR 0025 updated, and a “[goblin]” Telegram
-  update sent to the owner.
+  receipts and screenshots in `.local/goblin-acceptance/home-*`, and docs and ADR 0025 updated. Owner-dependent MCP App,
+  real-inbox and real-device checks are listed separately. Goblin's own Telegram setup belongs to the orchestrator and
+  owner; the coding lane sends no status-channel Telegram update.
 - **Routine per slice:** `heavy bun run check` (exit 75 means another gate holds the slot: retry; never pipe it);
   commit by exact paths; `bun run plan:dev`, then `bun run deploy:dev`; `bun run smoke:dev`. When the checkout holds
   another agent's uncommitted work, deploy from a clean worktree at `HEAD` with `.local/*.env` (mode 600) and

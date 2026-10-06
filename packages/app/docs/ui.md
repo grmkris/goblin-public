@@ -171,7 +171,14 @@ const compact = host.surface === 'home'
 const shown = compact ? books.slice(0, host.tileSize === 'large' ? 5 : 2) : books
 ```
 
-After building an app with a view, read `home_read` for its App id and layout revision, then call `home_edit` with an
+After building an app with a view in Main, offer to put it on Home. Read `home_read` for its App id and layout revision, then call `home_edit` with an
 `add` operation (`kind: 'app'`, that `appId`, a new tile `id`, and `size: 'medium'` or `'large'`). Read again if the
 revision is stale. Placing grants no power and starts no model. Remove from Home keeps the app; Close unloads the
-view and leaves a Closed · Show tile. Page > Home > chat is the placement order; other places show a stub.
+view and leaves a Closed · Show tile. Page > Home > chat is the placement order; other places show a stub. Only the owner pins MCP Apps; agent apps
+continue to use `home_edit`. A note figure is a snapshot and names when it was true; scheduled app state is the path
+for live data. Keep compact rows and freshness inside `host.height`, with clip/fade only as a fallback.
+
+For a live inbox or calendar glance, use an agent app rather than a built-in tile adapter. Declare the exact connected
+tool in `uses.tools`, refresh it with a `{ action: 'refresh', every: '15m' }` schedule, validate and bound the response in
+`prepare`, and retain the last good state when a refresh fails. Show freshness and the last error on Home; the complete
+example is in the `app_docs` `examples` topic. The owner must connect the real server and approve the app power.
