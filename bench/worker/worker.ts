@@ -85,6 +85,9 @@ export class BenchmarkAgent extends Agent<Env> {
             modelTransport(config.manifest, option.id)?.contextWindowTokens ?? option.contextWindow,
           )
         this.#memory = new MainMemory(this.#db, this.#harness, new CheapModel(models, config.writer, () => undefined), {
+          // The benchmark's runs fold main into a new view after every turn, as its recorded results did; the
+          // runtime's fold threshold is for the prompt cache, which the benchmark does not measure.
+          foldTokens: 0,
           ...(profile === 'controlled' ? { viewBytes: pressure.viewBytes } : {}),
           ...(config.manifest.summaryPrompt === null ? {} : { summaryPrompt: config.manifest.summaryPrompt }),
         })
