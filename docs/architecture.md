@@ -208,7 +208,8 @@ among three kinds of signal. YAML and script comments, diffs, tracebacks and lis
 document is still readable and a false one would mangle data. `ToolMarkdown` sets it in the compact `typeset-tool`
 preset as untrusted text: images are named and never loaded, only absolute http(s) and mailto links work and they
 show their host, raw HTML shows as written and fences stay code. Reference definitions and link titles show only in
-Raw. Ordinary or incomplete result text stays readable. Raw and its Copy action preserve the complete original text;
+Raw. A long payload scrolls in place and fades at its bottom edge while more lies below (`scroll-edge-bottom`, driven
+by its own scroll position). Ordinary or incomplete result text stays readable. Raw and its Copy action preserve the complete original text;
 the tree copies complete values rather than its shortened display. No renderer fetches URLs or changes authority.
 
 When the agent waits on the owner, the request is pinned above the composer until their next message

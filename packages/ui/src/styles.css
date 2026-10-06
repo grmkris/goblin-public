@@ -215,6 +215,38 @@
     border-color: var(--foreground);
   }
 }
+/*
+ * A bounded scroller that fades at its bottom edge while more lies below, so a cut-off reads as "scroll on", and
+ * meets the end crisply. Its own scroll position drives the fade (no script, no motion); a scroller with nothing
+ * hidden has no active timeline and no fade. A mask, so it needs no surface colour. Where scroll-driven animations
+ * are unsupported, or more contrast is asked for, the edge stays as it was.
+ */
+@property --scroll-edge {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes scroll-edge {
+  from {
+    --scroll-edge: 1.5rem;
+  }
+  to {
+    --scroll-edge: 0px;
+  }
+}
+@utility scroll-edge-bottom {
+  @supports (animation-timeline: scroll()) {
+    mask-image: linear-gradient(to bottom, #000 calc(100% - var(--scroll-edge)), transparent);
+    animation-name: scroll-edge;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: scroll(self);
+    animation-range: calc(100% - 1.5rem) 100%;
+  }
+  @media (prefers-contrast: more) {
+    mask-image: none;
+  }
+}
 /* A soft fade below floating chrome instead of a hard divider: it shows only where content passes underneath. */
 @utility material-edge-bottom {
   &::after {

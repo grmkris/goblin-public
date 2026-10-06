@@ -36,11 +36,11 @@ function ToolPayload({
           <CopyButton text={raw} label={`Copy ${label.toLowerCase()}`} />
         </div>
       </div>
-      <TabsContent value="view" className="max-h-80 min-w-0 overflow-auto">
+      <TabsContent value="view" className="scroll-edge-bottom max-h-80 min-w-0 overflow-auto">
         <div className="flex min-w-0 flex-col gap-2">{children}</div>
       </TabsContent>
       {view !== 'plain' && (
-        <TabsContent value="raw" className="max-h-80 min-w-0 overflow-auto">
+        <TabsContent value="raw" className="scroll-edge-bottom max-h-80 min-w-0 overflow-auto">
           <pre className="m-0 whitespace-pre-wrap wrap-anywhere font-mono text-xs leading-6">{raw}</pre>
         </TabsContent>
       )}
