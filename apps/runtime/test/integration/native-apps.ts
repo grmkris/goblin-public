@@ -108,7 +108,24 @@ export function appsCase(url: string) {
       afterDrop: ['flaky'],
       armedAfterDrop: 1,
       summary: expect.stringContaining('Schedules: flaky every 1d at 06:30 UTC (last run'),
+      manage: {
+        paused: { paused: 'owner' },
+        armedPaused: 0,
+        resumed: { paused: null },
+        ran: { status: 'ok', error: null },
+        home: '1',
+        badHome: 'NotFound',
+        listed: [expect.objectContaining({ name: 'ticker', app: null, home: '1' })],
+        refused: 'InvalidInput',
+        objects: { before: expect.any(Number), after: 0 },
+        removed: { deleted: 'ticker' },
+        gone: { app: true, jobs: 0, armed: 0, files: { count: 0, bytes: 0 } },
+      },
     })
+    expect(jobs).toHaveProperty(
+      'manage.objects.before',
+      expect.toSatisfy((count: number) => count > 0),
+    )
     const turn = yield* probe(url, '/apps-turn')
     expect(turn).toMatchObject({
       built: expect.stringContaining('"status":"active","app":"tally"'),

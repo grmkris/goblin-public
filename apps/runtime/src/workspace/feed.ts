@@ -47,6 +47,7 @@ export class WorkspaceFeed {
       if (this.#listeners.size > 0) void this.#describe(ids)
     })
     apps.onChange((changed) => this.#emit(changed.map((app) => ({ type: 'app' as const, app }))))
+    apps.onRemove((id) => this.#emit([{ type: 'app-removed' as const, id }]))
   }
 
   /**

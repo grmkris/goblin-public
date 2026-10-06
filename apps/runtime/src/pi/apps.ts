@@ -13,7 +13,8 @@ const GUIDE = [
   "reaches the internet, the owner's MCP tools, a model, Telegram or other apps only with powers the owner approves",
   '(topic `powers`), and runs an action on its own with `schedules` (topic `schedules`). When a task needs a service',
   'the owner has not connected, look with `mcp_suggest` and ask them with `mcp_request_server`.',
-  "`code_run` runs a one-off JavaScript snippet over the owner's files for calculations; it keeps nothing.",
+  "`code_run` runs a one-off JavaScript snippet over the owner's files for calculations; it keeps nothing. The owner",
+  'manages apps on the Apps page (allow powers, pause schedules, go back a version, delete); you cannot delete one.',
 ].join(' ')
 
 const text = (value: unknown) => ({

@@ -93,6 +93,12 @@ describe('the workspace feed state', () => {
     expect(next.apps.map(({ id }) => id)).toEqual(['3', '5', '7'])
     expect(next.apps.at(-1)?.closedAt).toBe(9)
   })
+
+  it('drops an App the owner deleted', () => {
+    const start = fromSnapshot({ conversations: [MAIN], activity: [], apps: [app('3'), app('7')] })
+    const next = applyChanges(start, [{ type: 'app-removed', id: '3' }])
+    expect(next.apps.map(({ id }) => id)).toEqual(['7'])
+  })
 })
 
 /** A scheduler the test runs by hand: each retry waits in `queued` until called. */

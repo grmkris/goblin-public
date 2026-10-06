@@ -1,5 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
+import { Conflict, NotFound } from '../http/errors.ts'
 import { appAgentJobs } from '../storage/schema.ts'
 import { type Every, type Manifest, type Schedule, everyOf } from './manifest.ts'
 import { problemText } from './queue.ts'
@@ -157,6 +158,53 @@ export class AppJobs {
       .all()
       .filter((row) => row.app === app)
       .map(jobView)
+  }
+
+  /** The owner pauses a schedule (its native schedule goes) or resumes it from its next slot. */
+  async pause(app: string, action: string, paused: boolean): Promise<void> {
+    const row = this.#required(app, action)
+    if (paused) {
+      this.#jobs.update(app, action, { paused: 'owner', scheduleId: null })
+      if (row.scheduleId !== null) await this.#deps.schedules.cancel(row.scheduleId)
+    } else if (row.paused !== null) {
+      const nextAt = nextSlot(row, this.#deps.now())
+      this.#jobs.update(app, action, { paused: null, failures: 0, nextAt, scheduleId: null })
+      await this.#arm({ ...row, paused: null, failures: 0, nextAt, scheduleId: null })
+    }
+    this.#deps.changed(app)
+  }
+
+  /**
+   * The owner runs a schedule's action now, outside its slots: it counts toward the day's runs and moves no slot. How
+   * it went is the schedule's last run.
+   */
+  async runNow(app: string, action: string): Promise<void> {
+    const row = this.#required(app, action)
+    const now = this.#deps.now()
+    if (!this.#deps.store.spend(app, 'job', 1, JOB_LIMITS.daily, now))
+      throw new Conflict({ reason: `${app} ran ${String(JOB_LIMITS.daily)} jobs today already` })
+    try {
+      await this.#deps.run(app, action, JSON.parse(row.input), `job:${app}:${action}:now:${String(now)}`)
+      this.#jobs.update(app, action, { lastAt: this.#deps.now(), lastStatus: 'ok', lastError: null })
+    } catch (cause) {
+      const error = problemText(cause).slice(0, 1000)
+      this.#jobs.update(app, action, { lastAt: this.#deps.now(), lastStatus: 'failed', lastError: error })
+    }
+    this.#deps.changed(app)
+  }
+
+  /** Takes every schedule of a deleted app away, its native schedules first. */
+  async removeApp(app: string): Promise<void> {
+    for (const row of this.#jobs.all().filter((each) => each.app === app)) {
+      if (row.scheduleId !== null) await this.#deps.schedules.cancel(row.scheduleId)
+      this.#jobs.remove(app, row.action)
+    }
+  }
+
+  #required(app: string, action: string): JobRow {
+    const row = this.#jobs.get(app, action)
+    if (row === undefined) throw new NotFound({ what: `${app} has no schedule for ${action}` })
+    return row
   }
 
   /** Makes the stored schedules and the armed native ones match what the active releases declare. */

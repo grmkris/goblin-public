@@ -4,7 +4,8 @@ import {
   AppCall,
   AppContext,
   AppDiagnostic,
-  AppPowerChange,
+  AgentAppChange,
+  DeleteAgentApp,
   CapabilityChange,
   CreateApp,
   CreateConversation,
@@ -198,12 +199,19 @@ const appRoutes: Readonly<Record<string, AppRoute>> = {
     json(unwrap(await agent.appDiagnostic(id, await readJson(request, AppDiagnostic)))),
 }
 
-/** An agent app by name (ADR 0021): the powers it asks for, and the owner's answer to one. */
+/**
+ * The owner's agent apps by name (ADR 0021): the list, one in full, a change to one (roll back, pause, run now, move
+ * home, answer a power), and deleting one, confirmed by its name.
+ */
 async function agentAppRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string): Promise<Response> {
-  const name = /^\/api\/agent-apps\/([a-z][a-z0-9-]{1,23})\/powers$/u.exec(path)?.[1]
-  if (name !== undefined && request.method === 'GET') return json(unwrap(await agent.appPowers(name)))
-  if (name !== undefined && request.method === 'PUT')
-    return json(unwrap(await agent.answerAppPower(name, await readJson(request, AppPowerChange))))
+  if (path === '/api/agent-apps' && request.method === 'GET') return json(unwrap(await agent.agentApps()))
+  const name = /^\/api\/agent-apps\/([a-z][a-z0-9-]{1,23})$/u.exec(path)?.[1]
+  if (name === undefined) throw new NotFound({ what: path })
+  if (request.method === 'GET') return json(unwrap(await agent.agentAppDetail(name)))
+  if (request.method === 'POST')
+    return json(unwrap(await agent.changeAgentApp(name, await readJson(request, AgentAppChange))))
+  if (request.method === 'DELETE')
+    return json(unwrap(await agent.deleteAgentApp(name, await readJson(request, DeleteAgentApp))))
   throw new NotFound({ what: path })
 }
 

@@ -1,4 +1,5 @@
 import { createRegistry } from '@earendil-works/pi-durable'
+import type { AgentAppChange } from '@goblin/contracts'
 import { agentApps } from '../../src/agent-apps/engine.ts'
 import { JOB_CALLBACK, type JobSchedules, type JobSlot } from '../../src/agent-apps/jobs.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
@@ -115,13 +116,13 @@ async function failures(bench: Bench) {
 }
 
 /** A new release resumes the paused schedule; the agent's own callback runs it; a release that drops one removes it. */
-async function releases(bench: Bench, callback: (slot: JobSlot) => Promise<void>) {
+async function releases(bench: Bench, fire: (slot: JobSlot) => Promise<void>) {
   const fixed = TICKER.replace("throw new Error('flaky failed')", 'return { ticks: 0 }')
   await bench.build(fixed)
   const resumed = bench.job('flaky')
   const armedResumed = (await bench.armed()).length
   const slot = bench.due('flaky')
-  await callback({ app: 'ticker', action: 'flaky', at: slot })
+  await fire({ app: 'ticker', action: 'flaky', at: slot })
   const viaAgent = bench.job('flaky')
   await bench.build(fixed.replace("    { action: 'tick', every: '15m', input: { by: 1 } },\n", ''))
   return {
@@ -133,18 +134,87 @@ async function releases(bench: Bench, callback: (slot: JobSlot) => Promise<void>
   }
 }
 
+/** The agent object as the owner reaches it: its native job callback, and its owner RPC for agent apps. */
+export type AgentPort = {
+  readonly fire: (slot: JobSlot) => Promise<void>
+  readonly list: () => Promise<unknown>
+  readonly change: (name: string, change: AgentAppChange) => Promise<unknown>
+  readonly remove: (name: string, confirm: string) => Promise<unknown>
+}
+
+/** A value of an owner RPC result, or its error's tag. */
+const valueOf = (result: unknown): unknown => {
+  if (typeof result !== 'object' || result === null) return result
+  if ('value' in result) return result.value
+  return 'error' in result && typeof result.error === 'object' && result.error !== null && '_tag' in result.error
+    ? result.error._tag
+    : result
+}
+
+/** The flaky schedule of an app detail. */
+const flakyOf = (detail: unknown) => {
+  if (typeof detail !== 'object' || detail === null || !('jobs' in detail) || !Array.isArray(detail.jobs)) return detail
+  return detail.jobs.find((job: { action?: string }) => job.action === 'flaky')
+}
+
+/** How many R2 objects the agent keeps. */
+async function objects(bucket: R2Bucket, owner: string): Promise<number> {
+  return (await bucket.list({ prefix: `agents/${owner}/` })).objects.length
+}
+
+/**
+ * The owner manages the app through the agent's RPC: pause, resume and run a schedule now, move its home (only to an
+ * open conversation), see it listed, and delete it only when they type its name: its schedules, files (R2 too) and
+ * rows go.
+ */
+async function management(bench: Bench, agent: AgentPort, bucket: R2Bucket, owner: string) {
+  const files = bench.apps.files('ticker')
+  await files.write('/big.txt', 'x'.repeat(200 * 1024))
+  await files.write('/small.txt', 'hi')
+  const paused = flakyOf(valueOf(await agent.change('ticker', { kind: 'pause', action: 'flaky', paused: true })))
+  const armedPaused = (await bench.armed()).length
+  const resumed = flakyOf(valueOf(await agent.change('ticker', { kind: 'pause', action: 'flaky', paused: false })))
+  const ran = flakyOf(valueOf(await agent.change('ticker', { kind: 'run', action: 'flaky' })))
+  const moved = valueOf(await agent.change('ticker', { kind: 'home', conversation: '1' }))
+  const badHome = valueOf(await agent.change('ticker', { kind: 'home', conversation: '999' }))
+  const listed = valueOf(await agent.list())
+  const refused = valueOf(await agent.remove('ticker', 'nope'))
+  const before = await objects(bucket, owner)
+  const removed = valueOf(await agent.remove('ticker', 'ticker'))
+  return {
+    manage: {
+      paused,
+      armedPaused,
+      resumed,
+      ran,
+      home: typeof moved === 'object' && moved !== null && 'home' in moved ? moved.home : moved,
+      badHome,
+      listed,
+      refused,
+      objects: { before, after: await objects(bucket, owner) },
+      removed,
+      gone: {
+        app: bench.apps.store.app('ticker') === undefined,
+        jobs: bench.apps.jobs.list('ticker').length,
+        armed: (await bench.armed()).length,
+        files: await files.size(),
+      },
+    },
+  }
+}
+
 /**
  * Agent app jobs (ADR 0021) on the agent object's own native schedules: a build arms one schedule per scheduled
  * action; a due run moves the state and arms the next slot; a stale callback runs nothing; a late run catches up once;
  * a lapsed authority waits; failures back off and pause the schedule after ten, and a new release resumes it; a
- * schedule a release drops goes. The agent's own callback runs the same job.
+ * schedule a release drops goes. The agent's own callback runs the same job, and the owner manages and deletes it.
  */
 export async function appsJobsProbe(
   storage: DurableObjectStorage,
   env: RuntimeEnv,
   owner: string,
   schedules: JobSchedules,
-  callback: (slot: JobSlot) => Promise<void>,
+  agent: AgentPort,
 ) {
   const bench = jobsBench(storage, env, owner, schedules)
   const wrongSource = TICKER.replace("every: '15m'", "every: '2m'").replace("action: 'flaky'", "action: 'nope'")
@@ -165,8 +235,9 @@ export async function appsJobsProbe(
     armedFirst,
     ...(await runs(bench)),
     ...(await failures(bench)),
-    ...(await releases(bench, callback)),
+    ...(await releases(bench, agent.fire)),
     summary: bench.apps.summary(),
+    ...(await management(bench, agent, env.FILES, owner)),
   }
   for (const id of await bench.armed()) await schedules.cancel(id)
   return result

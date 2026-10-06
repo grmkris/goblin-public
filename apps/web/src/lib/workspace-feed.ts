@@ -40,7 +40,7 @@ function upsert<T extends { readonly id: string }>(items: readonly T[], item: T,
 
 /**
  * The workspace after `changes`, in order: a conversation or App replaces the one with its id (a new one joins in
- * order of creation), and an activity replaces what its conversation was doing (idle drops it).
+ * order of creation), a removed App goes, and an activity replaces what its conversation was doing (idle drops it).
  */
 export function applyChanges(state: WorkspaceState, changes: readonly WorkspaceChange[]): WorkspaceState {
   let { conversations, apps } = state
@@ -50,6 +50,7 @@ export function applyChanges(state: WorkspaceState, changes: readonly WorkspaceC
       if (change.activity.state === 'idle') activity.delete(change.activity.id)
       else activity.set(change.activity.id, change.activity)
     } else if (change.type === 'app') apps = upsert(apps, change.app, byId)
+    else if (change.type === 'app-removed') apps = apps.filter((app) => app.id !== change.id)
     else conversations = upsert(conversations, change.conversation, oldestFirst)
   }
   return { conversations, activity, apps }

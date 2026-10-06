@@ -15,6 +15,7 @@ import { mismatches } from './json.ts'
 import { type Manifest, type Power, type PowerKind, requestedPowers } from './manifest.ts'
 import { toolName } from './names.ts'
 import { type Send, egress } from './egress.ts'
+import { eraseApp } from './erase.ts'
 import { AppJobs, type JobSchedules, type JobView } from './jobs.ts'
 import type { AppServices } from './ports.ts'
 import { AppPowers } from './powers.ts'
@@ -400,7 +401,7 @@ export class AgentApps {
     }
     let calls = 0
     return new AppPowers({
-      files: this.#filesOf(app),
+      files: this.files(app),
       log: (line) => this.store.event(app, 'log', line, now()),
       fetch: async (url, init) => {
         within('egress', 1, DAILY.egress)
@@ -451,7 +452,35 @@ export class AgentApps {
     })
   }
 
-  #filesOf(app: string): AppFiles {
+  /** Moves an app's home to another conversation (the owner chose it). */
+  moveHome(app: string, session: string): void {
+    this.dispatch.active(app)
+    this.store.setHome(app, session, this.#deps.now())
+    this.#changed(app)
+  }
+
+  /** Moves the home of every app that lived in one of `closed` (conversations the owner closed) to `to`. */
+  rehome(closed: readonly string[], to: string): void {
+    for (const app of this.store.apps()) if (closed.includes(app.homeSession)) this.moveHome(app.name, to)
+  }
+
+  /**
+   * Erases an app (the owner deletes it): its tools first, so the agent stops calling it, then its schedules, its
+   * files and every row it has. An action in flight finds it gone.
+   */
+  async remove(app: string): Promise<void> {
+    this.dispatch.active(app)
+    await this.#queues.run(app, async () => {
+      this.#toolset.uninstall(app)
+      await this.jobs.removeApp(app)
+      await this.files(app).purge()
+      eraseApp(drizzle(this.#deps.storage), app)
+      this.#files.delete(app)
+    })
+  }
+
+  /** An app's own files. */
+  files(app: string): AppFiles {
     const known = this.#files.get(app)
     if (known !== undefined) return known
     const files = new AppFiles(this.#deps.storage.sql, this.#deps.bucket, this.#deps.owner, app)

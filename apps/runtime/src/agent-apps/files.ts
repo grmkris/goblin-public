@@ -56,4 +56,16 @@ export class AppFiles {
   async delete(path: string): Promise<boolean> {
     return this.#workspace.deleteFile(checked(path))
   }
+
+  /** How many files the app keeps, and their bytes. */
+  async size(): Promise<{ readonly count: number; readonly bytes: number }> {
+    const info = await this.#workspace.getWorkspaceInfo()
+    return { count: info.fileCount, bytes: info.totalBytes }
+  }
+
+  /** Deletes every file of the app, a large one's R2 object with it (the owner deleted the app). */
+  async purge(): Promise<void> {
+    for (const entry of await this.#workspace.readDir('/'))
+      await this.#workspace.rm(entry.path, { recursive: true, force: true })
+  }
 }

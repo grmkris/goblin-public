@@ -96,7 +96,12 @@ export class PersonalAgentProbe extends PersonalAgent {
       arm: async (at, slot) => (await this.schedule(new Date(at), JOB_CALLBACK, slot, { idempotent: true })).id,
       cancel: (id) => this.cancelSchedule(id),
     }
-    const result = await appsJobsProbe(this.ctx.storage, this.env, this.name, schedules, (slot) => this.runAppJob(slot))
+    const result = await appsJobsProbe(this.ctx.storage, this.env, this.name, schedules, {
+      fire: (slot) => this.runAppJob(slot),
+      list: () => this.agentApps(),
+      change: (name, change) => this.changeAgentApp(name, change),
+      remove: (name, confirm) => this.deleteAgentApp(name, { confirm }),
+    })
     return JSON.stringify(result)
   }
   async routineExecutionProbe(): Promise<Response> {

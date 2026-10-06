@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Schema } from 'effect'
-import { AppPower } from '@goblin/contracts'
+import type { AppPower } from '@goblin/contracts'
 import { AskCard, AskCardDescription, AskCardHeader, Button } from '@goblin/ui'
 import { ShieldCheckIcon } from 'lucide-react'
-import { failureText, request } from '../../lib/boundary.ts'
-
-const decodePowers = Schema.decodeUnknownSync(Schema.Array(AppPower))
+import { changeAgentApp, readAgentApp } from '../../lib/agent-apps.ts'
+import { failureText } from '../../lib/boundary.ts'
 
 /** A power in the owner's words. */
 export function powerText(power: Pick<AppPower, 'kind' | 'target'>): string {
@@ -32,12 +30,11 @@ export function AppPowers({ app, title }: { readonly app: string; readonly title
   const [powers, setPowers] = useState<readonly AppPower[]>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const path = `/api/agent-apps/${encodeURIComponent(app)}/powers`
   useEffect(() => {
     let live = true
-    request(path)
-      .then((value) => {
-        if (live) setPowers(decodePowers(value))
+    readAgentApp(app)
+      .then((detail) => {
+        if (live) setPowers(detail.powers)
       })
       .catch((cause: unknown) => {
         if (live) setError(failureText(cause))
@@ -45,7 +42,7 @@ export function AppPowers({ app, title }: { readonly app: string; readonly title
     return () => {
       live = false
     }
-  }, [path])
+  }, [app])
   const waiting = (powers ?? []).filter((power) => power.status !== 'approved')
   async function allow(): Promise<void> {
     setBusy(true)
@@ -53,9 +50,8 @@ export function AppPowers({ app, title }: { readonly app: string; readonly title
     try {
       let next = powers
       for (const power of waiting)
-        next = decodePowers(
-          await request(path, { method: 'PUT', body: { kind: power.kind, target: power.target, allowed: true } }),
-        )
+        next = (await changeAgentApp(app, { kind: 'power', power: power.kind, target: power.target, allowed: true }))
+          .powers
       setPowers(next)
     } catch (cause) {
       setError(failureText(cause))

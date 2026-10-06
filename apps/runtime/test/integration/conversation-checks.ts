@@ -127,7 +127,7 @@ export async function feedChecks(base: string, name: string): Promise<void> {
   expect(result.snapshot.data.apps).toEqual([])
   const steps = result.changes.flatMap((change) => {
     if (change.type === 'activity') return change.activity.id === result.id ? [`activity ${change.activity.state}`] : []
-    if (change.type === 'app' || change.conversation.id !== result.id) return []
+    if (change.type !== 'conversation' || change.conversation.id !== result.id) return []
     const { closedBy, replies, readAt } = change.conversation
     return [`conversation ${closedBy ?? 'open'} ${replies}${readAt === undefined ? '' : ' read'}`]
   })

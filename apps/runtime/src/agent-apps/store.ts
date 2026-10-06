@@ -71,6 +71,11 @@ export class AgentAppStore {
     return this.#db.select().from(appAgentApps).where(eq(appAgentApps.name, name)).get()
   }
 
+  /** Moves an app's home to another conversation. */
+  setHome(name: string, session: string, now: number): void {
+    this.#db.update(appAgentApps).set({ homeSession: session, updatedAt: now }).where(eq(appAgentApps.name, name)).run()
+  }
+
   apps(): readonly AppRow[] {
     return this.#db.select().from(appAgentApps).orderBy(appAgentApps.createdAt).all()
   }

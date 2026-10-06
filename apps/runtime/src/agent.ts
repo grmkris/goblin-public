@@ -1,7 +1,7 @@
 import { Agent } from 'agents'
 import { type Extension } from '@earendil-works/pi-durable'
 import { type AppContext, type CapabilityChange, type JsonObject, MAIN_THREAD } from '@goblin/contracts'
-import type { AppCall, AppDiagnostic, AppPowerChange, CreateApp, UpdateApp } from '@goblin/contracts'
+import type { AgentAppChange, AppCall, AppDiagnostic, CreateApp, DeleteAgentApp, UpdateApp } from '@goblin/contracts'
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
@@ -322,11 +322,18 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   appDiagnostic(id: string, diagnostic: AppDiagnostic) {
     return this.#owner(AppPrograms.reportAgentApp(id, diagnostic))
   }
-  appPowers(name: string) {
-    return this.#owner(AppPrograms.agentAppPowers(name))
+  /** The owner's agent apps (ADR 0021): the list, one in full, a change to one, and deleting one. */
+  agentApps() {
+    return this.#owner(AppPrograms.agentAppList)
   }
-  answerAppPower(name: string, change: AppPowerChange) {
-    return this.#owner(AppPrograms.answerAgentAppPower(name, change))
+  agentAppDetail(name: string) {
+    return this.#owner(AppPrograms.agentAppDetail(name))
+  }
+  changeAgentApp(name: string, change: AgentAppChange) {
+    return this.#owner(AppPrograms.changeAgentApp(name, change))
+  }
+  deleteAgentApp(name: string, input: DeleteAgentApp) {
+    return this.#owner(AppPrograms.deleteAgentApp(name, input))
   }
 
   /** What a conversation lets its agent use: its switches over the agent's servers, skills and subagents. */

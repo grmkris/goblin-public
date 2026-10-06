@@ -1,4 +1,4 @@
-import type { AgentAppLaunch, AppLaunch, AppView } from '@goblin/contracts'
+import { type AgentAppLaunch, type AppLaunch, type AppView, MAIN_THREAD } from '@goblin/contracts'
 import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { EntryRecord } from '@earendil-works/pi-durable'
@@ -43,6 +43,8 @@ export type AgentAppsPort = {
   readonly info: (name: string) => AgentAppInfo | undefined
   /** What the browser needs to load the app's view. */
   readonly launch: (name: string) => AgentAppLaunch
+  /** Moves the home of every app that lives in one of `closed` to `to`. */
+  readonly rehome: (closed: readonly string[], to: string) => void
 }
 
 const sourceOf = (row: Row, agents: AgentAppsPort): AppView['source'] => {
@@ -89,6 +91,7 @@ export class AppRegistry {
   readonly #harness: PiHarness
   readonly #agents: AgentAppsPort
   readonly #listeners = new Set<(apps: readonly AppView[]) => void>()
+  readonly #removals = new Set<(id: string) => void>()
 
   constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, agents: AgentAppsPort) {
     this.#db = db
@@ -111,6 +114,12 @@ export class AppRegistry {
   onChange(listener: (apps: readonly AppView[]) => void): () => void {
     this.#listeners.add(listener)
     return () => this.#listeners.delete(listener)
+  }
+
+  /** Calls `listener` with the id of each App that is gone; returns what unsubscribes it. */
+  onRemove(listener: (id: string) => void): () => void {
+    this.#removals.add(listener)
+    return () => this.#removals.delete(listener)
   }
 
   #changed(rows: readonly Row[]): void {
@@ -167,8 +176,25 @@ export class AppRegistry {
             .values({ source: 'agent', sessionId: info.home, name, title: info.title, createdAt: now })
             .returning()
             .all()
-        : this.#db.update(appRegistry).set({ title: info.title }).where(eq(appRegistry.id, row.id)).returning().all()
+        : this.#db
+            .update(appRegistry)
+            .set({ title: info.title, sessionId: info.home })
+            .where(eq(appRegistry.id, row.id))
+            .returning()
+            .all()
     if (changed !== undefined) this.#changed([changed])
+  }
+
+  /** The App id of an agent app with a view, or null. */
+  agentId(name: string): string | null {
+    const row = this.#db.select({ id: appRegistry.id }).from(appRegistry).where(eq(appRegistry.name, name)).get()
+    return row === undefined ? null : String(row.id)
+  }
+
+  /** The owner deleted an agent app: its App goes from every pane and list. */
+  removeAgent(name: string): void {
+    const [row] = this.#db.delete(appRegistry).where(eq(appRegistry.name, name)).returning().all()
+    if (row !== undefined) for (const listener of this.#removals) listener(String(row.id))
   }
 
   /** The agent app an App id names. */
@@ -201,13 +227,19 @@ export class AppRegistry {
     return this.#view(row)
   }
 
-  /** Closes the open Apps of those of `sessions` that are closed now: Close reaches a conversation's Apps. */
+  /**
+   * Closes the open MCP Apps of those of `sessions` that are closed now (Close reaches a conversation's Apps), and
+   * moves the home of each agent app that lived in one to main: an agent app outlives its conversation.
+   */
   closeWithConversations(sessions: readonly string[], now: number): void {
     if (sessions.length === 0) return
     const closed = this.#db
       .select({ id: appConversations.sessionId })
       .from(appConversations)
       .where(and(inArray(appConversations.sessionId, [...sessions]), isNotNull(appConversations.closedAt)))
+      .all()
+      .map((row) => row.id)
+    if (closed.length === 0) return
     const rows = this.#db
       .update(appRegistry)
       .set({ closedAt: now })
@@ -215,6 +247,7 @@ export class AppRegistry {
       .returning()
       .all()
     this.#changed(rows)
+    this.#agents.rehome(closed, MAIN_THREAD)
   }
 
   /** What the browser needs to load an App: an MCP App's call, read from its conversation, or an agent app's view. */

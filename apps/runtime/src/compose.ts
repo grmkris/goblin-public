@@ -126,6 +126,7 @@ function conversationServices(db: DrizzleSqliteDODatabase, input: ComposeInput, 
   const apps = new AppRegistry(db, harness, {
     info: (name) => agentApps.info(name),
     launch: (name) => agentApps.launch(name),
+    rehome: (closed, to) => agentApps.rehome(closed, to),
   })
   conversations.onChange((ids) => apps.closeWithConversations(ids, nowSeconds()))
   agentApps.onChange((name) => apps.agentChanged(name, nowSeconds()))

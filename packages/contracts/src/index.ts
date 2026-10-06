@@ -267,6 +267,8 @@ export const AgentAppJob = Schema.Struct({
   nextAt: Schema.Number,
   lastAt: Schema.NullOr(Schema.Number),
   status: Schema.NullOr(Schema.Literals(['ok', 'failed', 'waiting', 'skipped'])),
+  /** Why the last run failed or waited. */
+  error: Schema.NullOr(Schema.String),
   failures: Schema.Number,
   paused: Schema.NullOr(Schema.Literals(['owner', 'failures'])),
 })
@@ -369,6 +371,69 @@ export const AppPowerChange = Schema.Struct({
 })
 export type AppPowerChange = typeof AppPowerChange.Type
 
+/** An agent app as the owner's Apps page lists it (ADR 0021): what it is, where it lives and whether it needs them. */
+export const AgentAppSummary = Schema.Struct({
+  name: Schema.String,
+  title: Schema.String,
+  description: Schema.String,
+  /** Its home conversation, where its builds and notes go. */
+  home: Schema.String,
+  /** Its App id once it has a view (what opens it), otherwise null. */
+  app: Schema.NullOr(Schema.String),
+  version: Schema.Number,
+  revision: Schema.Number,
+  jobs: Schema.Array(AgentAppJob),
+  /** How many powers it asks for that the owner has not allowed. */
+  waiting: Schema.Number,
+  /** Its newest event when that is a failure, otherwise null. */
+  failure: Schema.NullOr(Schema.String),
+  updatedAt: Schema.Number,
+})
+export type AgentAppSummary = typeof AgentAppSummary.Type
+
+/** One agent app in full on its page: its versions, powers, today's usage, its files and what happened lately. */
+export const AgentAppDetail = Schema.Struct({
+  ...AgentAppSummary.fields,
+  releases: Schema.Array(
+    Schema.Struct({
+      release: Schema.String,
+      version: Schema.Number,
+      status: Schema.Literals(['active', 'retired', 'failed']),
+      note: Schema.NullOr(Schema.String),
+      at: Schema.Number,
+    }),
+  ),
+  powers: Schema.Array(AppPower),
+  usage: Schema.Struct({ egress: Schema.Number, tokens: Schema.Number, notify: Schema.Number, job: Schema.Number }),
+  files: Schema.Struct({ count: Schema.Number, bytes: Schema.Number }),
+  events: Schema.Array(Schema.Struct({ kind: Schema.String, detail: Schema.String, at: Schema.Number })),
+})
+export type AgentAppDetail = typeof AgentAppDetail.Type
+
+const AppAction = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))
+
+/**
+ * What the owner changes about an agent app: go back to an earlier version, pause or resume a schedule, run one now,
+ * move its home to another conversation, or allow or revoke a power it asks for.
+ */
+export const AgentAppChange = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal('rollback'), release: Schema.String.check(Schema.isMaxLength(40)) }),
+  Schema.Struct({ kind: Schema.Literal('pause'), action: AppAction, paused: Schema.Boolean }),
+  Schema.Struct({ kind: Schema.Literal('run'), action: AppAction }),
+  Schema.Struct({ kind: Schema.Literal('home'), conversation: Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)) }),
+  Schema.Struct({
+    kind: Schema.Literal('power'),
+    power: AppPowerKind,
+    target: AppPowerChange.fields.target,
+    allowed: Schema.Boolean,
+  }),
+])
+export type AgentAppChange = typeof AgentAppChange.Type
+
+/** Deleting an agent app erases it; the owner confirms by typing its name. */
+export const DeleteAgentApp = Schema.Struct({ confirm: Schema.String.check(Schema.isMaxLength(40)) })
+export type DeleteAgentApp = typeof DeleteAgentApp.Type
+
 /** A failure an agent app's view reported (an uncaught error, a render that threw). */
 export const AppDiagnostic = Schema.Struct({ message: Schema.String.check(Schema.isMaxLength(4000)) })
 export type AppDiagnostic = typeof AppDiagnostic.Type
@@ -386,6 +451,8 @@ export const WorkspaceChange = Schema.Union([
   Schema.Struct({ type: Schema.Literal('conversation'), conversation: ConversationView }),
   Schema.Struct({ type: Schema.Literal('activity'), activity: ConversationActivity }),
   Schema.Struct({ type: Schema.Literal('app'), app: AppView }),
+  /** An App that is gone: the owner deleted the agent app it showed. */
+  Schema.Struct({ type: Schema.Literal('app-removed'), id: Schema.String }),
 ])
 export type WorkspaceChange = typeof WorkspaceChange.Type
 

@@ -10,6 +10,7 @@ const job: AgentAppJob = {
   nextAt: new Date(2026, 9, 6, 11, 0).getTime(),
   lastAt: null,
   status: null,
+  error: null,
   failures: 0,
   paused: null,
 }

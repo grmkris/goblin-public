@@ -1,6 +1,17 @@
-import type { AppCall, AppDiagnostic, AppPowerChange, CreateApp, UpdateApp } from '@goblin/contracts'
+import type {
+  AgentAppChange,
+  AgentAppDetail,
+  AppCall,
+  AppDiagnostic,
+  CreateApp,
+  DeleteAgentApp,
+  UpdateApp,
+} from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
-import { NotFound } from '../http/errors.ts'
+import type { AppError } from '../http/errors.ts'
+import { appDetail, appSummaries, changeApp } from '../agent-apps/manage.ts'
+import { nowMillis } from '../clock.ts'
+import { InvalidInput, NotFound } from '../http/errors.ts'
 import { toolAppResource } from '../mcp/connection.ts'
 import { AppEngine, Apps, Conversations, Mcp, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
 
@@ -55,11 +66,49 @@ export const callAgentApp = (id: string, call: AppCall) =>
 export const reportAgentApp = (id: string, diagnostic: AppDiagnostic) =>
   Effect.flatMap(agentApp(id), ({ name, engine }) => attemptSync(() => engine.viewError(name, diagnostic.message)))
 
-/** The powers an agent app asks for, with the owner's answers. */
-export const agentAppPowers = (name: string) => AppEngine.use((engine) => attemptSync(() => engine.powers(name)))
+/** The owner's agent apps, newest change first, each with its App id once it has a view (ADR 0021). */
+export const agentAppList = Effect.gen(function* () {
+  const engine = yield* AppEngine
+  const apps = yield* Apps
+  return yield* attemptSync(() => appSummaries(engine).map((app) => ({ ...app, app: apps.agentId(app.name) })))
+})
 
-/** The owner approves or revokes one power of an agent app. */
-export const answerAgentAppPower = (name: string, change: AppPowerChange) =>
-  AppEngine.use((engine) =>
-    attemptSync(() => engine.answer(name, { kind: change.kind, target: change.target }, change.allowed)),
-  )
+/** One agent app in full. */
+export const agentAppDetail = (name: string): Effect.Effect<AgentAppDetail, AppError, AppEngine | Apps> =>
+  Effect.gen(function* () {
+    const engine = yield* AppEngine
+    const apps = yield* Apps
+    const detail = yield* attempt(() => appDetail(engine, name, nowMillis()))
+    return { ...detail, app: apps.agentId(name) }
+  })
+
+/**
+ * A change the owner makes to an agent app, answered with the app as it is after it. A new home must be an open
+ * conversation of the owner's own (main or a thread).
+ */
+export const changeAgentApp = (name: string, change: AgentAppChange) =>
+  Effect.gen(function* () {
+    const engine = yield* AppEngine
+    if (change.kind === 'home') {
+      const session = yield* Conversations.use((conversations) =>
+        attemptSync(() => {
+          const open = conversations.requireOpen(change.conversation)
+          if (conversations.kindOf(change.conversation) === 'subagent')
+            throw new InvalidInput({ reason: "an app's home is main or a thread" })
+          return open
+        }),
+      )
+      yield* attemptSync(() => engine.moveHome(name, session))
+    } else yield* attempt(() => changeApp(engine, name, change))
+    return yield* agentAppDetail(name)
+  })
+
+/** The owner deletes an agent app, confirmed by its name: its tools, schedules, files and data go, and its App. */
+export const deleteAgentApp = (name: string, input: DeleteAgentApp) =>
+  Effect.gen(function* () {
+    if (input.confirm !== name) return yield* new InvalidInput({ reason: `type ${name} to delete it` })
+    const engine = yield* AppEngine
+    yield* attempt(() => engine.remove(name))
+    yield* Apps.use((apps) => attemptSync(() => apps.removeAgent(name)))
+    return { deleted: name }
+  })

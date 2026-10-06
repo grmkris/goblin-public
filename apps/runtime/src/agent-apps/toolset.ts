@@ -56,6 +56,14 @@ export class AppToolset {
     for (const app of this.#store.apps()) this.install(app.name)
   }
 
+  /** Takes a deleted app's tools away; Pi offers the change from the next model request. */
+  uninstall(app: string): void {
+    const extension = this.#extensions.get(app)
+    if (extension === undefined) return
+    this.#registry?.uninstall(extension)
+    this.#extensions.delete(app)
+  }
+
   install(app: string): void {
     const release = this.#dispatch.active(app)
     const manifest = this.#dispatch.manifest(release)
