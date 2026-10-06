@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import { Schema } from 'effect'
 import { InboundClient, MemoryStatus, ResidentStatus } from '@purrable/contracts'
 import {
   Alert,
   AlertDescription,
-  Badge,
   Button,
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -18,20 +18,25 @@ import {
   FieldLabel,
   Input,
   Meter,
+  Skeleton,
+  Switch,
 } from '@purrable/ui'
 import { ApiFailure, failureText, request } from '../lib/boundary.ts'
+import { residentStatus } from '../lib/labels.ts'
 import { budgetFraction } from '../lib/usage.ts'
 import { BillingCard } from './billing.tsx'
 import { useBilling } from '../lib/billing.tsx'
+import { PageSection } from './page-section.tsx'
 import { PasskeysCard } from './passkeys.tsx'
-import { RoutinesCard } from './routines.tsx'
+import { RoutinesSection } from './routines.tsx'
+import { StatusLabel } from './status-label.tsx'
 import { useUsageToday } from './use-usage.ts'
 
 const decodeResident = Schema.decodeUnknownSync(ResidentStatus)
 const decodeClients = Schema.decodeUnknownSync(Schema.Array(InboundClient))
 const decodeMemory = Schema.decodeUnknownSync(MemoryStatus)
-const day = (seconds: number | undefined): string =>
-  seconds === undefined ? '—' : new Date(seconds * 1000).toLocaleDateString()
+const day = (seconds: number): string =>
+  new Date(seconds * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })
 
 /** Today's model budget: tokens spent against the daily limit, rolling as they change. */
 function UsageCard() {
@@ -39,12 +44,12 @@ function UsageCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Model budget</CardTitle>
-        <CardDescription>Tokens your agent used today (UTC). It resets at 00:00 UTC.</CardDescription>
+        <CardTitle>Today's usage</CardTitle>
+        <CardDescription>Tokens your agent used today. It starts again at 00:00 UTC.</CardDescription>
       </CardHeader>
       <CardContent>
         {usage === undefined ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <Skeleton className="h-10 w-full" />
         ) : (
           <Meter value={budgetFraction(usage) * 100} aria-label="Model budget used today">
             <p className="flex items-baseline gap-1.5 text-sm text-muted-foreground">
@@ -74,13 +79,13 @@ function MemoryCard({ onError }: { readonly onError: (message: string) => void }
       <CardHeader>
         <CardTitle>Memory</CardTitle>
         <CardDescription>
-          Your agent remembers the main conversation in full. It reads older messages as one-line summaries it can open
-          again, so the conversation never has to end.
+          Your agent remembers Main in full. It reads older messages as one-line summaries it can open again, so the
+          conversation never has to end.
         </CardDescription>
       </CardHeader>
       <CardContent>
         {status === undefined ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <Skeleton className="h-8 w-64" />
         ) : (
           <p className="flex items-baseline gap-1.5 text-sm text-muted-foreground">
             <Count value={status.messages} size="display" />
@@ -94,50 +99,69 @@ function MemoryCard({ onError }: { readonly onError: (message: string) => void }
   )
 }
 
+/**
+ * Resident authority, as the owner meets it: whether the agent may use the tools they allowed while they are away. It
+ * lasts 30 days from their last visit; turning it off stops all outbound use until they turn it on again.
+ */
 function ResidentCard({ onError }: { readonly onError: (message: string) => void }) {
+  const id = useId()
   const [status, setStatus] = useState<ResidentStatus>()
+  const [pending, setPending] = useState(false)
   useEffect(() => {
     void request('/api/agent/resident')
       .then((data) => setStatus(decodeResident(data)))
       .catch((error: unknown) => onError(failureText(error)))
   }, [onError])
   async function set(enabled: boolean): Promise<void> {
+    setPending(true)
     try {
       setStatus(decodeResident(await request('/api/agent/resident', { body: { enabled } })))
     } catch (error) {
       onError(failureText(error))
+    } finally {
+      setPending(false)
     }
   }
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Resident authority</CardTitle>
+        <CardTitle id={id}>Work while you're away</CardTitle>
         <CardDescription>
-          Lets your agent use your enabled tools without you watching: answering connected MCP clients now, routines and
-          channels later. It lasts 30 days from your last visit and renews whenever you use Purrable.
+          Lets your agent use the tools you allowed when you are not watching: for apps you connected, routines and
+          Telegram. It lasts 30 days from your last visit and renews whenever you use Purrable.
         </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-wrap items-center gap-3">
-          <Badge variant={status?.state === 'active' ? 'secondary' : 'destructive'}>{status?.state ?? '…'}</Badge>
-          <span className="text-muted-foreground text-sm">Until {day(status?.expiresAt)}</span>
-          {status?.state === 'revoked' ? (
-            <Button size="sm" onClick={() => void set(true)}>
-              Re-enable
-            </Button>
+        <CardAction>
+          {status === undefined ? (
+            <Skeleton className="h-5 w-9" />
           ) : (
-            <Button size="sm" variant="outline" onClick={() => void set(false)}>
-              Revoke
-            </Button>
+            <Switch
+              checked={status.state === 'active'}
+              disabled={pending}
+              aria-busy={pending}
+              aria-labelledby={id}
+              onCheckedChange={(checked) => void set(checked)}
+            />
           )}
-        </div>
-      </CardContent>
+        </CardAction>
+      </CardHeader>
+      {status !== undefined && (
+        <CardContent>
+          <div className="card-line">
+            <StatusLabel label={residentStatus(status.state)} />
+            {status.state === 'active' && status.expiresAt !== undefined && (
+              <span className="card-line-meta">until {day(status.expiresAt)}</span>
+            )}
+          </div>
+        </CardContent>
+      )}
     </Card>
   )
 }
 
+/** The MCP clients the owner let use their agent, each revocable. */
 function ClientsCard({ onError }: { readonly onError: (message: string) => void }) {
-  const [clients, setClients] = useState<readonly InboundClient[]>([])
+  const [clients, setClients] = useState<readonly InboundClient[]>()
+  const [revoking, setRevoking] = useState('')
   const load = useCallback(() => {
     void request('/api/clients')
       .then((data) => setClients(decodeClients(data)))
@@ -145,36 +169,42 @@ function ClientsCard({ onError }: { readonly onError: (message: string) => void 
   }, [onError])
   useEffect(load, [load])
   async function revoke(clientId: string): Promise<void> {
+    setRevoking(clientId)
     try {
       await request(`/api/clients/${encodeURIComponent(clientId)}`, { method: 'DELETE' })
       load()
     } catch (error) {
       onError(failureText(error))
+    } finally {
+      setRevoking('')
     }
   }
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Connected MCP clients</CardTitle>
-        <CardDescription>
-          Apps you allowed to use Purrable at <code>{`${window.location.origin}/mcp`}</code>.
-        </CardDescription>
-      </CardHeader>
       <CardContent>
-        <div className="flex flex-col gap-3">
-          {clients.length === 0 && <p className="text-muted-foreground text-sm">No clients yet.</p>}
-          {clients.map((client) => (
-            <div className="flex items-center justify-between gap-3" key={client.clientId}>
-              <span>
-                {client.name ?? client.clientId}
-                {client.uri && <span className="text-muted-foreground text-sm"> · {client.uri}</span>}
-              </span>
-              <Button size="sm" variant="outline" onClick={() => void revoke(client.clientId)}>
-                Revoke
-              </Button>
-            </div>
-          ))}
-        </div>
+        {clients === undefined && <Skeleton className="h-6 w-full" />}
+        {clients?.length === 0 && <p className="server-note">None yet.</p>}
+        {clients !== undefined && clients.length > 0 && (
+          <ul className="pick-list">
+            {clients.map((client) => (
+              <li className="pick-row" key={client.clientId}>
+                <span className="grant-text">
+                  <span className="grant-name">{client.name ?? client.clientId}</span>
+                  {client.uri && <span className="grant-about">{client.uri}</span>}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  pending={revoking === client.clientId}
+                  disabled={revoking !== '' && revoking !== client.clientId}
+                  onClick={() => void revoke(client.clientId)}
+                >
+                  Revoke
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </CardContent>
     </Card>
   )
@@ -207,8 +237,8 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
       <CardHeader>
         <CardTitle>Delete account</CardTitle>
         <CardDescription>
-          Deletes your account and personal agent, including its conversations, MCP connections, permissions and usage.
-          Other workspace owners keep their agents. This cannot be undone.
+          Deletes your account and personal agent, with its conversations, connections, permissions and usage. Cancel
+          your subscription first. This cannot be undone.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -233,9 +263,12 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
                   Without a password, sign in again with a code first: deleting works for 10 minutes after.
                 </FieldDescription>
               </Field>
-              <Field>
-                <Button type="submit" variant="destructive" disabled={pending}>
-                  {pending ? 'Deleting…' : 'Delete my account'}
+              <Field orientation="horizontal">
+                <Button type="submit" variant="destructive" pending={pending}>
+                  Delete my account
+                </Button>
+                <Button type="button" variant="ghost" disabled={pending} onClick={() => setOpen(false)}>
+                  Cancel
                 </Button>
               </Field>
             </FieldGroup>
@@ -250,28 +283,50 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
   )
 }
 
+/**
+ * The owner's settings, most used first: their plan and today's usage, their agent, routines, how they sign in, the
+ * apps that use their agent, and last the account itself. A lapsed plan shows only what still applies.
+ */
 export function Settings() {
   const [error, setError] = useState('')
-  const billing = useBilling()
+  const active = useBilling().state?.active === true
   return (
-    <div className="flex flex-col gap-6">
+    <div className="page-stack">
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      <BillingCard />
-      {billing.state?.active && (
-        <>
+      <PageSection id="plan" title="Plan and usage">
+        <BillingCard />
+        {active && <UsageCard />}
+      </PageSection>
+      {active && (
+        <PageSection id="agent" title="Your agent">
           <ResidentCard onError={setError} />
-          <UsageCard />
           <MemoryCard onError={setError} />
-          <RoutinesCard />
-        </>
+        </PageSection>
       )}
-      <PasskeysCard onError={setError} />
-      {billing.state?.active && <ClientsCard onError={setError} />}
-      <DeleteAccountCard onError={setError} />
+      {active && <RoutinesSection />}
+      <PageSection id="sign-in" title="Signing in">
+        <PasskeysCard onError={setError} />
+      </PageSection>
+      {active && (
+        <PageSection
+          id="clients"
+          title="Apps that use your agent"
+          note={
+            <>
+              MCP clients you allowed to use Purrable at <code>{`${window.location.origin}/mcp`}</code>.
+            </>
+          }
+        >
+          <ClientsCard onError={setError} />
+        </PageSection>
+      )}
+      <PageSection id="account" title="Account">
+        <DeleteAccountCard onError={setError} />
+      </PageSection>
     </div>
   )
 }

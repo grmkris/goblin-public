@@ -1,21 +1,36 @@
 import { useState } from 'react'
 import { Schema } from 'effect'
+import type { BillingState } from '@purrable/contracts'
+import { Link } from '@tanstack/react-router'
 import {
   Alert,
   AlertDescription,
   Button,
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
+  Skeleton,
 } from '@purrable/ui'
 import { failureText, request } from '../lib/boundary.ts'
 import { useBilling } from '../lib/billing.tsx'
+import { planStatus } from '../lib/labels.ts'
+import { StatusLabel } from './status-label.tsx'
 
-const Link = Schema.Struct({ url: Schema.String })
+const PortalLink = Schema.Struct({ url: Schema.String })
 const Checkout = Schema.Struct({ checkoutUrl: Schema.String })
 const date = (at: number) => new Date(at).toLocaleDateString()
+/** When the paid period ends or renews, in words. */
+function periodLine(state: BillingState): string {
+  if (state.until === null)
+    return state.active ? 'Included with your account.' : 'Subscribe to use your personal agent.'
+  if (state.cancelAtPeriodEnd || state.status === 'cancelled') return `Access until ${date(state.until)}.`
+  if (state.status === 'past_due' || state.status === 'on_hold') return `Payment grace until ${date(state.until)}.`
+  return `Renews on ${date(state.until)}.`
+}
+
 export function BillingCard() {
   const { state, error } = useBilling()
   const [failure, setFailure] = useState('')
@@ -23,7 +38,7 @@ export function BillingCard() {
   async function manage() {
     setPending(true)
     try {
-      const link = Schema.decodeUnknownSync(Link)(await request('/api/billing/portal', { body: {} }))
+      const link = Schema.decodeUnknownSync(PortalLink)(await request('/api/billing/portal', { body: {} }))
       window.location.assign(link.url)
     } catch (cause) {
       setFailure(failureText(cause))
@@ -33,48 +48,38 @@ export function BillingCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Billing</CardTitle>
-        <CardDescription>Pro · $10/month · 2 million weighted tokens per day.</CardDescription>
+        <CardTitle>Pro</CardTitle>
+        <CardDescription>$10 a month · 2 million weighted tokens a day</CardDescription>
+        <CardAction>{state !== undefined && <StatusLabel label={planStatus(state)} />}</CardAction>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-col gap-4">
+        <div className="card-body">
           {(error || failure) && (
             <Alert variant="destructive">
               <AlertDescription>{failure || error}</AlertDescription>
             </Alert>
           )}
-          <p>
-            {state === undefined
-              ? 'Loading…'
-              : state.active
-                ? 'Pro is active.'
-                : 'Subscribe to use your personal agent.'}
-          </p>
-          {state?.until != null && (
-            <p className="text-sm text-muted-foreground">
-              {state.cancelAtPeriodEnd || state.status === 'cancelled'
-                ? 'Access until'
-                : state.status === 'past_due' || state.status === 'on_hold'
-                  ? 'Payment grace until'
-                  : 'Renews on'}{' '}
-              {date(state.until)}.
+          {state === undefined ? <Skeleton className="h-5 w-48" /> : <p>{periodLine(state)}</p>}
+          {state?.hasCustomer && (
+            <div className="card-actions">
+              <Button variant="outline" pending={pending} onClick={() => void manage()}>
+                Manage subscription
+              </Button>
+            </div>
+          )}
+          {state?.active === false && !state.hasCustomer && (
+            <div className="card-actions">
+              <Button nativeButton={false} render={<Link to="/subscribe" />}>
+                Choose Pro
+              </Button>
+            </div>
+          )}
+          {state?.hasCustomer && (
+            <p className="server-note">
+              Cancel in the billing portal; access continues through your paid period. Cancel before deleting your
+              account.
             </p>
           )}
-          {state?.hasCustomer ? (
-            <Button variant="outline" disabled={pending} onClick={() => void manage()}>
-              {pending ? 'Opening…' : 'Manage subscription'}
-            </Button>
-          ) : (
-            state?.active === false && (
-              <a href="/subscribe" className="underline">
-                Choose Pro
-              </a>
-            )
-          )}
-          <p className="text-sm text-muted-foreground">
-            Cancel in the billing portal. Access continues through your paid period. Cancel your subscription before
-            deleting your account.
-          </p>
         </div>
       </CardContent>
     </Card>

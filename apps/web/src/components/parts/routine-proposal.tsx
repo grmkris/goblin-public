@@ -41,7 +41,7 @@ export function RoutineProposalPart({ part }: { readonly part: ToolPart }) {
   return (
     <ToolCard part={part}>
       {receipt && details && !('origin' in details) && !part.result?.isError && (
-        <Button size="sm" variant="outline" disabled={pending} onClick={() => void review()}>
+        <Button size="sm" variant="outline" pending={pending} onClick={() => void review()}>
           Review routine proposal
         </Button>
       )}

@@ -1,6 +1,6 @@
 // The owner's MCP servers: theirs first, each with what the agent may use from it, then one place to add another and,
 // last, a way to try a tool by hand.
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Schema } from 'effect'
 import { ServerView } from '@purrable/contracts'
 import {
@@ -18,6 +18,7 @@ import {
 import { PlugIcon, PlusIcon } from 'lucide-react'
 import { failureText, request } from '../lib/boundary.ts'
 import { serverTitle } from '../lib/labels.ts'
+import { PageSection } from './page-section.tsx'
 import { ServerCard } from './server-card.tsx'
 import { ServerPicker } from './server-picker.tsx'
 import { useTelegramChannel } from './telegram-control.tsx'
@@ -46,28 +47,6 @@ function useServers(onMessage: (message: string) => void) {
   }, [onMessage])
   useEffect(load, [load])
   return { servers, version, load }
-}
-
-function SectionHead({
-  id,
-  title,
-  count,
-  action,
-}: {
-  readonly id: string
-  readonly title: string
-  readonly count?: number
-  readonly action?: ReactNode
-}) {
-  return (
-    <div className="section-head">
-      <h2 id={id}>
-        {title}
-        {count !== undefined && <span className="section-count">{count}</span>}
-      </h2>
-      {action}
-    </div>
-  )
 }
 
 function NoServers({ onAdd }: { readonly onAdd: () => void }) {
@@ -109,23 +88,20 @@ export function Connections() {
           <AlertDescription>{message}</AlertDescription>
         </Alert>
       )}
-      <section className="page-section" aria-labelledby="servers-title">
-        <SectionHead
-          id="servers-title"
-          title="Your servers"
-          {...(servers !== undefined && servers.length > 0 && { count: servers.length })}
-          action={
-            servers !== undefined && servers.length > 0 ? (
-              <Button size="sm" variant="ghost" onClick={toPicker}>
-                <PlusIcon data-icon="inline-start" />
-                Add a server
-              </Button>
-            ) : undefined
-          }
-        />
-        <p className="section-note">
-          Your agent reaches another service only through a server here, and only with the tools you allow.
-        </p>
+      <PageSection
+        id="servers"
+        title="Your servers"
+        {...(servers !== undefined && servers.length > 0 && { count: servers.length })}
+        action={
+          servers !== undefined && servers.length > 0 ? (
+            <Button size="sm" variant="ghost" onClick={toPicker}>
+              <PlusIcon data-icon="inline-start" />
+              Add a server
+            </Button>
+          ) : undefined
+        }
+        note="Your agent reaches another service only through a server here, and only with the tools you allow."
+      >
         {servers === undefined && (
           <div className="page-stack" aria-busy>
             <Skeleton className="h-28 w-full" />
@@ -136,9 +112,8 @@ export function Connections() {
         {servers?.map((server) => (
           <ServerCard key={server.serverId} server={server} onReload={load} onMessage={setMessage} channel={channel} />
         ))}
-      </section>
-      <section className="page-section" aria-labelledby="add-title" ref={picker}>
-        <SectionHead id="add-title" title="Add a server" />
+      </PageSection>
+      <PageSection id="add" title="Add a server" ref={picker}>
         <ServerPicker
           version={version}
           onChanged={changed}
@@ -147,7 +122,7 @@ export function Connections() {
           }
           onMessage={setMessage}
         />
-      </section>
+      </PageSection>
       <ToolConsole servers={(servers ?? []).filter((server) => server.status === 'connected')} />
     </div>
   )

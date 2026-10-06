@@ -2,10 +2,60 @@ import { useCallback, useEffect, useState } from 'react'
 import { Schema } from 'effect'
 import { RoutineRunPage, type RoutineRunView } from '@purrable/contracts'
 import { Link } from '@tanstack/react-router'
-import { Alert, AlertDescription, Button } from '@purrable/ui'
+import { Alert, AlertDescription, Button, Skeleton } from '@purrable/ui'
+import { RefreshCwIcon } from 'lucide-react'
 import { failureText, request } from '../lib/boundary.ts'
+import { runStatus, telegramReport } from '../lib/labels.ts'
+import { StatusLabel } from './status-label.tsx'
 
-/** Pi acceptance and Telegram acceptance are shown separately from the run's outcome. */
+const LIVE: readonly RoutineRunView['state'][] = ['admitted', 'running', 'waiting_owner']
+const FINISHED: readonly RoutineRunView['state'][] = ['completed', 'failed', 'stopped']
+const when = (at: number) => new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+
+/** Whether a finished run's report reached Main, and Telegram when it was asked to. */
+function reportsOf(run: RoutineRunView): string | undefined {
+  if (!FINISHED.includes(run.state)) return undefined
+  const main = run.reportAcceptedAt === null ? 'Report to Main pending' : 'Reported to Main'
+  const telegram = telegramReport(run.notificationState)
+  return telegram === undefined ? main : `${main} · ${telegram}`
+}
+
+function RunRow({
+  run,
+  pending,
+  onStop,
+}: {
+  readonly run: RoutineRunView
+  readonly pending: boolean
+  readonly onStop: () => void
+}) {
+  const summary = run.summary ?? run.outcome
+  const reports = reportsOf(run)
+  return (
+    <li className="run-row">
+      <div className="run-line">
+        <StatusLabel label={runStatus(run.state)} />
+        <time className="run-time" dateTime={new Date(run.firedAt).toISOString()}>
+          {when(run.firedAt)}
+        </time>
+        {run.sessionId && (
+          <Link className="run-link" to="/c/$conversationId" params={{ conversationId: run.sessionId }}>
+            Open
+          </Link>
+        )}
+        {run.sessionId && LIVE.includes(run.state) && (
+          <Button size="xs" variant="outline" pending={pending} onClick={onStop}>
+            Stop
+          </Button>
+        )}
+      </div>
+      {summary && <p className="run-summary">{summary}</p>}
+      {reports && <p className="server-note">{reports}</p>}
+    </li>
+  )
+}
+
+/** A routine's runs: Run now while it is on, then each run with where it stands, what it found and its reports. */
 export function RoutineHistory({
   id,
   revision,
@@ -15,9 +65,9 @@ export function RoutineHistory({
   readonly revision: number
   readonly active: boolean
 }) {
-  const [runs, setRuns] = useState<readonly RoutineRunView[]>([])
+  const [runs, setRuns] = useState<readonly RoutineRunView[]>()
   const [error, setError] = useState('')
-  const [pending, setPending] = useState(false)
+  const [pending, setPending] = useState<string>()
   const load = useCallback(() => {
     void request(`/api/routines/${id}/runs`)
       .then((value) => setRuns(Schema.decodeUnknownSync(RoutineRunPage)(value).runs))
@@ -25,7 +75,7 @@ export function RoutineHistory({
   }, [id])
   useEffect(load, [load])
   async function command(run?: RoutineRunView) {
-    setPending(true)
+    setPending(run?.id ?? 'run')
     setError('')
     try {
       if (run?.sessionId) await request(`/api/conversations/${run.sessionId}/stop`, { body: {} })
@@ -38,19 +88,20 @@ export function RoutineHistory({
     } catch (cause) {
       setError(failureText(cause))
     } finally {
-      setPending(false)
+      setPending(undefined)
     }
   }
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex gap-2">
+    <section className="server-part" aria-label="Runs">
+      <div className="server-part-head">
+        <h3 className="server-part-title">Runs</h3>
         {active && (
-          <Button size="sm" disabled={pending} onClick={() => void command()}>
+          <Button size="xs" variant="ghost" pending={pending === 'run'} onClick={() => void command()}>
             Run now
           </Button>
         )}
-        <Button size="sm" variant="outline" onClick={load}>
-          Refresh runs
+        <Button size="icon-xs" variant="ghost" aria-label="Refresh runs" onClick={load}>
+          <RefreshCwIcon />
         </Button>
       </div>
       {error && (
@@ -58,29 +109,15 @@ export function RoutineHistory({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      {runs.map((run) => (
-        <div key={run.id} className="flex flex-col gap-1 border-t pt-2 text-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            <span>
-              {run.state} · {new Date(run.firedAt).toLocaleString()}
-            </span>
-            {run.sessionId && (
-              <Link className="underline" to="/c/$conversationId" params={{ conversationId: run.sessionId }}>
-                Open run
-              </Link>
-            )}
-            {run.sessionId && ['admitted', 'running', 'waiting_owner'].includes(run.state) && (
-              <Button size="sm" variant="outline" disabled={pending} onClick={() => void command(run)}>
-                Stop
-              </Button>
-            )}
-          </div>
-          <p>{run.summary ?? run.outcome}</p>
-          <p className="text-muted-foreground">
-            Main note: {run.reportAcceptedAt ? 'accepted' : 'pending'} · Telegram report: {run.notificationState}
-          </p>
-        </div>
-      ))}
-    </div>
+      {runs === undefined && !error && <Skeleton className="h-6 w-full" />}
+      {runs?.length === 0 && <p className="server-note">No runs yet.</p>}
+      {runs !== undefined && runs.length > 0 && (
+        <ul className="grant-list">
+          {runs.map((run) => (
+            <RunRow key={run.id} run={run} pending={pending === run.id} onStop={() => void command(run)} />
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }

@@ -179,7 +179,8 @@ The browser follows a conversation over Server-Sent Events: a snapshot of commit
 a heartbeat. On reconnect it starts again from a fresh snapshot.
 
 Every signed-in page sits beside the app's sidebar (shadcn's sidebar, ported to `packages/ui`): the conversations,
-then Connections, Settings and Sign out. On desktop it folds to an icon rail (the toggle in a page's top bar or the
+then Connections, Settings and Sign out. Connections and Settings are columns of titled sections (`PageSection`)
+whose states read in words (`lib/labels.ts`), never the raw value the runtime sends. On desktop the sidebar folds to an icon rail (the toggle in a page's top bar or the
 first pane's pill, its edge, or ⌘/Ctrl+B) and a cookie remembers it, which the server reads so the first paint has the right layout; on
 phones it is a sheet. The workspace fills the page beside it. The transcript scrolls in a `MessageScroller` (from `@shadcn/react`, patched with upstream fixes that are not
 released yet; `bun run check:patches` proves the patch is installed). Each of
@@ -408,8 +409,8 @@ own cap stays the backstop.
 
 The agent acts for the owner when the owner is not there, so it needs its own standing permission rather than a
 borrowed browser session. `ResidentAuthority` (`app_resident`) is active for 30 days. Owner RPC calls renew the window;
-inbound calls and hooks do not. Revoking it in Settings sticks: activity does not re-enable it, only the explicit toggle
-does. Model MCP tools, skills, inbound `ask_agent` and scheduled Telegram pulls and replies require current authority.
+inbound calls and hooks do not. Turning it off in Settings ("Work while you're away") sticks: activity does not
+re-enable it, only the explicit toggle does. Model MCP tools, skills, inbound `ask_agent` and scheduled Telegram pulls and replies require current authority.
 Owner MCP RPC methods renew it but do not call `requireResident`; their tool/resource calls still check exact grants
 (`agent.ts`, `pi/resident-mcp.ts`, `pi/skills.ts`).
 
