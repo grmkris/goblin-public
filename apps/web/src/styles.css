@@ -2,6 +2,7 @@
 
 /* A page's column under its top bar; the gutters clear the notch. */
 .shell {
+  width: 100%;
   max-width: 880px;
   margin: 0 auto;
   padding: 1rem max(1rem, env(safe-area-inset-right)) var(--page-gutter-bottom) max(1rem, env(safe-area-inset-left));
@@ -984,42 +985,281 @@ main.shell {
 .list {
   padding-left: 1.25rem;
 }
-.tool-card {
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  padding: 0.5rem 0.75rem;
-}
-.tool-card[open] {
+/* Pages outside the workspace (Connections, Settings): sections, each a heading, a note and its cards. */
+.page-stack {
   display: flex;
   flex-direction: column;
+  gap: 1rem;
+}
+.page-stack > .page-section + .page-section {
+  margin-top: 1.25rem;
+}
+.page-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  scroll-margin-top: 1rem;
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2rem;
+}
+.section-head h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.section-count {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.section-note {
+  max-width: 62ch;
+  margin: -0.375rem 0 0.25rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+/* A state as a dot in its tone and its words (components/status-label.tsx). */
+.status-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+.status-label::before {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+  opacity: 0.55;
+}
+.status-label[data-tone='good']::before {
+  background: var(--success);
+  opacity: 1;
+}
+.status-label[data-tone='attention'] {
+  color: var(--foreground);
+}
+.status-label[data-tone='attention']::before {
+  background: var(--attention);
+  opacity: 1;
+}
+.status-label[data-tone='bad'] {
+  color: var(--destructive);
+}
+/* A server's card (components/server-card.tsx): its mark and name, where it stands, then what it offers. */
+.server-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-width: 0;
+}
+.server-title > .app-tile {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.4375rem;
+}
+.server-title > .app-tile > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+.server-actions {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
 }
-.tool-row {
+.server-body {
   display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  padding: 0.35rem 0;
+  flex-direction: column;
+  gap: 1.25rem;
 }
-.tool-row input {
-  margin-top: 0.3rem;
+.server-claim {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--muted-foreground);
 }
-/* The suggested servers: one row each, name and our description beside its Add button. */
-.suggestions {
-  display: grid;
+.server-claim > span {
+  color: var(--foreground);
+  font-weight: 500;
+}
+.server-part {
+  display: flex;
+  flex-direction: column;
+}
+.server-part-head {
+  display: flex;
+  align-items: center;
   gap: 0.25rem;
+  min-height: 1.75rem;
+}
+.server-part-title {
+  margin: 0 auto 0.25rem 0;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.server-part-head > .server-part-title {
+  margin-bottom: 0;
+}
+.server-part-count {
+  margin-left: 0.375rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.server-note {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+.server-part > .server-note {
+  margin-top: 0.5rem;
+}
+/* A server's events (components/event-health.tsx): its name, where its subscription stands, when one last came. */
+.event-list {
+  display: flex;
+  flex-direction: column;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.suggestion {
+.event-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0;
+  font-size: 0.875rem;
+}
+.event-row + .event-row {
+  border-top: 1px solid var(--hairline);
+}
+.event-name {
+  flex: 1;
+  min-width: 8rem;
+  font-weight: 500;
+}
+.event-meta {
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+/*
+ * Settings-list rows: what a switch allows on the left, the switch on the right, hairlines between. A row the agent
+ * may use (a tool) and a row the owner picks (a suggestion) share the layout.
+ */
+.grant-list,
+.pick-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.grant-list > li + li,
+.pick-list > li + li,
+.server-part > .setting-row + .setting-row {
+  border-top: 1px solid var(--hairline);
+}
+.grant-row,
+.setting-row,
+.pick-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.5rem 0;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.625rem 0;
 }
-.suggestion + .suggestion {
-  border-top: 1px solid var(--border);
+.grant-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+.grant-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.grant-name > code,
+.pick-source {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+.grant-about {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+code.grant-about {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  -webkit-line-clamp: 1;
+}
+/* An App's switch heads the tools it uses, which sit indented under it, past its tile. */
+.grant-app > .grant-row > .app-tile {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.4375rem;
+}
+.grant-app > .grant-list {
+  padding-left: 2.25rem;
+}
+.grant-app > .grant-list > li {
+  border-top: 1px solid var(--hairline);
+}
+.pick-meta {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+/* The picker's panels (components/server-picker.tsx): a field above its list. */
+.pick-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+[data-slot='tabs-content'] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+}
+.search-field,
+.address-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.search-field > svg {
+  flex: none;
+  color: var(--muted-foreground);
 }
 .registries {
   display: flex;
@@ -1029,19 +1269,50 @@ main.shell {
   font-size: 0.8125rem;
 }
 .registries > summary {
+  width: fit-content;
   cursor: pointer;
 }
-/* An App's tools under its "Allow app" switch: indented, so the switch reads as their heading. */
-.tool-app {
+/* An ask before something irreversible, inline where it was asked for. */
+.inline-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.625rem;
+  background: color-mix(in oklab, var(--destructive) 7%, transparent);
+  font-size: 0.875rem;
+  animation: rise 160ms ease-out;
+}
+.inline-confirm > span {
+  flex: 1;
+  min-width: 12rem;
+}
+/* A card's parts inside a wrapper of its own (a Collapsible), spaced as the card would space them. */
+.card-stack {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  gap: var(--card-spacing);
 }
-.tool-app > .tool-row {
-  padding-left: 0.25rem;
+/* "Try a tool": its title opens it. */
+.console-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.console-trigger > svg {
+  width: 1rem;
+  height: 1rem;
+  color: var(--muted-foreground);
+  transition: rotate 160ms ease;
+}
+.console-trigger[aria-expanded='true'] > svg {
+  rotate: 90deg;
 }
 /*
  * A subagent in its spawner's transcript (components/parts/subagent-block.tsx): one line aligned with the agent's

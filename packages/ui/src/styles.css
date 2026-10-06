@@ -38,6 +38,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-success: var(--success);
+  --color-attention: var(--attention);
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
@@ -78,6 +79,8 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --success: oklch(0.627 0.17 149);
+  /* Something the owner can fix: a server that needs signing in again. Amber, never alarm red. */
+  --attention: oklch(0.7 0.15 65);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
@@ -168,6 +171,7 @@
   --presence-4: oklch(0.36 0.05 262);
   --presence-warm: oklch(0.76 0.14 70);
   --success: oklch(0.72 0.17 150);
+  --attention: oklch(0.8 0.14 75);
   --live: oklch(0.72 0.13 250);
   --you: oklch(0.3 0.02 255);
   --hairline: oklch(1 0 0 / 10%);

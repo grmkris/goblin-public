@@ -243,10 +243,11 @@ once after a 401. A refused refresh marks the server `needs_auth` and the owner 
 16 MiB for App HTML).
 
 Grants are per discovered tool (`app_mcp_grants`), toggled by the owner. A tool grant also grants its `ui://` App
-resource. "Allow app" (`PUT /api/mcp/app-grants`, `McpHost.setAppGrant`) grants an App as a whole: exactly the tools
-that declare its `ui://` resource, including the ones only the App may call, and the resource itself. Connections
-lists those tools under the switch, each still adjustable. Tool annotations from the server are shown but never
-grant anything. Disconnecting forgets credentials and keeps grants. When the model calls a tool that exists but is
+resource. An App's switch (`PUT /api/mcp/app-grants`, `McpHost.setAppGrant`) grants an App as a whole: exactly the
+tools that declare its `ui://` resource, including the ones only the App may call, and the resource itself.
+Connections (`components/tool-grants.tsx`) lists those tools under the switch, each still adjustable, and offers Allow
+all and None, which send the same exact grants one at a time. Tool annotations from the server are shown as its claims
+("says read-only") but never grant anything. Disconnecting forgets credentials and keeps grants. When the model calls a tool that exists but is
 not granted, nothing runs. `mcp_call` returns an error result whose details are
 `{ kind: 'grant-required', serverId, name }`, and the model is told to wait.
 `mcpModelResult` details never carry a top-level `kind`, so remote content cannot forge one. The web turns that
@@ -427,7 +428,7 @@ Purrable is an MCP server at `/mcp`, the protected resource of Better Auth's `mc
 
 ## MCP Events and Telegram
 
-The owner selects one Telegram connection under **Use for Telegram** (ADR 0011). If its authenticated discovery
+The owner selects one Telegram connection with its **Telegram** switch (ADR 0011). If its authenticated discovery
 advertises top-level `capabilities.events`, the action grants `inbox`, `send_message` and the exact Events selectors
 `message.received` and `question.answered` with `{}` arguments. Both finite webhook subscriptions must confirm before
 `app_telegram_channel` copies the checkpoint and fences old doorbell cursor writes. The channel pulls immediately;

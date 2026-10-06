@@ -50,6 +50,7 @@ export {
   PopoverTrigger,
 } from './components/popover.tsx'
 export { Meter } from './components/meter.tsx'
+export { NativeSelect, NativeSelectOption } from './components/native-select.tsx'
 export {
   MessageScroller,
   MessageScrollerButton,
@@ -60,6 +61,8 @@ export {
   useMessageScroller,
 } from './components/message-scroller.tsx'
 export { Separator } from './components/separator.tsx'
+export { Skeleton } from './components/skeleton.tsx'
+export { Spinner } from './components/spinner.tsx'
 export {
   Sheet,
   SheetClose,
@@ -71,6 +74,7 @@ export {
 } from './components/sheet.tsx'
 export { PresenceBorder, PresenceOrb, type PresenceState } from './components/presence.tsx'
 export { Switch } from './components/switch.tsx'
+export { Tabs, TabsContent, TabsList, TabsTrigger } from './components/tabs.tsx'
 export {
   Questionnaire,
   QuestionnaireActions,

@@ -1,20 +1,9 @@
-// Adding and removing the owner's own MCP servers, by URL or from the servers we suggest. A pasted URL is checked by the runtime (public https only) and
+// Adding the owner's own MCP servers, by URL or from the servers we suggest. A pasted URL is checked by the runtime (public https only) and
 // labelled from the server's card; it starts disconnected and is connected like any other.
 import { useEffect, useState } from 'react'
 import { Schema } from 'effect'
 import { ServerSuggestion, ServerView } from '@purrable/contracts'
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Field,
-  FieldGroup,
-  Input,
-} from '@purrable/ui'
+import { Button, Field, FieldDescription, FieldGroup, FieldLabel, Input } from '@purrable/ui'
 import { ApiFailure, failureText, isString, record, request } from '../lib/boundary.ts'
 
 const decodeServer = Schema.decodeUnknownSync(ServerView)
@@ -30,7 +19,7 @@ const REFUSED: Record<string, string> = {
 }
 
 /** Add a server by its MCP endpoint, then connect it from its card. */
-export function AddServer({
+export function AddByAddress({
   onAdded,
   onMessage,
 }: {
@@ -53,69 +42,33 @@ export function AddServer({
     }
   }
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Add a server</CardTitle>
-        <CardDescription>Paste an MCP server's address. You connect it and choose its tools next.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            void add()
-          }}
-        >
-          <FieldGroup>
-            <Field orientation="horizontal">
-              <Input
-                type="url"
-                inputMode="url"
-                placeholder="https://example.com/mcp"
-                aria-label="Server address"
-                value={endpoint}
-                onChange={(event) => setEndpoint(event.target.value)}
-                required
-              />
-              <Button type="submit" disabled={busy || endpoint.trim() === ''}>
-                Add
-              </Button>
-            </Field>
-          </FieldGroup>
-        </form>
-      </CardContent>
-    </Card>
-  )
-}
-
-/** Remove a server the owner added; asks once, because its sign-in and grants go with it. */
-export function RemoveServer({
-  server,
-  onRemoved,
-  onMessage,
-}: {
-  readonly server: ServerView
-  readonly onRemoved: () => void
-  readonly onMessage: (message: string) => void
-}) {
-  const [confirming, setConfirming] = useState(false)
-  async function remove(): Promise<void> {
-    try {
-      await request(`/api/mcp/${encodeURIComponent(server.serverId)}/remove`, { body: {} })
-      onRemoved()
-    } catch (error) {
-      onMessage(failureText(error))
-    }
-  }
-  if (!confirming)
-    return (
-      <Button size="sm" variant="ghost" onClick={() => setConfirming(true)}>
-        Remove
-      </Button>
-    )
-  return (
-    <Button size="sm" variant="destructive" onClick={() => void remove()} onBlur={() => setConfirming(false)}>
-      Remove with its grants
-    </Button>
+    <form
+      onSubmit={(event) => {
+        event.preventDefault()
+        void add()
+      }}
+    >
+      <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="server-address">The server's address</FieldLabel>
+          <div className="address-row">
+            <Input
+              id="server-address"
+              type="url"
+              inputMode="url"
+              placeholder="https://example.com/mcp"
+              value={endpoint}
+              onChange={(event) => setEndpoint(event.target.value)}
+              required
+            />
+            <Button type="submit" pending={busy} disabled={endpoint.trim() === ''}>
+              Add
+            </Button>
+          </div>
+          <FieldDescription>Any public MCP server. You connect it and choose its tools next.</FieldDescription>
+        </Field>
+      </FieldGroup>
+    </form>
   )
 }
 
@@ -134,7 +87,7 @@ export async function addAndConnect(endpoint: string, title: string, source?: Se
   return `Connected ${title}. Choose the tools your agent may use.`
 }
 
-/** Servers we suggest, checked to connect from here: one tap adds and connects; already added ones say so. */
+/** Servers we suggest, checked to work from here: one tap adds and connects; already added ones say so. */
 export function SuggestedServers({
   version,
   onChanged,
@@ -162,36 +115,27 @@ export function SuggestedServers({
       setBusy('')
     }
   }
-  if (items.length === 0) return null
+  if (items.length === 0) return <p className="server-note">Nothing to suggest right now.</p>
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Suggested</CardTitle>
-        <CardDescription>Servers we have checked work from here. You still choose every tool.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ul className="suggestions">
-          {items.map((item) => (
-            <li key={item.id} className="suggestion">
-              <span className="flex min-w-0 flex-col gap-1">
-                <span className="flex flex-wrap items-center gap-2 font-medium">
-                  {item.title}
-                  <Badge variant="outline">{item.signIn ? 'sign-in' : 'no sign-in'}</Badge>
-                </span>
-                <span className="text-sm text-muted-foreground">{item.description}</span>
-              </span>
-              <Button
-                size="sm"
-                variant={item.added ? 'ghost' : 'outline'}
-                disabled={item.added || busy !== ''}
-                onClick={() => void add(item)}
-              >
-                {item.added ? 'Added' : busy === item.id ? 'Adding…' : 'Add'}
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
+    <ul className="pick-list">
+      {items.map((item) => (
+        <li key={item.id} className="pick-row">
+          <span className="grant-text">
+            <span className="grant-name">{item.title}</span>
+            <span className="grant-about">{item.description}</span>
+          </span>
+          <span className="pick-meta">{item.signIn ? 'Sign-in' : 'No sign-in'}</span>
+          <Button
+            size="sm"
+            variant={item.added ? 'ghost' : 'outline'}
+            disabled={item.added || (busy !== '' && busy !== item.id)}
+            pending={busy === item.id}
+            onClick={() => void add(item)}
+          >
+            {item.added ? 'Added' : 'Add'}
+          </Button>
+        </li>
+      ))}
+    </ul>
   )
 }
