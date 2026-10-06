@@ -43,7 +43,7 @@ export const nodes: readonly Node[] = [
   {
     dir: 'apps/cli',
     name: '@goblin/cli',
-    role: "the goblin terminal client: an MCP client of the Worker's inspection endpoints, and Workers Logs",
+    role: "the goblin terminal client: an MCP client of the Worker's /mcp with inspection, and Workers Logs",
     runtime: 'daemon',
     mayImport: ['@goblin/contracts'],
   },

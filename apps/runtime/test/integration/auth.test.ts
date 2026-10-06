@@ -214,7 +214,7 @@ harness.test(
   }),
 )
 harness.test(
-  'inspection endpoint: own audience and scope, refresh and consent revocation (ADR 0024)',
+  'one /mcp: inspection only while consent grants goblin:inspect; asking needs a plan, reading does not (ADR 0024)',
   Effect.gen(function* () {
     const { url } = yield* stack
     yield* Effect.promise(() => inspectAuthCase(url))

@@ -43,22 +43,16 @@ export const clientFromClaims = (
   }
 }
 
-/** A user's consent to one client, as the provider stores it: scope and resource lists as JSON text. */
-export type ConsentRow = { readonly scopes: string | null; readonly resources: string | null }
+/** A user's consent to one client, as the provider stores it: its scopes as JSON text. */
+export type ConsentRow = { readonly scopes: string | null }
 
-const textList = (value: string | null): readonly string[] => {
-  if (value === null) return []
+/** The scopes a standing consent grants; anything unreadable grants none. */
+export const grantedScopes = (consent: ConsentRow): readonly string[] => {
+  if (consent.scopes === null) return []
   try {
-    const parsed: unknown = JSON.parse(value)
+    const parsed: unknown = JSON.parse(consent.scopes)
     return Array.isArray(parsed) ? parsed.filter(text) : []
   } catch {
     return []
   }
 }
-
-/**
- * Whether a standing consent still covers an endpoint: any consent covers `/mcp` (as before resources were recorded);
- * an inspection endpoint needs its scope and its resource in the latest consent. Anything unreadable covers nothing.
- */
-export const consentCovers = (consent: ConsentRow, scope: string | undefined, resource: string): boolean =>
-  scope === undefined || (textList(consent.scopes).includes(scope) && textList(consent.resources).includes(resource))

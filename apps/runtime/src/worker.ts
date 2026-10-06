@@ -17,7 +17,6 @@ import type { AgentRpc, RuntimeEnv } from './env.ts'
 import {
   handleAuth,
   listInboundClients,
-  endpointOfMetadata,
   resourceMetadata,
   requireUserSession,
   revokeInboundClient,
@@ -29,7 +28,6 @@ import { Forbidden, InvalidInput, NotFound } from './http/errors.ts'
 import { failureResponse, requestIdOf, secured } from './http/respond.ts'
 import { unwrap } from './http/rpc.ts'
 import { handleInboundMcp } from './inbound/route.ts'
-import { handleInspectMcp } from './inbound/inspect-route.ts'
 import { eventsHookTokenValid } from './mcp/events/route-token.ts'
 import { EVENT_BODY_BYTES } from './mcp/events/webhook.ts'
 import { hookTokenValid } from './channel/doorbell.ts'
@@ -360,7 +358,6 @@ async function admittedRoute(
 ): Promise<Response> {
   const path = new URL(request.url).pathname
   if (path === '/mcp') return handleInboundMcp(request, env)
-  if (path === '/mcp/inspect') return handleInspectMcp(request, env)
   if (path === '/hooks/dodo') return Effect.runPromise(billingWebhook(billingDeps(env), request, ctx))
   if (path.startsWith('/hooks/mcp-events/')) return mcpEventsRoute(request, env, path)
   if (path.startsWith('/hooks/')) return doorbellRoute(request, env, path)
@@ -389,7 +386,7 @@ export default {
         },
       })
     if (url.pathname.startsWith('/.well-known/oauth-protected-resource'))
-      return secured(Response.json(resourceMetadata(env, endpointOfMetadata(url.pathname))))
+      return secured(Response.json(resourceMetadata(env)))
     if (url.pathname.startsWith('/.well-known/') || url.pathname.startsWith('/api/auth/'))
       return handleAuth(request, env)
 

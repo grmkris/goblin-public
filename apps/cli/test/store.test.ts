@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { CliAuthProvider } from '../src/oauth.ts'
 import { CredentialStore } from '../src/store.ts'
 
-const KEY = 'https://goblin.test/mcp/inspect'
+const KEY = 'https://goblin.test/mcp'
 const REDIRECT = 'http://127.0.0.1:18979/callback'
 const fresh = async () =>
   new CredentialStore(join(await mkdtemp(join(tmpdir(), 'goblin-cli-')), 'goblin', 'credentials.json'))

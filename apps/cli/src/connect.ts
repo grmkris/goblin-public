@@ -31,7 +31,7 @@ export async function connect(settings: Settings, browser: boolean): Promise<Cli
   const store = new CredentialStore(settings.store)
   let waiting: Promise<URLSearchParams> | undefined
   const provider = new CliAuthProvider(store, settings.endpoint.href, settings.redirect.href, settings.scope, (url) => {
-    console.error(`Sign in and approve goblin's inspection access:\n\n  ${url.href}\n`)
+    console.error(`Sign in and approve the goblin CLI:\n\n  ${url.href}\n`)
     if (browser) launch(url)
     waiting = listenForCallback(settings.redirect, process.stdin.isTTY).then((callback) => callback.params)
   })

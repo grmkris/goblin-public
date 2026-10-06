@@ -2,11 +2,15 @@ import { McpServer } from '@modelcontextprotocol/server'
 import * as Schema from 'effect/Schema'
 import type { AskResult } from '../env.ts'
 import type { TranscriptMessage } from '../pi/transcript.ts'
+import { INSPECTION_GUIDE, type InspectReader, registerInspection } from './inspection.ts'
+import { failed, standard, text } from './tools.ts'
 
 /** What the inbound MCP server needs from the resident agent, already bound to one authenticated client. */
 export type ClientAgentPort = {
   readonly ask: (input: string, operationId: string, waitMs: number) => Promise<AskResult>
   readonly recent: (limit: number) => Promise<readonly TranscriptMessage[]>
+  /** Present when the client holds `goblin:inspect`: the read-only inspection tools (ADR 0024). */
+  readonly inspect?: InspectReader
 }
 
 const DEFAULT_WAIT_SECONDS = 50
@@ -30,23 +34,18 @@ const AskInput = Schema.Struct({
 const RecentInput = Schema.Struct({
   limit: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 50 }))),
 })
-export const standard = <S extends Schema.Top & Schema.ConstraintDecoder<unknown>>(schema: S) =>
-  Schema.toStandardJSONSchemaV1(Schema.toStandardSchemaV1(schema))
-
-const text = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] })
+const ASK_GUIDE =
+  "goblin is the owner's resident personal agent. Use ask_agent to delegate a question or task; it answers in its main conversation, where the owner sees your message labelled with your name."
 
 /**
  * goblin as an MCP server: authorized clients (Claude Code, Hermes, ...) can ask the resident agent things. They
  * talk in the agent's main conversation, labelled with their name; the agent uses the owner's granted tools under
- * resident authority.
+ * resident authority. A client the owner let inspect also reads the agent's conversations and runs.
  */
 export const inboundServer = (agent: ClientAgentPort): McpServer => {
   const server = new McpServer(
     { name: 'goblin', version: '0.1.0' },
-    {
-      instructions:
-        "goblin is the owner's resident personal agent. Use ask_agent to delegate a question or task; it answers in its main conversation, where the owner sees your message labelled with your name.",
-    },
+    { instructions: agent.inspect === undefined ? ASK_GUIDE : `${ASK_GUIDE} ${INSPECTION_GUIDE}` },
   )
   server.registerTool(
     'ask_agent',
@@ -59,7 +58,11 @@ export const inboundServer = (agent: ClientAgentPort): McpServer => {
     },
     async (input) => {
       const waitMs = (input.waitSeconds ?? DEFAULT_WAIT_SECONDS) * 1000
-      return text(await agent.ask(input.input, input.operationId ?? crypto.randomUUID(), waitMs))
+      try {
+        return text(await agent.ask(input.input, input.operationId ?? crypto.randomUUID(), waitMs))
+      } catch (cause) {
+        return failed(cause)
+      }
     },
   )
   server.registerTool(
@@ -73,5 +76,6 @@ export const inboundServer = (agent: ClientAgentPort): McpServer => {
     },
     async (input) => text({ messages: await agent.recent(input.limit ?? 20) }),
   )
+  if (agent.inspect !== undefined) registerInspection(server, agent.inspect)
   return server
 }

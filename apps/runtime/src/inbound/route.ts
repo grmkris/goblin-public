@@ -1,7 +1,8 @@
+import type { InspectQuery } from '@goblin/contracts/inspect'
 import { createMcpHandler } from 'agents/mcp/server'
-import { challengeOf, clientName, verifyClientToken } from '../auth/index.ts'
+import { INSPECT_SCOPE, challengeOf, clientName, verifyClientToken } from '../auth/index.ts'
 import type { RuntimeEnv } from '../env.ts'
-import { unwrap } from '../http/rpc.ts'
+import { unwrap, unwrapJson } from '../http/rpc.ts'
 import { inboundServer } from './server.ts'
 import { requireAccountPlan } from '../billing/gates.ts'
 
@@ -13,24 +14,31 @@ export const inboundHosts = (appUrl: string) => ({
 /** `/mcp`: verify the client's bearer token, then serve the stateless MCP handler bound to that client. */
 export const handleInboundMcp = async (request: Request, env: RuntimeEnv): Promise<Response> => {
   const header = request.headers.get('authorization') ?? ''
-  if (!header.startsWith('Bearer ')) return challengeOf(env.APP_URL, 'ask')
+  if (!header.startsWith('Bearer ')) return challengeOf(env.APP_URL)
   const token = header.slice('Bearer '.length)
   let principal: Awaited<ReturnType<typeof verifyClientToken>>
   try {
     principal = await verifyClientToken(token, env)
   } catch {
-    return challengeOf(env.APP_URL, 'ask')
+    return challengeOf(env.APP_URL)
   }
-  // The token's subject is the user who consented; the client talks to that user's agent only.
-  await requireAccountPlan(env, principal.subject)
+  // The token's subject is the user who consented; the client talks to that user's agent only. Asking runs the model,
+  // so it needs a plan; reading your own agent does not.
   const agent = env.AGENTS.getByName(principal.subject)
   const name = await clientName(principal.clientId, env)
+  const inspect = async (query: InspectQuery) =>
+    unwrapJson(
+      await (await agent.fetch('https://agent/inspect', { method: 'POST', body: JSON.stringify(query) })).json(),
+    )
   const handler = createMcpHandler(
     () =>
       inboundServer({
-        ask: async (input, operationId, waitMs) =>
-          unwrap(await agent.askAsClient(name ?? 'an MCP client', input, operationId, waitMs)),
+        ask: async (input, operationId, waitMs) => {
+          await requireAccountPlan(env, principal.subject)
+          return unwrap(await agent.askAsClient(name ?? 'an MCP client', input, operationId, waitMs))
+        },
         recent: async (limit) => unwrap(await agent.recentMessages(limit)),
+        ...(principal.scopes.includes(INSPECT_SCOPE) ? { inspect } : {}),
       }),
     {
       route: '/mcp',

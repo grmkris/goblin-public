@@ -25,10 +25,9 @@ Runtime paths below are relative to `apps/runtime/src/`; browser paths are relat
 | Path | What happens |
 | --- | --- |
 | `/health` | Stage, service name, sign-up mode and whether mail is configured. |
-| `/.well-known/oauth-protected-resource*` | Protected-resource metadata, one document per endpoint: `/mcp` (also the bare path) and `/mcp/inspect`. |
+| `/.well-known/oauth-protected-resource*` | Protected-resource metadata for `/mcp`, the same document at every path. |
 | `/.well-known/*`, `/api/auth/*` | Better Auth: sign-up and sign-in, the OAuth authorization server for inbound clients. |
-| `/mcp` | goblin's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented. |
-| `/mcp/inspect` | Read-only inspection of the consenting user's own agent (ADR 0024); its own audience and `goblin:inspect` scope. |
+| `/mcp` | goblin's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented, and `goblin:inspect` adds read-only inspection (ADR 0024). |
 | `/api/*` | Owner API. A session cookie selects the signed-in user's agent; writes reject an `Origin` header if it names another origin. |
 | `/hooks/mcp-events/<userId>/<token>` | Signed MCP Events; the user-bound route token is checked before object lookup. |
 | `/hooks/myagent/<userId>/<token>` | Legacy Telegram doorbell fallback for servers without Events. |
@@ -530,31 +529,26 @@ Owner MCP RPC methods renew it but do not call `requireResident`; their tool/res
 
 ## Inbound MCP
 
-goblin is an MCP server at `/mcp`, the protected resource of Better Auth's `mcp()` authorization server:
+goblin is an MCP server at `/mcp`, the one protected resource of Better Auth's `mcp()` authorization server:
 
-- Clients register dynamically (open, and restricted to goblin's three resources). A registration whose redirects are
-  all http loopback is marked native, which is how Claude Code registers.
-- The owner signs in and consents at `/consent`. A Bearer token is accepted only if it verifies against the local
-  JWKS, names `/mcp` as audience, comes from an enabled client and the owner's consent still exists.
+- Clients register dynamically (open, and restricted to `/mcp`). A registration whose redirects are all http loopback
+  is marked native, which is how Claude Code registers.
+- The owner signs in and consents at `/consent`, which says what the requested scopes grant. A Bearer token is
+  accepted only if it verifies against the local JWKS, names `/mcp` as audience, comes from an enabled client and the
+  owner's consent still exists. Its scopes count only while that consent still grants them (`auth/service.ts`).
 - Tools: `ask_agent` (submit into main, labelled with the client's name, and wait up to 110 seconds; a stable
-  `operationId` makes it idempotent) and `get_recent_messages` (main's latest messages, with their authors).
-- Revoking a client in Settings deletes the consent, disables the client and revokes its refresh tokens; its next
-  call gets a 401.
-
-Another protected resource serves inspection (ADR 0024, `auth/resources.ts`, `inbound/inspect-route.ts`). It is its
-own audience with its own metadata, and a token for one endpoint is refused by the other. Better Auth keeps each
-resource's allowed scopes, so `goblin:inspect` is only ever granted for `/mcp/inspect`. An unauthenticated request gets
-a 401 naming the endpoint's metadata and exactly the scope to ask for. It is a separate resource, not a step-up scope
-on `/mcp`, because MCP clients handle a first-connect challenge reliably and
-`insufficient_scope` step-up not yet. A token passes only if the standing consent still lists the endpoint's scope and
-resource, so revoking or narrowing consent ends inspection at once.
-
-- `/mcp/inspect` reads the token subject's own agent: `inspect_conversations`, `inspect_conversation`,
+  `operationId` makes it idempotent; it runs the model, so it needs a plan) and `get_recent_messages` (main's latest
+  messages, with their authors).
+- With `goblin:inspect` (ADR 0024) the same server adds `inspect_conversations`, `inspect_conversation`,
   `inspect_turns`, `inspect_turn` and `inspect_problems`, with the contract's input and output schemas
-  (`inbound/inspect-server.ts`). Everything is read-only, and the server tells clients that returned text is data,
-  never instructions.
-- The consent page names what the requested resource grants: asking the agent, or reading your conversations and
-  runs.
+  (`inbound/inspection.ts`). They read the token subject's own agent, never call a model and need no plan; the
+  server's instructions tell clients that returned text is data, never instructions.
+- `/mcp` advertises `goblin:inspect` in its metadata, and an unauthenticated request gets a 401 naming the metadata
+  and every scope, so a new connection asks for inspection and the owner decides on the consent page. Clients
+  connected before inspection joined `/mcp` get it after reconnecting once; migration
+  `0009_mcp_inspection_scope` lets clients registered earlier ask for it.
+- Revoking a client in Settings deletes the consent, disables the client and revokes its refresh tokens; its next
+  call gets a 401. Consenting again without `goblin:inspect` ends inspection for tokens already issued.
 
 ## MCP Events and Telegram
 
@@ -648,8 +642,7 @@ model. The queries are in `contracts/src/inspect.ts`:
 - `problems`: failed, blocked and interrupted events since a time (default the last day).
 
 The agent answers them on its internal `/inspect` route as the RPC result shape (`agent-requests.ts`,
-`inspect/request.ts`), which only the inspection MCP endpoints call, after they have authorized the caller (see
-Inbound MCP).
+`inspect/request.ts`), which only `/mcp` calls, for a client that holds `goblin:inspect` (see Inbound MCP).
 
 The agent reads itself too: main has a `diagnose` tool (`pi/diagnose.ts`, wired by `telemetry/agent.ts`), so the
 owner can ask in Telegram why something failed. Without an operation id it returns the last day's problems and turns;

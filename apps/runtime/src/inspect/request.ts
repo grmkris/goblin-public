@@ -12,7 +12,7 @@ const decodeQuery = Schema.decodeUnknownEffect(Schema.fromJsonString(InspectQuer
 
 /**
  * The agent's own inspection route (ADR 0024): a JSON `InspectQuery` in, an encoded `RpcResult` out. Only the Worker
- * reaches it, from the inspection MCP endpoints after they have authorized the caller; it renews no authority, needs
+ * reaches it, from `/mcp` for a client that holds `goblin:inspect`; it renews no authority, needs
  * no plan, and never calls a model.
  */
 export async function inspectRequest(request: Request, execute: Execute): Promise<Response> {

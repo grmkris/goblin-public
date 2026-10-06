@@ -6,33 +6,18 @@ import { AuthShell } from './auth-shell.tsx'
 
 type ClientInfo = { readonly name: string; readonly uri?: string }
 
-/** What a consent grants, by the protected resource the client asked for (ADR 0024). */
-type Grant = 'ask' | 'inspect'
-const grantOf = (resources: readonly string[]): Grant => {
-  const paths = resources.map((resource) => (URL.canParse(resource) ? new URL(resource).pathname : ''))
-  return paths.includes('/mcp/inspect') ? 'inspect' : 'ask'
-}
-const GRANTS: Readonly<
-  Record<Grant, { readonly verb: string; readonly can: readonly string[]; readonly footer: string }>
-> = {
-  ask: {
-    verb: 'use goblin',
-    can: [
-      'ask your agent questions and give it tasks in your main conversation, where its messages show its name;',
-      'read the recent messages of your main conversation;',
-      "have your agent use the tools you allowed under Connections, while Work while you're away is on.",
-    ],
-    footer: 'Revoke it any time in Settings.',
-  },
-  inspect: {
-    verb: 'inspect your agent',
-    can: [
-      'read all your conversations in full, including tool calls and their results;',
-      'read how each turn ran: model calls, tool calls, retries, errors and timings.',
-    ],
-    footer: 'It cannot send messages or change anything. Revoke it any time in Settings.',
-  },
-}
+/** What every MCP client may do once allowed. */
+const ASK = [
+  'ask your agent questions and give it tasks in your main conversation, where its messages show its name;',
+  'read the recent messages of your main conversation;',
+  "have your agent use the tools you allowed under Connections, while Work while you're away is on.",
+]
+/** What the `goblin:inspect` scope adds (ADR 0024): read-only, it never sends or changes anything. */
+const INSPECT = [
+  'read all your conversations in full, including tool calls and their results, without changing anything;',
+  'read how each turn ran: model calls, tool calls, retries, errors and timings.',
+]
+const INSPECT_SCOPE = 'goblin:inspect'
 
 /** The client's registered name and address: untrusted, shown as the client's own claim. */
 function useClient(clientId: string): ClientInfo | undefined {
@@ -52,13 +37,14 @@ function useClient(clientId: string): ClientInfo | undefined {
 }
 
 /**
- * Ask the owner whether an MCP client may use goblin, saying what the requested resource grants. Client-supplied
+ * Ask the owner whether an MCP client may use goblin, saying what the requested scopes grant. Client-supplied
  * names and URLs are shown as untrusted.
  */
 export function Consent() {
   const query = new URLSearchParams(window.location.search)
   const clientId = query.get('client_id') ?? ''
-  const grant = GRANTS[grantOf(query.getAll('resource'))]
+  const inspects = (query.get('scope') ?? '').split(' ').includes(INSPECT_SCOPE)
+  const can = inspects ? [...ASK, ...INSPECT] : ASK
   const client = useClient(clientId)
   const [error, setError] = useState('')
   const [pending, setPending] = useState<'allow' | 'deny'>()
@@ -77,19 +63,19 @@ export function Consent() {
   return (
     <AuthShell
       size="lg"
-      title={`Allow “${client?.name ?? '…'}” to ${grant.verb}?`}
+      title={`Allow “${client?.name ?? '…'}” to use goblin?`}
       description={
         <>
           {client?.uri ? `It says it is ${client.uri}. ` : ''}The app supplies its own name and address; they are not
           verified.
         </>
       }
-      footer={<p>{grant.footer}</p>}
+      footer={<p>Revoke it any time in Settings.</p>}
     >
       <div className="auth-body">
         <p>If you allow it, the app can:</p>
         <ul className="plan-points">
-          {grant.can.map((line) => (
+          {can.map((line) => (
             <li key={line}>{line}</li>
           ))}
         </ul>

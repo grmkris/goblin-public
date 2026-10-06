@@ -7,10 +7,10 @@ import {
   type ConsentRow,
   clientFromClaims,
   type ClientPrincipal,
-  consentCovers,
+  grantedScopes,
   type TokenClaims,
 } from './principal.ts'
-import { type Endpoint, protectedResourceMetadata, requiredScope, resourceOf } from './resources.ts'
+import { mcpResource, protectedResourceMetadata } from './resources.ts'
 
 type UserSession = {
   readonly userId: string
@@ -33,17 +33,13 @@ export const requireUserSession = async (request: Request, env: RuntimeEnv): Pro
 }
 
 /**
- * An inbound MCP client's access token for one endpoint: a signature from our own JWKS (read locally, no self-fetch),
- * our issuer, the endpoint's audience and scope, an enabled client, and the user's standing consent to that scope and
- * resource. Revoking the consent or the client, or consenting again more narrowly, ends access at once.
+ * An inbound MCP client's access token: a signature from our own JWKS (read locally, no self-fetch), our issuer and
+ * /mcp audience, an enabled client and the user's standing consent. Its scopes count only while that consent still
+ * grants them, so revoking the client, or consenting again more narrowly, ends inspection at once.
  */
-export const verifyClientToken = async (
-  token: string,
-  env: RuntimeEnv,
-  endpoint: Endpoint = 'ask',
-): Promise<ClientPrincipal> => {
+export const verifyClientToken = async (token: string, env: RuntimeEnv): Promise<ClientPrincipal> => {
   const auth = createAuth(env, env.AUTH_DB)
-  const resource = resourceOf(env.APP_URL, endpoint)
+  const resource = mcpResource(env.APP_URL)
   let claims: TokenClaims
   try {
     claims = await verifyJwsAccessToken(token, {
@@ -55,29 +51,25 @@ export const verifyClientToken = async (
     throw new Unauthenticated({ reason: 'token' })
   }
   const principal = clientFromClaims(claims, { issuer: authIssuer(env.APP_URL), resource, now: nowSeconds() })
-  const scope = requiredScope(endpoint)
-  if (scope !== undefined && !principal.scopes.includes(scope)) throw new Unauthenticated({ reason: 'scope' })
   const client = await env.AUTH_DB.prepare('SELECT disabled FROM oauthClient WHERE clientId = ?')
     .bind(principal.clientId)
     .first<{ disabled: number | null }>()
   if (client === null || client.disabled === 1) throw new Unauthenticated({ reason: 'client revoked' })
-  const consent = await env.AUTH_DB.prepare(
-    'SELECT scopes, resources FROM oauthConsent WHERE clientId = ? AND userId = ?',
-  )
+  const consent = await env.AUTH_DB.prepare('SELECT scopes FROM oauthConsent WHERE clientId = ? AND userId = ?')
     .bind(principal.clientId, principal.subject)
     .first<ConsentRow>()
-  if (consent === null || !consentCovers(consent, scope, resource))
-    throw new Unauthenticated({ reason: 'consent revoked' })
-  return principal
+  if (consent === null) throw new Unauthenticated({ reason: 'consent revoked' })
+  const granted = grantedScopes(consent)
+  return { ...principal, scopes: principal.scopes.filter((scope) => granted.includes(scope)) }
 }
 
 /** No logging of auth request content; the provider owns its discovery/OAuth responses. */
 export const handleAuth = (request: Request, env: RuntimeEnv): Promise<Response> =>
   createAuth(env, env.AUTH_DB).handler(request)
 
-/** RFC 9728 metadata for the endpoint a `/.well-known/oauth-protected-resource…` path names. */
-export const resourceMetadata = (env: Pick<RuntimeEnv, 'APP_URL'>, endpoint: Endpoint) =>
-  protectedResourceMetadata(env.APP_URL, authIssuer(env.APP_URL), endpoint)
+/** RFC 9728 metadata for /mcp, served at every `/.well-known/oauth-protected-resource…` path. */
+export const resourceMetadata = (env: Pick<RuntimeEnv, 'APP_URL'>) =>
+  protectedResourceMetadata(env.APP_URL, authIssuer(env.APP_URL))
 
 /** The registered name of an inbound client, for display and its conversation label. */
 export const clientName = async (clientId: string, env: RuntimeEnv): Promise<string | undefined> =>
