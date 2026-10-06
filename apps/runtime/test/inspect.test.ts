@@ -55,6 +55,24 @@ describe('inspectEntry', () => {
     })
   })
 
+  it("keeps an answer's visible thinking and leaves redacted thinking out", () => {
+    const view = inspectEntry(
+      entry(
+        'pi.assistant',
+        answer([
+          { type: 'thinking', thinking: ' Plan the app first. ' },
+          { type: 'thinking', thinking: 'opaque', redacted: true },
+          { type: 'text', text: 'Building it.' },
+        ]),
+      ),
+    )
+    expect(view).toMatchObject({ thinking: 'Plan the app first.', text: 'Building it.' })
+    expect(view.truncated).toBeUndefined()
+    const long = inspectEntry(entry('pi.assistant', answer([{ type: 'thinking', thinking: 'z'.repeat(5000) }])))
+    expect(long.thinking).toHaveLength(4001)
+    expect(long.truncated).toBe(true)
+  })
+
   it('cuts long text and long arguments, and says so', () => {
     const view = inspectEntry(
       entry(

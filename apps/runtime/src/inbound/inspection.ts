@@ -17,7 +17,7 @@ const TOOLS: Readonly<Record<InspectKind, { readonly title: string; readonly des
   conversation: {
     title: 'Conversation entries',
     description:
-      "A page of one conversation's entries, oldest first, in full: messages with their author, tool calls with arguments, tool results, and each answer's model, stop reason, error and tokens. Long text is cut and marked `truncated`. Pass `before` (the first entry's id) for the page before.",
+      "A page of one conversation's entries, oldest first, in full: messages with their author, each answer's visible thinking, tool calls with arguments, tool results, and each answer's model, stop reason, error and tokens. Long text is cut and marked `truncated`. Pass `before` (the first entry's id) for the page before.",
   },
   turns: {
     title: 'Recent turns',

@@ -47,6 +47,13 @@ const turnLine = (turn: TurnSummary) =>
     turn.reason ?? '',
   ].join('  ')
 
+/** Text as indented lines, blank lines left out. */
+const indented = (words: string | undefined, prefix: string): string[] =>
+  (words ?? '')
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => `${prefix}${line}`)
+
 function entryLines(entry: InspectEntry): string[] {
   const who = [entry.role ?? entry.kind, entry.author === undefined ? '' : `(${entry.author})`].join('')
   const head = `#${entry.id} ${who}${entry.tool === undefined ? '' : ` ← ${entry.tool.name}${entry.tool.isError ? ' ERROR' : ''}`}`
@@ -57,10 +64,10 @@ function entryLines(entry: InspectEntry): string[] {
           `  [${entry.model.model} ${entry.model.stopReason}${entry.model.error === undefined ? '' : `: ${entry.model.error}`}]`,
         ]
   const calls = (entry.toolCalls ?? []).map((call) => `  → ${call.name} ${call.arguments}`)
-  const body = (entry.text ?? entry.data ?? '').split('\n').map((line) => `  ${line}`)
   return [
     head,
-    ...body.filter((line) => line.trim() !== ''),
+    ...indented(entry.thinking, '  ~ '),
+    ...indented(entry.text ?? entry.data, '  '),
     ...calls,
     ...model,
     ...(entry.truncated ? ['  …truncated'] : []),

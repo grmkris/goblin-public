@@ -50,6 +50,36 @@ describe('goblin output (unit)', () => {
     ])
   })
 
+  it("shows a conversation's entries with an answer's thinking before its words", () => {
+    const text = render('conversation', {
+      conversation: '1',
+      entries: [
+        {
+          id: 9,
+          kind: 'pi.assistant',
+          role: 'assistant',
+          thinking: 'Plan the app.\nThen build it.',
+          text: 'Done.',
+          model: {
+            provider: 'goblin-litellm',
+            model: 'glm-5.3',
+            stopReason: 'length',
+            inputTokens: 10,
+            outputTokens: 32_768,
+            cacheReadTokens: 0,
+          },
+        },
+      ],
+    })
+    expect(text.split('\n')).toEqual([
+      '#9 assistant',
+      '  ~ Plan the app.',
+      '  ~ Then build it.',
+      '  Done.',
+      '  [glm-5.3 length]',
+    ])
+  })
+
   it("says a tool's failure in a line", () => {
     expect(failureText('{"_tag":"NotFound","what":"turn"}')).toBe('NotFound: what=turn')
     expect(failureText('plain words')).toBe('plain words')

@@ -61,6 +61,8 @@ export const InspectEntry = Schema.Struct({
   /** Who wrote a user message, when it was not the owner in the app (an MCP client, Telegram). */
   author: Schema.optional(Schema.String),
   text: Schema.optional(Schema.String),
+  /** An answer's visible thinking, before its text and calls (redacted thinking is left out). */
+  thinking: Schema.optional(Schema.String),
   /** The calls an answer made, with their arguments as JSON. */
   toolCalls: Schema.optional(
     Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, arguments: Schema.String })),

@@ -44,8 +44,14 @@ const Message = Schema.Struct({
   isError: Schema.optional(Schema.Boolean),
 })
 const Call = Schema.Struct({ type: Schema.Literal('toolCall'), id: Schema.String, name: Schema.String })
+const Thought = Schema.Struct({
+  type: Schema.Literal('thinking'),
+  thinking: Schema.String,
+  redacted: Schema.optional(Schema.Boolean),
+})
 const decodeMessage = (value: unknown) => Option.getOrUndefined(Schema.decodeUnknownOption(Message)(value))
 const isCall = Schema.is(Call)
+const isThought = Schema.is(Thought)
 
 type Cut = { readonly text: string; readonly cut: boolean }
 const cut = (text: string, max: number): Cut =>
@@ -61,8 +67,18 @@ function callsOf(content: unknown) {
   })
 }
 
+/** An answer's visible thinking; redacted thinking is an opaque payload, not words. */
+const thinkingOf = (content: unknown): string =>
+  Array.isArray(content)
+    ? content
+        .filter(isThought)
+        .filter((block) => block.redacted !== true && block.thinking.trim() !== '')
+        .map((block) => block.thinking.trim())
+        .join('\n\n')
+    : ''
+
 type Message = typeof Message.Type
-type MessageFields = Pick<InspectEntry, 'role' | 'author' | 'text' | 'toolCalls' | 'tool' | 'model' | 'at'>
+type MessageFields = Pick<InspectEntry, 'role' | 'author' | 'text' | 'thinking' | 'toolCalls' | 'tool' | 'model' | 'at'>
 
 /** For a tool result: which call it answers and whether it failed. */
 const toolOf = (message: Message) =>
@@ -86,24 +102,29 @@ function modelOf(message: Message) {
   }
 }
 
-/** A message's words (an author tag becomes `author`), its calls, tool result and model, and whether any was cut. */
+/**
+ * A message's words (an author tag becomes `author`), its thinking, calls, tool result and model, and whether any was
+ * cut.
+ */
 function messageFields(message: Message | undefined): { readonly fields: MessageFields; readonly cut: boolean } {
   if (message === undefined) return { fields: {}, cut: false }
   const blocks = textBlocks(message.content)
   const author = message.role === 'user' && blocks.length > 1 ? authorOf(blocks[0] ?? '') : undefined
   const words = cut((author === undefined ? blocks : blocks.slice(1)).join('\n'), MAX_TEXT)
+  const thinking = cut(thinkingOf(message.content), MAX_TEXT)
   const calls = callsOf(message.content)
   return {
     fields: {
       role: message.role,
       ...(author === undefined ? {} : { author }),
       ...(words.text === '' ? {} : { text: words.text }),
+      ...(thinking.text === '' ? {} : { thinking: thinking.text }),
       ...(calls.length === 0 ? {} : { toolCalls: calls.map((call) => call.call) }),
       ...toolOf(message),
       ...modelOf(message),
       ...(message.timestamp === undefined ? {} : { at: message.timestamp }),
     },
-    cut: words.cut || calls.some((call) => call.cut),
+    cut: words.cut || thinking.cut || calls.some((call) => call.cut),
   }
 }
 
