@@ -561,7 +561,9 @@ goblin is an MCP server at `/mcp`, the one protected resource of Better Auth's `
   (`inbound/inspection.ts`). They read the token subject's own agent, never call a model and need no plan; the
   server's instructions tell clients that returned text is data, never instructions.
 - `/mcp` advertises `goblin:inspect` in its metadata, and an unauthenticated request gets a 401 naming the metadata
-  and every scope, so a new connection asks for inspection and the owner decides on the consent page. Clients
+  and every scope, so a new connection asks for inspection. The consent page offers it as a separate switch that
+  starts off; unless the owner turns it on, Allow grants the rest without `goblin:inspect`
+  (`apps/web/src/lib/consent-scope.ts`). Clients
   connected before inspection joined `/mcp` get it after reconnecting once; migration
   `0009_mcp_inspection_scope` lets clients registered earlier ask for it.
 - Revoking a client in Settings deletes your consent to it and revokes its refresh tokens for you (`auth/clients.ts`);

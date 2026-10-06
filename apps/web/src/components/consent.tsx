@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Alert, AlertDescription, Button } from '@goblin/ui'
+import { Alert, AlertDescription, Button, Switch } from '@goblin/ui'
 import { isString, record } from '../lib/boundary.ts'
 import { authClient, redirectOf } from '../lib/auth-client.ts'
+import { INSPECT_SCOPE, consentBody, requestedScopes } from '../lib/consent-scope.ts'
 import { AuthShell } from './auth-shell.tsx'
 
 type ClientInfo = { readonly name: string; readonly uri?: string }
@@ -17,7 +18,6 @@ const INSPECT = [
   'read all your conversations in full, including tool calls and their results, without changing anything;',
   'read how each turn ran: model calls, tool calls, retries, errors and timings.',
 ]
-const INSPECT_SCOPE = 'goblin:inspect'
 
 /** The client's registered name and address: untrusted, shown as the client's own claim. */
 function useClient(clientId: string): ClientInfo | undefined {
@@ -36,22 +36,43 @@ function useClient(clientId: string): ClientInfo | undefined {
   return client
 }
 
+/** The opt-in for inspection, with what it adds; off until the owner turns it on. */
+function InspectChoice({ on, onChange }: { readonly on: boolean; readonly onChange: (on: boolean) => void }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="capability-row">
+        <span className="capability-name">
+          <span>Also let it read your conversations and runs</span>
+          <span className="capability-detail">Off unless you turn it on. With it, the app can:</span>
+        </span>
+        <Switch checked={on} onCheckedChange={onChange} />
+      </label>
+      <ul className="plan-points" data-off={on ? undefined : true}>
+        {INSPECT.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 /**
- * Ask the owner whether an MCP client may use goblin, saying what the requested scopes grant. Client-supplied
- * names and URLs are shown as untrusted.
+ * Ask the owner whether an MCP client may use goblin, saying what the requested scopes grant. Inspection, when asked
+ * for, is a separate opt-in. Client-supplied names and URLs are shown as untrusted.
  */
 export function Consent() {
   const query = new URLSearchParams(window.location.search)
   const clientId = query.get('client_id') ?? ''
-  const inspects = (query.get('scope') ?? '').split(' ').includes(INSPECT_SCOPE)
-  const can = inspects ? [...ASK, ...INSPECT] : ASK
+  const requested = requestedScopes(query.get('scope'))
   const client = useClient(clientId)
+  const [inspect, setInspect] = useState(false)
   const [error, setError] = useState('')
   const [pending, setPending] = useState<'allow' | 'deny'>()
   async function decide(accept: boolean): Promise<void> {
     setPending(accept ? 'allow' : 'deny')
     setError('')
-    const { data, error: failure } = await authClient.$fetch('/oauth2/consent', { method: 'POST', body: { accept } })
+    const body = consentBody(requested, accept, inspect)
+    const { data, error: failure } = await authClient.$fetch('/oauth2/consent', { method: 'POST', body })
     const next = redirectOf(data)
     if (failure || next === undefined) {
       setError(failure?.message ?? 'The authorization could not be completed.')
@@ -75,10 +96,11 @@ export function Consent() {
       <div className="auth-body">
         <p>If you allow it, the app can:</p>
         <ul className="plan-points">
-          {can.map((line) => (
+          {ASK.map((line) => (
             <li key={line}>{line}</li>
           ))}
         </ul>
+        {requested.includes(INSPECT_SCOPE) && <InspectChoice on={inspect} onChange={setInspect} />}
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

@@ -56,5 +56,8 @@ Consequences:
   `ask_agent` and `get_recent_messages` and get the inspection tools after reconnecting once, which asks the owner
   again; a D1 migration (`0009_mcp_inspection_scope`) lets clients registered earlier ask for the scope, and retires
   the old resources. Asking the agent, not reading it, needs a plan.
+- **2026-10-06: inspection is opt-in on the consent page.** A client that asks for `goblin:inspect` gets a separate
+  switch for it, off by default; Allow without it grants the other scopes only. Reading every conversation is more
+  than most clients need, so the owner chooses it rather than accepting it with the rest.
 - **2026-10-06: event sources corrected.** The first text said events came from Pi's extension hooks and the Agents
   SDK diagnostics channels; they come from Pi's commit listener and the emitters listed above.

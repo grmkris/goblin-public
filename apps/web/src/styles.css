@@ -1439,6 +1439,9 @@ a.file-chip:hover {
 .plan-points > li::marker {
   color: var(--muted-foreground);
 }
+.plan-points[data-off] {
+  color: var(--muted-foreground);
+}
 .legal-links {
   display: flex;
   flex-wrap: wrap;

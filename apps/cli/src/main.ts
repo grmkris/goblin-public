@@ -73,6 +73,10 @@ async function withClient(settings: Settings, args: Args, work: (client: Client)
   }
 }
 
+/** Inspection is opt-in on the consent page (ADR 0024); without it the commands have nothing to read. */
+const NO_INSPECTION =
+  'This sign-in cannot inspect your agent. Run goblin logout, then goblin login, and turn on "Also let it read your conversations and runs" on the consent page.'
+
 async function main(argv: readonly string[]): Promise<number> {
   const args = parseArgs(argv)
   if (args.command === undefined || args.command === 'help') {
@@ -82,8 +86,9 @@ async function main(argv: readonly string[]): Promise<number> {
   const settings = await settingsOf(args)
   switch (args.command) {
     case 'login':
-      return withClient(settings, args, async () => {
+      return withClient(settings, args, async (client) => {
         console.error(`Signed in to ${settings.endpoint.href}.`)
+        if (!(await listTools(client)).some((tool) => tool.name.startsWith('inspect_'))) console.error(NO_INSPECTION)
         return 0
       })
     case 'logout':
