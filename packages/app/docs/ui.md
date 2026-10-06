@@ -70,7 +70,8 @@ boolean }[] }`.
   action, also those with `agent: false`) and resolves with the new state; it throws when the action fails, and
   `error` holds the message.
 - A view calls only its own app's actions. It has no network (`fetch` fails), no storage and no new windows. Data
-  from outside comes through an action's `prepare`.
+  from outside comes through an action's `prepare` (topic `powers`). `download(name, text, type)` from `@goblin/app`
+  offers the owner a file to save.
 - Imports: `react`, `@goblin/app`, `@goblin/ui`, `@goblin/kit/chart`, `@goblin/kit/map`, `@goblin/kit/diagram`,
   `recharts`, `react-leaflet`, `leaflet`, `lucide-react` (icons), and types from `./app`. Nothing else.
 - Style with Tailwind classes and goblin's colours, which follow light and dark: `bg-background`, `bg-card`,

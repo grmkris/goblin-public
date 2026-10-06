@@ -2,6 +2,7 @@ import { AppBridge, type McpUiHostContext } from '@modelcontextprotocol/ext-apps
 import type { CallToolResult, ReadResourceResult } from '@modelcontextprotocol/client'
 import type { AppSelection, FrameEvents, McpSelection } from '../components/apps/frame.tsx'
 import { contextText, safeLink } from './app-context.ts'
+import { downloadOf } from './app-download.ts'
 import { appSandbox } from './app-sandbox.ts'
 import { grantDenied } from '../components/apps/grant-ask.tsx'
 import { type AgentAppCalls, type StatePush, agentBridge } from './agent-app-bridge.ts'
@@ -57,8 +58,14 @@ export function createAppBridge(
     null,
     { name: 'goblin', version: '0.1.0' },
     selection.kind === 'mcp'
-      ? { serverTools: {}, serverResources: {}, openLinks: {}, updateModelContext: { text: {}, structuredContent: {} } }
-      : { serverTools: {}, openLinks: {}, logging: {} },
+      ? {
+          serverTools: {},
+          serverResources: {},
+          openLinks: {},
+          downloadFile: {},
+          updateModelContext: { text: {}, structuredContent: {} },
+        }
+      : { serverTools: {}, openLinks: {}, downloadFile: {}, logging: {} },
     { hostContext: context },
   )
   bridge.onrequestdisplaymode = async ({ mode }) => ({ mode: events.requestMode(mode) })
@@ -66,6 +73,12 @@ export function createAppBridge(
     const link = safeLink(url)
     if (link === undefined) return { isError: true }
     events.offerLink(link)
+    return {}
+  }
+  bridge.ondownloadfile = async ({ contents }) => {
+    const file = downloadOf(contents)
+    if (file === undefined) return { isError: true }
+    events.offerDownload(file)
     return {}
   }
   bridge.addEventListener('sizechange', ({ height }) => {

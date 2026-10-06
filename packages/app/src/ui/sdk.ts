@@ -93,6 +93,13 @@ export function useActions() {
   return { act, pending, error }
 }
 
+/** Offers the owner a file to save: goblin shows it with a Save button, and nothing is saved without their click. */
+export async function download(name: string, text: string, type = 'text/plain'): Promise<void> {
+  const resource = { uri: `file:///${encodeURIComponent(name)}`, mimeType: type, text }
+  const result = await connect().downloadFile({ contents: [{ type: 'resource', resource }] })
+  if (result.isError === true) throw new Error(`${name} could not be offered`)
+}
+
 /** Reports a UI failure to the host, which tells the agent (no more than one notice in a while). */
 export function report(message: string): void {
   void connect().sendLog({ level: 'error', data: message.slice(0, 2000) })

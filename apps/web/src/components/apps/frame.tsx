@@ -15,6 +15,7 @@ import { Alert, AlertDescription } from '@goblin/ui'
 import { agentAppHtml, appSandbox, isSandboxMessage, sandboxHtml, sandboxProxy } from '../../lib/app-sandbox.ts'
 import { createAppBridge } from '../../lib/app-bridge.ts'
 import { type StatePush, agentAppCalls } from '../../lib/agent-app-bridge.ts'
+import type { DownloadFile } from '../../lib/app-download.ts'
 import { isString, record, records, request, text } from '../../lib/boundary.ts'
 import { type AppPlacement, type Device, hostContext, inlineHeight } from '../../lib/host-context.ts'
 import { LinkOffer } from './offers.tsx'
@@ -46,6 +47,8 @@ export type FrameEvents = {
   readonly share: (text: string) => void
   /** A link the App asks to open: offered to the owner, never opened for them. */
   readonly offerLink: (link: URL) => void
+  /** A file the App asks to download: offered to the owner, never saved for them. */
+  readonly offerDownload: (file: DownloadFile) => void
   /** The App called a tool the owner has not granted: true once they allow it, false if they do not. */
   readonly askGrant: (name: string) => Promise<boolean>
 }
@@ -175,6 +178,7 @@ export function AppFrame({
       requestMode: (mode) => latest.current.events.requestMode(mode),
       share: (shared) => latest.current.events.share(shared),
       offerLink: (link) => latest.current.events.offerLink(link),
+      offerDownload: (file) => latest.current.events.offerDownload(file),
       askGrant: (name) => latest.current.events.askGrant(name),
     }
     if (element)
@@ -228,6 +232,7 @@ export function McpApp({ selection, onClose }: { readonly selection: McpSelectio
     requestMode: () => 'inline',
     share: () => undefined,
     offerLink: setLink,
+    offerDownload: () => undefined,
     askGrant: async () => false,
   }
   return (

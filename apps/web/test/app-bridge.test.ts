@@ -12,6 +12,7 @@ const events: FrameEvents = {
   requestMode: (mode) => mode,
   share: () => undefined,
   offerLink: () => undefined,
+  offerDownload: () => undefined,
   askGrant: async () => false,
 }
 /** An MCP App's frame reaches no agent app route. */
@@ -143,12 +144,16 @@ describe('an agent app bridge', () => {
       },
     }
     const launch = { kind: 'agent' as const, name: 'tapper', release: 'r_1', revision: 2, state: { n: 2 } }
+    const offered: string[] = []
     const { bridge, push } = createAppBridge(
       { kind: 'agent', id: '7', launch: { ...launch, ui: { module: '', css: '', libs: [] } } },
       '',
       { displayMode: 'inline' },
       { agent, tool: notMcp, resource: notMcp },
-      events,
+      {
+        ...events,
+        offerDownload: (file) => offered.push(`${file.name} ${file.type} ${String(file.bytes.byteLength)}`),
+      },
     )
     const app = new App({ name: 'Fixture', version: '1' }, {}, { autoResize: false })
     const states: unknown[] = []
@@ -174,6 +179,9 @@ describe('an agent app bridge', () => {
       push?.want(5)
       await until(() => states.length === 2)
       expect(states[1]).toEqual({ revision: 5, release: 'r_1', state: { n: 5 } })
+      const file = { uri: 'file:///report.csv', mimeType: 'text/csv', text: 'a,b\n1,2\n' }
+      expect(await app.downloadFile({ contents: [{ type: 'resource', resource: file }] })).not.toHaveProperty('isError')
+      expect(offered).toEqual(['report.csv text/csv 8'])
       await app.sendLog({ level: 'error', data: 'TypeError: boom' })
       await until(() => reached.some((entry) => Array.isArray(entry) && entry[0] === 'report'))
       expect(reached[0]).toEqual(['call', '7', { name: 'tap', arguments: { by: 1 }, op }])

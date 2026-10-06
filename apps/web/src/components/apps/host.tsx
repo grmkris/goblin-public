@@ -4,10 +4,22 @@
 // that the least recently seen unloads and its place shows a stub. Nothing here grants anything: an MCP App's
 // resource and every call it makes go through the owner's grants, live, and an agent app's view calls only its own
 // actions (frame.tsx). An agent app's new release reloads its frame; a new state is pushed into it.
-import { createContext, type ReactNode, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+  createContext,
+  use,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Schema } from 'effect'
 import { type AppView, AppLaunch } from '@goblin/contracts'
 import type { CallToolResult } from '@modelcontextprotocol/client'
+import type { DownloadFile } from '../../lib/app-download.ts'
 import { LIVE_APPS, evictions } from '../../lib/app-residency.ts'
 import { failureText, record, records, request } from '../../lib/boundary.ts'
 import { appKey } from '../../lib/workspace.ts'
@@ -25,6 +37,8 @@ export type Instance = {
   readonly context?: string
   /** A link the App asked to open, waiting for the owner's click. */
   readonly link?: URL
+  /** A file the App offers to save, waiting for the owner's click. */
+  readonly download?: DownloadFile
 }
 
 /** Where a stage can be: an App's place in its transcript, or its page. */
@@ -45,6 +59,8 @@ type Host = {
   readonly setContext: (id: string, text: string) => void
   /** Offers a link the App asked to open, or withdraws it. */
   readonly setLink: (id: string, link: URL | undefined) => void
+  /** Offers a file the App asked to download, or withdraws it. */
+  readonly setDownload: (id: string, file: DownloadFile | undefined) => void
   /** The stage's report of whether any of its App shows. */
   readonly seen: (id: string, visible: boolean) => void
   /** A ref callback that registers a slot's element while it is mounted. */
@@ -228,24 +244,8 @@ function useResidency(apps: readonly AppView[]) {
   return { instances, setInstances, dormant, problems, setProblems, show, seen, unload }
 }
 
-export function AppHost({ children }: { readonly children: ReactNode }) {
-  const feed = useWorkspaceFeed()
-  const workspace = useWorkspace()
-  const { kick, onKick } = useKicks()
-  const { slot, element } = useSlots(kick)
-  const { instances, setInstances, dormant, problems, setProblems, show, seen, unload } = useResidency(feed.apps)
-  const outside = useRef({ feed, workspace })
-  outside.current = { feed, workspace }
-  const close = useCallback(
-    (id: string) => {
-      unload([id], false)
-      outside.current.workspace.close(appKey(id))
-      outside.current.feed.closeApp(id).catch((cause: unknown) => {
-        setProblems((current) => withItem(current, id, failureText(cause)))
-      })
-    },
-    [unload, setProblems],
-  )
+/** What an App asked of the host, kept on its instance: its height, shared context, a link or a file to offer. */
+function useInstancePatches(setInstances: Dispatch<SetStateAction<ReadonlyMap<string, Instance>>>) {
   const setHeight = useCallback(
     (id: string, height: number) => setInstances((current) => patched(current, id, (it) => ({ ...it, height }))),
     [setInstances],
@@ -264,6 +264,37 @@ export function AppHost({ children }: { readonly children: ReactNode }) {
       ),
     [setInstances],
   )
+  const setDownload = useCallback(
+    (id: string, download: DownloadFile | undefined) =>
+      setInstances((current) =>
+        patched(current, id, ({ download: _dropped, ...rest }) =>
+          download === undefined ? rest : { ...rest, download },
+        ),
+      ),
+    [setInstances],
+  )
+  return { setHeight, setContext, setLink, setDownload }
+}
+
+export function AppHost({ children }: { readonly children: ReactNode }) {
+  const feed = useWorkspaceFeed()
+  const workspace = useWorkspace()
+  const { kick, onKick } = useKicks()
+  const { slot, element } = useSlots(kick)
+  const { instances, setInstances, dormant, problems, setProblems, show, seen, unload } = useResidency(feed.apps)
+  const outside = useRef({ feed, workspace })
+  outside.current = { feed, workspace }
+  const close = useCallback(
+    (id: string) => {
+      unload([id], false)
+      outside.current.workspace.close(appKey(id))
+      outside.current.feed.closeApp(id).catch((cause: unknown) => {
+        setProblems((current) => withItem(current, id, failureText(cause)))
+      })
+    },
+    [unload, setProblems],
+  )
+  const { setHeight, setContext, setLink, setDownload } = useInstancePatches(setInstances)
   const host = useMemo<Host>(
     () => ({
       instances,
@@ -274,13 +305,29 @@ export function AppHost({ children }: { readonly children: ReactNode }) {
       setHeight,
       setContext,
       setLink,
+      setDownload,
       seen,
       slot,
       element,
       kick,
       onKick,
     }),
-    [instances, dormant, problems, show, close, setHeight, setContext, setLink, seen, slot, element, kick, onKick],
+    [
+      instances,
+      dormant,
+      problems,
+      show,
+      close,
+      setHeight,
+      setContext,
+      setLink,
+      setDownload,
+      seen,
+      slot,
+      element,
+      kick,
+      onKick,
+    ],
   )
   return <HostContext value={host}>{children}</HostContext>
 }

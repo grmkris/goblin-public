@@ -12,7 +12,7 @@ import { atRest, type Motion, PLACE, stepSpring } from '../../lib/spring.ts'
 import { AppFrame, selectionOrigin } from './frame.tsx'
 import { useAppGrantAsks } from './grant-ask.tsx'
 import { type Instance, type SlotName, useAppHost } from './host.tsx'
-import { LinkOffer } from './offers.tsx'
+import { DownloadOffer, LinkOffer } from './offers.tsx'
 import { useAppPlacement } from './placement.ts'
 
 type Axes = { x: Motion; y: Motion; width: Motion; height: Motion }
@@ -149,6 +149,24 @@ function useRoom(chrome: RefObject<number>) {
   return { box, onTarget }
 }
 
+/** The link and the file the App offers the owner, drawn by the host above the App. */
+function StageOffers({ instance, origin }: { readonly instance: Instance; readonly origin: string }) {
+  const host = useAppHost()
+  const { id } = instance.app
+  return (
+    <>
+      {instance.link && <LinkOffer link={instance.link} serverId={origin} onDone={() => host.setLink(id, undefined)} />}
+      {instance.download && (
+        <DownloadOffer file={instance.download} from={origin} onDone={() => host.setDownload(id, undefined)} />
+      )}
+    </>
+  )
+}
+
+/** The App's state revision, for an agent app (its frame gets each newer one). */
+const revisionOf = (instance: Instance) =>
+  instance.app.source.kind === 'agent' ? { revision: instance.app.source.revision } : {}
+
 function Stage({ instance }: { readonly instance: Instance }) {
   const host = useAppHost()
   const { id } = instance.app
@@ -194,10 +212,10 @@ function Stage({ instance }: { readonly instance: Instance }) {
       {!place.paged && <AppChrome instance={instance} onPage={place.page} />}
       {error && <Receipt tone="error">{error}. The ordinary tool result remains available.</Receipt>}
       {grants.card}
-      {instance.link && <LinkOffer link={instance.link} serverId={origin} onDone={() => host.setLink(id, undefined)} />}
+      <StageOffers instance={instance} origin={origin} />
       <AppFrame
         selection={instance.selection}
-        {...(instance.app.source.kind === 'agent' && { revision: instance.app.source.revision })}
+        {...revisionOf(instance)}
         placement={placement}
         events={{
           report: setError,
@@ -206,6 +224,7 @@ function Stage({ instance }: { readonly instance: Instance }) {
           requestMode: place.request,
           share: (text) => host.setContext(id, text),
           offerLink: (link) => host.setLink(id, link),
+          offerDownload: (file) => host.setDownload(id, file),
           askGrant: grants.ask,
         }}
       />
