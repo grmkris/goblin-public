@@ -1,5 +1,5 @@
 import { RunAttributes, RunEvent, RunEventKind, RunEventStatus } from '@goblin/contracts/telemetry'
-import { and, desc, eq, lt } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, lt } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Schema from 'effect/Schema'
 import { appRunEvents } from '../storage/schema.ts'
@@ -74,6 +74,53 @@ export class RunLedger implements RunSink {
       .limit(1)
       .get()
     return row === undefined ? undefined : eventOf(row)
+  }
+
+  /** Every event of one turn, in the order they started. */
+  forOperation(operationId: string): readonly RunEvent[] {
+    return this.#db
+      .select()
+      .from(appRunEvents)
+      .where(eq(appRunEvents.operationId, operationId))
+      .orderBy(asc(appRunEvents.startedAt), asc(appRunEvents.id))
+      .all()
+      .map(eventOf)
+  }
+
+  /** The events of several turns, for their summaries. */
+  forOperations(operationIds: readonly string[]): readonly RunEvent[] {
+    if (operationIds.length === 0) return []
+    return this.#db
+      .select()
+      .from(appRunEvents)
+      .where(inArray(appRunEvents.operationId, [...operationIds]))
+      .all()
+      .map(eventOf)
+  }
+
+  /** Turns that started since `since`, newest first, optionally in one conversation. */
+  turns(since: number, limit: number, conversationId?: string): readonly RunEvent[] {
+    const conversation = conversationId === undefined ? [] : [eq(appRunEvents.conversationId, conversationId)]
+    return this.#db
+      .select()
+      .from(appRunEvents)
+      .where(and(eq(appRunEvents.kind, 'turn.submitted'), gte(appRunEvents.startedAt, since), ...conversation))
+      .orderBy(desc(appRunEvents.startedAt))
+      .limit(limit)
+      .all()
+      .map(eventOf)
+  }
+
+  /** Events that failed, were blocked or were cut short since `since`, newest first. */
+  problems(since: number, limit: number): readonly RunEvent[] {
+    return this.#db
+      .select()
+      .from(appRunEvents)
+      .where(and(inArray(appRunEvents.status, ['error', 'blocked', 'interrupted']), gte(appRunEvents.startedAt, since)))
+      .orderBy(desc(appRunEvents.startedAt))
+      .limit(limit)
+      .all()
+      .map(eventOf)
   }
 
   /**

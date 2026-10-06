@@ -603,6 +603,24 @@ the user's task if a commit listener throws, so the recorder and every sink are 
 failures. Verified with in-memory Pi (`test/telemetry.test.ts`) and local workerd (`native-telemetry.ts`, the
 Telegram Events probe). Compaction summaries' model calls are not recorded yet.
 
+### Inspection
+
+`Inspector` (`inspect/inspector.ts`, the `Inspect` service) reads the agent back without changing it or calling a
+model. The queries are in `contracts/src/inspect.ts`:
+
+- `conversations`: every conversation the agent keeps.
+- `conversation`: a page of one conversation's Pi entries, oldest first, in full. Text is cut at 4000 characters and
+  arguments or data at 2000, with `truncated` set. A leading author tag becomes `author`.
+- `turns`: recent turns as one-line summaries (source, outcome, attempts, tool calls, failures, tokens).
+- `turn`: one operation end to end. It joins Pi's own settlement of the submission (`done` with its answer entry, or
+  `unanswered` with a reason) with every run event of the operation, in order, and `coverage` names what the
+  timeline cannot show: a restart mid-turn, events still open, a compaction's model call.
+- `problems`: failed, blocked and interrupted events since a time (default the last day).
+
+The agent answers them on its internal `/inspect` route as the RPC result shape (`agent-requests.ts`,
+`inspect/request.ts`), for the inspection MCP endpoints to call once they have authorized a caller. A conversation
+that is not in `app_conversations` (a routine's run) has no entries page; its turns and events are still in the ledger.
+
 ## Storage
 
 | Store | Tables | Owner |

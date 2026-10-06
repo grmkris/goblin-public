@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./inspect": "./src/inspect.ts",
     "./telemetry": "./src/telemetry.ts"
   },
   "scripts": {

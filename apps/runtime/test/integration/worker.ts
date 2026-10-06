@@ -79,10 +79,18 @@ export class PersonalAgentProbe extends PersonalAgent {
 
   /** The run ledger one turn leaves, and the restart sweep (ADR 0024), as JSON text. */
   telemetryProbe(): Promise<string> {
-    return telemetryProbe(this.ctx.storage, this.name, async (text, operationId) => {
-      await this.submit(MAIN_THREAD, text, operationId)
-      return this.settle(MAIN_THREAD, operationId)
-    })
+    return telemetryProbe(
+      this.ctx.storage,
+      this.name,
+      async (text, operationId) => {
+        await this.submit(MAIN_THREAD, text, operationId)
+        return this.settle(MAIN_THREAD, operationId)
+      },
+      async (query) => {
+        const request = new Request('https://agent/inspect', { method: 'POST', body: JSON.stringify(query) })
+        return (await this.onRequest(request)).json()
+      },
+    )
   }
 
   /** As JSON text: the results carry app values, typed `unknown`, which RPC types cannot carry. */

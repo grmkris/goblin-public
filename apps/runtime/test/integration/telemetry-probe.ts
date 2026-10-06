@@ -1,16 +1,23 @@
+import { MAIN_THREAD } from '@goblin/contracts'
+import type { InspectQuery } from '@goblin/contracts/inspect'
 import { agentTelemetry } from '../../src/telemetry/agent.ts'
 
 type Row = { kind: string; status: string; operation_id: string | null; attributes: string }
 const json = (text: string): unknown => JSON.parse(text)
 
+/** The agent's own `/inspect` route: a query in, its encoded result out. */
+type Inspect = (query: InspectQuery | { readonly kind: string }) => Promise<unknown>
+
 /**
  * The run ledger on the agent's real SQLite (ADR 0024): one owner turn with a tool call, the rows it left for that
- * operation, then the restart sweep interrupting a row left started. As JSON text.
+ * operation, the inspection route reading that turn back, then the restart sweep interrupting a row left started and
+ * `problems` reporting it. As JSON text.
  */
 export async function telemetryProbe(
   storage: DurableObjectStorage,
   owner: string,
   turn: (text: string, operationId: string) => Promise<unknown>,
+  inspect: Inspect,
 ): Promise<string> {
   await turn('call subagent {"action":"status"}', 'telemetry-turn')
   const rows = storage.sql
@@ -20,6 +27,13 @@ export async function telemetryProbe(
     )
     .toArray()
     .map((row) => ({ kind: row.kind, status: row.status, attributes: json(row.attributes) }))
+  const inspected = {
+    turn: await inspect({ kind: 'turn', operationId: 'telemetry-turn' }),
+    turns: await inspect({ kind: 'turns', conversation: MAIN_THREAD }),
+    conversation: await inspect({ kind: 'conversation', conversation: MAIN_THREAD }),
+    missing: await inspect({ kind: 'turn', operationId: 'no-such-turn' }),
+    invalid: await inspect({ kind: 'everything' }),
+  }
   storage.sql.exec(
     `INSERT INTO app_run_events (id, kind, status, started_at, attributes) VALUES ('probe:left', 'tool.call', 'started', ?, '{}')`,
     Date.now(),
@@ -30,5 +44,6 @@ export async function telemetryProbe(
     .exec<{ attributes: string }>(`SELECT attributes FROM app_run_events WHERE kind = 'recovery'`)
     .toArray()
     .map((row) => json(row.attributes))
-  return JSON.stringify({ rows, left: left.status, recovery })
+  const problems = await inspect({ kind: 'problems' })
+  return JSON.stringify({ rows, inspected, left: left.status, recovery, problems })
 }

@@ -1,0 +1,28 @@
+import { InspectQuery } from '@goblin/contracts/inspect'
+import * as Effect from 'effect/Effect'
+import type * as Exit from 'effect/Exit'
+import * as Schema from 'effect/Schema'
+import { type AppError, InvalidInput } from '../http/errors.ts'
+import { encodeExit } from '../http/rpc.ts'
+import { type AgentServices, Inspect, attempt } from '../services.ts'
+
+type Execute = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<Exit.Exit<A, AppError>>
+
+const decodeQuery = Schema.decodeUnknownEffect(Schema.fromJsonString(InspectQuery))
+
+/**
+ * The agent's own inspection route (ADR 0024): a JSON `InspectQuery` in, an encoded `RpcResult` out. Only the Worker
+ * reaches it, from the inspection MCP endpoints after they have authorized the caller; it renews no authority, needs
+ * no plan, and never calls a model.
+ */
+export async function inspectRequest(request: Request, execute: Execute): Promise<Response> {
+  if (request.method !== 'POST') return Response.json({ error: 'MethodNotAllowed' }, { status: 405 })
+  const body = await request.text()
+  const exit = await execute(
+    decodeQuery(body).pipe(
+      Effect.mapError(() => new InvalidInput({ reason: 'inspect query' })),
+      Effect.flatMap((query) => Inspect.use((inspector) => attempt(() => inspector.run(query)))),
+    ),
+  )
+  return Response.json(encodeExit(exit))
+}
