@@ -1,18 +1,39 @@
 import { type ReactNode, createContext, use } from 'react'
-import Markdown from 'react-markdown'
+import Markdown, { type ExtraProps } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AppWindowIcon, CornerDownRightIcon } from 'lucide-react'
 import type { AppContext, Attachment } from '@goblin/contracts'
 import { contextPreview } from '../../lib/app-context.ts'
+import { blockKind, openFenceAt } from '../../lib/fences.ts'
 import { relativeTime, reporterOf } from '../../lib/threads.ts'
 import { MessageFiles } from '../attachments.tsx'
+import { RichBlock } from './blocks.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
+
+type PreProps = { readonly node?: ExtraProps['node']; readonly children?: ReactNode }
+
+/**
+ * A code block, or the diagram, chart or map it describes (```mermaid, ```chart, ```map). `open` is where a fence the
+ * streaming reply has not closed yet begins: that block stays code until it is whole.
+ */
+function codeBlock(open: number | undefined) {
+  return function Pre({ node, children }: PreProps) {
+    const plain = <pre>{children}</pre>
+    const code = node?.children[0]
+    if (code?.type !== 'element' || code.tagName !== 'code') return plain
+    const kind = blockKind(code.properties.className)
+    if (kind === undefined || (open !== undefined && (node?.position?.start.offset ?? 0) >= open)) return plain
+    const source = code.children.map((child) => (child.type === 'text' ? child.value : '')).join('')
+    return <RichBlock kind={kind} source={source} code={plain} />
+  }
+}
 
 /**
  * Assistant text as GitHub-flavoured Markdown, set by shadcn/typeset. Raw HTML is never rendered; links open in a new
- * tab without a referrer; wide tables scroll sideways instead of widening the conversation.
+ * tab without a referrer; wide tables scroll sideways instead of widening the conversation. ```mermaid, ```chart and
+ * ```map blocks are drawn (ADR 0023); while `live`, the block still streaming stays code.
  */
-export function MessageText({ text }: { readonly text: string }) {
+export function MessageText({ text, live = false }: { readonly text: string; readonly live?: boolean }) {
   return (
     <div className="typeset typeset-chat">
       <Markdown
@@ -28,6 +49,7 @@ export function MessageText({ text }: { readonly text: string }) {
               <table>{children}</table>
             </div>
           ),
+          pre: codeBlock(live ? openFenceAt(text) : undefined),
         }}
       >
         {text}
@@ -147,10 +169,10 @@ export function UserText({
   )
 }
 
-export function AssistantText({ text }: { readonly text: string }) {
+export function AssistantText({ text, live = false }: { readonly text: string; readonly live?: boolean }) {
   return (
     <article className="bubble bubble-assistant">
-      <MessageText text={text} />
+      <MessageText text={text} live={live} />
     </article>
   )
 }

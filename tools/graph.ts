@@ -52,7 +52,7 @@ export const nodes: readonly Node[] = [
     name: '@goblin/web',
     role: 'TanStack Start web projection and sandboxed MCP Apps host',
     runtime: 'browser',
-    mayImport: ['@goblin/contracts', '@goblin/ui', '@goblin/runtime'],
+    mayImport: ['@goblin/contracts', '@goblin/kit', '@goblin/ui', '@goblin/runtime'],
     zones: { 'src/worker.ts': 'cloud' },
   },
   {
@@ -60,6 +60,13 @@ export const nodes: readonly Node[] = [
     name: '@goblin/contracts',
     role: 'runtime-independent cross-runtime schemas and contracts',
     runtime: 'shared',
+    mayImport: [],
+  },
+  {
+    dir: 'packages/kit',
+    name: '@goblin/kit',
+    role: 'drawn blocks (diagrams, charts, maps) shared by the chat and agent apps',
+    runtime: 'browser',
     mayImport: [],
   },
   {

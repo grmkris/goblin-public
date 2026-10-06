@@ -1,0 +1,44 @@
+/* The kit's blocks: drawn diagrams, charts and maps, sized for a message and for an app alike. */
+.kit-diagram,
+.kit-chart,
+.kit-map {
+  margin: 0.75rem 0;
+}
+.kit-chart figcaption,
+.kit-map figcaption {
+  margin-bottom: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+/* A diagram keeps its own size up to the column's width; it is an image, so it scales as one. */
+.kit-diagram img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+}
+.kit-chart-plot {
+  height: 16rem;
+}
+.kit-chart .recharts-wrapper:focus,
+.kit-chart .recharts-surface:focus {
+  outline: none;
+}
+.kit-map-canvas {
+  height: 18rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--muted);
+  isolation: isolate;
+}
+.kit-map .leaflet-tooltip {
+  border-color: var(--border);
+  background: var(--popover);
+  box-shadow: none;
+  color: var(--popover-foreground);
+}
+.kit-loading {
+  height: 12rem;
+  margin: 0.75rem 0;
+}

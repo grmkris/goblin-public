@@ -78,7 +78,7 @@ export function PartView({ part, canSwitchModel }: { readonly part: Part; readon
         />
       )
     case 'text':
-      return <AssistantText text={part.text} />
+      return <AssistantText text={part.text} live={part.live} />
     case 'reasoning':
       return (
         <Aside>

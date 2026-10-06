@@ -85,11 +85,12 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* Series colours: blue, teal, amber, magenta, red-orange, at one lightness, each at least 3:1 on a card. */
+  --chart-1: oklch(0.58 0.17 255);
+  --chart-2: oklch(0.58 0.1 185);
+  --chart-3: oklch(0.6 0.13 70);
+  --chart-4: oklch(0.58 0.19 340);
+  --chart-5: oklch(0.58 0.18 35);
   --radius: 0.5rem;
   /* The sidebar is a shade heavier than the page, as a source list is beside its content (same warm neutral). */
   --sidebar: oklch(0.967 0.003 90);
@@ -152,11 +153,11 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --chart-1: oklch(0.72 0.14 255);
+  --chart-2: oklch(0.74 0.11 185);
+  --chart-3: oklch(0.78 0.14 75);
+  --chart-4: oklch(0.72 0.17 340);
+  --chart-5: oklch(0.7 0.17 35);
   --sidebar: oklch(0.175 0.006 255);
   --sidebar-foreground: oklch(0.94 0.004 90);
   --sidebar-primary: oklch(0.922 0 0);

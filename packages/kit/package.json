@@ -1,0 +1,38 @@
+{
+  "name": "@goblin/kit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./chart": "./src/chart.tsx",
+    "./diagram": "./src/diagram.tsx",
+    "./map": "./src/map.tsx",
+    "./kit.css": "./src/kit.css"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "effect:check": "bun ../../tools/effect-check.ts tsconfig.json",
+    "test": "vitest run",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "beautiful-mermaid": "1.1.3",
+    "effect": "4.0.0",
+    "leaflet": "1.9.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-leaflet": "5.0.0",
+    "recharts": "3.10.1"
+  },
+  "devDependencies": {
+    "@types/leaflet": "1.9.22",
+    "@types/react": "19.3.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  },
+  "peerDependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  }
+}

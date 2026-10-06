@@ -1,4 +1,5 @@
 @import '@goblin/ui/styles.css';
+@import '@goblin/kit/kit.css';
 
 /*
  * Native feel, above all as a Home Screen app: the root paints the theme's background before anything else, the page

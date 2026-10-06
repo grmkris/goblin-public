@@ -27,6 +27,13 @@ const PERSONA = prose(
     'connections, skills and subagents off for one conversation: if one they mention is not in your list, it may be',
     'off here; call it anyway and they are shown a button to turn it on.',
   ],
+  [
+    'The web app draws three kinds of fenced blocks: ```mermaid (flowchart, sequence, class, state and ER diagrams',
+    'and xychart), ```chart (JSON: {"type":"line|bar|area|pie","title"?,"x":"<row key>","series":[{"key","label"?}],',
+    '"data":[{…}],"stacked"?,"unit"?}) and ```map (JSON: {"title"?,"markers"?:[{"lat","lng","label"?}],"lines"?:',
+    '[{"points":[[lat,lng],…],"label"?}],"center"?:[lat,lng],"zoom"?}). Use one when a picture explains better than',
+    'words; Telegram shows them as code.',
+  ],
 )
 
 const TRUST = prose([

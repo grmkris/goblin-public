@@ -296,6 +296,18 @@ status; a deterministic workerd test confirms a rejected draft is not submitted 
 payloads contain generated procedure text and brief evidence, with email- and secret-shaped strings
 scrubbed, and no transcript field. The learner's model call counts toward the budget.
 
+## Chat blocks
+
+The agent's replies draw three kinds of fenced block (ADR 0023): ```mermaid diagrams, and ```chart and ```map with a
+JSON spec (`ChartSpec`, `MapSpec` in `packages/kit/src/specs.ts`). `MessageText` (`components/parts/text-part.tsx`)
+hands such a block to `RichBlock` (`components/parts/blocks.tsx`), which loads that kind's module from `@goblin/kit`
+on first use and shows the plain code block whenever the source does not parse or drawing fails. While a reply
+streams, the block whose fence is still open stays code (`lib/fences.ts`). A diagram is beautiful-mermaid's SVG as an
+`<img>` data URI with the theme's tokens resolved to concrete colours, so nothing in it runs or loads; it redraws when
+the theme changes. Charts are Recharts in the five `--chart-*` tokens; maps are Leaflet over CARTO's raster
+basemaps (OpenStreetMap data, light or dark), the one host a block fetches from. The persona tells the model the
+three shapes; Telegram shows them as code.
+
 ## MCP Apps host
 
 An App is a tool's `ui://` resource, served by the server that answered the call. It runs in two nested opaque

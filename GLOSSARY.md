@@ -39,6 +39,8 @@
   the agent wrote. Kept in the agent's SQLite through Shell's Workspace, larger ones in R2; the agent writes only
   `/agent`.
 - **Attachment**: a file the owner sent with a message: its path rides with the words, and the message shows it.
+- **Block**: a fenced `mermaid, `chart or ```map block in the agent's reply, drawn in place (ADR 0023).
+- **Kit**: `@goblin/kit`, the one implementation of the drawn blocks, for the chat now and agent apps later.
 - **Inbound client**: an MCP client (Claude Code, another agent) the owner authorized to call goblin's `/mcp`.
 - **MCP App**: a sandboxed `ui://` resource served through its originating MCP connection. One live App moves between
   its desktop pane, fullscreen and the phone sheet while its iframe stays in place.

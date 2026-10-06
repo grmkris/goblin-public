@@ -20,6 +20,7 @@ describe('goblin quality tooling', () => {
     expect(placementOf(path.resolve(repoRoot, 'apps/web/src/main.tsx'))?.runtime).toBe('browser')
     expect(placementOf(path.resolve(repoRoot, 'apps/web/test/agent.test.ts'))?.runtime).toBe('test')
     expect(placementOf(path.resolve(repoRoot, 'packages/contracts/src/index.ts'))?.runtime).toBe('shared')
+    expect(placementOf(path.resolve(repoRoot, 'packages/kit/src/map.tsx'))?.runtime).toBe('browser')
     expect(placementOf(path.resolve(repoRoot, 'bench/src/plan.ts'))?.runtime).toBe('tooling')
     expect(placementOf(path.resolve(repoRoot, 'bench/test/bench.test.ts'))?.runtime).toBe('test')
     expect(nodes.map((node) => node.name)).toEqual([
@@ -27,6 +28,7 @@ describe('goblin quality tooling', () => {
       '@goblin/runtime',
       '@goblin/web',
       '@goblin/contracts',
+      '@goblin/kit',
       '@goblin/ui',
       '@goblin/tools',
     ])
