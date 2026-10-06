@@ -8,6 +8,7 @@
     "./chart": "./src/chart.tsx",
     "./diagram": "./src/diagram.tsx",
     "./map": "./src/map.tsx",
+    "./mdxcn": "./src/mdxcn.tsx",
     "./kit.css": "./src/kit.css"
   },
   "scripts": {
