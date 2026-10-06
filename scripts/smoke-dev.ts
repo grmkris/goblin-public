@@ -147,7 +147,7 @@ class InboundClient {
       response_type: 'code',
       client_id: this.clientId,
       redirect_uri: REDIRECT_URI,
-      scope: 'openid offline_access',
+      scope: 'openid offline_access goblin:inspect',
       state: base64url(randomBytes(16)),
       code_challenge: challenge,
       code_challenge_method: 'S256',
@@ -207,8 +207,11 @@ class InboundClient {
 
   async tool(name: string, args: JsonObject): Promise<JsonObject> {
     const { result } = await this.rpc('tools/call', { name, arguments: args })
-    if (result === undefined || result['isError'] === true) throw new Error(`inbound_tool_failed: ${name}`)
+    if (result === undefined) throw new Error(`inbound_tool_failed: ${name}`)
     const [first] = objects(result['content'])
+    // A tool error is goblin's encoded error: report its tag (`BudgetExhausted`), never the rest of what it says.
+    const tag = /"_tag":"(\w+)"/u.exec(string(first?.['text'] ?? ''))?.[1]
+    if (result['isError'] === true) throw new Error(`inbound_tool_failed: ${name}: ${tag ?? 'unknown'}`)
     return object(JSON.parse(string(first?.['text'])))
   }
 
@@ -405,6 +408,10 @@ async function inboundChecks(dev: DevClient, client: InboundClient, servers: rea
   const names = objects(listed.result?.['tools'] ?? []).map((tool) => tool['name'])
   if (init.result === undefined || !names.includes('ask_agent') || !names.includes('get_recent_messages'))
     throw new Error('inbound_tools_missing')
+  // Consent granted `goblin:inspect`, so the same /mcp offers read-only inspection (ADR 0024). It reads without a model.
+  const inspection = names.filter((name) => typeof name === 'string' && name.startsWith('inspect_'))
+  const problems = inspection.length === 5 ? await client.tool('inspect_problems', {}) : {}
+  if (!Array.isArray(problems['problems'])) throw new Error('inbound_inspection_missing')
   const smokeInput = `Reply with exactly: ${DEV_MARKER}`
   const reply = await client.ask(smokeInput)
   if (reply['status'] !== 'done' || reply['text'] !== DEV_MARKER) throw new Error('inbound_model_turn_failed')
