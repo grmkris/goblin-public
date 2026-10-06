@@ -42,6 +42,7 @@ import { appsJobsProbe } from './apps-jobs-probe.ts'
 import { telemetryProbe } from './telemetry-probe.ts'
 import { JOB_CALLBACK, type JobSchedules } from '../../src/agent-apps/jobs.ts'
 import { homeProbe, retainedHome } from './home-probe.ts'
+import { inboxAppProbe } from './inbox-app-probe.ts'
 
 const fixturePlan = () =>
   Effect.succeed({
@@ -75,6 +76,9 @@ export class PersonalAgentProbe extends PersonalAgent {
   }
   async homeProbe(): Promise<string> {
     return JSON.stringify(await homeProbe(this.ctx.storage, this.env, this.name, this.harness))
+  }
+  async inboxAppProbe(): Promise<string> {
+    return JSON.stringify(await inboxAppProbe(this.ctx.storage, this.env, this.name, this.harness))
   }
   async homeRetained(): Promise<string> {
     return JSON.stringify(retainedHome(this.ctx.storage))
@@ -863,6 +867,7 @@ async function destroySequence(env: Env, name: string): Promise<Response> {
 const APPS_PROBES: Readonly<Record<string, (agent: DurableObjectStub<PersonalAgentProbe>) => Promise<string>>> = {
   '/home-probe': (agent) => agent.homeProbe(),
   '/home-retained': (agent) => agent.homeRetained(),
+  '/inbox-app': (agent) => agent.inboxAppProbe(),
   '/apps-engine': (agent) => agent.appsEngineProbe(),
   '/apps-powers': (agent) => agent.appsPowersProbe(),
   '/apps-turn': (agent) => agent.appsTurnProbe(),

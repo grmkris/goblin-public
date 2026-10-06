@@ -1,5 +1,5 @@
-// Servers we suggest, each checked by hand to connect from a Worker: by OAuth with dynamic registration, or with no
-// sign-in at all. Descriptions are ours, not the servers'. The shelf only adds them; grants still start empty.
+// Servers we suggest: OAuth discovery is checked from a Worker, or the endpoint needs no sign-in. Credential-backed
+// acceptance is separate. Descriptions are ours, not the servers'. The shelf only adds them; grants still start empty.
 import type { ServerSuggestion } from '@goblin/contracts'
 
 export type Stage = 'local' | 'dev' | 'prod' | 'test'
@@ -13,7 +13,7 @@ type Suggested = {
   readonly signIn: boolean
 }
 
-/** Checked 2026-10-05: stage endpoints follow the wrap-up plan; live acceptance is recorded separately. */
+/** Reviewed 2026-10-06: stage endpoints follow their service decisions; live acceptance is recorded separately. */
 const SUGGESTED: readonly Suggested[] = [
   {
     id: 'myplan',
@@ -48,6 +48,18 @@ const SUGGESTED: readonly Suggested[] = [
       dev: 'https://dev.mygram.lol/mcp',
       test: 'https://mygram.lol/mcp',
       prod: 'https://mygram.lol/mcp',
+    },
+    signIn: true,
+  },
+  {
+    id: 'myinbox',
+    title: 'MyInbox',
+    description: 'Your messages, read by an agent app on a refresh schedule.',
+    endpoint: {
+      local: 'https://dev.myinbox.lol/mcp',
+      dev: 'https://myinbox.lol/mcp',
+      test: 'https://myinbox.lol/mcp',
+      prod: 'https://myinbox.lol/mcp',
     },
     signIn: true,
   },
