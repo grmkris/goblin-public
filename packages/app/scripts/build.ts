@@ -46,6 +46,14 @@ async function isolateModule(entry: string, minify: boolean): Promise<string> {
   return output.text()
 }
 
+/**
+ * Bun's IIFE output turns a dependency's `typeof require == "function" && require` into its `__require` helper without
+ * declaring it (the browserify prelude of elkjs, under the diagram kit), so the bundle threw a ReferenceError as it
+ * loaded and a view importing `@goblin/kit/diagram` stayed blank. Declared, it reads undefined and the prelude uses the
+ * modules it bundles.
+ */
+const DECLARE_REQUIRE = 'var __require;\n'
+
 /** A frame bundle: its script and, for maps, its stylesheet. */
 async function frameBundle(name: string): Promise<{ readonly js: string; readonly css: string }> {
   const result = await Bun.build({
@@ -60,7 +68,10 @@ async function frameBundle(name: string): Promise<{ readonly js: string; readonl
   const js = result.outputs.find((output) => output.kind === 'entry-point')
   const css = result.outputs.filter((output) => output.path.endsWith('.css'))
   if (js === undefined) throw new Error(`build of ${name} produced nothing`)
-  return { js: await js.text(), css: (await Promise.all(css.map((output) => output.text()))).join('\n') }
+  return {
+    js: `${DECLARE_REQUIRE}${await js.text()}`,
+    css: (await Promise.all(css.map((output) => output.text()))).join('\n'),
+  }
 }
 
 const text = (path: string) => readFile(path, 'utf8')
