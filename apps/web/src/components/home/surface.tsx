@@ -3,10 +3,11 @@ import type { HomeTile } from '@goblin/contracts'
 import { Button, useMessageScroller } from '@goblin/ui'
 import { ArrowUpRightIcon, MessageSquareIcon } from 'lucide-react'
 import { HOME_MARK } from '../../lib/home.ts'
-import { conversationKey } from '../../lib/workspace.ts'
+import { appKey, conversationKey } from '../../lib/workspace.ts'
 import { ToolMarkdown } from '../parts/tool-markdown.tsx'
 import { useWorkspace } from '../workspace.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { HomeAppTile } from './app-tile.tsx'
 
 const STARTERS = ['Build me a reading list', 'Put my recent conversations on Home', 'Keep a note for today']
 
@@ -40,22 +41,31 @@ function RecentConversations() {
 
 function Tile({ tile }: { readonly tile: HomeTile }) {
   const { apps } = useWorkspaceFeed()
+  const workspace = useWorkspace()
+  const app = tile.kind === 'app' ? apps.find((each) => each.id === tile.appId) : undefined
   const title =
-    tile.kind === 'note'
-      ? tile.title
-      : tile.kind === 'conversations'
-        ? 'Recent conversations'
-        : (apps.find((app) => app.id === tile.appId)?.title ?? 'App')
+    tile.kind === 'note' ? tile.title : tile.kind === 'conversations' ? 'Recent conversations' : (app?.title ?? 'App')
   return (
     <article className="home-tile" data-home-tile={tile.id} data-size={tile.size} aria-label={title}>
-      <div className="home-tile-label">{title}</div>
+      <div className="home-tile-label">
+        {app === undefined ? (
+          title
+        ) : (
+          <button type="button" onClick={() => workspace.open(appKey(app.id), 'beside', conversationKey('1'))}>
+            {title}
+            <ArrowUpRightIcon aria-hidden />
+          </button>
+        )}
+      </div>
       <div className="home-tile-body">
         {tile.kind === 'note' ? (
           <ToolMarkdown text={tile.markdown} />
         ) : tile.kind === 'conversations' ? (
           <RecentConversations />
+        ) : app === undefined ? (
+          <p className="text-muted-foreground">App unavailable</p>
         ) : (
-          <p className="text-muted-foreground">{title}</p>
+          <HomeAppTile app={app} />
         )}
       </div>
     </article>

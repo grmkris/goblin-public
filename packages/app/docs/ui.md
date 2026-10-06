@@ -118,3 +118,21 @@ import { Check, Trash2 } from 'lucide-react'
 
 Use Recharts or react-leaflet directly for what the kit does not draw; on a react-leaflet map use `CircleMarker`, not
 `Marker`.
+
+## Home tiles
+
+An app has one live frame, shared by its chat, Home and page. `useHost()` from `@goblin/app` follows its placement:
+`{ surface: 'inline' | 'home' | 'page', tileSize?: 'small' | 'medium' | 'large' | 'wide', width, height }`. On Home,
+width and height are fixed; resize requests do not change the tile. Use a compact glance view, a handful of rows and
+one primary action. Open gives the owner the full page without resetting React state or the action bridge.
+
+```tsx
+const host = useHost()
+const compact = host.surface === 'home'
+const shown = compact ? books.slice(0, host.tileSize === 'large' ? 5 : 2) : books
+```
+
+After building an app with a view, read `home_read` for its App id and layout revision, then call `home_edit` with an
+`add` operation (`kind: 'app'`, that `appId`, a new tile `id`, and `size: 'medium'` or `'large'`). Read again if the
+revision is stale. Placing grants no power and starts no model. Remove from Home keeps the app; Close unloads the
+view and leaves a Closed · Show tile. Page > Home > chat is the placement order; other places show a stub.

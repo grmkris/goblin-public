@@ -16,6 +16,7 @@ import {
   share,
   useActions,
   useAppState,
+  useHost,
 } from './sdk.ts'
 
 // SAFETY: the frame's globals the inline start script and the bundles share; nothing else defines them.
@@ -28,7 +29,7 @@ provide({
   'react/jsx-runtime': jsxRuntime,
   'react-dom': ReactDOM,
   'react-dom/client': ReactDOMClient,
-  '@goblin/app': { useAppState, useActions, download, share },
+  '@goblin/app': { useAppState, useActions, useHost, download, share },
   '@goblin/ui': components,
 })
 scope.__goblinRequire = frameRequire

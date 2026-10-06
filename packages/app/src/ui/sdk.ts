@@ -12,6 +12,38 @@ let app: App | undefined
 let ready: Promise<void> | undefined
 let snapshot: Snapshot | undefined
 const listeners = new Set<() => void>()
+export type Host = {
+  readonly surface: 'inline' | 'home' | 'page'
+  readonly tileSize?: 'small' | 'medium' | 'large' | 'wide'
+  readonly width: number
+  readonly height: number
+}
+let host: Host = { surface: 'inline', width: 0, height: 0 }
+const hostListeners = new Set<() => void>()
+
+/** Presentation only: the host's current surface and fixed room grant no powers. */
+function acceptHost(context: ReturnType<App['getHostContext']>): void {
+  if (context === undefined) return
+  const size = context.tileSize
+  const dimensions = context.containerDimensions ?? { width: 0, height: 0 }
+  host = {
+    surface: context.surface === 'home' || context.surface === 'page' ? context.surface : 'inline',
+    ...(size === 'small' || size === 'medium' || size === 'large' || size === 'wide' ? { tileSize: size } : {}),
+    width: 'width' in dimensions ? dimensions.width : (dimensions.maxWidth ?? 0),
+    height: 'height' in dimensions ? dimensions.height : (dimensions.maxHeight ?? 0),
+  }
+  for (const listener of hostListeners) listener()
+}
+
+const subscribeHost = (listener: () => void) => {
+  hostListeners.add(listener)
+  return () => hostListeners.delete(listener)
+}
+
+/** Follows tile ↔ page moves without remounting the view or discarding its local state. */
+export function useHost(): Host {
+  return useSyncExternalStore(subscribeHost, () => host)
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
@@ -29,8 +61,9 @@ export function connect(): App {
   if (app !== undefined) return app
   const connection = new App({ name: 'goblin-agent-app', version: '1' }, {})
   connection.addEventListener('toolresult', (result) => accept(result._meta))
+  connection.addEventListener('hostcontextchanged', () => acceptHost(connection.getHostContext()))
   app = connection
-  ready = connection.connect()
+  ready = connection.connect().then(() => acceptHost(connection.getHostContext()))
   return connection
 }
 

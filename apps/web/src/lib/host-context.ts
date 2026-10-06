@@ -1,3 +1,4 @@
+import type { TileSize } from '@goblin/contracts'
 import type {
   McpUiDisplayMode,
   McpUiHostContext,
@@ -77,6 +78,8 @@ export type AppPlacement = {
   readonly width: number
   /** Fixed on its page; inline the App picks its height up to this. */
   readonly height: number
+  readonly surface?: 'inline' | 'home' | 'page'
+  readonly tileSize?: TileSize
 }
 
 export type Device = {
@@ -99,7 +102,10 @@ export function hostContext(read: TokenReader, device: Device, placement: AppPla
     styles: { variables: hostStyles(read) },
     displayMode: placement.mode,
     availableDisplayModes: [...placement.available],
-    containerDimensions: placement.mode === 'inline' ? { width, maxHeight: height } : { width, height },
+    containerDimensions:
+      placement.mode === 'inline' && placement.surface !== 'home' ? { width, maxHeight: height } : { width, height },
+    surface: placement.surface ?? (placement.mode === 'inline' ? 'inline' : 'page'),
+    tileSize: placement.tileSize ?? null,
     locale: device.locale,
     timeZone: device.timeZone,
     platform: device.touch && !device.hover ? 'mobile' : 'web',

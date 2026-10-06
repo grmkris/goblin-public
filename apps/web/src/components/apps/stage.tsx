@@ -58,6 +58,12 @@ function rectOf(element: HTMLElement): Rect {
   return { x, y, width, height }
 }
 
+function slotName(surface: 'inline' | 'home' | 'page', id: string): SlotName {
+  if (surface === 'page') return `app-page:${id}`
+  if (surface === 'home') return `app-home:${id}`
+  return `app-inline:${id}`
+}
+
 type StageMotion = {
   readonly stage: RefObject<HTMLDivElement | null>
   readonly live: RefObject<Live>
@@ -174,7 +180,7 @@ function Stage({ instance }: { readonly instance: Instance }) {
   const { id } = instance.app
   const origin = selectionOrigin(instance.selection)
   const place = useAppPlacement(instance.app)
-  const name: SlotName = place.paged ? `app-page:${id}` : `app-inline:${id}`
+  const name = slotName(place.surface, id)
   const stage = useRef<HTMLDivElement>(null)
   const live = useRef<Live>({
     axes: { x: still(0), y: still(0), width: still(0), height: still(0) },
@@ -185,7 +191,7 @@ function Stage({ instance }: { readonly instance: Instance }) {
   const [error, setError] = useState('')
   const grants = useAppGrantAsks(origin)
   const chrome = useRef(CHROME_HEIGHT)
-  chrome.current = place.paged ? 0 : CHROME_HEIGHT
+  chrome.current = place.surface === 'inline' ? CHROME_HEIGHT : 0
   const { box, onTarget } = useRoom(chrome)
   const latest = useRef({ name, host })
   latest.current = { name, host }
@@ -196,22 +202,24 @@ function Stage({ instance }: { readonly instance: Instance }) {
     latest.current.host.seen(id, visible)
   })
   const kick = useStageMotion({ stage, live, slot, onTarget, onVisible })
-  const previous = useRef(place.paged)
+  const previous = useRef(place.surface)
   useEffect(() => {
-    if (previous.current === place.paged) return
-    previous.current = place.paged
+    if (previous.current === place.surface) return
+    previous.current = place.surface
     live.current.moving = live.current.seeded
     kick()
-  }, [place.paged, kick])
+  }, [place.surface, kick])
   const placement: AppPlacement = {
     mode: place.paged ? 'fullscreen' : 'inline',
     available: APP_MODES,
     width: box.width,
-    height: place.paged ? box.height : inlineHeight(10_000, window.innerHeight),
+    height: place.surface === 'inline' ? inlineHeight(10_000, window.innerHeight) : box.height,
+    surface: place.surface,
+    ...(place.surface === 'home' && place.tile !== undefined ? { tileSize: place.tile.size } : {}),
   }
   return (
-    <div ref={stage} className="app-stage" data-mode={place.paged ? 'page' : 'inline'} data-app={id} data-hidden="">
-      {!place.paged && <AppChrome instance={instance} onPage={place.page} />}
+    <div ref={stage} className="app-stage" data-mode={place.surface} data-app={id} data-hidden="">
+      {place.surface === 'inline' && <AppChrome instance={instance} onPage={place.page} />}
       {error && <Receipt tone="error">{error}. The ordinary tool result remains available.</Receipt>}
       {grants.card}
       <StageOffers instance={instance} origin={origin} />
@@ -221,7 +229,9 @@ function Stage({ instance }: { readonly instance: Instance }) {
         placement={placement}
         events={{
           report: setError,
-          resize: (height) => host.setHeight(id, height),
+          resize: (height) => {
+            if (place.surface !== 'home') host.setHeight(id, height)
+          },
           close: () => host.close(id),
           requestMode: place.request,
           share: (text) => host.setContext(id, text),

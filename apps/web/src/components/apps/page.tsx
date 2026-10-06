@@ -47,7 +47,7 @@ function AppPageMenu({ app }: { readonly app: AppView }) {
     <>
       <DropdownMenuItem onClick={place.inline}>
         <PanelLeftCloseIcon aria-hidden />
-        Back in the conversation
+        {place.tile === undefined ? 'Back in the conversation' : 'Back on Home'}
       </DropdownMenuItem>
       <DropdownMenuItem onClick={place.fill}>
         {place.filled ? <Minimize2Icon aria-hidden /> : <Maximize2Icon aria-hidden />}

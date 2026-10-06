@@ -84,6 +84,7 @@ function inert(real: Readonly<Record<string, unknown>> = {}): object {
 const sdk = (state: unknown) =>
   inert({
     useAppState: () => [state, { revision: 0, release: '' }],
+    useHost: () => ({ surface: 'inline', width: 640, height: 440 }),
     useActions: () => ({ act: async () => state, pending: false, error: null }),
     download: async () => undefined,
     share: async () => undefined,
