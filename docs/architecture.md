@@ -304,8 +304,8 @@ hands such a block to `RichBlock` (`components/parts/blocks.tsx`), which loads t
 on first use and shows the plain code block whenever the source does not parse or drawing fails. While a reply
 streams, the block whose fence is still open stays code (`lib/fences.ts`). A diagram is beautiful-mermaid's SVG as an
 `<img>` data URI with the theme's tokens resolved to concrete colours, so nothing in it runs or loads; it redraws when
-the theme changes. Charts are Recharts in the five `--chart-*` tokens; maps are Leaflet over CARTO's raster
-basemaps (OpenStreetMap data, light or dark), the one host a block fetches from. The persona tells the model the
+the theme changes. Charts are Recharts in the five `--chart-*` tokens; maps are Leaflet over OpenStreetMap's
+raster tiles, quieted to the theme by a CSS filter, the one host a block fetches from. The persona tells the model the
 three shapes; Telegram shows them as code.
 
 ## MCP Apps host

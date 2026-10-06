@@ -22,11 +22,14 @@ changes. Mermaid's other diagram types (gantt, pie, mindmap, timeline, journey, 
 **Tokens, not palettes.** Charts and map lines use `--chart-1` … `--chart-5` (blue, teal, amber, magenta, red-orange,
 at one lightness, each at least 3:1 on a card, light and dark), so blocks follow the theme without a second palette.
 
-**One tile host.** Maps use CARTO's raster basemaps (`*.basemaps.cartocdn.com`, `light_all` or `dark_all`) over
-OpenStreetMap data, with both attributions. It is the only network a block uses. Vector maps are out: they need WebGL
-and workers that agent app sandboxes will not allow.
+**One tile host.** Maps use OpenStreetMap's standard raster tiles (`tile.openstreetmap.org`) with its attribution,
+under its tile usage policy, which allows light use like a personal agent's. A CSS filter quiets them to the theme
+(inverted in the dark); markers and lines keep their colours. It is the only network a block uses. CARTO's basemaps,
+the first choice, now answer every keyless request with an "API key required" tile. Vector maps are out: they need
+WebGL and workers that agent app sandboxes will not allow.
 
 Consequences:
 - The persona describes the three shapes in a few lines; replies on Telegram show them as code.
-- CARTO's free basemaps are for non-commercial use; review their terms before production.
+- OpenStreetMap's tiles are donated and not for heavy use: before production, review traffic and move to a tile
+  provider of goblin's own if it grows.
 - A large diagram lays out on the page's thread; sources over 20,000 characters stay code.

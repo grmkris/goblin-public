@@ -32,6 +32,13 @@
   background: var(--muted);
   isolation: isolate;
 }
+/* The basemap, quieted to sit with goblin's neutrals; in the dark it is inverted, water staying blue-ish. */
+.kit-map .leaflet-tile-pane {
+  filter: saturate(0.45) brightness(1.02);
+}
+.dark .kit-map .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) saturate(0.4) brightness(0.85) contrast(0.95);
+}
 .kit-map .leaflet-tooltip {
   border-color: var(--border);
   background: var(--popover);

@@ -2,15 +2,13 @@ import 'leaflet/dist/leaflet.css'
 import { latLngBounds } from 'leaflet'
 import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip } from 'react-leaflet'
 import { type MapSpec, mapPoints } from './specs.ts'
-import { useTheme } from './theme.ts'
 
-/** CARTO's raster basemaps over OpenStreetMap data, light or dark with the theme. */
-const TILES = {
-  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-} as const
-const ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+/**
+ * OpenStreetMap's standard tiles, under its tile usage policy (light use, attribution shown). `kit.css` tones them to
+ * the theme; the markers and lines above them keep their colours.
+ */
+const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 
 const color = (index: number) => `var(--chart-${(index % 5) + 1})`
 const PADDING: [number, number] = [24, 24]
@@ -26,12 +24,11 @@ function view(spec: MapSpec) {
 
 /** A map drawn from a spec: markers in the first chart colour, each line in the next; labels show on hover. */
 export function MapView({ spec }: { readonly spec: MapSpec }) {
-  const theme = useTheme()
   return (
     <figure className="kit-map">
       {spec.title !== undefined && <figcaption>{spec.title}</figcaption>}
       <MapContainer className="kit-map-canvas" scrollWheelZoom={false} {...view(spec)}>
-        <TileLayer key={theme} url={TILES[theme]} attribution={ATTRIBUTION} subdomains="abcd" />
+        <TileLayer url={TILES} attribution={ATTRIBUTION} maxZoom={19} />
         {(spec.lines ?? []).map((line, index) => (
           <Polyline
             key={`line-${index}`}
