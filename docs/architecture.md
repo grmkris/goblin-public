@@ -646,7 +646,12 @@ model. The queries are in `contracts/src/inspect.ts`:
 
 The agent answers them on its internal `/inspect` route as the RPC result shape (`agent-requests.ts`,
 `inspect/request.ts`), which only the inspection MCP endpoints call, after they have authorized the caller (see
-Inbound MCP). A conversation
+Inbound MCP).
+
+The agent reads itself too: main has a `diagnose` tool (`pi/diagnose.ts`, wired by `telemetry/agent.ts`), so the
+owner can ask in Telegram why something failed. Without an operation id it returns the last day's problems and turns;
+with one, that turn's timeline. Each event comes in a line (kind, status, timing, tool or model, error), never
+content, and the result is marked untrusted because error text can come from remote servers. It grants nothing. A conversation
 that is not in `app_conversations` (a routine's run) has no entries page; its turns and events are still in the ledger.
 
 ## Storage

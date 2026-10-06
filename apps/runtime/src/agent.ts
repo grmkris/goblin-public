@@ -126,10 +126,10 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     // Skills and apps are for main and threads; a subagent gets only the extensions its spawner hands it.
     const apps = agentApps(ctx.storage, env, () => this.name, { schedules: this.#jobSchedules() })
     this.#apps = apps
+    this.#telemetry = agentTelemetry(ctx.storage, () => this.name, run)
     const base = [...tools, skillsExtension(run), filesExtension(run), appsExtension(apps)]
-    const own = [serversExtension(run, env.STAGE), subagents, routinesExtension(run)]
+    const own = [serversExtension(run, env.STAGE), subagents, routinesExtension(run), this.#telemetry.diagnose]
     const extras = [this.#thread, memory, recall, ...routineKit.extra]
-    this.#telemetry = agentTelemetry(ctx.storage, () => this.name)
     this.harness = makePiHarness(this.#pi, [...base, ...own], extras, apps, this.#telemetry.recorder)
     this.#routines = new RoutineController(routineRun, this.harness, routineKit.start, {
       storage: this.ctx.storage,

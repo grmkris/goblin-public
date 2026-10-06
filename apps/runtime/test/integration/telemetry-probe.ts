@@ -5,6 +5,9 @@ import { agentTelemetry } from '../../src/telemetry/agent.ts'
 type Row = { kind: string; status: string; operation_id: string | null; attributes: string }
 const json = (text: string): unknown => JSON.parse(text)
 
+/** The restart sweep runs no programs. */
+const unused = () => Promise.reject(new Error('the restart sweep runs no programs'))
+
 /** The agent's own `/inspect` route: a query in, its encoded result out. */
 type Inspect = (query: InspectQuery | { readonly kind: string }) => Promise<unknown>
 
@@ -34,16 +37,18 @@ export async function telemetryProbe(
     missing: await inspect({ kind: 'turn', operationId: 'no-such-turn' }),
     invalid: await inspect({ kind: 'everything' }),
   }
+  // The agent's own diagnose tool reads the same turn back from the ledger.
+  const diagnosed = JSON.stringify(await turn('call diagnose {"operationId":"telemetry-turn"}', 'diagnose-turn'))
   storage.sql.exec(
     `INSERT INTO app_run_events (id, kind, status, started_at, attributes) VALUES ('probe:left', 'tool.call', 'started', ?, '{}')`,
     Date.now(),
   )
-  agentTelemetry(storage, () => owner).restarted(Date.now())
+  agentTelemetry(storage, () => owner, unused).restarted(Date.now())
   const left = storage.sql.exec<{ status: string }>(`SELECT status FROM app_run_events WHERE id = 'probe:left'`).one()
   const recovery = storage.sql
     .exec<{ attributes: string }>(`SELECT attributes FROM app_run_events WHERE kind = 'recovery'`)
     .toArray()
     .map((row) => json(row.attributes))
   const problems = await inspect({ kind: 'problems' })
-  return JSON.stringify({ rows, inspected, left: left.status, recovery, problems })
+  return JSON.stringify({ rows, inspected, diagnosed, left: left.status, recovery, problems })
 }

@@ -60,6 +60,7 @@ export function telemetryCase(url: string) {
         missing: { ok: false, error: { _tag: 'NotFound', what: 'turn' } },
         invalid: { ok: false, error: { _tag: 'InvalidInput' } },
       },
+      diagnosed: expect.stringMatching(/done: .*trusted.*telemetry-turn.*tool\.call/u),
       left: 'interrupted',
       recovery: [{ [RunAttribute.recovery]: 'restarted', [RunAttribute.interrupted]: 1 }],
       problems: {

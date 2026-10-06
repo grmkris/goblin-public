@@ -1,5 +1,8 @@
 import { RunAttribute } from '@goblin/contracts/telemetry'
+import type { Extension } from '@earendil-works/pi-durable'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
+import { diagnoseExtension } from '../pi/diagnose.ts'
+import type { RunProgram } from '../pi/resident-mcp.ts'
 import { RunTelemetry } from './events.ts'
 import { RunLedger } from './ledger.ts'
 import { RunLog } from './log.ts'
@@ -12,9 +15,11 @@ export type AgentTelemetry = {
   readonly recorder: PiRunRecorder
   /** At the object's start, before new work: interrupt what the last run left started, drop what is past retention. */
   readonly restarted: (now: number) => void
+  /** The agent's own read-only `diagnose` tool over this ledger, for main. */
+  readonly diagnose: Extension
 }
 
-export function agentTelemetry(storage: DurableObjectStorage, agent: () => string): AgentTelemetry {
+export function agentTelemetry(storage: DurableObjectStorage, agent: () => string, run: RunProgram): AgentTelemetry {
   const ledger = new RunLedger(drizzle(storage))
   const telemetry = new RunTelemetry([ledger, new RunLog(agent)], (id) => ledger.read(id))
   const recorder = new PiRunRecorder(telemetry, ledger)
@@ -22,6 +27,7 @@ export function agentTelemetry(storage: DurableObjectStorage, agent: () => strin
     telemetry,
     ledger,
     recorder,
+    diagnose: diagnoseExtension(run),
     restarted: (now) => {
       try {
         const interrupted = ledger.sweep(now)
