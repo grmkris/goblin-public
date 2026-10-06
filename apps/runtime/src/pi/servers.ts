@@ -1,13 +1,10 @@
-import { Type } from '@earendil-works/pi-ai'
-import { defineExtension, defineTool } from '@earendil-works/pi-durable'
+import { defineExtension } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { type Stage, suggestions } from '../mcp/suggested.ts'
 import { Mcp, attempt, requireResident } from '../services.ts'
 import type { RunProgram } from './resident-mcp.ts'
 import { typedTool } from './typed-tool.ts'
-
-const failure = (reason: string) => ({ content: [{ type: 'text' as const, text: reason }], isError: true })
 
 /** Whether one of the query's words is in `fields`. */
 const matches = (query: string, ...fields: readonly (string | undefined)[]) => {
@@ -93,27 +90,31 @@ const suggestTool = (run: RunProgram, stage: Stage | undefined) =>
       ),
   })
 
+/** A server the owner is asked to add: its https endpoint, a name for the card and why. */
+const ServerRequest = Schema.Struct({
+  endpoint: Schema.String.check(
+    Schema.isMaxLength(500),
+    Schema.makeFilter(
+      (raw) => endpointOf(raw) !== undefined || 'The endpoint must be an https URL without credentials.',
+    ),
+  ),
+  name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
+  reason: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(300)),
+})
+
 /** `mcp_request_server`: a card asking the owner to add a server; they add and connect it, or not. */
-export const requestTool = defineTool({
+export const requestTool = typedTool({
   name: 'mcp_request_server',
   description:
     'Ask the owner to add an MCP server (its https endpoint, from mcp_suggest or from them). They see a card with its name and your reason, and add and connect it themselves; you cannot. Stop and wait for their reply.',
-  parameters: Type.Object({
-    endpoint: Type.String({ maxLength: 500 }),
-    name: Type.String({ minLength: 1, maxLength: 80 }),
-    reason: Type.String({ minLength: 1, maxLength: 300 }),
-  }),
+  input: ServerRequest,
+  output: ServerRequest,
   replay: 'safe',
-  execute: async ({ endpoint, name, reason }) => {
-    const url = endpointOf(endpoint)
-    if (url === undefined) return failure('The endpoint must be an https URL without credentials.')
-    // The run ends here, as with ask_user: the owner's reply is the next message.
-    return {
-      content: [{ type: 'text' as const, text: `Asked the owner to add ${name} (${url.href}). Wait for their reply.` }],
-      details: { kind: 'server-request', endpoint: url.href, name, reason },
-      control: { terminate: true },
-    }
-  },
+  execute: async ({ endpoint, name, reason }) => ({ endpoint: endpointOf(endpoint)?.href ?? endpoint, name, reason }),
+  text: ({ endpoint, name }) => `Asked the owner to add ${name} (${endpoint}). Wait for their reply.`,
+  details: ({ endpoint, name, reason }) => ({ kind: 'server-request', endpoint, name, reason }),
+  // The run ends here, as with ask_user: the owner's reply is the next message.
+  terminate: () => true,
 })
 
 /**

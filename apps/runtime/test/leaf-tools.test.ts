@@ -1,6 +1,7 @@
 import { validateToolArguments } from '@earendil-works/pi-ai/utils/validation'
 import type { Extension, ToolRegistration } from '@earendil-works/pi-durable'
 import { describe, expect, it } from 'vitest'
+import { askingExtension } from '../src/pi/ask-user.ts'
 import { filesExtension } from '../src/pi/files.ts'
 import { homeExtension } from '../src/pi/home.ts'
 import type { RunProgram } from '../src/pi/resident-mcp.ts'
@@ -121,5 +122,37 @@ describe('leaf tools (unit, ADR 0027)', () => {
     const suggested = await call(tool(serversExtension(runner(found), undefined), 'mcp_suggest'), { query: 'weather' })
     expect(suggested.details).toEqual({ structuredContent: found })
     expect(suggested.content).toEqual([{ type: 'text', text: JSON.stringify(found) }])
+  })
+
+  it('ask_user records the questions, ends the turn, and refuses a choice without two options', async () => {
+    const recorded: unknown[] = []
+    const asking = askingExtension(async (session, _call, questions) => {
+      recorded.push({ session, questions })
+    })
+    const question = {
+      id: 'q1',
+      prompt: 'Which?',
+      kind: 'single',
+      options: [
+        { id: 'a', label: 'A' },
+        { id: 'b', label: 'B' },
+      ],
+    }
+    const asked = await call(tool(asking, 'ask_user'), { questions: [question] })
+    expect(asked.control).toEqual({ terminate: true })
+    expect(asked.details).toMatchObject({ kind: 'question', questions: [question] })
+    expect(asked.content).toEqual([
+      {
+        type: 'text',
+        text: 'Asked the owner:\n1. Which?\n   - A\n   - B\nTheir answers will arrive as their next message.',
+      },
+    ])
+    expect(recorded).toEqual([{ session: '3', questions: [question] }])
+
+    const lonely = await call(tool(asking, 'ask_user'), {
+      questions: [{ ...question, options: [{ id: 'a', label: 'A' }] }],
+    })
+    expect(lonely.isError).toBe(true)
+    expect(JSON.stringify(lonely.content)).toContain('needs at least two options')
   })
 })

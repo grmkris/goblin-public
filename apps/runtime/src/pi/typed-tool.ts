@@ -114,7 +114,9 @@ export function typedTool<I, O>(tool: TypedTool<I, O>): ToolRegistration {
       try {
         input = decode(args)
       } catch (cause) {
-        return failed(`The arguments do not match ${tool.name}'s input: ${describeError(cause)}`)
+        // A schema error's message says what was expected and where: what the model needs to fix the call.
+        const why = cause instanceof Error ? cause.message : describeError(cause)
+        return failed(`The arguments do not match ${tool.name}'s input: ${why}`)
       }
       let output: O | ReadyResult
       try {

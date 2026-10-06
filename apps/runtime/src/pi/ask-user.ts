@@ -1,21 +1,22 @@
-import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
-import { type Static, Type } from '@earendil-works/pi-ai'
-import type { JsonObject, QuestionSpec } from '@goblin/contracts'
+import { defineExtension, section } from '@earendil-works/pi-durable'
+import { type JsonObject, QuestionSpec } from '@goblin/contracts'
+import * as Schema from 'effect/Schema'
+import { typedTool } from './typed-tool.ts'
 
-const OptionSchema = Type.Object({
-  id: Type.String({ minLength: 1, maxLength: 64 }),
-  label: Type.String({ minLength: 1, maxLength: 120 }),
-  description: Type.Optional(Type.String({ maxLength: 300 })),
+const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))
+const Option = Schema.Struct({
+  id: Id,
+  label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  description: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(300))),
 })
-const QuestionSchema = Type.Object({
-  id: Type.String({ minLength: 1, maxLength: 64 }),
-  prompt: Type.String({ minLength: 1, maxLength: 500 }),
-  kind: Type.Union([Type.Literal('single'), Type.Literal('multi'), Type.Literal('text')]),
-  options: Type.Optional(Type.Array(OptionSchema, { maxItems: 8 })),
-  allowOther: Type.Optional(Type.Boolean()),
+const Question = Schema.Struct({
+  id: Id,
+  prompt: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500)),
+  kind: Schema.Literals(['single', 'multi', 'text']),
+  options: Schema.optionalKey(Schema.Array(Option).check(Schema.isMaxLength(8))),
+  allowOther: Schema.optionalKey(Schema.Boolean),
 })
-const Parameters = Type.Object({ questions: Type.Array(QuestionSchema, { minItems: 1, maxItems: 5 }) })
-type Question = Static<typeof QuestionSchema>
+type Question = typeof Question.Type
 
 /** What is wrong with a set of questions the schema alone cannot catch: option counts and duplicate ids. */
 function questionProblems(questions: readonly Question[]): string[] {
@@ -30,6 +31,15 @@ function questionProblems(questions: readonly Question[]): string[] {
   }
   return problems
 }
+
+const Questions = Schema.Array(Question).check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(5),
+  Schema.makeFilter((questions) => {
+    const problems = questionProblems(questions)
+    return problems.length === 0 ? true : `Not asked. ${problems.join(' ')}`
+  }),
+)
 
 /** The questions as numbered plain text: what the model sees, and what a text-only channel can show the owner. */
 function questionText(questions: readonly Question[]): string {
@@ -79,28 +89,22 @@ export function askingExtension(
     name: onQuestion === undefined ? 'goblin.ask' : 'goblin.routine-ask',
     sections: [section('asking', () => ASKING)],
     tools: [
-      defineTool({
+      typedTool({
         name: 'ask_user',
         description:
           'Ask the owner one to five short questions when you cannot continue without their decision or a missing detail. Offer 2-8 options for a choice. Call it alone, then stop: their answers arrive as their next message.',
-        parameters: Parameters,
+        input: Schema.Struct({ questions: Questions }),
+        output: Schema.Struct({ asked: Schema.Array(QuestionSpec) }),
         replay: 'safe',
         execute: async ({ questions }, api) => {
-          const problems = questionProblems(questions)
-          if (problems.length > 0)
-            return { content: [{ type: 'text', text: `Not asked. ${problems.join(' ')}` }], isError: true }
-          if (onQuestion !== undefined) await onQuestion(String(api.conversationId), api.callId, questions.map(spec))
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Asked the owner:\n${questionText(questions)}\nTheir answers will arrive as their next message.`,
-              },
-            ],
-            details: { kind: 'question', questions: questions.map(spec) },
-            control: { terminate: true },
-          }
+          const asked = questions.map(spec)
+          if (onQuestion !== undefined) await onQuestion(String(api.conversationId), api.callId, asked)
+          return { asked }
         },
+        text: (_asked, { questions }) =>
+          `Asked the owner:\n${questionText(questions)}\nTheir answers will arrive as their next message.`,
+        details: (_asked, { questions }) => ({ kind: 'question', questions: questions.map(spec) }),
+        terminate: () => true,
       }),
     ],
   })

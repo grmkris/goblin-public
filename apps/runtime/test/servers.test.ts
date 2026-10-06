@@ -8,12 +8,8 @@ const ask = (endpoint: string) =>
 describe('mcp_request_server (unit)', () => {
   it('asks the owner with a card, and ends the run until they reply', async () => {
     const result = await ask('https://mcp.example.com/mcp')
-    expect(result.details).toEqual({
-      kind: 'server-request',
-      endpoint: 'https://mcp.example.com/mcp',
-      name: 'Maps',
-      reason: 'To show routes',
-    })
+    const request = { endpoint: 'https://mcp.example.com/mcp', name: 'Maps', reason: 'To show routes' }
+    expect(result.details).toEqual({ kind: 'server-request', ...request, structuredContent: request })
     expect(result.control).toEqual({ terminate: true })
   })
   it('refuses an address that is not https or carries credentials', async () => {
