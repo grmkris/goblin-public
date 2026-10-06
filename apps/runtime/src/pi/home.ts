@@ -23,13 +23,14 @@ export function homeExtension(run: RunProgram) {
       section(
         'home',
         () =>
-          'Main has a Home grid below the newest exchange. Read home_read for its revision and the App ids you can place. home_edit applies ordered add/move/resize/update/remove operations atomically. You may manage tiles you placed; changing owner tiles asks them instead. Placement grants no powers. For “build a reading list and put it on Home”, build an app with a view, then home_read and add its App id as a medium or large tile. A view should use useHost().surface and tileSize for a glance variant. Notes and recent conversations need no app. Use a fresh operationId for a new edit; retry a stale layout with its new revision and a new operationId.',
+          'Main has a Home grid below the newest exchange. Read home_read for its revision and the App ids you can place. home_edit applies ordered add/move/resize/update/remove operations atomically. You may manage tiles you placed; changing owner tiles asks them instead. Placement grants no powers. For “build a reading list and put it on Home”, build an app with a view, then home_read and add its App id as a medium or large tile. A view should use useHost().surface and tileSize for a glance variant. Tile kinds are note, conversations and app. Notes can draw the same stat, spark, timeline, compare, chart and check figures as chat, in mdxcn or chart fences. A note is a snapshot: say when its figures were true. Live data belongs in an agent app with a refresh schedule and freshness/error states. MCP Apps are pinned by the owner. After building an app with a view in Main, offer to put it on Home. Use a fresh operationId for a new edit; retry a stale layout with its new revision and a new operationId.',
       ),
     ],
     tools: [
       typedTool({
         name: 'home_read',
-        description: 'Read Main’s Home layout, revision, and agent Apps available to place (id, name, hasView).',
+        description:
+          'Read Main’s Home layout (note, conversations and app tiles), revision, and agent Apps available to place (id, name, hasView). Notes are snapshots; scheduled agent apps hold live data. The owner pins MCP Apps.',
         input: Schema.Struct({}),
         output: HomeRead,
         replay: 'safe',
@@ -38,7 +39,7 @@ export function homeExtension(run: RunProgram) {
       typedTool({
         name: 'home_edit',
         description:
-          'Arrange Main’s Home with one atomic ordered edit. Supply the revision from home_read and a stable operationId. You can change your own tiles; owner tiles require their approval.',
+          'Arrange Main’s Home with one atomic ordered edit. Supply the revision from home_read and a stable operationId. Add note snapshots (Markdown and figure fences), recent conversations or agent apps with views. You can change your own tiles; owner tiles require their approval. Only the owner pins MCP Apps. Placement grants nothing.',
         input: AgentEdit,
         output: HomeEditResult,
         replay: 'safe',

@@ -278,3 +278,42 @@
   scale: 0.985;
   transition: scale 100ms;
 }
+
+.home-header-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 0.125rem;
+}
+.home-empty > p {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  margin-bottom: 0.375rem;
+}
+.home-tile[data-kind='note'] .home-tile-body {
+  mask-image: linear-gradient(black calc(100% - 12px), transparent);
+}
+.home-tile-request {
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.375rem;
+  font-size: 13px;
+  text-align: left;
+  touch-action: manipulation;
+}
+.home-tile-request span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+@media (max-width: 639px) {
+  .home-header {
+    gap: 0.25rem;
+  }
+  .home-header-actions button {
+    font-size: 11px;
+    padding-inline: 0.375rem;
+  }
+}

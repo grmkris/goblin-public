@@ -1,3 +1,5 @@
+import * as Schema from 'effect/Schema'
+import { HomeTileInput } from '@goblin/contracts'
 import { expect, it } from 'vitest'
 import { HOME_MARK, homeLanding } from '../src/lib/home.ts'
 import { applyChanges, EMPTY_WORKSPACE } from '../src/lib/workspace-feed.ts'
@@ -22,4 +24,29 @@ it('a delayed Home feed event cannot overwrite a newer layout', () => {
   const first = applyChanges(EMPTY_WORKSPACE, [{ type: 'home', home: { revision: 4, tiles: [] } }])
   const later = applyChanges(first, [{ type: 'home', home: { revision: 3, tiles: [] } }])
   expect(later.home?.revision).toBe(4)
+})
+
+it('a stat and spark snapshot fits the existing bounded Home note', () => {
+  const markdown = [
+    'Snapshot: 6 October 2026.',
+    '```mdxcn',
+    '{"kind":"stat","title":"Reading","items":[{"label":"Books","value":4}]}',
+    '```',
+    '```mdxcn',
+    '{"kind":"spark","title":"This week","data":[1,2,2,3,4]}',
+    '```',
+  ].join('\n')
+  expect(
+    Schema.decodeUnknownSync(HomeTileInput)({ kind: 'note', id: 'reading', size: 'large', title: 'Reading', markdown })
+      .kind,
+  ).toBe('note')
+  expect(() =>
+    Schema.decodeUnknownSync(HomeTileInput)({
+      kind: 'note',
+      id: 'huge',
+      size: 'small',
+      title: 'Huge',
+      markdown: '🦉'.repeat(1025),
+    }),
+  ).toThrow()
 })

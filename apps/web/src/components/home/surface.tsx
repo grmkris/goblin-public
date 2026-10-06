@@ -3,7 +3,7 @@ import type { HomeTile, HomeOperation } from '@goblin/contracts'
 import { Button, useMessageScroller } from '@goblin/ui'
 import { ArrowUpRightIcon, MessageSquareIcon, GripVerticalIcon, XIcon } from 'lucide-react'
 import { appKey, conversationKey } from '../../lib/workspace.ts'
-import { ToolMarkdown } from '../parts/tool-markdown.tsx'
+import { MessageText } from '../parts/text-part.tsx'
 import { useWorkspace } from '../workspace.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { HomeAppTile } from './app-tile.tsx'
@@ -13,7 +13,8 @@ import { HomeTileMenu } from './tile-menu.tsx'
 import { useHomeDrag } from './drag.ts'
 import { useHomeMotion } from './motion.ts'
 
-const STARTERS = ['Build me a reading list', 'Put my recent conversations on Home', 'Keep a note for today']
+const STARTERS = ['Track my reading on Home', 'Chart my spending this month on Home', 'Put my inbox on Home']
+const TILE_DRAFT = 'Add a tile to Home that '
 
 function RecentConversations() {
   const { conversations } = useWorkspaceFeed()
@@ -133,7 +134,7 @@ function TileBody({
   readonly tile: HomeTile
   readonly app: import('@goblin/contracts').AppView | undefined
 }) {
-  if (tile.kind === 'note') return <ToolMarkdown text={tile.markdown} />
+  if (tile.kind === 'note') return <MessageText text={tile.markdown} figures />
   if (tile.kind === 'conversations') return <RecentConversations />
   if (app === undefined) return <p className="text-muted-foreground">App unavailable</p>
   return <HomeAppTile app={app} />
@@ -160,6 +161,54 @@ function useShowHome(root: import('react').RefObject<HTMLElement | null>) {
   }, [scrollToEnd])
 }
 
+function HomeHeader({
+  editing,
+  onEdit,
+  onDraft,
+}: {
+  readonly editing: boolean
+  readonly onEdit: () => void
+  readonly onDraft: (text: string) => void
+}) {
+  const today = new Date()
+  const date = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' }).format(today)
+  const narrowDate = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' }).format(
+    today,
+  )
+  return (
+    <header className="home-header">
+      <h2>
+        Home <span className="home-date-wide">· {date}</span>
+        <span className="home-date-narrow">· {narrowDate}</span>
+      </h2>
+      <div className="home-header-actions">
+        <Button variant="ghost" size="sm" onClick={() => onDraft(TILE_DRAFT)}>
+          Ask for a tile
+        </Button>
+        <Button variant="ghost" size="sm" aria-label="Edit Home" aria-pressed={editing} onClick={onEdit}>
+          {editing ? 'Done' : 'Edit'}
+        </Button>
+      </div>
+    </header>
+  )
+}
+
+function HomeStarters({ onDraft }: { readonly onDraft: (text: string) => void }) {
+  return (
+    <div className="home-empty">
+      <p>Your agent can build tiles: trackers, charts, your inbox. Ask it.</p>
+      <div className="home-starters">
+        {STARTERS.map((text) => (
+          <button key={text} type="button" onClick={() => onDraft(text)}>
+            {text}
+            <ArrowUpRightIcon aria-hidden />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** Main's fixed-geometry glance surface, after the newest transcript row and before the dock. */
 export function HomeSurface({ onDraft }: { readonly onDraft: (text: string) => void }) {
   const { home } = useWorkspaceFeed()
@@ -176,42 +225,16 @@ export function HomeSurface({ onDraft }: { readonly onDraft: (text: string) => v
   }
   const drag = useHomeDrag(root, edit, home?.revision)
   useEffect(host.kick, [editing, host.kick])
-  const today = new Date()
-  const date = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' }).format(today)
-  const narrowDate = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' }).format(
-    today,
-  )
   return (
     <section className="home-surface" aria-label="Home" ref={root} data-editing={editing || undefined}>
-      <header className="home-header">
-        <h2>
-          Home <span className="home-date-wide">· {date}</span>
-          <span className="home-date-narrow">· {narrowDate}</span>
-        </h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label="Edit Home"
-          aria-pressed={editing}
-          onClick={() => setEditing(!editing)}
-        >
-          {editing ? 'Done' : 'Edit'}
-        </Button>
-      </header>
+      <HomeHeader editing={editing} onEdit={() => setEditing(!editing)} onDraft={onDraft} />
       {owner.notice && (
         <p role="status" className="text-sm text-destructive">
           {owner.notice}
         </p>
       )}
       {tiles.length === 0 ? (
-        <div className="home-starters">
-          {STARTERS.map((text) => (
-            <button key={text} type="button" onClick={() => onDraft(text)}>
-              {text}
-              <ArrowUpRightIcon aria-hidden />
-            </button>
-          ))}
-        </div>
+        <HomeStarters onDraft={onDraft} />
       ) : (
         <div className="home-grid">
           {tiles.map((tile, index) => (
@@ -233,6 +256,17 @@ export function HomeSurface({ onDraft }: { readonly onDraft: (text: string) => v
               }}
             />
           ))}
+          {editing && (
+            <button
+              type="button"
+              className="home-tile home-tile-request"
+              data-size="medium"
+              onClick={() => onDraft(TILE_DRAFT)}
+            >
+              Ask for a tile
+              <span>Your agent can build it for you.</span>
+            </button>
+          )}
         </div>
       )}
     </section>
