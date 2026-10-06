@@ -335,17 +335,20 @@ test('stage and phase limits restore independently without charging denied reque
       Effect.gen(function* () {
         const provider = yield* relay(resolved, 'attempts', undefined)
         const send = (scope: string) =>
-          Effect.promise(() =>
-            fetch(`${provider.url}/v1/chat/completions`, {
+          Effect.promise(async () => {
+            // Exercise normal keep-alive clients across a scoped relay restart; consume each reply before teardown.
+            const response = await fetch(`${provider.url}/v1/chat/completions`, {
               method: 'POST',
-              headers: { 'content-type': 'application/json', 'x-bench-scope': scope, connection: 'close' },
+              headers: { 'content-type': 'application/json', 'x-bench-scope': scope },
               body: JSON.stringify({
                 model: 'glm-5.3',
                 messages: [{ role: 'user', content: 'Admission check' }],
                 max_tokens: 20,
               }),
-            }),
-          )
+            })
+            await response.text()
+            return response
+          })
         provider.setScope('missing-stage', 'answer')
         expect((yield* send('missing-stage')).status).toBe(402)
         provider.setScope('first', 'answer', 22)
@@ -357,9 +360,10 @@ test('stage and phase limits restore independently without charging denied reque
         if (!resume) expect((yield* send('later')).status).toBe(200)
         provider.setScope('build', 'build', 22)
         if (!resume) expect((yield* send('build')).status).toBe(200)
-        expect(provider.totals().requests).toBe(3)
+        expect(provider.totals()).toEqual({ requests: 3, input: 60, output: 30 })
       }),
     ).pipe(Effect.provide(Layer.merge(fs, FetchHttpClient.layer)))
   await Effect.runPromise(round(false))
-  await Effect.runPromise(round(true))
+  // Reopen immediately several times to exercise socket retirement as well as restored denial accounting.
+  for (let restart = 0; restart < 5; restart += 1) await Effect.runPromise(round(true))
 })

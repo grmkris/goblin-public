@@ -16,7 +16,8 @@ export async function serveLocal(port: number, handle: (request: Request) => Pro
         ...(chunks.length === 0 ? {} : { body: Buffer.concat(chunks) }),
       })
       const response = await handle(request)
-      outgoing.writeHead(response.status, Object.fromEntries(response.headers))
+      // Scoped relays can immediately rebind their port; retire client sockets with each reply before teardown.
+      outgoing.writeHead(response.status, { ...Object.fromEntries(response.headers), connection: 'close' })
       outgoing.end(Buffer.from(await response.arrayBuffer()))
     })().catch(() => {
       outgoing.writeHead(500)
