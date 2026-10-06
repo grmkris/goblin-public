@@ -31,3 +31,6 @@ policy.
   turns, thread sharing, subagents, memory and client revocation. Reopening signup needs a global account-admission
   policy and provider capacity review. Production payment acceptance and merchant onboarding remain separate work;
   dev's operator override grants nothing on prod.
+  Acceptance was recorded on 2026-10-06; the previous dev resources were retired afterwards. Suggested outbound MCP
+  connections remain disconnected and ungranted, so live acceptance proves inbound MCP and models; outbound calls
+  await fresh owner connections and grants.
