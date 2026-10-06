@@ -99,6 +99,17 @@ export class AppRegistry {
     this.#agents = agents
   }
 
+  /** Lightweight placement metadata for Home validation; unlike `list`, this never resolves an agent view. */
+  placement(id: string): {
+    readonly source: 'mcp' | 'agent'
+    readonly closed: boolean
+    readonly tool: string | null
+    readonly title: string
+  } {
+    const row = this.#row(id)
+    return { source: row.source, closed: row.closedAt !== null, tool: row.tool, title: row.title }
+  }
+
   #view(row: Row): AppView {
     return {
       id: String(row.id),

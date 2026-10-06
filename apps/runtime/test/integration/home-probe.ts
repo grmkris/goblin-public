@@ -1,10 +1,13 @@
 import { createRegistry } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import { HomeLayout, type HomeEdit, type HomeOperation } from '@goblin/contracts'
+import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Schema from 'effect/Schema'
 import { agentApps } from '../../src/agent-apps/engine.ts'
 import { AppRegistry } from '../../src/apps/registry.ts'
+import { appConversations } from '../../src/storage/schema.ts'
+import { InvalidInput } from '../../src/http/errors.ts'
 import { HomeService } from '../../src/home/service.ts'
 import { readHome } from '../../src/home/store.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
@@ -41,6 +44,57 @@ const boundsRejected = (kind: 'app' | 'conversations', length: number) =>
     }),
   )
 const hasApp = (tile: HomeLayout['tiles'][number]) => tile.kind === 'app'
+function mcpPlacementProbe(home: HomeService, apps: AppRegistry, db: ReturnType<typeof drizzle>) {
+  const edit = (
+    operationId: string,
+    expectedRevision: number,
+    ops: readonly HomeOperation[],
+    actor: 'owner' | 'agent' = 'agent',
+  ) => home.edit({ operationId, expectedRevision, ops }, actor)
+  const origin = { serverId: 'home-fixture', tool: 'board', uri: 'ui://home-fixture/board', title: 'Board' }
+  const mcp = apps.register('1', 'home-board', origin, 3)
+  let agentMcpReason = ''
+  try {
+    edit('home-agent-mcp', 6, [{ kind: 'add', tile: { kind: 'app', id: 'mcp-board', appId: mcp.id, size: 'medium' } }])
+  } catch (cause) {
+    if (cause instanceof InvalidInput) agentMcpReason = cause.reason
+  }
+  const ownerMcp = edit(
+    'home-owner-mcp',
+    6,
+    [{ kind: 'add', tile: { kind: 'app', id: 'mcp-board', appId: mcp.id, size: 'medium' } }],
+    'owner',
+  )
+  apps.update(mcp.id, true, 4)
+  const afterClose = edit('home-after-close', 7, [
+    { kind: 'update', id: 'today', title: 'Today', markdown: 'Still editable' },
+  ])
+  const closedAddRejected = rejected(() =>
+    edit(
+      'home-add-closed',
+      8,
+      [
+        { kind: 'remove', id: 'mcp-board' },
+        { kind: 'add', tile: { kind: 'app', id: 'mcp-board-again', appId: mcp.id, size: 'medium' } },
+      ],
+      'owner',
+    ),
+  )
+  db.insert(appConversations).values({ sessionId: '222', kind: 'thread', parentSession: '1', createdAt: 1 }).run()
+  const threaded = apps.register('222', 'home-thread-board', origin, 4)
+  edit(
+    'home-owner-thread-mcp',
+    8,
+    [{ kind: 'add', tile: { kind: 'app', id: 'thread-board', appId: threaded.id, size: 'medium' } }],
+    'owner',
+  )
+  db.update(appConversations).set({ closedAt: 5 }).where(eq(appConversations.sessionId, '222')).run()
+  apps.closeWithConversations(['222'], 5)
+  const afterThreadClose = edit('home-after-thread-close', 9, [{ kind: 'resize', id: 'today', size: 'large' }])
+  const threadClosed = apps.list().find((app) => app.id === threaded.id)?.closedAt !== undefined
+  return { agentMcpReason, ownerMcp, afterClose, closedAddRejected, afterThreadClose, threadClosed }
+}
+
 /** Native SQLite, a real Dynamic Worker app, atomic receipts, and reconstruction over retained rows. */
 export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string, harness: PiHarness) {
   runApplicationMigrations(storage)
@@ -117,6 +171,7 @@ export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, 
   apps.removeAgent('home-list')
   home.appRemoved()
   const erased = !home.layout().tiles.some(hasApp)
+  const mcpPlacement = mcpPlacementProbe(home, apps, db)
   const reconstructed = new HomeService(drizzle(storage), apps, engine)
   return {
     first,
@@ -135,6 +190,7 @@ export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, 
     eight,
     closePreserved,
     erased,
+    ...mcpPlacement,
     retained: reconstructed.layout(),
     changes: changes.length,
   }

@@ -35,13 +35,30 @@ export function homeCase(url: string) {
       eight: true,
       closePreserved: true,
       erased: true,
-      retained: { revision: 6 },
+      agentMcpReason: 'Only the owner pins MCP Apps on Home',
+      ownerMcp: {
+        kind: 'applied',
+        layout: {
+          revision: 7,
+          tiles: expect.arrayContaining([expect.objectContaining({ id: 'mcp-board', placedBy: 'owner' })]),
+        },
+      },
+      afterClose: { kind: 'applied', layout: { revision: 8 } },
+      closedAddRejected: true,
+      afterThreadClose: { kind: 'applied', layout: { revision: 10 } },
+      threadClosed: true,
+      retained: { revision: 10 },
     })
     yield* Effect.promise(() => fetch(`${base}/routine-evict?name=${name}`).catch(() => undefined))
     const restored = yield* Effect.promise(() => fetch(`${base}/home-retained?name=${name}`).then((res) => res.json()))
     expect(restored).toMatchObject({
-      revision: 6,
-      tiles: [expect.objectContaining({ id: 'today' }), expect.objectContaining({ id: 'recent' })],
+      revision: 10,
+      tiles: [
+        expect.objectContaining({ id: 'today' }),
+        expect.objectContaining({ id: 'recent' }),
+        expect.objectContaining({ id: 'mcp-board', placedBy: 'owner' }),
+        expect.objectContaining({ id: 'thread-board', placedBy: 'owner' }),
+      ],
     })
   })
 }

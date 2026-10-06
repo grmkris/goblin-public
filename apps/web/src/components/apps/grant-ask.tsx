@@ -11,7 +11,7 @@ const WAIT_MS = 120_000
 type Pending = { readonly name: string; readonly settle: (allowed: boolean) => void }
 
 /** The owner's answer for one tool, asked once however many calls wait on it. */
-export function useAppGrantAsks(serverId: string) {
+export function useAppGrantAsks(serverId: string, onOpen?: () => void) {
   const [asks, setAsks] = useState<readonly string[]>([])
   const waiting = useRef(new Map<string, Promise<boolean>>())
   const settlers = useRef(new Map<string, Pending['settle']>())
@@ -37,7 +37,12 @@ export function useAppGrantAsks(serverId: string) {
   const [first] = asks
   const card =
     first === undefined ? null : (
-      <AppGrantCard serverId={serverId} name={first} onAnswer={(allowed) => answer(first, allowed)} />
+      <AppGrantCard
+        serverId={serverId}
+        name={first}
+        {...(onOpen === undefined ? {} : { onOpen })}
+        onAnswer={(allowed) => answer(first, allowed)}
+      />
     )
   return { ask, card }
 }
@@ -51,9 +56,11 @@ function AppGrantCard({
   serverId,
   name,
   onAnswer,
+  onOpen,
 }: {
   readonly serverId: string
   readonly name: string
+  readonly onOpen?: () => void
   readonly onAnswer: (allowed: boolean) => void
 }) {
   const [busy, setBusy] = useState(false)
@@ -85,6 +92,11 @@ function AppGrantCard({
       <Button size="sm" disabled={busy} onClick={() => void allow()}>
         Allow
       </Button>
+      {onOpen !== undefined && (
+        <Button variant="ghost" size="sm" onClick={onOpen}>
+          Open
+        </Button>
+      )}
     </div>
   )
 }

@@ -27,6 +27,10 @@
     ".": {
       "entry": ["scripts/**/*.ts!"],
     },
+    "scripts/fixtures/mcp-app": {
+      "entry": ["server.ts!", "client.mts!"],
+      "project": ["**/*.ts", "**/*.mts"],
+    },
     "tools": {
       "entry": ["*.ts!", "oxlint/*.ts!"],
       "ignoreDependencies": ["@effect/tsgo"],

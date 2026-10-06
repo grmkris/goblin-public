@@ -237,7 +237,7 @@ async function serverReport(dev: DevClient, server: JsonObject): Promise<ServerR
   }
   const result = await dev.json(`/api/mcp/${encodeURIComponent(serverId)}/tools/call`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-goblin-csrf': '1' },
     body: JSON.stringify({ name: probe, arguments: {} }),
   })
   report.probe = result['isError'] === true ? 'error' : 'ok'

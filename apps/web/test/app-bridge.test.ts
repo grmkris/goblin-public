@@ -94,8 +94,16 @@ describe('official MCP App bridge stays bound to its originating connection', ()
       expect(await first.app.callServerTool({ name: 'read', arguments: { serverId: 'evil' } })).toMatchObject({
         content: [{ text: 'notes' }],
       })
-      for (const displayMode of ['fullscreen', 'inline'] as const) {
-        first.bridge.setHostContext({ displayMode, containerDimensions: { width: 400, maxHeight: 600 } })
+      for (const surface of ['page', 'home', 'inline'] as const) {
+        first.bridge.setHostContext({
+          displayMode: surface === 'page' ? 'fullscreen' : 'inline',
+          containerDimensions: { width: 400, maxHeight: 600 },
+          surface,
+          ...(surface === 'home' ? { tileSize: 'small' } : {}),
+        })
+        expect(
+          await first.app.callServerTool({ name: 'after-placement', arguments: { serverId: 'evil' } }),
+        ).toMatchObject({ content: [{ text: 'notes' }] })
         expect(await first.app.readServerResource({ uri: 'data://value' })).toMatchObject({
           contents: [{ text: 'notes' }],
         })
@@ -110,7 +118,16 @@ describe('official MCP App bridge stays bound to its originating connection', ()
     } finally {
       await second.close()
     }
-    expect(reached).toEqual(['notes:read', 'notes:data://value', 'notes:data://value', 'other:read'])
+    expect(reached).toEqual([
+      'notes:read',
+      'notes:after-placement',
+      'notes:data://value',
+      'notes:after-placement',
+      'notes:data://value',
+      'notes:after-placement',
+      'notes:data://value',
+      'other:read',
+    ])
   })
 })
 

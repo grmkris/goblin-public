@@ -12,6 +12,7 @@ import { useHomeEdit } from './edit.ts'
 import { HomeTileMenu } from './tile-menu.tsx'
 import { useHomeDrag } from './drag.ts'
 import { useHomeMotion } from './motion.ts'
+import { appCaption, appNames } from '../../lib/workspace-tree.ts'
 
 const STARTERS = ['Track my reading on Home', 'Chart my spending this month on Home', 'Put my inbox on Home']
 const TILE_DRAFT = 'Add a tile to Home that '
@@ -51,13 +52,22 @@ type TileControls = {
   readonly owner: ReturnType<typeof useHomeEdit>
   readonly drag: ReturnType<typeof useHomeDrag>
 }
+function tileTitle(
+  tile: HomeTile,
+  app: import('@goblin/contracts').AppView | undefined,
+  apps: readonly import('@goblin/contracts').AppView[],
+): string {
+  if (tile.kind === 'note') return tile.title
+  if (tile.kind === 'conversations') return 'Recent conversations'
+  return app === undefined ? 'App' : (appNames(apps).get(app.id) ?? app.title)
+}
+
 function Tile({ tile, controls }: { readonly tile: HomeTile; readonly controls: TileControls }) {
   const { apps } = useWorkspaceFeed()
   const workspace = useWorkspace()
   const host = useAppHost()
   const app = tile.kind === 'app' ? apps.find((each) => each.id === tile.appId) : undefined
-  const title =
-    tile.kind === 'note' ? tile.title : tile.kind === 'conversations' ? 'Recent conversations' : (app?.title ?? 'App')
+  const title = tileTitle(tile, app, apps)
   const open = () =>
     app === undefined
       ? document.querySelector<HTMLElement>(`[data-home-tile="${tile.id}"]`)?.focus()
@@ -93,7 +103,10 @@ function Tile({ tile, controls }: { readonly tile: HomeTile; readonly controls: 
           title
         ) : (
           <button type="button" onClick={open}>
-            {title}
+            <span className="home-app-name">
+              <span>{title}</span>
+              <small>{appCaption(app)}</small>
+            </span>
             <ArrowUpRightIcon aria-hidden />
           </button>
         )}

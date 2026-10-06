@@ -15,6 +15,9 @@ import { useAppGrantAsks } from './grant-ask.tsx'
 import { type Instance, type SlotName, useAppHost } from './host.tsx'
 import { DownloadOffer, LinkOffer } from './offers.tsx'
 import { useAppPlacement } from './placement.ts'
+import { useHomePin } from '../home/pin.ts'
+import { appNames } from '../../lib/workspace-tree.ts'
+import { useWorkspaceFeed } from '../workspace-feed.tsx'
 
 type Axes = { x: Motion; y: Motion; width: Motion; height: Motion }
 const AXES = ['x', 'y', 'width', 'height'] as const
@@ -137,9 +140,17 @@ function ChromeButton({ label, icon: Icon, onClick }: { label: string; icon: typ
 /** The host's bar above the App in its transcript: its name, to its page, and close. On its page the pill does this. */
 function AppChrome({ instance, onPage }: { readonly instance: Instance; readonly onPage: () => void }) {
   const host = useAppHost()
+  const home = useHomePin(instance.app)
+  const title = appNames(useWorkspaceFeed().apps).get(instance.app.id) ?? instance.app.title
   return (
     <div className="app-chrome">
-      <span className="app-chrome-title">{instance.app.title}</span>
+      <span className="app-chrome-title">{title}</span>
+      {home.available && (
+        <Button variant="ghost" size="sm" disabled={home.pending} onClick={() => void home.pin()}>
+          Put on Home
+        </Button>
+      )}
+      {home.notice && <span role="status">{home.notice}</span>}
       {instance.app.source.kind === 'agent' && <AppJobs jobs={instance.app.source.jobs} />}
       <ChromeButton label="Open as a page" icon={PanelRightOpenIcon} onClick={onPage} />
       <ChromeButton label="Close the app" icon={XIcon} onClick={() => host.close(instance.app.id)} />
@@ -190,7 +201,7 @@ function Stage({ instance }: { readonly instance: Instance }) {
     visible: undefined,
   })
   const [error, setError] = useState('')
-  const grants = useAppGrantAsks(origin)
+  const grants = useAppGrantAsks(origin, place.surface === 'home' ? place.page : undefined)
   const chrome = useRef(CHROME_HEIGHT)
   chrome.current = place.surface === 'inline' ? CHROME_HEIGHT : 0
   const { box, onTarget } = useRoom(chrome)
@@ -223,7 +234,14 @@ function Stage({ instance }: { readonly instance: Instance }) {
   return (
     <div ref={stage} className="app-stage" data-mode={place.surface} data-app={id} data-hidden="">
       {place.surface === 'inline' && <AppChrome instance={instance} onPage={place.page} />}
-      {error && <Receipt tone="error">{error}. The ordinary tool result remains available.</Receipt>}
+      {error && (
+        <Receipt tone="error">
+          {error}.{' '}
+          {place.surface === 'inline'
+            ? 'The ordinary tool result remains available.'
+            : 'Open the app or try showing it again.'}
+        </Receipt>
+      )}
       {grants.card}
       <StageOffers instance={instance} origin={origin} />
       <AppFrame

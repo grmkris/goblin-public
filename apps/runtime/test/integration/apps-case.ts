@@ -1,6 +1,6 @@
 import { expect } from 'vitest'
 import { Schema } from 'effect'
-import { AppLaunch, ConversationView, WorkspaceSnapshot } from '@goblin/contracts'
+import { AppLaunch, ConversationView, HomeEditResult, HomeRead, WorkspaceSnapshot } from '@goblin/contracts'
 import { BOARD } from './apps-mcp.ts'
 import { person, call, waitFor, type Person } from './owner-requests.ts'
 
@@ -72,6 +72,19 @@ export async function appsCase(base: string): Promise<void> {
   expect(JSON.stringify(launch.kind === 'mcp' ? launch.result : null)).toContain('fixture-board')
   const html = await send(base, owner, '/api/mcp/apps-fixture/resources/read', 'POST', { uri: BOARD })
   expect(html.status).toBe(200)
+  const initialHome = Schema.decodeUnknownSync(HomeRead)(await (await call(base, owner, '/api/home')).json())
+  const pinInput = {
+    operationId: crypto.randomUUID(),
+    expectedRevision: initialHome.layout.revision,
+    ops: [{ kind: 'add', tile: { kind: 'app', appId: app.id, id: 'fixture-home-app', size: 'medium' } }],
+  }
+  const pinned = await call(base, owner, '/api/home', pinInput)
+  expect(pinned.status).toBe(200)
+  const home = Schema.decodeUnknownSync(HomeEditResult)(await pinned.json())
+  expect(home).toMatchObject({
+    kind: 'applied',
+    layout: { tiles: [expect.objectContaining({ appId: app.id, placedBy: 'owner' })] },
+  })
 
   expect((await send(base, owner, `/api/conversations/${thread.id}`, 'PATCH', { closed: true })).status).toBe(200)
   expect((await snapshot(base, owner)).apps[0]?.closedAt).toBeDefined()
@@ -84,5 +97,29 @@ export async function appsCase(base: string): Promise<void> {
   const denied = await send(base, owner, '/api/mcp/apps-fixture/resources/read', 'POST', { uri: BOARD })
   expect(denied.status).toBeGreaterThanOrEqual(400)
   expect(await denied.text()).toContain('GrantDenied')
+  const deniedCall = await send(base, owner, '/api/mcp/apps-fixture/tools/call', 'POST', {
+    name: 'board',
+    arguments: {},
+  })
+  expect(deniedCall.status).toBeGreaterThanOrEqual(400)
+  expect(await deniedCall.text()).toContain('GrantDenied')
+  expect(Schema.decodeUnknownSync(HomeRead)(await (await call(base, owner, '/api/home')).json()).layout).toEqual(
+    home.kind === 'applied' ? home.layout : undefined,
+  )
+  const replay = await call(base, owner, '/api/home', pinInput)
+  expect(replay.status).toBe(200)
+  expect(Schema.decodeUnknownSync(HomeEditResult)(await replay.json())).toEqual(home)
+  const grants = await (await call(base, owner, '/api/mcp/grants')).json()
+  expect(JSON.stringify(grants)).not.toContain('"name":"board"')
+  for (const headers of [{ origin: '' }, { 'x-goblin-csrf': '' }]) {
+    const refused = await call(
+      base,
+      owner,
+      '/api/mcp/grants',
+      { serverId: 'apps-fixture', name: 'board', allowed: true },
+      headers,
+    )
+    expect(refused.status).toBe(403)
+  }
   expect((await send(base, owner, '/api/apps/999999/launch', 'GET')).status).toBe(404)
 }

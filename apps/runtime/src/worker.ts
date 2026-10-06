@@ -317,7 +317,9 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   const { userId } = session
   const path = new URL(request.url).pathname
   if (
-    ['/api/routines', '/api/files', '/api/apps', '/api/agent-apps', '/api/home'].some((prefix) => under(path, prefix))
+    ['/api/routines', '/api/files', '/api/apps', '/api/agent-apps', '/api/home', '/api/mcp'].some((prefix) =>
+      under(path, prefix),
+    )
   )
     browserWrite(request, env.APP_URL)
   if (path.startsWith('/api/billing/')) return Effect.runPromise(billingApi(request, env, userId))

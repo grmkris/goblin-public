@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AppView } from '@goblin/contracts'
 import { Button, Receipt } from '@goblin/ui'
+import { failureText } from '../../lib/boundary.ts'
 import { appKey } from '../../lib/workspace.ts'
 import { useWorkspace } from '../workspace.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
@@ -30,7 +31,8 @@ export function HomeAppTile({ app }: { readonly app: AppView }) {
   const place = useAppPlacement(app)
   const register = useSlot(`app-home:${app.id}`)
   const { element, near } = useNearTile()
-  const problem = host.problems.get(app.id)
+  const [revealError, setRevealError] = useState('')
+  const problem = host.problems.get(app.id) ?? (revealError || undefined)
   const loaded = host.instances.has(app.id)
   const closed = app.closedAt !== undefined
   const asleep = host.dormant.has(app.id) || problem !== undefined
@@ -38,7 +40,19 @@ export function HomeAppTile({ app }: { readonly app: AppView }) {
   useEffect(() => {
     if (near && !closed && !asleep && !place.paged) show(app)
   }, [near, closed, asleep, place.paged, app, show])
-  const reveal = async () => show(closed ? await feed.reopenApp(app.id) : app)
+  const reveal = async () => {
+    setRevealError('')
+    try {
+      const opened = !closed
+        ? app
+        : app.source.kind === 'mcp'
+          ? await feed.keepApp(app.conversation, app.source.callId)
+          : await feed.reopenApp(app.id)
+      show(opened)
+    } catch (cause) {
+      setRevealError(failureText(cause))
+    }
+  }
   let stub
   if (place.paged)
     stub = (

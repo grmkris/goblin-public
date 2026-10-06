@@ -7,6 +7,7 @@ import { Button } from '@goblin/ui'
 import { contextPreview } from '../../lib/app-context.ts'
 import type { DownloadFile } from '../../lib/app-download.ts'
 import { useAppHost } from './host.tsx'
+import { useWorkspaceFeed } from '../workspace-feed.tsx'
 
 export function LinkOffer({
   link,
@@ -103,11 +104,14 @@ export function useSharedContext(conversation: string) {
 /** Above the composer: what the conversation's Apps will share with the owner's next message, removable before. */
 export function SharedContextChips({ conversation }: { readonly conversation: string }) {
   const { shared, drop } = useSharedContext(conversation)
+  const view = useWorkspaceFeed().conversations.find((each) => each.id === conversation)
+  const destination = conversation === '1' ? '' : ` to ${view?.title ?? 'Thread'}`
   return shared.map((instance) => (
     <div key={instance.app.id} className="app-offer" role="status">
       <AppWindowIcon aria-hidden />
       <span className="truncate" title={instance.context}>
-        Sharing from {instance.app.title}: {contextPreview(instance.context ?? '')}
+        Sharing from {instance.app.title}
+        {destination}: {contextPreview(instance.context ?? '')}
       </span>
       <Button
         variant="ghost"
