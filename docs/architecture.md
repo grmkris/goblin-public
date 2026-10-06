@@ -409,13 +409,17 @@ next model request, and the agent object installs them before Pi opens, so a res
 call pins the release it began on (`goblin.release` memo) and refuses to run on newer code. Subagents and routine runs
 set their own exact extension lists and get no app tools. `goblin.apps` (`pi/apps.ts`) offers `app_docs`, `app_build`,
 `app_inspect`, `app_rollback` and `code_run`, and lists the apps in the prompt. The SDK, release entry, transpiler and
-docs are `packages/app`, built into `dist/toolchain.js` (loaded only while building). The owner deletes apps and
-sees them outside the transcript in a later milestone.
+docs are `packages/app`, built into `dist/toolchain.js` (loaded only while building).
 
 An app with a `view.tsx` has a UI (`packages/app/docs/ui.md`). The transpiler makes the view one CommonJS module with
 React's automatic JSX runtime and refuses imports the frame does not provide; the style compiler (Tailwind's, with
 goblin's theme, in its own Dynamic Worker) compiles exactly the classes the view uses. Both are kept per release
-(`app_agent_views`). The first release with a view adds the app to the App registry under its home conversation
+(`app_agent_views`). Before a release activates, the render check (`packages/app/src/render.ts`, a Dynamic Worker
+with the view as its CommonJS module and a shim for each import) renders the view once with the state the release
+starts with, goblin's components for real and charts, maps, diagrams and icons as stand-ins. A view that throws fails the
+build with its line of `view.tsx` and changes nothing that runs; one that reads a browser-only global while rendering,
+or a check that did not run, activates with `viewWarning`. The first release with a view adds the app to the App
+registry under its home conversation
 (`apps/registry.ts`), and every revision after that reaches the workspace feed. The web host loads it like an MCP App,
 in the same double sandbox (`lib/app-sandbox.ts`): a document of goblin's stylesheets, the app's own, and its module,
 over the frame bundles from `packages/app/dist/runtime` (React, the UI SDK and goblin's components in `core.js`;

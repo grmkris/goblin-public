@@ -4,5 +4,5 @@
     "types": ["@cloudflare/workers-types", "bun"]
   },
   "include": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
-  "exclude": ["src/ui/**"]
+  "exclude": ["src/ui/**", "src/render.ts", "src/render-env.d.ts"]
 }

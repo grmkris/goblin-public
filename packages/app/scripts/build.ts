@@ -6,6 +6,7 @@
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { type Sheets, candidates, compileCss } from '../src/css.ts'
+import { VIEW_IMPORTS } from '../src/view-imports.ts'
 
 const root = new URL('..', import.meta.url).pathname
 const packages = new URL('../..', import.meta.url).pathname
@@ -14,7 +15,7 @@ const packages = new URL('../..', import.meta.url).pathname
 const siblings: Bun.BunPlugin = {
   name: 'siblings',
   setup(build) {
-    build.onResolve({ filter: /^\.\/(?:app|sheets)\.js$/u }, (args) => ({ path: args.path, external: true }))
+    build.onResolve({ filter: /^\.\/(?:app|sheets|view)\.js$/u }, (args) => ({ path: args.path, external: true }))
   },
 }
 
@@ -91,6 +92,7 @@ const sdk = await isolateModule('sdk.ts', false)
 const release = await isolateModule('release.ts', false)
 const transpiler = await isolateModule('transpile.ts', true)
 const style = await isolateModule('style.ts', true)
+const render = await isolateModule('render.ts', true)
 const docs: Record<string, string> = {}
 for (const file of (await readdir(`${root}docs`)).toSorted())
   if (file.endsWith('.md')) docs[file.replace(/\.md$/u, '')] = await text(`${root}docs/${file}`)
@@ -104,7 +106,7 @@ for (const name of ['core', 'charts', 'maps', 'diagrams', 'icons']) {
   if (bundle.css !== '') frame[`${name}.css`] = bundle.css
 }
 const hash = createHash('sha256')
-  .update(JSON.stringify({ sdk, release, transpiler, style, styleSheets }))
+  .update(JSON.stringify({ sdk, release, transpiler, style, styleSheets, render }))
   .digest('hex')
   .slice(0, 16)
 
@@ -116,6 +118,8 @@ const module = [
   `export const TRANSPILER = ${JSON.stringify(transpiler)}`,
   `export const STYLE = ${JSON.stringify(style)}`,
   `export const STYLE_SHEETS = ${JSON.stringify(styleSheets)}`,
+  `export const RENDER = ${JSON.stringify(render)}`,
+  `export const RENDER_IMPORTS = ${JSON.stringify(Object.keys(VIEW_IMPORTS))}`,
   `export const DOCS = ${JSON.stringify(docs)}`,
   '',
 ].join('\n')

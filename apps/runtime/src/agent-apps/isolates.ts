@@ -62,6 +62,18 @@ export interface StyleApi extends Rpc.WorkerEntrypointBranded {
   css(view: string): Promise<string>
 }
 
+/** What the render check found: it rendered, it threw (and where in view.tsx), or it reads what only a browser has. */
+export type Rendered =
+  | { readonly outcome: 'rendered' }
+  | { readonly outcome: 'threw'; readonly error: string; readonly line?: number }
+  | { readonly outcome: 'unchecked'; readonly global: string }
+
+/** The render check's `Render` (packages/app/src/render.ts). */
+export interface RenderApi extends Rpc.WorkerEntrypointBranded {
+  /** Renders the view once with the state (JSON text). */
+  render(state: string): Promise<Rendered>
+}
+
 /** A one-off script's `Run` (agent-apps/script.ts). */
 export interface ScriptApi extends Rpc.WorkerEntrypointBranded {
   /** `value` is the script's return value as JSON text. */
@@ -78,8 +90,13 @@ export class IsolateTimeout extends Error {
   override readonly name = 'IsolateTimeout'
 }
 
-const modulesOf = (modules: Readonly<Record<string, string>>) =>
-  Object.fromEntries(Object.entries(modules).map(([name, js]) => [name, { js }]))
+/** A Dynamic Worker's modules: an ES module as its source, or a CommonJS one as `{ cjs }`. */
+type Modules = Readonly<Record<string, string | { readonly cjs: string }>>
+
+const modulesOf = (modules: Modules) =>
+  Object.fromEntries(
+    Object.entries(modules).map(([name, code]) => [name, typeof code === 'string' ? { js: code } : code]),
+  )
 
 /**
  * The agent's Dynamic Workers (ADR 0021): every app release, the transpiler, the style compiler and one-off scripts run
@@ -118,6 +135,22 @@ export class Isolates {
     ).getEntrypoint<StyleApi>('Style')
   }
 
+  /**
+   * The render check for one view: `render.js` with the view as its CommonJS module `view.js`, and a shim module for
+   * each import a view may make. `id` names that exact code.
+   */
+  render(id: string, source: string, view: string, imports: readonly string[]): Fetcher<RenderApi> {
+    const shims = Object.fromEntries(
+      imports.map((name) => [name, { cjs: `module.exports = globalThis.__goblinModules[${JSON.stringify(name)}]` }]),
+    )
+    return this.#worker(
+      `render:${id}`,
+      'render.js',
+      () => ({ 'render.js': source, 'view.js': { cjs: view }, ...shims }),
+      5000,
+    ).getEntrypoint<RenderApi>('Render')
+  }
+
   script(id: string, source: string): Fetcher<ScriptApi> {
     return this.#worker(`script:${id}`, 'script.js', () => ({ 'script.js': source }), 10_000).getEntrypoint<ScriptApi>(
       'Run',
@@ -141,7 +174,7 @@ export class Isolates {
     }
   }
 
-  #worker(id: string, mainModule: string, modules: () => Readonly<Record<string, string>>, cpuMs: number): WorkerStub {
+  #worker(id: string, mainModule: string, modules: () => Modules, cpuMs: number): WorkerStub {
     return this.#loader.get(id, () => ({
       compatibilityDate: COMPATIBILITY_DATE,
       mainModule,

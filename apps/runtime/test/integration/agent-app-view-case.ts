@@ -89,7 +89,7 @@ const say = (base: string, owner: Person, thread: string, tool: string, input: u
  * An agent app with a view (ADR 0021): built in a conversation, it shows under that conversation in the workspace, its
  * launch carries the view's module, stylesheet and frame bundles with the state, and the view calls its actions over
  * the owner's routes with an operation id, reads its state and reports its failures. A view that imports what the
- * frame does not have fails to build.
+ * frame does not have, or that throws when rendered with the app's state, fails to build and changes nothing.
  */
 export async function agentAppViewCase(base: string): Promise<void> {
   const owner = await person(base)
@@ -155,6 +155,69 @@ export async function agentAppViewCase(base: string): Promise<void> {
   expect(await (await report('TypeError: count is undefined')).json()).toEqual({ kept: true })
   expect(await (await report('TypeError: again')).json()).toEqual({ kept: false })
   expect((await snapshot(base, owner)).apps.find((each) => each.id === app.id)?.source).toMatchObject({ revision: 2 })
+
+  // The view renders once at build time with the state it starts with. One that throws fails its build with its line
+  // of view.tsx, and the working release and its state stay as they were.
+  const built = await (await send(base, owner, conversation, { method: 'GET' })).text()
+  expect(built).not.toContain('viewWarning')
+  await say(base, owner, thread.id, 'app_build', {
+    name: 'tapper',
+    edits: [
+      {
+        file: 'view.tsx',
+        find: '>{state.count}<',
+        replace: '>{(state as unknown as { items: string[] }).items.length}<',
+      },
+    ],
+  })
+  await waitFor(base, owner, conversation, "It throws when rendered with the app's current state")
+  expect(await waitFor(base, owner, conversation, '\\"line\\":11')).toContain('\\"status\\":\\"failed\\"')
+  const kept = (await snapshot(base, owner)).apps.find((each) => each.id === app.id)?.source
+  expect(kept).toMatchObject({ version: 1, revision: 2, release: launch.release })
+  expect(await (await send(base, owner, `/api/apps/${app.id}/state`, { method: 'GET' })).json()).toMatchObject({
+    revision: 2,
+    release: launch.release,
+    state: { count: 2 },
+  })
+
+  // Edits apply to the failed candidate, so the fix goes with them. Charts, maps, diagrams and icons pass the check; a
+  // view that reads a browser global while rendering is not checkable there, so it activates with a warning.
+  await say(base, owner, thread.id, 'app_build', {
+    name: 'tapper',
+    edits: [
+      {
+        file: 'view.tsx',
+        find: '>{(state as unknown as { items: string[] }).items.length}<',
+        replace: '>{state.count}<',
+      },
+      {
+        file: 'view.tsx',
+        find: "import type { State } from './app'",
+        replace: `import { MapView } from '@goblin/kit/map'
+import { Diagram } from '@goblin/kit/diagram'
+import { Check } from 'lucide-react'
+import type { State } from './app'`,
+      },
+      {
+        file: 'view.tsx',
+        find: '    </div>',
+        replace: `      <MapView spec={{ markers: [{ lat: 59.44, lng: 24.75, label: \`\${state.count} taps\` }] }} />
+      <Diagram source={'graph TD\\n  A --> B'} fallback={<pre>A to B</pre>} />
+      <Check className="size-4" />
+    </div>`,
+      },
+    ],
+  })
+  await waitFor(base, owner, conversation, '\\"version\\":2')
+  expect(await (await send(base, owner, conversation, { method: 'GET' })).text()).not.toContain('viewWarning')
+  await say(base, owner, thread.id, 'app_build', {
+    name: 'tapper',
+    edits: [
+      { file: 'view.tsx', find: '>{state.count}<', replace: '>{state.count + (window.innerWidth > 600 ? 1 : 0)}<' },
+    ],
+  })
+  await waitFor(base, owner, conversation, 'it reads window while rendering')
+  expect((await snapshot(base, owner)).apps.find((each) => each.id === app.id)?.source).toMatchObject({ version: 3 })
 
   await say(base, owner, thread.id, 'app_build', {
     name: 'tapper',

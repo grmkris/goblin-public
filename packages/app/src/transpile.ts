@@ -4,6 +4,7 @@
 // becomes one CommonJS module that requires only what its frame provides.
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { transform } from 'sucrase'
+import { VIEW_IMPORTS } from './view-imports.ts'
 
 /** A problem in one of the app's files, with the line when it is known. */
 export type Diagnostic = { readonly file: string; readonly line?: number; readonly message: string }
@@ -21,20 +22,6 @@ type Transpiled = {
 const ALLOWED = new Set(['@goblin/app'])
 const SOURCE = /^[a-z][a-z0-9-]{0,31}\.(?:ts|js)$/u
 const VIEW = 'view.tsx'
-/** What a view may require, and the frame bundle that provides it besides the core (null: the core). */
-const VIEW_IMPORTS: Readonly<Record<string, string | null>> = {
-  react: null,
-  'react/jsx-runtime': null,
-  '@goblin/app': null,
-  '@goblin/ui': null,
-  '@goblin/kit/chart': 'charts',
-  recharts: 'charts',
-  '@goblin/kit/map': 'maps',
-  'react-leaflet': 'maps',
-  leaflet: 'maps',
-  '@goblin/kit/diagram': 'diagrams',
-  'lucide-react': 'icons',
-}
 const REQUIRE = /\brequire\(\s*(['"])([^'"\n]+)\1\s*\)/gu
 const SPECIFIER = /(\b(?:import|export)\b[^'"`;]*?\bfrom\s*|\bimport\s*)(['"])([^'"\n]+)\2/gu
 const DYNAMIC = /\bimport\s*\(/gu

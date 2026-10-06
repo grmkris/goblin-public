@@ -1,5 +1,5 @@
 import { InvalidInput, NotFound } from '../http/errors.ts'
-import { type Isolates, type ReleaseApi, isolateFailure } from './isolates.ts'
+import { type Isolates, type ReleaseApi, type Rendered, isolateFailure } from './isolates.ts'
 import { jsonBytes, mismatches, plainJson } from './json.ts'
 import { type Manifest, type Power, readManifest, requestedPowers } from './manifest.ts'
 import { APP_NAME, toolName } from './names.ts'
@@ -14,6 +14,8 @@ export type Toolchain = {
   readonly TRANSPILER: string
   readonly STYLE: string
   readonly STYLE_SHEETS: string
+  readonly RENDER: string
+  readonly RENDER_IMPORTS: readonly string[]
 }
 
 /** A change to one file: `find` must occur exactly once. */
@@ -38,6 +40,11 @@ export type BuildResult =
       readonly migrated: boolean
       /** Whether the app has a view (`view.tsx`) the owner can open. */
       readonly ui: boolean
+      /**
+       * Why the render check could not render its view (it reads a browser global while rendering, or the check did not
+       * run): it is active, but its view went unchecked.
+       */
+      readonly viewWarning?: string
       /** Powers it asks for that the owner has not approved: they fail until approved (shown to the owner here). */
       readonly approval?: { readonly app: string; readonly title: string; readonly powers: readonly Power[] }
     }
@@ -101,13 +108,18 @@ function sources(base: Readonly<Record<string, string>>, request: BuildRequest):
   return problems.length > 0 ? problems : files
 }
 
-async function releaseId(files: Readonly<Record<string, string>>, toolchain: string): Promise<string> {
-  const ordered = Object.fromEntries(Object.entries(files).toSorted(([a], [b]) => a.localeCompare(b)))
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ ordered, toolchain })))
-  return `r_${[...new Uint8Array(digest)]
+/** The first 16 hex digits of the SHA-256 of `text`. */
+async function sha256(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('')
-    .slice(0, 16)}`
+    .slice(0, 16)
+}
+
+async function releaseId(files: Readonly<Record<string, string>>, toolchain: string): Promise<string> {
+  const ordered = Object.fromEntries(Object.entries(files).toSorted(([a], [b]) => a.localeCompare(b)))
+  return `r_${await sha256(JSON.stringify({ ordered, toolchain }))}`
 }
 
 /** The powers a manifest asks for that the owner has not approved yet, as the owner's card shows them. */
@@ -122,6 +134,29 @@ const toolsOf = (app: string, manifest: Manifest) => [
     .map(([name]) => toolName(app, name)),
   ...Object.keys(manifest.views).map((name) => toolName(app, name)),
 ]
+
+/** The state a candidate's view was rendered with, as its problem names it. */
+const startsWithOf = (candidate: Candidate, state: { readonly value: unknown; readonly migrated: boolean }) => {
+  if (candidate.home === undefined) return 'state.initial'
+  return state.migrated ? 'the migrated state' : "the app's current state"
+}
+
+/** A view that throws when rendered: the build fails with its line of view.tsx, and what runs stays as it is. */
+const threwProblem = (rendered: { readonly error: string; readonly line?: number }, state: string): Problem => ({
+  file: VIEW,
+  ...(rendered.line !== undefined && { line: rendered.line }),
+  message: `It throws when rendered with ${state}: ${rendered.error}. Read state the way initial shapes it, and guard parts that may be missing.`,
+})
+
+/** The render check's finding, or that it did not run (a timeout, a worker that failed). */
+type RenderCheck = Rendered | { readonly outcome: 'not-run'; readonly error: string }
+
+/** Why a view went unchecked, or nothing when it rendered. */
+function uncheckedWarning(check: RenderCheck): string | undefined {
+  if (check.outcome === 'not-run') return `the render check could not run: ${check.error}`
+  if (check.outcome !== 'unchecked') return undefined
+  return `it reads ${check.global} while rendering, which only the browser has, so it was not checked: read ${check.global} in useEffect or an event handler`
+}
 
 /** A build to make: its sources, the toolchain, its release id, and the app's home when the app exists. */
 type Candidate = {
@@ -210,6 +245,10 @@ export class AppBuilder {
     return this.#deps.queues.run(request.name, async () => {
       const state = await this.#nextState(api, manifest, candidate.home === undefined)
       if ('problems' in state) return fail(state.problems)
+      const startsWith = state.value === undefined ? store.state(request.name)?.state : state.value
+      const rendered = view.view === undefined ? undefined : await this.#rendered(toolchain, view.view, startsWith)
+      if (rendered?.outcome === 'threw') return fail([threwProblem(rendered, startsWithOf(candidate, state))])
+      const warning = rendered === undefined ? undefined : uncheckedWarning(rendered)
       const version = store.activate({
         app: request.name,
         release,
@@ -224,6 +263,7 @@ export class AppBuilder {
         view: view.view,
         now: this.#deps.now(),
       })
+      if (warning !== undefined) store.event(request.name, 'error', `view: ${warning}`, this.#deps.now())
       await this.#deps.activated(request.name)
       const revision = store.state(request.name)?.revision ?? 0
       return {
@@ -235,6 +275,7 @@ export class AppBuilder {
         revision,
         migrated: state.migrated,
         ui: view.view !== undefined,
+        ...(warning !== undefined && { viewWarning: warning }),
         ...approvalOf(store, manifest),
       }
     })
@@ -251,6 +292,19 @@ export class AppBuilder {
     const css = await this.#attempt(10_000, 'styles', () => style.css(source))
     if (!css.ok) return { problems: [{ file: VIEW, message: `Its styles did not compile: ${css.error}` }] }
     return { view: { module: transpiled.view, css: css.value, libs: transpiled.libs } }
+  }
+
+  /**
+   * The view rendered once with the state the release starts with (ADR 0021). A check that did not run (a timeout, a
+   * worker that failed) says nothing about the view's code, so it comes back as unchecked.
+   */
+  async #rendered(toolchain: Toolchain, view: AppViewCode, state: unknown): Promise<RenderCheck> {
+    const id = await sha256(`${toolchain.RENDER}\n${view.module}`)
+    const check = this.#deps.isolates.render(id, toolchain.RENDER, view.module, toolchain.RENDER_IMPORTS)
+    const out = await this.#attempt(5000, 'the render check', async (): Promise<Rendered> =>
+      check.render(JSON.stringify(state ?? null)),
+    )
+    return out.ok ? out.value : { outcome: 'not-run', error: out.error }
   }
 
   /** The app's state once this release is active: `initial` for a new app, the current one kept, or migrated. */

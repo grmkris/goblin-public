@@ -12,5 +12,9 @@ export declare const TRANSPILER: string
 export declare const STYLE: string
 /** The style compiler's `sheets.js`: goblin's theme and what it imports. */
 export declare const STYLE_SHEETS: string
+/** The render check (`render.js`): exports the `Render` entrypoint and imports `./view.js`. */
+export declare const RENDER: string
+/** Every module a view may import, each a shim of the render check over its registry. */
+export declare const RENDER_IMPORTS: readonly string[]
 /** The agent's docs by topic: `core`, `ui`, `files`, `examples`. */
 export declare const DOCS: Readonly<Record<string, string>>

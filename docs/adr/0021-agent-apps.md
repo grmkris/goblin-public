@@ -99,7 +99,15 @@ Apps (ADR 0020), the text waits above the composer and goes with the owner's nex
 message names the App by its id; the runtime reads from its registry whether that is an MCP App's server or an agent
 app, so a page cannot claim to be another App.
 
-**Still to come**: a render check of a view at build time.
+**The render check.** Before a release with a view activates, goblin renders the view once, server-side in a Dynamic
+Worker, with the state the release starts with (`initial`, the current state or the migrated one). React and goblin's
+components render for real; charts, maps, diagrams and icons are stand-ins that render nothing and accept any use, so a
+throw is the view's own code. A view that throws fails its build like any other step: the release is kept as failed
+with the line of `view.tsx`, and the active release and the state stay as they were. Two outcomes say nothing about the
+view and only warn (`viewWarning`, kept with the app's events) while the release activates: the view reads a global
+only a browser has (`window`, `document`, `localStorage`…) while rendering, or the check itself did not run (a timeout
+or a worker failure). It catches views that break on the state they meet, such as reading a field the state does not
+have yet.
 
 Consequences:
 - Dynamic Workers are an open beta on Workers Paid; their pricing and limits may change.

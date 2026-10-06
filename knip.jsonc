@@ -49,6 +49,7 @@
         "src/release.ts!",
         "src/transpile.ts!",
         "src/style.ts!",
+        "src/render.ts!",
         "src/ui/core.ts!",
         "src/ui/charts.ts!",
         "src/ui/maps.ts!",

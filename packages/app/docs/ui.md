@@ -73,6 +73,11 @@ boolean }[] }`.
   from outside comes through an action's `prepare` (topic `powers`). `download(name, text, type)` from `@goblin/app`
   offers the owner a file to save. `share(text)` puts what the owner is looking at (the selected task, the filtered
   rows) beside their next message to you, as context they can remove.
+- Each build renders the view once with the state the app will have (`initial` for a new app). If it throws, the
+  build fails with the line of `view.tsx` and the app keeps running its last release: fix it with `edits` (often a
+  field of state that is not there yet: read state the way `initial` shapes it and guard optional parts). Read
+  `window` or `document` in `useEffect` or event handlers, never while rendering: the check cannot run those and says
+  so in `viewWarning`.
 - Imports: `react`, `@goblin/app`, `@goblin/ui`, `@goblin/kit/chart`, `@goblin/kit/map`, `@goblin/kit/diagram`,
   `recharts`, `react-leaflet`, `leaflet`, `lucide-react` (icons), and types from `./app`. Nothing else.
 - Style with Tailwind classes and goblin's colours, which follow light and dark: `bg-background`, `bg-card`,
