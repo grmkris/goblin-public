@@ -585,14 +585,23 @@ conversation (main, threads, subagents, routine runs) without an extension, and 
   `error` with the first diagnostic. A call to a tool that is not there is one event, from the generation.
 - **Compaction** tasks, and any other task that faults or is orphaned (a subagent relay, an anchor).
 
+Outside Pi, the agent's services report to the same telemetry (`telemetry/report.ts`):
+
+- **Model calls outside a turn** (`model.aux`): one cheap model per purpose (`naming`, `memory`, `skill`,
+  `app_llm`), with tokens and errors (`memory/model.ts`).
+- **Remote MCP steps** (`mcp.request`): every connect, tool call, skills request and Events request, with server,
+  tool, outcome tag (`UpstreamMcp:timeout`) and duration (`mcp/log.ts`).
+- **Telegram** (`channel.received`, `channel.reply`): each inbox message by mygram id and its turn's operation id; each
+  answer `sent` in pieces, or `given_up` after a day.
+- An unexpected failure logs its name and a bounded message where it becomes `Internal` (`http/errors.ts`).
+
 Each event goes to `app_run_events` (kept 30 days) and to one Workers Log line when it ends (`event: "run"`, its ids,
 `ms`, and attributes named after the OpenTelemetry GenAI conventions, `contracts/src/telemetry.ts`). Never content:
 ids, sizes, counts, timings, outcomes and bounded error text. At start the agent marks whatever the last run left
 `started` as interrupted and logs one `recovery` event; an event that ends after a restart says it resumed. Pi faults
 the user's task if a commit listener throws, so the recorder and every sink are guarded and only log their own
-failures. Verified with in-memory Pi (`test/telemetry.test.ts`) and local workerd (`native-telemetry.ts`). Model
-calls outside Pi (thread names, memory summaries, skill drafts, an app's `llm` power) and compaction summaries are not
-recorded yet.
+failures. Verified with in-memory Pi (`test/telemetry.test.ts`) and local workerd (`native-telemetry.ts`, the
+Telegram Events probe). Compaction summaries' model calls are not recorded yet.
 
 ## Storage
 

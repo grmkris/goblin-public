@@ -66,9 +66,16 @@ export type AppError = typeof AppError.Type
 
 const isAppError = Schema.is(AppError)
 
-/** Known failures pass through; anything else becomes `Internal` without leaking its message. */
+/**
+ * Known failures pass through; anything else becomes `Internal` without leaking its message to the caller. This is the
+ * one place an unexpected failure loses its identity, so it is logged here first: its name and a bounded message,
+ * never request data (ADR 0024). The log line belongs to the invocation, whose request id Workers Logs keep.
+ */
 export const toAppError = (cause: unknown): AppError => {
   if (isAppError(cause)) return cause
   if (Schema.isSchemaError(cause)) return new InvalidInput({ reason: 'schema' })
+  const name = cause instanceof Error ? cause.name : typeof cause
+  const message = (cause instanceof Error ? cause.message : String(cause)).slice(0, 300)
+  console.warn(JSON.stringify({ level: 'warn', event: 'unexpected', name, error: message }))
   return new Internal({ reason: 'unexpected' })
 }

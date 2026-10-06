@@ -16,10 +16,11 @@ function Privacy() {
         does not store card details.
       </p>
       <p>
-        Outbound OAuth tokens are encrypted at rest. Essential session cookies support sign-in. Runtime error logs
-        contain route, request ID, status and error category, without request bodies or credentials. The verified
-        billing webhook ledger retains subscription data for reconciliation; processed payloads are cleared after 30
-        days by the billing job.
+        Outbound OAuth tokens are encrypted at rest. Essential session cookies support sign-in. Runtime logs contain
+        route, request ID, status, error category and a short error message, and how each turn ran (timings, token
+        counts, tool and model names, outcomes), without request bodies, conversation content or credentials. The
+        verified billing webhook ledger retains subscription data for reconciliation; processed payloads are cleared
+        after 30 days by the billing job.
       </p>
       <p>
         Your agent data remains until you delete your account. Deletion erases its conversations, connections and app

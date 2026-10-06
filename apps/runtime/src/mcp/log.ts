@@ -1,32 +1,29 @@
-import { Predicate } from 'effect'
 import { nowMillis } from '../clock.ts'
+import { outcomeOf } from '../telemetry/attributes.ts'
+import type { McpStep } from '../telemetry/report.ts'
 
-type Step = {
-  readonly step: 'connect' | 'call' | 'skills' | 'events'
-  readonly serverId: string
-  readonly tool?: string
-  readonly method?: 'events/list' | 'events/poll' | 'events/subscribe' | 'events/unsubscribe'
-}
+/** Where a finished MCP step goes: the run telemetry (`mcpReporter`), or a plain log line. */
+export type StepReport = (step: McpStep, outcome: string, startedAt: number, endedAt: number) => void
 
-/** `ok`, or the error's tag with its reason (`UpstreamMcp:timeout`). */
-const outcomeOf = (error: unknown): string => {
-  if (!Predicate.isObject(error) || !('_tag' in error) || !Predicate.isString(error._tag)) return 'error'
-  return 'reason' in error && Predicate.isString(error.reason) ? `${error._tag}:${error.reason}` : error._tag
+/** One structured log line per step, for a manager made without run telemetry. */
+const logStep: StepReport = (step, outcome, startedAt, endedAt) => {
+  const line = { level: outcome === 'ok' ? 'info' : 'warn', event: 'mcp', ...step, outcome, ms: endedAt - startedAt }
+  if (outcome === 'ok') console.log(JSON.stringify(line))
+  else console.warn(JSON.stringify(line))
 }
 
 /**
- * Runs one remote MCP step and writes one structured log line: the step, server, tool, outcome and duration. Never
- * arguments, results or credentials. This is how a slow connect or call shows up in the Worker's logs.
+ * Runs one remote MCP step and reports it: the step, server, tool, outcome and duration. Never arguments, results or
+ * credentials. This is how a slow or failing connect or call shows up in the run ledger and the Worker's logs.
  */
-export async function timed<T>(step: Step, work: () => Promise<T>): Promise<T> {
+export async function timed<T>(step: McpStep, work: () => Promise<T>, report: StepReport = logStep): Promise<T> {
   const started = nowMillis()
   try {
     const value = await work()
-    console.log(JSON.stringify({ level: 'info', event: 'mcp', ...step, outcome: 'ok', ms: nowMillis() - started }))
+    report(step, 'ok', started, nowMillis())
     return value
   } catch (error) {
-    const line = { level: 'warn', event: 'mcp', ...step, outcome: outcomeOf(error), ms: nowMillis() - started }
-    console.warn(JSON.stringify(line))
+    report(step, outcomeOf(error), started, nowMillis())
     throw error
   }
 }

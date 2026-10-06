@@ -13,7 +13,7 @@ export const RunEventKind = Schema.Literals([
   'channel.received',
   'channel.reply',
   'recovery',
-  'mcp.connection',
+  'mcp.request',
   'error',
 ])
 export type RunEventKind = typeof RunEventKind.Type
@@ -75,7 +75,18 @@ export const RunAttribute = {
   blockedReason: 'goblin.blocked_reason',
   mcpServer: 'goblin.mcp.server',
   mcpTool: 'goblin.mcp.tool',
+  /** `connect`, `call`, `skills` or `events`: one remote MCP step. */
+  mcpStep: 'goblin.mcp.step',
+  mcpMethod: 'goblin.mcp.method',
   source: 'goblin.source',
+  /** What a model call outside a turn was for: `naming`, `memory`, `skill` or `app_llm`. */
+  purpose: 'goblin.purpose',
+  channel: 'goblin.channel',
+  /** The channel's own id for the message (mygram's inbox id). */
+  channelMessage: 'goblin.channel.message',
+  /** `sent`, or `given_up` when the turn never answered within the channel's window. */
+  delivery: 'goblin.delivery',
+  pieces: 'goblin.channel.pieces',
   compactionReason: 'goblin.compaction.reason',
   taskKind: 'goblin.task.kind',
   /** `restarted` for an event the object's restart cut short; `resumed` for one that finished after it. */

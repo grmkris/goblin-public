@@ -29,6 +29,8 @@ import { RegistryStore } from './mcp/registries.ts'
 import { AddedServerStore } from './mcp/servers.ts'
 import { MainMemory } from './memory/memory.ts'
 import { CheapModel } from './memory/model.ts'
+import type { RunTelemetry } from './telemetry/events.ts'
+import { type AuxPurpose, auxReporter, mcpReporter } from './telemetry/report.ts'
 import { ModelChoiceStore, ModelPicker, memoryModelId, modelOptions } from './models.ts'
 import { BACKGROUND, conversationId } from './pi/context.ts'
 import type { PiModels } from './pi/harness.ts'
@@ -67,6 +69,8 @@ export type ComposeInput = {
   readonly mcpFetch: typeof fetch
   /** The agent's apps, made before Pi opened (their tools are Pi's). */
   readonly agentApps: AgentApps
+  /** The run ledger and log lines the agent's services report to (ADR 0024). */
+  readonly telemetry: RunTelemetry
 }
 /** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
 const retool = (harness: PiHarness) => async (session: string, tools: PiTools) => {
@@ -154,6 +158,7 @@ async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {
     skillsEnabled: (serverId) => skillState.enabled(serverId),
     appUrl: env.APP_URL,
     fetch: input.mcpFetch,
+    report: mcpReporter(input.telemetry),
   })
   return { host, cipher, resident, eventStore, skillState, grants }
 }
@@ -183,10 +188,16 @@ export async function composeServices(
   const options = modelOptions(env.MODELS, env.MODEL_ID)
   const models = new ModelPicker(new ModelChoiceStore(db), options)
   const cheapModelId = memoryModelId(env.MEMORY_MODEL, options)
-  const namer = new CheapModel(input.pi.models, cheapModelId, (tokens) =>
-    budget.record(tokens, nowSeconds(), cheapModelId),
-  )
-  const memory = new MainMemory(db, harness, namer)
+  // One cheap model per purpose, so the run ledger tells what each call outside a turn was for (ADR 0024).
+  const cheap = (purpose: AuxPurpose) =>
+    new CheapModel(
+      input.pi.models,
+      cheapModelId,
+      (tokens) => budget.record(tokens, nowSeconds(), cheapModelId),
+      auxReporter(input.telemetry, purpose),
+    )
+  const namer = cheap('naming')
+  const memory = new MainMemory(db, harness, cheap('memory'))
   const { recall } = input.memory
   await memory.activate([input.memory.memory, recall])
   const capabilities = new CapabilityProfiles(db, input.subagentTool, retool(harness))
@@ -200,13 +211,13 @@ export async function composeServices(
     manager: host.manager,
     library: skills,
     state: skillState,
-    model: namer,
+    model: cheap('skill'),
     allows: (serverId, name) => grants.allows({ serverId, capability: 'tool', name }),
     now: nowMillis,
   })
-  const channel = new TelegramChannel(db, cipher, input.scheduleReplies)
+  const channel = new TelegramChannel(db, cipher, input.scheduleReplies, input.telemetry)
   input.agentApps.connect(
-    appServices({ host, resident, entitlements: input.entitlements, budget, model: namer, channel }),
+    appServices({ host, resident, entitlements: input.entitlements, budget, model: cheap('app_llm'), channel }),
   )
   const events = await makeEvents(input, host, resident, eventStore, cipher)
   installEventConsumers(events, channel, skills, input.pullTelegram)

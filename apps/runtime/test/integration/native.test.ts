@@ -367,6 +367,15 @@ harness.test(
       bad: 400,
       old: 400,
       operations: ['telegram-tg-123', 'telegram-tg-124'],
+      waiting: true,
+      runs: {
+        channel: [
+          { kind: 'channel.received', status: 'ok', operationId: 'telegram-tg-123', message: 'tg:123' },
+          { kind: 'channel.received', status: 'ok', operationId: 'telegram-tg-124', message: 'tg:124' },
+          { kind: 'channel.reply', status: 'ok', operationId: 'telegram-tg-123', delivery: 'sent' },
+        ],
+        inbox: expect.any(Number),
+      },
       refreshedEarly: true,
       terminated: 'terminated',
       cleanup: { retired: true, remoteCleanup: true },

@@ -192,6 +192,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       routineEvent: (context) => this.#routines.consumeEvent(context),
       mcpFetch: this.mcpFetch(),
       agentApps: this.#apps,
+      telemetry: this.#telemetry.telemetry,
     })
     this.#runtime.catch(() => {
       this.#runtime = undefined

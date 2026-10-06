@@ -10,6 +10,11 @@ import { describe, expect, it } from 'vitest'
 import { BACKGROUND } from '../src/pi/context.ts'
 import { CollectedRuns, RunTelemetry, boundAttributes, type RunSink } from '../src/telemetry/events.ts'
 import { PiRunRecorder, sourceOf } from '../src/telemetry/pi.ts'
+import { auxReporter, mcpReporter } from '../src/telemetry/report.ts'
+import { CheapModel } from '../src/memory/model.ts'
+import { MODEL_PROVIDER } from '../src/pi/model.ts'
+import { timed } from '../src/mcp/log.ts'
+import { UpstreamMcp } from '../src/http/errors.ts'
 
 const model: Model<'openai-completions'> = {
   id: 'telemetry-fixture',
@@ -261,5 +266,85 @@ describe('run telemetry (unit)', () => {
       endedAt: 3,
       attributes: { [RunAttribute.recovery]: 'resumed' },
     })
+  })
+})
+
+describe('run telemetry outside Pi (unit)', () => {
+  const cheapModels = (replies: Reply[]) => {
+    const models = createModels()
+    models.setProvider(
+      createProvider({
+        id: MODEL_PROVIDER,
+        models: [{ ...model, provider: MODEL_PROVIDER }],
+        auth: { apiKey: { name: 'keyless fixture', resolve: async () => ({ auth: {} }) } },
+        api: scripted(replies),
+      }),
+    )
+    return models
+  }
+
+  it('records a cheap model call with its purpose and tokens, and a failed one', async () => {
+    const collected = new CollectedRuns()
+    const telemetry = new RunTelemetry([collected])
+    let spent = 0
+    const replies: Reply[] = [
+      { content: [{ type: 'text', text: 'Trip plans' }], stopReason: 'stop' },
+      { content: [], stopReason: 'error', errorMessage: 'HTTP 429 rate limited' },
+    ]
+    const namer = new CheapModel(
+      cheapModels(replies),
+      model.id,
+      (tokens) => (spent += tokens),
+      auxReporter(telemetry, 'naming'),
+    )
+    await expect(namer.complete('Name this thread.', 'we talked about trips', 20)).resolves.toBe('Trip plans')
+    await expect(namer.complete('Name this thread.', 'again', 20)).rejects.toThrow('HTTP 429 rate limited')
+    expect(spent).toBe(34)
+    expect(collected.events()).toMatchObject([
+      {
+        kind: 'model.aux',
+        status: 'ok',
+        attributes: {
+          [RunAttribute.purpose]: 'naming',
+          [RunAttribute.inputTokens]: 10,
+          [RunAttribute.outputTokens]: 5,
+        },
+      },
+      {
+        kind: 'model.aux',
+        status: 'error',
+        attributes: { [RunAttribute.purpose]: 'naming', [RunAttribute.error]: 'HTTP 429 rate limited' },
+      },
+    ])
+    expect(JSON.stringify(collected.events())).not.toMatch(/trips|Trip plans/u)
+  })
+
+  it('records each remote MCP step, and a failed one by its tag', async () => {
+    const collected = new CollectedRuns()
+    const report = mcpReporter(new RunTelemetry([collected]))
+    await timed({ step: 'call', serverId: 'myplan', tool: 'notes_search' }, async () => 'ok', report)
+    await expect(
+      timed(
+        { step: 'connect', serverId: 'myplan' },
+        () => Promise.reject(new UpstreamMcp({ serverId: 'myplan', reason: 'timeout' })),
+        report,
+      ),
+    ).rejects.toThrow()
+    expect(collected.events()).toMatchObject([
+      {
+        kind: 'mcp.request',
+        status: 'ok',
+        attributes: {
+          [RunAttribute.mcpStep]: 'call',
+          [RunAttribute.mcpServer]: 'myplan',
+          [RunAttribute.mcpTool]: 'notes_search',
+        },
+      },
+      {
+        kind: 'mcp.request',
+        status: 'error',
+        attributes: { [RunAttribute.mcpStep]: 'connect', [RunAttribute.errorType]: 'UpstreamMcp:timeout' },
+      },
+    ])
   })
 })

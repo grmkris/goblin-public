@@ -56,10 +56,17 @@ export class RunTelemetry {
   readonly #recall: (id: string) => RunEvent | undefined
   readonly #open = new Map<string, RunEvent>()
   #failures = 0
+  #sequence = 0
 
   constructor(sinks: readonly RunSink[], recall: (id: string) => RunEvent | undefined = () => undefined) {
     this.#sinks = sinks
     this.#recall = recall
+  }
+
+  /** A new id for an event that has none of its own (a model call outside a turn, an MCP step). */
+  id(prefix: string, at: number): string {
+    this.#sequence += 1
+    return `${prefix}:${at.toString(36)}:${this.#sequence.toString(36)}`
   }
 
   /** Record that `event` started; its status is `started` whatever it says. */

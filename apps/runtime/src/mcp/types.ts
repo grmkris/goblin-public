@@ -1,3 +1,4 @@
+import type { StepReport } from './log.ts'
 import type {
   AuthProvider,
   CallToolResult,
@@ -45,6 +46,8 @@ export type McpManagerOptions = {
   readonly maxAppResourceBytes?: number
   /** Close a connection this long after its last use (default 5 minutes). */
   readonly idleMs?: number
+  /** Where each remote step is reported (the run ledger, ADR 0024); a log line when absent. */
+  readonly report?: StepReport
 }
 export type McpCallOptions = RequestOptions & {
   readonly caller?: McpCaller

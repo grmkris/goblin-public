@@ -3,6 +3,7 @@ import { RunAttribute, type RunAttributes, type RunEventKind } from '@goblin/con
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { nowMillis } from '../clock.ts'
+import { answerAttributes, statusOfStop } from './attributes.ts'
 import type { RunTelemetry } from './events.ts'
 
 /** What the recorder reads from the ledger after a restart: the newest event for a Pi task. */
@@ -139,8 +140,6 @@ const familyOf = (tool: string): string =>
           : 'builtin'
 
 const sizeOf = (value: unknown): number => JSON.stringify(value ?? null).length
-/** Stop reasons that are not a failure of the attempt. */
-const statusOfStop = (stop: string) => (stop === 'error' ? 'error' : stop === 'aborted' ? 'interrupted' : 'ok')
 
 type Assistant = typeof Assistant.Type
 type Outcome = typeof Outcome.Type
@@ -157,24 +156,6 @@ function callsOf(entry: string, message: Assistant) {
     const attributes = { [RunAttribute.argumentBytes]: sizeOf(block.arguments), ...servers }
     return [[`${entry}:${block.id}`, { name: block.name, attributes }] as const]
   })
-}
-
-/** What an answer tells about its attempt: model, finish reason, tokens, error. */
-function answerAttributes(message: Assistant): RunAttributes {
-  const { usage } = message
-  return {
-    [RunAttribute.provider]: message.provider,
-    [RunAttribute.requestModel]: message.model,
-    ...(message.responseModel === undefined ? {} : { [RunAttribute.responseModel]: message.responseModel }),
-    ...(message.responseId === undefined ? {} : { [RunAttribute.responseId]: message.responseId }),
-    [RunAttribute.finishReason]: message.stopReason,
-    [RunAttribute.inputTokens]: usage.input,
-    [RunAttribute.outputTokens]: usage.output,
-    [RunAttribute.cacheReadTokens]: usage.cacheRead,
-    [RunAttribute.cacheWriteTokens]: usage.cacheWrite,
-    ...(usage.reasoning === undefined ? {} : { [RunAttribute.reasoningTokens]: usage.reasoning }),
-    ...(message.errorMessage === undefined ? {} : { [RunAttribute.error]: message.errorMessage }),
-  }
 }
 
 type Diagnostic = { readonly code: string; readonly message?: string | undefined }

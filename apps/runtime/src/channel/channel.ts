@@ -3,7 +3,8 @@
 // its cursor and puts every new message from the owner into main, authored "Telegram". The answer to each of those
 // turns, and to a subagent's report in main, goes back with `send_message`. The store keeps the connection, the cursor,
 // the doorbell secret (sealed) and the turns whose answers are still to send.
-import type { ChannelStatus } from '@goblin/contracts'
+import { type ChannelStatus, MAIN_THREAD } from '@goblin/contracts'
+import { RunAttribute, type RunAttributes } from '@goblin/contracts/telemetry'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Predicate from 'effect/Predicate'
@@ -12,6 +13,9 @@ import { InvalidInput, UpstreamMcp } from '../http/errors.ts'
 import type { CredentialCipher } from '../mcp/cipher.ts'
 import type { McpConnectionManager } from '../mcp/connection.ts'
 import { appChannel, appChannelReplies, appTelegramChannel } from '../storage/schema.ts'
+import { nowMillis } from '../clock.ts'
+import { failureAttributes } from '../telemetry/attributes.ts'
+import type { RunTelemetry } from '../telemetry/events.ts'
 
 /** The tools a server must offer to carry the channel, all granted when the owner turns it on. */
 export const CHANNEL_TOOLS = ['inbox', 'send_message'] as const
@@ -99,10 +103,26 @@ export class TelegramChannel {
   readonly #cipher: CredentialCipher
   /** Asks the agent to send the answers that are ready (a schedule of its own). */
   readonly #wake: () => void
-  constructor(db: DrizzleSqliteDODatabase, cipher: CredentialCipher, wake: () => void) {
+  readonly #telemetry: RunTelemetry | undefined
+  constructor(db: DrizzleSqliteDODatabase, cipher: CredentialCipher, wake: () => void, telemetry?: RunTelemetry) {
     this.#db = db
     this.#cipher = cipher
     this.#wake = wake
+    this.#telemetry = telemetry
+  }
+
+  /** One message in, one answer out, in the run ledger (ADR 0024), by the turn's operation id. */
+  #record(kind: 'channel.received' | 'channel.reply', operationId: string, startedAt: number, extra: RunAttributes) {
+    this.#telemetry?.record({
+      id: `${kind === 'channel.received' ? 'channel' : 'reply'}:${operationId}`,
+      kind,
+      status: RunAttribute.errorType in extra ? 'error' : 'ok',
+      conversationId: MAIN_THREAD,
+      operationId,
+      startedAt,
+      endedAt: nowMillis(),
+      attributes: { [RunAttribute.channel]: 'telegram', ...extra },
+    })
   }
 
   status(): ChannelStatus {
@@ -216,15 +236,24 @@ export class TelegramChannel {
       if (cursor === undefined) return
       const inbox = decodeInbox(await ports.call('inbox', { cursor, limit: 100 }))
       if (!this.#current(status)) return
-      for (const message of inbox.messages) {
-        if (message.direction !== 'in' || message.delivery === 'archive') continue
-        const operationId = myagentId('telegram', message.id)
-        await ports.submit(messageText(message), operationId)
-        this.track(operationId, now)
-      }
+      for (const message of inbox.messages)
+        if (message.direction === 'in' && message.delivery !== 'archive') await this.#receive(ports, message, now)
       this.#checkpoint(status, inbox.nextCursor)
       if (inbox.messages.length === 0) return
     }
+  }
+
+  /** One message from the owner into main as a turn, tracked for its answer and recorded (ADR 0024). */
+  async #receive(ports: ChannelPorts, message: typeof Message.Type, now: number): Promise<void> {
+    const operationId = myagentId('telegram', message.id)
+    const startedAt = nowMillis()
+    const attributes = { [RunAttribute.channelMessage]: message.id }
+    await ports.submit(messageText(message), operationId).catch((error: unknown) => {
+      this.#record('channel.received', operationId, startedAt, { ...attributes, ...failureAttributes(error) })
+      throw error
+    })
+    this.#record('channel.received', operationId, startedAt, attributes)
+    this.track(operationId, now)
   }
 
   /** Send every answer that is ready; true while some are still running. */
@@ -242,11 +271,23 @@ export class TelegramChannel {
         waiting = true
         continue
       }
-      for (const [index, piece] of chunks(text ?? '').entries())
-        await ports.call('send_message', {
-          operationId: myagentId(`reply-${index}`, operationId),
-          text: escapeHtml(piece),
-        })
+      const pieces = chunks(text ?? '')
+      const reply = {
+        [RunAttribute.delivery]: text === undefined ? 'given_up' : 'sent',
+        [RunAttribute.pieces]: pieces.length,
+      }
+      const sent = async () => {
+        for (const [index, piece] of pieces.entries())
+          await ports.call('send_message', {
+            operationId: myagentId(`reply-${index}`, operationId),
+            text: escapeHtml(piece),
+          })
+      }
+      await sent().catch((error: unknown) => {
+        this.#record('channel.reply', operationId, createdAt * 1000, { ...reply, ...failureAttributes(error) })
+        throw error
+      })
+      this.#record('channel.reply', operationId, createdAt * 1000, reply)
       this.#db
         .update(appChannelReplies)
         .set({ deliveredAt: now })

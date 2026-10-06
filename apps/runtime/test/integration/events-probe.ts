@@ -4,6 +4,9 @@ import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import { TelegramChannel, channelCall } from '../../src/channel/channel.ts'
+import { RunAttribute, type RunEvent } from '@goblin/contracts/telemetry'
+import { CollectedRuns, RunTelemetry } from '../../src/telemetry/events.ts'
+import { mcpReporter } from '../../src/telemetry/report.ts'
 import { CredentialCipher } from '../../src/mcp/cipher.ts'
 import { McpConnectionManager, offersEvents } from '../../src/mcp/connection.ts'
 import { McpEvents } from '../../src/mcp/events.ts'
@@ -32,6 +35,8 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
   const skillState = new SqliteSkillState(db)
   const cipher = await CredentialCipher.fromBase64(KEY)
   const fixture = new EventsFixture()
+  const runs = new CollectedRuns()
+  const telemetry = new RunTelemetry([runs])
   let clock = fixture.now
   const wakes: number[] = []
   const manager = new McpConnectionManager({
@@ -43,8 +48,9 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
     authorizeEvents: (serverId, name, args) => {
       if (!store.allows(serverId, name, args)) throw new Error('ungranted')
     },
+    report: mcpReporter(telemetry),
   })
-  const channel = new TelegramChannel(db, cipher, () => undefined)
+  const channel = new TelegramChannel(db, cipher, () => undefined, telemetry)
   const eventOptions = {
     store,
     cipher,
@@ -89,6 +95,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
   })
   return {
     db,
+    runs,
     store,
     cipher,
     fixture,
@@ -182,8 +189,15 @@ async function exercise(state: Awaited<ReturnType<typeof setup>>) {
   const sharedPreserved = fixture.subscriptions.has('sub_message.received')
   await Effect.runPromise(events.unsubscribe({ consumerId: 'second-consumer', revision: 1 }))
   await Effect.runPromise(events.unsubscribe({ consumerId: 'telegram:question.answered', revision: 1 }))
+  // The first message's turn answered; the second still runs: one reply goes out, one waits.
+  const answers = { call: channelCall(state.manager, 'mygram'), submit: async () => undefined }
+  const waiting = await channel.deliver(
+    { ...answers, answer: async (operationId) => (operationId === 'telegram-tg-123' ? 'hello back' : undefined) },
+    Math.floor(first / 1000),
+  )
   channel.disable()
   return {
+    waiting,
     received: received.status,
     replayed: replayed.status,
     bad: bad.status,
@@ -203,6 +217,23 @@ async function exercise(state: Awaited<ReturnType<typeof setup>>) {
   }
 }
 
+/** The channel's run events, and how the inbox calls to the server went (ADR 0024). */
+const runSummary = (events: readonly RunEvent[]) => ({
+  channel: events
+    .filter((event) => event.kind === 'channel.received' || event.kind === 'channel.reply')
+    .map((event) => ({
+      kind: event.kind,
+      status: event.status,
+      operationId: event.operationId,
+      delivery: event.attributes[RunAttribute.delivery],
+      message: event.attributes[RunAttribute.channelMessage],
+    })),
+  inbox: events.filter(
+    (event) =>
+      event.kind === 'mcp.request' && event.attributes[RunAttribute.mcpTool] === 'inbox' && event.status === 'ok',
+  ).length,
+})
+
 /** Real workerd SQLite + official MCP transport + native PiHarness. No model/provider/network traffic. */
 export async function eventsProbe(storage: DurableObjectStorage, harness: PiHarness) {
   const state = await setup(storage, harness)
@@ -220,6 +251,7 @@ export async function eventsProbe(storage: DurableObjectStorage, harness: PiHarn
       recovery,
       messageCount: messages.length,
       scheduledRecovery: state.wakes.length > 0,
+      runs: runSummary(state.runs.events()),
     }
   } finally {
     await state.manager.closeAll()

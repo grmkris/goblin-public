@@ -1,3 +1,4 @@
+import type { StepReport } from './log.ts'
 import { auth, type AuthProvider, discoverOAuthServerInfo, type Tool } from '@modelcontextprotocol/client'
 import type { CatalogEntry, RegistryView, ServerView, ToolView } from '@goblin/contracts'
 import { nowSeconds } from '../clock.ts'
@@ -47,6 +48,8 @@ export type McpHostOptions = {
   /** Whether the owner uses skills from a server; without it, no server's skills are read. */
   readonly authorizeEvents?: (serverId: string, name: string, argumentsJson: string) => void | Promise<void>
   readonly skillsEnabled?: (serverId: string) => boolean
+  /** Where each remote step is reported (the run ledger, ADR 0024). */
+  readonly report?: StepReport
 }
 
 /**
@@ -88,6 +91,7 @@ export class McpHost {
       ...(options.authorizeEvents === undefined ? {} : { authorizeEvents: options.authorizeEvents }),
       auth: (server) => this.#authProvider(server),
       fetch: options.fetch,
+      ...(options.report === undefined ? {} : { report: options.report }),
     })
   }
 

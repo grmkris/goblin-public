@@ -165,9 +165,11 @@ export class McpConnectionManager {
     }
     const pending = this.#connecting.get(serverId)
     if (pending !== undefined) return pending
-    const opening = timed({ step: 'connect', serverId }, () => this.#open(this.server(serverId), options)).finally(() =>
-      this.#connecting.delete(serverId),
-    )
+    const opening = timed(
+      { step: 'connect', serverId },
+      () => this.#open(this.server(serverId), options),
+      this.#options.report,
+    ).finally(() => this.#connecting.delete(serverId))
     this.#connecting.set(serverId, opening)
     return opening
   }
@@ -329,17 +331,21 @@ export class McpConnectionManager {
     const tool = connection.snapshot.tools.find((item) => item.name === name)
     if (tool === undefined || !toolOffered(tool, caller)) throw new NotFound({ what: `tool ${name}` })
     this.#bounded(serverId, args)
-    return timed({ step: 'call', serverId, tool: name }, () =>
-      this.#remote(connection, () =>
-        this.#dispatch.request(
-          async () => {
-            await authorize?.()
-            if (!this.#options.allows({ serverId, capability: 'tool', name })) throw new GrantDenied({ serverId, name })
-          },
-          { timeout: this.#options.timeoutMs ?? 30_000, ...request },
-          (guarded) => connection.client.callTool({ name, arguments: args }, guarded),
+    return timed(
+      { step: 'call', serverId, tool: name },
+      () =>
+        this.#remote(connection, () =>
+          this.#dispatch.request(
+            async () => {
+              await authorize?.()
+              if (!this.#options.allows({ serverId, capability: 'tool', name }))
+                throw new GrantDenied({ serverId, name })
+            },
+            { timeout: this.#options.timeoutMs ?? 30_000, ...request },
+            (guarded) => connection.client.callTool({ name, arguments: args }, guarded),
+          ),
         ),
-      ),
+      this.#options.report,
     )
   }
 
@@ -393,12 +399,15 @@ export class McpConnectionManager {
     const connection = await this.#connection(serverId, { timeout: 5000 })
     if (!offersEvents(connection.snapshot)) throw new UpstreamMcp({ serverId, reason: 'unsupported' })
     await this.#options.authorizeEvents(serverId, selector.name, selector.argumentsJson)
-    return timed({ step: 'events', serverId, method }, () =>
-      this.#remote(
-        connection,
-        () => connection.client.request({ method, params }, Schema.toStandardSchemaV1(schema), { timeout: 5000 }),
-        262_144,
-      ),
+    return timed(
+      { step: 'events', serverId, method },
+      () =>
+        this.#remote(
+          connection,
+          () => connection.client.request({ method, params }, Schema.toStandardSchemaV1(schema), { timeout: 5000 }),
+          262_144,
+        ),
+      this.#options.report,
     )
   }
 
@@ -417,10 +426,13 @@ export class McpConnectionManager {
     let cursor: string | undefined
     for (let page = 0; page < (this.#options.maxPages ?? 64); page++) {
       const params = cursor === undefined ? {} : { cursor }
-      const result = await timed({ step: 'skills', serverId }, () =>
-        this.#skillRequest(connection, options, (guarded) =>
-          connection.client.request({ method: 'skills/list', params }, skillsListStandard, guarded),
-        ),
+      const result = await timed(
+        { step: 'skills', serverId },
+        () =>
+          this.#skillRequest(connection, options, (guarded) =>
+            connection.client.request({ method: 'skills/list', params }, skillsListStandard, guarded),
+          ),
+        this.#options.report,
       )
       skills.push(...result.skills)
       if (result.ttlMs !== undefined) ttlMs = Math.min(ttlMs ?? result.ttlMs, result.ttlMs)
