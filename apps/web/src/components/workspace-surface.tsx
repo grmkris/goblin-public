@@ -98,6 +98,9 @@ function shownDocument(state: WorkspaceState, title: (key: ItemKey) => string): 
     : dockedDocument(maximized, title(maximized), docked, title(docked), dock.share)
 }
 
+/** How far the docked chat's share must move to count as the owner's drag rather than rounding. */
+const DOCK_DRAG = 0.01
+
 /** The items with a host: every pane's, and the conversation docked beside a full-screen App. */
 const hostedItems = (state: WorkspaceState): ItemKey[] => {
   const items = order(state)
@@ -124,14 +127,17 @@ function mountHost(hosts: Hosts, parking: Parking, latest: RefObject<Live>, elem
 function connect(handle: WorkspaceHandle, latest: RefObject<Live>, applied: RefObject<string>): () => void {
   const offChange = handle.on('change', (doc) => {
     const { workspace } = latest.current
+    const { state } = workspace
+    if (state.maximized !== undefined) {
+      // Only a drag of the docked chat's edge moves its share; Trellis echoing the document it was given does not.
+      const share = state.docked === undefined ? undefined : dockedShare(doc)
+      if (share !== undefined && Math.abs(share - dockOf(state).share) > DOCK_DRAG) workspace.setDock({ share })
+      return
+    }
     const seen = JSON.stringify(doc)
     if (seen === applied.current) return
     applied.current = seen
-    if (workspace.state.maximized === undefined) workspace.resized(doc)
-    else if (workspace.state.docked !== undefined) {
-      const share = dockedShare(doc)
-      if (share !== undefined) workspace.setDock({ share })
-    }
+    workspace.resized(doc)
   })
   const offFocus = handle.on('focus', (id) => {
     if (id !== null && isOpen(latest.current.workspace.state, id)) latest.current.workspace.focus(id)

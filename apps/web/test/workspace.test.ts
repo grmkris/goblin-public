@@ -121,6 +121,8 @@ describe('closing and replacing', () => {
 
   it('keeps the dock on this device, its share between the narrowest and widest', () => {
     expect(dockOf(initialWorkspace())).toEqual({ open: true, share: 0.3 })
+    const start = initialWorkspace()
+    expect(withDock(start, { open: true, share: 0.3 })).toBe(start)
     const folded = withDock(withDock(initialWorkspace(), { share: 0.95 }), { open: false })
     expect(dockOf(folded)).toEqual({ open: false, share: 0.6 })
     expect(parseWorkspace(serializeWorkspace(folded))?.dock).toEqual({ open: false, share: 0.6 })

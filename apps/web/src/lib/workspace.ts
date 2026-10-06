@@ -162,11 +162,12 @@ export function maximizeItem(state: WorkspaceState, key: ItemKey | undefined, do
   return { ...rest, maximized: key, focused: key, ...(docked !== undefined && docked !== key && { docked }) }
 }
 
-/** Shows or folds the docked chat, or sets its share of the width. */
-export const withDock = (state: WorkspaceState, change: Partial<Dock>): WorkspaceState => ({
-  ...state,
-  dock: { ...dockOf(state), ...change },
-})
+/** Shows or folds the docked chat, or sets its share of the width; the same state when nothing changes. */
+export function withDock(state: WorkspaceState, change: Partial<Dock>): WorkspaceState {
+  const dock = { ...dockOf(state), ...change }
+  const now = dockOf(state)
+  return dock.open === now.open && dock.share === now.share ? state : { ...state, dock }
+}
 
 /** The document Trellis reports after the owner resized panes: taken as is when it shows the same items. */
 export function resized(state: WorkspaceState, doc: LayoutDocument): WorkspaceState {
