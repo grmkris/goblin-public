@@ -21,6 +21,7 @@ import { appsExtension } from './pi/apps.ts'
 import { serversExtension } from './pi/servers.ts'
 import { agentRequest, sessionSnapshot } from './agent-requests.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
+import { type AgentTelemetry, agentTelemetry } from './telemetry/agent.ts'
 import { LITELLM_STREAMS, makePiModels } from './pi/model.ts'
 import { personaExtension } from './pi/persona.ts'
 import { type SubagentKit, subagentsExtension } from './pi/subagents.ts'
@@ -104,6 +105,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   readonly #applied: Applied = new Map()
   readonly #routines: RoutineController
   readonly #apps: AgentApps
+  readonly #telemetry: AgentTelemetry
   #runtime: Promise<Runtime> | undefined
   /** The Telegram pull in progress: one at a time (channelPull). */
   #pulling: Promise<void> = Promise.resolve()
@@ -126,7 +128,9 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     this.#apps = apps
     const base = [...tools, skillsExtension(run), filesExtension(run), appsExtension(apps)]
     const own = [serversExtension(run, env.STAGE), subagents, routinesExtension(run)]
-    this.harness = makePiHarness(this.#pi, [...base, ...own], [this.#thread, memory, recall, ...routineKit.extra], apps)
+    const extras = [this.#thread, memory, recall, ...routineKit.extra]
+    this.#telemetry = agentTelemetry(ctx.storage, () => this.name)
+    this.harness = makePiHarness(this.#pi, [...base, ...own], extras, apps, this.#telemetry.recorder)
     this.#routines = new RoutineController(routineRun, this.harness, routineKit.start, {
       storage: this.ctx.storage,
       owner: () => this.name,
@@ -160,6 +164,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
   override async onStart(): Promise<void> {
     runApplicationMigrations(this.ctx.storage)
+    this.#telemetry.restarted(Date.now())
     // Reconstruct lease and receipt recovery without opening Pi or waiting on outbound network calls.
     await this.#scheduleWake('mcpEventsWake', Date.now() + 1000)
     await this.#scheduleWake('routinesWake', Date.now() + 1000)

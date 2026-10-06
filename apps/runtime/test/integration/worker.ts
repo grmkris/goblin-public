@@ -39,6 +39,7 @@ import { subagentChainSequence, subagentCloseSequence, subagentOwnerSequence } f
 import { filesSequence, filesStoreProbe } from './files-probe.ts'
 import { appsEngineProbe, appsPowersProbe, appsTurnProbe } from './apps-probe.ts'
 import { appsJobsProbe } from './apps-jobs-probe.ts'
+import { telemetryProbe } from './telemetry-probe.ts'
 import { JOB_CALLBACK, type JobSchedules } from '../../src/agent-apps/jobs.ts'
 
 const fixturePlan = () =>
@@ -74,6 +75,14 @@ export class PersonalAgentProbe extends PersonalAgent {
 
   filesStoreProbe() {
     return filesStoreProbe(this.ctx.storage.sql, this.env.FILES, this.name)
+  }
+
+  /** The run ledger one turn leaves, and the restart sweep (ADR 0024), as JSON text. */
+  telemetryProbe(): Promise<string> {
+    return telemetryProbe(this.ctx.storage, this.name, async (text, operationId) => {
+      await this.submit(MAIN_THREAD, text, operationId)
+      return this.settle(MAIN_THREAD, operationId)
+    })
   }
 
   /** As JSON text: the results carry app values, typed `unknown`, which RPC types cannot carry. */
@@ -901,6 +910,10 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return memorySequence(agent)
     case '/binding':
       return agent.bindingProbe().then((result) => Response.json(result))
+    case '/telemetry':
+      return agent
+        .telemetryProbe()
+        .then((json) => new Response(json, { headers: { 'content-type': 'application/json' } }))
     case '/files-store':
       return agent.filesStoreProbe().then((result) => Response.json(result))
     case '/files-sequence':

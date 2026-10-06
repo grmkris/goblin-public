@@ -566,6 +566,32 @@ The client refreshes before the producer's ISO `refreshBefore` and polls on gaps
 Recovery sweeps process at most 256 deliveries and retain completed receipts for eight days; unfinished receipts
 are never pruned. Workers cannot pin resolved DNS IPs; trusted DNS is the documented v1 deviation (ADR 0011).
 
+## Run ledger
+
+Pi records what was said; goblin records how each turn ran, beside it (ADR 0024). `PiRunRecorder`
+(`telemetry/pi.ts`) follows Pi's commit listener from the moment Pi opens (`pi/harness.ts`), so it sees every
+conversation (main, threads, subagents, routine runs) without an extension, and reads only committed records:
+
+- **Turn:** an input submission from admission to settlement, by its operation id. Its source comes from the id's
+  prefix (`telegram-`, `routine-input:`, `subagent:`, …; anything else is `direct`, the owner or an MCP client). An
+  unanswered turn keeps Pi's reason.
+- **Model attempt:** a generation task entering `request`, ended by the assistant entry it appends (or the task's
+  fault): model, finish reason, input, output, cache and reasoning tokens, error text. The first committed partial
+  marks the first chunk; Pi commits partials at most every ~100 ms. A retried attempt is a new event.
+- **Tool call:** a tool task, ended by its result entry: name, family (`mcp`, `app`, `subagent`, `memory`,
+  `builtin`), argument and result sizes, the MCP server and tool of an `mcp_call`, and `blocked`, `interrupted` or
+  `error` with the first diagnostic. A call to a tool that is not there is one event, from the generation.
+- **Compaction** tasks, and any other task that faults or is orphaned (a subagent relay, an anchor).
+
+Each event goes to `app_run_events` (kept 30 days) and to one Workers Log line when it ends (`event: "run"`, its ids,
+`ms`, and attributes named after the OpenTelemetry GenAI conventions, `contracts/src/telemetry.ts`). Never content:
+ids, sizes, counts, timings, outcomes and bounded error text. At start the agent marks whatever the last run left
+`started` as interrupted and logs one `recovery` event; an event that ends after a restart says it resumed. Pi faults
+the user's task if a commit listener throws, so the recorder and every sink are guarded and only log their own
+failures. Verified with in-memory Pi (`test/telemetry.test.ts`) and local workerd (`native-telemetry.ts`). Model
+calls outside Pi (thread names, memory summaries, skill drafts, an app's `llm` power) and compaction summaries are not
+recorded yet.
+
 ## Storage
 
 | Store | Tables | Owner |
@@ -584,6 +610,7 @@ are never pruned. Workers cannot pin resolved DNS IPs; trusted DNS is the docume
 | Agent DO SQLite | `app_agent_apps`, `app_agent_releases`, `app_agent_artifacts`, `app_agent_views`, `app_agent_state`, `app_agent_snapshots`, `app_agent_receipts`, `app_agent_events`, `app_agent_powers`, `app_agent_usage`, `app_agent_jobs` | Drizzle: agent apps, their releases, code and views, state and revisions, rollback snapshots, receipts, events, the owner's answers to their powers, their daily usage and their schedules (ADR 0021). |
 | Agent DO SQLite | `cf_workspace_app_<name>` | Shell: each agent app's own files. |
 | Agent DO SQLite | `app_registry` | Drizzle: every App the workspace shows, by source: an MCP App per conversation and call, an agent app per name (ADR 0020, 0021). `app_apps`, its predecessor, was copied in with the same ids and is no longer read. |
+| Agent DO SQLite | `app_run_events` | Drizzle: the run ledger, turns, model attempts and tool calls without content, 30 days (ADR 0024). |
 | D1 `goblinAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `oauth*` | Better Auth, `apps/runtime/migrations`. |
 | D1 `goblinAuth` | `app_billing_accounts`, `app_billing_subscriptions`, `app_billing_inbox`, `app_billing_checkouts` | Drizzle: account payments and durable reconciliation. |
 

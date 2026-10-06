@@ -498,3 +498,30 @@ export const appRegistry = sqliteTable(
     uniqueIndex('app_registry_name').on(table.name),
   ],
 )
+
+/**
+ * goblin's run ledger (ADR 0024): what Pi does not keep about a turn, beside its record. Each row is a turn, a model
+ * attempt, a tool call or another run event with its ids, timing, outcome and scalar attributes, never content. A row
+ * still `started` when the object restarts becomes `interrupted`; rows older than 30 days go.
+ */
+export const appRunEvents = sqliteTable(
+  'app_run_events',
+  {
+    id: text('id').primaryKey().notNull(),
+    kind: text('kind').notNull(),
+    status: text('status', { enum: ['started', 'ok', 'error', 'blocked', 'interrupted'] }).notNull(),
+    conversationId: text('conversation_id'),
+    operationId: text('operation_id'),
+    taskId: text('task_id'),
+    startedAt: integer('started_at').notNull(),
+    endedAt: integer('ended_at'),
+    attributes: text('attributes').notNull(),
+  },
+  (table) => [
+    index('app_run_events_operation').on(table.operationId),
+    index('app_run_events_conversation').on(table.conversationId, table.startedAt),
+    index('app_run_events_task').on(table.taskId, table.startedAt),
+    index('app_run_events_status').on(table.status, table.startedAt),
+    index('app_run_events_started').on(table.startedAt),
+  ],
+)

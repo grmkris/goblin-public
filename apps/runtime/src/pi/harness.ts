@@ -1,6 +1,6 @@
 import { PiHarness } from 'agents/harness/pi'
 import { createRegistry, Harness } from '@earendil-works/pi-durable'
-import type { Extension, Registry } from '@earendil-works/pi-durable'
+import type { Extension, Registry, Session } from '@earendil-works/pi-durable'
 import { askUserExtension } from './ask-user.ts'
 import type { makePiModels } from './model.ts'
 import { personaExtension } from './persona.ts'
@@ -33,12 +33,14 @@ export interface AppTools {
  * `ask_user`, `base` and the apps' extensions; `extra` is installed for the conversations that add it by name (a
  * thread's own tools). The default selection is a getter, read at every use, so an app built or changed is offered
  * from the next model request. Subagents and routine runs set their own exact lists, so they get no app tools.
+ * `recorder` follows Pi's commits from the moment it opens, before any of its work resumes (the run ledger, ADR 0024).
  */
 export function makePiHarness(
   pi: PiModels,
   base: readonly Extension[],
   extra: readonly Extension[],
   apps: AppTools,
+  recorder: { attach(session: Pick<Session, 'subscribeCommits' | 'subscribeClose'>): void },
 ): PiHarness {
   const registry = createRegistry()
   const defaults = [personaExtension, askUserExtension, ...base]
@@ -50,9 +52,11 @@ export function makePiHarness(
     },
   }
   return new PiHarness({
-    harness: ({ storage, context }) => {
+    harness: async ({ storage, context }) => {
       apps.restore()
-      return Harness.open(storage, { models: pi.models, registry, settings, onReport }, context)
+      const harness = await Harness.open(storage, { models: pi.models, registry, settings, onReport }, context)
+      recorder.attach(harness)
+      return harness
     },
     defaults: { model: pi.model, thinkingLevel: 'low' },
   })

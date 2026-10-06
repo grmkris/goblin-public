@@ -12,6 +12,7 @@ import Stack from './stack.ts'
 import { routineEventsCase, routineSchedulingCase } from './native-routines-events.ts'
 import { filesCase } from './native-files.ts'
 import { appsCase } from './native-apps.ts'
+import { telemetryCase } from './native-telemetry.ts'
 import {
   Listed,
   ModelRequest,
@@ -347,6 +348,10 @@ harness.test(
 harness.test(
   'local workerd: agent apps build, call with receipts, migrate, refuse a broken build, roll back and restore',
   stack.pipe(Effect.flatMap(({ url }) => appsCase(url))),
+)
+harness.test(
+  'local workerd: a turn leaves its run ledger (turn, attempts, tool call) and a restart interrupts what was left started',
+  stack.pipe(Effect.flatMap(({ url }) => telemetryCase(url))),
 )
 harness.test(
   'local workerd: Events discovery, challenge, signed Telegram, replay, gap, refresh, termination and cleanup',

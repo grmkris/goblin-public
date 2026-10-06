@@ -294,6 +294,19 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     tables: ['app_agent_jobs'],
     sql: `CREATE TABLE app_agent_jobs (app TEXT NOT NULL, action TEXT NOT NULL, every TEXT NOT NULL CHECK (every IN ('15m', '30m', '1h', '3h', '6h', '12h', '1d')), at TEXT, input TEXT NOT NULL, release TEXT NOT NULL, next_at INTEGER NOT NULL, schedule_id TEXT, last_at INTEGER, last_status TEXT CHECK (last_status IN ('ok', 'failed', 'waiting', 'skipped')), last_error TEXT, failures INTEGER NOT NULL DEFAULT 0, paused TEXT CHECK (paused IN ('owner', 'failures')), PRIMARY KEY (app, action))`,
   },
+  {
+    // The run ledger (ADR 0024): timings and outcomes beside Pi's record, no content.
+    key: '20261019000000_run_events',
+    tables: ['app_run_events'],
+    sql: [
+      `CREATE TABLE app_run_events (id TEXT PRIMARY KEY NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('started', 'ok', 'error', 'blocked', 'interrupted')), conversation_id TEXT, operation_id TEXT, task_id TEXT, started_at INTEGER NOT NULL, ended_at INTEGER, attributes TEXT NOT NULL)`,
+      'CREATE INDEX app_run_events_operation ON app_run_events (operation_id)',
+      'CREATE INDEX app_run_events_conversation ON app_run_events (conversation_id, started_at)',
+      'CREATE INDEX app_run_events_task ON app_run_events (task_id, started_at)',
+      'CREATE INDEX app_run_events_status ON app_run_events (status, started_at)',
+      'CREATE INDEX app_run_events_started ON app_run_events (started_at)',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {
