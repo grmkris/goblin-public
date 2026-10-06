@@ -447,6 +447,31 @@ export const appAgentUsage = sqliteTable(
 )
 
 /**
+ * An agent app's schedules (ADR 0021), one per action its active release schedules: when it runs next, the native
+ * schedule armed for that, how the last run went, the failures in a row, and whether it is paused (by the owner, or
+ * after ten failures until a new release).
+ */
+export const appAgentJobs = sqliteTable(
+  'app_agent_jobs',
+  {
+    app: text('app').notNull(),
+    action: text('action').notNull(),
+    every: text('every', { enum: ['15m', '30m', '1h', '3h', '6h', '12h', '1d'] }).notNull(),
+    at: text('at'),
+    input: text('input').notNull(),
+    release: text('release').notNull(),
+    nextAt: integer('next_at').notNull(),
+    scheduleId: text('schedule_id'),
+    lastAt: integer('last_at'),
+    lastStatus: text('last_status', { enum: ['ok', 'failed', 'waiting', 'skipped'] }),
+    lastError: text('last_error'),
+    failures: integer('failures').notNull().default(0),
+    paused: text('paused', { enum: ['owner', 'failures'] }),
+  },
+  (table) => [primaryKey({ columns: [table.app, table.action] })],
+)
+
+/**
  * Every App the workspace shows (ADRs 0020, 0021), one id space for both kinds: an MCP App kept from a tool call
  * (`source = 'mcp'`: call, server, tool, resource; `entry_id` is where the call sits in Pi, once found), or an agent
  * app (`'agent'`: its name). It records where an App comes from and what to call it, never a grant. The retired

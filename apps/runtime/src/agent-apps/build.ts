@@ -138,7 +138,7 @@ type BuilderDeps = {
   readonly toolchain: () => Promise<Toolchain>
   readonly now: () => number
   /** Re-installs the app's tools once its new release is active. */
-  readonly activated: (app: string) => void
+  readonly activated: (app: string) => Promise<void>
 }
 
 /**
@@ -224,7 +224,7 @@ export class AppBuilder {
         view: view.view,
         now: this.#deps.now(),
       })
-      this.#deps.activated(request.name)
+      await this.#deps.activated(request.name)
       const revision = store.state(request.name)?.revision ?? 0
       return {
         status: 'active',

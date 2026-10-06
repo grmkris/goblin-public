@@ -6,6 +6,7 @@ import { AppFiles } from '../../src/agent-apps/files.ts'
 import { problemText } from '../../src/agent-apps/queue.ts'
 import { runScript } from '../../src/agent-apps/script.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
+import { memorySchedules } from './apps-jobs-probe.ts'
 
 const LIB = 'export const bump = (count: number, by: number): number => count + by\n'
 
@@ -66,7 +67,7 @@ const outcome = async <A>(work: () => Promise<A>) => {
  * engine. Plus a one-off script over the owner's files with no network.
  */
 export async function appsEngineProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string) {
-  const apps = agentApps(storage, env, () => owner)
+  const apps = agentApps(storage, env, () => owner, { schedules: memorySchedules() })
   apps.attach(createRegistry())
   apps.restore()
   const changes: string[] = []
@@ -102,7 +103,7 @@ export async function appsEngineProbe(storage: DurableObjectStorage, env: Runtim
   )
   const rolledBack = v1.status === 'active' ? await outcome(() => apps.rollback('counter', v1.release)) : undefined
   const afterRollback = apps.store.state('counter')
-  const fresh = agentApps(storage, env, () => owner)
+  const fresh = agentApps(storage, env, () => owner, { schedules: memorySchedules() })
   fresh.attach(createRegistry())
   fresh.restore()
   const script = await runScript(
@@ -233,7 +234,7 @@ const approvalOf = (built: Awaited<ReturnType<ReturnType<typeof agentApps>['buil
  * agent's services within the app's caps.
  */
 export async function appsPowersProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string) {
-  const apps = agentApps(storage, env, () => owner, internet)
+  const apps = agentApps(storage, env, () => owner, { schedules: memorySchedules(), fetch: internet })
   apps.attach(createRegistry())
   apps.restore()
   const seen: unknown[] = []
@@ -249,6 +250,7 @@ export async function appsPowersProbe(storage: DurableObjectStorage, env: Runtim
     notify: async (op, text) => {
       seen.push(['notify', op, text])
     },
+    blocked: async () => undefined,
   })
   const caller = { session: '1', callId: 'powers-1' }
   const built = await apps.build({ name: 'weather', files: { 'app.ts': WEATHER } }, caller)

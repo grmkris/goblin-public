@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mismatches, plainJson, schemaProblems } from '../src/agent-apps/json.ts'
 import { readManifest, requestedPowers, storedManifest } from '../src/agent-apps/manifest.ts'
+import { backoff, lastSlot, nextSlot } from '../src/agent-apps/jobs.ts'
 import { toolName } from '../src/agent-apps/names.ts'
 import { AppQueues, problemText } from '../src/agent-apps/queue.ts'
 import { InvalidInput } from '../src/http/errors.ts'
@@ -28,6 +29,7 @@ const counter = {
   views: { total: { description: 'The count.', input: object({}), select: true } },
   egress: [],
   uses: { tools: [], apps: [], llm: false, notify: false },
+  schedules: [],
 }
 
 describe('app schemas', () => {
@@ -93,15 +95,61 @@ describe('manifests', () => {
       'uses.apps: an app does not call itself.',
     ])
   })
-  it('read a manifest stored before powers as asking for none', () => {
-    const { egress: _egress, uses: _uses, ...before } = counter
+  it('read a manifest stored before powers and schedules as asking for none', () => {
+    const { egress: _egress, uses: _uses, schedules: _schedules, ...before } = counter
     expect(storedManifest(JSON.stringify(before))).toMatchObject({
       egress: [],
       uses: { tools: [], apps: [], llm: false, notify: false },
+      schedules: [],
     })
+  })
+  it('refuse schedules that run no action, too often, at a time only daily ones have, or with the wrong input', () => {
+    const schedule = { action: 'add', every: '1h', at: null, input: { by: 1 } }
+    expect(readManifest({ ...counter, schedules: [schedule] }, 'counter')).toHaveProperty('manifest')
+    expect(
+      problems({
+        ...counter,
+        schedules: [
+          { ...schedule, every: '5m' },
+          { ...schedule, action: 'total' },
+          { ...schedule, action: 'add', at: '07:00' },
+        ],
+      }),
+    ).toEqual([
+      'schedules: one schedule per action.',
+      'schedules (add): every is one of 15m, 30m, 1h, 3h, 6h, 12h, 1d.',
+      'schedules (total): no action total (a schedule runs an action, not a view).',
+      "schedules (add): `at` is only for every: '1d'.",
+    ])
+    expect(problems({ ...counter, schedules: [{ ...schedule, every: '1d', at: '7:00', input: { by: 0 } }] })).toEqual([
+      'schedules (add): at is "HH:MM" (UTC).',
+      'schedules (add) input: /by: must be >= 1',
+    ])
   })
   it('name tools so they cannot shadow host tools', () => {
     expect(toolName('reading-list', 'addBook')).toBe('app_reading_list__addBook')
+  })
+})
+
+/** A time on 2026-10-06, UTC. */
+const at = (time: string) => Date.parse(`2026-10-06T${time}:00Z`)
+
+describe('app schedules', () => {
+  it('fall on the period from midnight UTC, a daily one at its time', () => {
+    expect(nextSlot({ every: '15m', at: null }, at('10:07'))).toBe(at('10:15'))
+    expect(nextSlot({ every: '15m', at: null }, at('10:15'))).toBe(at('10:30'))
+    expect(nextSlot({ every: '6h', at: null }, at('10:07'))).toBe(at('12:00'))
+    expect(nextSlot({ every: '1d', at: '06:30' }, at('10:07'))).toBe(Date.parse('2026-10-07T06:30:00Z'))
+    expect(nextSlot({ every: '1d', at: '06:30' }, at('05:00'))).toBe(at('06:30'))
+  })
+  it('catch up only the newest slot a late run missed', () => {
+    expect(lastSlot({ every: '1h', at: null }, at('13:59'))).toBe(at('13:00'))
+    expect(lastSlot({ every: '1d', at: '06:30' }, at('06:30'))).toBe(at('06:30'))
+  })
+  it('wait longer after each failure, at most six hours', () => {
+    expect([1, 2, 3, 4, 5, 6, 9].map((failures) => backoff(failures) / 60_000)).toEqual([
+      15, 30, 60, 120, 240, 360, 360,
+    ])
   })
 })
 

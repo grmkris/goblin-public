@@ -38,6 +38,8 @@ import { exchange, historyOf, linesOf, snapshotOf, threadsUntil, transcript, unt
 import { subagentChainSequence, subagentCloseSequence, subagentOwnerSequence } from './subagent-probe.ts'
 import { filesSequence, filesStoreProbe } from './files-probe.ts'
 import { appsEngineProbe, appsPowersProbe, appsTurnProbe } from './apps-probe.ts'
+import { appsJobsProbe } from './apps-jobs-probe.ts'
+import { JOB_CALLBACK, type JobSchedules } from '../../src/agent-apps/jobs.ts'
 
 const fixturePlan = () =>
   Effect.succeed({
@@ -85,6 +87,17 @@ export class PersonalAgentProbe extends PersonalAgent {
 
   async appsTurnProbe(): Promise<string> {
     return JSON.stringify(await appsTurnProbe(this.harness, () => this.seen.at(-1)?.tools ?? []))
+  }
+
+  /** On this object's own native schedules, and its own `runAppJob` callback. */
+  async appsJobsProbe(): Promise<string> {
+    const schedules: JobSchedules = {
+      list: () => this.listSchedules(),
+      arm: async (at, slot) => (await this.schedule(new Date(at), JOB_CALLBACK, slot, { idempotent: true })).id,
+      cancel: (id) => this.cancelSchedule(id),
+    }
+    const result = await appsJobsProbe(this.ctx.storage, this.env, this.name, schedules, (slot) => this.runAppJob(slot))
+    return JSON.stringify(result)
   }
   async routineExecutionProbe(): Promise<Response> {
     return Response.json(await routineExecutionProbe(this.ctx.storage, this, this.seen))
@@ -809,10 +822,21 @@ async function destroySequence(env: Env, name: string): Promise<Response> {
   })
 }
 
+/** The agent apps probes, which answer JSON text (their results carry app values RPC types cannot). */
+const APPS_PROBES: Readonly<Record<string, (agent: DurableObjectStub<PersonalAgentProbe>) => Promise<string>>> = {
+  '/apps-engine': (agent) => agent.appsEngineProbe(),
+  '/apps-powers': (agent) => agent.appsPowersProbe(),
+  '/apps-turn': (agent) => agent.appsTurnProbe(),
+  '/apps-jobs': (agent) => agent.appsJobsProbe(),
+}
+
 function nativeFetch(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url)
   const name = url.searchParams.get('name') ?? 'initialization'
   const agent = env.AGENTS.getByName(name)
+  const apps = APPS_PROBES[url.pathname]
+  if (apps !== undefined)
+    return apps(agent).then((json) => new Response(json, { headers: { 'content-type': 'application/json' } }))
   switch (url.pathname) {
     case '/events-probe':
       return agent.eventsProbe().then((result) => Response.json(result))
@@ -874,18 +898,6 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return agent.bindingProbe().then((result) => Response.json(result))
     case '/files-store':
       return agent.filesStoreProbe().then((result) => Response.json(result))
-    case '/apps-engine':
-      return agent
-        .appsEngineProbe()
-        .then((json) => new Response(json, { headers: { 'content-type': 'application/json' } }))
-    case '/apps-powers':
-      return agent
-        .appsPowersProbe()
-        .then((json) => new Response(json, { headers: { 'content-type': 'application/json' } }))
-    case '/apps-turn':
-      return agent
-        .appsTurnProbe()
-        .then((json) => new Response(json, { headers: { 'content-type': 'application/json' } }))
     case '/files-sequence':
       return filesSequence(agent, env.FILES, name).then((result) => Response.json(result))
     default:

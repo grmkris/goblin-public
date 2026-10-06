@@ -102,8 +102,8 @@ function generator(seed: number): () => number {
 
 const EMPTY_INPUT = { type: 'object', properties: {}, additionalProperties: false }
 
-const strings = (value: unknown): string[] =>
-  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+const list = (value: unknown): readonly unknown[] => (Array.isArray(value) ? value : [])
+const strings = (value: unknown): string[] => list(value).filter((item): item is string => typeof item === 'string')
 
 const words = (...parts: readonly unknown[]) =>
   parts.map((part) => (typeof part === 'string' ? part : JSON.stringify(part))).join(' ')
@@ -150,6 +150,12 @@ export class App extends WorkerEntrypoint {
         llm: field(field(app, 'uses'), 'llm') === true,
         notify: field(field(app, 'uses'), 'notify') === true,
       },
+      schedules: list(field(app, 'schedules')).map((schedule) => ({
+        action: field(schedule, 'action'),
+        every: field(schedule, 'every'),
+        at: field(schedule, 'at') ?? null,
+        input: field(schedule, 'input') ?? {},
+      })),
     }
   }
 

@@ -39,7 +39,7 @@ const isMcp = (row: Row): row is McpRow =>
 
 /** What the registry reads of the agent's apps (ADR 0021). */
 export type AgentAppsPort = {
-  /** An app's title and home, its release and that release's number, its revision, and whether it has a view. */
+  /** An app's title and home, its release and number, its revision, whether it has a view, and its schedules. */
   readonly info: (name: string) => AgentAppInfo | undefined
   /** What the browser needs to load the app's view. */
   readonly launch: (name: string) => AgentAppLaunch
@@ -51,7 +51,7 @@ const sourceOf = (row: Row, agents: AgentAppsPort): AppView['source'] => {
   const name = row.name ?? ''
   const info = agents.info(name)
   if (info === undefined) throw new NotFound({ what: `agent app ${name}` })
-  return { kind: 'agent', name, release: info.release, version: info.version, revision: info.revision }
+  return { kind: 'agent', name, release: info.release, version: info.version, revision: info.revision, jobs: info.jobs }
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

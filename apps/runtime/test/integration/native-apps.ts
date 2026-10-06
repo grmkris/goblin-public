@@ -81,6 +81,34 @@ export function appsCase(url: string) {
       // Every fetch an app attempts counts toward its day, refused ones too.
       usage: { egress: 8, notify: 1 },
     })
+    const MINUTE = 60_000
+    const jobs = yield* probe(url, '/apps-jobs')
+    expect(jobs).toMatchObject({
+      wrong: expect.arrayContaining([
+        expect.stringContaining('every is one of 15m, 30m'),
+        expect.stringContaining('no action nope'),
+      ]),
+      built: 'active',
+      first: [
+        { action: 'tick', every: '15m', at: null, inMs: 8 * MINUTE, time: expect.stringMatching(/:15$/u) },
+        { action: 'flaky', every: '1d', at: '06:30', time: '06:30' },
+      ],
+      armedFirst: 2,
+      afterTick: { ticks: 1, job: { status: 'ok', failures: 0 } },
+      afterStale: 1,
+      // Two hours late: one catch-up run, then the next slot.
+      caughtUp: { ticks: 2, inMs: 15 * MINUTE - 2000 },
+      waiting: { ticks: 2, job: { status: 'waiting', error: 'waiting for the owner (test)' } },
+      waits: [15, 30, 60, 120, 240, 360, 360, 360, 360].map((minutes) => minutes * MINUTE),
+      paused: { paused: 'failures', failures: 10, status: 'failed', error: expect.stringContaining('flaky failed') },
+      armedPaused: 1,
+      resumed: { paused: null, failures: 0 },
+      armedResumed: 2,
+      viaAgent: { changed: true, status: expect.stringMatching(/^(?:ok|waiting)$/u) },
+      afterDrop: ['flaky'],
+      armedAfterDrop: 1,
+      summary: expect.stringContaining('Schedules: flaky every 1d at 06:30 UTC (last run'),
+    })
     const turn = yield* probe(url, '/apps-turn')
     expect(turn).toMatchObject({
       built: expect.stringContaining('"status":"active","app":"tally"'),

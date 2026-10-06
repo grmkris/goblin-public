@@ -44,6 +44,9 @@
 - **Release**: one build of an agent app, named by a hash of its sources and toolchain; one is active, earlier ones
   can be rolled back to, failed ones keep their problems.
 - **Revision**: the number of an agent app's state, one more with every change an action commits.
+- **Power**: something an agent app reaches beyond its state and files (a host, an MCP tool, the model, Telegram,
+  another app); it declares it, and the owner approves it.
+- **Schedule** (job): an agent app's action that runs on its own, every 15 minutes to daily, on a native schedule.
 - **Block**: a fenced `mermaid, `chart or ```map block in the agent's reply, drawn in place (ADR 0023).
 - **Kit**: `@goblin/kit`, the one implementation of the drawn blocks, for the chat now and agent apps later.
 - **Inbound client**: an MCP client (Claude Code, another agent) the owner authorized to call goblin's `/mcp`.

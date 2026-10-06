@@ -255,12 +255,30 @@ export const McpAppSource = Schema.Struct({
 })
 
 /** An agent app (ADR 0021): its name, the release it runs and the revision its state is at. */
+/**
+ * One schedule of an agent app (ADR 0021): the action it runs, how often (a daily one at `at`, UTC), when next, how
+ * the last run went, its failures in a row, and whether it is paused (by the owner, or by failures until a new
+ * release).
+ */
+export const AgentAppJob = Schema.Struct({
+  action: Schema.String,
+  every: Schema.Literals(['15m', '30m', '1h', '3h', '6h', '12h', '1d']),
+  at: Schema.NullOr(Schema.String),
+  nextAt: Schema.Number,
+  lastAt: Schema.NullOr(Schema.Number),
+  status: Schema.NullOr(Schema.Literals(['ok', 'failed', 'waiting', 'skipped'])),
+  failures: Schema.Number,
+  paused: Schema.NullOr(Schema.Literals(['owner', 'failures'])),
+})
+export type AgentAppJob = typeof AgentAppJob.Type
+
 export const AgentAppSource = Schema.Struct({
   kind: Schema.Literal('agent'),
   name: Schema.String,
   release: Schema.String,
   version: Schema.Number,
   revision: Schema.Number,
+  jobs: Schema.Array(AgentAppJob),
 })
 
 /**

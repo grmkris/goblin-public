@@ -16,6 +16,7 @@ import { type RpcResult, encodeExit, unwrap } from './http/rpc.ts'
 import { FileStore } from './files/store.ts'
 import { filesExtension } from './pi/files.ts'
 import { type AgentApps, agentApps } from './agent-apps/engine.ts'
+import { JOB_CALLBACK, type JobSchedules, type JobSlot, logAppJobs } from './agent-apps/jobs.ts'
 import { appsExtension } from './pi/apps.ts'
 import { serversExtension } from './pi/servers.ts'
 import { agentRequest, sessionSnapshot } from './agent-requests.ts'
@@ -121,7 +122,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     const { memory, recall } = this.#memory
     const routineKit = routineExtensions(routineRun, residentTools, env.CREDENTIAL_KEY)
     // Skills and apps are for main and threads; a subagent gets only the extensions its spawner hands it.
-    const apps = agentApps(ctx.storage, env, () => this.name)
+    const apps = agentApps(ctx.storage, env, () => this.name, { schedules: this.#jobSchedules() })
     this.#apps = apps
     const base = [...tools, skillsExtension(run), filesExtension(run), appsExtension(apps)]
     const own = [serversExtension(run, env.STAGE), subagents, routinesExtension(run)]
@@ -140,6 +141,14 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     })
     this.lifecycle.use(this.harness)
   }
+  /** The native schedules that run the agent's apps' jobs (ADR 0021). */
+  #jobSchedules(): JobSchedules {
+    return {
+      list: () => this.listSchedules(),
+      arm: async (at, slot) => (await this.schedule(new Date(at), JOB_CALLBACK, slot, { idempotent: true })).id,
+      cancel: (id) => this.cancelSchedule(id),
+    }
+  }
   /** How model requests leave the object: LiteLLM. The integration harness overrides it with a scripted model. */
   protected modelStreams(): ProviderStreams {
     return LITELLM_STREAMS
@@ -154,6 +163,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     // Reconstruct lease and receipt recovery without opening Pi or waiting on outbound network calls.
     await this.#scheduleWake('mcpEventsWake', Date.now() + 1000)
     await this.#scheduleWake('routinesWake', Date.now() + 1000)
+    await this.#apps.jobs.reconcile().catch((error: unknown) => logAppJobs(error))
   }
 
   /** Tests inject account authority here; the deployed object always reads its own account in auth D1. */
@@ -210,6 +220,10 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
   async runRoutineDeadline(input: { runId: string }): Promise<void> {
     await this.#routines.deadline(input.runId)
+  }
+  /** An agent app's job is due (ADR 0021). */
+  async runAppJob(slot: JobSlot): Promise<void> {
+    await this.#apps.jobs.fire(slot)
   }
 
   async #exit<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<Exit.Exit<A, AppError>> {

@@ -12,6 +12,20 @@ const MAX_POWERS = { egress: 10, tools: 10, apps: 5 } as const
 const HOST = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/u
 /** One of the owner's MCP tools: `<server>/<tool>`. */
 const TOOL = /^[\w-]{1,64}\/[\w.-]{1,128}$/u
+/** The most schedules one app declares, and a daily schedule's time of day (UTC). */
+const MAX_SCHEDULES = 4
+const TIME_OF_DAY = /^(?:[01]\d|2[0-3]):[0-5]\d$/u
+
+/** How often a schedule runs its action (ADR 0021): never more often than every 15 minutes. */
+export const EVERY = ['15m', '30m', '1h', '3h', '6h', '12h', '1d'] as const
+export type Every = (typeof EVERY)[number]
+const isEvery = (value: string): value is Every => EVERY.some((each) => each === value)
+
+/** A checked schedule's period (`readManifest` refused any other). */
+export function everyOf(value: string): Every {
+  if (!isEvery(value)) throw new Error(`not a schedule period: ${value}`)
+  return value
+}
 
 const Text = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max))
 const Json = Schema.Record(Schema.String, Schema.Unknown)
@@ -24,6 +38,15 @@ const Action = Schema.Struct({
   run: Schema.Boolean,
 })
 const View = Schema.Struct({ description: Text(300), input: Json, select: Schema.Boolean })
+const Schedule = Schema.Struct({
+  action: Schema.String,
+  /** One of `EVERY`, checked with the other rules so a wrong one gets its own problem. */
+  every: Schema.String,
+  /** For a daily schedule, the time of day it runs, `HH:MM` in UTC; otherwise null. */
+  at: Schema.NullOr(Schema.String),
+  input: Schema.Unknown,
+})
+export type Schedule = typeof Schedule.Type
 
 /** What a release's `describe()` returns, checked: its name, words, state, actions and views (ADR 0021). */
 export const Manifest = Schema.Struct({
@@ -40,17 +63,18 @@ export const Manifest = Schema.Struct({
     llm: Schema.Boolean,
     notify: Schema.Boolean,
   }),
+  schedules: Schema.Array(Schedule),
 })
 export type Manifest = typeof Manifest.Type
 
-/** No powers: what a manifest stored before apps could ask for them reads as. */
-const NO_POWERS = { egress: [], uses: { tools: [], apps: [], llm: false, notify: false } } as const
+/** What a manifest stored before apps had powers and schedules reads as: none of either. */
+const EARLIER = { egress: [], uses: { tools: [], apps: [], llm: false, notify: false }, schedules: [] } as const
 
-/** A manifest as `activate` stored it; one kept before powers existed asks for none. */
+/** A manifest as `activate` stored it; one kept before powers or schedules existed has none. */
 export function storedManifest(json: string): Manifest {
-  // SAFETY: only `activate` writes a manifest, and only one `readManifest` accepted (older ones lack the powers).
-  const stored = JSON.parse(json) as Omit<Manifest, keyof typeof NO_POWERS> & Partial<Manifest>
-  return { ...NO_POWERS, ...stored }
+  // SAFETY: only `activate` writes a manifest, and only one `readManifest` accepted (older ones lack later fields).
+  const stored = JSON.parse(json) as Omit<Manifest, keyof typeof EARLIER> & Partial<Manifest>
+  return { ...EARLIER, ...stored }
 }
 
 /** A power an app asks for (ADR 0021): a host to fetch from, an MCP tool, another app, model calls or notifications. */
@@ -80,6 +104,28 @@ function powerProblems(manifest: Manifest): string[] {
   for (const app of uses.apps.filter((each) => !APP_NAME.test(each)))
     problems.push(`uses.apps: "${app}" is not an app name.`)
   if (uses.apps.includes(manifest.name)) problems.push('uses.apps: an app does not call itself.')
+  return problems
+}
+
+/** What is wrong with the schedules: their number, actions, times and inputs. */
+function scheduleProblems(manifest: Manifest): string[] {
+  const problems: string[] = []
+  const { schedules } = manifest
+  if (schedules.length > MAX_SCHEDULES) problems.push(`At most ${MAX_SCHEDULES} schedules.`)
+  if (new Set(schedules.map((each) => each.action)).size !== schedules.length)
+    problems.push('schedules: one schedule per action.')
+  for (const schedule of schedules) {
+    const where = `schedules (${schedule.action})`
+    const action = manifest.actions[schedule.action]
+    if (action === undefined) {
+      problems.push(`${where}: no action ${schedule.action} (a schedule runs an action, not a view).`)
+      continue
+    }
+    if (!isEvery(schedule.every)) problems.push(`${where}: every is one of ${EVERY.join(', ')}.`)
+    if (schedule.at !== null && schedule.every !== '1d') problems.push(`${where}: \`at\` is only for every: '1d'.`)
+    if (schedule.at !== null && !TIME_OF_DAY.test(schedule.at)) problems.push(`${where}: at is "HH:MM" (UTC).`)
+    problems.push(...mismatches(action.input, schedule.input).map((reason) => `${where} input: ${reason}`))
+  }
   return problems
 }
 
@@ -124,7 +170,7 @@ export function readManifest(
 ): { readonly manifest: Manifest } | { readonly problems: readonly string[] } {
   const manifest = Option.getOrUndefined(decode(described))
   if (manifest === undefined) return { problems: [`The default export is not ${SHAPE}.`] }
-  const problems = [...memberProblems(manifest), ...powerProblems(manifest)]
+  const problems = [...memberProblems(manifest), ...powerProblems(manifest), ...scheduleProblems(manifest)]
   if (manifest.name !== app) problems.push(`The app is named "${app}"; its code says "${manifest.name}".`)
   const state = manifest.state.schema
   if (jsonBytes(state) > MAX_SCHEMA_BYTES) problems.push('state.schema is larger than 16 KB')

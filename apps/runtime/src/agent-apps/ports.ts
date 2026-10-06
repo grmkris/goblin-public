@@ -6,7 +6,7 @@ import { nowSeconds } from '../clock.ts'
 import type { McpHost } from '../mcp/host.ts'
 import type { CheapModel } from '../memory/model.ts'
 import type { ResidentAuthority } from '../resident.ts'
-import { AppCodeError } from './queue.ts'
+import { AppCodeError, problemText } from './queue.ts'
 
 /** What agent apps reach through their agent (ADR 0021): the owner's MCP tools, the cheap model and Telegram. */
 export type AppServices = {
@@ -16,6 +16,8 @@ export type AppServices = {
   readonly complete: (system: string, prompt: string, maxTokens: number) => Promise<string>
   /** A message to the owner on their Telegram channel; `op` makes a retry send it once. */
   readonly notify: (op: string, text: string) => Promise<void>
+  /** Why the agent may not act on its own now (the owner's plan, or resident authority), or undefined if it may. */
+  readonly blocked: () => Promise<string | undefined>
 }
 
 type Deps = {
@@ -64,6 +66,14 @@ export function appServices(deps: Deps): AppServices {
         { caller: 'model', timeout: 5000, authorize: authority },
       )
       if (result.isError === true) throw new AppCodeError('notify: the channel refused the message')
+    },
+    blocked: async () => {
+      try {
+        await authority()
+        return undefined
+      } catch (cause) {
+        return `waiting for the owner (${problemText(cause)})`
+      }
     },
   }
 }

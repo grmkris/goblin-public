@@ -50,6 +50,7 @@ export default defineApp({
   the only place for I/O: `ctx.files` (the app's own files), `ctx.log(...)`, and the powers the owner approved
   (`ctx.fetch`, `ctx.tools`, `ctx.llm`, `ctx.notify`, `ctx.apps`: topic `powers`). `ctx.state` is read-only there.
 - `select(input, ctx)` returns data from `ctx.state` for a view; it changes nothing.
+- An action can also run on its own on a schedule, every 15 minutes to daily (topic `schedules`).
 - Throw an `Error` with a clear message to refuse a call; nothing changes.
 - State is plain JSON and must match `state.schema`. Leave optional fields out rather than setting `undefined`.
 - Schemas: `s.string({min,max})`, `s.number({int,min,max})`, `s.boolean()`, `s.enum([...])`, `s.array(item,{max})`,
@@ -66,4 +67,4 @@ Call `app_build` again with the same `name`, sending only the files that change 
 schema or migrate into it, or the build fails and the running version stays. `app_inspect` shows the source, the
 state, recent events and errors; `app_rollback` goes back to an earlier version.
 
-More: `app_docs({ topic })` with `ui`, `powers`, `files` or `examples`.
+More: `app_docs({ topic })` with `ui`, `powers`, `schedules`, `files` or `examples`.

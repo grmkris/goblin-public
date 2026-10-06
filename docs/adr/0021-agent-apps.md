@@ -68,8 +68,18 @@ Save button and saves nothing without the owner's click.
 untrusted data), and `mcp_request_server` asks the owner to add one: a card with its name, address and the agent's
 reason, trusted only from that tool's own result, whose Add and connect runs the usual add and sign-in flow.
 
-**Still to come** (the same plan, later milestones): scheduled jobs; the Apps section and page, fullscreen with the
-chat docked; owner deletion; sharing a view's context with the agent.
+**Schedules.** An app runs an action on its own with `schedules` (`every` 15 minutes to a day, a daily one `at` a
+UTC time; at most four, one per action, the input checked against the action's). Each is one row in
+`app_agent_jobs` and one dated native schedule of the agent object (`runAppJob`), armed for the next slot and
+reconciled when a release activates or rolls back and when the object starts. A job is a call like any other, with
+the operation id `job:<app>:<action>:<slot>`; it asks no model unless the action does. A late run catches up only
+the newest missed slot. At most two jobs run at once per agent and 96 a day per app. A failure waits 15 minutes,
+doubling to six hours, and ten in a row pause the schedule until a new release. While the owner's plan or resident
+authority lapses, runs are skipped and recorded as waiting. The feed carries each schedule's state; the App's bar
+shows it, and the agent's apps section lists it.
+
+**Still to come** (the same plan, later milestones): the Apps section and page with pause, resume and run now,
+fullscreen with the chat docked; owner deletion; sharing a view's context with the agent.
 
 Consequences:
 - Dynamic Workers are an open beta on Workers Paid; their pricing and limits may change.

@@ -15,9 +15,10 @@ import { mismatches } from './json.ts'
 import { type Manifest, type Power, type PowerKind, requestedPowers } from './manifest.ts'
 import { toolName } from './names.ts'
 import { type Send, egress } from './egress.ts'
+import { AppJobs, type JobSchedules, type JobView } from './jobs.ts'
 import type { AppServices } from './ports.ts'
 import { AppPowers } from './powers.ts'
-import { AppCodeError, AppQueues } from './queue.ts'
+import { AppCodeError, AppQueues, problemText } from './queue.ts'
 import { AgentAppStore, type UsageKind, isApproved } from './store.ts'
 import { AppToolset } from './toolset.ts'
 
@@ -35,6 +36,8 @@ export type AgentAppsDeps = {
   readonly fetch: Send
   /** goblin's own URL: an app never fetches from its domain. */
   readonly appUrl: string
+  /** The agent object's native schedules, which run the apps' jobs. */
+  readonly schedules: JobSchedules
 }
 
 /** What `app_inspect` can include besides the summary. */
@@ -63,6 +66,8 @@ export type AgentAppInfo = {
   readonly revision: number
   /** Whether its active release has a view. */
   readonly ui: boolean
+  /** Its schedules. */
+  readonly jobs: readonly JobView[]
 }
 
 const isAgentAppLib = Schema.is(AgentAppLib)
@@ -86,6 +91,17 @@ function signatures(manifest: Manifest): string {
     .join('; ')
 }
 
+/** An app's schedules for the model: each action, how often, and how its last run went or why it is paused. */
+function schedulesText(jobs: readonly JobView[]): string {
+  if (jobs.length === 0) return ''
+  const each = jobs.map((job) => {
+    const when = `${job.action} every ${job.every}${job.at === null ? '' : ` at ${job.at} UTC`}`
+    if (job.paused !== null) return `${when} (paused by ${job.paused === 'owner' ? 'the owner' : 'failures'})`
+    return job.status === null ? when : `${when} (last run ${job.status})`
+  })
+  return ` Schedules: ${each.join(', ')}.`
+}
+
 /**
  * The agent's apps (ADR 0021), built by the agent object before Pi opens: build and activate releases, dispatch calls,
  * keep each app's tools installed, roll back, and describe the apps to the model.
@@ -95,6 +111,7 @@ export class AgentApps {
   readonly dispatch: AppDispatch
   readonly isolates: Isolates
   readonly ownerFiles: FileStore
+  readonly jobs: AppJobs
   readonly #deps: AgentAppsDeps
   readonly #queues = new AppQueues()
   readonly #toolset: AppToolset
@@ -119,15 +136,26 @@ export class AgentApps {
       changed: (app) => this.#changed(app),
     })
     this.#toolset = new AppToolset(this.store, this.dispatch)
+    this.jobs = new AppJobs({
+      db: drizzle(deps.storage),
+      store: this.store,
+      manifest: (release) => this.dispatch.manifest(release),
+      run: (app, member, input, op) => this.dispatch.call({ app, member, input, op }),
+      blocked: () => this.#services?.blocked() ?? Promise.resolve('the agent is still starting'),
+      schedules: deps.schedules,
+      now: deps.now,
+      changed: (app) => this.#changed(app),
+    })
     this.#builder = new AppBuilder({
       store: this.store,
       isolates,
       queues: this.#queues,
       toolchain: deps.toolchain,
       now: deps.now,
-      activated: (app) => {
+      activated: async (app) => {
         this.#toolset.install(app)
         this.#changed(app)
+        await this.#reconcile(app)
       },
     })
   }
@@ -159,6 +187,7 @@ export class AgentApps {
       version: this.store.release(row.activeRelease)?.seq ?? 0,
       revision: this.store.state(app)?.revision ?? 0,
       ui: this.store.view(row.activeRelease) !== undefined,
+      jobs: this.jobs.list(app),
     }
   }
 
@@ -271,7 +300,7 @@ export class AgentApps {
           waiting.length === 0
             ? ''
             : ` Not approved by the owner yet: ${waiting.map((power) => `${power.kind} ${power.target}`).join(', ')}.`
-        return `- ${app.name} (v${String(version)}, "${app.title}"${view}): ${signatures(manifest)}. Tools: ${toolName(app.name, '…')}.${asks}${failing}`
+        return `- ${app.name} (v${String(version)}, "${app.title}"${view}): ${signatures(manifest)}. Tools: ${toolName(app.name, '…')}.${schedulesText(this.jobs.list(app.name))}${asks}${failing}`
       })
       .join('\n')
   }
@@ -347,6 +376,7 @@ export class AgentApps {
       this.store.rollback({ app, release, state: snapshot?.state, now: this.#deps.now() })
       this.#toolset.install(app)
       this.#changed(app)
+      await this.#reconcile(app)
       return { release, version: row.seq, restored: snapshot === undefined ? 'kept' : 'snapshot' }
     })
   }
@@ -414,6 +444,13 @@ export class AgentApps {
     })
   }
 
+  /** Arms the schedules a new or earlier release declares; a failure is kept with the app's events, not thrown. */
+  async #reconcile(app: string): Promise<void> {
+    await this.jobs.reconcile().catch((cause: unknown) => {
+      this.store.event(app, 'error', `schedules: ${problemText(cause)}`, this.#deps.now())
+    })
+  }
+
   #filesOf(app: string): AppFiles {
     const known = this.#files.get(app)
     if (known !== undefined) return known
@@ -427,25 +464,21 @@ export class AgentApps {
   }
 }
 
-/**
- * The agent object's apps: over its SQLite, its Worker Loader and the stage's files bucket, owned by `owner`. Tests
- * pass `outside` to stand in for the internet.
- */
-export function agentApps(
-  storage: DurableObjectStorage,
-  env: RuntimeEnv,
-  owner: () => string,
-  outside: Send = (url, init) => fetch(url, init),
-): AgentApps {
+/** What the agent object lends its apps: its native schedules; tests also replace the internet and the clock. */
+export type AppPorts = { readonly schedules: JobSchedules; readonly fetch?: Send; readonly now?: () => number }
+
+/** The agent object's apps: over its SQLite, its Worker Loader and the stage's files bucket, owned by `owner`. */
+export function agentApps(storage: DurableObjectStorage, env: RuntimeEnv, owner: () => string, ports: AppPorts) {
   return new AgentApps({
+    schedules: ports.schedules,
     storage,
     loader: env.LOADER,
     bucket: env.FILES,
     owner,
-    now: nowMillis,
+    now: ports.now ?? nowMillis,
     toolchain: () => import('@goblin/app/toolchain'),
     ownerFiles: new FileStore(storage.sql, env.FILES, owner),
-    fetch: outside,
+    fetch: ports.fetch ?? ((url, init) => fetch(url, init)),
     appUrl: env.APP_URL,
   })
 }

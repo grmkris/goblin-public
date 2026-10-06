@@ -289,6 +289,11 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       `CREATE TABLE app_agent_usage (app TEXT NOT NULL, day TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('egress', 'tokens', 'notify', 'job')), amount INTEGER NOT NULL, PRIMARY KEY (app, day, kind))`,
     ].join(BREAK),
   },
+  {
+    key: '20261018000400_agent_app_jobs',
+    tables: ['app_agent_jobs'],
+    sql: `CREATE TABLE app_agent_jobs (app TEXT NOT NULL, action TEXT NOT NULL, every TEXT NOT NULL CHECK (every IN ('15m', '30m', '1h', '3h', '6h', '12h', '1d')), at TEXT, input TEXT NOT NULL, release TEXT NOT NULL, next_at INTEGER NOT NULL, schedule_id TEXT, last_at INTEGER, last_status TEXT CHECK (last_status IN ('ok', 'failed', 'waiting', 'skipped')), last_error TEXT, failures INTEGER NOT NULL DEFAULT 0, paused TEXT CHECK (paused IN ('owner', 'failures')), PRIMARY KEY (app, action))`,
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {
