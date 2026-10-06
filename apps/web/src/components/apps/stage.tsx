@@ -10,6 +10,7 @@ import { CHROME_HEIGHT, type Rect } from '../../lib/app-stage.ts'
 import { APP_MODES, type AppPlacement, inlineHeight } from '../../lib/host-context.ts'
 import { atRest, type Motion, PLACE, stepSpring } from '../../lib/spring.ts'
 import { AppFrame, selectionOrigin } from './frame.tsx'
+import { AppJobs } from './app-jobs.tsx'
 import { useAppGrantAsks } from './grant-ask.tsx'
 import { type Instance, type SlotName, useAppHost } from './host.tsx'
 import { DownloadOffer, LinkOffer } from './offers.tsx'
@@ -132,6 +133,7 @@ function AppChrome({ instance, onPage }: { readonly instance: Instance; readonly
   return (
     <div className="app-chrome">
       <span className="app-chrome-title">{instance.app.title}</span>
+      {instance.app.source.kind === 'agent' && <AppJobs jobs={instance.app.source.jobs} />}
       <ChromeButton label="Open as a page" icon={PanelRightOpenIcon} onClick={onPage} />
       <ChromeButton label="Close the app" icon={XIcon} onClick={() => host.close(instance.app.id)} />
     </div>

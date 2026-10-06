@@ -917,6 +917,24 @@ main.shell {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.app-chrome-jobs {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  max-width: 55%;
+  margin-inline-end: 0.25rem;
+  white-space: nowrap;
+}
+.app-chrome-jobs svg {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+}
+.app-chrome-jobs[data-trouble='true'] {
+  color: var(--destructive);
+}
 .app-stage-frame {
   display: block;
   flex: 1;
