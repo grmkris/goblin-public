@@ -300,7 +300,7 @@ export function TurnMap({
   const [track, setTrack] = useState(0)
   const [open, setOpen] = useState(false)
   const geometry = useTurnGeometry(viewport, turns.map((turn) => turn.id).join('\n'), band, track)
-  const { scrollToMessage } = useMessageScroller()
+  const { scrollToMessage, scrollToEnd } = useMessageScroller()
   if (!geometry.shown) return null
   const variant: Variant = {
     turns,
@@ -310,7 +310,8 @@ export function TurnMap({
     onEarlier,
     onJump: (id) => {
       const instant = matchMedia('(prefers-reduced-motion: reduce)').matches
-      scrollToMessage(id, { align: 'start', behavior: instant ? 'auto' : 'smooth' })
+      if (id === 'home-surface') scrollToEnd({ behavior: instant ? 'auto' : 'smooth' })
+      else scrollToMessage(id, { align: 'start', behavior: instant ? 'auto' : 'smooth' })
       setOpen(false)
     },
   }

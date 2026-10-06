@@ -60,6 +60,7 @@ export {
   MessageScrollerProvider,
   MessageScrollerViewport,
   useMessageScroller,
+  useMessageScrollerScrollable,
 } from './components/message-scroller.tsx'
 export { Separator } from './components/separator.tsx'
 export { Skeleton } from './components/skeleton.tsx'

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import type { HomeTile } from '@goblin/contracts'
 import { Button, useMessageScroller } from '@goblin/ui'
 import { ArrowUpRightIcon, MessageSquareIcon } from 'lucide-react'
-import { HOME_MARK } from '../../lib/home.ts'
 import { appKey, conversationKey } from '../../lib/workspace.ts'
 import { ToolMarkdown } from '../parts/tool-markdown.tsx'
 import { useWorkspace } from '../workspace.tsx'
@@ -46,7 +45,13 @@ function Tile({ tile }: { readonly tile: HomeTile }) {
   const title =
     tile.kind === 'note' ? tile.title : tile.kind === 'conversations' ? 'Recent conversations' : (app?.title ?? 'App')
   return (
-    <article className="home-tile" data-home-tile={tile.id} data-size={tile.size} aria-label={title}>
+    <article
+      className="home-tile"
+      data-home-tile={tile.id}
+      data-size={tile.size}
+      data-kind={tile.kind}
+      aria-label={title}
+    >
       <div className="home-tile-label">
         {app === undefined ? (
           title
@@ -76,12 +81,11 @@ function Tile({ tile }: { readonly tile: HomeTile }) {
 export function HomeSurface({ onDraft }: { readonly onDraft: (text: string) => void }) {
   const { home } = useWorkspaceFeed()
   const root = useRef<HTMLElement>(null)
-  const { scrollToMessage } = useMessageScroller()
+  const { scrollToEnd } = useMessageScroller()
   const [editing, setEditing] = useState(false)
   useEffect(() => {
     const show = (event: Event) => {
-      scrollToMessage(HOME_MARK, {
-        align: 'start',
+      scrollToEnd({
         behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       })
       if (!(event instanceof CustomEvent) || !Array.isArray(event.detail)) return
@@ -95,14 +99,19 @@ export function HomeSurface({ onDraft }: { readonly onDraft: (text: string) => v
     }
     window.addEventListener('goblin-home-show', show)
     return () => window.removeEventListener('goblin-home-show', show)
-  }, [scrollToMessage])
+  }, [scrollToEnd])
   const tiles = home?.tiles ?? []
-  const date = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())
+  const today = new Date()
+  const date = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' }).format(today)
+  const narrowDate = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' }).format(
+    today,
+  )
   return (
     <section className="home-surface" aria-label="Home" ref={root} data-editing={editing || undefined}>
       <header className="home-header">
         <h2>
-          Home <span>· {date}</span>
+          Home <span className="home-date-wide">· {date}</span>
+          <span className="home-date-narrow">· {narrowDate}</span>
         </h2>
         <Button
           variant="ghost"

@@ -6,6 +6,7 @@ const tokens: Record<string, string> = {
   '--foreground': 'oklch(0.94 0.004 90)',
   '--border': 'oklch(1 0 0 / 10%)',
   '--radius-lg': '0.5rem',
+  '--card': 'oklch(0.24 0.006 255)',
 }
 const read = (name: string) => tokens[name] ?? ''
 const device = { dark: true, touch: false, hover: true, locale: 'en-GB', timeZone: 'Europe/Ljubljana' }
@@ -61,6 +62,7 @@ describe('the host context an MCP App receives', () => {
       tileSize: 'medium',
       containerDimensions: { width: 300, height: 110 },
     })
+    expect(home.styles?.variables?.['--color-background-primary']).toBe('oklch(0.24 0.006 255)')
     expect(home.containerDimensions).not.toHaveProperty('maxHeight')
     expect(home).not.toHaveProperty('grants')
   })

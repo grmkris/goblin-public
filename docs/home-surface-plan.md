@@ -81,6 +81,7 @@ is not a scroll anchor and not a message.
 the view; “now” is that same position for the latest owner turn, with the reply and then Home below it. A short
 latest exchange leaves Home visible without scrolling; a long one keeps the answer fully readable and Home one scroll
 away. The scroller's end (the bottom of Home) is reached only by an explicit Home jump.
+Home landing and its mark put the last grid row within 24 px above the dock, with reserved turn space between the newest exchange and Home, and no jump arrow at the end.
 
 - **Landing.** Opening Main lands on “now” while the latest owner turn is from today (local time); otherwise it lands
   on Home. A new day starts on Home; an ongoing conversation resumes where it was.

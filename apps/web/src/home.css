@@ -1,7 +1,17 @@
 .home-surface {
   position: relative;
-  margin-block: 1rem;
+  margin-block: 1rem 0;
   min-width: 0;
+}
+[data-home-transcript] {
+  --message-scroller-inset-bottom: calc(var(--dock-height, 8rem) + var(--keyboard-inset, 0px) + 1rem);
+}
+[data-home-transcript] [data-message-id='home-surface'] {
+  order: 2;
+  margin-top: auto;
+}
+[data-home-transcript] [data-message-scroller-spacer] {
+  order: 1;
 }
 [data-home-transcript] [data-slot='message-scroller-viewport'] {
   overflow-anchor: none;
@@ -34,6 +44,9 @@
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
+.home-date-narrow {
+  display: none;
+}
 .home-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -57,6 +70,12 @@
 }
 .dark .home-tile {
   box-shadow: none;
+}
+.home-tile[data-kind='app'] {
+  padding: 0;
+}
+.home-tile[data-kind='app'] .home-tile-label {
+  padding: 0.875rem 0.875rem 0;
 }
 .home-tile[data-size='medium'] {
   grid-column: span 2;
@@ -146,8 +165,17 @@
   .home-tile[data-size='wide'] {
     grid-column: span 2;
   }
-  .home-header h2 span {
-    display: block;
+  .home-header h2 {
+    white-space: nowrap;
+  }
+  .home-header {
+    padding-inline-end: 1.25rem;
+  }
+  .home-header h2 .home-date-wide {
+    display: none;
+  }
+  .home-header h2 .home-date-narrow {
+    display: inline;
     font-size: 12px;
   }
 }

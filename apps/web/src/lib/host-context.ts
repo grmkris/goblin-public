@@ -61,10 +61,10 @@ const FIXED: Partial<McpUiStyles> = {
 }
 
 /** Our theme as MCP Apps style variables; tokens the document does not define are left out. */
-export function hostStyles(read: TokenReader): McpUiStyles {
+export function hostStyles(read: TokenReader, surface?: AppPlacement['surface']): McpUiStyles {
   const styles: Partial<McpUiStyles> = { ...FIXED }
   for (const [key, token] of THEMED) {
-    const value = read(token).trim()
+    const value = read(surface === 'home' && key === '--color-background-primary' ? '--card' : token).trim()
     if (value !== '') styles[key] = value
   }
   // SAFETY: McpUiStyles is Record<key, string | undefined>; a key that is absent reads as undefined, as the type allows.
@@ -99,7 +99,7 @@ export function hostContext(read: TokenReader, device: Device, placement: AppPla
   const height = Math.round(placement.height)
   return {
     theme: device.dark ? 'dark' : 'light',
-    styles: { variables: hostStyles(read) },
+    styles: { variables: hostStyles(read, placement.surface) },
     displayMode: placement.mode,
     availableDisplayModes: [...placement.available],
     containerDimensions:

@@ -4,6 +4,7 @@ import * as React from 'react'
 import * as ReactDOM from 'react-dom'
 import * as ReactDOMClient from 'react-dom/client'
 import * as jsxRuntime from 'react/jsx-runtime'
+import { applyHostStyleVariables, type McpUiHostContext } from '@modelcontextprotocol/ext-apps'
 import * as components from './components.ts'
 import { frameRequire, provide } from './modules.ts'
 import {
@@ -34,15 +35,21 @@ provide({
 })
 scope.__goblinRequire = frameRequire
 
-const applyTheme = (theme: unknown) => document.documentElement.classList.toggle('dark', theme === 'dark')
+function applyTheme(context: McpUiHostContext | undefined): void {
+  document.documentElement.classList.toggle('dark', context?.theme === 'dark')
+  const variables = context?.styles?.variables
+  if (variables === undefined) return
+  applyHostStyleVariables(variables)
+  const root = document.documentElement.style
+  root.setProperty('--background', variables['--color-background-primary'] ?? '')
+  root.setProperty('--card', variables['--color-background-secondary'] ?? '')
+}
 
 /** Follows the host's theme: goblin's tokens switch under `.dark`. */
 function followTheme(): void {
   const app = connect()
-  app.addEventListener('hostcontextchanged', (context) => {
-    if (context.theme !== undefined) applyTheme(context.theme)
-  })
-  void connected().then(() => applyTheme(app.getHostContext()?.theme))
+  app.addEventListener('hostcontextchanged', () => applyTheme(app.getHostContext()))
+  void connected().then(() => applyTheme(app.getHostContext()))
 }
 
 scope.__goblinStart = async (load) => {
