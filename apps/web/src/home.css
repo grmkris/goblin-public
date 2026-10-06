@@ -244,3 +244,37 @@
     transition: opacity 150ms;
   }
 }
+.home-tile-label > button:first-of-type {
+  flex: 1;
+  overflow: hidden;
+}
+.home-tile-actions {
+  display: flex;
+  align-items: center;
+  margin-inline-start: auto;
+  flex: none;
+}
+.home-drag-handle {
+  flex: none !important;
+  cursor: grab;
+}
+.home-tile[data-lifted] {
+  z-index: 30;
+  touch-action: none;
+  box-shadow: 0 12px 28px oklch(0 0 0 / 0.16);
+}
+.home-tile[data-lifted] .home-drag-handle {
+  cursor: grabbing;
+}
+.app-stage[data-editing] {
+  pointer-events: none;
+  opacity: 0.55;
+}
+.home-tile:focus {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.home-tile-label button:active {
+  scale: 0.985;
+  transition: scale 100ms;
+}

@@ -94,6 +94,7 @@ function useStageMotion({ stage, live, slot, onTarget, onVisible }: StageMotion)
         onVisible(false)
         return
       }
+      element.toggleAttribute('data-editing', followed.closest('[data-editing]') !== null)
       delete element.dataset.hidden
       const rect = rectOf(followed)
       onTarget(rect)
@@ -206,6 +207,8 @@ function Stage({ instance }: { readonly instance: Instance }) {
   useEffect(() => {
     if (previous.current === place.surface) return
     previous.current = place.surface
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches)
+      stage.current?.animate([{ opacity: 0.4 }, { opacity: 1 }], { duration: 150 })
     live.current.moving = live.current.seeded
     kick()
   }, [place.surface, kick])
