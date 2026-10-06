@@ -39,6 +39,7 @@ export {
 } from './components/field.tsx'
 export { HoverCard, HoverCardContent, HoverCardTrigger } from './components/hover-card.tsx'
 export { Input } from './components/input.tsx'
+export { JsonView } from './components/json-view.tsx'
 export { Label } from './components/label.tsx'
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from './components/collapsible.tsx'
 export {
@@ -121,6 +122,7 @@ export {
 } from './components/sidebar-menu.tsx'
 export { TopBar, TopBarTitle } from './components/top-bar.tsx'
 export { Textarea } from './components/textarea.tsx'
+export { ToolPayload, ToolPayloadText } from './components/tool-payload.tsx'
 export { UsageRing } from './components/usage-ring.tsx'
 export {
   ToolCall,

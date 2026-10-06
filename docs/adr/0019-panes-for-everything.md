@@ -46,6 +46,10 @@ conversation for a moment, and replies after it are unread.
 **Apps.** An App is an item too (`a:<id>`): its page, in a pane of its own. ADR 0020 (durable Apps, one iframe per
 instance) replaced the interim single App pane this decision first shipped with.
 
+**Tool details stay in the transcript.** A tool remains one expandable line. Its input and output open beneath it,
+with bounded JSON branches, inline long-string expansion, and Raw and Copy for the complete result. The viewer uses
+the existing result envelope and stays inside the conversation pane; an App keeps its own placement and lifecycle.
+
 Trellis is commercially licensed. Dan Fessler gave Purrable permission to use it without sponsorship until Purrable
 makes money, in exchange for crediting him and allowing him to showcase Purrable as a Trellis user. The workspace
 toolbar and README credit him, linking https://github.com/DanFessler/trellis. This project-specific permission covers

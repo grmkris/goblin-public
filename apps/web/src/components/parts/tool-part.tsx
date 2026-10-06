@@ -1,20 +1,39 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useMemo } from 'react'
 import {
   Duration,
+  JsonView,
   ToolCall,
   ToolCallContent,
   ToolCallMeta,
   ToolCallStatus,
   ToolCallTitle,
   ToolCallTrigger,
+  ToolPayload,
+  ToolPayloadText,
 } from '@purrable/ui'
 import { elapsedMs, toolLine, type ToolPart } from '../../lib/parts.ts'
+import { outputBlocks } from '../../lib/tool-payload.ts'
 import { useNow } from '../use-now.ts'
+
+function ToolResult({ result }: { readonly result: NonNullable<ToolPart['result']> }) {
+  const blocks = useMemo(() => outputBlocks(result), [result])
+  return (
+    <ToolPayload label="Output" raw={result.text} structured={blocks.some((block) => block.kind === 'json')}>
+      {blocks.map((block, index) =>
+        block.kind === 'json' ? (
+          <JsonView key={index} value={block.value} />
+        ) : (
+          <ToolPayloadText key={index}>{block.text}</ToolPayloadText>
+        ),
+      )}
+    </ToolPayload>
+  )
+}
 
 /**
  * A tool call as one quiet line: lifecycle dot, "Used server · tool" (the agent's own tools in words), and its running
- * clock or final time. It opens to the call's arguments and the result text; `children` add to the open part (an App
- * view, for example).
+ * clock or final time. It opens to labelled input and output, JSON trees or plain text; `children` add to the open
+ * part (an App view, for example).
  */
 export function ToolCard({ part, children }: { readonly part: ToolPart; readonly children?: ReactNode }) {
   const live = part.state === 'running' || part.state === 'pending'
@@ -41,8 +60,12 @@ export function ToolCard({ part, children }: { readonly part: ToolPart; readonly
         </ToolCallMeta>
       </ToolCallTrigger>
       <ToolCallContent>
-        {Object.keys(args).length > 0 && <pre className="tool-output">{JSON.stringify(args, null, 2)}</pre>}
-        {part.result && <pre className="tool-output">{part.result.text}</pre>}
+        {Object.keys(args).length > 0 && (
+          <ToolPayload label="Input" raw={JSON.stringify(args, null, 2)} structured>
+            <JsonView value={args} />
+          </ToolPayload>
+        )}
+        {part.result && <ToolResult result={part.result} />}
         {children}
       </ToolCallContent>
     </ToolCall>

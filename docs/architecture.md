@@ -194,6 +194,14 @@ otherwise offers a jump back. The pane's pill (where it came from, its name and 
 float over the transcript as translucent chrome. Assistant Markdown is set by shadcn/typeset, whose append-stable rules keep earlier blocks still
 while a reply streams.
 
+Tool calls remain quiet expandable lines (`ToolCall` in `packages/ui`). Opening one shows labelled Input and Output
+sections (`ToolPayload`), with the local `JsonView` adapted from MIT-licensed `mnove/json-view-cn`. The root opens,
+nested branches fold, long strings expand on request, and each object or array shows 50 children at a time. The web
+selector (`lib/tool-payload.ts`) reads the existing redacted MCP envelope: structured output first, then individual
+content blocks, suppressing a duplicate JSON text block while keeping additional prose and non-text blocks as data.
+Ordinary or incomplete result text stays readable. Raw and its Copy action preserve the complete original text;
+the tree copies complete values rather than its shortened display. No renderer fetches URLs or changes authority.
+
 When the agent waits on the owner, the request is pinned above the composer until their next message
 (`lib/interactions.ts`). This covers `ask_user` questions (a questionnaire) and grant-required results (an Allow card
 for the exact server and tool). The reply is an ordinary message with a stable operation ID: `answer:<callId>` or
