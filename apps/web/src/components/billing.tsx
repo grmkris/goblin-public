@@ -17,6 +17,7 @@ import {
 import { failureText, request } from '../lib/boundary.ts'
 import { useBilling } from '../lib/billing.tsx'
 import { planStatus } from '../lib/labels.ts'
+import { AuthShell } from './auth-shell.tsx'
 import { StatusLabel } from './status-label.tsx'
 
 const PortalLink = Schema.Struct({ url: Schema.String })
@@ -100,62 +101,58 @@ export function Subscribe() {
     }
   }
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Your own resident agent</CardTitle>
-        <CardDescription>Pro · $10/month</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-5">
+    <AuthShell
+      size="lg"
+      title="Your own resident agent"
+      description="Pro · $10 a month. No trial; cancel any time."
+      footer={
+        <>
           <p>
-            Talk in your browser, connect your tools and give your agent work to carry on with. Pro includes 2 million
-            weighted tokens per day, resetting at midnight UTC.
+            By subscribing you accept the <Link to="/terms">terms</Link>. Read our <Link to="/privacy">privacy</Link>{' '}
+            and <Link to="/refunds">refund</Link> policies.
           </p>
-          <p className="text-sm text-muted-foreground">
-            No trial. Billed monthly. Cancel any time; your agent stays available until the end of the paid period.
-            Model prices affect how quickly the allowance is used.
+          <p>
+            <Link to="/settings">Account settings</Link>
           </p>
-          {(error || failure) && (
-            <Alert variant="destructive">
-              <AlertDescription>{failure || error}</AlertDescription>
-            </Alert>
-          )}
-          {state?.active ? (
-            <a href="/" className="underline">
-              Open your agent
-            </a>
-          ) : (
-            <Button disabled={pending || state?.mode == null} onClick={() => void checkout()}>
-              {pending
-                ? 'Opening checkout…'
-                : state?.mode === 'test_mode'
-                  ? 'Continue to test checkout'
-                  : 'Subscribe for $10/month'}
-            </Button>
-          )}
-          {state !== undefined && state.mode === null && !state.active && (
-            <p role="status">Checkout is being set up. Please try again later.</p>
-          )}
-          <p className="text-sm text-muted-foreground">
-            By subscribing you accept the{' '}
-            <a className="underline" href="/terms">
-              terms
-            </a>
-            . Read our{' '}
-            <a className="underline" href="/privacy">
-              privacy
-            </a>{' '}
-            and{' '}
-            <a className="underline" href="/refunds">
-              refund
-            </a>{' '}
-            policies.
+        </>
+      }
+    >
+      <div className="auth-body">
+        <ul className="plan-points">
+          <li>Talk to it in your browser, and connect the tools you choose it may use.</li>
+          <li>Give it work to carry on with: routines run at a time, on a schedule or when a server sends an event.</li>
+          <li>2 million weighted tokens a day, starting again at midnight UTC.</li>
+        </ul>
+        <p className="server-note">
+          Billed monthly; your agent stays available until the end of the paid period. Model prices affect how quickly
+          the allowance is used.
+        </p>
+        {(error || failure) && (
+          <Alert variant="destructive">
+            <AlertDescription>{failure || error}</AlertDescription>
+          </Alert>
+        )}
+        {state?.active ? (
+          <Button size="lg" className="w-full" nativeButton={false} render={<Link to="/" />}>
+            Open your agent
+          </Button>
+        ) : (
+          <Button
+            size="lg"
+            className="w-full"
+            pending={pending}
+            disabled={state?.mode == null}
+            onClick={() => void checkout()}
+          >
+            {state?.mode === 'test_mode' ? 'Continue to test checkout' : 'Subscribe for $10 a month'}
+          </Button>
+        )}
+        {state !== undefined && state.mode === null && !state.active && (
+          <p role="status" className="server-note">
+            Checkout is being set up. Please try again later.
           </p>
-          <a className="text-sm underline" href="/settings">
-            Account settings
-          </a>
-        </div>
-      </CardContent>
-    </Card>
+        )}
+      </div>
+    </AuthShell>
   )
 }

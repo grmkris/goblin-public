@@ -1,19 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import {
-  Alert,
-  AlertDescription,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Field,
-  FieldGroup,
-  FieldLabel,
-  Input,
-} from '@purrable/ui'
+import { Alert, AlertDescription, Button, Field, FieldGroup, FieldLabel, Input } from '@purrable/ui'
+import { AuthShell } from '../components/auth-shell.tsx'
 import { request } from '../lib/boundary.ts'
 
 /** Where a password-reset link lands (Better Auth adds `token`, or `error` for a used or expired link). */
@@ -38,55 +26,53 @@ function ResetPassword() {
     }
   }
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Choose a new password</CardTitle>
-        <CardDescription>Every device signed in to your account will be signed out.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {state === 'form' && (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              void reset()
-            }}
-          >
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="new-password">New password</FieldLabel>
-                <Input
-                  id="new-password"
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={12}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  required
-                />
-              </Field>
-              <Field>
-                <Button type="submit" disabled={pending}>
-                  {pending ? 'Saving…' : 'Set password'}
-                </Button>
-              </Field>
-            </FieldGroup>
-          </form>
-        )}
-        {state === 'done' && (
-          <Alert>
-            <AlertDescription>
-              Password changed. <a href="/">Sign in</a> with the new one.
-            </AlertDescription>
-          </Alert>
-        )}
-        {state === 'failed' && (
-          <Alert variant="destructive">
-            <AlertDescription>
-              This link has been used or has expired. <a href="/">Request a new one</a> from the sign-in page.
-            </AlertDescription>
-          </Alert>
-        )}
-      </CardContent>
-    </Card>
+    <AuthShell
+      title="Choose a new password"
+      description="Every device signed in to your account will be signed out."
+      footer={
+        <p>
+          <Link to="/login">Back to sign in</Link>
+        </p>
+      }
+    >
+      {state === 'form' && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            void reset()
+          }}
+        >
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="new-password">New password</FieldLabel>
+              <Input
+                id="new-password"
+                type="password"
+                autoComplete="new-password"
+                minLength={12}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+            </Field>
+            <Button type="submit" size="lg" className="w-full" pending={pending}>
+              Set password
+            </Button>
+          </FieldGroup>
+        </form>
+      )}
+      {state === 'done' && (
+        <Alert>
+          <AlertDescription>Password changed. Sign in with the new one.</AlertDescription>
+        </Alert>
+      )}
+      {state === 'failed' && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            This link has been used or has expired. Request a new one from the sign-in page.
+          </AlertDescription>
+        </Alert>
+      )}
+    </AuthShell>
   )
 }

@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { CatIcon, KeyRoundIcon } from 'lucide-react'
+import { KeyRoundIcon } from 'lucide-react'
 import {
   type AuthActionResult,
-  AuthPage,
   Button,
   Field,
   FieldDescription,
@@ -11,11 +10,13 @@ import {
   Input,
   SignInMethods,
   type SignInMethod,
+  Skeleton,
   failed,
   succeeded,
 } from '@purrable/ui'
 import { authClient, redirectOf } from '../lib/auth-client.ts'
 import { ApiFailure, record, request } from '../lib/boundary.ts'
+import { AuthShell } from './auth-shell.tsx'
 
 type SignupMode = 'open' | 'invite' | 'closed'
 type AuthConfig = { readonly signup: SignupMode; readonly mail: boolean; readonly loaded: boolean }
@@ -215,6 +216,17 @@ function Footer(props: { readonly view: View; readonly config: AuthConfig; reado
   )
 }
 
+/** The form's outline while the deployment says how it signs in, so the page never opens blank or jumps. */
+function FormOutline() {
+  return (
+    <div className="auth-body" aria-busy>
+      <Skeleton className="h-14 w-full" />
+      <Skeleton className="h-14 w-full" />
+      <Skeleton className="h-9 w-full" />
+    </div>
+  )
+}
+
 /** Sign in or create an account: with mail, an emailed code first and a password behind it; without mail, a password. */
 export function Authentication({ onAuthenticated }: { readonly onAuthenticated: () => void }) {
   const config = useAuthConfig()
@@ -228,16 +240,16 @@ export function Authentication({ onAuthenticated }: { readonly onAuthenticated: 
     setView(next)
   }
   return (
-    <AuthPage
-      as="section"
-      mark={<CatIcon />}
+    <AuthShell
       title={TITLES[view].title}
       description={TITLES[view].description}
       footer={<Footer view={view} config={config} go={go} />}
     >
       {creating && config.signup === 'invite' && <InviteField value={inviteCode} onChange={setInviteCode} />}
       {/* The form picks its first method when it mounts, so it waits until the deployment says whether it sends mail. */}
-      {!config.loaded ? null : view === 'reset' ? (
+      {!config.loaded ? (
+        <FormOutline />
+      ) : view === 'reset' ? (
         <ResetRequest notify={setNotice} />
       ) : (
         <SignInMethods
@@ -254,6 +266,6 @@ export function Authentication({ onAuthenticated }: { readonly onAuthenticated: 
           {notice}
         </p>
       )}
-    </AuthPage>
+    </AuthShell>
   )
 }
