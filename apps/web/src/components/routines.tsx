@@ -39,6 +39,7 @@ const operation = () => crypto.randomUUID()
 const localTime = (at: number, zone: string) =>
   new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: zone }).format(at)
 const count = (value: number) => value.toLocaleString()
+const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone
 
 /** When a routine runs, in words. */
 function whenOf(definition: RoutineDefinition): string {
@@ -62,7 +63,7 @@ function RoutineTimezone({
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
-  const suggested = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const suggested = browserZone()
   async function save(form: HTMLFormElement) {
     const value = new FormData(form).get('timezone')
     if (typeof value !== 'string') return
@@ -334,7 +335,7 @@ export function RoutinesSection() {
       {editing !== undefined && (
         <RoutineEditor
           key={editing === 'new' ? 'new' : editing.id}
-          timezone={settings?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone}
+          timezone={settings === undefined || settings.timezone === 'UTC' ? browserZone() : settings.timezone}
           {...(editing !== 'new' && { routine: editing })}
           onCancel={() => setEditing(undefined)}
           onSaved={(routine) => {

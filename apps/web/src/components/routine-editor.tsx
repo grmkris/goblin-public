@@ -1,4 +1,6 @@
-import { useEffect, useId, useState } from 'react'
+// Writing a routine: what it does, when it runs, and what it may use. Saving makes a proposal the owner then confirms
+// on its card; nothing here turns a routine on.
+import { type ReactNode, useEffect, useId, useState } from 'react'
 import { Schema } from 'effect'
 import { RoutineView, RoutineTrigger, type RoutineDefinition } from '@purrable/contracts'
 import {
@@ -7,18 +9,28 @@ import {
   Button,
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
   Field,
+  FieldDescription,
   FieldLabel,
   Input,
   Switch,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   Textarea,
 } from '@purrable/ui'
 import { failureText, request } from '../lib/boundary.ts'
+import { localInput, localInstant } from '../lib/local-time.ts'
 
 const Grants = Schema.Array(Schema.Struct({ serverId: Schema.String, capability: Schema.String, name: Schema.String }))
 const decodeView = Schema.decodeUnknownSync(RoutineView)
+type Kind = RoutineDefinition['trigger']['kind']
+type Tool = { readonly serverId: string; readonly name: string }
+
 const defaults = (timezone: string): RoutineDefinition => ({
   title: '',
   prompt: '',
@@ -29,28 +41,60 @@ const defaults = (timezone: string): RoutineDefinition => ({
   budget: { tokensPerRun: 25_000, tokensPerDay: 50_000, runtimeSeconds: 900 },
 })
 
+/** Schedules most people want, as a start for the cron field. */
+const PRESETS = [
+  { label: 'Every day at 8:00', expression: '0 8 * * *' },
+  { label: 'Weekdays at 9:00', expression: '0 9 * * 1-5' },
+  { label: 'Mondays at 9:00', expression: '0 9 * * 1' },
+] as const
+
+/** The trigger the form describes; a reminder's picked wall time becomes an instant with its offset. */
+function triggerFrom(kind: Kind, field: (name: string) => string, cron: string): RoutineDefinition['trigger'] {
+  if (kind === 'cron') return { kind: 'cron', expression: cron }
+  if (kind === 'event') {
+    const filters = field('eventArguments').trim()
+    return Schema.decodeUnknownSync(RoutineTrigger)({
+      kind: 'event',
+      serverId: field('eventServer'),
+      name: field('eventName'),
+      arguments: filters === '' ? {} : JSON.parse(filters),
+    })
+  }
+  const at = localInstant(field('at'))
+  if (at === undefined) throw new Error('Pick the date and time it should run.')
+  return { kind: 'once', at }
+}
+
 type EditorProps = {
   readonly timezone: string
   readonly routine?: RoutineView
   readonly onSaved: (routine: RoutineView) => void
   readonly onCancel?: () => void
 }
+
+/** The tools the owner has allowed, plus any the routine already names, so editing never drops one silently. */
+function useAvailableTools(selected: readonly Tool[], onError: (message: string) => void) {
+  const [tools, setTools] = useState<readonly Tool[]>([])
+  useEffect(() => {
+    void request('/api/mcp/grants')
+      .then((value) => setTools(Schema.decodeUnknownSync(Grants)(value).filter((grant) => grant.capability === 'tool')))
+      .catch((cause: unknown) => onError(failureText(cause)))
+  }, [onError])
+  return [...tools, ...selected.filter((tool) => !tools.some((item) => same(item, tool)))]
+}
+
+const same = (a: Tool, b: Tool): boolean => a.serverId === b.serverId && a.name === b.name
+
 function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
   const id = useId()
   const initial = routine?.definition ?? defaults(timezone)
-  const [kind, setKind] = useState<RoutineDefinition['trigger']['kind']>(initial.trigger.kind)
-  const [tools, setTools] = useState<readonly { serverId: string; name: string }[]>([])
-  const [selected, setSelected] = useState(initial.allowedTools)
+  const [kind, setKind] = useState<Kind>(initial.trigger.kind)
+  const [cron, setCron] = useState(initial.trigger.kind === 'cron' ? initial.trigger.expression : '')
+  const [selected, setSelected] = useState<readonly Tool[]>(initial.allowedTools)
   const [notify, setNotify] = useState(initial.notifyTelegram)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
-  useEffect(() => {
-    void request('/api/mcp/grants')
-      .then((value) => {
-        setTools(Schema.decodeUnknownSync(Grants)(value).filter((grant) => grant.capability === 'tool'))
-      })
-      .catch((cause: unknown) => setError(failureText(cause)))
-  }, [])
+  const available = useAvailableTools(selected, setError)
   async function save(form: HTMLFormElement) {
     const data = new FormData(form)
     const field = (name: string) => {
@@ -64,95 +108,63 @@ function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
         title: field('title'),
         prompt: field('prompt'),
         timezone: field('timezone'),
-        trigger:
-          kind === 'cron'
-            ? { kind: 'cron', expression: field('trigger') }
-            : kind === 'event'
-              ? Schema.decodeUnknownSync(RoutineTrigger)({
-                  kind: 'event',
-                  serverId: field('eventServer'),
-                  name: field('eventName'),
-                  arguments: JSON.parse(field('eventArguments')),
-                })
-              : { kind: 'once', at: field('trigger') },
+        trigger: triggerFrom(kind, field, cron),
         notifyTelegram: notify,
         allowedTools: selected,
         budget: {
           tokensPerRun: Number(field('tokensPerRun')),
           tokensPerDay: Number(field('tokensPerDay')),
-          runtimeSeconds: Number(field('runtimeSeconds')),
+          runtimeSeconds: Number(field('runtimeMinutes')) * 60,
         },
       }
       const body = { definition, operationId: crypto.randomUUID(), ...(routine ? { revision: routine.revision } : {}) }
-      onSaved(
-        decodeView(
-          await request(routine ? `/api/routines/${routine.id}` : '/api/routines', {
-            method: routine ? 'PATCH' : 'POST',
-            headers: { 'x-purrable-csrf': '1' },
-            body,
-          }),
-        ),
-      )
+      const path = routine ? `/api/routines/${routine.id}` : '/api/routines'
+      const method = routine ? 'PATCH' : 'POST'
+      onSaved(decodeView(await request(path, { method, headers: { 'x-purrable-csrf': '1' }, body })))
     } catch (cause) {
       setError(failureText(cause))
     } finally {
       setPending(false)
     }
   }
-  const available = [
-    ...tools,
-    ...selected.filter((tool) => !tools.some((item) => item.serverId === tool.serverId && item.name === tool.name)),
-  ]
-  return { id, initial, kind, setKind, available, selected, setSelected, notify, setNotify, pending, error, save }
+  const toggle = (tool: Tool, on: boolean) =>
+    setSelected((current) => (on ? [...current, tool] : current.filter((item) => !same(item, tool))))
+  return {
+    id,
+    initial,
+    kind,
+    setKind,
+    cron,
+    setCron,
+    available,
+    selected,
+    toggle,
+    notify,
+    setNotify,
+    pending,
+    error,
+    save,
+  }
 }
 type Kit = ReturnType<typeof useRoutineEditor>
-function triggerValue(initial: RoutineDefinition, kind: RoutineDefinition['trigger']['kind']) {
-  if (initial.trigger.kind !== kind) return ''
-  if (initial.trigger.kind === 'cron') return initial.trigger.expression
-  return initial.trigger.kind === 'once' ? initial.trigger.at : ''
-}
-function EventFields({ kit }: { readonly kit: Kit }) {
-  const trigger = kit.initial.trigger
+
+/** One part of the form under a small heading. */
+function Part({ title, children }: { readonly title: string; readonly children: ReactNode }) {
+  const id = useId()
   return (
-    <>
-      <Field>
-        <FieldLabel htmlFor={`${kit.id}-event-server`}>Connected server ID</FieldLabel>
-        <Input
-          id={`${kit.id}-event-server`}
-          name="eventServer"
-          defaultValue={trigger.kind === 'event' ? trigger.serverId : ''}
-          required
-          maxLength={64}
-        />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor={`${kit.id}-event-name`}>Exact event name</FieldLabel>
-        <Input
-          id={`${kit.id}-event-name`}
-          name="eventName"
-          defaultValue={trigger.kind === 'event' ? trigger.name : ''}
-          placeholder="mail.received"
-          required
-          maxLength={256}
-        />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor={`${kit.id}-event-args`}>Exact event filters (JSON object)</FieldLabel>
-        <Textarea
-          id={`${kit.id}-event-args`}
-          name="eventArguments"
-          defaultValue={trigger.kind === 'event' ? JSON.stringify(trigger.arguments) : '{}'}
-          required
-          maxLength={16_384}
-        />
-      </Field>
-    </>
+    <section className="editor-part" aria-labelledby={id}>
+      <h3 id={id} className="server-part-title">
+        {title}
+      </h3>
+      {children}
+    </section>
   )
 }
-function DefinitionFields({ kit }: { readonly kit: Kit }) {
-  const { id, initial, kind, setKind } = kit
+
+function WhatFields({ kit }: { readonly kit: Kit }) {
+  const { id, initial } = kit
   return (
-    <>
+    <Part title="What">
       <Field>
         <FieldLabel htmlFor={`${id}-title`}>Title</FieldLabel>
         <Input id={`${id}-title`} name="title" defaultValue={initial.title} maxLength={120} required />
@@ -160,154 +172,245 @@ function DefinitionFields({ kit }: { readonly kit: Kit }) {
       <Field>
         <FieldLabel htmlFor={`${id}-prompt`}>Instructions</FieldLabel>
         <Textarea id={`${id}-prompt`} name="prompt" defaultValue={initial.prompt} maxLength={12_000} required />
+        <FieldDescription>What your agent should do each time, in your own words.</FieldDescription>
       </Field>
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant={kind === 'once' ? 'secondary' : 'outline'}
-          onClick={() => setKind('once')}
-        >
-          Reminder
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={kind === 'cron' ? 'secondary' : 'outline'}
-          onClick={() => setKind('cron')}
-        >
-          Cron schedule
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={kind === 'event' ? 'secondary' : 'outline'}
-          onClick={() => setKind('event')}
-        >
-          MCP Event
-        </Button>
+    </Part>
+  )
+}
+
+function OnceFields({ kit }: { readonly kit: Kit }) {
+  const trigger = kit.initial.trigger
+  return (
+    <Field>
+      <FieldLabel htmlFor={`${kit.id}-at`}>Date and time</FieldLabel>
+      <Input
+        id={`${kit.id}-at`}
+        name="at"
+        type="datetime-local"
+        defaultValue={trigger.kind === 'once' ? localInput(trigger.at) : ''}
+        required
+      />
+      <FieldDescription>In your time, {Intl.DateTimeFormat().resolvedOptions().timeZone}.</FieldDescription>
+    </Field>
+  )
+}
+
+function CronFields({ kit }: { readonly kit: Kit }) {
+  return (
+    <Field>
+      <FieldLabel htmlFor={`${kit.id}-cron`}>Schedule</FieldLabel>
+      <div className="card-actions">
+        {PRESETS.map((preset) => (
+          <Button
+            key={preset.expression}
+            type="button"
+            size="xs"
+            variant={kit.cron === preset.expression ? 'secondary' : 'outline'}
+            aria-pressed={kit.cron === preset.expression}
+            onClick={() => kit.setCron(preset.expression)}
+          >
+            {preset.label}
+          </Button>
+        ))}
       </div>
-      {kind === 'event' ? (
-        <EventFields kit={kit} />
-      ) : (
-        <Field>
-          <FieldLabel htmlFor={`${id}-trigger`}>
-            {kind === 'cron' ? 'Five-field cron (at least 15 minutes apart)' : 'Date and time with UTC offset'}
-          </FieldLabel>
-          <Input
-            key={kind}
-            id={`${id}-trigger`}
-            name="trigger"
-            required
-            defaultValue={triggerValue(initial, kind)}
-            placeholder={kind === 'cron' ? '0 9 * * 1-5' : '2026-10-06T09:00:00+02:00'}
-          />
-        </Field>
-      )}
+      <Input
+        id={`${kit.id}-cron`}
+        value={kit.cron}
+        onChange={(event) => kit.setCron(event.target.value)}
+        placeholder="0 9 * * 1-5"
+        required
+      />
+      <FieldDescription>
+        In cron form: minute, hour, day of the month, month, day of the week. Runs at least 15 minutes apart.
+      </FieldDescription>
+    </Field>
+  )
+}
+
+function EventFields({ kit }: { readonly kit: Kit }) {
+  const trigger = kit.initial.trigger
+  const servers = [...new Set(kit.available.map((tool) => tool.serverId))]
+  return (
+    <>
+      <Field>
+        <FieldLabel htmlFor={`${kit.id}-event-server`}>Server</FieldLabel>
+        <Input
+          id={`${kit.id}-event-server`}
+          name="eventServer"
+          list={`${kit.id}-servers`}
+          defaultValue={trigger.kind === 'event' ? trigger.serverId : (servers[0] ?? '')}
+          required
+          maxLength={64}
+        />
+        <datalist id={`${kit.id}-servers`}>
+          {servers.map((server) => (
+            <option key={server} value={server} />
+          ))}
+        </datalist>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={`${kit.id}-event-name`}>Event</FieldLabel>
+        <Input
+          id={`${kit.id}-event-name`}
+          name="eventName"
+          defaultValue={trigger.kind === 'event' ? trigger.name : ''}
+          placeholder="message.received"
+          required
+          maxLength={256}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={`${kit.id}-event-args`}>Only events matching (optional)</FieldLabel>
+        <Textarea
+          id={`${kit.id}-event-args`}
+          name="eventArguments"
+          defaultValue={trigger.kind === 'event' ? JSON.stringify(trigger.arguments) : ''}
+          placeholder="{}"
+          maxLength={16_384}
+        />
+        <FieldDescription>Exact values as JSON, which the server checks for you.</FieldDescription>
+      </Field>
+    </>
+  )
+}
+
+function WhenFields({ kit }: { readonly kit: Kit }) {
+  const { id, initial } = kit
+  return (
+    <Part title="When">
+      <Tabs value={kit.kind} onValueChange={(value: Kind) => kit.setKind(value)}>
+        <TabsList>
+          <TabsTrigger value="once">Once</TabsTrigger>
+          <TabsTrigger value="cron">Repeats</TabsTrigger>
+          <TabsTrigger value="event">On an event</TabsTrigger>
+        </TabsList>
+        <TabsContent value="once">
+          <OnceFields kit={kit} />
+        </TabsContent>
+        <TabsContent value="cron">
+          <CronFields kit={kit} />
+        </TabsContent>
+        <TabsContent value="event">
+          <EventFields kit={kit} />
+        </TabsContent>
+      </Tabs>
       <Field>
         <FieldLabel htmlFor={`${id}-timezone`}>Timezone</FieldLabel>
         <Input id={`${id}-timezone`} name="timezone" defaultValue={initial.timezone} required />
+        <FieldDescription>The schedule follows this zone, and its times show in it.</FieldDescription>
       </Field>
-    </>
+    </Part>
   )
 }
-function ToolFields({ kit }: { readonly kit: Kit }) {
-  const { available, selected, setSelected, notify, setNotify } = kit
+
+function ToolRows({ kit }: { readonly kit: Kit }) {
+  const { available, selected, toggle, notify, setNotify, id } = kit
   return (
-    <>
-      <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium">Exact connected tools</legend>
-        {available.length === 0 && (
-          <p className="text-sm text-muted-foreground">No granted tools. This routine can only produce an answer.</p>
-        )}
-        {available.map((tool) => {
-          const checked = selected.some((item) => item.serverId === tool.serverId && item.name === tool.name)
-          return (
-            <label key={`${tool.serverId}:${tool.name}`} className="flex items-center gap-2 text-sm">
-              <Switch
-                checked={checked}
-                onCheckedChange={(on) =>
-                  setSelected((current) =>
-                    on
-                      ? [...current, tool]
-                      : current.filter((item) => item.serverId !== tool.serverId || item.name !== tool.name),
-                  )
-                }
-              />
-              {tool.serverId} · {tool.name}
-            </label>
-          )
-        })}
-      </fieldset>
-      <label className="flex items-center gap-2 text-sm">
-        <Switch checked={notify} onCheckedChange={setNotify} />
-        Send the short report through my Telegram channel
-      </label>
-    </>
+    <ul className="grant-list">
+      {available.length === 0 && (
+        <li className="setting-row">
+          <span className="server-note">You have allowed no tools yet, so this routine can only answer.</span>
+        </li>
+      )}
+      {available.map((tool) => {
+        const label = `${id}-${tool.serverId}-${tool.name}`
+        return (
+          <li key={`${tool.serverId}:${tool.name}`} className="setting-row">
+            <span className="grant-text">
+              <span id={label} className="grant-name">
+                {tool.name} <code>{tool.serverId}</code>
+              </span>
+            </span>
+            <Switch
+              checked={selected.some((item) => same(item, tool))}
+              aria-labelledby={label}
+              onCheckedChange={(on) => toggle(tool, on)}
+            />
+          </li>
+        )
+      })}
+      <li className="setting-row">
+        <span className="grant-text">
+          <span id={`${id}-telegram`} className="grant-name">
+            Send its report to Telegram too
+          </span>
+          <span className="grant-about">Through the server you use for Telegram, if you have one.</span>
+        </span>
+        <Switch checked={notify} aria-labelledby={`${id}-telegram`} onCheckedChange={setNotify} />
+      </li>
+    </ul>
   )
 }
-function BudgetFields({ kit }: { readonly kit: Kit }) {
+
+const LIMITS = [
+  { name: 'tokensPerRun', label: 'Tokens a run', max: 100_000 },
+  { name: 'tokensPerDay', label: 'Tokens a day', max: 2_000_000 },
+  { name: 'runtimeMinutes', label: 'Minutes at most', max: 30 },
+] as const
+
+function ToolsAndLimits({ kit }: { readonly kit: Kit }) {
   const { id, initial } = kit
+  const value = (name: (typeof LIMITS)[number]['name']) =>
+    name === 'runtimeMinutes' ? Math.max(1, Math.round(initial.budget.runtimeSeconds / 60)) : initial.budget[name]
   return (
-    <>
-      <div className="grid gap-3 sm:grid-cols-3">
-        {(['tokensPerRun', 'tokensPerDay', 'runtimeSeconds'] as const).map((name) => (
-          <Field key={name}>
-            <FieldLabel htmlFor={`${id}-${name}`}>
-              {name === 'tokensPerRun'
-                ? 'Tokens per run'
-                : name === 'tokensPerDay'
-                  ? 'Tokens per day'
-                  : 'Maximum seconds'}
-            </FieldLabel>
+    <Part title="Tools and limits">
+      <ToolRows kit={kit} />
+      <div className="editor-limits">
+        {LIMITS.map((limit) => (
+          <Field key={limit.name}>
+            <FieldLabel htmlFor={`${id}-${limit.name}`}>{limit.label}</FieldLabel>
             <Input
-              id={`${id}-${name}`}
-              name={name}
+              id={`${id}-${limit.name}`}
+              name={limit.name}
               type="number"
+              inputMode="numeric"
               min={1}
-              max={name === 'runtimeSeconds' ? 1800 : name === 'tokensPerRun' ? 100_000 : 2_000_000}
-              defaultValue={initial.budget[name]}
+              max={limit.max}
+              defaultValue={value(limit.name)}
               required
             />
           </Field>
         ))}
       </div>
-    </>
+    </Part>
   )
 }
+
 /** Saving creates a proposed revision; the separate review is the only activation control. */
 export function RoutineEditor(props: EditorProps) {
   const kit = useRoutineEditor(props)
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{props.routine ? `Edit ${props.routine.definition.title}` : 'New routine'}</CardTitle>
+        <CardTitle>{props.routine ? `Edit “${props.routine.definition.title}”` : 'New routine'}</CardTitle>
+        <CardDescription>
+          {props.routine
+            ? 'Saving pauses it until you confirm the change on its card.'
+            : 'Saving makes a proposal: nothing runs until you confirm it on its card.'}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form
-          className="flex flex-col gap-3"
+          className="editor"
           onSubmit={(event) => {
             event.preventDefault()
             void kit.save(event.currentTarget)
           }}
         >
-          <DefinitionFields kit={kit} />
-          <ToolFields kit={kit} />
-          <BudgetFields kit={kit} />
-          <p className="text-sm text-muted-foreground">
-            Saving pauses future triggers until you review and confirm this revision.
-          </p>
+          <WhatFields kit={kit} />
+          <WhenFields kit={kit} />
+          <ToolsAndLimits kit={kit} />
           {kit.error && (
             <Alert variant="destructive">
               <AlertDescription>{kit.error}</AlertDescription>
             </Alert>
           )}
-          <div className="flex gap-2">
-            <Button type="submit" disabled={kit.pending}>
-              {kit.pending ? 'Saving…' : 'Save proposal'}
+          <div className="card-actions">
+            <Button type="submit" pending={kit.pending}>
+              Save for review
             </Button>
             {props.onCancel && (
-              <Button type="button" variant="ghost" onClick={props.onCancel}>
+              <Button type="button" variant="ghost" disabled={kit.pending} onClick={props.onCancel}>
                 Cancel
               </Button>
             )}
