@@ -1,6 +1,5 @@
 import type { ComponentProps } from 'react'
-import { AuthPage } from '@goblin/ui'
-import { CatIcon } from 'lucide-react'
+import { AuthPage, GoblinMark } from '@goblin/ui'
 
 /**
  * A page outside the workspace (signing in, subscribing, an app's consent, the policies): goblin's mark, a title
@@ -8,5 +7,5 @@ import { CatIcon } from 'lucide-react'
  * page's `<main>` and pads it.
  */
 export function AuthShell(props: Omit<ComponentProps<typeof AuthPage>, 'mark' | 'as'>) {
-  return <AuthPage as="section" mark={<CatIcon />} {...props} />
+  return <AuthPage as="section" mark={<GoblinMark />} {...props} />
 }

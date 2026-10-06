@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
+  GoblinMark,
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -11,7 +12,7 @@ import {
   SidebarRail,
   useSidebar,
 } from '@goblin/ui'
-import { CatIcon, LogOutIcon, PlugIcon, SettingsIcon } from 'lucide-react'
+import { LogOutIcon, PlugIcon, SettingsIcon } from 'lucide-react'
 import { signOut } from '../lib/session.tsx'
 import { useBilling } from '../lib/billing.tsx'
 import { useSession } from '../lib/session.tsx'
@@ -76,7 +77,7 @@ export function AppSidebar() {
     <Sidebar label="goblin">
       <SidebarHeader>
         <Link to="/" className="sidebar-brand" aria-label="goblin home">
-          <CatIcon aria-hidden />
+          <GoblinMark />
           {!rail && 'goblin'}
         </Link>
       </SidebarHeader>
