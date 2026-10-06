@@ -90,10 +90,8 @@ export function useSharedContext(conversation: string) {
   )
   return {
     shared,
-    /** The context to send, as the message carries it (only MCP Apps share context). */
-    context: shared.flatMap(({ selection, context }) =>
-      selection.kind === 'mcp' ? [{ serverId: selection.serverId, text: context ?? '' }] : [],
-    ),
+    /** The context to send, by App id: the runtime finds where each App comes from. */
+    context: shared.map(({ app, context }) => ({ app: app.id, text: context ?? '' })),
     /** Sent: each App's context goes with that one message only. */
     clear: () => {
       for (const instance of shared) host.setContext(instance.app.id, '')

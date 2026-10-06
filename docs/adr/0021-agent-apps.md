@@ -94,8 +94,12 @@ folded away with *Hide chat*, a dot on *Chat* while it has unread replies). The 
 phone the App fills the screen and its conversation opens in a sheet from the bottom, half the screen or nearly all of
 it. The conversation's own pane moves into the dock or the sheet, so its stream and draft go on.
 
-**Still to come** (the same plan, later milestones): sharing a view's context with the agent; a render check of a view
-at build time.
+**Sharing what the owner sees.** A view calls `share(text)` (MCP Apps' `ui/update-model-context`), and, as for MCP
+Apps (ADR 0020), the text waits above the composer and goes with the owner's next message as untrusted context. The
+message names the App by its id; the runtime reads from its registry whether that is an MCP App's server or an agent
+app, so a page cannot claim to be another App.
+
+**Still to come**: a render check of a view at build time.
 
 Consequences:
 - Dynamic Workers are an open beta on Workers Paid; their pricing and limits may change.

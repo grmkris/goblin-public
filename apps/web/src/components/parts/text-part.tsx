@@ -2,7 +2,8 @@ import { type ReactNode, createContext, use } from 'react'
 import Markdown, { type ExtraProps } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AppWindowIcon, CornerDownRightIcon } from 'lucide-react'
-import type { AppContext, Attachment } from '@goblin/contracts'
+import type { Attachment } from '@goblin/contracts'
+import type { SharedContext } from '../../lib/app-context.ts'
 import { contextPreview } from '../../lib/app-context.ts'
 import { blockKind, openFenceAt } from '../../lib/fences.ts'
 import { relativeTime, reporterOf } from '../../lib/threads.ts'
@@ -144,7 +145,7 @@ export function UserText({
   at,
 }: {
   readonly text: string
-  readonly context?: readonly AppContext[]
+  readonly context?: readonly SharedContext[]
   readonly attachments?: readonly Attachment[]
   readonly author?: string | undefined
   readonly thread?: string | undefined
@@ -160,9 +161,9 @@ export function UserText({
       </article>
       <MessageFiles files={attachments} />
       {context.map((shared) => (
-        <p key={shared.serverId} className="shared-context" title={shared.text}>
+        <p key={shared.from} className="shared-context" title={shared.text}>
           <AppWindowIcon aria-hidden />
-          Shared from {shared.serverId}: {contextPreview(shared.text)}
+          Shared from {shared.from}: {contextPreview(shared.text)}
         </p>
       ))}
     </>

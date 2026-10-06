@@ -1,7 +1,7 @@
-// What an MCP App hands the host for the owner and the agent: links to open, and context to share with the next
+// What an App hands the host for the owner and the agent: links to open, and context to share with the next
 // message. Both come from the App, so both are untrusted: links open only on the owner's click, context travels as
 // a labelled block the agent treats as data. A sent message is read back here too, with the files it carried.
-import { type AppContext, Attachment, authorOf } from '@goblin/contracts'
+import { Attachment, authorOf } from '@goblin/contracts'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { isString, record, records } from './boundary.ts'
@@ -29,12 +29,15 @@ export function safeLink(url: string): URL | undefined {
   }
 }
 
+/** What an App shared with a sent message, as the transcript keeps it: where it came from, and its text. */
+export type SharedContext = { readonly from: string; readonly text: string }
+
 const decodeAttachments = Schema.decodeUnknownOption(Schema.Struct({ attachments: Schema.Array(Attachment) }))
 
 /** One block after the owner's words: the files they attached, or what an App shared; anything else is neither. */
 function sharedBlock(
   block: string,
-): { readonly files: readonly Attachment[] } | { readonly app: AppContext } | undefined {
+): { readonly files: readonly Attachment[] } | { readonly app: SharedContext } | undefined {
   let value: unknown
   try {
     value = JSON.parse(block)
@@ -45,8 +48,10 @@ function sharedBlock(
   if (Option.isSome(files)) return { files: files.value.attachments }
   const shared = record(value)
   const origin = record(shared?.origin)
-  return isString(origin?.serverId) && origin.trust === 'untrusted' && isString(shared?.appContext)
-    ? { app: { serverId: origin.serverId, text: shared.appContext } }
+  // An MCP App names its server; an agent app is its own name.
+  const from = isString(origin?.serverId) ? origin.serverId : isString(origin?.app) ? origin.app : undefined
+  return from !== undefined && origin?.trust === 'untrusted' && isString(shared?.appContext)
+    ? { app: { from, text: shared.appContext } }
     : undefined
 }
 
@@ -57,7 +62,7 @@ function sharedBlock(
  */
 export function sharedContext(content: unknown): {
   readonly text: string
-  readonly context: readonly AppContext[]
+  readonly context: readonly SharedContext[]
   readonly attachments?: readonly Attachment[]
   readonly author?: string
 } {

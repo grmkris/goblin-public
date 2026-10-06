@@ -11,6 +11,7 @@ import * as Effect from 'effect/Effect'
 import type { AppError } from './http/errors.ts'
 import { Entitlements } from './billing/gates.ts'
 import {
+  Apps,
   Conversations,
   Files,
   RoutineRuns,
@@ -29,7 +30,7 @@ import { useModel, type Applied } from './agent-model.ts'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { BACKGROUND } from './pi/context.ts'
 import { recentMessages } from './pi/transcript.ts'
-import { authoredContent, ownerContent } from './pi/content.ts'
+import { type SharedContext, authoredContent, ownerContent } from './pi/content.ts'
 import type { SubagentKit } from './pi/subagents.ts'
 
 /** The registration gate for every owner conversation request. */
@@ -131,6 +132,14 @@ type OwnerSubmit = {
   attachments: readonly string[]
 }
 
+/** What the owner's open Apps shared, each with where it comes from, read from the App registry (never the browser). */
+const sharedContext = (context: readonly AppContext[]) =>
+  context.length === 0
+    ? Effect.succeed<readonly SharedContext[]>([])
+    : Apps.use((apps) =>
+        attemptSync(() => context.map(({ app, text }): SharedContext => ({ origin: apps.originOf(app), text }))),
+      )
+
 /** The owner's attached files as they are now: each must exist, or the message is refused. */
 const attachedFiles = (paths: readonly string[]) =>
   paths.length === 0
@@ -155,7 +164,7 @@ const sendToSubagent = (
   input: OwnerSubmit,
   view: ConversationView,
   spawner: string,
-  attachments: readonly Attachment[],
+  extra: { readonly attachments: readonly Attachment[]; readonly shared: readonly SharedContext[] },
 ) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
@@ -167,7 +176,7 @@ const sendToSubagent = (
       subagent: view.id,
       spawner,
       title: view.title ?? 'subagent',
-      content: ownerContent(input.text, input.appContext, attachments),
+      content: ownerContent(input.text, extra.shared, extra.attachments),
       text: input.text,
       operationId: input.operationId,
       busy,
@@ -184,11 +193,12 @@ export const submitOwner = (input: OwnerSubmit) =>
     if (yield* attempt(() => input.routines.answer(session, input.operationId, input.text)))
       return { session, operationId: input.operationId, accepted: true }
     const attachments = yield* attachedFiles(input.attachments)
+    const shared = yield* sharedContext(input.appContext)
     yield* useModel(input.harness, input.applied, session)
     const view = yield* attempt(() => conversations.view(session))
     if (view?.kind === 'subagent' && view.parent !== undefined)
-      return yield* sendToSubagent(input, view, view.parent, attachments)
-    const content = ownerContent(input.text, input.appContext, attachments)
+      return yield* sendToSubagent(input, view, view.parent, { attachments, shared })
+    const content = ownerContent(input.text, shared, attachments)
     return yield* attempt(() => input.harness.submit(content, { session, operationId: input.operationId }))
   })
 

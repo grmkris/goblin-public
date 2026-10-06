@@ -145,11 +145,12 @@ export const QuestionSpec = Schema.Struct({
 export type QuestionSpec = typeof QuestionSpec.Type
 
 /**
- * What an open MCP App shared for the agent (`ui/update-model-context`), sent with the owner's next message. The
- * runtime passes it to the model as a separate block labelled untrusted, never as the owner's words.
+ * What an open App shared for the agent (`ui/update-model-context`), sent with the owner's next message by its App id.
+ * The runtime finds where the App comes from (its server, or the agent app it is) and passes the text to the model as
+ * a separate block labelled untrusted, never as the owner's words.
  */
 export const AppContext = Schema.Struct({
-  serverId: Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u)),
+  app: Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)),
   text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(8192)),
 })
 export type AppContext = typeof AppContext.Type

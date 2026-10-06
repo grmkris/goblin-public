@@ -31,10 +31,6 @@ function mcpBridge(bridge: AppBridge, selection: McpSelection, calls: AppCalls, 
     }
   }
   bridge.onreadresource = (params) => calls.resource(serverId, { uri: params.uri })
-  bridge.onupdatemodelcontext = async ({ content, structuredContent }) => {
-    events.share(contextText(content, structuredContent))
-    return {}
-  }
   bridge.addEventListener('initialized', () => {
     void bridge
       .sendToolInput({ arguments: selection.arguments })
@@ -65,10 +61,14 @@ export function createAppBridge(
           downloadFile: {},
           updateModelContext: { text: {}, structuredContent: {} },
         }
-      : { serverTools: {}, openLinks: {}, downloadFile: {}, logging: {} },
+      : { serverTools: {}, openLinks: {}, downloadFile: {}, logging: {}, updateModelContext: { text: {} } },
     { hostContext: context },
   )
   bridge.onrequestdisplaymode = async ({ mode }) => ({ mode: events.requestMode(mode) })
+  bridge.onupdatemodelcontext = async ({ content, structuredContent }) => {
+    events.share(contextText(content, structuredContent))
+    return {}
+  }
   bridge.onopenlink = async ({ url }) => {
     const link = safeLink(url)
     if (link === undefined) return { isError: true }

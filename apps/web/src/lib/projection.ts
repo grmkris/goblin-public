@@ -1,4 +1,5 @@
-import type { AppContext, Attachment } from '@goblin/contracts'
+import type { Attachment } from '@goblin/contracts'
+import type { SharedContext } from './app-context.ts'
 import { isString, isNumber, identifier, record, records, text } from './boundary.ts'
 import { sharedContext } from './app-context.ts'
 
@@ -22,7 +23,7 @@ export type ChatMessage =
       readonly role: 'user'
       readonly text: string
       /** What an open App shared with this message, labelled untrusted for the agent. */
-      readonly context?: readonly AppContext[]
+      readonly context?: readonly SharedContext[]
       /** The owner's files this message carried. */
       readonly attachments?: readonly Attachment[]
       /** Who wrote it, when not the owner in this browser: Telegram, an MCP client, a subagent. */

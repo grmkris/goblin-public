@@ -6,7 +6,17 @@ import * as ReactDOMClient from 'react-dom/client'
 import * as jsxRuntime from 'react/jsx-runtime'
 import * as components from './components.ts'
 import { frameRequire, provide } from './modules.ts'
-import { ErrorBoundary, connect, connected, download, firstState, report, useActions, useAppState } from './sdk.ts'
+import {
+  ErrorBoundary,
+  connect,
+  connected,
+  download,
+  firstState,
+  report,
+  share,
+  useActions,
+  useAppState,
+} from './sdk.ts'
 
 // SAFETY: the frame's globals the inline start script and the bundles share; nothing else defines them.
 const scope = globalThis as typeof globalThis & {
@@ -18,7 +28,7 @@ provide({
   'react/jsx-runtime': jsxRuntime,
   'react-dom': ReactDOM,
   'react-dom/client': ReactDOMClient,
-  '@goblin/app': { useAppState, useActions, download },
+  '@goblin/app': { useAppState, useActions, download, share },
   '@goblin/ui': components,
 })
 scope.__goblinRequire = frameRequire

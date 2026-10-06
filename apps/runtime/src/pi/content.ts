@@ -1,24 +1,30 @@
 import type { TextContent } from '@earendil-works/pi-ai'
-import { type AppContext, type Attachment, authorTag } from '@goblin/contracts'
+import { type Attachment, authorTag } from '@goblin/contracts'
+
+/** What an open App shared, with where it comes from: an MCP App's server, or the agent app it is. */
+export type SharedContext = {
+  readonly origin: { readonly serverId: string } | { readonly app: string }
+  readonly text: string
+}
 
 /**
  * The owner's message as Pi receives it: their words exactly as written, then the files they attached (one block
  * listing each file's path, name, size and type), then what each open App shared, each in a block of its own labelled
- * with the server it came from and as untrusted. Neither is ever merged into the owner's words, so App context cannot
- * pass for an instruction from them.
+ * with where it came from and as untrusted. Neither is ever merged into the owner's words, so App context cannot pass
+ * for an instruction from them.
  */
 export function ownerContent(
   input: string,
-  context: readonly AppContext[] = [],
+  context: readonly SharedContext[] = [],
   attachments: readonly Attachment[] = [],
 ): string | TextContent[] {
   if (context.length === 0 && attachments.length === 0) return input
   return [
     { type: 'text', text: input },
     ...(attachments.length === 0 ? [] : [{ type: 'text' as const, text: JSON.stringify({ attachments }) }]),
-    ...context.map(({ serverId, text }): TextContent => ({
+    ...context.map(({ origin, text }): TextContent => ({
       type: 'text',
-      text: JSON.stringify({ origin: { serverId, trust: 'untrusted' }, appContext: text }),
+      text: JSON.stringify({ origin: { ...origin, trust: 'untrusted' }, appContext: text }),
     })),
   ]
 }

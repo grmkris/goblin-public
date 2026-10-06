@@ -1,4 +1,5 @@
-import { type AppContext, type Attachment, TELEGRAM_AUTHOR } from '@goblin/contracts'
+import { type Attachment, TELEGRAM_AUTHOR } from '@goblin/contracts'
+import type { SharedContext } from './app-context.ts'
 import { isString, record } from './boundary.ts'
 import type { ChatMessage, ConversationProjection, LiveTool, ToolCallView, TurnFailure } from './projection.ts'
 
@@ -46,7 +47,7 @@ export type Part =
       readonly kind: 'user'
       readonly id: string
       readonly text: string
-      readonly context?: readonly AppContext[]
+      readonly context?: readonly SharedContext[]
       readonly attachments?: readonly Attachment[]
       readonly author?: string
       /** The thread a note shared into main came from. */

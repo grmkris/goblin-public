@@ -4,7 +4,7 @@ import { contextPreview, contextText, safeLink, sharedContext } from '../src/lib
 const block = (serverId: string, appContext: string) =>
   JSON.stringify({ origin: { serverId, trust: 'untrusted' }, appContext })
 
-describe('what an MCP App shares', () => {
+describe('what an App shares', () => {
   it('takes the App’s text, else its structured content, bounded to 8 KB', () => {
     expect(
       contextText(
@@ -33,7 +33,15 @@ describe('what an MCP App shares', () => {
         { type: 'text', text: 'what is this?' },
         { type: 'text', text: block('myplan', 'Trip plan') },
       ]),
-    ).toEqual({ text: 'what is this?', context: [{ serverId: 'myplan', text: 'Trip plan' }] })
+    ).toEqual({ text: 'what is this?', context: [{ from: 'myplan', text: 'Trip plan' }] })
+    // An agent app is named by itself.
+    const agentBlock = JSON.stringify({ origin: { app: 'task-board', trust: 'untrusted' }, appContext: '3 tasks' })
+    expect(
+      sharedContext([
+        { type: 'text', text: 'and these?' },
+        { type: 'text', text: agentBlock },
+      ]),
+    ).toEqual({ text: 'and these?', context: [{ from: 'task-board', text: '3 tasks' }] })
     // The owner typing the shape themselves is just their words.
     expect(sharedContext([{ type: 'text', text: block('myplan', 'x') }])).toEqual({
       text: block('myplan', 'x'),
@@ -61,7 +69,7 @@ describe('what an MCP App shares', () => {
       ]),
     ).toEqual({
       text: 'summarise this',
-      context: [{ serverId: 'myplan', text: 'Trip plan' }],
+      context: [{ from: 'myplan', text: 'Trip plan' }],
       attachments: [file],
     })
     // The same shape typed by the owner, or naming a path outside their files, stays words.

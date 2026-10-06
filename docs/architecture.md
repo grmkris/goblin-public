@@ -119,7 +119,7 @@ its transcript shows a row for that thread. The owner API is conversation-scoped
 | `PUT /api/conversations/:id/read` | The owner has seen its newest reply: `read_at` moves forward to now, and the feed carries it as `readAt` (a later `lastReplyAt` is unread). |
 | `GET /api/conversations/:id/capabilities` | What the conversation lets its agent use (`ConversationCapabilities`): each server with a granted tool and those tools, each skills library, subagents, and for a thread whether it has its parent's switches (`sameAsParent`). |
 | `PATCH /api/conversations/:id/capabilities` | Switch one `CapabilityTarget` on or off there (only what is shown can be switched off), or `{ reset: 'parent' }` a thread back to its parent's switches. A subagent's are not editable. |
-| `POST /api/conversations/:id/messages` | Submit `input`, a stable `operationId`, optional `appContext` and up to eight `attachments` (paths of the owner's files, each must exist) to an open conversation; returns 202 acceptance. |
+| `POST /api/conversations/:id/messages` | Submit `input`, a stable `operationId`, optional `appContext` (by App id) and up to eight `attachments` (paths of the owner's files, each must exist) to an open conversation; returns 202 acceptance. |
 | `GET /api/files?dir=` | A directory of the owner's files (`FileListing`): `/uploads`, `/agent` or a folder under one, with the storage in use. |
 | `GET`, `PUT`, `DELETE /api/files/content?path=` | Download, write (the body, `content-length` required) or delete one of the owner's files. Downloads are attachments, except PNG, JPEG, GIF and WebP, which open in place; all are sandboxed by CSP. |
 | `POST /api/conversations/:id/stop` | Stop a conversation or one `operationId`, and the subagents it started (not its threads). |
@@ -377,9 +377,11 @@ Two more requests are drawn by the host, where the App cannot reach (`lib/app-co
 open (https only, no credentials) becomes an offer with a real anchor, so only the owner's click opens it. Context
 the App shares for the agent (`ui/update-model-context`, text or structured content rendered as JSON, at most 8192
 JavaScript string units) waits in a removable chip above its conversation's composer and travels once, with the
-owner's next message there, as `appContext` on `POST /api/conversations/:id/messages`. The runtime (`pi/content.ts`)
-appends it after the owner's words as a separate block shaped `{ origin: { serverId, trust: 'untrusted' }, appContext }`.
-The persona treats it as data, never as the owner speaking, and the transcript shows it as a note under their message.
+owner's next message there, as `appContext` (`{ app: <App id>, text }`) on `POST /api/conversations/:id/messages`. The
+runtime reads where each open App comes from in its registry, never from the browser, and (`pi/content.ts`) appends the
+text after the owner's words as a separate block shaped `{ origin: { serverId | app, trust: 'untrusted' }, appContext }`
+(an MCP App's server, or the agent app's name). An agent app's view shares through `share(text)` in its SDK. The persona
+treats it as data, never as the owner speaking, and the transcript shows it as a note under their message.
 
 An App's own call to a tool the owner has not granted does not fail at once (`components/apps/grant-ask.tsx`). It
 waits on a card the host draws in the App's chrome, naming the exact tool. Allow grants that one tool and runs the

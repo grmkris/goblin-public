@@ -100,6 +100,14 @@ export async function download(name: string, text: string, type = 'text/plain'):
   if (result.isError === true) throw new Error(`${name} could not be offered`)
 }
 
+/**
+ * Shares what the owner is looking at with the agent: goblin shows it above the composer, and it goes with their next
+ * message as context, never as their words. Sharing again replaces it.
+ */
+export async function share(text: string): Promise<void> {
+  await connect().updateModelContext({ content: [{ type: 'text', text: text.slice(0, 8000) }] })
+}
+
 /** Reports a UI failure to the host, which tells the agent (no more than one notice in a while). */
 export function report(message: string): void {
   void connect().sendLog({ level: 'error', data: message.slice(0, 2000) })

@@ -197,6 +197,17 @@ export class AppRegistry {
     if (row !== undefined) for (const listener of this.#removals) listener(String(row.id))
   }
 
+  /**
+   * Where an open App comes from, for what it shares with the owner's message: an MCP App's server, or the agent app
+   * it is. A closed or unknown App shares nothing.
+   */
+  originOf(id: string): { readonly serverId: string } | { readonly app: string } {
+    const row = this.#row(id)
+    if (row.closedAt !== null) throw new NotFound({ what: 'app' })
+    if (isMcp(row)) return { serverId: row.serverId }
+    return { app: this.agentApp(id) }
+  }
+
   /** The agent app an App id names. */
   agentApp(id: string): string {
     const row = this.#row(id)
