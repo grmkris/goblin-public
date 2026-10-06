@@ -1,5 +1,6 @@
 import { RunAttribute, type RunEvent } from '@goblin/contracts/telemetry'
 import { describe, expect, it } from 'vitest'
+import type { RunSink } from '../src/telemetry/events.ts'
 import { type TraceSpan, TraceSink, spanNameOf } from '../src/telemetry/trace.ts'
 
 type Recorded = { name: string; attributes: Record<string, unknown>; status?: unknown; ended: boolean }
@@ -47,31 +48,36 @@ describe('run events as trace spans (unit, ADR 0024)', () => {
     expect(spanNameOf(event({ kind: 'channel.reply' }))).toBeUndefined()
   })
 
-  it('opens a span when the event starts and ends it with its attributes and status', () => {
+  it('writes each call as one span when it ends, with its attributes, real timing and status', () => {
     const { spans, tracer } = fakeTracer()
-    const sink = new TraceSink(tracer, () => 'user-1')
+    const sink: RunSink = new TraceSink(tracer, () => 'user-1')
     sink.started(event({}))
-    expect(spans).toMatchObject([
+    expect(spans).toHaveLength(0)
+    sink.ended(event({ status: 'error', endedAt: 1_250, attributes: { [RunAttribute.error]: 'rate limited' } }))
+    expect(spans).toEqual([
       {
-        name: 'chat gpt-test',
-        ended: false,
-        attributes: { 'gen_ai.agent.name': 'goblin', 'gen_ai.agent.id': 'user-1', 'gen_ai.conversation.id': '1' },
+        name: 'chat model',
+        ended: true,
+        status: { code: 'error', message: 'rate limited' },
+        attributes: expect.objectContaining({
+          'gen_ai.agent.name': 'goblin',
+          'gen_ai.agent.id': 'user-1',
+          'gen_ai.conversation.id': '1',
+          'goblin.error': 'rate limited',
+          'goblin.status': 'error',
+          'goblin.operation': 'telegram-12',
+          'goblin.started_at': 10,
+          'goblin.duration_ms': 1_240,
+        }),
       },
     ])
-    sink.ended(event({ status: 'error', endedAt: 20, attributes: { [RunAttribute.error]: 'rate limited' } }))
-    expect(spans[0]).toMatchObject({
-      ended: true,
-      status: { code: 'error', message: 'rate limited' },
-      attributes: { 'goblin.error': 'rate limited', 'goblin.status': 'error', 'goblin.operation': 'telegram-12' },
-    })
   })
 
-  it('ignores an end without its start, and bounds the open spans', () => {
+  it('ends a call that started in an earlier invocation as well, and leaves other events out', () => {
     const { spans, tracer } = fakeTracer()
     const sink = new TraceSink(tracer, () => 'user-1')
-    sink.ended(event({ status: 'ok' }))
-    expect(spans).toHaveLength(0)
-    for (let index = 0; index < 201; index++) sink.started(event({ id: `model:${index}` }))
-    expect(spans.filter((span) => span.ended)).toEqual([expect.objectContaining({ status: { code: 'unset' } })])
+    sink.ended(event({ status: 'ok', endedAt: 30 }))
+    sink.ended(event({ kind: 'turn.submitted', status: 'ok' }))
+    expect(spans).toMatchObject([{ name: 'chat gpt-test', status: { code: 'ok' }, ended: true }])
   })
 })

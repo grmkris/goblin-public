@@ -628,9 +628,10 @@ Outside Pi, the agent's services report to the same telemetry (`telemetry/report
 
 Each event goes to `app_run_events` (kept 30 days) and to one Workers Log line when it ends (`event: "run"`, its ids,
 `ms`, and attributes named after the OpenTelemetry GenAI conventions, `contracts/src/telemetry.ts`). Model and tool
-calls also become spans in the Cloudflare trace of the invocation that ran them (`chat {model}`,
-`execute_tool {tool}`, `telemetry/trace.ts`), with the same attributes and the agent, conversation and operation ids;
-an event that ends in a later invocation stays in the ledger and the log only. Never content:
+calls also become spans (`chat {model}`, `execute_tool {tool}`, `telemetry/trace.ts`), with the same attributes and
+the agent, conversation and operation ids. A call often starts in one invocation and ends in another, and a Workers
+span cannot outlive its invocation, so each is one span written whole in the trace of the invocation where it ends,
+its real start and duration in `goblin.started_at` and `goblin.duration_ms`. Never content:
 ids, sizes, counts, timings, outcomes and bounded error text. At start the agent marks whatever the last run left
 `started` as interrupted and logs one `recovery` event; an event that ends after a restart says it resumed. Pi faults
 the user's task if a commit listener throws, so the recorder and every sink are guarded and only log their own
