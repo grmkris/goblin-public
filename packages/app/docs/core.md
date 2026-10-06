@@ -2,8 +2,7 @@
 
 An app is a small program you write for the owner. It keeps durable JSON state on goblin's server, and you call each
 action or view you define with `app_call` (`{"app": "<name>", "member": "<action>", "input": {...}}`). Build or change
-one with `app_build`. Add a
-`view.tsx` and the owner can open it as a live UI (topic `ui`).
+one with `app_build`. Add a `view.tsx` and the owner can open it as a live UI (topic `ui`).
 
 ## app.ts
 
@@ -37,6 +36,7 @@ export default defineApp({
     unread: {
       description: 'Books not read yet.',
       input: s.object({}),
+      output: s.array(s.object({ id: s.string(), title: s.string(), done: s.boolean() })), // optional
       select: (input, ctx) => ctx.state.books.filter((book) => !book.done),
     },
   },
@@ -50,7 +50,8 @@ export default defineApp({
 - `prepare(input, ctx)` is optional and runs once, before `run`; whatever it returns is `run`'s third argument. It is
   the only place for I/O: `ctx.files` (the app's own files), `ctx.log(...)`, and the powers the owner approved
   (`ctx.fetch`, `ctx.tools`, `ctx.llm`, `ctx.notify`, `ctx.apps`: topic `powers`). `ctx.state` is read-only there.
-- `select(input, ctx)` returns data from `ctx.state` for a view; it changes nothing.
+- `select(input, ctx)` returns data from `ctx.state` for a view; it changes nothing. A view's optional `output` schema
+  says what it returns: `<apps>` shows it after `→`, and a value that does not fit it is the app's error.
 - An action can also run on its own on a schedule, every 15 minutes to daily (topic `schedules`).
 - Throw an `Error` with a clear message to refuse a call; nothing changes.
 - State is plain JSON and must match `state.schema`. Leave optional fields out rather than setting `undefined`.
@@ -64,8 +65,8 @@ export default defineApp({
 ## Changing an app
 
 Call `app_build` again with the same `name`, sending only the files that change (`""` removes one), or `edits`
-(find/replace in a file) for small fixes. If the state's shape changes, add `state.migrate: (previous) => next`; the current state must fit the new
-schema or migrate into it, or the build fails and the running version stays. `app_inspect` shows the source, the
-state, recent events and errors; `app_rollback` goes back to an earlier version.
+(find/replace in a file) for small fixes. If the state's shape changes, add `state.migrate: (previous) => next`; the
+current state must fit the new schema or migrate into it, or the build fails and the running version stays.
+`app_inspect` shows the source, the state, recent events and errors; `app_rollback` goes back to an earlier version.
 
 More: `app_docs({ topic })` with `ui`, `powers`, `schedules`, `files` or `examples`.

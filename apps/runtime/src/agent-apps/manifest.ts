@@ -37,7 +37,13 @@ const Action = Schema.Struct({
   prepare: Schema.Boolean,
   run: Schema.Boolean,
 })
-const View = Schema.Struct({ description: Text(300), input: Json, select: Schema.Boolean })
+/** A view: what it selects from the state for `input`, and optionally the `output` schema its value must fit. */
+const View = Schema.Struct({
+  description: Text(300),
+  input: Json,
+  output: Schema.optionalKey(Json),
+  select: Schema.Boolean,
+})
 const Schedule = Schema.Struct({
   action: Schema.String,
   /** One of `EVERY`, checked with the other rules so a wrong one gets its own problem. */
@@ -152,8 +158,15 @@ function memberProblems(manifest: Manifest): string[] {
   for (const [name, view] of Object.entries(manifest.views)) {
     if (!view.select) problems.push(`View ${name} needs select(input, ctx).`)
     problems.push(...inputProblems(view.input, `views.${name}.input`))
+    if (view.output !== undefined) problems.push(...outputProblems(view.output, `views.${name}.output`))
   }
   return problems
+}
+
+/** A view's output may be any schema (`s.array(...)`, `s.number()`), within the size an input schema has. */
+function outputProblems(schema: Readonly<Record<string, unknown>>, where: string): readonly string[] {
+  if (jsonBytes(schema) > MAX_SCHEMA_BYTES) return [`${where}: larger than 16 KB`]
+  return schemaProblems(schema, where)
 }
 
 function inputProblems(schema: Readonly<Record<string, unknown>>, where: string): readonly string[] {

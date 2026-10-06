@@ -38,7 +38,10 @@ export default defineApp({
       },
     },
   },
-  views: { total: { description: 'The count.', input: s.object({}), select: (input, ctx) => ctx.state.count } },
+  views: {
+    total: { description: 'The count.', input: s.object({}), output: s.number({ int: true }), select: (input, ctx) => ctx.state.count },
+    label: { description: 'Promises a label, returns the count.', input: s.object({}), output: s.string(), select: (input, ctx) => ctx.state.count },
+  },
 })
 `
 
@@ -62,6 +65,10 @@ const outcome = async <A>(work: () => Promise<A>) => {
   }
 }
 
+/** A refused call's error, cut to a line or two; `accepted` when it was not refused. */
+const refusal = (result: { readonly ok: true } | { readonly ok: false; readonly error: string }) =>
+  result.ok ? 'accepted' : result.error.slice(0, 300)
+
 /**
  * The agent apps engine on the real SQLite, Worker Loader and R2 (ADR 0021): build, call with receipts, refuse bad
  * input and a failing run, migrate on upgrade, keep a broken build from running, roll back, and restore in a fresh
@@ -81,6 +88,8 @@ export async function appsEngineProbe(storage: DurableObjectStorage, env: Runtim
   const second = await call('add', { by: 3 }, 'op-2')
   const replay = await call('add', { by: 3 }, 'op-1')
   const total = await call('total', {}, 'view-1')
+  const label = await call('label', {}, 'view-2')
+  const listed = apps.summary()
   const badInput = await call('add', { by: 0 }, 'op-3')
   const failing = await call('fail', {}, 'op-4')
   const afterFailing = apps.store.state('counter')?.revision
@@ -122,8 +131,10 @@ export async function appsEngineProbe(storage: DurableObjectStorage, env: Runtim
     second,
     replay,
     total,
+    label: refusal(label),
+    listed,
     badInput: badInput.ok ? 'accepted' : badInput.error.split(' — ')[0],
-    failing: failing.ok ? 'accepted' : failing.error.slice(0, 300),
+    failing: refusal(failing),
     afterFailing,
     log,
     events: apps.store.events('counter', 50).map((event) => event.kind),

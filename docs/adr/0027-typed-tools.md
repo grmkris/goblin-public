@@ -24,7 +24,9 @@ string.
 provider's prompt cache cold, and the app inventory with each member's input type is in the trailing
 `<goblin-context>` block (`pi/context-tail.ts`). The input is an object, or the JSON string of one that models often
 send for a free-form field; it is checked against the member's schema by the app dispatcher, and a result too large to
-show is summarized as valid JSON rather than cut mid-text.
+show is summarized as valid JSON rather than cut mid-text. A view may declare the schema of what it returns
+(`output`): `<apps>` shows it after `→`, and a value that does not fit is the app's error, like a state that does not
+fit its schema.
 
 **MCP tools carry the server's types.** `mcp_list` returns each remote tool's input and output schema, untrusted data
 like its description, for a typed caller to read. `mcp_call` keeps the result Pi's MCP tools give (content blocks,

@@ -93,14 +93,7 @@ export class AppDispatch {
       if (modules === undefined) throw new NotFound({ what: `code of ${release}` })
       return modules
     })
-    if (action === undefined) {
-      const current = this.#state(request.app)
-      const out = await this.#isolate(MS.select, `view ${request.member}`, () =>
-        api.select(request.member, input, current.state, this.#deps.now()),
-      )
-      const value = this.#outcome(request.app, `view ${request.member}`, out)
-      return { kind: 'view', revision: current.revision, value: plainJson(value, BYTES.value, 'the view') }
-    }
+    if (action === undefined) return this.#select(request, api, input, view?.output)
     const receipt = store.receipt(request.op)
     if (receipt !== undefined) return { kind: 'action', revision: receipt.revision }
     let prepared: unknown = null
@@ -149,6 +142,27 @@ export class AppDispatch {
   }
 
   /** The value of an outcome, or the app's error recorded and raised for the caller. */
+  /** A view's value for `input` from the current state; one that does not fit its declared `output` is the app's error. */
+  async #select(
+    request: CallRequest,
+    api: ReturnType<Isolates['release']>,
+    input: unknown,
+    output: Readonly<Record<string, unknown>> | undefined,
+  ): Promise<CallResult> {
+    const current = this.#state(request.app)
+    const out = await this.#isolate(MS.select, `view ${request.member}`, () =>
+      api.select(request.member, input, current.state, this.#deps.now()),
+    )
+    const value = plainJson(this.#outcome(request.app, `view ${request.member}`, out), BYTES.value, 'the view')
+    const misfit = output === undefined ? [] : mismatches(output, value)
+    if (misfit.length > 0) {
+      const message = `view ${request.member} returned a value that does not fit its output: ${misfit.join('; ')}`
+      this.#deps.store.event(request.app, 'error', message, this.#deps.now())
+      throw new AppCodeError(message)
+    }
+    return { kind: 'view', revision: current.revision, value }
+  }
+
   #outcome(app: string, where: string, out: Outcome): unknown {
     if (out.ok) return out.value
     const message = `${where} failed: ${out.error}`

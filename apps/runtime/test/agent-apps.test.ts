@@ -71,6 +71,13 @@ describe('manifests', () => {
     expect(problems({ ...counter, actions: { add: { ...counter.actions.add, run: false } } })[0]).toContain('needs run')
     expect(problems({ name: 'counter' })[0]).toContain('default export')
   })
+  it("read a view's output schema, and refuse one that is not a schema", () => {
+    const typed = { total: { ...counter.views.total, output: { type: 'integer' } } }
+    const read = readManifest({ ...counter, views: typed }, 'counter')
+    expect('manifest' in read && read.manifest.views.total?.output).toEqual({ type: 'integer' })
+    const wrong = { total: { ...counter.views.total, output: { $ref: '#/x' } } }
+    expect(problems({ ...counter, views: wrong })[0]).toContain('views.total.output')
+  })
   it('read the powers an app asks for, and refuse hosts, tools and apps that are not names', () => {
     const asking = {
       ...counter,

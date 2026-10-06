@@ -139,6 +139,7 @@ export class App extends WorkerEntrypoint {
           {
             description: field(view, 'description'),
             input: field(view, 'input') ?? EMPTY_INPUT,
+            ...(isObject(field(view, 'output')) && { output: field(view, 'output') }),
             select: isFn(field(view, 'select')),
           },
         ]),

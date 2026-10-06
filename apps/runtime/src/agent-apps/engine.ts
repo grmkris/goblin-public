@@ -139,12 +139,15 @@ function fields(schema: Readonly<Record<string, unknown>>, depth = 0): string {
     .join(', ')
 }
 
-/** One line per member: `name(input fields)`, called with `app_call`. */
+/** One line per member: `name(input fields)`, and a view's output type after `→`, called with `app_call`. */
 function signatures(manifest: Manifest): string {
   const actions = Object.entries(manifest.actions).map(
     ([name, action]) => `${name}(${fields(action.input)})${action.agent ? '' : ' [UI only]'}`,
   )
-  const views = Object.entries(manifest.views).map(([name, view]) => `${name}(${fields(view.input)})`)
+  const views = Object.entries(manifest.views).map(
+    ([name, view]) =>
+      `${name}(${fields(view.input)})${view.output === undefined ? '' : ` → ${typeOf(view.output, 0)}`}`,
+  )
   return [
     actions.length > 0 ? `actions ${actions.join(', ')}` : '',
     views.length > 0 ? `views ${views.join(', ')}` : '',
