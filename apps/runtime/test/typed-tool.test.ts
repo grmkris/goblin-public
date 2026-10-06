@@ -40,6 +40,18 @@ describe('typed tools (unit, ADR 0027)', () => {
     })
   })
 
+  it('offer an empty input as an object with no fields, as providers require', () => {
+    const none = typedTool({
+      name: 'nothing_list',
+      description: 'List nothing.',
+      input: Schema.Struct({}),
+      output: Schema.Array(Schema.String),
+      replay: 'safe',
+      execute: async () => [],
+    })
+    expect(none.parameters).toEqual({ type: 'object', properties: {} })
+  })
+
   it('decode the arguments, and return the output as JSON text and structuredContent beside the web fields', async () => {
     const result = await call(trips, { from: { name: 'Tallinn', lat: 59 }, to: { name: 'Riga', lat: 57 }, days: 2 })
     expect(result).toEqual({

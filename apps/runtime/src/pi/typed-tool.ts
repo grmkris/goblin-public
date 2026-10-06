@@ -72,10 +72,20 @@ const signatures = new Map<string, ToolSignature>()
 /** Every typed tool's signature, by name. */
 export const toolSignatures = (): readonly ToolSignature[] => [...signatures.values()]
 
+/**
+ * A tool's parameters, which providers require to be an object: Effect writes an empty struct as "anything but null",
+ * offered here as an object with no fields.
+ */
+function parametersOf(name: string, schema: JsonSchema): JsonSchema {
+  if (schema.type === 'object') return schema
+  if (JSON.stringify(schema) === '{"not":{"type":"null"}}') return { type: 'object', properties: {} }
+  throw new Error(`${name}'s input must be a struct`)
+}
+
 const failed = (text: string): ToolExecutionResult => ({ content: [{ type: 'text', text }], isError: true })
 
 export function typedTool<I, O>(tool: TypedTool<I, O>): ToolRegistration {
-  const inputSchema = jsonSchemaOf(tool.input)
+  const inputSchema = parametersOf(tool.name, jsonSchemaOf(tool.input))
   const outputSchema = jsonSchemaOf(tool.output)
   signatures.set(tool.name, { name: tool.name, description: tool.description, inputSchema, outputSchema })
   // The model is offered the input's JSON form (an optional field may be null), so arguments decode through it.
