@@ -1,4 +1,5 @@
 import * as Schema from 'effect/Schema'
+import { describeError } from '../telemetry/attributes.ts'
 
 /**
  * The runtime's failure vocabulary. Every boundary maps one of these to an HTTP status in `respond.ts`; Durable Object
@@ -75,7 +76,6 @@ export const toAppError = (cause: unknown): AppError => {
   if (isAppError(cause)) return cause
   if (Schema.isSchemaError(cause)) return new InvalidInput({ reason: 'schema' })
   const name = cause instanceof Error ? cause.name : typeof cause
-  const message = (cause instanceof Error ? cause.message : String(cause)).slice(0, 300)
-  console.warn(JSON.stringify({ level: 'warn', event: 'unexpected', name, error: message }))
+  console.warn(JSON.stringify({ level: 'warn', event: 'unexpected', name, error: describeError(cause) }))
   return new Internal({ reason: 'unexpected' })
 }
