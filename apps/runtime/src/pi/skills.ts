@@ -119,13 +119,14 @@ const activateTool = (run: RunProgram) =>
             loaded.files.length === 0
               ? 'This skill has no other files.'
               : `Files you may read with skill_read: ${loaded.files.map((file) => `${file.path} (${file.size} bytes)`).join(', ')}`
+          // Blank lines keep the tags from opening an HTML block, so the body still reads as Markdown.
           return text(
             [
               `<skill handle="${loaded.skill.handle}" origin="${loaded.skill.serverId}">`,
               loaded.body.trim(),
               '</skill>',
               files,
-            ].join('\n'),
+            ].join('\n\n'),
           )
         }),
       ),
@@ -156,7 +157,7 @@ const readTool = (run: RunProgram) =>
             }),
           )
           if (file.kind === 'text')
-            return text(`<skill-file skill="${skill}" path="${path}">\n${file.text}\n</skill-file>`)
+            return text(`<skill-file skill="${skill}" path="${path}">\n\n${file.text}\n\n</skill-file>`)
           if (file.kind === 'image')
             return {
               content: [
