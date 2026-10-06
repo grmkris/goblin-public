@@ -52,6 +52,7 @@ export default Alchemy.Stack(
             },
           }),
       compatibility: { date: '2026-09-25', flags: ['nodejs_compat'] },
+      observability: stage.observability,
       dev: { port: 18971, strictPort: true },
       memo: {
         include: ['src/**', 'vite.config.ts', 'package.json', '../../apps/runtime/src/**', '../../packages/**'],

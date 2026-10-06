@@ -642,7 +642,9 @@ bucket and the `LOADER` Worker Loader (Dynamic Workers, open beta, Workers Paid)
 entrypoint. `scripts/stage.ts` builds `packages/app`'s toolchain before Alchemy runs. The local stage runs in workerd with CLIProxy; the dev stage calls Railway LiteLLM with a
 dedicated model-limited, budget-capped key. Offered models and price weights come from stage configuration; the per-account allowance comes from its plan or
 operator override. The key's provider caps and shared quotas are managed outside this repository; source does not prove
-their active values. Secrets are Worker secret bindings, never in the browser bundle.
+their active values. Secrets are Worker secret bindings, never in the browser bundle. Every stage turns on Workers
+Logs (with invocation logs) and Workers Traces for every request (`scripts/stage-config.ts`); Cloudflare keeps both
+seven days. The run ledger's log lines (see Run ledger) are among them.
 
 
 ## Stage origins
