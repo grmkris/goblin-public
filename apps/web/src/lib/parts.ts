@@ -71,12 +71,22 @@ export function isOwnTurn(part: Part): part is Extract<Part, { readonly kind: 'u
   return part.kind === 'user' && (part.author === undefined || part.author === TELEGRAM_AUTHOR)
 }
 
+/** An object, or the JSON string of one, which the model may send for a free-form argument (ADR 0027). */
+function objectArgument(value: unknown): Record<string, unknown> | undefined {
+  if (!isString(value)) return record(value)
+  try {
+    return record(JSON.parse(value))
+  } catch {
+    return undefined
+  }
+}
+
 /** The MCP server, tool and arguments of an `mcp_call`, when the call has that shape. */
 export function mcpTarget(call: ToolCallView): McpTarget | undefined {
   if (call.name !== 'mcp_call') return undefined
   const { serverId, name } = call.arguments
   if (!isString(serverId) || !isString(name)) return undefined
-  return { serverId, name, arguments: record(call.arguments.arguments) ?? {} }
+  return { serverId, name, arguments: objectArgument(call.arguments.arguments) ?? {} }
 }
 
 function toolState(result: ToolResultMessage | undefined, live: LiveTool | undefined, running: boolean): ToolState {

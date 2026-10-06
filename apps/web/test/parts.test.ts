@@ -28,6 +28,12 @@ const snapshot = (entries: readonly unknown[], extra: Record<string, unknown> = 
   projectSnapshot({ type: 'snapshot', entries, tools: [], inbox: [], ...extra })
 
 describe('the transcript as render parts', () => {
+  it("reads an MCP call's arguments sent as the JSON string of an object", () => {
+    const args = { serverId: 'myplan', name: 'myplan_open', arguments: '{"note":"n1"}' }
+    const parts = conversationParts(snapshot([asking(2, [call('c1', args)]), result(3, 'c1')]))
+    expect(parts[0]).toMatchObject({ target: { serverId: 'myplan', name: 'myplan_open', arguments: { note: 'n1' } } })
+  })
+
   it('folds each result into the call that asked for it, with the MCP target and its timing', () => {
     const args = { serverId: 'myplan', name: 'myplan_open', arguments: { note: 'n1' } }
     const parts = conversationParts(

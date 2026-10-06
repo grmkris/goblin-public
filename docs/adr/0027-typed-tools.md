@@ -26,6 +26,11 @@ provider's prompt cache cold, and the app inventory with each member's input typ
 send for a free-form field; it is checked against the member's schema by the app dispatcher, and a result too large to
 show is summarized as valid JSON rather than cut mid-text.
 
+**MCP tools carry the server's types.** `mcp_list` returns each remote tool's input and output schema, untrusted data
+like its description, for a typed caller to read. `mcp_call` keeps the result Pi's MCP tools give (content blocks,
+`details.structuredContent`, `_meta`, the origin), since MCP Apps read it as the server sent it. A free-form object
+field (`mcp_call`'s `arguments`, `app_call`'s `input`) also takes the JSON string of an object (`objectOrJson`).
+
 Consequences:
 - Tools move to `typedTool` one at a time; the web renders old and new tool names, so stored transcripts still read.
 - A call to an old tool name that Pi recovers after the switch fails once with an unknown-tool error.

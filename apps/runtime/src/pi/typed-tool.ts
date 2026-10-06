@@ -85,6 +85,12 @@ const signatures = new Map<string, ToolSignature>()
 export const toolSignatures = (): readonly ToolSignature[] => [...signatures.values()]
 
 /**
+ * A free-form object field (an app member's input, an MCP tool's arguments): the object, or the JSON string of one,
+ * which models often send for a field whose schema names no properties.
+ */
+export const objectOrJson = <S extends Schema.Top>(schema: S) => Schema.Union([schema, Schema.fromJsonString(schema)])
+
+/**
  * A tool's parameters, which providers require to be an object: Effect writes an empty struct as "anything but null",
  * offered here as an object with no fields.
  */

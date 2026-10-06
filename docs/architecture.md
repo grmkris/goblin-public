@@ -176,12 +176,15 @@ App's own calls carry no conversation and are not narrowed; Telegram and inbound
 switches cover them.
 
 The persona contributes two static system-prompt sections (`pi/persona.ts`): who the agent is, and that remote content
-is untrusted data. The system prompt holds only text that does not change between requests: pi-ai folds every
-change of it into the one leading system message, which empties the provider's prompt cache. What does change (the
-apps with their versions, members and last errors; the skills on offer) goes into one trailing `<goblin-context>`
-message that `beforeRequest` hooks add to each request (`pi/context-tail.ts`), marked as goblin's note and not the
-owner's. Pi never stores it, so everything before it stays a cacheable prefix. The `mcp_list` and `mcp_call` tools (`pi/resident-mcp.ts`) are how the model reaches the owner's
-MCP servers; both require current resident authority, and `mcp_call` is marked unsafe to replay.
+is untrusted data. The system prompt holds only text that does not change between requests: pi-ai folds every change
+of it into the one leading system message, which empties the provider's prompt cache. What does change (the apps with
+their versions, members and last errors; the skills on offer) goes into one trailing `<goblin-context>` message that
+`beforeRequest` hooks add to each request (`pi/context-tail.ts`), marked as goblin's note and not the owner's. Pi
+never stores it, so everything before it stays a cacheable prefix. The `mcp_list` and `mcp_call` tools
+(`pi/resident-mcp.ts`) are how the model reaches the owner's MCP servers; both require current resident authority, and
+`mcp_call` is marked unsafe to replay. `mcp_list` shows each tool's input and output schema (the server's, untrusted
+data); `mcp_call` takes its `arguments` as an object or the JSON string of one, and returns the server's result as
+Pi's MCP tools shape it (content blocks, `details.structuredContent`, `_meta` and the origin).
 
 `ask_user` (`pi/ask-user.ts`) is how the agent asks the owner something. It takes one to five short questions:
 single choice, multiple choice or free text. The tool result is the questions as numbered plain text, with details

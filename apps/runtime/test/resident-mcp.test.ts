@@ -64,9 +64,8 @@ const tools = residentMcpExtension(run).tools ?? []
 const execute = (tool: string, input: Record<string, unknown>, conversationId: number) => {
   const found = tools.find((candidate) => candidate.name === tool)
   if (found === undefined) throw new Error(`${tool} is not registered`)
-  // SAFETY: `input` matches the named tool's parameters (each call site passes that tool's shape); the MCP tools read
-  // only `conversationId` from the execution API, and only the abort signal from the context.
-  return found.execute(input as never, { conversationId } as never, {} as never)
+  // SAFETY: the MCP tools read only `conversationId` from the execution API, and only the abort signal from the context.
+  return found.execute(input, { conversationId } as never, {} as never)
 }
 const call = (name: string, conversationId = 7) =>
   execute('mcp_call', { serverId: 'notes', name, arguments: {} }, conversationId)
@@ -85,6 +84,10 @@ describe('mcp_call and the owner grant (unit)', () => {
     const result = await call('read')
     expect(result.isError).toBe(false)
     expect(JSON.stringify(result.content)).toContain('ran read')
+    expect(result.details).toMatchObject({ origin: { serverId: 'notes', trust: 'untrusted' } })
+    // Arguments the model sent as the JSON string of an object run the same tool.
+    const stringly = await execute('mcp_call', { serverId: 'notes', name: 'read', arguments: '{}' }, 7)
+    expect(JSON.stringify(stringly.content)).toContain('ran read')
   })
   it('turns an ungranted tool into a request for the owner instead of an empty error', async () => {
     const result = await call('write')
@@ -95,15 +98,22 @@ describe('mcp_call and the owner grant (unit)', () => {
     expect(JSON.stringify(result.content)).toContain('Allow button')
   })
   it('never asks the owner about a tool that is missing or meant for an App only', async () => {
-    await expect(call('missing')).rejects.toMatchObject({ _tag: 'NotFound' })
-    await expect(call('panel')).rejects.toMatchObject({ _tag: 'NotFound' })
+    // A failure is an error result the model reads, with no details for the web to turn into an Allow card.
+    for (const name of ['missing', 'panel']) {
+      const result = await call(name)
+      expect(result).toMatchObject({ isError: true })
+      expect(result.details).toBeUndefined()
+      expect(JSON.stringify(result.content)).toContain('NotFound')
+    }
   })
 })
 
 describe('what a conversation switched off (unit)', () => {
   it('leaves a server or tool switched off out of mcp_list', async () => {
     expect(await listed({}, 8)).toEqual({ servers: [] })
-    await expect(listed({ serverId: 'notes' }, 8)).rejects.toMatchObject({ _tag: 'NotFound' })
+    const hidden = await execute('mcp_list', { serverId: 'notes' }, 8)
+    expect(hidden.isError).toBe(true)
+    expect(JSON.stringify(hidden.content)).toContain('NotFound')
     const notesTools = await listed({ serverId: 'notes' }, 9)
     expect(notesTools).toMatchObject({ tools: [{ name: 'write', granted: false }] })
   })
