@@ -1,7 +1,8 @@
+import * as Schema from 'effect/Schema'
 import { InvalidInput, NotFound } from '../http/errors.ts'
 import { type Isolates, type ReleaseApi, type Rendered, isolateFailure } from './isolates.ts'
 import { jsonBytes, mismatches, plainJson } from './json.ts'
-import { type Manifest, type Power, readManifest, requestedPowers } from './manifest.ts'
+import { type Manifest, Power, readManifest, requestedPowers } from './manifest.ts'
 import { APP_NAME } from './names.ts'
 import type { AppQueues } from './queue.ts'
 import type { AgentAppStore, AppViewCode } from './store.ts'
@@ -28,33 +29,45 @@ export type BuildRequest = {
 }
 /** Where a build came from: the conversation (the app's home when it is new) and the tool call. */
 export type BuildCaller = { readonly session: string; readonly callId: string | null }
-export type Problem = { readonly file?: string; readonly line?: number; readonly message: string }
-export type BuildResult =
-  | {
-      readonly status: 'active'
-      readonly app: string
-      readonly release: string
-      readonly version: number
-      readonly members: readonly string[]
-      readonly revision: number
-      readonly migrated: boolean
-      /** Whether the app has a view (`view.tsx`) the owner can open. */
-      readonly ui: boolean
-      /**
-       * Why the render check could not render its view (it reads a browser global while rendering, or the check did not
-       * run): it is active, but its view went unchecked.
-       */
-      readonly viewWarning?: string
-      /** Powers it asks for that the owner has not approved: they fail until approved (shown to the owner here). */
-      readonly approval?: { readonly app: string; readonly title: string; readonly powers: readonly Power[] }
-    }
-  | { readonly status: 'unchanged'; readonly app: string; readonly release: string }
-  | {
-      readonly status: 'failed'
-      readonly app: string
-      readonly release?: string
-      readonly problems: readonly Problem[]
-    }
+/** What is wrong with a build: where (file and line) when known, and what. */
+export const Problem = Schema.Struct({
+  file: Schema.optionalKey(Schema.String),
+  line: Schema.optionalKey(Schema.Number),
+  message: Schema.String,
+})
+export type Problem = typeof Problem.Type
+
+/** What `app_build` returns: the app made active, nothing changed, or the problems to fix (ADR 0021). */
+export const BuildResult = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal('active'),
+    app: Schema.String,
+    release: Schema.String,
+    version: Schema.Number,
+    members: Schema.Array(Schema.String),
+    revision: Schema.Number,
+    migrated: Schema.Boolean,
+    /** Whether the app has a view (`view.tsx`) the owner can open. */
+    ui: Schema.Boolean,
+    /**
+     * Why the render check could not render its view (it reads a browser global while rendering, or the check did not
+     * run): it is active, but its view went unchecked.
+     */
+    viewWarning: Schema.optionalKey(Schema.String),
+    /** Powers it asks for that the owner has not approved: they fail until approved (shown to the owner here). */
+    approval: Schema.optionalKey(
+      Schema.Struct({ app: Schema.String, title: Schema.String, powers: Schema.Array(Power) }),
+    ),
+  }),
+  Schema.Struct({ status: Schema.Literal('unchanged'), app: Schema.String, release: Schema.String }),
+  Schema.Struct({
+    status: Schema.Literal('failed'),
+    app: Schema.String,
+    release: Schema.optionalKey(Schema.String),
+    problems: Schema.Array(Problem),
+  }),
+])
+export type BuildResult = typeof BuildResult.Type
 
 /** How much code an app is, and how many apps an agent keeps (ADR 0021). */
 const LIMITS = { files: 6, fileBytes: 128 * 1024, totalBytes: 384 * 1024, apps: 16 } as const

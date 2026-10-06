@@ -1,11 +1,13 @@
-import { Type } from '@earendil-works/pi-ai'
-import { GenerationTask, defineExtension, defineTool, hook, section } from '@earendil-works/pi-durable'
-import type { AgentApps } from '../agent-apps/engine.ts'
+import { GenerationTask, defineExtension, hook, section } from '@earendil-works/pi-durable'
+import * as Schema from 'effect/Schema'
+import { BuildResult } from '../agent-apps/build.ts'
+import { type AgentApps, AppInspection, InspectPart, RolledBack } from '../agent-apps/engine.ts'
 import { problemText } from '../agent-apps/queue.ts'
-import { runScript } from '../agent-apps/script.ts'
+import { ScriptResult, runScript } from '../agent-apps/script.ts'
 import { withContext } from './context-tail.ts'
 import { homeExtension } from './home.ts'
 import type { RunProgram } from './resident-mcp.ts'
+import { typedTool } from './typed-tool.ts'
 
 const GUIDE = [
   'You can build apps for the owner: small programs with durable state on the server, whose actions and views you',
@@ -24,110 +26,91 @@ const GUIDE = [
   'each request.',
 ].join(' ')
 
-const text = (value: unknown) => ({
-  content: [{ type: 'text' as const, text: typeof value === 'string' ? value : JSON.stringify(value) }],
-})
-const failure = (cause: unknown) => ({ content: [{ type: 'text' as const, text: problemText(cause) }], isError: true })
-
 /** The apps as they are now, for the trailing context block: they change with every build, the guide never does. */
 function appsNow(apps: AgentApps): string {
   const list = apps.summary()
   return list === '' ? '(none yet)' : list
 }
 
+const AppName = Schema.String.check(Schema.isMaxLength(24))
+
 /** `app_docs`: the SDK reference, by topic. */
 const docsTool = (apps: AgentApps) =>
-  defineTool({
+  typedTool({
     name: 'app_docs',
     description:
       'Read how to write an app: topic "core" (start here), "ui" (its view), "powers" (fetch, tools, model, Telegram, other apps), "schedules", "files" or "examples".',
-    parameters: Type.Object({ topic: Type.Optional(Type.String({ maxLength: 40 })) }),
+    input: Schema.Struct({ topic: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(40))) }),
+    output: Schema.Struct({ docs: Schema.String }),
     replay: 'safe',
-    execute: async ({ topic }) => text(await apps.docs(topic ?? 'core')),
+    execute: async ({ topic }) => ({ docs: await apps.docs(topic ?? 'core') }),
+    text: ({ docs }) => docs,
   })
 
 /** `app_build`: create or change an app. */
 const buildTool = (apps: AgentApps) =>
-  defineTool({
+  typedTool({
     name: 'app_build',
     description:
       'Create an app, or change one by name. A new app sends `files` ({"app.ts": "...", "view.tsx": "..."} — the view is optional); a change sends the files it replaces or `edits` (find must occur exactly once). Returns the new version and its members (call them with app_call), or the problems to fix.',
-    parameters: Type.Object({
-      name: Type.String({ maxLength: 24, description: 'kebab-case, like reading-list' }),
-      files: Type.Optional(Type.Record(Type.String({ maxLength: 40 }), Type.String({ maxLength: 131_072 }))),
-      edits: Type.Optional(
-        Type.Array(
-          Type.Object({
-            file: Type.String({ maxLength: 40 }),
-            find: Type.String({ maxLength: 20_000 }),
-            replace: Type.String({ maxLength: 20_000 }),
+    input: Schema.Struct({
+      name: AppName.annotate({ description: 'kebab-case, like reading-list' }),
+      // A plain key keeps the value type in the JSON Schema; the builder checks each file name.
+      files: Schema.optionalKey(Schema.Record(Schema.String, Schema.String.check(Schema.isMaxLength(131_072)))),
+      edits: Schema.optionalKey(
+        Schema.Array(
+          Schema.Struct({
+            file: Schema.String.check(Schema.isMaxLength(40)),
+            find: Schema.String.check(Schema.isMaxLength(20_000)),
+            replace: Schema.String.check(Schema.isMaxLength(20_000)),
           }),
-          { maxItems: 20 },
-        ),
+        ).check(Schema.isMaxLength(20)),
       ),
-      note: Type.Optional(Type.String({ maxLength: 300, description: 'what this version changes' })),
+      note: Schema.optionalKey(
+        Schema.String.check(Schema.isMaxLength(300)).annotate({ description: 'what this version changes' }),
+      ),
     }),
+    output: BuildResult,
     replay: 'safe',
-    execute: async ({ name, files, edits, note }, api) => {
-      try {
-        return text(
-          await apps.build({ name, files, edits, note }, { session: String(api.conversationId), callId: api.callId }),
-        )
-      } catch (cause) {
-        return failure(cause)
-      }
-    },
+    execute: async (request, api) => apps.build(request, { session: String(api.conversationId), callId: api.callId }),
+    failure: problemText,
   })
 
 /** `app_inspect`: an app's version, members and, on request, its source, state, events and releases. */
 const inspectTool = (apps: AgentApps) =>
-  defineTool({
+  typedTool({
     name: 'app_inspect',
     description:
       'Look at an app: its version and members, and optionally its source, state, recent events and releases.',
-    parameters: Type.Object({
-      app: Type.String({ maxLength: 24 }),
-      include: Type.Optional(
-        Type.Array(
-          Type.Union([Type.Literal('source'), Type.Literal('state'), Type.Literal('events'), Type.Literal('releases')]),
-        ),
-      ),
-    }),
+    input: Schema.Struct({ app: AppName, include: Schema.optionalKey(Schema.Array(InspectPart)) }),
+    output: AppInspection,
     replay: 'safe',
-    execute: async ({ app, include }) => {
-      try {
-        return text(apps.inspect(app, include ?? []))
-      } catch (cause) {
-        return failure(cause)
-      }
-    },
+    execute: async ({ app, include }) => apps.inspect(app, include ?? []),
+    failure: problemText,
   })
 
 /** `app_rollback`: an earlier release active again. */
 const rollbackTool = (apps: AgentApps) =>
-  defineTool({
+  typedTool({
     name: 'app_rollback',
     description: 'Make an earlier release of an app active again (app_inspect with "releases" lists them).',
-    parameters: Type.Object({ app: Type.String({ maxLength: 24 }), release: Type.String({ maxLength: 40 }) }),
+    input: Schema.Struct({ app: AppName, release: Schema.String.check(Schema.isMaxLength(40)) }),
+    output: RolledBack,
     replay: 'safe',
-    execute: async ({ app, release }) => {
-      try {
-        return text(await apps.rollback(app, release))
-      } catch (cause) {
-        return failure(cause)
-      }
-    },
+    execute: async ({ app, release }) => apps.rollback(app, release),
+    failure: problemText,
   })
 
 /** `code_run`: one-off JavaScript over the owner's files. */
 const codeTool = (apps: AgentApps) =>
-  defineTool({
+  typedTool({
     name: 'code_run',
     description:
       "Run JavaScript once (the body of an async function; `return` a JSON value). `files.read(path)`, `files.list(dir)` and `files.write(path, text)` (under /agent) reach the owner's files; `log(...)` notes. No network; 30 s.",
-    parameters: Type.Object({ code: Type.String({ maxLength: 100_000 }) }),
+    input: Schema.Struct({ code: Schema.String.check(Schema.isMaxLength(100_000)) }),
+    output: ScriptResult,
     replay: 'safe',
-    execute: async ({ code }) => text(await runScript(apps.isolates, apps.ownerFiles, code)),
+    execute: async ({ code }) => runScript(apps.isolates, apps.ownerFiles, code),
   })
 
 /** `app_docs`, `app_build`, `app_inspect`, `app_rollback` and `code_run`, on main and threads (ADR 0021). */

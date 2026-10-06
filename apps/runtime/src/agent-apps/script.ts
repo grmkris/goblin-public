@@ -1,4 +1,5 @@
 import { RpcTarget } from 'cloudflare:workers'
+import * as Schema from 'effect/Schema'
 import type { FileStore } from '../files/store.ts'
 import type { Isolates } from './isolates.ts'
 import { plainJson } from './json.ts'
@@ -64,11 +65,20 @@ ${code}
 export default {}
 `
 
+/** What `code_run` returns: whether the script finished, its value as JSON or its error, and what it logged. */
+export const ScriptResult = Schema.Struct({
+  ok: Schema.Boolean,
+  value: Schema.optionalKey(Schema.Json),
+  error: Schema.optionalKey(Schema.String),
+  logs: Schema.Array(Schema.String),
+})
+export type ScriptResult = typeof ScriptResult.Type
+
 /**
  * Runs a one-off JavaScript snippet in its own isolate (`code_run`): no network, the owner's files through `files`,
  * `log(...)` for notes, and its return value back as JSON.
  */
-export async function runScript(isolates: Isolates, files: FileStore, code: string) {
+export async function runScript(isolates: Isolates, files: FileStore, code: string): Promise<ScriptResult> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code))
   const id = [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, '0'))
@@ -77,12 +87,9 @@ export async function runScript(isolates: Isolates, files: FileStore, code: stri
   const script = isolates.script(id, moduleOf(code))
   try {
     const result = await isolates.call(SCRIPT_MS, 'the script', () => script.run(new ScriptFiles(files)))
-    return {
-      ok: result.ok,
-      value: plainJson(result.value ?? null, 256 * 1024, 'the result'),
-      error: result.error,
-      logs: result.logs,
-    }
+    // SAFETY: plainJson returns the value only once it is plain JSON within the limit.
+    const value = plainJson(result.value ?? null, 256 * 1024, 'the result') as Schema.Json
+    return { ok: result.ok, value, ...(result.error === undefined ? {} : { error: result.error }), logs: result.logs }
   } catch (cause) {
     return { ok: false, error: problemText(cause), logs: [] }
   }

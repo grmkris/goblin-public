@@ -78,8 +78,10 @@ export function storedManifest(json: string): Manifest {
 }
 
 /** A power an app asks for (ADR 0021): a host to fetch from, an MCP tool, another app, model calls or notifications. */
-export type PowerKind = 'egress' | 'tool' | 'app' | 'llm' | 'notify'
-export type Power = { readonly kind: PowerKind; readonly target: string }
+export const PowerKind = Schema.Literals(['egress', 'tool', 'app', 'llm', 'notify'])
+export type PowerKind = typeof PowerKind.Type
+export const Power = Schema.Struct({ kind: PowerKind, target: Schema.String })
+export type Power = typeof Power.Type
 
 /** Every power a manifest asks for; `llm` and `notify` have the target `*`. */
 export const requestedPowers = (manifest: Manifest): readonly Power[] => [

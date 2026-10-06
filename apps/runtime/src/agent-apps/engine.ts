@@ -7,7 +7,7 @@ import { nowMillis } from '../clock.ts'
 import type { RuntimeEnv } from '../env.ts'
 import { InvalidInput, NotFound } from '../http/errors.ts'
 import { runApplicationMigrations } from '../storage/migrations.ts'
-import { AppBuilder, type BuildCaller, type BuildRequest, type BuildResult, type Toolchain } from './build.ts'
+import { AppBuilder, type BuildCaller, type BuildRequest, type BuildResult, Problem, type Toolchain } from './build.ts'
 import { AppDispatch } from './dispatch.ts'
 import { AppFiles } from './files.ts'
 import { Isolates } from './isolates.ts'
@@ -41,7 +41,50 @@ export type AgentAppsDeps = {
 }
 
 /** What `app_inspect` can include besides the summary. */
-export type InspectPart = 'source' | 'state' | 'events' | 'releases'
+export const InspectPart = Schema.Literals(['source', 'state', 'events', 'releases'])
+export type InspectPart = typeof InspectPart.Type
+
+/** What `app_inspect` shows of an app: its version and members, and the parts asked for with `include`. */
+export const AppInspection = Schema.Struct({
+  app: Schema.Struct({
+    name: Schema.String,
+    title: Schema.String,
+    description: Schema.String,
+    version: Schema.optionalKey(Schema.Number),
+    release: Schema.String,
+    revision: Schema.optionalKey(Schema.Number),
+  }),
+  /** Its actions and views with their input fields, as `<apps>` lists them. */
+  members: Schema.String,
+  lastBuildFailed: Schema.optionalKey(Schema.Struct({ release: Schema.String, problems: Schema.Array(Problem) })),
+  /** The state as JSON text, cut at half the inspection's size. */
+  state: Schema.optionalKey(Schema.String),
+  /** Its files, or each file's length when they are too large to show beside the rest. */
+  source: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  events: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ kind: Schema.String, detail: Schema.String, createdAt: Schema.Number })),
+  ),
+  releases: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        release: Schema.String,
+        version: Schema.NullOr(Schema.Number),
+        status: Schema.Literals(['active', 'retired', 'failed']),
+        note: Schema.NullOr(Schema.String),
+        at: Schema.Number,
+      }),
+    ),
+  ),
+})
+export type AppInspection = typeof AppInspection.Type
+
+/** What `app_rollback` made active: the release, its version, and whether the state was kept or came from a snapshot. */
+export const RolledBack = Schema.Struct({
+  release: Schema.String,
+  version: Schema.NullOr(Schema.Number),
+  restored: Schema.Literals(['kept', 'snapshot']),
+})
+export type RolledBack = typeof RolledBack.Type
 
 const INSPECT_BYTES = 24 * 1024
 /** How often a view's failure is kept, at most. */
@@ -323,7 +366,7 @@ export class AgentApps {
       .join('\n')
   }
 
-  inspect(app: string, include: readonly InspectPart[]): Record<string, unknown> {
+  inspect(app: string, include: readonly InspectPart[]): AppInspection {
     const row = this.store.app(app)
     if (row === undefined) throw new NotFound({ what: `app ${app}` })
     const manifest = this.dispatch.manifest(row.activeRelease)
@@ -331,50 +374,50 @@ export class AgentApps {
     const active = this.store.release(row.activeRelease)
     const releases = this.store.releases(app, 10)
     const latest = releases[0]
-    const parts: Record<string, unknown> = {
+    const source: Readonly<Record<string, string>> = JSON.parse(active?.source ?? '{}')
+    const inspection: AppInspection = {
       app: {
         name: app,
         title: row.title,
         description: row.description,
-        version: active?.seq,
+        ...(active?.seq == null ? {} : { version: active.seq }),
         release: row.activeRelease,
-        revision: state?.revision,
+        ...(state === undefined ? {} : { revision: state.revision }),
       },
       members: signatures(manifest),
       ...(latest?.status === 'failed' && {
         lastBuildFailed: { release: latest.id, problems: JSON.parse(latest.diagnostics ?? '[]') },
       }),
+      ...(include.includes('state') && { state: clip(JSON.stringify(state?.state ?? null), INSPECT_BYTES / 2) }),
+      ...(include.includes('source') && { source }),
+      ...(include.includes('events') && { events: this.store.events(app, 20) }),
+      ...(include.includes('releases') && {
+        releases: releases.map((release) => ({
+          release: release.id,
+          version: release.seq,
+          status: release.status,
+          note: release.note,
+          at: release.createdAt,
+        })),
+      }),
     }
-    if (include.includes('state')) parts.state = clip(JSON.stringify(state?.state ?? null), INSPECT_BYTES / 2)
-    const source: Readonly<Record<string, string>> = JSON.parse(active?.source ?? '{}')
-    if (include.includes('source')) parts.source = source
-    if (include.includes('events')) parts.events = this.store.events(app, 20)
-    if (include.includes('releases'))
-      parts.releases = releases.map((release) => ({
-        release: release.id,
-        version: release.seq,
-        status: release.status,
-        note: release.note,
-        at: release.createdAt,
-      }))
-    if (include.includes('source') && JSON.stringify(parts).length > INSPECT_BYTES)
-      parts.source = Object.fromEntries(
+    if (!include.includes('source') || JSON.stringify(inspection).length <= INSPECT_BYTES) return inspection
+    return {
+      ...inspection,
+      source: Object.fromEntries(
         Object.entries(source).map(([file, text]) => [
           file,
           `${String(text.length)} characters: inspect with include ["source"] alone`,
         ]),
-      )
-    return parts
+      ),
+    }
   }
 
   /**
    * Makes an earlier release of `app` active again. The state stays when it fits that release's schema; otherwise the
    * newest snapshot taken while that release was active comes back.
    */
-  rollback(
-    app: string,
-    release: string,
-  ): Promise<{ readonly release: string; readonly version: number | null; readonly restored: 'kept' | 'snapshot' }> {
+  rollback(app: string, release: string): Promise<RolledBack> {
     return this.#queues.run(app, async () => {
       const row = this.store.release(release)
       if (row?.app !== app || row.status !== 'retired')
