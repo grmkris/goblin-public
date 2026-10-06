@@ -8,7 +8,8 @@ const GUIDE = [
   'You can build apps for the owner: small programs with durable state on the server, whose actions and views become',
   'your tools (`app_<name>__<action>`). Use one when the owner wants something kept and worked on over time (a list,',
   'a tracker, a log, a calculation over their data). Read `app_docs` (topic `core`) before your first build. Build or',
-  'change one with `app_build`; for small fixes send `edits`. If a build fails, read its problems and fix them.',
+  'change one with `app_build`; for small fixes send `edits`. If a build fails, read its problems and fix them. An',
+  'app with a `view.tsx` (topic `ui`) shows the owner a live UI, under your build in the chat and as a page.',
   "`code_run` runs a one-off JavaScript snippet over the owner's files for calculations; it keeps nothing.",
 ].join(' ')
 
@@ -27,7 +28,7 @@ function appsSection(apps: AgentApps): string {
 const docsTool = (apps: AgentApps) =>
   defineTool({
     name: 'app_docs',
-    description: 'Read how to write an app: topic "core" (start here), "files" or "examples".',
+    description: 'Read how to write an app: topic "core" (start here), "ui" (its view), "files" or "examples".',
     parameters: Type.Object({ topic: Type.Optional(Type.String({ maxLength: 40 })) }),
     replay: 'safe',
     execute: async ({ topic }) => text(await apps.docs(topic ?? 'core')),
@@ -38,7 +39,7 @@ const buildTool = (apps: AgentApps) =>
   defineTool({
     name: 'app_build',
     description:
-      'Create an app, or change one by name. A new app sends `files` ({"app.ts": "..."}); a change sends the files it replaces or `edits` (find must occur exactly once). Returns the new version and its tools, or the problems to fix.',
+      'Create an app, or change one by name. A new app sends `files` ({"app.ts": "...", "view.tsx": "..."} — the view is optional); a change sends the files it replaces or `edits` (find must occur exactly once). Returns the new version and its tools, or the problems to fix.',
     parameters: Type.Object({
       name: Type.String({ maxLength: 24, description: 'kebab-case, like reading-list' }),
       files: Type.Optional(Type.Record(Type.String({ maxLength: 40 }), Type.String({ maxLength: 131_072 }))),

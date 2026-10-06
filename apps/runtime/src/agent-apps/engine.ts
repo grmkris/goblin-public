@@ -1,4 +1,6 @@
 import type { Extension, Registry } from '@earendil-works/pi-durable'
+import { type AgentAppLaunch, AgentAppLib, type AppCallResult, type AppSnapshot } from '@goblin/contracts'
+import * as Schema from 'effect/Schema'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { FileStore } from '../files/store.ts'
 import { nowMillis } from '../clock.ts'
@@ -12,7 +14,7 @@ import { Isolates } from './isolates.ts'
 import { mismatches } from './json.ts'
 import type { Manifest } from './manifest.ts'
 import { toolName } from './names.ts'
-import { AppQueues } from './queue.ts'
+import { AppCodeError, AppQueues } from './queue.ts'
 import { AgentAppStore } from './store.ts'
 import { AppToolset } from './toolset.ts'
 
@@ -32,6 +34,22 @@ export type AgentAppsDeps = {
 export type InspectPart = 'source' | 'state' | 'events' | 'releases'
 
 const INSPECT_BYTES = 24 * 1024
+/** How often a view's failure is kept, at most. */
+const REPORT_MS = 10_000
+
+/** An agent app as the App registry shows it (ADR 0021). */
+export type AgentAppInfo = {
+  readonly title: string
+  /** The conversation the app lives in: where it was built. */
+  readonly home: string
+  readonly release: string
+  readonly version: number
+  readonly revision: number
+  /** Whether its active release has a view. */
+  readonly ui: boolean
+}
+
+const isAgentAppLib = Schema.is(AgentAppLib)
 const clip = (text: string, bytes: number) => (text.length <= bytes ? text : `${text.slice(0, bytes)}… (cut)`)
 
 /** An input schema's field names. */
@@ -67,6 +85,7 @@ export class AgentApps {
   readonly #builder: AppBuilder
   readonly #files = new Map<string, AppFiles>()
   readonly #listeners = new Set<(app: string) => void>()
+  readonly #reported = new Map<string, number>()
 
   constructor(deps: AgentAppsDeps) {
     this.#deps = deps
@@ -107,15 +126,67 @@ export class AgentApps {
     this.#toolset.restore()
   }
 
-  /** What the App registry shows of an app: its release, that release's number and its state's revision. */
-  info(app: string): { readonly release: string; readonly version: number; readonly revision: number } | undefined {
+  /** What the App registry shows of an app: its title and home, its release and number, revision, and view. */
+  info(app: string): AgentAppInfo | undefined {
     const row = this.store.app(app)
     if (row === undefined) return undefined
     return {
+      title: row.title,
+      home: row.homeSession,
       release: row.activeRelease,
       version: this.store.release(row.activeRelease)?.seq ?? 0,
       revision: this.store.state(app)?.revision ?? 0,
+      ui: this.store.view(row.activeRelease) !== undefined,
     }
+  }
+
+  /** The app's state now, with its revision and the release that runs it. */
+  snapshot(app: string): AppSnapshot {
+    const release = this.dispatch.active(app)
+    const state = this.store.state(app)
+    if (state === undefined) throw new NotFound({ what: `${app} state` })
+    return { revision: state.revision, release, state: state.state }
+  }
+
+  /** What the browser needs to load the app's view: its code, its stylesheet, its frame bundles and its state. */
+  launch(app: string): AgentAppLaunch {
+    const snapshot = this.snapshot(app)
+    const view = this.store.view(snapshot.release)
+    if (view === undefined) throw new NotFound({ what: `a view of ${app}` })
+    return {
+      kind: 'agent',
+      name: app,
+      release: snapshot.release,
+      revision: snapshot.revision,
+      state: snapshot.state,
+      ui: { module: view.module, css: view.css, libs: view.libs.filter(isAgentAppLib) },
+    }
+  }
+
+  /**
+   * An action the app's view called, as the owner: the state after it, or the app's own error (its code failed or
+   * broke a rule). Views call actions only; `op` is the frame's operation id, kept apart per app.
+   */
+  async viewCall(app: string, member: string, input: unknown, op: string): Promise<AppCallResult> {
+    if (this.dispatch.manifest(this.dispatch.active(app)).actions[member] === undefined)
+      throw new InvalidInput({ reason: `${app} has no action ${member}; a view calls actions and reads the state` })
+    try {
+      await this.dispatch.call({ app, member, input, op: `ui:${app}:${op}` })
+    } catch (cause) {
+      if (cause instanceof AppCodeError) return { ok: false, error: cause.message }
+      throw cause
+    }
+    return { ok: true, ...this.snapshot(app) }
+  }
+
+  /** A failure the app's view reported: kept with its events (at most one every ten seconds), where the agent sees it. */
+  viewError(app: string, message: string): { readonly kept: boolean } {
+    this.dispatch.active(app)
+    const now = this.#deps.now()
+    if (now - (this.#reported.get(app) ?? 0) < REPORT_MS) return { kept: false }
+    this.#reported.set(app, now)
+    this.store.event(app, 'error', `view: ${message.slice(0, 1000)}`, now)
+    return { kept: true }
   }
 
   extensions(): readonly Extension[] {
@@ -137,14 +208,17 @@ export class AgentApps {
     return DOCS[topic] ?? `No topic "${topic}". Topics: ${Object.keys(DOCS).join(', ')}.`
   }
 
-  /** The apps for the model's prompt: name, title, version and each member's signature. */
+  /** The apps for the model's prompt: name, title, version, view, each member's signature, and a failure since. */
   summary(): string {
     return this.store
       .apps()
       .map((app) => {
         const manifest = this.dispatch.manifest(app.activeRelease)
         const version = this.store.release(app.activeRelease)?.seq ?? 0
-        return `- ${app.name} (v${String(version)}, "${app.title}"): ${signatures(manifest)}. Tools: ${toolName(app.name, '…')}`
+        const view = this.store.view(app.activeRelease) === undefined ? '' : ', with a view'
+        const [last] = this.store.events(app.name, 1)
+        const failing = last?.kind === 'error' ? ` Last error: ${last.detail.slice(0, 300)}` : ''
+        return `- ${app.name} (v${String(version)}, "${app.title}"${view}): ${signatures(manifest)}. Tools: ${toolName(app.name, '…')}.${failing}`
       })
       .join('\n')
   }

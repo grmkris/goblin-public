@@ -1,7 +1,7 @@
 import { Agent } from 'agents'
 import { type Extension } from '@earendil-works/pi-durable'
 import { type AppContext, type CapabilityChange, type JsonObject, MAIN_THREAD } from '@goblin/contracts'
-import type { CreateApp, UpdateApp } from '@goblin/contracts'
+import type { AppCall, AppDiagnostic, CreateApp, UpdateApp } from '@goblin/contracts'
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
@@ -63,7 +63,14 @@ import {
   stopOwner,
   updateOwnerConversation,
 } from './agent-program.ts'
-import { createOwnerApp, launchOwnerApp, updateOwnerApp } from './apps/program.ts'
+import {
+  agentAppSnapshot,
+  callAgentApp,
+  createOwnerApp,
+  launchOwnerApp,
+  reportAgentApp,
+  updateOwnerApp,
+} from './apps/program.ts'
 import { budgetExtension } from './pi/budget.ts'
 import { chooseOwnerModel, useModel, type Applied } from './agent-model.ts'
 import { routinesExtension } from './pi/routines.ts'
@@ -300,6 +307,15 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
   launchApp(id: string) {
     return this.#owner(launchOwnerApp(id))
+  }
+  appSnapshot(id: string) {
+    return this.#owner(agentAppSnapshot(id))
+  }
+  appCall(id: string, call: AppCall) {
+    return this.#owner(callAgentApp(id, call))
+  }
+  appDiagnostic(id: string, diagnostic: AppDiagnostic) {
+    return this.#owner(reportAgentApp(id, diagnostic))
   }
 
   /** What a conversation lets its agent use: its switches over the agent's servers, skills and subagents. */

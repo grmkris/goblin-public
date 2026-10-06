@@ -361,6 +361,14 @@ export const appAgentArtifacts = sqliteTable(
   (table) => [primaryKey({ columns: [table.release, table.kind] })],
 )
 
+/** A release's view: its module, stylesheet and frame bundles (`libs`, JSON), apart from its row like its code. */
+export const appAgentViews = sqliteTable('app_agent_views', {
+  release: text('release').primaryKey(),
+  module: text('module').notNull(),
+  css: text('css').notNull(),
+  libs: text('libs').notNull(),
+})
+
 /** An app's state and its revision, which moves by one with every change. */
 export const appAgentState = sqliteTable('app_agent_state', {
   app: text('app').primaryKey(),

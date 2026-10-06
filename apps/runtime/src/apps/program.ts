@@ -1,8 +1,8 @@
-import type { CreateApp, UpdateApp } from '@goblin/contracts'
+import type { AppCall, AppDiagnostic, CreateApp, UpdateApp } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import { NotFound } from '../http/errors.ts'
 import { toolAppResource } from '../mcp/connection.ts'
-import { Apps, Conversations, Mcp, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
+import { AppEngine, Apps, Conversations, Mcp, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
 
 /**
  * Keep the App of a call in one of the owner's conversations, read from its transcript: a call made before Apps were
@@ -32,3 +32,25 @@ export const updateOwnerApp = (id: string, change: UpdateApp) =>
 
 /** What the browser needs to load an App; it grants nothing (its calls are checked live). */
 export const launchOwnerApp = (id: string) => Apps.use((apps) => attempt(() => apps.launch(id)))
+
+/** The agent app an App id names, with the engine that runs it. */
+const agentApp = (id: string) =>
+  Effect.gen(function* () {
+    const apps = yield* Apps
+    const name = yield* attemptSync(() => apps.agentApp(id))
+    return { name, engine: yield* AppEngine }
+  })
+
+/** An agent app's state now, for its view (ADR 0021). */
+export const agentAppSnapshot = (id: string) =>
+  Effect.flatMap(agentApp(id), ({ name, engine }) => attemptSync(() => engine.snapshot(name)))
+
+/** An action an agent app's view calls, as the owner: the state after it, or the app's own error. */
+export const callAgentApp = (id: string, call: AppCall) =>
+  Effect.flatMap(agentApp(id), ({ name, engine }) =>
+    attempt(() => engine.viewCall(name, call.name, call.arguments, call.op)),
+  )
+
+/** A failure an agent app's view reported, kept where the agent sees it. */
+export const reportAgentApp = (id: string, diagnostic: AppDiagnostic) =>
+  Effect.flatMap(agentApp(id), ({ name, engine }) => attemptSync(() => engine.viewError(name, diagnostic.message)))

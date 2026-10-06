@@ -6,6 +6,7 @@ import { ConversationView } from '@goblin/contracts'
 import { expect } from 'vitest'
 import Stack from './owner-stack.ts'
 import { appsCase } from './apps-case.ts'
+import { agentAppViewCase } from './agent-app-view-case.ts'
 import { person, call } from './owner-requests.ts'
 
 const harness = Test.make({
@@ -20,6 +21,13 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     yield* Effect.promise(() => appsCase(url))
+  }),
+)
+harness.test(
+  'native: an agent app with a view shows in the workspace, launches, and its view calls, reads and reports',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    yield* Effect.promise(() => agentAppViewCase(url))
   }),
 )
 harness.test(

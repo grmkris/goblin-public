@@ -274,6 +274,12 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       `INSERT INTO app_registry (id, source, session_id, call_id, entry_id, server_id, tool, resource_uri, title, created_at, closed_at) SELECT id, 'mcp', session_id, call_id, entry_id, server_id, tool, resource_uri, title, created_at, closed_at FROM app_apps ORDER BY id`,
     ].join(BREAK),
   },
+  {
+    // An agent app release's view: its module, stylesheet and frame bundles (ADR 0021).
+    key: '20261018000200_agent_app_views',
+    tables: ['app_agent_views'],
+    sql: 'CREATE TABLE app_agent_views (release TEXT PRIMARY KEY NOT NULL, module TEXT NOT NULL, css TEXT NOT NULL, libs TEXT NOT NULL)',
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

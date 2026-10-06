@@ -1,10 +1,11 @@
-import type { AppLaunch, AppView } from '@goblin/contracts'
+import type { AgentAppLaunch, AppLaunch, AppView } from '@goblin/contracts'
 import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import { NotFound } from '../http/errors.ts'
 import { BACKGROUND, conversationId, entryId } from '../pi/context.ts'
+import type { AgentAppInfo } from '../agent-apps/engine.ts'
 import { appConversations, appRegistry } from '../storage/schema.ts'
 
 type Row = typeof appRegistry.$inferSelect
@@ -36,16 +37,21 @@ type McpRow = Row & {
 const isMcp = (row: Row): row is McpRow =>
   row.source === 'mcp' && row.callId !== null && row.serverId !== null && row.tool !== null && row.resourceUri !== null
 
-/** An agent app as the registry shows it: the release it runs, its number, and its state's revision (ADR 0021). */
-export type AgentAppInfo = { readonly release: string; readonly version: number; readonly revision: number }
+/** What the registry reads of the agent's apps (ADR 0021). */
+export type AgentAppsPort = {
+  /** An app's title and home, its release and that release's number, its revision, and whether it has a view. */
+  readonly info: (name: string) => AgentAppInfo | undefined
+  /** What the browser needs to load the app's view. */
+  readonly launch: (name: string) => AgentAppLaunch
+}
 
-const sourceOf = (row: Row, agents: (name: string) => AgentAppInfo | undefined): AppView['source'] => {
+const sourceOf = (row: Row, agents: AgentAppsPort): AppView['source'] => {
   if (isMcp(row))
     return { kind: 'mcp', callId: row.callId, serverId: row.serverId, tool: row.tool, uri: row.resourceUri }
   const name = row.name ?? ''
-  const info = agents(name)
+  const info = agents.info(name)
   if (info === undefined) throw new NotFound({ what: `agent app ${name}` })
-  return { kind: 'agent', name, ...info }
+  return { kind: 'agent', name, release: info.release, version: info.version, revision: info.revision }
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -73,17 +79,18 @@ const SEARCH = 2000
 const AFTER = 200
 
 /**
- * The owner's MCP Apps, kept (ADR 0020): one per tool call whose tool renders an App, under the conversation it was
- * made in. Showing an App never needs this to grant anything: the App's resource and its calls go through the owner's
- * grants, live, every time. Closing a conversation closes its Apps.
+ * The owner's Apps (ADRs 0020, 0021): an MCP App kept per tool call whose tool renders one, under the conversation it
+ * was made in, and each agent app with a view, under its home conversation. Showing an App never needs this to grant
+ * anything: an MCP App's resource and calls go through the owner's grants, live, every time, and an agent app's view
+ * calls only its own actions. Closing a conversation closes its MCP Apps.
  */
 export class AppRegistry {
   readonly #db: DrizzleSqliteDODatabase
   readonly #harness: PiHarness
-  readonly #agents: (name: string) => AgentAppInfo | undefined
+  readonly #agents: AgentAppsPort
   readonly #listeners = new Set<(apps: readonly AppView[]) => void>()
 
-  constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, agents: (name: string) => AgentAppInfo | undefined) {
+  constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, agents: AgentAppsPort) {
     this.#db = db
     this.#harness = harness
     this.#agents = agents
@@ -144,6 +151,33 @@ export class AppRegistry {
     return this.#view(row)
   }
 
+  /**
+   * An agent app changed (a build, a rollback, a new revision): the first release with a view shows it under its home
+   * conversation, and every change after that goes to the feed with its release and revision.
+   */
+  agentChanged(name: string, now: number): void {
+    const info = this.#agents.info(name)
+    if (info === undefined) return
+    const row = this.#db.select().from(appRegistry).where(eq(appRegistry.name, name)).get()
+    if (row === undefined && !info.ui) return
+    const [changed] =
+      row === undefined
+        ? this.#db
+            .insert(appRegistry)
+            .values({ source: 'agent', sessionId: info.home, name, title: info.title, createdAt: now })
+            .returning()
+            .all()
+        : this.#db.update(appRegistry).set({ title: info.title }).where(eq(appRegistry.id, row.id)).returning().all()
+    if (changed !== undefined) this.#changed([changed])
+  }
+
+  /** The agent app an App id names. */
+  agentApp(id: string): string {
+    const row = this.#row(id)
+    if (row.source !== 'agent' || row.name === null) throw new NotFound({ what: 'agent app' })
+    return row.name
+  }
+
   /** Every App, oldest first, closed ones included. */
   list(): readonly AppView[] {
     return this.#db
@@ -183,10 +217,10 @@ export class AppRegistry {
     this.#changed(rows)
   }
 
-  /** The call an App shows, read from its conversation: what the browser needs to load it. */
+  /** What the browser needs to load an App: an MCP App's call, read from its conversation, or an agent app's view. */
   async launch(id: string): Promise<AppLaunch> {
     const row = this.#row(id)
-    if (!isMcp(row)) throw new NotFound({ what: 'app' })
+    if (!isMcp(row)) return this.#agents.launch(this.agentApp(id))
     const call = await this.call(row.sessionId, row.callId, row.entryId ?? undefined)
     if (row.entryId === null)
       this.#db.update(appRegistry).set({ entryId: call.entry }).where(eq(appRegistry.id, row.id)).run()

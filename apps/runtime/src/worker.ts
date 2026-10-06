@@ -1,7 +1,9 @@
 import * as Schema from 'effect/Schema'
 import * as Effect from 'effect/Effect'
 import {
+  AppCall,
   AppContext,
+  AppDiagnostic,
   CapabilityChange,
   CreateApp,
   CreateConversation,
@@ -183,15 +185,26 @@ async function conversationRoute(
   return route(request, agent, id)
 }
 
-/** The owner's kept Apps (ADR 0020): keep one from a call, read what loads one, close or reopen one. */
+type AppRoute = (request: Request, agent: DurableObjectStub<AgentRpc>, id: string) => Promise<Response>
+
+/** One App's routes by method and action: load it, close or reopen it, and an agent app's view's state, calls, errors. */
+const appRoutes: Readonly<Record<string, AppRoute>> = {
+  'GET launch': async (_request, agent, id) => json(unwrap(await agent.launchApp(id))),
+  'PATCH ': async (request, agent, id) => json(unwrap(await agent.updateApp(id, await readJson(request, UpdateApp)))),
+  'GET state': async (_request, agent, id) => json(unwrap(await agent.appSnapshot(id))),
+  'POST call': async (request, agent, id) => json(unwrap(await agent.appCall(id, await readJson(request, AppCall)))),
+  'POST diagnostics': async (request, agent, id) =>
+    json(unwrap(await agent.appDiagnostic(id, await readJson(request, AppDiagnostic)))),
+}
+
+/** The owner's Apps (ADRs 0020, 0021): keep an MCP App from a call, then each App's own routes. */
 async function appRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string): Promise<Response> {
   if (path === '/api/apps' && request.method === 'POST')
     return json(unwrap(await agent.createApp(await readJson(request, CreateApp))), 201)
-  const [, id = '', action = ''] = /^\/api\/apps\/(\d{1,12})(?:\/(launch))?$/u.exec(path) ?? []
-  if (id !== '' && action === 'launch' && request.method === 'GET') return json(unwrap(await agent.launchApp(id)))
-  if (id !== '' && action === '' && request.method === 'PATCH')
-    return json(unwrap(await agent.updateApp(id, await readJson(request, UpdateApp))))
-  throw new NotFound({ what: path })
+  const [, id = '', action = ''] = /^\/api\/apps\/(\d{1,12})(?:\/([a-z]+))?$/u.exec(path) ?? []
+  const route = appRoutes[`${request.method} ${action}`]
+  if (id === '' || route === undefined) throw new NotFound({ what: path })
+  return route(request, agent, id)
 }
 
 /** Completes an outbound OAuth authorization, then sends the owner back to the Connections page. */
@@ -285,7 +298,8 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   const session = await requireUserSession(request, env)
   const { userId } = session
   const path = new URL(request.url).pathname
-  if (path.startsWith('/api/routines') || path.startsWith('/api/files')) browserWrite(request, env.APP_URL)
+  if (under(path, '/api/routines') || under(path, '/api/files') || under(path, '/api/apps'))
+    browserWrite(request, env.APP_URL)
   if (path.startsWith('/api/billing/')) return Effect.runPromise(billingApi(request, env, userId))
   await requireAccountPlan(env, userId)
   return ownerApiRequest(request, env, path, agentOf(env, userId), userId)

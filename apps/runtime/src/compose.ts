@@ -33,7 +33,7 @@ import { BACKGROUND, conversationId } from './pi/context.ts'
 import type { PiModels } from './pi/harness.ts'
 import type { memoryExtensions } from './pi/memory.ts'
 import { ResidentAuthority } from './resident.ts'
-import { type AgentServices, Files, agentLayer } from './services.ts'
+import { type AgentServices, AppEngine, Files, agentLayer } from './services.ts'
 import { FileStore } from './files/store.ts'
 import { SkillLearner } from './skills/learner.ts'
 import { SkillLibrary } from './skills/library.ts'
@@ -121,8 +121,13 @@ async function makeRoutines(input: ComposeInput) {
 function conversationServices(db: DrizzleSqliteDODatabase, input: ComposeInput, kit: ThreadKit) {
   const { harness } = input
   const conversations = new ConversationRegistry(db, harness, kit, nowSeconds())
-  const apps = new AppRegistry(db, harness, (name) => input.agentApps.info(name))
+  const { agentApps } = input
+  const apps = new AppRegistry(db, harness, {
+    info: (name) => agentApps.info(name),
+    launch: (name) => agentApps.launch(name),
+  })
   conversations.onChange((ids) => apps.closeWithConversations(ids, nowSeconds()))
+  agentApps.onChange((name) => apps.agentChanged(name, nowSeconds()))
   return { conversations, apps, workspace: new WorkspaceFeed(harness, conversations, apps) }
 }
 async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {
@@ -219,6 +224,7 @@ export async function composeServices(
       Layer.succeed(Events, events),
       Layer.succeed(EventStorage, eventStore),
       Layer.succeed(Files, new FileStore(input.storage.sql, env.FILES, () => input.userId)),
+      Layer.succeed(AppEngine, input.agentApps),
     ),
   )
 }

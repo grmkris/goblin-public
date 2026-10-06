@@ -31,11 +31,19 @@ export interface ReleaseApi extends Rpc.WorkerEntrypointBranded {
 
 /** The transpiler's `Transpile` (packages/app/src/transpile.ts). */
 export interface TranspilerApi extends Rpc.WorkerEntrypointBranded {
-  /** The modules when `diagnostics` is empty. */
+  /** The server modules, and the view's module ('' without one) with its frame bundles, when `diagnostics` is empty. */
   transpile(files: Readonly<Record<string, string>>): Promise<{
     readonly modules: Readonly<Record<string, string>>
+    readonly view: string
+    readonly libs: readonly string[]
     readonly diagnostics: readonly { readonly file: string; readonly line?: number; readonly message: string }[]
   }>
+}
+
+/** The style compiler's `Style` (packages/app/src/style.ts). */
+export interface StyleApi extends Rpc.WorkerEntrypointBranded {
+  /** The CSS for a view's source. */
+  css(view: string): Promise<string>
 }
 
 /** A one-off script's `Run` (agent-apps/script.ts). */
@@ -58,9 +66,9 @@ const modulesOf = (modules: Readonly<Record<string, string>>) =>
   Object.fromEntries(Object.entries(modules).map(([name, js]) => [name, { js }]))
 
 /**
- * The agent's Dynamic Workers (ADR 0021): every app release, the transpiler and one-off scripts run in an isolate of
- * their own with no network (`globalOutbound: null`), no bindings and a CPU limit. Each is cached by an id that names
- * its exact code. Calls wait for one of eight slots and give up after their wall time.
+ * The agent's Dynamic Workers (ADR 0021): every app release, the transpiler, the style compiler and one-off scripts run
+ * in an isolate of their own with no network (`globalOutbound: null`), no bindings and a CPU limit. Each is cached by an
+ * id that names its exact code. Calls wait for one of eight slots and give up after their wall time.
  */
 export class Isolates {
   readonly #loader: WorkerLoader
@@ -83,6 +91,15 @@ export class Isolates {
       () => ({ 'transpile.js': source }),
       10_000,
     ).getEntrypoint<TranspilerApi>('Transpile')
+  }
+
+  style(hash: string, source: string, sheets: string): Fetcher<StyleApi> {
+    return this.#worker(
+      `style:${hash}`,
+      'style.js',
+      () => ({ 'style.js': source, 'sheets.js': sheets }),
+      10_000,
+    ).getEntrypoint<StyleApi>('Style')
   }
 
   script(id: string, source: string): Fetcher<ScriptApi> {

@@ -9,6 +9,7 @@ import {
   appAgentReleases,
   appAgentSnapshots,
   appAgentState,
+  appAgentViews,
 } from '../storage/schema.ts'
 import type { Manifest } from './manifest.ts'
 
@@ -23,6 +24,9 @@ export type AppRow = typeof appAgentApps.$inferSelect
 export type ReleaseRow = typeof appAgentReleases.$inferSelect
 export type StateRow = { readonly revision: number; readonly state: unknown; readonly release: string }
 
+/** A release's view: its CommonJS module, its stylesheet, and the frame bundles it needs besides the core. */
+export type AppViewCode = { readonly module: string; readonly css: string; readonly libs: readonly string[] }
+
 /** A release to make active: its code and manifest, and the state the app has once it is. */
 export type Activation = {
   readonly app: string
@@ -36,6 +40,8 @@ export type Activation = {
   readonly callId: string | null
   /** The state after activation; `undefined` keeps the current state as it is. */
   readonly state: unknown
+  /** Its view, when the app has one. */
+  readonly view: AppViewCode | undefined
   readonly now: number
 }
 
@@ -81,6 +87,12 @@ export class AgentAppStore {
       .where(and(eq(appAgentArtifacts.release, release), eq(appAgentArtifacts.kind, 'backend')))
       .get()
     return row === undefined ? undefined : JSON.parse(row.content)
+  }
+
+  /** A release's view, when it has one. */
+  view(release: string): AppViewCode | undefined {
+    const row = this.#db.select().from(appAgentViews).where(eq(appAgentViews.release, release)).get()
+    return row === undefined ? undefined : { module: row.module, css: row.css, libs: JSON.parse(row.libs) }
   }
 
   state(app: string): StateRow | undefined {
@@ -209,6 +221,7 @@ export class AgentAppStore {
           set: { content: JSON.stringify(activation.modules) },
         })
         .run()
+      if (activation.view !== undefined) this.#saveView(tx, release, activation.view)
       if (current !== undefined)
         tx.insert(appAgentSnapshots)
           .values({ app, release: current.release, revision: current.revision, state: current.state, createdAt: now })
@@ -323,6 +336,14 @@ export class AgentAppStore {
     })
   }
 
+  #saveView(tx: Tx, release: string, code: AppViewCode): void {
+    const view = { ...code, libs: JSON.stringify(code.libs) }
+    tx.insert(appAgentViews)
+      .values({ release, ...view })
+      .onConflictDoUpdate({ target: appAgentViews.release, set: view })
+      .run()
+  }
+
   #event(tx: Tx, app: string, kind: EventKind, detail: string, now: number): void {
     tx.insert(appAgentEvents)
       .values({ app, kind, detail: detail.slice(0, 2000), createdAt: now })
@@ -367,6 +388,7 @@ export class AgentAppStore {
       .map((row) => row.id)
     if (old.length === 0) return
     tx.delete(appAgentArtifacts).where(inArray(appAgentArtifacts.release, old)).run()
+    tx.delete(appAgentViews).where(inArray(appAgentViews.release, old)).run()
     tx.delete(appAgentReleases).where(inArray(appAgentReleases.id, old)).run()
   }
 }

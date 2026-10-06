@@ -3,8 +3,12 @@ import type { PiReceipt } from 'agents/harness/pi'
 import type { RpcResult } from './http/rpc.ts'
 import type { Grant, GrantCapability } from './mcp/grants.ts'
 import type {
+  AppCall,
+  AppCallResult,
   AppContext,
+  AppDiagnostic,
   AppLaunch,
+  AppSnapshot,
   AppView,
   CreateApp,
   UpdateApp,
@@ -47,6 +51,9 @@ export interface AgentRpcMethods {
   readonly createApp: (input: CreateApp) => Promise<RpcResult<AppView>>
   readonly updateApp: (id: string, change: UpdateApp) => Promise<RpcResult<AppView>>
   readonly launchApp: (id: string) => Promise<RpcResult<AppLaunch>>
+  readonly appSnapshot: (id: string) => Promise<RpcResult<AppSnapshot>>
+  readonly appCall: (id: string, call: AppCall) => Promise<RpcResult<AppCallResult>>
+  readonly appDiagnostic: (id: string, diagnostic: AppDiagnostic) => Promise<RpcResult<{ readonly kept: boolean }>>
   readonly conversationCapabilities: (thread: string) => Promise<RpcResult<ConversationCapabilities>>
   readonly setConversationCapability: (
     thread: string,

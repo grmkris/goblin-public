@@ -298,7 +298,7 @@ export const McpAppLaunch = Schema.Struct({
 })
 
 /** The frame runtime bundles an agent app's view loads besides `core`. */
-export const AgentAppLib = Schema.Literals(['charts', 'maps', 'diagrams'])
+export const AgentAppLib = Schema.Literals(['charts', 'maps', 'diagrams', 'icons'])
 export type AgentAppLib = typeof AgentAppLib.Type
 
 /** An agent app: its view's built module and CSS, the libraries it uses, and its state now. */
@@ -310,9 +310,33 @@ export const AgentAppLaunch = Schema.Struct({
   state: Schema.Unknown,
   ui: Schema.Struct({ module: Schema.String, css: Schema.String, libs: Schema.Array(AgentAppLib) }),
 })
+export type AgentAppLaunch = typeof AgentAppLaunch.Type
 
 export const AppLaunch = Schema.Union([McpAppLaunch, AgentAppLaunch])
 export type AppLaunch = typeof AppLaunch.Type
+
+/** An agent app's state now: its revision, the release that runs it, and the state itself. */
+export const AppSnapshot = Schema.Struct({ revision: Schema.Number, release: Schema.String, state: Schema.Unknown })
+export type AppSnapshot = typeof AppSnapshot.Type
+
+/** An action an agent app's view calls, with the frame's operation id (a replay with it runs nothing again). */
+export const AppCall = Schema.Struct({
+  name: Schema.String.check(Schema.isPattern(/^[a-z][A-Za-z0-9]{0,31}$/u)),
+  arguments: Schema.Record(Schema.String, Schema.Unknown),
+  op: Schema.String.check(Schema.isPattern(/^[0-9a-f-]{36}$/u)),
+})
+export type AppCall = typeof AppCall.Type
+
+/** What a view's action call returns: the state after it, or the app's own error. */
+export const AppCallResult = Schema.Union([
+  Schema.Struct({ ok: Schema.Literal(true), ...AppSnapshot.fields }),
+  Schema.Struct({ ok: Schema.Literal(false), error: Schema.String }),
+])
+export type AppCallResult = typeof AppCallResult.Type
+
+/** A failure an agent app's view reported (an uncaught error, a render that threw). */
+export const AppDiagnostic = Schema.Struct({ message: Schema.String.check(Schema.isMaxLength(4000)) })
+export type AppDiagnostic = typeof AppDiagnostic.Type
 
 /** The workspace feed's first event: every conversation and App, and the conversations not idle. */
 export const WorkspaceSnapshot = Schema.Struct({

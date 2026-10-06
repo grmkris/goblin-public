@@ -4,7 +4,7 @@ import { jsonBytes, mismatches, plainJson } from './json.ts'
 import { type Manifest, readManifest } from './manifest.ts'
 import { APP_NAME, toolName } from './names.ts'
 import type { AppQueues } from './queue.ts'
-import type { AgentAppStore } from './store.ts'
+import type { AgentAppStore, AppViewCode } from './store.ts'
 
 /** The generated toolchain (`@goblin/app/toolchain`), loaded only while building. */
 export type Toolchain = {
@@ -12,6 +12,8 @@ export type Toolchain = {
   readonly SDK: string
   readonly RELEASE: string
   readonly TRANSPILER: string
+  readonly STYLE: string
+  readonly STYLE_SHEETS: string
 }
 
 /** A change to one file: `find` must occur exactly once. */
@@ -34,6 +36,8 @@ export type BuildResult =
       readonly tools: readonly string[]
       readonly revision: number
       readonly migrated: boolean
+      /** Whether the app has a view (`view.tsx`) the owner can open. */
+      readonly ui: boolean
     }
   | { readonly status: 'unchanged'; readonly app: string; readonly release: string }
   | {
@@ -46,6 +50,8 @@ export type BuildResult =
 /** How much code an app is, and how many apps an agent keeps (ADR 0021). */
 const LIMITS = { files: 6, fileBytes: 128 * 1024, totalBytes: 384 * 1024, apps: 16 } as const
 const FILE_NAME = /^[a-z][a-z0-9-]{0,31}\.(?:ts|js)$/u
+/** The one file of an app's UI. */
+const VIEW = 'view.tsx'
 const STATE_BYTES = 1024 * 1024
 
 /** Applies each edit to `files` in place; an edit whose `find` is not there exactly once is a problem. */
@@ -72,8 +78,8 @@ function fileProblems(files: Readonly<Record<string, string>>): Problem[] {
   const problems: Problem[] = []
   if (!names.includes('app.ts') && !names.includes('app.js')) problems.push({ message: 'An app needs app.ts.' })
   if (names.length > LIMITS.files) problems.push({ message: `At most ${LIMITS.files} files.` })
-  for (const name of names.filter((file) => !FILE_NAME.test(file)))
-    problems.push({ file: name, message: 'File names are lowercase, like app.ts or lib.ts.' })
+  for (const name of names.filter((file) => !FILE_NAME.test(file) && file !== VIEW))
+    problems.push({ file: name, message: 'File names are lowercase, like app.ts or lib.ts; the UI is view.tsx.' })
   for (const [name, text] of Object.entries(files))
     if (new TextEncoder().encode(text).byteLength > LIMITS.fileBytes)
       problems.push({ file: name, message: 'Larger than 128 KB.' })
@@ -129,8 +135,8 @@ type BuilderDeps = {
 
 /**
  * Builds and activates agent app releases (ADR 0021): transpile in the toolchain isolate, `describe()` in the release's
- * own isolate, check the manifest and that the current state fits (or migrates), then make it active and re-install
- * its tools. A failed build is kept with its problems and changes nothing that runs.
+ * own isolate, check the manifest, compile the view's styles, check that the current state fits (or migrates), then
+ * make it active and re-install its tools. A failed build is kept with its problems and changes nothing that runs.
  */
 export class AppBuilder {
   readonly #deps: BuilderDeps
@@ -191,6 +197,8 @@ export class AppBuilder {
     const read = readManifest(described.value, request.name)
     if ('problems' in read) return fail(read.problems.map((message) => ({ message })))
     const { manifest } = read
+    const view = await this.#view(toolchain, files[VIEW], transpiled)
+    if ('problems' in view) return fail(view.problems)
     return this.#deps.queues.run(request.name, async () => {
       const state = await this.#nextState(api, manifest, candidate.home === undefined)
       if ('problems' in state) return fail(state.problems)
@@ -205,6 +213,7 @@ export class AppBuilder {
         session: candidate.home ?? caller.session,
         callId: caller.callId,
         state: state.value,
+        view: view.view,
         now: this.#deps.now(),
       })
       this.#deps.activated(request.name)
@@ -217,8 +226,22 @@ export class AppBuilder {
         tools: toolsOf(request.name, manifest),
         revision,
         migrated: state.migrated,
+        ui: view.view !== undefined,
       }
     })
+  }
+
+  /** The view's module and its stylesheet, compiled in the style isolate; none when the app has no view. */
+  async #view(
+    toolchain: Toolchain,
+    source: string | undefined,
+    transpiled: { readonly view: string; readonly libs: readonly string[] },
+  ): Promise<{ readonly view: AppViewCode | undefined } | { readonly problems: readonly Problem[] }> {
+    if (source === undefined || transpiled.view === '') return { view: undefined }
+    const style = this.#deps.isolates.style(toolchain.TOOLCHAIN_HASH, toolchain.STYLE, toolchain.STYLE_SHEETS)
+    const css = await this.#attempt(10_000, 'styles', () => style.css(source))
+    if (!css.ok) return { problems: [{ file: VIEW, message: `Its styles did not compile: ${css.error}` }] }
+    return { view: { module: transpiled.view, css: css.value, libs: transpiled.libs } }
   }
 
   /** The app's state once this release is active: `initial` for a new app, the current one kept, or migrated. */
@@ -256,14 +279,19 @@ export class AppBuilder {
     toolchain: Toolchain,
     files: Readonly<Record<string, string>>,
   ): Promise<
-    | { readonly ok: true; readonly modules: Readonly<Record<string, string>> }
+    | {
+        readonly ok: true
+        readonly modules: Readonly<Record<string, string>>
+        readonly view: string
+        readonly libs: readonly string[]
+      }
     | { readonly ok: false; readonly problems: readonly Problem[] }
   > {
     const transpiler = this.#deps.isolates.transpiler(toolchain.TOOLCHAIN_HASH, toolchain.TRANSPILER)
     try {
       const result = await this.#deps.isolates.call(10_000, 'transpiling', () => transpiler.transpile(files))
       return result.diagnostics.length === 0
-        ? { ok: true, modules: result.modules }
+        ? { ok: true, modules: result.modules, view: result.view, libs: result.libs }
         : { ok: false, problems: result.diagnostics }
     } catch (cause) {
       throw isolateFailure(cause)
