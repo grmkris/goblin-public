@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Option, Schema } from 'effect'
-import { UsageToday } from '@purrable/contracts'
+import { UsageToday } from '@goblin/contracts'
 import { request } from '../lib/boundary.ts'
 
 const decodeUsage = Schema.decodeUnknownOption(UsageToday)

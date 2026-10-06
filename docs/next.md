@@ -27,5 +27,5 @@ policy.
   one $10/30-day model key, and the Alibaba models on a weekly Token Plan bucket shared with Hermes. Reopening it needs
   what is not built: a per-user override (raise one account's limit instead of everyone's; today the budget is per
   agent with one limit for the deployment), a global cap on new accounts per day (sign-up rate limits are per IP), and
-  a mail domain of Purrable's own (dev sends from `purrable@mytab.lol`). Passkeys are bound to the host they were made
+  a mail domain of goblin's own (dev sends from `goblin@mytab.lol`). Passkeys are bound to the host they were made
   on: moving dev to its own domain leaves them unusable there (people sign in with a code and add new ones).

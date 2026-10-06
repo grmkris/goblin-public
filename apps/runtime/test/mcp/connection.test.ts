@@ -81,7 +81,7 @@ describe('official MCP SDK host interoperability (unit)', () => {
       }),
       fetch: async (input, init) => {
         const request = new Request(input, init)
-        expect(request.headers.has('x-purrable-local-dispatch')).toBe(false)
+        expect(request.headers.has('x-goblin-local-dispatch')).toBe(false)
         if (request.method === 'POST') {
           const body: { method?: string } = await request.clone().json()
           if (body.method === 'tools/call') {

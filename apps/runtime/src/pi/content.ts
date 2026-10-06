@@ -1,5 +1,5 @@
 import type { TextContent } from '@earendil-works/pi-ai'
-import { type AppContext, authorTag } from '@purrable/contracts'
+import { type AppContext, authorTag } from '@goblin/contracts'
 
 /**
  * The owner's message as Pi receives it: their words exactly as written, then what each open App shared, each in a

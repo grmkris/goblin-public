@@ -1,4 +1,4 @@
-import type { ConversationActivity, ConversationView } from '@purrable/contracts'
+import type { ConversationActivity, ConversationView } from '@goblin/contracts'
 import { isClosed, relativeTime } from './threads.ts'
 
 /**

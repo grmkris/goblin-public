@@ -1,4 +1,4 @@
-import type { CapabilityChange, CapabilityTarget, ConversationCapabilities } from '@purrable/contracts'
+import type { CapabilityChange, CapabilityTarget, ConversationCapabilities } from '@goblin/contracts'
 
 type View = ConversationCapabilities
 type Server = View['servers'][number]

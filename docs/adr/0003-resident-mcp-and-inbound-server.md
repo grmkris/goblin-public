@@ -17,7 +17,7 @@ later on a schedule), so it cannot depend on a live browser session. Authority i
 days, renewed by owner activity, and revocable; revocation is sticky until the owner re-enables it. Every outbound
 call checks it.
 
-**Purrable is an MCP server.** Better Auth's `mcp()` plugin is the authorization server for `/mcp`. Registration is
+**goblin is an MCP server.** Better Auth's `mcp()` plugin is the authorization server for `/mcp`. Registration is
 open because MCP clients register themselves, but it can only target `/mcp` and every client needs the owner's
 consent. Each inbound client gets its own Pi session and sees only its own messages. Tools are `ask_agent` and
 `get_recent_messages`; anything broader waits for a concrete need.
@@ -25,6 +25,6 @@ consent. Each inbound client gets its own Pi session and sees only its own messa
 **Streaming is Pi-native.** The browser reads committed Pi entries over SSE (snapshot, then batches); the AG-UI
 translation layer was dropped because nothing else consumed it.
 
-Consequences: `PURRABLE_CREDENTIAL_KEY` is required and rotating it means reconnecting servers. A refused refresh
+Consequences: `GOBLIN_CREDENTIAL_KEY` is required and rotating it means reconnecting servers. A refused refresh
 shows the server as needing authorization rather than failing silently. Exactly-once external effects are still not
 claimed: `mcp_call` is unsafe to replay and submissions carry operation IDs.

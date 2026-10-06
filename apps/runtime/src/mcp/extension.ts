@@ -1,6 +1,6 @@
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import type { ToolExecutionResult } from '@earendil-works/pi-durable'
-import type { JsonValue } from '@purrable/contracts'
+import type { JsonValue } from '@goblin/contracts'
 import { Predicate } from 'effect'
 
 const SECRET_KEY = /token|secret|password|authorization|cookie|private.?key|api.?key/iu

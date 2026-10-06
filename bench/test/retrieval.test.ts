@@ -118,7 +118,7 @@ test('native entry provenance distinguishes originals from source IDs copied int
   expect(validDelivery({ ...delivery(event, 'read'), text: 'invented' }, [event])).toBe(false)
 })
 
-const path = resolve(import.meta.dirname, '../../.local/bench/corpora/purrable-claude-canary/labeled.json')
+const path = resolve(import.meta.dirname, '../../.local/bench/corpora/claude-canary/labeled.json')
 test.skipIf(!existsSync(path))('frozen original Read results remain searchable without whole-event denial', () => {
   const corpus = Schema.decodeUnknownSync(Corpus)(JSON.parse(readFileSync(path, 'utf8')))
   const prefix = corpus.scenarios[0]!.events.slice(0, 32)

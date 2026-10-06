@@ -1,4 +1,4 @@
-import type { AppView, ConversationActivity, ConversationView } from '@purrable/contracts'
+import type { AppView, ConversationActivity, ConversationView } from '@goblin/contracts'
 import { isClosed } from './threads.ts'
 
 /** An App as the sidebar shows it: the App, and its name there. */

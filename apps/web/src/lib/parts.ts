@@ -1,4 +1,4 @@
-import { type AppContext, TELEGRAM_AUTHOR } from '@purrable/contracts'
+import { type AppContext, TELEGRAM_AUTHOR } from '@goblin/contracts'
 import { isString, record } from './boundary.ts'
 import type { ChatMessage, ConversationProjection, LiveTool, ToolCallView, TurnFailure } from './projection.ts'
 

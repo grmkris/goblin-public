@@ -11,16 +11,16 @@ if (!['dev', 'deploy:dev', 'plan:dev', 'destroy:dev', 'deploy:prod', 'plan:prod'
 if (command === 'destroy:dev' && !Bun.argv.includes('--confirm-reset'))
   throw new Error('destroy_dev_requires_--confirm-reset: it erases the owner account, conversations and credentials')
 const stage = resolveStage(command === 'dev' ? 'local' : command.endsWith(':prod') ? 'prod' : 'dev')
-if (stage.name === 'prod' && process.env['PURRABLE_CONFIRM_PROD'] !== '1')
-  throw new Error('prod_requires_PURRABLE_CONFIRM_PROD=1')
+if (stage.name === 'prod' && process.env['GOBLIN_CONFIRM_PROD'] !== '1')
+  throw new Error('prod_requires_GOBLIN_CONFIRM_PROD=1')
 const config = resolve(root, '.local', `${stage.name}.env`)
 const shared = resolve(root, '.local/cloud.env')
 const childEnv: Record<string, string | undefined> = { ...process.env }
 for (const key of Object.keys(childEnv)) {
-  if (/^(CLOUDFLARE_|PURRABLE_|DODO_|MYAGENT_|MYBROWSER_|MYPLAN_|MYINBOX_|MYTMUX_|LITELLM_|ALCHEMY_STAGE)/u.test(key))
+  if (/^(CLOUDFLARE_|GOBLIN_|DODO_|MYAGENT_|MYBROWSER_|MYPLAN_|MYINBOX_|MYTMUX_|LITELLM_|ALCHEMY_STAGE)/u.test(key))
     delete childEnv[key]
 }
-childEnv['PURRABLE_STAGE'] = stage.name
+childEnv['GOBLIN_STAGE'] = stage.name
 childEnv['BUN_CONFIG_NO_ENVFILE'] = '1'
 if (command === 'smoke:prod') {
   if ((statSync(config).mode & 0o077) !== 0) throw new Error('private_stage_file_requires_mode_600')
@@ -53,19 +53,19 @@ const addEnvFile = (file: string) => {
 if (stage.local) {
   childEnv['CLOUDFLARE_ACCOUNT_ID'] = '0'.repeat(32)
   childEnv['CLOUDFLARE_API_TOKEN'] = 'local-placeholder-token'
-  childEnv['PURRABLE_APP_URL'] = 'http://localhost:18971'
-  childEnv['PURRABLE_BETTER_AUTH_SECRET'] = 'purrable-local-only-secret-not-for-cloudflare-00000000000000000'
-  childEnv['PURRABLE_MODEL_KEY'] = process.env['CLIPROXY_API_KEY'] ?? ''
+  childEnv['GOBLIN_APP_URL'] = 'http://localhost:18971'
+  childEnv['GOBLIN_BETTER_AUTH_SECRET'] = 'goblin-local-only-secret-not-for-cloudflare-00000000000000000'
+  childEnv['GOBLIN_MODEL_KEY'] = process.env['CLIPROXY_API_KEY'] ?? ''
   // Local-only defaults; .local/local.env values override them.
-  childEnv['PURRABLE_CREDENTIAL_KEY'] = 'cHVycmFibGUtbG9jYWwtb25seS1rZXktMzItYnl0ZSE='
-  childEnv['PURRABLE_SIGNUP_MODE'] = 'open'
+  childEnv['GOBLIN_CREDENTIAL_KEY'] = 'cHVycmFibGUtbG9jYWwtb25seS1rZXktMzItYnl0ZSE='
+  childEnv['GOBLIN_SIGNUP_MODE'] = 'open'
   if (existsSync(config)) addEnvFile(config)
 } else {
   addEnvFile(shared)
   addEnvFile(config)
 }
 if (!stage.local) {
-  const merged = `/tmp/purrable-${stage.name}-${process.pid}.env`
+  const merged = `/tmp/goblin-${stage.name}-${process.pid}.env`
   writeFileSync(merged, `${readFileSync(shared, 'utf8')}\n${readFileSync(config, 'utf8')}`, { mode: 0o600 })
   for (let index = args.length - 2; index >= 0; index--) if (args[index] === '--env-file') args.splice(index, 2)
   args.push('--env-file', merged)

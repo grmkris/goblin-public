@@ -30,7 +30,7 @@ async function host() {
     servers: [{ serverId: 'notes', endpoint: 'https://notes.test/mcp' }],
     credentials,
     grants: new MemoryGrants(),
-    appUrl: 'https://purrable.test',
+    appUrl: 'https://goblin.test',
     fetch: async (input, init) => notes.fetch(new Request(input, init)),
   })
 }

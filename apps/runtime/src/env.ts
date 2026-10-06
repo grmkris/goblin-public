@@ -23,7 +23,7 @@ import type {
   UpdateConversation,
   ToolView,
   UsageToday,
-} from '@purrable/contracts'
+} from '@goblin/contracts'
 import type { TranscriptMessage } from './pi/transcript.ts'
 import type { MailBinding } from './auth/mail.ts'
 import type { ServerSource } from './mcp/servers.ts'
@@ -106,28 +106,28 @@ export interface AgentRpcMethods {
   readonly channelDoorbell: (doorbell: Doorbell) => Promise<RpcResult<true>>
   readonly mcpEventsWebhook: (input: EventWebhook) => Promise<RpcResult<EventWebhookResult>>
   readonly deleteAgentData: () => Promise<RpcResult<true>>
-  readonly routines: () => Promise<RpcResult<import('@purrable/contracts').RoutinePage>>
+  readonly routines: () => Promise<RpcResult<import('@goblin/contracts').RoutinePage>>
   readonly routinePropose: (
-    input: import('@purrable/contracts').RoutineProposal,
-  ) => Promise<RpcResult<import('@purrable/contracts').RoutineView>>
+    input: import('@goblin/contracts').RoutineProposal,
+  ) => Promise<RpcResult<import('@goblin/contracts').RoutineView>>
   readonly routineEdit: (
     id: string,
-    input: import('@purrable/contracts').RoutineEdit,
-  ) => Promise<RpcResult<import('@purrable/contracts').RoutineView>>
+    input: import('@goblin/contracts').RoutineEdit,
+  ) => Promise<RpcResult<import('@goblin/contracts').RoutineView>>
   readonly routineChange: (
     id: string,
-    input: import('@purrable/contracts').RoutineRevision,
+    input: import('@goblin/contracts').RoutineRevision,
     action: 'confirm' | 'pause' | 'archive',
-  ) => Promise<RpcResult<import('@purrable/contracts').RoutineView>>
-  readonly routineSettings: () => Promise<RpcResult<import('@purrable/contracts').RoutineSettings>>
+  ) => Promise<RpcResult<import('@goblin/contracts').RoutineView>>
+  readonly routineSettings: () => Promise<RpcResult<import('@goblin/contracts').RoutineSettings>>
   readonly routineSettingsSet: (
-    settings: import('@purrable/contracts').RoutineSettings,
-  ) => Promise<RpcResult<import('@purrable/contracts').RoutineSettings>>
+    settings: import('@goblin/contracts').RoutineSettings,
+  ) => Promise<RpcResult<import('@goblin/contracts').RoutineSettings>>
   readonly routineRun: (
     id: string,
-    input: import('@purrable/contracts').RoutineManualRun,
-  ) => Promise<RpcResult<import('@purrable/contracts').RoutineRunView>>
-  readonly routineRuns: (id: string) => Promise<RpcResult<import('@purrable/contracts').RoutineRunPage>>
+    input: import('@goblin/contracts').RoutineManualRun,
+  ) => Promise<RpcResult<import('@goblin/contracts').RoutineRunView>>
+  readonly routineRuns: (id: string) => Promise<RpcResult<import('@goblin/contracts').RoutineRunPage>>
 }
 export type AskResult =
   | { readonly status: 'done'; readonly operationId: string; readonly text: string }

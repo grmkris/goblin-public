@@ -1,4 +1,4 @@
-import { type ConversationView, MAIN_THREAD } from '@purrable/contracts'
+import { type ConversationView, MAIN_THREAD } from '@goblin/contracts'
 import { exchange, threadsUntil, transcript, until } from './probe-reads.ts'
 import type { PersonalAgentProbe } from './worker.ts'
 

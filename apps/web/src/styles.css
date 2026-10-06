@@ -1,4 +1,4 @@
-@import '@purrable/ui/styles.css';
+@import '@goblin/ui/styles.css';
 
 /*
  * Native feel, above all as a Home Screen app: the root paints the theme's background before anything else, the page

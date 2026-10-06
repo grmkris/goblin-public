@@ -1,7 +1,7 @@
 import type { RequestOptions } from '@modelcontextprotocol/client'
 import { Forbidden } from '../http/errors.ts'
 
-const HEADER = 'x-purrable-local-dispatch'
+const HEADER = 'x-goblin-local-dispatch'
 function headersOf(input: RequestInfo | URL, init: RequestInit | undefined): Headers {
   const headers = new Headers(input instanceof Request ? input.headers : undefined)
   const incoming = init?.headers

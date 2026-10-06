@@ -53,7 +53,7 @@ describe('Events Standard Webhooks profile (unit)', () => {
     ).toThrow()
   })
   it('uses a user-bound, purpose-separated route token', async () => {
-    const key = btoa('purrable-test-key-32-bytes-long!!!')
+    const key = btoa('goblin-test-key-32-bytes-long!!!')
     const token = await eventsHookToken(key, 'owner')
     expect(await eventsHookTokenValid(key, 'owner', token)).toBe(true)
     expect(await eventsHookTokenValid(key, 'other', token)).toBe(false)

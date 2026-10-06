@@ -1,4 +1,4 @@
-import { MAIN_THREAD, type RoutineDefinition } from '@purrable/contracts'
+import { MAIN_THREAD, type RoutineDefinition } from '@goblin/contracts'
 import type { PersonalAgent } from '../../src/agent.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { unwrap } from '../../src/http/rpc.ts'

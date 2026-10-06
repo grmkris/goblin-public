@@ -1,7 +1,7 @@
 import { createContext, type ReactNode, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import type { ConversationView } from '@purrable/contracts'
-import { Alert, AlertDescription, PresenceOrb } from '@purrable/ui'
+import type { ConversationView } from '@goblin/contracts'
+import { Alert, AlertDescription, PresenceOrb } from '@goblin/ui'
 import {
   CheckIcon,
   ChevronDownIcon,

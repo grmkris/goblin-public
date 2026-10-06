@@ -2,7 +2,7 @@ import * as Alchemy from 'alchemy'
 import * as Cloudflare from 'alchemy/Cloudflare'
 import * as Test from 'alchemy/Test/Vitest'
 import { Effect, Schema } from 'effect'
-import { ConversationView } from '@purrable/contracts'
+import { ConversationView } from '@goblin/contracts'
 import { expect } from 'vitest'
 import Stack from './owner-stack.ts'
 import { appsCase } from './apps-case.ts'
@@ -41,11 +41,11 @@ async function ownerRoutingCase(url: string): Promise<void> {
   const sentinel = `private-owner-${crypto.randomUUID()}`
   const renamed = await fetch(`${url}/api/conversations/${thread.id}`, {
     method: 'PATCH',
-    headers: { cookie: owner.cookie, origin: 'https://purrable.test', 'content-type': 'application/json' },
+    headers: { cookie: owner.cookie, origin: 'https://goblin.test', 'content-type': 'application/json' },
     body: JSON.stringify({ title: sentinel }),
   })
   expect(renamed.status).toBe(200)
-  const selection = { 'x-purrable-workspace': owner.userId }
+  const selection = { 'x-goblin-workspace': owner.userId }
   const foreign = await call(
     url,
     other,

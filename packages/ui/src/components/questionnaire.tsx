@@ -1,5 +1,5 @@
 // From the shadcn base-nova registry item `questionnaire` (shadcn/ui, MIT) over the headless @shadcn/react primitive.
-// Purrable's changes: lucide's check instead of the registry's icon placeholder, and `font-heading` for its
+// goblin's changes: lucide's check instead of the registry's icon placeholder, and `font-heading` for its
 // `cn-font-heading` utility.
 import * as React from 'react'
 import { Questionnaire as QuestionnairePrimitive } from '@shadcn/react/questionnaire'

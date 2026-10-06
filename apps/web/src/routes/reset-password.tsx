@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import { Alert, AlertDescription, Button, Field, FieldGroup, FieldLabel, Input } from '@purrable/ui'
+import { Alert, AlertDescription, Button, Field, FieldGroup, FieldLabel, Input } from '@goblin/ui'
 import { AuthShell } from '../components/auth-shell.tsx'
 import { request } from '../lib/boundary.ts'
 

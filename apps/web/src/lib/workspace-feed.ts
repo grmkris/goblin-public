@@ -4,7 +4,7 @@ import {
   type ConversationView,
   WorkspaceChange,
   WorkspaceSnapshot,
-} from '@purrable/contracts'
+} from '@goblin/contracts'
 import { Schema } from 'effect'
 import { type PiEventSource, type ReconnectScheduler, browserScheduler, reconnectDelay } from './conversation-stream.ts'
 

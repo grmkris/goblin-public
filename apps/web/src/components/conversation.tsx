@@ -9,9 +9,9 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { type ReactNode, useMemo, useRef } from 'react'
-import { TELEGRAM_AUTHOR } from '@purrable/contracts'
+import { TELEGRAM_AUTHOR } from '@goblin/contracts'
 import { HistoryIcon } from 'lucide-react'
 import { isOwnTurn, type Part } from '../lib/parts.ts'
 import { turnLabel } from '../lib/turn-map.ts'

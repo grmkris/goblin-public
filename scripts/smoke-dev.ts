@@ -1,7 +1,7 @@
 /**
  * Manual acceptance against the retained dev Worker (`smoke:dev`) or the local stack (`smoke:local`). Never imported
  * by CI or the deployed Worker. It reads the owner's state and changes one thing for the length of its agent turns:
- * with `PURRABLE_SMOKE_MODEL` set, the agent answers on that model, and the owner's own pick is put back afterwards,
+ * with `GOBLIN_SMOKE_MODEL` set, the agent answers on that model, and the owner's own pick is put back afterwards,
  * whatever failed. Grants stay as the owner set them. Turns run in main and a side thread closed afterwards; the throwaway
  * inbound client is revoked before the script exits.
  */
@@ -19,9 +19,9 @@ const number = Schema.decodeUnknownSync(Schema.Number)
 /** A read-only tool per known server, called only if the owner has already granted it. */
 const PROBES: Readonly<Record<string, string>> = { myplan: 'account_read', mybrowser: 'browser_backends' }
 const REDIRECT_URI = 'http://127.0.0.1:9/callback'
-const DEV_MARKER = 'PURRABLE_DEV_OK'
-const MCP_MARKER = 'PURRABLE_MCP_OK'
-const SMOKE_CLIENT_NAME = 'purrable-smoke'
+const DEV_MARKER = 'GOBLIN_DEV_OK'
+const MCP_MARKER = 'GOBLIN_MCP_OK'
+const SMOKE_CLIENT_NAME = 'goblin-smoke'
 const MAIN_HISTORY = '/api/conversations/1/history?before=2147483647'
 
 type Step = { readonly step: string; readonly status: number }
@@ -34,12 +34,12 @@ type Settings = {
 
 const settings = Effect.gen(function* () {
   return {
-    stage: yield* Config.String('PURRABLE_STAGE'),
-    url: yield* Config.String('PURRABLE_APP_URL'),
-    email: yield* Config.Redacted('PURRABLE_OWNER_EMAIL').pipe(Config.withDefault(Redacted.make(''))),
-    password: yield* Config.Redacted('PURRABLE_OWNER_PASSWORD').pipe(Config.withDefault(Redacted.make(''))),
+    stage: yield* Config.String('GOBLIN_STAGE'),
+    url: yield* Config.String('GOBLIN_APP_URL'),
+    email: yield* Config.Redacted('GOBLIN_OWNER_EMAIL').pipe(Config.withDefault(Redacted.make(''))),
+    password: yield* Config.Redacted('GOBLIN_OWNER_PASSWORD').pipe(Config.withDefault(Redacted.make(''))),
     /** The model the smoke's agent turns run on (dev: an Alibaba Token Plan model); unset: the owner's own pick. */
-    smokeModel: Option.getOrUndefined(yield* Config.option(Config.String('PURRABLE_SMOKE_MODEL'))),
+    smokeModel: Option.getOrUndefined(yield* Config.option(Config.String('GOBLIN_SMOKE_MODEL'))),
   }
 })
 
@@ -362,7 +362,7 @@ async function subagentChecks(dev: DevClient): Promise<SubagentCheck> {
   await submitMessage(
     dev,
     '1',
-    'Start a subagent named smokecount: it should count the letters in the word "purrable" and report the number. Then tell me you started it.',
+    'Start a subagent named smokecount: it should count the letters in the word "goblin" and report the number. Then tell me you started it.',
     'subagent',
   )
   await poll(
@@ -486,7 +486,7 @@ async function smokeDev(
     throw new Error('private_stage_env_required')
   const dev = new DevClient(targetUrl(config), steps)
   const health = await dev.json('/health', { owner: false })
-  if (health['stage'] !== config.stage || health['service'] !== 'purrable') throw new Error('stage_health_mismatch')
+  if (health['stage'] !== config.stage || health['service'] !== 'goblin') throw new Error('stage_health_mismatch')
   const signup = string(health['signup'])
   if (config.stage === 'prod' && (Redacted.value(config.email) === '' || Redacted.value(config.password) === '')) {
     const probe = await dev.send('/api/conversations', { owner: false })

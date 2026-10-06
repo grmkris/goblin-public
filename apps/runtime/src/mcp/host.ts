@@ -1,5 +1,5 @@
 import { auth, type AuthProvider, discoverOAuthServerInfo, type Tool } from '@modelcontextprotocol/client'
-import type { CatalogEntry, RegistryView, ServerView, ToolView } from '@purrable/contracts'
+import type { CatalogEntry, RegistryView, ServerView, ToolView } from '@goblin/contracts'
 import { nowSeconds } from '../clock.ts'
 import { Internal, InvalidInput, NeedsAuthorization, NotFound } from '../http/errors.ts'
 import { McpConnectionManager, offersEvents, offersSkills, toolAppResource, toolOffered } from './connection.ts'

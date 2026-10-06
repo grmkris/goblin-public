@@ -14,7 +14,7 @@ const chunked = (parts: readonly string[]): Request => {
   })
   // Node's Request needs `duplex` for a stream body; workers-types does not declare it.
   const init = { method: 'POST', body, duplex: 'half' }
-  return new Request('https://purrable.test/api/x', init)
+  return new Request('https://goblin.test/api/x', init)
 }
 
 test('a chunked body without content-length is still bounded', async () => {

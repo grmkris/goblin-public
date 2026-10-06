@@ -1,4 +1,4 @@
-import { RoutineDefinition } from '@purrable/contracts'
+import { RoutineDefinition } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { Conflict } from '../http/errors.ts'

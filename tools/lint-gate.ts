@@ -1,4 +1,4 @@
-/** Purrable starts with zero accepted lint/Effect/Knip findings. */
+/** goblin starts with zero accepted lint/Effect/Knip findings. */
 import { collect, SOURCES } from './findings.ts'
 const result = await collect(SOURCES)
 for (const failure of result.failures) console.error(failure)

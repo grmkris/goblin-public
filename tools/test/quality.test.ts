@@ -5,7 +5,7 @@ import { placementOf } from '../oxlint/boundaries.ts'
 import { nodes } from '../graph.ts'
 import { repoRoot } from '../run.ts'
 
-describe('Purrable quality tooling', () => {
+describe('goblin quality tooling', () => {
   test('script parsers preserve explicit project paths', () => {
     expect(typecheckProjects('tsc -p tsconfig.json && tsc -p scripts/tsconfig.json')).toEqual([
       'tsconfig.json',
@@ -23,12 +23,12 @@ describe('Purrable quality tooling', () => {
     expect(placementOf(path.resolve(repoRoot, 'bench/src/plan.ts'))?.runtime).toBe('tooling')
     expect(placementOf(path.resolve(repoRoot, 'bench/test/bench.test.ts'))?.runtime).toBe('test')
     expect(nodes.map((node) => node.name)).toEqual([
-      '@purrable/bench',
-      '@purrable/runtime',
-      '@purrable/web',
-      '@purrable/contracts',
-      '@purrable/ui',
-      '@purrable/tools',
+      '@goblin/bench',
+      '@goblin/runtime',
+      '@goblin/web',
+      '@goblin/contracts',
+      '@goblin/ui',
+      '@goblin/tools',
     ])
   })
 

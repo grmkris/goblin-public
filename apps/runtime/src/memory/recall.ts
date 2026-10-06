@@ -1,7 +1,7 @@
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import { Type } from '@earendil-works/pi-ai'
 
-/** OptChat's view guide (§7.2), for Purrable: how to read the memory and when to zoom. Static, so caches hold. */
+/** OptChat's view guide (§7.2), for goblin: how to read the memory and when to zoom. Static, so caches hold. */
 const GUIDE = [
   'Your memory of the main conversation: a request in it starts with the memory, inside <memory> tags, and then the',
   'recent messages in full. The memory holds the conversation before them, oldest first, as one-line summaries. Each',
@@ -19,7 +19,7 @@ const GUIDE = [
 /** `zoom` into main's memory, bounded by what the conversation may see, and the guide to reading the view. */
 export function recallExtension(zoom: (id: number, n: number, conversation: string) => Promise<string>, guide = GUIDE) {
   return defineExtension({
-    name: 'purrable.recall',
+    name: 'goblin.recall',
     sections: [section('memory', () => guide)],
     tools: [
       defineTool({

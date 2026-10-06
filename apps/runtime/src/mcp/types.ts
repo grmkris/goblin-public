@@ -9,7 +9,7 @@ import type {
   ServerCapabilities,
   Tool,
 } from '@modelcontextprotocol/client'
-import type { McpServerConfig } from '@purrable/contracts'
+import type { McpServerConfig } from '@goblin/contracts'
 import type { Grant } from './grants.ts'
 export type { McpServerConfig }
 export type McpCaller = 'model' | 'app' | 'human'

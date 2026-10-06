@@ -5,17 +5,17 @@ import * as Effect from 'effect/Effect'
 import { fileURLToPath } from 'node:url'
 
 export default Alchemy.Stack(
-  'PurrableNativeRuntimeHarness',
+  'goblinNativeRuntimeHarness',
   {
     providers: Cloudflare.providers(),
     state: Alchemy.localState(),
   },
   Effect.gen(function* () {
-    const port = yield* Config.Port('PURRABLE_HARNESS_PORT')
+    const port = yield* Config.Port('GOBLIN_HARNESS_PORT')
     const auth = yield* Cloudflare.D1.Database('NativeAccountUsage', {
       migrations: fileURLToPath(new URL('../../migrations', import.meta.url).href),
     })
-    const worker = yield* Cloudflare.Worker('PurrableNativeRuntimeHarnessWorker', {
+    const worker = yield* Cloudflare.Worker('goblinNativeRuntimeHarnessWorker', {
       main: fileURLToPath(new URL('./worker.ts', import.meta.url).href),
       compatibility: { date: '2026-09-25', flags: ['nodejs_compat'] },
       dev: { port, strictPort: true },
@@ -26,7 +26,7 @@ export default Alchemy.Stack(
         MODEL_BASE_URL: 'https://no-model-calls.invalid/v1',
         MODEL_ID: 'storage-only',
         MODEL_KEY: 'unused-storage-fixture',
-        APP_URL: 'https://purrable.test',
+        APP_URL: 'https://goblin.test',
         // A fixed 32-byte test key: encrypts nothing real in this harness.
         CREDENTIAL_KEY: 'cHVycmFibGUtdGVzdC1rZXktMzItYnl0ZXMtbG9uZyE=',
       },

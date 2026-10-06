@@ -36,16 +36,16 @@ const standard = <S extends Schema.Top & Schema.ConstraintDecoder<unknown>>(sche
 const text = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] })
 
 /**
- * Purrable as an MCP server: authorized clients (Claude Code, Hermes, ...) can ask the resident agent things. They
+ * goblin as an MCP server: authorized clients (Claude Code, Hermes, ...) can ask the resident agent things. They
  * talk in the agent's main conversation, labelled with their name; the agent uses the owner's granted tools under
  * resident authority.
  */
 export const inboundServer = (agent: ClientAgentPort): McpServer => {
   const server = new McpServer(
-    { name: 'purrable', version: '0.1.0' },
+    { name: 'goblin', version: '0.1.0' },
     {
       instructions:
-        "Purrable is the owner's resident personal agent. Use ask_agent to delegate a question or task; it answers in its main conversation, where the owner sees your message labelled with your name.",
+        "goblin is the owner's resident personal agent. Use ask_agent to delegate a question or task; it answers in its main conversation, where the owner sees your message labelled with your name.",
     },
   )
   server.registerTool(
@@ -53,7 +53,7 @@ export const inboundServer = (agent: ClientAgentPort): McpServer => {
     {
       title: 'Ask the resident agent',
       description:
-        'Ask Purrable, the owner\'s resident agent, a question or give it a task. It may use the owner\'s granted tools (for example MyPlan). Returns its answer, or status "running" with an operationId to wait again.',
+        'Ask goblin, the owner\'s resident agent, a question or give it a task. It may use the owner\'s granted tools (for example MyPlan). Returns its answer, or status "running" with an operationId to wait again.',
       inputSchema: standard(AskInput),
       annotations: { readOnlyHint: false, openWorldHint: true },
     },

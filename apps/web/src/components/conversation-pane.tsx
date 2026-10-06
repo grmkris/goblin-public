@@ -1,6 +1,6 @@
 import { type ReactNode, useMemo, useRef, useState } from 'react'
-import type { ConversationView } from '@purrable/contracts'
-import { DropdownMenuItem, DropdownMenuSeparator, Input, useMediaQuery } from '@purrable/ui'
+import type { ConversationView } from '@goblin/contracts'
+import { DropdownMenuItem, DropdownMenuSeparator, Input, useMediaQuery } from '@goblin/ui'
 import {
   GitBranchIcon,
   Maximize2Icon,

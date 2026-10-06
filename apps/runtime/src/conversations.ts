@@ -1,4 +1,4 @@
-import { type ConversationView, MAIN_THREAD, type UpdateConversation } from '@purrable/contracts'
+import { type ConversationView, MAIN_THREAD, type UpdateConversation } from '@goblin/contracts'
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { Conversation, EntryRecord, Extension } from '@earendil-works/pi-durable'

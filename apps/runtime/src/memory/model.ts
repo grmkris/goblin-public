@@ -11,7 +11,7 @@ export interface TextCompletion {
 
 /**
  * The deployment's cheap model for housekeeping nobody asked the agent for: naming threads, summarizing main into its
- * memory. It is one of the offered models (`PURRABLE_MEMORY_MODEL`), called on the same LiteLLM key, and every token
+ * memory. It is one of the offered models (`GOBLIN_MEMORY_MODEL`), called on the same LiteLLM key, and every token
  * it spends counts toward the user's daily budget through `spent`.
  */
 export class CheapModel {

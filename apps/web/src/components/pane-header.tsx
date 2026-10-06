@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, SidebarTrigger } from '@purrable/ui'
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, SidebarTrigger } from '@goblin/ui'
 import { ChevronDownIcon, ChevronRightIcon, GripVerticalIcon, XIcon } from 'lucide-react'
 import type { ItemKey } from '../lib/workspace.ts'
 

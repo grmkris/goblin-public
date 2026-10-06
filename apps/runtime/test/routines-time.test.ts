@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { nextCron, nextFire, parseCron } from '../src/routines/time.ts'
 import { routineOrigin } from '../src/routines/csrf.ts'
-import type { RoutineDefinition } from '@purrable/contracts'
+import type { RoutineDefinition } from '@goblin/contracts'
 
 const at = (iso: string) => Date.parse(iso)
 const reminder: RoutineDefinition = {
@@ -40,18 +40,18 @@ describe('routine dates and schedule policy', () => {
     ).toThrow()
   })
   it('requires exact configured origin and CSRF header on every routine write', () => {
-    const url = 'https://purrable.test/api/routines'
-    expect(() => routineOrigin(new Request(url, { method: 'POST' }), 'https://purrable.test')).toThrow()
+    const url = 'https://goblin.test/api/routines'
+    expect(() => routineOrigin(new Request(url, { method: 'POST' }), 'https://goblin.test')).toThrow()
     expect(() =>
       routineOrigin(
-        new Request(url, { method: 'POST', headers: { origin: 'https://foreign.test', 'x-purrable-csrf': '1' } }),
-        'https://purrable.test',
+        new Request(url, { method: 'POST', headers: { origin: 'https://foreign.test', 'x-goblin-csrf': '1' } }),
+        'https://goblin.test',
       ),
     ).toThrow()
     expect(() =>
       routineOrigin(
-        new Request(url, { method: 'POST', headers: { origin: 'https://purrable.test', 'x-purrable-csrf': '1' } }),
-        'https://purrable.test',
+        new Request(url, { method: 'POST', headers: { origin: 'https://goblin.test', 'x-goblin-csrf': '1' } }),
+        'https://goblin.test',
       ),
     ).not.toThrow()
   })

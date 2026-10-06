@@ -1,4 +1,4 @@
-import { RoutineEdit, RoutineProposal, RoutineRevision, RoutineSettings, RoutineManualRun } from '@purrable/contracts'
+import { RoutineEdit, RoutineProposal, RoutineRevision, RoutineSettings, RoutineManualRun } from '@goblin/contracts'
 import { NotFound } from '../http/errors.ts'
 import { readJson } from '../http/body.ts'
 import { unwrap } from '../http/rpc.ts'

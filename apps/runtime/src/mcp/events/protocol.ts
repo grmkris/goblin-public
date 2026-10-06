@@ -1,6 +1,6 @@
 import * as Schema from 'effect/Schema'
 
-/** Draft MCP Triggers & Events profile selected by Purrable. */
+/** Draft MCP Triggers & Events profile selected by goblin. */
 const EventName = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256))
 export const EventDescriptor = Schema.Struct({
   name: EventName,

@@ -9,7 +9,7 @@ below until the announced mygram batch. Inbound `tg:<update>` identifiers keep t
 `telegram-tg-<update>` operation mapping; reply IDs, escaping, chunking and pending reply records stay the same.
 
 **The agent talks on Telegram through myagent, with a bot of its own.** myagent is the owner's Telegram-to-MCP
-bridge. It holds several bots, and the owner binds each authorized MCP client to one of them. Purrable connects to
+bridge. It holds several bots, and the owner binds each authorized MCP client to one of them. goblin connects to
 myagent like any other MCP server. The owner then picks that connection under Connections, "Use for Telegram". That is
 an explicit owner action, and it does three things:
 - grants the four tools the channel uses (`inbox`, `send_message`, `subscribe`, `unsubscribe`);
@@ -26,7 +26,7 @@ At most one connection carries Telegram.
   of clock skew). It then schedules a pull and answers at once.
 - The pull reads `inbox` from the stored cursor, puts each new message from the owner into main authored "Telegram"
   (`telegram-<message id>`, so a repeat is the same submission), and moves the cursor page by page.
-- A doorbell carries no message text: Purrable reads the messages through the grant like any other tool call.
+- A doorbell carries no message text: goblin reads the messages through the grant like any other tool call.
 - The pull needs current resident authority, like every outbound call.
 
 **Answers go back with `send_message`.**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ConversationActivity, ConversationView } from '@purrable/contracts'
+import type { ConversationActivity, ConversationView } from '@goblin/contracts'
 import { isBusy, subagentLabel, subagentState, workingUnder } from '../src/lib/subagent-state.ts'
 
 const view = (id: string, extra: Partial<ConversationView> = {}): ConversationView => ({

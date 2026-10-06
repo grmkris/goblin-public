@@ -1,7 +1,7 @@
 import type { EntitlementPolicy } from '../../src/billing/gates.ts'
 import { canonicalRedirect } from '../../src/http/canonical.ts'
 import { inboundHostProbe } from './inbound-host.ts'
-import { type ConversationView, MAIN_THREAD } from '@purrable/contracts'
+import { type ConversationView, MAIN_THREAD } from '@goblin/contracts'
 import { eventsProbe } from './events-probe.ts'
 import { routinesProbe } from './routines-probe.ts'
 import { routineExecutionProbe } from './routines-execution.ts'
@@ -861,7 +861,7 @@ export default {
   fetch(request: Request, env: Env): Promise<Response> {
     if (new URL(request.url).pathname === '/inbound-host') return inboundHostProbe(request)
     if (new URL(request.url).pathname.startsWith('/canonical'))
-      return Promise.resolve(canonicalRedirect(request, 'https://purrable.lol') ?? Response.json({ canonical: true }))
+      return Promise.resolve(canonicalRedirect(request, 'https://goblin.surf') ?? Response.json({ canonical: true }))
     return nativeFetch(request, env)
   },
 }

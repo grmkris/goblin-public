@@ -1,5 +1,5 @@
 import type { PersonalAgent } from '../../src/agent.ts'
-import { MAIN_THREAD, type RoutineDefinition } from '@purrable/contracts'
+import { MAIN_THREAD, type RoutineDefinition } from '@goblin/contracts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import { unwrap } from '../../src/http/rpc.ts'

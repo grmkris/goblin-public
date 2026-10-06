@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { Schema } from 'effect'
-import { BillingState } from '@purrable/contracts'
+import { BillingState } from '@goblin/contracts'
 import { failureText, request } from './boundary.ts'
 import { useSession } from './session.tsx'
 

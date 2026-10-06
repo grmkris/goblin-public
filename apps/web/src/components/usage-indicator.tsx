@@ -1,5 +1,5 @@
-import type { UsageToday } from '@purrable/contracts'
-import { Count, UsageRing } from '@purrable/ui'
+import type { UsageToday } from '@goblin/contracts'
+import { Count, UsageRing } from '@goblin/ui'
 import { budgetFraction } from '../lib/usage.ts'
 
 /**

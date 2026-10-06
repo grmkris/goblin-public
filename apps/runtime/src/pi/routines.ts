@@ -1,14 +1,14 @@
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import { Type } from '@earendil-works/pi-ai'
 import * as Schema from 'effect/Schema'
-import { RoutineDefinition } from '@purrable/contracts'
+import { RoutineDefinition } from '@goblin/contracts'
 import { changeRoutine, proposeRoutine, routinesList } from '../routines/program.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
 /** The model proposes a draft; only the authenticated owner's review may confirm it. */
 export function routinesExtension(run: RunProgram) {
   return defineExtension({
-    name: 'purrable.routines',
+    name: 'goblin.routines',
     sections: [
       section(
         'routines',

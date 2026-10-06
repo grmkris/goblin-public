@@ -2,7 +2,7 @@
 // the Official MCP Registry, GitHub's, and any the owner adds. Entries are publishers' claims, bounded and decoded;
 // they label servers for the owner, never reach the model and grant nothing. Only remotes a Worker can use are kept.
 // Redirects are not followed (`manual`; workerd has no `error` mode): a 3xx is not `ok`, so it reads as nothing.
-import type { CatalogEntry } from '@purrable/contracts'
+import type { CatalogEntry } from '@goblin/contracts'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { InvalidInput } from '../http/errors.ts'

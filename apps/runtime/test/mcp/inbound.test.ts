@@ -8,7 +8,7 @@ const connect = async (agent: ClientAgentPort) => {
   const handler = createMcpHandler(() => inboundServer(agent))
   const client = new Client({ name: 'test-client', version: '1.0.0' })
   await client.connect(
-    new StreamableHTTPClientTransport(new URL('https://purrable.test/mcp'), {
+    new StreamableHTTPClientTransport(new URL('https://goblin.test/mcp'), {
       fetch: async (input, init) => handler.fetch(new Request(input, init)),
     }),
   )
@@ -20,7 +20,7 @@ const textOf = (result: unknown): unknown => {
   return JSON.parse(content[0]?.text ?? 'null')
 }
 
-describe('Purrable inbound MCP server (unit)', () => {
+describe('goblin inbound MCP server (unit)', () => {
   it('exposes ask_agent and get_recent_messages with JSON schemas', async () => {
     const client = await connect({ ask: async () => ({ status: 'running', operationId: 'x' }), recent: async () => [] })
     try {

@@ -174,7 +174,7 @@ export class McpConnectionManager {
 
   async #open(server: McpServerConfig, options: RequestOptions): Promise<Connection> {
     const client = new Client(
-      { name: 'purrable', version: '0.1.0' },
+      { name: 'goblin', version: '0.1.0' },
       {
         capabilities: { extensions: { [SKILLS_EXTENSION]: {} } },
         versionNegotiation: { mode: 'auto', probe: { timeoutMs: this.#options.timeoutMs ?? 10_000, maxRetries: 0 } },

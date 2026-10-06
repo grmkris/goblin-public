@@ -1,4 +1,4 @@
-import type { CreateApp, UpdateApp } from '@purrable/contracts'
+import type { CreateApp, UpdateApp } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import { NotFound } from '../http/errors.ts'
 import { toolAppResource } from '../mcp/connection.ts'

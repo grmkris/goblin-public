@@ -1,7 +1,7 @@
 import { UsageDoc } from '@earendil-works/pi-durable'
 import type { PersonalAgent } from '../../src/agent.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
-import type { RoutineDefinition } from '@purrable/contracts'
+import type { RoutineDefinition } from '@goblin/contracts'
 import { RoutineRunStore } from '../../src/routines/runs.ts'
 import { RoutineUsage } from '../../src/routines/usage.ts'
 import { BACKGROUND, conversationId } from '../../src/pi/context.ts'

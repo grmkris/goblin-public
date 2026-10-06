@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@purrable/ui'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@goblin/ui'
 import { PlusIcon } from 'lucide-react'
 import { threadTitle } from '../lib/threads.ts'
 import { appKey, conversationKey, isOpen } from '../lib/workspace.ts'

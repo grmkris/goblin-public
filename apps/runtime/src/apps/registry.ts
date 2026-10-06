@@ -1,4 +1,4 @@
-import type { AppLaunch, AppView } from '@purrable/contracts'
+import type { AppLaunch, AppView } from '@goblin/contracts'
 import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { EntryRecord } from '@earendil-works/pi-durable'

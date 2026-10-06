@@ -2,7 +2,7 @@
 // Telegram channel and tools it offers. A server's title and description are its own claims.
 import { useCallback, useEffect, useId, useState } from 'react'
 import { Schema } from 'effect'
-import { type ServerView, ToolView } from '@purrable/contracts'
+import { type ServerView, ToolView } from '@goblin/contracts'
 import {
   Button,
   Card,
@@ -17,7 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   Switch,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { EllipsisIcon, RefreshCwIcon, Trash2Icon, UnplugIcon } from 'lucide-react'
 import { failureText, record, request } from '../lib/boundary.ts'
 import { serverStatus, serverTitle } from '../lib/labels.ts'

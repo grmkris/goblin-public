@@ -33,14 +33,14 @@ Each PR was applied as its own diff against its merge base (`git apply -3`). Res
 Ours (upstream as [#12150](https://github.com/shadcn-ui/ui/pull/12150), without the anchor-scan part, which needs
 #11182), in `handleContentChange`: a prepend is recognised when the previous first **message** row (one with a
 `messageId`) is no longer the first message row, rather than when the previous first child moved. Rows that are not
-messages, such as Purrable's "Earlier messages" button or a thread's lead, can stay first or come and go without hiding
+messages, such as goblin's "Earlier messages" button or a thread's lead, can stay first or come and go without hiding
 a prepend. New scroll anchors are the ones not yet handled, wherever they were inserted, rather than whatever sits
 after the previous item count. Three browser tests cover a persistent load-earlier row, the last page landing as that
 row goes away (same count), and a lead item; each fails without the change.
 
 Not in it yet, candidates for the next regeneration: the open PRs #11183 (a held turn jitters while its reply streams,
 when the content briefly shrinks under an exact-fit spacer) and #12029 (Home/PageUp from the end re-arms follow-output
-mid-animation, #12021; a row resizing then pulls the view back, most often a `content-visibility` row, which Purrable's
+mid-animation, #12021; a row resizing then pulls the view back, most often a `content-visibility` row, which goblin's
 items no longer are).
 
 ## Regenerating

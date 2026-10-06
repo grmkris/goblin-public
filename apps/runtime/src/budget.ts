@@ -1,4 +1,4 @@
-import type { UsageToday } from '@purrable/contracts'
+import type { UsageToday } from '@goblin/contracts'
 import { eq, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { BudgetExhausted } from './http/errors.ts'

@@ -1,6 +1,6 @@
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
-import type { EventHealth } from '@purrable/contracts'
+import type { EventHealth } from '@goblin/contracts'
 import { type AppError, InvalidInput, toAppError } from '../http/errors.ts'
 import type { CredentialCipher } from './cipher.ts'
 import type { McpConnectionManager } from './connection.ts'
@@ -273,4 +273,4 @@ export class McpEvents {
   }
 }
 
-export class Events extends Context.Service<Events, McpEvents>()('purrable/Events') {}
+export class Events extends Context.Service<Events, McpEvents>()('goblin/Events') {}

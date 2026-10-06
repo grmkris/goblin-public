@@ -3,7 +3,7 @@
 // its cursor and puts every new message from the owner into main, authored "Telegram". The answer to each of those
 // turns, and to a subagent's report in main, goes back with `send_message`. The store keeps the connection, the cursor,
 // the doorbell secret (sealed) and the turns whose answers are still to send.
-import type { ChannelStatus } from '@purrable/contracts'
+import type { ChannelStatus } from '@goblin/contracts'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Predicate from 'effect/Predicate'

@@ -22,7 +22,7 @@ change re-balances: each column of a row is as wide as the others.
 **The URL names only the focused conversation** (or, since ADR 0020, App: `/a/<id>`), `/c/<id>`, replaced as focus
 moves so Back leaves the workspace rather than stepping through panes; `/` restores the device's focus. A deep link
 opens its item beside the focused pane. The arrangement is a device preference in localStorage
-(`purrable:workspace:v2:<owner>`), a bounded Trellis document of one-view panes (64 views, 128 KB, no stage, nothing
+(`goblin:workspace:v2:<owner>`), a bounded Trellis document of one-view panes (64 views, 128 KB, no stage, nothing
 floating). Conversation and App panes come back; drafts do not, since they need what the owner did this time. A
 stored layout never grants anything.
 
@@ -50,16 +50,16 @@ instance) replaced the interim single App pane this decision first shipped with.
 with bounded JSON branches, inline long-string expansion, and Raw and Copy for the complete result. The viewer uses
 the existing result envelope and stays inside the conversation pane; an App keeps its own placement and lifecycle.
 
-Trellis is commercially licensed. Dan Fessler gave Purrable permission to use it without sponsorship until Purrable
-makes money, in exchange for crediting him and allowing him to showcase Purrable as a Trellis user. The workspace
+Trellis is commercially licensed. Dan Fessler gave goblin permission to use it without sponsorship until goblin
+makes money, in exchange for crediting him and allowing him to showcase goblin as a Trellis user. The workspace
 toolbar and README credit him, linking https://github.com/DanFessler/trellis. This project-specific permission covers
 the period before revenue; it does not mean sponsorship is already active.
 
-Once Purrable earns revenue, Kris maintains an active GitHub Sponsorship at the applicable commercial tier. The
+Once goblin earns revenue, Kris maintains an active GitHub Sponsorship at the applicable commercial tier. The
 installed 0.3.0 `LICENSE-COMMERCIAL.md` specifies $10/month for individuals and $100/month for studios of up to 10
 members. Larger organizations need an enterprise agreement. Sponsorship must stay active for continued commercial
 use, with the required attribution; the library cannot be resold on its own or relicensed. The commercial license
-and Dan's Purrable-specific permission remain the governing terms.
+and Dan's goblin-specific permission remain the governing terms.
 
 The workspace toolbar is gone with this decision, so the in-app credit moved to the sidebar footer, with the same
 text and link; the README keeps its credit.

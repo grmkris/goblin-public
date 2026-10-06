@@ -89,7 +89,7 @@ const host = new McpHost({
   credentials,
   grants: new MemoryGrants(),
   skillsEnabled: (serverId) => state.enabled(serverId),
-  appUrl: 'https://purrable.test',
+  appUrl: 'https://goblin.test',
   fetch: async (input, init) => {
     if (served.down) throw new TypeError('network down')
     return skills.fetch(new Request(input, init))

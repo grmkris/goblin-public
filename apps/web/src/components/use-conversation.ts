@@ -1,5 +1,5 @@
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AppContext } from '@purrable/contracts'
+import type { AppContext } from '@goblin/contracts'
 import { failureText, isNumber, record, records, request } from '../lib/boundary.ts'
 import { BrowserPiEvents, type StreamStatus } from '../lib/conversation-stream.ts'
 import { type Lease, type StreamState, StreamPool } from '../lib/stream-pool.ts'

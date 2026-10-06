@@ -1,5 +1,5 @@
 import type { Tool } from '@modelcontextprotocol/client'
-import type { CapabilityTarget, ConversationCapabilities, ServerView } from '@purrable/contracts'
+import type { CapabilityTarget, ConversationCapabilities, ServerView } from '@goblin/contracts'
 import { toolOffered } from '../mcp/connection.ts'
 import type { Grant } from '../mcp/grants.ts'
 import { type CapabilityScope, type Exclusion, exclusionOf, sameExclusions, scopeOf } from './profiles.ts'

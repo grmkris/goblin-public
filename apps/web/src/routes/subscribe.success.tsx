@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { Button } from '@purrable/ui'
+import { Button } from '@goblin/ui'
 import { AuthShell } from '../components/auth-shell.tsx'
 import { OwnerGate } from '../components/owner-gate.tsx'
 import { useBilling } from '../lib/billing.tsx'

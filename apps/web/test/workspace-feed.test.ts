@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AppView, ConversationView } from '@purrable/contracts'
+import type { AppView, ConversationView } from '@goblin/contracts'
 import type { PiEventSource, ReconnectScheduler } from '../src/lib/conversation-stream.ts'
 import {
   EMPTY_WORKSPACE,

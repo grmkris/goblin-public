@@ -10,7 +10,7 @@ import {
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useHydrated } from '@tanstack/react-router'
-import { useMediaQuery } from '@purrable/ui'
+import { useMediaQuery } from '@goblin/ui'
 import { WIDE_QUERY } from '../lib/breakpoints.ts'
 import { PANE_MIN } from '../lib/pane-drop.ts'
 import { PANE_TYPE, columnCount, singlePane } from '../lib/trellis-layout.ts'

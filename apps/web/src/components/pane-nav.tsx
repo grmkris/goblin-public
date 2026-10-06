@@ -1,8 +1,8 @@
 // What a conversation's pane pill shows beyond its name: a mark of what it is (main, a thread, or a subagent's state),
 // a subagent's state in words, and at the top of its menu where it sits and the conversations around it to show in
 // the same pane instead.
-import type { ConversationView } from '@purrable/contracts'
-import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel } from '@purrable/ui'
+import type { ConversationView } from '@goblin/contracts'
+import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel } from '@goblin/ui'
 import { ArrowUpIcon, MessageCircleIcon, MessagesSquareIcon, PinIcon, SquareIcon } from 'lucide-react'
 import { isBusy, subagentState, workingUnder } from '../lib/subagent-state.ts'
 import { threadTitle } from '../lib/threads.ts'

@@ -2,7 +2,7 @@
  * `bun run graph`: the whole-repository properties of tools/graph.ts that a per-file lint rule cannot see.
  *
  * 1. Every workspace has a node, and every node is a workspace with the same package name.
- * 2. A node's `mayImport` equals the `@purrable/*` entries of its manifest (dependencies and devDependencies), so a new
+ * 2. A node's `mayImport` equals the `@goblin/*` entries of its manifest (dependencies and devDependencies), so a new
  *    edge is always a two-file change a reviewer sees.
  * 3. A workspace that no app reaches declares a `seam` saying why it exists, and a reachable one does not.
  * 4. Every path a node's own `zones` names exists, so a moved file cannot leave a stale exception behind.
@@ -62,7 +62,7 @@ for (const node of nodes) {
       )
   }
   const deps = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies })
-  const workspaceDeps = deps.filter((dep) => dep.startsWith('@purrable/'))
+  const workspaceDeps = deps.filter((dep) => dep.startsWith('@goblin/'))
   for (const edge of node.mayImport) {
     if (!workspaceDeps.includes(edge)) {
       failures.push(

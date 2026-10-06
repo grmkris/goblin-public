@@ -6,9 +6,9 @@ import { makePiModels } from '../src/pi/model.ts'
 async function providerProbe(): Promise<void> {
   const { MODEL_BASE_URL, MODEL_ID, MODEL_KEY } = await Effect.runPromise(
     Config.all({
-      MODEL_BASE_URL: Config.String('PURRABLE_MODEL_BASE_URL'),
-      MODEL_ID: Config.String('PURRABLE_MODEL_ID'),
-      MODEL_KEY: Config.String('PURRABLE_MODEL_KEY'),
+      MODEL_BASE_URL: Config.String('GOBLIN_MODEL_BASE_URL'),
+      MODEL_ID: Config.String('GOBLIN_MODEL_ID'),
+      MODEL_KEY: Config.String('GOBLIN_MODEL_KEY'),
     }),
   )
   if (!MODEL_BASE_URL || !MODEL_ID || !MODEL_KEY) throw new Error('dedicated_model_configuration_required')
@@ -17,7 +17,7 @@ async function providerProbe(): Promise<void> {
   const chat = models.streamSimple(
     model,
     {
-      messages: [{ role: 'user', content: 'Reply with exactly PURRABLE_OK', timestamp: 0 }],
+      messages: [{ role: 'user', content: 'Reply with exactly GOBLIN_OK', timestamp: 0 }],
     },
     options,
   )
@@ -26,7 +26,7 @@ async function providerProbe(): Promise<void> {
   const chatResult = await chat.result()
   const tools = [
     {
-      name: 'purrable_probe',
+      name: 'goblin_probe',
       description: 'Harmless compatibility probe; reports a number.',
       parameters: Type.Object({ value: Type.Number() }),
     },
@@ -37,7 +37,7 @@ async function providerProbe(): Promise<void> {
       messages: [
         {
           role: 'user',
-          content: 'Call purrable_probe exactly once with JSON argument {"value":7}. Do not answer in text.',
+          content: 'Call goblin_probe exactly once with JSON argument {"value":7}. Do not answer in text.',
           timestamp: 0,
         },
       ],
@@ -52,12 +52,12 @@ async function providerProbe(): Promise<void> {
     environment: 'host-to-configured-provider',
     model: MODEL_ID,
     streamingStop: chatResult.stopReason,
-    streamingMatched: chatResult.content.some((block) => block.type === 'text' && block.text.includes('PURRABLE_OK')),
+    streamingMatched: chatResult.content.some((block) => block.type === 'text' && block.text.includes('GOBLIN_OK')),
     textDeltas,
     toolStop: toolResult.stopReason,
     toolDeltas,
     toolCallMatched: toolResult.content.some(
-      (block) => block.type === 'toolCall' && block.name === 'purrable_probe' && block.arguments['value'] === 7,
+      (block) => block.type === 'toolCall' && block.name === 'goblin_probe' && block.arguments['value'] === 7,
     ),
     toolExecuted: false,
     errors: [chatResult.errorMessage, toolResult.errorMessage]

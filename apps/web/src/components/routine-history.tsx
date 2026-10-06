@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Schema } from 'effect'
-import { RoutineRunPage, type RoutineRunView } from '@purrable/contracts'
+import { RoutineRunPage, type RoutineRunView } from '@goblin/contracts'
 import { Link } from '@tanstack/react-router'
-import { Alert, AlertDescription, Button, Skeleton } from '@purrable/ui'
+import { Alert, AlertDescription, Button, Skeleton } from '@goblin/ui'
 import { RefreshCwIcon } from 'lucide-react'
 import { failureText, request } from '../lib/boundary.ts'
 import { runStatus, telegramReport } from '../lib/labels.ts'
@@ -81,7 +81,7 @@ export function RoutineHistory({
       if (run?.sessionId) await request(`/api/conversations/${run.sessionId}/stop`, { body: {} })
       else
         await request(`/api/routines/${id}/run`, {
-          headers: { 'x-purrable-csrf': '1' },
+          headers: { 'x-goblin-csrf': '1' },
           body: { revision, operationId: crypto.randomUUID(), confirmRun: true },
         })
       load()

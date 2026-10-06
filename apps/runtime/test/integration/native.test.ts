@@ -30,7 +30,7 @@ const harness = Test.make({
 })
 const stack = harness.beforeAll(harness.deploy(Stack))
 const phase = await Effect.runPromise(
-  Config.String('PURRABLE_NATIVE_LIFECYCLE_PHASE').pipe(
+  Config.String('GOBLIN_NATIVE_LIFECYCLE_PHASE').pipe(
     Config.withDefault('same-process'),
     Effect.flatMap(Schema.decodeUnknownEffect(Schema.Literals(['same-process', 'write', 'read']))),
   ),
@@ -113,7 +113,7 @@ harness.test(
 )
 
 function lifecycleEvidencePath(): FileURL {
-  return new FileURL('../../.alchemy/purrable-native-lifecycle.json', import.meta.url)
+  return new FileURL('../../.alchemy/goblin-native-lifecycle.json', import.meta.url)
 }
 
 const RoutineRecovery = Schema.Struct({
@@ -130,7 +130,7 @@ const RoutineRecovered = Schema.Struct({
   reportAccepted: Schema.Boolean,
   retainedSchedules: Schema.Number,
 })
-const routineRecoveryPath = new FileURL('../../.alchemy/purrable-routine-reconstruction.json', import.meta.url)
+const routineRecoveryPath = new FileURL('../../.alchemy/goblin-routine-reconstruction.json', import.meta.url)
 
 harness.test(
   'local workerd: signed routine Events freeze metadata, dedupe and coalesce, recover gaps and retire revisions',
@@ -420,7 +420,7 @@ harness.test(
     expect(after.retained.cachedText).toContain('# Cache test')
     expect(after.retained.file.text).toBe(after.retained.cachedText)
     expect(after.retained.digest).toMatch(/^sha256:[a-f0-9]{64}$/u)
-    const path = new FileURL('../../.alchemy/purrable-skills-restart.json', import.meta.url)
+    const path = new FileURL('../../.alchemy/goblin-skills-restart.json', import.meta.url)
     mkdirSync(new FileURL('./', path), { recursive: true })
     writeFileSync(path, JSON.stringify({ environment: 'local-workerd-do-restart', before, after }, null, 2))
   }),
@@ -980,7 +980,7 @@ if (phase === 'read')
       })
       expect((yield* get('/read', LifecycleRead)).messages).toEqual(evidence.messages)
       writeFileSync(
-        new FileURL('../../.alchemy/purrable-native-reconstruction.json', import.meta.url),
+        new FileURL('../../.alchemy/goblin-native-reconstruction.json', import.meta.url),
         JSON.stringify(
           {
             environment: 'local-workerd-process-reconstruction',
@@ -1010,7 +1010,7 @@ harness.test(
         }),
       )
       expect(response.status).toBe(method === 'POST' ? 308 : 301)
-      expect(response.headers.get('location')).toBe('https://purrable.lol/canonical/path?q=a%2Fb')
+      expect(response.headers.get('location')).toBe('https://goblin.surf/canonical/path?q=a%2Fb')
     }
   }),
 )
@@ -1030,7 +1030,7 @@ harness.test(
         },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
       })
-    const valid = yield* Effect.promise(() => send('https://dev.purrable.lol'))
+    const valid = yield* Effect.promise(() => send('https://dev.goblin.surf'))
     expect(valid.status).toBe(200)
     expect(yield* Effect.promise(() => valid.text())).toContain('ask_agent')
     const foreign = yield* Effect.promise(() => send('https://attacker.example'))

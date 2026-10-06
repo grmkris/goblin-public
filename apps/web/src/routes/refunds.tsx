@@ -6,8 +6,7 @@ function Refunds() {
     <LegalPage title="Refund and cancellation policy">
       <p>
         Cancel your recurring subscription in Settings → Billing → Manage subscription. Cancellation stops future
-        renewal and keeps access through the paid period. Deleting a Purrable account is separate from cancelling
-        payment.
+        renewal and keeps access through the paid period. Deleting a goblin account is separate from cancelling payment.
       </p>
       <p>
         If you were charged incorrectly, paid twice or could not use the service, keep your Dodo checkout receipt and

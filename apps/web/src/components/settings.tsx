@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useState } from 'react'
 import { Schema } from 'effect'
-import { InboundClient, MemoryStatus, ResidentStatus } from '@purrable/contracts'
+import { InboundClient, MemoryStatus, ResidentStatus } from '@goblin/contracts'
 import {
   Alert,
   AlertDescription,
@@ -20,7 +20,7 @@ import {
   Meter,
   Skeleton,
   Switch,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { ApiFailure, failureText, request } from '../lib/boundary.ts'
 import { residentStatus } from '../lib/labels.ts'
 import { budgetFraction } from '../lib/usage.ts'
@@ -128,7 +128,7 @@ function ResidentCard({ onError }: { readonly onError: (message: string) => void
         <CardTitle id={id}>Work while you're away</CardTitle>
         <CardDescription>
           Lets your agent use the tools you allowed when you are not watching: for apps you connected, routines and
-          Telegram. It lasts 30 days from your last visit and renews whenever you use Purrable.
+          Telegram. It lasts 30 days from your last visit and renews whenever you use goblin.
         </CardDescription>
         <CardAction>
           {status === undefined ? (
@@ -317,7 +317,7 @@ export function Settings() {
           title="Apps that use your agent"
           note={
             <>
-              MCP clients you allowed to use Purrable at <code>{`${window.location.origin}/mcp`}</code>.
+              MCP clients you allowed to use goblin at <code>{`${window.location.origin}/mcp`}</code>.
             </>
           }
         >

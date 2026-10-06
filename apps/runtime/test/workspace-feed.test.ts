@@ -21,7 +21,7 @@ describe('what each conversation is doing, from the task graph', () => {
   it('works on ordinary tasks, waits on subagent relays, and ignores background housekeeping', () => {
     const states = activityOf(
       graph(
-        task(1, 1, 'purrable.memory-builder', true),
+        task(1, 1, 'goblin.memory-builder', true),
         task(2, 7, 'pi.generation', false),
         task(3, 9, SUBAGENT_RELAY, true),
         task(4, 11, SUBAGENT_RELAY, true),

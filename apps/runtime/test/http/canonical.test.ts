@@ -9,18 +9,18 @@ test('alternate hosts redirect without trusting forwarded hosts or losing path a
         method,
         headers: { 'x-forwarded-host': 'attacker.example' },
       }),
-      'https://purrable.lol',
+      'https://goblin.surf',
     )
     expect(response?.status).toBe(method === 'GET' || method === 'HEAD' ? 301 : 308)
-    expect(response?.headers.get('location')).toBe('https://purrable.lol//path?q=a%2Fb')
+    expect(response?.headers.get('location')).toBe('https://goblin.surf//path?q=a%2Fb')
   }
-  expect(canonicalRedirect(new Request('https://purrable.lol/health'), 'https://purrable.lol')).toBeUndefined()
+  expect(canonicalRedirect(new Request('https://goblin.surf/health'), 'https://goblin.surf')).toBeUndefined()
 })
 
 test('prod resources are isolated and unsupported stages are refused', () => {
   const stage = resolveStage('prod')
-  expect(stage.workerName).toBe('purrable-prod')
-  expect(stage.resourceName('auth')).toBe('purrable-prod-auth')
+  expect(stage.workerName).toBe('goblin-prod')
+  expect(stage.resourceName('auth')).toBe('goblin-prod-auth')
   expect(stage.local).toBe(false)
   expect(() => resolveStage('production')).toThrow('unsupported_stage')
 })

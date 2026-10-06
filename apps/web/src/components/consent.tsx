@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Alert, AlertDescription, Button } from '@purrable/ui'
+import { Alert, AlertDescription, Button } from '@goblin/ui'
 import { isString, record } from '../lib/boundary.ts'
 import { authClient, redirectOf } from '../lib/auth-client.ts'
 import { AuthShell } from './auth-shell.tsx'
 
 type ClientInfo = { readonly name: string; readonly uri?: string }
 
-/** Ask the owner whether an MCP client may use Purrable. Client-supplied names and URLs are shown as untrusted. */
+/** Ask the owner whether an MCP client may use goblin. Client-supplied names and URLs are shown as untrusted. */
 export function Consent() {
   const clientId = new URLSearchParams(window.location.search).get('client_id') ?? ''
   const [client, setClient] = useState<ClientInfo>()
@@ -38,7 +38,7 @@ export function Consent() {
   return (
     <AuthShell
       size="lg"
-      title={`Allow “${client?.name ?? '…'}” to use Purrable?`}
+      title={`Allow “${client?.name ?? '…'}” to use goblin?`}
       description={
         <>
           {client?.uri ? `It says it is ${client.uri}. ` : ''}The app supplies its own name and address; they are not

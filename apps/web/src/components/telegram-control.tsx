@@ -1,8 +1,8 @@
 // The owner's one Telegram channel: a server with Telegram's tools can carry it, and only one does at a time.
 import { useCallback, useEffect, useId, useState } from 'react'
 import { Schema } from 'effect'
-import { ChannelStatus, type ToolView } from '@purrable/contracts'
-import { Switch } from '@purrable/ui'
+import { ChannelStatus, type ToolView } from '@goblin/contracts'
+import { Switch } from '@goblin/ui'
 import { failureText, request } from '../lib/boundary.ts'
 
 const decodeChannel = Schema.decodeUnknownSync(ChannelStatus)

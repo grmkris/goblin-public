@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AppView, ConversationActivity, ConversationView } from '@purrable/contracts'
+import type { AppView, ConversationActivity, ConversationView } from '@goblin/contracts'
 import {
   type TreeNode,
   appHue,

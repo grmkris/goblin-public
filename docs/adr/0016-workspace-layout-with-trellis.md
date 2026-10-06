@@ -28,16 +28,16 @@ uses the originating authorized server and current exact grants; arguments and s
 Fullscreen fills the workspace surface; narrow fullscreen retains the snapping bottom sheet. Owner grant and offer
 flows remain host-drawn.
 
-Trellis is commercially licensed. Dan Fessler gave Purrable permission to use it without sponsorship until Purrable
-makes money, in exchange for crediting him and allowing him to showcase Purrable as a Trellis user. The workspace
+Trellis is commercially licensed. Dan Fessler gave goblin permission to use it without sponsorship until goblin
+makes money, in exchange for crediting him and allowing him to showcase goblin as a Trellis user. The workspace
 toolbar and README credit him, linking https://github.com/DanFessler/trellis. This project-specific permission covers
 the period before revenue; it does not mean sponsorship is already active.
 
-Once Purrable earns revenue, Kris maintains an active GitHub Sponsorship at the applicable commercial tier. The
+Once goblin earns revenue, Kris maintains an active GitHub Sponsorship at the applicable commercial tier. The
 installed 0.3.0 `LICENSE-COMMERCIAL.md` specifies $10/month for individuals and $100/month for studios of up to 10
 members. Larger organizations need an enterprise agreement. Sponsorship must stay active for continued commercial
 use, with the required attribution; the library cannot be resold on its own or relicensed. The commercial license
-and Dan's Purrable-specific permission remain the governing terms.
+and Dan's goblin-specific permission remain the governing terms.
 
 Reducer, migration, pruning and ported geometry tests cover persistence and main retention. Official MCP App SDK
 interoperability tests prove originating-server binding across host-context updates and bridge reconnection. Local

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Schema } from 'effect'
-import type { BillingState } from '@purrable/contracts'
+import type { BillingState } from '@goblin/contracts'
 import { Link } from '@tanstack/react-router'
 import {
   Alert,
@@ -13,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
   Skeleton,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { failureText, request } from '../lib/boundary.ts'
 import { useBilling } from '../lib/billing.tsx'
 import { planStatus } from '../lib/labels.ts'

@@ -11,7 +11,7 @@ const source = new TextEncoder().encode('diff --git a/x b/x\n')
 const head = (marker: string) => `"use client";\n${marker}\nimport * as React from 'react';\n`
 
 test('the marker names the package, its version, the recipe and the hash of the diff it was built from', () => {
-  expect(markerOf(spec, source)).toMatch(/^\/\/ @scope\/pkg 1\.2\.3 \+ purrable patches\/pkg [0-9a-f]{12}$/u)
+  expect(markerOf(spec, source)).toMatch(/^\/\/ @scope\/pkg 1\.2\.3 \+ goblin patches\/pkg [0-9a-f]{12}$/u)
 })
 
 test('an installed patch built from the current diff passes', () => {

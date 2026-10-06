@@ -2,8 +2,8 @@
 // (or, for an App, the App's resource and its tools). Names, descriptions and hints come from the server: they are
 // shown as its claims and never grant anything.
 import { useId, useState } from 'react'
-import type { ToolView } from '@purrable/contracts'
-import { Badge, Button, Switch } from '@purrable/ui'
+import type { ToolView } from '@goblin/contracts'
+import { Badge, Button, Switch } from '@goblin/ui'
 import { failureText, request } from '../lib/boundary.ts'
 import { AppTile } from './sidebar-tree.tsx'
 

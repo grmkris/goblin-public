@@ -6,7 +6,7 @@ import { type AgentServices, Conversations, Workspace, attempt } from './service
 import { registeredConversation } from './agent-program.ts'
 import { piEventResponse } from './pi/events.ts'
 import { workspaceEventResponse } from './workspace/feed.ts'
-import type { JsonObject } from '@purrable/contracts'
+import type { JsonObject } from '@goblin/contracts'
 
 type Execute = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<Exit.Exit<A, AppError>>
 export async function sessionSnapshot(harness: PiHarness, session: string): Promise<JsonObject> {

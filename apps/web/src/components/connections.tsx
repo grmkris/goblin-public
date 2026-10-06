@@ -2,7 +2,7 @@
 // last, a way to try a tool by hand.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Schema } from 'effect'
-import { ServerView } from '@purrable/contracts'
+import { ServerView } from '@goblin/contracts'
 import {
   Alert,
   AlertDescription,
@@ -14,7 +14,7 @@ import {
   EmptyMedia,
   EmptyTitle,
   Skeleton,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { PlugIcon, PlusIcon } from 'lucide-react'
 import { failureText, request } from '../lib/boundary.ts'
 import { serverTitle } from '../lib/labels.ts'

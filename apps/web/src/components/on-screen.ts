@@ -1,5 +1,5 @@
 import { type RefObject, useEffect, useState } from 'react'
-import type { ConversationView } from '@purrable/contracts'
+import type { ConversationView } from '@goblin/contracts'
 import { isUnread } from '../lib/workspace-tree.ts'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 

@@ -1,6 +1,6 @@
 import { HeadContent, Outlet, Scripts, createRootRoute, useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
-import { SidebarInset, SidebarProvider } from '@purrable/ui'
+import { SidebarInset, SidebarProvider } from '@goblin/ui'
 import { AppSidebar } from '../components/app-sidebar.tsx'
 import { WorkspaceProvider } from '../components/workspace.tsx'
 import { WorkspaceFeedProvider } from '../components/workspace-feed.tsx'
@@ -22,9 +22,9 @@ export const Route = createRootRoute({
       // (the top bar pads itself with the safe area, and is right at a 0 inset too).
       { name: 'mobile-web-app-capable', content: 'yes' },
       { name: 'apple-mobile-web-app-capable', content: 'yes' },
-      { name: 'apple-mobile-web-app-title', content: 'Purrable' },
+      { name: 'apple-mobile-web-app-title', content: 'goblin' },
       { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
-      { title: 'Purrable' },
+      { title: 'goblin' },
     ],
     links: [
       { rel: 'stylesheet', href: css },

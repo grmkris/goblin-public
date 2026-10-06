@@ -22,20 +22,20 @@
   answer comes back to the spawner as an input labelled with its name.
 - **Memory view**: main's memory as the model reads it: an `app.memory` entry of one-line summaries targeting 48,000 bytes that
   starts main's context, followed by the newest exchange verbatim. `zoom` opens a line.
-- **Memory model**: `PURRABLE_MEMORY_MODEL`, the configured offered model for thread titles, main's summaries and
+- **Memory model**: `GOBLIN_MEMORY_MODEL`, the configured offered model for thread titles, main's summaries and
   skill-draft decisions. Unset or not offered uses the default; its tokens count toward the budget.
 - **Telegram channel**: the one myagent connection that carries Telegram for the agent (ADR 0009). Owner messages
   arrive in main authored "Telegram", on a signed **doorbell** from myagent; answers go back with `send_message`.
 - **Conversation registry**: `app_conversations`, the conversations a request may open (main, threads, subagents).
 - **Resident authority**: the agent's own permission to use the owner's MCP connections when the owner is not
   present. Lasts 30 days, renewed by owner activity, revocable in Settings.
-- **Outbound MCP server**: a server the agent calls, configured in `PURRABLE_MCP_SERVERS` or added by the owner by URL,
+- **Outbound MCP server**: a server the agent calls, configured in `GOBLIN_MCP_SERVERS` or added by the owner by URL,
   suggestion or registry. Connections tries without sign-in first, then OAuth if needed.
 - **Grant**: the owner's per-tool permission for one outbound server. A tool grant also covers its `ui://` App.
 - **Capabilities**: what one conversation lets its agent use (ADR 0010): the owner's grants, skills libraries and
   subagents, narrowed by what was switched off there (`app_conversation_capabilities`). A new thread copies main's
   switches; a subagent is bounded by every conversation above it. Switches only narrow; they never grant.
-- **Inbound client**: an MCP client (Claude Code, another agent) the owner authorized to call Purrable's `/mcp`.
+- **Inbound client**: an MCP client (Claude Code, another agent) the owner authorized to call goblin's `/mcp`.
 - **MCP App**: a sandboxed `ui://` resource served through its originating MCP connection. One live App moves between
   its desktop pane, fullscreen and the phone sheet while its iframe stays in place.
 - **Skill**: a procedure (`SKILL.md` and its files) served by an MCP server through the MCP Skills extension. The agent

@@ -2,7 +2,7 @@
 
 Accepted implementation decision, 2026-10-05. Live payment and legal acceptance remain operator gates.
 
-Purrable accounts sign up before paying. Pro costs $10/month through Dodo Payments, with no trial or free tier,
+goblin accounts sign up before paying. Pro costs $10/month through Dodo Payments, with no trial or free tier,
 and grants 2M weighted tokens per account per UTC day. Unsubscribed accounts can sign in and manage account/billing
 settings, but cannot reach their Agent through the owner API, MCP or a hook. Routines and subagents use the
 same `Entitlements` service; their tunable limits belong to their own milestones.

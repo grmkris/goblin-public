@@ -1,4 +1,4 @@
-import type { ConversationView } from '@purrable/contracts'
+import type { ConversationView } from '@goblin/contracts'
 import { isString, record } from './boundary.ts'
 import type { Part, ToolPart } from './parts.ts'
 

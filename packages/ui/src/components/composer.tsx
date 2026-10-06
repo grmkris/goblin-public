@@ -1,4 +1,4 @@
-// Purrable's message composer: a floating card of the chrome material, set off by a hairline and glowing softly while
+// goblin's message composer: a floating card of the chrome material, set off by a hairline and glowing softly while
 // it has focus, with a borderless input that grows with its text and a row of actions. The parts own the look; the app
 // wires behaviour.
 import type * as React from 'react'

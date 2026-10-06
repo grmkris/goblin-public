@@ -26,7 +26,7 @@ async function person(base: string): Promise<Person> {
   const ip = `2001:db8:${Array.from(crypto.getRandomValues(new Uint16Array(4)), (n) => n.toString(16)).join(':')}:0:1`
   const response = await fetch(`${base}/api/auth/sign-up/email`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', origin: 'https://purrable.test', 'cf-connecting-ip': ip },
+    headers: { 'content-type': 'application/json', origin: 'https://goblin.test', 'cf-connecting-ip': ip },
     body: JSON.stringify({
       email: `${crypto.randomUUID()}@fixture.test`,
       name: 'Billing fixture',
@@ -49,7 +49,7 @@ const call = (base: string, who: Person, path: string, body?: unknown) =>
     method: body === undefined ? 'GET' : 'POST',
     headers: {
       cookie: who.cookie,
-      origin: 'https://purrable.test',
+      origin: 'https://goblin.test',
       'content-type': 'application/json',
       'cf-connecting-ip': who.ip,
     },
@@ -69,7 +69,7 @@ async function deliver(
     timestamp: new Date(timestamp).toISOString(),
     data: {
       subscription_id: `sub_${who.userId}`,
-      product_id: 'pdt_purrable_fixture',
+      product_id: 'pdt_goblin_fixture',
       status: 'active',
       customer: { customer_id: `cus_${who.userId}` },
       next_billing_date: new Date(Date.now() + 30 * DAY).toISOString(),
@@ -111,9 +111,9 @@ async function activationCase(url: string) {
   })
   expect(checkout.status).toBe(200)
   const link = new URL(Schema.decodeUnknownSync(Checkout)(await checkout.json()).checkoutUrl)
-  expect(link.searchParams.get('product')).toBe('pdt_purrable_fixture')
+  expect(link.searchParams.get('product')).toBe('pdt_goblin_fixture')
   expect(link.searchParams.get('user')).toBe(who.userId)
-  expect(link.searchParams.get('return')).toBe('https://purrable.test/subscribe/success')
+  expect(link.searchParams.get('return')).toBe('https://goblin.test/subscribe/success')
   expect((await call(url, who, '/api/conversations')).status).toBe(402)
   const id = crypto.randomUUID()
   expect((await deliver(url, who, {}, id)).status).toBe(200)
@@ -217,7 +217,7 @@ async function recoveryCase(url: string) {
   const body = JSON.stringify({
     data: {
       subscription_id: `sub_${who.userId}`,
-      product_id: 'pdt_purrable_fixture',
+      product_id: 'pdt_goblin_fixture',
       status: 'active',
       customer: { customer_id: `cus_${who.userId}` },
       next_billing_date: new Date(Date.now() + DAY).toISOString(),

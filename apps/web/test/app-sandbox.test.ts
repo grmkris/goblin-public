@@ -40,7 +40,7 @@ describe('MCP App sandbox boundary', () => {
   })
   it('prepends restrictive CSP and creates nested opaque frames without same-origin authority', () => {
     expect(sandboxHtml('<h1>App</h1>', {})).toContain("connect-src 'none'")
-    const html = sandboxProxy('https://purrable.example.test')
+    const html = sandboxProxy('https://goblin.example.test')
     expect(html).toContain("frame.setAttribute('sandbox','allow-scripts')")
     expect(html).not.toContain('allow-same-origin')
     expect(html).toContain("event.origin==='null'")

@@ -1,6 +1,6 @@
 import { expect } from 'vitest'
 import { Schema } from 'effect'
-import { AppLaunch, ConversationView, WorkspaceSnapshot } from '@purrable/contracts'
+import { AppLaunch, ConversationView, WorkspaceSnapshot } from '@goblin/contracts'
 import { BOARD } from './apps-mcp.ts'
 import { person, call, waitFor, type Person } from './owner-requests.ts'
 
@@ -10,9 +10,9 @@ const send = (base: string, who: Person, path: string, method: string, body?: un
     method,
     headers: {
       cookie: who.cookie,
-      origin: 'https://purrable.test',
+      origin: 'https://goblin.test',
       'content-type': 'application/json',
-      'x-purrable-csrf': '1',
+      'x-goblin-csrf': '1',
       'cf-connecting-ip': who.ip,
       'x-mcp-caller': 'app',
     },

@@ -1,6 +1,6 @@
 import { RuleTester } from 'oxlint/plugins-dev'
 import { describe, it } from 'vitest'
-import { noProcessEnv, requireDisableDescription, resourceNameViaStage } from '../oxlint/purrable.ts'
+import { noProcessEnv, requireDisableDescription, resourceNameViaStage } from '../oxlint/goblin.ts'
 
 RuleTester.describe = describe
 RuleTester.it = it
@@ -45,7 +45,7 @@ tester.run('resource-name-via-stage', resourceNameViaStage, {
     "const binding = Cloudflare.DurableObject('ChatDO')",
     "const mail = Cloudflare.Email.SendEmail('OtpMail', { allowedSenderAddresses: [sender] })",
     "Cloudflare.Email.CatchAll('MyInboxCatchAll', { name: 'My Inbox owned addresses' })",
-    "Cloudflare.Alerting.NotificationPolicy('Policy', { name: `purrable-${stage.name}-x` })",
+    "Cloudflare.Alerting.NotificationPolicy('Policy', { name: `goblin-${stage.name}-x` })",
     // props built elsewhere cannot be checked here
     "const db = Cloudflare.D1.Database('Db', props)",
   ],

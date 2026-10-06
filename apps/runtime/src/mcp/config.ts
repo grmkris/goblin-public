@@ -1,4 +1,4 @@
-import type { McpServerConfig } from '@purrable/contracts'
+import type { McpServerConfig } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { Internal } from '../http/errors.ts'
 

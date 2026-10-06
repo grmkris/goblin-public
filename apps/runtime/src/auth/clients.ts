@@ -1,4 +1,4 @@
-import type { InboundClient } from '@purrable/contracts'
+import type { InboundClient } from '@goblin/contracts'
 import type { RuntimeEnv } from '../env.ts'
 import { nowSeconds } from '../clock.ts'
 

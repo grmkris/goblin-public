@@ -11,7 +11,7 @@ afterEach(() => {
 })
 
 const fixture = (): string => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'purrable-skill-proof-'))
+  const root = mkdtempSync(path.join(os.tmpdir(), 'goblin-skill-proof-'))
   owned.push(root)
   mkdirSync(path.join(root, '.agents/skills/x'), { recursive: true })
   return root

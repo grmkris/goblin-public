@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "purrable",
+      "name": "goblin",
       "devDependencies": {
         "@shadcn/lint": "0.2.0",
         "@types/bun": "1.4.2",
@@ -23,7 +23,7 @@
       },
     },
     "apps/runtime": {
-      "name": "@purrable/runtime",
+      "name": "@goblin/runtime",
       "version": "0.1.0",
       "dependencies": {
         "@better-auth/mcp": "1.7.6",
@@ -32,7 +32,7 @@
         "@earendil-works/pi-durable": "1.0.1",
         "@modelcontextprotocol/client": "2.2.0",
         "@modelcontextprotocol/server": "2.2.0",
-        "@purrable/contracts": "workspace:*",
+        "@goblin/contracts": "workspace:*",
         "agents": "0.26.0",
         "better-auth": "1.7.6",
         "drizzle-orm": "1.0.0-rc.5-ab785fc",
@@ -51,7 +51,7 @@
       },
     },
     "apps/web": {
-      "name": "@purrable/web",
+      "name": "@goblin/web",
       "version": "0.1.0",
       "dependencies": {
         "@better-auth/oauth-provider": "1.7.6",
@@ -59,9 +59,9 @@
         "@danfessler/trellis": "0.3.0",
         "@modelcontextprotocol/client": "2.2.0",
         "@modelcontextprotocol/ext-apps": "2.0.3",
-        "@purrable/contracts": "workspace:*",
-        "@purrable/runtime": "workspace:*",
-        "@purrable/ui": "workspace:*",
+        "@goblin/contracts": "workspace:*",
+        "@goblin/runtime": "workspace:*",
+        "@goblin/ui": "workspace:*",
         "@tanstack/react-router": "1.170.39",
         "@tanstack/react-start": "1.168.58",
         "better-auth": "1.7.6",
@@ -84,12 +84,12 @@
       },
     },
     "bench": {
-      "name": "@purrable/bench",
+      "name": "@goblin/bench",
       "version": "0.1.0",
       "dependencies": {
         "@earendil-works/pi-ai": "1.0.1",
         "@earendil-works/pi-durable": "1.0.1",
-        "@purrable/runtime": "workspace:*",
+        "@goblin/runtime": "workspace:*",
         "agents": "0.26.0",
         "drizzle-orm": "1.0.0-rc.5-ab785fc",
         "effect": "4.0.0",
@@ -105,7 +105,7 @@
       },
     },
     "packages/contracts": {
-      "name": "@purrable/contracts",
+      "name": "@goblin/contracts",
       "version": "0.1.0",
       "dependencies": {
         "effect": "4.0.0",
@@ -116,7 +116,7 @@
       },
     },
     "packages/ui": {
-      "name": "@purrable/ui",
+      "name": "@goblin/ui",
       "version": "0.1.0",
       "dependencies": {
         "@base-ui/react": "1.8.0",
@@ -141,7 +141,7 @@
       },
     },
     "tools": {
-      "name": "@purrable/tools",
+      "name": "@goblin/tools",
       "version": "0.1.0",
       "devDependencies": {
         "@effect/tsgo": "0.47.2",
@@ -856,17 +856,17 @@
 
     "@puppeteer/browsers": ["@puppeteer/browsers@3.2.3", "", { "dependencies": { "modern-tar": "^0.8.4", "yargs": "^18.0.0" }, "peerDependencies": { "proxy-agent": ">=8.0.1", "yauzl": "^2.10.0 || ^3.4.0" }, "optionalPeers": ["proxy-agent", "yauzl"], "bin": { "browsers": "lib/main-cli.js" } }, "sha512-2Bt3m6dDAJqmZehn0wiXSYyQmuhyiHHZ7FjvrVaS1W2RoFGV6eCK71UvKYkNJjkwC1Q9nobjhvTMhLQztFVINA=="],
 
-    "@purrable/bench": ["@purrable/bench@workspace:bench"],
+    "@goblin/bench": ["@goblin/bench@workspace:bench"],
 
-    "@purrable/contracts": ["@purrable/contracts@workspace:packages/contracts"],
+    "@goblin/contracts": ["@goblin/contracts@workspace:packages/contracts"],
 
-    "@purrable/runtime": ["@purrable/runtime@workspace:apps/runtime"],
+    "@goblin/runtime": ["@goblin/runtime@workspace:apps/runtime"],
 
-    "@purrable/tools": ["@purrable/tools@workspace:tools"],
+    "@goblin/tools": ["@goblin/tools@workspace:tools"],
 
-    "@purrable/ui": ["@purrable/ui@workspace:packages/ui"],
+    "@goblin/ui": ["@goblin/ui@workspace:packages/ui"],
 
-    "@purrable/web": ["@purrable/web@workspace:apps/web"],
+    "@goblin/web": ["@goblin/web@workspace:apps/web"],
 
     "@redis/bloom": ["@redis/bloom@6.3.0", "", { "peerDependencies": { "@redis/client": "^6.3.0" } }, "sha512-NQ5poYpZr0jv6zazN1cy6JY5kIipKFZ3R9GTL4kOUTX3a9YAfY29U8bsE4lWhVQEM+G4V0BXVC57mubIdDijeA=="],
 

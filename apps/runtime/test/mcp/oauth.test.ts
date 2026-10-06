@@ -104,7 +104,7 @@ const setup = () => {
     servers: [{ serverId: 'fixture', endpoint: `${BASE}/mcp` }],
     credentials,
     grants: new MemoryGrants(),
-    appUrl: 'https://purrable.test',
+    appUrl: 'https://goblin.test',
     fetch: authorizationServer.fetch,
   })
   const connect = async () => {

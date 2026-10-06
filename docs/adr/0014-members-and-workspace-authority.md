@@ -19,7 +19,7 @@ backfilling metadata preserves their SQLite, Pi history and credentials.
 The Worker resolves the selected workspace from a cookie session and active D1 membership. A client can request a
 selection but cannot supply an Agent name or role. The opaque selection context belongs to one session; a stale
 context returns 409 and a foreign or revoked workspace returns 404. Selection writes require exact Origin and
-`x-purrable-csrf: 1`. Hooks and inbound MCP resolve the authenticated owner's workspace independently of browser
+`x-goblin-csrf: 1`. Hooks and inbound MCP resolve the authenticated owner's workspace independently of browser
 selection. Invitation-only accounts never provision a personal Agent or fall back to their account ID.
 
 Established workspace resolution uses one live joined D1 read and performs no writes. It reads account kind,

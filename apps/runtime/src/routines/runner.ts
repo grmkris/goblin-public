@@ -1,5 +1,5 @@
 import type { PiHarness } from 'agents/harness/pi'
-import type { RoutineManualRun } from '@purrable/contracts'
+import type { RoutineManualRun } from '@goblin/contracts'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import { nextInt } from 'effect/Random'

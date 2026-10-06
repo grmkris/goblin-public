@@ -1,6 +1,6 @@
 import { type RefObject, useMemo } from 'react'
-import type { AppContext } from '@purrable/contracts'
-import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@purrable/ui'
+import type { AppContext } from '@goblin/contracts'
+import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@goblin/ui'
 import { RotateCcwIcon } from 'lucide-react'
 import { openInteractions } from '../lib/interactions.ts'
 import type { Part } from '../lib/parts.ts'

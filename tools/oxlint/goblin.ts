@@ -1,5 +1,5 @@
 /**
- * The `purrable` oxlint plugin: repository invariants from AGENTS.md that a generic linter cannot know.
+ * The `goblin` oxlint plugin: repository invariants from AGENTS.md that a generic linter cannot know.
  *
  * - `no-process-env`: app settings reach Workers only through `Config`; module-level code that must name things before
  *   the stack runs reads the environment through `stageFromEnv(app, process.env)`. Exemptions live in oxlint.config.ts.
@@ -260,7 +260,7 @@ export const requireDisableDescription = defineRule({
 })
 
 export default definePlugin({
-  meta: { name: 'purrable' },
+  meta: { name: 'goblin' },
   rules: {
     'no-process-env': noProcessEnv,
     'resource-name-via-stage': resourceNameViaStage,

@@ -10,7 +10,7 @@ export type PiContext = Parameters<Harness['close']>[0]
 export const BACKGROUND: PiContext = Object.freeze({
   abortSignal: undefined,
   value: () => undefined,
-  toString: () => '[Context purrable background]',
+  toString: () => '[Context goblin background]',
 })
 
 /** A Pi entry id from its number. SAFETY: Pi ids are plain integers at runtime; the brand only types them. */

@@ -26,7 +26,7 @@ const Builder = defineDoc<{ task: TaskId | null }>({
 function builderTask(run: RunProgram) {
   // Each step commits a new checkpoint: Pi faults a phase that commits no durable progress.
   return defineTask<null, { readonly phase: 'step'; readonly steps: number }, null>({
-    name: 'purrable.memory-builder',
+    name: 'goblin.memory-builder',
     version: 1,
     initial: () => ({ phase: 'step', steps: 0 }),
     phases: {
@@ -64,7 +64,7 @@ function builderTask(run: RunProgram) {
 export function memoryExtensions(run: RunProgram) {
   const BuilderTask = builderTask(run)
   const memory = defineExtension({
-    name: 'purrable.memory',
+    name: 'goblin.memory',
     tasks: [BuilderTask],
     hooks: [
       hook(GenerationTask, {

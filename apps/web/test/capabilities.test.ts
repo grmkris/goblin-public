@@ -1,4 +1,4 @@
-import type { ConversationCapabilities } from '@purrable/contracts'
+import type { ConversationCapabilities } from '@goblin/contracts'
 import { describe, expect, it } from 'vitest'
 import { applyChange, capabilityCount, serverState, targetLabel } from '../src/lib/capabilities.ts'
 

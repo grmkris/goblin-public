@@ -107,7 +107,7 @@ const registryHost = (fetcher: typeof fetch) =>
     servers: [],
     credentials: new MemoryCredentials(),
     grants: new MemoryGrants(),
-    appUrl: 'https://purrable.test',
+    appUrl: 'https://goblin.test',
     fetch: fetcher,
     registries: new MemoryRegistries(),
   })

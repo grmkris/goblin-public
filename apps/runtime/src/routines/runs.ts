@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Schema from 'effect/Schema'
-import { RoutineDefinition, RoutineRunView } from '@purrable/contracts'
+import { RoutineDefinition, RoutineRunView } from '@goblin/contracts'
 import { Conflict, NotFound } from '../http/errors.ts'
 import {
   appRoutines,
@@ -12,7 +12,7 @@ import {
   appRoutineAnswers,
 } from '../storage/routines.ts'
 import type { CredentialCipher } from '../mcp/cipher.ts'
-import type { QuestionSpec } from '@purrable/contracts'
+import type { QuestionSpec } from '@goblin/contracts'
 import { appUsageDaily } from '../storage/schema.ts'
 import { RoutineStore } from './store.ts'
 import { routineSummary } from './summary.ts'

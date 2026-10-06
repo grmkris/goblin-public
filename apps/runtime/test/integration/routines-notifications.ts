@@ -2,7 +2,7 @@ import { createMcpHandler, Server } from '@modelcontextprotocol/server'
 import * as Effect from 'effect/Effect'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
-import type { RoutineDefinition } from '@purrable/contracts'
+import type { RoutineDefinition } from '@goblin/contracts'
 import { CredentialCipher } from '../../src/mcp/cipher.ts'
 import { McpHost } from '../../src/mcp/host.ts'
 import { RoutineStore } from '../../src/routines/store.ts'
@@ -50,7 +50,7 @@ function notificationHost(
   const handler = notificationHandler(accepted)
   const host = new McpHost({
     servers: [{ serverId: 'mygram', endpoint: 'https://notification.test/mcp' }],
-    appUrl: 'https://purrable.test',
+    appUrl: 'https://goblin.test',
     credentials,
     grants: new MemoryGrants([{ serverId: 'mygram', capability: 'tool', name: 'send_message' }]),
     fetch: async (input, init) => {

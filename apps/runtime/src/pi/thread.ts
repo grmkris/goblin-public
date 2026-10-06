@@ -18,7 +18,7 @@ const THREAD = [
  */
 export function threadExtension(run: RunProgram) {
   return defineExtension({
-    name: 'purrable.thread',
+    name: 'goblin.thread',
     sections: [section('thread', () => THREAD)],
     tools: [
       defineTool({

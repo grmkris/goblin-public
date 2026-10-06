@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import type { JsonValue } from '@purrable/contracts'
+import type { JsonValue } from '@goblin/contracts'
 import { isString, record, records } from './boundary.ts'
 
 type PayloadBlock =

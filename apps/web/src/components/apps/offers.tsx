@@ -1,7 +1,7 @@
 // What an App offers the owner, drawn by the host where the App cannot reach: a link it asked to open (opened only by
 // the owner's own click on a real anchor), and the context it shares with the owner's next message.
 import { AppWindowIcon, ExternalLinkIcon, XIcon } from 'lucide-react'
-import { Button } from '@purrable/ui'
+import { Button } from '@goblin/ui'
 import { contextPreview } from '../../lib/app-context.ts'
 import { useAppHost } from './host.tsx'
 

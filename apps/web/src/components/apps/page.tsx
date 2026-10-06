@@ -1,8 +1,8 @@
 // An App as a page of its own (ADR 0020): one pane showing it, its stage filling the pane under the pill. Filling the
 // workspace is maximizing that pane; that is what an App asking for fullscreen gets.
 import { useEffect, useMemo, useRef } from 'react'
-import type { AppView } from '@purrable/contracts'
-import { Button, DropdownMenuItem, DropdownMenuSeparator } from '@purrable/ui'
+import type { AppView } from '@goblin/contracts'
+import { Button, DropdownMenuItem, DropdownMenuSeparator } from '@goblin/ui'
 import { Maximize2Icon, Minimize2Icon, PanelLeftCloseIcon, XIcon } from 'lucide-react'
 import type { ItemKey } from '../../lib/workspace.ts'
 import { appNames } from '../../lib/workspace-tree.ts'

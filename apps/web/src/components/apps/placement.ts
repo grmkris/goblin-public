@@ -1,7 +1,7 @@
 // Where an App is shown and how it moves (ADR 0020): its page beside its transcript, back, filling the workspace from
 // its page; and what an App asking for a display mode gets. Used by its stage's bar and its page's pill.
 import type { McpUiDisplayMode } from '@modelcontextprotocol/ext-apps/app-bridge'
-import type { AppView } from '@purrable/contracts'
+import type { AppView } from '@goblin/contracts'
 import { appKey, conversationKey, isOpen, order } from '../../lib/workspace.ts'
 import { useWorkspace } from '../workspace.tsx'
 import { useAppHost } from './host.tsx'

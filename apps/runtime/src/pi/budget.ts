@@ -20,7 +20,7 @@ const spent = Effect.gen(function* () {
  */
 export function budgetExtension(run: RunProgram) {
   return defineExtension({
-    name: 'purrable.budget',
+    name: 'goblin.budget',
     hooks: [
       hook(GenerationTask, {
         afterResponse: async (message) => {

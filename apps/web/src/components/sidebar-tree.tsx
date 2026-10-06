@@ -10,7 +10,7 @@ import {
   SidebarMenuItem,
   SidebarMenuSub,
   SidebarMenuSubItem,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { AppWindowIcon, ChevronRightIcon, Columns2Icon, PlusIcon } from 'lucide-react'
 import { isClosed, threadTitle } from '../lib/threads.ts'
 import { type ItemKey, appKey, conversationKey, isOpen, itemOf } from '../lib/workspace.ts'
@@ -46,7 +46,7 @@ export function useWorkspaceTree() {
 /** The rows the owner folded, remembered in this browser for each owner (conversation ids are the owner's own). */
 function useFoldedRows(owner: string | undefined) {
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set())
-  const key = owner === undefined ? undefined : `purrable:sidebar-folded:${owner}`
+  const key = owner === undefined ? undefined : `goblin:sidebar-folded:${owner}`
   useEffect(() => {
     if (key === undefined) return
     try {

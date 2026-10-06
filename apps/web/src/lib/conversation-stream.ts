@@ -1,4 +1,4 @@
-import type { JsonValue } from '@purrable/contracts'
+import type { JsonValue } from '@goblin/contracts'
 import { isString } from './boundary.ts'
 import { projectBatch, projectSnapshot, type ConversationProjection } from './projection.ts'
 

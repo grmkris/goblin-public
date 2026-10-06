@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react'
-import { Button, Composer, ComposerActions, ComposerInput } from '@purrable/ui'
+import { Button, Composer, ComposerActions, ComposerInput } from '@goblin/ui'
 import { ArrowUpIcon, SquareIcon } from 'lucide-react'
 
 /** The message field: Enter sends, Shift+Enter breaks the line, and an input method's Enter only composes. */

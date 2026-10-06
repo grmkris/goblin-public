@@ -2,7 +2,7 @@
 
 One Cloudflare Worker serves the web app and the API. Behind it, every user has their own `PersonalAgent` Durable
 Object, named by their user ID: it runs Pi, holds that user's outbound MCP connections and credentials, and keeps
-application state in its own SQLite. D1 holds Better Auth's account tables (users, sessions, inbound OAuth) and Purrable's `app_billing_*` tables.
+application state in its own SQLite. D1 holds Better Auth's account tables (users, sessions, inbound OAuth) and goblin's `app_billing_*` tables.
 
 ```mermaid
 flowchart LR
@@ -27,22 +27,22 @@ Runtime paths below are relative to `apps/runtime/src/`; browser paths are relat
 | `/health` | Stage, service name, sign-up mode and whether mail is configured. |
 | `/.well-known/oauth-protected-resource*` | Protected-resource metadata for `/mcp`. |
 | `/.well-known/*`, `/api/auth/*` | Better Auth: sign-up and sign-in, the OAuth authorization server for inbound clients. |
-| `/mcp` | Purrable's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented. |
+| `/mcp` | goblin's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented. |
 | `/api/*` | Owner API. A session cookie selects the signed-in user's agent; writes reject an `Origin` header if it names another origin. |
 | `/hooks/mcp-events/<userId>/<token>` | Signed MCP Events; the user-bound route token is checked before object lookup. |
 | `/hooks/myagent/<userId>/<token>` | Legacy Telegram doorbell fallback for servers without Events. |
 
 ## Accounts
 
-Anyone may sign up when `PURRABLE_SIGNUP_MODE` is `open`; with `invite` the request needs the
-`PURRABLE_SIGNUP_INVITE_CODE` in an `x-invite-code` header; `closed` (the default for deployed stages) refuses every
+Anyone may sign up when `GOBLIN_SIGNUP_MODE` is `open`; with `invite` the request needs the
+`GOBLIN_SIGNUP_INVITE_CODE` in an `x-invite-code` header; `closed` (the default for deployed stages) refuses every
 sign-up. When the deployment sends mail, the usual way in is a six-digit code mailed to the address (ten minutes, five
 tries, one per address per minute; `auth/email-code.ts`): a known address signs in, a new one gets an account through
 the same sign-up gate, already verified. Passwords remain as the fallback. A signed-in user can add passkeys in
-Settings (`auth/passkey.ts`, the myapps policy: Purrable's own host is the relying party, credentials are discoverable
+Settings (`auth/passkey.ts`, the myapps policy: goblin's own host is the relying party, credentials are discoverable
 and must verify the person; adding one needs a sign-in from the last 10 minutes) and then sign in with one without
 typing an email. A passkey never creates an account, and an MCP client's authorization resumes after it like after
-any sign-in. With `PURRABLE_MAIL_SENDER` set (an address on an apex onboarded for Cloudflare Email Sending), a new
+any sign-in. With `GOBLIN_MAIL_SENDER` set (an address on an apex onboarded for Cloudflare Email Sending), a new
 password account needs email verification through an emailed code or the one-hour link (`auth/mail.ts`); the link
 signs them in. The same sender carries password-reset links (`/reset-password`); a reset signs every device out, and
 asking for one never reveals whether an address has an account. A deployed stage refuses to deploy `open` sign-up
@@ -121,7 +121,7 @@ its transcript shows a row for that thread. The owner API is conversation-scoped
 | `GET /api/conversations/:id/snapshot`, `GET /api/conversations/:id/events` | Pi snapshot or SSE snapshot followed by committed batches. |
 | `GET /api/conversations/:id/history?before=<entry>` | Earlier entries, oldest first, with a `more` flag. |
 
-Every thread runs the `purrable.thread` extension (`pi/thread.ts`), added to that conversation alone when it is made;
+Every thread runs the `goblin.thread` extension (`pi/thread.ts`), added to that conversation alone when it is made;
 main never has it. It tells the model it is in a side thread and offers `share_back`: when the owner asks (the
 thread's "Share to …" button sends that request), the model writes a short note into the conversation the thread
 branched from as a Pi write submission, an `app.shared` entry labelled `[from thread "<title>"]` that keeps the
@@ -208,7 +208,7 @@ When the agent waits on the owner, the request is pinned above the composer unti
 (`lib/interactions.ts`). This covers `ask_user` questions (a questionnaire) and grant-required results (an Allow card
 for the exact server and tool). The reply is an ordinary message with a stable operation ID: `answer:<callId>` or
 `grant:<callId>`. Allow first sets the exact grant through `PUT /api/mcp/grants`, and the allowed tool stays allowed.
-In the transcript, both requests leave a quiet receipt. An Allow card is only trusted from Purrable's own result for
+In the transcript, both requests leave a quiet receipt. An Allow card is only trusted from goblin's own result for
 the tool that was called, never from a remote result, which always carries `origin`.
 
 The composer carries the agent's presence (`lib/presence.ts`): one state for the whole agent, with the most urgent
@@ -220,7 +220,7 @@ the border is absent. Colours come from the theme's `--presence-*` tokens, resol
 
 ## Outbound MCP
 
-Servers come from `PURRABLE_MCP_SERVERS` (JSON: `serverId`, `endpoint`, optional `issuer` and `resource`) and from
+Servers come from `GOBLIN_MCP_SERVERS` (JSON: `serverId`, `endpoint`, optional `issuer` and `resource`) and from
 the owner, who may add up to sixteen by URL (`app_mcp_servers`, ADR 0006). An added endpoint is a public https
 address (`mcp/endpoint.ts`), and its server card labels it as the server's own claim. Configured servers win on ID
 and cannot be removed. Removing an added server forgets its row, endpoint binding, credentials, pending sign-ins and
@@ -240,7 +240,7 @@ its registry, name and version. The owner connects each server from the Connecti
    authorization URL; otherwise it returns `{}`.
 2. The remote server redirects to `/api/mcp/oauth/callback`. The pending state is single-use and expires after ten
    minutes; the code is exchanged and the tokens stored.
-3. Client registration and tokens are AES-GCM encrypted at rest (`PURRABLE_CREDENTIAL_KEY`, bound to server ID and
+3. Client registration and tokens are AES-GCM encrypted at rest (`GOBLIN_CREDENTIAL_KEY`, bound to server ID and
    purpose); discovery metadata is stored in plain JSON.
 
 Credentials and grants belong to the endpoint they were made for (`mcp/endpoints.ts`, `app_mcp_endpoints`). When the
@@ -274,7 +274,7 @@ in Connections (`app_skill_sources`, ADR 0008). The client declares the extensio
 `skills/list`; `getSkill` is available in the connection manager.
 
 `SkillLibrary` (`skills/library.ts`) keeps each enabled server's listing for its `ttlMs` (30 s to an hour) and names
-every skill `<server>:<name>`. The `purrable.skills` extension (main and threads, not subagents) renders that list in
+every skill `<server>:<name>`. The `goblin.skills` extension (main and threads, not subagents) renders that list in
 its `skills` section, refreshing an expired listing when the section is evaluated, and offers `skill_activate` and
 `skill_read`. Activation reads `SKILL.md`, checks size, SHA-256 and frontmatter against the entry (`skills/verify.ts`),
 and records the entry for the conversation (`app_skill_activations`). `skill_read` reads only files in that retained
@@ -316,7 +316,7 @@ draws its own floating pill (`components/pane-header.tsx`): a mark of what it ho
 state, an App's tile), where it came from, its name and menu, and its state; the menu starts with its path and the
 conversations around it to show in that pane instead (`components/pane-nav.tsx`). `components/workspace-drag.tsx` drags a pill's grip onto a
 pane to split it at an edge or swap with it (`lib/pane-drop.ts`). The arrangement is a bounded device preference
-(`purrable:workspace:v2:<owner>`, 64 views, no stage, nothing floating); conversation and App panes come back from it,
+(`goblin:workspace:v2:<owner>`, 64 views, no stage, nothing floating); conversation and App panes come back from it,
 drafts do not. The sidebar footer credits Trellis and Dan Fessler; see
 [ADR 0016](adr/0016-workspace-layout-with-trellis.md) for the license arrangement.
 
@@ -378,7 +378,7 @@ more messages, merging the pair that is oldest relative to its size first. Only 
 
 The builder writes the view into main as an `app.memory` entry, a Pi write submission whose head is main's newest
 input, which is how Pi places a compaction. The model then sees the view and, verbatim, everything from that input
-on, so nothing waits for the summarizer. `zoom(id, n)` (the `purrable.recall` extension) opens a line into the two
+on, so nothing waits for the summarizer. `zoom(id, n)` (the `goblin.recall` extension) opens a line into the two
 under it, down to a single message. It is offered in main and in threads branched from it; a branched thread is
 bounded at its fork.
 
@@ -390,22 +390,22 @@ messages main remembers.
 
 ## Models
 
-Each user picks the model their agent answers with, in the composer. The deployment offers `PURRABLE_MODEL_ID` (the
-default) plus `PURRABLE_MODELS`, all served by the same LiteLLM key; `models.ts` names and groups them by route
+Each user picks the model their agent answers with, in the composer. The deployment offers `GOBLIN_MODEL_ID` (the
+default) plus `GOBLIN_MODELS`, all served by the same LiteLLM key; `models.ts` names and groups them by route
 (Google, Alibaba Cloud), because quota runs out per route. The pick is one row in `app_model_choice`; without one, or
 when the deployment stops offering it, the default applies. Pi stores one model per conversation, set when it is
 created, so before each turn the agent calls `session.setModel` for the conversation the turn runs in, skipping it
 when that conversation already has the model. Every offered model is registered with
-Pi's `Models` under the one `purrable-litellm` provider. A failed model call shows its reason in the chat, and a
+Pi's `Models` under the one `goblin-litellm` provider. A failed model call shows its reason in the chat, and a
 quota or outage failure points at the picker.
 
-Housekeeping (thread titles, main's summaries and skill-draft decisions) runs on `PURRABLE_MEMORY_MODEL`. Set it to a
+Housekeeping (thread titles, main's summaries and skill-draft decisions) runs on `GOBLIN_MEMORY_MODEL`. Set it to a
 cheap offered model; the code does not choose by price. Unset or not offered, it falls back to the default
 (`models.ts`, `memory/model.ts`). Its tokens count toward the owner's daily budget like any other.
 
 ## Model budget
 
-Users share the deployment's model key, so each agent has a daily token budget (`PURRABLE_MODEL_DAILY_TOKENS`,
+Users share the deployment's model key, so each agent has a daily token budget (`GOBLIN_MODEL_DAILY_TOKENS`,
 default 300 000, per UTC day). A Pi extension (`pi/budget.ts`) records every model response's tokens in
 `app_usage_daily`. Once the day is spent, new turns are refused with `BudgetExhausted`: HTTP 429 from the owner API,
 or a tool error from `/mcp`. Telegram submissions check the same budget. Tool calls inside a running turn are blocked,
@@ -426,7 +426,7 @@ Owner MCP RPC methods renew it but do not call `requireResident`; their tool/res
 
 ## Inbound MCP
 
-Purrable is an MCP server at `/mcp`, the protected resource of Better Auth's `mcp()` authorization server:
+goblin is an MCP server at `/mcp`, the protected resource of Better Auth's `mcp()` authorization server:
 
 - Clients register dynamically (open, but restricted to the `/mcp` resource). A registration whose redirects are
   all http loopback is marked native, which is how Claude Code registers.
@@ -482,8 +482,8 @@ are never pruned. Workers cannot pin resolved DNS IPs; trusted DNS is the docume
 | Agent DO SQLite | `app_channel`, `app_telegram_channel`, `app_channel_replies` | Drizzle: Telegram transport checkpoints and replies. |
 | Agent DO SQLite | `app_mcp_event_grants`, `app_mcp_event_subscriptions`, `app_event_deliveries`, `app_mcp_event_consumers`, `app_event_consumer_receipts` | Drizzle: exact Events grants, leases, encrypted receipts and independent acknowledgements. |
 | Agent DO SQLite | `app_skill_catalog_state` | Drizzle: durable catalog invalidation generations. |
-| D1 `PurrableAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `passkey`, `oauth*` | Better Auth, `apps/runtime/migrations`. |
-| D1 `PurrableAuth` | `app_billing_accounts`, `app_billing_subscriptions`, `app_billing_inbox`, `app_billing_checkouts` | Drizzle: account payments and durable reconciliation. |
+| D1 `goblinAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `passkey`, `oauth*` | Better Auth, `apps/runtime/migrations`. |
+| D1 `goblinAuth` | `app_billing_accounts`, `app_billing_subscriptions`, `app_billing_inbox`, `app_billing_checkouts` | Drizzle: account payments and durable reconciliation. |
 
 The withdrawn Members feature left dormant auth D1 tables and DO columns/tables. Applied migration files and keys
 remain intact to preserve real data and migration history; the runtime no longer reads or writes that access metadata.
@@ -506,8 +506,8 @@ their active values. Secrets are Worker secret bindings, never in the browser bu
 
 ## Stage origins
 
-The `prod` stage has its own `purrable-prod-auth` D1, native Agent namespace, secret bindings and model key; `dev`
-retains its existing resources and data. Alchemy attaches the per-stage `PURRABLE_DOMAIN`, and prod's `www` alias.
+The `prod` stage has its own `goblin-prod-auth` D1, native Agent namespace, secret bindings and model key; `dev`
+retains its existing resources and data. Alchemy attaches the per-stage `GOBLIN_DOMAIN`, and prod's `www` alias.
 Both Worker entry points redirect alternate origins before auth, hooks or page rendering: 301 for GET/HEAD, 308 for
 other methods. Redirects preserve path/query and use only `APP_URL` as their authority. Passkey rpID, trusted origins,
 mail links and inbound MCP metadata also derive from that configured origin. Dev passkeys must be remade after the
@@ -572,7 +572,7 @@ review; real source checkpoints and explicit product criteria do not authorize p
 
 `routines/store.ts` stores bounded drafts and immutable operation receipts in application SQLite. A model can propose,
 list or pause through `routine`; only an authenticated owner may confirm the exact revision. Routine writes require
-an exact configured Origin and `x-purrable-csrf: 1`. Edits clear confirmation and stale revisions return 409. Settings
+an exact configured Origin and `x-goblin-csrf: 1`. Edits clear confirmation and stale revisions return 409. Settings
 shows the prompt, exact tool pairs, timezone, budgets and Telegram policy before confirmation.
 
 Confirmed reminders and cron schedules use native dated Agent callbacks carrying routine ID, revision and firing

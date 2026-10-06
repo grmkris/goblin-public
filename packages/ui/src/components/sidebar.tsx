@@ -1,5 +1,5 @@
 // Adapted from shadcn/ui's base-nova sidebar (MIT, https://ui.shadcn.com/r/styles/base-nova/sidebar.json): trimmed to
-// the one shape Purrable uses, a left sidebar that folds to an icon rail on desktop and becomes a sheet on phones.
+// the one shape goblin uses, a left sidebar that folds to an icon rail on desktop and becomes a sheet on phones.
 // The app draws the rail's contents itself; no tooltips, skeletons or inputs; widths are classes rather than inline
 // styles; the motion is the sheet curve (`--ease-sheet`) instead of a linear 200ms. The menu parts live in
 // sidebar-menu.tsx.

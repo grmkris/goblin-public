@@ -2,7 +2,7 @@
 // on its card; nothing here turns a routine on.
 import { type ReactNode, useEffect, useId, useState } from 'react'
 import { Schema } from 'effect'
-import { RoutineView, RoutineTrigger, type RoutineDefinition } from '@purrable/contracts'
+import { RoutineView, RoutineTrigger, type RoutineDefinition } from '@goblin/contracts'
 import {
   Alert,
   AlertDescription,
@@ -22,7 +22,7 @@ import {
   TabsList,
   TabsTrigger,
   Textarea,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { failureText, request } from '../lib/boundary.ts'
 import { localInput, localInstant } from '../lib/local-time.ts'
 
@@ -120,7 +120,7 @@ function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
       const body = { definition, operationId: crypto.randomUUID(), ...(routine ? { revision: routine.revision } : {}) }
       const path = routine ? `/api/routines/${routine.id}` : '/api/routines'
       const method = routine ? 'PATCH' : 'POST'
-      onSaved(decodeView(await request(path, { method, headers: { 'x-purrable-csrf': '1' }, body })))
+      onSaved(decodeView(await request(path, { method, headers: { 'x-goblin-csrf': '1' }, body })))
     } catch (cause) {
       setError(failureText(cause))
     } finally {

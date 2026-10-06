@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ConversationView } from '@purrable/contracts'
+import type { ConversationView } from '@goblin/contracts'
 import {
   branchPoints,
   closedBy,

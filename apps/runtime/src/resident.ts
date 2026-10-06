@@ -1,4 +1,4 @@
-import type { ResidentStatus } from '@purrable/contracts'
+import type { ResidentStatus } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { ResidentInactive } from './http/errors.ts'

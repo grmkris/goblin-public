@@ -3,7 +3,7 @@
 // call as denied. The App's own words never reach this card; only the tool name it called does.
 import { useCallback, useRef, useState } from 'react'
 import { KeyRoundIcon } from 'lucide-react'
-import { Button } from '@purrable/ui'
+import { Button } from '@goblin/ui'
 import { ApiFailure, failureText, request } from '../../lib/boundary.ts'
 
 const WAIT_MS = 120_000

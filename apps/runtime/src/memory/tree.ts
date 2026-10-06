@@ -7,7 +7,7 @@ export type Node = { readonly level: number; readonly index: number }
 
 /** Target size of one summary line, in UTF-8 bytes. */
 export const NODE_BYTES = 512
-/** Size of the view main's model sees (OptChat uses 128 KB; Purrable keeps 48 KB). */
+/** Size of the view main's model sees (OptChat uses 128 KB; goblin keeps 48 KB). */
 export const VIEW_BYTES = 48_000
 
 const encoder = new TextEncoder()

@@ -11,16 +11,16 @@ const at = (file: string): string => path.join(repoRoot, file)
 
 tester.run('no-cross-boundary-import', noCrossBoundaryImport, {
   valid: [
-    { code: "import { x } from '@purrable/contracts'", filename: at('apps/runtime/src/agent.ts') },
+    { code: "import { x } from '@goblin/contracts'", filename: at('apps/runtime/src/agent.ts') },
     { code: "import { env } from 'cloudflare:workers'", filename: at('apps/runtime/src/agent.ts') },
-    { code: "import { x } from '@purrable/ui'", filename: at('apps/web/src/route.tsx') },
-    { code: "import { x } from '@purrable/runtime/worker'", filename: at('apps/web/src/worker.ts') },
+    { code: "import { x } from '@goblin/ui'", filename: at('apps/web/src/route.tsx') },
+    { code: "import { x } from '@goblin/runtime/worker'", filename: at('apps/web/src/worker.ts') },
     { code: "import { readFile } from 'node:fs'", filename: at('tools/test/a.test.ts') },
     { code: "import { $ } from 'bun'", filename: at('tools/check.ts') },
   ],
   invalid: [
     {
-      code: "import { x } from '@purrable/runtime'",
+      code: "import { x } from '@goblin/runtime'",
       filename: at('apps/web/src/route.tsx'),
       errors: [{ messageId: 'workspace' }],
     },

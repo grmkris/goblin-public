@@ -52,7 +52,7 @@ const switchedOff = (name: string, args: Record<string, unknown>, details: unkno
 const off = (target: unknown) => ({ kind: 'capability-off', target })
 
 describe('what the agent waits on the owner for', () => {
-  it('asks for permission only from Purrable’s own result for the exact tool that was called', () => {
+  it('asks for permission only from goblin’s own result for the exact tool that was called', () => {
     expect(interactionOf(mcpCall(grant))).toEqual({
       kind: 'grant',
       callId: 'g1',
@@ -73,7 +73,7 @@ describe('what the agent waits on the owner for', () => {
     expect(openInteractions(parts).map((item) => item.kind)).toEqual(['grant', 'question'])
     expect(openInteractions([...parts, user('u2')])).toEqual([])
   })
-  it('offers to turn on here only what the call asked for, and only from Purrable’s own result', () => {
+  it('offers to turn on here only what the call asked for, and only from goblin’s own result', () => {
     const server = { kind: 'server', serverId: 'myplan' }
     expect(interactionOf(mcpCall(off(server)))).toEqual({ kind: 'capability', callId: 'g1', target: server })
     const tool = { kind: 'tool', serverId: 'myplan', name: 'document_edit' }

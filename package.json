@@ -1,5 +1,5 @@
 {
-  "name": "purrable",
+  "name": "goblin",
   "version": "0.1.0",
   "private": true,
   "workspaces": {
@@ -18,7 +18,7 @@
     "plan:dev": "bun scripts/stage.ts plan:dev",
     "destroy:dev": "bun scripts/stage.ts destroy:dev",
     "smoke:dev": "bun --env-file .local/dev.env scripts/smoke-dev.ts",
-    "smoke:local": "PURRABLE_STAGE=local PURRABLE_APP_URL=http://localhost:18971 bun --env-file .local/local.env scripts/smoke-dev.ts",
+    "smoke:local": "GOBLIN_STAGE=local GOBLIN_APP_URL=http://localhost:18971 bun --env-file .local/local.env scripts/smoke-dev.ts",
     "icons": "bun scripts/app-icons.ts",
     "fmt": "oxfmt -c oxfmt.config.ts --write",
     "fmt:check": "oxfmt -c oxfmt.config.ts --check",

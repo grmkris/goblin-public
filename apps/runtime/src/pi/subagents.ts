@@ -53,7 +53,7 @@ const instructions = (name: string) =>
  * at a background task, so a subagent outlives the turn that started it.
  */
 const Anchor = defineTask<null, { phase: 'done' }, null>({
-  name: 'purrable.subagent-anchor',
+  name: 'goblin.subagent-anchor',
   version: 1,
   initial: () => ({ phase: 'done' }),
   phases: {
@@ -264,7 +264,7 @@ export function subagentsExtension(run: RunProgram, members: (self: Extension) =
 
   const tool = subagentTool(run, deliver)
   const extension: Extension = defineExtension({
-    name: 'purrable.subagents',
+    name: 'goblin.subagents',
     // Only where the tool is offered: a conversation with subagents switched off has it filtered out.
     sections: [
       section('subagents', (input) =>

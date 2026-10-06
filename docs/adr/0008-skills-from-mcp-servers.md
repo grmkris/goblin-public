@@ -1,12 +1,12 @@
 # Skills come from MCP servers the owner turns them on for, and the agent drafts new ones for review
 
-Accepted 2026-10-05 with the owner, in the MySkills plan (myplan "03 MySkills + Purrable — final plan"). Amended by
+Accepted 2026-10-05 with the owner, in the MySkills plan (myplan "03 MySkills + goblin — final plan"). Amended by
 ADR 0010: a conversation can switch a library off.
 
 **Skills are read over MCP, not installed.** The agent speaks the MCP Skills extension (`io.modelcontextprotocol/skills`,
 SEP-2640): `skills/list` and `skills/get` for entries, `resources/read` for files. The official TypeScript SDK has no
 Skills support yet, so `skills/protocol.ts` decodes the published shapes itself and the client sends them as extension
-methods. Nobody manages a skills folder in Purrable. The Agents SDK's Pi `skills()` helper is not used: it loads
+methods. Nobody manages a skills folder in goblin. The Agents SDK's Pi `skills()` helper is not used: it loads
 every skill on each wake, freezes the catalog and forgets which server served a skill.
 
 **A skill is an instruction the owner chose, which is why it needs a switch.** Remote content is untrusted data and
@@ -30,7 +30,7 @@ cannot be reached keeps its last listing or shows as unavailable, never as an em
 **The agent drafts skills; the owner publishes them.** After a final answer that followed a correction or a request
 to remember how something was done, a cheap model decides whether the exchange teaches a reusable procedure. Facts
 about the owner stay in memory (ADR 0007). A procedure becomes a draft sent through the library's `skill_draft` tool,
-under the owner's normal tool grant; MySkills' review decides, and nothing in Purrable publishes a skill. The learner
+under the owner's normal tool grant; MySkills' review decides, and nothing in goblin publishes a skill. The learner
 proposes at most five drafts a day, never the same content twice, nothing while a draft for that skill waits, and
 never a rejected draft again (`app_skill_drafts`). Drafts carry no transcript, and email- and secret-shaped text is
 scrubbed.

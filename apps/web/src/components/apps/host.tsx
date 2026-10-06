@@ -5,7 +5,7 @@
 // and every call it makes go through the owner's grants, live (frame.tsx).
 import { createContext, type ReactNode, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Schema } from 'effect'
-import { type AppView, AppLaunch } from '@purrable/contracts'
+import { type AppView, AppLaunch } from '@goblin/contracts'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import { LIVE_APPS, evictions } from '../../lib/app-residency.ts'
 import { failureText, record, records, request } from '../../lib/boundary.ts'

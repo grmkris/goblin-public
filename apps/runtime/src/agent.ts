@@ -1,7 +1,7 @@
 import { Agent } from 'agents'
 import { type Extension } from '@earendil-works/pi-durable'
-import { type AppContext, type CapabilityChange, type JsonObject, MAIN_THREAD } from '@purrable/contracts'
-import type { CreateApp, UpdateApp } from '@purrable/contracts'
+import { type AppContext, type CapabilityChange, type JsonObject, MAIN_THREAD } from '@goblin/contracts'
+import type { CreateApp, UpdateApp } from '@goblin/contracts'
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
@@ -72,7 +72,7 @@ import type {
   RoutineSettings,
   RoutineManualRun,
   UpdateConversation,
-} from '@purrable/contracts'
+} from '@goblin/contracts'
 import { requireRoutine, requireRoutineSession } from './routines/authority.ts'
 import { runView } from './routines/runs.ts'
 import type { RoutineSlot } from './routines/scheduler.ts'

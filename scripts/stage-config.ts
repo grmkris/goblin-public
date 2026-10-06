@@ -3,8 +3,8 @@ export function resolveStage(name: string) {
     throw new Error('unsupported_stage')
   return {
     name,
-    workerName: `purrable-${name.replaceAll('_', '-')}`,
-    resourceName: (role: string) => `purrable-${name.replaceAll('_', '-')}-${role}`,
+    workerName: `goblin-${name.replaceAll('_', '-')}`,
+    resourceName: (role: string) => `goblin-${name.replaceAll('_', '-')}-${role}`,
     local: name === 'local',
   }
 }

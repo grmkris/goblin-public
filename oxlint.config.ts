@@ -6,7 +6,7 @@ import { agentIgnorePatterns } from './tools/vendored.ts'
  * - `boundaries` (tools/oxlint/boundaries.ts) enforces tools/graph.ts: declared workspace imports, and runtime-bound
  *   modules (`bun`, `bun:*`, `@effect/platform-bun`, `cloudflare:*`, `node:*`, the `Bun` global) only where the file's
  *   runtime allows them. It replaces the per-directory Bun and `cloudflare:workers` bans.
- * - `purrable` (tools/oxlint/purrable.ts) enforces repository invariants from AGENTS.md.
+ * - `goblin` (tools/oxlint/goblin.ts) enforces repository invariants from AGENTS.md.
  * Relaxations are targeted overrides, each with its reason (docs/agents/lint-quality.md).
  */
 export default defineConfig({
@@ -16,7 +16,6 @@ export default defineConfig({
     '**/.output/**',
     '**/.tanstack/**',
     '**/routeTree.gen.ts',
-    'docs/archive/**',
     // Vendored from dmmulroy/anti-slop (tools/oxlint/anti-slop/PROVENANCE.md): upstream code, upstream style.
     'tools/oxlint/anti-slop/**',
     // Vendored skills (from .agents/skills/sources.json) and harness link and state directories.
@@ -27,7 +26,7 @@ export default defineConfig({
   options: { typeAware: true, reportUnusedDisableDirectives: 'error' },
   jsPlugins: [
     './tools/oxlint/boundaries.ts',
-    './tools/oxlint/purrable.ts',
+    './tools/oxlint/goblin.ts',
     './tools/oxlint/anti-slop/index.ts',
     './tools/oxlint/anti-slop/effect/index.ts',
     // Cognitive complexity (Sonar's metric); oxlint has no native rule for it.
@@ -35,9 +34,9 @@ export default defineConfig({
     // Design-system rules for the shadcn components in packages/ui (docs/agents/ui.md).
     '@shadcn/lint',
   ],
-  // Components come from the @purrable/ui barrel. A file's theme is the Tailwind stylesheet of its package (a
+  // Components come from the @goblin/ui barrel. A file's theme is the Tailwind stylesheet of its package (a
   // components.json, where one exists, names it); apps need no components.json of their own.
-  settings: { shadcn: { ui: '@purrable/ui' } },
+  settings: { shadcn: { ui: '@goblin/ui' } },
   categories: { correctness: 'error', suspicious: 'error' },
   plugins: ['typescript', 'unicorn', 'oxc', 'import'],
   env: { es2024: true },
@@ -86,14 +85,14 @@ export default defineConfig({
     'complexity/complexity': ['error', { cyclomatic: 1000, cognitive: 15 }],
     'boundaries/no-cross-boundary-import': 'error',
     'boundaries/no-runtime-global': 'error',
-    'purrable/no-process-env': 'error',
-    'purrable/require-disable-description': 'error',
+    'goblin/no-process-env': 'error',
+    'goblin/require-disable-description': 'error',
   },
   overrides: [
     // Stack files declare the named Cloudflare resources; their physical names come from the stage (ADR 0002).
     {
       files: ['alchemy.run.ts', 'apps/*/alchemy.run.ts'],
-      rules: { 'purrable/resource-name-via-stage': 'error' },
+      rules: { 'goblin/resource-name-via-stage': 'error' },
     },
     // process.env is these files' input, not app settings:
     //   extension origin before anything is bundled;
@@ -102,10 +101,10 @@ export default defineConfig({
     //   docs/agents/lint-quality.md).
     {
       files: ['**/vitest*.config.ts', '**/vite.config.ts', '**/test/support/**', 'scripts/stage.ts'],
-      rules: { 'purrable/no-process-env': 'off' },
+      rules: { 'goblin/no-process-env': 'off' },
     },
     // The isolated benchmark stack must replace ambient cloud credentials with local placeholders and restore them.
-    { files: ['bench/scripts/local.ts'], rules: { 'purrable/no-process-env': 'off' } },
+    { files: ['bench/scripts/local.ts'], rules: { 'goblin/no-process-env': 'off' } },
     // nested package CSS import, which the plugin does not follow.
     {
       files: ['apps/web/src/**/*.tsx', 'packages/ui/src/**'],

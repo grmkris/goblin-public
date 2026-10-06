@@ -10,10 +10,10 @@ function Privacy() {
         credential data, not your device biometric data.
       </p>
       <p>
-        Cloudflare hosts Purrable and sends sign-in mail. Model requests go through our model gateway to the selected
+        Cloudflare hosts goblin and sends sign-in mail. Model requests go through our model gateway to the selected
         model provider, including conversation context and relevant tool results. A connected tool receives the data
-        needed for its authorized request. Dodo Payments handles checkout, customer and subscription information;
-        Purrable does not store card details.
+        needed for its authorized request. Dodo Payments handles checkout, customer and subscription information; goblin
+        does not store card details.
       </p>
       <p>
         Outbound OAuth tokens are encrypted at rest. Essential session cookies support sign-in. Runtime error logs

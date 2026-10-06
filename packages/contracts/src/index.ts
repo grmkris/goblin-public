@@ -66,7 +66,7 @@ export type ServerSuggestion = typeof ServerSuggestion.Type
 /**
  * A server found in an MCP registry, as its publisher describes it. `verified`: the registry checks namespace
  * ownership (the official one does). `variables`: placeholders in the endpoint the owner fills in. `needsKey`: the
- * server wants an API key header, which Purrable cannot send yet.
+ * server wants an API key header, which goblin cannot send yet.
  */
 export const CatalogEntry = Schema.Struct({
   registry: Schema.String,
@@ -174,7 +174,7 @@ export const ModelChoice = Schema.Struct({
 })
 export type ModelChoice = typeof ModelChoice.Type
 
-/** An MCP client the owner has authorized to use Purrable's /mcp server. */
+/** An MCP client the owner has authorized to use goblin's /mcp server. */
 export const InboundClient = Schema.Struct({
   clientId: Schema.String,
   name: Schema.optional(Schema.String),

@@ -16,7 +16,7 @@ import type { UserMessage } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { MAIN_THREAD } from '@purrable/contracts'
+import { MAIN_THREAD } from '@goblin/contracts'
 import { Channel, Conversations, attempt, attemptSync, nowSecondsEffect, requireResident } from '../services.ts'
 import { authoredContent } from './content.ts'
 import { BACKGROUND, entryId } from './context.ts'
@@ -26,7 +26,7 @@ import type { RunProgram } from './resident-mcp.ts'
  * The task that carries one message to a subagent and its answer back to the spawner. While one is live in a
  * conversation, that conversation waits on its subagents.
  */
-export const SUBAGENT_RELAY = 'purrable.subagent-relay'
+export const SUBAGENT_RELAY = 'goblin.subagent-relay'
 
 export type Subagent = {
   readonly conversationId: ConversationId

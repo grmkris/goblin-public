@@ -1,5 +1,5 @@
 import { Option, Schema } from 'effect'
-import { CapabilityTarget, QuestionSpec } from '@purrable/contracts'
+import { CapabilityTarget, QuestionSpec } from '@goblin/contracts'
 import { isString, record } from './boundary.ts'
 import type { Part, ToolPart } from './parts.ts'
 
@@ -33,7 +33,7 @@ function asksFor(part: ToolPart, target: CapabilityTarget): boolean {
 }
 
 /**
- * The interaction a tool result asks for, if any. A grant request is trusted only from Purrable's own `mcp_call`
+ * The interaction a tool result asks for, if any. A grant request is trusted only from goblin's own `mcp_call`
  * result: an error whose details carry `kind: 'grant-required'` for exactly the server and tool that were called, and
  * no `origin` (remote results always have one), so a server's content cannot conjure an Allow card. A request to turn
  * something on here (`capability-off`) is trusted the same way, for exactly what the call asked for.

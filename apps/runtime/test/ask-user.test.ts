@@ -1,6 +1,6 @@
 import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
-import { QuestionSpec } from '@purrable/contracts'
+import { QuestionSpec } from '@goblin/contracts'
 import { askUserExtension } from '../src/pi/ask-user.ts'
 
 const askUser = askUserExtension.tools?.find((tool) => tool.name === 'ask_user')

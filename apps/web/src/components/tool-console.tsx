@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import type { CallToolResult } from '@modelcontextprotocol/client'
-import type { ServerView } from '@purrable/contracts'
+import type { ServerView } from '@goblin/contracts'
 import {
   Alert,
   AlertDescription,
@@ -20,7 +20,7 @@ import {
   NativeSelect,
   NativeSelectOption,
   Textarea,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { ChevronRightIcon } from 'lucide-react'
 import { failureText, isString, record, records, request } from '../lib/boundary.ts'
 import { serverTitle } from '../lib/labels.ts'

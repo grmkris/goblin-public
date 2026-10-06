@@ -1,4 +1,4 @@
-import type { ModelChoice, ModelOption } from '@purrable/contracts'
+import type { ModelChoice, ModelOption } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { InvalidInput } from './http/errors.ts'
@@ -13,7 +13,7 @@ type Known = Omit<ModelOption, 'id' | 'contextWindow'>
 const CONTEXT_WINDOW = 131_072
 
 /**
- * What the picker says about the models LiteLLM serves to Purrable. Grouped by the route the call takes, because
+ * What the picker says about the models LiteLLM serves to goblin. Grouped by the route the call takes, because
  * quotas are per route: when Google refuses, an Alibaba model still answers. Probed 2026-10-04: every model here
  * calls tools; `images` is whether it reads image input (the others drop images silently).
  */
@@ -45,7 +45,7 @@ export function modelOptions(models: string | undefined, defaultId: string): Mod
   return [optionOf(defaultId), ...others.map(optionOf)]
 }
 
-/** The model that names threads and writes main's memory: `PURRABLE_MEMORY_MODEL` when offered, else the default. */
+/** The model that names threads and writes main's memory: `GOBLIN_MEMORY_MODEL` when offered, else the default. */
 export function memoryModelId(memoryModel: string | undefined, options: ModelOptions): string {
   return options.find((option) => option.id === memoryModel)?.id ?? options[0].id
 }

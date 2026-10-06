@@ -1,4 +1,4 @@
-import type { McpServerConfig } from '@purrable/contracts'
+import type { McpServerConfig } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import {

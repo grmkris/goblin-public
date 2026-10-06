@@ -8,7 +8,7 @@ import type { Edge, LayoutDocument, LayoutNode, PanelNode, SplitNode } from '@da
  */
 
 /** The one view type: every pane holds one item. */
-export const PANE_TYPE = 'purrable-pane'
+export const PANE_TYPE = 'goblin-pane'
 
 /** The layout version stored with a document; a different one is discarded rather than migrated. */
 export const LAYOUT_VERSION = 2

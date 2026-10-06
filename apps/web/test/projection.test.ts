@@ -1,4 +1,4 @@
-import { authorTag } from '@purrable/contracts'
+import { authorTag } from '@goblin/contracts'
 import { describe, expect, it } from 'vitest'
 import { projectBatch, projectSnapshot } from '../src/lib/projection.ts'
 

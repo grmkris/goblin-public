@@ -1,5 +1,5 @@
 {
-  "name": "@purrable/bench",
+  "name": "@goblin/bench",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
   "dependencies": {
     "@earendil-works/pi-ai": "1.0.1",
     "@earendil-works/pi-durable": "1.0.1",
-    "@purrable/runtime": "workspace:*",
+    "@goblin/runtime": "workspace:*",
     "agents": "0.26.0",
     "drizzle-orm": "1.0.0-rc.5-ab785fc",
     "effect": "4.0.0"

@@ -1,7 +1,7 @@
 import page from './server.tsx'
-import runtime from '@purrable/runtime/worker'
-import { canonicalRedirect } from '@purrable/runtime/canonical'
-export { PersonalAgent } from '@purrable/runtime/agent'
+import runtime from '@goblin/runtime/worker'
+import { canonicalRedirect } from '@goblin/runtime/canonical'
+export { PersonalAgent } from '@goblin/runtime/agent'
 
 export default {
   scheduled: (event: ScheduledController, env: Parameters<typeof runtime.scheduled>[1]) =>

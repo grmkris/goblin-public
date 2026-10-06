@@ -1,5 +1,5 @@
 /**
- * AST and scope helpers shared by the Purrable oxlint plugins.
+ * AST and scope helpers shared by the goblin oxlint plugins.
  *
  * `sourceCode.isGlobalReference` is true only for globals the lint configuration declares (`env`, `globals`), so a rule
  * built on it goes silent wherever `Bun` or `process` is not declared. These rules want the opposite: any reference that

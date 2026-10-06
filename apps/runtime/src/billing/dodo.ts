@@ -57,7 +57,7 @@ export interface DodoApi {
   ) => Effect.Effect<VerifiedEvent, WebhookRejected>
 }
 
-export class Dodo extends Context.Service<Dodo, DodoApi>()('purrable/Dodo') {}
+export class Dodo extends Context.Service<Dodo, DodoApi>()('goblin/Dodo') {}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Predicate.isObject(value) && !Array.isArray(value)

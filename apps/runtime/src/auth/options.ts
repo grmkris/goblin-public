@@ -166,7 +166,7 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
     clientRegistrationDefaultScopes: [...MCP_SCOPES],
   })
   return {
-    appName: 'purrable',
+    appName: 'goblin',
     baseURL: env.APP_URL,
     basePath: AUTH_BASE_PATH,
     secret: env.BETTER_AUTH_SECRET,

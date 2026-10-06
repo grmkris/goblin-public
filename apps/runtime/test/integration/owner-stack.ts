@@ -4,10 +4,10 @@ import { Config, Effect } from 'effect'
 import { fileURLToPath } from 'node:url'
 
 export default Alchemy.Stack(
-  'PurrableOwnerHarness',
+  'goblinOwnerHarness',
   { providers: Cloudflare.providers(), state: Alchemy.localState() },
   Effect.gen(function* () {
-    const port = (yield* Config.Port('PURRABLE_HARNESS_PORT')) + 20
+    const port = (yield* Config.Port('GOBLIN_HARNESS_PORT')) + 20
     const auth = yield* Cloudflare.D1.Database('OwnerAuth', {
       migrations: fileURLToPath(new URL('../../migrations', import.meta.url).href),
     })
@@ -18,7 +18,7 @@ export default Alchemy.Stack(
       env: {
         AGENTS: Cloudflare.DurableObject('OwnerAgent'),
         AUTH_DB: auth,
-        APP_URL: 'https://purrable.test',
+        APP_URL: 'https://goblin.test',
         BETTER_AUTH_SECRET: 'fixture-owner-auth-secret-at-least-32-chars',
         SIGNUP_MODE: 'open',
         STAGE: 'test',

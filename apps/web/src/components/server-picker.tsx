@@ -1,7 +1,7 @@
 // The one place to add a server: the servers we suggest, a registry search, or an address, as tabs of one card.
 import { useState } from 'react'
-import type { ServerView } from '@purrable/contracts'
-import { Card, CardContent, Tabs, TabsContent, TabsList, TabsTrigger } from '@purrable/ui'
+import type { ServerView } from '@goblin/contracts'
+import { Card, CardContent, Tabs, TabsContent, TabsList, TabsTrigger } from '@goblin/ui'
 import { AddByAddress, SuggestedServers } from './server-add.tsx'
 import { ServerSearch } from './server-search.tsx'
 

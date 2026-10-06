@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Schema } from 'effect'
-import { type CapabilityChange, ConversationCapabilities } from '@purrable/contracts'
+import { type CapabilityChange, ConversationCapabilities } from '@goblin/contracts'
 import {
   Button,
   Collapsible,
@@ -14,7 +14,7 @@ import {
   PopoverTitle,
   PopoverTrigger,
   Switch,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { ChevronRightIcon, SlidersHorizontalIcon } from 'lucide-react'
 import { failureText, request } from '../lib/boundary.ts'
 import { applyChange, capabilityCount, serverState } from '../lib/capabilities.ts'

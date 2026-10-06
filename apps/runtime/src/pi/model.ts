@@ -1,7 +1,7 @@
 import { createModels, createProvider } from '@earendil-works/pi-ai/models'
 import { stream, streamSimple } from '@earendil-works/pi-ai/api/openai-completions'
 import type { Model, ProviderStreams } from '@earendil-works/pi-ai'
-import type { ModelOption } from '@purrable/contracts'
+import type { ModelOption } from '@goblin/contracts'
 import type { RuntimeEnv } from '../env.ts'
 import { modelOptions } from '../models.ts'
 
@@ -9,7 +9,7 @@ type ModelEnvironment = Pick<RuntimeEnv, 'MODEL_ID' | 'MODEL_BASE_URL' | 'MODEL_
   Partial<Pick<RuntimeEnv, 'MODELS'>>
 
 /** Every model is served by the deployment's LiteLLM under one provider id; `session.setModel` names it. */
-export const MODEL_PROVIDER = 'purrable-litellm'
+export const MODEL_PROVIDER = 'goblin-litellm'
 
 /** The provider is configured at the Worker boundary; its key never enters Pi state. */
 function makePiModel(
@@ -51,12 +51,12 @@ export function makePiModels(
   const others = rest.map((option) => makePiModel(option, env.MODEL_BASE_URL, contextWindow))
   const provider = createProvider({
     id: MODEL_PROVIDER,
-    name: 'Purrable LiteLLM',
+    name: 'goblin LiteLLM',
     baseUrl: env.MODEL_BASE_URL,
     models: [model, ...others],
     auth: {
       apiKey: {
-        name: 'Purrable model key',
+        name: 'goblin model key',
         resolve: async () => ({ auth: { apiKey: env.MODEL_KEY } }),
       },
     },
@@ -67,12 +67,12 @@ export function makePiModels(
   if (authorizeRoutine !== undefined) {
     const original = models.getModel.bind(models)
     models.getModel = (providerId, id) => {
-      const runId = /^purrable-routine:(rr_[\w-]{1,100})$/u.exec(providerId)?.[1]
+      const runId = /^goblin-routine:(rr_[\w-]{1,100})$/u.exec(providerId)?.[1]
       if (runId !== undefined && models.getProvider(providerId) === undefined) {
         models.setProvider(
           createProvider({
             id: providerId,
-            name: 'Purrable routine',
+            name: 'goblin routine',
             baseUrl: env.MODEL_BASE_URL,
             models: options.map((option) => makePiModel(option, env.MODEL_BASE_URL, contextWindow, providerId)),
             auth: {

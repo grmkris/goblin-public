@@ -7,7 +7,7 @@ import {
   CreateConversation,
   UpdateApp,
   UpdateConversation,
-} from '@purrable/contracts'
+} from '@goblin/contracts'
 import type { AgentRpc, RuntimeEnv } from './env.ts'
 import {
   handleAuth,
@@ -336,7 +336,7 @@ export default {
     if (url.pathname === '/health')
       return Response.json({
         ok: true,
-        service: 'purrable',
+        service: 'goblin',
         stage: env.STAGE,
         signup: signupMode(env.SIGNUP_MODE),
         mail: mailerOf(env) !== undefined,

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { CircleAlertIcon, CircleStopIcon, KeyRoundIcon, MessageCircleQuestionIcon, PowerIcon } from 'lucide-react'
-import { Reasoning, ReasoningContent, ReasoningTrigger, Receipt } from '@purrable/ui'
+import { Reasoning, ReasoningContent, ReasoningTrigger, Receipt } from '@goblin/ui'
 import { targetLabel } from '../../lib/capabilities.ts'
 import { type Interaction, interactionOf } from '../../lib/interactions.ts'
 import type { Part, ToolPart } from '../../lib/parts.ts'

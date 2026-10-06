@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Option, Schema } from 'effect'
 import { KeyRoundIcon, MessageCircleQuestionIcon, PowerIcon } from 'lucide-react'
-import { MAIN_THREAD, ToolView } from '@purrable/contracts'
+import { MAIN_THREAD, ToolView } from '@goblin/contracts'
 import {
   AskCard,
   AskCardActions,
@@ -22,7 +22,7 @@ import {
   QuestionnaireSubmit,
   QuestionnaireTitle,
   Receipt,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { failureText, request } from '../lib/boundary.ts'
 import { targetLabel } from '../lib/capabilities.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'

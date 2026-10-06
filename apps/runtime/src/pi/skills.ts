@@ -181,7 +181,7 @@ export function skillsExtension(
   observe: (conversation: ConversationId, outcome: LearnOutcome) => void = logLearnOutcome,
 ) {
   return defineExtension({
-    name: 'purrable.skills',
+    name: 'goblin.skills',
     sections: [skillsSection(run)],
     tools: [activateTool(run), readTool(run)],
     hooks: [

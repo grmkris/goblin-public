@@ -10,7 +10,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
   useSidebar,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { CatIcon, LogOutIcon, PlugIcon, SettingsIcon } from 'lucide-react'
 import { signOut } from '../lib/session.tsx'
 import { useBilling } from '../lib/billing.tsx'
@@ -73,11 +73,11 @@ export function AppSidebar() {
   }, [workspace, close, path, navigate])
   const ready = state === 'signed-in' && billing.state?.active === true
   return (
-    <Sidebar label="Purrable">
+    <Sidebar label="goblin">
       <SidebarHeader>
-        <Link to="/" className="sidebar-brand" aria-label="Purrable home">
+        <Link to="/" className="sidebar-brand" aria-label="goblin home">
           <CatIcon aria-hidden />
-          {!rail && 'Purrable'}
+          {!rail && 'goblin'}
         </Link>
       </SidebarHeader>
       <SidebarContent>

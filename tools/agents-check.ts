@@ -8,7 +8,7 @@
  * - .claude/skills: one relative symlink per skill, none dangling.
  * - Instructions: CLAUDE.md imports AGENTS.md; every workspace and nested AGENTS.md has its CLAUDE.md shim and a link
  *   from the root; relative links resolve; .claude/rules globs match files; .cursor/rules points Cursor at AGENTS.md.
- * - Docs (tools/docs.ts): links in README, docs/ (except docs/archive/) resolve; documented `bun run` scripts exist.
+ * - Docs (tools/docs.ts): links in README and docs/ resolve; documented `bun run` scripts exist.
  */
 import { Schema } from 'effect'
 import path from 'node:path'

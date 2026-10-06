@@ -48,7 +48,7 @@ export class StoredOAuthProvider implements OAuthClientProvider {
 
   get clientMetadata(): OAuthClientMetadata {
     return {
-      client_name: 'Purrable',
+      client_name: 'goblin',
       client_uri: this.#appUrl,
       redirect_uris: [this.#redirectUrl],
       grant_types: ['authorization_code', 'refresh_token'],

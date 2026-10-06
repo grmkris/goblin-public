@@ -15,10 +15,10 @@ export function LegalPage({ title, children }: { readonly title: string; readonl
             <Link to="/terms">Terms</Link>
             <Link to="/privacy">Privacy</Link>
             <Link to="/refunds">Refunds</Link>
-            <Link to="/subscribe">Purrable Pro</Link>
+            <Link to="/subscribe">goblin Pro</Link>
           </nav>
           <p>
-            <Link to="/">Back to Purrable</Link>
+            <Link to="/">Back to goblin</Link>
           </p>
         </>
       }

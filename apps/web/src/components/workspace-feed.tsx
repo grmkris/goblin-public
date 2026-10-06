@@ -1,6 +1,6 @@
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Schema } from 'effect'
-import { AppView, ConversationView, type CreateConversation, type UpdateConversation } from '@purrable/contracts'
+import { AppView, ConversationView, type CreateConversation, type UpdateConversation } from '@goblin/contracts'
 import { failureText, request } from '../lib/boundary.ts'
 import { BrowserPiEvents } from '../lib/conversation-stream.ts'
 import {

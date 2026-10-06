@@ -13,7 +13,7 @@ import {
   runApplicationMigrations,
   appMetadata,
   recallExtension,
-} from '@purrable/runtime/memory'
+} from '@goblin/runtime/memory'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import { Schema } from 'effect'

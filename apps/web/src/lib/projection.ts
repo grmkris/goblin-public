@@ -1,4 +1,4 @@
-import type { AppContext } from '@purrable/contracts'
+import type { AppContext } from '@goblin/contracts'
 import { isString, isNumber, identifier, record, records, text } from './boundary.ts'
 import { sharedContext } from './app-context.ts'
 
@@ -184,7 +184,7 @@ function entryMessage(message: Record<string, unknown>, id: string, thread?: str
 }
 
 /**
- * Entries that start the model's context (Purrable's memory view, Pi's compaction summary and reset): they are written
+ * Entries that start the model's context (goblin's memory view, Pi's compaction summary and reset): they are written
  * for the model, so the transcript leaves them out.
  */
 const MARKERS = new Set(['app.memory', 'pi.compaction', 'pi.reset'])

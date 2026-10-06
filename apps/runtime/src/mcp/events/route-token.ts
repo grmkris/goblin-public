@@ -10,7 +10,7 @@ export async function eventsHookToken(credentialKey: string, userId: string): Pr
     ['deriveKey'],
   )
   const key = await crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(), info: encoder.encode('purrable/mcp-events-hook') },
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(), info: encoder.encode('goblin/mcp-events-hook') },
     base,
     { name: 'HMAC', hash: 'SHA-256', length: 256 },
     false,

@@ -36,7 +36,7 @@ export default {
     const url = new URL(request.url)
     const canonical = new URL(url.pathname + url.search, env.APP_URL)
     const input = new Request(canonical, request)
-    const deps = { store: makeBillingStore(env.AUTH_DB), dodo, productId: 'pdt_purrable_fixture' }
+    const deps = { store: makeBillingStore(env.AUTH_DB), dodo, productId: 'pdt_goblin_fixture' }
     try {
       if (url.pathname === '/hooks/dodo') return await Effect.runPromise(billingWebhook(deps, input, ctx))
       if (url.pathname.startsWith('/__test/billing/'))

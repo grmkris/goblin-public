@@ -9,7 +9,7 @@ import {
   PostMessageTransport,
 } from '@modelcontextprotocol/ext-apps/app-bridge'
 import type { CallToolResult, ReadResourceResult } from '@modelcontextprotocol/client'
-import { Alert, AlertDescription } from '@purrable/ui'
+import { Alert, AlertDescription } from '@goblin/ui'
 import { isSandboxMessage, sandboxHtml, sandboxProxy } from '../../lib/app-sandbox.ts'
 import { createAppBridge } from '../../lib/app-bridge.ts'
 import { isString, record, records, request, text } from '../../lib/boundary.ts'

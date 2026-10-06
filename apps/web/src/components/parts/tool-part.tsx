@@ -10,7 +10,7 @@ import {
   ToolCallTrigger,
   ToolPayload,
   ToolPayloadText,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { elapsedMs, toolLine, type ToolPart } from '../../lib/parts.ts'
 import { outputBlocks } from '../../lib/tool-payload.ts'
 import { useNow } from '../use-now.ts'

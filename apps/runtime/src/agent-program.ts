@@ -5,7 +5,7 @@ import {
   type ConversationView,
   type CreateConversation,
   type UpdateConversation,
-} from '@purrable/contracts'
+} from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import type { AppError } from './http/errors.ts'
 import { Entitlements } from './billing/gates.ts'

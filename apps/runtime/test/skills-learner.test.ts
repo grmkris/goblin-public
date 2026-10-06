@@ -80,7 +80,7 @@ const host = new McpHost({
   credentials,
   grants,
   skillsEnabled: (serverId) => state.enabled(serverId),
-  appUrl: 'https://purrable.test',
+  appUrl: 'https://goblin.test',
   fetch: async (input, init) => skills.fetch(new Request(input, init)),
 })
 let drafts = new MemoryDraftLog()

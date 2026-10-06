@@ -1,5 +1,5 @@
 // The Telegram channel's view of the agent (ADR 0009): main as the owner's Telegram, and how its turns end.
-import { MAIN_THREAD, TELEGRAM_AUTHOR } from '@purrable/contracts'
+import { MAIN_THREAD, TELEGRAM_AUTHOR } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'

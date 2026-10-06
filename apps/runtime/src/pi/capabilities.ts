@@ -1,5 +1,5 @@
 import type { ToolExecutionResult } from '@earendil-works/pi-durable'
-import type { CapabilityTarget } from '@purrable/contracts'
+import type { CapabilityTarget } from '@goblin/contracts'
 import type { CapabilityScope } from '../capabilities/profiles.ts'
 
 /** How a target reads in a tool result: the server, the server's tool, its skills, or subagents. */

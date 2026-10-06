@@ -20,7 +20,7 @@ export const accountEntitlements = (env: RuntimeEnv, userId: () => string): Enti
   const state = () => planOf(store, userId(), env.STAGE ?? 'test', billingMode(env))
   return { state, require: () => requirePlan(state()) }
 }
-export class Entitlements extends Context.Service<Entitlements, EntitlementPolicy>()('purrable/Entitlements') {
+export class Entitlements extends Context.Service<Entitlements, EntitlementPolicy>()('goblin/Entitlements') {
   static layer(env: RuntimeEnv, userId: () => string) {
     return Layer.succeed(Entitlements, accountEntitlements(env, userId))
   }

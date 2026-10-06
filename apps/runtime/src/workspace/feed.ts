@@ -1,5 +1,5 @@
 import type { TaskGraph, TaskGraphWatch } from '@earendil-works/pi-durable'
-import type { ConversationActivity, WorkspaceChange, WorkspaceSnapshot } from '@purrable/contracts'
+import type { ConversationActivity, WorkspaceChange, WorkspaceSnapshot } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import type { AppRegistry } from '../apps/registry.ts'
 import type { ConversationRegistry } from '../conversations.ts'

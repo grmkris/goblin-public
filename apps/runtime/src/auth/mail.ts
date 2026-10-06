@@ -1,4 +1,4 @@
-/** The slice of the Cloudflare Email Sending binding Purrable uses. */
+/** The slice of the Cloudflare Email Sending binding goblin uses. */
 export interface MailBinding {
   send(message: MailMessage): Promise<unknown>
 }
@@ -32,9 +32,9 @@ export const codeMail = (
 ): MailMessage => ({
   from: input.from,
   to: input.to,
-  subject: `${subjectPrefix(input)}Your Purrable sign-in code`,
+  subject: `${subjectPrefix(input)}Your goblin sign-in code`,
   text: [
-    `Your Purrable sign-in code is ${input.code}`,
+    `Your goblin sign-in code is ${input.code}`,
     '',
     'It expires in 10 minutes and works once. If you did not try to sign in, ignore this email.',
   ].join('\n'),
@@ -51,7 +51,7 @@ export const resetMail = (
 ): MailMessage => ({
   from: input.from,
   to: input.to,
-  subject: `${subjectPrefix(input)}Reset your Purrable password`,
+  subject: `${subjectPrefix(input)}Reset your goblin password`,
   text: [
     `Open this link to choose a new password for ${input.to}:`,
     '',
@@ -75,12 +75,12 @@ export const verificationMail = (
 ): MailMessage => ({
   from: input.from,
   to: input.to,
-  subject: `${subjectPrefix(input)}Confirm your email for Purrable`,
+  subject: `${subjectPrefix(input)}Confirm your email for goblin`,
   text: [
-    `Open this link to confirm ${input.to} and finish creating your Purrable account:`,
+    `Open this link to confirm ${input.to} and finish creating your goblin account:`,
     '',
     input.url,
     '',
-    'The link works once and expires in one hour. If you did not sign up for Purrable, ignore this email.',
+    'The link works once and expires in one hour. If you did not sign up for goblin, ignore this email.',
   ].join('\n'),
 })

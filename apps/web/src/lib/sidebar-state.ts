@@ -1,5 +1,5 @@
 import { createIsomorphicFn } from '@tanstack/react-start'
-import { SIDEBAR_COOKIE } from '@purrable/ui'
+import { SIDEBAR_COOKIE } from '@goblin/ui'
 
 /**
  * Whether the desktop sidebar starts open: as the owner left it (the sidebar's cookie), open by default. The server

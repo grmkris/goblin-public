@@ -1,5 +1,5 @@
 /**
- * `bun scripts/patch-shadcn-react.ts [--test]`: rebuilds `patches/@shadcn%2Freact@0.3.1.patch`, Purrable's patch of the
+ * `bun scripts/patch-shadcn-react.ts [--test]`: rebuilds `patches/@shadcn%2Freact@0.3.1.patch`, goblin's patch of the
  * MessageScroller in @shadcn/react, from upstream source (patches/shadcn-react/README.md says what is in it and why).
  *
  * In a temporary directory it checks out shadcn-ui/ui at the 0.3.1 release, applies `patches/shadcn-react/
@@ -23,7 +23,7 @@ const PATCH = path.join(ROOT, `patches/@shadcn%2Freact@${VERSION}.patch`)
 const ENTRY = 'dist/message-scroller/index.js'
 const TYPES = 'dist/message-scroller/index.d.ts'
 /** The line tools/check-patches.ts finds in the installed file: the patch applied, and which diff it was built from. */
-const MARKER = `// @shadcn/react ${VERSION} + purrable patches/shadcn-react ${createHash('sha256').update(readFileSync(DIFF)).digest('hex').slice(0, 12)}`
+const MARKER = `// @shadcn/react ${VERSION} + goblin patches/shadcn-react ${createHash('sha256').update(readFileSync(DIFF)).digest('hex').slice(0, 12)}`
 const BUILD_CONFIG = `import { defineConfig } from "tsup"
 
 export default defineConfig({
@@ -35,7 +35,7 @@ export default defineConfig({
   sourcemap: false,
   target: "esnext",
   treeshake: true,
-  outDir: "dist-purrable",
+  outDir: "dist-goblin",
 })
 `
 
@@ -96,9 +96,9 @@ function build(pkg: string, pristine: string): string {
   run(['node_modules/.bin/tsup'], pkg)
   if (readFileSync(path.join(pkg, TYPES), 'utf8') !== readFileSync(path.join(pristine, TYPES), 'utf8'))
     throw new Error(`the patch changes ${TYPES}: the patch must replace it too`)
-  writeFileSync(path.join(pkg, 'tsup.purrable.config.ts'), BUILD_CONFIG)
-  run(['node_modules/.bin/tsup', '--config', 'tsup.purrable.config.ts'], pkg)
-  const built = readFileSync(path.join(pkg, 'dist-purrable/message-scroller/index.js'), 'utf8')
+  writeFileSync(path.join(pkg, 'tsup.goblin.config.ts'), BUILD_CONFIG)
+  run(['node_modules/.bin/tsup', '--config', 'tsup.goblin.config.ts'], pkg)
+  const built = readFileSync(path.join(pkg, 'dist-goblin/message-scroller/index.js'), 'utf8')
   const imports = [...built.matchAll(/^import .* from "([^"]+)"/gmu)].map((match) => match[1])
   if (imports.some((specifier) => specifier !== 'react' && specifier !== 'react/jsx-runtime'))
     throw new Error(`the built entry imports ${imports.join(', ')}; only react may stay external`)

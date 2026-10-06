@@ -1,4 +1,4 @@
-import { MAIN_THREAD } from '@purrable/contracts'
+import { MAIN_THREAD } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Effect from 'effect/Effect'
@@ -50,7 +50,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
     cipher,
     manager,
     principal: 'fixture-owner',
-    callback: 'https://purrable.test/hooks/mcp-events/fixture/token',
+    callback: 'https://goblin.test/hooks/mcp-events/fixture/token',
     now: () => clock,
     authorize: () => undefined,
     wake: async (at: number) => {

@@ -34,7 +34,7 @@ export const PATCHES: readonly PatchSpec[] = [
 export const markerOf = (spec: PatchSpec, source: Uint8Array): string => {
   const at = spec.key.lastIndexOf('@')
   const hash = createHash('sha256').update(source).digest('hex').slice(0, 12)
-  return `// ${spec.key.slice(0, at)} ${spec.key.slice(at + 1)} + purrable ${path.dirname(spec.source)} ${hash}`
+  return `// ${spec.key.slice(0, at)} ${spec.key.slice(at + 1)} + goblin ${path.dirname(spec.source)} ${hash}`
 }
 
 export interface Installed {

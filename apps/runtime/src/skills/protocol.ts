@@ -1,4 +1,4 @@
-// The MCP Skills extension (`io.modelcontextprotocol/skills`, SEP-2640) as Purrable reads it: `skills/list` and
+// The MCP Skills extension (`io.modelcontextprotocol/skills`, SEP-2640) as goblin reads it: `skills/list` and
 // `skills/get` results, decoded strictly. The official TypeScript SDK has no Skills support yet (PR #2818), so these
 // schemas follow the published specification, not the SDK. Every field is the serving server's claim.
 import * as Schema from 'effect/Schema'

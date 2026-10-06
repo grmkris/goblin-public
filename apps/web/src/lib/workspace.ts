@@ -1,5 +1,5 @@
 import type { Edge, LayoutDocument } from '@danfessler/trellis'
-import { MAIN_THREAD } from '@purrable/contracts'
+import { MAIN_THREAD } from '@goblin/contracts'
 import { record } from './boundary.ts'
 import { balanced, insertBeside, leafOrder, replaceView, singlePane, swapViews, withoutView } from './trellis-layout.ts'
 import { parseLayoutDocument } from './workspace-document.ts'
@@ -172,7 +172,7 @@ export function prune(state: WorkspaceState, keep: (key: ItemKey) => boolean): W
 }
 
 /** The storage key of a device's workspace for one owner. */
-export const workspaceStorageKey = (owner: string): string => `purrable:workspace:v2:${owner}`
+export const workspaceStorageKey = (owner: string): string => `goblin:workspace:v2:${owner}`
 
 /**
  * A stored workspace: conversation and App panes come back (drafts need what the owner did this time; an App comes

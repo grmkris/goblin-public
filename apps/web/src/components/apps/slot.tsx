@@ -2,9 +2,9 @@
 // loads the App when it comes on screen; while the App is a page the row says so, with the way there and back; an App
 // unloaded to stay under the cap leaves a stub that shows it again. The App's page (page.tsx) is a slot filling its pane.
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef } from 'react'
-import type { AppView } from '@purrable/contracts'
+import type { AppView } from '@goblin/contracts'
 import { AppWindowIcon } from 'lucide-react'
-import { Button } from '@purrable/ui'
+import { Button } from '@goblin/ui'
 import { CHROME_HEIGHT } from '../../lib/app-stage.ts'
 import { inlineHeight } from '../../lib/host-context.ts'
 import { appKey, isOpen } from '../../lib/workspace.ts'

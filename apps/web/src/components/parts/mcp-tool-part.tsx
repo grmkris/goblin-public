@@ -1,5 +1,5 @@
 import { type ReactNode, createContext, use, useState } from 'react'
-import { Button } from '@purrable/ui'
+import { Button } from '@goblin/ui'
 import { ApiFailure, failureText } from '../../lib/boundary.ts'
 import type { ToolPart } from '../../lib/parts.ts'
 import { useAppHost } from '../apps/host.tsx'

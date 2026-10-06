@@ -1,5 +1,5 @@
 import type { Tool } from '@modelcontextprotocol/client'
-import type { ServerView } from '@purrable/contracts'
+import type { ServerView } from '@goblin/contracts'
 import { describe, expect, it } from 'vitest'
 import { type Exclusion, sameExclusions, scopeOf } from '../src/capabilities/profiles.ts'
 import { capabilityView, offers } from '../src/capabilities/view.ts'

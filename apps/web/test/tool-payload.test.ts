@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { JsonView } from '@purrable/ui'
+import { JsonView } from '@goblin/ui'
 import { outputBlocks } from '../src/lib/tool-payload.ts'
 
 const envelope = (content: readonly unknown[], structuredContent: unknown = '[unsupported]') => ({

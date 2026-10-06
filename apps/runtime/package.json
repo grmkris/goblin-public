@@ -1,5 +1,5 @@
 {
-  "name": "@purrable/runtime",
+  "name": "@goblin/runtime",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -22,9 +22,9 @@
     "@better-auth/passkey": "1.7.6",
     "@earendil-works/pi-ai": "1.0.1",
     "@earendil-works/pi-durable": "1.0.1",
+    "@goblin/contracts": "workspace:*",
     "@modelcontextprotocol/client": "2.2.0",
     "@modelcontextprotocol/server": "2.2.0",
-    "@purrable/contracts": "workspace:*",
     "agents": "0.26.0",
     "better-auth": "1.7.6",
     "drizzle-orm": "1.0.0-rc.5-ab785fc",

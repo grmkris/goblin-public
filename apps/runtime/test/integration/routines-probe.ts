@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { RoutineStore } from '../../src/routines/store.ts'
-import type { RoutineDefinition } from '@purrable/contracts'
+import type { RoutineDefinition } from '@goblin/contracts'
 import {
   appRoutines,
   appRoutineOperations,

@@ -17,7 +17,7 @@ import { applyReview, Review } from '../src/review.ts'
 import { stageGate } from '../src/stages.ts'
 import { answerMetrics, efficiency } from '../src/metrics.ts'
 
-const dir = resolve(import.meta.dirname, '../../.local/bench/corpora/purrable-claude-canary')
+const dir = resolve(import.meta.dirname, '../../.local/bench/corpora/claude-canary')
 const sourcePath = resolve(dir, 'source.jsonl')
 const runPath = resolve(dir, '../../runs/real-claude-canary-04/result.json')
 test.skipIf(!existsSync(runPath))('unreviewed real answers have no accuracy and runtime failures stay separate', () => {
@@ -66,7 +66,7 @@ test.skipIf(!existsSync(sourcePath))('real canary preserves provider-default thi
   const original = Schema.decodeUnknownSync(Manifest)(JSON.parse(readFileSync(resolve(dir, 'manifest.json'), 'utf8')))
   const scenarioId = original.scenarioIds[0]
   if (original.corpus === undefined || scenarioId === undefined) throw new Error('Missing real canary manifest')
-  const manifest = canaryManifest('purrable-claude-canary', scenarioId, original.corpus)
+  const manifest = canaryManifest('claude-canary', scenarioId, original.corpus)
   expect(manifest.transport).toEqual({ contextWindowTokens: 131_072, thinking: 'provider-default' })
   expect(manifest.variants).toHaveLength(6)
 })
@@ -173,9 +173,11 @@ test.skipIf(!existsSync(resolve(pairedPath, 'resolved.json')))(
         22,
       ).reasons,
     ).toContain('Per-answer request ceiling exceeded')
-    expect(
-      answerMetrics(data, 'purrable-claude-canary.22.abstention.optchat.qwen3.8-flash.qwen3.8-flash'),
-    ).toMatchObject({
+    const failedAnswer = results.find((result) =>
+      result.id.endsWith('.22.abstention.optchat.qwen3.8-flash.qwen3.8-flash'),
+    )
+    if (failedAnswer === undefined) throw new Error('Missing frozen abstention answer')
+    expect(answerMetrics(data, failedAnswer.id)).toMatchObject({
       outcome: 'fail',
       apiAttempts: 71,
       apiRetries: 0,

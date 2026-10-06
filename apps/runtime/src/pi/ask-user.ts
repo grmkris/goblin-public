@@ -1,6 +1,6 @@
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import { type Static, Type } from '@earendil-works/pi-ai'
-import type { JsonObject, QuestionSpec } from '@purrable/contracts'
+import type { JsonObject, QuestionSpec } from '@goblin/contracts'
 
 const OptionSchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 64 }),
@@ -76,7 +76,7 @@ export function askingExtension(
   onQuestion?: (session: string, callId: string, questions: readonly QuestionSpec[]) => Promise<void>,
 ) {
   return defineExtension({
-    name: onQuestion === undefined ? 'purrable.ask' : 'purrable.routine-ask',
+    name: onQuestion === undefined ? 'goblin.ask' : 'goblin.routine-ask',
     sections: [section('asking', () => ASKING)],
     tools: [
       defineTool({

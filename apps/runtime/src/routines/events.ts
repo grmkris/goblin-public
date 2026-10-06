@@ -1,4 +1,4 @@
-import { RoutineDefinition } from '@purrable/contracts'
+import { RoutineDefinition } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import * as Effect from 'effect/Effect'
 import { drizzle } from 'drizzle-orm/durable-sqlite'

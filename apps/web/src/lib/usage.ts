@@ -1,4 +1,4 @@
-import type { UsageToday } from '@purrable/contracts'
+import type { UsageToday } from '@goblin/contracts'
 import type { ChatMessage } from './projection.ts'
 
 /**

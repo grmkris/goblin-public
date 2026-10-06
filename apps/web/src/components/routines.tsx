@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Schema } from 'effect'
-import { type RoutineDefinition, RoutinePage, RoutineSettings, RoutineView } from '@purrable/contracts'
+import { type RoutineDefinition, RoutinePage, RoutineSettings, RoutineView } from '@goblin/contracts'
 import {
   Alert,
   AlertDescription,
@@ -22,7 +22,7 @@ import {
   FieldLabel,
   Input,
   Skeleton,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { AlarmClockIcon, PlusIcon } from 'lucide-react'
 import { failureText, request } from '../lib/boundary.ts'
 import { routineStatus } from '../lib/labels.ts'
@@ -34,7 +34,7 @@ import { StatusLabel } from './status-label.tsx'
 const decodePage = Schema.decodeUnknownSync(RoutinePage)
 const decodeView = Schema.decodeUnknownSync(RoutineView)
 const decodeSettings = Schema.decodeUnknownSync(RoutineSettings)
-const csrf = { 'x-purrable-csrf': '1' }
+const csrf = { 'x-goblin-csrf': '1' }
 const operation = () => crypto.randomUUID()
 const localTime = (at: number, zone: string) =>
   new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: zone }).format(at)

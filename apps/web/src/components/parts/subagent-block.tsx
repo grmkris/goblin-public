@@ -1,6 +1,6 @@
 import { type ReactNode, use, useEffect, useState } from 'react'
-import type { ConversationView } from '@purrable/contracts'
-import { Button, Duration } from '@purrable/ui'
+import type { ConversationView } from '@goblin/contracts'
+import { Button, Duration } from '@goblin/ui'
 import {
   CheckIcon,
   ChevronRightIcon,

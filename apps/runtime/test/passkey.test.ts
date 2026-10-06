@@ -6,12 +6,12 @@ type Assertion = { readonly verification: { readonly authenticationInfo: { reado
 const assertion = (userVerified: boolean): Assertion => ({ verification: { authenticationInfo: { userVerified } } })
 
 describe('passkey policy (unit)', () => {
-  const plugin = passkeyPlugin('https://purrable-dev.example.workers.dev/')
+  const plugin = passkeyPlugin('https://goblin-dev.example.workers.dev/')
 
   it("binds the relying party to the app's own host and asks for a discoverable, user-verified credential", () => {
     expect(plugin.options).toMatchObject({
-      rpID: 'purrable-dev.example.workers.dev',
-      origin: 'https://purrable-dev.example.workers.dev',
+      rpID: 'goblin-dev.example.workers.dev',
+      origin: 'https://goblin-dev.example.workers.dev',
       authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
     })
   })

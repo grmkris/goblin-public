@@ -1,4 +1,4 @@
-import type { BillingState, ResidentStatus, RoutineRunView, RoutineView, ServerView } from '@purrable/contracts'
+import type { BillingState, ResidentStatus, RoutineRunView, RoutineView, ServerView } from '@goblin/contracts'
 
 /**
  * A state in the owner's words, with the tone its dot takes: `good` (working as it should), `attention` (the owner can

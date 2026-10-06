@@ -23,7 +23,7 @@ async function hookKey(credentialKey: string): Promise<CryptoKey> {
   const raw = Uint8Array.from(atob(credentialKey), (char) => char.codePointAt(0) ?? 0)
   const base = await crypto.subtle.importKey('raw', raw, 'HKDF', false, ['deriveKey'])
   return crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: encoder.encode('purrable/channel-hook') },
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: encoder.encode('goblin/channel-hook') },
     base,
     { name: 'HMAC', hash: 'SHA-256', length: 256 },
     false,

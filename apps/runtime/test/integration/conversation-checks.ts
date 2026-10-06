@@ -1,7 +1,7 @@
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { expect } from 'vitest'
-import { WorkspaceChange, WorkspaceSnapshot } from '@purrable/contracts'
+import { WorkspaceChange, WorkspaceSnapshot } from '@goblin/contracts'
 
 /** A model request as the probe recorded it. */
 export const ModelRequest = Schema.Struct({

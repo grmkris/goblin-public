@@ -10,7 +10,7 @@ import {
   SheetTrigger,
   useMediaQuery,
   useMessageScroller,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { HistoryIcon, ListIcon } from 'lucide-react'
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 import { currentTurn, markPositions, viewportBand } from '../lib/turn-map.ts'

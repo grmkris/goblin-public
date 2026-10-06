@@ -282,6 +282,6 @@ export class SqliteEventStore {
 }
 
 /** Injectable storage service, used without a network wait inside any transaction. */
-export class EventStorage extends Context.Service<EventStorage, SqliteEventStore>()('purrable/EventStorage') {}
+export class EventStorage extends Context.Service<EventStorage, SqliteEventStore>()('goblin/EventStorage') {}
 export const eventStorageEffect = <A>(work: (store: SqliteEventStore) => A): Effect.Effect<A, AppError, EventStorage> =>
   EventStorage.use((store) => Effect.try({ try: () => work(store), catch: toAppError }))

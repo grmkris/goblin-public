@@ -1,4 +1,4 @@
-import type { EventHealth } from '@purrable/contracts'
+import type { EventHealth } from '@goblin/contracts'
 import { eventStatus } from '../lib/labels.ts'
 import { relativeTime } from '../lib/threads.ts'
 import { StatusLabel } from './status-label.tsx'

@@ -10,18 +10,18 @@ const root = fileURLToPath(new URL('./', import.meta.url))
 const runtimeStage = (name: string) => (name === 'local' || name === 'dev' || name === 'prod' ? name : 'test')
 
 export default Alchemy.Stack(
-  'Purrable',
+  'goblin',
   { providers: Cloudflare.providers(), state: Alchemy.localState() },
   Effect.gen(function* () {
     const stage = resolveStage(yield* Alchemy.Stage)
-    const appUrl = yield* Config.String('PURRABLE_APP_URL').pipe(Config.withDefault('http://localhost:18971'))
-    const domain = yield* Config.String('PURRABLE_DOMAIN').pipe(Config.withDefault(''))
-    const signupMode = yield* Config.String('PURRABLE_SIGNUP_MODE').pipe(Config.withDefault('closed'))
+    const appUrl = yield* Config.String('GOBLIN_APP_URL').pipe(Config.withDefault('http://localhost:18971'))
+    const domain = yield* Config.String('GOBLIN_DOMAIN').pipe(Config.withDefault(''))
+    const signupMode = yield* Config.String('GOBLIN_SIGNUP_MODE').pipe(Config.withDefault('closed'))
     // An address on an apex onboarded for Cloudflare Email Sending; empty means no mail and no email verification.
-    const mailSender = yield* Config.String('PURRABLE_MAIL_SENDER').pipe(Config.withDefault(''))
+    const mailSender = yield* Config.String('GOBLIN_MAIL_SENDER').pipe(Config.withDefault(''))
     if (signupMode === 'open' && mailSender === '' && !stage.local)
       return yield* Effect.die(
-        new Error('open sign-up on a deployed stage needs PURRABLE_MAIL_SENDER (email verification)'),
+        new Error('open sign-up on a deployed stage needs GOBLIN_MAIL_SENDER (email verification)'),
       )
     if (stage.name === 'dev' && signupMode === 'open')
       return yield* Effect.die(new Error('dev_sign_up_must_be_closed_or_invite_only'))
@@ -30,7 +30,7 @@ export default Alchemy.Stack(
     )
     if ((stage.name === 'prod') !== (billingEnvironment === 'live_mode'))
       return yield* Effect.die(new Error('Dodo stage and billing mode must match'))
-    const db = yield* Cloudflare.D1.Database('PurrableAuth', {
+    const db = yield* Cloudflare.D1.Database('goblinAuth', {
       name: stage.resourceName('auth'),
       migrations: fileURLToPath(new URL('../../apps/runtime/migrations', import.meta.url)),
     })
@@ -60,7 +60,7 @@ export default Alchemy.Stack(
         AGENTS: agents,
         AUTH_DB: db,
         APP_URL: appUrl,
-        BETTER_AUTH_SECRET: Config.Redacted('PURRABLE_BETTER_AUTH_SECRET'),
+        BETTER_AUTH_SECRET: Config.Redacted('GOBLIN_BETTER_AUTH_SECRET'),
         SIGNUP_MODE: signupMode,
         ...(mailSender === ''
           ? {}
@@ -68,16 +68,16 @@ export default Alchemy.Stack(
               MAIL: Cloudflare.Email.SendEmail('Mail', { allowedSenderAddresses: [mailSender] }),
               MAIL_SENDER: mailSender,
             }),
-        SIGNUP_INVITE_CODE: Config.Redacted('PURRABLE_SIGNUP_INVITE_CODE').pipe(Config.withDefault(Redacted.make(''))),
-        MODEL_BASE_URL: Config.String('PURRABLE_MODEL_BASE_URL').pipe(Config.withDefault('http://127.0.0.1:8317/v1')),
-        MODEL_ID: Config.String('PURRABLE_MODEL_ID').pipe(Config.withDefault('gemini-3.8-flash')),
-        MODELS: Config.String('PURRABLE_MODELS').pipe(Config.withDefault('')),
-        MODEL_KEY: Config.Redacted('PURRABLE_MODEL_KEY').pipe(Config.withDefault(Redacted.make(''))),
-        MODEL_DAILY_TOKENS: Config.String('PURRABLE_MODEL_DAILY_TOKENS').pipe(Config.withDefault('300000')),
-        MODEL_TOKEN_WEIGHTS: Config.String('PURRABLE_MODEL_TOKEN_WEIGHTS').pipe(Config.withDefault('{}')),
-        MEMORY_MODEL: Config.String('PURRABLE_MEMORY_MODEL').pipe(Config.withDefault('')),
-        MCP_SERVERS: Config.String('PURRABLE_MCP_SERVERS').pipe(Config.withDefault('[]')),
-        CREDENTIAL_KEY: Config.Redacted('PURRABLE_CREDENTIAL_KEY'),
+        SIGNUP_INVITE_CODE: Config.Redacted('GOBLIN_SIGNUP_INVITE_CODE').pipe(Config.withDefault(Redacted.make(''))),
+        MODEL_BASE_URL: Config.String('GOBLIN_MODEL_BASE_URL').pipe(Config.withDefault('http://127.0.0.1:8317/v1')),
+        MODEL_ID: Config.String('GOBLIN_MODEL_ID').pipe(Config.withDefault('gemini-3.8-flash')),
+        MODELS: Config.String('GOBLIN_MODELS').pipe(Config.withDefault('')),
+        MODEL_KEY: Config.Redacted('GOBLIN_MODEL_KEY').pipe(Config.withDefault(Redacted.make(''))),
+        MODEL_DAILY_TOKENS: Config.String('GOBLIN_MODEL_DAILY_TOKENS').pipe(Config.withDefault('300000')),
+        MODEL_TOKEN_WEIGHTS: Config.String('GOBLIN_MODEL_TOKEN_WEIGHTS').pipe(Config.withDefault('{}')),
+        MEMORY_MODEL: Config.String('GOBLIN_MEMORY_MODEL').pipe(Config.withDefault('')),
+        MCP_SERVERS: Config.String('GOBLIN_MCP_SERVERS').pipe(Config.withDefault('[]')),
+        CREDENTIAL_KEY: Config.Redacted('GOBLIN_CREDENTIAL_KEY'),
         DODO_PAYMENTS_ENVIRONMENT: billingEnvironment,
         DODO_PAYMENTS_API_KEY: Config.Redacted('DODO_PAYMENTS_API_KEY').pipe(Config.withDefault(Redacted.make(''))),
         DODO_PAYMENTS_WEBHOOK_KEY: Config.Redacted('DODO_PAYMENTS_WEBHOOK_KEY').pipe(

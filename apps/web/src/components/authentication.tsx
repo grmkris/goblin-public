@@ -13,7 +13,7 @@ import {
   Skeleton,
   failed,
   succeeded,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { authClient, redirectOf } from '../lib/auth-client.ts'
 import { ApiFailure, record, request } from '../lib/boundary.ts'
 import { AuthShell } from './auth-shell.tsx'
@@ -126,7 +126,7 @@ function InviteField({ value, onChange }: { readonly value: string; readonly onC
           value={value}
           onChange={(event) => onChange(event.target.value)}
         />
-        <FieldDescription>Purrable is invite-only for now.</FieldDescription>
+        <FieldDescription>goblin is invite-only for now.</FieldDescription>
       </Field>
     </FieldGroup>
   )
@@ -173,8 +173,8 @@ function ResetRequest({ notify }: { readonly notify: Notify }) {
 }
 
 const TITLES: Record<View, { readonly title: string; readonly description: string }> = {
-  'sign-in': { title: 'Sign in to Purrable', description: 'Your own resident agent, always on.' },
-  create: { title: 'Create your Purrable', description: 'You get your own resident agent.' },
+  'sign-in': { title: 'Sign in to goblin', description: 'Your own resident agent, always on.' },
+  create: { title: 'Create your goblin', description: 'You get your own resident agent.' },
   reset: { title: 'Reset your password', description: 'We email you a link to choose a new one.' },
 }
 

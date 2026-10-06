@@ -3,7 +3,7 @@
  * `bun run check:files`, not only at the end of a session. It is an AST rule rather than a text scan so that type-only
  * imports count too.
  *
- * - `no-cross-boundary-import`: a `@purrable/*` import must be a declared edge of the importing workspace, and a
+ * - `no-cross-boundary-import`: a `@goblin/*` import must be a declared edge of the importing workspace, and a
  *   runtime-bound module (`bun`, `bun:*`, `@effect/platform-bun`, `cloudflare:*`, `node:*`) must suit the runtime of the
  *   importing file (its workspace's runtime, or the zone's: `scripts/` is tooling, `test/` is test, root files are
  *   tooling, and a node's own `zones` override both).
@@ -62,7 +62,7 @@ const fixFor: Record<Family, string> = {
 }
 
 const workspaceOf = (specifier: string): string | undefined =>
-  specifier.startsWith('@purrable/') ? specifier.split('/').slice(0, 2).join('/') : undefined
+  specifier.startsWith('@goblin/') ? specifier.split('/').slice(0, 2).join('/') : undefined
 
 type Sourced =
   | ESTree.ImportDeclaration

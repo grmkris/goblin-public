@@ -83,7 +83,7 @@ function offered(
  */
 export function residentMcpExtension(run: RunProgram, authorize?: (session: string) => Promise<void>) {
   return defineExtension({
-    name: 'purrable.mcp',
+    name: 'goblin.mcp',
     tools: [
       defineTool({
         name: 'mcp_list',

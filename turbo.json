@@ -9,7 +9,7 @@
     "test:integration": {
       "dependsOn": ["^build", "^typecheck"],
       "cache": false,
-      "env": ["PURRABLE_HARNESS_PORT", "PURRABLE_NATIVE_LIFECYCLE_PHASE"],
+      "env": ["GOBLIN_HARNESS_PORT", "GOBLIN_NATIVE_LIFECYCLE_PHASE"],
       "outputs": []
     },
     "build": {

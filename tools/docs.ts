@@ -1,6 +1,6 @@
 /**
  * Documentation checks run by `bun run agents:check`: relative links in the living docs resolve, and every
- * `bun run <script>` they mention is a root script. `docs/archive/` is frozen history and is not checked.
+ * `bun run <script>` they mention is a root script.
  */
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -13,7 +13,6 @@ const AGENT_FACING = /^(?:AGENTS|CLAUDE|GLOSSARY)\.md$|^docs\/(?:agents|adr)\//u
 
 const isLivingDoc = (file: string): boolean =>
   file.endsWith('.md') &&
-  !file.startsWith('docs/archive/') &&
   !file.startsWith('.agents/') &&
   (file.startsWith('docs/') || !file.includes('/') || /^(?:scripts|tools)\/README\.md$/u.test(file))
 

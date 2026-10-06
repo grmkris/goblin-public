@@ -1,4 +1,4 @@
-import type { CapabilityChange, ConversationCapabilities } from '@purrable/contracts'
+import type { CapabilityChange, ConversationCapabilities } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import { type AppError, InvalidInput } from '../http/errors.ts'
 import {

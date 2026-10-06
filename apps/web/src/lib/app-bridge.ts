@@ -21,7 +21,7 @@ export function createAppBridge(
 ): AppBridge {
   const bridge = new AppBridge(
     null,
-    { name: 'Purrable', version: '0.1.0' },
+    { name: 'goblin', version: '0.1.0' },
     { serverTools: {}, serverResources: {}, openLinks: {}, updateModelContext: { text: {}, structuredContent: {} } },
     { hostContext: context },
   )

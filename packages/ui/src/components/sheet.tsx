@@ -1,5 +1,5 @@
 // Adapted from grmkris/myapps packages/ui/src/components/sheet.tsx (8bb08f1), with its keyboard-aware bottom sheet
-// (content-sized; the `full` size is left out) and Purrable's `pane` variant for sheets opened from the side.
+// (content-sized; the `full` size is left out) and goblin's `pane` variant for sheets opened from the side.
 import * as React from 'react'
 import { Dialog as SheetPrimitive } from '@base-ui/react/dialog'
 import { XIcon } from 'lucide-react'

@@ -10,7 +10,7 @@ import {
   type PasskeySummary,
   failed,
   succeeded,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { authClient } from '../lib/auth-client.ts'
 import { signOut } from '../lib/session.tsx'
 
@@ -64,7 +64,7 @@ export function PasskeysCard({ onError }: { readonly onError: (message: string) 
             onAdd={add}
             onRemove={remove}
             onReauthenticate={() => void signOut('/settings')}
-            suggestedName={`Purrable on ${navigator.platform || 'this device'}`}
+            suggestedName={`goblin on ${navigator.platform || 'this device'}`}
           />
         )}
       </CardContent>

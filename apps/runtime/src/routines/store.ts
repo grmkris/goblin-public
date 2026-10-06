@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { Conflict, InvalidInput, NotFound } from '../http/errors.ts'
-import { RoutineDefinition, RoutineView } from '@purrable/contracts'
+import { RoutineDefinition, RoutineView } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { canonicalArguments } from '../mcp/events/store.ts'
 import { appRoutineOperations, appRoutines, appRoutineSettings } from '../storage/routines.ts'

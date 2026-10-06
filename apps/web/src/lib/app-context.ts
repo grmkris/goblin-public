@@ -1,7 +1,7 @@
 // What an MCP App hands the host for the owner and the agent: links to open, and context to share with the next
 // message. Both come from the App, so both are untrusted: links open only on the owner's click, context travels as
 // a labelled block the agent treats as data.
-import { type AppContext, authorOf } from '@purrable/contracts'
+import { type AppContext, authorOf } from '@goblin/contracts'
 import { isString, record, records } from './boundary.ts'
 
 const MAX_CONTEXT = 8192

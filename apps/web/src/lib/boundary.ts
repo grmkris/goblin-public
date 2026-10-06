@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import type { JsonValue } from '@purrable/contracts'
+import type { JsonValue } from '@goblin/contracts'
 
 const ObjectSchema = Schema.Record(Schema.String, Schema.Unknown)
 export const isString = Schema.is(Schema.String)
@@ -52,7 +52,7 @@ export async function request(path: string, options: RequestOptions = {}): Promi
     method,
     credentials: 'same-origin',
     headers: {
-      ...(method === 'GET' ? {} : { 'x-purrable-csrf': '1' }),
+      ...(method === 'GET' ? {} : { 'x-goblin-csrf': '1' }),
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       ...headers,
     },

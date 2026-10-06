@@ -13,7 +13,7 @@ export async function person(base: string): Promise<Person> {
   const email = `${crypto.randomUUID()}@fixture.test`
   const response = await fetch(`${base}/api/auth/sign-up/email`, {
     method: 'POST',
-    headers: { origin: 'https://purrable.test', 'content-type': 'application/json', 'cf-connecting-ip': ip },
+    headers: { origin: 'https://goblin.test', 'content-type': 'application/json', 'cf-connecting-ip': ip },
     body: JSON.stringify({
       email,
       name: 'Owner fixture',
@@ -36,9 +36,9 @@ export const call = (base: string, who: Person, path: string, body?: unknown, he
     method: body === undefined ? 'GET' : 'POST',
     headers: {
       cookie: who.cookie,
-      origin: 'https://purrable.test',
+      origin: 'https://goblin.test',
       'content-type': 'application/json',
-      'x-purrable-csrf': '1',
+      'x-goblin-csrf': '1',
       'cf-connecting-ip': who.ip,
       ...headers,
     },

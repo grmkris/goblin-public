@@ -23,26 +23,26 @@ import type { WorkspaceFeed } from './workspace/feed.ts'
 import type { AppRegistry } from './apps/registry.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
-export class Mcp extends Context.Service<Mcp, McpHost>()('purrable/Mcp') {}
-export class Resident extends Context.Service<Resident, ResidentAuthority>()('purrable/Resident') {}
-export class Conversations extends Context.Service<Conversations, ConversationRegistry>()('purrable/Conversations') {}
-export class Budget extends Context.Service<Budget, ModelBudget>()('purrable/Budget') {}
-export class Models extends Context.Service<Models, ModelPicker>()('purrable/Models') {}
-export class Memory extends Context.Service<Memory, MainMemory>()('purrable/Memory') {}
-export class Skills extends Context.Service<Skills, SkillLibrary>()('purrable/Skills') {}
-export class Learner extends Context.Service<Learner, SkillLearner>()('purrable/Learner') {}
-export class Channel extends Context.Service<Channel, TelegramChannel>()('purrable/Channel') {}
+export class Mcp extends Context.Service<Mcp, McpHost>()('goblin/Mcp') {}
+export class Resident extends Context.Service<Resident, ResidentAuthority>()('goblin/Resident') {}
+export class Conversations extends Context.Service<Conversations, ConversationRegistry>()('goblin/Conversations') {}
+export class Budget extends Context.Service<Budget, ModelBudget>()('goblin/Budget') {}
+export class Models extends Context.Service<Models, ModelPicker>()('goblin/Models') {}
+export class Memory extends Context.Service<Memory, MainMemory>()('goblin/Memory') {}
+export class Skills extends Context.Service<Skills, SkillLibrary>()('goblin/Skills') {}
+export class Learner extends Context.Service<Learner, SkillLearner>()('goblin/Learner') {}
+export class Channel extends Context.Service<Channel, TelegramChannel>()('goblin/Channel') {}
 /** What each conversation switched off: the one gate every MCP, skills and subagent tool asks (ADR 0010). */
-export class Capabilities extends Context.Service<Capabilities, CapabilityProfiles>()('purrable/Capabilities') {}
-export class Routines extends Context.Service<Routines, RoutineStore>()('purrable/Routines') {}
-export class RoutineRuns extends Context.Service<RoutineRuns, RoutineRunStore>()('purrable/RoutineRuns') {}
+export class Capabilities extends Context.Service<Capabilities, CapabilityProfiles>()('goblin/Capabilities') {}
+export class Routines extends Context.Service<Routines, RoutineStore>()('goblin/Routines') {}
+export class RoutineRuns extends Context.Service<RoutineRuns, RoutineRunStore>()('goblin/RoutineRuns') {}
 export class RoutineUsageProjection extends Context.Service<RoutineUsageProjection, RoutineUsage>()(
-  'purrable/RoutineUsageProjection',
+  'goblin/RoutineUsageProjection',
 ) {}
 /** The owner's conversations and what each is doing, as one live feed. */
-export class Workspace extends Context.Service<Workspace, WorkspaceFeed>()('purrable/Workspace') {}
+export class Workspace extends Context.Service<Workspace, WorkspaceFeed>()('goblin/Workspace') {}
 /** The owner's kept MCP Apps (ADR 0020). */
-export class Apps extends Context.Service<Apps, AppRegistry>()('purrable/Apps') {}
+export class Apps extends Context.Service<Apps, AppRegistry>()('goblin/Apps') {}
 export type AgentServices =
   | Entitlements
   | Events

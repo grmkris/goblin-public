@@ -1,5 +1,5 @@
 import type { ToolRegistration } from '@earendil-works/pi-durable'
-import { type CapabilityTarget, type ConversationKind, MAIN_THREAD, RoutineDefinition } from '@purrable/contracts'
+import { type CapabilityTarget, type ConversationKind, MAIN_THREAD, RoutineDefinition } from '@goblin/contracts'
 import { and, eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { appConversationCapabilities, appConversations, appChannel, appTelegramChannel } from '../storage/schema.ts'

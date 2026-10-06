@@ -7,7 +7,7 @@ import type { RunProgram } from './resident-mcp.ts'
 /** Routine calls use the same model and tool authority gate, with deduplicated response usage receipts. */
 export function routineBudgetExtension(run: RunProgram) {
   return defineExtension({
-    name: 'purrable.routine-budget',
+    name: 'goblin.routine-budget',
     hooks: [
       hook(ToolTask, {
         beforeTool: async (_call, api) => {

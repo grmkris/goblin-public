@@ -24,8 +24,8 @@ describe('channel doorbell', () => {
     expect(token).toMatch(/^[\w-]{43}$/u)
     expect(await hookTokenValid(KEY, 'user-1', token)).toBe(true)
     expect(await hookTokenValid(KEY, 'user-2', token)).toBe(false)
-    expect(hookUrl('https://purrable.example/anything', 'user-1', token)).toBe(
-      `https://purrable.example/hooks/myagent/user-1/${token}`,
+    expect(hookUrl('https://goblin.example/anything', 'user-1', token)).toBe(
+      `https://goblin.example/hooks/myagent/user-1/${token}`,
     )
   })
 

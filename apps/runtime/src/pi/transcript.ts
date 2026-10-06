@@ -1,5 +1,5 @@
 import type { Conversation, EntryRecord } from '@earendil-works/pi-durable'
-import { authorOf } from '@purrable/contracts'
+import { authorOf } from '@goblin/contracts'
 import { Predicate } from 'effect'
 import { BACKGROUND } from './context.ts'
 

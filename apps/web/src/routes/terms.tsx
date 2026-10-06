@@ -5,7 +5,7 @@ function Terms() {
   return (
     <LegalPage title="Terms of service">
       <p>
-        Purrable provides a personal AI agent, conversations and connections to tools you authorize. Pro costs US$10 per
+        goblin provides a personal AI agent, conversations and connections to tools you authorize. Pro costs US$10 per
         month, with applicable taxes shown at checkout. There is no trial or free tier. Your subscription renews monthly
         until cancelled through the billing portal.
       </p>
@@ -16,7 +16,7 @@ function Terms() {
       </p>
       <p>
         AI outputs can be wrong. Review decisions and external actions before relying on them. A request being accepted
-        does not mean an external action completed. Do not use Purrable for illegal activity or to harm others, bypass
+        does not mean an external action completed. Do not use goblin for illegal activity or to harm others, bypass
         access controls or abuse the service.
       </p>
       <p>

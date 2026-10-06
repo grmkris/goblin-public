@@ -2,8 +2,8 @@
 // labelled from the server's card; it starts disconnected and is connected like any other.
 import { useEffect, useState } from 'react'
 import { Schema } from 'effect'
-import { ServerSuggestion, ServerView } from '@purrable/contracts'
-import { Button, Field, FieldDescription, FieldGroup, FieldLabel, Input } from '@purrable/ui'
+import { ServerSuggestion, ServerView } from '@goblin/contracts'
+import { Button, Field, FieldDescription, FieldGroup, FieldLabel, Input } from '@goblin/ui'
 import { ApiFailure, failureText, isString, record, request } from '../lib/boundary.ts'
 
 const decodeServer = Schema.decodeUnknownSync(ServerView)

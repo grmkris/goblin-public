@@ -4,7 +4,7 @@
 // same path without reloading. It clips itself to what of that place shows, and tells the host whether any does.
 import { type RefObject, useEffect, useRef, useState } from 'react'
 import { PanelRightOpenIcon, XIcon } from 'lucide-react'
-import { Button, Receipt } from '@purrable/ui'
+import { Button, Receipt } from '@goblin/ui'
 import { clipStage } from '../../lib/app-occlusion.ts'
 import { CHROME_HEIGHT, type Rect } from '../../lib/app-stage.ts'
 import { APP_MODES, type AppPlacement, inlineHeight } from '../../lib/host-context.ts'

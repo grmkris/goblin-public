@@ -1,4 +1,4 @@
-import type { RoutineDefinition } from '@purrable/contracts'
+import type { RoutineDefinition } from '@goblin/contracts'
 import { InvalidInput } from '../http/errors.ts'
 
 const MINUTE = 60_000

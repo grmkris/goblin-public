@@ -32,7 +32,7 @@ after Pi Durable's background subagent example:
 
 **Main remembers through an OptChat summary tree.** We adopt VictorTaelin's OptChat design for main's memory:
 - Every message since activation is summarized in order into lines of about 512 bytes by the cheapest offered model
-  (`PURRABLE_MEMORY_MODEL`), whose tokens count toward the owner's budget.
+  (`GOBLIN_MEMORY_MODEL`), whose tokens count toward the owner's budget.
 - Adjacent lines merge in pairs into a binary tree, and the tree is folded into a 48 KB view.
 
 We deviate from OptChat in three ways:

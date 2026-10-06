@@ -1,7 +1,7 @@
 import type { PersonalAgent } from '../../src/agent.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
-import type { RoutineDefinition } from '@purrable/contracts'
+import type { RoutineDefinition } from '@goblin/contracts'
 import { unwrap } from '../../src/http/rpc.ts'
 import { appRoutines } from '../../src/storage/routines.ts'
 import { RoutineStore } from '../../src/routines/store.ts'

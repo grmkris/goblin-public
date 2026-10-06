@@ -66,7 +66,7 @@ export const protectedResourceMetadata = (env: Pick<RuntimeEnv, 'APP_URL'>) => (
   authorization_servers: [authIssuer(env.APP_URL)],
   bearer_methods_supported: ['header'],
   scopes_supported: ['openid', 'profile', 'email', 'offline_access'],
-  resource_name: 'purrable',
+  resource_name: 'goblin',
 })
 
 /** The registered name of an inbound client, for display and its conversation label. */

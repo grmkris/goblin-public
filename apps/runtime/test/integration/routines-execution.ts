@@ -6,7 +6,7 @@ import { RoutineRunStore } from '../../src/routines/runs.ts'
 import { appConversations, appConversationCapabilities } from '../../src/storage/schema.ts'
 import { BACKGROUND, conversationId } from '../../src/pi/context.ts'
 import type { SeenRequest } from './model.ts'
-import { MAIN_THREAD, type RoutineDefinition } from '@purrable/contracts'
+import { MAIN_THREAD, type RoutineDefinition } from '@goblin/contracts'
 
 /** Bounded native happy path: real app SQLite, native Pi tasks and the injected keyless model. */
 export async function routineExecutionProbe(

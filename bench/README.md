@@ -344,7 +344,7 @@ and `archive_read`. The native arm answers without OptChat. Historical commands 
 Prepare a fresh private manifest without inference:
 
 ```sh
-bun run bench:recall --manifest .local/bench/corpora/purrable-claude-canary/manifest.json --name deepseek-recall-v2 --build-trial 9
+bun run bench:recall --manifest .local/bench/corpora/claude-canary/manifest.json --name deepseek-recall-v2 --build-trial 9
 bun run bench:validate --manifest .local/bench/experiments/deepseek-recall-v2.json
 bun run bench:plan --manifest .local/bench/experiments/deepseek-recall-v2.json
 ```

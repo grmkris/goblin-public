@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Purrable",
-  "short_name": "Purrable",
+  "name": "goblin",
+  "short_name": "goblin",
   "description": "Your own resident agent.",
   "start_url": "/",
   "scope": "/",

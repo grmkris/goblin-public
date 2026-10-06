@@ -1,4 +1,4 @@
-import type { RoutineDefinition, RoutineEdit, RoutineRevision, RoutineSettings } from '@purrable/contracts'
+import type { RoutineDefinition, RoutineEdit, RoutineRevision, RoutineSettings } from '@goblin/contracts'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import { nextInt } from 'effect/Random'

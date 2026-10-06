@@ -9,7 +9,7 @@ export default defineConfig({
       CLOUDFLARE_ACCOUNT_ID: '00000000000000000000000000000000',
       CLOUDFLARE_API_TOKEN: 'local-placeholder-token',
       ALCHEMY_PLAIN: '1',
-      PURRABLE_HARNESS_PORT: process.env['PURRABLE_HARNESS_PORT'] ?? '18861',
+      GOBLIN_HARNESS_PORT: process.env['GOBLIN_HARNESS_PORT'] ?? '18861',
     },
   },
 })

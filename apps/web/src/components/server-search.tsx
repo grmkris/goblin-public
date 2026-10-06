@@ -2,8 +2,8 @@
 // came from; "namespace verified" appears only where the registry checks it. Adding one works as adding by URL.
 import { useEffect, useState } from 'react'
 import { Schema } from 'effect'
-import { CatalogEntry, RegistryView } from '@purrable/contracts'
-import { Badge, Button, Input, Spinner } from '@purrable/ui'
+import { CatalogEntry, RegistryView } from '@goblin/contracts'
+import { Badge, Button, Input, Spinner } from '@goblin/ui'
 import { ApiFailure, failureText, request } from '../lib/boundary.ts'
 import { addAndConnect } from './server-add.tsx'
 

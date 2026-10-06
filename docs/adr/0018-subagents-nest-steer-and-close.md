@@ -8,7 +8,7 @@ extensions and the subagents extension itself (`subagentsExtension(run, (self) =
 skills. Nothing caps how many work at once or how deep they go: the Worker's budget-capped model key bounds the spend,
 Stop and Close reach the whole subtree, and the workspace feed shows a subtree that is still waiting.
 
-**Every message to a subagent goes through a relay** (`purrable.subagent-relay`, `pi/subagent-relay.ts`), a background
+**Every message to a subagent goes through a relay** (`goblin.subagent-relay`, `pi/subagent-relay.ts`), a background
 task in the spawner's conversation, whoever wrote it:
 - deliver: submits the message to the subagent with a request id (`subagent:<relay>`, or the owner's operation id) and
   `whenBusy`;
@@ -44,6 +44,6 @@ a half-done answer.
 Consequences:
 - Only main's answers to its own subagents' reports go to Telegram; reports of a message the owner wrote do not.
 - The feed's `waiting` follows live relays.
-- Reporters (`purrable.subagent-reporter`) still in flight when this deploys have no definition: their answer is not
+- Reporters (`goblin.subagent-reporter`) still in flight when this deploys have no definition: their answer is not
   reported (once), and a Stop or Close settles them as orphaned.
 - The runtime has no `runningSubagents` count any more.

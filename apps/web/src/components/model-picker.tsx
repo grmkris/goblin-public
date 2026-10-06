@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { Schema } from 'effect'
 import { ChevronsUpDownIcon } from 'lucide-react'
-import { ModelChoice, type ModelOption } from '@purrable/contracts'
+import { ModelChoice, type ModelOption } from '@goblin/contracts'
 import {
   Button,
   DropdownMenu,
@@ -12,7 +12,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@purrable/ui'
+} from '@goblin/ui'
 import { failureText, request } from '../lib/boundary.ts'
 
 const decodeChoice = Schema.decodeUnknownSync(ModelChoice)
