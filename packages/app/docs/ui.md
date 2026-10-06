@@ -83,8 +83,8 @@ boolean }[] }`.
 - Style with Tailwind classes and goblin's colours, which follow light and dark: `bg-background`, `bg-card`,
   `bg-muted`, `text-foreground`, `text-muted-foreground`, `text-primary`, `text-destructive`, `border`. Do not write
   colours like `#fff` or `bg-white`. Start the root with padding (`p-4`); the width changes, so let rows wrap.
-- If the view throws, the owner sees the error and you see it under "Your apps" and in `app_inspect` events. Fix it
-  with `app_build` and `edits`.
+- If the view throws, the owner sees the error and you see it in the `<apps>` list at the end of each request and in
+  `app_inspect` events. Fix it with `app_build` and `edits`.
 
 ## Components (`@goblin/ui`)
 

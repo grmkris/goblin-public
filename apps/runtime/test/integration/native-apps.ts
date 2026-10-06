@@ -130,6 +130,10 @@ export function appsCase(url: string) {
     expect(turn).toMatchObject({
       built: expect.stringContaining('"status":"active","app":"tally"'),
       called: 'done: {"revision":2,"state":{"count":4}}',
+      // The build changed the trailing context block, not the system prompt the provider caches.
+      samePrompt: true,
+      listedBefore: false,
+      listedAfter: true,
     })
     // Built in one turn, offered from the next request: main selects app extensions through the settings getter.
     expect(turn).toHaveProperty(

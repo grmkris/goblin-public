@@ -110,7 +110,7 @@ export class PersonalAgentProbe extends PersonalAgent {
   }
 
   async appsTurnProbe(): Promise<string> {
-    return JSON.stringify(await appsTurnProbe(this.harness, () => this.seen.at(-1)?.tools ?? []))
+    return JSON.stringify(await appsTurnProbe(this.harness, () => this.seen))
   }
 
   /** On this object's own native schedules, and its own `runAppJob` callback. */

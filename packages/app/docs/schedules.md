@@ -33,4 +33,5 @@ export default defineApp({
 - A failing run is retried after 15 minutes, then 30, 60… up to 6 hours. After 10 failures in a row the schedule
   pauses until you build a new version; `app_inspect` shows the errors (include `events`).
 - While the owner has been away for 30 days or turned the agent's own work off, runs are skipped as "waiting".
-- Your apps section shows each schedule and how its last run went; the owner sees it on the app's bar.
+- The `<apps>` list at the end of each request shows each schedule and how its last run went; the owner sees it on
+  the app's bar.

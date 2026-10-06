@@ -173,7 +173,11 @@ card. In a subagent the result has words only. The owner's console and an App's 
 are not narrowed; Telegram and inbound clients talk in main, so main's switches cover them.
 
 The persona contributes two static system-prompt sections (`pi/persona.ts`): who the agent is, and that remote content
-is untrusted data. The `mcp_list` and `mcp_call` tools (`pi/resident-mcp.ts`) are how the model reaches the owner's
+is untrusted data. The system prompt holds only text that does not change between requests: pi-ai folds every
+change of it into the one leading system message, which empties the provider's prompt cache. What does change (the
+apps with their versions, members and last errors; the skills on offer) goes into one trailing `<goblin-context>`
+message that `beforeRequest` hooks add to each request (`pi/context-tail.ts`), marked as goblin's note and not the
+owner's. Pi never stores it, so everything before it stays a cacheable prefix. The `mcp_list` and `mcp_call` tools (`pi/resident-mcp.ts`) are how the model reaches the owner's
 MCP servers; both require current resident authority, and `mcp_call` is marked unsafe to replay.
 
 `ask_user` (`pi/ask-user.ts`) is how the agent asks the owner something. It takes one to five short questions:
@@ -438,7 +442,7 @@ kit CSS; it adds no network or app capability. The frame has no network
 (`connect-src 'none'`); it loads scripts from goblin's origin only, and tiles from OpenStreetMap only for maps. The
 bridge (`lib/agent-app-bridge.ts`) sends the state as tool results carrying `goblin/state` (the newest revision wins),
 routes the view's action calls to `POST /api/apps/:id/call` with the frame's operation id (`ui:<app>:<uuid>`), and
-reports the view's failures, which the agent sees in its apps section and in `app_inspect`. The frame's first script
+reports the view's failures, which the agent sees in its `<apps>` list and in `app_inspect`. The frame's first script
 keeps errors from before the core runs (a bundle that throws as it loads or never arrives), a view import whose bundle
 failed names that bundle, a view module that throws shows the error card instead of a blank frame, and failures that
 come together go out as one notice once the frame is connected (`packages/app/src/ui/core.ts`, `sdk.ts`). A bundle's

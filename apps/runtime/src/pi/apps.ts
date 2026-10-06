@@ -1,8 +1,9 @@
 import { Type } from '@earendil-works/pi-ai'
-import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
+import { GenerationTask, defineExtension, defineTool, hook, section } from '@earendil-works/pi-durable'
 import type { AgentApps } from '../agent-apps/engine.ts'
 import { problemText } from '../agent-apps/queue.ts'
 import { runScript } from '../agent-apps/script.ts'
+import { withContext } from './context-tail.ts'
 import { homeExtension } from './home.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
@@ -19,6 +20,8 @@ const GUIDE = [
   'the owner has not connected, look with `mcp_suggest` and ask them with `mcp_request_server`.',
   "`code_run` runs a one-off JavaScript snippet over the owner's files for calculations; it keeps nothing. The owner",
   'manages apps on the Apps page (allow powers, pause schedules, go back a version, delete); you cannot delete one.',
+  'Your apps, their versions, members and last errors are listed under <apps> in the <goblin-context> block that ends',
+  'each request.',
 ].join(' ')
 
 const text = (value: unknown) => ({
@@ -26,10 +29,10 @@ const text = (value: unknown) => ({
 })
 const failure = (cause: unknown) => ({ content: [{ type: 'text' as const, text: problemText(cause) }], isError: true })
 
-/** The section listing the apps, under the guide. */
-function appsSection(apps: AgentApps): string {
+/** The apps as they are now, for the trailing context block: they change with every build, the guide never does. */
+function appsNow(apps: AgentApps): string {
   const list = apps.summary()
-  return `${GUIDE}\n\nYour apps:\n${list === '' ? '(none yet)' : list}`
+  return list === '' ? '(none yet)' : list
 }
 
 /** `app_docs`: the SDK reference, by topic. */
@@ -131,8 +134,13 @@ const codeTool = (apps: AgentApps) =>
 export function appsExtension(apps: AgentApps, run: RunProgram) {
   const extension = defineExtension({
     name: 'goblin.apps',
-    sections: [section('apps', () => appsSection(apps))],
+    sections: [section('apps', () => GUIDE)],
     tools: [docsTool(apps), buildTool(apps), inspectTool(apps), rollbackTool(apps), codeTool(apps)],
+    hooks: [
+      hook(GenerationTask, {
+        beforeRequest: ({ messages }) => ({ messages: withContext(messages, 'apps', appsNow(apps)) }),
+      }),
+    ],
   })
   return [extension, homeExtension(run)]
 }

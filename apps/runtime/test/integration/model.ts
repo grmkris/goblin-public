@@ -2,6 +2,7 @@ import { createModels, createProvider } from '@earendil-works/pi-ai/models'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
 import { getCurrentSystemPrompt } from '@earendil-works/pi-ai/utils/transcript'
 import type { AssistantMessage, Message, Model, ProviderStreams, ToolCall } from '@earendil-works/pi-ai'
+import { isContextBlock } from '../../src/pi/context-tail.ts'
 
 export const FIXTURE_INPUT = 'persist this lifecycle fixture input'
 export const model: Model<'openai-completions'> = {
@@ -24,6 +25,8 @@ export type SeenRequest = {
   readonly messages: readonly SeenMessage[]
   readonly systemPrompt: string
   readonly tools: readonly string[]
+  /** The trailing `<goblin-context>` block, kept apart from the messages (`pi/context-tail.ts`). */
+  readonly context?: string
 }
 
 const textOf = (message: Message): string =>
@@ -69,18 +72,22 @@ export function scriptedStreams(
   delay: (messages: readonly Message[]) => number = () => 0,
 ): ProviderStreams {
   const stream: ProviderStreams['stream'] = (target, context) => {
+    // The context block ends each request but is not a turn: the script answers, and records, the turns before it.
+    const goblinContext = context.messages.find(isContextBlock)
+    const messages = context.messages.filter((message) => !isContextBlock(message))
     seen({
-      messages: context.messages.map((message) => ({
+      messages: messages.map((message) => ({
         role: message.role,
         // Pi's named sections are part of the actual prompt, even when system.content is empty.
         text: [textOf(message), ...(message.role === 'system' ? Object.values(message.sections ?? {}) : [])]
           .filter((part) => part !== null)
           .join('\n'),
       })),
-      systemPrompt: getCurrentSystemPrompt(context.messages),
-      tools: offeredTools(context.messages),
+      systemPrompt: getCurrentSystemPrompt(messages),
+      tools: offeredTools(messages),
+      ...(goblinContext === undefined ? {} : { context: textOf(goblinContext) }),
     })
-    const content = respond(context.messages)
+    const content = respond(messages)
     const message: AssistantMessage = {
       role: 'assistant',
       api: target.api,
@@ -104,7 +111,7 @@ export function scriptedStreams(
       output.push({ type: 'done', reason: message.stopReason === 'toolUse' ? 'toolUse' : 'stop', message })
       output.end(message)
     }
-    const wait = delay(context.messages)
+    const wait = delay(messages)
     if (wait > 0) setTimeout(publish, wait)
     else queueMicrotask(publish)
     return output

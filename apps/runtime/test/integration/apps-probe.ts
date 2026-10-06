@@ -7,6 +7,7 @@ import { problemText } from '../../src/agent-apps/queue.ts'
 import { runScript } from '../../src/agent-apps/script.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
 import { memorySchedules } from './apps-jobs-probe.ts'
+import type { SeenRequest } from './model.ts'
 
 const LIB = 'export const bump = (count: number, by: number): number => count + by\n'
 
@@ -141,20 +142,35 @@ export async function appsEngineProbe(storage: DurableObjectStorage, env: Runtim
   }
 }
 
+/** A system prompt without the memory's guide, which joins it once, when main's first memory view lands. */
+const withoutMemory = (prompt: string) => prompt.replace(/\n*<memory>[\s\S]*?<\/memory>/u, '')
+
 /**
  * The agent builds an app through Pi with the scripted model, and its tool is offered and works from the very next
- * request: the getter-backed default selection picks the installed extension up.
+ * request: the getter-backed default selection picks the installed extension up. The build changes the trailing
+ * context block, not the system prompt, so the prompt the provider caches stays the same.
  */
-export async function appsTurnProbe(harness: PiHarness, offered: () => readonly string[]) {
+export async function appsTurnProbe(harness: PiHarness, seen: () => readonly SeenRequest[]) {
   const build = JSON.stringify({
     name: 'tally',
     files: { 'app.ts': COUNTER_V1.replace("name: 'counter'", "name: 'tally'"), 'lib.ts': LIB },
   })
+  const main = () => seen().filter((request) => request.systemPrompt.includes('You can build apps'))
+  const before = main().length
   await harness.submit(`call app_build ${build}`, { session: '1', operationId: 'apps-build' })
   const built = await harness.wait('apps-build', { session: '1' })
   await harness.submit('call app_tally__add {"by":4}', { session: '1', operationId: 'apps-call' })
   const called = await harness.wait('apps-call', { session: '1' })
-  return { built: built.text ?? '', called: called.text ?? '', offered: [...offered()] }
+  const [first] = main().slice(before)
+  const last = main().at(-1)
+  return {
+    built: built.text ?? '',
+    called: called.text ?? '',
+    offered: [...(last?.tools ?? [])],
+    samePrompt: first !== undefined && withoutMemory(first.systemPrompt) === withoutMemory(last?.systemPrompt ?? ''),
+    listedBefore: first?.context?.includes('- tally (') ?? false,
+    listedAfter: last?.context?.includes('- tally (') ?? false,
+  }
 }
 
 const WEATHER = `import { defineApp, s } from '@goblin/app'

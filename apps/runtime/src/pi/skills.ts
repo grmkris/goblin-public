@@ -7,6 +7,7 @@ import { Capabilities, Learner, Skills, attempt, requireBudget, requireResident 
 import { logLearnOutcome, type LearnOutcome } from '../skills/learner.ts'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { capabilityOffResult } from './capabilities.ts'
+import { withContext } from './context-tail.ts'
 import { NotFound } from '../http/errors.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
@@ -46,40 +47,40 @@ const authorizeSkill = (run: RunProgram, session: string) => (serverId: string) 
   )
 
 /**
- * The `skills` section: what the owner's skill servers list, from the library's cache, without the libraries this
- * conversation switched off.
+ * The skills on offer: what the owner's skill servers list, from the library's cache, without the libraries this
+ * conversation switched off; undefined when there are none or they cannot be read now.
  */
-const skillsSection = (run: RunProgram) =>
-  section('skills', async (input) => {
-    try {
-      return listing(
-        await run(
-          Effect.gen(function* () {
-            yield* requireResident
-            const skills = yield* Skills
-            const scope = yield* Capabilities.useSync((capabilities) =>
-              capabilities.scope(String(input.conversationId)),
-            )
-            const sources = skills.sources().filter((serverId) => scope.skills(serverId))
-            if (sources.length === 0) return { skills: [], unavailable: [] }
-            const catalog = yield* attempt(() =>
-              skills.catalog(
-                { timeout: 5000, authorize: authorizeSkill(run, String(input.conversationId)) },
-                (serverId) => scope.skills(serverId),
-              ),
-            )
-            const current = (yield* Capabilities).scope(String(input.conversationId))
-            return {
-              skills: catalog.skills.filter((skill) => current.skills(skill.serverId)),
-              unavailable: catalog.unavailable.filter((id) => current.skills(id)),
-            }
-          }),
-        ),
-      )
-    } catch {
-      return undefined
-    }
-  })
+const skillsNow = async (run: RunProgram, session: string): Promise<string | undefined> => {
+  try {
+    return listing(
+      await run(
+        Effect.gen(function* () {
+          yield* requireResident
+          const skills = yield* Skills
+          const scope = yield* Capabilities.useSync((capabilities) => capabilities.scope(session))
+          const sources = skills.sources().filter((serverId) => scope.skills(serverId))
+          if (sources.length === 0) return { skills: [], unavailable: [] }
+          const catalog = yield* attempt(() =>
+            skills.catalog({ timeout: 5000, authorize: authorizeSkill(run, session) }, (serverId) =>
+              scope.skills(serverId),
+            ),
+          )
+          const current = (yield* Capabilities).scope(session)
+          return {
+            skills: catalog.skills.filter((skill) => current.skills(skill.serverId)),
+            unavailable: catalog.unavailable.filter((id) => current.skills(id)),
+          }
+        }),
+      ),
+    )
+  } catch {
+    return undefined
+  }
+}
+
+/** Skills are offered in the trailing context block, as `<skills>`: the catalog changes, the system prompt must not. */
+const SKILLS_GUIDE =
+  'Skills the owner turned on are listed under <skills> in the <goblin-context> block that ends each request, when there are any.'
 
 /**
  * Whether a skill handle (`<server>:<name>`) comes from a library this conversation switched off: the result that says
@@ -99,7 +100,7 @@ const activateTool = (run: RunProgram) =>
   defineTool({
     name: 'skill_activate',
     description:
-      'Load a skill listed in the skills section by its handle (for example `myskills:code-review`). Returns its verified instructions and the files it may read. Activate before following a skill.',
+      'Load a skill listed under <skills> in the goblin-context block by its handle (for example `myskills:code-review`). Returns its verified instructions and the files it may read. Activate before following a skill.',
     parameters: Type.Object({ skill: Type.String({ minLength: 3, maxLength: 300 }) }),
     replay: 'safe',
     execute: async ({ skill }, api, context) =>
@@ -173,8 +174,8 @@ const readTool = (run: RunProgram) =>
   })
 
 /**
- * Skills over MCP for a conversation: the `skills` section lists what the owner's skill servers offer (cached, never
- * fetched at wake), `skill_activate` loads one verified `SKILL.md` and `skill_read` one of its files. Both only read,
+ * Skills over MCP for a conversation: the trailing context block lists what the owner's skill servers offer (cached,
+ * never fetched at wake), `skill_activate` loads one verified `SKILL.md` and `skill_read` one of its files. Both only read,
  * so a rerun after an eviction is harmless. After a final answer the learner may draft a skill for the owner's review.
  */
 export function skillsExtension(
@@ -183,10 +184,14 @@ export function skillsExtension(
 ) {
   return defineExtension({
     name: 'goblin.skills',
-    sections: [skillsSection(run)],
+    sections: [section('skills', () => SKILLS_GUIDE)],
     tools: [activateTool(run), readTool(run)],
     hooks: [
       hook(GenerationTask, {
+        beforeRequest: async ({ messages }, api) => {
+          const listed = await skillsNow(run, String(api.conversationId))
+          return listed === undefined ? undefined : { messages: withContext(messages, 'skills', listed) }
+        },
         // Fire and forget after a final answer: the learner may propose a skill draft for the owner to review. It
         // never holds up the turn, and an attempt an eviction cuts short is simply not made.
         onYield: (_answer, api) => {
