@@ -122,7 +122,7 @@ export {
 } from './components/sidebar-menu.tsx'
 export { TopBar, TopBarTitle } from './components/top-bar.tsx'
 export { Textarea } from './components/textarea.tsx'
-export { ToolPayload, ToolPayloadText } from './components/tool-payload.tsx'
+export { ToolPayload, ToolPayloadText, type ToolPayloadView } from './components/tool-payload.tsx'
 export { UsageRing } from './components/usage-ring.tsx'
 export {
   ToolCall,

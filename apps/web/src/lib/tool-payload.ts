@@ -1,10 +1,11 @@
 import { Schema } from 'effect'
 import type { JsonValue } from '@goblin/contracts'
+import type { ToolPayloadView } from '@goblin/ui'
 import { isString, record, records } from './boundary.ts'
 import { looksLikeMarkdown } from './markdown.ts'
 
 /** One part of a tool's output: a JSON value, Markdown to format, or text shown as it is. */
-type PayloadBlock =
+export type PayloadBlock =
   | { readonly kind: 'json'; readonly value: JsonValue }
   | { readonly kind: 'markdown' | 'text'; readonly text: string }
 
@@ -60,4 +61,10 @@ export function outputBlocks(result: { readonly text: string; readonly details: 
   )
   if (structured === undefined && content.length === 0) return [textBlock(result.text)]
   return [...(structured === undefined ? [] : [structured]), ...content]
+}
+
+/** The view an output opens on: formatted when any part is Markdown, a tree when any is JSON, else plain text. */
+export function payloadView(blocks: readonly PayloadBlock[]): ToolPayloadView {
+  if (blocks.some((block) => block.kind === 'markdown')) return 'formatted'
+  return blocks.some((block) => block.kind === 'json') ? 'tree' : 'plain'
 }

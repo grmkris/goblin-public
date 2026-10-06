@@ -455,3 +455,29 @@
     --typeset-flow: 0.9em;
   }
 }
+
+/*
+ * goblin's preset for formatted tool output: the tool card's own size at every width, with headings demoted so a
+ * document's `#` title reads as a label inside the card. Only font sizes change: heading margins stay typeset's, so
+ * its first-child reset still applies.
+ */
+@layer components {
+  .typeset-tool {
+    --typeset-font-body: var(--font-sans);
+    --typeset-font-heading: var(--font-sans);
+    --typeset-size: 0.8125rem;
+    --typeset-leading: 1.55;
+    --typeset-flow: 0.75em;
+    font-size: var(--typeset-size);
+
+    & :where(h1) {
+      font-size: 1.125em;
+    }
+    & :where(h2) {
+      font-size: 1.0625em;
+    }
+    & :where(h3, h4) {
+      font-size: 1em;
+    }
+  }
+}

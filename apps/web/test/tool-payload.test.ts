@@ -1,8 +1,8 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { JsonView } from '@goblin/ui'
-import { outputBlocks } from '../src/lib/tool-payload.ts'
+import { JsonView, ToolPayload, type ToolPayloadView } from '@goblin/ui'
+import { outputBlocks, payloadView } from '../src/lib/tool-payload.ts'
 
 const envelope = (content: readonly unknown[], structuredContent: unknown = '[unsupported]') => ({
   origin: { serverId: 'fixture', trust: 'untrusted' },
@@ -11,6 +11,8 @@ const envelope = (content: readonly unknown[], structuredContent: unknown = '[un
 })
 const text = (value: string) => ({ type: 'text', text: value })
 const renderJson = (value: unknown) => renderToStaticMarkup(createElement(JsonView, { value }))
+const renderPayload = (view: ToolPayloadView) =>
+  renderToStaticMarkup(createElement(ToolPayload, { label: 'Output', raw: 'raw', view, children: 'shown' }))
 
 describe('tool output presentation', () => {
   it('uses structured MCP output despite the model text origin prefix, without repeating its JSON text', () => {
@@ -96,5 +98,30 @@ describe('the bounded JSON viewer', () => {
     expect(markup).not.toContain('x'.repeat(121))
     expect(markup).toContain('Show more')
     expect(markup).toContain('aria-expanded="false"')
+  })
+})
+
+describe('tool output views', () => {
+  it.each([
+    [[{ kind: 'text', text: 'ok' }], 'plain'],
+    [[{ kind: 'json', value: 1 }], 'tree'],
+    [[{ kind: 'markdown', text: '# a' }], 'formatted'],
+    [
+      [
+        { kind: 'json', value: 1 },
+        { kind: 'markdown', text: '# a' },
+      ],
+      'formatted',
+    ],
+  ] as const)('opens %j on %s', (blocks, view) => {
+    expect(payloadView(blocks)).toBe(view)
+  })
+  it('offers Raw beside a tree or formatted view, and no tabs for plain text', () => {
+    expect(renderPayload('tree')).toMatch(/Tree.*Raw/su)
+    expect(renderPayload('formatted')).toMatch(/Formatted.*Raw/su)
+    const plain = renderPayload('plain')
+    expect(plain).toContain('shown')
+    expect(plain).not.toContain('Raw')
+    expect(plain).not.toContain('role="tablist"')
   })
 })

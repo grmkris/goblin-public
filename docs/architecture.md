@@ -202,7 +202,13 @@ sections (`ToolPayload`), with the local `JsonView` adapted from MIT-licensed `m
 nested branches fold, long strings expand on request, and each object or array shows 50 children at a time. The web
 selector (`lib/tool-payload.ts`) reads the existing redacted MCP envelope: structured output first, then individual
 content blocks, suppressing a duplicate JSON text block while keeping additional prose and non-text blocks as data.
-Ordinary or incomplete result text stays readable. Raw and its Copy action preserve the complete original text;
+Text that reads as Markdown opens Formatted (`lib/markdown.ts`), judged by the CommonMark and GFM grammar the renderer
+parses: a table, two kinds of anchor (an ATX heading on its own line, a fenced code block, a table), or one anchor
+among three kinds of signal. YAML and script comments, diffs, tracebacks and listings stay plain, because a missed
+document is still readable and a false one would mangle data. `ToolMarkdown` sets it in the compact `typeset-tool`
+preset as untrusted text: images are named and never loaded, only absolute http(s) and mailto links work and they
+show their host, raw HTML shows as written and fences stay code. Reference definitions and link titles show only in
+Raw. Ordinary or incomplete result text stays readable. Raw and its Copy action preserve the complete original text;
 the tree copies complete values rather than its shortened display. No renderer fetches URLs or changes authority.
 
 When the agent waits on the owner, the request is pinned above the composer until their next message
