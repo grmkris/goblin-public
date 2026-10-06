@@ -102,7 +102,7 @@ its transcript shows a row for that thread. The owner API is conversation-scoped
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/workspace/events` | The workspace feed (SSE): a `WorkspaceSnapshot` of every conversation and kept App and what each conversation that is not idle is doing (`working`, `waiting` on subagents), then batches of `WorkspaceChange` (`workspace/feed.ts`, from Pi's task graph and the registries' writes). |
+| `GET /api/workspace/events` | The workspace feed (SSE): a `WorkspaceSnapshot` of every conversation and kept App and what each conversation that is not idle is doing (`working`, `waiting` on subagents), then batches of `WorkspaceChange` (`workspace/feed.ts`, from Pi's task graph and the registries' writes). A tab skips any item or change it cannot read, so a newer server never stops it. |
 | `POST /api/apps` | Keep the App of a call in a conversation (`{ conversation, callId }`): one made before Apps were kept, or one closed. The call must be an `mcp_call` whose tool still renders that App; the same call keeps the same App. |
 | `GET /api/apps/:id/launch` | What loads an App (`AppLaunch`): its server and `ui://` resource, and the call's arguments and redacted result read back from Pi. It grants nothing. |
 | `PATCH /api/apps/:id` | Close or reopen an App (`{ closed }`). Closing a conversation closes its Apps. |

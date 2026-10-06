@@ -7,6 +7,8 @@ import {
   type WorkspaceState,
   activityState,
   applyChanges,
+  decodeChanges,
+  decodeSnapshot,
   fromSnapshot,
   withPendingApps,
 } from '../src/lib/workspace-feed.ts'
@@ -107,6 +109,26 @@ function manual() {
   }
   return { queued, scheduler }
 }
+
+describe('reading a newer server', () => {
+  it('skips a change kind or an item it cannot read, and keeps the rest in order', () => {
+    const unknown = { type: 'app-state', app: '3', revision: 4 }
+    const changes = decodeChanges([
+      { type: 'conversation', conversation: view('5') },
+      unknown,
+      { type: 'conversation', conversation: { id: 'not digits' } },
+      { type: 'activity', activity: { id: '5', state: 'working', since: 1 } },
+    ])
+    expect(changes.map((change) => change.type)).toEqual(['conversation', 'activity'])
+    const snapshot = decodeSnapshot({ conversations: [MAIN, { id: 'x' }], activity: [unknown], apps: [{}] })
+    expect(snapshot).toEqual({ conversations: [MAIN], activity: [], apps: [] })
+  })
+
+  it('still refuses a frame of another shape', () => {
+    expect(() => decodeChanges({ type: 'conversation' })).toThrow()
+    expect(() => decodeSnapshot({ conversations: 'nope', activity: [], apps: [] })).toThrow()
+  })
+})
 
 describe('the workspace feed connection', () => {
   it('publishes the snapshot, then changes, and starts again from a fresh snapshot after an error', () => {

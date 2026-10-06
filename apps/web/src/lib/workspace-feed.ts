@@ -1,11 +1,11 @@
 import {
-  type AppView,
-  type ConversationActivity,
-  type ConversationView,
+  AppView,
+  ConversationActivity,
+  ConversationView,
   WorkspaceChange,
-  WorkspaceSnapshot,
+  type WorkspaceSnapshot,
 } from '@goblin/contracts'
-import { Schema } from 'effect'
+import { Option, Schema } from 'effect'
 import { type PiEventSource, type ReconnectScheduler, browserScheduler, reconnectDelay } from './conversation-stream.ts'
 
 /** The owner's conversations, oldest first, what each one that is not idle is doing, and their kept Apps, oldest first. */
@@ -78,8 +78,35 @@ export function withPendingApps(
 export const activityState = (state: WorkspaceState, id: string): ConversationActivity['state'] =>
   state.activity.get(id)?.state ?? 'idle'
 
-const decodeSnapshot = Schema.decodeUnknownSync(WorkspaceSnapshot)
-const decodeChanges = Schema.decodeUnknownSync(Schema.Array(WorkspaceChange))
+const Items = Schema.Array(Schema.Unknown)
+const decodeSnapshotFrame = Schema.decodeUnknownSync(
+  Schema.Struct({ conversations: Items, activity: Items, apps: Items }),
+)
+const decodeChangeFrame = Schema.decodeUnknownSync(Items)
+const decodeConversation = Schema.decodeUnknownOption(ConversationView)
+const decodeActivity = Schema.decodeUnknownOption(ConversationActivity)
+const decodeApp = Schema.decodeUnknownOption(AppView)
+const decodeChange = Schema.decodeUnknownOption(WorkspaceChange)
+
+/** The items `decode` reads, in order: one this tab cannot read (a newer server's kind or field) is skipped. */
+const readable = <A>(items: readonly unknown[], decode: (item: unknown) => Option.Option<A>): A[] =>
+  items.flatMap((item) => Option.toArray(decode(item)))
+
+/**
+ * A snapshot frame: its shape must hold, but each conversation, activity and App is read on its own, so a server newer
+ * than this tab never stops the feed. A frame of another shape throws, and the connection starts again.
+ */
+export function decodeSnapshot(data: unknown): WorkspaceSnapshot {
+  const frame = decodeSnapshotFrame(data)
+  return {
+    conversations: readable(frame.conversations, decodeConversation),
+    activity: readable(frame.activity, decodeActivity),
+    apps: readable(frame.apps, decodeApp),
+  }
+}
+
+/** A change frame: a list, of which each change this tab can read applies and any other is skipped. */
+export const decodeChanges = (data: unknown): WorkspaceChange[] => readable(decodeChangeFrame(data), decodeChange)
 
 /**
  * The workspace feed for the browser: one SSE stream, a snapshot on every (re)connect, then changes. A dropped or
