@@ -1,9 +1,54 @@
-import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
-import { Type } from '@earendil-works/pi-ai'
+import { defineExtension, section } from '@earendil-works/pi-durable'
 import * as Schema from 'effect/Schema'
-import { RoutineDefinition } from '@goblin/contracts'
+import { RoutineDefinition, RoutinePage, RoutineView } from '@goblin/contracts'
 import { changeRoutine, proposeRoutine, routinesList } from '../routines/program.ts'
 import type { RunProgram } from './resident-mcp.ts'
+import { typedTool } from './typed-tool.ts'
+
+const operationOf = (api: { readonly conversationId: unknown; readonly callId: string }) =>
+  `routine:${String(api.conversationId)}:${api.callId}`
+
+/** A draft the owner must review: its id, the revision they will confirm, and its title. */
+const Proposed = Schema.Struct({ routineId: Schema.String, revision: Schema.Int, title: Schema.String })
+
+const proposeTool = (run: RunProgram) =>
+  typedTool({
+    name: 'routine_propose',
+    description:
+      'Propose a routine: a reminder or task that runs at a time, on a schedule, or when a server sends an event. Proposing does not activate it: the owner reviews and confirms it in Settings → Routines, which ends this turn.',
+    input: RoutineDefinition,
+    output: Proposed,
+    replay: 'safe',
+    execute: async (definition, api) => {
+      const draft = await run(proposeRoutine(definition, operationOf(api)))
+      return { routineId: draft.id, revision: draft.revision, title: draft.definition.title }
+    },
+    text: ({ title, revision }) =>
+      `Proposed routine "${title}", revision ${String(revision)}. The owner must review and confirm it in Settings → Routines.`,
+    details: ({ routineId, revision }) => ({ kind: 'routine-proposal', routineId, revision }),
+    terminate: () => true,
+  })
+
+const listTool = (run: RunProgram) =>
+  typedTool({
+    name: 'routine_list',
+    description: "The owner's routines with their state, definition and schedule.",
+    input: Schema.Struct({}),
+    output: RoutinePage,
+    replay: 'safe',
+    execute: async () => run(routinesList),
+  })
+
+const pauseTool = (run: RunProgram) =>
+  typedTool({
+    name: 'routine_pause',
+    description: 'Pause a routine by its id at its current revision (from routine_list). Only the owner can resume it.',
+    input: Schema.Struct({ id: Schema.String.check(Schema.isMaxLength(100)), revision: Schema.Int }),
+    output: RoutineView,
+    replay: 'safe',
+    execute: async ({ id, revision }, api) =>
+      run(changeRoutine(id, { revision, operationId: operationOf(api) }, 'pause')),
+  })
 
 /** The model proposes a draft; only the authenticated owner's review may confirm it. */
 export function routinesExtension(run: RunProgram) {
@@ -13,48 +58,9 @@ export function routinesExtension(run: RunProgram) {
       section(
         'routines',
         () =>
-          'Use routine to propose a scheduled reminder or event-driven task. The owner reviews and confirms the exact definition in Settings → Routines before it can run. You may list or pause routines; you cannot activate them.',
+          'Use routine_propose to propose a scheduled reminder or event-driven task. The owner reviews and confirms the exact definition in Settings → Routines before it can run. You may list (routine_list) or pause (routine_pause) routines; you cannot activate them.',
       ),
     ],
-    tools: [
-      defineTool({
-        name: 'routine',
-        description:
-          'Propose a routine definition as JSON, list routines, or pause one by id and revision. Proposal does not activate it. Only the owner confirms it in Settings.',
-        parameters: Type.Object({
-          action: Type.Union([Type.Literal('propose'), Type.Literal('list'), Type.Literal('pause')]),
-          definition: Type.Optional(Type.String({ maxLength: 24_000 })),
-          id: Type.Optional(Type.String({ maxLength: 100 })),
-          revision: Type.Optional(Type.Integer({ minimum: 1 })),
-        }),
-        replay: 'safe',
-        execute: async ({ action, definition, id, revision }, api) => {
-          const operationId = `routine:${api.conversationId}:${api.callId}`
-          if (action === 'list') return { content: [{ type: 'text', text: JSON.stringify(await run(routinesList)) }] }
-          if (action === 'pause' && id !== undefined && revision !== undefined) {
-            const paused = await run(changeRoutine(id, { revision, operationId }, 'pause'))
-            return { content: [{ type: 'text', text: JSON.stringify(paused) }] }
-          }
-          if (action !== 'propose' || definition === undefined)
-            return {
-              content: [{ type: 'text', text: 'propose needs a definition; pause needs id and revision.' }],
-              isError: true,
-            }
-          const draft = await run(
-            proposeRoutine(Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(definition)), operationId),
-          )
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Proposed routine "${draft.definition.title}", revision ${draft.revision}. The owner must review and confirm it in Settings → Routines.`,
-              },
-            ],
-            details: { kind: 'routine-proposal', routineId: draft.id, revision: draft.revision },
-            control: { terminate: true },
-          }
-        },
-      }),
-    ],
+    tools: [proposeTool(run), listTool(run), pauseTool(run)],
   })
 }

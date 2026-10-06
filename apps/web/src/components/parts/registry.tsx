@@ -78,7 +78,8 @@ function ToolView({ part }: { readonly part: ToolPart }) {
   if (part.target) return <McpToolPart part={part} />
   if (part.built !== undefined) return <AppBuildPart part={part} />
   if (part.call.name === 'home_edit') return <HomeReceipt part={part} />
-  if (part.call.name === 'routine') return <RoutineProposalPart part={part} />
+  // `routine` is the single tool older transcripts used (ADR 0027).
+  if (part.call.name === 'routine_propose' || part.call.name === 'routine') return <RoutineProposalPart part={part} />
   return part.call.name === 'subagent' ? <SubagentBlock part={part} /> : <GenericToolPart part={part} />
 }
 

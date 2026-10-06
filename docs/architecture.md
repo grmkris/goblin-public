@@ -798,8 +798,9 @@ review; real source checkpoints and explicit product criteria do not authorize p
 
 ## Routine definitions
 
-`routines/store.ts` stores bounded drafts and immutable operation receipts in application SQLite. A model can propose,
-list or pause through `routine`; only an authenticated owner may confirm the exact revision. Routine writes require
+`routines/store.ts` stores bounded drafts and immutable operation receipts in application SQLite. A model can propose a
+typed definition (`routine_propose`, which ends its turn), list (`routine_list`) or pause (`routine_pause`), one typed
+tool each (ADR 0027); only an authenticated owner may confirm the exact revision. Routine writes require
 an exact configured Origin and `x-goblin-csrf: 1`. Edits clear confirmation and stale revisions return 409. Settings
 shows the prompt, exact tool pairs, timezone, budgets and Telegram policy before confirmation.
 
