@@ -461,6 +461,8 @@ failed names that bundle, a view module that throws shows the error card instead
 come together go out as one notice once the frame is connected (`packages/app/src/ui/core.ts`, `sdk.ts`). A bundle's
 own message reads "Script error." because the frame is a different origin from the bundles. A new release reloads the
 frame; a new revision is pushed into it. In the transcript the view shows under the newest build of it with one.
+Inline agent app views have a borderless host surface and a quiet toolbar for page, Home and close controls; the view
+owns its canvas styling. External MCP Apps retain their framed host surface.
 
 Beyond its state and files, an app reaches only the powers it declares and the owner approves (ADR 0021):
 `ctx.fetch` to exact `egress` hosts (`agent-apps/egress.ts`: https on 443, never goblin's own domain, redirects checked

@@ -906,6 +906,13 @@ main.shell {
   border-width: 0;
   border-radius: 0;
 }
+/* Inline agent Apps live in the conversation flow. Let their own canvas provide the visual surface instead of adding
+   a second card around it; the host toolbar remains available for page, Home and close actions. */
+.app-stage[data-mode='inline'][data-source='agent'] {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
 .app-chrome {
   position: relative;
   display: flex;
@@ -925,6 +932,10 @@ main.shell {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.app-stage[data-mode='inline'][data-source='agent'] > .app-chrome {
+  padding-inline: 0.9rem 0.25rem;
+  border-bottom: 0;
 }
 /* The owner's agent apps (ADR 0021): a grid of app cards, and an app's own page of rows. */
 .apps-page {

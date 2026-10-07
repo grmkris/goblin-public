@@ -199,6 +199,8 @@ function Stage({ instance }: { readonly instance: Instance }) {
   const { id } = instance.app
   const origin = selectionOrigin(instance.selection)
   const place = useAppPlacement(instance.app)
+  const { surface } = place
+  const source = instance.selection.kind
   const name = slotName(place.surface, id)
   const stage = useRef<HTMLDivElement>(null)
   const live = useRef<Live>({
@@ -239,7 +241,7 @@ function Stage({ instance }: { readonly instance: Instance }) {
     ...(place.surface === 'home' && place.tile !== undefined ? { tileSize: place.tile.size } : {}),
   }
   return (
-    <div ref={stage} className="app-stage" data-mode={place.surface} data-app={id} data-hidden="">
+    <div ref={stage} className="app-stage" data-mode={surface} data-source={source} data-app={id} data-hidden="">
       {place.surface === 'inline' && <AppChrome instance={instance} onPage={place.page} />}
       {error && (
         <Receipt tone="error">
