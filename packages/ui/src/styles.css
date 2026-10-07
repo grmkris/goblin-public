@@ -14,6 +14,20 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Motion. Tailwind's own curves are too weak to read as intentional, so its easing scale carries strong ones: `ease-out`
+ * for anything that enters, leaves or answers the person, `ease-in-out` for something already on screen moving from A
+ * to B, and `ease-drawer` (iOS sheets: fast out of the gate, a long soft landing). Every `transition-*` utility eases out
+ * by default. Never ease-in on UI: it starts slow at the moment the eye is on it. Durations stay at 300ms or less, with
+ * exits faster than entrances; only sheets and drawers take longer.
+ */
+@theme static {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --default-transition-timing-function: var(--ease-out);
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -130,8 +144,8 @@
   --safe-left: env(safe-area-inset-left, 0px);
   /* The bar at the top of each page (components/top-bar.tsx): 48px plus the notch, correct at a 0 inset too. */
   --top-bar-height: calc(3rem + var(--safe-top));
-  /* Sheets and the sidebar settle like iOS sheets: fast out of the gate, a long soft landing. */
-  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  /* Sheets and the sidebar settle like iOS sheets: the theme's drawer curve, under the name the app CSS uses. */
+  --ease-sheet: var(--ease-drawer);
 }
 
 .dark {
@@ -277,11 +291,17 @@
 [data-slot='button'] {
   touch-action: manipulation;
 }
+/*
+ * Less motion: transitions and animations finish at once, and a looping one (a pulse, a spinner) runs once and rests
+ * instead of cycling every 0.01ms, which would strobe. Smooth scrolling jumps.
+ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
