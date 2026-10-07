@@ -25,7 +25,7 @@ function ComposerInput({ className, ...props }: React.ComponentProps<'textarea'>
       data-slot="composer-input"
       rows={1}
       className={cn(
-        'field-sizing-content max-h-[40dvh] min-h-11 w-full resize-none bg-transparent px-2.5 py-2 text-base outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 md:text-[0.9375rem]',
+        'field-sizing-content max-h-[40dvh] min-h-11 w-full resize-none bg-transparent px-2.5 py-2 text-base outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 aria-busy:opacity-50 pointer-fine:md:text-[0.9375rem]',
         className,
       )}
       {...props}

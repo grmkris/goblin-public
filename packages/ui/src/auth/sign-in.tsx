@@ -27,6 +27,9 @@ function useEmailCode(props: EmailSignInFormProps) {
   const [focusEmail, setFocusEmail] = useState(false)
   const action = useAction(labels.failed)
   const locked = action.busy || props.disabled === true
+  // While a request is out the fields are read-only, not disabled: disabling takes the focus, which closes a phone's
+  // keyboard, and a mistyped code would then need a tap before it can be typed again.
+  const blocked = props.disabled === true
   const resend = async () => {
     const sent = await action.run(() => props.emailCode.onRequestCode(email.trim()))
     if (sent) {
@@ -48,7 +51,21 @@ function useEmailCode(props: EmailSignInFormProps) {
     setFocusEmail(true)
     action.clearError()
   }
-  return { labels, stage, email, code, focusEmail, action, locked, setEmail, enterCode, submit, resend, changeEmail }
+  return {
+    labels,
+    stage,
+    email,
+    code,
+    focusEmail,
+    action,
+    locked,
+    blocked,
+    setEmail,
+    enterCode,
+    submit,
+    resend,
+    changeEmail,
+  }
 }
 
 /** One email field, then the delivered six-digit code. The app owns auth and OAuth continuation. */
@@ -81,7 +98,8 @@ export function EmailSignInForm(props: EmailSignInFormProps) {
               required
               autoFocus
               value={form.code}
-              disabled={form.locked}
+              disabled={form.blocked}
+              readOnly={form.action.busy}
               onChange={(event) => form.enterCode(event.target.value)}
             />
           ) : (
@@ -97,7 +115,8 @@ export function EmailSignInForm(props: EmailSignInFormProps) {
               required
               autoFocus={form.focusEmail}
               value={form.email}
-              disabled={form.locked}
+              disabled={form.blocked}
+              readOnly={form.action.busy}
               onChange={(event) => form.setEmail(event.target.value)}
             />
           )}

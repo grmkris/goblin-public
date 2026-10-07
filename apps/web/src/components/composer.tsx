@@ -16,20 +16,24 @@ function useDraftValue(
   }, [draft, form, setInput])
 }
 
-/** The message field: Enter sends, Shift+Enter breaks the line, and an input method's Enter only composes. */
+/**
+ * The message field: Enter sends, Shift+Enter breaks the line, and an input method's Enter only composes; a phone's
+ * Return key says Send. While a message is on its way the field is read-only, not disabled: disabling it would take
+ * the focus, and with it close a phone's keyboard after every message.
+ */
 function Field({
   value,
   onChange,
   onSubmit,
   placeholder,
-  disabled,
+  busy,
   compact,
 }: {
   readonly value: string
   readonly onChange: (value: string) => void
   readonly onSubmit: () => void
   readonly placeholder: string
-  readonly disabled: boolean
+  readonly busy: boolean
   readonly compact: boolean
 }) {
   return (
@@ -44,7 +48,9 @@ function Field({
         }
       }}
       placeholder={placeholder}
-      disabled={disabled}
+      enterKeyHint="send"
+      readOnly={busy}
+      aria-busy={busy}
       {...(compact && { className: 'min-h-9 py-1.5' })}
     />
   )
@@ -126,7 +132,7 @@ export function MessageComposer({
       onChange={setInput}
       onSubmit={() => void submit()}
       placeholder={running ? 'Add a follow-up…' : placeholder}
-      disabled={pending}
+      busy={pending}
       compact={compact}
     />
   )
