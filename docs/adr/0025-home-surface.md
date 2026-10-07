@@ -6,8 +6,7 @@ Accepted 2026-10-06 with the owner; delivered to the dev stage separately from p
 
 **The layout belongs to the owner, beside Pi.** `HomeLayout` is an ordered, bounded list with a revision, stored in the agent object's application SQLite (`app_home` through Drizzle), separate from Pi's transcripts and each app's durable state. Order and size are shared; column count and edit mode belong to the device. Notes and recent conversations render in the host. Agent apps with a view may be placed. An owner may pin an open MCP App after the host launches it and rechecks the tool's declared resource; closing that App never blocks unrelated Home edits. There are no built-in metric or chart adapters.
 
-**Figures are agent-made snapshots.** Note tiles use the chat figure renderer for stat, spark, timeline, compare,
-check and chart fences, on the tile's flat card surface. Notes stay bounded at 4 KiB; figures should say when their data
+**Figures are agent-made snapshots.** Note tiles use the chat figure renderer for Mermaid, map and chart fences, alongside ordinary Markdown, on the tile's flat card surface. Notes stay bounded at 4 KiB; figures should say when their data
 was true. Live data uses scheduled agent apps with freshness and errors. Ask for a tile and the empty-state prompts
 fill the composer without sending; edit mode offers the same action in a placeholder tile.
 

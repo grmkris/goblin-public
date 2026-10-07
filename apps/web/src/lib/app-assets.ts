@@ -5,7 +5,6 @@ import core from '@goblin/app/runtime/core.js?url'
 import diagrams from '@goblin/app/runtime/diagrams.js?url'
 import icons from '@goblin/app/runtime/icons.js?url'
 import maps from '@goblin/app/runtime/maps.js?url'
-import mdxcn from '@goblin/app/runtime/mdxcn.js?url'
 import type { FrameAssets } from './app-sandbox.ts'
 
 let styles: Promise<FrameAssets['styles']> | undefined
@@ -24,7 +23,6 @@ export async function frameAssets(): Promise<FrameAssets> {
       charts: absolute(charts),
       maps: absolute(maps),
       diagrams: absolute(diagrams),
-      mdxcn: absolute(mdxcn),
       icons: absolute(icons),
     },
     styles: await styles,

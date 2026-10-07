@@ -1,9 +1,9 @@
 // Fenced code blocks the chat draws, and the one fence a reply still streaming has open.
 
 /** The block languages the chat draws instead of showing their code. */
-export type BlockKind = 'mermaid' | 'chart' | 'map' | 'mdxcn'
+export type BlockKind = 'mermaid' | 'chart' | 'map'
 
-const KINDS: ReadonlySet<string> = new Set<BlockKind>(['mermaid', 'chart', 'map', 'mdxcn'])
+const KINDS: ReadonlySet<string> = new Set<BlockKind>(['mermaid', 'chart', 'map'])
 const isKind = (language: string): language is BlockKind => KINDS.has(language)
 
 /** The block a code element's class names (`language-mermaid` and so on), or nothing for ordinary code. */

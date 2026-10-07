@@ -34,19 +34,15 @@ export default defineApp({
 const VIEW = `import { useActions, useAppState } from '@goblin/app'
 import { Button } from '@goblin/ui'
 import { Chart } from '@goblin/kit/chart'
-import { Stat, mdxcnSpec } from '@goblin/kit/mdxcn'
 import type { State } from './app'
 
 export default function View() {
   const [state] = useAppState<State>()
   const { act } = useActions()
-  const figure = mdxcnSpec(JSON.stringify({ kind: 'stat', title: 'Taps', items: [{ label: 'Total', value: state.count }] }))
-  if (figure?.kind !== 'stat' || figure.items[0]?.value !== state.count || mdxcnSpec('{"kind":"unknown"}') !== undefined) throw new Error('mdxcn parser must validate for real')
   return (
     <div className="grid grid-cols-[2fr_1fr] p-4">
       <Button onClick={() => act('tap', { by: 1 })}>{state.count}</Button>
       <Chart spec={{ type: 'bar', x: 'k', series: [{ key: 'v' }], data: [{ k: 'taps', v: state.count }] }} />
-      {figure?.kind === 'stat' && <Stat {...figure} />}
     </div>
   )
 }
@@ -116,8 +112,7 @@ export async function agentAppViewCase(base: string): Promise<void> {
     await (await send(base, owner, `/api/apps/${app.id}/launch`, { method: 'GET' })).json(),
   )
   if (launch.kind !== 'agent') throw new Error('not an agent app launch')
-  expect(launch).toMatchObject({ name: 'tapper', revision: 1, state: { count: 0 }, ui: { libs: ['charts', 'mdxcn'] } })
-  expect(launch.ui.module).toMatch(/require\(['"]@goblin\/kit\/mdxcn['"]\)/u)
+  expect(launch).toMatchObject({ name: 'tapper', revision: 1, state: { count: 0 }, ui: { libs: ['charts'] } })
   expect(launch.ui.module).toMatch(/require\(['"]@goblin\/kit\/chart['"]\)/u)
   expect(launch.ui.module).not.toContain('./app')
   expect(launch.ui.css).toContain('grid-cols-\\[2fr_1fr\\]')
@@ -176,7 +171,7 @@ export async function agentAppViewCase(base: string): Promise<void> {
     ],
   })
   await waitFor(base, owner, conversation, "It throws when rendered with the app's current state")
-  expect(await waitFor(base, owner, conversation, '\\"line\\":14')).toContain('\\"status\\":\\"failed\\"')
+  expect(await waitFor(base, owner, conversation, '\\"line\\":11')).toContain('\\"status\\":\\"failed\\"')
   const kept = (await snapshot(base, owner)).apps.find((each) => each.id === app.id)?.source
   expect(kept).toMatchObject({ version: 1, revision: 2, release: launch.release })
   expect(await (await send(base, owner, `/api/apps/${app.id}/state`, { method: 'GET' })).json()).toMatchObject({

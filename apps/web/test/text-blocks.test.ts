@@ -7,7 +7,7 @@ const source = '{"kind":"stat","title":"Done","items":[{"label":"Tasks","value":
 const fence = `\`\`\`mdxcn\n${source}\n\`\`\``
 
 describe('assistant figure Markdown before hydration', () => {
-  it('keeps completed mdxcn readable as code until the browser loads it', () => {
+  it('keeps removed mdxcn readable as ordinary code', () => {
     const html = renderToStaticMarkup(createElement(AssistantText, { text: fence }))
     expect(html).toContain('bubble-assistant')
     expect(html).toContain('<pre><code class="language-mdxcn">')

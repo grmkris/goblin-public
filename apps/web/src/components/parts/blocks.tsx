@@ -7,7 +7,6 @@ import type { BlockKind } from '../../lib/fences.ts'
 const Diagram = lazy(() => import('@goblin/kit/diagram').then((module) => ({ default: module.Diagram })))
 const Chart = lazy(() => import('@goblin/kit/chart').then((module) => ({ default: module.Chart })))
 const MapView = lazy(() => import('@goblin/kit/map').then((module) => ({ default: module.MapView })))
-const Mdxcn = lazy(() => import('@goblin/kit/mdxcn').then((module) => ({ default: module.Mdxcn })))
 
 /** If a block fails while drawing, the message shows its code instead; the rest of the transcript is unaffected. */
 class Fallback extends Component<{ readonly fallback: ReactNode; readonly children: ReactNode }, { failed: boolean }> {
@@ -31,7 +30,6 @@ const useInBrowser = () =>
 
 function drawn(kind: BlockKind, source: string, code: ReactNode): ReactNode {
   if (kind === 'mermaid') return <Diagram source={source} fallback={code} />
-  if (kind === 'mdxcn') return <Mdxcn source={source} fallback={code} />
   if (kind === 'chart') {
     const spec = chartSpec(source)
     return spec === undefined ? code : <Chart spec={spec} />
@@ -41,7 +39,7 @@ function drawn(kind: BlockKind, source: string, code: ReactNode): ReactNode {
 }
 
 /**
- * A ```mermaid, ```chart, ```map or ```mdxcn block drawn from its source; `code` shows before hydration
+ * A ```mermaid, ```chart, or ```map block drawn from its source; `code` shows before hydration
  * and whenever the source is not one it can draw.
  */
 export function RichBlock({

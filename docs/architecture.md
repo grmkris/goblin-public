@@ -323,23 +323,14 @@ scrubbed, and no transcript field. The learner's model call counts toward the bu
 
 ## Chat blocks
 
-The agent's replies draw fenced blocks (ADR 0023): ```mermaid diagrams, and ```chart, ```map and ```mdxcn with a
-JSON spec (`ChartSpec`, `MapSpec` in `packages/kit/src/specs.ts`, `MdxcnSpec` in `mdxcn-spec.ts`). `MessageText`
+The agent's replies draw fenced blocks (ADR 0023): ```mermaid diagrams, and ```chart and ```map with a
+JSON spec (`ChartSpec`, `MapSpec` in `packages/kit/src/specs.ts`). `MessageText`
 (`components/parts/text-part.tsx`) hands such a block to `RichBlock` (`components/parts/blocks.tsx`), which loads that kind's module from `@goblin/kit`
 on first use and shows the plain code block whenever the source does not parse or drawing fails. While a reply
 streams, the block whose fence is still open stays code (`lib/fences.ts`). A diagram is beautiful-mermaid's SVG as an
 `<img>` data URI with the theme's tokens resolved to concrete colours, so nothing in it runs or loads; it redraws when
 the theme changes. Charts are Recharts in the five `--chart-*` tokens; maps are Leaflet over OpenStreetMap's
-raster tiles, quieted to the theme by a CSS filter, the one host a block fetches from. The persona gives the model the
-mdxcn JSON grammar and a two-figure limit; Telegram shows drawn fences as code.
-
-mdxcn's `MdxcnSpec`/`mdxcnSpec` (`packages/kit/src/mdxcn-spec.ts`) validate a bounded union of timeline, check,
-compare, stat and spark. `@goblin/kit/mdxcn` exports the parser and the five read-only components. Unknown kinds,
-extra fields, oversized or malformed specs remain code. Only `AssistantText` opts into mdxcn: tool Markdown and
-shared notes do not draw it. The MIT adaptation and upstream revision are recorded in `packages/kit/vendor/mdxcn/`.
-Its frame maps graph tokens to the theme's semantic/chart tokens; container queries keep timelines readable in
-narrow panes, comparison tables scroll internally, stat grids wrap and CSS entrance animations respect reduced
-motion. It has no network or MDX compiler, and requires no migration.
+raster tiles, quieted to the theme by a CSS filter, the one host a block fetches from. The persona prefers ordinary Markdown and describes the supported fence grammars; Telegram shows drawn fences as code.
 
 ## MCP Apps host
 
@@ -435,7 +426,7 @@ React's automatic JSX runtime and refuses imports the frame does not provide; th
 goblin's theme, in its own Dynamic Worker) compiles exactly the classes the view uses. Both are kept per release
 (`app_agent_views`). Before a release activates, the render check (`packages/app/src/render.ts`, a Dynamic Worker
 with the view as its CommonJS module and a shim for each import) renders the view once with the state the release
-starts with, goblin's components and the DOM-free mdxcn figures/parser for real, and charts, maps, diagrams and
+starts with, goblin's components for real, and charts, maps, diagrams and
 icons as stand-ins. A view that throws fails the build with its line of `view.tsx` and changes nothing that runs;
 one that reads a browser-only global while rendering, or a check that did not run, activates with `viewWarning`.
 The first release with a view adds the app to the App
@@ -443,9 +434,7 @@ registry under its home conversation
 (`apps/registry.ts`), and every revision after that reaches the workspace feed. The web host loads it like an MCP App,
 in the same double sandbox (`lib/app-sandbox.ts`): a document of goblin's stylesheets, the app's own, and its module,
 over the frame bundles from `packages/app/dist/runtime` (React, the UI SDK and goblin's components in `core.js`;
-charts, maps, diagrams, mdxcn and icons only when the view imports them), served as hashed assets. mdxcn uses
-`@goblin/kit/mdxcn` through the same import allowlist, library contract and frame registry, on core's React and
-kit CSS; it adds no network or app capability. The frame has no network
+charts, maps, diagrams and icons only when the view imports them), served as hashed assets. The frame has no network
 (`connect-src 'none'`); it loads scripts from goblin's origin only, and tiles from OpenStreetMap only for maps. The
 bridge (`lib/agent-app-bridge.ts`) sends the state as tool results carrying `goblin/state` (the newest revision wins),
 routes the view's action calls to `POST /api/apps/:id/call` with the frame's operation id (`ui:<app>:<uuid>`), and
@@ -853,7 +842,7 @@ Main alone renders Home below the newest transcript row, inside the MessageScrol
 
 `app-home:<id>` joins the stage slots, with page > Home > inline precedence. One canonical iframe and bridge remain in the fixed App layer. Displaced places show stubs. Home has fixed room and ignores resize requests; `useHost()` exposes surface, tile size, width and height to an agent-app view. Nearby tiles load lazily, closed and dormant frames wait for Show, and the existing six-instance soft cap retains visible Apps. Remove keeps the app, Close leaves its tile, and release changes reload in place. The stage keeps measuring through resize reflow in reduced motion, and Home grant cards overlay the frame inside the fixed body. Show for a closed MCP App uses the keep-call POST to reverify its declaration. Placement never grants a power or MCP authority. An owner can add an open MCP App after the runtime launches it and rechecks the originating tool's declared resource; an agent cannot add one. Closed MCP tiles remain in the layout and do not block other edits. The browser's `/api/mcp/` writes are same-origin checked, and the browser App bridge forwards calls only to the originating server. Server-side App-id-to-server routes remain a follow-up. There are no built-in metric or chart adapters: live external data uses an agent app, such as the MyInbox 15-minute newest-five pattern with last-good retention and freshness/error state.
 
-Home notes use the same lazy transcript figure renderer for `mdxcn` and chart fences, flattened onto the tile card
+Home notes use the same lazy transcript figure renderer for Mermaid, map and chart fences, flattened onto the tile card
 surface. The fixed body clips with a bottom fade only as a fallback. A note is a dated snapshot; live updates belong
 to agent apps. Ask for a tile, empty-state starters and the edit placeholder only fill the composer. The agent's Home
 guidance distinguishes snapshots, scheduled apps and MCP Apps pinned by the owner.

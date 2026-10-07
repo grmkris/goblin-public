@@ -101,7 +101,7 @@ app, so a page cannot claim to be another App.
 
 **The render check.** Before a release with a view activates, goblin renders the view once, server-side in a Dynamic
 Worker, with the state the release starts with (`initial`, the current state or the migrated one). React and goblin's
-components and the DOM-free mdxcn figures/parser render for real; charts, maps, diagrams and icons are stand-ins
+components render for real; charts, maps, diagrams and icons are stand-ins
 that render nothing and accept any use, so a throw is the view's own code. A view that throws fails its build like any
 other step: the release is kept as failed
 with the line of `view.tsx`, and the active release and the state stay as they were. Two outcomes say nothing about the

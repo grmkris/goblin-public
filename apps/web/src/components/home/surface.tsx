@@ -147,7 +147,7 @@ function TileBody({
   readonly tile: HomeTile
   readonly app: import('@goblin/contracts').AppView | undefined
 }) {
-  if (tile.kind === 'note') return <MessageText text={tile.markdown} figures />
+  if (tile.kind === 'note') return <MessageText text={tile.markdown} />
   if (tile.kind === 'conversations') return <RecentConversations />
   if (app === undefined) return <p className="text-muted-foreground">App unavailable</p>
   return <HomeAppTile app={app} />

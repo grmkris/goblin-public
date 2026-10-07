@@ -79,7 +79,7 @@ boolean }[] }`.
   `window` or `document` in `useEffect` or event handlers, never while rendering: the check cannot run those and says
   so in `viewWarning`.
 - Imports: `react`, `@goblin/app`, `@goblin/ui`, `@goblin/kit/chart`, `@goblin/kit/map`, `@goblin/kit/diagram`,
-  `@goblin/kit/mdxcn`, `recharts`, `react-leaflet`, `leaflet`, `lucide-react` (icons), and types from `./app`. Nothing else.
+  `recharts`, `react-leaflet`, `leaflet`, `lucide-react` (icons), and types from `./app`. Nothing else.
 - Style with Tailwind classes and goblin's colours, which follow light and dark: `bg-background`, `bg-card`,
   `bg-muted`, `text-foreground`, `text-muted-foreground`, `text-primary`, `text-destructive`, `border`. Do not write
   colours like `#fff` or `bg-white`. Start the root with padding (`p-4`); the width changes, so let rows wrap.
@@ -118,44 +118,6 @@ import { Check, Trash2 } from 'lucide-react'
 
 Use Recharts or react-leaflet directly for what the kit does not draw; on a react-leaflet map use `CircleMarker`, not
 `Marker`.
-
-## Compact read-only figures (`@goblin/kit/mdxcn`)
-
-These share the chat's mdxcn components, light/dark tokens and reduced-motion-aware entrances. Props are plain data:
-
-```tsx
-import { Timeline, Check, Compare, Stat, Spark } from '@goblin/kit/mdxcn'
-
-<Timeline title="Release" events={[
-  { date: 'Monday', label: 'Build', state: 'done' },
-  { date: 'Today', label: 'Review', state: 'now', note: 'Tests ready' },
-  { date: 'Friday', label: 'Ship', state: 'next' },
-]} />
-<Check title="Tasks" items={[
-  { label: 'Build', done: true, items: [{ label: 'Tests', done: true }] },
-  { label: 'Review', done: false },
-]} />
-<Compare title="Options" columns={['A', 'B']} rows={[
-  { label: 'Offline', values: [true, false] },
-  { label: 'Cost', values: [3, 'Free'] },
-]} />
-<Stat title="Summary" items={[{ label: 'Done', value: 12, hint: 'Today', accent: true }]} />
-<Spark title="This week" data={[2, 3, 5, 4]} caption="Tasks per day" />
-```
-
-Titles, labels and dates: 1–120 characters. Notes, hints, captions and comparison strings: at most 240.
-Stat value strings: at most 64. Keep lists small: 32 timeline events; 20 checks per list, three levels and 64 total;
-2–4 distinct comparison columns, 1–24 rows and one value per column; 1–8 stats; 2–64 non-negative finite spark
-points up to 1e12. The components display data; any interaction still uses `useActions().act` and your app's actions.
-They need no network or additional powers. They and their parser run for real in the build's render check.
-
-For JSON data, validate with `mdxcnSpec(text)` from the same entrypoint (32,768 source characters maximum, no extra
-fields). It returns a `MdxcnSpec` discriminated by `kind`, or `undefined`. `Mdxcn` can display a whole JSON figure:
-
-```tsx
-import { Mdxcn } from '@goblin/kit/mdxcn'
-;<Mdxcn source={jsonText} fallback={<pre>{jsonText}</pre>} />
-```
 
 ## Home tiles
 

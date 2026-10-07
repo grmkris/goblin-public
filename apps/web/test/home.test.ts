@@ -26,14 +26,11 @@ it('a delayed Home feed event cannot overwrite a newer layout', () => {
   expect(later.home?.revision).toBe(4)
 })
 
-it('a stat and spark snapshot fits the existing bounded Home note', () => {
+it('a dated Markdown and chart snapshot fits the existing bounded Home note', () => {
   const markdown = [
-    'Snapshot: 6 October 2026.',
-    '```mdxcn',
-    '{"kind":"stat","title":"Reading","items":[{"label":"Books","value":4}]}',
-    '```',
-    '```mdxcn',
-    '{"kind":"spark","title":"This week","data":[1,2,2,3,4]}',
+    'Snapshot: 6 October 2026. **Books: 4.**',
+    '```chart',
+    '{"type":"bar","x":"day","series":[{"key":"books"}],"data":[{"day":"Mon","books":4}]}',
     '```',
   ].join('\n')
   expect(

@@ -58,7 +58,6 @@
         "src/ui/charts.ts!",
         "src/ui/maps.ts!",
         "src/ui/diagrams.ts!",
-        "src/ui/mdxcn.ts!",
         "src/ui/icons.ts!",
       ],
     },

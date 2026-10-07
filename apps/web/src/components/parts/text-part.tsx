@@ -15,22 +15,20 @@ type PreProps = { readonly node?: ExtraProps['node']; readonly children?: ReactN
 const BlockContext = createContext<{
   readonly open: number | undefined
   readonly live: boolean
-  readonly figures: boolean
-}>({ open: undefined, live: false, figures: false })
+}>({ open: undefined, live: false })
 
 /**
- * A code block, or the figure it describes (```mermaid, ```chart, ```map, ```mdxcn). `open` is where a fence the
+ * A code block, or the figure it describes (```mermaid, ```chart, ```map). `open` is where a fence the
  * streaming reply has not closed yet begins: that block stays code until it is whole.
  */
 function Pre({ node, children }: PreProps) {
-  const { open, live, figures } = use(BlockContext)
+  const { open, live } = use(BlockContext)
   const plain = <pre>{children}</pre>
   const code = node?.children[0]
   if (code?.type !== 'element' || code.tagName !== 'code') return plain
   const kind = blockKind(code.properties.className)
-  if (kind === 'mdxcn' && !figures) return plain
   const unfinished = open !== undefined && (node?.position?.start.offset ?? 0) >= open
-  if (kind === undefined || (unfinished && (live || kind === 'mdxcn'))) return plain
+  if (kind === undefined || (unfinished && live)) return plain
   const source = code.children.map((child) => (child.type === 'text' ? child.value : '')).join('')
   return <RichBlock kind={kind} source={source} code={plain} />
 }
@@ -38,20 +36,12 @@ function Pre({ node, children }: PreProps) {
 /**
  * Assistant text as GitHub-flavoured Markdown, set by shadcn/typeset. Raw HTML is never rendered; links open in a new
  * tab without a referrer; wide tables scroll sideways instead of widening the conversation. ```mermaid, ```chart and
- * ```map blocks are drawn (ADR 0023); assistant replies also draw ```mdxcn. While `live`, an open fence stays code.
+ * ```map blocks are drawn (ADR 0023). While `live`, an open fence stays code.
  */
-export function MessageText({
-  text,
-  live = false,
-  figures = false,
-}: {
-  readonly text: string
-  readonly live?: boolean
-  readonly figures?: boolean
-}) {
+export function MessageText({ text, live = false }: { readonly text: string; readonly live?: boolean }) {
   return (
     <div className="typeset typeset-chat">
-      <BlockContext value={{ open: openFenceAt(text), live, figures }}>
+      <BlockContext value={{ open: openFenceAt(text), live }}>
         <Markdown
           remarkPlugins={[remarkGfm]}
           components={{
@@ -189,7 +179,7 @@ export function UserText({
 export function AssistantText({ text, live = false }: { readonly text: string; readonly live?: boolean }) {
   return (
     <article className="bubble bubble-assistant">
-      <MessageText text={text} live={live} figures />
+      <MessageText text={text} live={live} />
     </article>
   )
 }

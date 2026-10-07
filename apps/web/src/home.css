@@ -375,36 +375,3 @@
   flex: 1 1 100%;
   margin-block: 0;
 }
-.home-tile[data-kind='note'] .kit-mdxcn {
-  width: auto;
-  border: 0;
-  border-radius: 0;
-  background: var(--card);
-  font-size: 11px;
-  line-height: 1.25;
-}
-.home-tile[data-kind='note'] .kit-mdxcn:has(.kit-mdxcn-stats),
-.home-tile[data-kind='note'] .kit-mdxcn:has(.kit-mdxcn-spark) {
-  flex-basis: calc(50% - 0.375rem);
-}
-.home-tile[data-kind='note'] .kit-mdxcn > figcaption {
-  padding: 0;
-}
-.home-tile[data-kind='note'] .kit-mdxcn-body {
-  padding: 0.125rem 0 0;
-}
-.home-tile[data-kind='note'] .kit-mdxcn-stats {
-  gap: 0.375rem;
-}
-.home-tile[data-kind='note'] .kit-mdxcn-stats > li {
-  gap: 0.125rem;
-}
-.home-tile[data-kind='note'] .kit-mdxcn-value {
-  font-size: 1.25rem;
-}
-.home-tile[data-kind='note'] .kit-mdxcn-spark {
-  font-size: 1.25rem;
-}
-.home-tile[data-kind='note'] .kit-mdxcn .kit-mdxcn-spark-caption {
-  margin-top: 0.25rem;
-}

@@ -2,12 +2,11 @@
 // release starts with, so a view that throws while rendering fails its build instead of replacing a working one. The
 // view is the CommonJS module `view.js` of this worker; each module it imports is a shim that reads
 // `__goblinModules`, filled here before the view loads. React and goblin's components render for real; charts, maps,
-// diagrams and icons are stand-ins; the DOM-free mdxcn components and parser render for real.
+// diagrams and icons are stand-ins.
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import * as React from 'react'
 import * as jsxRuntime from 'react/jsx-runtime'
 import { renderToString } from 'react-dom/server'
-import * as mdxcn from '@goblin/kit/mdxcn'
 import * as components from './ui/components.ts'
 import { VIEW_IMPORTS } from './view-imports.ts'
 
@@ -17,8 +16,8 @@ export type Rendered =
   | { readonly outcome: 'threw'; readonly error: string; readonly line?: number }
   | { readonly outcome: 'unchecked'; readonly global: string }
 
-/** Libraries that need browser APIs, unlike the DOM-free mdxcn data figures. */
-const INERT = Object.keys(VIEW_IMPORTS).filter((name) => VIEW_IMPORTS[name] !== null && name !== '@goblin/kit/mdxcn')
+/** Libraries that need browser APIs. */
+const INERT = Object.keys(VIEW_IMPORTS).filter((name) => VIEW_IMPORTS[name] !== null)
 
 /**
  * Globals only a browser has. A view that reads one while rendering cannot be rendered here, which says nothing about
@@ -119,7 +118,6 @@ export class Render extends WorkerEntrypoint {
         'react/jsx-runtime': jsxRuntime,
         '@goblin/ui': components,
         '@goblin/app': sdk(JSON.parse(state)),
-        '@goblin/kit/mdxcn': mdxcn,
         ...Object.fromEntries(INERT.map((name) => [name, inert()])),
       },
     })
