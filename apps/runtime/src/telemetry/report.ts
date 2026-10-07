@@ -2,6 +2,7 @@ import { RunAttribute } from '@goblin/contracts/telemetry'
 import { nowMillis } from '../clock.ts'
 import { type Answer, answerAttributes, failureAttributes, statusOfStop } from './attributes.ts'
 import type { RunTelemetry } from './events.ts'
+import { expectedFailure, safeFailureCode } from './safety.ts'
 
 /** A model call made outside a turn: its response, or the error it threw. */
 export type AuxCall = { readonly startedAt: number; readonly message?: Answer; readonly error?: unknown }
@@ -42,23 +43,29 @@ export type McpStep = {
   readonly serverId: string
   readonly tool?: string
   readonly method?: string
+  readonly scope?: { readonly conversationId: string; readonly taskId: string }
+  readonly sharedConnection?: boolean
 }
 
 /** Records each remote MCP step as one `mcp.request` event. */
 export const mcpReporter =
   (telemetry: RunTelemetry) =>
-  (step: McpStep, outcome: string, startedAt: number, endedAt: number): void =>
+  (step: McpStep, outcome: string, startedAt: number, endedAt: number): void => {
+    const code = safeFailureCode(outcome)
     telemetry.record({
       id: telemetry.id('mcp', startedAt),
       kind: 'mcp.request',
-      status: outcome === 'ok' ? 'ok' : 'error',
+      ...(step.scope === undefined ? {} : telemetry.scopeOf(step.scope)),
+      status: outcome === 'ok' ? 'ok' : expectedFailure(code) ? 'blocked' : 'error',
       startedAt,
       endedAt,
       attributes: {
         [RunAttribute.mcpStep]: step.step,
         [RunAttribute.mcpServer]: step.serverId,
+        ...(step.sharedConnection === true ? { [RunAttribute.sharedConnection]: true } : {}),
         ...(step.tool === undefined ? {} : { [RunAttribute.mcpTool]: step.tool }),
         ...(step.method === undefined ? {} : { [RunAttribute.mcpMethod]: step.method }),
-        ...(outcome === 'ok' ? {} : { [RunAttribute.errorType]: outcome }),
+        ...(outcome === 'ok' ? {} : { [RunAttribute.errorType]: code }),
       },
     })
+  }

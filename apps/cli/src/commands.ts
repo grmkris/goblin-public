@@ -29,8 +29,18 @@ function coerce(text: string, property: Property, name: string, now: number): un
     if (text.trim() === '' || !Number.isFinite(number)) throw new UsageError(`--${flagOf(name)} takes a number`)
     return number
   }
-  if (property.type === 'boolean') return text === 'true'
+  if (property.type === 'boolean') {
+    if (text !== 'true' && text !== 'false') throw new UsageError(`--${flagOf(name)} takes true or false`)
+    return text === 'true'
+  }
   return text
+}
+
+const valueForFlag = (args: Args, name: string, schema: unknown, now: number): unknown => {
+  const property = propertyOf(schema)
+  if (property.type === 'boolean' && args.flags.get(flagOf(name)) === true) return true
+  const text = flagText(args, flagOf(name))
+  return text === undefined ? undefined : coerce(text, property, name, now)
 }
 
 /**
@@ -52,8 +62,8 @@ export function argumentsFor(tool: ToolInfo, args: Args, now: number): Record<st
   }
   if (positionals.length > 0) throw new UsageError(`unexpected ${positionals.join(' ')}`)
   for (const [name, schema] of Object.entries(properties)) {
-    const text = flagText(args, flagOf(name))
-    if (text !== undefined) result[name] = coerce(text, propertyOf(schema), name, now)
+    const value = valueForFlag(args, name, schema, now)
+    if (value !== undefined) result[name] = value
   }
   for (const name of required)
     if (!(name in result)) throw new UsageError(`${commandOf(tool.name)} needs --${flagOf(name)}`)

@@ -14,6 +14,10 @@ import type { McpServerConfig } from '@goblin/contracts'
 import type { Grant } from './grants.ts'
 export type { McpServerConfig }
 export type McpCaller = 'model' | 'app' | 'human'
+export type McpRequestOptions = RequestOptions & {
+  /** Host metadata only. Strip before passing options to the remote SDK. */
+  readonly runContext?: { readonly conversationId: string; readonly taskId: string }
+}
 export type McpConnectionSnapshot = {
   readonly config: McpServerConfig
   readonly protocolVersion?: string
@@ -49,7 +53,7 @@ export type McpManagerOptions = {
   /** Where each remote step is reported (the run ledger, ADR 0024); a log line when absent. */
   readonly report?: StepReport
 }
-export type McpCallOptions = RequestOptions & {
+export type McpCallOptions = McpRequestOptions & {
   readonly caller?: McpCaller
   /** Recheck the local execution scope after connection/credential waits, immediately before dispatch. */
   readonly authorize?: () => Promise<void>

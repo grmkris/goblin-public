@@ -32,7 +32,7 @@ const TOOLS: Readonly<Record<InspectKind, { readonly title: string; readonly des
   problems: {
     title: 'Recent problems',
     description:
-      'Failed, blocked and interrupted events since a time, newest first: model and tool errors, blocked calls, MCP failures, replies given up, restarts.',
+      'Events needing attention since a time, newest first: unresolved failures, cutoffs, empty answers and coverage gaps. Expected authority waits and confirmed model retries are hidden by default. Set all:true for the full problem history; turn timelines always retain every event.',
   },
 }
 

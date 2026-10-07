@@ -53,17 +53,19 @@ describe('run events as trace spans (unit, ADR 0024)', () => {
     const sink: RunSink = new TraceSink(tracer, () => 'user-1')
     sink.started(event({}))
     expect(spans).toHaveLength(0)
-    sink.ended(event({ status: 'error', endedAt: 1_250, attributes: { [RunAttribute.error]: 'rate limited' } }))
+    sink.ended(
+      event({ status: 'error', endedAt: 1_250, attributes: { [RunAttribute.error]: 'Unclassified failure.' } }),
+    )
     expect(spans).toEqual([
       {
         name: 'chat model',
         ended: true,
-        status: { code: 'error', message: 'rate limited' },
+        status: { code: 'error', message: 'Unclassified failure.' },
         attributes: expect.objectContaining({
           'gen_ai.agent.name': 'goblin',
           'gen_ai.agent.id': 'user-1',
           'gen_ai.conversation.id': '1',
-          'goblin.error': 'rate limited',
+          'goblin.error': 'Unclassified failure.',
           'goblin.status': 'error',
           'goblin.operation': 'telegram-12',
           'goblin.started_at': 10,
@@ -71,6 +73,13 @@ describe('run events as trace spans (unit, ADR 0024)', () => {
         }),
       },
     ])
+  })
+
+  it('keeps expected owner decisions visible without marking them as infrastructure errors', () => {
+    const { spans, tracer } = fakeTracer()
+    const sink = new TraceSink(tracer, () => 'user-1')
+    sink.ended(event({ kind: 'tool.call', status: 'blocked', attributes: { [RunAttribute.errorType]: 'GrantDenied' } }))
+    expect(spans).toMatchObject([{ status: { code: 'unset' }, attributes: { 'goblin.status': 'blocked' } }])
   })
 
   it('ends the span where the runtime has no setStatus', () => {

@@ -17,8 +17,8 @@ out. goblin records those as `RunEvent`s:
 - the ledger keeps 30 days. An attempt that started and never ended is marked interrupted.
 
 **No conversation content leaves the Durable Object as telemetry.** Ledger rows, log lines and spans carry ids,
-counts, sizes, timings, outcomes and error text, never message, prompt or tool payloads. Error text from remote
-servers is kept as data. Content is read from Pi through the inspection tools below.
+counts, sizes, timings, outcomes and fixed error summaries, never message, prompt or tool payloads. Private error
+text stays in Pi inspection; telemetry uses host-owned codes. Content is read from Pi through the inspection tools below.
 
 **Inspection is a read-only scope on `/mcp`.** The same `/mcp` that offers `ask_agent` gives a client the owner let
 inspect, with the scope `goblin:inspect`, read tools: conversations, one conversation's entries (full content, paged
@@ -61,3 +61,9 @@ Consequences:
   than most clients need, so the owner chooses it rather than accepting it with the rest.
 - **2026-10-06: event sources corrected.** The first text said events came from Pi's extension hooks and the Agents
   SDK diagnostics channels; they come from Pi's commit listener and the emitters listed above.
+
+- **2026-10-07: attention-oriented diagnostics.** `inspect_problems` and `diagnose` hide expected authority waits and
+  confirmed recovered model retries by default. `all: true` restores the complete retained failure history. Cutoffs,
+  empty final answers, unresolved tool failures and coverage gaps remain visible. MCP reports carry explicit conversation
+  and task scope when available; shared connection discovery is marked without attributing it to a conversation. A
+  reporting callback cannot change the success or failure of the remote call.

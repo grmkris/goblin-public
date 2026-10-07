@@ -4,6 +4,7 @@ import { RunTelemetry, type RunSink } from './events.ts'
 import { RunLedger } from './ledger.ts'
 import { RunLog } from './log.ts'
 import { PiRunRecorder } from './pi.ts'
+import { safeErrorType } from './safety.ts'
 
 /** One agent's run telemetry (ADR 0024): its ledger, its log lines, and the recorder that follows Pi's commits. */
 export type RunTelemetryKit = {
@@ -44,7 +45,7 @@ export function runTelemetry(
         })
       } catch (error) {
         // Telemetry never stops the agent from starting.
-        const message = (error instanceof Error ? error.message : String(error)).slice(0, 300)
+        const message = safeErrorType(error)
         console.warn(JSON.stringify({ level: 'warn', event: 'telemetry', where: 'restart', error: message }))
       }
     },

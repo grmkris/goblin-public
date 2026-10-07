@@ -20,6 +20,7 @@ import { NotFound } from '../http/errors.ts'
 import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { textBlocks } from '../pi/transcript.ts'
 import type { RunLedger } from '../telemetry/ledger.ts'
+import { coverageGaps } from './coverage.ts'
 
 /** Longest text kept from one entry; the rest is cut and the entry marked `truncated`. */
 const MAX_TEXT = 4000
@@ -175,20 +176,6 @@ export function summarize(turn: RunEvent, events: readonly RunEvent[]): TurnSumm
   }
 }
 
-/** What a timeline cannot show, said plainly (ADR 0024). */
-function gapsOf(turn: RunEvent, events: readonly RunEvent[]): string[] {
-  const gaps: string[] = []
-  if (turn.status === 'interrupted' || turn.attributes[RunAttribute.recovery] !== undefined)
-    gaps.push('The agent restarted during this turn; work in flight then is marked interrupted.')
-  if (events.some((event) => event.status === 'started' && event.id !== turn.id))
-    gaps.push('Some events have not ended: still running, or lost if the agent stopped.')
-  if (turn.status === 'ok' && !events.some((event) => event.kind === 'model.attempt'))
-    gaps.push('No model attempts were recorded for this turn.')
-  if (events.some((event) => event.kind === 'compaction'))
-    gaps.push("A compaction ran; its summary's model call is not recorded.")
-  return gaps
-}
-
 /** Read-only inspection of this agent (ADR 0024): Pi for content and settlement, the run ledger for how it ran. */
 export class Inspector {
   readonly #ledger: RunLedger
@@ -214,7 +201,7 @@ export class Inspector {
       case 'turn':
         return this.turn(query.operationId)
       case 'problems':
-        return this.problems(query.since, query.limit)
+        return this.problems(query.since, query.limit, query.all)
     }
   }
 
@@ -251,7 +238,7 @@ export class Inspector {
     const turn = events.find((event) => event.kind === 'turn.submitted')
     if (turn === undefined) throw new NotFound({ what: 'turn' })
     const submission = await this.#submission(turn.conversationId, operationId)
-    const gaps = gapsOf(turn, events)
+    const gaps = coverageGaps(turn, events, submission)
     return {
       turn: summarize(turn, events),
       ...(submission === undefined ? {} : { submission }),
@@ -260,9 +247,9 @@ export class Inspector {
     }
   }
 
-  problems(since?: number, limit = 50): InspectProblems {
+  problems(since?: number, limit = 50, all = false): InspectProblems {
     const from = since ?? this.#clock() - DAY_MS
-    return { since: from, problems: this.#ledger.problems(from, limit) }
+    return { since: from, problems: this.#ledger.problems(from, limit, all) }
   }
 
   /** Pi's own settlement of a turn: whether its submission was answered, and with which entry. */

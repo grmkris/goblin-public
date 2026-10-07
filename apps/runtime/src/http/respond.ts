@@ -1,6 +1,7 @@
 import * as Match from 'effect/Match'
 import * as Schema from 'effect/Schema'
 import { AppError, toAppError } from './errors.ts'
+import { expectedFailure } from '../telemetry/safety.ts'
 
 export const statusOf = (error: AppError): number =>
   Match.value(error).pipe(
@@ -38,8 +39,15 @@ export const secured = (response: Response): Response => {
 export const failureResponse = (cause: unknown, route: string, requestId: string): Response => {
   const error = toAppError(cause)
   const status = statusOf(error)
-  const line = { level: status >= 500 ? 'error' : 'warn', route, requestId, status, error: error._tag }
+  const line = {
+    level: status >= 500 ? 'error' : expectedFailure(error._tag) ? 'info' : 'warn',
+    route,
+    requestId,
+    status,
+    error: error._tag,
+  }
   if (status >= 500) console.error(JSON.stringify(line))
+  else if (line.level === 'info') console.log(JSON.stringify(line))
   else console.warn(JSON.stringify(line))
   return secured(Response.json(errorBody(error), { status }))
 }

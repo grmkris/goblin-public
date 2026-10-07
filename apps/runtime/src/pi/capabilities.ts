@@ -26,6 +26,7 @@ export function capabilityOffResult(target: CapabilityTarget, scope: CapabilityS
         },
       ],
       isError: true,
+      diagnostics: [{ severity: 'info', code: 'capability_off', message: 'Capability disabled in this conversation.' }],
     }
   return {
     content: [
@@ -35,6 +36,7 @@ export function capabilityOffResult(target: CapabilityTarget, scope: CapabilityS
       },
     ],
     isError: true,
+    diagnostics: [{ severity: 'info', code: 'capability_off', message: 'Capability disabled in this conversation.' }],
     details: { kind: 'capability-off', target },
   }
 }

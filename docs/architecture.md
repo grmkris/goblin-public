@@ -618,13 +618,17 @@ are never pruned. Workers cannot pin resolved DNS IPs; trusted DNS is the docume
 
 Pi records what was said; goblin records how each turn ran, beside it (ADR 0024). `PiRunRecorder`
 (`telemetry/pi.ts`) follows Pi's commit listener from the moment Pi opens (`pi/harness.ts`), so it sees every
-conversation (main, threads, subagents, routine runs) without an extension, and reads only committed records:
+conversation (main, threads, subagents, routine runs) without an extension, and reads only committed records.
+Before scheduling resumes, `telemetry/rehydrate.ts` restores live runs and submission ids through supported Pi inspection
+and `LiveDoc`; the synchronous listener never calls Pi or awaits it. Final-answer events are processed before clearing
+a run. The ledger supplies exact submission/task correlation when a cache entry is gone:
 
 - **Turn:** an input submission from admission to settlement, by its operation id. Its source comes from the id's
   prefix (`telegram-`, `routine-input:`, `subagent:`, …; anything else is `direct`, the owner or an MCP client). An
   unanswered turn keeps Pi's reason.
 - **Model attempt:** a generation task entering `request`, ended by the assistant entry it appends (or the task's
-  fault): model, finish reason, input, output, cache and reasoning tokens, error text. The first committed partial
+  fault): model, finish reason, input, output, cache and reasoning tokens, fixed error summaries, cutoff and
+  empty-answer markers. The first committed partial
   marks the first chunk; Pi commits partials at most every ~100 ms. A retried attempt is a new event.
 - **Tool call:** a tool task, ended by its result entry: name, family (`mcp`, `app`, `subagent`, `memory`,
   `builtin`), argument and result sizes, the MCP server and tool of an `mcp_call`, and `blocked`, `interrupted` or
@@ -636,10 +640,12 @@ Outside Pi, the agent's services report to the same telemetry (`telemetry/report
 - **Model calls outside a turn** (`model.aux`): one cheap model per purpose (`naming`, `memory`, `skill`,
   `app_llm`), with tokens and errors (`memory/model.ts`).
 - **Remote MCP steps** (`mcp.request`): every connect, tool call, skills request and Events request, with server,
-  tool, outcome tag (`UpstreamMcp:timeout`) and duration (`mcp/log.ts`).
+  tool, outcome code (`UpstreamMcp:timeout`), expected blocked waits and duration (`mcp/log.ts`). Resident callers pass
+  explicit conversation/task metadata, stripped before SDK dispatch; shared connection discovery is marked without
+  attributing it to a turn. Reporter failures cannot change or retry the call.
 - **Telegram** (`channel.received`, `channel.reply`): each inbox message by mygram id and its turn's operation id; each
   answer `sent` in pieces, or `given_up` after a day.
-- An unexpected failure logs its name and a bounded message where it becomes `Internal` (`http/errors.ts`).
+- An unexpected failure logs a fixed type and summary where it becomes `Internal` (`http/errors.ts`).
 
 Each event goes to `app_run_events` (kept 30 days) and to one Workers Log line when it ends (`event: "run"`, its ids,
 `ms`, and attributes named after the OpenTelemetry GenAI conventions, `contracts/src/telemetry.ts`). Model and tool
@@ -649,7 +655,9 @@ span cannot outlive its invocation, so each is one span written whole where it e
 `goblin.started_at` and `goblin.duration_ms`. Today only model calls outside a turn reach Traces: the spans of a
 turn's calls, recorded from Pi's commit listener, are created but never exported (seen on dev 2026-10-06, cause not
 yet found), so those calls are in the ledger and the log only. Never content:
-ids, sizes, counts, timings, outcomes and bounded error text. At start the agent marks whatever the last run left
+ids, sizes, counts, timings, outcomes and fixed error summaries. Known fields are sanitized before fan-out and on
+legacy reads; arbitrary provider, schema and remote error text stays in Pi inspection. Expected authority waits use
+info log lines and an unset trace status. At start the agent marks whatever the last run left
 `started` as interrupted and logs one `recovery` event; an event that ends after a restart says it resumed. Pi faults
 the user's task if a commit listener throws, so the recorder and every sink are guarded and only log their own
 failures. Verified with in-memory Pi (`test/telemetry.test.ts`) and local workerd (`native-telemetry.ts`, the
@@ -657,7 +665,8 @@ Telegram Events probe). Compaction summaries' model calls are not recorded yet.
 
 The benchmark measures its turns with the same pieces (`@goblin/runtime/telemetry`, `telemetry/benchmark.ts`):
 `runTelemetry(storage, name, sinks)` gives the ledger, log and recorder for any object that runs Pi on its own SQLite.
-Attach its `recorder` to the harness right after `Harness.open`, pass a `CollectedRuns` sink to read events in process
+Attach its `recorder` and await `recorder.restore(harness)` right after `Harness.open`, before enabling scheduling.
+Pass a `CollectedRuns` sink to read events in process
 (or read `ledger.forOperation(operationId)`), and `summarize(turn, events)` gives the per-turn numbers: attempts,
 failures, tool calls and tokens. Attempt timing runs from the generation entering `request` to its assistant entry;
 the first chunk is the first committed partial, so it is good to about 100 ms.
@@ -673,8 +682,11 @@ model. The queries are in `contracts/src/inspect.ts`:
 - `turns`: recent turns as one-line summaries (source, outcome, attempts, tool calls, failures, tokens).
 - `turn`: one operation end to end. It joins Pi's own settlement of the submission (`done` with its answer entry, or
   `unanswered` with a reason) with every run event of the operation, in order, and `coverage` names what the
-  timeline cannot show: a restart mid-turn, events still open, a compaction's model call.
-- `problems`: failed, blocked and interrupted events since a time (default the last day).
+  timeline cannot show: a restart mid-turn, events still open, a missing final answer, or a compaction's model call.
+- `problems`: events needing attention since a time (default the last day); expected authority waits and confirmed
+  recovered model retries are filtered before applying the limit. Pass `all: true` for the full problem history.
+  Cutoffs, empty answers and coverage gaps remain visible. Tool failures remain until reviewed; a successful turn
+  alone never proves a failed tool recovered.
 
 The agent answers them on its internal `/inspect` route as the RPC result shape (`agent-requests.ts`,
 `inspect/request.ts`), which only `/mcp` calls, for a client that holds `goblin:inspect` (see Inbound MCP).
@@ -682,7 +694,7 @@ The agent answers them on its internal `/inspect` route as the RPC result shape 
 The agent reads itself too: main has a `diagnose` tool (`pi/diagnose.ts`, wired by `telemetry/agent.ts`), so the
 owner can ask in Telegram why something failed. Without an operation id it returns the last day's problems and turns;
 with one, that turn's timeline. Each event comes in a line (kind, status, timing, tool or model, error), never
-content, and the result is marked untrusted because error text can come from remote servers. It grants nothing. A conversation
+content, and the result is marked untrusted because its private details can come from remote servers. It grants nothing. A conversation
 that is not in `app_conversations` (a routine's run) has no entries page; its turns and events are still in the ledger.
 
 ## Storage

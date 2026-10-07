@@ -1,5 +1,6 @@
 import { RunAttribute, type RunAttributes, type RunEvent } from '@goblin/contracts/telemetry'
 import type { RunSink } from './events.ts'
+import { expectedFailure, sanitizeAttributes } from './safety.ts'
 
 /**
  * The part of a Cloudflare span the sink uses (`cloudflare:workers` `tracing`), injected so tests need no workerd. An
@@ -49,9 +50,10 @@ export class TraceSink implements RunSink {
   ended(event: RunEvent): void {
     const name = spanNameOf(event)
     if (name === undefined) return
+    const attributes = sanitizeAttributes(event.attributes)
     const span = this.#tracer.startSpan(name)
     span.setAttributes({
-      ...event.attributes,
+      ...attributes,
       'gen_ai.agent.name': AGENT_NAME,
       'gen_ai.agent.id': this.#agent(),
       'gen_ai.conversation.id': event.conversationId,
@@ -61,8 +63,12 @@ export class TraceSink implements RunSink {
       'goblin.started_at': event.startedAt,
       'goblin.duration_ms': event.endedAt === undefined ? undefined : Math.max(0, event.endedAt - event.startedAt),
     })
-    const message = text(event.attributes[RunAttribute.error]) || text(event.attributes[RunAttribute.reason])
-    span.setStatus?.(event.status === 'ok' ? { code: 'ok' } : { code: 'error', message })
+    const message = text(attributes[RunAttribute.error]) || text(attributes[RunAttribute.reason])
+    span.setStatus?.(
+      event.status === 'ok' || event.status === 'blocked' || expectedFailure(attributes[RunAttribute.errorType])
+        ? { code: event.status === 'ok' ? 'ok' : 'unset' }
+        : { code: 'error', message },
+    )
     span.end()
   }
 }

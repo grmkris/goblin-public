@@ -7,6 +7,7 @@ import {
 import type { JsonValue } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { describeError } from '../telemetry/attributes.ts'
+import { safeErrorType } from '../telemetry/safety.ts'
 
 type Context = Parameters<ToolRegistration['execute']>[2]
 
@@ -100,7 +101,11 @@ function parametersOf(name: string, schema: JsonSchema): JsonSchema {
   throw new Error(`${name}'s input must be a struct`)
 }
 
-const failed = (text: string): ToolExecutionResult => ({ content: [{ type: 'text', text }], isError: true })
+const failed = (text: string, code: string): ToolExecutionResult => ({
+  content: [{ type: 'text', text }],
+  isError: true,
+  diagnostics: [{ severity: 'error', code, message: text }],
+})
 
 export function typedTool<I, O>(tool: TypedTool<I, O>): ToolRegistration {
   const inputSchema = parametersOf(tool.name, jsonSchemaOf(tool.input))
@@ -122,13 +127,13 @@ export function typedTool<I, O>(tool: TypedTool<I, O>): ToolRegistration {
       } catch (cause) {
         // A schema error's message says what was expected and where: what the model needs to fix the call.
         const why = cause instanceof Error ? cause.message : describeError(cause)
-        return failed(`The arguments do not match ${tool.name}'s input: ${why}`)
+        return failed(`The arguments do not match ${tool.name}'s input: ${why}`, 'invalid_arguments')
       }
       let output: O | ReadyResult
       try {
         output = await tool.execute(input, api, context)
       } catch (cause) {
-        return failed(tool.failure?.(cause) ?? describeError(cause))
+        return failed(tool.failure?.(cause) ?? describeError(cause), safeErrorType(cause))
       }
       if (output instanceof ReadyResult) return output.result
       // SAFETY: the JSON codec's encoded side is JSON.

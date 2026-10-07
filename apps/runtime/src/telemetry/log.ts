@@ -1,5 +1,6 @@
 import type { RunEvent } from '@goblin/contracts/telemetry'
 import type { RunSink } from './events.ts'
+import { expectedFailure, sanitizeAttributes } from './safety.ts'
 
 /**
  * One Workers Log line per run event that ended (ADR 0024): its ids, outcome, duration and attributes, so the
@@ -18,8 +19,12 @@ export class RunLog implements RunSink {
   }
 
   ended(event: RunEvent): void {
+    const attributes = sanitizeAttributes(event.attributes)
     const line = {
-      level: event.status === 'ok' ? 'info' : 'warn',
+      level:
+        event.status === 'ok' || event.status === 'blocked' || expectedFailure(attributes['error.type'])
+          ? 'info'
+          : 'warn',
       event: 'run',
       kind: event.kind,
       status: event.status,
@@ -29,9 +34,9 @@ export class RunLog implements RunSink {
       ...(event.taskId === undefined ? {} : { task: event.taskId }),
       id: event.id,
       ...(event.endedAt === undefined ? {} : { ms: event.endedAt - event.startedAt }),
-      ...event.attributes,
+      ...attributes,
     }
-    if (event.status === 'ok') console.log(JSON.stringify(line))
+    if (line.level === 'info') console.log(JSON.stringify(line))
     else console.warn(JSON.stringify(line))
   }
 }

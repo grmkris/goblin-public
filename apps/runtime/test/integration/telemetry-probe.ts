@@ -1,4 +1,5 @@
 import { MAIN_THREAD } from '@goblin/contracts'
+import { RunAttribute } from '@goblin/contracts/telemetry'
 import type { InspectQuery } from '@goblin/contracts/inspect'
 import { runTelemetry } from '../../src/telemetry/run.ts'
 
@@ -47,5 +48,55 @@ export async function telemetryProbe(
     .toArray()
     .map((row) => json(row.attributes))
   const problems = await inspect({ kind: 'problems' })
-  return JSON.stringify({ rows, inspected, diagnosed, left: left.status, recovery, problems })
+  const seed = runTelemetry(storage, () => owner).telemetry
+  const at = Date.now()
+  const record = (
+    id: string,
+    status: 'ok' | 'error' | 'blocked',
+    offset: number,
+    attributes: Record<string, string | number | boolean>,
+  ) =>
+    seed.record({
+      id,
+      kind: 'model.attempt',
+      status,
+      startedAt: at + offset,
+      endedAt: at + offset,
+      operationId: 'filter-fixture',
+      taskId: id === 'filter:failure' || id === 'filter:success' ? 'retry-task' : id,
+      attributes,
+    })
+  record('filter:unresolved', 'error', 1, {
+    [RunAttribute.errorType]: 'provider_error',
+    [RunAttribute.error]: 'PRIVATE_NATIVE_PAYLOAD',
+  })
+  record('filter:failure', 'error', 2, { [RunAttribute.errorType]: 'provider_error' })
+  record('filter:success', 'ok', 3, { [RunAttribute.finishReason]: 'stop' })
+  record('filter:authorization', 'blocked', 4, { [RunAttribute.errorType]: 'NeedsAuthorization' })
+  const attention = await inspect({ kind: 'problems', since: at, limit: 1 })
+  record('filter:cutoff', 'ok', 5, { [RunAttribute.finishReason]: 'length', [RunAttribute.cutoff]: true })
+  record('filter:empty', 'ok', 6, { [RunAttribute.emptyAnswer]: true })
+  record('filter:gap', 'ok', 7, { [RunAttribute.coverageGap]: true })
+  const all = await inspect({ kind: 'problems', since: at, all: true, limit: 10 })
+  const incomplete = await inspect({ kind: 'problems', since: at, limit: 10 })
+  // More than one query page, with tied timestamps: noise cannot hide the older actionable rows.
+  for (let index = 0; index < 105; index++)
+    record(`filter:wait-${index.toString().padStart(3, '0')}`, 'blocked', 8, {
+      [RunAttribute.errorType]: 'NeedsAuthorization',
+    })
+  const paged = await inspect({ kind: 'problems', since: at, limit: 10 })
+  const pagedAll = await inspect({ kind: 'problems', since: at, all: true, limit: 3 })
+  return JSON.stringify({
+    rows,
+    inspected,
+    diagnosed,
+    left: left.status,
+    recovery,
+    problems,
+    attention,
+    all,
+    incomplete,
+    paged,
+    pagedAll,
+  })
 }

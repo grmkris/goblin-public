@@ -37,7 +37,13 @@ export const InspectInput = {
       description: "The turn's operation id, from `inspect_turns` or `inspect_problems`.",
     }),
   }),
-  problems: Schema.Struct({ since: Schema.optional(Since), limit: Schema.optional(Limit) }),
+  problems: Schema.Struct({
+    since: Schema.optional(Since),
+    limit: Schema.optional(Limit),
+    all: Schema.optional(Schema.Boolean).annotate({
+      description: 'Include expected waits and confirmed recovered attempts; default shows events needing attention.',
+    }),
+  }),
 }
 export type InspectKind = keyof typeof InspectInput
 
@@ -142,7 +148,7 @@ export const TurnTimeline = Schema.Struct({
 })
 export type TurnTimeline = typeof TurnTimeline.Type
 
-/** What went wrong since `since`, newest first: failed, blocked and interrupted events, unanswered turns among them. */
+/** Events needing attention since `since`, newest first; `all` includes expected waits and recovered attempts. */
 export const InspectProblems = Schema.Struct({ since: Schema.Number, problems: Schema.Array(RunEvent) })
 export type InspectProblems = typeof InspectProblems.Type
 

@@ -12,7 +12,7 @@ const turn: ToolInfo = {
 }
 const problems: ToolInfo = {
   name: 'inspect_problems',
-  inputSchema: { properties: { since: { type: 'integer' }, limit: { type: 'integer' } } },
+  inputSchema: { properties: { since: { type: 'integer' }, limit: { type: 'integer' }, all: { type: 'boolean' } } },
 }
 const NOW = 1_000_000_000
 
@@ -46,6 +46,12 @@ describe('goblin command lines (unit)', () => {
     expect(argumentsFor(problems, parseArgs(['problems', '--since', '1700000000000']), NOW)).toEqual({
       since: 1_700_000_000_000,
     })
+  })
+
+  it('passes the all-history switch through the discovered problem schema', () => {
+    expect(argumentsFor(problems, parseArgs(['problems', '--all']), NOW)).toEqual({ all: true })
+    expect(argumentsFor(problems, parseArgs(['problems', '--all=false']), NOW)).toEqual({ all: false })
+    expect(() => argumentsFor(problems, parseArgs(['problems', '--all=maybe']), NOW)).toThrow('takes true or false')
   })
 
   it('refuses what the schema does not take', () => {

@@ -26,6 +26,7 @@ import * as Schema from 'effect/Schema'
 import { readBytes } from '../http/body.ts'
 import type {
   McpCallOptions,
+  McpRequestOptions,
   SkillRequestOptions,
   McpCaller,
   McpConnectionSnapshot,
@@ -153,8 +154,12 @@ export class McpConnectionManager {
   }
 
   /** Connect (or reuse the live connection) and return the discovered snapshot. */
-  async connect(serverId: string, options: RequestOptions = {}): Promise<McpConnectionSnapshot> {
-    return (await this.#connection(serverId, options)).snapshot
+  async connect(serverId: string, options: McpRequestOptions = {}): Promise<McpConnectionSnapshot> {
+    const { runContext, ...request } = options
+    const connect = async () => (await this.#connection(serverId, request)).snapshot
+    return runContext === undefined
+      ? connect()
+      : timed({ step: 'connect', serverId, scope: runContext }, connect, this.#options.report)
   }
 
   async #connection(serverId: string, options: RequestOptions): Promise<Connection> {
@@ -166,7 +171,7 @@ export class McpConnectionManager {
     const pending = this.#connecting.get(serverId)
     if (pending !== undefined) return pending
     const opening = timed(
-      { step: 'connect', serverId },
+      { step: 'connect', serverId, sharedConnection: true },
       () => this.#open(this.server(serverId), options),
       this.#options.report,
     ).finally(() => this.#connecting.delete(serverId))
@@ -324,17 +329,17 @@ export class McpConnectionManager {
     args: Record<string, unknown> = {},
     options: McpCallOptions = {},
   ): Promise<McpToolResult> {
-    const { caller = 'model', authorize, ...request } = options
-    const connection = await this.#authorized(serverId, 'tool', name, request)
-    await authorize?.()
-    if (!this.#options.allows({ serverId, capability: 'tool', name })) throw new GrantDenied({ serverId, name })
-    const tool = connection.snapshot.tools.find((item) => item.name === name)
-    if (tool === undefined || !toolOffered(tool, caller)) throw new NotFound({ what: `tool ${name}` })
-    this.#bounded(serverId, args)
+    const { caller = 'model', authorize, runContext, ...request } = options
     return timed(
-      { step: 'call', serverId, tool: name },
-      () =>
-        this.#remote(connection, () =>
+      { step: 'call', serverId, tool: name, ...(runContext === undefined ? {} : { scope: runContext }) },
+      async () => {
+        const connection = await this.#authorized(serverId, 'tool', name, request)
+        await authorize?.()
+        if (!this.#options.allows({ serverId, capability: 'tool', name })) throw new GrantDenied({ serverId, name })
+        const tool = connection.snapshot.tools.find((item) => item.name === name)
+        if (tool === undefined || !toolOffered(tool, caller)) throw new NotFound({ what: `tool ${name}` })
+        this.#bounded(serverId, args)
+        return this.#remote(connection, () =>
           this.#dispatch.request(
             async () => {
               await authorize?.()
@@ -344,7 +349,8 @@ export class McpConnectionManager {
             { timeout: this.#options.timeoutMs ?? 30_000, ...request },
             (guarded) => connection.client.callTool({ name, arguments: args }, guarded),
           ),
-        ),
+        )
+      },
       this.#options.report,
     )
   }

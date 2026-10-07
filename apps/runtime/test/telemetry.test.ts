@@ -14,7 +14,8 @@ import { auxReporter, mcpReporter } from '../src/telemetry/report.ts'
 import { CheapModel } from '../src/memory/model.ts'
 import { MODEL_PROVIDER } from '../src/pi/model.ts'
 import { timed } from '../src/mcp/log.ts'
-import { UpstreamMcp } from '../src/http/errors.ts'
+import { grantRequiredResult } from '../src/mcp/extension.ts'
+import { NeedsAuthorization, NotFound, UpstreamMcp } from '../src/http/errors.ts'
 
 const model: Model<'openai-completions'> = {
   id: 'telemetry-fixture',
@@ -90,6 +91,13 @@ const tools = defineExtension({
       execute: async () => ({ content: [{ type: 'text', text: 'remote said no' }], isError: true }),
     }),
     defineTool({
+      name: 'wait_grant',
+      description: 'owner decision',
+      parameters: Type.Object({}),
+      replay: 'safe',
+      execute: async () => grantRequiredResult('myplan', 'notes_search'),
+    }),
+    defineTool({
       name: 'guarded',
       description: 'always blocked',
       parameters: Type.Object({}),
@@ -147,8 +155,26 @@ async function turn(replies: Reply[], input = 'hello', operationId = 'op-1', ext
 }
 
 const ofKind = (events: readonly RunEvent[], kind: RunEvent['kind']) => events.filter((event) => event.kind === kind)
+const throwingReport = () => {
+  throw new Error('PRIVATE_CALLBACK_ERROR')
+}
 
 describe('run telemetry from Pi commits (unit, in-memory Pi)', () => {
+  it('keeps invalid tool arguments and provider error payloads out of telemetry', async () => {
+    const privateText = 'PRIVATE_APP_SOURCE_7fd8'
+    const provider = await turn([
+      { content: [], stopReason: 'error', errorMessage: `provider rejected ${privateText}` },
+    ])
+    expect(JSON.stringify(provider.events)).not.toContain(privateText)
+    expect(ofKind(provider.events, 'model.attempt')).toMatchObject([
+      { status: 'error', attributes: { [RunAttribute.error]: 'Model provider failed.' } },
+    ])
+    const { events } = await turn([call('echo', { source: privateText })])
+    expect(JSON.stringify(events)).not.toContain(privateText)
+    expect(ofKind(events, 'tool.call')).toMatchObject([
+      { status: 'error', attributes: { [RunAttribute.errorType]: 'invalid_arguments' } },
+    ])
+  })
   it('records a turn: a failed attempt that is retried, a tool round, the answer', async () => {
     const { settled, events } = await turn([
       { content: [], stopReason: 'error', errorMessage: 'HTTP 503 upstream overloaded' },
@@ -167,7 +193,7 @@ describe('run telemetry from Pi commits (unit, in-memory Pi)', () => {
       ['ok', 'stop'],
     ])
     expect(attempts.map((event) => event.attributes[RunAttribute.attempt])).toEqual([1, 2, 1])
-    expect(attempts[0]?.attributes[RunAttribute.error]).toBe('HTTP 503 upstream overloaded')
+    expect(attempts[0]?.attributes[RunAttribute.error]).toBe('Model provider failed.')
     for (const attempt of attempts) {
       expect(attempt).toMatchObject({ operationId: 'op-1', conversationId: '1' })
       expect(attempt.attributes).toMatchObject({
@@ -206,12 +232,38 @@ describe('run telemetry from Pi commits (unit, in-memory Pi)', () => {
   it('records a call a hook blocked, and a call to a tool that is not there', async () => {
     const blocked = await turn([call('guarded', {})])
     expect(ofKind(blocked.events, 'tool.call')).toMatchObject([
-      { status: 'blocked', attributes: { [RunAttribute.blockedReason]: expect.stringContaining('budget used up') } },
+      { status: 'blocked', attributes: { [RunAttribute.blockedReason]: 'Execution blocked.' } },
     ])
     const missing = await turn([call('nonexistent', {})])
     expect(ofKind(missing.events, 'tool.call')).toMatchObject([
       { status: 'error', attributes: { [RunAttribute.errorType]: 'tool_unavailable' } },
     ])
+  })
+
+  it('classifies owner grant waits and empty remote failures without copying private details', async () => {
+    const blocked = await turn([call('wait_grant', {})])
+    expect(ofKind(blocked.events, 'tool.call')).toMatchObject([
+      {
+        status: 'blocked',
+        attributes: { [RunAttribute.errorType]: 'GrantDenied', [RunAttribute.blockedReason]: 'Owner grant required.' },
+      },
+    ])
+    const failed = await turn([call('mcp_call', { serverId: 'myplan', name: 'notes_search', arguments: {} })])
+    expect(ofKind(failed.events, 'tool.call')).toMatchObject([
+      { status: 'error', attributes: { [RunAttribute.errorType]: 'tool_error', [RunAttribute.error]: 'Tool failed.' } },
+    ])
+  })
+
+  it('records cutoffs and empty final answers without replaying them', async () => {
+    const cutoff = await turn([{ content: [{ type: 'text', text: 'partial' }], stopReason: 'length' }])
+    expect(ofKind(cutoff.events, 'model.attempt')).toMatchObject([
+      { status: 'ok', attributes: { [RunAttribute.cutoff]: true, [RunAttribute.finishReason]: 'length' } },
+    ])
+    const empty = await turn([{ content: [], stopReason: 'stop' }])
+    expect(ofKind(empty.events, 'model.attempt')).toMatchObject([
+      { status: 'ok', attributes: { [RunAttribute.emptyAnswer]: true } },
+    ])
+    expect(ofKind(empty.events, 'model.attempt')).toHaveLength(1)
   })
 
   it('keeps the turn running when a sink throws', async () => {
@@ -241,12 +293,9 @@ describe('run telemetry (unit)', () => {
 
   it('bounds attributes and marks what it shortened', () => {
     const bounded = boundAttributes({ [RunAttribute.error]: 'x'.repeat(2000), keep: 1 })
-    expect(String(bounded[RunAttribute.error]).length).toBeLessThanOrEqual(501)
-    expect(bounded[RunAttribute.truncated]).toBe(true)
-    const many = boundAttributes(
-      Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`key.${i}`, 'v'.repeat(40)])),
-    )
-    expect(JSON.stringify(many).length).toBeLessThanOrEqual(2048 + 40)
+    expect(bounded).toEqual({ [RunAttribute.error]: 'Unclassified failure.' })
+    const many = boundAttributes(Object.fromEntries(Object.values(RunAttribute).map((key) => [key, 'v'.repeat(160)])))
+    expect(JSON.stringify(many).length).toBeLessThanOrEqual(2088)
     expect(many[RunAttribute.truncated]).toBe(true)
   })
 
@@ -313,10 +362,65 @@ describe('run telemetry outside Pi (unit)', () => {
       {
         kind: 'model.aux',
         status: 'error',
-        attributes: { [RunAttribute.purpose]: 'naming', [RunAttribute.error]: 'HTTP 429 rate limited' },
+        attributes: { [RunAttribute.purpose]: 'naming', [RunAttribute.error]: 'Model provider failed.' },
       },
     ])
     expect(JSON.stringify(collected.events())).not.toMatch(/trips|Trip plans/u)
+  })
+
+  it('records authorization waits as blocked and keeps logger failures separate from call results', async () => {
+    const collected = new CollectedRuns()
+    const report = mcpReporter(new RunTelemetry([collected]))
+    await expect(
+      timed(
+        { step: 'connect', serverId: 'myplan' },
+        () => Promise.reject(new NeedsAuthorization({ serverId: 'myplan' })),
+        report,
+      ),
+    ).rejects.toBeInstanceOf(NeedsAuthorization)
+    expect(collected.events()).toMatchObject([
+      { status: 'blocked', attributes: { [RunAttribute.errorType]: 'NeedsAuthorization' } },
+    ])
+    let calls = 0
+    await expect(timed({ step: 'call', serverId: 'myplan' }, async () => ++calls, throwingReport)).resolves.toBe(1)
+    const original = new NotFound({ what: 'fixture' })
+    await expect(
+      timed({ step: 'call', serverId: 'myplan' }, () => Promise.reject(original), throwingReport),
+    ).rejects.toBe(original)
+    expect(calls).toBe(1)
+  })
+
+  it('correlates explicit MCP scopes with exactly their tool tasks', () => {
+    const collected = new CollectedRuns()
+    const telemetry = new RunTelemetry([collected])
+    const report = mcpReporter(telemetry)
+    telemetry.begin({
+      id: 'tool:one',
+      kind: 'tool.call',
+      conversationId: '1',
+      operationId: 'one-op',
+      taskId: 'one',
+      startedAt: 1,
+      attributes: {},
+    })
+    telemetry.begin({
+      id: 'tool:two',
+      kind: 'tool.call',
+      conversationId: '2',
+      operationId: 'two-op',
+      taskId: 'two',
+      startedAt: 1,
+      attributes: {},
+    })
+    report({ step: 'call', serverId: 'myplan', scope: { conversationId: '2', taskId: 'two' } }, 'ok', 2, 3)
+    report({ step: 'call', serverId: 'myplan', scope: { conversationId: '1', taskId: 'one' } }, 'ok', 2, 3)
+    report({ step: 'connect', serverId: 'myplan', sharedConnection: true }, 'ok', 2, 3)
+    expect(ofKind(collected.events(), 'mcp.request')).toMatchObject([
+      { operationId: 'two-op', conversationId: '2' },
+      { operationId: 'one-op', conversationId: '1' },
+      { attributes: { [RunAttribute.sharedConnection]: true } },
+    ])
+    expect(ofKind(collected.events(), 'mcp.request')[2]?.operationId).toBeUndefined()
   })
 
   it('records each remote MCP step, and a failed one by its tag', async () => {

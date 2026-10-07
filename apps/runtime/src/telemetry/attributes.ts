@@ -1,5 +1,6 @@
 import { RunAttribute, type RunAttributes } from '@goblin/contracts/telemetry'
 import { Predicate } from 'effect'
+import { failureSummary, safeErrorType } from './safety.ts'
 
 /** The parts of a model response telemetry reads; pi-ai's `AssistantMessage` has them. */
 export type Answer = {
@@ -9,6 +10,7 @@ export type Answer = {
   readonly responseId?: string | undefined
   readonly stopReason: string
   readonly errorMessage?: string | undefined
+  readonly emptyAnswer?: boolean | undefined
   readonly usage: {
     readonly input: number
     readonly output: number
@@ -32,7 +34,11 @@ export function answerAttributes(message: Answer): RunAttributes {
     [RunAttribute.cacheReadTokens]: usage.cacheRead,
     [RunAttribute.cacheWriteTokens]: usage.cacheWrite,
     ...(usage.reasoning === undefined ? {} : { [RunAttribute.reasoningTokens]: usage.reasoning }),
-    ...(message.errorMessage === undefined ? {} : { [RunAttribute.error]: message.errorMessage }),
+    ...(message.errorMessage === undefined && message.stopReason !== 'error'
+      ? {}
+      : { [RunAttribute.errorType]: 'provider_error', [RunAttribute.error]: 'provider_error' }),
+    ...(message.stopReason === 'length' ? { [RunAttribute.cutoff]: true } : {}),
+    ...(message.emptyAnswer === true ? { [RunAttribute.emptyAnswer]: true } : {}),
   }
 }
 
@@ -65,7 +71,7 @@ function describeOne(error: unknown): string {
 }
 
 /**
- * Any failure as one bounded line, for logs and the `goblin.error` attribute: its tag or name, a tagged failure's
+ * A private tool failure as one bounded line, for Pi and conversation inspection: its tag or name, a tagged failure's
  * scalar fields, its message, then its causes. Never `[object Object]`. Remote error text stays data (ADR 0024).
  */
 export function describeError(error: unknown): string {
@@ -78,14 +84,11 @@ export function describeError(error: unknown): string {
   return parts.join(', caused by ').slice(0, MAX_ERROR)
 }
 
-/** `ok`, or a failure's tag with its reason (`UpstreamMcp:timeout`); `error` for anything untagged. */
-export const outcomeOf = (error: unknown): string => {
-  if (!Predicate.isObject(error) || !('_tag' in error) || !Predicate.isString(error._tag)) return 'error'
-  return 'reason' in error && Predicate.isString(error.reason) ? `${error._tag}:${error.reason}` : error._tag
-}
+/** A safe failure classification, including the finite MCP transport reasons. */
+export const outcomeOf = safeErrorType
 
-/** A failure as attributes: its tag as `error.type` and its bounded message. */
+/** Full private error descriptions above are for tool results; these fixed summaries alone enter telemetry. */
 export const failureAttributes = (error: unknown): RunAttributes => ({
-  [RunAttribute.errorType]: outcomeOf(error),
-  [RunAttribute.error]: describeError(error),
+  [RunAttribute.errorType]: safeErrorType(error),
+  [RunAttribute.error]: failureSummary(safeErrorType(error)),
 })

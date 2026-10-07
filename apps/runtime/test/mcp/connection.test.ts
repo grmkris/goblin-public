@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { McpConnectionManager } from '../../src/mcp/connection.ts'
 import { MemoryGrants } from './memory.ts'
 import { Forbidden } from '../../src/http/errors.ts'
+import type { McpStep } from '../../src/telemetry/report.ts'
 
 const serverConfig = {
   serverId: 'fixture',
@@ -66,6 +67,53 @@ const makeManager = (
 }
 
 describe('official MCP SDK host interoperability (unit)', () => {
+  it('keeps shared discovery separate from caller scopes and never sends correlation to the server', async () => {
+    const official = handler()
+    const reports: { step: McpStep; outcome: string }[] = []
+    const one = { conversationId: 'local-conversation-one', taskId: 'local-task-one' }
+    const two = { conversationId: 'local-conversation-two', taskId: 'local-task-two' }
+    const manager = new McpConnectionManager({
+      servers: [serverConfig],
+      allows: (grant) => grants.allows(grant),
+      auth: () => ({ token: async () => 'fixture' }),
+      report: (step, outcome) => reports.push({ step, outcome }),
+      fetch: async (input, init) => {
+        const request = new Request(input, init)
+        const body = await request.clone().text()
+        const headers = JSON.stringify([...request.headers])
+        for (const local of [...Object.values(one), ...Object.values(two)]) {
+          expect(body).not.toContain(local)
+          expect(headers).not.toContain(local)
+        }
+        return official.fetch(request)
+      },
+    })
+    try {
+      await Promise.all([
+        manager.connect('fixture', { runContext: one }),
+        manager.connect('fixture', { runContext: two }),
+      ])
+      const connected = reports.filter(({ step }) => step.step === 'connect')
+      expect(connected).toHaveLength(3)
+      expect(connected).toEqual(
+        expect.arrayContaining([
+          { step: { step: 'connect', serverId: 'fixture', sharedConnection: true }, outcome: 'ok' },
+          { step: { step: 'connect', serverId: 'fixture', scope: one }, outcome: 'ok' },
+          { step: { step: 'connect', serverId: 'fixture', scope: two }, outcome: 'ok' },
+        ]),
+      )
+      await manager.callTool('fixture', 'read', {}, { runContext: two })
+      await expect(manager.callTool('fixture', 'missing', {}, { runContext: one })).rejects.toMatchObject({
+        _tag: 'GrantDenied',
+      })
+      expect(reports.filter(({ step }) => step.step === 'call')).toEqual([
+        { step: { step: 'call', serverId: 'fixture', tool: 'read', scope: two }, outcome: 'ok' },
+        { step: { step: 'call', serverId: 'fixture', tool: 'missing', scope: one }, outcome: 'GrantDenied' },
+      ])
+    } finally {
+      await manager.closeAll()
+    }
+  })
   it('rechecks execution authority after SDK token refresh and keeps correlation headers local', async () => {
     const official = handler()
     let revoked = false

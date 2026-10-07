@@ -1,119 +1,40 @@
-import type { CommitPublication, Session } from '@earendil-works/pi-durable'
-import { RunAttribute, type RunAttributes, type RunEventKind } from '@goblin/contracts/telemetry'
-import * as Option from 'effect/Option'
-import * as Schema from 'effect/Schema'
+import { type CommitPublication, type Harness, type Session } from '@earendil-works/pi-durable'
+import { RunAttribute, type RunAttributes, type RunEvent, type RunEventKind } from '@goblin/contracts/telemetry'
 import { nowMillis } from '../clock.ts'
+import { BACKGROUND, type PiContext } from '../pi/context.ts'
 import { answerAttributes, statusOfStop } from './attributes.ts'
+import { expectedFailure, failureSummary, safeErrorType, safeFailureCode } from './safety.ts'
 import type { RunTelemetry } from './events.ts'
+import { rehydrateTelemetry } from './rehydrate.ts'
+import {
+  decodeEntry,
+  decodeAssistant,
+  decodeToolResult,
+  decodeDiagnostics,
+  decodeTask,
+  decodeToolInput,
+  decodeCompactionInput,
+  decodeSubmission,
+  decodeLive,
+  decodeMcpCall,
+} from './pi-records.ts'
 
 /** What the recorder reads from the ledger after a restart: the newest event for a Pi task. */
 export type RecorderLedger = {
   readonly latestForTask: (
     kind: RunEventKind,
     taskId: string,
-  ) => { readonly id: string; readonly status: string; readonly attributes: RunAttributes } | undefined
+  ) =>
+    | {
+        readonly id: string
+        readonly status: string
+        readonly attributes: RunAttributes
+        readonly operationId?: string | undefined
+      }
+    | undefined
+  readonly read?: (id: string) => { readonly operationId?: string | undefined } | undefined
+  readonly forOperation?: (operationId: string) => readonly RunEvent[]
 }
-
-const Id = Schema.Union([Schema.Number, Schema.String])
-const Usage = Schema.Struct({
-  input: Schema.Number,
-  output: Schema.Number,
-  cacheRead: Schema.Number,
-  cacheWrite: Schema.Number,
-  reasoning: Schema.optional(Schema.Number),
-})
-const Block = Schema.Struct({
-  type: Schema.String,
-  id: Schema.optional(Schema.String),
-  name: Schema.optional(Schema.String),
-  arguments: Schema.optional(Schema.Unknown),
-})
-const Assistant = Schema.Struct({
-  role: Schema.Literal('assistant'),
-  provider: Schema.String,
-  model: Schema.String,
-  responseModel: Schema.optional(Schema.String),
-  responseId: Schema.optional(Schema.String),
-  usage: Usage,
-  stopReason: Schema.String,
-  errorMessage: Schema.optional(Schema.String),
-  timestamp: Schema.Number,
-  content: Schema.Array(Block),
-})
-const ToolResult = Schema.Struct({
-  role: Schema.Literal('toolResult'),
-  toolCallId: Schema.String,
-  toolName: Schema.String,
-  isError: Schema.optional(Schema.Boolean),
-  content: Schema.Unknown,
-  timestamp: Schema.optional(Schema.Number),
-})
-const Diagnostics = Schema.Struct({
-  diagnostics: Schema.optional(
-    Schema.Array(Schema.Struct({ code: Schema.String, message: Schema.optional(Schema.String) })),
-  ),
-})
-const Entry = Schema.Struct({
-  id: Id,
-  conversationId: Id,
-  kind: Schema.String,
-  model: Schema.optional(Schema.Array(Schema.Unknown)),
-  data: Schema.optional(Schema.Unknown),
-  byTaskId: Schema.optional(Id),
-})
-const Outcome = Schema.Struct({
-  status: Schema.String,
-  error: Schema.optional(Schema.Struct({ message: Schema.String })),
-  reason: Schema.optional(Schema.String),
-})
-const Task = Schema.Struct({
-  id: Id,
-  conversationId: Id,
-  kind: Schema.String,
-  input: Schema.optional(Schema.Unknown),
-  state: Schema.Struct({
-    status: Schema.String,
-    checkpoint: Schema.optional(
-      Schema.Struct({
-        phase: Schema.optional(Schema.String),
-        attempt: Schema.optional(Schema.Number),
-        model: Schema.optional(Schema.Struct({ provider: Schema.String, modelId: Schema.String })),
-      }),
-    ),
-    outcome: Schema.optional(Outcome),
-  }),
-})
-const ToolInput = Schema.Struct({ assistant: Id, callId: Schema.String })
-const CompactionInput = Schema.Struct({ reason: Schema.String })
-const Submission = Schema.Struct({
-  id: Id,
-  conversationId: Id,
-  type: Schema.String,
-  status: Schema.String,
-  requestId: Schema.optional(Schema.String),
-  reason: Schema.optional(Schema.String),
-  detail: Schema.optional(Schema.Unknown),
-})
-const Live = Schema.Struct({
-  run: Schema.optional(Schema.Struct({ taskId: Id, inputs: Schema.Array(Id) })),
-  generation: Schema.optional(Schema.Struct({ attempt: Schema.Number, message: Schema.optional(Schema.Unknown) })),
-})
-const McpCall = Schema.Struct({ serverId: Schema.String, name: Schema.String })
-
-const decode =
-  <S extends Schema.Top & Schema.ConstraintDecoder<unknown>>(schema: S) =>
-  (value: unknown): S['Type'] | undefined =>
-    Option.getOrUndefined(Schema.decodeUnknownOption(schema)(value))
-const decodeEntry = decode(Entry)
-const decodeAssistant = decode(Assistant)
-const decodeToolResult = decode(ToolResult)
-const decodeDiagnostics = decode(Diagnostics)
-const decodeTask = decode(Task)
-const decodeToolInput = decode(ToolInput)
-const decodeCompactionInput = decode(CompactionInput)
-const decodeSubmission = decode(Submission)
-const decodeLive = decode(Live)
-const decodeMcpCall = decode(McpCall)
 
 /** Where a turn came from, by the operation id each source gives its submissions. */
 const SOURCES: readonly (readonly [string, string])[] = [
@@ -141,8 +62,8 @@ const familyOf = (tool: string): string =>
 
 const sizeOf = (value: unknown): number => JSON.stringify(value ?? null).length
 
-type Assistant = typeof Assistant.Type
-type Outcome = typeof Outcome.Type
+type Assistant = NonNullable<ReturnType<typeof decodeAssistant>>
+type Outcome = NonNullable<NonNullable<ReturnType<typeof decodeTask>>['state']['outcome']>
 /** Where an entry or task sits: its id, its conversation and the Pi task it belongs to. */
 type Place = { readonly id: string; readonly conversation: string; readonly taskId: string }
 
@@ -162,23 +83,24 @@ type Diagnostic = { readonly code: string; readonly message?: string | undefined
 
 /** A tool result's status: blocked by a hook, cut short, failed, or fine. */
 function toolStatus(codes: readonly string[], isError: boolean) {
-  if (codes.includes('blocked')) return 'blocked'
+  if (codes.includes('blocked') || codes.some(expectedFailure)) return 'blocked'
   if (codes.includes('interrupted') || codes.includes('aborted')) return 'interrupted'
   return isError ? 'error' : 'ok'
 }
 
 /** What a tool result tells about its call: name, size, and the first diagnostic as the reason. */
 function resultAttributes(
-  result: typeof ToolResult.Type,
+  result: NonNullable<ReturnType<typeof decodeToolResult>>,
   status: string,
   first: Diagnostic | undefined,
 ): RunAttributes {
+  const code = safeFailureCode(first?.code ?? (status === 'error' ? 'tool_error' : status))
   const reason =
-    first === undefined
+    status === 'ok'
       ? {}
       : {
-          [status === 'blocked' ? RunAttribute.blockedReason : RunAttribute.error]: first.message ?? first.code,
-          [RunAttribute.errorType]: first.code,
+          [status === 'blocked' ? RunAttribute.blockedReason : RunAttribute.error]: failureSummary(code),
+          [RunAttribute.errorType]: code,
         }
   return {
     [RunAttribute.toolName]: result.toolName,
@@ -197,8 +119,18 @@ const outcomeStatus = (outcome: Outcome) => {
 }
 const outcomeAttributes = (outcome: Outcome): RunAttributes => ({
   [RunAttribute.reason]: outcome.status,
-  ...(outcome.error === undefined ? {} : { [RunAttribute.error]: outcome.error.message }),
-  ...(outcome.reason === undefined ? {} : { [RunAttribute.error]: outcome.reason }),
+  ...(outcome.error === undefined
+    ? {}
+    : {
+        [RunAttribute.errorType]: safeErrorType(outcome.error),
+        [RunAttribute.error]: failureSummary(safeErrorType(outcome.error)),
+      }),
+  ...(outcome.reason === undefined
+    ? {}
+    : {
+        [RunAttribute.errorType]: safeFailureCode(outcome.reason),
+        [RunAttribute.error]: failureSummary(outcome.reason),
+      }),
 })
 
 /** At most this many tool calls and submissions remembered between commits; older ones resolve from the ledger. */
@@ -246,13 +178,24 @@ export class PiRunRecorder {
     session.subscribeClose(unsubscribe)
   }
 
+  /** Rehydrate live correlation while the newly opened harness is paused. Never called inside a commit listener. */
+  async restore(harness: Harness, context: PiContext = BACKGROUND): Promise<void> {
+    try {
+      const state = await rehydrateTelemetry(harness, context)
+      for (const [id, operation] of state.operations) remember(this.#operations, id, operation)
+      for (const [conversation, run] of state.runs) this.#runs.set(conversation, run)
+    } catch (error) {
+      console.warn(JSON.stringify({ level: 'warn', event: 'telemetry', where: 'restore', error: safeErrorType(error) }))
+    }
+  }
+
   observe(publication: CommitPublication): void {
     try {
       this.#observe(publication)
     } catch (error) {
       this.#failures += 1
       if (this.#failures > 5) return
-      const message = (error instanceof Error ? error.message : String(error)).slice(0, 300)
+      const message = safeErrorType(error)
       console.warn(JSON.stringify({ level: 'warn', event: 'telemetry', where: 'pi', error: message }))
     }
   }
@@ -268,6 +211,12 @@ export class PiRunRecorder {
     for (const change of changes) if (change.type === 'task') this.#task(change.value, publication.seq, now)
     for (const change of changes) if (change.type === 'submission') this.#settled(change.value, now)
     for (const change of changes) this.#live(change, true, now)
+    for (const change of changes) this.#clearLive(change)
+  }
+
+  #clearLive(change: Change): void {
+    if (change.type !== 'document' || change.record.kind !== 'pi.live' || change.conversationId === undefined) return
+    if (decodeLive(change.value)?.run === undefined) this.#runs.delete(String(change.conversationId))
   }
 
   #live(change: Change, partials: boolean, now = 0): void {
@@ -275,8 +224,8 @@ export class PiRunRecorder {
     const conversation = String(change.conversationId)
     const live = decodeLive(change.value)
     if (!partials) {
-      if (live?.run === undefined) this.#runs.delete(conversation)
-      else this.#runs.set(conversation, { taskId: String(live.run.taskId), inputs: live.run.inputs.map(String) })
+      if (live?.run !== undefined)
+        this.#runs.set(conversation, { taskId: String(live.run.taskId), inputs: live.run.inputs.map(String) })
       return
     }
     // The first committed partial of an attempt: Pi throttles partials, so this is the first chunk within ~100 ms.
@@ -290,16 +239,26 @@ export class PiRunRecorder {
 
   #operationOf(conversation: string): string | undefined {
     const input = this.#runs.get(conversation)?.inputs[0]
-    return input === undefined ? undefined : this.#operations.get(input)
+    return input === undefined
+      ? undefined
+      : (this.#operations.get(input) ?? this.#ledger.read?.(`turn:${input}`)?.operationId)
   }
 
   #scope(conversation: string, taskId?: string) {
-    const operationId = this.#operationOf(conversation)
+    const operationId = this.#operationOf(conversation) ?? this.#taskOperation(taskId)
     return {
       conversationId: conversation,
       ...(operationId === undefined ? {} : { operationId }),
       ...(taskId === undefined ? {} : { taskId }),
     }
+  }
+
+  #taskOperation(taskId: string | undefined): string | undefined {
+    if (taskId === undefined) return undefined
+    return (
+      this.#ledger.latestForTask('model.attempt', taskId)?.operationId ??
+      this.#ledger.latestForTask('tool.call', taskId)?.operationId
+    )
   }
 
   #admitted(value: unknown, now: number): void {
@@ -313,7 +272,7 @@ export class PiRunRecorder {
     this.#telemetry.begin(this.#turn(submission, id, now))
   }
 
-  #turn(submission: typeof Submission.Type, id: string, now: number) {
+  #turn(submission: NonNullable<ReturnType<typeof decodeSubmission>>, id: string, now: number) {
     const operationId = submission.requestId ?? id
     return {
       id: `turn:${id}`,
@@ -330,14 +289,31 @@ export class PiRunRecorder {
     if (submission === undefined || submission.type !== 'input' || submission.requestId === undefined) return
     if (submission.status !== 'done' && submission.status !== 'unanswered') return
     const id = String(submission.id)
-    const detail = typeof submission.detail === 'string' ? { [RunAttribute.error]: submission.detail } : {}
+    const detail =
+      typeof submission.detail === 'string' ? { [RunAttribute.errorType]: safeFailureCode(submission.detail) } : {}
+    const events = this.#ledger.forOperation?.(submission.requestId)
+    const coverage =
+      submission.status === 'done' && submission.answer !== undefined && events !== undefined
+        ? {
+            [RunAttribute.coverageGap]: !events.some(
+              (event) => event.attributes[RunAttribute.entry] === Number(submission.answer),
+            ),
+          }
+        : {}
     this.#telemetry.finish(
       `turn:${id}`,
       {
-        status: submission.status === 'done' ? 'ok' : 'error',
+        status:
+          submission.status === 'done'
+            ? 'ok'
+            : expectedFailure(submission.reason) || expectedFailure(submission.detail)
+              ? 'blocked'
+              : 'error',
         endedAt: now,
         attributes:
-          submission.status === 'done' ? {} : { [RunAttribute.reason]: submission.reason ?? 'unanswered', ...detail },
+          submission.status === 'done'
+            ? coverage
+            : { [RunAttribute.reason]: submission.reason ?? 'unanswered', ...detail },
       },
       this.#turn(submission, id, now),
     )
@@ -358,9 +334,16 @@ export class PiRunRecorder {
     if (message === undefined) return
     for (const [key, call] of callsOf(place.id, message)) remember(this.#calls, key, call)
     const id = this.#attemptFor(place)
+    const emptyAnswer =
+      message.stopReason === 'stop' &&
+      !message.content.some((block) => block.type === 'text' && block.text !== undefined && block.text.trim() !== '')
     this.#telemetry.finish(
       id,
-      { status: statusOfStop(message.stopReason), endedAt: now, attributes: answerAttributes(message) },
+      {
+        status: statusOfStop(message.stopReason),
+        endedAt: now,
+        attributes: { ...answerAttributes({ ...message, emptyAnswer }), [RunAttribute.entry]: Number(place.id) },
+      },
       {
         id,
         kind: 'model.attempt',
@@ -396,7 +379,11 @@ export class PiRunRecorder {
     const id = started ? own : `tool:entry:${place.id}`
     this.#telemetry.finish(
       id,
-      { status, endedAt: now, attributes: resultAttributes(result, status, diagnostics[0]) },
+      {
+        status,
+        endedAt: now,
+        attributes: { ...resultAttributes(result, status, diagnostics[0]), [RunAttribute.entry]: Number(place.id) },
+      },
       {
         id,
         kind: 'tool.call',
@@ -421,7 +408,7 @@ export class PiRunRecorder {
       this.#attemptStarted({ id: String(seq), conversation, taskId }, checkpoint.attempt, checkpoint.model, now)
     } else if (task.kind === 'pi.tool') {
       const id = `tool:${taskId}`
-      if (this.#telemetry.isOpen(id)) return
+      if (this.#telemetry.isOpen(id) || this.#ledger.latestForTask('tool.call', taskId) !== undefined) return
       const input = decodeToolInput(task.input)
       const call = input === undefined ? undefined : this.#calls.get(`${String(input.assistant)}:${input.callId}`)
       this.#telemetry.begin({

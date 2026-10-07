@@ -1,5 +1,6 @@
 import { nowMillis } from '../clock.ts'
 import { outcomeOf } from '../telemetry/attributes.ts'
+import { expectedFailure, safeFailureCode } from '../telemetry/safety.ts'
 import type { McpStep } from '../telemetry/report.ts'
 
 /** Where a finished MCP step goes: the run telemetry (`mcpReporter`), or a plain log line. */
@@ -7,9 +8,24 @@ export type StepReport = (step: McpStep, outcome: string, startedAt: number, end
 
 /** One structured log line per step, for a manager made without run telemetry. */
 const logStep: StepReport = (step, outcome, startedAt, endedAt) => {
-  const line = { level: outcome === 'ok' ? 'info' : 'warn', event: 'mcp', ...step, outcome, ms: endedAt - startedAt }
-  if (outcome === 'ok') console.log(JSON.stringify(line))
+  const code = outcome === 'ok' ? 'ok' : safeFailureCode(outcome)
+  const line = {
+    level: outcome === 'ok' || expectedFailure(code) ? 'info' : 'warn',
+    event: 'mcp',
+    ...step,
+    outcome: code,
+    ms: endedAt - startedAt,
+  }
+  if (line.level === 'info') console.log(JSON.stringify(line))
   else console.warn(JSON.stringify(line))
+}
+
+const reportSafely = (report: StepReport, step: McpStep, outcome: string, startedAt: number, endedAt: number): void => {
+  try {
+    report(step, outcome, startedAt, endedAt)
+  } catch (error) {
+    console.warn(JSON.stringify({ level: 'warn', event: 'telemetry', where: 'mcp_report', error: outcomeOf(error) }))
+  }
 }
 
 /**
@@ -20,10 +36,10 @@ export async function timed<T>(step: McpStep, work: () => Promise<T>, report: St
   const started = nowMillis()
   try {
     const value = await work()
-    report(step, 'ok', started, nowMillis())
+    reportSafely(report, step, 'ok', started, nowMillis())
     return value
   } catch (error) {
-    report(step, outcomeOf(error), started, nowMillis())
+    reportSafely(report, step, outcomeOf(error), started, nowMillis())
     throw error
   }
 }

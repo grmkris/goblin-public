@@ -1,9 +1,11 @@
 import { RunAttributes, RunEvent, RunEventKind, RunEventStatus } from '@goblin/contracts/telemetry'
-import { and, asc, desc, eq, gte, inArray, lt } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, lt, like, or } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Schema from 'effect/Schema'
 import { appRunEvents } from '../storage/schema.ts'
-import type { RunSink } from './events.ts'
+import { boundAttributes, type RunSink } from './events.ts'
+import { incompleteAnswer, needsAttention } from './attention.ts'
+import { expectedFailure } from './safety.ts'
 
 /** How long the ledger keeps an event (ADR 0024). */
 export const LEDGER_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
@@ -23,7 +25,7 @@ const eventOf = (row: Row): RunEvent => ({
   ...(row.taskId === null ? {} : { taskId: row.taskId }),
   startedAt: row.startedAt,
   ...(row.endedAt === null ? {} : { endedAt: row.endedAt }),
-  attributes: decodeAttributes(row.attributes),
+  attributes: boundAttributes(decodeAttributes(row.attributes)),
 })
 
 const rowOf = (event: RunEvent): Row => ({
@@ -37,6 +39,9 @@ const rowOf = (event: RunEvent): Row => ({
   endedAt: event.endedAt ?? null,
   attributes: JSON.stringify(event.attributes),
 })
+
+/** Leave room for fixed query parameters below Workers SQLite's 100-parameter limit. */
+const PROBLEM_PAGE_SIZE = 64
 
 /**
  * The agent's run ledger in its own SQLite (`app_run_events`). Writes are single statements, never held across an
@@ -112,13 +117,76 @@ export class RunLedger implements RunSink {
   }
 
   /** Events that failed, were blocked or were cut short since `since`, newest first. */
-  problems(since: number, limit: number): readonly RunEvent[] {
+  problems(since: number, limit: number, all = false): readonly RunEvent[] {
+    const problems: RunEvent[] = []
+    let before: RunEvent | undefined
+    while (problems.length < limit) {
+      const page = this.#problemPage(since, before)
+      const candidates = page.filter(
+        (event) => (event.status !== 'ok' && event.status !== 'started') || incompleteAnswer(event),
+      )
+      const peers = all ? [] : this.#successfulAttempts(candidates)
+      problems.push(
+        ...candidates.filter((event) => all || needsAttention(event, peers)).slice(0, limit - problems.length),
+      )
+      if (page.length < PROBLEM_PAGE_SIZE) break
+      before = page.at(-1)
+    }
+    return problems
+  }
+
+  #problemPage(since: number, before?: RunEvent): readonly RunEvent[] {
+    const cursor =
+      before === undefined
+        ? undefined
+        : or(
+            lt(appRunEvents.startedAt, before.startedAt),
+            and(eq(appRunEvents.startedAt, before.startedAt), lt(appRunEvents.id, before.id)),
+          )
     return this.#db
       .select()
       .from(appRunEvents)
-      .where(and(inArray(appRunEvents.status, ['error', 'blocked', 'interrupted']), gte(appRunEvents.startedAt, since)))
-      .orderBy(desc(appRunEvents.startedAt))
-      .limit(limit)
+      .where(
+        and(
+          gte(appRunEvents.startedAt, since),
+          cursor,
+          or(
+            inArray(appRunEvents.status, ['error', 'blocked', 'interrupted']),
+            like(appRunEvents.attributes, '%"goblin.cutoff":true%'),
+            like(appRunEvents.attributes, '%"goblin.empty_answer":true%'),
+            like(appRunEvents.attributes, '%"goblin.coverage_gap":true%'),
+            like(appRunEvents.attributes, '%"gen_ai.response.finish_reasons"%"length"%'),
+          ),
+        ),
+      )
+      .orderBy(desc(appRunEvents.startedAt), desc(appRunEvents.id))
+      .limit(PROBLEM_PAGE_SIZE)
+      .all()
+      .map(eventOf)
+  }
+
+  #successfulAttempts(events: readonly RunEvent[]): readonly RunEvent[] {
+    const taskIds = events.flatMap((event) =>
+      event.kind === 'model.attempt' &&
+      event.taskId !== undefined &&
+      event.status !== 'ok' &&
+      event.status !== 'started' &&
+      !incompleteAnswer(event) &&
+      !expectedFailure(event.attributes['error.type'])
+        ? [event.taskId]
+        : [],
+    )
+    if (taskIds.length === 0) return []
+    return this.#db
+      .select()
+      .from(appRunEvents)
+      .where(
+        and(
+          eq(appRunEvents.kind, 'model.attempt'),
+          eq(appRunEvents.status, 'ok'),
+          inArray(appRunEvents.taskId, taskIds),
+        ),
+      )
       .all()
       .map(eventOf)
   }

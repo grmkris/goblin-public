@@ -7,7 +7,6 @@ import { type ChannelStatus, MAIN_THREAD } from '@goblin/contracts'
 import { RunAttribute, type RunAttributes } from '@goblin/contracts/telemetry'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import * as Predicate from 'effect/Predicate'
 import * as Schema from 'effect/Schema'
 import { InvalidInput, UpstreamMcp } from '../http/errors.ts'
 import type { CredentialCipher } from '../mcp/cipher.ts'
@@ -16,6 +15,7 @@ import { appChannel, appChannelReplies, appTelegramChannel } from '../storage/sc
 import { nowMillis } from '../clock.ts'
 import { failureAttributes } from '../telemetry/attributes.ts'
 import type { RunTelemetry } from '../telemetry/events.ts'
+import { expectedFailure, safeErrorType } from '../telemetry/safety.ts'
 
 /** The tools a server must offer to carry the channel, all granted when the owner turns it on. */
 export const CHANNEL_TOOLS = ['inbox', 'send_message'] as const
@@ -82,8 +82,10 @@ const messageText = (message: typeof Message.Type) =>
 
 /** One line when a pull or a delivery fails: the step and the error's tag, never message content. */
 export function logChannelFailure(step: 'pull' | 'replies', error: unknown): void {
-  const tag = Predicate.hasProperty(error, '_tag') && Predicate.isString(error._tag) ? error._tag : 'Error'
-  console.warn(JSON.stringify({ level: 'warn', event: 'channel', step, error: tag }))
+  const tag = safeErrorType(error)
+  const line = JSON.stringify({ level: expectedFailure(tag) ? 'info' : 'warn', event: 'channel', step, error: tag })
+  if (expectedFailure(tag)) console.log(line)
+  else console.warn(line)
 }
 
 /**

@@ -26,7 +26,7 @@ describe('a failure as one line (unit, ADR 0024)', () => {
     expect(describeError(new Error('x'.repeat(1000)))).toHaveLength(300)
     expect(failureAttributes({ _tag: 'UpstreamMcp', reason: 'timeout' })).toMatchObject({
       'error.type': 'UpstreamMcp:timeout',
-      'goblin.error': 'UpstreamMcp (reason: timeout)',
+      'goblin.error': 'Remote MCP request failed (timeout).',
     })
   })
 })

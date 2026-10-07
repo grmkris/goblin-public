@@ -1,10 +1,11 @@
-import { defineExtension } from '@earendil-works/pi-durable'
+import { type ToolExecutionApi, defineExtension } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { type AppError, type GrantDenied, NotFound } from '../http/errors.ts'
 import { toolAppResource, toolOffered } from '../mcp/connection.ts'
 import { grantRequiredResult, mcpModelResult } from '../mcp/extension.ts'
 import type { McpHost } from '../mcp/host.ts'
+import type { McpRequestOptions } from '../mcp/types.ts'
 import { type AgentServices, Apps, Capabilities, Mcp, attempt, nowSecondsEffect, requireResident } from '../services.ts'
 import { capabilityOffResult, mcpOff } from './capabilities.ts'
 import { ReadyResult, objectOrJson, typedTool } from './typed-tool.ts'
@@ -38,9 +39,9 @@ const dispatchAuthority =
  * A call the owner has not granted becomes a request for their decision, but only for a tool that exists and the
  * model may call: anything else stays NotFound, so the owner is never asked about a tool that is not there.
  */
-const grantRequired = (mcp: McpHost, denied: GrantDenied, signal: AbortSignal | undefined) =>
+const grantRequired = (mcp: McpHost, denied: GrantDenied, options: McpRequestOptions) =>
   Effect.gen(function* () {
-    const snapshot = yield* attempt(() => mcp.manager.connect(denied.serverId, signal === undefined ? {} : { signal }))
+    const snapshot = yield* attempt(() => mcp.manager.connect(denied.serverId, options))
     const tool = snapshot.tools.find((item) => item.name === denied.name)
     if (tool === undefined || !toolOffered(tool, 'model')) return yield* new NotFound({ what: `tool ${denied.name}` })
     return grantRequiredResult(denied.serverId, denied.name)
@@ -99,6 +100,11 @@ function offered(
     }))
 }
 
+const requestFor = (api: ToolExecutionApi, signal: AbortSignal | undefined): McpRequestOptions => ({
+  runContext: { conversationId: String(api.conversationId), taskId: String(api.taskId) },
+  ...(signal === undefined ? {} : { signal }),
+})
+
 /**
  * The resident agent's MCP tools. Each execution checks resident authority and the owner's exact grant; nothing is
  * resolved at wake. Remote descriptions, schemas and results are untrusted data.
@@ -129,9 +135,7 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
                     .map(({ serverId: id, status }) => ({ serverId: id, status })),
                 }
               if (!scope.server(serverId)) return yield* new NotFound({ what: `server ${serverId}` })
-              const snapshot = yield* attempt(() =>
-                mcp.manager.connect(serverId, context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
-              )
+              const snapshot = yield* attempt(() => mcp.manager.connect(serverId, requestFor(api, context.abortSignal)))
               yield* executionAuthority(String(api.conversationId), authorize)
               const current = (yield* Capabilities).scope(String(api.conversationId))
               const tools = offered(snapshot.tools, mcp.grants(), current, serverId)
@@ -167,14 +171,18 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
               return yield* attempt(() =>
                 mcp.manager.callTool(input.serverId, input.name, input.arguments, {
                   caller: 'model',
+
                   authorize: dispatchAuthority(run, String(api.conversationId), input, authorize),
-                  ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
+                  ...requestFor(api, context.abortSignal),
                 }),
               ).pipe(
                 Effect.tap(() => keepApp(session, api.callId, input)),
                 Effect.map((result) => new ReadyResult(mcpModelResult(input.serverId, result))),
                 Effect.catchTag('GrantDenied', (denied) =>
-                  Effect.map(grantRequired(mcp, denied, context.abortSignal), (result) => new ReadyResult(result)),
+                  Effect.map(
+                    grantRequired(mcp, denied, requestFor(api, context.abortSignal)),
+                    (result) => new ReadyResult(result),
+                  ),
                 ),
               )
             }),

@@ -1,7 +1,8 @@
 import { PiHarness } from 'agents/harness/pi'
 import { createRegistry, Harness } from '@earendil-works/pi-durable'
-import type { Extension, Registry, Session } from '@earendil-works/pi-durable'
-import { describeError } from '../telemetry/attributes.ts'
+import type { Extension, Registry } from '@earendil-works/pi-durable'
+import type { PiRunRecorder } from '../telemetry/pi.ts'
+import { safeErrorType } from '../telemetry/safety.ts'
 import { askUserExtension } from './ask-user.ts'
 import { MAX_OUTPUT_TOKENS, type makePiModels } from './model.ts'
 import { personaExtension } from './persona.ts'
@@ -13,7 +14,7 @@ export type PiModels = ReturnType<typeof makePiModels>
  * failed and why, bounded, never the request or its content.
  */
 const onReport = (error: unknown) =>
-  console.warn(JSON.stringify({ level: 'warn', event: 'pi', error: describeError(error) }))
+  console.warn(JSON.stringify({ level: 'warn', event: 'pi', error: safeErrorType(error) }))
 
 /** The agent's apps as Pi sees them: extensions installed into its registry and selected by default (ADR 0021). */
 export interface AppTools {
@@ -35,7 +36,7 @@ export function makePiHarness(
   base: readonly Extension[],
   extra: readonly Extension[],
   apps: AppTools,
-  recorder: { attach(session: Pick<Session, 'subscribeCommits' | 'subscribeClose'>): void },
+  recorder: Pick<PiRunRecorder, 'attach' | 'restore'>,
 ): PiHarness {
   const registry = createRegistry()
   const defaults = [personaExtension, askUserExtension, ...base]
@@ -54,6 +55,7 @@ export function makePiHarness(
       apps.restore()
       const harness = await Harness.open(storage, { models: pi.models, registry, settings, onReport }, context)
       recorder.attach(harness)
+      await recorder.restore(harness, context)
       return harness
     },
     defaults: { model: pi.model, thinkingLevel: 'low' },

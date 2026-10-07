@@ -5,6 +5,7 @@ import { appAgentJobs } from '../storage/schema.ts'
 import { type Every, type Manifest, type Schedule, everyOf } from './manifest.ts'
 import { problemText } from './queue.ts'
 import type { AgentAppStore } from './store.ts'
+import { safeErrorType } from '../telemetry/safety.ts'
 
 const MINUTE = 60_000
 
@@ -37,7 +38,7 @@ export const JOB_CALLBACK = 'runAppJob'
 
 /** One line when the apps' schedules could not be reconciled: the error's name, never app content. */
 export function logAppJobs(error: unknown): void {
-  const name = error instanceof Error ? error.name : 'Error'
+  const name = safeErrorType(error)
   console.warn(JSON.stringify({ level: 'warn', event: 'app-jobs', step: 'reconcile', error: name }))
 }
 

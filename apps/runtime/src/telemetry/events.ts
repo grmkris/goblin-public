@@ -1,4 +1,5 @@
 import { RunAttribute, type RunAttributes, type RunEvent, type RunEventStatus } from '@goblin/contracts/telemetry'
+import { safeErrorType, sanitizeAttributes } from './safety.ts'
 
 /** Where run events go (ADR 0024): the ledger, a log line, a test's list. */
 export interface RunSink {
@@ -31,7 +32,7 @@ export function boundAttributes(attributes: RunAttributes): RunAttributes {
   const bounded: Record<string, string | number | boolean> = {}
   let size = 2
   let truncated = false
-  for (const [key, raw] of Object.entries(attributes)) {
+  for (const [key, raw] of Object.entries(sanitizeAttributes(attributes))) {
     const value = typeof raw === 'string' && raw.length > MAX_VALUE ? `${raw.slice(0, MAX_VALUE)}…` : raw
     if (value !== raw) truncated = true
     const cost = JSON.stringify(key).length + JSON.stringify(value).length + 2
@@ -67,6 +68,14 @@ export class RunTelemetry {
   id(prefix: string, at: number): string {
     this.#sequence += 1
     return `${prefix}:${at.toString(36)}:${this.#sequence.toString(36)}`
+  }
+
+  /** Correlate an explicit MCP caller with the exact tool task, including a retained task after restart. */
+  scopeOf(scope: { readonly conversationId: string; readonly taskId: string }) {
+    const event = this.#open.get(`tool:${scope.taskId}`) ?? this.#recallSafely(`tool:${scope.taskId}`)
+    return event?.conversationId === scope.conversationId && event.operationId !== undefined
+      ? { ...scope, operationId: event.operationId }
+      : scope
   }
 
   /** Record that `event` started; its status is `started` whatever it says. */
@@ -138,7 +147,7 @@ export class RunTelemetry {
   #failed(where: string, error: unknown): void {
     this.#failures += 1
     if (this.#failures > MAX_FAILURE_LINES) return
-    const message = (error instanceof Error ? error.message : String(error)).slice(0, 300)
+    const message = safeErrorType(error)
     console.warn(JSON.stringify({ level: 'warn', event: 'telemetry', where, error: message }))
   }
 }

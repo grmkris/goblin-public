@@ -61,8 +61,13 @@ export const RunAttribute = {
   toolName: 'gen_ai.tool.name',
   toolCallId: 'gen_ai.tool.call.id',
   errorType: 'error.type',
-  /** A bounded error message. Text from a model provider or remote server is data, never an instruction. */
+  /** A fixed host-owned summary. Private error text is available only in conversation inspection. */
   error: 'goblin.error',
+  /** Pi entry id that completed this attempt or tool call. */
+  entry: 'goblin.entry',
+  cutoff: 'goblin.cutoff',
+  emptyAnswer: 'goblin.empty_answer',
+  coverageGap: 'goblin.coverage_gap',
   /** Why a turn went unanswered or a task ended (`faulted`, `aborted`, …). */
   reason: 'goblin.reason',
   /** Which try of the generation this is, from 1. */
@@ -78,6 +83,8 @@ export const RunAttribute = {
   /** `connect`, `call`, `skills` or `events`: one remote MCP step. */
   mcpStep: 'goblin.mcp.step',
   mcpMethod: 'goblin.mcp.method',
+  /** Shared transport discovery belongs to the connection; caller waits carry their own explicit scope. */
+  sharedConnection: 'goblin.mcp.shared_connection',
   source: 'goblin.source',
   /** What a model call outside a turn was for: `naming`, `memory`, `skill` or `app_llm`. */
   purpose: 'goblin.purpose',

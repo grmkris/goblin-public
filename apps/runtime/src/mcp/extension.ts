@@ -52,5 +52,6 @@ export const grantRequiredResult = (serverId: string, name: string): ToolExecuti
     },
   ],
   isError: true,
+  diagnostics: [{ severity: 'info', code: 'GrantDenied', message: 'Owner grant required.' }],
   details: { kind: 'grant-required', serverId, name },
 })

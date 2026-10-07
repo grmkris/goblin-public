@@ -8,6 +8,7 @@ export function telemetryCase(url: string) {
     const response = await fetch(`${url.replace(/\/+$/u, '')}/telemetry?name=telemetry-${Date.now()}`)
     const text = await response.text()
     expect(response.status, text).toBe(200)
+    expect(text).not.toContain('PRIVATE_NATIVE_PAYLOAD')
     const result: unknown = JSON.parse(text)
     expect(result).toMatchObject({
       rows: [
@@ -63,10 +64,65 @@ export function telemetryCase(url: string) {
       diagnosed: expect.stringMatching(/done: .*trusted.*telemetry-turn.*tool\.call/u),
       left: 'interrupted',
       recovery: [{ [RunAttribute.recovery]: 'restarted', [RunAttribute.interrupted]: 1 }],
+      attention: {
+        ok: true,
+        value: {
+          problems: [
+            expect.objectContaining({
+              id: 'filter:unresolved',
+              attributes: expect.objectContaining({ [RunAttribute.error]: 'Model provider failed.' }),
+            }),
+          ],
+        },
+      },
+      all: {
+        ok: true,
+        value: {
+          problems: expect.arrayContaining([
+            expect.objectContaining({ id: 'filter:authorization' }),
+            expect.objectContaining({ id: 'filter:failure' }),
+            expect.objectContaining({ id: 'filter:cutoff' }),
+            expect.objectContaining({ id: 'filter:empty' }),
+            expect.objectContaining({ id: 'filter:gap' }),
+          ]),
+        },
+      },
+      incomplete: {
+        ok: true,
+        value: {
+          problems: [
+            expect.objectContaining({ id: 'filter:gap' }),
+            expect.objectContaining({ id: 'filter:empty' }),
+            expect.objectContaining({ id: 'filter:cutoff' }),
+            expect.objectContaining({ id: 'filter:unresolved' }),
+          ],
+        },
+      },
       problems: {
         ok: true,
         value: {
           problems: expect.arrayContaining([expect.objectContaining({ id: 'probe:left', status: 'interrupted' })]),
+        },
+      },
+      paged: {
+        ok: true,
+        value: {
+          problems: [
+            expect.objectContaining({ id: 'filter:gap' }),
+            expect.objectContaining({ id: 'filter:empty' }),
+            expect.objectContaining({ id: 'filter:cutoff' }),
+            expect.objectContaining({ id: 'filter:unresolved' }),
+          ],
+        },
+      },
+      pagedAll: {
+        ok: true,
+        value: {
+          problems: [
+            expect.objectContaining({ id: 'filter:wait-104' }),
+            expect.objectContaining({ id: 'filter:wait-103' }),
+            expect.objectContaining({ id: 'filter:wait-102' }),
+          ],
         },
       },
     })
