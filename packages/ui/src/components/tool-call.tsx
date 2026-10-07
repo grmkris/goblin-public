@@ -6,6 +6,7 @@ import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible'
 import { cva } from 'class-variance-authority'
 import { ChevronRightIcon } from 'lucide-react'
 import { cn } from '../lib/cn'
+import { PANEL_MOTION } from './collapsible.tsx'
 
 type ToolCallState = 'pending' | 'running' | 'done' | 'error' | 'stopped'
 
@@ -80,13 +81,14 @@ function ToolCallMeta({ className, ...props }: React.ComponentProps<'span'>) {
   )
 }
 
-function ToolCallContent({ className, ...props }: CollapsiblePrimitive.Panel.Props) {
+/** The call's input and output, set in by a hairline; `className` styles that column, the panel around it only moves. */
+function ToolCallContent({ className, children, ...props }: CollapsiblePrimitive.Panel.Props) {
   return (
-    <CollapsiblePrimitive.Panel
-      data-slot="tool-call-content"
-      className={cn('mx-3.5 mt-1 mb-2 flex flex-col gap-2 border-l border-hairline py-1 pl-3', className)}
-      {...props}
-    />
+    <CollapsiblePrimitive.Panel data-slot="tool-call-content" className={PANEL_MOTION} {...props}>
+      <div className={cn('mx-3.5 mt-1 mb-2 flex flex-col gap-2 border-l border-hairline py-1 pl-3', className)}>
+        {children}
+      </div>
+    </CollapsiblePrimitive.Panel>
   )
 }
 

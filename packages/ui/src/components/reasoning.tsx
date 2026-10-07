@@ -3,6 +3,7 @@
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible'
 import { ChevronRightIcon } from 'lucide-react'
 import { cn } from '../lib/cn'
+import { PANEL_MOTION } from './collapsible.tsx'
 
 function Reasoning({ className, ...props }: CollapsiblePrimitive.Root.Props) {
   return (
@@ -39,16 +40,19 @@ function ReasoningTrigger({
   )
 }
 
-function ReasoningContent({ className, ...props }: CollapsiblePrimitive.Panel.Props) {
+/** The thoughts, set in by a rule; `className` styles the text, the panel around it only moves. */
+function ReasoningContent({ className, children, ...props }: CollapsiblePrimitive.Panel.Props) {
   return (
-    <CollapsiblePrimitive.Panel
-      data-slot="reasoning-content"
-      className={cn(
-        'ml-2 border-l-2 border-border py-1 pl-3 leading-relaxed whitespace-pre-wrap text-muted-foreground',
-        className,
-      )}
-      {...props}
-    />
+    <CollapsiblePrimitive.Panel data-slot="reasoning-content" className={PANEL_MOTION} {...props}>
+      <div
+        className={cn(
+          'ml-2 border-l-2 border-border py-1 pl-3 leading-relaxed whitespace-pre-wrap text-muted-foreground',
+          className,
+        )}
+      >
+        {children}
+      </div>
+    </CollapsiblePrimitive.Panel>
   )
 }
 
