@@ -45,6 +45,21 @@ function beginGesture(event: ReactPointerEvent<HTMLElement>, id: string): Gestur
   return gesture
 }
 
+/**
+ * A lifted tile keeps the page from scrolling under it. The blocking listener sits on Home alone, where every drag
+ * starts: on the document it made every touch scroll in the conversation wait on the main thread.
+ */
+function useLiftedTouch(root: RefObject<HTMLElement | null>, current: RefObject<Gesture | undefined>) {
+  useEffect(() => {
+    const element = root.current
+    const touch = (event: TouchEvent) => {
+      if (current.current?.active) event.preventDefault()
+    }
+    element?.addEventListener('touchmove', touch, { passive: false })
+    return () => element?.removeEventListener('touchmove', touch)
+  }, [root, current])
+}
+
 /** Native scrolling until the touch long press; lifted tiles follow the pointer with the original grab offset. */
 export function useHomeDrag(
   root: RefObject<HTMLElement | null>,
@@ -59,17 +74,14 @@ export function useHomeDrag(
   useLayoutEffect(() => {
     settling.current?.()
   }, [revision])
-  useEffect(() => {
-    const touch = (event: TouchEvent) => {
-      if (current.current?.active) event.preventDefault()
-    }
-    document.addEventListener('touchmove', touch, { passive: false })
-    return () => {
-      document.removeEventListener('touchmove', touch)
+  useLiftedTouch(root, current)
+  useEffect(
+    () => () => {
       clearTimeout(current.current?.timer)
       settling.current?.()
-    }
-  }, [])
+    },
+    [],
+  )
   const start = (event: ReactPointerEvent<HTMLElement>, id: string) => {
     settling.current?.()
     current.current = beginGesture(event, id)
