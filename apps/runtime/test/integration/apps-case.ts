@@ -2,11 +2,11 @@ import { expect } from 'vitest'
 import { Schema } from 'effect'
 import { AppLaunch, ConversationView, HomeEditResult, HomeRead, WorkspaceSnapshot } from '@goblin/contracts'
 import { BOARD } from './apps-mcp.ts'
-import { person, call, waitFor, type Person } from './owner-requests.ts'
+import { person, call, ownerFetch, waitFor, type Person } from './owner-requests.ts'
 
 /** An owner request with any method (the harness's `call` only GETs and POSTs). */
 const send = (base: string, who: Person, path: string, method: string, body?: unknown) =>
-  fetch(`${base}${path}`, {
+  ownerFetch(`${base}${path}`, {
     method,
     headers: {
       cookie: who.cookie,

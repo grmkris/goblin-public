@@ -2,7 +2,7 @@ import { approvalsBackground } from './approvals-background.ts'
 import { expect } from 'vitest'
 import { Predicate, Schema } from 'effect'
 import { ApprovalView, ConversationView } from '@goblin/contracts'
-import { person, call, waitFor, type Person } from './owner-requests.ts'
+import { person, call, ownerFetch, waitFor, type Person } from './owner-requests.ts'
 
 const SERVER = 'apps-fixture'
 const TOOL = 'board'
@@ -15,7 +15,7 @@ const args = {
 const decodeCalls = Schema.decodeUnknownSync(Schema.Array(Schema.Struct({ name: Schema.String, args: Schema.Unknown })))
 const decodeApproval = Schema.decodeUnknownSync(ApprovalView)
 const send = (base: string, owner: Person, path: string, method: string, body: unknown) =>
-  fetch(`${base}${path}`, {
+  ownerFetch(`${base}${path}`, {
     method,
     headers: {
       cookie: owner.cookie,

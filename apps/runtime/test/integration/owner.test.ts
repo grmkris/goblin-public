@@ -8,7 +8,7 @@ import Stack from './owner-stack.ts'
 import { approvalsCase } from './approvals-case.ts'
 import { appsCase } from './apps-case.ts'
 import { agentAppViewCase } from './agent-app-view-case.ts'
-import { person, call } from './owner-requests.ts'
+import { person, call, ownerFetch } from './owner-requests.ts'
 
 const harness = Test.make({
   providers: Cloudflare.providers(),
@@ -55,7 +55,7 @@ async function ownerRoutingCase(url: string): Promise<void> {
     await (await call(url, owner, '/api/conversations', {})).json(),
   )
   const sentinel = `private-owner-${crypto.randomUUID()}`
-  const renamed = await fetch(`${url}/api/conversations/${thread.id}`, {
+  const renamed = await ownerFetch(`${url}/api/conversations/${thread.id}`, {
     method: 'PATCH',
     headers: { cookie: owner.cookie, origin: 'https://goblin.test', 'content-type': 'application/json' },
     body: JSON.stringify({ title: sentinel }),

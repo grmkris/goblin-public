@@ -1,7 +1,7 @@
 import { expect } from 'vitest'
 import { Schema } from 'effect'
 import { AppCallResult, AppLaunch, AppSnapshot, ConversationView, WorkspaceSnapshot } from '@goblin/contracts'
-import { type Person, call, person, waitFor } from './owner-requests.ts'
+import { type Person, call, ownerFetch, person, waitFor } from './owner-requests.ts'
 
 const APP = `import { defineApp, s } from '@goblin/app'
 
@@ -50,7 +50,7 @@ export default function View() {
 
 /** An owner request; `csrf: false` leaves out the header the web sends on every write. */
 const send = (base: string, who: Person, path: string, init: { method: string; body?: unknown; csrf?: boolean }) =>
-  fetch(`${base}${path}`, {
+  ownerFetch(`${base}${path}`, {
     method: init.method,
     headers: {
       cookie: who.cookie,

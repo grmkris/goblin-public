@@ -8,20 +8,26 @@ export interface Person {
   readonly ip: string
   readonly email: string
 }
+/** Workerd can close a retained HTTP socket; each fixture request gets its own connection. */
+export const ownerFetch = (url: string, init: RequestInit = {}) => {
+  const headers = new Headers(init.headers)
+  headers.set('connection', 'close')
+  return fetch(url, { ...init, headers })
+}
 export async function person(base: string): Promise<Person> {
   const ip = `2001:db8:${Array.from(crypto.getRandomValues(new Uint16Array(4)), (n) => n.toString(16)).join(':')}:0:1`
   const email = `${crypto.randomUUID()}@fixture.test`
   const headers = { origin: 'https://goblin.test', 'content-type': 'application/json', 'cf-connecting-ip': ip }
-  const sent = await fetch(`${base}/api/auth/email-otp/send-verification-otp`, {
+  const sent = await ownerFetch(`${base}/api/auth/email-otp/send-verification-otp`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ email, type: 'sign-in' }),
   })
   expect(sent.status).toBe(200)
   const mail = Schema.decodeUnknownSync(Schema.Struct({ code: Schema.String }))(
-    await (await fetch(`${base}/__test/auth/mail?email=${encodeURIComponent(email)}`)).json(),
+    await (await ownerFetch(`${base}/__test/auth/mail?email=${encodeURIComponent(email)}`)).json(),
   )
-  const response = await fetch(`${base}/api/auth/sign-in/email-otp`, {
+  const response = await ownerFetch(`${base}/api/auth/sign-in/email-otp`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ email, otp: mail.code }),
@@ -38,7 +44,7 @@ export async function person(base: string): Promise<Person> {
   }
 }
 export const call = (base: string, who: Person, path: string, body?: unknown, headers: Record<string, string> = {}) =>
-  fetch(`${base}${path}`, {
+  ownerFetch(`${base}${path}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers: {
       cookie: who.cookie,
