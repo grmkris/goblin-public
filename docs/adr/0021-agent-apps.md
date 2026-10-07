@@ -27,6 +27,10 @@ as an RPC target lent to one `prepare` call: in this version its own files (Shel
 `app_<name>`, 64 MiB) and a log line. This is the one place goblin runs code the agent wrote; skill scripts are still
 never executed.
 
+`code_run` is unsafe to replay: an interrupted script may already have written files, so Pi reports the interruption
+and does not automatically execute it again. Native recovery tests evict the agent after a file write and verify the
+reconstructed tool leaves that file unchanged.
+
 **Calls.** One path for every caller: check the input, return the receipt of a replayed operation id, run `prepare`
 outside the app's queue, then in the queue run `run` on the current state and commit the checked next state as one
 revision with its receipt. Tool calls use `c<conversation>:<call>` as the operation id and pin the release they began

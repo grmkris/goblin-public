@@ -26,19 +26,20 @@ import {
 } from './conversation-checks.ts'
 import { chainChecks, closeChecks, ownerChecks } from './subagent-checks.ts'
 
-const harness = Test.make({
-  providers: Cloudflare.providers(),
-  state: Alchemy.localState(),
-  stage: 'test_native_runtime',
-  dev: true,
-})
-const stack = harness.beforeAll(harness.deploy(Stack))
 const phase = await Effect.runPromise(
   Config.String('GOBLIN_NATIVE_LIFECYCLE_PHASE').pipe(
     Config.withDefault('same-process'),
     Effect.flatMap(Schema.decodeUnknownEffect(Schema.Literals(['same-process', 'write', 'read']))),
   ),
 )
+const harness = Test.make({
+  providers: Cloudflare.providers(),
+  state: Alchemy.localState(),
+  // Ordinary runs must not wake alarms from previous fixtures. Explicit two-process proof retains its stage.
+  stage: phase === 'same-process' ? `test_native_runtime_${process.pid}` : 'test_native_runtime',
+  dev: true,
+})
+const stack = harness.beforeAll(harness.deploy(Stack))
 const Table = Schema.Struct({ name: Schema.String, definition: Schema.NullOr(Schema.String) })
 const NativeResult = Schema.Struct({
   snapshot: Schema.Unknown,
@@ -88,6 +89,12 @@ const Evidence = Schema.Struct({
 })
 
 const baseUrl = (url: string): string => url.replace(/\/+$/u, '')
+/** Workerd eviction closes its HTTP connection; never reuse an earlier fixture's socket. */
+const nativeFetch = (url: string, init: RequestInit = {}) => {
+  const headers = new Headers(init.headers)
+  headers.set('connection', 'close')
+  return fetch(url, { ...init, headers })
+}
 /** The subagent tools among a request's tools. */
 const offered = (tools: readonly string[] = []) => tools.filter((tool) => tool.startsWith('subagent'))
 
@@ -96,7 +103,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `routines-${yield* nextInt}`
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/routines-probe?name=${name}`))
+    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/routines-probe?name=${name}`))
     expect(response.status).toBe(200)
     const result = yield* Effect.promise(() => response.json())
     expect(result).toMatchObject({
@@ -148,7 +155,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const response = yield* Effect.promise(() =>
-      fetch(`${baseUrl(url)}/routine-notifications?name=routine-notifications-${Date.now()}`),
+      nativeFetch(`${baseUrl(url)}/routine-notifications?name=routine-notifications-${Date.now()}`),
     )
     expect(response.status).toBe(200)
     const result = yield* Effect.promise(() => response.json())
@@ -172,7 +179,9 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `routine-recovery-${yield* nextInt}`
-    const beforeResponse = yield* Effect.promise(() => fetch(`${baseUrl(url)}/routine-recovery-write?name=${name}`))
+    const beforeResponse = yield* Effect.promise(() =>
+      nativeFetch(`${baseUrl(url)}/routine-recovery-write?name=${name}`),
+    )
     expect(beforeResponse.status).toBe(200)
     const before = yield* Schema.decodeUnknownEffect(RoutineRecovery)(
       yield* Effect.promise(() => beforeResponse.json()),
@@ -183,12 +192,12 @@ harness.test(
       return
     }
     yield* Effect.promise(() =>
-      fetch(`${baseUrl(url)}/routine-evict?name=${name}`).then(
+      nativeFetch(`${baseUrl(url)}/routine-evict?name=${name}`).then(
         () => undefined,
         () => undefined,
       ),
     )
-    const afterResponse = yield* Effect.promise(() => fetch(`${baseUrl(url)}/routine-recovery-read?name=${name}`))
+    const afterResponse = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/routine-recovery-read?name=${name}`))
     expect(afterResponse.status).toBe(200)
     const after = yield* Schema.decodeUnknownEffect(RoutineRecovered)(yield* Effect.promise(() => afterResponse.json()))
     expect(after.instance).not.toBe(before.instance)
@@ -219,7 +228,9 @@ if (phase === 'read')
       )
       expect(process.pid).not.toBe(before.testProcess)
       const { url } = yield* stack
-      const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/routine-recovery-read?name=${before.name}`))
+      const response = yield* Effect.promise(() =>
+        nativeFetch(`${baseUrl(url)}/routine-recovery-read?name=${before.name}`),
+      )
       expect(response.status).toBe(200)
       const after = yield* Schema.decodeUnknownEffect(RoutineRecovered)(yield* Effect.promise(() => response.json()))
       expect(after.instance).not.toBe(before.instance)
@@ -241,7 +252,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const response = yield* Effect.promise(() =>
-      fetch(`${baseUrl(url)}/routine-usage?name=routine-usage-${Date.now()}`),
+      nativeFetch(`${baseUrl(url)}/routine-usage?name=routine-usage-${Date.now()}`),
     )
     expect(response.status).toBe(200)
     const result = yield* Effect.promise(() => response.json())
@@ -261,7 +272,9 @@ harness.test(
   'local workerd: main Stop preserves executing routines, caps queue one trigger and archive stops owned work',
   Effect.gen(function* () {
     const { url } = yield* stack
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/routine-stop?name=routine-stop-${Date.now()}`))
+    const response = yield* Effect.promise(() =>
+      nativeFetch(`${baseUrl(url)}/routine-stop?name=routine-stop-${Date.now()}`),
+    )
     expect(response.status).toBe(200)
     const result = yield* Effect.promise(() => response.json())
     expect(result).toMatchObject({
@@ -285,7 +298,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const response = yield* Effect.promise(() =>
-      fetch(`${baseUrl(url)}/routine-execution?name=routine-run-${Date.now()}`),
+      nativeFetch(`${baseUrl(url)}/routine-execution?name=routine-run-${Date.now()}`),
     )
     expect(response.status).toBe(200)
     const result = yield* Effect.promise(() => response.json())
@@ -309,7 +322,7 @@ function lifecycleClient(url: string, name: string, operationId: string) {
   return <S extends Schema.Top>(path: string, schema: S) =>
     Effect.gen(function* () {
       const response = yield* Effect.promise(() =>
-        fetch(`${baseUrl(url)}/lifecycle${path}?name=${name}&operationId=${operationId}`),
+        nativeFetch(`${baseUrl(url)}/lifecycle${path}?name=${name}&operationId=${operationId}`),
       )
       expect(response.status).toBe(200)
       const raw: unknown = yield* Effect.promise(() => response.json())
@@ -322,7 +335,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const response = yield* Effect.promise(() =>
-      fetch(`${baseUrl(url)}/routine-question?name=routine-question-${Date.now()}`),
+      nativeFetch(`${baseUrl(url)}/routine-question?name=routine-question-${Date.now()}`),
     )
     expect(response.status).toBe(200)
     const result = yield* Effect.promise(() => response.json())
@@ -360,7 +373,7 @@ harness.test(
   'local workerd: Events discovery, challenge, signed Telegram, replay, gap, refresh, termination and cleanup',
   Effect.gen(function* () {
     const { url } = yield* stack
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/events-probe?name=events-${Date.now()}`))
+    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/events-probe?name=events-${Date.now()}`))
     expect(response.status).toBe(200)
     const result = yield* Effect.promise(() => response.json())
     expect(result).toMatchObject({
@@ -397,7 +410,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `skills-cache-${yield* nextInt}`
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/skills-cache?name=${name}`))
+    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/skills-cache?name=${name}`))
     expect(response.status).toBe(200)
     const result = yield* Schema.decodeUnknownEffect(SkillsCache)(yield* Effect.promise(() => response.json()))
     expect(result.firstBody).toContain('# Cache test')
@@ -412,7 +425,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `skills-learner-rejection-${yield* nextInt}`
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/lifecycle/skills-rejection?name=${name}`))
+    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/lifecycle/skills-rejection?name=${name}`))
     expect(response.status).toBe(200)
     const result = yield* Schema.decodeUnknownEffect(SkillsLearnerRejection)(
       yield* Effect.promise(() => response.json()),
@@ -435,7 +448,7 @@ harness.test(
     const get = lifecycleClient(url, name, 'unused')
     const before = yield* get('/skills-write', SkillsPersisted)
     yield* Effect.promise(() =>
-      fetch(`${baseUrl(url)}/lifecycle/skills-evict?name=${name}`).then(
+      nativeFetch(`${baseUrl(url)}/lifecycle/skills-evict?name=${name}`).then(
         () => undefined,
         () => undefined,
       ),
@@ -458,7 +471,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const fixtureId = yield* nextInt
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/probe?name=${fixtureId}`))
+    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/probe?name=${fixtureId}`))
     expect(response.status).toBe(200)
     const raw: unknown = yield* Effect.promise(() => response.json())
     const result = yield* Schema.decodeUnknownEffect(NativeResult)(raw)
@@ -504,7 +517,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `rpc-${yield* nextInt}`
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/rpc?name=${name}`))
+    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/rpc?name=${name}`))
     expect(response.status).toBe(200)
     const raw: unknown = yield* Effect.promise(() => response.json())
     const result = yield* Schema.decodeUnknownEffect(Rpc)(raw)
@@ -555,7 +568,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `binding-${yield* nextInt}`
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/binding?name=${name}`))
+    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/binding?name=${name}`))
     expect(response.status).toBe(200)
     const raw: unknown = yield* Effect.promise(() => response.json())
     const result = yield* Schema.decodeUnknownEffect(Binding)(raw)
@@ -609,7 +622,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `branch-${yield* nextInt}`
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/branch?name=${name}`))
+    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/branch?name=${name}`))
     const result = yield* Schema.decodeUnknownEffect(Branch)(yield* Effect.promise(() => response.json()))
     expect(result.settled.text).toBe('echo: what was the word?')
     expect(turns(result.main)).toEqual([
@@ -648,7 +661,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `share-${yield* nextInt}`
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/share?name=${name}`))
+    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/share?name=${name}`))
     const result = yield* Schema.decodeUnknownEffect(Share)(yield* Effect.promise(() => response.json()))
     expect(result.shared.text).toBe('done: Shared with main.')
     const note = [
@@ -688,7 +701,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `announce-${yield* nextInt}`
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/announce?name=${name}`))
+    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/announce?name=${name}`))
     const raw = yield* Effect.promise(() => response.json())
     expect(raw).toHaveProperty('thread')
     const result = yield* Schema.decodeUnknownEffect(Announce)(raw)
@@ -759,7 +772,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `capabilities-${yield* nextInt}`
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/capabilities?name=${name}`))
+    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/capabilities?name=${name}`))
     const result = yield* Schema.decodeUnknownEffect(CapabilityRun)(yield* Effect.promise(() => response.json()))
     expect(result.mainBefore.value).toMatchObject({ kind: 'main', servers: notes(true), skills: [], subagents: true })
     expect(result.mainBefore.value.sameAsParent).toBeUndefined()
@@ -804,7 +817,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `memory-${yield* nextInt}`
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/memory?name=${name}`))
+    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/memory?name=${name}`))
     const result = yield* Schema.decodeUnknownEffect(MemoryRun)(yield* Effect.promise(() => response.json()))
     expect(result.summarized).toBeGreaterThanOrEqual(2)
     // Messages are short here, so each is its own summary line, word for word (no model call).
@@ -835,7 +848,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `subagent-${yield* nextInt}`
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/subagent?name=${name}`))
+    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/subagent?name=${name}`))
     const result = yield* Schema.decodeUnknownEffect(SubagentRun)(yield* Effect.promise(() => response.json()))
     expect(result.spawned.text).toBe('done: Started scout.')
     expect(result.subagent).toEqual({ kind: 'subagent', title: 'scout', parent: '1' })
@@ -884,7 +897,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `destroy-${yield* nextInt}`
-    const response = yield* Effect.promise(() => fetch(`${baseUrl(url)}/destroy?name=${name}`))
+    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/destroy?name=${name}`))
     expect(response.status).toBe(200)
     const raw: unknown = yield* Effect.promise(() => response.json())
     const result = yield* Schema.decodeUnknownEffect(Destroy)(raw)
@@ -993,7 +1006,7 @@ harness.test(
     const { url } = yield* stack
     for (const method of ['GET', 'HEAD', 'POST']) {
       const response = yield* Effect.promise(() =>
-        fetch(`${baseUrl(url)}/canonical/path?q=a%2Fb`, {
+        nativeFetch(`${baseUrl(url)}/canonical/path?q=a%2Fb`, {
           method,
           redirect: 'manual',
           ...(method === 'POST' ? { body: 'keep this body' } : {}),
@@ -1010,7 +1023,7 @@ harness.test(
   Effect.gen(function* () {
     const { url } = yield* stack
     const send = (origin: string) =>
-      fetch(`${baseUrl(url)}/inbound-host`, {
+      nativeFetch(`${baseUrl(url)}/inbound-host`, {
         method: 'POST',
         headers: {
           origin,

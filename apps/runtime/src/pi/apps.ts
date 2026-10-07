@@ -109,7 +109,9 @@ const codeTool = (apps: AgentApps) =>
       "Run JavaScript once (the body of an async function; `return` a JSON value). `files.read(path)`, `files.list(dir)` and `files.write(path, text)` (under /agent) reach the owner's files; `log(...)` notes. No network; 30 s.",
     input: Schema.Struct({ code: Schema.String.check(Schema.isMaxLength(100_000)) }),
     output: ScriptResult,
-    replay: 'safe',
+    // Scripts may write files before eviction interrupts the tool. Pi must surface that interruption,
+    // rather than automatically executing the script and its writes again.
+    replay: 'unsafe',
     execute: async ({ code }) => runScript(apps.isolates, apps.ownerFiles, code),
   })
 

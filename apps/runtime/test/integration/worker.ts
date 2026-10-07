@@ -43,6 +43,7 @@ import { telemetryProbe } from './telemetry-probe.ts'
 import { JOB_CALLBACK, type JobSchedules } from '../../src/agent-apps/jobs.ts'
 import { homeProbe, retainedHome } from './home-probe.ts'
 import { inboxAppProbe } from './inbox-app-probe.ts'
+import { FileStore } from '../../src/files/store.ts'
 
 const fixturePlan = () =>
   Effect.succeed({
@@ -146,6 +147,28 @@ export class PersonalAgentProbe extends PersonalAgent {
   }
   routineEvict() {
     this.ctx.abort('routine acceptance reconstruction')
+  }
+  /** A real Dynamic Worker writes before eviction interrupts its Pi tool intent. */
+  async codeRecoveryWrite() {
+    const files = new FileStore(this.ctx.storage.sql, this.env.FILES, () => this.name)
+    await files.write('agent', '/agent/replay.txt', '', 'text/plain', 0)
+    const code =
+      "await files.write('/agent/replay.txt', (await files.read('/agent/replay.txt')) + 'x'); await new Promise(resolve => setTimeout(resolve, 30000)); return null"
+    await this.submit(MAIN_THREAD, `call code_run ${JSON.stringify({ code })}`, 'code-recovery')
+    const written = await until(
+      () => files.text('/agent/replay.txt', 0, 100),
+      (file) => file.text === 'x',
+    )
+    return JSON.stringify({ instance: this.instance, text: written.text })
+  }
+  async codeRecoveryRead() {
+    const result = await this.settle(MAIN_THREAD, 'code-recovery')
+    const files = new FileStore(this.ctx.storage.sql, this.env.FILES, () => this.name)
+    return JSON.stringify({
+      instance: this.instance,
+      text: (await files.text('/agent/replay.txt', 0, 100)).text,
+      result,
+    })
   }
   routineStopProbe() {
     return routineStopProbe(this.ctx.storage, this)
@@ -872,6 +895,8 @@ const APPS_PROBES: Readonly<Record<string, (agent: DurableObjectStub<PersonalAge
   '/apps-powers': (agent) => agent.appsPowersProbe(),
   '/apps-turn': (agent) => agent.appsTurnProbe(),
   '/apps-jobs': (agent) => agent.appsJobsProbe(),
+  '/code-recovery-write': (agent) => agent.codeRecoveryWrite(),
+  '/code-recovery-read': (agent) => agent.codeRecoveryRead(),
 }
 
 function nativeFetch(request: Request, env: Env): Promise<Response> {
