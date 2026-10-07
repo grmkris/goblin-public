@@ -214,10 +214,14 @@ function CapabilityCard({
   )
 }
 
-/** The agent's questions, one at a time with number shortcuts; the answers go back as one message. */
+/**
+ * The agent's questions, one at a time with number shortcuts; the answers go back as one message, once: Send turns
+ * busy until they are on their way, like every other card's replies.
+ */
 function QuestionCard({ interaction, onAnswer }: { readonly interaction: Question; readonly onAnswer: Answer }) {
   const { questions } = interaction
   const several = questions.length > 1
+  const { busy, error, replying } = useReplying()
   return (
     <AskCard aria-label="Questions from your agent">
       <AskCardHeader>
@@ -228,10 +232,13 @@ function QuestionCard({ interaction, onAnswer }: { readonly interaction: Questio
         shortcuts="numbers"
         onSubmit={(event) => {
           event.preventDefault()
+          if (busy) return
           const data = new FormData(event.currentTarget)
-          void onAnswer(
-            answerText(questions, (id) => data.getAll(id)),
-            interactionOperation(interaction),
+          void replying(() =>
+            onAnswer(
+              answerText(questions, (id) => data.getAll(id)),
+              interactionOperation(interaction),
+            ),
           )
         }}
       >
@@ -259,9 +266,10 @@ function QuestionCard({ interaction, onAnswer }: { readonly interaction: Questio
         <QuestionnaireActions>
           {several && <QuestionnairePrevious />}
           {several && <QuestionnaireNext />}
-          <QuestionnaireSubmit>Send answers</QuestionnaireSubmit>
+          <QuestionnaireSubmit disabled={busy}>Send answers</QuestionnaireSubmit>
         </QuestionnaireActions>
       </Questionnaire>
+      {error && <Receipt tone="error">{error}</Receipt>}
     </AskCard>
   )
 }

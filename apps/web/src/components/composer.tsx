@@ -28,6 +28,7 @@ function Field({
   placeholder,
   busy,
   compact,
+  autoFocus,
 }: {
   readonly value: string
   readonly onChange: (value: string) => void
@@ -35,6 +36,7 @@ function Field({
   readonly placeholder: string
   readonly busy: boolean
   readonly compact: boolean
+  readonly autoFocus: boolean
 }) {
   return (
     <ComposerInput
@@ -49,6 +51,7 @@ function Field({
       }}
       placeholder={placeholder}
       enterKeyHint="send"
+      autoFocus={autoFocus}
       readOnly={busy}
       aria-busy={busy}
       {...(compact && { className: 'min-h-9 py-1.5' })}
@@ -92,6 +95,8 @@ type MessageComposerProps = {
   /** What the send button says ("Steer" for a subagent). */
   readonly draft?: { readonly text: string } | undefined
   readonly sendLabel?: string
+  /** Take the focus when it appears: a composer the owner just asked for (Reply in thread) is where they type next. */
+  readonly autoFocus?: boolean
 }
 
 /**
@@ -110,6 +115,7 @@ export function MessageComposer({
   attach = false,
   sendLabel = 'Send',
   draft,
+  autoFocus = false,
 }: MessageComposerProps) {
   const [input, setInput] = useState('')
   const form = useRef<HTMLFormElement>(null)
@@ -134,6 +140,7 @@ export function MessageComposer({
       placeholder={running ? 'Add a follow-up…' : placeholder}
       busy={pending}
       compact={compact}
+      autoFocus={autoFocus}
     />
   )
   const cannotSend = pending || attachments.uploading || !input.trim()

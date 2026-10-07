@@ -294,7 +294,14 @@ function InlineDraft({ entry, threads }: { readonly entry: number; readonly thre
   return (
     <section className="inline-thread inline-draft" aria-label="New thread">
       <Notice text={notice} />
-      <MessageComposer onSend={start} running={false} onStop={NOTHING_TO_STOP} placeholder="Reply in thread…" compact />
+      <MessageComposer
+        onSend={start}
+        running={false}
+        onStop={NOTHING_TO_STOP}
+        placeholder="Reply in thread…"
+        compact
+        autoFocus
+      />
       <p className="inline-draft-note">
         Sending starts a thread here.
         <button type="button" className="inline-draft-cancel" onClick={threads.cancel}>
