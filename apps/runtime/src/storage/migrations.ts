@@ -335,6 +335,16 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'ALTER TABLE app_routine_usage_projection ADD COLUMN milli_credits INTEGER NOT NULL DEFAULT 0',
     ].join(BREAK),
   },
+  {
+    key: '20261023000000_mcp_ask_first',
+    tables: ['app_mcp_grants', 'app_mcp_approvals'],
+    sql: [
+      'ALTER TABLE app_mcp_grants ADD COLUMN ask_first INTEGER NOT NULL DEFAULT 0',
+      "ALTER TABLE app_mcp_grants ADD COLUMN version TEXT NOT NULL DEFAULT ''",
+      `CREATE TABLE app_mcp_approvals (id TEXT PRIMARY KEY NOT NULL, caller TEXT NOT NULL CHECK (caller IN ('model', 'app', 'human')), session_id TEXT, source_call_id TEXT, task_id TEXT, server_id TEXT NOT NULL, name TEXT NOT NULL, endpoint TEXT NOT NULL, grant_version TEXT NOT NULL, arguments_sealed TEXT NOT NULL, arguments_hash TEXT NOT NULL, result_sealed TEXT, state TEXT NOT NULL CHECK (state IN ('pending', 'approved', 'dispatching', 'completed', 'refused', 'failed', 'uncertain', 'expired')), expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
+      'CREATE INDEX app_mcp_approval_call ON app_mcp_approvals (session_id, source_call_id)',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

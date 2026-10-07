@@ -99,6 +99,13 @@ export const stopOwner = (input: {
     return yield* attempt(() => input.harness.abort({ session, ...operationId }))
   })
 
+/** An inbound request checks entitlement without renewing resident authority. */
+export const clientRequest = <A>(program: Effect.Effect<A, AppError, AgentServices>) =>
+  Effect.andThen(
+    Entitlements.use((plans) => plans.require()),
+    program,
+  )
+
 export const ownerRequest = <A>(program: Effect.Effect<A, AppError, AgentServices>) =>
   Effect.gen(function* () {
     yield* Entitlements.use((plans) => plans.require())
@@ -106,6 +113,11 @@ export const ownerRequest = <A>(program: Effect.Effect<A, AppError, AgentService
     resident.renew(yield* nowSecondsEffect)
     return yield* program
   })
+
+export const ownerResidentStatus = Effect.gen(function* () {
+  const resident = yield* Resident
+  return resident.status(yield* nowSecondsEffect)
+})
 
 export const setResident = (enabled: boolean) =>
   Effect.gen(function* () {

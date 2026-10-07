@@ -38,10 +38,8 @@ import {
   Mcp,
   Memory,
   Models,
-  Resident,
   attempt,
   attemptSync,
-  nowSecondsEffect,
   requireResident,
   Routines,
   RoutineRuns,
@@ -56,9 +54,11 @@ import { setSkillEvents } from './skills/events.ts'
 import { disconnectOwnerServer, ownerServers, removeOwnerServer, suggestedServers } from './mcp/program.ts'
 import {
   askClient,
+  clientRequest,
   createOwnerConversation,
   markOwnerRead,
   ownerRequest,
+  ownerResidentStatus,
   recentOwnerMessages,
   ownerUsage,
   setResident,
@@ -81,6 +81,7 @@ import type {
   UpdateConversation,
 } from '@goblin/contracts'
 import { requireRoutine, requireRoutineSession } from './routines/authority.ts'
+import { approvalView, ownerApprovalDecision, ownerResource, setAskFirst } from './mcp/approval-owner.ts'
 import { runView } from './routines/runs.ts'
 import type { RoutineSlot } from './routines/scheduler.ts'
 import {
@@ -417,6 +418,21 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   mcpSetToolGrant(serverId: string, name: string, allowed: boolean) {
     return this.#owner(Mcp.use((mcp) => attempt(() => mcp.setToolGrant(serverId, name, allowed))))
   }
+  mcpSetAskFirst(serverId: string, name: string, enabled: boolean) {
+    return this.#owner(setAskFirst(serverId, name, enabled))
+  }
+  mcpApproval(id: string) {
+    return this.#owner(approvalView(id))
+  }
+  mcpDecideApproval(id: string, allowed: boolean) {
+    return this.#owner(
+      ownerApprovalDecision(id, allowed, {
+        run: (program) => this.#runOrThrow(program),
+        routines: this.#routines,
+        submit: (session, text, operationId) => this.submit(session, text, operationId),
+      }),
+    )
+  }
   /** Turn the agent's use of a server's skills on or off. */
   mcpSetSkills(serverId: string, enabled: boolean) {
     return this.#owner(setSkillEvents(serverId, enabled))
@@ -431,13 +447,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
 
   mcpReadResource(serverId: string, uri: string, caller: 'human' | 'app') {
-    return this.#owner(
-      Mcp.use((mcp) =>
-        attempt(() =>
-          caller === 'app' ? mcp.manager.readAppResource(serverId, uri) : mcp.manager.readResource(serverId, uri),
-        ),
-      ),
-    )
+    return this.#owner(ownerResource(serverId, uri, caller))
   }
 
   mcpGetPrompt(serverId: string, name: string, args: Record<string, string>) {
@@ -445,12 +455,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
 
   residentStatus() {
-    return this.#owner(
-      Effect.gen(function* () {
-        const resident = yield* Resident
-        return resident.status(yield* nowSecondsEffect)
-      }),
-    )
+    return this.#owner(ownerResidentStatus)
   }
   /** Revoke or re-enable resident authority. Not an ordinary owner request: revoking must not renew first. */
   async residentSet(enabled: boolean) {
@@ -556,14 +561,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return { ok: true, value: true }
   }
   async #client<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
-    return encodeExit(
-      await this.#exit(
-        Effect.andThen(
-          Entitlements.use((plans) => plans.require()),
-          program,
-        ),
-      ),
-    )
+    return encodeExit(await this.#exit(clientRequest(program)))
   }
   async sessionSnapshot(session: string): Promise<JsonObject> {
     return sessionSnapshot(this.harness, session)

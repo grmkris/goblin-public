@@ -2,7 +2,7 @@ import type { StepReport } from './log.ts'
 import { auth, type AuthProvider, discoverOAuthServerInfo, type Tool } from '@modelcontextprotocol/client'
 import type { CatalogEntry, RegistryView, ServerView, ToolView } from '@goblin/contracts'
 import { nowSeconds } from '../clock.ts'
-import { Internal, InvalidInput, NeedsAuthorization, NotFound } from '../http/errors.ts'
+import { Forbidden, Internal, InvalidInput, NeedsAuthorization, NotFound } from '../http/errors.ts'
 import { McpConnectionManager, offersEvents, offersSkills, toolAppResource, toolOffered } from './connection.ts'
 import type { Credentials } from './credentials.ts'
 import type { Grant, Grants } from './grants.ts'
@@ -50,6 +50,7 @@ export type McpHostOptions = {
   readonly skillsEnabled?: (serverId: string) => boolean
   /** Where each remote step is reported (the run ledger, ADR 0024). */
   readonly report?: StepReport
+  readonly authorizeTool?: import('./types.ts').McpManagerOptions['authorizeTool']
 }
 
 /**
@@ -87,6 +88,14 @@ export class McpHost {
     this.manager = new McpConnectionManager({
       servers: [...options.servers, ...added.map(({ serverId, endpoint }) => ({ serverId, endpoint }))],
       allows: (grant) => options.grants.allows(grant),
+      authorizeTool: async (call, approvalId, dispatch, authorize) => {
+        if (options.authorizeTool !== undefined) await options.authorizeTool(call, approvalId, dispatch, authorize)
+        else if (
+          call.caller !== 'human' &&
+          options.grants.policy({ serverId: call.serverId, capability: 'tool', name: call.name })?.askFirst === true
+        )
+          throw new Forbidden({ reason: 'Owner approval required for this exact call' })
+      },
       skillsEnabled: (serverId) => this.#skillsEnabled(serverId),
       ...(options.authorizeEvents === undefined ? {} : { authorizeEvents: options.authorizeEvents }),
       auth: (server) => this.#authProvider(server),
@@ -314,11 +323,20 @@ export class McpHost {
       modelVisible: toolOffered(tool, 'model'),
       ...(appResource === undefined ? {} : { appResource }),
       granted: this.#grants.allows({ serverId, capability: 'tool', name: tool.name }),
+      askFirst: this.grantPolicy(serverId, tool.name)?.askFirst ?? false,
     }
   }
 
   grants(): readonly Grant[] {
     return this.#grants.list()
+  }
+
+  grantPolicy(serverId: string, name: string): { readonly askFirst: boolean; readonly version: string } | undefined {
+    return this.#grants.policy({ serverId, capability: 'tool', name })
+  }
+
+  setAskFirst(serverId: string, name: string, enabled: boolean): void {
+    this.#grants.setAskFirst({ serverId, capability: 'tool', name }, enabled)
   }
 
   /**

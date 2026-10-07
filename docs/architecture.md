@@ -32,6 +32,20 @@ Runtime paths below are relative to `apps/runtime/src/`; browser paths are relat
 | `/hooks/mcp-events/<userId>/<token>` | Signed MCP Events; the user-bound route token is checked before object lookup. |
 | `/hooks/myagent/<userId>/<token>` | Legacy Telegram doorbell fallback for servers without Events. |
 
+## Per-call MCP approval
+
+The owner grants a tool under Connections, then can select **Ask first**. This local policy is independent of remote
+annotations. Pi's `beforeTool` prepares an encrypted, immutable approval; `mcp_call` records a terminating approval
+request. The chat card fetches the owner-bound record and shows its redacted arguments, including public
+`operationKey` and asset fields. Approve once dispatches the original arguments; Refuse dispatches nothing.
+
+The shared MCP manager enforces this policy for model, routine, subagent and App callers. Approval binds the endpoint,
+grant version, arguments, caller, conversation, task and call id. Current resident authority and execution scope are
+checked after connection waits and again at HTTP dispatch. A compare-and-set records dispatch intent once; automatic
+OAuth retries cannot reuse it. Reconstruction marks an interrupted dispatch uncertain and never replays it. Routines
+release their executing slot while waiting and resume the same run. Direct owner console calls are explicit owner
+acts; autonomous App calls to ask-first tools are refused. See [ADR 0028](adr/0028-mcp-call-approvals.md).
+
 ## Accounts
 
 Email OTP is the sole login method. A six-digit code expires after 600 seconds, permits five attempts and is stored

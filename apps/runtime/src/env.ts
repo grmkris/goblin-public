@@ -30,6 +30,7 @@ import type {
   CreateConversation,
   UpdateConversation,
   ToolView,
+  ApprovalView,
   UsageToday,
 } from '@goblin/contracts'
 import type { TranscriptMessage } from './pi/transcript.ts'
@@ -81,6 +82,9 @@ export interface AgentRpcMethods {
   readonly mcpTools: (serverId: string, refresh: boolean) => Promise<RpcResult<readonly ToolView[]>>
   readonly mcpGrants: () => Promise<RpcResult<readonly Grant[]>>
   readonly mcpSetToolGrant: (serverId: string, name: string, allowed: boolean) => Promise<RpcResult<readonly Grant[]>>
+  readonly mcpSetAskFirst: (serverId: string, name: string, enabled: boolean) => Promise<RpcResult<readonly Grant[]>>
+  readonly mcpApproval: (id: string) => Promise<RpcResult<ApprovalView>>
+  readonly mcpDecideApproval: (id: string, allowed: boolean) => Promise<RpcResult<ApprovalView>>
   readonly mcpSetSkills: (
     serverId: string,
     enabled: boolean,

@@ -28,6 +28,7 @@ import { targetLabel } from '../lib/capabilities.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
 import { useCapabilities } from './capabilities.tsx'
 import { addAndConnect } from './server-add.tsx'
+import { ApprovalCard } from './approval-card.tsx'
 
 /** Sends the owner's reply as their next message, under the interaction's stable operation id. */
 type Answer = (input: string, operationId: string) => Promise<boolean>
@@ -276,6 +277,7 @@ export function InteractionCards({
   readonly onAnswer: Answer
 }) {
   return interactions.map((interaction) => {
+    if (interaction.kind === 'approval') return <ApprovalCard key={interaction.callId} interaction={interaction} />
     if (interaction.kind === 'grant')
       return <GrantCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
     if (interaction.kind === 'capability')

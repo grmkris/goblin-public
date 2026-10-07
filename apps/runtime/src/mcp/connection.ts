@@ -10,7 +10,7 @@ import {
 } from '@modelcontextprotocol/client'
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/client/validators/cf-worker'
 import { Predicate } from 'effect'
-import { Forbidden, GrantDenied, NotFound, UpstreamMcp } from '../http/errors.ts'
+import { Forbidden, Conflict, GrantDenied, NotFound, UpstreamMcp } from '../http/errors.ts'
 import {
   SKILLS_EXTENSION,
   type SkillEntry,
@@ -329,12 +329,35 @@ export class McpConnectionManager {
     args: Record<string, unknown> = {},
     options: McpCallOptions = {},
   ): Promise<McpToolResult> {
-    const { caller = 'model', authorize, runContext, ...request } = options
+    const { caller = 'model', authorize, approvalId, approvalContext, runContext, ...request } = options
+    // Freeze the input before any wait; local guards and the SDK dispatch see the same object.
+    const argumentsJson = JSON.stringify(args)
+    const guard = async (dispatch = false) => {
+      await authorize?.()
+      if (!this.#options.allows({ serverId, capability: 'tool', name })) throw new GrantDenied({ serverId, name })
+      // SAFETY: args is serialized once above, so this JSON object is the immutable dispatch input.
+      const frozen = JSON.parse(argumentsJson) as Record<string, unknown>
+      await this.#options.authorizeTool?.(
+        {
+          serverId,
+          name,
+          arguments: frozen,
+          caller,
+          endpoint: this.server(serverId).endpoint,
+          ...(approvalContext === undefined ? {} : { approvalContext }),
+        },
+        approvalId,
+        dispatch,
+        authorize,
+      )
+    }
+    let dispatched = false
     return timed(
       { step: 'call', serverId, tool: name, ...(runContext === undefined ? {} : { scope: runContext }) },
       async () => {
+        await guard()
         const connection = await this.#authorized(serverId, 'tool', name, request)
-        await authorize?.()
+        await guard()
         if (!this.#options.allows({ serverId, capability: 'tool', name })) throw new GrantDenied({ serverId, name })
         const tool = connection.snapshot.tools.find((item) => item.name === name)
         if (tool === undefined || !toolOffered(tool, caller)) throw new NotFound({ what: `tool ${name}` })
@@ -342,12 +365,15 @@ export class McpConnectionManager {
         return this.#remote(connection, () =>
           this.#dispatch.request(
             async () => {
-              await authorize?.()
+              if (approvalId !== undefined && dispatched)
+                throw new Conflict({ reason: 'Approved MCP dispatch cannot be retried' })
+              await guard(true)
+              dispatched = true
               if (!this.#options.allows({ serverId, capability: 'tool', name }))
                 throw new GrantDenied({ serverId, name })
             },
             { timeout: this.#options.timeoutMs ?? 30_000, ...request },
-            (guarded) => connection.client.callTool({ name, arguments: args }, guarded),
+            (guarded) => connection.client.callTool({ name, arguments: JSON.parse(argumentsJson) }, guarded),
           ),
         )
       },

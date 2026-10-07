@@ -11,6 +11,13 @@ import { subagentAction } from './threads.ts'
  */
 export type Interaction =
   | { readonly kind: 'question'; readonly callId: string; readonly questions: readonly QuestionSpec[] }
+  | {
+      readonly kind: 'approval'
+      readonly callId: string
+      readonly approvalId: string
+      readonly serverId: string
+      readonly name: string
+    }
   | { readonly kind: 'grant'; readonly callId: string; readonly serverId: string; readonly name: string }
   | { readonly kind: 'capability'; readonly callId: string; readonly target: CapabilityTarget }
   | {
@@ -50,13 +57,9 @@ export function interactionOf(part: ToolPart): Interaction | undefined {
   const result = part.result
   const details = record(result?.details)
   if (result === undefined || details === undefined || 'origin' in details) return undefined
+  if (result.isError && details.kind === 'approval-required') return approvalOf(part, details)
   if (result.isError && details.kind === 'grant-required') return grantOf(part, details)
-  if (result.isError && details.kind === 'capability-off') {
-    const target = Option.getOrUndefined(decodeTarget(details.target))
-    return target !== undefined && asksFor(part, target)
-      ? { kind: 'capability', callId: part.call.id, target }
-      : undefined
-  }
+  if (result.isError && details.kind === 'capability-off') return capabilityOf(part, details)
   if (part.call.name === 'mcp_request_server' && !result.isError && details.kind === 'server-request')
     return serverOf(part, details)
   if (part.call.name === 'ask_user' && !result.isError && details.kind === 'question')
@@ -65,6 +68,27 @@ export function interactionOf(part: ToolPart): Interaction | undefined {
       onSome: (questions) => ({ kind: 'question', callId: part.call.id, questions }),
     })
   return undefined
+}
+
+function capabilityOf(part: ToolPart, details: Record<string, unknown>): Interaction | undefined {
+  const target = Option.getOrUndefined(decodeTarget(details.target))
+  return target !== undefined && asksFor(part, target)
+    ? { kind: 'capability', callId: part.call.id, target }
+    : undefined
+}
+
+/** Local approval markers must match the exact MCP target; the record is then fetched from the owner API. */
+function approvalOf(part: ToolPart, details: Record<string, unknown>): Interaction | undefined {
+  const target = part.target
+  if (part.call.name !== 'mcp_call' || target === undefined || !isString(details.approvalId)) return undefined
+  if (details.serverId !== target.serverId || details.name !== target.name) return undefined
+  return {
+    kind: 'approval',
+    callId: part.call.id,
+    approvalId: details.approvalId,
+    serverId: target.serverId,
+    name: target.name,
+  }
 }
 
 /** A grant request, only from `mcp_call` and only for exactly the server and tool that were called. */
@@ -91,14 +115,20 @@ function serverOf(part: ToolPart, details: Record<string, unknown>): Interaction
 /** The interactions still waiting: those after the owner's last message. Any later message settles them. */
 export function openInteractions(parts: readonly Part[]): Interaction[] {
   const lastUser = parts.findLastIndex((part) => part.kind === 'user')
-  return parts.slice(lastUser + 1).flatMap((part) => {
+  return parts.flatMap((part, index) => {
     if (part.kind !== 'tool') return []
     const interaction = interactionOf(part)
-    return interaction === undefined ? [] : [interaction]
+    return interaction === undefined || (interaction.kind !== 'approval' && index <= lastUser) ? [] : [interaction]
   })
 }
 
-const OPERATION = { question: 'answer', grant: 'grant', capability: 'capability', server: 'server' } as const
+const OPERATION = {
+  approval: 'approval',
+  question: 'answer',
+  grant: 'grant',
+  capability: 'capability',
+  server: 'server',
+} as const
 
 /** Stable submission ids: a double click, a retry or a second tab submits the same answer once. */
 export const interactionOperation = (interaction: Interaction): string =>

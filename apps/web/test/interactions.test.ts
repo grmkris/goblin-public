@@ -15,6 +15,7 @@ const mcpCall = (
   result: { id: 'r', role: 'tool', text: 'Not granted', toolCallId: 'g1', toolName: 'mcp_call', isError, details },
 })
 const grant = { kind: 'grant-required', serverId: 'myplan', name: 'document_edit' }
+const approval = { kind: 'approval-required', approvalId: 'mcp:1:g1', serverId: 'myplan', name: 'document_edit' }
 const question = {
   id: 'when',
   prompt: 'When?',
@@ -63,6 +64,20 @@ describe('what the agent waits on the owner for', () => {
     expect(interactionOf(mcpCall({ ...grant, origin: { serverId: 'myplan', trust: 'untrusted' } }))).toBeUndefined()
     expect(interactionOf(mcpCall({ ...grant, name: 'delete_everything' }))).toBeUndefined()
     expect(interactionOf(mcpCall(grant, false))).toBeUndefined()
+  })
+  it('shows one exact held call for approval and rejects forged targets', () => {
+    expect(interactionOf(mcpCall(approval))).toEqual({
+      kind: 'approval',
+      callId: 'g1',
+      approvalId: 'mcp:1:g1',
+      serverId: 'myplan',
+      name: 'document_edit',
+    })
+    expect(interactionOf(mcpCall({ ...approval, name: 'other' }))).toBeUndefined()
+    expect(interactionOf(mcpCall({ ...approval, origin: { serverId: 'evil', trust: 'untrusted' } }))).toBeUndefined()
+    expect(
+      interactionOperation({ kind: 'approval', callId: 'g1', approvalId: 'mcp:1:g1', serverId: 's', name: 'n' }),
+    ).toBe('approval:g1')
   })
   it('reads ask_user questions, and ignores details that do not fit the contract', () => {
     expect(interactionOf(asked([question]))).toEqual({ kind: 'question', callId: 'q1', questions: [question] })

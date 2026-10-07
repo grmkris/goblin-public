@@ -37,10 +37,12 @@ function ToolRow({
   tool,
   pending,
   onToggle,
+  onAskFirst,
 }: {
   readonly tool: ToolView
   readonly pending: boolean
   readonly onToggle: (allowed: boolean) => void
+  readonly onAskFirst: (enabled: boolean) => void
 }) {
   const id = useId()
   return (
@@ -55,6 +57,17 @@ function ToolRow({
         </span>
         {tool.description && <span className="grant-about">{tool.description}</span>}
       </span>
+      {tool.granted && (
+        <Button
+          size="xs"
+          variant={tool.askFirst === true ? 'outline' : 'ghost'}
+          disabled={pending}
+          aria-pressed={tool.askFirst === true}
+          onClick={() => onAskFirst(tool.askFirst !== true)}
+        >
+          {tool.askFirst === true ? 'Ask first' : 'Run when needed'}
+        </Button>
+      )}
       <Switch
         checked={tool.granted}
         disabled={pending}
@@ -74,6 +87,7 @@ function AppGroup({
   pending,
   onAllow,
   onToggle,
+  onAskFirst,
 }: {
   readonly serverId: string
   readonly uri: string
@@ -81,6 +95,7 @@ function AppGroup({
   readonly pending: ReadonlySet<string>
   readonly onAllow: (allowed: boolean) => void
   readonly onToggle: (tool: ToolView, allowed: boolean) => void
+  readonly onAskFirst: (tool: ToolView, enabled: boolean) => void
 }) {
   const id = useId()
   return (
@@ -107,6 +122,7 @@ function AppGroup({
             tool={tool}
             pending={pending.has(tool.name)}
             onToggle={(allowed) => onToggle(tool, allowed)}
+            onAskFirst={(enabled) => onAskFirst(tool, enabled)}
           />
         ))}
       </ul>
@@ -159,7 +175,13 @@ function useGrants(
 ) {
   const { pending, during } = usePending()
   const grant = (changed: (tool: ToolView) => boolean, allowed: boolean) =>
-    setTools((current) => current.map((tool) => (changed(tool) ? { ...tool, granted: allowed } : tool)))
+    setTools((current) =>
+      current.map((tool) =>
+        changed(tool)
+          ? { ...tool, granted: allowed, askFirst: tool.granted === allowed ? tool.askFirst : false }
+          : tool,
+      ),
+    )
   const tool = async (name: string, allowed: boolean) => {
     await request('/api/mcp/grants', { method: 'PUT', body: { serverId, name, allowed } })
     grant((other) => other.name === name, allowed)
@@ -172,6 +194,13 @@ function useGrants(
     void during(busy, () => work().catch((error: unknown) => onMessage(failureText(error))))
   return {
     pending,
+    askFirst: (target: ToolView, enabled: boolean) =>
+      attempt([target.name], async () => {
+        await request('/api/mcp/ask-first', { method: 'PUT', body: { serverId, name: target.name, enabled } })
+        setTools((current) =>
+          current.map((item) => (item.name === target.name ? { ...item, askFirst: enabled } : item)),
+        )
+      }),
     toggle: (target: ToolView, allowed: boolean) => attempt([target.name], () => tool(target.name, allowed)),
     allowApp: (uri: string, allowed: boolean) =>
       attempt(names(tools.filter((each) => each.appResource === uri)), () => app(uri, allowed)),
@@ -216,6 +245,7 @@ export function ToolGrants({
             pending={grants.pending}
             onAllow={(allowed) => grants.allowApp(uri, allowed)}
             onToggle={grants.toggle}
+            onAskFirst={grants.askFirst}
           />
         ))}
         {tools
@@ -226,11 +256,13 @@ export function ToolGrants({
               tool={tool}
               pending={grants.pending.has(tool.name)}
               onToggle={(allowed) => grants.toggle(tool, allowed)}
+              onAskFirst={(enabled) => grants.askFirst(tool, enabled)}
             />
           ))}
       </ul>
       <p className="server-note">
-        Your agent may call only the tools you allow. Names and descriptions come from the server.
+        Your agent may call only the tools you allow. Ask first holds each call for your decision; remote hints do not
+        choose that policy.
       </p>
     </section>
   )

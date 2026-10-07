@@ -14,6 +14,8 @@ export const appMcpGrants = sqliteTable(
     serverId: text('server_id').notNull(),
     capability: text('capability', { enum: ['tool', 'resource', 'prompt'] }).notNull(),
     name: text('name').notNull(),
+    askFirst: integer('ask_first', { mode: 'boolean' }).notNull().default(false),
+    version: text('version').notNull().default(''),
     createdAt: integer('created_at').notNull(),
   },
   (table) => [primaryKey({ columns: [table.serverId, table.capability, table.name] })],

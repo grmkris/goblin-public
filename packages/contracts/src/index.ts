@@ -99,8 +99,30 @@ export const ToolView = Schema.Struct({
   modelVisible: Schema.Boolean,
   appResource: Schema.optional(Schema.String),
   granted: Schema.Boolean,
+  askFirst: Schema.optional(Schema.Boolean),
 })
 export type ToolView = typeof ToolView.Type
+
+/** An exact held call, shown only to its signed-in owner. */
+export const ApprovalView = Schema.Struct({
+  id: Schema.String,
+  serverId: Schema.String,
+  name: Schema.String,
+  arguments: Schema.Record(Schema.String, Schema.Json),
+  conversation: Schema.optional(Schema.String),
+  state: Schema.Literals([
+    'pending',
+    'approved',
+    'dispatching',
+    'completed',
+    'refused',
+    'failed',
+    'uncertain',
+    'expired',
+  ]),
+  expiresAt: Schema.Number,
+})
+export type ApprovalView = typeof ApprovalView.Type
 
 export const ResidentStatus = Schema.Struct({
   state: Schema.Literals(['active', 'expired', 'revoked', 'never']),

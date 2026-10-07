@@ -9,12 +9,21 @@ import { liveApi } from '../../src/billing/dodo.ts'
 import { billingTestRoute } from '../../src/billing/test-route.ts'
 import { PersonalAgent } from '../../src/agent.ts'
 import { scriptedStreams } from './model.ts'
+import { approvalsProbe } from './approvals-probe.ts'
+import { requireUserSession } from '../../src/auth/index.ts'
 import { AppsMcpFixture } from './apps-mcp.ts'
 
 export class OwnerAgent extends PersonalAgent {
   readonly #mcp = new AppsMcpFixture()
   protected override modelStreams() {
     return scriptedStreams()
+  }
+  override async onRequest(request: Request): Promise<Response> {
+    const path = new URL(request.url).pathname
+    if (path === '/test/approvals/calls') return Response.json(this.#mcp.calls)
+    if (path === '/test/approvals/recovery')
+      return Response.json(await approvalsProbe(this.ctx.storage, this.env.CREDENTIAL_KEY))
+    return super.onRequest(request)
   }
   protected override mcpFetch(): typeof fetch {
     return this.#mcp.fetch
@@ -30,6 +39,10 @@ export default {
     try {
       const authProbe = await authFixtureRoute(input, env)
       if (authProbe !== undefined) return authProbe
+      if (url.pathname.startsWith('/__test/approvals/')) {
+        const { userId } = await requireUserSession(input, env)
+        return env.AGENTS.getByName(userId).fetch(`https://agent/test/approvals/${url.pathname.split('/').at(-1)}`)
+      }
       if (url.pathname.startsWith('/__test/billing/'))
         return await Effect.runPromise(
           billingTestRoute(input, env, {

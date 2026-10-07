@@ -10,13 +10,12 @@ history. [ADR 0012](adr/0012-routines.md) records native fixtures and the remain
 producer Events, Railway provider accounting and Telegram completion need separate receipts; local fixtures do
 not establish them.
 
-## Write approvals
+## Write approvals acceptance
 
-Today granted model tools run under current resident authority and the token budget, without approval of each call.
-The existing Allow card grants a missing tool for future calls. For tools with side effects, add a separate approval
-step: a Pi `beforeTool` hook that holds calls to tools the owner marked "ask first", surfaces them in the chat, and
-continues or refuses on the owner's answer. Never treat remote annotations such as `readOnlyHint` as the approval
-policy.
+Per-call **Ask first** is implemented for owner-marked MCP tools ([ADR 0028](adr/0028-mcp-call-approvals.md)).
+Local native tests cover exact arguments, approval/refusal, owner isolation, grant replacement, scope revocation,
+routine and subagent calls, App refusal, and recovery without replay. Real Sidequest hiring and provider-side
+operation reconciliation require fresh owner connections and separate deployed acceptance.
 
 ## Smaller items
 

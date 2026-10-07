@@ -86,6 +86,7 @@ export class MemoryCredentials implements Credentials {
 
 export class MemoryGrants implements Grants {
   readonly #grants = new Map<string, Grant>()
+  readonly #versions = new Map<string, string>()
   constructor(initial: readonly Grant[] = []) {
     for (const grant of initial) this.set(grant, true)
   }
@@ -97,8 +98,24 @@ export class MemoryGrants implements Grants {
     return [...this.#grants.values()].filter((grant) => serverId === undefined || grant.serverId === serverId)
   }
   set(grant: Grant, allowed: boolean): void {
-    if (allowed) this.#grants.set(this.#key(grant), grant)
-    else this.#grants.delete(this.#key(grant))
+    if (allowed) {
+      if (!this.#grants.has(this.#key(grant))) {
+        this.#grants.set(this.#key(grant), grant)
+        this.#versions.set(this.#key(grant), crypto.randomUUID())
+      }
+    } else this.#grants.delete(this.#key(grant))
+  }
+  policy(grant: Grant) {
+    const row = this.#grants.get(this.#key(grant))
+    return row === undefined
+      ? undefined
+      : { askFirst: row.askFirst ?? false, version: this.#versions.get(this.#key(grant)) ?? '' }
+  }
+  setAskFirst(grant: Grant, enabled: boolean): void {
+    const row = this.#grants.get(this.#key(grant))
+    if (row === undefined) throw new Error('Missing fixture grant')
+    this.#grants.set(this.#key(grant), { ...row, askFirst: enabled })
+    this.#versions.set(this.#key(grant), crypto.randomUUID())
   }
 }
 

@@ -5,6 +5,7 @@ import { Effect, Schema } from 'effect'
 import { ConversationView } from '@goblin/contracts'
 import { expect } from 'vitest'
 import Stack from './owner-stack.ts'
+import { approvalsCase } from './approvals-case.ts'
 import { appsCase } from './apps-case.ts'
 import { agentAppViewCase } from './agent-app-view-case.ts'
 import { person, call } from './owner-requests.ts'
@@ -12,10 +13,17 @@ import { person, call } from './owner-requests.ts'
 const harness = Test.make({
   providers: Cloudflare.providers(),
   state: Alchemy.localState(),
-  stage: 'test_owner',
+  stage: `test_owner_${process.pid}`,
   dev: true,
 })
 const stack = harness.beforeAll(harness.deploy(Stack))
+harness.test(
+  'native: ask-first approves frozen arguments once, refuses, fences revocation, and never replays recovery',
+  Effect.gen(function* () {
+    const { url } = yield* stack
+    yield* Effect.promise(() => approvalsCase(url))
+  }),
+)
 harness.test(
   'native: an owner App is kept per call, launches from it, closes with its conversation and is granted live',
   Effect.gen(function* () {

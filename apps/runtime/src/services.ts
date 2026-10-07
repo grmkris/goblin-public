@@ -25,9 +25,11 @@ import type { FileStore } from './files/store.ts'
 import type { AgentApps } from './agent-apps/engine.ts'
 import type { Inspector } from './inspect/inspector.ts'
 import type { HomeService } from './home/service.ts'
+import type { McpApprovalStore } from './mcp/approvals.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('goblin/Mcp') {}
+export class Approvals extends Context.Service<Approvals, McpApprovalStore>()('goblin/Approvals') {}
 export class Resident extends Context.Service<Resident, ResidentAuthority>()('goblin/Resident') {}
 export class Conversations extends Context.Service<Conversations, ConversationRegistry>()('goblin/Conversations') {}
 export class Budget extends Context.Service<Budget, ModelBudget>()('goblin/Budget') {}
@@ -58,6 +60,7 @@ export type AgentServices =
   | Events
   | EventStorage
   | Mcp
+  | Approvals
   | Resident
   | Conversations
   | Budget
@@ -79,6 +82,7 @@ export type AgentServices =
 
 export const agentLayer = (services: {
   readonly host: McpHost
+  readonly approvals: McpApprovalStore
   readonly resident: ResidentAuthority
   readonly conversations: ConversationRegistry
   readonly budget: ModelBudget
@@ -97,6 +101,7 @@ export const agentLayer = (services: {
 }): Layer.Layer<Exclude<AgentServices, Entitlements | Events | EventStorage | Files | AppEngine | Inspect>> =>
   Layer.mergeAll(
     Layer.succeed(Mcp, services.host),
+    Layer.succeed(Approvals, services.approvals),
     Layer.succeed(Resident, services.resident),
     Layer.succeed(Conversations, services.conversations),
     Layer.succeed(Budget, services.budget),

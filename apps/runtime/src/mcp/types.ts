@@ -34,6 +34,12 @@ export type McpManagerOptions = {
   readonly servers: readonly McpServerConfig[]
   /** The owner's exact grants; checked before any connection is opened for a call. */
   readonly allows: (grant: Grant) => boolean
+  readonly authorizeTool?: (
+    call: ApprovedDispatch,
+    approvalId: string | undefined,
+    dispatch: boolean,
+    authorize?: () => Promise<void>,
+  ) => Promise<void>
   /** Whether the owner uses skills from a server (skills/store.ts); checked before any skill request. */
   readonly authorizeEvents?: (serverId: string, name: string, argumentsJson: string) => void | Promise<void>
   readonly skillsEnabled?: (serverId: string) => boolean
@@ -53,10 +59,25 @@ export type McpManagerOptions = {
   /** Where each remote step is reported (the run ledger, ADR 0024); a log line when absent. */
   readonly report?: StepReport
 }
+export type ApprovalContext = {
+  readonly sessionId: string
+  readonly sourceCallId: string
+  readonly taskId: string
+}
+export type ApprovedDispatch = {
+  readonly serverId: string
+  readonly name: string
+  readonly endpoint: string
+  readonly arguments: Record<string, unknown>
+  readonly caller: McpCaller
+  readonly approvalContext?: ApprovalContext
+}
 export type McpCallOptions = McpRequestOptions & {
   readonly caller?: McpCaller
   /** Recheck the local execution scope after connection/credential waits, immediately before dispatch. */
   readonly authorize?: () => Promise<void>
+  readonly approvalId?: string
+  readonly approvalContext?: ApprovalContext
 }
 export type McpToolResult = CallToolResult
 export type McpPromptResult = GetPromptResult

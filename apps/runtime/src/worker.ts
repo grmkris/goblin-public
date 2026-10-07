@@ -59,6 +59,8 @@ const PromptGet = Schema.Struct({
   arguments: Schema.optional(Schema.Record(Schema.String, Schema.String.check(Schema.isMaxLength(16_384)))),
 })
 const GrantChange = Schema.Struct({ serverId: Bounded(64), name: Bounded(256), allowed: Schema.Boolean })
+const AskFirstChange = Schema.Struct({ serverId: Bounded(64), name: Bounded(256), enabled: Schema.Boolean })
+const ApprovalDecision = Schema.Struct({ allowed: Schema.Boolean })
 const AddServer = Schema.Struct({
   endpoint: Bounded(2048),
   source: Schema.optional(
@@ -264,6 +266,18 @@ async function mcpServerRoute(request: Request, agent: DurableObjectStub<AgentRp
   throw new NotFound({ what: path })
 }
 
+async function mcpApprovalRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string) {
+  const match = /^\/api\/mcp\/approvals\/([\w:-]{1,256})$/u.exec(decodeURIComponent(path))
+  const id = match?.[1]
+  if (id === undefined) throw new NotFound({ what: path })
+  if (request.method === 'GET') return json(unwrap(await agent.mcpApproval(id)))
+  if (request.method === 'POST') {
+    const body = await readJson(request, ApprovalDecision)
+    return json(unwrap(await agent.mcpDecideApproval(id, body.allowed)))
+  }
+  throw new NotFound({ what: path })
+}
+
 /** The owner's MCP routes that are not about one server, keyed `METHOD path`. */
 const mcpRoutes: Readonly<Record<string, Route>> = {
   'GET /api/mcp/servers': async (_request, agent) => json(unwrap(await agent.mcpServers())),
@@ -287,6 +301,10 @@ const mcpRoutes: Readonly<Record<string, Route>> = {
     const body = await readJson(request, GrantChange)
     return json(unwrap(await agent.mcpSetToolGrant(body.serverId, body.name, body.allowed)))
   },
+  'PUT /api/mcp/ask-first': async (request, agent) => {
+    const body = await readJson(request, AskFirstChange)
+    return json(unwrap(await agent.mcpSetAskFirst(body.serverId, body.name, body.enabled)))
+  },
   'PUT /api/mcp/skills': async (request, agent) => {
     const body = await readJson(request, SkillsChange)
     return json(unwrap(await agent.mcpSetSkills(body.serverId, body.enabled)))
@@ -298,6 +316,7 @@ const mcpRoutes: Readonly<Record<string, Route>> = {
 }
 
 async function mcpRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string, env: RuntimeEnv) {
+  if (path.startsWith('/api/mcp/approvals/')) return mcpApprovalRoute(request, agent, path)
   if (path === '/api/mcp/oauth/callback' && request.method === 'GET') return oauthCallback(request, agent, env)
   const route = mcpRoutes[`${request.method} ${path}`]
   return route === undefined ? mcpServerRoute(request, agent, path) : route(request, agent)

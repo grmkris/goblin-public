@@ -18,6 +18,7 @@ import { configuredServers } from './mcp/config.ts'
 import { CredentialStore } from './mcp/credentials.ts'
 import { bindEndpoints } from './mcp/endpoints.ts'
 import { GrantStore } from './mcp/grants.ts'
+import { McpApprovalStore } from './mcp/approvals.ts'
 import { installEventConsumers } from './mcp/events/consumers.ts'
 import { Events, McpEvents } from './mcp/events.ts'
 import { EventStorage, SqliteEventStore } from './mcp/events/store.ts'
@@ -145,6 +146,8 @@ async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {
   const skillState = new SqliteSkillState(db)
   const grants = new GrantStore(db)
   const cipher = await CredentialCipher.fromBase64(env.CREDENTIAL_KEY)
+  const approvals = new McpApprovalStore(db, cipher)
+  approvals.recover(nowMillis())
   const resident = new ResidentAuthority(db)
   const eventStore = new SqliteEventStore(db)
   const credentials = new CredentialStore(db, cipher)
@@ -155,12 +158,29 @@ async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {
     credentials,
     authorizeEvents: authorizeEvents(resident, credentials, eventStore, input.entitlements),
     grants,
+    authorizeTool: async (call, approvalId, dispatch, authorize) => {
+      if (call.caller === 'human') return
+      const policy = grants.policy({ serverId: call.serverId, capability: 'tool', name: call.name })
+      if (approvalId !== undefined) {
+        if (policy === undefined) throw new GrantDenied({ serverId: call.serverId, name: call.name })
+        await approvals.assert({
+          id: approvalId,
+          call,
+          version: () => grants.policy({ serverId: call.serverId, capability: 'tool', name: call.name })?.version,
+          now: nowMillis(),
+          dispatch,
+          ...(authorize === undefined ? {} : { authorize }),
+        })
+      } else if (policy?.askFirst === true) {
+        throw new Forbidden({ reason: 'Owner approval required for this exact call' })
+      }
+    },
     skillsEnabled: (serverId) => skillState.enabled(serverId),
     appUrl: env.APP_URL,
     fetch: input.mcpFetch,
     report: mcpReporter(input.telemetry),
   })
-  return { host, cipher, resident, eventStore, skillState, grants }
+  return { host, cipher, resident, eventStore, skillState, grants, approvals }
 }
 function makeBudgets(input: ComposeInput, db: DrizzleSqliteDODatabase) {
   const env = input.env
@@ -183,7 +203,7 @@ export async function composeServices(
   const { env, harness } = input
   runApplicationMigrations(input.storage)
   const db = drizzle(input.storage)
-  const { host, cipher, resident, eventStore, skillState, grants } = await makeHost(input, db)
+  const { host, cipher, resident, eventStore, skillState, grants, approvals } = await makeHost(input, db)
   const budget = makeBudgets(input, db)
   const options = modelOptions(env.MODELS, env.MODEL_ID)
   const models = new ModelPicker(new ModelChoiceStore(db), options)
@@ -228,6 +248,7 @@ export async function composeServices(
     Layer.mergeAll(
       agentLayer({
         host,
+        approvals,
         resident,
         ...conversations,
         budget,

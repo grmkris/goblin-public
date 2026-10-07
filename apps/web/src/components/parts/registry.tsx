@@ -28,6 +28,15 @@ function Aside({ children }: { readonly children: ReactNode }) {
 
 /** What a receipt says about a request to the owner. */
 function InteractionLine({ interaction }: { readonly interaction: Interaction }) {
+  if (interaction.kind === 'approval')
+    return (
+      <Receipt>
+        <KeyRoundIcon aria-hidden />
+        <span>
+          Asked to approve {interaction.serverId} · {interaction.name}
+        </span>
+      </Receipt>
+    )
   if (interaction.kind === 'grant')
     return (
       <Receipt>
