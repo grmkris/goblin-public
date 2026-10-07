@@ -106,7 +106,7 @@ the message by a rule at its left, with its own messages (the message it branche
 threads unfolding the same way, and a one-line composer, plus Open in pane to put it beside. While the thread is in a
 pane the fold shows a note with the way to it and back. A message with no thread offers Reply in thread and Copy, in a
 small pill over its lower edge where a pointer hovers, and on a touch screen once the message is tapped. Reply in
-thread opens an inline reply that branches the
+thread opens an inline reply, with the focus in its composer, that branches the
 thread only when it is sent, because Pi cannot delete a conversation; the sidebar's "+" opens an empty draft pane the
 same way. Panes and inline threads follow conversations through one stream pool (`lib/stream-pool.ts`): one event
 stream per conversation however many show it, at most eight following beyond those on screen, and one off screen
