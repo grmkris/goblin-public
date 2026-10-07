@@ -207,9 +207,13 @@ main.shell {
   width: 0.875rem;
   height: 0.875rem;
 }
-.tree-row:hover > .tree-row-beside,
 .tree-row-beside:focus-visible {
   opacity: 1;
+}
+@media (hover: hover) {
+  .tree-row:hover > .tree-row-beside {
+    opacity: 1;
+  }
 }
 @media (hover: none) {
   .tree-row-beside {
@@ -267,6 +271,11 @@ main.shell {
     color: var(--sidebar-accent-foreground);
   }
 }
+/* Pressed: the same tint at once, so a tap on a touch screen answers before the finger lifts. */
+.tree-row-disclose:active {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
+}
 .tree-row-under {
   display: inline-flex;
   align-items: center;
@@ -322,6 +331,10 @@ main.shell {
     background: var(--sidebar-accent);
     color: var(--sidebar-accent-foreground);
   }
+}
+.closed-fold:active {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
 }
 /*
  * The folded sidebar (components/workspace-rail.tsx): one icon per active conversation. The shape says the kind (main
@@ -385,6 +398,10 @@ main.shell {
     background: var(--sidebar-accent);
     color: var(--sidebar-accent-foreground);
   }
+}
+.rail-item:active {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
 }
 .rail-item[data-focused='true'] {
   background: var(--sidebar-accent);
@@ -503,9 +520,14 @@ main.shell {
   pointer-events: auto;
   transition: background-color 150ms;
 }
-.turn-map-trigger:hover,
-.turn-map-trigger[data-popup-open] {
+.turn-map-trigger[data-popup-open],
+.turn-map-trigger:active {
   background: color-mix(in oklab, var(--muted) 60%, transparent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .turn-map-trigger:hover {
+    background: color-mix(in oklab, var(--muted) 60%, transparent);
+  }
 }
 .turn-map-trigger:focus-visible,
 .turn-map-tab:focus-visible {
@@ -576,10 +598,16 @@ main.shell {
     background-color 100ms,
     color 100ms;
 }
-.turn-map-row:hover,
-.turn-map-row[aria-current='location'] {
+.turn-map-row[aria-current='location'],
+.turn-map-row:active {
   background: var(--accent);
   color: var(--accent-foreground);
+}
+@media (hover: hover) and (pointer: fine) {
+  .turn-map-row:hover {
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
 }
 .turn-map-row[aria-current='location'] {
   font-weight: 500;
@@ -808,10 +836,16 @@ main.shell {
     border-color 150ms,
     scale 100ms ease-out;
 }
-.thread-row:hover,
-.thread-row:focus-visible {
+.thread-row:focus-visible,
+.thread-row:active {
   border-color: var(--border);
   background: var(--card);
+}
+@media (hover: hover) and (pointer: fine) {
+  .thread-row:hover {
+    border-color: var(--border);
+    background: var(--card);
+  }
 }
 .thread-row:active {
   scale: 0.98;
@@ -845,10 +879,15 @@ main.shell {
     opacity 150ms,
     translate 150ms;
 }
-.thread-row:hover > .thread-row-chevron,
 .thread-row:focus-visible > .thread-row-chevron {
   opacity: 1;
   translate: 0 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .thread-row:hover > .thread-row-chevron {
+    opacity: 1;
+    translate: 0 0;
+  }
 }
 @media (hover: none) {
   .thread-row {
@@ -953,8 +992,17 @@ main.shell {
   border-radius: var(--radius-xl);
   outline-offset: 2px;
 }
-.apps-card:hover > * {
-  border-color: var(--ring);
+/* The card draws a ring, not a border: pointing at it (or pressing it) tints the surface instead. */
+.apps-card > [data-slot='card'] {
+  transition: background-color 150ms;
+}
+.apps-card:active > [data-slot='card'] {
+  background-color: color-mix(in oklab, var(--card), var(--foreground) 4%);
+}
+@media (hover: hover) and (pointer: fine) {
+  .apps-card:hover > [data-slot='card'] {
+    background-color: color-mix(in oklab, var(--card), var(--foreground) 4%);
+  }
 }
 .apps-list {
   display: flex;
@@ -1163,8 +1211,13 @@ main.shell {
 .pending-files > .file-chip {
   padding-right: 0.125rem;
 }
-a.file-chip:hover {
+a.file-chip:active {
   background: var(--accent);
+}
+@media (hover: hover) and (pointer: fine) {
+  a.file-chip:hover {
+    background: var(--accent);
+  }
 }
 .file-chip > svg {
   flex: none;
@@ -1196,10 +1249,16 @@ a.file-chip:hover {
   text-underline-offset: 3px;
   transition: text-decoration-color 150ms;
 }
-.message-author-link:hover,
-.message-author-link:focus-visible {
+.message-author-link:focus-visible,
+.message-author-link:active {
   color: var(--foreground);
   text-decoration-color: currentColor;
+}
+@media (hover: hover) and (pointer: fine) {
+  .message-author-link:hover {
+    color: var(--foreground);
+    text-decoration-color: currentColor;
+  }
 }
 /* Why something is in a transcript (text-part.tsx Cause): a task, a branch, a report, quoted under a quiet line. */
 .cause {
@@ -1226,10 +1285,16 @@ a.file-chip:hover {
   color: var(--foreground);
   font-weight: 550;
 }
-.cause-link:hover,
-.cause-link:focus-visible {
+.cause-link:focus-visible,
+.cause-link:active {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .cause-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
 }
 .cause-quote {
   margin: 0;
@@ -1796,9 +1861,15 @@ code.grant-about {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.work-name:hover {
+.work-name:active {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .work-name:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
 }
 .work-meta {
   flex: 1;
@@ -1831,6 +1902,11 @@ code.grant-about {
     background: var(--muted);
     color: var(--foreground);
   }
+}
+.work-toggle:active,
+.work-tools > button:active {
+  background: var(--muted);
+  color: var(--foreground);
 }
 .work-confirm {
   display: flex;
@@ -1945,16 +2021,22 @@ code.grant-about {
   border-radius: 0.75rem;
   background: var(--card);
 }
-select {
-  background: transparent;
-  color: var(--foreground);
-  border: 1px solid var(--input);
-  border-radius: 0.5rem;
-  padding: 0.5rem;
-}
-summary {
-  cursor: pointer;
-  color: var(--muted-foreground);
+/*
+ * Bare elements, in the base layer: the rest of this file is unlayered and would beat every utility, so a NativeSelect's
+ * own padding (room for its chevron) lost to `padding: 0.5rem` and long option text ran under the arrow.
+ */
+@layer base {
+  select {
+    background: transparent;
+    color: var(--foreground);
+    border: 1px solid var(--input);
+    border-radius: 0.5rem;
+    padding: 0.5rem;
+  }
+  summary {
+    cursor: pointer;
+    color: var(--muted-foreground);
+  }
 }
 
 /*
@@ -1988,15 +2070,17 @@ summary {
   cursor: pointer;
   user-select: none;
 }
-.capability-row:hover {
+.capability-row:not([data-disabled]):active {
   background: var(--accent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .capability-row:not([data-disabled]):hover {
+    background: var(--accent);
+  }
 }
 .capability-row[data-disabled] {
   cursor: default;
   opacity: 0.5;
-}
-.capability-row[data-disabled]:hover {
-  background: none;
 }
 @media (pointer: coarse) {
   .capability-row {
@@ -2132,6 +2216,12 @@ summary {
     background: var(--muted);
     color: var(--foreground);
   }
+}
+.inline-thread-header > button:active,
+.inline-thread-stub > button:active,
+.inline-draft-cancel:active {
+  background: var(--muted);
+  color: var(--foreground);
 }
 .inline-thread-parts {
   display: flex;
@@ -2376,6 +2466,11 @@ summary {
     color: var(--foreground);
   }
 }
+.pane-crumb:active,
+button.pane-title:active {
+  background: var(--muted);
+  color: var(--foreground);
+}
 .pane-state {
   flex: none;
   padding-inline: 0.375rem;
@@ -2499,8 +2594,10 @@ summary {
   font-size: 0.6875rem;
   line-height: 1.4;
 }
-.sidebar-credit:hover {
-  color: var(--foreground);
+@media (hover: hover) and (pointer: fine) {
+  .sidebar-credit:hover {
+    color: var(--foreground);
+  }
 }
 /* Pane width, rather than screen width, controls the composer's secondary labels. */
 .chat-pane {
