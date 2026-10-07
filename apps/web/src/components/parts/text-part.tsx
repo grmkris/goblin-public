@@ -1,5 +1,5 @@
-import { type ReactNode, createContext, use } from 'react'
-import Markdown, { type ExtraProps } from 'react-markdown'
+import { type ReactNode, createContext, memo, use } from 'react'
+import Markdown, { type Components, type ExtraProps } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AppWindowIcon, CornerDownRightIcon } from 'lucide-react'
 import type { Attachment } from '@goblin/contracts'
@@ -33,37 +33,47 @@ function Pre({ node, children }: PreProps) {
   return <RichBlock kind={kind} source={source} code={plain} />
 }
 
+/** Links open in a new tab without a referrer; wide tables scroll sideways instead of widening the conversation. */
+const COMPONENTS: Components = {
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noreferrer noopener">
+      {children}
+    </a>
+  ),
+  table: ({ children }) => (
+    <div className="typeset-scroll">
+      <table>{children}</table>
+    </div>
+  ),
+  pre: Pre,
+}
+const REMARK_PLUGINS = [remarkGfm]
+
 /**
- * Assistant text as GitHub-flavoured Markdown, set by shadcn/typeset. Raw HTML is never rendered; links open in a new
- * tab without a referrer; wide tables scroll sideways instead of widening the conversation. ```mermaid, ```chart and
- * ```map blocks are drawn (ADR 0023). While `live`, an open fence stays code.
+ * Assistant text as GitHub-flavoured Markdown, set by shadcn/typeset. Raw HTML is never rendered. ```mermaid, ```chart
+ * and ```map blocks are drawn (ADR 0023). While `live`, an open fence stays code.
+ *
+ * Memoised on its text, and its renderers are module constants: a streamed batch rebuilds every part of the
+ * transcript, and new renderer functions would remount every link and table (a table scrolled sideways would snap
+ * back) and re-parse every message, not just the one still being written.
  */
-export function MessageText({ text, live = false }: { readonly text: string; readonly live?: boolean }) {
+export const MessageText = memo(function MessageText({
+  text,
+  live = false,
+}: {
+  readonly text: string
+  readonly live?: boolean
+}) {
   return (
     <div className="typeset typeset-chat">
       <BlockContext value={{ open: openFenceAt(text), live }}>
-        <Markdown
-          remarkPlugins={[remarkGfm]}
-          components={{
-            a: ({ href, children }) => (
-              <a href={href} target="_blank" rel="noreferrer noopener">
-                {children}
-              </a>
-            ),
-            table: ({ children }) => (
-              <div className="typeset-scroll">
-                <table>{children}</table>
-              </div>
-            ),
-            pre: Pre,
-          }}
-        >
+        <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
           {text}
         </Markdown>
       </BlockContext>
     </div>
   )
-}
+})
 
 /** Opens a thread in a pane beside the transcript: given where a note's thread label can lead somewhere. */
 export const OpenThread = createContext<((thread: string) => void) | undefined>(undefined)
