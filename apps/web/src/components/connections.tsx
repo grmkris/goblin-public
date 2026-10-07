@@ -23,6 +23,7 @@ import { ServerCard } from './server-card.tsx'
 import { ServerPicker } from './server-picker.tsx'
 import { useTelegramChannel } from './telegram-control.tsx'
 import { ToolConsole } from './tool-console.tsx'
+import { glide } from '../lib/motion.ts'
 
 const decodeServers = Schema.decodeUnknownSync(Schema.Array(ServerView))
 
@@ -76,7 +77,7 @@ export function Connections() {
   useEffect(() => {
     if (channel.status !== undefined) load()
   }, [channel.status, load])
-  const toPicker = () => picker.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const toPicker = () => picker.current?.scrollIntoView({ behavior: glide(), block: 'start' })
   const changed = (text: string) => {
     setMessage(text)
     load()

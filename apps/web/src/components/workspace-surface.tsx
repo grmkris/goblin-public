@@ -22,6 +22,7 @@ import { AppLayer } from './apps/stage.tsx'
 import { ConversationPane, DraftPane } from './conversation-pane.tsx'
 import { WorkspaceDrag } from './workspace-drag.tsx'
 import { useWorkspace } from './workspace.tsx'
+import { glide } from '../lib/motion.ts'
 
 const TOKENS = {
   '--trellis-bg': 'var(--muted)',
@@ -221,7 +222,7 @@ function WideLayout({ hosts, parking }: { readonly hosts: Hosts; readonly parkin
   useEffect(() => {
     hosts.current
       .get(workspace.state.focused)
-      ?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: glide() })
   }, [workspace.state.focused, hosts])
   return (
     <div className="workspace-scroller" onScroll={apps.kick}>
@@ -345,7 +346,7 @@ function NarrowStrip({
     if (element === null || index < 0 || cellAt(element) === index) return
     // The strip opens on the focused pane; afterwards focusing another glides to it.
     steering.current = !first
-    element.scrollTo({ left: index * element.clientWidth, behavior: first ? 'instant' : 'smooth' })
+    element.scrollTo({ left: index * element.clientWidth, behavior: first ? 'instant' : glide() })
   }, [index])
   const quiet = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(quiet.current), [])

@@ -13,6 +13,7 @@ import { HomeTileMenu } from './tile-menu.tsx'
 import { useHomeDrag } from './drag.ts'
 import { useHomeMotion } from './motion.ts'
 import { appCaption, appNames } from '../../lib/workspace-tree.ts'
+import { glide } from '../../lib/motion.ts'
 
 const STARTERS = ['Track my reading on Home', 'Chart my spending this month on Home', 'Put my inbox on Home']
 const TILE_DRAFT = 'Add a tile to Home that '
@@ -158,7 +159,7 @@ function useShowHome(root: import('react').RefObject<HTMLElement | null>) {
   useEffect(() => {
     const show = (event: Event) => {
       scrollToEnd({
-        behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        behavior: glide(),
       })
       if (!(event instanceof CustomEvent) || !Array.isArray(event.detail)) return
       const ids: unknown[] = event.detail

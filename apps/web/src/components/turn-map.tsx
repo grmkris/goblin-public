@@ -14,6 +14,7 @@ import {
 import { HistoryIcon, ListIcon } from 'lucide-react'
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 import { currentTurn, markPositions, viewportBand } from '../lib/turn-map.ts'
+import { glide } from '../lib/motion.ts'
 
 /** One turn the owner took, as the map lists it. */
 export type Turn = { readonly id: string; readonly label: string; readonly telegram: boolean }
@@ -309,9 +310,8 @@ export function TurnMap({
     onOpenChange: setOpen,
     onEarlier,
     onJump: (id) => {
-      const instant = matchMedia('(prefers-reduced-motion: reduce)').matches
-      if (id === 'home-surface') scrollToEnd({ behavior: instant ? 'auto' : 'smooth' })
-      else scrollToMessage(id, { align: 'start', behavior: instant ? 'auto' : 'smooth' })
+      if (id === 'home-surface') scrollToEnd({ behavior: glide() })
+      else scrollToMessage(id, { align: 'start', behavior: glide() })
       setOpen(false)
     },
   }

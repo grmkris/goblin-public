@@ -4,6 +4,7 @@ import { ArrowDownIcon } from 'lucide-react'
 import { HOME_MARK, homeLanding } from '../../lib/home.ts'
 import type { Part } from '../../lib/parts.ts'
 import { isOwnTurn } from '../../lib/parts.ts'
+import { glide } from '../../lib/motion.ts'
 
 export function HomeLanding({
   parts,
@@ -47,7 +48,7 @@ export function NowButton({ parts }: { readonly parts: readonly Part[] }) {
           scrollToMessage(target, {
             align: 'start',
             scrollMargin: 64,
-            behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+            behavior: glide(),
           })
         }
       >
