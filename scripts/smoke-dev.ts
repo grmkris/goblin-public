@@ -9,6 +9,7 @@ import { Config, Effect, Option, Redacted, Schema } from 'effect'
 import { createHash, randomBytes } from 'node:crypto'
 import { chmod, readFile, stat, writeFile } from 'node:fs/promises'
 import { appChecks } from './smoke-apps.ts'
+import { publicSmoke } from './smoke-public.ts'
 
 const ObjectSchema = Schema.Record(Schema.String, Schema.MutableJson)
 type JsonObject = typeof ObjectSchema.Type
@@ -520,8 +521,7 @@ async function smokeDev(
   if (health['stage'] !== config.stage || health['service'] !== 'goblin') throw new Error('stage_health_mismatch')
   const signup = string(health['signup'])
   if (config.stage === 'prod' && (Redacted.value(config.email) === '' || config.sessionFile === '')) {
-    const probe = await dev.send('/api/conversations', { owner: false })
-    if (probe.status !== 401) throw new Error('anonymous_auth_probe_not_refused')
+    await publicSmoke(dev, health, signup, steps, () => refusedSignup(dev, steps))
     return { stage: config.stage, signup, mode: 'read-only' }
   }
   if (signup !== 'open') await refusedSignup(dev, steps)

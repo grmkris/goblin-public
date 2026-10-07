@@ -22,7 +22,7 @@ policy.
 
 - `app_metadata` is created by the application migrations, but its `AppMetadata` service is used only by the
   integration test worker; remove it or give it a job.
-- A production stage: its own D1, credential key and model key; nothing is shared with dev.
+- A production stage is live at `https://goblin.surf`: its own D1, credential key, files bucket and capped model key; nothing is shared with dev. The first public release is invite-only and owner OTP/bootstrap remains an operator step.
 - Dev is live at `https://dev.goblin.surf`: its fresh auth D1 and PersonalAgent namespace were verified empty before
   bootstrap, the owner signed in with delivered OTP from `hello@goblin.surf` (SPF, DKIM and DMARC passed), and signup
   is closed after bootstrap. The owner has an explicit dev-only Pro override of its daily allowance (in Credits since ADR 0026). The

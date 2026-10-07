@@ -744,9 +744,9 @@ seven days. The run ledger's log lines (see Run ledger) are among them.
 
 ## Stage origins
 
-Dev runs at `https://dev.goblin.surf`; the apex is reserved for future production. The fresh Goblin stack creates
+Dev runs at `https://dev.goblin.surf`; production runs at `https://goblin.surf` with `www` redirecting to the apex. The fresh Goblin stack creates
 `goblin-dev-auth`, an empty native Agent namespace and new auth/encryption secrets. It imports no users, transcripts,
-connections or grants. Production will use separate resources and secrets. `GOBLIN_DOMAIN` and `GOBLIN_ZONE_ID` attach
+connections or grants. Production uses separate resources, secrets and a dedicated model key; its first release is invite-only until owner bootstrap. `GOBLIN_DOMAIN` and `GOBLIN_ZONE_ID` attach
 the stage's custom domain; prod additionally has a `www` alias. Both Worker entry points redirect alternate origins
 before auth, hooks or rendering: 301 for GET/HEAD, 308 otherwise, preserving path/query with `APP_URL` as authority.
 Auth trusted origins and inbound MCP metadata derive from that origin. Dev mail subjects include its host; prod

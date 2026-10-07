@@ -2,10 +2,24 @@
 import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { resolveStage } from './stage-config.ts'
+import { attachStageState, DEFAULT_RELEASE_ROOT } from './stage-state.ts'
 
 const root = resolve(import.meta.dirname, '..')
+const releaseRoot = process.env['GOBLIN_RELEASE_ROOT'] ?? DEFAULT_RELEASE_ROOT
 const command = Bun.argv[2] ?? 'dev'
-if (!['dev', 'deploy:dev', 'plan:dev', 'destroy:dev', 'deploy:prod', 'plan:prod', 'smoke:prod'].includes(command))
+if (
+  ![
+    'dev',
+    'deploy:dev',
+    'plan:dev',
+    'destroy:dev',
+    'deploy:prod',
+    'plan:prod',
+    'smoke:prod',
+    'drift:dev',
+    'drift:prod',
+  ].includes(command)
+)
   throw new Error('unsupported_stage_command')
 // Destroying dev deletes the owner account, the agent's conversations and every stored MCP credential.
 if (command === 'destroy:dev' && !Bun.argv.includes('--confirm-reset'))
@@ -13,8 +27,23 @@ if (command === 'destroy:dev' && !Bun.argv.includes('--confirm-reset'))
 const stage = resolveStage(command === 'dev' ? 'local' : command.endsWith(':prod') ? 'prod' : 'dev')
 if (stage.name === 'prod' && process.env['GOBLIN_CONFIRM_PROD'] !== '1')
   throw new Error('prod_requires_GOBLIN_CONFIRM_PROD=1')
-const config = resolve(root, '.local', `${stage.name}.env`)
-const shared = resolve(root, '.local/cloud.env')
+const config = resolve(process.env['GOBLIN_ENV_DIR'] ?? resolve(root, '.local'), `${stage.name}.env`)
+const shared = process.env['GOBLIN_CLOUD_ENV_FILE'] ?? resolve(root, '.local/cloud.env')
+if (!stage.local && command !== 'smoke:prod' && process.env['GOBLIN_STAGE_LOCK_HELD'] !== releaseRoot) {
+  const locked = Bun.spawn(
+    ['flock', '-x', resolve(releaseRoot, 'deploy.lock'), 'bun', import.meta.filename, ...Bun.argv.slice(2)],
+    {
+      cwd: root,
+      env: { ...process.env, GOBLIN_STAGE_LOCK_HELD: releaseRoot },
+      stdio: ['inherit', 'inherit', 'inherit'],
+    },
+  )
+  process.exit(await locked.exited)
+}
+if (!stage.local && command !== 'smoke:prod') {
+  process.umask(0o007)
+  attachStageState(root, stage.name, releaseRoot)
+}
 const childEnv: Record<string, string | undefined> = { ...process.env }
 for (const key of Object.keys(childEnv)) {
   if (/^(CLOUDFLARE_|GOBLIN_|DODO_|MYAGENT_|MYBROWSER_|MYPLAN_|MYINBOX_|MYTMUX_|LITELLM_|ALCHEMY_STAGE)/u.test(key))
@@ -40,6 +69,8 @@ const args = [
     'destroy:dev': 'destroy',
     'deploy:prod': 'deploy',
     'plan:prod': 'plan',
+    'drift:dev': 'drift',
+    'drift:prod': 'drift',
   }[command] ?? 'dev',
   '--config',
   resolve(root, 'apps/web/alchemy.run.ts'),
@@ -84,6 +115,7 @@ if ((await toolchain.exited) !== 0) throw new Error('agent_app_toolchain_build_f
 const child = Bun.spawn(['bun', ...args], {
   cwd: resolve(root, 'apps/web'),
   env: childEnv,
-  stdio: ['inherit', 'inherit', 'inherit'],
+  // Drift is inspection only: never offer interactive repair.
+  stdio: [command.startsWith('drift:') ? 'ignore' : 'inherit', 'inherit', 'inherit'],
 })
 process.exitCode = await child.exited
