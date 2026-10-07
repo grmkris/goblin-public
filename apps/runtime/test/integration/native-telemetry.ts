@@ -79,6 +79,7 @@ export function telemetryCase(url: string) {
         ok: true,
         value: {
           problems: expect.arrayContaining([
+            expect.objectContaining({ id: 'filter:aux-failure' }),
             expect.objectContaining({ id: 'filter:authorization' }),
             expect.objectContaining({ id: 'filter:failure' }),
             expect.objectContaining({ id: 'filter:cutoff' }),
@@ -95,6 +96,7 @@ export function telemetryCase(url: string) {
             expect.objectContaining({ id: 'filter:empty' }),
             expect.objectContaining({ id: 'filter:cutoff' }),
             expect.objectContaining({ id: 'filter:unresolved' }),
+            expect.objectContaining({ id: 'filter:aux-failure' }),
           ],
         },
       },
@@ -112,6 +114,7 @@ export function telemetryCase(url: string) {
             expect.objectContaining({ id: 'filter:empty' }),
             expect.objectContaining({ id: 'filter:cutoff' }),
             expect.objectContaining({ id: 'filter:unresolved' }),
+            expect.objectContaining({ id: 'filter:aux-failure' }),
           ],
         },
       },

@@ -67,3 +67,5 @@ Consequences:
   empty final answers, unresolved tool failures and coverage gaps remain visible. MCP reports carry explicit conversation
   and task scope when available; shared connection discovery is marked without attributing it to a conversation. A
   reporting callback cannot change the success or failure of the remote call.
+  Successful auxiliary model completions, including bounded memory calls ending in `length`, are excluded from
+  problem views; actual auxiliary failures remain visible. Their events stay in the ledger, logs and traces.

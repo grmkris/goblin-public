@@ -50,6 +50,14 @@ export async function telemetryProbe(
   const problems = await inspect({ kind: 'problems' })
   const seed = runTelemetry(storage, () => owner).telemetry
   const at = Date.now()
+  seed.record({
+    id: 'filter:aux-failure',
+    kind: 'model.aux',
+    status: 'error',
+    startedAt: at,
+    endedAt: at,
+    attributes: { [RunAttribute.purpose]: 'memory', [RunAttribute.errorType]: 'provider_error' },
+  })
   const record = (
     id: string,
     status: 'ok' | 'error' | 'blocked',
@@ -83,6 +91,20 @@ export async function telemetryProbe(
   for (let index = 0; index < 105; index++)
     record(`filter:wait-${index.toString().padStart(3, '0')}`, 'blocked', 8, {
       [RunAttribute.errorType]: 'NeedsAuthorization',
+    })
+  // Successful bounded memory completions must not fill either problems view.
+  for (let index = 0; index < 105; index++)
+    seed.record({
+      id: `filter:aux-${index.toString().padStart(3, '0')}`,
+      kind: 'model.aux',
+      status: 'ok',
+      startedAt: at + 9,
+      endedAt: at + 9,
+      attributes: {
+        [RunAttribute.purpose]: 'memory',
+        [RunAttribute.finishReason]: 'length',
+        [RunAttribute.cutoff]: true,
+      },
     })
   const paged = await inspect({ kind: 'problems', since: at, limit: 10 })
   const pagedAll = await inspect({ kind: 'problems', since: at, all: true, limit: 3 })

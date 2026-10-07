@@ -686,7 +686,8 @@ model. The queries are in `contracts/src/inspect.ts`:
 - `problems`: events needing attention since a time (default the last day); expected authority waits and confirmed
   recovered model retries are filtered before applying the limit. Pass `all: true` for the full problem history.
   Cutoffs, empty answers and coverage gaps remain visible. Tool failures remain until reviewed; a successful turn
-  alone never proves a failed tool recovered.
+  alone never proves a failed tool recovered. Successful auxiliary model completions are excluded, including a
+  `length` finish on a bounded memory call; actual auxiliary failures remain visible.
 
 The agent answers them on its internal `/inspect` route as the RPC result shape (`agent-requests.ts`,
 `inspect/request.ts`), which only `/mcp` calls, for a client that holds `goblin:inspect` (see Inbound MCP).

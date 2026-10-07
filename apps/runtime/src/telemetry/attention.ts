@@ -1,11 +1,12 @@
 import { RunAttribute, type RunEvent } from '@goblin/contracts/telemetry'
 import { expectedFailure } from './safety.ts'
 
-/** A response can need attention even when the provider accepted the request and Pi settled the turn. */
+/** A user-facing answer can need attention even when the provider accepted the request and Pi settled the turn. */
 export const incompleteAnswer = (event: RunEvent): boolean =>
-  event.attributes[RunAttribute.cutoff] === true ||
-  event.attributes[RunAttribute.finishReason] === 'length' ||
-  event.attributes[RunAttribute.emptyAnswer] === true ||
+  (event.kind === 'model.attempt' &&
+    (event.attributes[RunAttribute.cutoff] === true ||
+      event.attributes[RunAttribute.finishReason] === 'length' ||
+      event.attributes[RunAttribute.emptyAnswer] === true)) ||
   event.attributes[RunAttribute.coverageGap] === true
 
 /** Hide only a confirmed automatic model retry, never an arbitrary tool failure in a successful turn. */

@@ -72,6 +72,21 @@ describe('safe telemetry and attention', () => {
     ).toBe(true)
   })
 
+  it('ignores successful auxiliary completions but keeps their failures and coverage gaps', () => {
+    for (const flag of [RunAttribute.cutoff, RunAttribute.emptyAnswer])
+      expect(needsAttention(event({ kind: 'model.aux', status: 'ok', attributes: { [flag]: true } }), [])).toBe(false)
+    expect(
+      needsAttention(
+        event({ kind: 'model.aux', status: 'ok', attributes: { [RunAttribute.finishReason]: 'length' } }),
+        [],
+      ),
+    ).toBe(false)
+    expect(needsAttention(event({ kind: 'model.aux' }), [])).toBe(true)
+    expect(
+      needsAttention(event({ kind: 'model.aux', status: 'ok', attributes: { [RunAttribute.coverageGap]: true } }), []),
+    ).toBe(true)
+  })
+
   it('checks coverage against the actual Pi answer instead of an earlier successful model attempt', () => {
     const turn = event({ kind: 'turn.submitted', status: 'ok' })
     const early = event({ id: 'early', status: 'ok', attributes: { [RunAttribute.entry]: 505 } })

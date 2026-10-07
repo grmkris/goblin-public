@@ -152,10 +152,15 @@ export class RunLedger implements RunSink {
           cursor,
           or(
             inArray(appRunEvents.status, ['error', 'blocked', 'interrupted']),
-            like(appRunEvents.attributes, '%"goblin.cutoff":true%'),
-            like(appRunEvents.attributes, '%"goblin.empty_answer":true%'),
+            and(
+              eq(appRunEvents.kind, 'model.attempt'),
+              or(
+                like(appRunEvents.attributes, '%"goblin.cutoff":true%'),
+                like(appRunEvents.attributes, '%"goblin.empty_answer":true%'),
+                like(appRunEvents.attributes, '%"gen_ai.response.finish_reasons"%"length"%'),
+              ),
+            ),
             like(appRunEvents.attributes, '%"goblin.coverage_gap":true%'),
-            like(appRunEvents.attributes, '%"gen_ai.response.finish_reasons"%"length"%'),
           ),
         ),
       )
