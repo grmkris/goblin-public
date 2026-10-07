@@ -50,6 +50,7 @@ for (const key of Object.keys(childEnv)) {
     delete childEnv[key]
 }
 childEnv['GOBLIN_STAGE'] = stage.name
+childEnv['GOBLIN_RELEASE_ROOT'] = releaseRoot
 childEnv['BUN_CONFIG_NO_ENVFILE'] = '1'
 if (command === 'smoke:prod') {
   if ((statSync(config).mode & 0o077) !== 0) throw new Error('private_stage_file_requires_mode_600')
@@ -112,7 +113,9 @@ const toolchain = Bun.spawn(['bun', 'run', 'build'], {
   stdio: ['ignore', 'inherit', 'inherit'],
 })
 if ((await toolchain.exited) !== 0) throw new Error('agent_app_toolchain_build_failed')
-const child = Bun.spawn(['bun', ...args], {
+const drift = command.startsWith('drift:')
+const childArgs = drift ? ['--env-file', args.at(-1) ?? '', resolve(root, 'scripts/drift.ts')] : args
+const child = Bun.spawn(['bun', ...childArgs], {
   cwd: resolve(root, 'apps/web'),
   env: childEnv,
   // Drift is inspection only: never offer interactive repair.
