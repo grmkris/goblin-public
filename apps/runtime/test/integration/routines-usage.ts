@@ -10,7 +10,9 @@ import { unwrap } from '../../src/http/rpc.ts'
 import type { SeenRequest } from './model.ts'
 
 async function waitFor(store: RoutineRunStore, id: string, state: string) {
-  for (let index = 0; index < 500; index += 1) {
+  // Native Pi settles a blocked provider after its bounded retry schedule (up to ~16 s).
+  // Observe that terminal state rather than racing it with the old five-second fixture deadline.
+  for (let index = 0; index < 2500; index += 1) {
     if (store.get(id).state === state) return
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
