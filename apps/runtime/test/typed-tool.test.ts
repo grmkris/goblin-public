@@ -69,7 +69,12 @@ describe('typed tools (unit, ADR 0027)', () => {
     const bad = await call(trips, { from: { name: 'Tallinn' }, to: 'Riga' })
     expect(bad.isError).toBe(true)
     expect(JSON.stringify(bad.content)).toContain("The arguments do not match trip_plan's input")
+    expect(bad.diagnostics).toMatchObject([{ severity: 'error', code: 'invalid_arguments' }])
     const thrown = await call(trips, { from: { name: 'A', lat: 0 }, to: { name: 'A', lat: 0 } })
-    expect(thrown).toEqual({ content: [{ type: 'text', text: 'nowhere to go' }], isError: true })
+    expect(thrown).toEqual({
+      content: [{ type: 'text', text: 'nowhere to go' }],
+      isError: true,
+      diagnostics: [{ severity: 'error', code: 'Error', message: 'nowhere to go' }],
+    })
   })
 })
