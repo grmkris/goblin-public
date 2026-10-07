@@ -22,12 +22,18 @@ function view(spec: MapSpec) {
   return { center: latLng(points[0] ?? [0, 0]), zoom: spec.zoom ?? 11 }
 }
 
-/** A map drawn from a spec: markers in the first chart colour, each line in the next; labels show on hover. */
+/**
+ * On a touch screen one finger scrolls the page past the map instead of panning it (Leaflet's drag would otherwise
+ * claim every touch that starts on it); two fingers still pinch to zoom and pan.
+ */
+const touch = () => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+
+/** A map drawn from a spec: markers in the first chart colour, each line in the next; labels show on hover or tap. */
 export function MapView({ spec }: { readonly spec: MapSpec }) {
   return (
     <figure className="kit-map">
       {spec.title !== undefined && <figcaption>{spec.title}</figcaption>}
-      <MapContainer className="kit-map-canvas" scrollWheelZoom={false} {...view(spec)}>
+      <MapContainer className="kit-map-canvas" scrollWheelZoom={false} dragging={!touch()} {...view(spec)}>
         <TileLayer url={TILES} attribution={ATTRIBUTION} maxZoom={19} />
         {(spec.lines ?? []).map((line, index) => (
           <Polyline

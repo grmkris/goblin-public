@@ -310,6 +310,10 @@ function ChatSheet({
   )
 }
 
+/** Browsers without `scrollend` (Safari before 26.2): the strip settles once its scrolling has been quiet a moment. */
+const SCROLLEND = typeof window === 'undefined' || 'onscrollend' in window
+const SCROLL_QUIET_MS = 150
+
 /** Which cell of the strip is in view. */
 const cellAt = (strip: HTMLElement) => Math.round(strip.scrollLeft / Math.max(1, strip.clientWidth))
 
@@ -343,6 +347,8 @@ function NarrowStrip({
     steering.current = !first
     element.scrollTo({ left: index * element.clientWidth, behavior: first ? 'instant' : 'smooth' })
   }, [index])
+  const quiet = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(quiet.current), [])
   const settle = () => {
     const element = strip.current
     if (element === null) return
@@ -363,7 +369,17 @@ function NarrowStrip({
       </div>
     )
   return (
-    <div className="workspace-strip" ref={strip} onScrollEnd={settle}>
+    <div
+      className="workspace-strip"
+      ref={strip}
+      onScrollEnd={settle}
+      {...(!SCROLLEND && {
+        onScroll: () => {
+          clearTimeout(quiet.current)
+          quiet.current = setTimeout(settle, SCROLL_QUIET_MS)
+        },
+      })}
+    >
       {items.map((item) => (
         <StripCell key={item} item={item} hosts={hosts} parking={parking} />
       ))}

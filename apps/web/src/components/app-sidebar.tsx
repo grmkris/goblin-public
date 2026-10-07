@@ -77,6 +77,14 @@ export function AppSidebar() {
   const rail = fold === 'collapsed' && !isMobile
   const close = useCallback(() => setOpenMobile(false), [setOpenMobile])
   useEffect(() => close(), [path, close])
+  // On a phone the sidebar is a sheet over the page: following any link in it closes it, including one to the page
+  // or pane already showing, which changes no path. Buttons in it (fold, Open beside, New) keep it open.
+  const closeOnLink = useCallback(
+    (event: React.MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest('a[href]') !== null) close()
+    },
+    [close],
+  )
   const draft = useCallback(() => {
     workspace.draft(undefined, [], workspace.state.focused)
     close()
@@ -91,12 +99,12 @@ export function AppSidebar() {
           {!rail && 'goblin'}
         </Link>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent {...(isMobile && { onClickCapture: closeOnLink })}>
         {ready && rail && <WorkspaceRail onNew={draft} />}
         {ready && !rail && <SidebarTree onNew={draft} />}
         {ready && !rail && <SidebarApps />}
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter {...(isMobile && { onClickCapture: closeOnLink })}>
         <Pages path={path} rail={rail} />
         {!rail && (
           <a className="sidebar-credit" href="https://github.com/DanFessler/trellis" target="_blank" rel="noreferrer">

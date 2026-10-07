@@ -907,7 +907,9 @@ main.shell {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 1.5rem var(--message-scroller-inset-x) max(0.75rem, env(safe-area-inset-bottom));
+  /* The home indicator's room only while it shows: with the keyboard up the dock sits on the keyboard instead. */
+  padding: 1.5rem var(--message-scroller-inset-x)
+    max(0.75rem, calc(env(safe-area-inset-bottom, 0px) - var(--keyboard-inset, 0px)));
   pointer-events: none;
 }
 .dock-hint {
@@ -1034,8 +1036,9 @@ main.shell {
   height: 55dvh;
   padding: 0;
 }
+/* As tall as the sheet may be (its own cap, less the home indicator's room), so the composer is never cut off. */
 .chat-sheet[data-full='true'] {
-  height: 92dvh;
+  height: calc(100dvh - 6rem - var(--safe-bottom));
 }
 .chat-sheet-handle {
   flex: none;
@@ -2331,7 +2334,7 @@ code.grant-about {
   z-index: 30;
   top: 0;
   padding-top: max(0.5rem, var(--safe-top));
-  inset-inline: max(0.5rem, var(--safe-left)) 0.5rem;
+  inset-inline: max(0.5rem, var(--safe-left)) max(0.5rem, var(--safe-right));
   display: flex;
   pointer-events: none;
 }
