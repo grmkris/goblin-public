@@ -1,6 +1,11 @@
 import { expect, it } from 'vitest'
 import { routineSummary } from '../src/routines/summary.ts'
 
+it('preserves public Sidequest token fields in JSON summaries', () => {
+  const payload = JSON.stringify({ rewardToken: '0x123', token: '0x456', tokens: 3, tokenId: '42' })
+  expect(routineSummary(payload)).toBe(payload)
+})
+
 it('scrubs credentials and control characters before passive reporting and bounds the stored summary', () => {
   const text = routineSummary(
     'Useful result\u0000\u202e\nBearer sample-token\napi_key=sample-key\nwhsec_sample-key\nhttps://owner:sample-password@example.test/path?token=sample-token#fragment',

@@ -185,6 +185,9 @@ never stores it, so everything before it stays a cacheable prefix. The `mcp_list
 `mcp_call` is marked unsafe to replay. `mcp_list` shows each tool's input and output schema (the server's, untrusted
 data); `mcp_call` takes its `arguments` as an object or the JSON string of one, and returns the server's result as
 Pi's MCP tools shape it (content blocks, `details.structuredContent`, `_meta` and the origin).
+Remote result details and signed routine event metadata share `mcp/redaction.ts`: it scrubs exact credential-shaped
+keys such as `accessToken`, `refresh_token` and `apiKey`, recursively. Public asset and usage fields such as
+`rewardToken`, `token`, `tokens` and `tokenAddress` remain readable.
 
 `ask_user` (`pi/ask-user.ts`) is how the agent asks the owner something. It takes one to five short questions:
 single choice, multiple choice or free text. The tool result is the questions as numbered plain text, with details

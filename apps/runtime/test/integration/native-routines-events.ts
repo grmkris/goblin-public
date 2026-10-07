@@ -20,6 +20,7 @@ export function routineEventsCase(url: string) {
       replayOneRun: true,
       metadataSealed: true,
       scrubbedMetadata: true,
+      publicTokensPreserved: true,
       metadataLabelled: true,
       spacedOneRun: true,
       pendingLatest: true,

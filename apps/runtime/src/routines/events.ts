@@ -4,6 +4,7 @@ import * as Effect from 'effect/Effect'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { Conflict, NotFound } from '../http/errors.ts'
 import { CredentialCipher } from '../mcp/cipher.ts'
+import { redactSecretFields } from '../mcp/redaction.ts'
 import type { McpEvents } from '../mcp/events.ts'
 import type { EventContext } from '../mcp/events/dispatcher.ts'
 import { canonicalArguments } from '../mcp/events/store.ts'
@@ -160,8 +161,7 @@ export class RoutineEventBindings {
     const at = Date.now()
     const occurredAt = Date.parse(envelope.timestamp)
     const data = JSON.stringify(
-      { name: envelope.name, timestamp: envelope.timestamp, data: envelope.data },
-      (key, value: unknown) => (/token|secret|password|authorization|api.?key/iu.test(key) ? '[redacted]' : value),
+      redactSecretFields({ name: envelope.name, timestamp: envelope.timestamp, data: envelope.data }),
     )
     const selected = routineSummary(data).slice(0, 8000)
     const dataSealed = await (await this.#cipher).encrypt(selected, `routine-event:${operationId}:${row.revision}`)

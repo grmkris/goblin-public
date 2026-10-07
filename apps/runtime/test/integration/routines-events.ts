@@ -15,6 +15,8 @@ import type { EventsFixture } from '../mcp/events-fixture.ts'
 import type { SeenRequest } from './model.ts'
 
 const KEY = 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE='
+const includesPublicTokens = (metadata: string, modelData: string) =>
+  ['0x123', '0x456'].every((token) => metadata.includes(token) && modelData.includes(token))
 const definition: RoutineDefinition = {
   title: 'Native event routine',
   prompt: 'Return a short notification summary.',
@@ -97,7 +99,13 @@ export async function routineEventsProbe(
         eventId: id,
         name: 'message.received',
         timestamp: new Date().toISOString(),
-        data: { entryIds: ['fixture-1'], instructions: 'untrusted fixture data', token: 'fixture-private' },
+        data: {
+          entryIds: ['fixture-1'],
+          instructions: 'untrusted fixture data',
+          rewardToken: '0x123',
+          token: '0x456',
+          nested: [{ accessToken: 'fixture-private', refresh_token: 'fixture-private' }],
+        },
       },
       id,
       signature === undefined ? {} : { signature },
@@ -214,6 +222,7 @@ export async function routineEventsProbe(
     replayOneRun: raw?.operationId === `routine:${first.id}:evt%3Aone%2F%25`,
     metadataSealed: !!raw?.eventDataSealed && !raw.eventDataSealed.includes('fixture-private'),
     scrubbedMetadata: !metadata.includes('fixture-private'),
+    publicTokensPreserved: includesPublicTokens(metadata, modelData),
     metadataLabelled: modelData.includes('Untrusted event metadata') && !modelData.includes('fixture-private'),
     spacedOneRun,
     pendingLatest: pending.includes('evt_three'),
