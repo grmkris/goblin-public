@@ -261,13 +261,19 @@
   flex: none;
 }
 .home-drag-handle {
-  flex: none !important;
+  flex: none;
   cursor: grab;
 }
+.home-edit-control {
+  display: inline-flex;
+  flex: none;
+}
+/* A lifted tile rises: a little larger and casting the deep shadow, eased in and out (the drag owns its transform). */
 .home-tile[data-lifted] {
   z-index: 30;
   touch-action: none;
-  box-shadow: 0 12px 28px oklch(0 0 0 / 0.16);
+  scale: 1.03;
+  box-shadow: var(--shadow-3);
 }
 .home-tile[data-lifted] .home-drag-handle {
   cursor: grabbing;
@@ -275,6 +281,32 @@
 .app-stage[data-editing] {
   pointer-events: none;
   opacity: 0.55;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .home-tile {
+    transition:
+      scale 160ms var(--ease-out),
+      box-shadow 160ms var(--ease-out);
+  }
+  .app-stage {
+    transition: opacity 150ms var(--ease-out);
+  }
+  /* Edit's controls fade in where they appear, instead of popping. */
+  .home-drag-handle,
+  .home-edit-control,
+  .home-tile-request {
+    transition:
+      opacity 150ms var(--ease-out),
+      scale 150ms var(--ease-out);
+  }
+  @starting-style {
+    .home-drag-handle,
+    .home-edit-control,
+    .home-tile-request {
+      opacity: 0;
+      scale: 0.9;
+    }
+  }
 }
 .home-tile:focus-visible {
   outline: 2px solid var(--ring);

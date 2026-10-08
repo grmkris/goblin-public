@@ -122,15 +122,17 @@ function Tile({ tile, controls }: { readonly tile: HomeTile; readonly controls: 
             {...(app === undefined ? {} : { close: () => host.close(app.id) })}
           />
           {controls.editing && (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`Remove ${title}`}
-              disabled={controls.owner.pending}
-              onClick={() => void controls.owner.edit([{ kind: 'remove', id: tile.id }])}
-            >
-              <XIcon aria-hidden />
-            </Button>
+            <span className="home-edit-control">
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`Remove ${title}`}
+                disabled={controls.owner.pending}
+                onClick={() => void controls.owner.edit([{ kind: 'remove', id: tile.id }])}
+              >
+                <XIcon aria-hidden />
+              </Button>
+            </span>
           )}
         </span>
       </div>

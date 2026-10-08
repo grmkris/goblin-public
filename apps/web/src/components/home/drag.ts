@@ -96,7 +96,7 @@ export function useHomeDrag(
     const seconds = Math.max(0.001, (event.timeStamp - gesture.last.at) / 1000)
     gesture.velocity = { x: (event.clientX - gesture.last.x) / seconds, y: (event.clientY - gesture.last.y) / seconds }
     gesture.last = { x: event.clientX, y: event.clientY, at: event.timeStamp }
-    gesture.tile.style.transform = `translate3d(${event.clientX - gesture.start.x}px,${event.clientY - gesture.start.y}px,0) scale(1.03)`
+    gesture.tile.style.transform = `translate3d(${event.clientX - gesture.start.x}px,${event.clientY - gesture.start.y}px,0)`
     // An App tile's frame follows its slot only when told to: tell it every move.
     kick()
   }
