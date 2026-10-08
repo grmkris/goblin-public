@@ -123,7 +123,7 @@ function SidebarMenuItem({ className, ...props }: ComponentProps<'li'>) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  'peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[background-color,color] group-has-data-[sidebar=menu-badge]/menu-item:pr-7 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground pointer-coarse:h-11 [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate',
+  'peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[background-color,color] group-has-data-[sidebar=menu-badge]/menu-item:pr-7 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground pointer-coarse:h-11 any-pointer-coarse:h-11 [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate',
   {
     variants: {
       variant: {
@@ -131,7 +131,15 @@ const sidebarMenuButtonVariants = cva(
         outline:
           'bg-background shadow-[0_0_0_1px_var(--sidebar-border)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_var(--sidebar-accent)]',
       },
-      size: { default: 'h-8 text-sm', sm: 'h-7 text-xs', lg: 'h-12 text-sm' },
+      size: {
+        default: 'h-8 text-sm',
+        sm: 'h-7 text-xs',
+        lg: 'h-12 text-sm',
+        tree: 'relative h-8 text-[length:var(--text-13)]',
+        'tree-nested': 'relative h-7 text-[length:var(--text-13)]',
+        'tree-closed':
+          'relative h-6 text-[length:var(--text-13)] text-muted-foreground data-active:text-muted-foreground',
+      },
     },
     defaultVariants: { variant: 'default', size: 'default' },
   },

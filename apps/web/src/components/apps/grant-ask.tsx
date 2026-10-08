@@ -86,14 +86,14 @@ function AppGrantCard({
         </strong>
         {error && ` (${error})`}
       </span>
-      <Button variant="ghost" size="sm" disabled={busy} onClick={() => onAnswer(false)}>
+      <Button variant="ghost" size="app-action" disabled={busy} onClick={() => onAnswer(false)}>
         Not now
       </Button>
-      <Button size="sm" disabled={busy} onClick={() => void allow()}>
+      <Button size="app-action" disabled={busy} onClick={() => void allow()}>
         Allow
       </Button>
       {onOpen !== undefined && (
-        <Button variant="ghost" size="sm" onClick={onOpen}>
+        <Button variant="ghost" size="app-action" onClick={onOpen}>
           Open
         </Button>
       )}

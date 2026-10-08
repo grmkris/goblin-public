@@ -188,10 +188,6 @@
     display: inline;
     font-size: 0.75rem;
   }
-  .home-header-actions button {
-    font-size: var(--text-2xs);
-    padding-inline: 0.375rem;
-  }
 }
 @media (hover: hover) {
   .home-starters button:hover,
@@ -393,11 +389,6 @@
 }
 .app-stage[data-mode='home'] .app-offer > span {
   flex: 1 1 calc(100% - 1.5rem);
-}
-.app-stage[data-mode='home'] .app-offer button {
-  height: 1.5rem;
-  padding-inline: 0.375rem;
-  font-size: var(--text-2xs);
 }
 .app-stage[data-mode='home'] .app-offer > svg {
   width: 0.75rem;

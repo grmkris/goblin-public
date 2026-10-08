@@ -166,7 +166,7 @@ function AppItem({ row: { app, name } }: { readonly row: AppRow }) {
     <SidebarMenuSubItem>
       <div className="tree-row" data-open={row.open}>
         <SidebarMenuButton
-          size="sm"
+          size="tree-nested"
           render={<Link to="/a/$appId" params={{ appId: app.id }} data-drag-item={row.key} />}
           onClick={row.showHere}
           isActive={row.focused}
@@ -252,7 +252,8 @@ function TreeRow({
       data-below={below}
     >
       <SidebarMenuButton
-        size={nested ? 'sm' : 'default'}
+        size={isClosed(node.view) ? 'tree-closed' : nested ? 'tree-nested' : 'tree'}
+        className={below ? 'pr-7 pointer-coarse:pr-11 any-pointer-coarse:pr-11' : undefined}
         render={<Link to="/c/$conversationId" params={{ conversationId: node.view.id }} data-drag-item={row.key} />}
         onClick={row.showHere}
         isActive={row.focused}

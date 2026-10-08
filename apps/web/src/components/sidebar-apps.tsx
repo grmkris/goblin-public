@@ -25,6 +25,7 @@ function AgentAppRow({ app }: { readonly app: AppView }) {
     <SidebarMenuItem>
       <div className="tree-row" data-open={row.open}>
         <SidebarMenuButton
+          size="tree"
           render={<Link to="/a/$appId" params={{ appId: app.id }} data-drag-item={row.key} />}
           onClick={row.showHere}
           isActive={row.focused}

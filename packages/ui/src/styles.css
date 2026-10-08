@@ -303,9 +303,11 @@
   }
 }
 
-@media (pointer: coarse), (any-pointer: coarse) {
-  [data-slot='button'] {
-    min-height: 40px;
+@layer components {
+  @media (pointer: coarse), (any-pointer: coarse) {
+    [data-slot='button'] {
+      min-height: 40px;
+    }
   }
 }
 /* No grey flash on tap, and no double-tap zoom delay on controls (pinch zoom stays). */

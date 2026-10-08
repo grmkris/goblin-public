@@ -31,10 +31,17 @@ const buttonVariants = cva(
           'h-8 gap-1.5 px-2.5 pointer-coarse:h-11 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2',
         xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+        'home-action':
+          "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] @max-[38rem]/home:px-1.5 @max-[38rem]/home:text-2xs [&_svg:not([class*='size-'])]:size-3.5",
+        'app-action':
+          "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[mode=home]:h-6 in-data-[mode=home]:px-1.5 in-data-[mode=home]:text-2xs [&_svg:not([class*='size-'])]:size-3.5",
+        model:
+          'h-8 min-w-0 max-w-40 shrink gap-1.5 px-2.5 pointer-coarse:h-11 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2',
         lg: 'h-9 gap-1.5 px-2.5 pointer-coarse:h-11 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2',
         icon: `size-8 ${TOUCH_TARGET}`,
         'icon-xs': `size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3 ${TOUCH_TARGET}`,
         'icon-sm': `size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg ${TOUCH_TARGET}`,
+        'pane-icon': `h-6 w-7 min-h-0 flex-none rounded-(--radius-pill) outline-offset-1 pointer-coarse:h-8.5 any-pointer-coarse:h-8.5 ${TOUCH_TARGET}`,
         'icon-lg': `size-9 ${TOUCH_TARGET}`,
       },
     },
@@ -58,7 +65,7 @@ function Button({
   children,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants> & { readonly pending?: boolean }) {
-  const iconOnly = size?.startsWith('icon') === true
+  const iconOnly = size?.includes('icon') === true
   return (
     <ButtonPrimitive
       data-slot="button"

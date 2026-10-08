@@ -27,14 +27,14 @@ export function LinkOffer({
         {path}
       </span>
       <Button
-        size="sm"
+        size="app-action"
         nativeButton={false}
         render={<a href={link.href} target="_blank" rel="noopener noreferrer" />}
         onClick={onDone}
       >
         Open
       </Button>
-      <Button variant="ghost" size="sm" onClick={onDone}>
+      <Button variant="ghost" size="app-action" onClick={onDone}>
         Dismiss
       </Button>
     </div>
@@ -67,7 +67,7 @@ export function DownloadOffer({
         {Math.max(1, Math.round(file.bytes.byteLength / 1024))} KB)
       </span>
       <Button
-        size="sm"
+        size="app-action"
         nativeButton={false}
         disabled={url === undefined}
         render={<a href={url} download={file.name} />}
@@ -76,7 +76,7 @@ export function DownloadOffer({
       >
         Save
       </Button>
-      <Button variant="ghost" size="sm" onClick={onDone}>
+      <Button variant="ghost" size="app-action" onClick={onDone}>
         Dismiss
       </Button>
     </div>

@@ -230,10 +230,10 @@ function HomeHeader({
         <span className="home-date-narrow">· {narrowDate}</span>
       </h2>
       <div className="home-header-actions">
-        <Button variant="ghost" size="sm" onClick={() => onDraft(TILE_DRAFT)}>
+        <Button variant="ghost" size="home-action" onClick={() => onDraft(TILE_DRAFT)}>
           Ask for a tile
         </Button>
-        <Button variant="ghost" size="sm" aria-label="Edit Home" aria-pressed={editing} onClick={onEdit}>
+        <Button variant="ghost" size="home-action" aria-label="Edit Home" aria-pressed={editing} onClick={onEdit}>
           {editing ? 'Done' : 'Edit'}
         </Button>
       </div>

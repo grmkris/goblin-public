@@ -67,7 +67,7 @@ export function ModelPicker({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={<Button type="button" variant="ghost" aria-label={`Model: ${label}. Change model`} />}
+        render={<Button type="button" variant="ghost" size="model" aria-label={`Model: ${label}. Change model`} />}
       >
         <span className="truncate">{label}</span>
         <ChevronsUpDownIcon data-icon="inline-end" />

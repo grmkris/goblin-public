@@ -39,7 +39,7 @@ export function PaneHeader({
   return (
     <header className="pane-header" data-pane-header data-app-cover>
       <div className="pane-pill material-chrome">
-        {first && <SidebarTrigger />}
+        {first && <SidebarTrigger size="pane-icon" className="pointer-coarse:h-8.5" />}
         <button type="button" className="pane-grip" data-drag-item={item} aria-label={`Move ${title}`}>
           <GripVerticalIcon aria-hidden />
         </button>
@@ -68,7 +68,7 @@ export function PaneHeader({
         {status}
         {onClose !== undefined && (
           <span className="pane-close">
-            <Button variant="ghost" size="icon-sm" aria-label="Close pane" onClick={onClose}>
+            <Button variant="ghost" size="pane-icon" aria-label="Close pane" onClick={onClose}>
               <XIcon />
             </Button>
           </span>

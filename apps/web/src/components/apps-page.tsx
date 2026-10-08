@@ -20,7 +20,7 @@ function AppCard({ app }: { readonly app: AgentAppSummary }) {
   const need = needs(app)
   return (
     <Link to="/apps/$name" params={{ name: app.name }} className="apps-card">
-      <Card>
+      <Card interactive>
         <CardHeader>
           <CardTitle>
             <span className="flex items-center gap-2">
