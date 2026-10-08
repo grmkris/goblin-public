@@ -212,9 +212,9 @@ export class AppRegistry {
    * Where an open App comes from, for what it shares with the owner's message: an MCP App's server, or the agent app
    * it is. A closed or unknown App shares nothing.
    */
-  originOf(id: string): { readonly serverId: string } | { readonly app: string } {
+  originOf(id: string, conversation: string): { readonly serverId: string } | { readonly app: string } {
     const row = this.#row(id)
-    if (row.closedAt !== null) throw new NotFound({ what: 'app' })
+    if (row.closedAt !== null || row.sessionId !== conversation) throw new NotFound({ what: 'app' })
     if (isMcp(row)) return { serverId: row.serverId }
     return { app: this.agentApp(id) }
   }

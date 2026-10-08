@@ -14,6 +14,8 @@ import { AppJobs } from './app-jobs.tsx'
 import { useAppGrantAsks } from './grant-ask.tsx'
 import { type Instance, type SlotName, useAppHost } from './host.tsx'
 import { DownloadOffer, LinkOffer } from './offers.tsx'
+import { MessageOffer } from './message-offer.tsx'
+import { receiptText } from '../../lib/app-message.ts'
 import { useAppPlacement } from './placement.ts'
 import { appNames } from '../../lib/workspace-tree.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
@@ -199,8 +201,20 @@ function useRoom(chrome: RefObject<number>) {
 function StageOffers({ instance, origin }: { readonly instance: Instance; readonly origin: string }) {
   const host = useAppHost()
   const { id } = instance.app
+  const message = instance.message
   return (
     <>
+      {message && instance.selection.kind === 'mcp' && (
+        <MessageOffer
+          key={receiptText(message)}
+          app={id}
+          conversation={instance.app.conversation}
+          serverId={instance.selection.serverId}
+          resourceUri={instance.selection.uri}
+          receipt={message}
+          onDone={() => host.dropMessage(id, message)}
+        />
+      )}
       {instance.link && <LinkOffer link={instance.link} serverId={origin} onDone={() => host.setLink(id, undefined)} />}
       {instance.download && (
         <DownloadOffer file={instance.download} from={origin} onDone={() => host.setDownload(id, undefined)} />
@@ -284,6 +298,7 @@ function Stage({ instance }: { readonly instance: Instance }) {
           offerLink: (link) => host.setLink(id, link),
           offerDownload: (file) => host.setDownload(id, file),
           askGrant: grants.ask,
+          message: (receipt) => host.offerMessage(id, receipt),
         }}
       />
     </div>

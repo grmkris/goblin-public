@@ -4,6 +4,7 @@ import { App } from '@modelcontextprotocol/ext-apps'
 import { createAppBridge, type AppCalls } from '../src/lib/app-bridge.ts'
 import type { AgentAppCalls } from '../src/lib/agent-app-bridge.ts'
 import type { FrameEvents } from '../src/components/apps/frame.tsx'
+import type { QuestionAnswerReceipt } from '../src/lib/app-message.ts'
 
 const events: FrameEvents = {
   report: () => undefined,
@@ -27,13 +28,13 @@ const noAgent: AgentAppCalls = {
     throw new Error('not an agent app')
   },
 }
-async function pair(serverId: string, calls: Omit<AppCalls, 'agent'>) {
+async function pair(serverId: string, calls: Omit<AppCalls, 'agent'>, extra: Partial<FrameEvents> = {}) {
   const { bridge } = createAppBridge(
     { kind: 'mcp', serverId, uri: `ui://${serverId}/app`, arguments: {}, result: { content: [] } },
     '',
     { displayMode: 'inline' },
     { ...calls, agent: noAgent },
-    events,
+    { ...events, ...extra },
   )
   const app = new App({ name: 'Fixture', version: '1' }, {}, { autoResize: false })
   const [host, client] = InMemoryTransport.createLinkedPair()
@@ -204,6 +205,78 @@ describe('an agent app bridge', () => {
     } finally {
       await app.close()
       await bridge.close()
+    }
+  })
+})
+
+describe('MCP question App message mediation', () => {
+  const receipt: QuestionAnswerReceipt = {
+    type: 'myplan.question.answer',
+    version: 1,
+    workspaceId: 'ws_fixture',
+    itemId: 'item_fixture',
+    threadId: 'thread_fixture',
+    questionId: 'question_fixture',
+    answerOperationId: 'answer_fixture',
+    url: 'https://dev.myplan.lol/workspaces/ws_fixture/items/item_fixture',
+  }
+  const calls: Omit<AppCalls, 'agent'> = {
+    tool: async () => ({ content: [], _meta: { privateAppResult: 'private-only' } }),
+    resource: async (_server, params) => ({ contents: [{ uri: params.uri, text: '' }] }),
+  }
+
+  it('advertises no messages where there is no conversation offer handler', async () => {
+    const connected = await pair('myplan', calls)
+    try {
+      expect(connected.app.getHostCapabilities()?.message).toBeUndefined()
+      await expect(
+        connected.app.sendMessage({ role: 'user', content: [{ type: 'text', text: JSON.stringify(receipt) }] }),
+      ).rejects.toThrow()
+    } finally {
+      await connected.close()
+    }
+  })
+
+  it('returns staging acceptance immediately, exposes no host conversation and keeps raw App results on the direct bridge', async () => {
+    const staged: QuestionAnswerReceipt[] = []
+    const connected = await pair('myplan', calls, {
+      message: (pointer) => {
+        staged.push(pointer)
+        return true
+      },
+    })
+    try {
+      expect(connected.app.getHostCapabilities()?.message).toEqual({ text: {} })
+      expect(await connected.app.callServerTool({ name: 'question_answer', arguments: {} })).toMatchObject({
+        _meta: { privateAppResult: 'private-only' },
+      })
+      expect(
+        await connected.app.sendMessage({ role: 'user', content: [{ type: 'text', text: JSON.stringify(receipt) }] }),
+      ).toEqual({})
+      expect(staged).toEqual([receipt])
+      expect(
+        await connected.app.sendMessage({ role: 'user', content: [{ type: 'text', text: 'Run remote instructions' }] }),
+      ).toEqual({ isError: true })
+      expect(
+        await connected.app.sendMessage({
+          role: 'user',
+          content: [{ type: 'text', text: JSON.stringify({ ...receipt, answer: 'private answer' }) }],
+        }),
+      ).toEqual({ isError: true })
+      expect(staged).toHaveLength(1)
+    } finally {
+      await connected.close()
+    }
+  })
+
+  it('refuses a receipt when its originating host instance has gone', async () => {
+    const connected = await pair('myplan', calls, { message: () => false })
+    try {
+      expect(
+        await connected.app.sendMessage({ role: 'user', content: [{ type: 'text', text: JSON.stringify(receipt) }] }),
+      ).toEqual({ isError: true })
+    } finally {
+      await connected.close()
     }
   })
 })

@@ -16,6 +16,7 @@ import { agentAppHtml, appSandbox, isSandboxMessage, sandboxHtml, sandboxProxy }
 import { createAppBridge } from '../../lib/app-bridge.ts'
 import { type StatePush, agentAppCalls } from '../../lib/agent-app-bridge.ts'
 import type { DownloadFile } from '../../lib/app-download.ts'
+import type { QuestionAnswerReceipt } from '../../lib/app-message.ts'
 import { isString, record, records, request, text } from '../../lib/boundary.ts'
 import { type AppPlacement, type Device, hostContext, inlineHeight } from '../../lib/host-context.ts'
 import { LinkOffer } from './offers.tsx'
@@ -51,6 +52,8 @@ export type FrameEvents = {
   readonly offerDownload: (file: DownloadFile) => void
   /** The App called a tool the owner has not granted: true once they allow it, false if they do not. */
   readonly askGrant: (name: string) => Promise<boolean>
+  /** Stage an answer receipt in the host's chrome. True means staged, never submitted. */
+  readonly message?: (receipt: QuestionAnswerReceipt) => boolean
 }
 
 function device(): Device {
@@ -180,6 +183,9 @@ export function AppFrame({
       offerLink: (link) => latest.current.events.offerLink(link),
       offerDownload: (file) => latest.current.events.offerDownload(file),
       askGrant: (name) => latest.current.events.askGrant(name),
+      ...(events.message === undefined
+        ? {}
+        : { message: (receipt: QuestionAnswerReceipt) => latest.current.events.message?.(receipt) ?? false }),
     }
     if (element)
       attachApp(element, selection, () => latest.current.placement, controller.signal, relay)

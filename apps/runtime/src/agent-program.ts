@@ -153,11 +153,13 @@ type OwnerSubmit = {
 }
 
 /** What the owner's open Apps shared, each with where it comes from, read from the App registry (never the browser). */
-const sharedContext = (context: readonly AppContext[]) =>
+const sharedContext = (context: readonly AppContext[], conversation: string) =>
   context.length === 0
     ? Effect.succeed<readonly SharedContext[]>([])
     : Apps.use((apps) =>
-        attemptSync(() => context.map(({ app, text }): SharedContext => ({ origin: apps.originOf(app), text }))),
+        attemptSync(() =>
+          context.map(({ app, text }): SharedContext => ({ origin: apps.originOf(app, conversation), text })),
+        ),
       )
 
 /** The owner's attached files as they are now: each must exist, or the message is refused. */
@@ -220,7 +222,7 @@ export const submitOwner = (input: OwnerSubmit) =>
     if (yield* attempt(() => input.routines.answer(session, input.operationId, input.text)))
       return { session, operationId: input.operationId, accepted: true }
     const attachments = yield* attachedFiles(paths)
-    const shared = yield* sharedContext(appContext)
+    const shared = yield* sharedContext(appContext, session)
     const selections = yield* resolveSelections(session, picks, input.run)
     yield* useModel(input.harness, input.applied, session)
     const view = yield* attempt(() => conversations.view(session))

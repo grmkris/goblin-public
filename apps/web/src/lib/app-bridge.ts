@@ -4,6 +4,7 @@ import type { AppSelection, FrameEvents, McpSelection } from '../components/apps
 import { contextText, safeLink } from './app-context.ts'
 import { downloadOf } from './app-download.ts'
 import { appSandbox } from './app-sandbox.ts'
+import { questionAnswerReceipt } from './app-message.ts'
 import { grantDenied } from '../components/apps/grant-ask.tsx'
 import { type AgentAppCalls, type StatePush, agentBridge } from './agent-app-bridge.ts'
 
@@ -31,6 +32,12 @@ function mcpBridge(bridge: AppBridge, selection: McpSelection, calls: AppCalls, 
     }
   }
   bridge.onreadresource = (params) => calls.resource(serverId, { uri: params.uri })
+  if (events.message !== undefined)
+    // oxlint-disable-next-line unicorn/prefer-add-event-listener -- MCP AppBridge exposes ui/message as an RPC handler, not an event.
+    bridge.onmessage = async ({ content }) => {
+      const receipt = questionAnswerReceipt(content)
+      return receipt !== undefined && events.message?.(receipt) ? {} : { isError: true }
+    }
   bridge.addEventListener('initialized', () => {
     void bridge
       .sendToolInput({ arguments: selection.arguments })
@@ -60,6 +67,7 @@ export function createAppBridge(
           openLinks: {},
           downloadFile: {},
           updateModelContext: { text: {}, structuredContent: {} },
+          ...(events.message === undefined ? {} : { message: { text: {} } }),
         }
       : { serverTools: {}, openLinks: {}, downloadFile: {}, logging: {}, updateModelContext: { text: {} } },
     { hostContext: context },

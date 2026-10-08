@@ -20,6 +20,7 @@ import { Schema } from 'effect'
 import { type AppView, AppLaunch } from '@goblin/contracts'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import type { DownloadFile } from '../../lib/app-download.ts'
+import { type QuestionAnswerReceipt, receiptText } from '../../lib/app-message.ts'
 import { LIVE_APPS, evictions } from '../../lib/app-residency.ts'
 import { failureText, record, records, request } from '../../lib/boundary.ts'
 import { appKey } from '../../lib/workspace.ts'
@@ -39,6 +40,8 @@ export type Instance = {
   readonly link?: URL
   /** A file the App offers to save, waiting for the owner's click. */
   readonly download?: DownloadFile
+  /** A saved answer waiting for the owner's Continue click; it contains no answer text. */
+  readonly message?: QuestionAnswerReceipt
 }
 
 /** Where a stage can be: an App's place in its transcript, or its page. */
@@ -61,6 +64,10 @@ type Host = {
   readonly setLink: (id: string, link: URL | undefined) => void
   /** Offers a file the App asked to download, or withdraws it. */
   readonly setDownload: (id: string, file: DownloadFile | undefined) => void
+  /** Accept only while the originating App is live. */
+  readonly offerMessage: (id: string, receipt: QuestionAnswerReceipt) => boolean
+  /** Drop the exact offer that finished; a newer receipt is preserved. */
+  readonly dropMessage: (id: string, receipt: QuestionAnswerReceipt) => void
   /** The stage's report of whether any of its App shows. */
   readonly seen: (id: string, visible: boolean) => void
   /** A ref callback that registers a slot's element while it is mounted. */
@@ -273,7 +280,23 @@ function useInstancePatches(setInstances: Dispatch<SetStateAction<ReadonlyMap<st
       ),
     [setInstances],
   )
-  return { setHeight, setContext, setLink, setDownload }
+  const setMessage = useCallback(
+    (id: string, message: QuestionAnswerReceipt) =>
+      setInstances((current) => patched(current, id, (instance) => ({ ...instance, message }))),
+    [setInstances],
+  )
+  const dropMessage = useCallback(
+    (id: string, receipt: QuestionAnswerReceipt) =>
+      setInstances((current) =>
+        patched(current, id, (instance) => {
+          if (instance.message === undefined || receiptText(instance.message) !== receiptText(receipt)) return instance
+          const { message: _dropped, ...rest } = instance
+          return rest
+        }),
+      ),
+    [setInstances],
+  )
+  return { setHeight, setContext, setLink, setDownload, setMessage, dropMessage }
 }
 
 export function AppHost({ children }: { readonly children: ReactNode }) {
@@ -282,8 +305,8 @@ export function AppHost({ children }: { readonly children: ReactNode }) {
   const { kick, onKick } = useKicks()
   const { slot, element } = useSlots(kick)
   const { instances, setInstances, dormant, problems, setProblems, show, seen, unload } = useResidency(feed.apps)
-  const outside = useRef({ feed, workspace })
-  outside.current = { feed, workspace }
+  const outside = useRef({ feed, workspace, instances })
+  outside.current = { feed, workspace, instances }
   const close = useCallback(
     (id: string) => {
       unload([id], false)
@@ -294,7 +317,17 @@ export function AppHost({ children }: { readonly children: ReactNode }) {
     },
     [unload, setProblems],
   )
-  const { setHeight, setContext, setLink, setDownload } = useInstancePatches(setInstances)
+  const { setHeight, setContext, setLink, setDownload, setMessage, dropMessage } = useInstancePatches(setInstances)
+  const offerMessage = useCallback(
+    (id: string, receipt: QuestionAnswerReceipt): boolean => {
+      const instance = outside.current.instances.get(id)
+      if (instance === undefined || instance.selection.kind !== 'mcp' || instance.app.closedAt !== undefined)
+        return false
+      setMessage(id, receipt)
+      return true
+    },
+    [setMessage],
+  )
   const host = useMemo<Host>(
     () => ({
       instances,
@@ -306,6 +339,8 @@ export function AppHost({ children }: { readonly children: ReactNode }) {
       setContext,
       setLink,
       setDownload,
+      offerMessage,
+      dropMessage,
       seen,
       slot,
       element,
@@ -322,6 +357,8 @@ export function AppHost({ children }: { readonly children: ReactNode }) {
       setContext,
       setLink,
       setDownload,
+      offerMessage,
+      dropMessage,
       seen,
       slot,
       element,

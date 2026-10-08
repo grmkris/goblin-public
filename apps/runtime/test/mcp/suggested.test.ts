@@ -3,9 +3,9 @@ import { suggestions } from '../../src/mcp/suggested.ts'
 
 describe('the suggested servers', () => {
   it('uses each stage’s endpoint and marks what the owner already has', () => {
-    const dev = suggestions('dev', new Set(['https://dev-new.myplan.lol/mcp']))
+    const dev = suggestions('dev', new Set(['https://dev.myplan.lol/mcp']))
     expect(dev.find((item) => item.id === 'myplan')).toMatchObject({
-      endpoint: 'https://dev-new.myplan.lol/mcp',
+      endpoint: 'https://dev.myplan.lol/mcp',
       added: true,
       signIn: true,
     })
@@ -25,7 +25,7 @@ it('maps suggested services to their stage endpoints', () => {
     const dev = stage === 'local' || stage === 'dev'
     expect(shelf.find((item) => item.id === 'mygram')?.endpoint).toBe(`https://${dev ? 'dev.' : ''}mygram.lol/mcp`)
     expect(shelf.find((item) => item.id === 'myskills')?.endpoint).toBe(`https://${dev ? 'dev.' : ''}myskills.lol/mcp`)
-    expect(shelf.find((item) => item.id === 'myplan')?.endpoint).toBe(`https://${dev ? 'dev-new.' : ''}myplan.lol/mcp`)
+    expect(shelf.find((item) => item.id === 'myplan')?.endpoint).toBe(`https://${dev ? 'dev.' : ''}myplan.lol/mcp`)
     expect(shelf.find((item) => item.id === 'myinbox')?.endpoint).toBe(
       `https://${stage === 'local' ? 'dev.' : ''}myinbox.lol/mcp`,
     )

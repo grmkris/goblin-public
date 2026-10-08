@@ -20,8 +20,8 @@ const SUGGESTED: readonly Suggested[] = [
     title: 'MyPlan',
     description: 'Your notes and canvases. Opens notes as a live editing panel in the chat.',
     endpoint: {
-      local: 'https://dev-new.myplan.lol/mcp',
-      dev: 'https://dev-new.myplan.lol/mcp',
+      local: 'https://dev.myplan.lol/mcp',
+      dev: 'https://dev.myplan.lol/mcp',
       test: 'https://myplan.lol/mcp',
       prod: 'https://myplan.lol/mcp',
     },

@@ -72,6 +72,13 @@ export async function appsCase(base: string): Promise<void> {
   expect(JSON.stringify(launch.kind === 'mcp' ? launch.result : null)).toContain('fixture-board')
   const html = await send(base, owner, '/api/mcp/apps-fixture/resources/read', 'POST', { uri: BOARD })
   expect(html.status).toBe(200)
+  const crossed = await call(base, owner, '/api/conversations/1/messages', {
+    input: 'Continue with the saved MyPlan answer.',
+    operationId: crypto.randomUUID(),
+    appContext: [{ app: app.id, text: 'receipt from another conversation' }],
+  })
+  expect(crossed.status).toBe(404)
+  expect(await crossed.text()).toContain('NotFound')
   const initialHome = Schema.decodeUnknownSync(HomeRead)(await (await call(base, owner, '/api/home')).json())
   const pinInput = {
     operationId: crypto.randomUUID(),
