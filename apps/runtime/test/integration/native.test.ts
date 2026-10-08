@@ -15,6 +15,7 @@ import { appsCase } from './native-apps.ts'
 import { scopesCase } from './native-scopes.ts'
 import { composerCase } from './native-composer.ts'
 import { telemetryCase } from './native-telemetry.ts'
+import { primaryBindingCase } from './native-chats.ts'
 import {
   Listed,
   ModelRequest,
@@ -33,6 +34,7 @@ const phase = await Effect.runPromise(
     Effect.flatMap(Schema.decodeUnknownEffect(Schema.Literals(['same-process', 'write', 'read']))),
   ),
 )
+const primaryProfile = await Effect.runPromise(Config.String('GOBLIN_PRIMARY_PROFILE').pipe(Config.withDefault('root')))
 const harness = Test.make({
   providers: Cloudflare.providers(),
   state: Alchemy.localState(),
@@ -1047,3 +1049,9 @@ harness.test(
     expect(foreign.status).toBe(403)
   }),
 )
+
+if (primaryProfile === 'permuted')
+  harness.test(
+    'local workerd: the stable primary chat writes only to its non-root Pi session',
+    stack.pipe(Effect.flatMap(({ url }) => primaryBindingCase(url))),
+  )

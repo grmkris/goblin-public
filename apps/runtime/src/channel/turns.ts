@@ -5,11 +5,11 @@ import * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
 import { authoredContent } from '../pi/content.ts'
 import { askedText, cutOff } from '../pi/transcript.ts'
-import { type AgentServices, Chats, attempt, nowSecondsEffect, requireBudget } from '../services.ts'
+import { Budget, Chats, Models, attempt, nowSecondsEffect, requireBudget } from '../services.ts'
 import { useModel, type Applied } from '../agent-model.ts'
 import type { ChannelPorts } from './channel.ts'
 
-type Run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<A>
+type Run = <A>(program: Effect.Effect<A, AppError, Budget | Chats | Models>) => Promise<A>
 
 /** What Telegram adds to an answer that reached the output limit, as the web transcript's receipt says. */
 const CUT_OFF = '(Cut off at the output limit. Ask it to continue.)'

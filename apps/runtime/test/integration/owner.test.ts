@@ -1,7 +1,7 @@
 import * as Alchemy from 'alchemy'
 import * as Cloudflare from 'alchemy/Cloudflare'
 import * as Test from 'alchemy/Test/Vitest'
-import { Effect, Schema } from 'effect'
+import { Config, Effect, Schema } from 'effect'
 import { ConversationView } from '@goblin/contracts'
 import { expect } from 'vitest'
 import Stack from './owner-stack.ts'
@@ -92,3 +92,30 @@ async function ownerRoutingCase(url: string): Promise<void> {
     (await call(url, owner, `/api/invitations/${crypto.randomUUID()}/preview`, { proof: 'old-proof' })).status,
   ).toBe(404)
 }
+
+const primaryProfile = await Effect.runPromise(Config.String('GOBLIN_PRIMARY_PROFILE').pipe(Config.withDefault('root')))
+if (primaryProfile === 'permuted')
+  harness.test(
+    'native: authenticated owner operations leave the Pi root empty',
+    Effect.gen(function* () {
+      const { url } = yield* stack
+      const response = yield* Effect.promise(async () => {
+        const owner = await person(url)
+        await call(url, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
+        return call(url, owner, '/__test/primary-profile')
+      })
+      expect(response.status).toBe(200)
+      const result = yield* Schema.decodeUnknownEffect(
+        Schema.Struct({
+          session: Schema.String,
+          status: Schema.String,
+          messages: Schema.Number,
+          rootMessages: Schema.Number,
+        }),
+      )(yield* Effect.promise(() => response.json()))
+      expect(result.session).not.toBe('1')
+      expect(result.status).toBe('done')
+      expect(result.messages).toBeGreaterThan(0)
+      expect(result.rootMessages).toBe(0)
+    }),
+  )

@@ -33,6 +33,9 @@ import {
   appMcpOauthPending,
 } from '../../src/storage/schema.ts'
 import { CapabilityProfiles } from '../../src/capabilities/profiles.ts'
+import { permutePrimary, profileEnabled } from './primary-profile.ts'
+import { ChatDirectory } from '../../src/chats/directory.ts'
+import { unwrap } from '../../src/http/rpc.ts'
 import { skillsCacheProbe, skillsLearnerRejectionProbe, skillsPersistedRead } from './skills-probe.ts'
 import { exchange, historyOf, linesOf, snapshotOf, threadsUntil, transcript, until } from './probe-reads.ts'
 import { subagentChainSequence, subagentCloseSequence, subagentOwnerSequence } from './subagent-probe.ts'
@@ -72,8 +75,34 @@ export class PersonalAgentProbe extends PersonalAgent {
     return helperExclusionsProbe(this.ctx.storage)
   }
 
+  override async onStart(): Promise<void> {
+    await super.onStart()
+    if (profileEnabled(this.env)) await permutePrimary(this.ctx.storage, this.harness)
+  }
+
   protected override entitlementPolicy(): EntitlementPolicy {
     return { state: fixturePlan, require: fixturePlan }
+  }
+
+  async primaryProfileProbe() {
+    const operationId = 'permuted-primary-proof'
+    await this.submit(PRIMARY_CHAT, 'prove the primary binding', operationId)
+    const settled = await this.settle(PRIMARY_CHAT, operationId)
+    const directory = new ChatDirectory(drizzle(this.ctx.storage))
+    const session = directory.session(PRIMARY_CHAT)
+    const inbound = unwrap(await this.askAsClient('fixture-client', 'inbound binding proof', 'primary-inbound', 5000))
+    const recent = unwrap(await this.recentMessages(20))
+    return {
+      session,
+      inboundStatus: inbound.status,
+      inboundSession: directory.operation(PRIMARY_CHAT, 'primary-inbound'),
+      recentInbound: recent.some(
+        (message) => message.author === 'fixture-client' && message.text === 'inbound binding proof',
+      ),
+      settledSession: settled.session,
+      rootMessages: (await this.harness.messages({ session: '1' })).length,
+      primaryMessages: (await this.harness.messages({ session })).length,
+    }
   }
 
   eventsProbe() {
@@ -125,7 +154,8 @@ export class PersonalAgentProbe extends PersonalAgent {
   async appsTurnProbe(): Promise<string> {
     // This probe submits directly to Pi; establish the resident authority an owner request normally renews.
     await this.residentSet(true)
-    return JSON.stringify(await appsTurnProbe(this.harness, () => this.seen))
+    const session = new ChatDirectory(drizzle(this.ctx.storage)).session(PRIMARY_CHAT)
+    return JSON.stringify(await appsTurnProbe(this.harness, () => this.seen, session))
   }
 
   /** On this object's own native schedules, and its own `runAppJob` callback. */
@@ -222,13 +252,16 @@ export class PersonalAgentProbe extends PersonalAgent {
   }
 
   /** Waits for an operation in a conversation to settle (the owner API has no wait route). */
-  async settle(session: string, operationId: string) {
+  async settle(chat: string, operationId: string) {
+    const directory = new ChatDirectory(drizzle(this.ctx.storage))
+    const session = directory.operation(chat, operationId) ?? directory.session(chat)
     return this.harness.wait(operationId, { session })
   }
 
   /** Whether Pi runs a conversation now (the workspace feed carries this; the conversation list does not). */
-  busy(session: string): Promise<boolean> {
-    return this.harness.session(session).busy()
+  async busy(chat: string): Promise<boolean> {
+    const directory = new ChatDirectory(drizzle(this.ctx.storage))
+    return this.harness.session(directory.session(chat)).busy()
   }
 
   /**
@@ -911,6 +944,9 @@ const APPS_PROBES: Readonly<Record<string, (agent: DurableObjectStub<PersonalAge
   '/code-recovery-read': (agent) => agent.codeRecoveryRead(),
 }
 
+const primaryProfileFetch = (agent: DurableObjectStub<PersonalAgentProbe>) =>
+  agent.primaryProfileProbe().then((result) => Response.json(result))
+
 function nativeFetch(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url)
   const name = url.searchParams.get('name') ?? 'initialization'
@@ -919,6 +955,8 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
   if (apps !== undefined)
     return apps(agent).then((json) => new Response(json, { headers: { 'content-type': 'application/json' } }))
   switch (url.pathname) {
+    case '/primary-profile':
+      return primaryProfileFetch(agent)
     case '/events-probe':
       return agent.eventsProbe().then((result) => Response.json(result))
     case '/routines-probe':

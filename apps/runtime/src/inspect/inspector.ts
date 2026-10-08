@@ -221,7 +221,8 @@ export class Inspector {
   }
 
   turns(since?: number, limit = 20, conversation?: string): InspectTurns {
-    const turns = this.#ledger.turns(since ?? this.#clock() - DAY_MS, limit, conversation)
+    const session = conversation === undefined ? undefined : this.#registry.require(conversation)
+    const turns = this.#ledger.turns(since ?? this.#clock() - DAY_MS, limit, session)
     const events = this.#ledger.forOperations(turns.flatMap((turn) => turn.operationId ?? []))
     return {
       turns: turns.map((turn) =>

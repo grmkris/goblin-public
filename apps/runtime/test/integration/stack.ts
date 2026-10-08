@@ -11,6 +11,7 @@ export default Alchemy.Stack(
     state: Alchemy.localState(),
   },
   Effect.gen(function* () {
+    const profile = yield* Config.String('GOBLIN_PRIMARY_PROFILE').pipe(Config.withDefault('root'))
     const port = yield* Config.Port('GOBLIN_HARNESS_PORT')
     const files = yield* Cloudflare.R2.Bucket('NativeFiles')
     const auth = yield* Cloudflare.D1.Database('NativeAccountUsage', {
@@ -31,6 +32,7 @@ export default Alchemy.Stack(
         MODEL_KEY: 'unused-storage-fixture',
         // The fixture's turns are a few tokens: fold main into its memory view after every one.
         MEMORY_FOLD_TOKENS: '0',
+        PRIMARY_PROFILE: profile,
         APP_URL: 'https://goblin.test',
         // A fixed 32-byte test key: encrypts nothing real in this harness.
         CREDENTIAL_KEY: 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE=',

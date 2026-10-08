@@ -12,14 +12,33 @@ import { queueModel } from './queue-model.ts'
 import { approvalsProbe } from './approvals-probe.ts'
 import { requireUserSession } from '../../src/auth/index.ts'
 import { AppsMcpFixture } from './apps-mcp.ts'
+import { permutePrimary, profileEnabled } from './primary-profile.ts'
+import { ChatDirectory } from '../../src/chats/directory.ts'
+import { drizzle } from 'drizzle-orm/durable-sqlite'
 
 export class OwnerAgent extends PersonalAgent {
   readonly #mcp = new AppsMcpFixture()
+  override async onStart(): Promise<void> {
+    await super.onStart()
+    if (profileEnabled(this.env)) await permutePrimary(this.ctx.storage, this.harness)
+  }
   protected override modelStreams() {
     return queueModel(this).streams
   }
   override async onRequest(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname
+    if (path === '/test/primary-profile' && profileEnabled(this.env)) {
+      const operationId = 'permuted-owner-proof'
+      await this.submit('1', 'prove the owner primary binding', operationId)
+      const session = new ChatDirectory(drizzle(this.ctx.storage)).session('1')
+      const result = await this.harness.wait(operationId, { session })
+      const messages = await this.harness.messages({ session: result.session })
+      return Response.json({
+        ...result,
+        messages: messages.length,
+        rootMessages: (await this.harness.messages({ session: '1' })).length,
+      })
+    }
     if (path === '/test/queue/held') return Response.json({ inputs: queueModel(this).held() })
     if (path === '/test/queue/release') {
       const { input } = Schema.decodeUnknownSync(Schema.Struct({ input: Schema.String }))(await request.json())
@@ -44,6 +63,10 @@ export default {
     try {
       const authProbe = await authFixtureRoute(input, env)
       if (authProbe !== undefined) return authProbe
+      if (url.pathname === '/__test/primary-profile') {
+        const { userId } = await requireUserSession(input, env)
+        return env.AGENTS.getByName(userId).fetch('https://agent/test/primary-profile')
+      }
       if (url.pathname.startsWith('/__test/queue/')) {
         const { userId } = await requireUserSession(input, env)
         return env.AGENTS.getByName(userId).fetch(

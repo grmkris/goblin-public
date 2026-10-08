@@ -8,6 +8,7 @@ export const ownerStack = (name: string, offset: number) =>
     name,
     { providers: Cloudflare.providers(), state: Alchemy.localState() },
     Effect.gen(function* () {
+      const profile = yield* Config.String('GOBLIN_PRIMARY_PROFILE').pipe(Config.withDefault('root'))
       const port = (yield* Config.Port('GOBLIN_HARNESS_PORT')) + offset
       const files = yield* Cloudflare.R2.Bucket('OwnerFiles')
       const auth = yield* Cloudflare.D1.Database('OwnerAuth', {
@@ -26,6 +27,7 @@ export const ownerStack = (name: string, offset: number) =>
           BETTER_AUTH_SECRET: 'fixture-owner-auth-secret-at-least-32-chars',
           SIGNUP_MODE: 'open',
           STAGE: 'test',
+          PRIMARY_PROFILE: profile,
           MODEL_BASE_URL: 'https://no-model-calls.invalid/v1',
           MODEL_ID: 'storage-only',
           MODEL_KEY: 'unused-fixture',

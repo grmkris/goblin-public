@@ -58,7 +58,7 @@
     "goblin": "bun apps/cli/src/main.ts",
     "graph": "bun tools/check-graph.ts",
     "check:fast": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run check:chat-ids && bun run lint && bun run typecheck && bun run test:unit",
-    "check": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run check:chat-ids && bun run graph && bun run typecheck && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run build",
+    "check": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run check:chat-ids && bun run graph && bun run typecheck && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run --cwd apps/runtime test:integration:permuted && bun run build",
     "infra": "alchemy",
     "deploy:prod": "bun scripts/stage.ts deploy:prod",
     "plan:prod": "bun scripts/stage.ts plan:prod",
@@ -67,7 +67,7 @@
     "drift:prod": "bun scripts/stage.ts drift:prod",
     "bench:decisions": "bun bench/scripts/decisions.ts",
     "check:chat-ids": "bun tools/check-chat-ids.ts",
-    "check:public": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run check:chat-ids && bun run graph && bun run typecheck && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run build"
+    "check:public": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run check:chat-ids && bun run graph && bun run typecheck && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run --cwd apps/runtime test:integration:permuted && bun run build"
   },
   "devDependencies": {
     "@shadcn/lint": "0.2.0",

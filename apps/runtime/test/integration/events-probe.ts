@@ -1,6 +1,5 @@
-import { PRIMARY_CHAT } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
-import { registerPrimary } from '../../src/chats/directory.ts'
+import { ChatDirectory, registerPrimary } from '../../src/chats/directory.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
@@ -12,7 +11,10 @@ import { CredentialCipher } from '../../src/mcp/cipher.ts'
 import { McpConnectionManager, offersEvents } from '../../src/mcp/connection.ts'
 import { McpEvents } from '../../src/mcp/events.ts'
 import { SqliteEventStore, EventStorage, eventStorageEffect } from '../../src/mcp/events/store.ts'
-import { authoredContent } from '../../src/pi/content.ts'
+import { channelPorts } from '../../src/channel/turns.ts'
+import { Budget, Chats, Models } from '../../src/services.ts'
+import { ModelBudget, UsageStore } from '../../src/budget.ts'
+import { ModelChoiceStore, ModelPicker, modelOptions } from '../../src/models.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { appEventDeliveries } from '../../src/storage/schema.ts'
 import { EventsFixture } from '../mcp/events-fixture.ts'
@@ -33,6 +35,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
   runApplicationMigrations(storage)
   const db = drizzle(storage)
   registerPrimary(db, 1)
+  const chats = new ChatDirectory(db)
   const store = new SqliteEventStore(db)
   const skillState = new SqliteSkillState(db)
   const cipher = await CredentialCipher.fromBase64(KEY)
@@ -80,13 +83,24 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
     return new Response(exit.value.response ?? null, { status: exit.value.status })
   }
   const operations: string[] = []
+  const budget = new ModelBudget(new UsageStore(db), 300_000)
+  const models = new ModelPicker(new ModelChoiceStore(db), modelOptions(undefined, 'storage-only'))
+  const run: Parameters<typeof channelPorts>[2] = (program) =>
+    Effect.runPromise(
+      program.pipe(
+        Effect.provideService(Chats, chats),
+        Effect.provideService(Budget, budget),
+        Effect.provideService(Models, models),
+      ),
+    )
+  const ports = channelPorts(harness, channelCall(manager, 'mygram'), run, new Map())
   const pull = () =>
     channel.pull(
       {
-        call: channelCall(manager, 'mygram'),
+        ...ports,
         submit: async (text, operationId) => {
           operations.push(operationId)
-          await harness.submit(authoredContent('Telegram', text), { session: PRIMARY_CHAT, operationId })
+          await ports.submit(text, operationId)
         },
         answer: async () => undefined,
       },
@@ -97,6 +111,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
   })
   return {
     db,
+    chats,
     runs,
     store,
     cipher,
@@ -245,7 +260,7 @@ export async function eventsProbe(storage: DurableObjectStorage, harness: PiHarn
     const result = await exercise(state)
     const skills = await eventsSkillsProbe(state)
     const recovery = await eventsRecoveryProbe(state)
-    const messages = await harness.messages({ session: PRIMARY_CHAT })
+    const messages = await harness.messages({ session: state.chats.session(state.chats.primary()) })
     return {
       ...result,
       discovered,

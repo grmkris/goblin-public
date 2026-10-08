@@ -6,7 +6,8 @@ import { RoutineRunStore } from '../../src/routines/runs.ts'
 import { appConversations, appConversationCapabilities } from '../../src/storage/schema.ts'
 import { BACKGROUND, conversationId } from '../../src/pi/context.ts'
 import type { SeenRequest } from './model.ts'
-import { PRIMARY_CHAT, type RoutineDefinition } from '@goblin/contracts'
+import { type RoutineDefinition } from '@goblin/contracts'
+import { ChatDirectory } from '../../src/chats/directory.ts'
 
 /** Bounded native happy path: real app SQLite, native Pi tasks and the injected keyless model. */
 export async function routineExecutionProbe(
@@ -42,7 +43,8 @@ export async function routineExecutionProbe(
   if (record.sessionId === null) throw new Error('Routine session did not bind')
   const thread = db.select().from(appConversations).where(eq(appConversations.chatId, record.sessionId)).get()
   const pi = await agent.harness.pi()
-  const main = await pi.conversation(conversationId(PRIMARY_CHAT), BACKGROUND)
+  const chats = new ChatDirectory(db)
+  const main = await pi.conversation(conversationId(chats.session(chats.primary())), BACKGROUND)
   const history = await main?.entries({}, 100, undefined, BACKGROUND)
   const notes = history?.items.filter((entry) => entry.kind === 'app.routine') ?? []
   const child = await pi.conversation(conversationId(record.sessionId), BACKGROUND)

@@ -16,7 +16,8 @@
     "effect:check": "bun ../../tools/effect-check.ts tsconfig.json",
     "test": "vitest run",
     "test:unit": "vitest run --config vitest.config.ts",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration:permuted": "vitest run --config vitest.permuted.config.ts"
   },
   "dependencies": {
     "@better-auth/mcp": "1.7.6",

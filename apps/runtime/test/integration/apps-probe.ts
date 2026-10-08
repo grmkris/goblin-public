@@ -165,20 +165,20 @@ const withoutZoom = (tools: readonly string[] | undefined) => (tools ?? []).filt
  * request: the getter-backed default selection picks the installed extension up. The build changes the trailing
  * context block, not the system prompt, so the prompt the provider caches stays the same.
  */
-export async function appsTurnProbe(harness: PiHarness, seen: () => readonly SeenRequest[]) {
+export async function appsTurnProbe(harness: PiHarness, seen: () => readonly SeenRequest[], session: string) {
   const build = JSON.stringify({
     name: 'tally',
     files: { 'app.ts': COUNTER_V1.replace("name: 'counter'", "name: 'tally'"), 'lib.ts': LIB },
   })
   const main = () => seen().filter((request) => request.systemPrompt.includes('You can build apps'))
   const before = main().length
-  await harness.submit(`call app_build ${build}`, { session: '1', operationId: 'apps-build' })
-  const built = await harness.wait('apps-build', { session: '1' })
+  await harness.submit(`call app_build ${build}`, { session, operationId: 'apps-build' })
+  const built = await harness.wait('apps-build', { session })
   await harness.submit('call app_call {"app":"tally","member":"add","input":{"by":4}}', {
-    session: '1',
+    session,
     operationId: 'apps-call',
   })
-  const called = await harness.wait('apps-call', { session: '1' })
+  const called = await harness.wait('apps-call', { session })
   const [first] = main().slice(before)
   const last = main().at(-1)
   return {
