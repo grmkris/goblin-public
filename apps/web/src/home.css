@@ -71,6 +71,21 @@
 .dark .home-tile {
   box-shadow: none;
 }
+.home-tile-locator {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-raised);
+  pointer-events: none;
+  border: 2px solid var(--ring);
+  border-radius: inherit;
+}
+.home-tile-exit {
+  position: absolute;
+  z-index: var(--z-raised);
+  margin: 0;
+  pointer-events: none;
+  transition: none;
+}
 .home-tile[data-kind='app'] {
   padding: 0;
 }

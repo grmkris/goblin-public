@@ -15,6 +15,7 @@ import { useHomeMotion } from './motion.ts'
 import { appCaption, appNames } from '../../lib/workspace-tree.ts'
 import { glide } from '../../lib/motion.ts'
 import { HomeNoteReader } from './note-reader.tsx'
+import { HomeFeedback } from './feedback.ts'
 
 const STARTERS = ['Track my reading on Home', 'Chart my spending this month on Home', 'Put my inbox on Home']
 const TILE_DRAFT = 'Add a tile to Home that '
@@ -185,23 +186,27 @@ function TileBody({
 
 function useShowHome(root: import('react').RefObject<HTMLElement | null>) {
   const { scrollToEnd } = useMessageScroller()
+  const feedback = useRef<HomeFeedback>(undefined)
   useEffect(() => {
+    if (root.current === null) return
+    const current = new HomeFeedback(root.current)
+    feedback.current = current
     const show = (event: Event) => {
       scrollToEnd({
         behavior: glide(),
       })
       if (!(event instanceof CustomEvent) || !Array.isArray(event.detail)) return
       const ids: unknown[] = event.detail
-      for (const tile of root.current?.querySelectorAll<HTMLElement>('[data-home-tile]') ?? []) {
-        if (ids.includes(tile.dataset.homeTile))
-          tile.animate([{ boxShadow: '0 0 0 2px var(--ring)' }, { boxShadow: '0 0 0 0px transparent' }], {
-            duration: 900,
-          })
-      }
+      current.highlight(ids)
     }
     window.addEventListener('goblin-home-show', show)
-    return () => window.removeEventListener('goblin-home-show', show)
-  }, [scrollToEnd])
+    return () => {
+      window.removeEventListener('goblin-home-show', show)
+      current.dispose()
+      feedback.current = undefined
+    }
+  }, [root, scrollToEnd])
+  return feedback
 }
 
 function HomeHeader({
@@ -259,10 +264,13 @@ export function HomeSurface({ onDraft }: { readonly onDraft: (text: string) => v
   const owner = useHomeEdit()
   const root = useRef<HTMLElement>(null)
   const [editing, setEditing] = useState(false)
-  useShowHome(root)
+  const feedback = useShowHome(root)
   const tiles = home?.tiles ?? []
   const motion = useHomeMotion(root, tiles, home !== undefined)
-  const edit = owner.edit
+  const edit: typeof owner.edit = async (ops) => {
+    feedback.current?.remove(ops.flatMap((op) => (op.kind === 'remove' ? [op.id] : [])))
+    await owner.edit(ops)
+  }
   const drag = useHomeDrag(root, edit, motion)
   useEffect(host.kick, [editing, host.kick])
   return (
