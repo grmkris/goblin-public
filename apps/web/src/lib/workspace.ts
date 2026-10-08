@@ -1,5 +1,5 @@
 import type { Edge, LayoutDocument } from '@danfessler/trellis'
-import { MAIN_THREAD } from '@goblin/contracts'
+import { PRIMARY_CHAT } from '@goblin/contracts'
 import { record } from './boundary.ts'
 import { balanced, insertBeside, leafOrder, replaceView, singlePane, swapViews, withoutView } from './trellis-layout.ts'
 import { parseLayoutDocument } from './workspace-document.ts'
@@ -20,7 +20,7 @@ export const conversationKey = (id: string): ItemKey => `c:${id}`
 export const appKey = (id: string): ItemKey => `a:${id}`
 export const draftKey = (from?: { readonly conversation: string; readonly entry: number }, id?: string): ItemKey =>
   from === undefined ? `d:new${id === undefined ? '' : `:${id}`}` : `d:${from.conversation}:${from.entry}`
-export const MAIN_KEY = conversationKey(MAIN_THREAD)
+export const MAIN_KEY = conversationKey(PRIMARY_CHAT)
 
 const DIGITS = /^\d{1,12}$/u
 

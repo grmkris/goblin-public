@@ -1,4 +1,4 @@
-import { MAIN_THREAD } from '@goblin/contracts'
+import { PRIMARY_CHAT } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import { registerPrimary } from '../../src/chats/directory.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
@@ -86,7 +86,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
         call: channelCall(manager, 'mygram'),
         submit: async (text, operationId) => {
           operations.push(operationId)
-          await harness.submit(authoredContent('Telegram', text), { session: MAIN_THREAD, operationId })
+          await harness.submit(authoredContent('Telegram', text), { session: PRIMARY_CHAT, operationId })
         },
         answer: async () => undefined,
       },
@@ -245,7 +245,7 @@ export async function eventsProbe(storage: DurableObjectStorage, harness: PiHarn
     const result = await exercise(state)
     const skills = await eventsSkillsProbe(state)
     const recovery = await eventsRecoveryProbe(state)
-    const messages = await harness.messages({ session: MAIN_THREAD })
+    const messages = await harness.messages({ session: PRIMARY_CHAT })
     return {
       ...result,
       discovered,

@@ -212,10 +212,10 @@ export const InboundClient = Schema.Struct({
 })
 export type InboundClient = typeof InboundClient.Type
 
-/** Pi's root conversation: the agent's one main conversation, where every channel and client talks. */
-export const MAIN_THREAD = '1'
+/** Stable primary chat id for URLs and application metadata; its current Pi session is resolved by the runtime. */
+export const PRIMARY_CHAT = '1'
 
-/** The kinds of conversation: Pi's root `main`, a side `thread` the owner branched or started, a `subagent`. */
+/** The chat kinds: the primary `main`, a side `thread` the owner branched or started, a `subagent`. */
 export const ConversationKind = Schema.Literals(['main', 'thread', 'subagent'])
 export type ConversationKind = typeof ConversationKind.Type
 
@@ -229,6 +229,7 @@ export type ConversationKind = typeof ConversationKind.Type
  */
 export const ConversationView = Schema.Struct({
   id: Schema.String,
+  primary: Schema.optional(Schema.Boolean),
   kind: ConversationKind,
   title: Schema.optional(Schema.String),
   parent: Schema.optional(Schema.String),
@@ -469,6 +470,7 @@ export type AppDiagnostic = typeof AppDiagnostic.Type
 
 /** The workspace feed's first event: every conversation and App, and the conversations not idle. */
 export const WorkspaceSnapshot = Schema.Struct({
+  primary: Schema.optional(Schema.String),
   conversations: Schema.Array(ConversationView),
   activity: Schema.Array(ConversationActivity),
   apps: Schema.Array(AppView),

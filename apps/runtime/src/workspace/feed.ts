@@ -83,6 +83,7 @@ export class WorkspaceFeed {
       await this.#watching()
       const conversations = await this.#conversations.list()
       send('snapshot', {
+        primary: this.#chats.primary(),
         conversations,
         activity: [...this.#activity.values()],
         apps: this.#apps.list(),

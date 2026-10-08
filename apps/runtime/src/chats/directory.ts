@@ -1,5 +1,5 @@
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { MAIN_THREAD } from '@goblin/contracts'
+import { PRIMARY_CHAT } from '@goblin/contracts'
 import { and, eq, lt, ne } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Brand from 'effect/Brand'
@@ -27,7 +27,7 @@ const RETENTION = 30 * 24 * 60 * 60
 export function registerPrimary<RunResult>(db: SQLiteAsyncDatabase<'sync', RunResult>, now: number): void {
   db.insert(appConversations)
     .values({
-      chatId: MAIN_THREAD,
+      chatId: PRIMARY_CHAT,
       piSession: String(ROOT_CONVERSATION_ID),
       role: 'primary',
       kind: 'main',
@@ -48,7 +48,7 @@ export class ChatDirectory<RunResult = unknown> {
   }
 
   primary(): ChatId {
-    return ChatId(MAIN_THREAD)
+    return ChatId(PRIMARY_CHAT)
   }
 
   session(chat: string): SessionId {

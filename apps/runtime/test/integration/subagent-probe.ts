@@ -1,4 +1,4 @@
-import { type ConversationView, MAIN_THREAD } from '@goblin/contracts'
+import { type ConversationView, PRIMARY_CHAT } from '@goblin/contracts'
 import { exchange, threadsUntil, transcript, until } from './probe-reads.ts'
 import type { PersonalAgentProbe } from './worker.ts'
 
@@ -30,8 +30,8 @@ const reportsUntil = (agent: Probe, session: string, name: string, count = 1) =>
  */
 export async function subagentChainSequence(agent: Probe): Promise<Response> {
   const inner = subagentCall({ action: 'spawn', name: 'digger', message: 'find deeper' })
-  await exchange(agent, MAIN_THREAD, subagentCall({ action: 'spawn', name: 'lead', message: inner }), 'chain-spawn')
-  const main = await reportsUntil(agent, MAIN_THREAD, 'lead')
+  await exchange(agent, PRIMARY_CHAT, subagentCall({ action: 'spawn', name: 'lead', message: inner }), 'chain-spawn')
+  const main = await reportsUntil(agent, PRIMARY_CHAT, 'lead')
   const views = await threadsUntil(
     agent,
     (all) => ['lead', 'digger'].every((title) => named(all, title)?.closedBy === 'done'),
@@ -54,7 +54,7 @@ export async function subagentChainSequence(agent: Probe): Promise<Response> {
 export async function subagentOwnerSequence(agent: Probe): Promise<Response> {
   await exchange(
     agent,
-    MAIN_THREAD,
+    PRIMARY_CHAT,
     subagentCall({ action: 'spawn', name: 'scout', message: 'Native slow job' }),
     'owner-spawn',
   )
@@ -65,7 +65,7 @@ export async function subagentOwnerSequence(agent: Probe): Promise<Response> {
     (busy) => busy,
   )
   const sent = await agent.submit(scout.id, 'also check the attic', 'owner-steer')
-  const main = await reportsUntil(agent, MAIN_THREAD, 'scout')
+  const main = await reportsUntil(agent, PRIMARY_CHAT, 'scout')
   const settled = await agent.settle(scout.id, 'owner-steer')
   const after = named(await threadsUntil(agent, () => true), 'scout')
   return Response.json({ working, sent, settled, main, after, child: await transcript(agent, scout.id) })
@@ -78,7 +78,7 @@ export async function subagentOwnerSequence(agent: Probe): Promise<Response> {
  */
 export async function subagentCloseSequence(agent: Probe): Promise<Response> {
   const inner = subagentCall({ action: 'spawn', name: 'digger', message: 'Native slow job' })
-  await exchange(agent, MAIN_THREAD, subagentCall({ action: 'spawn', name: 'lead', message: inner }), 'close-spawn')
+  await exchange(agent, PRIMARY_CHAT, subagentCall({ action: 'spawn', name: 'lead', message: inner }), 'close-spawn')
   const views = await threadsUntil(agent, (all) => named(all, 'digger') !== undefined, 15_000)
   const lead = named(views, 'lead')
   const digger = named(views, 'digger')
@@ -87,30 +87,30 @@ export async function subagentCloseSequence(agent: Probe): Promise<Response> {
     () => agent.busy(digger.id),
     (busy) => busy,
   )
-  const stopped = await exchange(agent, MAIN_THREAD, subagentCall({ action: 'stop', name: 'lead' }), 'close-stop')
+  const stopped = await exchange(agent, PRIMARY_CHAT, subagentCall({ action: 'stop', name: 'lead' }), 'close-stop')
   const diggerStopped = !(await agent.busy(digger.id))
   const closed = await agent.updateConversation(lead.id, { closed: true })
   const closedViews = await threadsUntil(agent, () => true)
   const refused = await exchange(
     agent,
-    MAIN_THREAD,
+    PRIMARY_CHAT,
     subagentCall({ action: 'send', name: 'lead', message: 'again' }),
     'close-refused',
   )
   await exchange(
     agent,
-    MAIN_THREAD,
+    PRIMARY_CHAT,
     subagentCall({ action: 'spawn', name: 'quick', message: 'find it' }),
     'close-quick',
   )
   const done = named(await threadsUntil(agent, (all) => named(all, 'quick')?.closedBy === 'done', 15_000), 'quick')
   const reopened = await exchange(
     agent,
-    MAIN_THREAD,
+    PRIMARY_CHAT,
     subagentCall({ action: 'send', name: 'quick', message: 'once more' }),
     'close-again',
   )
-  const main = await reportsUntil(agent, MAIN_THREAD, 'quick', 2)
+  const main = await reportsUntil(agent, PRIMARY_CHAT, 'quick', 2)
   const again = named(await threadsUntil(agent, (all) => named(all, 'quick')?.closedBy === 'done', 15_000), 'quick')
   return Response.json({
     working,

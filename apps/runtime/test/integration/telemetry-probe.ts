@@ -1,4 +1,4 @@
-import { MAIN_THREAD } from '@goblin/contracts'
+import { PRIMARY_CHAT } from '@goblin/contracts'
 import { RunAttribute } from '@goblin/contracts/telemetry'
 import type { InspectQuery } from '@goblin/contracts/inspect'
 import { runTelemetry } from '../../src/telemetry/run.ts'
@@ -30,8 +30,8 @@ export async function telemetryProbe(
     .map((row) => ({ kind: row.kind, status: row.status, attributes: json(row.attributes) }))
   const inspected = {
     turn: await inspect({ kind: 'turn', operationId: 'telemetry-turn' }),
-    turns: await inspect({ kind: 'turns', conversation: MAIN_THREAD }),
-    conversation: await inspect({ kind: 'conversation', conversation: MAIN_THREAD }),
+    turns: await inspect({ kind: 'turns', conversation: PRIMARY_CHAT }),
+    conversation: await inspect({ kind: 'conversation', conversation: PRIMARY_CHAT }),
     missing: await inspect({ kind: 'turn', operationId: 'no-such-turn' }),
     invalid: await inspect({ kind: 'everything' }),
   }

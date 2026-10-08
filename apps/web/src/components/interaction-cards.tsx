@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Option, Schema } from 'effect'
 import { KeyRoundIcon, MessageCircleQuestionIcon, PlugIcon, PowerIcon } from 'lucide-react'
-import { MAIN_THREAD, ToolView } from '@goblin/contracts'
+import { PRIMARY_CHAT, ToolView } from '@goblin/contracts'
 import {
   AskCard,
   AskCardActions,
@@ -191,7 +191,7 @@ function CapabilityCard({
   const { target } = interaction
   const { view } = useCapabilities(thread, false)
   const label = targetLabel(target, view)
-  const where = thread === MAIN_THREAD ? 'in main' : 'in this thread'
+  const where = thread === PRIMARY_CHAT ? 'in main' : 'in this thread'
   const { busy, error, replying } = useReplying()
   const reply = (on: boolean) =>
     void replying(async () => {

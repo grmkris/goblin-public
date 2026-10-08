@@ -1,7 +1,7 @@
 import type { EntitlementPolicy } from '../../src/billing/gates.ts'
 import { canonicalRedirect } from '../../src/http/canonical.ts'
 import { inboundHostProbe } from './inbound-host.ts'
-import { type ConversationView, MAIN_THREAD } from '@goblin/contracts'
+import { type ConversationView, PRIMARY_CHAT } from '@goblin/contracts'
 import { eventsProbe } from './events-probe.ts'
 import { routinesProbe } from './routines-probe.ts'
 import { routineExecutionProbe } from './routines-execution.ts'
@@ -103,8 +103,8 @@ export class PersonalAgentProbe extends PersonalAgent {
       this.ctx.storage,
       this.name,
       async (text, operationId) => {
-        await this.submit(MAIN_THREAD, text, operationId)
-        return this.settle(MAIN_THREAD, operationId)
+        await this.submit(PRIMARY_CHAT, text, operationId)
+        return this.settle(PRIMARY_CHAT, operationId)
       },
       async (query) => {
         const request = new Request('https://agent/inspect', { method: 'POST', body: JSON.stringify(query) })
@@ -164,7 +164,7 @@ export class PersonalAgentProbe extends PersonalAgent {
     await files.write('agent', '/agent/replay.txt', '', 'text/plain', 0)
     const code =
       "await files.write('/agent/replay.txt', (await files.read('/agent/replay.txt')) + 'x'); await new Promise(resolve => setTimeout(resolve, 30000)); return null"
-    await this.submit(MAIN_THREAD, `call code_run ${JSON.stringify({ code })}`, 'code-recovery')
+    await this.submit(PRIMARY_CHAT, `call code_run ${JSON.stringify({ code })}`, 'code-recovery')
     const written = await until(
       () => files.text('/agent/replay.txt', 0, 100),
       (file) => file.text === 'x',
@@ -172,7 +172,7 @@ export class PersonalAgentProbe extends PersonalAgent {
     return JSON.stringify({ instance: this.instance, text: written.text })
   }
   async codeRecoveryRead() {
-    const result = await this.settle(MAIN_THREAD, 'code-recovery')
+    const result = await this.settle(PRIMARY_CHAT, 'code-recovery')
     const files = new FileStore(this.ctx.storage.sql, this.env.FILES, () => this.name)
     return JSON.stringify({
       instance: this.instance,
@@ -263,7 +263,7 @@ export class PersonalAgentProbe extends PersonalAgent {
         return yield* service.get('probe')
       }).pipe(Effect.provide(AppMetadata.layer(this.ctx.storage))),
     )
-    return Response.json({ snapshot: await this.sessionSnapshot(MAIN_THREAD), before, after, metadata })
+    return Response.json({ snapshot: await this.sessionSnapshot(PRIMARY_CHAT), before, after, metadata })
   }
 
   /** Endpoint binding on the real SQLite store: a re-pointed server loses its credentials, grants and pending state. */
@@ -321,8 +321,8 @@ export class PersonalAgentProbe extends PersonalAgent {
     const db = drizzle(this.ctx.storage)
     db.insert(appConversations)
       .values([
-        { chatId: MAIN_THREAD, piSession: MAIN_THREAD, kind: 'main', createdAt: 1 },
-        { chatId: '900', piSession: '900', kind: 'thread', parentSession: MAIN_THREAD, createdAt: 1 },
+        { chatId: PRIMARY_CHAT, piSession: PRIMARY_CHAT, kind: 'main', createdAt: 1 },
+        { chatId: '900', piSession: '900', kind: 'thread', parentSession: PRIMARY_CHAT, createdAt: 1 },
         { chatId: '901', piSession: '901', kind: 'subagent', parentSession: '900', createdAt: 1 },
         { chatId: '902', piSession: '902', kind: 'subagent', parentSession: '901', createdAt: 1 },
         { chatId: '903', piSession: '903', kind: 'subagent', parentSession: '999', createdAt: 1 },
@@ -337,8 +337,8 @@ export class PersonalAgentProbe extends PersonalAgent {
     })
     const retooled: string[] = []
     const profiles = new CapabilityProfiles(db, [tool], async (session) => void retooled.push(session))
-    profiles.set(MAIN_THREAD, { kind: 'tool', serverId: 'notes', name: 'write' }, false, 1)
-    profiles.copy(MAIN_THREAD, '900', 2)
+    profiles.set(PRIMARY_CHAT, { kind: 'tool', serverId: 'notes', name: 'write' }, false, 1)
+    profiles.copy(PRIMARY_CHAT, '900', 2)
     profiles.set('900', { kind: 'server', serverId: 'mail' }, false, 2)
     profiles.set('900', { kind: 'tool', serverId: 'mail', name: 'send' }, false, 2)
     profiles.set('901', { kind: 'skills', serverId: 'myskills' }, false, 2)
@@ -459,7 +459,7 @@ async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promis
   const badBranch = await branchMain(agent, 999_999)
   const unknownThread = await agent.submit('424242', 'hello', 'op-unknown-thread')
   const closed = thread.ok ? await agent.updateConversation(thread.value.id, { closed: true }) : thread
-  const mainUntouchable = await agent.updateConversation(MAIN_THREAD, { title: 'renamed' })
+  const mainUntouchable = await agent.updateConversation(PRIMARY_CHAT, { title: 'renamed' })
   const usage = await agent.usageToday()
   const modelChoice = await agent.modelChoice()
   const unknownModel = await agent.chooseModel('not-offered')
@@ -488,7 +488,7 @@ async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promis
 
 /** A thread branched from main at `entry`; with no entry, a request the agent refuses. */
 const branchMain = (agent: DurableObjectStub<PersonalAgentProbe>, entry: number | undefined) =>
-  agent.createConversation({ from: { conversation: MAIN_THREAD, entry: entry ?? 0 } })
+  agent.createConversation({ from: { conversation: PRIMARY_CHAT, entry: entry ?? 0 } })
 
 const entries = async (agent: DurableObjectStub<PersonalAgentProbe>): Promise<number> => {
   const body: { snapshot?: { entries?: unknown[] } } = await (await agent.fetch('https://agent/probe')).json()
@@ -506,9 +506,9 @@ async function listedThread(agent: DurableObjectStub<PersonalAgentProbe>, id: st
  * the thread's request carried main's history. The thread list counts only the thread's own messages, turn by turn.
  */
 async function branchSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
-  await agent.submit(MAIN_THREAD, 'remember the word lantern', 'branch-main')
-  await agent.settle(MAIN_THREAD, 'branch-main')
-  const snapshot = await snapshotOf(agent, MAIN_THREAD)
+  await agent.submit(PRIMARY_CHAT, 'remember the word lantern', 'branch-main')
+  await agent.settle(PRIMARY_CHAT, 'branch-main')
+  const snapshot = await snapshotOf(agent, PRIMARY_CHAT)
   const answer = (snapshot.entries ?? []).findLast((entry) => entry.kind === 'pi.assistant')
   const thread = await branchMain(agent, answer?.id)
   if (!thread.ok) return Response.json({ thread })
@@ -522,7 +522,7 @@ async function branchSequence(agent: DurableObjectStub<PersonalAgentProbe>): Pro
   return Response.json({
     thread: thread.value,
     settled,
-    main: await transcript(agent, MAIN_THREAD),
+    main: await transcript(agent, PRIMARY_CHAT),
     branch,
     request: await agent.requestFor('what was the word?'),
     forkedAt: answer?.id,
@@ -538,19 +538,19 @@ async function branchSequence(agent: DurableObjectStub<PersonalAgentProbe>): Pro
  * is branched, so main gets no note of its start (that is for threads started with "+": `announceSequence`).
  */
 async function shareSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
-  await agent.submit(MAIN_THREAD, 'remember the word lantern', 'share-main')
-  await agent.settle(MAIN_THREAD, 'share-main')
-  const answer = ((await historyOf(agent, MAIN_THREAD)).entries ?? []).findLast(({ kind }) => kind === 'pi.assistant')
+  await agent.submit(PRIMARY_CHAT, 'remember the word lantern', 'share-main')
+  await agent.settle(PRIMARY_CHAT, 'share-main')
+  const answer = ((await historyOf(agent, PRIMARY_CHAT)).entries ?? []).findLast(({ kind }) => kind === 'pi.assistant')
   const thread = await branchMain(agent, answer?.id)
   if (!thread.ok) return Response.json({ thread })
   const share = 'call share_back {"note":"the word is lantern"}'
   await agent.submit(thread.value.id, share, 'share-thread')
   const shared = await agent.settle(thread.value.id, 'share-thread')
-  await agent.submit(MAIN_THREAD, 'what did the thread say?', 'share-ask')
-  await agent.settle(MAIN_THREAD, 'share-ask')
+  await agent.submit(PRIMARY_CHAT, 'what did the thread say?', 'share-ask')
+  await agent.settle(PRIMARY_CHAT, 'share-ask')
   return Response.json({
     shared,
-    main: await transcript(agent, MAIN_THREAD),
+    main: await transcript(agent, PRIMARY_CHAT),
     mainRequest: await agent.requestFor('what did the thread say?'),
     threadRequest: await agent.requestFor(share),
     // The cheap model names the thread in the background.
@@ -563,7 +563,7 @@ async function shareSequence(agent: DurableObjectStub<PersonalAgentProbe>): Prom
 /** Main's notes of threads started with "+", once they are in. */
 const notesUntil = (agent: DurableObjectStub<PersonalAgentProbe>, count: number) =>
   until(
-    async () => (await transcript(agent, MAIN_THREAD)).filter((line) => line.startsWith('app.thread_started')),
+    async () => (await transcript(agent, PRIMARY_CHAT)).filter((line) => line.startsWith('app.thread_started')),
     (notes) => notes.length >= count,
   )
 
@@ -572,8 +572,8 @@ const notesUntil = (agent: DurableObjectStub<PersonalAgentProbe>, count: number)
  * note, no run starts for it, and a second exchange or a branched thread adds none.
  */
 async function announceSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
-  await agent.submit(MAIN_THREAD, 'remember the word lantern', 'announce-main')
-  await agent.settle(MAIN_THREAD, 'announce-main')
+  await agent.submit(PRIMARY_CHAT, 'remember the word lantern', 'announce-main')
+  await agent.settle(PRIMARY_CHAT, 'announce-main')
   const fresh = await agent.createConversation({})
   if (!fresh.ok) return Response.json({ fresh })
   await agent.submit(fresh.value.id, 'plan the trip', 'announce-thread')
@@ -581,15 +581,15 @@ async function announceSequence(agent: DurableObjectStub<PersonalAgentProbe>): P
   const first = await notesUntil(agent, 1)
   await agent.submit(fresh.value.id, 'and the hotel?', 'announce-thread-again')
   await agent.settle(fresh.value.id, 'announce-thread-again')
-  const answer = ((await historyOf(agent, MAIN_THREAD)).entries ?? []).findLast(({ kind }) => kind === 'pi.assistant')
+  const answer = ((await historyOf(agent, PRIMARY_CHAT)).entries ?? []).findLast(({ kind }) => kind === 'pi.assistant')
   const branched = await branchMain(agent, answer?.id)
   if (!branched.ok) return Response.json({ branched })
   await agent.submit(branched.value.id, 'what was the word?', 'announce-branch')
   await agent.settle(branched.value.id, 'announce-branch')
   await threadsUntil(agent, (views) => views.some(({ id, title }) => id === branched.value.id && title))
-  await agent.submit(MAIN_THREAD, 'which threads did I start?', 'announce-ask')
-  await agent.settle(MAIN_THREAD, 'announce-ask')
-  const mainEntries = (await historyOf(agent, MAIN_THREAD)).entries ?? []
+  await agent.submit(PRIMARY_CHAT, 'which threads did I start?', 'announce-ask')
+  await agent.settle(PRIMARY_CHAT, 'announce-ask')
+  const mainEntries = (await historyOf(agent, PRIMARY_CHAT)).entries ?? []
   return Response.json({
     thread: fresh.value.id,
     title: (await listedThread(agent, fresh.value.id))?.title,
@@ -602,7 +602,7 @@ async function announceSequence(agent: DurableObjectStub<PersonalAgentProbe>): P
 
 /** The newest answer in main: what a thread can branch from. */
 const mainAnswer = async (agent: DurableObjectStub<PersonalAgentProbe>) =>
-  ((await snapshotOf(agent, MAIN_THREAD)).entries ?? []).findLast(({ kind }) => kind === 'pi.assistant')?.id
+  ((await snapshotOf(agent, PRIMARY_CHAT)).entries ?? []).findLast(({ kind }) => kind === 'pi.assistant')?.id
 
 /**
  * The owner's switches per conversation: main switches a tool and subagents off, a new thread (empty or branched)
@@ -611,13 +611,13 @@ const mainAnswer = async (agent: DurableObjectStub<PersonalAgentProbe>) =>
  */
 async function capabilitySequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
   await agent.seedNotes()
-  const mainBefore = await agent.conversationCapabilities(MAIN_THREAD)
-  await agent.setConversationCapability(MAIN_THREAD, {
+  const mainBefore = await agent.conversationCapabilities(PRIMARY_CHAT)
+  await agent.setConversationCapability(PRIMARY_CHAT, {
     target: { kind: 'tool', serverId: 'notes', name: 'write' },
     on: false,
   })
-  const mainAfter = await agent.setConversationCapability(MAIN_THREAD, { target: { kind: 'subagents' }, on: false })
-  await exchange(agent, MAIN_THREAD, 'which tools do you have?', 'capabilities-main')
+  const mainAfter = await agent.setConversationCapability(PRIMARY_CHAT, { target: { kind: 'subagents' }, on: false })
+  await exchange(agent, PRIMARY_CHAT, 'which tools do you have?', 'capabilities-main')
   const fresh = await agent.createConversation({})
   const branched = await branchMain(agent, await mainAnswer(agent))
   if (!fresh.ok || !branched.ok) return Response.json({ fresh, branched })
@@ -630,8 +630,8 @@ async function capabilitySequence(agent: DurableObjectStub<PersonalAgentProbe>):
   await exchange(agent, fresh.value.id, 'and after the reset?', 'capabilities-reset')
   // A tool switched off runs nothing (the unreachable server is never asked) and the result offers it to the owner.
   const offCall = 'call mcp_call {"serverId":"notes","name":"write","arguments":{}}'
-  const off = await exchange(agent, MAIN_THREAD, offCall, 'capabilities-off-call')
-  const offResult = ((await historyOf(agent, MAIN_THREAD)).entries ?? []).findLast(
+  const off = await exchange(agent, PRIMARY_CHAT, offCall, 'capabilities-off-call')
+  const offResult = ((await historyOf(agent, PRIMARY_CHAT)).entries ?? []).findLast(
     ({ kind }) => kind === 'pi.tool-result',
   )
   await agent.setConversationCapability(branched.value.id, { target: { kind: 'server', serverId: 'notes' }, on: false })
@@ -646,11 +646,11 @@ async function capabilitySequence(agent: DurableObjectStub<PersonalAgentProbe>):
     branchedView,
     freshOn,
     reset,
-    unknown: await agent.setConversationCapability(MAIN_THREAD, {
+    unknown: await agent.setConversationCapability(PRIMARY_CHAT, {
       target: { kind: 'server', serverId: 'nope' },
       on: false,
     }),
-    mainReset: await agent.setConversationCapability(MAIN_THREAD, { reset: 'parent' }),
+    mainReset: await agent.setConversationCapability(PRIMARY_CHAT, { reset: 'parent' }),
     tools: {
       main: (await agent.requestFor('which tools do you have?'))?.tools,
       thread: (await agent.requestFor('and in the thread?'))?.tools,
@@ -666,10 +666,10 @@ async function capabilitySequence(agent: DurableObjectStub<PersonalAgentProbe>):
  */
 async function subagentSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
   const spawn = `call subagent_spawn ${JSON.stringify({ name: 'scout', message: 'find the word' })}`
-  await agent.submit(MAIN_THREAD, spawn, 'subagent-spawn')
-  const spawned = await agent.settle(MAIN_THREAD, 'subagent-spawn')
+  await agent.submit(PRIMARY_CHAT, spawn, 'subagent-spawn')
+  const spawned = await agent.settle(PRIMARY_CHAT, 'subagent-spawn')
   const main = await until(
-    () => transcript(agent, MAIN_THREAD),
+    () => transcript(agent, PRIMARY_CHAT),
     (lines) =>
       lines.some((line) => line.includes('[from subagent')) && lines.at(-1)?.startsWith('pi.assistant') === true,
   )
@@ -705,7 +705,7 @@ const idle = async (agent: DurableObjectStub<PersonalAgentProbe>, view: Conversa
  * subagent stops mid-job), a closed conversation takes no message, and Reopen opens only the one asked for.
  */
 async function treeSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
-  await exchange(agent, MAIN_THREAD, 'remember the word lantern', 'tree-main')
+  await exchange(agent, PRIMARY_CHAT, 'remember the word lantern', 'tree-main')
   const outer = await branchMain(agent, await mainAnswer(agent))
   if (!outer.ok) return Response.json({ outer })
   await exchange(agent, outer.value.id, 'what was the word?', 'tree-outer')
@@ -730,7 +730,7 @@ async function treeSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promi
   const refused = await agent.submit(nested.value.id, 'still there?', 'tree-refused')
   const reopened = await agent.updateConversation(outer.value.id, { closed: false })
   const reopenedViews = await agent.conversations()
-  const main = await agent.updateConversation(MAIN_THREAD, { closed: true })
+  const main = await agent.updateConversation(PRIMARY_CHAT, { closed: true })
   return Response.json({
     outer: outer.value,
     nested: nested.value,
@@ -753,7 +753,7 @@ async function treeSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promi
  */
 async function subagentBranchSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
   const spawn = `call subagent_spawn ${JSON.stringify({ name: 'scout', message: 'find the word' })}`
-  await exchange(agent, MAIN_THREAD, spawn, 'subagent-branch-spawn')
+  await exchange(agent, PRIMARY_CHAT, spawn, 'subagent-branch-spawn')
   const listed = (await threadsUntil(agent, (views) => views.some(({ kind }) => kind === 'subagent'))).find(
     ({ kind }) => kind === 'subagent',
   )
@@ -852,8 +852,8 @@ async function memorySequence(agent: DurableObjectStub<PersonalAgentProbe>): Pro
     ['remember alpha', 'memory-1'],
     ['remember beta', 'memory-2'],
   ] as const) {
-    await agent.submit(MAIN_THREAD, input, operation)
-    await agent.settle(MAIN_THREAD, operation)
+    await agent.submit(PRIMARY_CHAT, input, operation)
+    await agent.settle(PRIMARY_CHAT, operation)
   }
   const summarized = await until(
     async () => {
@@ -862,17 +862,17 @@ async function memorySequence(agent: DurableObjectStub<PersonalAgentProbe>): Pro
     },
     (count) => count >= 2,
   )
-  await agent.submit(MAIN_THREAD, 'what do you remember?', 'memory-3')
-  await agent.settle(MAIN_THREAD, 'memory-3')
-  await agent.submit(MAIN_THREAD, 'call zoom {"id":0,"n":1}', 'memory-4')
-  const zoomed = await agent.settle(MAIN_THREAD, 'memory-4')
-  const view = (await snapshotOf(agent, MAIN_THREAD)).entries?.[0]
+  await agent.submit(PRIMARY_CHAT, 'what do you remember?', 'memory-3')
+  await agent.settle(PRIMARY_CHAT, 'memory-3')
+  await agent.submit(PRIMARY_CHAT, 'call zoom {"id":0,"n":1}', 'memory-4')
+  const zoomed = await agent.settle(PRIMARY_CHAT, 'memory-4')
+  const view = (await snapshotOf(agent, PRIMARY_CHAT)).entries?.[0]
   return Response.json({
     summarized,
     request: await agent.requestFor('what do you remember?'),
     zoomed,
     view: view?.kind,
-    earlier: linesOf((await historyOf(agent, MAIN_THREAD, view?.head)).entries ?? []),
+    earlier: linesOf((await historyOf(agent, PRIMARY_CHAT, view?.head)).entries ?? []),
   })
 }
 
@@ -880,7 +880,7 @@ async function memorySequence(agent: DurableObjectStub<PersonalAgentProbe>): Pro
 async function destroySequence(env: Env, name: string): Promise<Response> {
   const agent = env.AGENTS.getByName(name)
   await agent.residentSet(false)
-  const submitted = await agent.submit(MAIN_THREAD, 'remember this before deletion', 'destroy-op-1')
+  const submitted = await agent.submit(PRIMARY_CHAT, 'remember this before deletion', 'destroy-op-1')
   const before = await entries(agent)
   let deleted: unknown
   try {

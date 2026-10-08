@@ -1,5 +1,5 @@
 import { type ReactNode, useMemo, useRef, useState } from 'react'
-import { MAIN_THREAD, type ComposerSelection, type ConversationView } from '@goblin/contracts'
+import { PRIMARY_CHAT, type ComposerSelection, type ConversationView } from '@goblin/contracts'
 import { DropdownMenuItem, DropdownMenuSeparator, Input, useMediaQuery } from '@goblin/ui'
 import {
   GitBranchIcon,
@@ -401,7 +401,7 @@ export function DraftPane({ item }: { readonly item: ItemKey }) {
       <div className="chat-dock" ref={dock}>
         <Notice text={notice} />
         <MessageComposer
-          conversation={from?.conversation ?? MAIN_THREAD}
+          conversation={from?.conversation ?? PRIMARY_CHAT}
           draft={workspace.draftContents(item)}
           onNewThread={(contents) => workspace.moveDraft(contents, item)}
           attach

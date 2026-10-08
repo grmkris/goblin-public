@@ -514,6 +514,7 @@ export class ConversationRegistry {
       pi === undefined ? { replies: 0 } : await this.#replies.stats(session, pi, row.forkEntry ?? 0)
     return {
       id: row.chatId,
+      ...(row.role === 'primary' ? { primary: true } : {}),
       kind: row.kind,
       ...(row.title === null ? {} : { title: row.title }),
       ...(row.parentSession === null ? {} : { parent: row.parentSession }),

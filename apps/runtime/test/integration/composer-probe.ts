@@ -1,4 +1,4 @@
-import { MAIN_THREAD } from '@goblin/contracts'
+import { PRIMARY_CHAT } from '@goblin/contracts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { CapabilityProfiles } from '../../src/capabilities/profiles.ts'
 import { appConversations } from '../../src/storage/schema.ts'
@@ -52,13 +52,13 @@ export async function helperExclusionsProbe(storage: DurableObjectStorage) {
 /** Real owner submission rejects stale chips before model work and references helpers without routing to them. */
 export async function composerSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
   const before = await agent.modelRequestCount()
-  const invalid = await agent.submit(MAIN_THREAD, 'Keep this draft', 'invalid-selection', {
+  const invalid = await agent.submit(PRIMARY_CHAT, 'Keep this draft', 'invalid-selection', {
     selections: [{ kind: 'skill', serverId: 'missing', uri: 'skill://missing/SKILL.md' }],
   })
   const noInvalidModelWork = before === (await agent.modelRequestCount())
   await exchange(
     agent,
-    MAIN_THREAD,
+    PRIMARY_CHAT,
     `call subagent_spawn ${JSON.stringify({ name: 'scout', message: 'bounded report' })}`,
     'helper-spawn',
   )

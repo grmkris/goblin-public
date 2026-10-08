@@ -1,5 +1,5 @@
 import type { PersonalAgent } from '../../src/agent.ts'
-import { MAIN_THREAD, type RoutineDefinition } from '@goblin/contracts'
+import { PRIMARY_CHAT, type RoutineDefinition } from '@goblin/contracts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import { unwrap } from '../../src/http/rpc.ts'
@@ -73,7 +73,7 @@ export async function routineQuestionProbe(storage: DurableObjectStorage, agent:
   await waitFor(store, first.id, 'waiting_owner')
   const record = store.get(first.id)
   if (record.sessionId === null) throw new Error('Question thread missing')
-  await agent.stop(MAIN_THREAD)
+  await agent.stop(PRIMARY_CHAT)
   const mainStopPreserved = store.get(first.id).state === 'waiting_owner'
   const answered = await agent.submit(record.sessionId, 'Use the bounded fixture.', 'question-answer')
   await waitFor(store, first.id, 'completed')
@@ -145,7 +145,7 @@ export async function routineStopProbe(storage: DurableObjectStorage, agent: Per
     operationId: 'slow-third-run',
     confirmRun: true,
   })
-  await agent.stop(MAIN_THREAD)
+  await agent.stop(PRIMARY_CHAT)
   const mainStopPreserved = runs.get(first.id).state === 'running' && runs.get(second.id).state === 'running'
   for (let index = 2; index >= 1; index -= 1) {
     const due = Math.floor(Date.now() / 900_000) * 900_000 - index * 900_000
