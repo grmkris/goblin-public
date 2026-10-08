@@ -240,6 +240,9 @@ describe('durable admission', () => {
     expect(admission(manifest, [prior], model, 100, 20)).toBe('reservation-breach')
     const fresh = { ...manifest, runId: 'fresh' }
     expect(admission(fresh, [prior], model, 100, 20)).toBeNull()
+    expect(admission(fresh, [reservation], model, 100, 20)).toBe('unfinished-attempt')
+    const unknown = settle(reservation, model, { status: 0, latencyMs: 30_000, error: 'timeout' }, undefined)
+    expect(admission(fresh, [unknown], model, 100, 20)).toBe('unknown-usage')
     expect(admission({ ...fresh, limits: { ...fresh.limits, maxUsd: prior.costUsd } }, [prior], model, 100, 20)).toBe(
       'budget-ceiling',
     )
