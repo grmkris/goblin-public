@@ -1,10 +1,11 @@
 import type { UsageToday } from '@goblin/contracts'
-import { Count, UsageRing } from '@goblin/ui'
+import { Count, Popover, PopoverContent, PopoverTrigger, UsageRing } from '@goblin/ui'
 import { budgetFraction } from '../lib/usage.ts'
 
 /**
- * How much of today's model budget is spent (the ring) and, on wider screens, how full the conversation's context
- * is. The numbers roll when a turn ends rather than with every streamed token.
+ * How much of today's model budget is spent (the ring) and, in a wide pane, how full the conversation's context is.
+ * The numbers roll when a turn ends rather than with every streamed token. The figures in words open on hover, or on a
+ * tap where there is no hover (a phone shows the ring alone, and had no way to read them).
  */
 export function UsageIndicator({
   usage,
@@ -17,23 +18,33 @@ export function UsageIndicator({
 }) {
   if (usage === undefined) return null
   const today = budgetFraction(usage)
-  const label = `${Math.round(today * 100)}% of today's model budget used${
-    context === undefined
-      ? ''
-      : `; ${context.toLocaleString()} tokens in context${contextWindow === undefined ? '' : ` of ${contextWindow.toLocaleString()}`}`
-  }`
+  const budget = `${Math.round(today * 100)}% of today's model budget used`
+  const of = contextWindow === undefined ? '' : ` of ${contextWindow.toLocaleString()}`
+  const tokens = context === undefined ? undefined : `${context.toLocaleString()} tokens in context${of}`
+  const label = tokens === undefined ? budget : `${budget}; ${tokens}`
   return (
-    <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={label}>
-      <UsageRing value={today} label={label} />
-      <span className="hidden items-center gap-1 md:flex" aria-hidden>
-        <Count value={today} percent /> today
-        {context !== undefined && (
-          <>
-            <span>·</span>
-            <Count value={context} compact /> in context
-          </>
-        )}
-      </span>
-    </span>
+    <Popover>
+      <PopoverTrigger
+        openOnHover
+        delay={400}
+        render={<button type="button" className="usage-indicator" aria-label={label} />}
+      >
+        <UsageRing value={today} label={label} />
+        <span className="hidden items-center gap-1 md:flex" aria-hidden>
+          <Count value={today} percent /> today
+          {context !== undefined && (
+            <>
+              <span>·</span>
+              <Count value={context} compact /> in context
+            </>
+          )}
+        </span>
+      </PopoverTrigger>
+      <PopoverContent side="top" className="w-auto max-w-72">
+        <p>{budget}</p>
+        {tokens !== undefined && <p className="text-muted-foreground">{tokens}</p>}
+        <p className="text-xs text-muted-foreground">It starts again at 00:00 UTC.</p>
+      </PopoverContent>
+    </Popover>
   )
 }

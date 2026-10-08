@@ -1,7 +1,9 @@
+/* Home lays itself out by its own width, not the screen's: in a narrow pane on a wide screen it is a phone's Home. */
 .home-surface {
   position: relative;
   margin-block: 1rem 0;
   min-width: 0;
+  container: home / inline-size;
 }
 [data-home-transcript] {
   --message-scroller-inset-bottom: calc(var(--dock-height, 8rem) + var(--keyboard-inset, 0px) + 1rem);
@@ -152,18 +154,19 @@
 .home-receipt {
   padding-inline: 0.875rem;
 }
-@media (max-width: 639px) {
+@container home (max-width: 38rem) {
   .home-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .home-tile[data-size='wide'] {
     grid-column: span 2;
   }
+  .home-header {
+    gap: 0.25rem;
+    padding-inline-end: 1.25rem;
+  }
   .home-header h2 {
     white-space: nowrap;
-  }
-  .home-header {
-    padding-inline-end: 1.25rem;
   }
   .home-header h2 .home-date-wide {
     display: none;
@@ -171,6 +174,10 @@
   .home-header h2 .home-date-narrow {
     display: inline;
     font-size: 12px;
+  }
+  .home-header-actions button {
+    font-size: 11px;
+    padding-inline: 0.375rem;
   }
 }
 @media (hover: hover) {
@@ -306,15 +313,6 @@
 .home-tile-request span {
   color: var(--muted-foreground);
   font-size: 12px;
-}
-@media (max-width: 639px) {
-  .home-header {
-    gap: 0.25rem;
-  }
-  .home-header-actions button {
-    font-size: 11px;
-    padding-inline: 0.375rem;
-  }
 }
 
 .home-app-name {
