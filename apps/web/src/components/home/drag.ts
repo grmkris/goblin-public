@@ -1,8 +1,9 @@
-import { type PointerEvent as ReactPointerEvent, type RefObject, useEffect, useLayoutEffect, useRef } from 'react'
+import { type PointerEvent as ReactPointerEvent, type RefObject, useEffect, useRef } from 'react'
 import type { HomeOperation } from '@goblin/contracts'
 import { nearestHomeSlot, projectHomeDrag } from '../../lib/home-drag.ts'
 import { useAppHost } from '../apps/host.tsx'
-import { homeElements, settleTile } from './motion.ts'
+import type { Spring } from '../../lib/spring.ts'
+import { type Release, homeElements } from './motion.ts'
 
 type Gesture = {
   readonly id: string
@@ -60,30 +61,26 @@ function useLiftedTouch(root: RefObject<HTMLElement | null>, current: RefObject<
   }, [root, current])
 }
 
-/** Native scrolling until the touch long press; lifted tiles follow the pointer with the original grab offset. */
+/** The spring a dropped tile settles on: a little give, because a throw carried momentum into it. */
+const DROP: Spring = { damping: 0.8, response: 0.3 }
+
+/**
+ * Native scrolling until the touch long press; lifted tiles follow the pointer with the original grab offset. A drop
+ * hands its place and velocity to Home's motion: the tile goes straight from there to its new slot (the edit shows at
+ * once), or back to its own if it moved nowhere, so it never heads home first and turns around.
+ */
 export function useHomeDrag(
   root: RefObject<HTMLElement | null>,
   edit: (ops: readonly HomeOperation[]) => Promise<void>,
-  revision: number | undefined,
+  motion: { readonly release: (drop: Release) => void; readonly unreleased: () => void },
 ) {
   const { kick } = useAppHost()
   const current = useRef<Gesture | undefined>(undefined)
-  const settling = useRef<(() => void) | undefined>(undefined)
   const latest = useRef(edit)
   latest.current = edit
-  useLayoutEffect(() => {
-    settling.current?.()
-  }, [revision])
   useLiftedTouch(root, current)
-  useEffect(
-    () => () => {
-      clearTimeout(current.current?.timer)
-      settling.current?.()
-    },
-    [],
-  )
+  useEffect(() => () => clearTimeout(current.current?.timer), [])
   const start = (event: ReactPointerEvent<HTMLElement>, id: string) => {
-    settling.current?.()
     current.current = beginGesture(event, id)
   }
   const move = (event: ReactPointerEvent<HTMLElement>) => {
@@ -100,6 +97,8 @@ export function useHomeDrag(
     gesture.velocity = { x: (event.clientX - gesture.last.x) / seconds, y: (event.clientY - gesture.last.y) / seconds }
     gesture.last = { x: event.clientX, y: event.clientY, at: event.timeStamp }
     gesture.tile.style.transform = `translate3d(${event.clientX - gesture.start.x}px,${event.clientY - gesture.start.y}px,0) scale(1.03)`
+    // An App tile's frame follows its slot only when told to: tell it every move.
+    kick()
   }
   const end = (event: ReactPointerEvent<HTMLElement>) => {
     const gesture = current.current
@@ -111,30 +110,23 @@ export function useHomeDrag(
     const rect = gesture.tile.getBoundingClientRect()
     const nodes = homeElements(root.current)
     gesture.tile.style.transform = ''
-    const target = gesture.tile.getBoundingClientRect()
-    const cancelled = event.type === 'pointercancel'
     const velocity = event.timeStamp - gesture.last.at > 100 ? { x: 0, y: 0 } : gesture.velocity
     const point = {
       x: projectHomeDrag(rect.x + rect.width / 2, velocity.x),
       y: projectHomeDrag(rect.y + rect.height / 2, velocity.y),
     }
-    if (!cancelled)
-      void latest.current([
-        {
-          kind: 'move',
-          id: gesture.id,
-          index: nearestHomeSlot(
-            point,
-            nodes.map((node) => node.getBoundingClientRect()),
-          ),
-        },
-      ])
-    settling.current = settleTile(
-      gesture.tile,
-      { x: { value: rect.x - target.x, velocity: velocity.x }, y: { value: rect.y - target.y, velocity: velocity.y } },
-      { damping: 0.8, response: 0.3 },
-      kick,
+    const index = nearestHomeSlot(
+      point,
+      nodes.map((node) => node.getBoundingClientRect()),
     )
+    motion.release({ id: gesture.id, rect, velocity, spring: DROP })
+    if (event.type === 'pointercancel' || index === nodes.indexOf(gesture.tile)) {
+      motion.unreleased()
+      return
+    }
+    void latest.current([{ kind: 'move', id: gesture.id, index }])
+    // The edit shows within this event, before the next paint; if it did not go out, the drop goes home instead.
+    queueMicrotask(motion.unreleased)
   }
   return { start, move, end }
 }

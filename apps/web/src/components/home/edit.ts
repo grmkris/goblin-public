@@ -1,10 +1,18 @@
 import { useRef, useState } from 'react'
-import { HomeEditResult, type HomeOperation } from '@goblin/contracts'
-import { Schema } from 'effect'
-import { failureText, request } from '../../lib/boundary.ts'
+import type { HomeOperation } from '@goblin/contracts'
+import { ApiFailure, failureText } from '../../lib/boundary.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 
-/** Owner controls use the same revision and replay boundary as the agent. Never replay stale intent silently. */
+const STALE = 'Home changed in another tab. Try this edit again.'
+
+/** What went wrong with a Home edit, in words: the server answers a stale revision with 409. */
+export const homeFailureText = (cause: unknown, stale = STALE): string =>
+  cause instanceof ApiFailure && cause.status === 409 ? stale : failureText(cause)
+
+/**
+ * Owner controls use the same revision and replay boundary as the agent. The edit shows at once (the feed's pending
+ * Home) and goes back if the server refuses it. Never replay stale intent silently.
+ */
 export function useHomeEdit() {
   const feed = useWorkspaceFeed()
   const [pending, setPending] = useState(false)
@@ -16,19 +24,9 @@ export function useHomeEdit() {
     setPending(true)
     setNotice('')
     try {
-      const result = Schema.decodeUnknownSync(HomeEditResult)(
-        await request('/api/home', {
-          body: {
-            // @effect-diagnostics-next-line cryptoRandomUUID:off -- each explicit owner edit has a new durable operation ID.
-            operationId: crypto.randomUUID(),
-            expectedRevision: feed.home.revision,
-            ops,
-          },
-        }),
-      )
-      if (result.kind !== 'applied') setNotice('Home changed in another tab. Try this edit again.')
+      if ((await feed.editHome(ops)).kind !== 'applied') setNotice(STALE)
     } catch (cause) {
-      setNotice(failureText(cause))
+      setNotice(homeFailureText(cause))
     } finally {
       busy.current = false
       setPending(false)

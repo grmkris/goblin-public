@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { HomeTile, HomeOperation } from '@goblin/contracts'
+import type { HomeTile } from '@goblin/contracts'
 import { Button, useMessageScroller } from '@goblin/ui'
 import { ArrowUpRightIcon, MessageSquareIcon, GripVerticalIcon, XIcon } from 'lucide-react'
 import { appKey, conversationKey } from '../../lib/workspace.ts'
@@ -232,12 +232,9 @@ export function HomeSurface({ onDraft }: { readonly onDraft: (text: string) => v
   const [editing, setEditing] = useState(false)
   useShowHome(root)
   const tiles = home?.tiles ?? []
-  const motion = useHomeMotion(root, tiles)
-  const edit = (ops: readonly HomeOperation[]) => {
-    motion.remember()
-    return owner.edit(ops)
-  }
-  const drag = useHomeDrag(root, edit, home?.revision)
+  const motion = useHomeMotion(root, tiles, home !== undefined)
+  const edit = owner.edit
+  const drag = useHomeDrag(root, edit, motion)
   useEffect(host.kick, [editing, host.kick])
   return (
     <section className="home-surface" aria-label="Home" ref={root} data-editing={editing || undefined}>

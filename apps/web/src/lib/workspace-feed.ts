@@ -81,6 +81,22 @@ export function withPendingApps(
   return { state: changes.length === 0 ? state : applyChanges(state, changes), settled }
 }
 
+/** An owner's Home edit shown as it will be, until the feed's Home reaches revision `until`. */
+export type PendingHome = { readonly until: number; readonly layout: HomeLayout }
+
+/**
+ * `state` with the owner's Home edit shown, until the feed's own Home has caught up with it (`settled`): a change the
+ * feed sends meanwhile about something else must not put the old order back on screen for a moment.
+ */
+export function withPendingHome(
+  state: WorkspaceState,
+  pending: PendingHome | undefined,
+): { readonly state: WorkspaceState; readonly settled: boolean } {
+  if (pending === undefined) return { state, settled: false }
+  if ((state.home?.revision ?? -1) >= pending.until) return { state, settled: true }
+  return { state: { ...state, home: pending.layout }, settled: false }
+}
+
 /** What a conversation's agent is doing now. */
 export const activityState = (state: WorkspaceState, id: string): ConversationActivity['state'] =>
   state.activity.get(id)?.state ?? 'idle'

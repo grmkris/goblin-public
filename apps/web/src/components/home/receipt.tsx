@@ -3,12 +3,13 @@ import { HomeEdit, HomeEditResult } from '@goblin/contracts'
 import { Schema } from 'effect'
 import { Button, Receipt } from '@goblin/ui'
 import type { ToolPart } from '../../lib/parts.ts'
-import { failureText, record, request } from '../../lib/boundary.ts'
+import { record, request } from '../../lib/boundary.ts'
 import { showHome } from '../../lib/home.ts'
 import { conversationKey } from '../../lib/workspace.ts'
 import { useWorkspace } from '../workspace.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { ToolCard } from '../parts/tool-part.tsx'
+import { homeFailureText } from './edit.ts'
 
 export function HomeReceipt({ part }: { readonly part: ToolPart }) {
   const details = record(part.result?.details)
@@ -42,7 +43,7 @@ export function HomeReceipt({ part }: { readonly part: ToolPart }) {
       setDone(result.kind === 'applied')
       setNotice(result.kind === 'applied' ? result.message : 'Home changed; try again.')
     } catch (cause) {
-      setNotice(failureText(cause))
+      setNotice(homeFailureText(cause, 'Home changed; try again.'))
     } finally {
       setPending(false)
     }
