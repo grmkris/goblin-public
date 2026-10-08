@@ -13,6 +13,7 @@ import {
   FilePath,
   UpdateApp,
   UpdateConversation,
+  QueueRemoval,
 } from '@goblin/contracts'
 import type { AgentRpc, RuntimeEnv } from './env.ts'
 import {
@@ -166,6 +167,8 @@ const conversationRoutes: Readonly<
   'POST stop': async (request, agent, thread) =>
     json({ stopped: unwrap(await agent.stop(thread, (await readJson(request, Stop)).operationId)) }),
   'GET queue': async (_request, agent, thread) => json(unwrap(await agent.conversationQueue(thread))),
+  'DELETE queue': async (request, agent, thread) =>
+    json(unwrap(await agent.removeQueuedInput(thread, await readJson(request, QueueRemoval)))),
   'GET events': (_request, agent, thread) => agent.fetch(`https://agent/conversations/${thread}/events`),
   'GET snapshot': (_request, agent, thread) => agent.fetch(`https://agent/conversations/${thread}/snapshot`),
   'GET history': (request, agent, thread) =>
@@ -342,7 +345,8 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   if (
     ['/api/routines', '/api/files', '/api/apps', '/api/agent-apps', '/api/home', '/api/mcp'].some((prefix) =>
       under(path, prefix),
-    )
+    ) ||
+    (request.method === 'DELETE' && /^\/api\/conversations\/\d{1,12}\/queue$/u.test(path))
   )
     browserWrite(request, env.APP_URL)
   if (path.startsWith('/api/billing/')) return Effect.runPromise(billingApi(request, env, userId))

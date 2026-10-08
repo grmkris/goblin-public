@@ -22,7 +22,7 @@ function Dock({ inline }: { readonly inline: boolean }) {
         <div className={inline ? undefined : 'dock-cards'}>
           {conversation.notice !== '' && <p role="alert">{conversation.notice}</p>}
           {conversation.projection?.queueNotice !== '' && <p role="status">{conversation.projection?.queueNotice}</p>}
-          <QueuedMessages inputs={conversation.projection?.queued ?? []} />
+          <QueuedMessages inputs={conversation.projection?.queued ?? []} onRemove={conversation.removeQueued} />
         </div>
         <div className="dock-composer">
           <MessageComposer

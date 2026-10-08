@@ -1,7 +1,7 @@
 import { Agent } from 'agents'
 import { type Extension } from '@earendil-works/pi-durable'
-import { type CapabilityChange, type JsonObject, MAIN_THREAD } from '@goblin/contracts'
-import { ownerQueue } from './conversation-queue.ts'
+import { type CapabilityChange, type JsonObject, MAIN_THREAD, type QueueRemoval } from '@goblin/contracts'
+import { ownerQueue, removeOwnerQueuedInput } from './conversation-queue.ts'
 import type { OwnerMessageContext } from './agent-program.ts'
 import { composerOptions as composerOptionsProgram } from './composer.ts'
 import type { AgentAppChange, AppCall, AppDiagnostic, CreateApp, DeleteAgentApp, UpdateApp } from '@goblin/contracts'
@@ -269,6 +269,9 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
   conversationQueue(thread: string) {
     return this.#owner(ownerQueue(this.harness, thread))
+  }
+  removeQueuedInput(thread: string, input: QueueRemoval) {
+    return this.#owner(removeOwnerQueuedInput(this.harness, thread, input))
   }
   composerOptions(thread: string) {
     return this.#owner(composerOptionsProgram(thread, (program) => this.#runOrThrow(program)))

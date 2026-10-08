@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createRegistry, defineExtension, defineTool, Harness, watchEvents } from '@earendil-works/pi-durable'
 import { MemoryStorage } from '@earendil-works/pi-durable/storage/memory'
 import { Type } from '@earendil-works/pi-ai'
-import { queuedInputs } from '../src/conversation-queue.ts'
+import { queuedInputs, withdrawQueuedInput } from '../src/conversation-queue.ts'
 import { BACKGROUND } from '../src/pi/context.ts'
 import { authoredContent, ownerContent } from '../src/pi/content.ts'
 import { fixtureModels, model } from './integration/model.ts'
@@ -52,7 +52,7 @@ describe('queued content from real Pi (in memory, keyless fixture)', () => {
       const content = ownerContent(
         'same words',
         [{ origin: { serverId: 'board' }, text: 'shared' }],
-        [{ path: 'file.txt', name: 'file.txt', mimeType: 'text/plain', size: 3 }],
+        [{ path: '/uploads/file.txt', name: 'file.txt', mimeType: 'text/plain', size: 3 }],
       )
       const second = await root.submit({ type: 'input', content, requestId: 'second' }, BACKGROUND)
       const third = await root.submit({ type: 'input', content, requestId: 'third' }, BACKGROUND)
@@ -76,6 +76,29 @@ describe('queued content from real Pi (in memory, keyless fixture)', () => {
         events.snapshot.entries.flatMap((entry) => entry.model ?? []).filter((message) => message.role === 'user'),
       ).toHaveLength(4)
       await events.stop()
+    } finally {
+      release()
+      await pi.close(BACKGROUND)
+    }
+  })
+
+  it('withdraws only a queued input, leaves the held run alive, and makes repeats safe', async () => {
+    const { pi, root, first, release } = await heldQueue()
+    try {
+      const queued = await root.submit({ type: 'input', content: 'remove me', requestId: 'remove-me' }, BACKGROUND)
+      expect((await queued.status(BACKGROUND)).status).toBe('queued')
+      expect(await withdrawQueuedInput(pi, String(root.id), queued.id)).toEqual({ status: 'removed' })
+      expect(await withdrawQueuedInput(pi, String(root.id), queued.id)).toEqual({ status: 'already_settled' })
+      const write = await root.submit({ type: 'write', entry: { kind: 'fixture.note' } }, BACKGROUND)
+      expect(await withdrawQueuedInput(pi, String(root.id), write.id)).toEqual({ status: 'not_found' })
+      expect((await write.status(BACKGROUND)).status).toBe('queued')
+      expect(await withdrawQueuedInput(pi, '999', first.id)).toEqual({ status: 'not_found' })
+      expect(await withdrawQueuedInput(pi, String(root.id), Number.MAX_SAFE_INTEGER)).toEqual({ status: 'not_found' })
+      expect(await withdrawQueuedInput(pi, String(root.id), first.id)).toEqual({ status: 'already_started' })
+      expect((await first.status(BACKGROUND)).status).toBe('placed')
+      release()
+      await first.wait(BACKGROUND)
+      expect(await queuedInputs(pi, String(root.id))).toEqual({ inputs: [] })
     } finally {
       release()
       await pi.close(BACKGROUND)

@@ -1,6 +1,6 @@
 import { authFixtureRoute, fixtureAuth } from './auth-fixture.ts'
 /** Native auth D1 + owner Agent fixture; test levers never enter the deployed Worker. */
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import runtime from '../../src/worker.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
 import { failureResponse } from '../../src/http/respond.ts'
@@ -8,7 +8,7 @@ import { makeBillingStore } from '../../src/billing/store.ts'
 import { liveApi } from '../../src/billing/dodo.ts'
 import { billingTestRoute } from '../../src/billing/test-route.ts'
 import { PersonalAgent } from '../../src/agent.ts'
-import { scriptedStreams } from './model.ts'
+import { queueModel } from './queue-model.ts'
 import { approvalsProbe } from './approvals-probe.ts'
 import { requireUserSession } from '../../src/auth/index.ts'
 import { AppsMcpFixture } from './apps-mcp.ts'
@@ -16,10 +16,15 @@ import { AppsMcpFixture } from './apps-mcp.ts'
 export class OwnerAgent extends PersonalAgent {
   readonly #mcp = new AppsMcpFixture()
   protected override modelStreams() {
-    return scriptedStreams()
+    return queueModel(this).streams
   }
   override async onRequest(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname
+    if (path === '/test/queue/held') return Response.json({ inputs: queueModel(this).held() })
+    if (path === '/test/queue/release') {
+      const { input } = Schema.decodeUnknownSync(Schema.Struct({ input: Schema.String }))(await request.json())
+      return Response.json({ released: queueModel(this).release(input) })
+    }
     if (path === '/test/approvals/calls') return Response.json(this.#mcp.calls)
     if (path === '/test/approvals/recovery')
       return Response.json(await approvalsProbe(this.ctx.storage, this.env.CREDENTIAL_KEY))
@@ -39,6 +44,12 @@ export default {
     try {
       const authProbe = await authFixtureRoute(input, env)
       if (authProbe !== undefined) return authProbe
+      if (url.pathname.startsWith('/__test/queue/')) {
+        const { userId } = await requireUserSession(input, env)
+        return env.AGENTS.getByName(userId).fetch(
+          new Request(`https://agent/test/queue/${url.pathname.split('/').at(-1)}`, input),
+        )
+      }
       if (url.pathname.startsWith('/__test/approvals/')) {
         const { userId } = await requireUserSession(input, env)
         return env.AGENTS.getByName(userId).fetch(`https://agent/test/approvals/${url.pathname.split('/').at(-1)}`)

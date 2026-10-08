@@ -1,5 +1,6 @@
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AppContext, ComposerSelection } from '@goblin/contracts'
+import { type AppContext, type ComposerSelection, QueueRemovalResult } from '@goblin/contracts'
+import * as Schema from 'effect/Schema'
 import { failureText, isNumber, record, records, request } from '../lib/boundary.ts'
 import { BrowserPiEvents, type StreamStatus } from '../lib/conversation-stream.ts'
 import { type Lease, type StreamState, StreamPool } from '../lib/stream-pool.ts'
@@ -106,6 +107,25 @@ export function useConversation(thread: string, visible = true) {
       setFailure(failureText(error))
     }
   }
+  async function removeQueued(submissionId: number): Promise<boolean> {
+    try {
+      const result = Schema.decodeUnknownSync(QueueRemovalResult)(
+        await request(`/api/conversations/${thread}/queue`, { method: 'DELETE', body: { submissionId } }),
+      )
+      streams.refreshQueue(thread)
+      setFailure(
+        result.status === 'removed'
+          ? ''
+          : result.status === 'already_started'
+            ? 'This message has already started.'
+            : 'This message is no longer queued.',
+      )
+      return result.status === 'removed'
+    } catch (error) {
+      setFailure(failureText(error))
+      return false
+    }
+  }
   // A suspended conversation is off screen; it shows its last state as it was.
   const status: StreamStatus = state.status === 'suspended' ? 'connected' : state.status
   return {
@@ -115,6 +135,7 @@ export function useConversation(thread: string, visible = true) {
     report: setFailure,
     send,
     stop,
+    removeQueued,
   }
 }
 

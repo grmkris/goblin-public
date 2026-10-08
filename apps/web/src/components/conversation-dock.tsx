@@ -107,6 +107,7 @@ function DockCards({
   id,
   onAnswer,
   queue,
+  onRemove,
 }: {
   readonly queue: Parameters<typeof QueuedMessages>[0]['inputs']
   readonly notices: readonly string[]
@@ -114,13 +115,14 @@ function DockCards({
   readonly waiting: ReturnType<typeof openInteractions>
   readonly id: string
   readonly onAnswer: Parameters<typeof InteractionCards>[0]['onAnswer']
+  readonly onRemove: (id: number) => Promise<boolean>
 }) {
   return (
     <div className="dock-cards">
       {notices.map((text, index) => (
         <Notice key={`${index}:${text}`} text={text} />
       ))}
-      <QueuedMessages inputs={queue} />
+      <QueuedMessages inputs={queue} onRemove={onRemove} />
       {open && (
         <>
           <InteractionCards interactions={waiting} thread={id} onAnswer={onAnswer} />
@@ -183,7 +185,7 @@ export function ConversationDock({
   readonly sendLabel?: string | undefined
 }) {
   const workspace = useWorkspace()
-  const { projection, notice, send, stop } = conversation
+  const { projection, notice, send, stop, removeQueued } = conversation
   const sendOwn = useSendWithAppContext(id, send)
   const { running, usage, waiting, context, presence } = useDockStatus(conversation, parts)
   return (
@@ -195,6 +197,7 @@ export function ConversationDock({
         id={id}
         onAnswer={send}
         queue={projection?.queued ?? []}
+        onRemove={removeQueued}
       />
       {closed !== undefined ? (
         <ClosedNotice by={closed} onReopen={onReopen} />

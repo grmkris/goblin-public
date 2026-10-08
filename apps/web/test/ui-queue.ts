@@ -65,6 +65,9 @@ async function install(page: Page) {
   let hold: (() => void) | undefined
   let failNext = false
   let failReads = false
+  let removal: Promise<void> | undefined
+  let releaseRemoval: (() => void) | undefined
+  let refuseRemoval = false
   await page.addInitScript(() => {
     let opened = 0
     class Events extends EventTarget {
@@ -95,6 +98,20 @@ async function install(page: Page) {
           run: { inputs: [1] },
         },
       })
+    if (action === 'queue' && request.method() === 'DELETE') {
+      const { submissionId } = Schema.decodeUnknownSync(Schema.Struct({ submissionId: Schema.Int }))(
+        request.postDataJSON(),
+      )
+      await removal
+      if (refuseRemoval) {
+        refuseRemoval = false
+        return route.fulfill({ status: 503, json: { error: 'Unavailable' } })
+      }
+      inputs = inputs.filter(({ id }) => id !== submissionId)
+      await route.fulfill({ json: { status: 'removed' } })
+      await events(page, inputs)
+      return
+    }
     if (action === 'queue') {
       reads += 1
       if (failReads) return route.fulfill({ status: 503, json: { error: 'Unavailable' } })
@@ -122,6 +139,17 @@ async function install(page: Page) {
   })
   page.on('pageerror', (error) => errors.push(error.message))
   return {
+    holdRemoval: (refuse = false) => {
+      refuseRemoval = refuse
+      removal = new Promise<void>((resolve) => {
+        releaseRemoval = resolve
+      })
+    },
+    releaseRemoval: () => {
+      releaseRemoval?.()
+      removal = undefined
+      releaseRemoval = undefined
+    },
     release: () => {
       hold?.()
       hold = undefined
@@ -195,12 +223,27 @@ async function matrix(origin: string, page: Page, label: string, dark: boolean) 
   await full.locator('[data-submission="9"]').waitFor()
   assert.equal(await field.inputValue(), '')
   assert.deepEqual(fixture.submissions[0], fixture.submissions[1], 'unchanged retry uses the same operation ID')
+  fixture.holdRemoval(true)
+  const remove = full.getByRole('button', { name: 'Remove queued message 2', exact: true })
+  await remove.click()
+  assert(await remove.isDisabled(), 'only the selected removal is busy')
+  assert(await full.getByRole('button', { name: 'Remove queued message 3', exact: true }).isEnabled())
+  assert.equal(await field.inputValue(), '', 'removal leaves the composer available')
+  fixture.releaseRemoval()
+  await full.getByRole('alert').getByText('Request failed (Unavailable)', { exact: true }).waitFor()
+  assert(await remove.isEnabled(), 'a failed removal can be retried')
+  assert.equal(await full.locator('[data-submission="6"]').count(), 1, 'a failed removal keeps its input')
+  assert.equal(await inline.locator('[data-submission="6"]').count(), 1)
+  await remove.click()
+  await full.locator('[data-submission="6"]').waitFor({ state: 'hidden' })
+  await inline.locator('[data-submission="6"]').waitFor({ state: 'hidden' })
+  assert(await full.getByPlaceholder('Add a follow-up…').isVisible(), 'removing a queued item leaves active work alive')
   await fixture.placed()
   await full.locator('[data-submission="5"]').waitFor({ state: 'hidden' })
   await page.reload()
   await full.locator('[data-submission="9"]').waitFor()
-  assert.equal(await full.locator('[data-submission]').count(), 4, 'reload restores pending inputs')
-  results.push({ label, bounds, retry: true, restored: true, sharedStream: true })
+  assert.equal(await full.locator('[data-submission]').count(), 3, 'reload restores pending inputs')
+  results.push({ label, bounds, retry: true, restored: true, sharedStream: true, removal: true, removalRetry: true })
 }
 
 const server = await createServer({ configFile: path.join(import.meta.dirname, 'browser/vite.config.ts') })

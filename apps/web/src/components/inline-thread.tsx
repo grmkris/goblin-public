@@ -169,7 +169,7 @@ function InlineDock({
   readonly conversation: ReturnType<typeof useConversation>
   readonly parts: readonly Part[]
 }) {
-  const { projection, status, notice, send, stop } = conversation
+  const { projection, status, notice, send, stop, removeQueued } = conversation
   const workspace = useWorkspace()
   const sendOwn = useSendWithAppContext(id, send)
   const running = projection?.running ?? false
@@ -179,7 +179,7 @@ function InlineDock({
     <div className="inline-dock">
       <Notice text={notice} />
       <Notice text={projection?.queueNotice ?? ''} />
-      <QueuedMessages inputs={projection?.queued ?? []} />
+      <QueuedMessages inputs={projection?.queued ?? []} onRemove={removeQueued} />
       <InteractionCards interactions={waiting} thread={id} onAnswer={send} />
       <SharedContextChips conversation={id} />
       {presence.state !== 'idle' && presence.state !== 'offline' && (

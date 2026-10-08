@@ -8,6 +8,7 @@ import Stack from './owner-stack.ts'
 import { approvalsCase } from './approvals-case.ts'
 import { appsCase } from './apps-case.ts'
 import { agentAppViewCase } from './agent-app-view-case.ts'
+import { queueCase } from './queue-case.ts'
 import { person, call, ownerFetch } from './owner-requests.ts'
 
 const harness = Test.make({
@@ -17,6 +18,10 @@ const harness = Test.make({
   dev: true,
 })
 const stack = harness.beforeAll(harness.deploy(Stack))
+harness.test(
+  'native: queued follow-ups remain visible, safe removal preserves active work, placement wins, and owners stay isolated',
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => queueCase(url)))),
+)
 harness.test(
   'native: ask-first approves frozen arguments once, refuses, fences revocation, and never replays recovery',
   Effect.gen(function* () {

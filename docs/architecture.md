@@ -28,7 +28,7 @@ Runtime paths below are relative to `apps/runtime/src/`; browser paths are relat
 | `/.well-known/oauth-protected-resource*` | Protected-resource metadata for `/mcp`, the same document at every path. |
 | `/.well-known/*`, `/api/auth/*` | Better Auth: sign-up and sign-in, the OAuth authorization server for inbound clients. |
 | `/mcp` | goblin's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented, and `goblin:inspect` adds read-only inspection (ADR 0024). |
-| `/api/*` | Owner API. A session cookie selects the signed-in user's agent; writes reject an `Origin` header if it names another origin. Browser writes under `/api/mcp/`, `/api/apps`, `/api/agent-apps`, `/api/home`, `/api/files` and `/api/routines` also require the same-origin CSRF marker. |
+| `/api/*` | Owner API. A session cookie selects the signed-in user's agent; writes reject an `Origin` header if it names another origin. Browser writes under `/api/mcp/`, `/api/apps`, `/api/agent-apps`, `/api/home`, `/api/files` and `/api/routines`, plus queue removal, also require the same-origin CSRF marker. |
 | `/hooks/mcp-events/<userId>/<token>` | Signed MCP Events; the user-bound route token is checked before object lookup. |
 | `/hooks/myagent/<userId>/<token>` | Legacy Telegram doorbell fallback for servers without Events. |
 
@@ -121,6 +121,10 @@ refreshes on snapshots, inbox updates and accepted sends, retains last-known con
 backoff. Native membership filters every response so stale reads cannot resurrect placed inputs. Both full and inline
 composers show the same ordered queue outside the transcript and turn map. An unchanged failed draft reuses its
 operation ID; acceptance clears it, so deliberate repeated messages get distinct submissions.
+Each queue row has a Remove action. `DELETE /api/conversations/:id/queue` checks the registered owner conversation
+and input type, then calls Pi's native `abortSubmission` with the conversation ID. Pi removes only a waiting input;
+placement winning the race returns `already_started` without interrupting the run. Repeated removal returns a settled
+outcome. Only the selected row is busy, failures keep it visible, and native inbox updates refresh every view.
 
 The owner API is conversation-scoped:
 
@@ -145,6 +149,7 @@ The owner API is conversation-scoped:
 | `GET /api/conversations/:id/composer` | Conversation-scoped connected servers, enabled skills by stable URI, existing helpers and unavailable libraries. |
 | `PATCH /api/conversations/:id/capabilities` | Switch one `CapabilityTarget` on or off there (only what is shown can be switched off), or `{ reset: 'parent' }` a thread back to its parent's switches. A subagent's are not editable. |
 | `GET /api/conversations/:id/queue` | Ordered queued input IDs, modes and contents for Main and ordinary threads, from Pi InboxDoc. Passive writes, helpers and routine inputs are excluded. |
+| `DELETE /api/conversations/:id/queue` | Remove a queued input by positive safe-integer `submissionId`, with the same-origin CSRF marker. Returns `removed`, `already_started`, `already_settled` or `not_found`; never stops a running input. |
 | `POST /api/conversations/:id/messages` | Submit `input`, a stable `operationId`, optional `appContext` (by App id), up to eight `attachments` (owner file paths that must exist) and up to sixteen stable composer `selections`; skill-only input is allowed. Returns 202 acceptance. |
 | `GET /api/files?dir=` | A directory of the owner's files (`FileListing`): `/uploads`, `/agent` or a folder under one, with the storage in use. |
 | `GET`, `PUT`, `DELETE /api/files/content?path=` | Download, write (the body, `content-length` required) or delete one of the owner's files. Downloads are attachments, except PNG, JPEG, GIF and WebP, which open in place; all are sandboxed by CSP. |
