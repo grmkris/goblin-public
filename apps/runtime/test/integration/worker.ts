@@ -44,6 +44,7 @@ import { JOB_CALLBACK, type JobSchedules } from '../../src/agent-apps/jobs.ts'
 import { homeProbe, retainedHome } from './home-probe.ts'
 import { inboxAppProbe } from './inbox-app-probe.ts'
 import { FileStore } from '../../src/files/store.ts'
+import { composerSequence, helperExclusionsProbe } from './composer-probe.ts'
 
 const fixturePlan = () =>
   Effect.succeed({
@@ -63,6 +64,13 @@ export class PersonalAgentProbe extends PersonalAgent {
   readonly seen: SeenRequest[] = []
   readonly instance = String(Effect.runSync(nextInt))
   readonly routineProducer = new EventsFixture()
+
+  modelRequestCount(): number {
+    return this.seen.length
+  }
+  helperExclusionsProbe() {
+    return helperExclusionsProbe(this.ctx.storage)
+  }
 
   protected override entitlementPolicy(): EntitlementPolicy {
     return { state: fixturePlan, require: fixturePlan }
@@ -935,6 +943,8 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return rpcSequence(agent)
     case '/skills-cache':
       return agent.skillsCacheProbe().then((result) => Response.json(result))
+    case '/composer':
+      return composerSequence(agent)
     case '/destroy':
       return destroySequence(env, name)
     case '/branch':

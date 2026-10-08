@@ -205,10 +205,7 @@ const readTool = (run: RunProgram) =>
  * never fetched at wake), `skill_activate` loads one verified `SKILL.md` and `skill_read` one of its files. Both only read,
  * so a rerun after an eviction is harmless. After a final answer the learner may draft a skill for the owner's review.
  */
-export function skillsExtension(
-  run: RunProgram,
-  observe: (conversation: ConversationId, outcome: LearnOutcome) => void = logLearnOutcome,
-) {
+export function skillsExtension(run: RunProgram) {
   return defineExtension({
     name: 'goblin.skills',
     sections: [section('skills', () => SKILLS_GUIDE)],
@@ -219,6 +216,20 @@ export function skillsExtension(
           const listed = await skillsNow(run, String(api.conversationId))
           return listed === undefined ? undefined : { messages: withContext(messages, 'skills', listed) }
         },
+      }),
+    ],
+  })
+}
+
+/** Owner conversations alone may propose learned skills; helpers only activate and read them. */
+export function skillLearningExtension(
+  run: RunProgram,
+  observe: (conversation: ConversationId, outcome: LearnOutcome) => void = logLearnOutcome,
+) {
+  return defineExtension({
+    name: 'goblin.skill-learning',
+    hooks: [
+      hook(GenerationTask, {
         // Fire and forget after a final answer: the learner may propose a skill draft for the owner to review. It
         // never holds up the turn, and an attempt an eviction cuts short is simply not made.
         onYield: (_answer, api) => {

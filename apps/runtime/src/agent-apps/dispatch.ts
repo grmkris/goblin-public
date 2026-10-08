@@ -12,6 +12,8 @@ const BYTES = { input: 64 * 1024, value: 256 * 1024, state: 1024 * 1024 } as con
 const MS = { prepare: 30_000, run: 5000, select: 5000 } as const
 
 export type CallRequest = {
+  /** The conversation that invoked this app; browser views and scheduled jobs have none. */
+  readonly session?: string | undefined
   readonly app: string
   readonly member: string
   readonly input: unknown
@@ -31,7 +33,8 @@ type DispatchDeps = {
   readonly isolates: Isolates
   readonly queues: AppQueues
   /** What one `prepare` of `app` may reach, for the call `op` at `depth`. */
-  readonly powers: (app: string, op: string, depth: number) => AppPowers
+  readonly powers: (request: CallRequest) => AppPowers
+  readonly authorize: (request: CallRequest) => Promise<void>
   readonly now: () => number
   /** The app's state moved to a new revision. */
   readonly changed: (app: string) => void
@@ -76,6 +79,7 @@ export class AppDispatch {
   }
 
   async call(request: CallRequest): Promise<CallResult> {
+    await this.#deps.authorize(request)
     const { store } = this.#deps
     const release = this.active(request.app)
     if (request.release !== undefined && request.release !== release)
@@ -99,13 +103,14 @@ export class AppDispatch {
     let prepared: unknown = null
     if (action.prepare) {
       const snapshot = this.#state(request.app)
-      const powers = this.#deps.powers(request.app, request.op, request.depth ?? 0)
+      const powers = this.#deps.powers(request)
       const out = await this.#isolate(MS.prepare, `prepare of ${request.member}`, () =>
         api.prepare(request.member, input, snapshot.state, this.#deps.now(), powers),
       )
       prepared = plainJson(this.#outcome(request.app, `${request.member}.prepare`, out), BYTES.value, 'prepare')
     }
     return this.#deps.queues.run(request.app, async () => {
+      await this.#deps.authorize(request)
       const current = this.#state(request.app)
       if (current.release !== release)
         throw new Conflict({ reason: `${request.app} changed while this call was in flight; call it again` })

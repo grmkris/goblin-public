@@ -345,6 +345,11 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'CREATE INDEX app_mcp_approval_call ON app_mcp_approvals (session_id, source_call_id)',
     ].join(BREAK),
   },
+  {
+    key: '20261024000000_helper_app_exclusions',
+    tables: ['app_execution_exclusions'],
+    sql: 'CREATE TABLE app_execution_exclusions (session_id TEXT NOT NULL, app TEXT NOT NULL, off_at INTEGER NOT NULL, PRIMARY KEY (session_id, app))',
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

@@ -14,6 +14,7 @@ import {
 import type { UserMessage } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
+import { HelperExclusions, type HelperExclusion } from '@goblin/contracts'
 import { Capabilities, Conversations, attempt, nowSecondsEffect, requireResident } from '../services.ts'
 import { capabilityOffResult } from './capabilities.ts'
 import { BACKGROUND, conversationId } from './context.ts'
@@ -31,7 +32,13 @@ import {
 import { ReadyResult, typedTool } from './typed-tool.ts'
 
 /** The subagent tools: what a conversation with subagents switched off has filtered out (ADR 0010, ADR 0027). */
-const SUBAGENT_TOOLS: readonly string[] = ['subagent_spawn', 'subagent_send', 'subagent_stop', 'subagent_status']
+const SUBAGENT_TOOLS: readonly string[] = [
+  'subagent_spawn',
+  'subagent_send',
+  'subagent_stop',
+  'subagent_status',
+  'subagent_config',
+]
 
 const GUIDE = [
   '`subagent_spawn` starts a subagent: a helper that works in the background, in a conversation of its own, with the',
@@ -40,6 +47,8 @@ const GUIDE = [
   '`[from subagent <name>]`, once it and its own helpers are done: tell whoever you answer what matters in it. A',
   'subagent closes when its job is done; `subagent_send` gives it another job and it picks up where it left off.',
   '`subagent_stop` stops one and its own subagents; `subagent_status` says who is working.',
+  'Helpers inherit your execution capabilities live. Set exclusions at spawn or replace them with `subagent_config`',
+  '(servers, tools, skill libraries, apps or delegation). This can only narrow what the helper inherits.',
 ].join(' ')
 
 const instructions = (name: string) =>
@@ -81,7 +90,16 @@ const Message = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80
  */
 const Done = Schema.Struct({
   name: Schema.String,
-  outcome: Schema.Literals(['started', 'exists', 'sent', 'reopened', 'closed-by-owner', 'stopped', 'unknown']),
+  outcome: Schema.Literals([
+    'started',
+    'exists',
+    'sent',
+    'reopened',
+    'closed-by-owner',
+    'stopped',
+    'unknown',
+    'configured',
+  ]),
   conversationId: Schema.optionalKey(Schema.Number),
 })
 type Done = typeof Done.Type
@@ -102,6 +120,8 @@ const said = ({ name, outcome }: Done): string => {
       return `Stopped ${name}.`
     case 'unknown':
       return `No subagent named ${name}.`
+    case 'configured':
+      return `Updated ${name}'s execution exclusions.`
   }
 }
 
@@ -164,13 +184,39 @@ async function stop(run: RunProgram, api: Api, agent: Subagent, context: CallCon
   await child?.abort(context, { background: true })
 }
 
-type Deliver = (
-  api: Api,
-  action: 'spawn' | 'send',
-  name: string,
-  message: string,
-  context: CallContext,
-) => Promise<Done>
+type Delivery = {
+  readonly action: 'spawn' | 'send'
+  readonly name: string
+  readonly message: string
+  readonly exclusions?: readonly HelperExclusion[]
+}
+type Deliver = (api: Api, delivery: Delivery, context: CallContext) => Promise<Done>
+
+const configTool = (run: RunProgram, roster: (api: Api, context: CallContext) => Promise<Agents>) =>
+  typedTool({
+    name: 'subagent_config',
+    description:
+      'Replace the execution exclusions of a helper you started. An empty list restores live inheritance from you; it grants nothing beyond your capabilities.',
+    input: Schema.Struct({ name: Name, exclusions: HelperExclusions }),
+    output: Done,
+    text: said,
+    details: linked,
+    replay: 'safe',
+    execute: async ({ name, exclusions }, api, context) => {
+      const agent = known(await roster(api, context), name)
+      if (agent === undefined) return done(name, 'unknown', undefined)
+      await run(
+        Effect.gen(function* () {
+          const capabilities = yield* Capabilities
+          const now = yield* nowSecondsEffect
+          yield* attempt(() =>
+            capabilities.configureHelper(String(api.conversationId), String(agent.conversationId), exclusions, now),
+          )
+        }),
+      )
+      return done(name, 'configured', agent)
+    },
+  })
 
 /**
  * The subagent tools, one per action, behind the conversation's subagents switch: spawn and send start work, so an
@@ -192,12 +238,15 @@ function subagentTools(run: RunProgram, deliver: Deliver): readonly ToolRegistra
     typedTool({
       name: 'subagent_spawn',
       description: 'Start a subagent named `name` on a job (`message`). Its final answer is reported back to you.',
-      input: Schema.Struct({ name: Name, message: Message }),
+      input: Schema.Struct({ name: Name, message: Message, exclusions: Schema.optionalKey(HelperExclusions) }),
       ...common,
       replay: 'unsafe',
-      execute: async ({ name, message }, api, context) => {
+      execute: async ({ name, message, exclusions }, api, context) => {
         await roster(api, context)
-        return (await off(api)) ?? deliver(api, 'spawn', name, message, context)
+        return (
+          (await off(api)) ??
+          deliver(api, { action: 'spawn', name, message, ...(exclusions === undefined ? {} : { exclusions }) }, context)
+        )
       },
     }),
     typedTool({
@@ -208,7 +257,7 @@ function subagentTools(run: RunProgram, deliver: Deliver): readonly ToolRegistra
       replay: 'unsafe',
       execute: async ({ name, message }, api, context) => {
         if (known(await roster(api, context), name) === undefined) return done(name, 'unknown', undefined)
-        return (await off(api)) ?? deliver(api, 'send', name, message, context)
+        return (await off(api)) ?? deliver(api, { action: 'send', name, message }, context)
       },
     }),
     typedTool({
@@ -224,6 +273,7 @@ function subagentTools(run: RunProgram, deliver: Deliver): readonly ToolRegistra
         return done(name, 'stopped', agent)
       },
     }),
+    configTool(run, roster),
     typedTool({
       name: 'subagent_status',
       description: 'Say which subagents are working: one by `name`, or every one you started.',
@@ -280,6 +330,7 @@ async function ownerRelay(relay: Relay, pi: Harness, send: OwnerSend): Promise<b
 
 export type SubagentKit = {
   readonly extension: Extension
+  readonly members: () => readonly Extension[]
   /** The subagent tools, which a conversation with subagents switched off has filtered out. */
   readonly tools: readonly ToolRegistration[]
   /**
@@ -309,7 +360,7 @@ export function subagentsExtension(run: RunProgram, members: (self: Extension) =
   }
 
   /** spawn and send: one commit starts the subagent if new, and a relay for the message. */
-  async function deliver(api: Api, action: 'spawn' | 'send', name: string, message: string, context: CallContext) {
+  async function deliver(api: Api, { action, name, message, exclusions = [] }: Delivery, context: CallContext) {
     const roster = await api.snapshot(Subagents, api.conversationId, context)
     const before = roster === undefined ? undefined : known(roster.agents, name)
     const admitted = await admit(run, before)
@@ -320,7 +371,14 @@ export function subagentsExtension(run: RunProgram, members: (self: Extension) =
       if (action === 'spawn' && existing !== undefined) return 'exists' as const
       const child = existing?.conversationId ?? (await spawn(tx, name))
       state.agents[name] ??= { conversationId: child, reported: [] }
-      const input = { name, conversationId: child, content: message, origin: 'spawner', whenBusy: 'followUp' } as const
+      const input = {
+        name,
+        conversationId: child,
+        content: message,
+        origin: 'spawner',
+        whenBusy: 'followUp',
+        exclusions,
+      } as const
       await tx.createTask(Relay, input, background)
       if (action === 'spawn') return 'started' as const
       return admitted === 'reopened' ? ('reopened' as const) : ('sent' as const)
@@ -340,5 +398,5 @@ export function subagentsExtension(run: RunProgram, members: (self: Extension) =
     tasks: [Anchor, Relay],
     tools,
   })
-  return { extension, tools, ownerSend: (pi, send) => ownerRelay(Relay, pi, send) }
+  return { extension, tools, members: () => members(extension), ownerSend: (pi, send) => ownerRelay(Relay, pi, send) }
 }

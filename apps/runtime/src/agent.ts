@@ -1,6 +1,8 @@
 import { Agent } from 'agents'
 import { type Extension } from '@earendil-works/pi-durable'
-import { type AppContext, type CapabilityChange, type JsonObject, MAIN_THREAD } from '@goblin/contracts'
+import { type CapabilityChange, type JsonObject, MAIN_THREAD } from '@goblin/contracts'
+import type { OwnerMessageContext } from './agent-program.ts'
+import { composerOptions as composerOptionsProgram } from './composer.ts'
 import type { AgentAppChange, AppCall, AppDiagnostic, CreateApp, DeleteAgentApp, UpdateApp } from '@goblin/contracts'
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
@@ -17,7 +19,7 @@ import { FileStore } from './files/store.ts'
 import { filesExtension } from './pi/files.ts'
 import { type AgentApps, agentApps } from './agent-apps/engine.ts'
 import { JOB_CALLBACK, type JobSchedules, type JobSlot, logAppJobs } from './agent-apps/jobs.ts'
-import { appsExtension } from './pi/apps.ts'
+import { appsExtension, appExecutionExtension } from './pi/apps.ts'
 import { serversExtension } from './pi/servers.ts'
 import { agentRequest, sessionSnapshot } from './agent-requests.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
@@ -28,7 +30,7 @@ import { type SubagentKit, subagentsExtension } from './pi/subagents.ts'
 import { threadExtension } from './pi/thread.ts'
 import { memoryExtensions } from './pi/memory.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
-import { skillsExtension } from './pi/skills.ts'
+import { skillLearningExtension, skillsExtension } from './pi/skills.ts'
 import { composeServices } from './compose.ts'
 import { capabilitiesOf, changeCapabilities } from './capabilities/program.ts'
 import {
@@ -117,18 +119,17 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     this.#pi = makePiModels(env, this.modelStreams(), undefined, (id) => routineRun(requireRoutine(id)))
     const residentTools = residentMcpExtension(run, (session) => routineRun(requireRoutineSession(session)))
     const tools = [residentTools, budgetExtension(run)]
-    // A subagent gets the persona, the owner's tools and subagents of its own, nothing else: no ask_user.
-    this.#subagents = subagentsExtension(run, (self) => [personaExtension, ...tools, self])
-    const subagents = this.#subagents.extension
     this.#thread = threadExtension(run)
     this.#memory = memoryExtensions(run)
     const { memory, recall } = this.#memory
     const routineKit = routineExtensions(routineRun, residentTools, env.CREDENTIAL_KEY)
-    // Skills and apps are for main and threads; a subagent gets only the extensions its spawner hands it.
     const apps = agentApps(ctx.storage, env, () => this.name, { schedules: this.#jobSchedules() })
     this.#apps = apps
     this.#telemetry = agentTelemetry(ctx.storage, () => this.name, run)
-    const base = [...tools, skillsExtension(run), filesExtension(run), ...appsExtension(apps, run)]
+    const execution = [...tools, skillsExtension(run), filesExtension(run), appExecutionExtension(apps)]
+    this.#subagents = subagentsExtension(run, (self) => [personaExtension, ...execution, ...apps.extensions(), self])
+    const subagents = this.#subagents.extension
+    const base = [...execution, skillLearningExtension(run), ...appsExtension(apps, run)]
     const own = [serversExtension(run, env.STAGE), subagents, routinesExtension(run), this.#telemetry.diagnose]
     const extras = [this.#thread, memory, recall, ...routineKit.extra]
     this.harness = makePiHarness(this.#pi, [...base, ...own], extras, apps, this.#telemetry.recorder)
@@ -185,6 +186,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       thread: this.#thread,
       memory: this.#memory,
       subagentTools: this.#subagents.tools,
+      helperExtensions: this.#subagents.members(),
       scheduleReplies: () => void this.schedule(5, 'channelReplies'),
       userId: this.name,
       entitlements: this.entitlementPolicy(),
@@ -254,20 +256,18 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return encodeExit(await this.#exit(ownerRequest(program)))
   }
   /** The owner's message into a thread, with what an open App shared for the agent as separate untrusted blocks. */
-  submit(
-    thread: string,
-    input: string,
-    operationId: string,
-    appContext: readonly AppContext[] = [],
-    attachments: readonly string[] = [],
-  ) {
+  submit(thread: string, input: string, operationId: string, context: OwnerMessageContext = {}) {
     const runtime = {
       harness: this.harness,
       applied: this.#applied,
       routines: this.#routines,
       subagents: this.#subagents,
+      run: <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program),
     }
-    return this.#owner(submitOwner({ ...runtime, thread, text: input, operationId, appContext, attachments }))
+    return this.#owner(submitOwner({ ...runtime, thread, text: input, operationId, context }))
+  }
+  composerOptions(thread: string) {
+    return this.#owner(composerOptionsProgram(thread, (program) => this.#runOrThrow(program)))
   }
   conversations() {
     return this.#owner(Conversations.use((conversations) => attempt(() => conversations.list())))

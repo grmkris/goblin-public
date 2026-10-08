@@ -1,9 +1,16 @@
 import type { ToolRegistration } from '@earendil-works/pi-durable'
-import { type CapabilityTarget, type ConversationKind, MAIN_THREAD, RoutineDefinition } from '@goblin/contracts'
-import { and, eq } from 'drizzle-orm'
+import {
+  type CapabilityTarget,
+  type ConversationKind,
+  type HelperExclusion,
+  MAIN_THREAD,
+  RoutineDefinition,
+} from '@goblin/contracts'
+import { and, eq, inArray } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import {
   appConversationCapabilities,
+  appExecutionExclusions,
   appConversations,
   appChannel,
   appMetadata,
@@ -11,6 +18,7 @@ import {
 } from '../storage/schema.ts'
 import { appRoutineRuns } from '../storage/routines.ts'
 import * as Schema from 'effect/Schema'
+import { InvalidInput } from '../http/errors.ts'
 
 type Kind = CapabilityTarget['kind']
 
@@ -77,10 +85,34 @@ type Link = { readonly session: string; readonly kind: ConversationKind; readonl
 /** Rows per insert: five bound values each, under SQLite's limit of 100 per statement on Cloudflare. */
 const INSERT_ROWS = 20
 
+/** Called inside a short application transaction, including the first registration of a helper. */
+export function writeHelperExclusions(
+  db: DrizzleSqliteDODatabase,
+  session: string,
+  exclusions: readonly HelperExclusion[],
+  now: number,
+): void {
+  db.delete(appConversationCapabilities).where(eq(appConversationCapabilities.sessionId, session)).run()
+  db.delete(appExecutionExclusions).where(eq(appExecutionExclusions.sessionId, session)).run()
+  for (const target of exclusions) {
+    if (target.kind === 'app') {
+      db.insert(appExecutionExclusions)
+        .values({ sessionId: session, app: target.app, offAt: now })
+        .onConflictDoNothing()
+        .run()
+    } else {
+      db.insert(appConversationCapabilities)
+        .values({ sessionId: session, ...exclusionOf(target), offAt: now })
+        .onConflictDoNothing()
+        .run()
+    }
+  }
+}
+
 /**
  * Each conversation's switches (`app_conversation_capabilities`): only what is off is stored, so a tool granted later is
  * on everywhere until switched off. A thread copies the switches of the conversation it came from when it is created. A
- * subagent stores none: it is bounded by every conversation above it, read live, so it can never do more than the one
+ * subagent may store its parent's exclusions too: it is bounded by every conversation above it, read live, so it can never do more than the one
  * that started it.
  * `subagentTools` are what Pi's per-conversation tool filter removes when subagents are off; `retool` applies that
  * filter to a conversation in Pi (outside any SQLite transaction).
@@ -162,6 +194,38 @@ export class CapabilityProfiles {
     return root.routineRunId === null ? scope : this.#routine(scope, root.routineRunId)
   }
 
+  /** App calls follow the same live chain as MCP and skills; routine scopes do not acquire app powers. */
+  app(session: string, app: string): boolean {
+    const chain = this.#chain(session)
+    if (chain === undefined || chain.some((link) => link.routineRunId !== null)) return false
+    return !this.#db
+      .select()
+      .from(appExecutionExclusions)
+      .where(
+        and(
+          inArray(
+            appExecutionExclusions.sessionId,
+            chain.map((link) => link.session),
+          ),
+          eq(appExecutionExclusions.app, app),
+        ),
+      )
+      .get()
+  }
+
+  /** Only the direct parent can configure a registered helper. Exclusions cannot widen any ancestor's ceiling. */
+  async configureHelper(
+    parent: string,
+    session: string,
+    exclusions: readonly HelperExclusion[],
+    now: number,
+  ): Promise<void> {
+    const row = this.#conversation(session)
+    if (row?.kind !== 'subagent' || row.parent !== parent) throw new InvalidInput({ reason: 'helper_parent' })
+    this.#db.transaction(() => writeHelperExclusions(this.#db, session, exclusions, now))
+    await this.syncPi(session)
+  }
+
   /** A routine's thread may use only the tools its definition allows, within the scope it would have anyway. */
   #routine(scope: CapabilityScope, runId: string): CapabilityScope {
     const run = this.#db.select().from(appRoutineRuns).where(eq(appRoutineRuns.id, runId)).get()
@@ -211,6 +275,26 @@ export class CapabilityProfiles {
     }))
     this.#db.transaction((tx) => {
       tx.delete(appConversationCapabilities).where(eq(appConversationCapabilities.sessionId, to)).run()
+      const chain = this.#chain(from)
+      const apps =
+        chain === undefined
+          ? []
+          : tx
+              .select()
+              .from(appExecutionExclusions)
+              .where(
+                inArray(
+                  appExecutionExclusions.sessionId,
+                  chain.map((link) => link.session),
+                ),
+              )
+              .all()
+      tx.delete(appExecutionExclusions).where(eq(appExecutionExclusions.sessionId, to)).run()
+      for (const row of apps)
+        tx.insert(appExecutionExclusions)
+          .values({ sessionId: to, app: row.app, offAt: now })
+          .onConflictDoNothing()
+          .run()
       for (let start = 0; start < rows.length; start += INSERT_ROWS)
         tx.insert(appConversationCapabilities)
           .values(rows.slice(start, start + INSERT_ROWS))

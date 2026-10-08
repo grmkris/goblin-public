@@ -502,6 +502,14 @@ export const CapabilityTarget = Schema.Union([
 ])
 export type CapabilityTarget = typeof CapabilityTarget.Type
 
+/** A helper may narrow its inherited execution capabilities, never grant new ones. */
+export const HelperExclusion = Schema.Union([
+  CapabilityTarget,
+  Schema.Struct({ kind: Schema.Literal('app'), app: Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9-]{0,23}$/u)) }),
+])
+export type HelperExclusion = typeof HelperExclusion.Type
+export const HelperExclusions = Schema.Array(HelperExclusion).check(Schema.isMaxLength(100))
+
 /** Switch one thing on or off in a conversation, or give a thread its parent's switches again. */
 export const CapabilityChange = Schema.Union([
   Schema.Struct({ target: CapabilityTarget, on: Schema.Boolean }),
@@ -549,6 +557,14 @@ export const authorOf = (block: string): string | undefined => AUTHOR_TAG.exec(b
 export const TELEGRAM_AUTHOR = 'Telegram'
 
 export { BillingState } from './billing.ts'
+export {
+  ComposerSelection,
+  ComposerSelections,
+  ComposerOption,
+  ComposerOptions,
+  ComposerMetadata,
+  selectionKey,
+} from './composer.ts'
 export { Attachment, FILE_LIMITS, FILE_PATH, FileDirectory, FileEntry, FileListing, FilePath } from './files.ts'
 export {
   RoutineTrigger,

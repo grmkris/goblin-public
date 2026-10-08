@@ -1,15 +1,16 @@
-import { type ConversationView, MAIN_THREAD, type UpdateConversation } from '@goblin/contracts'
+import { type ConversationView, type HelperExclusion, MAIN_THREAD, type UpdateConversation } from '@goblin/contracts'
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { Conversation, EntryRecord, Extension } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import type { CapabilityProfiles } from './capabilities/profiles.ts'
+import { writeHelperExclusions } from './capabilities/profiles.ts'
 import { InvalidInput, NotFound } from './http/errors.ts'
 import type { MainMemory } from './memory/memory.ts'
 import type { CheapModel } from './memory/model.ts'
 import { authoredContent, threadStartedContent } from './pi/content.ts'
 import { BACKGROUND, conversationId, entryId } from './pi/context.ts'
-import { dropRelaysTo } from './pi/subagent-relay.ts'
+import { answerText, dropRelaysTo, Subagents } from './pi/subagent-relay.ts'
 import { type ReplyStats, recentMessages } from './pi/transcript.ts'
 import { ReplyLedger } from './replies.ts'
 import { appConversations } from './storage/schema.ts'
@@ -136,6 +137,28 @@ export class ConversationRegistry {
     return Promise.all(rows.map(async (row) => this.#describe(row)))
   }
 
+  /** Latest report the parent received, bounded and labelled as reference data by the composer. */
+  async helperReference(id: string) {
+    const row = this.#registered(id)
+    if (row.kind !== 'subagent' || row.parentSession === null) throw new NotFound({ what: 'subagent' })
+    const pi = await this.#harness.pi()
+    const roster = await pi.snapshot(Subagents, conversationId(row.parentSession), BACKGROUND)
+    const helper = Object.values(roster?.agents ?? {}).find((agent) => String(agent.conversationId) === id)
+    const at = helper?.reported.at(-1)
+    const conversation = await this.#conversation(id)
+    const entries =
+      at === undefined
+        ? []
+        : (await conversation.entries({ minEntryId: at, maxEntryId: at }, 1, undefined, BACKGROUND)).items
+    const busy = await this.#harness.session(id).busy()
+    return {
+      conversationId: id,
+      label: row.title ?? 'Untitled helper',
+      status: busy ? 'Working' : row.closedBy === 'done' ? 'Done' : row.closedAt === null ? 'Idle' : 'Closed',
+      report: answerText(entries[0]).slice(0, 8000),
+    }
+  }
+
   /**
    * A thread that sees `parent` as it was at `entry` (a message in it) and continues on its own; the parent never sees
    * it. Any open conversation branches: main, a thread or a subagent. Pi forks by reference, so nothing is copied. A
@@ -189,12 +212,22 @@ export class ConversationRegistry {
   }
 
   /** Registers a subagent's conversation under the one that started it; a relay repeats it, so it is idempotent. */
-  registerSubagent(session: string, parent: string, name: string, now: number): void {
-    this.#db
-      .insert(appConversations)
-      .values({ sessionId: session, kind: 'subagent', title: name, parentSession: parent, createdAt: now })
-      .onConflictDoNothing()
-      .run()
+  registerSubagent(
+    session: string,
+    parent: string,
+    name: string,
+    now: number,
+    exclusions: readonly HelperExclusion[] = [],
+  ): void {
+    if (this.#row(session) !== undefined) return
+    this.require(parent)
+    this.#db.transaction(() => {
+      this.#db
+        .insert(appConversations)
+        .values({ sessionId: session, kind: 'subagent', title: name, parentSession: parent, createdAt: now })
+        .run()
+      writeHelperExclusions(this.#db, session, exclusions, now)
+    })
     this.#changed([session])
   }
 

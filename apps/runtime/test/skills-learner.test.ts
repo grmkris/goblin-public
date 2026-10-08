@@ -6,7 +6,7 @@ import * as Layer from 'effect/Layer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { McpHost } from '../src/mcp/host.ts'
 import { SkillLearner, type LearnOutcome } from '../src/skills/learner.ts'
-import { skillsExtension } from '../src/pi/skills.ts'
+import { skillLearningExtension } from '../src/pi/skills.ts'
 import type { RunProgram } from '../src/pi/resident-mcp.ts'
 import { ModelBudget } from '../src/budget.ts'
 import { Budget, Learner, Resident } from '../src/services.ts'
@@ -152,7 +152,7 @@ describe('the skill learner (unit)', () => {
     const run: RunProgram = <A>(program: Parameters<RunProgram>[0]) =>
       // SAFETY: onYield uses only Learner, Resident and Budget, provided by this test's layer.
       Effect.runPromise(Effect.provide(program, layer) as Effect.Effect<A, AppError>)
-    const extension = skillsExtension(run, (_conversation, outcome) => outcomes.push(outcome))
+    const extension = skillLearningExtension(run, (_conversation, outcome) => outcomes.push(outcome))
     const hooks = extension.hooks?.[0]?.handlers
     if (!hasYieldHook(hooks)) throw new Error('skills onYield hook missing')
     // SAFETY: the hook only reads conversationId; unused native answer, readers and context are omitted.
@@ -163,7 +163,9 @@ describe('the skill learner (unit)', () => {
 
   it('reports a failed background hook without leaking error content or blocking the final answer', async () => {
     const outcomes: { conversation: ConversationId; outcome: LearnOutcome }[] = []
-    const extension = skillsExtension(failedRun, (conversation, outcome) => outcomes.push({ conversation, outcome }))
+    const extension = skillLearningExtension(failedRun, (conversation, outcome) =>
+      outcomes.push({ conversation, outcome }),
+    )
     const hooks = extension.hooks?.[0]?.handlers
     if (!hasYieldHook(hooks)) throw new Error('skills onYield hook missing')
     // SAFETY: the hook only reads conversationId; unused native answer, readers and context are omitted.

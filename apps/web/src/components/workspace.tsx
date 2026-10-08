@@ -3,6 +3,7 @@ import type { LayoutDocument } from '@danfessler/trellis'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { record, request } from '../lib/boundary.ts'
 import type { Part } from '../lib/parts.ts'
+import type { ComposerDraft } from '../lib/composer.ts'
 import { threadTitle } from '../lib/threads.ts'
 import {
   type ItemKey,
@@ -55,6 +56,8 @@ type Workspace = {
   readonly draft: (from: From | undefined, root: readonly Part[], source: ItemKey) => void
   /** The message a reply draft answers, as its source showed it. */
   readonly draftRoot: (key: ItemKey) => readonly Part[]
+  readonly moveDraft: (draft: ComposerDraft, source: ItemKey) => void
+  readonly draftContents: (key: ItemKey) => ComposerDraft | undefined
   readonly titleOf: (key: ItemKey) => string
 }
 
@@ -175,6 +178,7 @@ export function WorkspaceProvider({ enabled, children }: { readonly enabled: boo
   const [state, setState, ready] = useStoredState(owner, urlItem(path), title)
   useUrlFocus(state, setState, title, ready)
   const roots = useRef(new Map<ItemKey, readonly Part[]>())
+  const drafts = useRef(new Map<ItemKey, ComposerDraft>())
   // Conversations that are gone, Apps that are closed (or drafts whose conversation is gone) close; titles follow.
   useEffect(() => {
     if (feed.conversations.length === 0) return
@@ -195,11 +199,13 @@ export function WorkspaceProvider({ enabled, children }: { readonly enabled: boo
       open: (key, where, source) => setState((current) => openItem(current, key, title(key), where, source)),
       close: (key) => {
         roots.current.delete(key)
+        drafts.current.delete(key)
         setState((current) => closeItem(current, key))
       },
       focus: (key) => setState((current) => focusItem(current, key)),
       replace: (from, to) => {
         roots.current.delete(from)
+        drafts.current.delete(from)
         setState((current) => replaceItem(current, from, to, title(to)))
       },
       maximize: (key, docked) => setState((current) => maximizeItem(current, key, docked)),
@@ -211,6 +217,13 @@ export function WorkspaceProvider({ enabled, children }: { readonly enabled: boo
         setState((current) => openItem(current, key, title(key), 'beside', source))
       },
       draftRoot: (key) => roots.current.get(key) ?? [],
+      moveDraft: (draft, source) => {
+        // @effect-diagnostics-next-line cryptoRandomUUID:off -- Every command creates a fresh device-local draft pane.
+        const key = draftKey(undefined, crypto.randomUUID())
+        drafts.current.set(key, draft)
+        setState((current) => openItem(current, key, title(key), 'beside', source))
+      },
+      draftContents: (key) => drafts.current.get(key),
       titleOf: title,
     }),
     [owner, state, setState, title],

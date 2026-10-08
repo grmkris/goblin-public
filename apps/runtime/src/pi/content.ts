@@ -1,5 +1,6 @@
 import type { TextContent } from '@earendil-works/pi-ai'
 import { type Attachment, authorTag } from '@goblin/contracts'
+import type { ResolvedSelections } from '../composer.ts'
 
 /** What an open App shared, with where it comes from: an MCP App's server, or the agent app it is. */
 export type SharedContext = {
@@ -17,10 +18,24 @@ export function ownerContent(
   input: string,
   context: readonly SharedContext[] = [],
   attachments: readonly Attachment[] = [],
+  selections: ResolvedSelections = { options: [], context: [] },
 ): string | TextContent[] {
-  if (context.length === 0 && attachments.length === 0) return input
+  if (context.length === 0 && attachments.length === 0 && selections.options.length === 0) return input
+  const prefixes = selections.options.map(
+    ({ selection, label }) => `${selection.kind === 'skill' ? '/' : '@'}${JSON.stringify(label)}`,
+  )
   return [
-    { type: 'text', text: input },
+    { type: 'text', text: prefixes.length === 0 ? input : `${prefixes.join(' ')}\n${input}` },
+    ...(selections.options.length === 0
+      ? []
+      : [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({
+              composer: { text: input, selections: selections.options, context: selections.context },
+            }),
+          },
+        ]),
     ...(attachments.length === 0 ? [] : [{ type: 'text' as const, text: JSON.stringify({ attachments }) }]),
     ...context.map(({ origin, text }): TextContent => ({
       type: 'text',

@@ -144,6 +144,26 @@ describe('skills over MCP (unit)', () => {
     await expect(library.activate('s2', 'lib:code-review')).rejects.toMatchObject({ failure: 'size-mismatch' })
   })
 
+  it('resolves a selected stable URI and verifies its bytes before activating it', async () => {
+    let checks = 0
+    const authorize = async () => {
+      checks += 1
+    }
+    const selected = await library.activateSelection('selected', 'lib', served.current.entry.uri, { authorize })
+    expect(selected.skill.entry.uri).toBe(served.current.entry.uri)
+    expect(selected.body).toContain('# Code review v1')
+    expect(checks).toBeGreaterThanOrEqual(2)
+    await expect(
+      library.activateSelection('selected', 'lib', 'skill://missing/SKILL.md', { authorize }),
+    ).rejects.toMatchObject({ _tag: 'NotFound' })
+    served.tamper = true
+    state.files.clear()
+    await expect(
+      library.activateSelection('corrupt', 'lib', served.current.entry.uri, { authorize }),
+    ).rejects.toMatchObject({ failure: 'size-mismatch' })
+    expect(state.activations('corrupt')).toEqual([])
+  })
+
   it('ignores a cached file that no longer matches and fetches it again', async () => {
     await library.activate('s3', 'lib:code-review')
     for (const [digest, cached] of state.files) state.files.set(digest, bytes(`${new TextDecoder().decode(cached)}x`))

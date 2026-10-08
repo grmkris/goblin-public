@@ -81,7 +81,7 @@ export class AppToolset {
   readonly #extension: Extension
   #registry: Registry | undefined
 
-  constructor(store: Powers, dispatch: Calls) {
+  constructor(store: Powers, dispatch: Calls, authorize: (session: string, app: string) => Promise<void>) {
     this.#extension = defineExtension({
       name: 'goblin.app-call',
       tools: [
@@ -93,13 +93,23 @@ export class AppToolset {
           output: CallOutput,
           replay: 'safe',
           execute: async ({ app, member, input }, api, context) => {
+            await authorize(String(api.conversationId), app)
             const release = dispatch.active(app)
             const action = dispatch.manifest(release).actions[member]
             if (action !== undefined && !action.agent)
               throw new InvalidInput({ reason: `${member} of ${app} is for the owner's view only` })
             const pinned = await api.memo('goblin.release', release, context)
             const op = `c${String(api.conversationId)}:${api.callId}`
-            return shown(await dispatch.call({ app, member, input: input ?? {}, op, release: pinned }))
+            return shown(
+              await dispatch.call({
+                app,
+                member,
+                input: input ?? {},
+                op,
+                release: pinned,
+                session: String(api.conversationId),
+              }),
+            )
           },
           text: (output, { app }) =>
             reachesOut(store, app) ? `${OUTSIDE}${JSON.stringify(output)}` : JSON.stringify(output),

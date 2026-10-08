@@ -1,7 +1,7 @@
 // What an App hands the host for the owner and the agent: links to open, and context to share with the next
 // message. Both come from the App, so both are untrusted: links open only on the owner's click, context travels as
 // a labelled block the agent treats as data. A sent message is read back here too, with the files it carried.
-import { Attachment, authorOf } from '@goblin/contracts'
+import { Attachment, ComposerMetadata, type ComposerOption, authorOf } from '@goblin/contracts'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { isString, record, records } from './boundary.ts'
@@ -33,11 +33,16 @@ export function safeLink(url: string): URL | undefined {
 export type SharedContext = { readonly from: string; readonly text: string }
 
 const decodeAttachments = Schema.decodeUnknownOption(Schema.Struct({ attachments: Schema.Array(Attachment) }))
+const decodeComposer = Schema.decodeUnknownOption(ComposerMetadata)
 
 /** One block after the owner's words: the files they attached, or what an App shared; anything else is neither. */
 function sharedBlock(
   block: string,
-): { readonly files: readonly Attachment[] } | { readonly app: SharedContext } | undefined {
+):
+  | { readonly files: readonly Attachment[] }
+  | { readonly app: SharedContext }
+  | { readonly composer: ComposerMetadata['composer'] }
+  | undefined {
   let value: unknown
   try {
     value = JSON.parse(block)
@@ -46,6 +51,8 @@ function sharedBlock(
   }
   const files = decodeAttachments(value)
   if (Option.isSome(files)) return { files: files.value.attachments }
+  const composer = decodeComposer(value)
+  if (Option.isSome(composer)) return composer.value
   const shared = record(value)
   const origin = record(shared?.origin)
   // An MCP App names its server; an agent app is its own name.
@@ -64,6 +71,7 @@ export function sharedContext(content: unknown): {
   readonly text: string
   readonly context: readonly SharedContext[]
   readonly attachments?: readonly Attachment[]
+  readonly selections?: readonly ComposerOption[]
   readonly author?: string
 } {
   if (isString(content)) return { text: content, context: [] }
@@ -77,7 +85,14 @@ export function sharedContext(content: unknown): {
   if (shared.some((block) => block === undefined)) return { text: [first, ...rest].join('\n'), context: [], ...by }
   const context = shared.flatMap((block) => (block !== undefined && 'app' in block ? [block.app] : []))
   const attachments = shared.flatMap((block) => (block !== undefined && 'files' in block ? block.files : []))
-  return { text: first ?? '', context, ...(attachments.length > 0 && { attachments }), ...by }
+  const composer = shared.flatMap((block) => (block !== undefined && 'composer' in block ? [block.composer] : [])).at(0)
+  return {
+    text: composer?.text ?? first ?? '',
+    context,
+    ...(composer === undefined ? {} : { selections: composer.selections }),
+    ...(attachments.length > 0 && { attachments }),
+    ...by,
+  }
 }
 
 /** The first line of shared context, short enough for a chip. */

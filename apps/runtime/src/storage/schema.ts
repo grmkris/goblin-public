@@ -132,6 +132,13 @@ export const appConversationCapabilities = sqliteTable(
   (table) => [primaryKey({ columns: [table.sessionId, table.kind, table.serverId, table.name] })],
 )
 
+/** App execution excluded from a helper and every helper below it. */
+export const appExecutionExclusions = sqliteTable(
+  'app_execution_exclusions',
+  { sessionId: text('session_id').notNull(), app: text('app').notNull(), offAt: integer('off_at').notNull() },
+  (table) => [primaryKey({ columns: [table.sessionId, table.app] })],
+)
+
 /** Main's memory log: the messages it covers, in order, each pointing at its Pi entry (`memory/log.ts`). */
 export const appMemoryLog = sqliteTable('app_memory_log', {
   idx: integer('idx').primaryKey().notNull(),

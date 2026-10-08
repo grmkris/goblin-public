@@ -8,7 +8,7 @@ import type { RuntimeEnv } from '../env.ts'
 import { InvalidInput, NotFound } from '../http/errors.ts'
 import { runApplicationMigrations } from '../storage/migrations.ts'
 import { AppBuilder, type BuildCaller, type BuildRequest, type BuildResult, Problem, type Toolchain } from './build.ts'
-import { AppDispatch } from './dispatch.ts'
+import { AppDispatch, type CallRequest } from './dispatch.ts'
 import { AppFiles } from './files.ts'
 import { Isolates } from './isolates.ts'
 import { mismatches } from './json.ts'
@@ -196,11 +196,19 @@ export class AgentApps {
       store: this.store,
       isolates,
       queues: this.#queues,
-      powers: (app, op, depth) => this.#powers(app, op, depth),
+      powers: (request) => this.#powers(request),
+      authorize: async ({ session, app }) => {
+        if (session === undefined) return
+        if (this.#services === undefined) throw new InvalidInput({ reason: 'agent is starting' })
+        await this.#services.authorizeCall(session, app)
+      },
       now: deps.now,
       changed: (app) => this.#changed(app),
     })
-    this.#toolset = new AppToolset(this.store, this.dispatch)
+    this.#toolset = new AppToolset(this.store, this.dispatch, async (session, app) => {
+      if (this.#services === undefined) throw new InvalidInput({ reason: 'agent is starting' })
+      await this.#services.authorizeCall(session, app)
+    })
     this.jobs = new AppJobs({
       db: drizzle(deps.storage),
       store: this.store,
@@ -445,7 +453,7 @@ export class AgentApps {
   }
 
   /** What one `prepare` of `app` may reach (ADR 0021): its files and log, and each power the owner approved. */
-  #powers(app: string, op: string, depth: number): AppPowers {
+  #powers({ app, op, depth = 0, session }: CallRequest): AppPowers {
     const now = this.#deps.now
     const allowed = (kind: PowerKind, target: string) => {
       if (!this.store.approved(app, { kind, target }))
@@ -475,7 +483,7 @@ export class AgentApps {
       tool: async (tool, args) => {
         allowed('tool', tool)
         const [serverId = '', name = ''] = tool.split('/', 2)
-        return services().tool(serverId, name, args)
+        return services().tool({ serverId, name, args, session })
       },
       llm: async (prompt, options) => {
         allowed('llm', '*')
@@ -501,6 +509,7 @@ export class AgentApps {
           input,
           op: `app:${op}:${String(calls)}`,
           depth: depth + 1,
+          session,
         })
         return result.kind === 'view' ? result.value : (result.state ?? this.store.state(target)?.state)
       },

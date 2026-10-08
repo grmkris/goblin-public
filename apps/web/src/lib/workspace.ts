@@ -18,8 +18,8 @@ export type Item =
 
 export const conversationKey = (id: string): ItemKey => `c:${id}`
 export const appKey = (id: string): ItemKey => `a:${id}`
-export const draftKey = (from?: { readonly conversation: string; readonly entry: number }): ItemKey =>
-  from === undefined ? 'd:new' : `d:${from.conversation}:${from.entry}`
+export const draftKey = (from?: { readonly conversation: string; readonly entry: number }, id?: string): ItemKey =>
+  from === undefined ? `d:new${id === undefined ? '' : `:${id}`}` : `d:${from.conversation}:${from.entry}`
 export const MAIN_KEY = conversationKey(MAIN_THREAD)
 
 const DIGITS = /^\d{1,12}$/u
@@ -31,7 +31,7 @@ export function itemOf(key: ItemKey): Item | undefined {
   if (kind === 'c' && second === undefined && DIGITS.test(first)) return { kind: 'conversation', id: first }
   if (kind === 'a' && second === undefined && DIGITS.test(first)) return { kind: 'app', id: first }
   if (kind !== 'd') return undefined
-  if (first === 'new' && second === undefined) return { kind: 'draft' }
+  if (first === 'new' && (second === undefined || /^[a-f0-9-]{36}$/u.test(second))) return { kind: 'draft' }
   const entry = Number(second)
   return DIGITS.test(first) && Number.isSafeInteger(entry) && entry > 0
     ? { kind: 'draft', from: { conversation: first, entry } }

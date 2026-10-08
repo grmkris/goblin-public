@@ -15,7 +15,11 @@ const dispatch = {
       : { kind: 'action', revision: 2, state: { count: 3 } }
   },
 }
-const tools = new AppToolset({ powers: () => [] }, dispatch).extensions()[0]?.tools ?? []
+let allowed = true
+const tools =
+  new AppToolset({ powers: () => [] }, dispatch, async () => {
+    if (!allowed) throw new Error('app execution excluded here')
+  }).extensions()[0]?.tools ?? []
 const tool: ToolRegistration | undefined = tools[0]
 if (tool === undefined) throw new Error('app_call missing')
 
@@ -32,6 +36,14 @@ const run = (args: Arguments) => {
 }
 
 describe('app_call (unit, ADR 0027)', () => {
+  it('rechecks live execution authority before every dispatch', async () => {
+    const before = calls.length
+    allowed = false
+    const result = await run({ app: 'counter', member: 'add' })
+    allowed = true
+    expect(result.isError).toBe(true)
+    expect(calls).toHaveLength(before)
+  })
   it('takes the input as an object or as the JSON string models often send', async () => {
     for (const input of [{ by: 3 }, '{"by": 3}']) {
       const result = await run({ app: 'counter', member: 'add', input })

@@ -13,6 +13,7 @@ import { routineEventsCase, routineSchedulingCase } from './native-routines-even
 import { filesCase } from './native-files.ts'
 import { appsCase } from './native-apps.ts'
 import { scopesCase } from './native-scopes.ts'
+import { composerCase } from './native-composer.ts'
 import { telemetryCase } from './native-telemetry.ts'
 import {
   Listed,
@@ -97,6 +98,11 @@ const nativeFetch = (url: string, init: RequestInit = {}) => {
 }
 /** The subagent tools among a request's tools. */
 const offered = (tools: readonly string[] = []) => tools.filter((tool) => tool.startsWith('subagent'))
+
+harness.test(
+  'local workerd: composer rejects stale skills before model work and references a helper in the current conversation',
+  stack.pipe(Effect.flatMap(({ url }) => composerCase(url))),
+)
 
 harness.test(
   'local workerd: routine definitions retain exact confirmations, replay IDs and revision fences',
@@ -790,6 +796,7 @@ harness.test(
       'subagent_spawn',
       'subagent_send',
       'subagent_stop',
+      'subagent_config',
       'subagent_status',
     ])
     expect(offered(result.tools.branch)).toEqual([])

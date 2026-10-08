@@ -2,7 +2,7 @@ import { type ReactNode, createContext, memo, use } from 'react'
 import Markdown, { type Components, type ExtraProps } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AppWindowIcon, CornerDownRightIcon } from 'lucide-react'
-import type { Attachment } from '@goblin/contracts'
+import { type Attachment, type ComposerOption, selectionKey } from '@goblin/contracts'
 import type { SharedContext } from '../../lib/app-context.ts'
 import { contextPreview } from '../../lib/app-context.ts'
 import { blockKind, openFenceAt } from '../../lib/fences.ts'
@@ -156,6 +156,7 @@ export function UserText({
   text,
   context = [],
   attachments = [],
+  selections = [],
   author,
   thread,
   at,
@@ -163,6 +164,7 @@ export function UserText({
   readonly text: string
   readonly context?: readonly SharedContext[]
   readonly attachments?: readonly Attachment[]
+  readonly selections?: readonly ComposerOption[]
   readonly author?: string | undefined
   readonly thread?: string | undefined
   readonly at?: number | undefined
@@ -173,6 +175,16 @@ export function UserText({
     <>
       {author !== undefined && <Author author={author} thread={thread} />}
       <article className="bubble bubble-user">
+        {selections.length > 0 && (
+          <ul className="flex flex-wrap gap-1 text-xs" aria-label="Selected references">
+            {selections.map(({ selection, label }) => (
+              <li key={selectionKey(selection)} className="rounded-md bg-muted px-2 py-1">
+                {selection.kind === 'skill' ? '/' : '@'}
+                {label}
+              </li>
+            ))}
+          </ul>
+        )}
         <p className="message-text">{text}</p>
       </article>
       <MessageFiles files={attachments} />

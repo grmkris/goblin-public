@@ -57,6 +57,7 @@ function jobsBench(storage: DurableObjectStorage, env: RuntimeEnv, owner: string
   apps.attach(createRegistry())
   apps.restore()
   apps.connect({
+    authorizeCall: async () => undefined,
     tool: async () => null,
     complete: async () => '',
     notify: async () => undefined,

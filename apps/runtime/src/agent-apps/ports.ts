@@ -6,12 +6,20 @@ import { nowSeconds } from '../clock.ts'
 import type { McpHost } from '../mcp/host.ts'
 import type { CheapModel } from '../memory/model.ts'
 import type { ResidentAuthority } from '../resident.ts'
+import type { CapabilityProfiles } from '../capabilities/profiles.ts'
+import { Forbidden } from '../http/errors.ts'
 import { AppCodeError, problemText } from './queue.ts'
 
 /** What agent apps reach through their agent (ADR 0021): the owner's MCP tools, the cheap model and Telegram. */
 export type AppServices = {
+  readonly authorizeCall: (session: string | undefined, app: string) => Promise<void>
   /** One of the owner's MCP tools, called as the agent: the owner's exact grant is checked by the host, live. */
-  readonly tool: (serverId: string, name: string, args: Record<string, unknown>) => Promise<unknown>
+  readonly tool: (request: {
+    readonly serverId: string
+    readonly name: string
+    readonly args: Record<string, unknown>
+    readonly session?: string | undefined
+  }) => Promise<unknown>
   /** One completion on the deployment's cheap model, counted toward the owner's daily budget. */
   readonly complete: (system: string, prompt: string, maxTokens: number) => Promise<string>
   /** A message to the owner on their Telegram channel; `op` makes a retry send it once. */
@@ -21,6 +29,7 @@ export type AppServices = {
 }
 
 type Deps = {
+  readonly capabilities: CapabilityProfiles
   readonly host: McpHost
   readonly resident: ResidentAuthority
   readonly entitlements: EntitlementPolicy
@@ -42,12 +51,22 @@ export function appServices(deps: Deps): AppServices {
     deps.resident.require(nowSeconds())
   }
   return {
-    tool: async (serverId, name, args) => {
+    authorizeCall: async (session, app) => {
       await authority()
+      if (session !== undefined && !deps.capabilities.app(session, app))
+        throw new Forbidden({ reason: 'app execution excluded here' })
+    },
+    tool: async ({ serverId, name, args, session }) => {
+      const authorize = async () => {
+        await authority()
+        if (session !== undefined && !deps.capabilities.scope(session).tool(serverId, name))
+          throw new Forbidden({ reason: 'app MCP tool excluded here' })
+      }
+      await authorize()
       return deps.host.manager.callTool(serverId, name, args, {
         caller: 'model',
         timeout: 15_000,
-        authorize: authority,
+        authorize,
       })
     },
     complete: async (system, prompt, maxTokens) => {

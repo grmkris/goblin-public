@@ -275,7 +275,8 @@ export async function appsPowersProbe(storage: DurableObjectStorage, env: Runtim
   apps.restore()
   const seen: unknown[] = []
   apps.connect({
-    tool: async (serverId, name, args) => {
+    authorizeCall: async () => undefined,
+    tool: async ({ serverId, name, args }) => {
       seen.push(['tool', serverId, name, args])
       return { content: [{ type: 'text', text: 'one note' }] }
     },

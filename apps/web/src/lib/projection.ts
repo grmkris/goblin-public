@@ -1,4 +1,4 @@
-import type { Attachment } from '@goblin/contracts'
+import type { Attachment, ComposerOption } from '@goblin/contracts'
 import type { SharedContext } from './app-context.ts'
 import { isString, isNumber, identifier, record, records, text } from './boundary.ts'
 import { sharedContext } from './app-context.ts'
@@ -26,6 +26,7 @@ export type ChatMessage =
       readonly context?: readonly SharedContext[]
       /** The owner's files this message carried. */
       readonly attachments?: readonly Attachment[]
+      readonly selections?: readonly ComposerOption[]
       /** Who wrote it, when not the owner in this browser: Telegram, an MCP client, a subagent. */
       readonly author?: string
       /** The thread a note shared into main came from. */
@@ -193,10 +194,21 @@ function entryMessage(message: Record<string, unknown>, id: string, thread?: str
     const shared = sharedContext(message.content)
     const context = shared.context.length === 0 ? {} : { context: shared.context }
     const attachments = shared.attachments === undefined ? {} : { attachments: shared.attachments }
+    const selections = shared.selections === undefined ? {} : { selections: shared.selections }
     const author = shared.author === undefined ? {} : { author: shared.author }
     const from = thread === undefined ? {} : { thread }
     return [
-      { id, role: 'user', text: shared.text, ...context, ...attachments, ...author, ...from, ...stamped(message) },
+      {
+        id,
+        role: 'user',
+        text: shared.text,
+        ...context,
+        ...attachments,
+        ...selections,
+        ...author,
+        ...from,
+        ...stamped(message),
+      },
     ]
   }
   return []

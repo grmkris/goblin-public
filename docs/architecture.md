@@ -132,8 +132,9 @@ its transcript shows a row for that thread. The owner API is conversation-scoped
 | `PATCH /api/conversations/:id` | Rename, close or reopen (`closed`) a thread or subagent, or pin a subagent open (`keepOpen`). Closing stops it and everything under it; main cannot be changed this way. |
 | `PUT /api/conversations/:id/read` | The owner has seen its newest reply: `read_at` moves forward to now, and the feed carries it as `readAt` (a later `lastReplyAt` is unread). |
 | `GET /api/conversations/:id/capabilities` | What the conversation lets its agent use (`ConversationCapabilities`): each server with a granted tool and those tools, each skills library, subagents, and for a thread whether it has its parent's switches (`sameAsParent`). |
+| `GET /api/conversations/:id/composer` | Conversation-scoped connected servers, enabled skills by stable URI, existing helpers and unavailable libraries. |
 | `PATCH /api/conversations/:id/capabilities` | Switch one `CapabilityTarget` on or off there (only what is shown can be switched off), or `{ reset: 'parent' }` a thread back to its parent's switches. A subagent's are not editable. |
-| `POST /api/conversations/:id/messages` | Submit `input`, a stable `operationId`, optional `appContext` (by App id) and up to eight `attachments` (paths of the owner's files, each must exist) to an open conversation; returns 202 acceptance. |
+| `POST /api/conversations/:id/messages` | Submit `input`, a stable `operationId`, optional `appContext` (by App id), up to eight `attachments` (owner file paths that must exist) and up to sixteen stable composer `selections`; skill-only input is allowed. Returns 202 acceptance. |
 | `GET /api/files?dir=` | A directory of the owner's files (`FileListing`): `/uploads`, `/agent` or a folder under one, with the storage in use. |
 | `GET`, `PUT`, `DELETE /api/files/content?path=` | Download, write (the body, `content-length` required) or delete one of the owner's files. Downloads are attachments, except PNG, JPEG, GIF and WebP, which open in place; all are sandboxed by CSP. |
 | `POST /api/conversations/:id/stop` | Stop a conversation or one `operationId`, and the subagents it started (not its threads). |
@@ -154,11 +155,13 @@ only the name, never what was said in the thread, and a later rename does not re
 show under their message in main and get no note.
 
 Main and threads can start **subagents** with the subagent tools (`pi/subagents.ts`, after Pi Durable's background
-subagent example): `subagent_spawn`, `subagent_send`, `subagent_stop` and `subagent_status`, one typed tool per action
+subagent example): `subagent_spawn`, `subagent_send`, `subagent_stop`, `subagent_config` and `subagent_status`, one typed tool per action
 (ADR 0027). A subagent is a Pi conversation owned by a background anchor task of its spawner, so the spawner's Stop
 and idle waits do not reach it. It starts with the spawner's model and is given exactly the persona, the owner's MCP
-and budget extensions and the subagents extension again: the same grants, subagents of its own at any depth, no
-`ask_user` and no skills (ADR 0018). Each message, the spawner's or the owner's, goes through a relay task in the
+and budget extensions, skills, files, code execution, app calls and the subagents extension again. Owner questions,
+Home, routine and app management, memory and skill learning remain absent. Spawn exclusions and `subagent_config`
+narrow servers, tools, skill libraries, apps and delegation against every live ancestor. Retained helpers get the
+current extension selection through Pi configuration on reconstruction (ADRs 0018 and 0029). Each message goes through a relay task in the
 spawner (`pi/subagent-relay.ts`): it delivers the message, waits until the subagent is done (idle, with none of its
 own relays live; it parks on those), then posts the newest answer once into the spawner as an input labelled `[from
 subagent <name>]`, which the spawner answers. Request ids keep a restart from delivering or reporting twice; of
@@ -173,6 +176,13 @@ Stop (which asks first), Keep open, Dismiss or Reopen, opening to its task and i
 report reads as "<name> reported back" with the report quoted, a subagent's pane opens with "Task from <spawner>", and
 its composer steers it.
 
+The shared native-textarea composer (`components/composer.tsx`, ADR 0029) opens `/` for skills and local commands and
+`@` for connections, skills and helpers. Selected chips submit stable identities; unselected tokens remain prose.
+`composer.ts` resolves current labels, live scope and verified skill instructions before model work. A connection
+selection is a neutral hint; a helper selection adds its newest reported answer as bounded untrusted context here.
+Structured composer metadata keeps selected labels and prose readable in the transcript. Failed resolution rejects
+the complete send and marks its chip. `/new-thread` transfers the draft and portable attachment store to a fresh pane.
+
 **Capabilities** (ADR 0010, `capabilities/`): each conversation can switch off, for its own agent, a connected server,
 one granted tool of it, a skills library, or subagents. `app_conversation_capabilities` stores only what is off, so a
 tool granted later is on everywhere. `CapabilityProfiles.scope(session)` is the one gate: a conversation's own
@@ -186,7 +196,8 @@ tool names, so when those names changed every filtering conversation's filter wa
 `subagent_spawn` and `subagent_send` check the scope before anything else (before the grant check or any connection)
 and return an error result with details `{ kind: 'capability-off', target }` (`pi/capabilities.ts`), which the web
 turns into an owner-only "Turn on here" card. In a subagent the result has words only. The owner's console and an
-App's own calls carry no conversation and are not narrowed; Telegram and inbound clients talk in main, so main's
+App view and job calls carry no conversation. Agent-initiated app calls carry their conversation through nested apps
+and MCP powers, so its exclusions are checked live at dispatch; Telegram and inbound clients talk in main, so main's
 switches cover them.
 
 The persona contributes two static system-prompt sections (`pi/persona.ts`): who the agent is, and that remote content
@@ -315,7 +326,7 @@ in Connections (`app_skill_sources`, ADR 0008). The client declares the extensio
 `skills/list`; `getSkill` is available in the connection manager.
 
 `SkillLibrary` (`skills/library.ts`) keeps each enabled server's listing for its `ttlMs` (30 s to an hour) and names
-every skill `<server>:<name>`. The `goblin.skills` extension (main and threads, not subagents) renders that list in
+every skill `<server>:<name>`. The `goblin.skills` extension (main, threads and helpers) renders that list in
 its `skills` section, refreshing an expired listing when the section is evaluated, and offers `skill_activate` and
 `skill_read`. Activation reads `SKILL.md`, checks size, SHA-256 and frontmatter against the entry (`skills/verify.ts`),
 and records the entry for the conversation (`app_skill_activations`). `skill_read` reads only files in that retained
@@ -331,7 +342,7 @@ follows, but they grant no permissions and cannot override the owner. Disabling 
 file reads; instructions already in a conversation stay there. A conversation can switch one library off for itself
 (Capabilities): its section leaves the library out without fetching it, and its activations and reads are refused.
 
-After a final answer (`onYield`), the learner (`skills/learner.ts`) looks at the latest user message. On a correction
+After a final answer in an owner conversation (`goblin.skill-learning`, `onYield`), the learner (`skills/learner.ts`) looks at the latest user message. On a correction
 or a request to keep how something was done, the memory model decides whether the exchange teaches a procedure. A
 procedure becomes a draft sent through an enabled library's granted `skill_draft` tool, which the owner reviews in the
 library. The Worker logs the learner outcome and conversation id without transcript or draft content. At most five in a rolling 24 hours, never the same content twice, no new draft while one for that skill is open,
@@ -727,7 +738,7 @@ that is not in `app_conversations` (a routine's run) has no entries page; its tu
 | Agent DO SQLite | `pi_*`, `cf_agents_*` and the other vendor tables | Pi, Agents SDK. Never touched. |
 | Agent DO SQLite | `app_mcp_servers`, `app_mcp_registries`, `app_mcp_endpoints`, `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants` | Drizzle: MCP metadata and authorization. |
 | Agent DO SQLite | `app_resident`, `app_conversations`, `app_model_choice`, `app_usage_daily`, `app_metadata` | Drizzle: agent metadata. |
-| Agent DO SQLite | `app_conversation_capabilities` | Drizzle: what each conversation switched off (ADR 0010). |
+| Agent DO SQLite | `app_conversation_capabilities`, `app_execution_exclusions` | Drizzle: conversation switches and helper app exclusions (ADRs 0010, 0029). |
 | Agent DO SQLite | `app_memory_log`, `app_memory_nodes`, `app_memory_state` | Drizzle: main's memory. |
 | Agent DO SQLite | `app_skill_sources`, `app_skill_activations`, `app_skill_files`, `app_skill_drafts` | Drizzle: skills and draft tracking. |
 | Agent DO SQLite | `app_channel`, `app_telegram_channel`, `app_channel_replies` | Drizzle: Telegram transport checkpoints and replies. |

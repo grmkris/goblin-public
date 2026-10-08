@@ -1,6 +1,6 @@
 import { createContext, type ReactNode, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import type { ConversationView } from '@goblin/contracts'
+import type { ComposerSelection, ConversationView } from '@goblin/contracts'
 import { Alert, AlertDescription, PresenceOrb } from '@goblin/ui'
 import {
   CheckIcon,
@@ -169,6 +169,7 @@ function InlineDock({
   readonly parts: readonly Part[]
 }) {
   const { projection, status, notice, send, stop } = conversation
+  const workspace = useWorkspace()
   const sendOwn = useSendWithAppContext(id, send)
   const running = projection?.running ?? false
   const waiting = useMemo(() => openInteractions(parts), [parts])
@@ -185,6 +186,8 @@ function InlineDock({
         </span>
       )}
       <MessageComposer
+        conversation={id}
+        onNewThread={(draft) => workspace.moveDraft(draft, conversationKey(id))}
         onSend={sendOwn}
         running={running}
         onStop={() => void stop()}
@@ -274,18 +277,24 @@ const NOTHING_TO_STOP = () => undefined
 
 /** A reply under a message that becomes a thread from it when it is sent; nothing exists until then. */
 function InlineDraft({ entry, threads }: { readonly entry: number; readonly threads: InlineThreads }) {
+  const workspace = useWorkspace()
   const { create } = useWorkspaceFeed()
   const [notice, setNotice] = useState('')
   const started = useRef<string | undefined>(undefined)
-  async function start(input: string): Promise<boolean> {
+  async function start(
+    input: string,
+    attachments: readonly string[],
+    selections: readonly ComposerSelection[],
+  ): Promise<boolean> {
     // A retry after a failed send reuses the thread the first attempt started.
     started.current ??= (await create({ conversation: threads.parent, entry }))?.id
     const thread = started.current
     if (thread === undefined) return false
     try {
-      await postMessage(thread, input)
+      await postMessage(thread, input, undefined, { attachments, selections })
     } catch (failure) {
       setNotice(failureText(failure))
+      if (selections.length > 0) throw failure
       return false
     }
     threads.started(thread)
@@ -296,6 +305,8 @@ function InlineDraft({ entry, threads }: { readonly entry: number; readonly thre
       <Notice text={notice} />
       <MessageComposer
         onSend={start}
+        conversation={threads.parent}
+        onNewThread={(draft) => workspace.moveDraft(draft, threads.source)}
         running={false}
         onStop={NOTHING_TO_STOP}
         placeholder="Reply in thread…"

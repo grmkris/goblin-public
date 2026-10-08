@@ -16,7 +16,7 @@ import type { UserMessage } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { MAIN_THREAD } from '@goblin/contracts'
+import { MAIN_THREAD, type HelperExclusion } from '@goblin/contracts'
 import { Channel, Conversations, attempt, attemptSync, nowSecondsEffect, requireResident } from '../services.ts'
 import { authoredContent } from './content.ts'
 import { BACKGROUND, entryId } from './context.ts'
@@ -58,6 +58,7 @@ export type RelayInput = {
   readonly quote?: string
   /** The owner's operation id: the submission carries it, so their browser waits on it like on any message. */
   readonly requestId?: string
+  readonly exclusions?: readonly HelperExclusion[]
 }
 
 type RelayState =
@@ -187,7 +188,8 @@ export function relayTask(run: RunProgram): Relay {
       deliver: async (relay, runtime, context) => {
         const { name, conversationId, content, whenBusy, origin, requestId } = relay.input
         const parent = String(runtime.conversationId)
-        if (origin === 'spawner') await run(register(String(conversationId), parent, name))
+        if (origin === 'spawner')
+          await run(register(String(conversationId), parent, name, relay.input.exclusions ?? []))
         const subagent = await runtime.conversation(conversationId, context)
         if (subagent === undefined) throw new Error(`Subagent ${name} has no conversation`)
         await run(requireResident)
@@ -247,11 +249,11 @@ export function relayTask(run: RunProgram): Relay {
 }
 
 /** Lists a subagent under its spawner; each relay repeats it, so it is idempotent. */
-const register = (session: string, parent: string, name: string) =>
+const register = (session: string, parent: string, name: string, exclusions: readonly HelperExclusion[]) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
     const now = yield* nowSecondsEffect
-    yield* attemptSync(() => conversations.registerSubagent(session, parent, name, now))
+    yield* attemptSync(() => conversations.registerSubagent(session, parent, name, now, exclusions))
   })
 
 /** Main's answer to its own subagent's report goes to Telegram too when the channel is on (channel/channel.ts). */

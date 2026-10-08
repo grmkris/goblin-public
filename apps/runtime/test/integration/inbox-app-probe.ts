@@ -22,7 +22,8 @@ export async function inboxAppProbe(storage: DurableObjectStorage, env: RuntimeE
   apps.attach(createRegistry())
   apps.restore()
   apps.connect({
-    tool: async (serverId, name, args) => {
+    authorizeCall: async () => undefined,
+    tool: async ({ serverId, name, args }) => {
       if (serverId !== 'myinbox') throw new Error('unexpected inbox server')
       return client.callTool({ name, arguments: args })
     },

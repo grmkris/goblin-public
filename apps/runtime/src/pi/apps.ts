@@ -115,17 +115,32 @@ const codeTool = (apps: AgentApps) =>
     execute: async ({ code }) => runScript(apps.isolates, apps.ownerFiles, code),
   })
 
-/** `app_docs`, `app_build`, `app_inspect`, `app_rollback` and `code_run`, on main and threads (ADR 0021). */
+/** Owner app and Home management, on main and threads (ADR 0021). */
 export function appsExtension(apps: AgentApps, run: RunProgram) {
   const extension = defineExtension({
     name: 'goblin.apps',
     sections: [section('apps', () => GUIDE)],
-    tools: [docsTool(apps), buildTool(apps), inspectTool(apps), rollbackTool(apps), codeTool(apps)],
+    tools: [docsTool(apps), buildTool(apps), inspectTool(apps), rollbackTool(apps)],
+  })
+  return [extension, homeExtension(run)]
+}
+
+/** Execution shared with helpers, without app or Home management. */
+export function appExecutionExtension(apps: AgentApps) {
+  return defineExtension({
+    name: 'goblin.app-execution',
+    sections: [
+      section(
+        'code',
+        () =>
+          '`code_run` runs JavaScript over owner files. `app_call` executes approved app actions and views listed under <apps>; app powers still require owner approval.',
+      ),
+    ],
+    tools: [codeTool(apps)],
     hooks: [
       hook(GenerationTask, {
         beforeRequest: ({ messages }) => ({ messages: withContext(messages, 'apps', appsNow(apps)) }),
       }),
     ],
   })
-  return [extension, homeExtension(run)]
 }

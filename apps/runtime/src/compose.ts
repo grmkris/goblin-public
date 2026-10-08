@@ -23,7 +23,7 @@ import { installEventConsumers } from './mcp/events/consumers.ts'
 import { Events, McpEvents } from './mcp/events.ts'
 import { EventStorage, SqliteEventStore } from './mcp/events/store.ts'
 import { eventsHookToken, eventsHookUrl } from './mcp/events/route-token.ts'
-import { GrantDenied, Forbidden, toAppError } from './http/errors.ts'
+import { GrantDenied, Forbidden } from './http/errors.ts'
 import * as Layer from 'effect/Layer'
 import { McpHost } from './mcp/host.ts'
 import { logEndpointsReset } from './mcp/log.ts'
@@ -53,6 +53,7 @@ import { RoutineUsage, installRoutineUsage } from './routines/usage.ts'
 import * as Effect from 'effect/Effect'
 import type { EventHandler } from './mcp/events/dispatcher.ts'
 import { HomeService } from './home/service.ts'
+import { restoreHelperExecution } from './pi/helper-execution.ts'
 
 /** What the agent's services are built from: its storage and env, and the Pi pieces its constructor made. */
 export type ComposeInput = {
@@ -64,6 +65,7 @@ export type ComposeInput = {
   readonly memory: ReturnType<typeof memoryExtensions>
   /** The subagent tools, which Pi's tool filter removes where subagents are switched off. */
   readonly subagentTools: readonly ToolRegistration[]
+  readonly helperExtensions: readonly Extension[]
   /** Schedules the Telegram replies alarm. */
   readonly scheduleReplies: () => void
   readonly userId: string
@@ -222,8 +224,9 @@ export async function composeServices(
   const { recall } = input.memory
   await memory.activate([input.memory.memory, recall])
   const capabilities = new CapabilityProfiles(db, input.subagentTools, retool(harness))
-  // Once per agent: tool filters stored while subagents were one `subagent` tool name the four that replaced it.
-  void capabilities.retoolOnce('retool:subagent-tools', nowSeconds()).catch(toAppError)
+  await restoreHelperExecution(db, harness, input.helperExtensions)
+  // Apply the current complete delegation tool set to retained Pi filters.
+  await capabilities.retoolOnce('retool:subagent-config', nowSeconds())
   const routineServices = await makeRoutines(input)
   const kit = { thread: input.thread, recall, memory, namer, capabilities }
   const conversations = conversationServices(db, input, kit)
@@ -240,7 +243,15 @@ export async function composeServices(
   })
   const channel = new TelegramChannel(db, cipher, input.scheduleReplies, input.telemetry)
   input.agentApps.connect(
-    appServices({ host, resident, entitlements: input.entitlements, budget, model: cheap('app_llm'), channel }),
+    appServices({
+      host,
+      resident,
+      entitlements: input.entitlements,
+      budget,
+      model: cheap('app_llm'),
+      channel,
+      capabilities,
+    }),
   )
   const events = await makeEvents(input, host, resident, eventStore, cipher)
   installEventConsumers(events, channel, skills, input.pullTelegram)

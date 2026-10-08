@@ -189,9 +189,14 @@ export class SkillLibrary {
    */
   async activate(sessionId: string, handle: string, options: RequestOptions = {}): Promise<Activated> {
     const skill = await this.#find(handle, options)
+    return this.#activate(sessionId, skill, options)
+  }
+
+  async #activate(sessionId: string, skill: ListedSkill, options: RequestOptions): Promise<Activated> {
     const files = usableManifest(skill.entry)
     const { bytes } = await this.#bytes(skill.serverId, skill.entry, 'SKILL.md', options)
     const { body } = verifySkillFile(skill.entry, new TextDecoder().decode(bytes))
+    await options.authorize?.(skill.serverId)
     this.#state.activate(sessionId, { serverId: skill.serverId, entry: skill.entry, activatedAt: this.#now() })
     return {
       skill,
@@ -200,6 +205,20 @@ export class SkillLibrary {
         .filter((file) => file.uri !== skill.entry.uri)
         .map((file) => ({ path: relativePath(skill.entry, file.uri), size: file.size })),
     }
+  }
+
+  /** A browser selection pins identity by URI, even when names or duplicate handle numbers change. */
+  async activateSelection(
+    sessionId: string,
+    serverId: string,
+    uri: string,
+    options: RequestOptions,
+  ): Promise<Activated> {
+    await options.authorize?.(serverId)
+    if (!this.sources().includes(serverId)) throw new NotFound({ what: 'skill library' })
+    const skill = (await this.#listing(serverId, options)).find((item) => item.entry.uri === uri)
+    if (skill === undefined) throw new NotFound({ what: 'selected skill' })
+    return this.#activate(sessionId, skill, options)
   }
 
   /** The conversation's newest activation of a skill, by its handle's server and name. */

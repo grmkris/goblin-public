@@ -3,12 +3,15 @@ import {
   MAIN_THREAD,
   type AppContext,
   type Attachment,
+  type ComposerSelection,
   type ConversationView,
   type CreateConversation,
   type UpdateConversation,
 } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
-import type { AppError } from './http/errors.ts'
+import { type AppError, InvalidInput } from './http/errors.ts'
+import { resolveSelections, type ResolvedSelections } from './composer.ts'
+import type { RunProgram } from './pi/resident-mcp.ts'
 import { Entitlements } from './billing/gates.ts'
 import {
   Apps,
@@ -131,6 +134,12 @@ export const setResident = (enabled: boolean) =>
     return resident.status(now)
   })
 
+export type OwnerMessageContext = {
+  readonly appContext?: readonly AppContext[]
+  readonly attachments?: readonly string[]
+  readonly selections?: readonly ComposerSelection[]
+}
+
 type OwnerSubmit = {
   harness: PiHarness
   applied: Applied
@@ -139,9 +148,8 @@ type OwnerSubmit = {
   thread: string
   text: string
   operationId: string
-  appContext: readonly AppContext[]
-  /** Paths of the owner's files attached to the message. */
-  attachments: readonly string[]
+  context: OwnerMessageContext
+  run: RunProgram
 }
 
 /** What the owner's open Apps shared, each with where it comes from, read from the App registry (never the browser). */
@@ -176,7 +184,11 @@ const sendToSubagent = (
   input: OwnerSubmit,
   view: ConversationView,
   spawner: string,
-  extra: { readonly attachments: readonly Attachment[]; readonly shared: readonly SharedContext[] },
+  extra: {
+    readonly attachments: readonly Attachment[]
+    readonly shared: readonly SharedContext[]
+    readonly selections: ResolvedSelections
+  },
 ) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
@@ -188,7 +200,7 @@ const sendToSubagent = (
       subagent: view.id,
       spawner,
       title: view.title ?? 'subagent',
-      content: ownerContent(input.text, extra.shared, extra.attachments),
+      content: ownerContent(input.text, extra.shared, extra.attachments, extra.selections),
       text: input.text,
       operationId: input.operationId,
       busy,
@@ -199,18 +211,22 @@ const sendToSubagent = (
 
 export const submitOwner = (input: OwnerSubmit) =>
   Effect.gen(function* () {
+    const { appContext = [], attachments: paths = [], selections: picks = [] } = input.context
     yield* requireBudget
     const conversations = yield* Conversations
     const session = yield* attemptSync(() => conversations.requireOpen(input.thread))
+    if (input.text.trim() === '' && !picks.some((selection) => selection.kind === 'skill'))
+      return yield* new InvalidInput({ reason: 'empty_message' })
     if (yield* attempt(() => input.routines.answer(session, input.operationId, input.text)))
       return { session, operationId: input.operationId, accepted: true }
-    const attachments = yield* attachedFiles(input.attachments)
-    const shared = yield* sharedContext(input.appContext)
+    const attachments = yield* attachedFiles(paths)
+    const shared = yield* sharedContext(appContext)
+    const selections = yield* resolveSelections(session, picks, input.run)
     yield* useModel(input.harness, input.applied, session)
     const view = yield* attempt(() => conversations.view(session))
     if (view?.kind === 'subagent' && view.parent !== undefined)
-      return yield* sendToSubagent(input, view, view.parent, { attachments, shared })
-    const content = ownerContent(input.text, shared, attachments)
+      return yield* sendToSubagent(input, view, view.parent, { attachments, shared, selections })
+    const content = ownerContent(input.text, shared, attachments, selections)
     return yield* attempt(() => input.harness.submit(content, { session, operationId: input.operationId }))
   })
 

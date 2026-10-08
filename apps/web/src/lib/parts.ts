@@ -1,4 +1,4 @@
-import { type Attachment, TELEGRAM_AUTHOR } from '@goblin/contracts'
+import { type Attachment, type ComposerOption, TELEGRAM_AUTHOR } from '@goblin/contracts'
 import type { SharedContext } from './app-context.ts'
 import { isString, record } from './boundary.ts'
 import type { ChatMessage, ConversationProjection, LiveTool, ToolCallView, TurnFailure } from './projection.ts'
@@ -49,6 +49,7 @@ export type Part =
       readonly text: string
       readonly context?: readonly SharedContext[]
       readonly attachments?: readonly Attachment[]
+      readonly selections?: readonly ComposerOption[]
       readonly author?: string
       /** The thread a note shared into main came from. */
       readonly thread?: string
@@ -177,6 +178,7 @@ function userPart(message: Extract<ChatMessage, { role: 'user' }>): Part {
     text: message.text,
     ...(message.context && { context: message.context }),
     ...(message.attachments && { attachments: message.attachments }),
+    ...(message.selections && { selections: message.selections }),
     ...(message.author !== undefined && { author: message.author }),
     ...(message.thread !== undefined && { thread: message.thread }),
     ...(message.timestamp !== undefined && { at: message.timestamp }),
@@ -263,6 +265,7 @@ const sameUser = (a: UserPart, b: UserPart) =>
   a.text === b.text &&
   a.context === b.context &&
   a.attachments === b.attachments &&
+  a.selections === b.selections &&
   a.author === b.author &&
   a.thread === b.thread &&
   a.at === b.at

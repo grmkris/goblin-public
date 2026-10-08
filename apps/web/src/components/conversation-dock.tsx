@@ -1,5 +1,5 @@
 import { type RefObject, useMemo } from 'react'
-import type { AppContext } from '@goblin/contracts'
+import type { ComposerSelection } from '@goblin/contracts'
 import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@goblin/ui'
 import { RotateCcwIcon } from 'lucide-react'
 import { openInteractions } from '../lib/interactions.ts'
@@ -17,12 +17,7 @@ import type { useConversation } from './use-conversation.ts'
 import { useWorkspace } from './workspace.tsx'
 import { useUsageToday } from './use-usage.ts'
 
-type Send = (
-  input: string,
-  operationId?: string,
-  appContext?: readonly AppContext[],
-  attachments?: readonly string[],
-) => Promise<boolean>
+type Send = ReturnType<typeof useConversation>['send']
 
 export function Notice({ text }: { readonly text: string }) {
   if (text === '') return null
@@ -40,10 +35,10 @@ export function Notice({ text }: { readonly text: string }) {
 export function useSendWithAppContext(
   conversation: string,
   send: Send,
-): (input: string, attachments?: readonly string[]) => Promise<boolean> {
+): (input: string, attachments: readonly string[], selections: readonly ComposerSelection[]) => Promise<boolean> {
   const shared = useSharedContext(conversation)
-  return async (input, attachments = []) => {
-    const sent = await send(input, undefined, shared.context, attachments)
+  return async (input, attachments, selections) => {
+    const sent = await send(input, undefined, { appContext: shared.context, attachments, selections })
     if (sent) shared.clear()
     return sent
   }
@@ -168,6 +163,7 @@ export function ConversationDock({
   /** What the send button says; Send by default. */
   readonly sendLabel?: string | undefined
 }) {
+  const workspace = useWorkspace()
   const { projection, status, notice, send, stop } = conversation
   const running = projection?.running ?? false
   const sendOwn = useSendWithAppContext(id, send)
@@ -191,6 +187,8 @@ export function ConversationDock({
           <div className="dock-composer relative">
             {presence.state === 'waiting' && <PresenceBorder />}
             <MessageComposer
+              conversation={id}
+              onNewThread={(contents) => workspace.moveDraft(contents, conversationKey(id))}
               draft={draft}
               onSend={sendOwn}
               attach

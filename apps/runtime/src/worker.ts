@@ -7,6 +7,7 @@ import {
   AgentAppChange,
   DeleteAgentApp,
   CapabilityChange,
+  ComposerSelections,
   CreateApp,
   CreateConversation,
   FilePath,
@@ -43,10 +44,11 @@ export { PersonalAgent } from './agent.ts'
 
 const Bounded = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max))
 const Submit = Schema.Struct({
-  input: Bounded(20_000),
+  input: Schema.String.check(Schema.isMaxLength(20_000)),
   operationId: Bounded(200),
   appContext: Schema.optional(Schema.Array(AppContext).check(Schema.isMaxLength(2))),
   attachments: Schema.optional(Schema.Array(FilePath).check(Schema.isMaxLength(8))),
+  selections: Schema.optional(ComposerSelections),
 })
 const Stop = Schema.Struct({ operationId: Schema.optional(Bounded(200)) })
 const ToolCall = Schema.Struct({
@@ -158,8 +160,8 @@ const conversationRoutes: Readonly<
 > = {
   'POST messages': async (request, agent, thread) => {
     const body = await readJson(request, Submit)
-    const { input, operationId, appContext = [], attachments = [] } = body
-    return json(unwrap(await agent.submit(thread, input, operationId, appContext, attachments)), 202)
+    const { input, operationId, appContext = [], attachments = [], selections = [] } = body
+    return json(unwrap(await agent.submit(thread, input, operationId, { appContext, attachments, selections })), 202)
   },
   'POST stop': async (request, agent, thread) =>
     json({ stopped: unwrap(await agent.stop(thread, (await readJson(request, Stop)).operationId)) }),
@@ -171,6 +173,7 @@ const conversationRoutes: Readonly<
   'PATCH ': async (request, agent, thread) =>
     json(unwrap(await agent.updateConversation(thread, await readJson(request, UpdateConversation)))),
   'GET capabilities': async (_request, agent, thread) => json(unwrap(await agent.conversationCapabilities(thread))),
+  'GET composer': async (_request, agent, thread) => json(unwrap(await agent.composerOptions(thread))),
   'PATCH capabilities': async (request, agent, thread) =>
     json(unwrap(await agent.setConversationCapability(thread, await readJson(request, CapabilityChange)))),
 }
@@ -183,7 +186,7 @@ async function conversationRoute(
   if (path === '/api/conversations' && request.method === 'GET') return json(unwrap(await agent.conversations()))
   if (path === '/api/conversations' && request.method === 'POST')
     return json(unwrap(await agent.createConversation(await readJson(request, CreateConversation))), 201)
-  const [, id = '', action = ''] = /^\/api\/conversations\/(\d{1,12})(?:\/([a-z]+))?$/u.exec(path) ?? []
+  const [, id = '', action = ''] = /^\/api\/conversations\/(\d{1,12})(?:\/([a-z-]+))?$/u.exec(path) ?? []
   const route = conversationRoutes[`${request.method} ${action}`]
   if (id === '' || route === undefined) throw new NotFound({ what: path })
   return route(request, agent, id)

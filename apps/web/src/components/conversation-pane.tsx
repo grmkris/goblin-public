@@ -1,5 +1,5 @@
 import { type ReactNode, useMemo, useRef, useState } from 'react'
-import type { ConversationView } from '@goblin/contracts'
+import { MAIN_THREAD, type ComposerSelection, type ConversationView } from '@goblin/contracts'
 import { DropdownMenuItem, DropdownMenuSeparator, Input, useMediaQuery } from '@goblin/ui'
 import {
   GitBranchIcon,
@@ -93,7 +93,7 @@ function RenameForm({ view, onDone }: { readonly view: ConversationView; readonl
   const { update } = useWorkspaceFeed()
   return (
     <form
-      className="pane-rename"
+      className="min-w-40"
       onSubmit={(event) => {
         event.preventDefault()
         const value = new FormData(event.currentTarget).get('title')
@@ -365,15 +365,20 @@ export function DraftPane({ item }: { readonly item: ItemKey }) {
   const pane = useRef<HTMLElement>(null)
   const dock = useRef<HTMLDivElement>(null)
   useDockInsets(pane, dock)
-  async function start(input: string): Promise<boolean> {
+  async function start(
+    input: string,
+    attachments: readonly string[],
+    selections: readonly ComposerSelection[],
+  ): Promise<boolean> {
     // A retry after a failed send reuses the thread the first attempt started.
     started.current ??= (await feed.create(from))?.id
     const thread = started.current
     if (thread === undefined) return false
     try {
-      await postMessage(thread, input)
+      await postMessage(thread, input, undefined, { attachments, selections })
     } catch (failure) {
       setNotice(failureText(failure))
+      if (selections.length > 0) throw failure
       return false
     }
     workspace.replace(item, conversationKey(thread))
@@ -404,6 +409,11 @@ export function DraftPane({ item }: { readonly item: ItemKey }) {
       <div className="chat-dock" ref={dock}>
         <Notice text={notice} />
         <MessageComposer
+          conversation={from?.conversation ?? MAIN_THREAD}
+          draft={workspace.draftContents(item)}
+          onNewThread={(contents) => workspace.moveDraft(contents, item)}
+          attach
+          autoFocus
           onSend={start}
           running={false}
           onStop={NOTHING_TO_STOP}
