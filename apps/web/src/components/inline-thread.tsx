@@ -180,7 +180,7 @@ function InlineDock({
       <SharedContextChips conversation={id} />
       {presence.state !== 'idle' && presence.state !== 'offline' && (
         <span className="inline-dock-presence" aria-live="polite">
-          <PresenceOrb state={presence.state} label={presence.label} />
+          <PresenceOrb state={presence.state} label={presence.label} active={false} />
           {presence.label}
         </span>
       )}

@@ -1,7 +1,8 @@
 // The agent's presence: the one living element on screen. A small orb of moving colour (Paper Shaders' MeshGradient)
 // whose pace follows what the agent does, and a pulsing border for when it waits on the owner. Colours come from the
 // theme's --presence-* tokens, resolved to rgb at runtime (the shaders do not read OKLCH). Under reduced motion, in a
-// hidden tab, before hydration or without WebGL, the orb is a still gradient; only one orb animates at a time.
+// hidden tab, before hydration, without WebGL, or where its caller says it is not `active`, the orb is a still gradient
+// with no WebGL context of its own: the app keeps one moving orb, in the pane the owner is looking at.
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { cva } from 'class-variance-authority'
 import { cn } from '../lib/cn'
@@ -124,14 +125,19 @@ const orbVariants = cva(
   },
 )
 
-/** The orb. `label` names the state for screen readers; the visible label sits beside it. */
+/**
+ * The orb. `label` names the state for screen readers; the visible label sits beside it. `active` false keeps it a
+ * still gradient: each moving orb is a WebGL context and frames every second, so only the focused pane's moves.
+ */
 function PresenceOrb({
   state,
   label,
+  active = true,
   className,
 }: {
   readonly state: PresenceState
   readonly label: string
+  readonly active?: boolean
   readonly className?: string
 }) {
   const motion = MOTION[state]
@@ -145,7 +151,7 @@ function PresenceOrb({
       aria-label={label}
       className={cn(orbVariants({ state }), className)}
     >
-      {colors.length > 0 && (
+      {active && colors.length > 0 && (
         <Suspense fallback={null}>
           <MeshGradient
             className="absolute inset-0"

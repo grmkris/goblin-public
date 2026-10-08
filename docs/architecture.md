@@ -254,7 +254,8 @@ The composer carries the agent's presence (`lib/presence.ts`): one state for the
 first. In order: offline, waiting for the owner, retrying, using a tool (named `server · tool`), writing, thinking,
 budget spent, no answer, and ready. A small orb of moving colour (a Paper Shaders `MeshGradient`, loaded lazily)
 shows it beside a text label, and its pace follows the work. While the agent waits on the owner, a pulsing border
-frames the composer. Under reduced motion, in a hidden tab or before the shader loads, the orb is a still gradient and
+frames the composer. Under reduced motion, in a hidden tab, before the shader loads, outside the focused pane and in an
+inline thread, the orb is a still gradient (no WebGL context of its own), and
 the border is absent. Colours come from the theme's `--presence-*` tokens, resolved to RGB at runtime.
 
 ## Outbound MCP

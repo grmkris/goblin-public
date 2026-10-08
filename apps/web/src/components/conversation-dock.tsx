@@ -6,6 +6,7 @@ import { openInteractions } from '../lib/interactions.ts'
 import type { Part } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
 import { budgetFraction, contextTokens } from '../lib/usage.ts'
+import { conversationKey } from '../lib/workspace.ts'
 import { SharedContextChips, useSharedContext } from './apps/offers.tsx'
 import { CapabilitiesButton } from './capabilities.tsx'
 import { MessageComposer } from './composer.tsx'
@@ -13,6 +14,7 @@ import { InteractionCards } from './interaction-cards.tsx'
 import { ModelPicker, type useModelChoice } from './model-picker.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
 import type { useConversation } from './use-conversation.ts'
+import { useWorkspace } from './workspace.tsx'
 import { useUsageToday } from './use-usage.ts'
 
 type Send = (
@@ -80,10 +82,11 @@ function ComposerContext({
   readonly usage: ReturnType<typeof useUsageToday>
   readonly context: number | undefined
 }) {
+  const focused = useWorkspace().state.focused === conversationKey(id)
   return (
     <>
       <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-        <PresenceOrb state={presence.state} label={presence.label} />
+        <PresenceOrb state={presence.state} label={presence.label} active={focused} />
         <span className="truncate">{presence.label}</span>
       </span>
       <ModelPicker choice={model.choice} onChoose={(picked) => void model.choose(picked)} />
