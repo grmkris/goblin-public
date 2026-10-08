@@ -61,7 +61,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: clip;
   padding: 0.875rem;
   border-radius: var(--radius-2xl);
   background: var(--card);
@@ -104,7 +104,7 @@
   flex: 1;
   min-height: 0;
   min-width: 0;
-  overflow: hidden;
+  overflow: clip;
   font-size: var(--text-13);
 }
 .home-tile-body .typeset {
@@ -337,7 +337,7 @@
 .home-app-name {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: clip;
   min-width: 0;
 }
 .home-app-name > span,

@@ -990,7 +990,7 @@ main.shell {
   z-index: var(--z-stage);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--border);
   border-radius: 0.875rem;
   background: var(--card);
@@ -1803,12 +1803,6 @@ code.grant-about {
   flex-direction: column;
   gap: 0.75rem;
 }
-[data-slot='tabs-content'] {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding-top: 0.5rem;
-}
 .search-field,
 .address-row {
   display: flex;
@@ -2307,7 +2301,7 @@ code.grant-about {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: clip;
 }
 /* Wider than the screen allows, about 400px a pane, the layout scrolls sideways. */
 .workspace-scroller {
@@ -2360,7 +2354,7 @@ code.grant-about {
   inset: 0;
   visibility: hidden;
   pointer-events: none;
-  overflow: hidden;
+  overflow: clip;
 }
 /*
  * A pane's floating pill instead of a tab (components/pane-header.tsx): grip, where the item came from, its name and

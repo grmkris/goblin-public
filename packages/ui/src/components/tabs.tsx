@@ -75,12 +75,13 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
   )
 }
 
+/** A tab's panel: its parts in a column a little below the list, as a form's fields are. */
 function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
   return (
     <TabsPrimitive.Panel
       data-slot="tabs-content"
       className={cn(
-        'flex-1 rounded-md text-sm outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring/50',
+        'flex flex-1 flex-col gap-3 rounded-md pt-2 text-sm outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring/50',
         className,
       )}
       {...props}

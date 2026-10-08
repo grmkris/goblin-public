@@ -34,7 +34,7 @@ function UsageRing({
         strokeWidth="2.5"
         strokeLinecap="round"
         strokeDasharray={`${(fraction * CIRCUMFERENCE).toFixed(2)} ${CIRCUMFERENCE.toFixed(2)}`}
-        className="stroke-muted-foreground transition-[stroke-dasharray] duration-500 ease-out group-data-full/usage-ring:stroke-destructive"
+        className="stroke-muted-foreground transition-[stroke-dasharray] duration-300 ease-out group-data-full/usage-ring:stroke-destructive"
       />
     </svg>
   )
