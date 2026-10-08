@@ -4,6 +4,8 @@ import {
   elapsedMs,
   isOwnTurn,
   type Part,
+  partKey,
+  samePart,
   toolLine,
   type ToolPart,
   type ToolState,
@@ -95,6 +97,53 @@ describe('the transcript as render parts', () => {
       { kind: 'reasoning', id: 'partial:reasoning', text: 'Plan', live: true },
       { kind: 'text', id: 'partial:text', text: 'Hi', live: true },
     ])
+  })
+  it('keeps one React key for a message from its first token to its commit, so an open Thoughts stays open', () => {
+    const message = { role: 'assistant', timestamp: 7_000, content: [] }
+    const streaming = projectBatch(snapshot([], { run: { inputs: [1] } }), [
+      { type: 'message_start', message },
+      {
+        type: 'message_update',
+        changes: [
+          { type: 'thinking_start', contentIndex: 0, block: { type: 'thinking', thinking: 'Plan' } },
+          { type: 'text_start', contentIndex: 1, block: { type: 'text', text: 'Hi' } },
+        ],
+      },
+    ])
+    const live = conversationParts(streaming).map(partKey)
+    const committed = projectBatch(streaming, [
+      {
+        type: 'message_end',
+        entry: {
+          id: 5,
+          model: [
+            {
+              ...message,
+              content: [
+                { type: 'thinking', thinking: 'Plan' },
+                { type: 'text', text: 'Hi' },
+              ],
+              stopReason: 'stop',
+            },
+          ],
+        },
+      },
+    ])
+    const parts = conversationParts(committed)
+    expect(live).toEqual(['at:7000:reasoning', 'at:7000:text'])
+    expect(parts.map(partKey)).toEqual(live)
+    expect(parts.map((part) => part.id)).toEqual(['5:0:reasoning', '5:0:text'])
+  })
+  it('tells an unchanged part from a changed one across batches, so only changed rows render', () => {
+    const entries = [asking(2, [call('c1', { a: 1 })]), result(3, 'c1')]
+    const first = conversationParts(snapshot(entries))
+    const again = conversationParts(snapshot(entries))
+    expect(first.map((part, index) => samePart(part, again[index] ?? part))).toEqual([true])
+    const text = { kind: 'text', id: 't', text: 'Hi', live: true } as const
+    expect(samePart(text, { ...text })).toBe(true)
+    expect(samePart(text, { ...text, text: 'Hi there' })).toBe(false)
+    expect(samePart(text, { ...text, live: false })).toBe(false)
+    expect(samePart(text, { kind: 'reasoning', id: 't', text: 'Hi', live: true })).toBe(false)
   })
   it('keeps a result whose call was compacted away, and puts a failure after the turn it ended', () => {
     const parts = conversationParts(

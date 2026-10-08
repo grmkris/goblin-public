@@ -73,6 +73,11 @@ export type ConversationProjection = {
   readonly partial: string
   /** The in-flight message's thinking so far. */
   readonly partialReasoning: string
+  /**
+   * When the in-flight message started (Pi's timestamp, the same on the committed message), so its rows keep one React
+   * key from the first token to the commit and an open Thoughts stays open.
+   */
+  readonly partialAt?: number | undefined
   readonly partialBlocks: readonly Record<string, unknown>[]
   readonly progress: string
 }
@@ -265,6 +270,7 @@ export function projectSnapshot(value: unknown): ConversationProjection {
   const tools = liveTools(snapshot.tools)
   const generation = record(snapshot.generation)
   const partialBlocks = records(record(generation?.message)?.content)
+  const partialAt = startedAt(generation?.message)
   const partial = text(partialBlocks)
   const partialReasoning = reasoningText(partialBlocks)
   const running = record(snapshot.run) !== undefined
@@ -285,9 +291,16 @@ export function projectSnapshot(value: unknown): ConversationProjection {
     partial,
     partialReasoning,
     partialBlocks,
+    partialAt,
     progress,
     messages: entryMessages(entries),
   }
+}
+
+/** A Pi message's timestamp (epoch ms), when it has one. */
+function startedAt(message: unknown): number | undefined {
+  const at = record(message)?.timestamp
+  return isNumber(at) && Number.isFinite(at) ? at : undefined
 }
 
 function refreshed(next: ConversationProjection): ConversationProjection {
@@ -299,7 +312,9 @@ function appended(next: ConversationProjection, event: Record<string, unknown>):
   return {
     ...next,
     entries,
-    ...(event.type === 'message_end' ? { partial: '', partialReasoning: '', partialBlocks: [] } : {}),
+    ...(event.type === 'message_end'
+      ? { partial: '', partialReasoning: '', partialBlocks: [], partialAt: undefined }
+      : {}),
   }
 }
 /** Changes that put a whole block in place: a block starting, or Pi replacing one. */
@@ -360,10 +375,11 @@ function projectedEvent(
         partial: '',
         partialReasoning: '',
         partialBlocks: [],
+        partialAt: undefined,
         tools: [],
       }
     case 'message_start':
-      return updatedPartial(next, records(record(event.message)?.content))
+      return { ...updatedPartial(next, records(record(event.message)?.content)), partialAt: startedAt(event.message) }
     case 'message_update':
       return updatedPartial(next, records(event.changes).reduce(changedBlocks, next.partialBlocks))
     case 'tool_execution_start':

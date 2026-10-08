@@ -55,8 +55,14 @@ export type Part =
       /** When it was written (epoch ms), where Pi knows. */
       readonly at?: number
     }
-  | { readonly kind: 'reasoning'; readonly id: string; readonly text: string; readonly live: boolean }
-  | { readonly kind: 'text'; readonly id: string; readonly text: string; readonly live: boolean }
+  | {
+      readonly kind: 'reasoning'
+      readonly id: string
+      readonly key?: string
+      readonly text: string
+      readonly live: boolean
+    }
+  | { readonly kind: 'text'; readonly id: string; readonly key?: string; readonly text: string; readonly live: boolean }
   | ToolPart
   | { readonly kind: 'failure'; readonly id: string; readonly failure: TurnFailure }
   /** A thread the owner started with "+", where main noted it. */
@@ -118,11 +124,26 @@ function toolPart(call: ToolCallView, context: Context, askedAt: number | undefi
   }
 }
 
+/**
+ * The React key of a message's thinking or text row: from when the message started, which it has while it streams and
+ * after it commits, so the row is not remounted when its id changes at the commit (`partial:*` → `<entry>:*`).
+ */
+const keyed = (at: number | undefined, row: 'reasoning' | 'text') =>
+  at === undefined ? {} : { key: `at:${at}:${row}` }
+
 function assistantParts(message: AssistantMessage, context: Context): Part[] {
   const parts: Part[] = []
+  const at = message.timestamp
   if (message.reasoning !== undefined)
-    parts.push({ kind: 'reasoning', id: `${message.id}:reasoning`, text: message.reasoning, live: false })
-  if (message.text !== '') parts.push({ kind: 'text', id: `${message.id}:text`, text: message.text, live: false })
+    parts.push({
+      kind: 'reasoning',
+      id: `${message.id}:reasoning`,
+      ...keyed(at, 'reasoning'),
+      text: message.reasoning,
+      live: false,
+    })
+  if (message.text !== '')
+    parts.push({ kind: 'text', id: `${message.id}:text`, ...keyed(at, 'text'), text: message.text, live: false })
   for (const call of message.toolCalls) parts.push(toolPart(call, context, message.timestamp))
   if (message.failure !== undefined)
     parts.push({ kind: 'failure', id: `${message.id}:failure`, failure: message.failure })
@@ -134,9 +155,17 @@ function liveParts(projection: ConversationProjection, context: Context, seen: R
   const parts: Part[] = projection.tools
     .filter((tool) => !seen.has(tool.callId))
     .map((tool) => toolPart({ id: tool.callId, name: tool.name, arguments: tool.args }, context, tool.startedAt))
+  const at = projection.partialAt
   if (projection.partialReasoning !== '')
-    parts.push({ kind: 'reasoning', id: 'partial:reasoning', text: projection.partialReasoning, live: true })
-  if (projection.partial !== '') parts.push({ kind: 'text', id: 'partial:text', text: projection.partial, live: true })
+    parts.push({
+      kind: 'reasoning',
+      id: 'partial:reasoning',
+      ...keyed(at, 'reasoning'),
+      text: projection.partialReasoning,
+      live: true,
+    })
+  if (projection.partial !== '')
+    parts.push({ kind: 'text', id: 'partial:text', ...keyed(at, 'text'), text: projection.partial, live: true })
   return parts
 }
 
@@ -211,7 +240,65 @@ export function conversationParts(projection: ConversationProjection): Part[] {
         toolPart({ id: message.toolCallId, name: message.toolName, arguments: {} }, context, message.timestamp),
       )
   }
-  return placeApps([...parts, ...liveParts(projection, context, seen)])
+  return uniqueKeys(placeApps([...parts, ...liveParts(projection, context, seen)]))
+}
+
+/**
+ * Whether two builds of a part draw the same thing. Every streamed batch builds every part anew, almost all of them
+ * unchanged: the transcript's rows skip their render when this holds. Committed messages, results and live tool
+ * arguments keep their identity across batches, so they compare by reference.
+ */
+export function samePart(a: Part, b: Part): boolean {
+  if (a === b) return true
+  if (a.kind !== b.kind || a.id !== b.id) return false
+  if (a.kind === 'tool') return b.kind === 'tool' && sameTool(a, b)
+  if (a.kind === 'user') return b.kind === 'user' && sameUser(a, b)
+  if (a.kind === 'failure') return b.kind === 'failure' && a.failure === b.failure
+  if (a.kind === 'thread-started') return b.kind === 'thread-started' && a.thread === b.thread
+  return (b.kind === 'text' || b.kind === 'reasoning') && a.text === b.text && a.live === b.live
+}
+
+type UserPart = Extract<Part, { kind: 'user' }>
+const sameUser = (a: UserPart, b: UserPart) =>
+  a.text === b.text &&
+  a.context === b.context &&
+  a.attachments === b.attachments &&
+  a.author === b.author &&
+  a.thread === b.thread &&
+  a.at === b.at
+
+const sameTool = (a: ToolPart, b: ToolPart) =>
+  a.state === b.state &&
+  a.result === b.result &&
+  a.startedAt === b.startedAt &&
+  a.endedAt === b.endedAt &&
+  a.call.id === b.call.id &&
+  a.call.name === b.call.name &&
+  a.call.arguments === b.call.arguments &&
+  sameBuilt(a.built, b.built)
+
+const sameBuilt = (a: AppBuilt | undefined, b: AppBuilt | undefined) =>
+  a === b ||
+  (a !== undefined &&
+    b !== undefined &&
+    a.app === b.app &&
+    a.version === b.version &&
+    a.ui === b.ui &&
+    a.place === b.place &&
+    a.asks === b.asks)
+
+/** The React key of a part: its own when it has one, else its id. */
+export const partKey = (part: Part): string => ('key' in part && part.key !== undefined ? part.key : part.id)
+
+/** Two messages that started in the same millisecond would share a key: then each falls back to its id. */
+function uniqueKeys(parts: Part[]): Part[] {
+  const counts = new Map<string, number>()
+  for (const part of parts) counts.set(partKey(part), (counts.get(partKey(part)) ?? 0) + 1)
+  return parts.map((part) =>
+    (part.kind === 'reasoning' || part.kind === 'text') && part.key !== undefined && (counts.get(part.key) ?? 0) > 1
+      ? { kind: part.kind, id: part.id, text: part.text, live: part.live }
+      : part,
+  )
 }
 
 /** The agent's own tools, in words; any other is "Used" and its name. */

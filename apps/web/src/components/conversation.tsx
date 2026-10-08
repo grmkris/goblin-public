@@ -13,7 +13,7 @@ import {
 import { type ReactNode, useMemo, useRef } from 'react'
 import { TELEGRAM_AUTHOR } from '@goblin/contracts'
 import { HistoryIcon } from 'lucide-react'
-import { isOwnTurn, type Part } from '../lib/parts.ts'
+import { isOwnTurn, type Part, partKey } from '../lib/parts.ts'
 import { turnLabel } from '../lib/turn-map.ts'
 import { PartView } from './parts/registry.tsx'
 import { type InlineThreads, InlineThreadsProvider, MessageThreads } from './inline-thread.tsx'
@@ -87,7 +87,7 @@ export function Conversation({
                   </Empty>
                 ) : (
                   parts.map((part) => (
-                    <MessageScrollerItem key={part.id} messageId={part.id} scrollAnchor={isOwnTurn(part)}>
+                    <MessageScrollerItem key={partKey(part)} messageId={part.id} scrollAnchor={isOwnTurn(part)}>
                       <div className="message-item flex flex-col" tabIndex={-1}>
                         <PartView part={part} canSwitchModel={canSwitchModel} />
                         {threads !== undefined && <MessageThreads part={part} threads={threads} />}

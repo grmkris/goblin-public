@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { failureText } from '../lib/boundary.ts'
 import { openInteractions } from '../lib/interactions.ts'
-import type { Part } from '../lib/parts.ts'
+import { type Part, partKey } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
 import { entryOfPart, isClosed, relativeTime, repliesLabel, threadTitle, threadsByFork } from '../lib/threads.ts'
 import { type ItemKey, conversationKey, isOpen } from '../lib/workspace.ts'
@@ -238,7 +238,7 @@ function InlineThreadBody({ view, threads }: { readonly view: ConversationView; 
               <p className="inline-thread-quiet">An aside. {parent} sees none of it unless you share it.</p>
             )}
             {own.map((part) => (
-              <div key={part.id} className="message-item flex flex-col" tabIndex={-1}>
+              <div key={partKey(part)} className="message-item flex flex-col" tabIndex={-1}>
                 <PartView part={part} canSwitchModel={false} />
                 <MessageThreads part={part} threads={nested} />
               </div>

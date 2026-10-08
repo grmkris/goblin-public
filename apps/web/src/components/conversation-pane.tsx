@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { failureText } from '../lib/boundary.ts'
 import { WIDE_QUERY } from '../lib/breakpoints.ts'
-import type { Part } from '../lib/parts.ts'
+import { type Part, partKey } from '../lib/parts.ts'
 import { closedBy, entryOfPart, isClosed, repliesLabel, rootParts, threadTitle } from '../lib/threads.ts'
 import { activityState } from '../lib/workspace-feed.ts'
 import { type ItemKey, conversationKey, itemOf, order } from '../lib/workspace.ts'
@@ -60,7 +60,7 @@ function ThreadRoot({
         </span>
       </p>
       {parts.map((part) => (
-        <PartView key={part.id} part={part} canSwitchModel={false} />
+        <PartView key={partKey(part)} part={part} canSwitchModel={false} />
       ))}
       <p className="thread-rule">{repliesLabel(replies)}</p>
     </div>

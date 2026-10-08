@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, memo } from 'react'
 import {
   CircleAlertIcon,
   CircleStopIcon,
@@ -10,7 +10,7 @@ import {
 import { Reasoning, ReasoningContent, ReasoningTrigger, Receipt } from '@goblin/ui'
 import { targetLabel } from '../../lib/capabilities.ts'
 import { type Interaction, interactionOf } from '../../lib/interactions.ts'
-import type { Part, ToolPart } from '../../lib/parts.ts'
+import { type Part, type ToolPart, samePart } from '../../lib/parts.ts'
 import { subagentAction } from '../../lib/threads.ts'
 import { ThreadStartedRow } from '../inline-thread.tsx'
 import { HomeReceipt } from '../home/receipt.tsx'
@@ -93,8 +93,16 @@ function ToolView({ part }: { readonly part: ToolPart }) {
   return subagentAction(part) === undefined ? <GenericToolPart part={part} /> : <SubagentBlock part={part} />
 }
 
-/** One transcript part. `canSwitchModel`: another model is on offer, so a provider failure can point at the picker. */
-export function PartView({ part, canSwitchModel }: { readonly part: Part; readonly canSwitchModel: boolean }) {
+/**
+ * One transcript part. `canSwitchModel`: another model is on offer, so a provider failure can point at the picker.
+ * Memoised on what the part draws (`samePart`): a streamed batch rebuilds every part, and only the changed ones render.
+ */
+export const PartView = memo(
+  PartRow,
+  (before, after) => before.canSwitchModel === after.canSwitchModel && samePart(before.part, after.part),
+)
+
+function PartRow({ part, canSwitchModel }: { readonly part: Part; readonly canSwitchModel: boolean }) {
   switch (part.kind) {
     case 'user':
       return (
