@@ -1,8 +1,9 @@
-import { type AgentAppLaunch, type AppLaunch, type AppView, MAIN_THREAD } from '@goblin/contracts'
+import { type AgentAppLaunch, type AppLaunch, type AppView } from '@goblin/contracts'
 import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
+import { ChatDirectory } from '../chats/directory.ts'
 import { NotFound } from '../http/errors.ts'
 import { BACKGROUND, conversationId, entryId } from '../pi/context.ts'
 import type { AgentAppInfo } from '../agent-apps/engine.ts'
@@ -87,14 +88,16 @@ const AFTER = 200
  * calls only its own actions. Closing a conversation closes its MCP Apps.
  */
 export class AppRegistry {
+  readonly #chats: ChatDirectory
   readonly #db: DrizzleSqliteDODatabase
   readonly #harness: PiHarness
   readonly #agents: AgentAppsPort
   readonly #listeners = new Set<(apps: readonly AppView[]) => void>()
   readonly #removals = new Set<(id: string) => void>()
 
-  constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, agents: AgentAppsPort) {
+  constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, agents: AgentAppsPort, chats = new ChatDirectory(db)) {
     this.#db = db
+    this.#chats = chats
     this.#harness = harness
     this.#agents = agents
   }
@@ -113,7 +116,7 @@ export class AppRegistry {
   #view(row: Row): AppView {
     return {
       id: String(row.id),
-      conversation: row.sessionId,
+      conversation: row.chatId ?? row.sessionId,
       title: row.title,
       createdAt: row.createdAt,
       ...(row.closedAt === null ? {} : { closedAt: row.closedAt }),
@@ -156,6 +159,7 @@ export class AppRegistry {
       .values({
         source: 'mcp',
         sessionId: session,
+        chatId: this.#chats.chatOf(session) ?? session,
         callId,
         serverId: origin.serverId,
         tool: origin.tool,
@@ -178,18 +182,26 @@ export class AppRegistry {
   agentChanged(name: string, now: number): void {
     const info = this.#agents.info(name)
     if (info === undefined) return
+    const home = this.#chats.chatOf(info.home) ?? info.home
     const row = this.#db.select().from(appRegistry).where(eq(appRegistry.name, name)).get()
     if (row === undefined && !info.ui) return
     const [changed] =
       row === undefined
         ? this.#db
             .insert(appRegistry)
-            .values({ source: 'agent', sessionId: info.home, name, title: info.title, createdAt: now })
+            .values({
+              source: 'agent',
+              sessionId: info.home,
+              chatId: home,
+              name,
+              title: info.title,
+              createdAt: now,
+            })
             .returning()
             .all()
         : this.#db
             .update(appRegistry)
-            .set({ title: info.title, sessionId: info.home })
+            .set({ title: info.title, sessionId: info.home, chatId: home })
             .where(eq(appRegistry.id, row.id))
             .returning()
             .all()
@@ -214,7 +226,7 @@ export class AppRegistry {
    */
   originOf(id: string, conversation: string): { readonly serverId: string } | { readonly app: string } {
     const row = this.#row(id)
-    if (row.closedAt !== null || row.sessionId !== conversation) throw new NotFound({ what: 'app' })
+    if (row.closedAt !== null || (row.chatId ?? row.sessionId) !== conversation) throw new NotFound({ what: 'app' })
     if (isMcp(row)) return { serverId: row.serverId }
     return { app: this.agentApp(id) }
   }
@@ -265,11 +277,14 @@ export class AppRegistry {
     const rows = this.#db
       .update(appRegistry)
       .set({ closedAt: now })
-      .where(and(eq(appRegistry.source, 'mcp'), isNull(appRegistry.closedAt), inArray(appRegistry.sessionId, closed)))
+      .where(and(eq(appRegistry.source, 'mcp'), isNull(appRegistry.closedAt), inArray(appRegistry.chatId, closed)))
       .returning()
       .all()
     this.#changed(rows)
-    this.#agents.rehome(closed, MAIN_THREAD)
+    this.#agents.rehome(
+      [...new Set([...closed, ...closed.map((chat) => this.#chats.session(chat))])],
+      this.#chats.primary(),
+    )
   }
 
   /** What the browser needs to load an App: an MCP App's call, read from its conversation, or an agent app's view. */

@@ -321,11 +321,11 @@ export class PersonalAgentProbe extends PersonalAgent {
     const db = drizzle(this.ctx.storage)
     db.insert(appConversations)
       .values([
-        { chatId: MAIN_THREAD, kind: 'main', createdAt: 1 },
-        { chatId: '900', kind: 'thread', parentSession: MAIN_THREAD, createdAt: 1 },
-        { chatId: '901', kind: 'subagent', parentSession: '900', createdAt: 1 },
-        { chatId: '902', kind: 'subagent', parentSession: '901', createdAt: 1 },
-        { chatId: '903', kind: 'subagent', parentSession: '999', createdAt: 1 },
+        { chatId: MAIN_THREAD, piSession: MAIN_THREAD, kind: 'main', createdAt: 1 },
+        { chatId: '900', piSession: '900', kind: 'thread', parentSession: MAIN_THREAD, createdAt: 1 },
+        { chatId: '901', piSession: '901', kind: 'subagent', parentSession: '900', createdAt: 1 },
+        { chatId: '902', piSession: '902', kind: 'subagent', parentSession: '901', createdAt: 1 },
+        { chatId: '903', piSession: '903', kind: 'subagent', parentSession: '999', createdAt: 1 },
       ])
       .onConflictDoNothing()
       .run()
@@ -357,16 +357,18 @@ export class PersonalAgentProbe extends PersonalAgent {
     // Twenty subagents deep is bounded by the thread at the top, not refused; a cycle of spawners may use nothing.
     const chain = Array.from({ length: 20 }, (_, index) => ({
       chatId: String(910 + index),
+      piSession: String(910 + index),
       kind: 'subagent' as const,
       parentSession: index === 0 ? '900' : String(909 + index),
       createdAt: 1,
     }))
-    db.insert(appConversations).values(chain).run()
+    // Keep each fixture insert below workerd SQLite's 100 bound-parameter limit.
+    for (const row of chain) db.insert(appConversations).values(row).run()
     db.insert(appConversations)
       .values([
-        { chatId: '950', kind: 'subagent', parentSession: '951', createdAt: 1 },
-        { chatId: '951', kind: 'subagent', parentSession: '950', createdAt: 1 },
-        { chatId: '960', kind: 'thread', parentSession: '902', createdAt: 1 },
+        { chatId: '950', piSession: '950', kind: 'subagent', parentSession: '951', createdAt: 1 },
+        { chatId: '951', piSession: '951', kind: 'subagent', parentSession: '950', createdAt: 1 },
+        { chatId: '960', piSession: '960', kind: 'thread', parentSession: '902', createdAt: 1 },
       ])
       .run()
     // A thread branched from a subagent copies what the subagent works under: every spawner's switches.

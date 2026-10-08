@@ -4,6 +4,7 @@ import {
   Approvals,
   Capabilities,
   Conversations,
+  Chats,
   Mcp,
   RoutineRuns,
   attempt,
@@ -21,7 +22,9 @@ const authority = (row: ApprovalRow) =>
     yield* requireResident
     if (row.sessionId === null) return
     const session = row.sessionId
-    yield* Conversations.use((conversations) => attemptSync(() => conversations.requireOpen(session)))
+    const chat = (yield* Chats).chatOf(session)
+    if (chat === undefined) return yield* new NotFound({ what: 'chat' })
+    yield* Conversations.use((registry) => attemptSync(() => registry.requireOpen(chat)))
     yield* requireRoutineSession(session)
     if (!(yield* Capabilities).scope(session).tool(row.serverId, row.name))
       return yield* new NotFound({ what: 'tool scope' })

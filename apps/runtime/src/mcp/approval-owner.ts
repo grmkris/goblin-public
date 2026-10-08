@@ -1,6 +1,7 @@
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
-import { Approvals, Mcp, RoutineRuns, attempt, attemptSync } from '../services.ts'
+import { Approvals, Chats, Mcp, RoutineRuns, attempt, attemptSync } from '../services.ts'
+import { NotFound } from '../http/errors.ts'
 import { unwrap } from '../http/rpc.ts'
 import type { RpcResult } from '../http/rpc.ts'
 import type { RunProgram } from '../pi/resident-mcp.ts'
@@ -37,7 +38,9 @@ export const ownerApprovalDecision = (
     continue: async (session, text, operationId) => {
       const record = await input.run(RoutineRuns.useSync((store) => store.session(session)))
       if (record?.state === 'running') return input.routines.start(record, { text, operationId })
-      return unwrap(await input.submit(session, text, operationId))
+      const chat = await input.run(Chats.useSync((chats) => chats.chatOf(session)))
+      if (chat === undefined) throw new NotFound({ what: 'chat' })
+      return unwrap(await input.submit(chat, text, operationId))
     },
   })
 

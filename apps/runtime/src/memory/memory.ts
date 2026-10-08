@@ -1,15 +1,10 @@
-import {
-  type Conversation,
-  type EntryRecord,
-  type Extension,
-  ROOT_CONVERSATION_ID,
-  type Tx,
-} from '@earendil-works/pi-durable'
+import { type Conversation, type EntryRecord, type Extension, type Tx } from '@earendil-works/pi-durable'
 import { estimateMessageTokens } from '@earendil-works/pi-ai/utils/estimate'
 import type { PiHarness } from 'agents/harness/pi'
 import { and, count, desc, eq, inArray, lte } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import { BACKGROUND, entryId } from '../pi/context.ts'
+import { ChatDirectory } from '../chats/directory.ts'
+import { BACKGROUND, conversationId, entryId } from '../pi/context.ts'
 import { appMemoryLog, appMemoryNodes, appMemoryState } from '../storage/schema.ts'
 import { type LogMessage, logMessage, messageLine } from './log.ts'
 import type { TextCompletion } from './model.ts'
@@ -70,17 +65,27 @@ export class MainMemory {
   readonly #db: DrizzleSqliteDODatabase
   readonly #harness: PiHarness
   readonly #model: TextCompletion
+  readonly #chats: ChatDirectory
   readonly #options: MemoryOptions
 
-  constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, model: TextCompletion, options: MemoryOptions = {}) {
+  constructor(
+    db: DrizzleSqliteDODatabase,
+    harness: PiHarness,
+    model: TextCompletion,
+    options: MemoryOptions = {},
+    chats = new ChatDirectory(db),
+  ) {
     this.#db = db
     this.#harness = harness
     this.#model = model
     this.#options = options
+    this.#chats = chats
   }
 
   async #main(): Promise<Conversation> {
-    const main = await (await this.#harness.pi()).conversation(ROOT_CONVERSATION_ID, BACKGROUND)
+    const main = await (
+      await this.#harness.pi()
+    ).conversation(conversationId(this.#chats.session(this.#chats.primary())), BACKGROUND)
     if (main === undefined) throw new Error('The main conversation is missing')
     return main
   }

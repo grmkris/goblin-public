@@ -1,11 +1,11 @@
-import { type ConversationView, type HelperExclusion, MAIN_THREAD, type UpdateConversation } from '@goblin/contracts'
+import { type ConversationView, type HelperExclusion, type UpdateConversation } from '@goblin/contracts'
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { Conversation, EntryRecord, Extension } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import type { CapabilityProfiles } from './capabilities/profiles.ts'
 import { writeHelperExclusions } from './capabilities/profiles.ts'
-import type { ChatDirectory } from './chats/directory.ts'
+import { registerPrimary, type ChatDirectory } from './chats/directory.ts'
 import { InvalidInput, NotFound } from './http/errors.ts'
 import type { MainMemory } from './memory/memory.ts'
 import type { CheapModel } from './memory/model.ts'
@@ -84,10 +84,7 @@ export class ConversationRegistry {
     this.#db = db
     this.#harness = harness
     this.#kit = kit
-    db.insert(appConversations)
-      .values({ chatId: MAIN_THREAD, piSession: MAIN_THREAD, role: 'primary', kind: 'main', createdAt: now })
-      .onConflictDoNothing()
-      .run()
+    registerPrimary(db, now)
     kit.chats.onRebind((chat) => this.#changed([chat]))
   }
 

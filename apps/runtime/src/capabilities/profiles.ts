@@ -3,7 +3,6 @@ import {
   type CapabilityTarget,
   type ConversationKind,
   type HelperExclusion,
-  MAIN_THREAD,
   RoutineDefinition,
 } from '@goblin/contracts'
 import { and, eq, inArray } from 'drizzle-orm'
@@ -18,6 +17,7 @@ import {
 } from '../storage/schema.ts'
 import { appRoutineRuns } from '../storage/routines.ts'
 import * as Schema from 'effect/Schema'
+import { ChatDirectory } from '../chats/directory.ts'
 import { InvalidInput } from '../http/errors.ts'
 
 type Kind = CapabilityTarget['kind']
@@ -119,6 +119,7 @@ export function writeHelperExclusions(
  */
 export class CapabilityProfiles {
   readonly #db: DrizzleSqliteDODatabase
+  readonly #chats: ChatDirectory
   readonly #subagentTools: readonly ToolRegistration[]
   readonly #retool: (session: string, tools: PiTools) => Promise<void>
 
@@ -126,8 +127,10 @@ export class CapabilityProfiles {
     db: DrizzleSqliteDODatabase,
     subagentTools: readonly ToolRegistration[],
     retool: (session: string, tools: PiTools) => Promise<void>,
+    chats = new ChatDirectory(db),
   ) {
     this.#db = db
+    this.#chats = chats
     this.#subagentTools = subagentTools
     this.#retool = retool
   }
@@ -183,7 +186,8 @@ export class CapabilityProfiles {
 
   /** The scope of a registered conversation: its own switches, and for a subagent those of every spawner above it. */
   scope(session: string): CapabilityScope {
-    const chain = this.#chain(session)
+    const chat = this.#chats.chatOf(session)
+    const chain = chat === undefined ? undefined : this.#chain(chat)
     const start = chain?.[0]
     const root = chain?.at(-1)
     if (chain === undefined || start === undefined || root === undefined) return CLOSED
@@ -196,7 +200,8 @@ export class CapabilityProfiles {
 
   /** App calls follow the same live chain as MCP and skills; routine scopes do not acquire app powers. */
   app(session: string, app: string): boolean {
-    const chain = this.#chain(session)
+    const chat = this.#chats.chatOf(session)
+    const chain = chat === undefined ? undefined : this.#chain(chat)
     if (chain === undefined || chain.some((link) => link.routineRunId !== null)) return false
     return !this.#db
       .select()
@@ -220,10 +225,13 @@ export class CapabilityProfiles {
     exclusions: readonly HelperExclusion[],
     now: number,
   ): Promise<void> {
-    const row = this.#conversation(session)
-    if (row?.kind !== 'subagent' || row.parent !== parent) throw new InvalidInput({ reason: 'helper_parent' })
-    this.#db.transaction(() => writeHelperExclusions(this.#db, session, exclusions, now))
-    await this.syncPi(session)
+    const chat = this.#chats.chatOf(session)
+    const parentChat = this.#chats.chatOf(parent)
+    const row = chat === undefined ? undefined : this.#conversation(chat)
+    if (chat === undefined || parentChat === undefined || row?.kind !== 'subagent' || row.parent !== parentChat)
+      throw new InvalidInput({ reason: 'helper_parent' })
+    this.#db.transaction(() => writeHelperExclusions(this.#db, chat, exclusions, now))
+    await this.syncPi(chat)
   }
 
   /** A routine's thread may use only the tools its definition allows, within the scope it would have anyway. */
@@ -305,12 +313,12 @@ export class CapabilityProfiles {
 
   /** What Reset gives `thread`: the switches of the conversation it came from (main's for a thread started empty). */
   inherited(thread: string): readonly Exclusion[] {
-    return this.#effective(this.#conversation(thread)?.parent ?? MAIN_THREAD) ?? []
+    return this.#effective(this.#conversation(thread)?.parent ?? this.#chats.primary()) ?? []
   }
 
   /** A thread's switches back to those of the conversation it came from, applied to Pi too. */
   async reset(thread: string, now: number): Promise<void> {
-    this.copy(this.#conversation(thread)?.parent ?? MAIN_THREAD, thread, now)
+    this.copy(this.#conversation(thread)?.parent ?? this.#chats.primary(), thread, now)
     await this.syncPi(thread)
   }
 
@@ -322,7 +330,7 @@ export class CapabilityProfiles {
 
   /** Applies `session`'s tool filter to its Pi conversation, after the switches are stored. */
   async syncPi(session: string): Promise<void> {
-    await this.#retool(session, this.piTools(session))
+    await this.#retool(this.#chats.session(session), this.piTools(session))
   }
 
   /**
@@ -335,7 +343,7 @@ export class CapabilityProfiles {
     // Registered conversations only: one not registered yet (a new agent's main) has no switches to apply.
     for (const { session } of this.#db.select({ session: appConversations.chatId }).from(appConversations).all()) {
       const tools = this.piTools(session)
-      if (tools !== null) await this.#retool(session, tools)
+      if (tools !== null) await this.#retool(this.#chats.session(session), tools)
     }
     this.#db
       .insert(appMetadata)

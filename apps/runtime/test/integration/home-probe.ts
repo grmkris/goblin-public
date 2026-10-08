@@ -80,7 +80,9 @@ function mcpPlacementProbe(home: HomeService, apps: AppRegistry, db: ReturnType<
       'owner',
     ),
   )
-  db.insert(appConversations).values({ chatId: '222', kind: 'thread', parentSession: '1', createdAt: 1 }).run()
+  db.insert(appConversations)
+    .values({ chatId: '222', piSession: '222', kind: 'thread', parentSession: '1', createdAt: 1 })
+    .run()
   const threaded = apps.register('222', 'home-thread-board', origin, 4)
   edit(
     'home-owner-thread-mcp',

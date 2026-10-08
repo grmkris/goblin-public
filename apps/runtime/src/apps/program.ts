@@ -92,10 +92,10 @@ export const changeAgentApp = (name: string, change: AgentAppChange) =>
     if (change.kind === 'home') {
       const session = yield* Conversations.use((conversations) =>
         attemptSync(() => {
-          const open = conversations.requireOpen(change.conversation)
+          conversations.requireOpen(change.conversation)
           if (conversations.kindOf(change.conversation) === 'subagent')
             throw new InvalidInput({ reason: "an app's home is main or a thread" })
-          return open
+          return change.conversation
         }),
       )
       yield* attemptSync(() => engine.moveHome(name, session))

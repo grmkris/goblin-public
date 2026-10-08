@@ -13,10 +13,10 @@ const authorize = (run: RunProgram, session: string) => (serverId: string) =>
   )
 
 /** A conversation-scoped catalog. Remote labels and descriptions are display data only. */
-export const composerOptions = (session: string, run: RunProgram) =>
+export const composerOptions = (chat: string, run: RunProgram) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
-    yield* attemptSync(() => conversations.require(session))
+    const session = yield* attemptSync(() => conversations.require(chat))
     yield* requireResident
     const capabilities = yield* Capabilities
     const skills = yield* Skills

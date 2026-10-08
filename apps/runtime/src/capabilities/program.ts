@@ -4,6 +4,7 @@ import { type AppError, InvalidInput } from '../http/errors.ts'
 import {
   type AgentServices,
   Capabilities,
+  Chats,
   Conversations,
   Mcp,
   Skills,
@@ -47,7 +48,7 @@ export const changeCapabilities = (
     const now = yield* nowSecondsEffect
     if (view.kind === 'subagent') return yield* new InvalidInput({ reason: 'subagent_capabilities' })
     if ('reset' in change) {
-      if (view.kind === 'main') return yield* new InvalidInput({ reason: 'main_reset' })
+      if (thread === (yield* Chats).primary()) return yield* new InvalidInput({ reason: 'main_reset' })
       yield* attempt(() => capabilities.reset(thread, now))
       return yield* capabilitiesOf(thread)
     }

@@ -3,7 +3,8 @@
 // its cursor and puts every new message from the owner into main, authored "Telegram". The answer to each of those
 // turns, and to a subagent's report in main, goes back with `send_message`. The store keeps the connection, the cursor,
 // the doorbell secret (sealed) and the turns whose answers are still to send.
-import { type ChannelStatus, MAIN_THREAD } from '@goblin/contracts'
+import { type ChannelStatus } from '@goblin/contracts'
+import { ChatDirectory } from '../chats/directory.ts'
 import { RunAttribute, type RunAttributes } from '@goblin/contracts/telemetry'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
@@ -101,13 +102,21 @@ export const channelCall =
   }
 
 export class TelegramChannel {
+  readonly #chats: ChatDirectory
   readonly #db: DrizzleSqliteDODatabase
   readonly #cipher: CredentialCipher
   /** Asks the agent to send the answers that are ready (a schedule of its own). */
   readonly #wake: () => void
   readonly #telemetry: RunTelemetry | undefined
-  constructor(db: DrizzleSqliteDODatabase, cipher: CredentialCipher, wake: () => void, telemetry?: RunTelemetry) {
+  constructor(
+    db: DrizzleSqliteDODatabase,
+    cipher: CredentialCipher,
+    wake: () => void,
+    telemetry?: RunTelemetry,
+    chats = new ChatDirectory(db),
+  ) {
     this.#db = db
+    this.#chats = chats
     this.#cipher = cipher
     this.#wake = wake
     this.#telemetry = telemetry
@@ -119,7 +128,8 @@ export class TelegramChannel {
       id: `${kind === 'channel.received' ? 'channel' : 'reply'}:${operationId}`,
       kind,
       status: RunAttribute.errorType in extra ? 'error' : 'ok',
-      conversationId: MAIN_THREAD,
+      conversationId:
+        this.#chats.operation(this.#chats.primary(), operationId) ?? this.#chats.session(this.#chats.primary()),
       operationId,
       startedAt,
       endedAt: nowMillis(),

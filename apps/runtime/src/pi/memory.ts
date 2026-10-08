@@ -1,13 +1,5 @@
 import { recallExtension } from '../memory/recall.ts'
-import {
-  GenerationTask,
-  ROOT_CONVERSATION_ID,
-  type TaskId,
-  defineDoc,
-  defineExtension,
-  defineTask,
-  hook,
-} from '@earendil-works/pi-durable'
+import { GenerationTask, type TaskId, defineDoc, defineExtension, defineTask, hook } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import { Conversations, Memory, attempt, requireBudget } from '../services.ts'
 import type { RunProgram } from './resident-mcp.ts'
@@ -69,12 +61,12 @@ export function memoryExtensions(run: RunProgram) {
     hooks: [
       hook(GenerationTask, {
         // Fire and forget: building never holds up the turn. A builder that ended in any way is replaced.
-        afterResponse: () => {
+        afterResponse: (_message, api) => {
           void run(
             Memory.use((main) =>
               attempt(() =>
                 main.startBuilder(async (tx) => {
-                  const state = await tx.doc(Builder, ROOT_CONVERSATION_ID)
+                  const state = await tx.doc(Builder, api.conversationId)
                   const last = state.task === null ? undefined : await tx.task(state.task)
                   if (last !== undefined && last.state.status !== 'terminal') return
                   state.task = await tx.createTask(BuilderTask, null, {

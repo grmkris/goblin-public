@@ -16,8 +16,8 @@ import type { UserMessage } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { MAIN_THREAD, type HelperExclusion } from '@goblin/contracts'
-import { Channel, Conversations, attempt, attemptSync, nowSecondsEffect, requireResident } from '../services.ts'
+import { type HelperExclusion } from '@goblin/contracts'
+import { Channel, Chats, Conversations, attempt, attemptSync, nowSecondsEffect, requireResident } from '../services.ts'
 import { authoredContent } from './content.ts'
 import { BACKGROUND, entryId } from './context.ts'
 import type { RunProgram } from './resident-mcp.ts'
@@ -236,8 +236,10 @@ export function relayTask(run: RunProgram): Relay {
             },
             context,
           )
-          if (String(runtime.conversationId) === MAIN_THREAD && origin === 'spawner')
-            await run(track(`subagent-report:${relay.id}`))
+          const primary = await run(
+            Chats.useSync((chats) => chats.chatOf(String(runtime.conversationId)) === chats.primary()),
+          )
+          if (primary && origin === 'spawner') await run(track(`subagent-report:${relay.id}`))
         }
         if (close) await run(closeAsDone(String(conversationId)))
         await runtime.commit(() => ({ status: 'terminal', outcome: { status: 'completed', result: null } }), context)
@@ -260,7 +262,10 @@ const register = (session: string, parent: string, name: string, exclusions: rea
 const track = (requestId: string) =>
   Effect.gen(function* () {
     const channel = yield* Channel
-    channel.track(requestId, yield* nowSecondsEffect)
+    const chats = yield* Chats
+    const now = yield* nowSecondsEffect
+    chats.admit(chats.primary(), requestId, now)
+    channel.track(requestId, now)
   })
 
 /** A subagent whose job is done closes, with everything under it, unless the owner keeps it open. */

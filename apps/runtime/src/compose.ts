@@ -138,7 +138,7 @@ function conversationServices(db: DrizzleSqliteDODatabase, input: ComposeInput, 
   conversations.onChange((ids) => apps.closeWithConversations(ids, nowSeconds()))
   agentApps.onChange((name) => apps.agentChanged(name, nowSeconds()))
   const home = new HomeService(db, apps, agentApps)
-  return { conversations, apps, home, workspace: new WorkspaceFeed(harness, conversations, apps, home) }
+  return { conversations, apps, home, workspace: new WorkspaceFeed(harness, conversations, apps, home, kit.chats) }
 }
 async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {
   const env = input.env
@@ -219,17 +219,17 @@ export async function composeServices(
       auxReporter(input.telemetry, purpose),
     )
   const fold = Number(env.MEMORY_FOLD_TOKENS ?? Number.NaN)
-  const memory = new MainMemory(db, harness, cheap('memory'), Number.isFinite(fold) ? { foldTokens: fold } : {})
   const chats = new ChatDirectory(db)
+  const memory = new MainMemory(db, harness, cheap('memory'), Number.isFinite(fold) ? { foldTokens: fold } : {}, chats)
   const { recall } = input.memory
-  await memory.activate([input.memory.memory, recall])
-  const capabilities = new CapabilityProfiles(db, input.subagentTools, retool(harness))
+  const capabilities = new CapabilityProfiles(db, input.subagentTools, retool(harness), chats)
   await restoreHelperExecution(db, harness, input.helperExtensions)
   // Apply the current complete delegation tool set to retained Pi filters.
   await capabilities.retoolOnce('retool:subagent-config', nowSeconds())
   const routineServices = await makeRoutines(input)
   const kit = { thread: input.thread, recall, memory, namer: cheap('naming'), capabilities, chats }
   const conversations = conversationServices(db, input, kit)
+  await memory.activate([input.memory.memory, recall])
   const skills = new SkillLibrary(host.manager, skillState, nowMillis)
   const learner = new SkillLearner({
     drafts: new SqliteDraftLog(db),

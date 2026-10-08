@@ -1,3 +1,4 @@
+import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { MAIN_THREAD } from '@goblin/contracts'
 import { and, eq, lt, ne } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
@@ -21,6 +22,20 @@ const deferred = (): { readonly promise: Promise<void>; readonly release: () => 
 }
 
 const RETENTION = 30 * 24 * 60 * 60
+
+/** Register a fresh agent's stable primary; a retained or rebound binding is never overwritten. */
+export function registerPrimary<RunResult>(db: SQLiteAsyncDatabase<'sync', RunResult>, now: number): void {
+  db.insert(appConversations)
+    .values({
+      chatId: MAIN_THREAD,
+      piSession: String(ROOT_CONVERSATION_ID),
+      role: 'primary',
+      kind: 'main',
+      createdAt: now,
+    })
+    .onConflictDoNothing()
+    .run()
+}
 
 /** Stable application identities over Pi sessions. Locks cover admission only, never model execution or waits. */
 export class ChatDirectory<RunResult = unknown> {

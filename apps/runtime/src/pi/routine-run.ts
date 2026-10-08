@@ -10,10 +10,9 @@ import {
   type TaskId,
 } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
-import { MAIN_THREAD } from '@goblin/contracts'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
-import { Conversations, RoutineRuns, RoutineUsageProjection, attempt, attemptSync } from '../services.ts'
+import { Chats, Conversations, RoutineRuns, RoutineUsageProjection, attempt, attemptSync } from '../services.ts'
 import { definitionOf, type RoutineRun } from '../routines/runs.ts'
 import type { RunProgram } from './resident-mcp.ts'
 import { BACKGROUND, conversationId } from './context.ts'
@@ -144,7 +143,8 @@ export function routineRunExtension(run: RunProgram, members: readonly Extension
     model: string,
     ownerInput?: { operationId: string; text: string },
   ): Promise<string> => {
-    const main = await (await harness.pi()).conversation(conversationId(MAIN_THREAD), BACKGROUND)
+    const primary = await run(Chats.useSync((chats) => chats.session(chats.primary())))
+    const main = await (await harness.pi()).conversation(conversationId(primary), BACKGROUND)
     if (main === undefined) throw new Error('Routine main conversation is missing')
     const eventContext =
       record.eventDataSealed === null
@@ -153,7 +153,7 @@ export function routineRunExtension(run: RunProgram, members: readonly Extension
             await CredentialCipher.fromBase64(key)
           ).decrypt(record.eventDataSealed, `routine-event:${record.operationId}:${record.revision}`)}`
     const sessionId = await main.commit(async (tx) => {
-      const bindings = await tx.doc(Bindings, conversationId(MAIN_THREAD))
+      const bindings = await tx.doc(Bindings, conversationId(primary))
       let session = bindings.sessions[record.id]
       if (session === undefined) {
         const anchor = await tx.createTask(Anchor, null, background)

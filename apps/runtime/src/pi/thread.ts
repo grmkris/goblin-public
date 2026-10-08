@@ -1,8 +1,9 @@
 import { GenerationTask, defineExtension, hook, section } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { Conversations, attempt, requireBudget } from '../services.ts'
+import { Chats, Conversations, attempt, requireBudget } from '../services.ts'
 import type { RunProgram } from './resident-mcp.ts'
+import { NotFound } from '../http/errors.ts'
 import { Entitlements } from '../billing/gates.ts'
 import { typedTool } from './typed-tool.ts'
 
@@ -33,9 +34,13 @@ export function threadExtension(run: RunProgram) {
         execute: async ({ note }, api) => {
           await run(Entitlements.use((plans) => plans.require()))
           const parent = await run(
-            Conversations.use((conversations) =>
-              attempt(() => conversations.shareBack(String(api.conversationId), note, `share:${api.callId}`)),
-            ),
+            Effect.gen(function* () {
+              const chat = (yield* Chats).chatOf(String(api.conversationId))
+              if (chat === undefined) return yield* new NotFound({ what: 'chat' })
+              return yield* Conversations.use((conversations) =>
+                attempt(() => conversations.shareBack(chat, note, `share:${api.callId}`)),
+              )
+            }),
           )
           return { sharedWith: parent }
         },
@@ -52,10 +57,12 @@ export function threadExtension(run: RunProgram) {
           void run(
             Effect.gen(function* () {
               const conversations = yield* Conversations
+              const chat = (yield* Chats).chatOf(thread)
+              if (chat === undefined) return
               yield* Effect.ignore(
-                requireBudget.pipe(Effect.andThen(attempt(() => conversations.nameIfUntitled(thread)))),
+                requireBudget.pipe(Effect.andThen(attempt(() => conversations.nameIfUntitled(chat)))),
               )
-              yield* attempt(() => conversations.announce(thread))
+              yield* attempt(() => conversations.announce(chat))
             }),
           ).catch(() => undefined)
         },

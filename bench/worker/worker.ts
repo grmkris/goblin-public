@@ -14,6 +14,7 @@ import {
   MODEL_PROVIDER,
   LITELLM_STREAMS,
   runApplicationMigrations,
+  registerPrimary,
   appMetadata,
   recallExtension,
 } from '@goblin/runtime/memory'
@@ -60,6 +61,7 @@ export class BenchmarkAgent extends Agent<Env> {
     super(ctx, env)
     runApplicationMigrations(ctx.storage)
     this.#db = drizzle(ctx.storage)
+    registerPrimary(this.#db, Date.now())
     this.#harness = new PiHarness({
       harness: ({ storage, context }) => {
         if (this.#db.select().from(appMetadata).where(eq(appMetadata.id, 'bench')).get() === undefined) {

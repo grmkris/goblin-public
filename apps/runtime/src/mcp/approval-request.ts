@@ -6,6 +6,7 @@ import {
   Approvals,
   Capabilities,
   Conversations,
+  Chats,
   Mcp,
   RoutineRuns,
   attempt,
@@ -13,7 +14,7 @@ import {
   requireResident,
 } from '../services.ts'
 import { requireRoutineSession } from '../routines/authority.ts'
-import { Conflict } from '../http/errors.ts'
+import { Conflict, NotFound } from '../http/errors.ts'
 import { objectOrJson } from '../pi/typed-tool.ts'
 
 export const McpCallInput = Schema.Struct({
@@ -32,7 +33,9 @@ export const holdModelCall = (session: string, callId: string, taskId: string, i
     if (policy?.askFirst !== true) return undefined
     yield* requireResident
     yield* requireRoutineSession(session)
-    yield* Conversations.use((registry) => attemptSync(() => registry.requireOpen(session)))
+    const chat = (yield* Chats).chatOf(session)
+    if (chat === undefined) return yield* new NotFound({ what: 'chat' })
+    yield* Conversations.use((registry) => attemptSync(() => registry.requireOpen(chat)))
     const scope = (yield* Capabilities).scope(session)
     if (!scope.tool(input.serverId, input.name)) return undefined
     const approvals = yield* Approvals
@@ -78,8 +81,9 @@ export const approvalResult = (session: string, callId: string, id: string, inpu
     } else {
       const conversations = yield* Conversations
       const now = yield* Clock.currentTimeMillis
-      if (conversations.kindOf(session) === 'subagent')
-        yield* attempt(() => conversations.update(session, { keepOpen: true }, Math.floor(now / 1000)))
+      const chat = (yield* Chats).chatOf(session)
+      if (chat !== undefined && conversations.kindOf(chat) === 'subagent')
+        yield* attempt(() => conversations.update(chat, { keepOpen: true }, Math.floor(now / 1000)))
     }
     return {
       content: [

@@ -3,6 +3,7 @@ import type { ConversationActivity, WorkspaceChange, WorkspaceSnapshot } from '@
 import type { PiHarness } from 'agents/harness/pi'
 import type { AppRegistry } from '../apps/registry.ts'
 import type { HomeService } from '../home/service.ts'
+import type { ChatDirectory } from '../chats/directory.ts'
 import type { ConversationRegistry } from '../conversations.ts'
 import { sseResponse } from '../http/sse.ts'
 import { BACKGROUND } from '../pi/context.ts'
@@ -34,6 +35,7 @@ type Listener = (changes: readonly WorkspaceChange[]) => void
  */
 export class WorkspaceFeed {
   readonly #harness: PiHarness
+  readonly #chats: ChatDirectory
   readonly #conversations: ConversationRegistry
   readonly #apps: AppRegistry
   readonly #home: HomeService
@@ -41,8 +43,15 @@ export class WorkspaceFeed {
   #activity = new Map<string, ConversationActivity>()
   #watch: Promise<TaskGraphWatch> | undefined
 
-  constructor(harness: PiHarness, conversations: ConversationRegistry, apps: AppRegistry, home: HomeService) {
+  constructor(
+    harness: PiHarness,
+    conversations: ConversationRegistry,
+    apps: AppRegistry,
+    home: HomeService,
+    chats: ChatDirectory,
+  ) {
     this.#harness = harness
+    this.#chats = chats
     this.#conversations = conversations
     this.#apps = apps
     this.#home = home
@@ -127,7 +136,12 @@ export class WorkspaceFeed {
    * run wrote replies, and may have named it.
    */
   async #apply(graph: TaskGraph, announce: boolean): Promise<void> {
-    const next = activityOf(graph)
+    const next = new Map<string, Busy>(
+      [...activityOf(graph)].flatMap(([session, state]) => {
+        const chat = this.#chats.chatOf(session)
+        return chat === undefined ? [] : [[chat, state] as const]
+      }),
+    )
     const now = Date.now()
     const changes: WorkspaceChange[] = []
     const settled: string[] = []

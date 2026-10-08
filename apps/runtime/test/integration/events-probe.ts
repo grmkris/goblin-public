@@ -1,5 +1,6 @@
 import { MAIN_THREAD } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
+import { registerPrimary } from '../../src/chats/directory.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
@@ -31,6 +32,7 @@ const occurrence = (fixture: EventsFixture, eventId: string): EventEnvelope => (
 async function setup(storage: DurableObjectStorage, harness: PiHarness) {
   runApplicationMigrations(storage)
   const db = drizzle(storage)
+  registerPrimary(db, 1)
   const store = new SqliteEventStore(db)
   const skillState = new SqliteSkillState(db)
   const cipher = await CredentialCipher.fromBase64(KEY)
