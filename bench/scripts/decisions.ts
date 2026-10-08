@@ -10,8 +10,9 @@ import { decisionFixtures } from '../src/decisions/fixtures.ts'
 import { Manifest, models } from '../src/decisions/manifest.ts'
 import { questionsFor, prompt } from '../src/decisions/questions.ts'
 import { plan } from '../src/decisions/runner.ts'
-import { Attempt, Row } from '../src/decisions/schema.ts'
-import { reportData, markdown } from '../src/decisions/report.ts'
+import { Attempt, Row, arms } from '../src/decisions/schema.ts'
+import { reportData, markdown, combineRows } from '../src/decisions/report.ts'
+import { totals } from '../src/decisions/budget.ts'
 
 const [command = 'plan', ...args] = Bun.argv.slice(2)
 const root = resolve(import.meta.dirname, '../..')
@@ -63,6 +64,9 @@ const prepare = Effect.fn('decisions.plan')(function* () {
     sourceHash: yield* implementationHash(),
     repetitions: 3,
     batchSize: 2,
+    selectedArms: yield* Schema.decodeUnknownEffect(Schema.Array(Schema.Literals(arms)))(
+      option('arms')?.split(',') ?? arms,
+    ),
     prompt,
     questions: yield* Schema.decodeUnknownEffect(Schema.JsonObject)(
       Object.fromEntries(decisionFixtures.map((fixture) => [fixture.id, questionsFor(fixture)])),
@@ -78,13 +82,21 @@ const prepare = Effect.fn('decisions.plan')(function* () {
     },
   }
   const output = plan(manifest, decisionFixtures)
-  if (output.requests > manifest.limits.maxRequests || output.estimatedCostUsd > manifest.limits.maxUsd)
+  const retained = totals(yield* readLedger(join(privateRoot, 'attempts.jsonl'), Attempt))
+  if (
+    output.requests + retained.requests > manifest.limits.maxRequests ||
+    output.maximumReservedUsd + retained.usd > manifest.limits.maxUsd
+  )
     return yield* fail('Dry run exceeds declared budget')
   yield* fs.writeFileString(join(dir, 'manifest.json'), json(manifest), { mode: 0o600, flag: 'wx' })
-  yield* fs.writeFileString(join(dir, 'dry-run.json'), json({ ...output, discoveryHttpStatus: account.status }), {
-    mode: 0o600,
-    flag: 'wx',
-  })
+  yield* fs.writeFileString(
+    join(dir, 'dry-run.json'),
+    json({ ...output, retained, discoveryHttpStatus: account.status }),
+    {
+      mode: 0o600,
+      flag: 'wx',
+    },
+  )
   yield* status(
     'GATE dry-run ' +
       join(dir, 'manifest.json') +
@@ -95,7 +107,7 @@ const prepare = Effect.fn('decisions.plan')(function* () {
       ' estimated_USD=' +
       output.estimatedCostUsd.toFixed(6),
   )
-  return { manifest: join(dir, 'manifest.json'), ...output }
+  return { manifest: join(dir, 'manifest.json'), ...output, retained }
 })
 const run = Effect.fn('decisions.command.run')(function* () {
   const path = option('manifest')
@@ -120,6 +132,18 @@ const run = Effect.fn('decisions.command.run')(function* () {
   })
   return { runId: manifest.runId, halted: result.halted, skipped: result.skipped, rows: result.rows.length }
 })
+const includedRun = Effect.fn('decisions.includedRun')(function* (manifest: Manifest, id: string) {
+  if (!/^[a-z0-9_-]+$/u.test(id) || id === manifest.runId) return yield* fail('Invalid included run')
+  const dir = join(privateRoot, id)
+  const prior = yield* readJson(join(dir, 'manifest.json'), Manifest)
+  const compatible =
+    prior.fixtureHash === manifest.fixtureHash &&
+    prior.prompt === manifest.prompt &&
+    digest(prior.questions) === digest(manifest.questions) &&
+    digest(prior.models) === digest(manifest.models)
+  if (!compatible) return yield* fail('Included run has incompatible evidence or model definitions')
+  return { manifest: prior, rows: yield* readLedger(join(dir, 'results.jsonl'), Row) }
+})
 const report = Effect.fn('decisions.command.report')(function* () {
   const id = option('run')
   if (id === undefined || !/^[a-z0-9_-]+$/u.test(id)) return yield* fail('Supply --run with a simple run id')
@@ -128,7 +152,12 @@ const report = Effect.fn('decisions.command.report')(function* () {
   if (manifest.fixtureHash !== digest(decisionFixtures)) return yield* fail('Fixtures differ from manifest')
   const rows = yield* readLedger(join(dir, 'results.jsonl'), Row)
   const attempts = yield* readLedger(join(privateRoot, 'attempts.jsonl'), Attempt)
-  const data = reportData(manifest, decisionFixtures, rows, attempts)
+  const prior = yield* Effect.forEach(option('include')?.split(',') ?? [], (runId) => includedRun(manifest, runId))
+  const combined = combineRows([...prior.map((item) => item.rows), rows])
+  const data = reportData(manifest, decisionFixtures, combined, attempts, [
+    ...prior.map((item) => item.manifest),
+    manifest,
+  ])
   const fs = yield* FileSystem.FileSystem
   yield* fs.writeFileString(join(dir, 'report.json'), json(data), { mode: 0o600 })
   const path = join(root, 'bench/reports/decisions-' + id + '.md')

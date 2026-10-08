@@ -16,6 +16,7 @@ import { runDecisions } from '../scripts/decisions-run.ts'
 import type { Provider } from '../scripts/decisions-provider.ts'
 import { readLedger } from '../scripts/store.ts'
 import { Attempt as AttemptSchema } from '../src/decisions/schema.ts'
+import { combineRows } from '../src/decisions/report.ts'
 
 const manifest: Manifest = {
   schemaVersion: 1,
@@ -234,6 +235,20 @@ describe('scoring and calibration', () => {
   })
 })
 describe('durable admission', () => {
+  it('preserves prior-run spend while allowing a fresh explicit run after a known envelope breach', () => {
+    const prior = settle(reservation, model, { status: 200, latencyMs: 10, error: null }, { input: 1001, output: 20 })
+    expect(admission(manifest, [prior], model, 100, 20)).toBe('reservation-breach')
+    const fresh = { ...manifest, runId: 'fresh' }
+    expect(admission(fresh, [prior], model, 100, 20)).toBeNull()
+    expect(admission({ ...fresh, limits: { ...fresh.limits, maxUsd: prior.costUsd } }, [prior], model, 100, 20)).toBe(
+      'budget-ceiling',
+    )
+  })
+  it('plans only manifest-selected arms and keeps the provider output token envelope', () => {
+    const output = plan({ ...manifest, selectedArms: ['jev', 'openai-decisions'] }, decisionFixtures)
+    expect(output.requests).toBe(480)
+    expect(output.estimates.map((item) => item.arm)).toEqual(['jev', 'openai-decisions'])
+  })
   it('includes critic calls and full completion reservations in the dry-run budget', () => {
     const output = plan({ ...manifest, limits: { ...manifest.limits, perCallOutput: 512 } }, decisionFixtures)
     expect(output.requests).toBeLessThanOrEqual(2000)
@@ -298,7 +313,7 @@ it('settles three repetitions of all six remote arms and persists every row exac
             choices: [{ message: { content: JSON.stringify(answer) } }],
             usage: { prompt_tokens: 100, completion_tokens: 20 },
           }
-        : { ...answer, usage: { input_tokens: 100, output_tokens: 0 } }
+        : { ...answer, usage: { input_tokens: 100, output_tokens: 20 } }
     return Effect.succeed({ status: 200, text: JSON.stringify(body), latencyMs: 5, error: null })
   }
   try {
@@ -340,6 +355,12 @@ it('retains a timeout reservation and halts every later provider admission', asy
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+it('combines explicitly included rows once with later matching rows taking precedence', () => {
+  const initial = localRow(fixture('attention-triage-03'), 'jev', 1)
+  const replacement = { ...initial, latencyMs: 77 }
+  const other = localRow(fixture('attention-triage-04'), 'jev', 1)
+  expect(combineRows([[initial, other], [replacement]])).toEqual([replacement, other])
 })
 it('runs with injected providers, retains 403 once, makes no retry and persists private reservations before dispatch', async () => {
   const root = await mkdtemp(join(tmpdir(), 'goblin-decisions-test-'))

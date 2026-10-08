@@ -5,11 +5,17 @@ import { totals } from './budget.ts'
 
 const pct = (value: number | null): string => (value === null ? 'n/a' : (100 * value).toFixed(1) + '%')
 const usd = (value: number | null): string => (value === null ? 'unknown' : '$' + value.toFixed(6))
+export function combineRows(groups: readonly (readonly Row[])[]): Row[] {
+  const merged = new Map<string, Row>()
+  for (const rows of groups) for (const row of rows) merged.set([row.id, row.arm, row.repetition].join('/'), row)
+  return [...merged.values()]
+}
 export function reportData(
   manifest: Manifest,
   fixtures: readonly Fixture[],
   rows: readonly Row[],
   attempts: readonly Attempt[],
+  sources: readonly Manifest[] = [manifest],
 ) {
   const metrics = tasks.flatMap((task) =>
     arms.map((arm) => ({
@@ -25,6 +31,8 @@ export function reportData(
     runId: manifest.runId,
     fixtureHash: manifest.fixtureHash,
     sourceHash: manifest.sourceHash,
+    sources: sources.map((source) => ({ runId: source.runId, sourceHash: source.sourceHash, limits: source.limits })),
+    attempts: [...new Map(attempts.map((attempt) => [attempt.id, attempt])).values()],
     totals: totals(attempts),
     metrics,
   }
@@ -35,6 +43,9 @@ function qualityTables(data: Report): string[] {
     '# Goblin decision-model evaluation',
     '',
     'Run ' + data.runId + '; fixture SHA-256 ' + data.fixtureHash + '; source SHA-256 ' + data.sourceHash + '.',
+    'Included sources: ' +
+      data.sources.map((source) => source.runId + ' (' + source.sourceHash + ')').join('; ') +
+      '. Later included rows supersede earlier matching arm/case/repetition rows; all original attempts and costs remain in the ledger.',
     '',
     '160 synthetic labelled cases, 40 per task. Three live repetitions share the frozen fixture set. Each task covers ordinary, ambiguous, contradictory, missing, stale and do-nothing evidence. Relevance has 3–8 permitted candidates and none-relevant. Brief updates score type, duplicate and conflict together. Attention contains ordinary results only. Organization uses only offered existing IDs.',
     '',
@@ -138,6 +149,35 @@ function repetitionTable(data: Report): string[] {
   )
   return lines
 }
+function attemptTable(data: Report): string[] {
+  const lines = [
+    '',
+    '| Arm | Upstream attempts | HTTP errors | Timeouts | Reservation breaches | Charged USD |',
+    '| --- | ---: | ---: | ---: | ---: | ---: |',
+  ]
+  for (const arm of arms) {
+    const calls = data.attempts.filter((attempt) => attempt.arm === arm)
+    lines.push(
+      '| ' +
+        [
+          arm,
+          calls.length,
+          calls.filter((call) => call.status >= 400).length,
+          calls.filter((call) => call.error === 'timeout').length,
+          calls.filter((call) => call.error === 'reservation-breach').length,
+          usd(calls.reduce((sum, call) => sum + call.costUsd, 0)),
+        ].join(' | ') +
+        ' |',
+    )
+  }
+  lines.push(
+    '',
+    'The quality table counts affected cases; this table counts upstream requests. Campaign totals include superseded diagnostic attempts. Charged USD uses the declared budget rates and is not a CLIProxy invoice. No credentials are included in artifacts.',
+  )
+  return lines
+}
 export function markdown(data: Report): string {
-  return [...qualityTables(data), ...calibrationTables(data), ...repetitionTable(data)].join('\n')
+  return [...qualityTables(data), ...calibrationTables(data), ...repetitionTable(data), ...attemptTable(data)].join(
+    '\n',
+  )
 }

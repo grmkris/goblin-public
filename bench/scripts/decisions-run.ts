@@ -3,8 +3,8 @@ import { join } from 'node:path'
 import { appendJson, readLedger, lockRun, fail } from './store.ts'
 import { type Provider } from './decisions-provider.ts'
 import { executeAttempt } from './decisions-attempt.ts'
-import { Attempt, Row, arms, type Arm, type Fixture } from '../src/decisions/schema.ts'
-import { modelFor, type Manifest } from '../src/decisions/manifest.ts'
+import { Attempt, Row, type Arm, type Fixture } from '../src/decisions/schema.ts'
+import { activeArms, modelFor, type Manifest } from '../src/decisions/manifest.ts'
 import { batches, localRow, type Batch } from '../src/decisions/runner.ts'
 import { totals } from '../src/decisions/budget.ts'
 import { rules } from '../src/decisions/rules.ts'
@@ -108,7 +108,7 @@ export const runDecisions = Effect.fn('decisions.run')(function* (options: RunOp
   if (previous.length > 0) return yield* fail('Run already has results; preserve it and use a new manifest')
   yield* fs.makeDirectory(dir, { recursive: true, mode: 0o700 })
   const state: RunState = { rows: [], records, skipped: {}, halted: false }
-  for (const arm of arms) yield* runArm(options, state, arm)
+  for (const arm of activeArms(manifest)) yield* runArm(options, state, arm)
   // Append local/skip outcomes once; network outcomes were appended immediately after settlement.
   yield* persistRows(
     join(dir, 'results.jsonl'),

@@ -1,6 +1,6 @@
-import { arms, type Arm, type Fixture, type Row, type Answers } from './schema.ts'
+import type { Arm, Fixture, Row, Answers } from './schema.ts'
 import type { Manifest, Model } from './manifest.ts'
-import { modelFor } from './manifest.ts'
+import { activeArms, modelFor } from './manifest.ts'
 import { rules } from './rules.ts'
 import { packet, chatBody, typedBody, openaiBody } from './wire.ts'
 
@@ -32,7 +32,7 @@ export function requestBody(batch: Batch, model: Model, output: number): string 
   return JSON.stringify(typedBody(model.model, data, model.arm === 'jev'))
 }
 export function plan(manifest: Manifest, fixtures: readonly Fixture[]) {
-  const estimates = arms
+  const estimates = activeArms(manifest)
     .filter((arm) => arm !== 'rules')
     .map((arm) => {
       const model = modelFor(manifest, arm)
@@ -43,7 +43,7 @@ export function plan(manifest: Manifest, fixtures: readonly Fixture[]) {
           Math.ceil(new TextEncoder().encode(requestBody(batch, model, manifest.limits.perCallOutput)).length / 4),
         0,
       )
-      const output = arm === 'cheap-llm' ? calls.length * manifest.limits.perCallOutput : 0
+      const output = calls.length * (arm === 'cheap-llm' ? manifest.limits.perCallOutput : 256)
       const reservedInput = calls.reduce(
         (sum, batch) =>
           sum + new TextEncoder().encode(requestBody(batch, model, manifest.limits.perCallOutput)).length + 256,

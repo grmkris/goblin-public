@@ -496,3 +496,12 @@ Credentials come only from environment variables. Workers AI uses `CLOUDFLARE_AI
 failures are reported independently from judgment quality. Provider payloads, raw replies and ledgers
 stay in ignored, private `.local/bench/decisions/` files. Generated reports live in `bench/reports/`.
 Thresholds and calibration are exploratory fits on these fixtures, not independently validated defaults.
+
+A fresh follow-up manifest can select unfinished arms with `plan --arms jev,openai-decisions`.
+This retains every prior attempt in the shared budget and avoids repeating completed arms. A known
+per-call envelope breach stops its original run; corrected envelopes require a fresh manifest. Reports
+may explicitly combine compatible trials with `report --run <new> --include <prior>`: fixture hash,
+prompts, question schemas and model definitions must agree, later matching judgment rows supersede
+earlier rows, and every original request and cost remains visible. Source hashes for every included
+trial are reported. Typed providers also reserve completion tokens for wire encoding, even when
+completion pricing is zero.

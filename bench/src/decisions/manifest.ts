@@ -22,6 +22,7 @@ export const Manifest = Schema.Struct({
   sourceHash: Schema.String,
   repetitions: Positive.check(Schema.isLessThanOrEqualTo(3)),
   batchSize: Schema.Literal(2),
+  selectedArms: Schema.optional(Schema.Array(Schema.Literals(arms))),
   prompt: Schema.String,
   questions: Schema.JsonObject,
   models: Schema.Array(Model),
@@ -35,6 +36,7 @@ export const Manifest = Schema.Struct({
   }),
 })
 export type Manifest = typeof Manifest.Type
+export const activeArms = (manifest: Manifest) => manifest.selectedArms ?? arms
 
 export function models(account: string): readonly Model[] {
   const cloud = 'https://api.cloudflare.com/client/v4/accounts/' + account + '/ai/run/@cf/cloudflare/'
