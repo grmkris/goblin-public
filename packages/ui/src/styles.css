@@ -28,6 +28,13 @@
   --default-transition-timing-function: var(--ease-out);
 }
 
+/* The type sizes the app sets between Tailwind's steps: captions (2xs), dense UI (13) and the desktop composer (15). */
+@theme static {
+  --text-2xs: 0.6875rem;
+  --text-13: 0.8125rem;
+  --text-15: 0.9375rem;
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -133,6 +140,23 @@
   --shadow-1: 0 1px 2px oklch(0 0 0 / 5%);
   --shadow-2: 0 1px 2px oklch(0 0 0 / 5%), 0 6px 16px -6px oklch(0 0 0 / 12%);
   --shadow-3: 0 2px 4px oklch(0 0 0 / 6%), 0 12px 28px -8px oklch(0 0 0 / 18%);
+  /* Anything fully round: pills, grabbers, dots. */
+  --radius-pill: 9999px;
+  /*
+   * Stacking, bottom to top. Raised and float order siblings inside one component; the rest order the app's layers:
+   * the rails along a pane's edge (the turn map, the desktop sidebar), App stages fixed over their slots, the dock over
+   * an App, a pane's chrome (its pill, the top bar, a lifted Home tile), the phone's floating Chat button, overlays
+   * (menus, popovers, drawers) and a pane being dragged.
+   */
+  --z-raised: 1;
+  --z-float: 2;
+  --z-rail: 10;
+  --z-stage: 20;
+  --z-dock: 25;
+  --z-chrome: 30;
+  --z-fab: 40;
+  --z-overlay: 50;
+  --z-drag: 60;
   /* A page's outer gutters: at least the base gutter, more where the iPhone's notch or home indicator needs it. */
   --page-gutter-left: max(1.25rem, env(safe-area-inset-left));
   --page-gutter-right: max(1.25rem, env(safe-area-inset-right));

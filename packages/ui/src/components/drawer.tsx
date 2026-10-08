@@ -23,7 +23,7 @@ function DrawerBackdrop() {
   return (
     <DrawerPrimitive.Backdrop
       data-slot="drawer-backdrop"
-      className="fixed inset-0 z-50 min-h-dvh bg-black/10 opacity-[calc(1-var(--drawer-swipe-progress,0))] transition-opacity duration-300 ease-drawer data-ending-style:opacity-0 data-ending-style:duration-200 data-starting-style:opacity-0 data-swiping:duration-0 supports-backdrop-filter:backdrop-blur-xs supports-[-webkit-touch-callout:none]:absolute"
+      className="fixed inset-0 z-(--z-overlay) min-h-dvh bg-black/10 opacity-[calc(1-var(--drawer-swipe-progress,0))] transition-opacity duration-300 ease-drawer data-ending-style:opacity-0 data-ending-style:duration-200 data-starting-style:opacity-0 data-swiping:duration-0 supports-backdrop-filter:backdrop-blur-xs supports-[-webkit-touch-callout:none]:absolute"
     />
   )
 }
@@ -58,7 +58,7 @@ function DrawerContent({
       <DrawerBackdrop />
       <DrawerPrimitive.Viewport
         data-slot="drawer-viewport"
-        className="fixed inset-0 z-50 flex items-end justify-center"
+        className="fixed inset-0 z-(--z-overlay) flex items-end justify-center"
       >
         <DrawerPrimitive.Popup
           data-slot="drawer-content"
@@ -84,7 +84,7 @@ function DrawerSide({ className, ...props }: DrawerPrimitive.Popup.Props) {
       <DrawerBackdrop />
       <DrawerPrimitive.Viewport
         data-slot="drawer-viewport"
-        className="fixed inset-0 z-50 flex items-stretch justify-start"
+        className="fixed inset-0 z-(--z-overlay) flex items-stretch justify-start"
       >
         <DrawerPrimitive.Popup
           data-slot="drawer-side"

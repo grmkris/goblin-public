@@ -10,7 +10,7 @@ function TopBar({ floating = false, className, ...props }: ComponentProps<'heade
     <header
       data-slot="top-bar"
       className={cn(
-        'material-chrome material-edge-bottom z-30 flex h-(--top-bar-height) w-full shrink-0 items-center gap-1 pt-(--safe-top) pr-[max(0.5rem,var(--safe-right))] pl-[max(0.5rem,var(--safe-left))] select-none',
+        'material-chrome material-edge-bottom z-(--z-chrome) flex h-(--top-bar-height) w-full shrink-0 items-center gap-1 pt-(--safe-top) pr-[max(0.5rem,var(--safe-right))] pl-[max(0.5rem,var(--safe-left))] select-none',
         'pointer-coarse:[&_[data-slot=button]]:h-11 pointer-coarse:[&_[data-slot=button]]:min-w-11',
         floating ? 'absolute inset-x-0 top-0' : 'sticky top-0',
         className,

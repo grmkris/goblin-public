@@ -43,7 +43,7 @@ function PositionedMenu({
   const padding = React.useMemo(() => collisionPadding ?? edgePadding(), [collisionPadding])
   return (
     <MenuPrimitive.Positioner
-      className="isolate z-50 outline-none"
+      className="isolate z-(--z-overlay) outline-none"
       align={align}
       alignOffset={alignOffset}
       side={side}
@@ -54,7 +54,7 @@ function PositionedMenu({
       <MenuPrimitive.Popup
         data-slot="dropdown-menu-content"
         className={cn(
-          'z-50 max-h-(--available-height) w-max max-w-[min(22rem,var(--available-width))] min-w-[max(8rem,var(--anchor-width))] origin-(--transform-origin) overflow-x-hidden overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 transition-[scale,opacity] duration-150 data-ending-style:duration-100 data-starting-style:scale-[0.98] data-starting-style:opacity-0 data-ending-style:scale-[0.98] data-ending-style:opacity-0 outline-none data-closed:overflow-hidden pointer-coarse:p-1.5',
+          'z-(--z-overlay) max-h-(--available-height) w-max max-w-[min(22rem,var(--available-width))] min-w-[max(8rem,var(--anchor-width))] origin-(--transform-origin) overflow-x-hidden overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 transition-[scale,opacity] duration-150 data-ending-style:duration-100 data-starting-style:scale-[0.98] data-starting-style:opacity-0 data-ending-style:scale-[0.98] data-ending-style:opacity-0 outline-none data-closed:overflow-hidden pointer-coarse:p-1.5',
           className,
         )}
         {...props}

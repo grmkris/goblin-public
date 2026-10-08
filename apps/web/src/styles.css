@@ -56,7 +56,7 @@ main.shell {
   height: 2rem;
   padding-inline: 0.5rem;
   border-radius: var(--radius-md);
-  font-size: 0.9375rem;
+  font-size: var(--text-15);
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -91,7 +91,7 @@ main.shell {
 }
 .tree-row > [data-slot='sidebar-menu-button'] {
   position: relative;
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
 }
 @media (pointer: fine) {
   [data-slot='sidebar-menu-sub'] .tree-row > [data-slot='sidebar-menu-button'] {
@@ -107,7 +107,7 @@ main.shell {
   left: 0.125rem;
   width: 0.25rem;
   height: 0.25rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--muted-foreground);
   content: '';
   translate: 0 -50%;
@@ -147,13 +147,13 @@ main.shell {
   align-items: center;
   gap: 0.375rem;
   color: var(--muted-foreground);
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
 }
 .tree-row-unread {
   width: 0.4375rem;
   height: 0.4375rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--live);
 }
 /* Work under a conversation it is not doing itself, or waiting on its subagents: a ring that turns. */
@@ -163,7 +163,7 @@ main.shell {
   height: 0.625rem;
   border: 1.5px solid var(--live-soft);
   border-top-color: var(--live);
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   animation: tree-turn 1s linear infinite;
 }
 .tree-row-waiting {
@@ -179,7 +179,7 @@ main.shell {
   width: 0.5rem;
   height: 0.5rem;
   margin-inline-start: auto;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--destructive);
 }
 .tree-row-beside {
@@ -282,7 +282,7 @@ main.shell {
   height: 0.625rem;
   border: 1.5px solid var(--live-soft);
   border-top-color: var(--live);
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   animation: tree-turn 1s linear infinite;
   content: '';
 }
@@ -311,7 +311,7 @@ main.shell {
 @media (pointer: coarse) {
   .closed-fold {
     height: 2.75rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-13);
   }
 }
 @media (hover: hover) {
@@ -367,7 +367,7 @@ main.shell {
   color: var(--muted-foreground);
 }
 .rail-item[data-kind='subagent'] {
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
 }
 .rail-item[data-kind='app'] {
   box-shadow: none;
@@ -400,7 +400,7 @@ main.shell {
   bottom: 0.375rem;
   left: -0.625rem;
   width: 0.1875rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--primary);
   content: '';
 }
@@ -410,7 +410,7 @@ main.shell {
   left: 50%;
   width: 0.25rem;
   height: 0.25rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--muted-foreground);
   content: '';
   translate: -50% 0;
@@ -425,7 +425,7 @@ main.shell {
   width: 0.5rem;
   height: 0.5rem;
   border: 1.5px solid var(--sidebar);
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--live);
   content: '';
 }
@@ -499,7 +499,7 @@ main.shell {
   top: var(--message-scroller-inset-top);
   right: max(var(--safe-right), 0.75rem);
   bottom: var(--message-scroller-inset-bottom);
-  z-index: 10;
+  z-index: var(--z-rail);
   display: flex;
   align-items: center;
   pointer-events: none;
@@ -557,7 +557,7 @@ main.shell {
   position: absolute;
   top: 33%;
   right: var(--safe-right, 0px);
-  z-index: 10;
+  z-index: var(--z-rail);
   display: grid;
   place-items: center;
   width: 0.875rem;
@@ -639,7 +639,7 @@ main.shell {
 .turn-map-via {
   flex: none;
   color: var(--muted-foreground);
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
 }
 .turn-map-earlier {
   align-items: center;
@@ -663,7 +663,7 @@ main.shell {
   flex: none;
   width: 0.5rem;
   height: 0.5rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--live);
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
@@ -693,7 +693,7 @@ main.shell {
   max-width: 20rem;
   margin: auto;
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
   line-height: 1.45;
   text-align: center;
   text-wrap: balance;
@@ -734,7 +734,7 @@ main.shell {
   min-width: 1.75rem;
   justify-content: center;
   padding-inline: 0.5rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   color: var(--muted-foreground);
   font-size: 0.75rem;
   transition:
@@ -771,12 +771,12 @@ main.shell {
 }
 .thread-rows > .message-actions:only-child {
   position: absolute;
-  z-index: 2;
+  z-index: var(--z-float);
   bottom: -0.75rem;
   left: 0.5rem;
   margin: 0;
   padding: 1px;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--background);
   box-shadow: var(--ring-hairline), var(--shadow-1);
   opacity: 0;
@@ -865,7 +865,7 @@ main.shell {
   padding: 0.25rem 0.375rem 0.25rem 0.5rem;
   border: 1px solid transparent;
   border-radius: 0.625rem;
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
   text-align: left;
   transition:
     background-color 150ms,
@@ -937,7 +937,7 @@ main.shell {
 }
 .chat-dock {
   position: absolute;
-  z-index: 25;
+  z-index: var(--z-dock);
   inset-inline: 0;
   bottom: var(--keyboard-inset, 0px);
   display: flex;
@@ -987,7 +987,7 @@ main.shell {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 20;
+  z-index: var(--z-stage);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1095,7 +1095,7 @@ main.shell {
   width: 2.5rem;
   height: 0.375rem;
   margin: 0.5rem auto;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--border);
   touch-action: manipulation;
 }
@@ -1118,8 +1118,9 @@ main.shell {
   position: fixed;
   right: max(1rem, env(safe-area-inset-right));
   bottom: max(1rem, env(safe-area-inset-bottom));
-  z-index: 40;
-  box-shadow: var(--shadow-lg, 0 10px 25px rgb(0 0 0 / 0.15));
+  z-index: var(--z-fab);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
 }
 /* The docked chat's button on a full-screen App's page: a dot while the chat it folded away has unread replies. */
 .dock-toggle {
@@ -1133,7 +1134,7 @@ main.shell {
   right: 0.25rem;
   width: 0.5rem;
   height: 0.5rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--primary);
 }
 .app-chrome-jobs {
@@ -1192,7 +1193,7 @@ main.shell {
   border: 1px dashed var(--border);
   border-radius: 0.75rem;
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
 }
 .app-slot-note > svg {
   flex: none;
@@ -1213,7 +1214,7 @@ main.shell {
   border-radius: 0.75rem;
   background: color-mix(in oklab, var(--card) 92%, transparent);
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
 }
 .app-stage > .app-offer {
   margin: 0.5rem;
@@ -1380,7 +1381,7 @@ a.file-chip:active {
   padding: 0.5rem 0.875rem;
   border-radius: 1.125rem 1.125rem 0.375rem 1.125rem;
   background: var(--you);
-  font-size: 0.9375rem;
+  font-size: var(--text-15);
   line-height: 1.5;
 }
 /* The agent's words have no bubble; a pointer resting on one lifts it onto a faint surface, where its actions appear. */
@@ -1460,7 +1461,7 @@ a.file-chip:active {
 }
 .card-line-meta {
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
 }
 /* A line under a section's cards: a setting that applies to all of them. */
 .section-foot {
@@ -1470,7 +1471,7 @@ a.file-chip:active {
   gap: 0.25rem;
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
 }
 /* A routine's instructions and its facts (components/routines.tsx). */
 .routine-prompt {
@@ -1487,7 +1488,7 @@ a.file-chip:active {
   grid-template-columns: max-content 1fr;
   gap: 0.375rem 1rem;
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
 }
 .routine-facts > div {
   display: contents;
@@ -1519,13 +1520,13 @@ a.file-chip:active {
 }
 .run-time {
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
   font-variant-numeric: tabular-nums;
 }
 .run-link {
   margin-left: auto;
   color: var(--foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
   font-weight: 500;
   text-decoration: none;
 }
@@ -1572,7 +1573,7 @@ a.file-chip:active {
   gap: 0.5rem;
   margin: 0;
   padding-left: 1.125rem;
-  font-size: 0.9375rem;
+  font-size: var(--text-15);
   line-height: 1.5;
 }
 .plan-points > li::marker {
@@ -1592,7 +1593,7 @@ a.file-chip:active {
   align-items: center;
   gap: 0.375rem;
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
   white-space: nowrap;
 }
 .status-label::before {
@@ -1665,7 +1666,7 @@ a.file-chip:active {
 .server-part-title {
   margin: 0 auto 0.25rem 0;
   color: var(--muted-foreground);
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1683,7 +1684,7 @@ a.file-chip:active {
 .server-note {
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
 }
 .server-part > .server-note {
   margin-top: 0.5rem;
@@ -1714,7 +1715,7 @@ a.file-chip:active {
 }
 .event-meta {
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
 }
 /*
  * Settings-list rows: what a switch allows on the left, the switch on the right, hairlines between. A row the agent
@@ -1768,7 +1769,7 @@ a.file-chip:active {
   display: -webkit-box;
   overflow: hidden;
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
   line-height: 1.45;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
@@ -1823,7 +1824,7 @@ code.grant-about {
   flex-direction: column;
   gap: 0.5rem;
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
 }
 .registries > summary {
   width: fit-content;
@@ -1879,7 +1880,7 @@ code.grant-about {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
 }
 .work-line {
   display: flex;
@@ -2011,7 +2012,7 @@ code.grant-about {
   margin-right: 0.5rem;
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -2042,7 +2043,7 @@ code.grant-about {
   height: 0.75rem;
   border: 1.5px solid var(--live-soft);
   border-top-color: var(--live);
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   animation: tree-turn 1s linear infinite;
 }
 .state-icon[data-state='waiting'] {
@@ -2051,7 +2052,7 @@ code.grant-about {
 .state-icon[data-state='asking']::before {
   width: 0.5rem;
   height: 0.5rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--presence-warm);
   content: '';
 }
@@ -2112,7 +2113,7 @@ code.grant-about {
 .capability-heading {
   padding: 0.375rem 0.625rem 0.125rem;
   color: var(--muted-foreground);
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2184,7 +2185,7 @@ code.grant-about {
 .capability-empty,
 .capability-error {
   padding: 0.25rem 0.625rem 0.5rem;
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
 }
 .capability-empty {
   color: var(--muted-foreground);
@@ -2278,7 +2279,7 @@ code.grant-about {
   align-items: center;
   gap: 0.5rem;
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
 }
 .inline-thread-stub > span {
   flex: 1;
@@ -2368,7 +2369,7 @@ code.grant-about {
  */
 .pane-header {
   position: absolute;
-  z-index: 30;
+  z-index: var(--z-chrome);
   top: 0;
   padding-top: max(0.5rem, var(--safe-top));
   inset-inline: max(0.5rem, var(--safe-left)) max(0.5rem, var(--safe-right));
@@ -2383,11 +2384,9 @@ code.grant-about {
   max-width: 100%;
   height: 1.875rem;
   padding-inline: 0.1875rem;
-  border-radius: 9999px;
-  background: color-mix(in oklab, var(--background) 84%, transparent);
-  backdrop-filter: blur(14px) saturate(160%);
+  border-radius: var(--radius-pill);
   box-shadow: var(--ring-hairline);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
   pointer-events: auto;
   user-select: none;
   transition: box-shadow 160ms ease;
@@ -2395,16 +2394,9 @@ code.grant-about {
 .workspace-pane[data-focused='true'] .pane-pill {
   box-shadow: var(--ring-hairline), var(--shadow-2);
 }
-@media (prefers-reduced-transparency: reduce) {
-  .pane-pill {
-    background: var(--background);
-    backdrop-filter: none;
-  }
-}
+/* The pill's material is the shared chrome (`material-chrome`); with more contrast its ring is drawn in full. */
 @media (prefers-contrast: more) {
   .pane-pill {
-    background: var(--background);
-    backdrop-filter: none;
     box-shadow: 0 0 0 1px var(--foreground);
   }
 }
@@ -2416,7 +2408,7 @@ code.grant-about {
 .pane-pill > [data-slot='sidebar-trigger'] {
   flex: none;
   height: 1.5rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   outline-offset: 1px;
 }
 @media (pointer: coarse) {
@@ -2552,7 +2544,7 @@ button.pane-title:active {
 }
 .pane-rename input {
   height: 1.5rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
 }
 /* Narrow screens move between panes by swiping the strip; there is nothing to drag. */
 .workspace-surface[data-workspace='narrow'] .pane-grip {
@@ -2562,7 +2554,7 @@ button.pane-title:active {
 .pane-drag {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: var(--z-drag);
   cursor: grabbing;
   pointer-events: none;
 }
@@ -2589,10 +2581,10 @@ button.pane-title:active {
   overflow: hidden;
   padding: 0.25rem 0.625rem;
   border: 1px solid var(--border);
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--background);
   box-shadow: var(--shadow-3);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2613,7 +2605,7 @@ button.pane-title:active {
   background: var(--muted);
   box-shadow: var(--ring-hairline);
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
   text-wrap: pretty;
   animation: rise 220ms var(--ease-out);
 }
@@ -2626,7 +2618,7 @@ button.pane-title:active {
 .sidebar-credit {
   padding: 0.25rem 0.5rem;
   color: var(--muted-foreground);
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   line-height: 1.4;
 }
 @media (hover: hover) and (pointer: fine) {

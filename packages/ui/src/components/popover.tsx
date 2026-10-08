@@ -42,13 +42,13 @@ function PopoverContent({
         sideOffset={sideOffset}
         collisionPadding={padding}
         anchor={anchor}
-        className="isolate z-50"
+        className="isolate z-(--z-overlay)"
       >
         <PopoverPrimitive.Popup
           data-slot="popover-content"
           data-size={size}
           className={cn(
-            'z-50 flex w-72 origin-(--transform-origin) flex-col gap-2.5 rounded-lg bg-popover p-2.5 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden transition-[scale,opacity] duration-150 data-ending-style:duration-100 data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 data-[size=panel]:max-h-[min(32rem,var(--available-height))] data-[size=panel]:w-[min(22rem,calc(100vw-1rem))] data-[size=panel]:overflow-y-auto data-[size=panel]:overscroll-contain data-[size=panel]:rounded-xl data-[size=panel]:p-1.5',
+            'z-(--z-overlay) flex w-72 origin-(--transform-origin) flex-col gap-2.5 rounded-lg bg-popover p-2.5 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden transition-[scale,opacity] duration-150 data-ending-style:duration-100 data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 data-[size=panel]:max-h-[min(32rem,var(--available-height))] data-[size=panel]:w-[min(22rem,calc(100vw-1rem))] data-[size=panel]:overflow-y-auto data-[size=panel]:overscroll-contain data-[size=panel]:rounded-xl data-[size=panel]:p-1.5',
             className,
           )}
           {...props}

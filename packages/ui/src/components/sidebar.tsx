@@ -154,7 +154,7 @@ function SidebarDesktop({ className, children, ...props }: ComponentProps<'div'>
       <div
         data-slot="sidebar-container"
         className={cn(
-          'fixed inset-y-0 left-0 z-10 hidden h-svh w-(--sidebar-width) border-r border-sidebar-border transition-[width] duration-300 ease-(--ease-sheet) group-data-[collapsible=icon]:w-(--sidebar-width-icon) md:flex',
+          'fixed inset-y-0 left-0 z-(--z-rail) hidden h-svh w-(--sidebar-width) border-r border-sidebar-border transition-[width] duration-300 ease-(--ease-sheet) group-data-[collapsible=icon]:w-(--sidebar-width-icon) md:flex',
           className,
         )}
         {...props}

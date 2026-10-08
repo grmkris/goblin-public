@@ -22,11 +22,16 @@ function HoverCardContent({
 }: PreviewCardPrimitive.Popup.Props & Pick<PreviewCardPrimitive.Positioner.Props, 'side' | 'sideOffset' | 'align'>) {
   return (
     <PreviewCardPrimitive.Portal>
-      <PreviewCardPrimitive.Positioner side={side} sideOffset={sideOffset} align={align} className="isolate z-50">
+      <PreviewCardPrimitive.Positioner
+        side={side}
+        sideOffset={sideOffset}
+        align={align}
+        className="isolate z-(--z-overlay)"
+      >
         <PreviewCardPrimitive.Popup
           data-slot="hover-card-content"
           className={cn(
-            'z-50 flex w-64 origin-(--transform-origin) flex-col gap-1 rounded-lg bg-popover p-2.5 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden transition-[scale,opacity] duration-150 data-ending-style:duration-100 data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0',
+            'z-(--z-overlay) flex w-64 origin-(--transform-origin) flex-col gap-1 rounded-lg bg-popover p-2.5 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden transition-[scale,opacity] duration-150 data-ending-style:duration-100 data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0',
             className,
           )}
           {...props}

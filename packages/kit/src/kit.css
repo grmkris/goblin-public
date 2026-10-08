@@ -8,7 +8,7 @@
 .kit-map figcaption {
   margin-bottom: 0.5rem;
   color: var(--muted-foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-13);
   font-weight: 500;
 }
 /* A diagram keeps its own size up to the column's width; it is an image, so it scales as one. */
