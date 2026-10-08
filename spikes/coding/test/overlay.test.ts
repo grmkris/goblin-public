@@ -13,6 +13,14 @@ describe('coding overlay', () => {
     )
   })
 
+  test('accepts test filenames and nested TypeScript paths while rejecting traversal', () => {
+    const overlay = new Overlay('base', base)
+    overlay.edit('apps/cli/test/hello.test.ts', 'export const test = 1\n', overlay.revision)
+    overlay.edit('apps/cli/src/commands/hello.ts', 'export const hello = 1\n', overlay.revision)
+    expect(overlay.changes.size).toBe(2)
+    expect(() => overlay.edit('apps/cli/test/../outside.ts', 'x', overlay.revision)).toThrow('invalid_repo_path')
+  })
+
   test('invalidates readiness when the revision changes', () => {
     const overlay = new Overlay('base', base)
     const revision = overlay.edit(file, 'export const answer = 2\n', overlay.revision)

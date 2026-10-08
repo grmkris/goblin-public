@@ -5,7 +5,7 @@ export class SpikeError extends Error {}
 
 export const digest = (value: string): string => createHash('sha256').update(value).digest('hex')
 export const editable = (file: string): boolean =>
-  /^apps\/cli\/(?:src|test)\/[\w/-]+\.ts$/u.test(file) && !file.split('/').includes('..')
+  /^apps\/cli\/(?:src|test)\/[\w./-]+\.ts$/u.test(file) && !file.split('/').includes('..')
 
 export function sourcePath(file: string): string {
   if (path.isAbsolute(file) || file.includes('\\') || file.split('/').some((part) => part === '..' || part === '.'))
