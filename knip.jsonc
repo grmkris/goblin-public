@@ -31,6 +31,10 @@
       "entry": ["server.ts!", "client.mts!"],
       "project": ["**/*.ts", "**/*.mts"],
     },
+    "spikes/coding": {
+      "entry": ["scripts/server.ts!", "scripts/prepare.ts!"],
+      "project": ["scripts/**/*.ts", "test/**/*.ts"],
+    },
     "tools": {
       "entry": ["*.ts!", "oxlint/*.ts!"],
       "ignoreDependencies": ["@effect/tsgo"],
