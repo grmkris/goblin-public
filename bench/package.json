@@ -6,8 +6,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "effect:check": "bun ../tools/effect-check.ts tsconfig.json",
-    "test": "vitest run",
-    "test:unit": "vitest run",
+    "test": "vitest run && python3 -B -m unittest discover -s scripts/retrieval -p 'test_*.py'",
+    "test:unit": "vitest run && python3 -B -m unittest discover -s scripts/retrieval -p 'test_*.py'",
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {

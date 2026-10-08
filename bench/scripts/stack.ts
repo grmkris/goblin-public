@@ -16,7 +16,11 @@ export default Alchemy.Stack(
       main: fileURLToPath(new URL('../worker/worker.ts', import.meta.url)),
       compatibility: { date: '2026-09-25', flags: ['nodejs_compat'] },
       dev: { port, strictPort: true },
-      env: { BENCH: Cloudflare.DurableObject('BenchmarkAgent'), RELAY_URL: relay },
+      env: {
+        BENCH: Cloudflare.DurableObject('BenchmarkAgent'),
+        TRANSCRIPTS: Cloudflare.DurableObject('TranscriptIndex'),
+        RELAY_URL: relay,
+      },
     })
     return { url: worker.url.as<string>() }
   }),

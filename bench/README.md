@@ -1,5 +1,31 @@
 # Memory benchmark workspace
 
+## Cross-chat transcript retrieval spike
+
+The [retrieval spike report](retrieval-report.md) compares a native DO FTS5 candidate index with a bounded
+Vectorize/Workers AI design on a [deterministically generated synthetic history](scripts/retrieval/generate.py).
+Test setup and the live coordinator regenerate the messages and all 80 labels under `.local/bench/retrieval/corpus.json`,
+checking the committed SHA-256 before use. Generation makes no model calls; labels stay on the coordinator and never
+enter worker indexing requests. FTS5 probing and migration
+reapplication run in a separate scratch actor in the native benchmark worker, leaving Pi and the runtime migrations
+unchanged. The frozen fixture SHA-256 is in `fixtures/retrieval/corpus.sha256`.
+
+```sh
+python3 -B bench/scripts/retrieval/live.py plan
+GOBLIN_RETRIEVAL_RECORD=true GOBLIN_HARNESS_PORT=19201 heavy bun run --cwd bench vitest run --config vitest.integration.config.ts test/transcript-index.test.ts
+python3 -B bench/scripts/retrieval/live.py vector
+python3 -B bench/scripts/retrieval/live.py clef
+python3 -B bench/scripts/retrieval/live.py rerank
+```
+
+Run from the repository root. The first command seals an immutable manifest and dry run under
+`.local/bench/retrieval/`. Inference is sequential, with durable request/token/dollar reservations and an append-only
+`attempts.jsonl`; the hard caps are 3,000 AI requests and $3. The first permission or schema failure is retained,
+with no automatic retry or alternate model. CLIProxy and Cloudflare keys come only from the environment. The one
+named Vectorize index is deleted in `finally` if this run created it; a name collision never grants ownership.
+The private manifest, response traces and native result files are separate from the committed report. The lane's
+one-shot run directory must be preserved; do not reuse these commands to overwrite a completed trial.
+
 ## Real-history overnight campaign
 
 The campaign coordinator freezes several real-corpus manifests behind one identity and durable API budget. The

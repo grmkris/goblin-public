@@ -1,4 +1,7 @@
 import { Agent } from 'agents'
+import { TranscriptIndex } from './transcript.ts'
+import { TranscriptMessage } from '../src/retrieval-corpus.ts'
+export { TranscriptIndex }
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
 import { Harness, createRegistry, type Conversation, type Registry } from '@earendil-works/pi-durable'
@@ -25,6 +28,7 @@ import { contextSources, delivery } from './sources.ts'
 
 interface Env {
   readonly BENCH: DurableObjectNamespace<BenchmarkAgent>
+  readonly TRANSCRIPTS: DurableObjectNamespace<TranscriptIndex>
   readonly RELAY_URL: string
 }
 const Stored = Schema.Struct({
@@ -411,10 +415,31 @@ export default {
     if (url.pathname === '/health') return Response.json({ native: true })
     const actor = url.searchParams.get('actor')
     if (actor === null || !/^[a-f0-9]{64}$/u.test(actor)) return new Response('invalid artifact', { status: 400 })
+    if (url.pathname.startsWith('/transcript/')) return transcriptRequest(request, env, actor)
     const stub = env.BENCH.get(env.BENCH.idFromName(actor))
     const body: unknown = await request.json()
     if (url.pathname === '/build') return Response.json(await stub.build(Schema.decodeUnknownSync(BuildRequest)(body)))
     if (url.pathname === '/probe') return Response.json(await stub.probe(Schema.decodeUnknownSync(ProbeRequest)(body)))
     return new Response('not found', { status: 404 })
   },
+}
+
+async function transcriptRequest(request: Request, env: Env, actor: string): Promise<Response> {
+  const index = env.TRANSCRIPTS.get(env.TRANSCRIPTS.idFromName(actor))
+  const path = new URL(request.url).pathname
+  if (path === '/transcript/probe') return Response.json(await index.probe())
+  if (path === '/transcript/migrate') return Response.json(await index.scratchMigration())
+  const body: unknown = await request.json()
+  if (path === '/transcript/index')
+    return Response.json(await index.index(Schema.decodeUnknownSync(Schema.Array(TranscriptMessage))(body)))
+  if (path === '/transcript/query')
+    return Response.json(await index.query(Schema.decodeUnknownSync(Schema.String)(body)))
+  if (path === '/transcript/mutate') {
+    const input = Schema.decodeUnknownSync(Schema.Struct({ entryId: Schema.Int, text: Schema.NullOr(Schema.String) }))(
+      body,
+    )
+    await index.mutate(input.entryId, input.text)
+    return Response.json({ ok: true })
+  }
+  return new Response('not found', { status: 404 })
 }
