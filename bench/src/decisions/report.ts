@@ -24,6 +24,7 @@ export function reportData(
       ...summarize(
         fixtures,
         rows.filter((row) => row.task === task && row.arm === arm),
+        manifest.frozenThresholds === undefined ? undefined : manifest.frozenThresholds[task][arm],
       ),
     })),
   )
@@ -31,6 +32,9 @@ export function reportData(
     runId: manifest.runId,
     fixtureHash: manifest.fixtureHash,
     sourceHash: manifest.sourceHash,
+    thresholdSource: manifest.thresholdSource ?? null,
+    fixtureCount: fixtures.length,
+    taskCounts: tasks.map((task) => ({ task, count: fixtures.filter((fixture) => fixture.task === task).length })),
     sources: sources.map((source) => ({ runId: source.runId, sourceHash: source.sourceHash, limits: source.limits })),
     attempts: [...new Map(attempts.map((attempt) => [attempt.id, attempt])).values()],
     totals: totals(attempts),
@@ -47,7 +51,10 @@ function qualityTables(data: Report): string[] {
       data.sources.map((source) => source.runId + ' (' + source.sourceHash + ')').join('; ') +
       '. Later included rows supersede earlier matching arm/case/repetition rows; all original attempts and costs remain in the ledger.',
     '',
-    '160 synthetic labelled cases, 40 per task. Three live repetitions share the frozen fixture set. Each task covers ordinary, ambiguous, contradictory, missing, stale and do-nothing evidence. Relevance has 3–8 permitted candidates and none-relevant. Brief updates score type, duplicate and conflict together. Attention contains ordinary results only. Organization uses only offered existing IDs.',
+    data.fixtureCount +
+      ' synthetic labelled cases: ' +
+      data.taskCounts.map((item) => item.task + '=' + item.count).join(', ') +
+      '. Three repetitions share the frozen fixture set. Labels never enter provider evidence.',
     '',
     '| Task | Arm | Correct / judged | Accuracy | Question accuracy | Errors / timeouts / format / skipped | Rules | p50 / p95 ms | Charged USD | Priced USD |',
     '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
@@ -121,7 +128,13 @@ function calibrationTables(data: Report): string[] {
 function repetitionTable(data: Report): string[] {
   const lines = [
     '',
-    'Calibration uses the probability of the chosen answer against correctness. Rules have deterministic 0/1 outputs; these are policy scores, not learned confidence. Positive classes are candidate inclusion, any durable brief type, highlight, and an organization action (suggest/reuse). Each threshold maximizes positive precision subject to >=70% recall; ties favor recall, then the higher threshold. Thresholds were fit on this same development set and require independent owner-label validation before automatic behavior.',
+    'Calibration uses the probability of the chosen answer against correctness. Rules have deterministic 0/1 outputs; these are policy scores, not learned confidence. Positive classes are candidate inclusion, any durable brief type, highlight, and an organization action (suggest/reuse). ' +
+      (data.thresholdSource === null
+        ? 'Each threshold maximizes positive precision subject to >=70% recall; ties favor recall, then the higher threshold. Thresholds were fit on this development set.'
+        : 'Thresholds were frozen from development run ' +
+          data.thresholdSource +
+          ' and applied unchanged; no held-out refitting.') +
+      ' Independent owner-label validation is required before automatic behavior.',
     '',
     '| Task | Arm | Repetition 1 | Repetition 2 | Repetition 3 |',
     '| --- | --- | ---: | ---: | ---: |',

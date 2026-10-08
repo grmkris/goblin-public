@@ -6,8 +6,8 @@ import { digest } from './artifact.ts'
 import { readJson, readLedger, fail, json } from './store.ts'
 import { discoverAccount, configuredProvider } from './decisions-provider.ts'
 import { configured, runDecisions } from './decisions-run.ts'
-import { decisionFixtures } from '../src/decisions/fixtures.ts'
-import { Manifest, models } from '../src/decisions/manifest.ts'
+import { defaultFixtureFile, decodeFixtures } from '../src/decisions/fixtures.ts'
+import { Manifest, models, freezeThresholds } from '../src/decisions/manifest.ts'
 import { questionsFor, prompt } from '../src/decisions/questions.ts'
 import { plan } from '../src/decisions/runner.ts'
 import { Attempt, Row, arms } from '../src/decisions/schema.ts'
@@ -22,7 +22,19 @@ const option = (name: string): string | undefined => {
   const at = args.indexOf('--' + name)
   return at < 0 ? undefined : args[at + 1]
 }
-const implementationHash = Effect.fn('decisions.sourceHash')(function* () {
+const fixtureFileForOption = (value: string | undefined): string => {
+  if (value === undefined || value === 'dev') return defaultFixtureFile
+  if (value === 'heldout') return 'bench/fixtures/decisions-heldout.json'
+  if (/^bench\/fixtures\/decisions-[a-z0-9_-]+\.json$/u.test(value)) return value
+  throw new Error('Fixtures must be dev, heldout or a bench/fixtures decisions JSON path')
+}
+const loadFixtures = Effect.fn('decisions.loadFixtures')(function* (fixtureFile: string) {
+  const fs = yield* FileSystem.FileSystem
+  fixtureFileForOption(fixtureFile === defaultFixtureFile ? 'dev' : fixtureFile)
+  const text = yield* fs.readFileString(join(root, fixtureFile))
+  return decodeFixtures(JSON.parse(text))
+})
+const implementationHash = Effect.fn('decisions.sourceHash')(function* (fixtureFile: string) {
   const fs = yield* FileSystem.FileSystem
   const scripts = (yield* fs.readDirectory(join(root, 'bench/scripts')))
     .filter((name) => name.startsWith('decisions') && name.endsWith('.ts'))
@@ -30,9 +42,8 @@ const implementationHash = Effect.fn('decisions.sourceHash')(function* () {
   const source = (yield* fs.readDirectory(join(root, 'bench/src/decisions')))
     .filter((name) => name.endsWith('.ts'))
     .map((name) => 'bench/src/decisions/' + name)
-  const contents = yield* Effect.forEach(
-    [...scripts, ...source, 'bench/fixtures/decisions.json', 'bun.lock'].toSorted(),
-    (path) => fs.readFileString(join(root, path)).pipe(Effect.map((text) => [path, text])),
+  const contents = yield* Effect.forEach([...scripts, ...source, fixtureFile, 'bun.lock'].toSorted(), (path) =>
+    fs.readFileString(join(root, path)).pipe(Effect.map((text) => [path, text])),
   )
   return digest(contents)
 })
@@ -48,20 +59,40 @@ const steer = Effect.gen(function* () {
   const text = yield* fs.readFileString(path)
   if (/^(STOP|PAUSE|HOLD)\b/mu.test(text)) return yield* fail('Conductor paused the lane; preserve current run')
 }).pipe(Effect.orDie)
-const prepare = Effect.fn('decisions.plan')(function* () {
-  const fs = yield* FileSystem.FileSystem
-  const runId = option('run')
-  if (runId === undefined || !/^[a-z0-9_-]+$/u.test(runId)) return yield* fail('Supply --run with a simple run id')
-  const dir = join(privateRoot, runId)
-  yield* fs.makeDirectory(dir, { recursive: true, mode: 0o700 })
+const frozenThresholds = Effect.fn('decisions.frozenThresholds')(function* (fixtureFile: string) {
+  const id = option('thresholds-from')
+  if (id === undefined) {
+    if (fixtureFile !== defaultFixtureFile)
+      return yield* fail('Independent fixtures require --thresholds-from a development run')
+    return {}
+  }
+  if (!/^[a-z0-9_-]+$/u.test(id)) return yield* fail('Invalid threshold source run id')
+  const data = yield* readJson(
+    join(privateRoot, id, 'report.json'),
+    Schema.Struct({
+      metrics: Schema.Array(
+        Schema.Struct({
+          task: Schema.String,
+          arm: Schema.String,
+          threshold: Schema.NullOr(Schema.Struct({ value: Schema.Number })),
+        }),
+      ),
+    }),
+  )
+  return { thresholdSource: id, frozenThresholds: freezeThresholds(data.metrics) }
+})
+const createManifest = Effect.fn('decisions.createManifest')(function* (runId: string, fixtureFile: string) {
+  const fixtures = yield* loadFixtures(fixtureFile)
   const account = yield* discoverAccount().pipe(
     Effect.catch(() => Effect.succeed({ account: 'unavailable', status: 0 })),
   )
   const manifest: Manifest = {
     schemaVersion: 1,
     runId,
-    fixtureHash: digest(decisionFixtures),
-    sourceHash: yield* implementationHash(),
+    fixtureFile,
+    ...(yield* frozenThresholds(fixtureFile)),
+    fixtureHash: digest(fixtures),
+    sourceHash: yield* implementationHash(fixtureFile),
     repetitions: 3,
     batchSize: 2,
     selectedArms: yield* Schema.decodeUnknownEffect(Schema.Array(Schema.Literals(arms)))(
@@ -69,7 +100,7 @@ const prepare = Effect.fn('decisions.plan')(function* () {
     ),
     prompt,
     questions: yield* Schema.decodeUnknownEffect(Schema.JsonObject)(
-      Object.fromEntries(decisionFixtures.map((fixture) => [fixture.id, questionsFor(fixture)])),
+      Object.fromEntries(fixtures.map((fixture) => [fixture.id, questionsFor(fixture)])),
     ),
     models: models(account.account),
     limits: {
@@ -81,7 +112,19 @@ const prepare = Effect.fn('decisions.plan')(function* () {
       perCallOutput: 1024,
     },
   }
-  const output = plan(manifest, decisionFixtures)
+  return { manifest, fixtures, discoveryHttpStatus: account.status }
+})
+const prepare = Effect.fn('decisions.plan')(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const runId = option('run')
+  if (runId === undefined || !/^[a-z0-9_-]+$/u.test(runId)) return yield* fail('Supply --run with a simple run id')
+  const dir = join(privateRoot, runId)
+  const { manifest, fixtures, discoveryHttpStatus } = yield* createManifest(
+    runId,
+    fixtureFileForOption(option('fixtures')),
+  )
+  yield* fs.makeDirectory(dir, { recursive: true, mode: 0o700 })
+  const output = plan(manifest, fixtures)
   const retained = totals(yield* readLedger(join(privateRoot, 'attempts.jsonl'), Attempt))
   if (
     output.requests + retained.requests > manifest.limits.maxRequests ||
@@ -89,14 +132,10 @@ const prepare = Effect.fn('decisions.plan')(function* () {
   )
     return yield* fail('Dry run exceeds declared budget')
   yield* fs.writeFileString(join(dir, 'manifest.json'), json(manifest), { mode: 0o600, flag: 'wx' })
-  yield* fs.writeFileString(
-    join(dir, 'dry-run.json'),
-    json({ ...output, retained, discoveryHttpStatus: account.status }),
-    {
-      mode: 0o600,
-      flag: 'wx',
-    },
-  )
+  yield* fs.writeFileString(join(dir, 'dry-run.json'), json({ ...output, retained, discoveryHttpStatus }), {
+    mode: 0o600,
+    flag: 'wx',
+  })
   yield* status(
     'GATE dry-run ' +
       join(dir, 'manifest.json') +
@@ -117,14 +156,18 @@ const run = Effect.fn('decisions.command.run')(function* () {
   const dir = join(privateRoot, manifest.runId)
   if (resolve(path) !== join(dir, 'manifest.json'))
     return yield* fail('Manifest must live inside the named private run')
-  if (manifest.fixtureHash !== digest(decisionFixtures) || manifest.sourceHash !== (yield* implementationHash()))
+  const fixtures = yield* loadFixtures(manifest.fixtureFile ?? defaultFixtureFile)
+  if (
+    manifest.fixtureHash !== digest(fixtures) ||
+    manifest.sourceHash !== (yield* implementationHash(manifest.fixtureFile ?? defaultFixtureFile))
+  )
     return yield* fail('Source or fixtures changed; prepare a fresh manifest')
   const fs = yield* FileSystem.FileSystem
   if (!(yield* fs.exists(join(dir, 'dry-run.json')))) return yield* fail('Dry-run receipt missing')
   const result = yield* runDecisions({
     root: privateRoot,
     manifest,
-    fixtures: decisionFixtures,
+    fixtures,
     provider: configuredProvider,
     available: (key) => configured(key).pipe(Effect.provide(BunServices.layer)),
     status: (line) => status(line).pipe(Effect.provide(BunServices.layer)),
@@ -149,15 +192,13 @@ const report = Effect.fn('decisions.command.report')(function* () {
   if (id === undefined || !/^[a-z0-9_-]+$/u.test(id)) return yield* fail('Supply --run with a simple run id')
   const dir = join(privateRoot, id)
   const manifest = yield* readJson(join(dir, 'manifest.json'), Manifest)
-  if (manifest.fixtureHash !== digest(decisionFixtures)) return yield* fail('Fixtures differ from manifest')
+  const fixtures = yield* loadFixtures(manifest.fixtureFile ?? defaultFixtureFile)
+  if (manifest.fixtureHash !== digest(fixtures)) return yield* fail('Fixtures differ from manifest')
   const rows = yield* readLedger(join(dir, 'results.jsonl'), Row)
   const attempts = yield* readLedger(join(privateRoot, 'attempts.jsonl'), Attempt)
   const prior = yield* Effect.forEach(option('include')?.split(',') ?? [], (runId) => includedRun(manifest, runId))
   const combined = combineRows([...prior.map((item) => item.rows), rows])
-  const data = reportData(manifest, decisionFixtures, combined, attempts, [
-    ...prior.map((item) => item.manifest),
-    manifest,
-  ])
+  const data = reportData(manifest, fixtures, combined, attempts, [...prior.map((item) => item.manifest), manifest])
   const fs = yield* FileSystem.FileSystem
   yield* fs.writeFileString(join(dir, 'report.json'), json(data), { mode: 0o600 })
   const path = join(root, 'bench/reports/decisions-' + id + '.md')

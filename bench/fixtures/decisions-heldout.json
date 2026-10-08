@@ -1,0 +1,2602 @@
+[
+  {
+    "id": "heldout-context-relevance-01",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "what did the GP say about my ferritin levels again?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "health admin",
+          "excerpt": "Dr. Novak: ferritin 11 ug/L, low. Start iron 80mg every other day, recheck in 8 weeks.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "health admin",
+          "excerpt": "Insurance portal login is broken, need to call ZZZS on Monday.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "band",
+          "excerpt": "Bring the iron-heavy riff chart for Friday rehearsal.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "taxes",
+          "excerpt": "Medical expenses can be deducted if over the threshold.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "no",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Only the GP result answers the question; \"iron\" in band chart is a lexical decoy."
+  },
+  {
+    "id": "heldout-context-relevance-02",
+    "task": "context-relevance",
+    "category": "ambiguous",
+    "state": {
+      "request": "Can you draft the email to the contractor about the delay?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "house reno",
+          "excerpt": "Bathroom tiling pushed from 12 Nov to 3 Dec because the tiles from Italy are stuck at customs.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "house reno",
+          "excerpt": "Contractor Matej wants 30% deposit before starting the electrical.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "job search",
+          "excerpt": "Recruiter delayed the second interview to next week.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "school",
+          "excerpt": "Bus route 6 changes from Monday.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Delay detail and the contractor identity are both needed; recruiter delay is a different delay."
+  },
+  {
+    "id": "heldout-context-relevance-03",
+    "task": "context-relevance",
+    "category": "do-nothing",
+    "state": {
+      "request": "Remind me what the capital of Slovenia is, I always blank on it",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "moving countries",
+          "excerpt": "Residence permit appointment is on 14 Oct at 09:15, bring passport photos.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "taxes",
+          "excerpt": "Submit the Q3 VAT form by the 20th.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "side project",
+          "excerpt": "Landing page copy v3 approved.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "no",
+      "c3": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "General knowledge question; none of the candidates is relevant even though moving countries is thematically near."
+  },
+  {
+    "id": "heldout-context-relevance-04",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "Ok so which rehearsal room did we book for Thursday?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "band",
+          "excerpt": "Booked Studio B at Kapsula, Thursday 19:00-22:00, 18 EUR/h split four ways.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "band",
+          "excerpt": "Tadej will bring his own amp, we only need drums + PA.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "band",
+          "excerpt": "Setlist idea: open with \"Rdeča zvezda\", close with the cover.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "house reno",
+          "excerpt": "Thursday: plumber visit between 8 and 10.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Booking and gear note relevant; setlist is same topic but not about the room; reno Thursday is a decoy."
+  },
+  {
+    "id": "heldout-context-relevance-05",
+    "task": "context-relevance",
+    "category": "stale",
+    "state": {
+      "request": "What is the school pickup time for Ana now?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "school logistics",
+          "excerpt": "Ana pickup 15:10 at the main gate.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": "c2"
+        },
+        {
+          "id": "c2",
+          "topic": "school logistics",
+          "excerpt": "From 20 Oct the afterschool block moves: Ana pickup is 16:30 at the side entrance.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "school logistics",
+          "excerpt": "Lunch money due Friday.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "yes",
+      "c3": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "c1 was superseded by c2; lunch money irrelevant."
+  },
+  {
+    "id": "heldout-context-relevance-06",
+    "task": "context-relevance",
+    "category": "ambiguous",
+    "state": {
+      "request": "Remind me what we agreed about the price thing",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "side project launch",
+          "excerpt": "Decided: Pro plan at 9 EUR/month, free tier capped at 3 projects.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "house reno",
+          "excerpt": "Kitchen island quote 2,400 EUR, countertop extra.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "job search",
+          "excerpt": "Salary range they gave: 62-70k gross.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "no",
+      "c3": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "Request too vague to pick a topic; precision matters more than guessing."
+  },
+  {
+    "id": "heldout-context-relevance-07",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "Wie viel Miete zahlen wir in Wien eigentlich nach der Erhöhung?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "moving countries",
+          "excerpt": "Wien flat: Miete steigt ab Januar auf 1.180 EUR warm (vorher 1.090).",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "moving countries",
+          "excerpt": "Anmeldung (Meldezettel) must be done within 3 days of moving in.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "taxes",
+          "excerpt": "Rental income from the Ljubljana flat is taxed at 25% flat.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "band",
+          "excerpt": "Rent of PA system 60 EUR per gig.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "no",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Mixed-language; rent figure of the Vienna flat. Ljubljana rental income and PA rent are decoys."
+  },
+  {
+    "id": "heldout-context-relevance-08",
+    "task": "context-relevance",
+    "category": "missing-evidence",
+    "state": {
+      "request": "What did the pediatrician say about Luka's ear infection?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "health admin",
+          "excerpt": "Luka vaccination card is in the blue folder.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "health admin",
+          "excerpt": "Own appointment for the dentist booked 4 Nov.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "school",
+          "excerpt": "Luka has swimming on Wednesdays.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "no",
+      "c3": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "Luka appears but no excerpt covers the ear infection."
+  },
+  {
+    "id": "heldout-context-relevance-09",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "Use the numbers from the budget note and tell me if we can afford the oak flooring",
+      "explicitReferences": ["budget note"],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "house reno",
+          "excerpt": "Renovation budget: 38,000 EUR total, 31,200 committed, 6,800 left.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "house reno",
+          "excerpt": "Oak flooring quote: 4,900 EUR for 42 m2 installed.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "taxes",
+          "excerpt": "Budget for tax advisor: 300 EUR.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "house reno",
+          "excerpt": "Colour swatches for the hallway: sage or off-white.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Explicit reference to budget note plus the flooring quote."
+  },
+  {
+    "id": "heldout-context-relevance-10",
+    "task": "context-relevance",
+    "category": "stale",
+    "state": {
+      "request": "Where are we on the job application for Contoso?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "job search",
+          "excerpt": "Contoso: applied 2 Sep, waiting.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": "c2"
+        },
+        {
+          "id": "c2",
+          "topic": "job search",
+          "excerpt": "Contoso: phone screen done 30 Sep, take-home task due 9 Oct.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "job search",
+          "excerpt": "Fabrikam: rejected.",
+          "autoEnabled": true,
+          "archived": true,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "taxes",
+          "excerpt": "Contoso Ltd invoice for freelance work still unpaid.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Latest Contoso status only; superseded one excluded; the invoice is a same-name decoy."
+  },
+  {
+    "id": "heldout-context-relevance-11",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "zakaj je bil že najin nesoglasje glede termina z električarjem?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "house reno",
+          "excerpt": "Električar Janez lahko samo 22. okt, ampak takrat sva midva na poti. Predlagal sem 29. okt.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "house reno",
+          "excerpt": "Električar hoče gotovino brez računa -> ne.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "school",
+          "excerpt": "Roditeljski sestanek 22. okt ob 17h.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Slovenian; both electrician items explain the scheduling and the objection."
+  },
+  {
+    "id": "heldout-context-relevance-12",
+    "task": "context-relevance",
+    "category": "do-nothing",
+    "state": {
+      "request": "thanks, that is all for now",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "job search",
+          "excerpt": "Prepare STAR stories for interview.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "band",
+          "excerpt": "Drummer is sick next week.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "Closing pleasantry needs no context."
+  },
+  {
+    "id": "heldout-context-relevance-13",
+    "task": "context-relevance",
+    "category": "ambiguous",
+    "state": {
+      "request": "Is the arrangement we discussed with the landlord still ok given the new date?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "moving countries",
+          "excerpt": "Landlord agreed to let us keep the keys until 5 Nov in exchange for cleaning.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "moving countries",
+          "excerpt": "Move date changed from 1 Nov to 8 Nov.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "house reno",
+          "excerpt": "Landlord of the rental unit asked to inspect the garage.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Key agreement plus the new date; the garage item concerns a different arrangement but same landlord word."
+  },
+  {
+    "id": "heldout-context-relevance-14",
+    "task": "context-relevance",
+    "category": "stale",
+    "state": {
+      "request": "Which pharmacy should I pick up the prescription from?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "health admin",
+          "excerpt": "Prescription goes to Lekarna Center.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": "c2"
+        },
+        {
+          "id": "c2",
+          "topic": "health admin",
+          "excerpt": "Lekarna Center out of stock; moved prescription to Lekarna Bežigrad, ready Thursday.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "health admin",
+          "excerpt": "Flu shot offered free at Lekarna Center.",
+          "autoEnabled": false,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "yes",
+      "c3": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Superseded and disabled candidates excluded."
+  },
+  {
+    "id": "heldout-context-relevance-15",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "Remind me of what Pat said earlier",
+      "explicitReferences": ["Pat's message about the logo"],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "side project launch",
+          "excerpt": "Pat: the logo reads too corporate, try rounding the corners and use the teal.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "side project launch",
+          "excerpt": "Pat: hosting costs should stay under 20 EUR/mo.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "band",
+          "excerpt": "Pat (bassist) is late again.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "no",
+      "c3": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Explicit reference narrows to the logo message even though Pat appears in other items."
+  },
+  {
+    "id": "heldout-context-relevance-16",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "archive thing: what was in the archived tax draft I referenced yesterday?",
+      "explicitReferences": ["the archived tax draft"],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "taxes",
+          "excerpt": "Draft 2025 return: deductible home office 1,140 EUR; childcare 2,010 EUR.",
+          "autoEnabled": true,
+          "archived": true,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "taxes",
+          "excerpt": "Final 2025 return filed 28 Jun.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "taxes",
+          "excerpt": "Draft for 2024 return, abandoned.",
+          "autoEnabled": true,
+          "archived": true,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "no",
+      "c3": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Owner explicitly references the archived draft; archived exclusion overridden. Ambiguity about which draft resolved by 2025 context; c3 stays out."
+  },
+  {
+    "id": "heldout-context-relevance-17",
+    "task": "context-relevance",
+    "category": "ambiguous",
+    "state": {
+      "request": "what do I still need for the visa?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "moving countries",
+          "excerpt": "Visa checklist: passport copy done, criminal record certificate (apostille) missing, employer letter done, health insurance proof missing.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "moving countries",
+          "excerpt": "Flight to Lisbon is 4 Nov at 06:50.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "health admin",
+          "excerpt": "Health insurance: compare Allianz vs. Generali for expat plan.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "no",
+      "c3": "yes",
+      "none-relevant": "no"
+    },
+    "rationale": "Insurance proof is still pending on the visa; flight not part of what is needed."
+  },
+  {
+    "id": "heldout-context-relevance-18",
+    "task": "context-relevance",
+    "category": "do-nothing",
+    "state": {
+      "request": "translate \"see you at rehearsal\" into German",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "band",
+          "excerpt": "Rehearsal at 19:00 Thursday.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "job search",
+          "excerpt": "Prepare German language test.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "Pure translation; candidates share topical words but are not needed."
+  },
+  {
+    "id": "heldout-context-relevance-19",
+    "task": "context-relevance",
+    "category": "stale",
+    "state": {
+      "request": "Are we still going with the Bosch dishwasher?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "house reno",
+          "excerpt": "Dishwasher: Bosch Serie 4, 549 EUR.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": "c2"
+        },
+        {
+          "id": "c2",
+          "topic": "house reno",
+          "excerpt": "Switched to Miele G 5000 because Bosch delivery is 10 weeks.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "house reno",
+          "excerpt": "Oven: Bosch built-in, ordered.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "yes",
+      "c3": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Newer note supersedes; oven is a brand decoy."
+  },
+  {
+    "id": "heldout-context-relevance-20",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "Pull in whatever we know about the hosting migration risks",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "side project launch",
+          "excerpt": "Migration from Fly to Railway: DNS TTL must be lowered 48h prior; Postgres dump takes ~15 min.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "side project launch",
+          "excerpt": "Risk: Stripe webhook URL is hard-coded to the old domain.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "side project launch",
+          "excerpt": "Mood board for the launch tweet.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "moving countries",
+          "excerpt": "Mover risk: customs paperwork for the piano.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Both are migration facts; piano move is a metaphor-level decoy."
+  },
+  {
+    "id": "heldout-context-relevance-21",
+    "task": "context-relevance",
+    "category": "ambiguous",
+    "state": {
+      "request": "How are the kids doing with the new schedule?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "school logistics",
+          "excerpt": "Ana tired by Thursday, asked to skip choir.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "school logistics",
+          "excerpt": "Luka happy with the new bus.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "health admin",
+          "excerpt": "Dentist for kids on 12 Nov.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Both reports are about how the kids are doing; the dentist is logistics only."
+  },
+  {
+    "id": "heldout-context-relevance-22",
+    "task": "context-relevance",
+    "category": "missing-evidence",
+    "state": {
+      "request": "Did the accountant confirm the deadline extension?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "taxes",
+          "excerpt": "Ask accountant about extension.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "taxes",
+          "excerpt": "Deadline is 31 Oct unless extended.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "house reno",
+          "excerpt": "Accountant of the contractor sent invoice.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "yes",
+      "c3": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Only the deadline is known; no confirmation exists, but c2 is useful context. c1 is a todo that is stale pointer, excluded."
+  },
+  {
+    "id": "heldout-context-relevance-23",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "Give me a summary of everything on the \"Lisbon move\" topic",
+      "explicitReferences": ["Lisbon move"],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "Lisbon move",
+          "excerpt": "Shipping quote: 1,350 EUR for 14 boxes via Cargo&Co.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "Lisbon move",
+          "excerpt": "Apartment viewing Tuesday 10:00, Alfama.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "Lisbon move",
+          "excerpt": "Old: considering Porto instead.",
+          "autoEnabled": true,
+          "archived": true,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "taxes",
+          "excerpt": "NIF number application via finanças portal.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "yes",
+      "none-relevant": "no"
+    },
+    "rationale": "Explicit topic reference includes all Lisbon items; the archived Porto note excluded; the NIF note belongs to the move."
+  },
+  {
+    "id": "heldout-context-relevance-24",
+    "task": "context-relevance",
+    "category": "contradictory",
+    "state": {
+      "request": "What's the plan for Saturday?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "band",
+          "excerpt": "Saturday: gig at Cvetličarna soundcheck 16:00.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "house reno",
+          "excerpt": "Saturday: painters come at 8.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "school",
+          "excerpt": "Saturday: Ana birthday party 14:00.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "yes",
+      "none-relevant": "no"
+    },
+    "rationale": "Open request about Saturday; all three are Saturday plans even though they clash."
+  },
+  {
+    "id": "heldout-context-relevance-25",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "Wat was the name of the guy from the rehearsal room again? Need to send him the deposit",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "band",
+          "excerpt": "Kapsula contact: Matic Zupan, +386 41 555 019, wants 20 EUR deposit via bank transfer.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "house reno",
+          "excerpt": "Plumber: Matic, comes Tuesday.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "band",
+          "excerpt": "Rehearsal Thursday 19:00.",
+          "autoEnabled": true,
+          "archived": true,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "no",
+      "c3": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Rehearsal-room contact; the plumber shares a first name only."
+  },
+  {
+    "id": "heldout-brief-update-01",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "ok, we are not touching the load-bearing wall, period. Whatever the architect says."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "constraint",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Firm durable limit on the renovation."
+  },
+  {
+    "id": "heldout-brief-update-02",
+    "task": "brief-update",
+    "category": "ambiguous",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "I kinda like the green tiles, maybe those?"
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Tentative preference."
+  },
+  {
+    "id": "heldout-brief-update-03",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "assistant",
+          "text": "Shall we book the 10:30 slot?"
+        },
+        {
+          "role": "owner",
+          "text": "yes book it"
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "decision",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Affirmative answer to a concrete proposal is an owner decision."
+  },
+  {
+    "id": "heldout-brief-update-04",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "if the whole thing is under €500 we will take the used drum kit"
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Conditional decision: not yet settled."
+  },
+  {
+    "id": "heldout-brief-update-05",
+    "task": "brief-update",
+    "category": "contradictory",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Scrap that, rehearsals are moving to Wednesdays from now on."
+        }
+      ],
+      "brief": ["Decision: band rehearsals on Thursdays 19:00."]
+    },
+    "expected": {
+      "entry": "decision",
+      "duplicate": "no",
+      "conflict": "yes"
+    },
+    "rationale": "Later correction supersedes the Thursday entry."
+  },
+  {
+    "id": "heldout-brief-update-06",
+    "task": "brief-update",
+    "category": "do-nothing",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "thx"
+        },
+        {
+          "role": "assistant",
+          "text": "Anytime."
+        }
+      ],
+      "brief": ["Goal: launch by 1 Dec."]
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Nothing durable."
+  },
+  {
+    "id": "heldout-brief-update-07",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Main goal for this quarter: get 100 paying users before Christmas."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "goal",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Clear goal."
+  },
+  {
+    "id": "heldout-brief-update-08",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "We want to launch by the first of December."
+        }
+      ],
+      "brief": ["Goal: launch by 1 Dec."]
+    },
+    "expected": {
+      "entry": "goal",
+      "duplicate": "yes",
+      "conflict": "no"
+    },
+    "rationale": "Paraphrase of existing goal: duplicate."
+  },
+  {
+    "id": "heldout-brief-update-09",
+    "task": "brief-update",
+    "category": "contradictory",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Launch is 15 Dec now, Stripe review will take longer."
+        }
+      ],
+      "brief": ["Goal: launch by 1 Dec."]
+    },
+    "expected": {
+      "entry": "goal",
+      "duplicate": "no",
+      "conflict": "yes"
+    },
+    "rationale": "New date conflicts with existing goal."
+  },
+  {
+    "id": "heldout-brief-update-10",
+    "task": "brief-update",
+    "category": "ambiguous",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Mama said \"we should just sell the old car\". I haven't decided anything."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Someone else's view and explicit non-decision."
+  },
+  {
+    "id": "heldout-brief-update-11",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "report",
+          "text": "Compared 3 insurers: only Generali covers pre-existing asthma without waiting period."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "finding",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Report contains a durable finding relevant to health admin."
+  },
+  {
+    "id": "heldout-brief-update-12",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Open question for me: do I declare the freelance income in Slovenia or Portugal?"
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "open-question",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Unresolved question to keep."
+  },
+  {
+    "id": "heldout-brief-update-13",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Kam bomo dali otroka v šolo, še ne vem, najprej moram videti obe."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Slovenian: still undecided; at most a vague open question, but no concrete entry."
+  },
+  {
+    "id": "heldout-brief-update-14",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Ok school: we go with Šentvid for Luka. Registration closes on 15th so I need to send the form this week."
+        }
+      ],
+      "brief": ["Open question: which school for Luka (Šentvid vs. Bežigrad)?"]
+    },
+    "expected": {
+      "entry": "decision",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Decision resolves the open question; it does not contradict an entry."
+  },
+  {
+    "id": "heldout-brief-update-15",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Hold on, Pat wrote \"decision: use Postgres\" in the doc, but honestly I still prefer SQLite, we are not using Postgres."
+        }
+      ],
+      "brief": ["Decision: use SQLite for v1."]
+    },
+    "expected": {
+      "entry": "decision",
+      "duplicate": "yes",
+      "conflict": "no"
+    },
+    "rationale": "Owner reaffirms the existing SQLite decision; Pat's quote is not the owner's."
+  },
+  {
+    "id": "heldout-brief-update-16",
+    "task": "brief-update",
+    "category": "contradictory",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "No more than 300 EUR on the advisor, I mean it."
+        }
+      ],
+      "brief": ["Constraint: advisor budget up to 500 EUR."]
+    },
+    "expected": {
+      "entry": "constraint",
+      "duplicate": "no",
+      "conflict": "yes"
+    },
+    "rationale": "Tighter limit conflicts with existing budget constraint."
+  },
+  {
+    "id": "heldout-brief-update-17",
+    "task": "brief-update",
+    "category": "ambiguous",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "what if we moved the whole thing to August?"
+        }
+      ],
+      "brief": ["Goal: launch by 1 Dec."]
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "A decision phrased as a question is only a suggestion."
+  },
+  {
+    "id": "heldout-brief-update-18",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Reminder: Ana is allergic to peanuts, never order anything with them for school events."
+        }
+      ],
+      "brief": ["Constraint: no nuts at school events."]
+    },
+    "expected": {
+      "entry": "constraint",
+      "duplicate": "yes",
+      "conflict": "no"
+    },
+    "rationale": "Peanut allergy is subsumed by the existing nut constraint: duplicate (partial)."
+  },
+  {
+    "id": "heldout-brief-update-19",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "report",
+          "text": "Tried the interview-prep tool; it only supports English prompts, so the German mock interviews will have to be done manually."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "finding",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Durable limitation discovered."
+  },
+  {
+    "id": "heldout-brief-update-20",
+    "task": "brief-update",
+    "category": "do-nothing",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Haha, sarcasm: great, another delay. Love that for us."
+        }
+      ],
+      "brief": ["Goal: complete kitchen by 20 Dec."]
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Sarcasm, no new facts."
+  },
+  {
+    "id": "heldout-brief-update-21",
+    "task": "brief-update",
+    "category": "ambiguous",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Fine, we'll do it your way."
+        },
+        {
+          "role": "assistant",
+          "text": "Great, I will proceed with the cheaper option."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Deferential acceptance without specifying the option is not a durable specific decision."
+  },
+  {
+    "id": "heldout-brief-update-22",
+    "task": "brief-update",
+    "category": "contradictory",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Actually forget the Lisbon flat, we want Porto because of the schools."
+        },
+        {
+          "role": "owner",
+          "text": "And yes the shipping can stay with Cargo&Co."
+        }
+      ],
+      "brief": ["Decision: move to Lisbon.", "Decision: shipping via Cargo&Co."]
+    },
+    "expected": {
+      "entry": "decision",
+      "duplicate": "no",
+      "conflict": "yes"
+    },
+    "rationale": "Porto conflicts with Lisbon; the shipping part is a duplicate, so overall conflict yes."
+  },
+  {
+    "id": "heldout-brief-update-23",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Wichtig: Steuererklärung muss vor dem 31. Juli abgegeben werden, sonst Strafe."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "constraint",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "German: hard deadline constraint."
+  },
+  {
+    "id": "heldout-brief-update-24",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Todo: someone call the plumber."
+        },
+        {
+          "role": "assistant",
+          "text": "I will."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Task, not a brief-level durable item."
+  },
+  {
+    "id": "heldout-brief-update-25",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Our target is 2 gigs per month by spring, and that is the goal to hold the band together."
+        }
+      ],
+      "brief": ["Goal: play at least 1 gig per month."]
+    },
+    "expected": {
+      "entry": "goal",
+      "duplicate": "no",
+      "conflict": "yes"
+    },
+    "rationale": "Raises existing goal; partial conflict with \"at least 1\" rather than total."
+  },
+  {
+    "id": "heldout-attention-triage-01",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Kitchen renovation",
+      "result": "Electrician found the old wiring is aluminium; full rewire needed, adds ~3,000 EUR and two weeks.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "highlight"
+    },
+    "rationale": "Changes budget and schedule."
+  },
+  {
+    "id": "heldout-attention-triage-02",
+    "task": "attention-triage",
+    "category": "do-nothing",
+    "state": {
+      "focus": "Band rehearsal",
+      "result": "Renamed 14 files in the setlist folder to a consistent pattern.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Trivial housekeeping."
+  },
+  {
+    "id": "heldout-attention-triage-03",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Job search",
+      "result": "Collected 12 open roles matching the criteria with salary band, remote policy and stack; sorted by fit.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "recap"
+    },
+    "rationale": "Substantive deliverable."
+  },
+  {
+    "id": "heldout-attention-triage-04",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Taxes",
+      "result": "Gathered all invoices for 2025 into one folder; 3 had no VAT number. Ready to review whenever.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "show-on-return"
+    },
+    "rationale": "Useful but not time critical."
+  },
+  {
+    "id": "heldout-attention-triage-05",
+    "task": "attention-triage",
+    "category": "ambiguous",
+    "state": {
+      "focus": "School logistics",
+      "result": "Checked the bus timetable page; unchanged since last week.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Null result."
+  },
+  {
+    "id": "heldout-attention-triage-06",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Visa application",
+      "result": "Embassy portal now says appointments are only available from January; your travel on 4 Nov is no longer feasible by this route.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "highlight"
+    },
+    "rationale": "Plan-changing bad news."
+  },
+  {
+    "id": "heldout-attention-triage-07",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Side-project launch",
+      "result": "Wrote the first draft of the changelog; 2 pages.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "show-on-return"
+    },
+    "rationale": "Work product to look at later."
+  },
+  {
+    "id": "heldout-attention-triage-08",
+    "task": "attention-triage",
+    "category": "ambiguous",
+    "state": {
+      "focus": "Moving countries",
+      "result": "Compared 4 shipping quotes: spread from 1,100 to 2,900 EUR; the cheapest requires you to pack yourself.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "recap"
+    },
+    "rationale": "Material comparison, no deadline."
+  },
+  {
+    "id": "heldout-attention-triage-09",
+    "task": "attention-triage",
+    "category": "do-nothing",
+    "state": {
+      "focus": "Health admin",
+      "result": "Spell-checked the letter to the insurer.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Trivial."
+  },
+  {
+    "id": "heldout-attention-triage-10",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Kids school",
+      "result": "Found that the form deadline for the camp is tomorrow, not next week as noted.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "highlight"
+    },
+    "rationale": "Time-sensitive correction."
+  },
+  {
+    "id": "heldout-attention-triage-11",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Band",
+      "result": "Venue confirmed the soundcheck time of 16:00 as already planned.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Confirmation of expected state."
+  },
+  {
+    "id": "heldout-attention-triage-12",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Taxes",
+      "result": "Calculation shows you likely owe 1,840 EUR instead of the 600 EUR you assumed.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "highlight"
+    },
+    "rationale": "Changes financial assumptions."
+  },
+  {
+    "id": "heldout-attention-triage-13",
+    "task": "attention-triage",
+    "category": "ambiguous",
+    "state": {
+      "focus": "Job search",
+      "result": "Updated the CV bullet points per feedback; diff attached.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "show-on-return"
+    },
+    "rationale": "Reviewable change."
+  },
+  {
+    "id": "heldout-attention-triage-14",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Renovation",
+      "result": "Summarised three painter offers with price, start date, references; recommended offer B.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "recap"
+    },
+    "rationale": "Decision-ready summary."
+  },
+  {
+    "id": "heldout-attention-triage-15",
+    "task": "attention-triage",
+    "category": "do-nothing",
+    "state": {
+      "focus": "Launch",
+      "result": "Cleaned up 6 unused dependencies. Tests pass.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Routine hygiene."
+  },
+  {
+    "id": "heldout-attention-triage-16",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Moving",
+      "result": "Deposit refund policy: landlord can keep it if the flat is not painted white, which conflicts with the plan to leave as is.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "highlight"
+    },
+    "rationale": "Plan-affecting finding."
+  },
+  {
+    "id": "heldout-attention-triage-17",
+    "task": "attention-triage",
+    "category": "ambiguous",
+    "state": {
+      "focus": "Pet care",
+      "result": "Vet clinic hours listed for the weekend.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Currently unrelated to focus and low stakes."
+  },
+  {
+    "id": "heldout-attention-triage-18",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Daily planning",
+      "result": "Prepared a packing list for the Berlin trip based on weather forecast: rain Tue-Thu.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "show-on-return"
+    },
+    "rationale": "Useful but can wait."
+  },
+  {
+    "id": "heldout-attention-triage-19",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Interview prep",
+      "result": "Mock interview transcripts analysed: three recurring weaknesses (vague metrics, long answers, weak closing) with suggested rewrites.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "recap"
+    },
+    "rationale": "Substantive analysis."
+  },
+  {
+    "id": "heldout-attention-triage-20",
+    "task": "attention-triage",
+    "category": "ambiguous",
+    "state": {
+      "focus": "Health admin",
+      "result": "Appointment reminder emailed for tomorrow 8:00.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "show-on-return"
+    },
+    "rationale": "Mildly time-relevant but already known; return-time reminder."
+  },
+  {
+    "id": "heldout-attention-triage-21",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Side project",
+      "result": "Competitor launched an identical feature yesterday and priced it free.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "highlight"
+    },
+    "rationale": "Strategic bad news."
+  },
+  {
+    "id": "heldout-attention-triage-22",
+    "task": "attention-triage",
+    "category": "do-nothing",
+    "state": {
+      "focus": "Kitchen",
+      "result": "Reformatted the shopping list into alphabetical order.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Cosmetic."
+  },
+  {
+    "id": "heldout-attention-triage-23",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Taxi to airport",
+      "result": "Booked cab for 4 Nov 04:30, 38 EUR fixed, confirmation attached.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "show-on-return"
+    },
+    "rationale": "Completed task with details."
+  },
+  {
+    "id": "heldout-attention-triage-24",
+    "task": "attention-triage",
+    "category": "stale",
+    "state": {
+      "focus": "Apartment search",
+      "result": "Listing at Rua Augusta that you shelved last month is no longer available.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Concerns a discarded option."
+  },
+  {
+    "id": "heldout-attention-triage-25",
+    "task": "attention-triage",
+    "category": "missing-evidence",
+    "state": {
+      "focus": "Family finances",
+      "result": "Tried to fetch the pension statement; portal required login, so nothing was retrieved. Will not retry.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "show-on-return"
+    },
+    "rationale": "Inconclusive outcome; not a failure of the ask path."
+  },
+  {
+    "id": "heldout-separate-work-01",
+    "task": "separate-work",
+    "category": "do-nothing",
+    "state": {
+      "currentTopic": "Kitchen renovation",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "btw how many cm is an inch again"
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "One-off unit conversion."
+  },
+  {
+    "id": "heldout-separate-work-02",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Kitchen renovation",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "I need to sort out my taxes properly this year: gather invoices, compare accountants, decide on the flat-rate scheme."
+        },
+        {
+          "role": "owner",
+          "text": "This will take a few weeks, deadline is end of March."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-topic"
+    },
+    "rationale": "Sustained distinct work."
+  },
+  {
+    "id": "heldout-separate-work-03",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Kitchen renovation",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Continue with the tax return stuff, I added the Q3 invoices."
+        }
+      ],
+      "topics": [
+        {
+          "id": "tax",
+          "name": "Taxes 2026"
+        },
+        {
+          "id": "kitchen",
+          "name": "Kitchen renovation"
+        }
+      ],
+      "threads": []
+    },
+    "expected": {
+      "organization": "reuse-existing:tax"
+    },
+    "rationale": "Existing topic matches."
+  },
+  {
+    "id": "heldout-separate-work-04",
+    "task": "separate-work",
+    "category": "ambiguous",
+    "state": {
+      "currentTopic": "Job search",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Also, quickly, can you check the train times to Maribor on Saturday?"
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Passing one-off."
+  },
+  {
+    "id": "heldout-separate-work-05",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Job search",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Let's go deep on the Contoso offer: negotiation points, equity vs salary, a counter email draft."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-thread"
+    },
+    "rationale": "Focused sub-task inside the job search topic; thread rather than a new topic."
+  },
+  {
+    "id": "heldout-separate-work-06",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Moving to Lisbon",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Next I want to plan the band reunion tour in spring, venues, van rental, and merch. Long project."
+        }
+      ],
+      "topics": [
+        {
+          "id": "band",
+          "name": "Band"
+        },
+        {
+          "id": "lisbon",
+          "name": "Moving to Lisbon"
+        }
+      ],
+      "threads": []
+    },
+    "expected": {
+      "organization": "reuse-existing:band"
+    },
+    "rationale": "Matches existing Band topic."
+  },
+  {
+    "id": "heldout-separate-work-07",
+    "task": "separate-work",
+    "category": "ambiguous",
+    "state": {
+      "currentTopic": "Moving to Lisbon",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "what is a good name for a cat"
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Trivia question."
+  },
+  {
+    "id": "heldout-separate-work-08",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Side project",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Okay, parkirna šola: I need to plan Ana's school enrollment, tours of three schools, forms, deadlines until February."
+        }
+      ],
+      "topics": [
+        {
+          "id": "side",
+          "name": "Side project"
+        }
+      ],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-topic"
+    },
+    "rationale": "Slovenian; long-running distinct personal subject."
+  },
+  {
+    "id": "heldout-separate-work-09",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Side project",
+      "currentThread": "Pricing",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Back to the landing page copy: change the headline."
+        }
+      ],
+      "topics": [],
+      "threads": [
+        {
+          "id": "copy",
+          "name": "Landing page copy"
+        },
+        {
+          "id": "pricing",
+          "name": "Pricing"
+        }
+      ]
+    },
+    "expected": {
+      "organization": "reuse-existing:copy"
+    },
+    "rationale": "An existing thread matches the work."
+  },
+  {
+    "id": "heldout-separate-work-10",
+    "task": "separate-work",
+    "category": "ambiguous",
+    "state": {
+      "currentTopic": "Health admin",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Hmm maybe later I should look into solar panels for the house, not now though."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Explicitly postponed idea."
+  },
+  {
+    "id": "heldout-separate-work-11",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Health admin",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "I need you to research three physio clinics for my knee: prices, waiting time, reviews. Report back in a few days."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-thread"
+    },
+    "rationale": "Bounded delegate-like research within health admin."
+  },
+  {
+    "id": "heldout-separate-work-12",
+    "task": "separate-work",
+    "category": "ambiguous",
+    "state": {
+      "currentTopic": "Band rehearsals",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "ok so the amp is acting up, buzzing at the high end."
+        },
+        {
+          "role": "owner",
+          "text": "also does anyone know a repair shop? and unrelated: my cousin wants a new website, maybe I should help?"
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "uncertain"
+    },
+    "rationale": "Two mixed threads of thought; unclear whether either deserves separation."
+  },
+  {
+    "id": "heldout-separate-work-13",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Taxes",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Add the phone bill to the taxes expenses list."
+        }
+      ],
+      "topics": [
+        {
+          "id": "tax",
+          "name": "Taxes"
+        }
+      ],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Already in the taxes topic; no need to reuse another."
+  },
+  {
+    "id": "heldout-separate-work-14",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Taxes",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Start a dedicated space for the house reno budget: quotes, payments, receipts. It will run until summer."
+        }
+      ],
+      "topics": [
+        {
+          "id": "reno",
+          "name": "House renovation budget"
+        }
+      ],
+      "threads": []
+    },
+    "expected": {
+      "organization": "reuse-existing:reno"
+    },
+    "rationale": "Duplicate avoidance."
+  },
+  {
+    "id": "heldout-separate-work-15",
+    "task": "separate-work",
+    "category": "do-nothing",
+    "state": {
+      "currentTopic": "Kids school",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "spell \"necessary\" for me"
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Trivial."
+  },
+  {
+    "id": "heldout-separate-work-16",
+    "task": "separate-work",
+    "category": "ambiguous",
+    "state": {
+      "currentTopic": "Kids school",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "We have a school trip coming. Anyway."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Fragment, still in school context."
+  },
+  {
+    "id": "heldout-separate-work-17",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Kids school",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Zdaj bi rad začel raziskovati preselitev na Portugalsko: davki, šole, najem, vizum. To bo trajalo mesece."
+        }
+      ],
+      "topics": [
+        {
+          "id": "kids",
+          "name": "Kids school"
+        }
+      ],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-topic"
+    },
+    "rationale": "Slovenian; sustained distinct project."
+  },
+  {
+    "id": "heldout-separate-work-18",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Moving",
+      "currentThread": "Visa",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Right, and what about the apostille for the criminal record?"
+        }
+      ],
+      "topics": [],
+      "threads": [
+        {
+          "id": "visa",
+          "name": "Visa"
+        },
+        {
+          "id": "ship",
+          "name": "Shipping"
+        }
+      ]
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Already in the Visa thread."
+  },
+  {
+    "id": "heldout-separate-work-19",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Moving",
+      "currentThread": "Shipping",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Different thing: help me tally which documents the Portuguese tax office needs."
+        }
+      ],
+      "topics": [
+        {
+          "id": "move",
+          "name": "Moving"
+        },
+        {
+          "id": "tax",
+          "name": "Taxes"
+        }
+      ],
+      "threads": [
+        {
+          "id": "visa",
+          "name": "Visa"
+        },
+        {
+          "id": "ship",
+          "name": "Shipping"
+        }
+      ]
+    },
+    "expected": {
+      "organization": "suggest-thread"
+    },
+    "rationale": "Substantive sub-task under moving but unrelated to shipping; thread within current topic."
+  },
+  {
+    "id": "heldout-separate-work-20",
+    "task": "separate-work",
+    "category": "contradictory",
+    "state": {
+      "currentTopic": "Launch",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Not a topic, just a one-time check: is 9 EUR with 20% VAT 10.80?"
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "One-off arithmetic despite topic-like vocabulary."
+  },
+  {
+    "id": "heldout-separate-work-21",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Launch",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Spin up a plan for our company incorporation: pick the legal form, accountant, bank. A multi-week thing."
+        }
+      ],
+      "topics": [
+        {
+          "id": "inc",
+          "name": "Incorporation"
+        }
+      ],
+      "threads": [
+        {
+          "id": "x",
+          "name": "Launch checklist"
+        }
+      ]
+    },
+    "expected": {
+      "organization": "reuse-existing:inc"
+    },
+    "rationale": "Existing topic."
+  },
+  {
+    "id": "heldout-separate-work-22",
+    "task": "separate-work",
+    "category": "ambiguous",
+    "state": {
+      "currentTopic": "Job search",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "I want to learn Rust over the next months. No idea where to begin."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-topic"
+    },
+    "rationale": "Sustained, distinct learning goal."
+  },
+  {
+    "id": "heldout-separate-work-23",
+    "task": "separate-work",
+    "category": "missing-evidence",
+    "state": {
+      "currentTopic": "Renovation",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "ok"
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "No content."
+  },
+  {
+    "id": "heldout-separate-work-24",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Renovation",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Let me look at paint colours after lunch, but first order the screws."
+        },
+        {
+          "role": "owner",
+          "text": "How long do I wait for the paint to dry?"
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "All same renovation work."
+  },
+  {
+    "id": "heldout-separate-work-25",
+    "task": "separate-work",
+    "category": "ambiguous",
+    "state": {
+      "currentTopic": "Renovation",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Could you do a deeper dive on heat pumps vs. gas for our house? Cost, subsidies, noise."
+        }
+      ],
+      "topics": [
+        {
+          "id": "reno",
+          "name": "Renovation"
+        }
+      ],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-thread"
+    },
+    "rationale": "Substantial research inside the renovation topic."
+  }
+]

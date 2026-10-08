@@ -79,6 +79,22 @@ export function score(fixture: Fixture, row: Row) {
 }
 
 /** Binary action probability is evaluated against truth, never against P(expected). */
+export function evaluateThreshold(observations: readonly Observation[], value: number) {
+  const positive = observations.filter((item) => item.positive).length
+  const selected = observations.filter((item) => item.probability >= value)
+  const truePositive = selected.filter((item) => item.positive).length
+  return {
+    value,
+    precision: selected.length === 0 ? null : truePositive / selected.length,
+    recall: positive === 0 ? null : truePositive / positive,
+    positive,
+    selected: selected.length,
+    truePositive,
+    falsePositive: selected.length - truePositive,
+    falseNegative: positive - truePositive,
+  }
+}
+
 export function threshold(observations: readonly Observation[]) {
   const positive = observations.filter((item) => item.positive).length
   if (positive === 0) return null
@@ -160,12 +176,18 @@ const operations = (rows: readonly Row[]) => {
     ruleDecisions: rows.filter((row) => row.route === 'rules').length,
   }
 }
-export function summarize(fixtures: readonly Fixture[], rows: readonly Row[]) {
+export function summarize(fixtures: readonly Fixture[], rows: readonly Row[], frozenThreshold?: number | null) {
   const scored = scoreRows(fixtures, rows)
+  const observations = scored.flatMap((item) => item.observations)
   return {
     ...quality(scored),
     ...operations(rows),
-    threshold: threshold(scored.flatMap((item) => item.observations)),
+    threshold:
+      frozenThreshold === undefined
+        ? threshold(observations)
+        : frozenThreshold === null
+          ? null
+          : evaluateThreshold(observations, frozenThreshold),
     calibration: calibration(scored.flatMap((item) => item.details)),
     repetitions: [1, 2, 3].map((repetition) => {
       const trial = scoreRows(

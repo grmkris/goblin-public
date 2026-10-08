@@ -497,6 +497,13 @@ failures are reported independently from judgment quality. Provider payloads, ra
 stay in ignored, private `.local/bench/decisions/` files. Generated reports live in `bench/reports/`.
 Thresholds and calibration are exploratory fits on these fixtures, not independently validated defaults.
 
+Independent sets can be selected with `--fixtures heldout` (or a committed
+`bench/fixtures/decisions-<name>.json` path). Non-development sets require
+`--thresholds-from <development-run>`; the new immutable manifest freezes that report's cutoffs and
+applies them unchanged, including cutoffs that miss the development recall target on held-out cases.
+Old manifests retain the development fixture default. The independent set's provenance and reviewed
+identity label map are in `fixtures/decisions-heldout.provenance.md`.
+
 A fresh follow-up manifest can select unfinished arms with `plan --arms jev,openai-decisions`.
 This retains every prior attempt in the shared budget and avoids repeating completed arms. A known
 per-call envelope breach stops its original run; corrected envelopes require a fresh manifest. Reports

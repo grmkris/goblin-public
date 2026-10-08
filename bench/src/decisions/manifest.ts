@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { arms } from './schema.ts'
+import { arms, tasks } from './schema.ts'
 
 const Nonnegative = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))
 const Positive = Schema.Int.check(Schema.isGreaterThan(0))
@@ -15,9 +15,37 @@ export const Model = Schema.Struct({
   priceSource: Schema.String,
 })
 export type Model = typeof Model.Type
+export const FrozenThresholds = Schema.Record(
+  Schema.Literals(tasks),
+  Schema.Record(
+    Schema.Literals(arms),
+    Schema.NullOr(Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
+  ),
+)
+export type FrozenThresholds = typeof FrozenThresholds.Type
+export function freezeThresholds(
+  metrics: readonly { task: string; arm: string; threshold: { value: number } | null }[],
+): FrozenThresholds {
+  return Schema.decodeUnknownSync(FrozenThresholds)(
+    Object.fromEntries(
+      tasks.map((task) => [
+        task,
+        Object.fromEntries(
+          arms.map((arm) => [
+            arm,
+            metrics.find((item) => item.task === task && item.arm === arm)?.threshold?.value ?? null,
+          ]),
+        ),
+      ]),
+    ),
+  )
+}
 export const Manifest = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   runId: Schema.String,
+  fixtureFile: Schema.optional(Schema.String),
+  thresholdSource: Schema.optional(Schema.String),
+  frozenThresholds: Schema.optional(FrozenThresholds),
   fixtureHash: Schema.String,
   sourceHash: Schema.String,
   repetitions: Positive.check(Schema.isLessThanOrEqualTo(3)),
