@@ -1,4 +1,5 @@
 import type { HomeOperation, HomeTile, TileSize } from '@goblin/contracts'
+import { useRef } from 'react'
 import {
   Button,
   DropdownMenu,
@@ -26,16 +27,19 @@ export function HomeTileMenu({
   readonly count: number
   readonly pending: boolean
   readonly edit: (ops: readonly HomeOperation[]) => Promise<void>
-  readonly open: () => void
+  readonly open: (trigger?: HTMLElement) => void
   readonly close?: () => void
 }) {
+  const trigger = useRef<HTMLButtonElement>(null)
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Tile menu" disabled={pending} />}>
+      <DropdownMenuTrigger
+        render={<Button ref={trigger} variant="ghost" size="icon-xs" aria-label="Tile menu" disabled={pending} />}
+      >
         <MoreHorizontalIcon aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={open}>Open</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => open(trigger.current ?? undefined)}>Open</DropdownMenuItem>
         <DropdownMenuItem
           disabled={index === 0}
           onClick={() => void edit([{ kind: 'move', id: tile.id, index: index - 1 }])}

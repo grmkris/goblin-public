@@ -14,6 +14,7 @@ import { useHomeDrag } from './drag.ts'
 import { useHomeMotion } from './motion.ts'
 import { appCaption, appNames } from '../../lib/workspace-tree.ts'
 import { glide } from '../../lib/motion.ts'
+import { HomeNoteReader } from './note-reader.tsx'
 
 const STARTERS = ['Track my reading on Home', 'Chart my spending this month on Home', 'Put my inbox on Home']
 const TILE_DRAFT = 'Add a tile to Home that '
@@ -63,16 +64,48 @@ function tileTitle(
   return app === undefined ? 'App' : (appNames(apps).get(app.id) ?? app.title)
 }
 
+function TileMoveHandle({
+  tile,
+  title,
+  controls,
+}: {
+  readonly tile: HomeTile
+  readonly title: string
+  readonly controls: TileControls
+}) {
+  return (
+    <span className="home-drag-handle">
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Move ${title}`}
+        disabled={controls.owner.pending}
+        onPointerDown={(event) => controls.drag.start(event, tile.id)}
+        onPointerMove={controls.drag.move}
+        onPointerUp={controls.drag.end}
+        onPointerCancel={controls.drag.end}
+      >
+        <GripVerticalIcon aria-hidden />
+      </Button>
+    </span>
+  )
+}
+
 function Tile({ tile, controls }: { readonly tile: HomeTile; readonly controls: TileControls }) {
+  const [reading, setReading] = useState(false)
+  const returnFocus = useRef<HTMLElement | null>(null)
   const { apps } = useWorkspaceFeed()
   const workspace = useWorkspace()
   const host = useAppHost()
   const app = tile.kind === 'app' ? apps.find((each) => each.id === tile.appId) : undefined
   const title = tileTitle(tile, app, apps)
-  const open = () =>
-    app === undefined
-      ? document.querySelector<HTMLElement>(`[data-home-tile="${tile.id}"]`)?.focus()
-      : workspace.open(appKey(app.id), 'beside', conversationKey('1'))
+  const open = (trigger?: HTMLElement) => {
+    if (tile.kind === 'note') {
+      returnFocus.current = trigger ?? null
+      setReading(true)
+    } else if (app !== undefined) workspace.open(appKey(app.id), 'beside', conversationKey('1'))
+    else document.querySelector<HTMLElement>(`[data-home-tile="${tile.id}"]`)?.focus()
+  }
   return (
     <article
       className="home-tile"
@@ -83,27 +116,11 @@ function Tile({ tile, controls }: { readonly tile: HomeTile; readonly controls: 
       tabIndex={-1}
     >
       <div className="home-tile-label">
-        {controls.editing && (
-          <span className="home-drag-handle">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-
-              aria-label={`Move ${title}`}
-              disabled={controls.owner.pending}
-              onPointerDown={(event) => controls.drag.start(event, tile.id)}
-              onPointerMove={controls.drag.move}
-              onPointerUp={controls.drag.end}
-              onPointerCancel={controls.drag.end}
-            >
-              <GripVerticalIcon aria-hidden />
-            </Button>
-          </span>
-        )}
+        {controls.editing && <TileMoveHandle tile={tile} title={title} controls={controls} />}
         {app === undefined ? (
           title
         ) : (
-          <button type="button" onClick={open}>
+          <button type="button" onClick={(event) => open(event.currentTarget)}>
             <span className="home-app-name">
               <span>{title}</span>
               <small>{appCaption(app)}</small>
@@ -139,6 +156,16 @@ function Tile({ tile, controls }: { readonly tile: HomeTile; readonly controls: 
       <div className="home-tile-body">
         <TileBody tile={tile} app={app} />
       </div>
+      {tile.kind === 'note' && (
+        <>
+          <div className="home-note-open">
+            <Button variant="ghost" size="sm" onClick={(event) => open(event.currentTarget)}>
+              Read more
+            </Button>
+          </div>
+          <HomeNoteReader tile={tile} open={reading} onOpenChange={setReading} returnFocus={returnFocus.current} />
+        </>
+      )}
     </article>
   )
 }

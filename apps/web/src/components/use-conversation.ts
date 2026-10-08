@@ -1,11 +1,18 @@
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AppContext } from '@goblin/contracts'
+import type { AppContext, ComposerSelection } from '@goblin/contracts'
 import { failureText, isNumber, record, records, request } from '../lib/boundary.ts'
 import { BrowserPiEvents, type StreamStatus } from '../lib/conversation-stream.ts'
 import { type Lease, type StreamState, StreamPool } from '../lib/stream-pool.ts'
 import { conversationParts } from '../lib/parts.ts'
 import { type ConversationProjection, entryMessages, historyStart } from '../lib/projection.ts'
 import { branchPoints, fromEntry } from '../lib/threads.ts'
+import { useKeyboardInset } from './use-keyboard.ts'
+
+type MessageContext = {
+  readonly appContext?: readonly AppContext[]
+  readonly attachments?: readonly string[]
+  readonly selections?: readonly ComposerSelection[]
+}
 
 /**
  * Submits the owner's message to a conversation. A stable `operationId` makes a retry the same message (answers to a
@@ -15,8 +22,7 @@ export async function postMessage(
   thread: string,
   input: string,
   operationId?: string,
-  appContext: readonly AppContext[] = [],
-  attachments: readonly string[] = [],
+  { appContext = [], attachments = [], selections = [] }: MessageContext = {},
 ): Promise<void> {
   const body = {
     input,
@@ -24,6 +30,7 @@ export async function postMessage(
     operationId: operationId ?? crypto.randomUUID(),
     ...(appContext.length > 0 && { appContext }),
     ...(attachments.length > 0 && { attachments }),
+    ...(selections.length > 0 && { selections }),
   }
   await request(`/api/conversations/${thread}/messages`, { body })
 }
@@ -70,18 +77,14 @@ export function useConversation(thread: string, visible = true) {
   }, [thread])
   useEffect(() => lease.current?.setVisible(visible), [visible])
   /** `operationId` is stable for replies to a question or permission request; a typed message gets a fresh one. */
-  async function send(
-    input: string,
-    operationId?: string,
-    appContext: readonly AppContext[] = [],
-    attachments: readonly string[] = [],
-  ): Promise<boolean> {
+  async function send(input: string, operationId?: string, context: MessageContext = {}): Promise<boolean> {
     try {
-      await postMessage(thread, input, operationId, appContext, attachments)
+      await postMessage(thread, input, operationId, context)
       setFailure('')
       return true
     } catch (error) {
       setFailure(failureText(error))
+      if ((context.selections?.length ?? 0) > 0) throw error
       return false
     }
   }
@@ -175,27 +178,19 @@ export function useTranscript(
  * `--keyboard-inset` lifts it above an on-screen keyboard that covers the layout viewport (iOS Safari does not resize it).
  */
 export function useDockInsets(view: RefObject<HTMLElement | null>, dock: RefObject<HTMLElement | null>) {
+  const keyboardInset = useKeyboardInset()
   useEffect(() => {
     const root = view.current
     const element = dock.current
     if (!root || !element) return
-    const viewport = window.visualViewport
-    const keyboard = () => {
-      const inset = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0
-      root.style.setProperty('--keyboard-inset', `${Math.round(inset)}px`)
-    }
+    root.style.setProperty('--keyboard-inset', `${Math.round(keyboardInset)}px`)
     const observer = new ResizeObserver(([entry]) => {
       const height = entry?.borderBoxSize[0]?.blockSize ?? element.offsetHeight
       root.style.setProperty('--dock-height', `${Math.round(height)}px`)
     })
     observer.observe(element)
-    keyboard()
-    viewport?.addEventListener('resize', keyboard)
-    viewport?.addEventListener('scroll', keyboard)
     return () => {
       observer.disconnect()
-      viewport?.removeEventListener('resize', keyboard)
-      viewport?.removeEventListener('scroll', keyboard)
     }
-  }, [view, dock])
+  }, [view, dock, keyboardInset])
 }

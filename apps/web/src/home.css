@@ -318,6 +318,25 @@
 .home-tile[data-kind='note'] .home-tile-body {
   mask-image: linear-gradient(black calc(100% - 0.75rem), transparent);
 }
+.home-note-open {
+  align-self: flex-start;
+  flex: none;
+  margin-top: 0.25rem;
+}
+.home-note-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+}
+.home-note-content {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0.5rem 1rem 1rem;
+}
 .home-tile-request {
   border-style: dashed;
   background: transparent;

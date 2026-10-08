@@ -136,6 +136,7 @@ export {
   type ToolCallState,
 } from './components/tool-call.tsx'
 export { useIsMobile, useMediaQuery } from './hooks/use-media-query.ts'
+export { Dialog, DialogClose, DialogContent, DialogTitle, DialogDescription } from './components/dialog.tsx'
 export { AuthPage } from './auth/auth-page.tsx'
 export { type AuthActionResult, failed, succeeded } from './auth/contract.ts'
 export { EmailSignInForm } from './auth/sign-in.tsx'

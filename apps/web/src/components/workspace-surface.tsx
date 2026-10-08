@@ -7,7 +7,7 @@ import {
   DEFAULT_KEYMAP,
   createWorkspace,
 } from '@danfessler/trellis'
-import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useHydrated } from '@tanstack/react-router'
 import { Button, Drawer, DrawerContent, DrawerTitle, useMediaQuery } from '@goblin/ui'
@@ -23,6 +23,7 @@ import { ConversationPane, DraftPane } from './conversation-pane.tsx'
 import { WorkspaceDrag } from './workspace-drag.tsx'
 import { useWorkspace } from './workspace.tsx'
 import { glide } from '../lib/motion.ts'
+import { CHAT_SNAPS, HALF_CHAT as HALF, FULL_CHAT as FULL, useChatSnap } from './use-chat-snap.ts'
 
 const TOKENS = {
   '--trellis-bg': 'var(--muted)',
@@ -255,11 +256,6 @@ function StripCell({
   return <div className="workspace-cell" ref={hold} />
 }
 
-/** Where the docked chat rests: half the screen, or as tall as a drawer goes. */
-const HALF = 0.55
-const FULL = 1
-const CHAT_SNAPS = [HALF, FULL]
-
 /**
  * On a phone, the conversation docked beside a full-screen App, in a drawer from the bottom (ADR 0021). It rests at half
  * the screen or nearly all of it: dragged between the two, or switched with its handle; a flick down folds it away. The
@@ -277,7 +273,7 @@ function ChatSheet({
 }) {
   const workspace = useWorkspace()
   const { open } = dockOf(workspace.state)
-  const [snap, setSnap] = useState<number | string | null>(HALF)
+  const { snap, setSnap, keyboardInset } = useChatSnap(open)
   const full = snap === FULL
   const hold = useCallback(
     (body: HTMLDivElement | null) => {
@@ -309,6 +305,7 @@ function ChatSheet({
       >
         <DrawerContent
           snapping
+          data-keyboard={keyboardInset > 0 || undefined}
           grabber={
             <button
               type="button"
