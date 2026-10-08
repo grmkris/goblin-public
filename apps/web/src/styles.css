@@ -59,10 +59,9 @@ main.shell {
   font-size: 0.9375rem;
   font-weight: 600;
   letter-spacing: -0.01em;
-  outline: none;
 }
 .sidebar-brand:focus-visible {
-  box-shadow: 0 0 0 2px var(--sidebar-ring);
+  outline: 2px solid var(--sidebar-ring);
 }
 .sidebar-brand > svg {
   width: 1.25rem;
@@ -749,9 +748,14 @@ main.shell {
 .message-action:active {
   background: var(--muted);
 }
-/* A message takes focus when tapped, which is how a touch screen shows its actions (it has no hover). */
-.message-item:focus {
-  outline: none;
+/*
+ * A message takes focus when tapped, which is how a touch screen shows its actions (it has no hover). A tap draws no
+ * focus mark; focus that a keyboard brought there does.
+ */
+.message-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
+  border-radius: var(--radius-lg);
 }
 /*
  * The pill floats over the message's lower edge and reaches into the gap below it. It takes no room, so nothing moves

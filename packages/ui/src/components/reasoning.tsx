@@ -26,7 +26,7 @@ function ReasoningTrigger({
       data-slot="reasoning-trigger"
       data-live={live || undefined}
       className={cn(
-        'inline-flex min-h-8 w-fit items-center gap-1 rounded-md px-1 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-live:animate-pulse pointer-coarse:min-h-11',
+        'inline-flex min-h-8 w-fit items-center gap-1 rounded-md px-1 text-muted-foreground focus-visible:outline-hidden transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-live:animate-pulse pointer-coarse:min-h-11',
         className,
       )}
       {...props}

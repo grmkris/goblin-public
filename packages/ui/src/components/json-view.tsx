@@ -86,7 +86,7 @@ function ContainerNode({
           type="button"
           aria-expanded={open}
           aria-label={`${open ? 'Collapse' : 'Expand'} ${name ?? 'JSON'}`}
-          className="flex min-w-0 flex-1 items-start gap-1 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="flex min-w-0 flex-1 items-start gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/50"
           onClick={() => setOpen((current) => !current)}
         >
           <ChevronRightIcon

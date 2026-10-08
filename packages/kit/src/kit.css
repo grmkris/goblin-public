@@ -21,9 +21,10 @@
 .kit-chart-plot {
   height: 16rem;
 }
-.kit-chart .recharts-wrapper:focus,
-.kit-chart .recharts-surface:focus {
-  outline: none;
+.kit-chart .recharts-wrapper:focus-visible,
+.kit-chart .recharts-surface:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 .kit-map-canvas {
   height: 18rem;

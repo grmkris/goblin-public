@@ -25,7 +25,7 @@ function ToolCallTrigger({ className, children, ...props }: CollapsiblePrimitive
     <CollapsiblePrimitive.Trigger
       data-slot="tool-call-trigger"
       className={cn(
-        'flex min-h-7 w-fit max-w-full min-w-0 items-center gap-2 rounded-lg px-3.5 py-0.5 text-left text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 group-data-open/tool-call:text-foreground pointer-coarse:min-h-11',
+        'flex min-h-7 w-fit max-w-full min-w-0 items-center gap-2 rounded-lg px-3.5 py-0.5 text-left text-muted-foreground focus-visible:outline-hidden transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 group-data-open/tool-call:text-foreground pointer-coarse:min-h-11',
         className,
       )}
       {...props}
