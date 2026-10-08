@@ -10,7 +10,7 @@ import {
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useHydrated } from '@tanstack/react-router'
-import { Button, Sheet, SheetContent, SheetTitle, useMediaQuery } from '@goblin/ui'
+import { Button, Drawer, DrawerContent, DrawerTitle, useMediaQuery } from '@goblin/ui'
 import { MessageSquareIcon } from 'lucide-react'
 import { WIDE_QUERY } from '../lib/breakpoints.ts'
 import { PANE_MIN } from '../lib/pane-drop.ts'
@@ -255,10 +255,16 @@ function StripCell({
   return <div className="workspace-cell" ref={hold} />
 }
 
+/** Where the docked chat rests: half the screen, or as tall as a drawer goes. */
+const HALF = 0.55
+const FULL = 1
+const CHAT_SNAPS = [HALF, FULL]
+
 /**
- * On a phone, the conversation docked beside a full-screen App, in a sheet from the bottom (ADR 0021): half the screen
- * or, with its handle, nearly all of it. The conversation's own pane moves in while it is open, so its stream and draft
- * go on; folded away, a Chat button brings it back.
+ * On a phone, the conversation docked beside a full-screen App, in a drawer from the bottom (ADR 0021). It rests at half
+ * the screen or nearly all of it: dragged between the two, or switched with its handle; a flick down folds it away. The
+ * conversation's own pane moves in while it is open, so its stream and draft go on; folded away, a Chat button brings
+ * it back. Its pane lifts its own composer over the keyboard, so the drawer itself stays put.
  */
 function ChatSheet({
   item,
@@ -271,7 +277,8 @@ function ChatSheet({
 }) {
   const workspace = useWorkspace()
   const { open } = dockOf(workspace.state)
-  const [full, setFull] = useState(false)
+  const [snap, setSnap] = useState<number | string | null>(HALF)
+  const full = snap === FULL
   const hold = useCallback(
     (body: HTMLDivElement | null) => {
       const host = hosts.current.get(item)
@@ -293,20 +300,28 @@ function ChatSheet({
           </Button>
         </div>
       )}
-      <Sheet open={open} onOpenChange={(next) => workspace.setDock({ open: next })}>
-        <SheetContent side="bottom" showCloseButton={false}>
-          <div className="chat-sheet" data-full={full}>
-            <SheetTitle className="sr-only">{workspace.titleOf(item)}</SheetTitle>
+      <Drawer
+        open={open}
+        onOpenChange={(next) => workspace.setDock({ open: next })}
+        snapPoints={CHAT_SNAPS}
+        snapPoint={snap ?? HALF}
+        onSnapPointChange={setSnap}
+      >
+        <DrawerContent
+          snapping
+          grabber={
             <button
               type="button"
               className="chat-sheet-handle"
               aria-label={full ? 'Half height' : 'Full height'}
-              onClick={() => setFull(!full)}
+              onClick={() => setSnap(full ? HALF : FULL)}
             />
-            <div className="chat-sheet-body" ref={hold} />
-          </div>
-        </SheetContent>
-      </Sheet>
+          }
+        >
+          <DrawerTitle className="sr-only">{workspace.titleOf(item)}</DrawerTitle>
+          <div className="chat-sheet-body" ref={hold} />
+        </DrawerContent>
+      </Drawer>
     </>
   )
 }

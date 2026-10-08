@@ -3,11 +3,11 @@ import {
   PopoverContent,
   PopoverTitle,
   PopoverTrigger,
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
   useMediaQuery,
   useMessageScroller,
 } from '@goblin/ui'
@@ -254,11 +254,14 @@ function TurnMapRail({
   )
 }
 
-/** A tab on the pane's edge that opens the list as a bottom sheet: phones, tablets and narrow windows. */
+/**
+ * A grip on the pane's edge that opens the list as a bottom drawer (phones, tablets and narrow windows); a flick down
+ * puts it away.
+ */
 function TurnMapTab({ turns, geometry, open, onOpenChange, onJump, onEarlier }: Variant) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetTrigger
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerTrigger
         render={
           <button
             type="button"
@@ -269,16 +272,16 @@ function TurnMapTab({ turns, geometry, open, onOpenChange, onJump, onEarlier }: 
         }
       >
         <ListIcon aria-hidden />
-      </SheetTrigger>
-      <SheetContent side="bottom" initialFocus={false}>
-        <SheetHeader>
-          <SheetTitle>In this conversation</SheetTitle>
-        </SheetHeader>
+      </DrawerTrigger>
+      <DrawerContent initialFocus={false}>
+        <DrawerHeader>
+          <DrawerTitle>In this conversation</DrawerTitle>
+        </DrawerHeader>
         <div className="turn-map-sheet">
           <TurnList turns={turns} current={geometry.current} onJump={onJump} onEarlier={onEarlier} />
         </div>
-      </SheetContent>
-    </Sheet>
+      </DrawerContent>
+    </Drawer>
   )
 }
 

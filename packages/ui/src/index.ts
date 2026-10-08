@@ -62,18 +62,19 @@ export {
   useMessageScroller,
   useMessageScrollerScrollable,
 } from './components/message-scroller.tsx'
+export {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerSide,
+  DrawerTitle,
+  DrawerTrigger,
+} from './components/drawer.tsx'
 export { Separator } from './components/separator.tsx'
 export { Skeleton } from './components/skeleton.tsx'
 export { Spinner } from './components/spinner.tsx'
-export {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from './components/sheet.tsx'
 export { PresenceBorder, PresenceOrb, type PresenceState } from './components/presence.tsx'
 export { Switch } from './components/switch.tsx'
 export { Tabs, TabsContent, TabsList, TabsTrigger } from './components/tabs.tsx'

@@ -216,14 +216,14 @@ Every signed-in page sits beside the app's sidebar (shadcn's sidebar, ported to 
 then Connections, Settings and Sign out. Connections and Settings are columns of titled sections (`PageSection`)
 whose states read in words (`lib/labels.ts`), never the raw value the runtime sends. On desktop the sidebar folds to an icon rail (the toggle in a page's top bar or the
 first pane's pill, its edge, or ⌘/Ctrl+B) and a cookie remembers it, which the server reads so the first paint has the right layout; on
-phones it is a sheet. The workspace fills the page beside it. The transcript scrolls in a `MessageScroller` (from `@shadcn/react`, patched with upstream fixes that are not
+phones it is a drawer from the left edge (`DrawerSide` in `@goblin/ui`) that a swipe left closes. The workspace fills the page beside it. The transcript scrolls in a `MessageScroller` (from `@shadcn/react`, patched with upstream fixes that are not
 released yet; `bun run check:patches` proves the patch is installed). Each of
 the owner's turns (typed in the app or sent from Telegram, `isOwnTurn` in `lib/parts.ts`) is a scroll anchor; a
 message from an MCP client, a subagent, a routine or a thread's share-back arrives without moving the view. Until its
 snapshot arrives a pane shows nothing. Ordinary conversations open at their end; Main opens at today's latest owner turn or at Home on a new day. A turn map in the transcript's right gutter
 (`components/turn-map.tsx`) marks each of the owner's turns where it sits, with a band for what is on screen; hovering it
 lists the turns and a click jumps to one. Without a fine pointer, or in a narrow window, an edge tab opens the list as a
-bottom sheet. The view follows a streaming reply only while the reader is at the end, and
+bottom drawer that a swipe down closes. The view follows a streaming reply only while the reader is at the end, and
 otherwise offers a jump back. The pane's pill (where it came from, its name and menu, its state) and the composer
 float over the transcript as translucent chrome. Assistant Markdown is set by shadcn/typeset, whose append-stable rules keep earlier blocks still
 while a reply streams.
@@ -391,7 +391,8 @@ loads when its place comes on screen; beyond six instances the least recently se
 (`lib/app-residency.ts`), while one on screen never does. The advertised modes are inline and fullscreen: fullscreen is
 the App's page filling the workspace with its conversation docked beside it (`WorkspaceState.docked`, the device's
 `dock` share and fold; `dockedDocument` in `lib/trellis-layout.ts`), and on a phone the page fills the screen with the
-conversation in a bottom sheet (`ChatSheet` in `workspace-surface.tsx`); either way the conversation's own pane host
+conversation in a bottom drawer (`ChatSheet` in `workspace-surface.tsx`) that rests at half the screen or all of it and
+keeps the composer on screen at both; either way the conversation's own pane host
 moves there (ADR 0021). In its transcript the host's bar above an App opens its page or closes it; on its page the
 pane's pill menu brings it back, goes full screen with the chat or closes it. Agent apps are listed in the sidebar's
 Apps group and on the Apps page (`/apps`, `/apps/<name>`: `components/apps-page.tsx`, `components/app-manage.tsx`). Grant cards, link offers and context sharing remain

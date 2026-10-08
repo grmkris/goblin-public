@@ -1,5 +1,5 @@
 // Adapted from shadcn/ui's base-nova sidebar (MIT, https://ui.shadcn.com/r/styles/base-nova/sidebar.json): trimmed to
-// the one shape goblin uses, a left sidebar that folds to an icon rail on desktop and becomes a sheet on phones.
+// the one shape goblin uses, a left sidebar that folds to an icon rail on desktop and becomes a drawer on phones.
 // The app draws the rail's contents itself; no tooltips, skeletons or inputs; widths are classes rather than inline
 // styles; the motion is the sheet curve (`--ease-sheet`) instead of a linear 200ms. The menu parts live in
 // sidebar-menu.tsx.
@@ -17,7 +17,7 @@ import {
 import { useIsMobile } from '../hooks/use-media-query'
 import { cn } from '../lib/cn'
 import { Button } from './button'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './sheet'
+import { Drawer, DrawerDescription, DrawerHeader, DrawerSide, DrawerTitle } from './drawer'
 
 /** The cookie that keeps the desktop sidebar open or closed across reloads; the server reads it for the first paint. */
 export const SIDEBAR_COOKIE = 'sidebar_state'
@@ -110,25 +110,26 @@ function SidebarProvider({
   )
 }
 
-/** The phone sidebar: a sheet from the left edge that slides fully in, clear of the notch and the home indicator. */
+/**
+ * The phone sidebar: a drawer from the left edge that slides fully in, clear of the notch and the home indicator. A
+ * swipe left takes it back the way it came; nothing opens it from the edge, so the browser keeps its back gesture.
+ */
 function SidebarSheet({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   const { openMobile, setOpenMobile } = useSidebar()
   return (
-    <Sheet open={openMobile} onOpenChange={setOpenMobile}>
-      <SheetContent
-        side="left"
-        showCloseButton={false}
+    <Drawer open={openMobile} onOpenChange={setOpenMobile} swipeDirection="left">
+      <DrawerSide
         data-slot="sidebar"
         data-mobile="true"
-        className="w-(--sidebar-width) max-w-[85vw] gap-0 bg-sidebar p-0 pl-(--safe-left) text-sidebar-foreground duration-300 ease-(--ease-sheet) [--sidebar-width:18rem] data-ending-style:opacity-100 data-starting-style:opacity-100 data-[side=left]:data-ending-style:-translate-x-full data-[side=left]:data-starting-style:-translate-x-full"
+        className="w-(--sidebar-width) max-w-[85vw] bg-sidebar pl-(--safe-left) text-sidebar-foreground [--sidebar-width:18rem]"
       >
-        <SheetHeader className="sr-only">
-          <SheetTitle>{label}</SheetTitle>
-          <SheetDescription>The conversations and the app's pages.</SheetDescription>
-        </SheetHeader>
+        <DrawerHeader className="sr-only">
+          <DrawerTitle>{label}</DrawerTitle>
+          <DrawerDescription>The conversations and the app's pages.</DrawerDescription>
+        </DrawerHeader>
         <div className="flex size-full flex-col">{children}</div>
-      </SheetContent>
-    </Sheet>
+      </DrawerSide>
+    </Drawer>
   )
 }
 
