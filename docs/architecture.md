@@ -112,7 +112,17 @@ same way. Panes and inline threads follow conversations through one stream pool 
 stream per conversation however many show it, at most eight following beyond those on screen, and one off screen
 stops following after ten seconds, resuming from a fresh snapshot when it comes back. A thread started with "+" tells
 main its name once it has one (ADR 0010): main gets one `app.thread_started` note, `[thread started: "<title>"]`, and
-its transcript shows a row for that thread. The owner API is conversation-scoped:
+its transcript shows a row for that thread.
+
+Queued inputs in Main and ordinary threads stay in Pi's native `InboxDoc`. The browser projects native inbox IDs
+and modes, then reads contents through `GET /api/conversations/:id/queue`; helper and routine queues are absent
+from this view, and passive writes are excluded. The shared conversation stream owns one cancellable queue read,
+refreshes on snapshots, inbox updates and accepted sends, retains last-known contents during errors, and retries with
+backoff. Native membership filters every response so stale reads cannot resurrect placed inputs. Both full and inline
+composers show the same ordered queue outside the transcript and turn map. An unchanged failed draft reuses its
+operation ID; acceptance clears it, so deliberate repeated messages get distinct submissions.
+
+The owner API is conversation-scoped:
 
 | Route | Purpose |
 | --- | --- |
@@ -134,6 +144,7 @@ its transcript shows a row for that thread. The owner API is conversation-scoped
 | `GET /api/conversations/:id/capabilities` | What the conversation lets its agent use (`ConversationCapabilities`): each server with a granted tool and those tools, each skills library, subagents, and for a thread whether it has its parent's switches (`sameAsParent`). |
 | `GET /api/conversations/:id/composer` | Conversation-scoped connected servers, enabled skills by stable URI, existing helpers and unavailable libraries. |
 | `PATCH /api/conversations/:id/capabilities` | Switch one `CapabilityTarget` on or off there (only what is shown can be switched off), or `{ reset: 'parent' }` a thread back to its parent's switches. A subagent's are not editable. |
+| `GET /api/conversations/:id/queue` | Ordered queued input IDs, modes and contents for Main and ordinary threads, from Pi InboxDoc. Passive writes, helpers and routine inputs are excluded. |
 | `POST /api/conversations/:id/messages` | Submit `input`, a stable `operationId`, optional `appContext` (by App id), up to eight `attachments` (owner file paths that must exist) and up to sixteen stable composer `selections`; skill-only input is allowed. Returns 202 acceptance. |
 | `GET /api/files?dir=` | A directory of the owner's files (`FileListing`): `/uploads`, `/agent` or a folder under one, with the storage in use. |
 | `GET`, `PUT`, `DELETE /api/files/content?path=` | Download, write (the body, `content-length` required) or delete one of the owner's files. Downloads are attachments, except PNG, JPEG, GIF and WebP, which open in place; all are sandboxed by CSP. |

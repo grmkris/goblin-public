@@ -165,6 +165,7 @@ const conversationRoutes: Readonly<
   },
   'POST stop': async (request, agent, thread) =>
     json({ stopped: unwrap(await agent.stop(thread, (await readJson(request, Stop)).operationId)) }),
+  'GET queue': async (_request, agent, thread) => json(unwrap(await agent.conversationQueue(thread))),
   'GET events': (_request, agent, thread) => agent.fetch(`https://agent/conversations/${thread}/events`),
   'GET snapshot': (_request, agent, thread) => agent.fetch(`https://agent/conversations/${thread}/snapshot`),
   'GET history': (request, agent, thread) =>

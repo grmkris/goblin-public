@@ -12,6 +12,9 @@ const projection = (extra: Partial<ConversationProjection> = {}): ConversationPr
   partialReasoning: '',
   partialBlocks: [],
   progress: '',
+  inbox: [],
+  queued: [],
+  queueNotice: '',
   ...extra,
 })
 const running = (target?: { serverId: string; name: string }): ToolPart => ({
@@ -52,6 +55,14 @@ describe('the agent’s presence', () => {
     expect(presenceOf({ ...base, projection: live, parts: [running()] }).label).toBe('Using web_fetch')
     expect(presenceOf({ ...base, projection: { ...live, partial: 'Hel' } }).state).toBe('responding')
     expect(presenceOf({ ...base, projection: live }).state).toBe('thinking')
+  })
+  it('keeps pending work visible while idle, including after a failed run', () => {
+    const pending = projection({ inbox: [{ id: 8, mode: 'followUp' }] })
+    expect(presenceOf({ ...base, projection: pending })).toEqual({ state: 'waiting', label: '1 queued message' })
+    expect(presenceOf({ ...base, projection: pending, parts: [failure()] })).toEqual({
+      state: 'error',
+      label: 'No answer',
+    })
   })
   it('settles into how the last turn ended; stopping is not an error, a cut-off answer says so', () => {
     expect(presenceOf({ ...base, exhausted: true, projection: projection() }).state).toBe('exhausted')

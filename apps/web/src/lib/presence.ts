@@ -1,6 +1,6 @@
 import type { StreamStatus } from './conversation-stream.ts'
 import type { Part } from './parts.ts'
-import type { ConversationProjection } from './projection.ts'
+import { queuedProgress, type ConversationProjection } from './projection.ts'
 
 /** What the agent is doing, as the presence orb and its label show it. */
 export type Presence =
@@ -58,5 +58,6 @@ export function presenceOf({ status, projection, parts, waiting, exhausted }: Pr
   const last = parts.at(-1)
   if (last?.kind === 'failure' && last.failure.cutOff === true) return { state: 'error', label: 'Cut off' }
   if (last?.kind === 'failure' && last.failure.stopped !== true) return { state: 'error', label: 'No answer' }
+  if (projection.inbox.length > 0) return { state: 'waiting', label: queuedProgress(projection.inbox.length) }
   return { state: 'idle', label: 'Ready' }
 }

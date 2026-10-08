@@ -15,6 +15,7 @@ import type {
   AppSnapshot,
   AppView,
   ComposerOptions,
+  ConversationQueue,
   ComposerSelection,
   CreateApp,
   UpdateApp,
@@ -53,6 +54,7 @@ export interface AgentRpcMethods {
       readonly selections?: readonly ComposerSelection[]
     },
   ) => Promise<RpcResult<PiReceipt>>
+  readonly conversationQueue: (thread: string) => Promise<RpcResult<ConversationQueue>>
   readonly composerOptions: (thread: string) => Promise<RpcResult<ComposerOptions>>
   readonly stop: (thread: string, operationId?: string) => Promise<RpcResult<boolean>>
   readonly conversations: () => Promise<RpcResult<readonly ConversationView[]>>

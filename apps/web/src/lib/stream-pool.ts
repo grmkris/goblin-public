@@ -94,6 +94,12 @@ export class StreamPool {
     for (const entry of this.#entries.values()) if (entry.live) void entry.stream.reconnect()
   }
 
+  /** A send or removal changed the native inbox; share its next content read with every consumer. */
+  refreshQueue(id: string): void {
+    const entry = this.#entries.get(id)
+    if (entry?.live) void entry.stream.refreshQueue()
+  }
+
   /** How many conversations follow now. */
   get live(): number {
     return [...this.#entries.values()].filter((entry) => entry.live).length

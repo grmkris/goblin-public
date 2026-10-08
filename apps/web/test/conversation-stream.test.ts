@@ -5,6 +5,7 @@ import {
   type PiEventSource,
   type ReconnectScheduler,
 } from '../src/lib/conversation-stream.ts'
+import type { JsonValue } from '@goblin/contracts'
 import type { ConversationProjection } from '../src/lib/projection.ts'
 
 class FixtureEvents implements PiEventSource {
@@ -36,6 +37,7 @@ describe('snapshot reconnection', () => {
           controllerSignals.push(signal)
           return snapshot
         },
+        queue: async () => ({ inputs: [] }),
         events: () => {
           const source = new FixtureEvents()
           streams.push(source)
@@ -63,7 +65,7 @@ describe('snapshot reconnection', () => {
     const source = new FixtureEvents()
     let state: ConversationProjection | undefined
     const connection = new ConversationStream(
-      { snapshot: async () => snapshot, events: () => source },
+      { snapshot: async () => snapshot, queue: async () => ({ inputs: [] }), events: () => source },
       (value) => {
         state = value
       },
@@ -97,6 +99,7 @@ describe('snapshot reconnection', () => {
           if (snapshots === 2) throw new Error('offline')
           return snapshot
         },
+        queue: async () => ({ inputs: [] }),
         events: () => {
           const source = new FixtureEvents()
           streams.push(source)
@@ -129,5 +132,103 @@ describe('snapshot reconnection', () => {
     expect(reconnectDelay(0, 0)).toBe(1000)
     expect(reconnectDelay(10, 0)).toBe(30_000)
     expect(reconnectDelay(10, 1)).toBe(36_000)
+  })
+})
+
+describe('native queue content reads', () => {
+  it('keeps duplicate text in native order, refetches on inbox events, and rejects superseded/disposed responses', async () => {
+    const source = new FixtureEvents()
+    const reads: { signal: AbortSignal; resolve: (value: JsonValue) => void }[] = []
+    let state: ConversationProjection | undefined
+    const refs = [
+      { id: 5, mode: 'followUp' },
+      { id: 6, mode: 'followUp' },
+    ]
+    const connection = new ConversationStream(
+      {
+        snapshot: async () => ({ ...snapshot, inbox: refs }),
+        events: () => source,
+        queue: (signal) => new Promise((resolve) => reads.push({ signal, resolve })),
+      },
+      (next) => {
+        state = next
+      },
+      () => undefined,
+    )
+    await connection.reconnect()
+    source.emit('snapshot', { ...snapshot, inbox: refs })
+    expect(reads[0]?.signal.aborted).toBe(true)
+    reads[1]?.resolve({
+      inputs: [
+        { id: 6, mode: 'followUp', content: 'same' },
+        { id: 5, mode: 'followUp', content: 'same' },
+      ],
+    })
+    await Promise.resolve()
+    expect(state?.queued.map((item) => item.id)).toEqual([5, 6])
+    source.emit('batch', [{ type: 'inbox_update', items: [{ id: 6, mode: 'followUp' }] }])
+    expect(state?.queued.map((item) => item.id)).toEqual([6])
+    reads[0]?.resolve({ inputs: [{ id: 5, mode: 'followUp', content: 'stale' }] })
+    await Promise.resolve()
+    expect(state?.queued.map((item) => item.id)).toEqual([6])
+    source.emit('batch', [{ type: 'inbox_update', items: [] }])
+    reads[2]?.resolve({ inputs: [{ id: 5, mode: 'followUp', content: 'placed' }] })
+    await Promise.resolve()
+    expect(state?.queued).toEqual([])
+    connection.dispose()
+    reads[3]?.resolve({ inputs: [{ id: 6, mode: 'followUp', content: 'disposed' }] })
+    await Promise.resolve()
+    expect(state?.queued).toEqual([])
+  })
+  it('retains last-known contents on a failed read, retries without a second SSE, and refreshes after reconnect', async () => {
+    const sources: FixtureEvents[] = []
+    const retries = new Set<() => void>()
+    const scheduler: ReconnectScheduler = {
+      schedule: (run) => {
+        retries.add(run)
+        return () => {
+          retries.delete(run)
+        }
+      },
+    }
+    let fail = false
+    let state: ConversationProjection | undefined
+    const connection = new ConversationStream(
+      {
+        snapshot: async () => ({ ...snapshot, inbox: [{ id: 9, mode: 'followUp' }] }),
+        queue: async () => {
+          if (fail) throw new Error('offline')
+          return { inputs: [{ id: 9, mode: 'followUp', content: 'kept' }] }
+        },
+        events: () => {
+          const source = new FixtureEvents()
+          sources.push(source)
+          return source
+        },
+      },
+      (next) => {
+        state = next
+      },
+      () => undefined,
+      scheduler,
+    )
+    await connection.reconnect()
+    await Promise.resolve()
+    fail = true
+    await connection.refreshQueue()
+    expect(state?.queued[0]?.content).toBe('kept')
+    expect(state?.queueNotice).toContain('Retrying')
+    expect(sources).toHaveLength(1)
+    fail = false
+    for (const retry of retries) retry()
+    await Promise.resolve()
+    expect(state?.queueNotice).toBe('')
+    await connection.reconnect()
+    await Promise.resolve()
+    expect(sources).toHaveLength(2)
+    expect(sources[0]?.closed).toBe(true)
+    expect(state?.queued[0]?.content).toBe('kept')
+    connection.dispose()
+    expect(retries.size).toBe(0)
   })
 })

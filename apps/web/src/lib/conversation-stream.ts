@@ -1,4 +1,5 @@
-import type { JsonValue } from '@goblin/contracts'
+import { ConversationQueue, type JsonValue, type QueuedInput } from '@goblin/contracts'
+import * as Schema from 'effect/Schema'
 import { isString } from './boundary.ts'
 import { projectBatch, projectSnapshot, type ConversationProjection } from './projection.ts'
 
@@ -26,6 +27,7 @@ export class BrowserPiEvents implements PiEventSource {
 }
 export type PiStreamDependencies = {
   readonly snapshot: (signal: AbortSignal) => Promise<JsonValue>
+  readonly queue: (signal: AbortSignal) => Promise<JsonValue>
   readonly events: () => PiEventSource
 }
 /** Timers, injectable so tests can drive reconnection without waiting. */
@@ -53,6 +55,10 @@ export class ConversationStream {
   #source: PiEventSource | undefined
   #projection: ConversationProjection | undefined
   #cancelRetry: (() => void) | undefined
+  #queueController: AbortController | undefined
+  #queueCache: readonly QueuedInput[] = []
+  #cancelQueueRetry: (() => void) | undefined
+  #queueAttempt = 0
   #attempt = 0
   #disposed = false
   constructor(
@@ -66,6 +72,9 @@ export class ConversationStream {
     this.#cancelRetry?.()
     this.#cancelRetry = undefined
     this.#controller?.abort()
+    this.#queueController?.abort()
+    this.#cancelQueueRetry?.()
+    this.#cancelQueueRetry = undefined
     this.#source?.close()
     this.#source = undefined
   }
@@ -93,7 +102,8 @@ export class ConversationStream {
       const snapshot = await this.dependencies.snapshot(controller.signal)
       if (controller.signal.aborted) return
       this.#projection = projectSnapshot(snapshot)
-      this.publish(this.#projection)
+      this.#publishQueue()
+      void this.refreshQueue()
       const source = this.dependencies.events()
       this.#source = source
       source.addEventListener('snapshot', (event) => this.#receive('snapshot', event, controller, source))
@@ -109,6 +119,44 @@ export class ConversationStream {
     }
   }
 
+  /** One cancellable content read per shared conversation. Native inbox membership always wins over late reads. */
+  async refreshQueue(): Promise<void> {
+    if (this.#disposed || this.#controller?.signal.aborted !== false || this.#projection === undefined) return
+    this.#queueController?.abort()
+    this.#cancelQueueRetry?.()
+    this.#cancelQueueRetry = undefined
+    const controller = new AbortController()
+    this.#queueController = controller
+    try {
+      const queue = Schema.decodeUnknownSync(ConversationQueue)(await this.dependencies.queue(controller.signal))
+      if (controller.signal.aborted || this.#disposed) return
+      this.#queueCache = queue.inputs
+      this.#projection = { ...this.#projection, queueNotice: '' }
+      this.#queueAttempt = 0
+      this.#publishQueue()
+    } catch {
+      if (controller.signal.aborted || this.#disposed) return
+      this.#projection = { ...this.#projection, queueNotice: 'Queued messages could not be refreshed. Retrying…' }
+      this.#publishQueue()
+      this.#cancelQueueRetry = this.scheduler.schedule(
+        () => void this.refreshQueue(),
+        reconnectDelay(this.#queueAttempt),
+      )
+      this.#queueAttempt += 1
+    }
+  }
+
+  #publishQueue(): void {
+    if (this.#projection === undefined) return
+    const byId = new Map(this.#queueCache.map((item) => [item.id, item]))
+    const queued = this.#projection.inbox.flatMap(({ id }) => {
+      const item = byId.get(id)
+      return item === undefined ? [] : [item]
+    })
+    this.#projection = { ...this.#projection, queued }
+    this.publish(this.#projection)
+  }
+
   #receive(
     kind: 'snapshot' | 'batch',
     event: MessageEvent<string>,
@@ -118,9 +166,13 @@ export class ConversationStream {
     if (controller.signal.aborted) return
     try {
       const value: unknown = JSON.parse(event.data)
+      const previous = this.#projection
       if (kind === 'snapshot') this.#projection = projectSnapshot(value)
       else if (this.#projection) this.#projection = projectBatch(this.#projection, value)
-      if (this.#projection) this.publish(this.#projection)
+      if (this.#projection) {
+        this.#publishQueue()
+        if (kind === 'snapshot' || previous?.inbox !== this.#projection.inbox) void this.refreshQueue()
+      }
     } catch {
       source.close()
       this.#retry('Stream data could not be read')

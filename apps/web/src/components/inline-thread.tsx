@@ -22,6 +22,7 @@ import { isUnread } from '../lib/workspace-tree.ts'
 import { MessageComposer } from './composer.tsx'
 import { SharedContextChips } from './apps/offers.tsx'
 import { useSendWithAppContext } from './conversation-dock.tsx'
+import { QueuedMessages } from './queued-messages.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
 import { useMarkRead, useOnScreen } from './on-screen.ts'
 import { AppsIn } from './parts/mcp-tool-part.tsx'
@@ -177,6 +178,8 @@ function InlineDock({
   return (
     <div className="inline-dock">
       <Notice text={notice} />
+      <Notice text={projection?.queueNotice ?? ''} />
+      <QueuedMessages inputs={projection?.queued ?? []} />
       <InteractionCards interactions={waiting} thread={id} onAnswer={send} />
       <SharedContextChips conversation={id} />
       {presence.state !== 'idle' && presence.state !== 'offline' && (

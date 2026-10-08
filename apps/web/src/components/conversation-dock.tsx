@@ -10,6 +10,7 @@ import { conversationKey } from '../lib/workspace.ts'
 import { SharedContextChips, useSharedContext } from './apps/offers.tsx'
 import { CapabilitiesButton } from './capabilities.tsx'
 import { MessageComposer } from './composer.tsx'
+import { QueuedMessages } from './queued-messages.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
 import { ModelPicker, type useModelChoice } from './model-picker.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
@@ -105,7 +106,9 @@ function DockCards({
   waiting,
   id,
   onAnswer,
+  queue,
 }: {
+  readonly queue: Parameters<typeof QueuedMessages>[0]['inputs']
   readonly notices: readonly string[]
   readonly open: boolean
   readonly waiting: ReturnType<typeof openInteractions>
@@ -117,6 +120,7 @@ function DockCards({
       {notices.map((text, index) => (
         <Notice key={`${index}:${text}`} text={text} />
       ))}
+      <QueuedMessages inputs={queue} />
       {open && (
         <>
           <InteractionCards interactions={waiting} thread={id} onAnswer={onAnswer} />
@@ -125,6 +129,23 @@ function DockCards({
       )}
     </div>
   )
+}
+
+/** The dock's live state, derived together so its composer and cards agree. */
+function useDockStatus(conversation: ReturnType<typeof useConversation>, parts: readonly Part[]) {
+  const { projection, status } = conversation
+  const running = projection?.running ?? false
+  const usage = useUsageToday(running)
+  const waiting = useMemo(() => openInteractions(parts), [parts])
+  const context = useMemo(() => contextTokens(projection?.messages ?? []), [projection])
+  const presence = presenceOf({
+    status,
+    projection,
+    parts,
+    waiting: waiting.length,
+    exhausted: usage !== undefined && budgetFraction(usage) >= 1,
+  })
+  return { running, usage, waiting, context, presence }
 }
 
 /**
@@ -164,22 +185,19 @@ export function ConversationDock({
   readonly sendLabel?: string | undefined
 }) {
   const workspace = useWorkspace()
-  const { projection, status, notice, send, stop } = conversation
-  const running = projection?.running ?? false
+  const { projection, notice, send, stop } = conversation
   const sendOwn = useSendWithAppContext(id, send)
-  const usage = useUsageToday(running)
-  const waiting = useMemo(() => openInteractions(parts), [parts])
-  const context = useMemo(() => contextTokens(projection?.messages ?? []), [projection])
-  const presence = presenceOf({
-    status,
-    projection,
-    parts,
-    waiting: waiting.length,
-    exhausted: usage !== undefined && budgetFraction(usage) >= 1,
-  })
+  const { running, usage, waiting, context, presence } = useDockStatus(conversation, parts)
   return (
     <div className="chat-dock" ref={ref} data-app-cover>
-      <DockCards notices={[notice, ...notices]} open={closed === undefined} waiting={waiting} id={id} onAnswer={send} />
+      <DockCards
+        notices={[notice, projection?.queueNotice ?? '', ...notices]}
+        open={closed === undefined}
+        waiting={waiting}
+        id={id}
+        onAnswer={send}
+        queue={projection?.queued ?? []}
+      />
       {closed !== undefined ? (
         <ClosedNotice by={closed} onReopen={onReopen} />
       ) : (

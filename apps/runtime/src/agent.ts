@@ -1,6 +1,7 @@
 import { Agent } from 'agents'
 import { type Extension } from '@earendil-works/pi-durable'
 import { type CapabilityChange, type JsonObject, MAIN_THREAD } from '@goblin/contracts'
+import { ownerQueue } from './conversation-queue.ts'
 import type { OwnerMessageContext } from './agent-program.ts'
 import { composerOptions as composerOptionsProgram } from './composer.ts'
 import type { AgentAppChange, AppCall, AppDiagnostic, CreateApp, DeleteAgentApp, UpdateApp } from '@goblin/contracts'
@@ -10,10 +11,10 @@ import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import type { AgentRpcMethods, RuntimeEnv } from './env.ts'
-import { type AppError, Forbidden, toAppError } from './http/errors.ts'
+import { type AppError, toAppError } from './http/errors.ts'
 import { type ChannelPorts, TelegramChannel, channelCall, logChannelFailure } from './channel/channel.ts'
 import { channelPorts } from './channel/turns.ts'
-import { type Doorbell, doorbellValid } from './channel/doorbell.ts'
+import { type Doorbell } from './channel/doorbell.ts'
 import { type RpcResult, encodeExit, unwrap } from './http/rpc.ts'
 import { FileStore } from './files/store.ts'
 import { filesExtension } from './pi/files.ts'
@@ -48,10 +49,10 @@ import {
 } from './services.ts'
 import { accountEntitlements, Entitlements, type EntitlementPolicy } from './billing/gates.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
-import { nowMillis, nowSeconds } from './clock.ts'
+import { nowSeconds } from './clock.ts'
 import type { ServerSource } from './mcp/servers.ts'
 import { Events, type EventWebhook } from './mcp/events.ts'
-import { enableTelegram, disableTelegram } from './channel/program.ts'
+import { enableTelegram, disableTelegram, acceptDoorbell } from './channel/program.ts'
 import { setSkillEvents } from './skills/events.ts'
 import { disconnectOwnerServer, ownerServers, removeOwnerServer, suggestedServers } from './mcp/program.ts'
 import {
@@ -265,6 +266,9 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       run: <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program),
     }
     return this.#owner(submitOwner({ ...runtime, thread, text: input, operationId, context }))
+  }
+  conversationQueue(thread: string) {
+    return this.#owner(ownerQueue(this.harness, thread))
   }
   composerOptions(thread: string) {
     return this.#owner(composerOptionsProgram(thread, (program) => this.#runOrThrow(program)))
@@ -498,17 +502,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
    * myagent, then answered at once: the pull runs from a schedule.
    */
   channelDoorbell(doorbell: Doorbell) {
-    const pull = () => this.schedule(0, 'channelPull')
-    return this.#client(
-      Effect.gen(function* () {
-        const channel = yield* Channel
-        const secret = yield* attempt(() => channel.secret())
-        const valid = secret !== undefined && (yield* attempt(() => doorbellValid(secret, doorbell, nowMillis())))
-        if (!valid) return yield* new Forbidden({ reason: 'doorbell' })
-        yield* attempt(pull)
-        return true as const
-      }),
-    )
+    return this.#client(acceptDoorbell(doorbell, () => this.schedule(0, 'channelPull')))
   }
 
   async #onChannel<T>(work: (channel: TelegramChannel, ports: ChannelPorts) => Promise<T>): Promise<T | undefined> {

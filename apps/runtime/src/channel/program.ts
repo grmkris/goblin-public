@@ -1,8 +1,8 @@
 import * as Effect from 'effect/Effect'
 import * as Clock from 'effect/Clock'
 import { CHANNEL_TOOLS, DOORBELL_TOOLS, channelCall } from './channel.ts'
-import { hookToken, hookUrl } from './doorbell.ts'
-import { InvalidInput } from '../http/errors.ts'
+import { type Doorbell, doorbellValid, hookToken, hookUrl } from './doorbell.ts'
+import { Forbidden, InvalidInput } from '../http/errors.ts'
 import { offersEvents } from '../mcp/connection.ts'
 import type { Consumer } from '../mcp/events/store.ts'
 import { Events, type McpEvents } from '../mcp/events.ts'
@@ -75,3 +75,15 @@ export const disableTelegram = Effect.gen(function* () {
   channel.disable()
   return null
 })
+
+/** Verify a channel's doorbell before scheduling its pull; it never renews resident authority. */
+export const acceptDoorbell = (doorbell: Doorbell, pull: () => Promise<unknown>) =>
+  Effect.gen(function* () {
+    const channel = yield* Channel
+    const secret = yield* attempt(() => channel.secret())
+    const now = yield* Clock.currentTimeMillis
+    const valid = secret !== undefined && (yield* attempt(() => doorbellValid(secret, doorbell, now)))
+    if (!valid) return yield* new Forbidden({ reason: 'doorbell' })
+    yield* attempt(pull)
+    return true as const
+  })

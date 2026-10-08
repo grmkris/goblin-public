@@ -37,6 +37,7 @@ function fixture(max = 8) {
   const pool = new StreamPool(
     (id) => ({
       snapshot: async () => snapshot,
+      queue: async () => ({ inputs: [] }),
       events: () => {
         const source = new FixtureEvents()
         opened[id] = [...(opened[id] ?? []), source]

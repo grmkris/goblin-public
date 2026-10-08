@@ -267,3 +267,32 @@ describe('Pi committed state projected for the chat', () => {
     })
   })
 })
+
+it('tracks native queued inputs outside the transcript, excludes writes, and clears placed or withdrawn members', () => {
+  const initial = projectSnapshot({
+    type: 'snapshot',
+    entries: [],
+    inbox: [
+      { id: 5, mode: 'followUp' },
+      { id: 6, mode: 'write' },
+      { id: -1, mode: 'steer' },
+    ],
+  })
+  expect(initial.inbox).toEqual([{ id: 5, mode: 'followUp' }])
+  expect(initial.messages).toEqual([])
+  expect(initial.progress).toBe('1 queued message')
+  const queued = { ...initial, queued: [{ id: 5, mode: 'followUp' as const, content: 'pending' }] }
+  const ended = projectBatch(queued, [{ type: 'run_end' }])
+  expect(ended.queued).toHaveLength(1)
+  expect(ended.progress).toBe('1 queued message')
+  const placed = projectBatch(ended, [
+    { type: 'inbox_update', items: [] },
+    {
+      type: 'entry_appended',
+      entry: { id: 8, model: [{ role: 'user', content: 'pending' }] },
+    },
+  ])
+  expect(placed.queued).toEqual([])
+  expect(placed.inbox).toEqual([])
+  expect(placed.messages).toMatchObject([{ text: 'pending' }])
+})

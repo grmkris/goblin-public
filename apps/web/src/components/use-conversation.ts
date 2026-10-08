@@ -6,6 +6,7 @@ import { type Lease, type StreamState, StreamPool } from '../lib/stream-pool.ts'
 import { conversationParts } from '../lib/parts.ts'
 import { type ConversationProjection, entryMessages, historyStart } from '../lib/projection.ts'
 import { branchPoints, fromEntry } from '../lib/threads.ts'
+import { SubmissionRetry } from '../lib/submission-retry.ts'
 import { useKeyboardInset } from './use-keyboard.ts'
 
 type MessageContext = {
@@ -38,6 +39,7 @@ export async function postMessage(
 /** Every conversation the browser follows, shared by the panes and inline threads that show it. */
 const streams = new StreamPool((thread) => ({
   snapshot: (signal) => request(`/api/conversations/${thread}/snapshot`, { signal }),
+  queue: (signal) => request(`/api/conversations/${thread}/queue`, { signal }),
   events: () => new BrowserPiEvents(`/api/conversations/${thread}/events`),
 }))
 
@@ -63,6 +65,12 @@ const FOLLOWING: StreamState = { projection: undefined, status: 'connecting', no
 export function useConversation(thread: string, visible = true) {
   const [state, setState] = useState<StreamState>(FOLLOWING)
   const [failure, setFailure] = useState('')
+  const retry = useRef(
+    new SubmissionRetry(() => {
+      // @effect-diagnostics-next-line cryptoRandomUUID:off -- Browser submissions need a stable idempotency key across retries.
+      return crypto.randomUUID()
+    }),
+  )
   const lease = useRef<Lease | undefined>(undefined)
   const seen = useRef(visible)
   seen.current = visible
@@ -76,10 +84,13 @@ export function useConversation(thread: string, visible = true) {
     }
   }, [thread])
   useEffect(() => lease.current?.setVisible(visible), [visible])
-  /** `operationId` is stable for replies to a question or permission request; a typed message gets a fresh one. */
+  /** Replies retain their supplied operation; an unchanged failed draft reuses its browser operation. */
   async function send(input: string, operationId?: string, context: MessageContext = {}): Promise<boolean> {
+    const id = operationId ?? retry.current.operation({ thread, input, context })
     try {
-      await postMessage(thread, input, operationId, context)
+      await postMessage(thread, input, id, context)
+      retry.current.accepted(id)
+      streams.refreshQueue(thread)
       setFailure('')
       return true
     } catch (error) {

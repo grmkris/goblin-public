@@ -1,4 +1,4 @@
-import type { Attachment, ComposerOption } from '@goblin/contracts'
+import type { Attachment, ComposerOption, QueuedInput } from '@goblin/contracts'
 import type { SharedContext } from './app-context.ts'
 import { isString, isNumber, identifier, record, records, text } from './boundary.ts'
 import { sharedContext } from './app-context.ts'
@@ -81,6 +81,9 @@ export type ConversationProjection = {
   readonly partialAt?: number | undefined
   readonly partialBlocks: readonly Record<string, unknown>[]
   readonly progress: string
+  readonly inbox: readonly Pick<QueuedInput, 'id' | 'mode'>[]
+  readonly queued: readonly QueuedInput[]
+  readonly queueNotice: string
 }
 
 /**
@@ -275,6 +278,20 @@ function liveTools(value: unknown): LiveTool[] {
   }))
 }
 
+/** Native inbox events carry membership and mode; the authenticated queue read supplies content separately. */
+function inputInbox(value: unknown): Pick<QueuedInput, 'id' | 'mode'>[] {
+  return records(value).flatMap((item) =>
+    isNumber(item.id) &&
+    Number.isSafeInteger(item.id) &&
+    item.id > 0 &&
+    (item.mode === 'followUp' || item.mode === 'steer')
+      ? [{ id: item.id, mode: item.mode }]
+      : [],
+  )
+}
+export const queuedProgress = (queuedCount: number): string =>
+  `${queuedCount} queued ${queuedCount === 1 ? 'message' : 'messages'}`
+
 export function projectSnapshot(value: unknown): ConversationProjection {
   const snapshot = record(value)
   if (snapshot?.type !== 'snapshot' || !Array.isArray(snapshot.entries)) throw new Error('Invalid Pi snapshot')
@@ -286,7 +303,7 @@ export function projectSnapshot(value: unknown): ConversationProjection {
   const partial = text(partialBlocks)
   const partialReasoning = reasoningText(partialBlocks)
   const running = record(snapshot.run) !== undefined
-  const inbox = records(snapshot.inbox)
+  const inbox = inputInbox(snapshot.inbox)
   const progress = record(generation?.retry)
     ? 'Waiting for model retry'
     : record(generation?.deferred)
@@ -294,7 +311,7 @@ export function projectSnapshot(value: unknown): ConversationProjection {
       : running
         ? 'Agent is working'
         : inbox.length
-          ? `${inbox.length} queued follow-up(s)`
+          ? queuedProgress(inbox.length)
           : 'Ready'
   return {
     entries,
@@ -306,6 +323,9 @@ export function projectSnapshot(value: unknown): ConversationProjection {
     partialAt,
     progress,
     messages: entryMessages(entries),
+    inbox,
+    queued: [],
+    queueNotice: '',
   }
 }
 
@@ -377,13 +397,22 @@ function projectedEvent(
     case 'entry_appended':
     case 'message_end':
       return appended(next, event)
+    case 'inbox_update': {
+      const inbox = inputInbox(event.items)
+      return {
+        ...next,
+        inbox,
+        queued: next.queued.filter((item) => inbox.some(({ id }) => id === item.id)),
+        progress: next.running ? next.progress : inbox.length > 0 ? queuedProgress(inbox.length) : 'Ready',
+      }
+    }
     case 'run_start':
       return { ...next, running: true, progress: 'Agent is working' }
     case 'run_end':
       return {
         ...next,
         running: false,
-        progress: 'Ready',
+        progress: next.inbox.length > 0 ? queuedProgress(next.inbox.length) : 'Ready',
         partial: '',
         partialReasoning: '',
         partialBlocks: [],
