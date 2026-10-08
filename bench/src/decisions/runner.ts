@@ -49,7 +49,7 @@ export function plan(manifest: Manifest, fixtures: readonly Fixture[]) {
           sum + new TextEncoder().encode(requestBody(batch, model, manifest.limits.perCallOutput)).length + 256,
         0,
       )
-      const reservedOutput = arm === 'cheap-llm' ? calls.length * manifest.limits.perCallOutput : 0
+      const reservedOutput = calls.length * manifest.limits.perCallOutput
       return {
         arm,
         requests: calls.length,

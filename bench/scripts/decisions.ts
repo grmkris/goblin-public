@@ -72,7 +72,7 @@ const prepare = Effect.fn('decisions.plan')(function* () {
       maxRequests: 2000,
       maxUsd: 3,
       maxInput: 8_000_000,
-      maxOutput: 600_000,
+      maxOutput: 2_000_000,
       perCallInput: 16_000,
       perCallOutput: 1024,
     },

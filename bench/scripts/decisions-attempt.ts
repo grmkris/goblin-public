@@ -40,7 +40,7 @@ const decode = (parsed: unknown, options: AttemptOptions, error: string | null) 
 export const executeAttempt = Effect.fn('decisions.attempt')(function* (options: AttemptOptions) {
   const { manifest, model, batch } = options
   const fs = yield* FileSystem.FileSystem
-  const output = model.arm === 'cheap-llm' ? manifest.limits.perCallOutput : 0
+  const output = manifest.limits.perCallOutput
   const body = requestBody(batch, model, output)
   const input = new TextEncoder().encode(body).length + 256
   const denied = admission(manifest, options.records, model, input, output)

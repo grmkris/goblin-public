@@ -21,12 +21,14 @@ export function admission(
   input: number,
   output: number,
 ): string | null {
+  const current = records.filter((record) => record.runId === manifest.runId)
   const used = totals(records)
-  if (used.unfinished) return 'unfinished-attempt'
-  if (used.breach) return 'reservation-breach'
+  const currentState = totals(current)
+  if (currentState.unfinished) return 'unfinished-attempt'
+  if (currentState.breach) return 'reservation-breach'
   // A terminal access/route rejection skips that arm; its full allowance still counts.
   if (
-    records.some(
+    current.some(
       (record) =>
         record.phase === 'settle' && !record.usageKnown && ![400, 401, 402, 403, 404, 405].includes(record.status),
     )
