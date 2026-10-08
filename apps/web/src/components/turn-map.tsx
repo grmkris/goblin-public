@@ -262,14 +262,7 @@ function TurnMapTab({ turns, geometry, open, onOpenChange, onJump, onEarlier }: 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerTrigger
-        render={
-          <button
-            type="button"
-            className="turn-map-tab material-chrome"
-            aria-label="Conversation turns"
-            data-app-cover
-          />
-        }
+        render={<button type="button" className="turn-map-tab" aria-label="Conversation turns" data-app-cover />}
       >
         <ListIcon aria-hidden />
       </DrawerTrigger>
