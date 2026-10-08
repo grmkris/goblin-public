@@ -90,7 +90,34 @@ async function deskChecks(page: Page, origin: string, checks: Record<string, Che
     checks['desk.menu.scales'] = { ok: transition.includes('scale'), detail: transition }
     await page.keyboard.press('Escape')
   } else checks['desk.menu.scales'] = { ok: false, detail: 'no model picker' }
+  await transcriptChecks(page, checks)
   await thoughtsCheck(page, checks)
+}
+
+/**
+ * Main's transcript and dock: message actions reserve no room (so nothing jumps when a reply finishes), the dock has a
+ * ceiling, Main's way back down is the shared jump button, and at most one presence orb draws with WebGL.
+ */
+async function transcriptChecks(page: Page, checks: Record<string, Check>): Promise<void> {
+  const reserved = await page
+    .locator('.message-item:has(> .thread-rows > .message-actions:only-child)')
+    .evaluateAll((items) =>
+      items
+        .map((item) => item.ownerDocument.defaultView.getComputedStyle(item).paddingBottom)
+        .filter((pad) => pad !== '0px'),
+    )
+  checks['desk.actions.no-room'] = { ok: reserved.length === 0, detail: { reserved } }
+  const ceiling = await page
+    .locator('.chat-dock')
+    .first()
+    .evaluate((dock) => dock.ownerDocument.defaultView.getComputedStyle(dock).maxHeight)
+  checks['desk.dock.ceiling'] = { ok: ceiling !== 'none', detail: ceiling }
+  checks['desk.main.jump-button'] = {
+    ok: (await page.locator('[data-slot="message-scroller-button"]').count()) > 0,
+    detail: null,
+  }
+  const moving = await page.locator('[data-slot="presence-orb"] canvas').count()
+  checks['desk.orbs.one-moves'] = { ok: moving <= 1, detail: { moving } }
 }
 
 async function thoughtsCheck(page: Page, checks: Record<string, Check>): Promise<void> {
@@ -141,7 +168,27 @@ async function phoneChecks(page: Page, origin: string, checks: Record<string, Ch
           return { position: after.position, inset: after.inset }
         })
   checks['phone.icon.hit-area'] = { ok: hit?.position === 'absolute', detail: hit }
+  await usageCheck(page, checks)
   await sidebarCheck(page, checks)
+}
+
+/** Phone: today's usage opens in words on a tap (a phone shows only the ring). */
+async function usageCheck(page: Page, checks: Record<string, Check>): Promise<void> {
+  const usage = page.locator('.usage-indicator').first()
+  if ((await usage.count()) === 0) {
+    checks['phone.usage.tap'] = { ok: false, detail: 'no usage indicator' }
+    return
+  }
+  await usage.tap()
+  const popup = page.locator('[data-slot="popover-content"]').filter({ hasText: "today's model budget" })
+  const shown = await popup
+    .first()
+    .waitFor({ timeout: 3000 })
+    .then(() => true)
+    .catch(() => false)
+  checks['phone.usage.tap'] = { ok: shown, detail: null }
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(300)
 }
 
 async function sidebarCheck(page: Page, checks: Record<string, Check>): Promise<void> {
