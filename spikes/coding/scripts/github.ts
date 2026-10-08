@@ -55,8 +55,7 @@ export class GitHub {
     const existing = await this.api(`pulls?state=all&head=grmkris:${branch}`)
     if (Array.isArray(existing) && existing[0]) {
       const receipt = this.receipt(existing[0], revision)
-      if (overlay.publication?.commit && receipt.commit !== overlay.publication.commit)
-        throw new SpikeError('publication_conflict')
+      if (receipt.commit !== overlay.publication?.commit) throw new SpikeError('publication_conflict')
       return receipt
     }
     const base = await this.api(`git/commits/${overlay.base}`)
@@ -88,7 +87,9 @@ export class GitHub {
       draft: true,
       body: `${body}\n\nValidation: in-memory TypeScript and Effect checks, type-aware Oxlint, and formatting.\nChecked revision: \`${revision}\`. Base: \`${overlay.base}\`.\nThis spike does not prove full tests, builds, or deployment.`,
     })
-    return this.receipt(result, sha)
+    const receipt = this.receipt(result, sha)
+    if (receipt.commit !== sha) throw new SpikeError('publication_conflict')
+    return receipt
   }
 
   private async ref(branch: string): Promise<string | undefined> {

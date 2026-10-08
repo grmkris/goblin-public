@@ -31,4 +31,22 @@ describe('coding overlay', () => {
     expect(overlay.changes.size).toBe(0)
     expect(() => overlay.assertReady(overlay.revision)).toThrowError(new SpikeError('no_changes'))
   })
+
+  test('refuses stale revisions and concurrent edits during verification', async () => {
+    const overlay = new Overlay('base', base)
+    const original = overlay.revision
+    overlay.edit(file, 'export const answer = 2\n', original)
+    expect(() => overlay.edit(file, 'export const answer = 3\n', original)).toThrow('stale_revision')
+    await overlay.exclusive(async () => {
+      expect(() => overlay.edit(file, 'export const answer = 3\n', overlay.revision)).toThrow('session_frozen')
+      let busy = false
+      try {
+        await overlay.exclusive(async () => undefined)
+      } catch (error) {
+        busy = String(error).includes('session_busy')
+      }
+      expect(busy).toBe(true)
+    })
+    expect(overlay.busy).toBe(false)
+  })
 })
