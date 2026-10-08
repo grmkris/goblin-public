@@ -1,6 +1,6 @@
 import { Agent } from 'agents'
 import { type Extension } from '@earendil-works/pi-durable'
-import { type CapabilityChange, type JsonObject, MAIN_THREAD, type QueueRemoval } from '@goblin/contracts'
+import { type CapabilityChange, type JsonObject, type QueueRemoval } from '@goblin/contracts'
 import { ownerQueue, removeOwnerQueuedInput } from './conversation-queue.ts'
 import type { OwnerMessageContext } from './agent-program.ts'
 import { composerOptions as composerOptionsProgram } from './composer.ts'
@@ -22,7 +22,7 @@ import { type AgentApps, agentApps } from './agent-apps/engine.ts'
 import { JOB_CALLBACK, type JobSchedules, type JobSlot, logAppJobs } from './agent-apps/jobs.ts'
 import { appsExtension, appExecutionExtension } from './pi/apps.ts'
 import { serversExtension } from './pi/servers.ts'
-import { agentRequest, sessionSnapshot } from './agent-requests.ts'
+import { agentRequest, chatSnapshot } from './agent-requests.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
 import { type AgentTelemetry, agentTelemetry } from './telemetry/agent.ts'
 import { LITELLM_STREAMS, makePiModels } from './pi/model.ts'
@@ -71,7 +71,7 @@ import {
 } from './agent-program.ts'
 import * as AppPrograms from './apps/program.ts'
 import { budgetExtension } from './pi/budget.ts'
-import { chooseOwnerModel, useModel, type Applied } from './agent-model.ts'
+import { chooseOwnerModel, type Applied } from './agent-model.ts'
 import { routinesExtension } from './pi/routines.ts'
 import { editRoutine, proposeRoutine, routinesList, setRoutineSettings } from './routines/program.ts'
 import type {
@@ -365,7 +365,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
 
   /** Stores the pick and moves main to it at once; other threads follow on their next turn. */
   chooseModel(modelId: string) {
-    return this.#owner(chooseOwnerModel(this.harness, this.#applied, modelId, MAIN_THREAD))
+    return this.#owner(chooseOwnerModel(this.harness, this.#applied, modelId))
   }
 
   usageToday() {
@@ -475,8 +475,9 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
    * renew it). Returns the answer, or `running` with the operation id to wait again.
    */
   askAsClient(author: string, input: string, operationId: string, waitMs: number) {
+    const runtime = { harness: this.harness, applied: this.#applied }
     return this.#client(
-      askClient({ harness: this.harness, applied: this.#applied, author, text: input, operationId, waitMs }),
+      askClient({ ...runtime, author, text: input, operationId, waitMs }, (program) => this.#runOrThrow(program)),
     )
   }
   /** The Telegram channel's connection, or null when it is off. */
@@ -519,7 +520,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     const status = channel.status()
     if (status === null) return undefined
     const call = channelCall(mcp.manager, status.serverId)
-    return work(channel, channelPorts(this.harness, call, run, useModel(this.harness, this.#applied, MAIN_THREAD)))
+    return work(channel, channelPorts(this.harness, call, run, this.#applied))
   }
   async channelPull(): Promise<void> {
     this.#pulling = this.#pulling
@@ -561,7 +562,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return encodeExit(await this.#exit(clientRequest(program)))
   }
   async sessionSnapshot(session: string): Promise<JsonObject> {
-    return sessionSnapshot(this.harness, session)
+    return this.#runOrThrow(chatSnapshot(this.harness, session))
   }
   override async onRequest(request: Request): Promise<Response> {
     return agentRequest(request, this.harness, (program) => this.#exit(program))

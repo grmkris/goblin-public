@@ -19,6 +19,10 @@ export async function sessionSnapshot(harness: PiHarness, session: string): Prom
   // SAFETY: Pi snapshots are structured cloneable; normalization enforces JSON at the RPC boundary.
   return JSON.parse(JSON.stringify(snapshot)) as JsonObject
 }
+/** RPC snapshots take the same registered chat identity as the HTTP routes. */
+export const chatSnapshot = (harness: PiHarness, chat: string) =>
+  Effect.flatMap(registeredConversation(chat), (session) => attempt(() => sessionSnapshot(harness, session)))
+
 export async function agentRequest(request: Request, harness: PiHarness, execute: Execute): Promise<Response> {
   const url = new URL(request.url)
   if (url.pathname === '/home') return homeRequest(request, execute)

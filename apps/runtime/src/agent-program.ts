@@ -1,6 +1,5 @@
 import type { PiHarness } from 'agents/harness/pi'
 import {
-  MAIN_THREAD,
   type AppContext,
   type Attachment,
   type ComposerSelection,
@@ -15,6 +14,7 @@ import type { RunProgram } from './pi/resident-mcp.ts'
 import { Entitlements } from './billing/gates.ts'
 import {
   Apps,
+  Chats,
   Conversations,
   Files,
   RoutineRuns,
@@ -30,8 +30,7 @@ import {
 import { Events } from './mcp/events.ts'
 import type { RoutineRunner } from './routines/runner.ts'
 import { useModel, type Applied } from './agent-model.ts'
-import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { BACKGROUND } from './pi/context.ts'
+import { BACKGROUND, conversationId } from './pi/context.ts'
 import { recentMessages } from './pi/transcript.ts'
 import { type SharedContext, authoredContent, ownerContent } from './pi/content.ts'
 import type { SubagentKit } from './pi/subagents.ts'
@@ -98,7 +97,7 @@ export const stopOwner = (input: {
       return true
     }
     const operationId = input.operationId === undefined ? {} : { operationId: input.operationId }
-    yield* attempt(() => conversations.stopSubagents(session))
+    yield* attempt(() => conversations.stopSubagents(input.thread))
     return yield* attempt(() => input.harness.abort({ session, ...operationId }))
   })
 
@@ -185,7 +184,7 @@ const attachedFiles = (paths: readonly string[]) =>
 const sendToSubagent = (
   input: OwnerSubmit,
   view: ConversationView,
-  spawner: string,
+  session: string,
   extra: {
     readonly attachments: readonly Attachment[]
     readonly shared: readonly SharedContext[]
@@ -196,11 +195,11 @@ const sendToSubagent = (
     const conversations = yield* Conversations
     const now = yield* nowSecondsEffect
     yield* attempt(() => conversations.update(view.id, { keepOpen: true }, now))
-    const busy = yield* attempt(() => input.harness.session(view.id).busy())
+    const busy = yield* attempt(() => input.harness.session(session).busy())
     const pi = yield* attempt(() => input.harness.pi())
     const send = {
-      subagent: view.id,
-      spawner,
+      subagent: session,
+      spawner: conversations.spawnerSession(view.id),
       title: view.title ?? 'subagent',
       content: ownerContent(input.text, extra.shared, extra.attachments, extra.selections),
       text: input.text,
@@ -208,7 +207,7 @@ const sendToSubagent = (
       busy,
     }
     const accepted = yield* attempt(() => input.subagents.ownerSend(pi, send))
-    return { session: view.id, operationId: input.operationId, accepted }
+    return { session, operationId: input.operationId, accepted }
   })
 
 export const submitOwner = (input: OwnerSubmit) =>
@@ -219,40 +218,57 @@ export const submitOwner = (input: OwnerSubmit) =>
     const session = yield* attemptSync(() => conversations.requireOpen(input.thread))
     if (input.text.trim() === '' && !picks.some((selection) => selection.kind === 'skill'))
       return yield* new InvalidInput({ reason: 'empty_message' })
-    if (yield* attempt(() => input.routines.answer(session, input.operationId, input.text)))
-      return { session, operationId: input.operationId, accepted: true }
     const attachments = yield* attachedFiles(paths)
-    const shared = yield* sharedContext(appContext, session)
+    const shared = yield* sharedContext(appContext, input.thread)
     const selections = yield* resolveSelections(session, picks, input.run)
-    yield* useModel(input.harness, input.applied, session)
-    const view = yield* attempt(() => conversations.view(session))
-    if (view?.kind === 'subagent' && view.parent !== undefined)
-      return yield* sendToSubagent(input, view, view.parent, { attachments, shared, selections })
+    const view = yield* attempt(() => conversations.view(input.thread))
+    const chats = yield* Chats
+    const now = yield* nowSecondsEffect
     const content = ownerContent(input.text, shared, attachments, selections)
-    return yield* attempt(() => input.harness.submit(content, { session, operationId: input.operationId }))
+    return yield* attempt(() =>
+      chats.withChat(input.thread, async () => {
+        conversations.requireOpen(input.thread)
+        const admitted = chats.admit(input.thread, input.operationId, now)
+        if (await input.routines.answer(admitted.session, input.operationId, input.text))
+          return { session: admitted.session, operationId: input.operationId, accepted: true }
+        await input.run(useModel(input.harness, input.applied, admitted.session))
+        if (view?.kind === 'subagent' && view.parent !== undefined)
+          return input.run(sendToSubagent(input, view, admitted.session, { attachments, shared, selections }))
+        return input.harness.submit(content, { session: admitted.session, operationId: input.operationId })
+      }),
+    )
   })
 
-export const askClient = (input: {
-  harness: PiHarness
-  applied: Applied
-  author: string
-  text: string
-  operationId: string
-  waitMs: number
-}) =>
+export const askClient = (
+  input: {
+    harness: PiHarness
+    applied: Applied
+    author: string
+    text: string
+    operationId: string
+    waitMs: number
+  },
+  run: RunProgram,
+) =>
   Effect.gen(function* () {
     yield* requireResident
     yield* requireBudget
-    yield* useModel(input.harness, input.applied, MAIN_THREAD)
-    yield* attempt(() =>
-      input.harness.submit(authoredContent(input.author, input.text), {
-        session: MAIN_THREAD,
-        operationId: input.operationId,
+    const chats = yield* Chats
+    const now = yield* nowSecondsEffect
+    const session = yield* attempt(() =>
+      chats.withChat(chats.primary(), async () => {
+        const admitted = chats.admit(chats.primary(), input.operationId, now)
+        await run(useModel(input.harness, input.applied, admitted.session))
+        await input.harness.submit(authoredContent(input.author, input.text), {
+          session: admitted.session,
+          operationId: input.operationId,
+        })
+        return chats.operation(chats.primary(), input.operationId) ?? admitted.session
       }),
     )
     const result = yield* attempt(() =>
       input.harness
-        .wait(input.operationId, { session: MAIN_THREAD, signal: AbortSignal.timeout(input.waitMs) })
+        .wait(input.operationId, { session, signal: AbortSignal.timeout(input.waitMs) })
         .catch(() => undefined),
     )
     if (result === undefined) return { status: 'running' as const, operationId: input.operationId }
@@ -262,7 +278,10 @@ export const askClient = (input: {
   })
 
 export const recentOwnerMessages = (harness: PiHarness, limit: number) =>
-  attempt(async () => {
-    const main = await (await harness.pi()).conversation(ROOT_CONVERSATION_ID, BACKGROUND)
-    return main === undefined ? [] : recentMessages(main, limit)
+  Effect.gen(function* () {
+    const chats = yield* Chats
+    return yield* attempt(async () => {
+      const main = await (await harness.pi()).conversation(conversationId(chats.session(chats.primary())), BACKGROUND)
+      return main === undefined ? [] : recentMessages(main, limit)
+    })
   })

@@ -1,6 +1,6 @@
 import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
-import { Models, attempt, attemptSync, nowSecondsEffect } from './services.ts'
+import { Chats, Models, attempt, attemptSync, nowSecondsEffect } from './services.ts'
 import { MODEL_PROVIDER } from './pi/model.ts'
 export type Applied = Map<string, string>
 /**
@@ -15,11 +15,12 @@ export const useModel = (harness: PiHarness, applied: Applied, session: string) 
     applied.set(session, id)
   })
 
-export const chooseOwnerModel = (harness: PiHarness, applied: Applied, modelId: string, session: string) =>
+export const chooseOwnerModel = (harness: PiHarness, applied: Applied, modelId: string) =>
   Effect.gen(function* () {
     const models = yield* Models
     const now = yield* nowSecondsEffect
     const choice = yield* attemptSync(() => models.choose(modelId, now))
-    yield* useModel(harness, applied, session)
+    const chats = yield* Chats
+    yield* useModel(harness, applied, chats.session(chats.primary()))
     return choice
   })

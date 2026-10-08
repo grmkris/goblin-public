@@ -130,6 +130,13 @@ export class ConversationRegistry {
     return this.#registered(id).kind
   }
 
+  /** The immutable Pi session holding a helper's anchor and relays. */
+  spawnerSession(id: string): string {
+    const row = this.#registered(id)
+    if (row.kind !== 'subagent' || row.parentSession === null) throw new NotFound({ what: 'spawner' })
+    return row.spawnerSession ?? this.require(row.parentSession)
+  }
+
   /** One registered conversation as the owner sees it; `undefined` when it is not registered. */
   async view(id: string): Promise<ConversationView | undefined> {
     const row = this.#row(id)

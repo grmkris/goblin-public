@@ -1,11 +1,12 @@
 // The Telegram channel's view of the agent (ADR 0009): main as the owner's Telegram, and how its turns end.
-import { MAIN_THREAD, TELEGRAM_AUTHOR } from '@goblin/contracts'
+import { TELEGRAM_AUTHOR } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
 import { authoredContent } from '../pi/content.ts'
 import { askedText, cutOff } from '../pi/transcript.ts'
-import { type AgentServices, attempt, requireBudget } from '../services.ts'
+import { type AgentServices, Chats, attempt, nowSecondsEffect, requireBudget } from '../services.ts'
+import { useModel, type Applied } from '../agent-model.ts'
 import type { ChannelPorts } from './channel.ts'
 
 type Run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<A>
@@ -17,8 +18,15 @@ const CUT_OFF = '(Cut off at the output limit. Ask it to continue.)'
  * How a turn of main ended, as Telegram should hear it: its final text, or what it asked the owner when it stopped on
  * a question, and whether it was cut off; undefined while it runs.
  */
-async function answerOf(harness: PiHarness, operationId: string): Promise<string | undefined> {
-  const session = MAIN_THREAD
+async function answerOf(harness: PiHarness, operationId: string, run: Run): Promise<string | undefined> {
+  // Retained reply rows predate the ledger; their original session is still the current primary at migration.
+  const session = await run(
+    Effect.gen(function* () {
+      const chats = yield* Chats
+      const now = yield* nowSecondsEffect
+      return chats.operation(chats.primary(), operationId) ?? chats.admit(chats.primary(), operationId, now).session
+    }),
+  )
   const result = await harness.wait(operationId, { session, signal: AbortSignal.timeout(200) }).catch(() => undefined)
   if (result === undefined) return undefined
   if (result.status === 'unanswered') return `(No answer: ${result.reason ?? 'the turn ended without one'}.)`
@@ -37,18 +45,23 @@ export const channelPorts = (
   harness: PiHarness,
   call: ChannelPorts['call'],
   run: Run,
-  useModel: Effect.Effect<void, AppError, AgentServices>,
+  applied: Applied,
 ): ChannelPorts => ({
   call,
   submit: (text, operationId) =>
     run(
       Effect.gen(function* () {
         yield* requireBudget
-        yield* useModel
+        const chats = yield* Chats
+        const now = yield* nowSecondsEffect
         yield* attempt(() =>
-          harness.submit(authoredContent(TELEGRAM_AUTHOR, text), { session: MAIN_THREAD, operationId }),
+          chats.withChat(chats.primary(), async () => {
+            const { session } = chats.admit(chats.primary(), operationId, now)
+            await run(useModel(harness, applied, session))
+            await harness.submit(authoredContent(TELEGRAM_AUTHOR, text), { session, operationId })
+          }),
         )
       }),
     ),
-  answer: (operationId) => answerOf(harness, operationId),
+  answer: (operationId) => answerOf(harness, operationId, run),
 })
