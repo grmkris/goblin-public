@@ -250,7 +250,8 @@ for the exact server and tool). The reply is an ordinary message with a stable o
 In the transcript, both requests leave a quiet receipt. An Allow card is only trusted from goblin's own result for
 the tool that was called, never from a remote result, which always carries `origin`.
 
-The composer carries the agent's presence (`lib/presence.ts`): one state for the whole agent, with the most urgent
+At a keyboard and mouse Enter sends and Shift+Enter breaks the line; on a touch screen Return breaks the line and
+the Send button sends, with ⌘/Ctrl+Enter from a hardware keyboard (`lib/keys.ts`). The composer carries the agent's presence (`lib/presence.ts`): one state for the whole agent, with the most urgent
 first. In order: offline, waiting for the owner, retrying, using a tool (named `server · tool`), writing, thinking,
 budget spent, no answer, and ready. A small orb of moving colour (a Paper Shaders `MeshGradient`, loaded lazily)
 shows it beside a text label, and its pace follows the work. While the agent waits on the owner, a pulsing border

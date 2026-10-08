@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { Button, Composer, ComposerActions, ComposerInput } from '@goblin/ui'
+import { Button, Composer, ComposerActions, ComposerInput, useMediaQuery } from '@goblin/ui'
+import { sendsMessage } from '../lib/keys.ts'
 import { ArrowUpIcon, SquareIcon } from 'lucide-react'
 import { AttachButton, PendingFiles, useAttachments } from './attachments.tsx'
 
@@ -17,9 +18,10 @@ function useDraftValue(
 }
 
 /**
- * The message field: Enter sends, Shift+Enter breaks the line, and an input method's Enter only composes; a phone's
- * Return key says Send. While a message is on its way the field is read-only, not disabled: disabling it would take
- * the focus, and with it close a phone's keyboard after every message.
+ * The message field. At a keyboard and mouse Enter sends and Shift+Enter breaks the line; on a touch screen Return
+ * breaks the line and the Send button sends (⌘/Ctrl+Enter from a hardware keyboard), as `sendsMessage` decides. While a
+ * message is on its way the field is read-only, not disabled: disabling it would take the focus, and with it close a
+ * phone's keyboard after every message.
  */
 function Field({
   value,
@@ -38,19 +40,20 @@ function Field({
   readonly compact: boolean
   readonly autoFocus: boolean
 }) {
+  const touch = useMediaQuery('(pointer: coarse)')
   return (
     <ComposerInput
       aria-label="Message"
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+        if (sendsMessage({ ...event, isComposing: event.nativeEvent.isComposing }, touch)) {
           event.preventDefault()
           onSubmit()
         }
       }}
       placeholder={placeholder}
-      enterKeyHint="send"
+      enterKeyHint={touch ? 'enter' : 'send'}
       autoFocus={autoFocus}
       readOnly={busy}
       aria-busy={busy}
@@ -100,10 +103,10 @@ type MessageComposerProps = {
 }
 
 /**
- * The floating composer. Enter sends, Shift+Enter breaks the line; while the agent works a message queues as a
- * follow-up and Stop is offered. `context` sits on the left of the actions (status, model picker). `attach` offers a
- * paperclip: picked files upload at once and go with the message. `compact` is the one-line composer of a thread
- * unfolded in a transcript: the field and its two buttons, without the context row.
+ * The floating composer. Enter sends (on a touch screen the Send button does, and Return breaks the line); while the
+ * agent works a message queues as a follow-up and Stop is offered. `context` sits on the left of the actions (status,
+ * model picker). `attach` offers a paperclip: picked files upload at once and go with the message. `compact` is the
+ * one-line composer of a thread unfolded in a transcript: the field and its two buttons, without the context row.
  */
 export function MessageComposer({
   onSend,
