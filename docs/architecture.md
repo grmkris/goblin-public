@@ -76,19 +76,24 @@ error tag, never bodies or credentials.
 
 `PersonalAgent extends Agent` and registers the native `PiHarness` with the Agent lifecycle. Pi owns transcripts,
 tasks, submissions, recovery and tool replay. The object builds one Effect `ManagedRuntime` lazily, providing its
-services: `Mcp` (the MCP host), `Resident` (resident authority), `Conversations` (the conversation registry),
+services: `Mcp` (the MCP host), `Resident` (resident authority), `Chats` (logical chat resolution), `Conversations` (the conversation registry),
 `Budget`, `Models`, `Memory`, `Skills`, `Learner`, `Channel` and `Files` (`services.ts`). DO methods are thin: each runs one Effect
 program and encodes the exit. PiHarness and Pi Durable are experimental; Alchemy is a pinned beta and Drizzle an RC. `@shadcn/react` is pinned at
 0.3.1 and patched (`patches/shadcn-react/README.md`): its MessageScroller carries unreleased upstream fixes.
 
-Conversations (`conversations.ts`): every agent has one **main** conversation, Pi's root session `1`, where the owner's
-browser and every inbound MCP client talk. A message from anyone but the owner's browser starts with an author tag
+Conversations (`conversations.ts`): every agent has one **main** conversation, stable chat id `1` (`PRIMARY_CHAT`),
+where the owner's browser and every inbound MCP client talk. `ChatDirectory` resolves that chat to its current Pi
+session. A fresh agent starts with Pi's root session `1`; a future rebind can change the session while `/c/1` stays
+the same. A message from anyone but the owner's browser starts with an author tag
 block (`[from Claude Code]`, the `authorTag` contract), so the model and the web both know who wrote it. Side
 **threads** are Pi conversations of their own: branched from a message of any open conversation (a Pi fork at that
 entry, so the thread sees its parent up to there and the parent never sees the thread), at any depth, or empty under
-main (ADR 0017). `app_conversations` registers each one as a tree (`parent_session`: where a thread branched from, a
-subagent's spawner) with its kind, title, origin and close time; a session id reaches Pi only if it is registered
-there, so no request opens a conversation by guessing its number. Pi cannot delete a conversation, so Close stops a
+main (ADR 0017). `app_conversations` registers each one as a chat tree (`parent_session`: its parent chat), with its
+kind, title, origin and close time. Its existing `session_id` primary key is the stable chat id (`chatId` in Drizzle);
+`pi_session` names the current Pi session, uniquely owned by that chat, `epoch` fences rebinds and `role = 'primary'`
+marks Main. A helper's immutable `spawner_session` keeps its anchor and relays on the Pi session that started them.
+A chat id reaches Pi only after the directory resolves its registered session, so no request opens a conversation by
+guessing its number. Pi cannot delete a conversation, so Close stops a
 conversation and everything under it and keeps it readable until Reopen; main never closes. The web
 lists them in the app's sidebar as a tree at any depth (`components/sidebar-tree.tsx` over the pure
 `lib/workspace-tree.ts`): main with its subagents and theirs, then each thread with everything under it, closed ones
@@ -199,10 +204,20 @@ selection is a neutral hint; a helper selection adds its newest reported answer 
 Structured composer metadata keeps selected labels and prose readable in the transcript. Failed resolution rejects
 the complete send and marks its chip. `/new-thread` transfers the draft and portable attachment store to a fresh pane.
 
+**Chat admission** ([ADR 0030](adr/0030-logical-chats-over-pi-sessions.md)): owner, inbound MCP and Telegram operations
+first record `(chat_id, operation_id)` and the selected Pi session in `app_chat_operations`, then submit to that
+session. A retry uses the recorded session, even after a rebind; the intent row alone proves no Pi acceptance, so
+retry still submits the same operation for Pi to deduplicate. Rows older than 30 days are pruned opportunistically.
+The in-isolate per-chat lock covers admission only, and releases before model execution or waiting for an answer.
+`rebind` compare-and-sets the expected session and epoch, rejects a session owned by another chat, and increments the
+epoch. It notifies listeners to close that chat's SSE streams and emit a workspace change. There is no production
+mover yet: Move to thread, Topics and per-primary memory remain future work.
+
 **Capabilities** (ADR 0010, `capabilities/`): each conversation can switch off, for its own agent, a connected server,
 one granted tool of it, a skills library, or subagents. `app_conversation_capabilities` stores only what is off, so a
-tool granted later is on everywhere. `CapabilityProfiles.scope(session)` is the one gate: a conversation's own
-switches, and for a subagent those of every conversation above it, read live, at any depth (an unregistered session,
+tool granted later is on everywhere. `CapabilityProfiles.scope(session)` maps the calling Pi session through
+`chatOf` to its current chat, then reads that chat's switches and, for a subagent, those of every chat above it,
+live at any depth (an unknown or no-longer-owned session,
 or a broken or cyclic chain of spawners, may use nothing). A thread copies the switches its parent works under as it
 is registered; "Reset to where it came from" copies them again. What is off is hidden from the model there: `mcp_list`
 leaves it out, the `skills` section does not list or fetch that library, and Pi's per-conversation tool filter
@@ -236,8 +251,11 @@ single choice, multiple choice or free text. The tool result is the questions as
 so no model call waits on a person. The answer is the owner's next ordinary message, whether it comes from the web
 card or any other channel. A question counts as settled once a later user message exists.
 
-The browser follows a conversation over Server-Sent Events: a snapshot of committed Pi entries, then batches, with
-a heartbeat. On reconnect it starts again from a fresh snapshot.
+The browser URL, snapshot, history and queue use chat ids. Server-Sent Events resolve the current Pi session at
+connection: a snapshot of committed Pi entries, then batches, with a heartbeat. Rebind closes the stream; on reconnect
+it starts again from a fresh snapshot. The workspace feed maps Pi task activity back to current chat ownership.
+`ConversationView.primary` is an optional boolean; `WorkspaceSnapshot.primary` is an optional chat id for compatible
+readers.
 
 Every signed-in page sits beside the app's sidebar (shadcn's sidebar, ported to `packages/ui`): the conversations,
 then Connections, Settings and Sign out. Connections and Settings are columns of titled sections (`PageSection`)
@@ -405,7 +423,8 @@ drafts do not. The sidebar footer credits Trellis and Dan Fessler; see
 [ADR 0016](adr/0016-workspace-layout-with-trellis.md) for the license arrangement.
 
 Apps are kept (ADR 0020). A call the owner's agent makes to a tool that declares an App keeps it in the agent's
-registry (`apps/registry.ts`, `app_registry`, one per conversation and call); *Show app* on an older or closed one keeps it
+registry (`apps/registry.ts`, `app_registry`, one per Pi session and call); `chat_id` names its placement while the
+original Pi session and call id still own the arguments and results. *Show app* on an older or closed one keeps it
 through `POST /api/apps`. The workspace feed lists them, the sidebar shows each under its conversation (numbered when
 one title repeats, all but those open as pages and the newest three folded), and closing a conversation closes its
 Apps. `GET /api/apps/:id/launch` reads the call's arguments and redacted result back from the
@@ -530,6 +549,10 @@ block after the words is one it knows. Deleting the account deletes the R2 prefi
 
 ## Main's memory
 
+Activation, entry reads and builder writes resolve the primary chat's current Pi session. The Builder document uses
+the generation API's `conversationId`. The memory store remains agent-wide; rebinding is no memory reset or
+per-primary memory implementation. Memory log entry ids remain Pi's globally unique ids.
+
 Main never ends, so it keeps a memory instead of an ever-longer context (`memory/`, after VictorTaelin's OptChat
 gist). Every message of main since the memory was activated is logged in `app_memory_log` with its Pi entry id:
 
@@ -620,8 +643,9 @@ goblin is an MCP server at `/mcp`, the one protected resource of Better Auth's `
   accepted only if it verifies against the local JWKS, names `/mcp` as audience, comes from an enabled client and the
   owner's consent still exists. Its scopes count only while that consent still grants them (`auth/service.ts`).
 - Tools: `ask_agent` (submit into main, labelled with the client's name, and wait up to 110 seconds; a stable
-  `operationId` makes it idempotent; it runs the model, so it needs a plan) and `get_recent_messages` (main's latest
-  messages, with their authors).
+  `operationId` records its Pi session in the chat operation ledger and makes retries idempotent; it runs the model,
+  so it needs a plan) and `get_recent_messages` (the primary chat's current session's latest messages, with their
+  authors). `ask_agent` releases the admission lock before waiting and waits on the operation's recorded session.
 - With `goblin:inspect` (ADR 0024) the same server adds `inspect_conversations`, `inspect_conversation`,
   `inspect_turns`, `inspect_turn` and `inspect_problems`, with the contract's input and output schemas
   (`inbound/inspection.ts`). They read the token subject's own agent, never call a model and need no plan; the
@@ -650,7 +674,8 @@ signed verification challenge; remote ids are cross-checked when subscribe retur
 revisions commit in short transactions, with an already armed recovery schedule. The hook returns quickly and dispatch
 runs asynchronously. Replay wakes unfinished handlers without duplicating their accepted intent.
 
-`message.received` and `question.answered` both pull the authoritative inbox into main. `ask_user` ends its turn;
+`message.received` and `question.answered` both pull the authoritative inbox into the primary chat's current Pi
+session. Telegram admission and answer readback use its operation ledger binding. `ask_user` ends its turn;
 the answer arrives as the owner's next inbox message. The existing id mapping is preserved: `tg:123` becomes
 `telegram-tg-123`, and reply operations keep their sanitization/truncation. Main's replies and subagent reports go
 back with `send_message`, escaped and chunked, using `app_channel_replies`. Submission acceptance is distinct from
@@ -732,7 +757,8 @@ model. The queries are in `contracts/src/inspect.ts`:
 - `conversations`: every conversation the agent keeps.
 - `conversation`: a page of one conversation's Pi entries, oldest first, in full. Text is cut at 4000 characters and
   arguments or data at 2000, with `truncated` set. A leading author tag becomes `author`.
-- `turns`: recent turns as one-line summaries (source, outcome, attempts, tool calls, failures, tokens).
+- `turns`: recent turns as one-line summaries (source, outcome, attempts, tool calls, failures, tokens). A chat filter
+  resolves to its current Pi session; historical events keep their recorded Pi session.
 - `turn`: one operation end to end. It joins Pi's own settlement of the submission (`done` with its answer entry, or
   `unanswered` with a reason) with every run event of the operation, in order, and `coverage` names what the
   timeline cannot show: a restart mid-turn, events still open, a missing final answer, or a compaction's model call.
@@ -757,7 +783,8 @@ that is not in `app_conversations` (a routine's run) has no entries page; its tu
 | --- | --- | --- |
 | Agent DO SQLite | `pi_*`, `cf_agents_*` and the other vendor tables | Pi, Agents SDK. Never touched. |
 | Agent DO SQLite | `app_mcp_servers`, `app_mcp_registries`, `app_mcp_endpoints`, `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants` | Drizzle: MCP metadata and authorization. |
-| Agent DO SQLite | `app_resident`, `app_conversations`, `app_model_choice`, `app_usage_daily`, `app_metadata` | Drizzle: agent metadata. |
+| Agent DO SQLite | `app_resident`, `app_conversations`, `app_model_choice`, `app_usage_daily`, `app_metadata` | Drizzle: agent metadata and logical chat bindings (ADR 0030). |
+| Agent DO SQLite | `app_chat_operations` | Drizzle: chat/operation admission intents pinned to their original Pi session, pruned opportunistically after 30 days (ADR 0030). |
 | Agent DO SQLite | `app_conversation_capabilities`, `app_execution_exclusions` | Drizzle: conversation switches and helper app exclusions (ADRs 0010, 0029). |
 | Agent DO SQLite | `app_memory_log`, `app_memory_nodes`, `app_memory_state` | Drizzle: main's memory. |
 | Agent DO SQLite | `app_skill_sources`, `app_skill_activations`, `app_skill_files`, `app_skill_drafts` | Drizzle: skills and draft tracking. |
@@ -768,7 +795,7 @@ that is not in `app_conversations` (a routine's run) has no entries page; its tu
 | R2 `files` | `agents/<userId>/files/…`, `agents/<userId>/app_<name>/…` | Shell: the owner's and each app's files over 128 KiB. Deleting the account empties the prefix. |
 | Agent DO SQLite | `app_agent_apps`, `app_agent_releases`, `app_agent_artifacts`, `app_agent_views`, `app_agent_state`, `app_agent_snapshots`, `app_agent_receipts`, `app_agent_events`, `app_agent_powers`, `app_agent_usage`, `app_agent_jobs` | Drizzle: agent apps, their releases, code and views, state and revisions, rollback snapshots, receipts, events, the owner's answers to their powers, their daily usage and their schedules (ADR 0021). |
 | Agent DO SQLite | `cf_workspace_app_<name>` | Shell: each agent app's own files. |
-| Agent DO SQLite | `app_registry` | Drizzle: every App the workspace shows, by source: an MCP App per conversation and call, an agent app per name (ADR 0020, 0021). `app_apps`, its predecessor, was copied in with the same ids and is no longer read. |
+| Agent DO SQLite | `app_registry` | Drizzle: every App the workspace shows, by source: an MCP App per Pi session and call, with logical `chat_id` placement, an agent app per name (ADRs 0020, 0021, 0030). `app_apps`, its predecessor, was copied in with the same ids and is no longer read. |
 | Agent DO SQLite | `app_run_events` | Drizzle: the run ledger, turns, model attempts and tool calls without content, 30 days (ADR 0024). |
 | D1 `goblinAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `oauth*` | Better Auth, `apps/runtime/migrations`. |
 | D1 `goblinAuth` | `app_billing_accounts`, `app_billing_subscriptions`, `app_billing_inbox`, `app_billing_checkouts` | Drizzle: account payments and durable reconciliation. |
@@ -779,6 +806,19 @@ See [ADR 0014](adr/0014-members-and-workspace-authority.md) for the withdrawal.
 
 Application tables are declared in `storage/schema.ts` and migrated inline in `storage/migrations.ts`.
 `app_client_sessions` was dropped when inbound clients moved to main; it is not a current table.
+
+Logical chat migration is additive: existing chat keys, capabilities, exclusions, titles, close/read marks and tree
+parents stay in place. Pi entries, tasks, submissions, request ids and documents remain Pi-keyed, as do
+`app_mcp_approvals`, MCP App call reads, `app_skill_activations` and `app_run_events`. `fork_entry`, `spawner_session`
+and memory entry ids keep their original Pi identities. Routine reports, share-backs and thread-start notes resolve
+the current target chat before a passive Pi write; acceptance starts no model turn and proves no external effect.
+
+The chat layer has unit proof for lookup, operation retries, retention, CAS ownership and admission locks, plus a
+local workerd profile that rebinds chat `1` to a fresh non-root Pi session in test subclasses before service
+composition. Owner, helper, routine, channel and memory cases run under that profile; explicit owner and inbound
+proofs assert the non-root session and an empty root transcript. The AST guard bans root constants and session-less
+harness submission/session calls outside the chat layer. These prove local behavior; deployed-stage, live-provider,
+Telegram-service and remote-eviction acceptance remain separate.
 
 Better Auth lives in D1 because the Durable SQLite adapter's async transactions and affected-row semantics do not
 meet its contract (ADR 0001). SQLite transactions are short and never span model or network calls.
