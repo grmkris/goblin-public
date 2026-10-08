@@ -123,6 +123,8 @@ export class PersonalAgentProbe extends PersonalAgent {
   }
 
   async appsTurnProbe(): Promise<string> {
+    // This probe submits directly to Pi; establish the resident authority an owner request normally renews.
+    await this.residentSet(true)
     return JSON.stringify(await appsTurnProbe(this.harness, () => this.seen))
   }
 
