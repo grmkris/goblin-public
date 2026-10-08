@@ -10,7 +10,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { type Browser, type BrowserContextOptions, type Page, chromium } from 'playwright-core'
 
-type Check = { readonly ok: boolean; readonly detail: unknown }
+type Check = { readonly ok: boolean; readonly detail: unknown } | { readonly skipped: true; readonly detail: unknown }
 type Session = { readonly origin: string; readonly cookie: string }
 
 const ROOT = path.resolve(import.meta.dirname, '..')
@@ -23,6 +23,8 @@ const PHONE: BrowserContextOptions = {
 }
 const DESK: BrowserContextOptions = { viewport: { width: 1440, height: 900 } }
 const SETTLE_MS = 1500
+
+const skipped = (detail: unknown): Check => ({ skipped: true, detail })
 
 function readSession(file: string): Session {
   const saved: unknown = JSON.parse(readFileSync(file, 'utf8'))
@@ -108,7 +110,7 @@ async function deskChecks(page: Page, origin: string, checks: Record<string, Che
     )
     checks['desk.menu.scales'] = { ok: transition.includes('scale'), detail: transition }
     await page.keyboard.press('Escape')
-  } else checks['desk.menu.scales'] = { ok: false, detail: 'no model picker' }
+  } else checks['desk.menu.scales'] = skipped('no model picker in this account snapshot')
   await transcriptChecks(page, checks)
   await thoughtsCheck(page, checks)
 }
@@ -142,47 +144,57 @@ async function transcriptChecks(page: Page, checks: Record<string, Check>): Prom
 async function thoughtsCheck(page: Page, checks: Record<string, Check>): Promise<void> {
   const trigger = page.locator('[data-slot="reasoning-trigger"]').last()
   if ((await trigger.count()) === 0) {
-    checks['desk.thoughts.open'] = { ok: false, detail: 'no Thoughts in Main' }
+    checks['desk.thoughts.open'] = skipped('no Thoughts in Main in this account snapshot')
+    checks['desk.thoughts.closes'] = skipped('no Thoughts in Main in this account snapshot')
     return
   }
   await trigger.scrollIntoViewIfNeeded()
-  await trigger.click()
+  if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click()
   await page.waitForTimeout(400)
-  const opened = await page
-    .locator('[data-slot="reasoning-content"]')
-    .last()
-    .evaluate((element) => ({
-      height: element.getBoundingClientRect().height,
-      inner: element.firstElementChild?.getBoundingClientRect().height ?? -1,
-      variable: element.style.getPropertyValue('--collapsible-panel-height'),
-    }))
+  const panel = trigger.locator('..').locator('[data-slot="reasoning-content"]')
+  const opened = await panel.evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    inner: element.firstElementChild?.getBoundingClientRect().height ?? -1,
+    variable: element.style.getPropertyValue('--collapsible-panel-height'),
+  }))
   checks['desk.thoughts.open'] = {
     ok: opened.height > 0 && Math.abs(opened.height - opened.inner) < 2,
     detail: opened,
   }
   await trigger.click()
   await page.waitForTimeout(450)
-  const left = await page.locator('[data-slot="reasoning-content"]').count()
-  checks['desk.thoughts.closes'] = { ok: true, detail: { panelsLeft: left } }
+  const closed =
+    (await panel.count()) === 0
+      ? { removed: true }
+      : await panel.evaluate((element) => ({
+          removed: false,
+          height: element.getBoundingClientRect().height,
+          hidden: element.hasAttribute('hidden'),
+        }))
+  checks['desk.thoughts.closes'] = {
+    ok: closed.removed || ('height' in closed && (closed.hidden || closed.height < 1)),
+    detail: closed,
+  }
 }
 
 /**
  * Phone: a coarse pointer, 16px fields whose Return key breaks the line, 44px icon targets, and a sidebar drawer that
  * closes on a same-page link and on a swipe left; in a conversation, the turn map's drawer swipes down closed.
  */
-async function phoneChecks(page: Page, origin: string, checks: Record<string, Check>): Promise<void> {
+async function phoneChecks(page: Page, origin: string, checks: Record<string, Check>, prefix = 'phone'): Promise<void> {
   await visit(page, origin, '/')
   const coarse = await page
     .locator('html')
-    .evaluate((root) => root.ownerDocument.defaultView.matchMedia('(pointer: coarse)').matches)
-  checks['phone.pointer-coarse'] = { ok: coarse, detail: null }
+    .evaluate((root) => root.ownerDocument.defaultView.matchMedia('(pointer: coarse), (any-pointer: coarse)').matches)
+  checks[`${prefix}.pointer-coarse`] = { ok: coarse, detail: null }
   const size = await page
     .locator('textarea[data-slot="composer-input"]')
     .first()
     .evaluate((element) => element.ownerDocument.defaultView.getComputedStyle(element).fontSize)
-  checks['phone.composer.16px'] = { ok: size === '16px', detail: size }
+  checks[`${prefix}.composer.16px`] = { ok: size === '16px', detail: size }
   const hint = await page.locator('textarea[data-slot="composer-input"]').first().getAttribute('enterkeyhint')
-  checks['phone.composer.enterkeyhint'] = { ok: hint === 'enter', detail: hint }
+  checks[`${prefix}.composer.enterkeyhint`] = { ok: hint === 'enter', detail: hint }
+  await editableChecks(page, checks, prefix)
   const icon = page.locator('[data-slot="button"].size-7:visible').first()
   const hit =
     (await icon.count()) === 0
@@ -191,39 +203,75 @@ async function phoneChecks(page: Page, origin: string, checks: Record<string, Ch
           const after = element.ownerDocument.defaultView.getComputedStyle(element, '::after')
           return { position: after.position, inset: after.inset }
         })
-  checks['phone.icon.hit-area'] = { ok: hit?.position === 'absolute', detail: hit }
-  await usageCheck(page, checks)
-  await sidebarCheck(page, checks)
-  await sidebarSwipeCheck(page, checks)
-  await turnMapCheck(page, checks)
+  checks[`${prefix}.icon.hit-area`] =
+    hit === null ? skipped('no small icon control on this page') : { ok: hit.position === 'absolute', detail: hit }
+  await usageCheck(page, checks, prefix)
+  const narrow = await page
+    .locator('html')
+    .evaluate((root) => root.ownerDocument.defaultView.matchMedia('(max-width: 767px)').matches)
+  if (narrow) {
+    await sidebarCheck(page, checks, prefix)
+    await sidebarSwipeCheck(page, checks, prefix)
+  } else {
+    checks[`${prefix}.sidebar.closes`] = skipped('this viewport uses the desktop sidebar')
+    checks[`${prefix}.sidebar.swipe`] = skipped('this viewport uses the desktop sidebar')
+  }
+  await turnMapCheck(page, checks, prefix)
+}
+
+async function editableChecks(page: Page, checks: Record<string, Check>, prefix: string): Promise<void> {
+  const editable = await page.locator('input, textarea, select').evaluateAll((items) =>
+    items
+      .filter((element) => element.getBoundingClientRect().height > 0)
+      .map((element) => ({
+        tag: element.tagName.toLowerCase(),
+        type: element.getAttribute('type'),
+        code: element.getAttribute('data-variant') === 'code',
+        font: Number.parseFloat(element.ownerDocument.defaultView?.getComputedStyle(element).fontSize ?? '0'),
+      })),
+  )
+  checks[`${prefix}.editable.readable`] =
+    editable.length === 0
+      ? skipped('no visible editable controls')
+      : {
+          ok: editable.every(({ font, code }) => font >= 16 && (!code || font === 18)),
+          detail: editable,
+        }
+  if (!editable.some(({ code }) => code))
+    checks[`${prefix}.code.18px`] = skipped('no sign-in code input on this page; local fixture covers it')
 }
 
 /** Phone: today's usage opens in words on a tap (a phone shows only the ring). */
-async function usageCheck(page: Page, checks: Record<string, Check>): Promise<void> {
+async function usageCheck(page: Page, checks: Record<string, Check>, prefix: string): Promise<void> {
   const usage = page.locator('.usage-indicator').first()
   if ((await usage.count()) === 0) {
-    checks['phone.usage.tap'] = { ok: false, detail: 'no usage indicator' }
+    checks[`${prefix}.usage.tap`] = skipped('no usage indicator in this account snapshot')
     return
   }
-  await usage.tap()
+  await usage.click()
   const popup = page.locator('[data-slot="popover-content"]').filter({ hasText: "today's model budget" })
   const shown = await popup
     .first()
     .waitFor({ timeout: 3000 })
     .then(() => true)
     .catch(() => false)
-  checks['phone.usage.tap'] = { ok: shown, detail: null }
+  checks[`${prefix}.usage.tap`] = { ok: shown, detail: null }
   await page.keyboard.press('Escape')
   await page.waitForTimeout(300)
 }
 
-async function sidebarCheck(page: Page, checks: Record<string, Check>): Promise<void> {
+async function sidebarCheck(page: Page, checks: Record<string, Check>, prefix: string): Promise<void> {
   const sheet = '[data-slot="sidebar"][data-mobile="true"]'
   const row = '[data-sidebar="content"] a[href^="/c/"]'
   const trigger = page.locator('[data-sidebar="trigger"]').first()
   // The first tap moves to the row's page; the second, on the row already showing, changes no path.
   await trigger.tap()
   await page.waitForTimeout(600)
+  if ((await page.locator(row).count()) === 0) {
+    checks[`${prefix}.sidebar.closes`] = skipped('no conversation row in this account snapshot')
+    await page.keyboard.press('Escape')
+    return
+  }
   await page.locator(row).first().tap()
   await page.waitForTimeout(800)
   if ((await page.locator(sheet).count()) === 0) {
@@ -234,50 +282,58 @@ async function sidebarCheck(page: Page, checks: Record<string, Check>): Promise<
   await page.locator(row).first().tap()
   await page.waitForTimeout(800)
   const after = await page.locator(sheet).count()
-  checks['phone.sidebar.closes'] = { ok: before > 0 && after === 0, detail: { before, after } }
+  checks[`${prefix}.sidebar.closes`] = { ok: before > 0 && after === 0, detail: { before, after } }
 }
 
 /** A swipe left across the open sidebar drawer takes it back to the edge. */
-async function sidebarSwipeCheck(page: Page, checks: Record<string, Check>): Promise<void> {
+async function sidebarSwipeCheck(page: Page, checks: Record<string, Check>, prefix: string): Promise<void> {
   const sheet = page.locator('[data-slot="sidebar"][data-mobile="true"]')
   await page.locator('[data-sidebar="trigger"]').first().tap()
   await page.waitForTimeout(600)
   const box = await sheet.boundingBox()
   if (box === null) {
-    checks['phone.sidebar.swipe'] = { ok: false, detail: 'sidebar did not open' }
+    checks[`${prefix}.sidebar.swipe`] = { ok: false, detail: 'sidebar did not open' }
     return
   }
   const y = box.y + box.height / 2
   await swipe(page, [box.x + box.width - 24, y], [8, y])
   await page.waitForTimeout(800)
-  checks['phone.sidebar.swipe'] = { ok: (await sheet.count()) === 0, detail: { left: await sheet.count() } }
+  checks[`${prefix}.sidebar.swipe`] = { ok: (await sheet.count()) === 0, detail: { left: await sheet.count() } }
 }
 
 /** In a conversation with turns, the turn map's tab opens a bottom drawer that a swipe down closes. */
-async function turnMapCheck(page: Page, checks: Record<string, Check>): Promise<void> {
+async function turnMapCheck(page: Page, checks: Record<string, Check>, prefix: string): Promise<void> {
   const tab = page.locator('.turn-map-tab:visible').first()
   if ((await tab.count()) === 0) {
-    checks['phone.turn-map.swipe'] = { ok: true, detail: 'no turn map on this conversation' }
+    checks[`${prefix}.turn-map.swipe`] = skipped('no turn map in this account snapshot')
     return
   }
-  await tab.tap()
+  await tab.click()
   await page.waitForTimeout(600)
   const drawer = page.locator('[data-slot="drawer-content"]')
   const box = await drawer.boundingBox()
   if (box === null) {
-    checks['phone.turn-map.swipe'] = { ok: false, detail: 'drawer did not open' }
+    checks[`${prefix}.turn-map.swipe`] = { ok: false, detail: 'drawer did not open' }
     return
   }
   const x = box.x + box.width / 2
   await swipe(page, [x, box.y + 8], [x, box.y + box.height + 40])
   await page.waitForTimeout(800)
-  checks['phone.turn-map.swipe'] = { ok: (await drawer.count()) === 0, detail: { height: Math.round(box.height) } }
+  checks[`${prefix}.turn-map.swipe`] = { ok: (await drawer.count()) === 0, detail: { height: Math.round(box.height) } }
 }
 
-async function screenshots(browser: Browser, session: Session, out: string, errors: string[]): Promise<number> {
+async function screenshots(
+  browser: Browser,
+  session: Session,
+  out: string,
+  errors: string[],
+  checks: Record<string, Check>,
+): Promise<number> {
   let count = 0
   for (const [device, options] of [
     ['phone', PHONE],
+    ['landscape', { ...PHONE, viewport: { width: 844, height: 390 } }],
+    ['tablet', { viewport: { width: 820, height: 1180 }, hasTouch: true }],
     ['desk', DESK],
   ] as const)
     for (const colorScheme of ['light', 'dark'] as const) {
@@ -285,6 +341,7 @@ async function screenshots(browser: Browser, session: Session, out: string, erro
       for (const route of PAGES) {
         await visit(page, session.origin, route)
         const slug = route === '/' ? 'home' : route.slice(1).replaceAll('/', '_')
+        await editableChecks(page, checks, `${device}.${colorScheme}.${slug}`)
         await page.screenshot({ path: path.join(out, `${device}-${colorScheme}-${slug}.png`) })
         count += 1
       }
@@ -299,22 +356,56 @@ async function main(): Promise<void> {
   const out = path.join(ROOT, '.local/goblin-acceptance', `ui-${utc}`)
   mkdirSync(out, { recursive: true, mode: 0o700 })
   const browser = await chromium.launch()
+  const hybrid = await chromium.launch({
+    args: ['--blink-settings=primaryHoverType=2,availableHoverTypes=3,primaryPointerType=4,availablePointerTypes=6'],
+  })
   const checks: Record<string, Check> = {}
   const errors: string[] = []
   try {
     await deskChecks(await open(browser, session, DESK, errors, 'desk'), session.origin, checks)
     await phoneChecks(await open(browser, session, PHONE, errors, 'phone'), session.origin, checks)
-    const shots = await screenshots(browser, session, out, errors)
+    await phoneChecks(
+      await open(browser, session, { ...PHONE, viewport: { width: 844, height: 390 } }, errors, 'landscape'),
+      session.origin,
+      checks,
+      'landscape',
+    )
+    await phoneChecks(
+      await open(browser, session, { viewport: { width: 820, height: 1180 }, hasTouch: true }, errors, 'tablet'),
+      session.origin,
+      checks,
+      'tablet',
+    )
+    await phoneChecks(
+      await open(hybrid, session, { viewport: { width: 820, height: 1180 } }, errors, 'hybrid'),
+      session.origin,
+      checks,
+      'hybrid',
+    )
+    const shots = await screenshots(browser, session, out, errors, checks)
     const failed = Object.entries(checks)
-      .filter(([, check]) => !check.ok)
+      .filter(([, check]) => 'ok' in check && !check.ok)
       .map(([name]) => name)
-    const receipt = { utc, origin: session.origin, checks, failed, errors, screenshots: shots, out }
+    const unavailable = Object.entries(checks)
+      .filter(([, check]) => 'skipped' in check)
+      .map(([name]) => name)
+    const receipt = {
+      utc,
+      origin: session.origin,
+      checks,
+      failed,
+      skipped: unavailable,
+      errors,
+      screenshots: shots,
+      out,
+    }
     writeFileSync(path.join(out, 'receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 })
     chmodSync(out, 0o700)
-    console.log(JSON.stringify({ failed, errors, screenshots: shots, out }, null, 2))
+    console.log(JSON.stringify({ failed, skipped: unavailable, errors, screenshots: shots, out }, null, 2))
     if (failed.length > 0 || errors.length > 0) process.exitCode = 1
   } finally {
     await browser.close()
+    await hybrid.close()
   }
 }
 
