@@ -2,7 +2,7 @@
  * `bun run ui:acceptance [session-file]`: read-only UI acceptance against a deployed stage, in headless Chromium.
  * It signs in with the owner session saved for smoke (`.local/dev-session.json` unless named), opens pages, taps and
  * clicks only things that change nothing (menus, disclosures, the sidebar), and checks what the UI does there: motion
- * that runs, touch-sized fields and targets, sheets that close. It sends no message and edits nothing. Screenshots of
+ * that runs, touch-sized fields and targets, drawers that close on a tap or a swipe. It sends no message and edits nothing. Screenshots of
  * the page matrix (phone 390×844 with touch, desktop 1440×900, light and dark) and a receipt go to a private
  * `.local/goblin-acceptance/ui-<utc>/`. Chromium emulation is not device evidence: a real phone still has to check feel.
  */
@@ -60,6 +60,20 @@ async function open(
   const page = await context.newPage()
   page.on('pageerror', (error) => errors.push(`${label}: ${error.message}`))
   return page
+}
+
+/** A finger dragged from `from` to `to` in `steps` moves `gap` ms apart, as touch events (a slow drag, not a flick). */
+async function swipe(page: Page, from: readonly [number, number], to: readonly [number, number], steps = 12, gap = 30) {
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from[0], y: from[1] }] })
+  for (let step = 1; step <= steps; step += 1) {
+    const x = from[0] + ((to[0] - from[0]) * step) / steps
+    const y = from[1] + ((to[1] - from[1]) * step) / steps
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] })
+    await page.waitForTimeout(gap)
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await cdp.detach()
 }
 
 async function visit(page: Page, origin: string, route: string): Promise<void> {
@@ -147,7 +161,10 @@ async function thoughtsCheck(page: Page, checks: Record<string, Check>): Promise
   checks['desk.thoughts.closes'] = { ok: true, detail: { panelsLeft: left } }
 }
 
-/** Phone: a coarse pointer, 16px fields, 44px icon targets, and a sidebar sheet that closes on a same-page link. */
+/**
+ * Phone: a coarse pointer, 16px fields whose Return key breaks the line, 44px icon targets, and a sidebar drawer that
+ * closes on a same-page link and on a swipe left; in a conversation, the turn map's drawer swipes down closed.
+ */
 async function phoneChecks(page: Page, origin: string, checks: Record<string, Check>): Promise<void> {
   await visit(page, origin, '/')
   const coarse = await page
@@ -159,6 +176,8 @@ async function phoneChecks(page: Page, origin: string, checks: Record<string, Ch
     .first()
     .evaluate((element) => element.ownerDocument.defaultView.getComputedStyle(element).fontSize)
   checks['phone.composer.16px'] = { ok: size === '16px', detail: size }
+  const hint = await page.locator('textarea[data-slot="composer-input"]').first().getAttribute('enterkeyhint')
+  checks['phone.composer.enterkeyhint'] = { ok: hint === 'enter', detail: hint }
   const icon = page.locator('[data-slot="button"].size-7:visible').first()
   const hit =
     (await icon.count()) === 0
@@ -170,6 +189,8 @@ async function phoneChecks(page: Page, origin: string, checks: Record<string, Ch
   checks['phone.icon.hit-area'] = { ok: hit?.position === 'absolute', detail: hit }
   await usageCheck(page, checks)
   await sidebarCheck(page, checks)
+  await sidebarSwipeCheck(page, checks)
+  await turnMapCheck(page, checks)
 }
 
 /** Phone: today's usage opens in words on a tap (a phone shows only the ring). */
@@ -209,6 +230,43 @@ async function sidebarCheck(page: Page, checks: Record<string, Check>): Promise<
   await page.waitForTimeout(800)
   const after = await page.locator(sheet).count()
   checks['phone.sidebar.closes'] = { ok: before > 0 && after === 0, detail: { before, after } }
+}
+
+/** A swipe left across the open sidebar drawer takes it back to the edge. */
+async function sidebarSwipeCheck(page: Page, checks: Record<string, Check>): Promise<void> {
+  const sheet = page.locator('[data-slot="sidebar"][data-mobile="true"]')
+  await page.locator('[data-sidebar="trigger"]').first().tap()
+  await page.waitForTimeout(600)
+  const box = await sheet.boundingBox()
+  if (box === null) {
+    checks['phone.sidebar.swipe'] = { ok: false, detail: 'sidebar did not open' }
+    return
+  }
+  const y = box.y + box.height / 2
+  await swipe(page, [box.x + box.width - 24, y], [8, y])
+  await page.waitForTimeout(800)
+  checks['phone.sidebar.swipe'] = { ok: (await sheet.count()) === 0, detail: { left: await sheet.count() } }
+}
+
+/** In a conversation with turns, the turn map's tab opens a bottom drawer that a swipe down closes. */
+async function turnMapCheck(page: Page, checks: Record<string, Check>): Promise<void> {
+  const tab = page.locator('.turn-map-tab:visible').first()
+  if ((await tab.count()) === 0) {
+    checks['phone.turn-map.swipe'] = { ok: true, detail: 'no turn map on this conversation' }
+    return
+  }
+  await tab.tap()
+  await page.waitForTimeout(600)
+  const drawer = page.locator('[data-slot="drawer-content"]')
+  const box = await drawer.boundingBox()
+  if (box === null) {
+    checks['phone.turn-map.swipe'] = { ok: false, detail: 'drawer did not open' }
+    return
+  }
+  const x = box.x + box.width / 2
+  await swipe(page, [x, box.y + 8], [x, box.y + box.height + 40])
+  await page.waitForTimeout(800)
+  checks['phone.turn-map.swipe'] = { ok: (await drawer.count()) === 0, detail: { height: Math.round(box.height) } }
 }
 
 async function screenshots(browser: Browser, session: Session, out: string, errors: string[]): Promise<number> {
