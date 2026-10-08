@@ -2536,10 +2536,6 @@ button.pane-title:active {
 .pane-rename {
   min-width: 10rem;
 }
-.pane-rename input {
-  height: 1.5rem;
-  border-radius: var(--radius-pill);
-}
 /* Narrow screens move between panes by swiping the strip; there is nothing to drag. */
 .workspace-surface[data-workspace='narrow'] .pane-grip {
   display: none;

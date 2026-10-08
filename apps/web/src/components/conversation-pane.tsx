@@ -103,6 +103,7 @@ function RenameForm({ view, onDone }: { readonly view: ConversationView; readonl
       }}
     >
       <Input
+        variant="pill"
         name="title"
         defaultValue={view.title ?? ''}
         maxLength={120}

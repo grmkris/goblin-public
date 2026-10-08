@@ -40,7 +40,7 @@ function Field({
   readonly compact: boolean
   readonly autoFocus: boolean
 }) {
-  const touch = useMediaQuery('(pointer: coarse)')
+  const touch = useMediaQuery('(pointer: coarse), (any-pointer: coarse)')
   return (
     <ComposerInput
       aria-label="Message"
