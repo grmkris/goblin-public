@@ -977,6 +977,9 @@ main.shell {
   border: 1px solid var(--border);
   border-radius: 0.875rem;
   background: var(--card);
+}
+/* Only a stage that shows keeps a compositor layer of its own; a hidden one holds no memory for it. */
+.app-stage:not([data-hidden]) {
   will-change: transform;
 }
 .app-stage[data-hidden] {
@@ -1152,6 +1155,12 @@ main.shell {
 .app-inline-slot {
   width: 100%;
   height: var(--app-height, 476px);
+}
+/* When the App says how tall it is, its place eases there instead of jumping, and the transcript under it with it. */
+@media (prefers-reduced-motion: no-preference) {
+  .app-inline-slot {
+    transition: height 200ms var(--ease-out);
+  }
 }
 .app-page-slot {
   flex: 1;

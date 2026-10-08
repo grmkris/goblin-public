@@ -42,31 +42,42 @@ const rectOf = (element: Element): Rect => {
   return { x, y, width, height }
 }
 
-/** The window, and every ancestor of `slot` that scrolls or hides its overflow. */
-function clipsOf(slot: HTMLElement): Rect[] {
-  const clips: Rect[] = [{ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }]
+/** The ancestors of `slot` that scroll or hide their overflow: a style read per ancestor, so callers keep the list. */
+export function clippingAncestors(slot: HTMLElement): readonly HTMLElement[] {
+  const clips: HTMLElement[] = []
   for (let element = slot.parentElement; element !== null; element = element.parentElement) {
     const { overflowX, overflowY } = getComputedStyle(element)
-    if (overflowX !== 'visible' || overflowY !== 'visible') clips.push(rectOf(element))
+    if (overflowX !== 'visible' || overflowY !== 'visible') clips.push(element)
   }
   return clips
 }
 
+/** The window, and where each of `ancestors` is now. */
+const clipsOf = (ancestors: readonly HTMLElement[]): Rect[] => [
+  { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight },
+  ...ancestors.map(rectOf),
+]
+
 /**
- * Clips the stage to what of `slot` shows: inside the containers that scroll it, and under what its pane floats over
- * it (`data-app-cover`: the band of its pill, the composer). Returns whether any of the App shows.
+ * Clips the stage to what of `slot` shows: inside the containers that scroll it (`ancestors`, from
+ * `clippingAncestors`), and under what its pane floats over it (`data-app-cover`: the band of its pill, the composer).
+ * `box` is where the stage was just written, so nothing is read back from it. Returns whether any of the App shows.
  */
-export function clipStage(stage: HTMLElement, slot: HTMLElement | undefined): boolean {
+export function clipStage(
+  stage: HTMLElement,
+  slot: HTMLElement | undefined,
+  box: Rect,
+  ancestors: readonly HTMLElement[],
+): boolean {
   if (slot === undefined) {
     stage.style.clipPath = ''
     return false
   }
-  const box = rectOf(stage)
   const pane = slot.closest('.workspace-pane')
   const covers = [...(pane?.querySelectorAll('[data-app-cover]') ?? [])]
     .filter((cover) => !cover.contains(slot))
     .map(rectOf)
-  const regions = visibleParts(box, clipsOf(slot), covers)
+  const regions = visibleParts(box, clipsOf(ancestors), covers)
   const whole = regions.length === 1 && regions[0]?.width === box.width && regions[0].height === box.height
   const path = regions
     .map(({ x, y, width, height }) => `M${x - box.x} ${y - box.y}h${width}v${height}h${-width}Z`)

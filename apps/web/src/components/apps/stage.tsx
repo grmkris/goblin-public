@@ -5,7 +5,7 @@
 import { type RefObject, useEffect, useRef, useState } from 'react'
 import { PanelRightOpenIcon, XIcon } from 'lucide-react'
 import { Button, Receipt } from '@goblin/ui'
-import { clipStage } from '../../lib/app-occlusion.ts'
+import { clipStage, clippingAncestors } from '../../lib/app-occlusion.ts'
 import { CHROME_HEIGHT, type Rect } from '../../lib/app-stage.ts'
 import { APP_MODES, type AppPlacement, inlineHeight } from '../../lib/host-context.ts'
 import { atRest, type Motion, PLACE, stepSpring } from '../../lib/spring.ts'
@@ -76,7 +76,21 @@ type StageMotion = {
   readonly onVisible: (visible: boolean) => void
 }
 
-/** Let layout observers settle after each kick; scrolling, resizing and slot changes can move a fixed-size slot. */
+/** Where the stage is, as just written: its box, read from the spring instead of from layout. */
+const boxOf = (axes: Axes): Rect => ({
+  x: axes.x.value,
+  y: axes.y.value,
+  width: axes.width.value,
+  height: axes.height.value,
+})
+
+/**
+ * Follows the slot while something may be moving it, and rests otherwise. A kick starts it: the host's (a slot that
+ * resized or registered, the Home drag), any scroll, a window or keyboard resize, and the transcript around the slot
+ * changing size (a disclosure opening above it, a reply streaming in). It keeps a short settled tail after each kick,
+ * because layout observers report a frame or two late. Within one run it keeps the slot's clipping ancestors, so a
+ * frame reads only their rectangles, not every ancestor's style.
+ */
 function useStageMotion({ stage, live, slot, onTarget, onVisible }: StageMotion): () => void {
   const kickRef = useRef<() => void>(() => undefined)
   const { onKick } = useAppHost()
@@ -85,7 +99,17 @@ function useStageMotion({ stage, live, slot, onTarget, onVisible }: StageMotion)
     let last = 0
     let quiet = 0
     let target: Rect | undefined
+    let clips: { readonly slot: HTMLElement; readonly ancestors: readonly HTMLElement[] } | undefined
     const reduced = matchMedia('(prefers-reduced-motion: reduce)')
+    const content = new ResizeObserver(() => kick())
+    let watched: Element | null = null
+    const watch = (followed: HTMLElement) => {
+      const around = followed.closest('[data-slot="message-scroller-content"]')
+      if (around === watched) return
+      if (watched !== null) content.unobserve(watched)
+      watched = around
+      if (around !== null) content.observe(around)
+    }
     const frame = (now: number) => {
       raf = 0
       const seconds = last === 0 ? 1 / 60 : (now - last) / 1000
@@ -101,17 +125,23 @@ function useStageMotion({ stage, live, slot, onTarget, onVisible }: StageMotion)
       }
       element.toggleAttribute('data-editing', followed.closest('[data-editing]') !== null)
       delete element.dataset.hidden
+      watch(followed)
+      if (clips?.slot !== followed) clips = { slot: followed, ancestors: clippingAncestors(followed) }
       const rect = rectOf(followed)
       onTarget(rect)
       quiet = target !== undefined && AXES.every((axis) => rect[axis] === target?.[axis]) ? quiet + 1 : 0
       target = rect
       const moving = advance(live.current, rect, seconds, reduced.matches)
       write(element, live.current.axes)
-      onVisible(clipStage(element, followed))
+      onVisible(clipStage(element, followed, boxOf(live.current.axes), clips.ancestors))
       // A viewport change can reflow the Home row one or two frames after its first measurement.
       // Keep a short settled tail so reduced-motion stages do not retain their old slot rectangle.
       if (moving || quiet < 8) raf = requestAnimationFrame(frame)
-      else last = 0
+      else {
+        last = 0
+        // At rest the pane may move later (into the chat sheet, out of parking): find the ancestors again then.
+        clips = undefined
+      }
     }
     const kick = () => {
       quiet = 0
@@ -121,15 +151,14 @@ function useStageMotion({ stage, live, slot, onTarget, onVisible }: StageMotion)
     const off = onKick(kick)
     window.addEventListener('scroll', kick, { capture: true, passive: true })
     window.addEventListener('resize', kick)
-    window.addEventListener('pointermove', kick, { passive: true })
     window.visualViewport?.addEventListener('resize', kick)
     kick()
     return () => {
       cancelAnimationFrame(raf)
       off()
+      content.disconnect()
       window.removeEventListener('scroll', kick, { capture: true })
       window.removeEventListener('resize', kick)
-      window.removeEventListener('pointermove', kick)
       window.visualViewport?.removeEventListener('resize', kick)
     }
   }, [stage, live, slot, onTarget, onVisible, onKick])
