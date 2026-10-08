@@ -93,8 +93,13 @@ async function deskChecks(page: Page, origin: string, checks: Record<string, Che
     .locator('html')
     .evaluate((root) => root.ownerDocument.defaultView.getComputedStyle(root).getPropertyValue('--ease-out').trim())
   checks['desk.token.ease-out'] = { ok: ease.includes('.23'), detail: ease }
-  const picker = page.locator('[data-slot="composer-actions"] button[aria-haspopup]').first()
-  if ((await picker.count()) > 0) {
+  // The first page after a deploy can still be hydrating once the network is idle: wait for the picker itself.
+  const picker = page.locator('[data-slot="composer-actions"] button[aria-haspopup="menu"]').first()
+  const found = await picker
+    .waitFor({ timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (found) {
     await picker.click()
     const menu = page.locator('[data-slot="dropdown-menu-content"]').first()
     await menu.waitFor({ timeout: 5000 })
