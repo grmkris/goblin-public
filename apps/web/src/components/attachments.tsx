@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useSyncExternalStore } from 'react'
 import type { Attachment } from '@goblin/contracts'
 import { Button, Spinner } from '@goblin/ui'
-import { AlertCircleIcon, FileIcon, ImageIcon, PaperclipIcon, XIcon } from 'lucide-react'
-import { failureText } from '../lib/boundary.ts'
-import { fileSize, fileUrl, uploadAttachment } from '../lib/files.ts'
+import { AlertCircleIcon, FileIcon, ImageIcon, PaperclipIcon, RotateCcwIcon, XIcon } from 'lucide-react'
+import { fileSize, fileUrl } from '../lib/files.ts'
+import { AttachmentDraft } from '../lib/attachment-draft.ts'
 
 /** How many files one message carries (the runtime refuses more). */
 const MAX_FILES = 8
@@ -33,43 +33,24 @@ export function MessageFiles({ files }: { readonly files: readonly Attachment[] 
   )
 }
 
-type Pending =
-  | { readonly id: number; readonly name: string; readonly state: 'uploading' }
-  | { readonly id: number; readonly name: string; readonly state: 'ready'; readonly file: Attachment }
-  | { readonly id: number; readonly name: string; readonly state: 'failed'; readonly reason: string }
-
-/** Files the owner picked for their next message: each uploads at once, one after another, and can be removed. */
-export function useAttachments() {
-  const [pending, setPending] = useState<readonly Pending[]>([])
-  const next = useRef(0)
-  const update = (id: number, change: Pending) =>
-    setPending((current) => current.map((item) => (item.id === id ? change : item)))
-  async function add(files: readonly File[]): Promise<void> {
-    const room = MAX_FILES - pending.length
-    const picked = files.slice(0, Math.max(0, room)).map((file) => ({ file, id: (next.current += 1) }))
-    setPending((current) => [
-      ...current,
-      ...picked.map(({ file, id }): Pending => ({ id, name: file.name, state: 'uploading' })),
-    ])
-    const taken = new Set(pending.flatMap((item) => (item.state === 'ready' ? [item.file.name] : [])))
-    for (const { file, id } of picked) {
-      try {
-        const uploaded = await uploadAttachment(file, taken)
-        update(id, { id, name: uploaded.name, state: 'ready', file: uploaded })
-      } catch (error) {
-        update(id, { id, name: file.name, state: 'failed', reason: failureText(error) })
-      }
-    }
-  }
+/** A portable attachment draft. Detaching leaves uploads running in the new pane. */
+export function useAttachments(initial?: AttachmentDraft) {
+  const [draft, setDraft] = useState(() => initial ?? new AttachmentDraft())
+  const pending = useSyncExternalStore(draft.subscribe, draft.snapshot, draft.snapshot)
   return {
     pending,
-    add,
+    add: draft.add,
     full: pending.length >= MAX_FILES,
     uploading: pending.some((item) => item.state === 'uploading'),
-    /** The paths the next message carries. */
     paths: pending.flatMap((item) => (item.state === 'ready' ? [item.file.path] : [])),
-    remove: (id: number) => setPending((current) => current.filter((item) => item.id !== id)),
-    clear: () => setPending([]),
+    failed: pending.some((item) => item.state === 'failed'),
+    remove: draft.remove,
+    retry: draft.retry,
+    clear: draft.clear,
+    detach: () => {
+      setDraft(new AttachmentDraft())
+      return draft
+    },
   }
 }
 
@@ -102,6 +83,23 @@ export function PendingFiles({ attachments }: { readonly attachments: ReturnType
           >
             <XIcon />
           </Button>
+          {item.state === 'failed' && (
+            <>
+              <span className="file-chip-error" role="alert">
+                {item.reason}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => void attachments.retry(item.id)}
+                aria-label={`Retry ${item.name}`}
+              >
+                <RotateCcwIcon data-icon="inline-start" />
+                Retry
+              </Button>
+            </>
+          )}
         </li>
       ))}
     </ul>

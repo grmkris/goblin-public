@@ -1,0 +1,10 @@
+/* Failure stays readable beside the file it belongs to, including narrow and touch layouts. */
+.pending-files > .file-chip[data-state='failed'] {
+  flex-wrap: wrap;
+  max-width: min(100%, 24rem);
+}
+.file-chip-error {
+  flex: 1 1 100%;
+  color: var(--destructive);
+  overflow-wrap: anywhere;
+}

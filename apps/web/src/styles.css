@@ -2,6 +2,7 @@
 @import '@goblin/ui/styles.css';
 @import '@goblin/kit/kit.css' layer(components);
 @import './home.css' layer(app);
+@import './attachments.css' layer(app);
 
 /* Layout follows shared components; explicit utilities remain the final choice. */
 @layer app {

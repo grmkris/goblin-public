@@ -127,7 +127,7 @@ export function MessageComposer({
   const attachments = useAttachments()
   async function submit(): Promise<void> {
     const value = input.trim()
-    if (!value || pending || attachments.uploading) return
+    if (!value || pending || attachments.uploading || attachments.failed) return
     setPending(true)
     if (await onSend(value, attachments.paths)) {
       setInput('')
@@ -146,7 +146,7 @@ export function MessageComposer({
       autoFocus={autoFocus}
     />
   )
-  const cannotSend = pending || attachments.uploading || !input.trim()
+  const cannotSend = pending || attachments.uploading || attachments.failed || !input.trim()
   return (
     <Composer
       ref={form}
