@@ -149,12 +149,6 @@
   padding-block: 0.5rem;
   touch-action: manipulation;
 }
-.home-now {
-  position: absolute;
-  left: 50%;
-  translate: -50% 0;
-  bottom: var(--message-scroller-end-offset);
-}
 .home-receipt {
   padding-inline: 0.875rem;
 }

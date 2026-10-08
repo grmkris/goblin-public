@@ -9,6 +9,7 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
+  useMessageScroller,
 } from '@goblin/ui'
 import { type ReactNode, useMemo, useRef } from 'react'
 import { TELEGRAM_AUTHOR } from '@goblin/contracts'
@@ -21,6 +22,7 @@ import { OpenThread } from './parts/text-part.tsx'
 import { HomeLanding, NowButton } from './home/landing.tsx'
 import { HomeSurface } from './home/surface.tsx'
 import { HOME_MARK } from '../lib/home.ts'
+import { glide } from '../lib/motion.ts'
 import { type Turn, TurnMap } from './turn-map.tsx'
 
 type ConversationProps = {
@@ -34,6 +36,20 @@ type ConversationProps = {
   /** The transcript is still on its way: no empty state yet. */
   readonly home?: { readonly onDraft: (text: string) => void } | undefined
   readonly loading?: boolean
+}
+
+/** A thread's way to its end; it jumps instead of gliding when the person asks for less motion. */
+function EndButton() {
+  const { scrollToEnd } = useMessageScroller()
+  return (
+    <MessageScrollerButton
+      direction="end"
+      onClick={(event) => {
+        event.preventDefault()
+        scrollToEnd({ behavior: glide() })
+      }}
+    />
+  )
 }
 
 /**
@@ -104,7 +120,7 @@ export function Conversation({
             </MessageScrollerViewport>
             <TurnMap viewport={viewport} turns={turns} onEarlier={onEarlier} />
             {home === undefined ? (
-              <MessageScrollerButton direction="end" />
+              <EndButton />
             ) : (
               <>
                 <HomeLanding parts={parts} loading={loading} viewport={viewport} />

@@ -1,5 +1,5 @@
 import { type RefObject, useLayoutEffect, useRef } from 'react'
-import { Button, useMessageScroller, useMessageScrollerScrollable } from '@goblin/ui'
+import { MessageScrollerButton, useMessageScroller } from '@goblin/ui'
 import { ArrowDownIcon } from 'lucide-react'
 import { HOME_MARK, homeLanding } from '../../lib/home.ts'
 import type { Part } from '../../lib/parts.ts'
@@ -32,28 +32,23 @@ export function HomeLanding({
   return null
 }
 
-/** Now is the latest own turn; the desk's bottom is reached by its separate Home mark. */
+/**
+ * Main's way back down: to the latest own turn ("now"), not the bottom, which is Home. It is the threads' jump button,
+ * so it fades in and out the same way, and scrolls on its own target instead of the end.
+ */
 export function NowButton({ parts }: { readonly parts: readonly Part[] }) {
   const { scrollToMessage } = useMessageScroller()
-  const { end } = useMessageScrollerScrollable()
   const target = parts.filter(isOwnTurn).at(-1)?.id ?? HOME_MARK
-  if (!end) return null
   return (
-    <span className="home-now">
-      <Button
-        variant="secondary"
-        size="icon-sm"
-        aria-label="Back to now"
-        onClick={() =>
-          scrollToMessage(target, {
-            align: 'start',
-            scrollMargin: 64,
-            behavior: glide(),
-          })
-        }
-      >
-        <ArrowDownIcon aria-hidden />
-      </Button>
-    </span>
+    <MessageScrollerButton
+      direction="end"
+      onClick={(event) => {
+        event.preventDefault()
+        scrollToMessage(target, { align: 'start', scrollMargin: 64, behavior: glide() })
+      }}
+    >
+      <ArrowDownIcon aria-hidden />
+      <span className="sr-only">Back to now</span>
+    </MessageScrollerButton>
   )
 }
