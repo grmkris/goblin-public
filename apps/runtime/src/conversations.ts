@@ -53,7 +53,9 @@ const cleanTitle = (raw: string): string =>
 const labelOf = (row: Row): string => (row.title === null ? `${row.kind} (untitled)` : `${row.kind} "${row.title}"`)
 
 /**
- * Thread extensions, bounded recall, naming, copied switches and logical chat resolution.
+ * What threads need beyond the registry: their own extension, `recall` for the ones that see main's history (they
+ * start with main's memory view), the memory that bounds their zooms, the cheap model that names them, and the switches
+ * a new thread copies from the conversation it came from.
  */
 export type ThreadKit = {
   readonly thread: Extension
@@ -65,7 +67,10 @@ export type ThreadKit = {
 }
 
 /**
- * Registered chats form a tree. Pi owns transcripts; the registry owns names, origins, closure and access.
+ * The agent's conversations the owner can reach, as a tree: main at the root, each thread under the conversation it
+ * branched from (main for one started empty), each subagent under its spawner. Pi owns every transcript; this registry
+ * is what Pi does not keep (kind, title, origin, closed) and the gate in front of Pi: a chat id resolves to its current Pi session only if it
+ * is registered here, so no request can open a conversation by guessing its number.
  */
 export class ConversationRegistry {
   readonly #db: DrizzleSqliteDODatabase
@@ -83,6 +88,7 @@ export class ConversationRegistry {
       .values({ chatId: MAIN_THREAD, piSession: MAIN_THREAD, role: 'primary', kind: 'main', createdAt: now })
       .onConflictDoNothing()
       .run()
+    kit.chats.onRebind((chat) => this.#changed([chat]))
   }
 
   /** Calls `listener` after each write with the conversations it changed; returns what unsubscribes it. */
@@ -108,13 +114,15 @@ export class ConversationRegistry {
 
   /** The Pi session of a registered conversation; anything else is `NotFound`. */
   require(id: string): string {
-    return this.#registered(id).chatId
+    this.#registered(id)
+    return this.#kit.chats.session(id)
   }
 
   /** The Pi session of a registered conversation that is open: a closed one is read, never written to. */
   requireOpen(id: string): string {
-    if (this.#registered(id).closedAt !== null) throw new InvalidInput({ reason: 'conversation_closed' })
-    return id
+    const row = this.#registered(id)
+    if (row.closedAt !== null) throw new InvalidInput({ reason: 'conversation_closed' })
+    return this.#kit.chats.session(id)
   }
 
   /** Whether a registered conversation is main, a thread or a subagent; anything else is `NotFound`. */
@@ -139,7 +147,11 @@ export class ConversationRegistry {
     const row = this.#registered(id)
     if (row.kind !== 'subagent' || row.parentSession === null) throw new NotFound({ what: 'subagent' })
     const pi = await this.#harness.pi()
-    const roster = await pi.snapshot(Subagents, conversationId(row.parentSession), BACKGROUND)
+    const roster = await pi.snapshot(
+      Subagents,
+      conversationId(row.spawnerSession ?? this.require(row.parentSession)),
+      BACKGROUND,
+    )
     const helper = Object.values(roster?.agents ?? {}).find((agent) => String(agent.conversationId) === id)
     const at = helper?.reported.at(-1)
     const conversation = await this.#conversation(id)
@@ -147,7 +159,7 @@ export class ConversationRegistry {
       at === undefined
         ? []
         : (await conversation.entries({ minEntryId: at, maxEntryId: at }, 1, undefined, BACKGROUND)).items
-    const busy = await this.#harness.session(id).busy()
+    const busy = await this.#harness.session(this.require(id)).busy()
     return {
       conversationId: id,
       label: row.title ?? 'Untitled helper',
@@ -162,7 +174,8 @@ export class ConversationRegistry {
    * thread from a subagent is the owner engaging with it, so that subagent stays open after it reports.
    */
   async branch(parent: string, entry: number, now: number): Promise<ConversationView> {
-    const from = this.#registered(this.requireOpen(parent))
+    this.requireOpen(parent)
+    const from = this.#registered(parent)
     const source = await this.#conversation(parent)
     const id = entryId(entry)
     const [at] = (await source.entries({ minEntryId: id, maxEntryId: id }, 1, undefined, BACKGROUND)).items
@@ -188,24 +201,28 @@ export class ConversationRegistry {
    * branches main, never further than its parent could; nothing when it never saw main (a subagent, a "+" thread).
    */
   #recallAt(from: Row, entry: number): number | null {
-    if (from.kind === 'main') return this.#kit.memory.sizeAt(entry)
+    if (from.role === 'primary') return this.#kit.memory.sizeAt(entry)
     return from.recallThrough === null ? null : Math.min(from.recallThrough, this.#kit.memory.sizeAt(entry))
   }
 
   /** An empty thread the owner started; main learns its name once it has one (`announce`). */
   async create(now: number): Promise<ConversationView> {
     const session = await this.#harness.sessions.create()
-    const tools = this.#kit.capabilities.piTools(MAIN_THREAD)
-    await (
-      await this.#conversation(session.id)
-    ).configure({ extensions: { add: [this.#kit.thread] }, tools }, BACKGROUND)
-    return this.#insert({ chatId: session.id, kind: 'thread', parentSession: MAIN_THREAD, mainNote: 'owed' }, now)
+    const primary = this.#kit.chats.primary()
+    const tools = this.#kit.capabilities.piTools(primary)
+    const pi = await (await this.#harness.pi()).conversation(conversationId(session.id), BACKGROUND)
+    if (pi === undefined) throw new NotFound({ what: 'conversation' })
+    await pi.configure({ extensions: { add: [this.#kit.thread] }, tools }, BACKGROUND)
+    return this.#insert(
+      { chatId: session.id, kind: 'thread', parentSession: this.#kit.chats.primary(), mainNote: 'owed' },
+      now,
+    )
   }
 
   /** How far `zoom` reaches into main's memory from `session`: all of it from main, up to its fork from a thread. */
   recallLimit(session: string, mainSize: number): number {
-    const row = this.#row(session)
-    return row?.kind === 'main' ? mainSize : (row?.recallThrough ?? 0)
+    const row = this.#row(this.#kit.chats.chatOf(session) ?? '')
+    return row?.role === 'primary' ? mainSize : (row?.recallThrough ?? 0)
   }
 
   /** Registers a subagent's conversation under the one that started it; a relay repeats it, so it is idempotent. */
@@ -217,7 +234,8 @@ export class ConversationRegistry {
     exclusions: readonly HelperExclusion[] = [],
   ): void {
     if (this.#row(session) !== undefined) return
-    this.require(parent)
+    const parentChat = this.#kit.chats.chatOf(parent)
+    if (parentChat === undefined) throw new NotFound({ what: 'spawner chat' })
     this.#db.transaction(() => {
       this.#db
         .insert(appConversations)
@@ -227,7 +245,7 @@ export class ConversationRegistry {
           spawnerSession: parent,
           kind: 'subagent',
           title: name,
-          parentSession: parent,
+          parentSession: parentChat,
           createdAt: now,
         })
         .run()
@@ -245,7 +263,7 @@ export class ConversationRegistry {
         piSession: session,
         kind: 'thread',
         title,
-        parentSession: MAIN_THREAD,
+        parentSession: this.#kit.chats.primary(),
         routineRunId: runId,
         createdAt: now,
         mainNote: null,
@@ -265,7 +283,7 @@ export class ConversationRegistry {
     readonly at: number
   }): Promise<void> {
     await (
-      await this.#conversation(MAIN_THREAD)
+      await this.#conversation(this.#kit.chats.primary())
     ).submit(
       {
         type: 'write',
@@ -293,7 +311,7 @@ export class ConversationRegistry {
     await (
       await this.#conversation(parent.chatId)
     ).submit({ type: 'write', requestId, entry: { kind: 'app.shared', data: { thread }, model } }, BACKGROUND)
-    return parent.kind === 'main' ? 'main' : labelOf(parent)
+    return parent.role === 'primary' ? 'main' : labelOf(parent)
   }
 
   /**
@@ -306,7 +324,7 @@ export class ConversationRegistry {
     if (row?.kind !== 'thread' || row.mainNote !== 'owed' || row.title === null) return
     const model = [{ role: 'user' as const, content: threadStartedContent(row.title), timestamp: Date.now() }]
     await (
-      await this.#conversation(MAIN_THREAD)
+      await this.#conversation(this.#kit.chats.primary())
     ).submit(
       {
         type: 'write',
@@ -353,13 +371,14 @@ export class ConversationRegistry {
     before: number,
   ): Promise<{ readonly entries: readonly EntryRecord[]; readonly more: boolean }> {
     const page = await (
-      await this.#conversation(this.require(session))
+      await this.#conversation(session)
     ).entries({ maxEntryId: entryId(before - 1) }, HISTORY_PAGE, undefined, BACKGROUND)
     return { entries: page.items.toReversed(), more: page.next !== undefined }
   }
 
   async #conversation(session: string): Promise<Conversation> {
-    const conversation = await (await this.#harness.pi()).conversation(conversationId(session), BACKGROUND)
+    const piSession = this.#kit.chats.session(session)
+    const conversation = await (await this.#harness.pi()).conversation(conversationId(piSession), BACKGROUND)
     if (conversation === undefined) throw new NotFound({ what: 'conversation' })
     return conversation
   }
@@ -370,7 +389,7 @@ export class ConversationRegistry {
    */
   async update(id: string, change: UpdateConversation, now: number): Promise<Updated> {
     const row = this.#registered(id)
-    if (row.kind === 'main') throw new InvalidInput({ reason: 'main_thread' })
+    if (row.role === 'primary') throw new InvalidInput({ reason: 'main_thread' })
     if (change.keepOpen !== undefined && row.kind !== 'subagent') throw new InvalidInput({ reason: 'keep_open' })
     const set = {
       ...(change.title === undefined ? {} : { title: change.title }),
@@ -406,7 +425,7 @@ export class ConversationRegistry {
    * relay waiting on a subagent, a thread's subagents): a closed conversation runs nothing. Returns what it closed.
    */
   async close(id: string, by: 'owner' | 'done', now: number): Promise<readonly string[]> {
-    if (this.kindOf(id) === 'main') throw new InvalidInput({ reason: 'main_thread' })
+    if (this.#registered(id).role === 'primary') throw new InvalidInput({ reason: 'main_thread' })
     const closed = this.#db
       .all<{ session_id: string }>(
         sql`${tree(id)}
@@ -446,18 +465,24 @@ export class ConversationRegistry {
   /** Stops the relays carrying messages to each subagent among `sessions` from its spawner. */
   async #dropRelays(sessions: readonly string[]): Promise<void> {
     const pi = await this.#harness.pi()
-    for (const session of sessions) {
-      const row = this.#row(session)
+    for (const chat of sessions) {
+      const row = this.#row(chat)
       if (row?.kind === 'subagent' && row.parentSession !== null)
-        await dropRelaysTo(pi, conversationId(row.parentSession), conversationId(session))
+        await dropRelaysTo(
+          pi,
+          conversationId(row.spawnerSession ?? this.require(row.parentSession)),
+          conversationId(this.require(chat)),
+        )
     }
   }
 
   /** Aborts each conversation across background boundaries: its runs, its queued inputs and its background tasks. */
   async #stop(sessions: readonly string[]): Promise<void> {
     const pi = await this.#harness.pi()
-    for (const session of sessions)
-      await (await pi.conversation(conversationId(session), BACKGROUND))?.abort(BACKGROUND, { background: true })
+    for (const chat of sessions)
+      await (
+        await pi.conversation(conversationId(this.require(chat)), BACKGROUND)
+      )?.abort(BACKGROUND, { background: true })
   }
 
   /** Registers a new thread with the switches its parent works under, copied in the same synchronous step. */
@@ -479,9 +504,10 @@ export class ConversationRegistry {
    * conversation is gone still lists, with no replies, so it never takes the whole list down.
    */
   async #describe(row: Row): Promise<ConversationView> {
-    const pi = await (await this.#harness.pi()).conversation(conversationId(row.chatId), BACKGROUND)
+    const session = this.#kit.chats.session(row.chatId)
+    const pi = await (await this.#harness.pi()).conversation(conversationId(session), BACKGROUND)
     const activity: ReplyStats =
-      pi === undefined ? { replies: 0 } : await this.#replies.stats(row.chatId, pi, row.forkEntry ?? 0)
+      pi === undefined ? { replies: 0 } : await this.#replies.stats(session, pi, row.forkEntry ?? 0)
     return {
       id: row.chatId,
       kind: row.kind,

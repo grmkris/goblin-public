@@ -19,7 +19,7 @@ const ownerQueueSession = (thread: string) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
     const session = yield* attemptSync(() => conversations.require(thread))
-    const kind = yield* attemptSync(() => conversations.kindOf(session))
+    const kind = yield* attemptSync(() => conversations.kindOf(thread))
     if (kind === 'subagent' || (yield* RoutineRuns).session(session) !== undefined) return undefined
     return session
   })
