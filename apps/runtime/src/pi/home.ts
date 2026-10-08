@@ -13,7 +13,8 @@ const AgentEdit = Schema.Struct({
   ops: HomeEdit.fields.ops,
 })
 
-const OWNER_QUESTION = 'May I change these owner-placed Home tiles? Use the Home approval card or Edit Home.'
+const OWNER_QUESTION =
+  'May I change these owner-placed Home tiles? The dashboard UI is deferred; this edit requires the owner Home API.'
 
 /** Main and ordinary threads can arrange Main's Home. Subagents and routine runs select their own extensions. */
 export function homeExtension(run: RunProgram) {
@@ -23,7 +24,7 @@ export function homeExtension(run: RunProgram) {
       section(
         'home',
         () =>
-          'Main has a Home grid below the newest exchange. Read home_read for its revision and the App ids you can place. home_edit applies ordered add/move/resize/update/remove operations atomically. You may manage tiles you placed; changing owner tiles asks them instead. Placement grants no powers. For “build a reading list and put it on Home”, build an app with a view, then home_read and add its App id as a medium or large tile. A view should use useHost().surface and tileSize for a glance variant. Tile kinds are note, conversations and app. Notes use ordinary Markdown and the same chart, map and Mermaid fences as chat. A note is a snapshot: say when its figures were true. Live data belongs in an agent app with a refresh schedule and freshness/error states. MCP Apps are pinned by the owner. After building an app with a view in Main, offer to put it on Home. Use a fresh operationId for a new edit; retry a stale layout with its new revision and a new operationId.',
+          'The Home dashboard UI is deferred. Saved layouts remain available through home_read and home_edit, but edits have no visible browser surface. Do not offer Home tiles or claim they appear in Main. Use these tools only when the owner explicitly asks to inspect or change the saved layout. Supply a fresh operationId and the current revision. You may manage agent-placed tiles; owner tiles require an owner API edit. Placement grants no powers.',
       ),
     ],
     tools: [

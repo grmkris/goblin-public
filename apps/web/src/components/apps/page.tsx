@@ -14,7 +14,6 @@ import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { useAppHost } from './host.tsx'
 import { useAppPlacement } from './placement.ts'
 import { AppNote, useSlot } from './slot.tsx'
-import { useHomePin } from '../home/pin.ts'
 
 /** Why the App is not on its page: it could not load, or it was unloaded to stay under the cap; and the way back. */
 function PageNote({
@@ -44,23 +43,16 @@ function PageNote({
 function AppPageMenu({ app }: { readonly app: AppView }) {
   const host = useAppHost()
   const place = useAppPlacement(app)
-  const home = useHomePin(app)
   return (
     <>
       <DropdownMenuItem onClick={place.inline}>
         <PanelLeftCloseIcon aria-hidden />
-        {place.tile === undefined ? 'Back in the conversation' : 'Back on Home'}
+        Back in the conversation
       </DropdownMenuItem>
       <DropdownMenuItem onClick={place.fill}>
         {place.filled ? <Minimize2Icon aria-hidden /> : <Maximize2Icon aria-hidden />}
         {place.filled ? 'Show all panes' : 'Full screen with the chat'}
       </DropdownMenuItem>
-      {home.available && (
-        <DropdownMenuItem disabled={home.pending} onClick={() => void home.pin()}>
-          Put on Home
-        </DropdownMenuItem>
-      )}
-      {home.notice && <DropdownMenuItem disabled>{home.notice}</DropdownMenuItem>}
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={() => host.close(app.id)}>
         <XIcon aria-hidden />

@@ -297,7 +297,7 @@ export function TurnMap({
   const [track, setTrack] = useState(0)
   const [open, setOpen] = useState(false)
   const geometry = useTurnGeometry(viewport, turns.map((turn) => turn.id).join('\n'), band, track)
-  const { scrollToMessage, scrollToEnd } = useMessageScroller()
+  const { scrollToMessage } = useMessageScroller()
   if (!geometry.shown) return null
   const variant: Variant = {
     turns,
@@ -306,8 +306,7 @@ export function TurnMap({
     onOpenChange: setOpen,
     onEarlier,
     onJump: (id) => {
-      if (id === 'home-surface') scrollToEnd({ behavior: glide() })
-      else scrollToMessage(id, { align: 'start', behavior: glide() })
+      scrollToMessage(id, { align: 'start', behavior: glide() })
       setOpen(false)
     },
   }

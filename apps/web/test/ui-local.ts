@@ -1,4 +1,4 @@
-/** Local browser acceptance against real source components. No account, model call, upload or Home edit is made. */
+/** Local browser acceptance against real source components. No account, model call, upload is made. */
 import assert from 'node:assert/strict'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -42,29 +42,6 @@ async function fields(browser: Browser, origin: string, label: string, options: 
     assert.equal(await page.getByLabel('Sent').innerText(), '1')
   }
   results.push({ name: `${label}.composer-return`, detail: { touch } })
-  await page.close()
-}
-
-async function note(browser: Browser, origin: string, mobile: boolean) {
-  const page = await browser.newPage({
-    viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
-    hasTouch: mobile,
-  })
-  page.on('pageerror', (error) => errors.push(`note: ${error.message}`))
-  await page.goto(`${origin}?mode=note`)
-  const trigger = page.getByRole('button', { name: 'Read more' })
-  await trigger.click()
-  const popup = page.locator(mobile ? '[data-slot="drawer-content"]' : '[data-slot="dialog-content"]')
-  await popup.waitFor()
-  assert(await popup.getByText('Paragraph 30.', { exact: false }).isVisible())
-  const scrollable = await popup
-    .locator('.home-note-content')
-    .evaluate((element) => element.scrollHeight > element.clientHeight)
-  assert(scrollable, 'long note must have its own scrollable body')
-  await page.getByRole('button', { name: 'Close note' }).click()
-  await popup.waitFor({ state: 'hidden' })
-  assert(await trigger.evaluate((element) => element === document.activeElement), 'note returns focus to its trigger')
-  results.push({ name: `note.${mobile ? 'phone' : 'desk'}`, detail: { scrollable, focusReturned: true } })
   await page.close()
 }
 
@@ -164,40 +141,6 @@ async function attachments(browser: Browser, origin: string) {
   await page.close()
 }
 
-async function feedback(browser: Browser, origin: string, reducedMotion: 'reduce' | 'no-preference') {
-  const page = await browser.newPage({ viewport: { width: 820, height: 1180 }, reducedMotion })
-  page.on('pageerror', (error) => errors.push(`feedback: ${error.message}`))
-  await page.goto(`${origin}?mode=feedback`)
-  await page.getByRole('button', { name: 'Show tile' }).click()
-  await page.getByRole('button', { name: 'Show tile' }).click()
-  assert.equal(await page.locator('.home-tile-locator').count(), 1)
-  const properties = await page
-    .locator('.home-tile-locator')
-    .evaluate((ring) =>
-      ring
-        .getAnimations()
-        .flatMap((animation) =>
-          animation.effect instanceof KeyframeEffect
-            ? animation.effect.getKeyframes().flatMap((frame) => Object.keys(frame))
-            : [],
-        ),
-    )
-  assert(
-    properties.every((property) => ['offset', 'computedOffset', 'easing', 'composite', 'opacity'].includes(property)),
-  )
-  if (reducedMotion === 'reduce') assert.equal(properties.length, 0)
-  await page.getByRole('button', { name: 'Remove tiles' }).click()
-  assert.equal(await page.locator('.home-tile-exit').count(), 1)
-  assert.equal(await page.locator('.home-tile-exit iframe').count(), 0)
-  assert.equal(await page.locator('iframe').count(), 1)
-  assert(await page.locator('.home-tile-exit').evaluate((element) => element instanceof HTMLElement && element.inert))
-  assert.equal(await page.locator('#note-title').count(), 1)
-  await page.getByRole('button', { name: 'Dispose feedback' }).click()
-  assert.equal(await page.locator('.home-tile-locator, .home-tile-exit').count(), 0)
-  results.push({ name: `feedback.${reducedMotion}`, detail: { properties, appFrames: 1, cleanup: true } })
-  await page.close()
-}
-
 async function styles(browser: Browser, origin: string, label: string, options: BrowserContextOptions) {
   const page = await browser.newPage({ ...options, reducedMotion: 'reduce' })
   page.on('pageerror', (error) => errors.push(`styles/${label}: ${error.message}`))
@@ -275,12 +218,8 @@ async function main() {
     await fields(browser, origin, 'tablet', { viewport: { width: 820, height: 1180 }, hasTouch: true }, true)
     await fields(browser, origin, 'desk', { viewport: { width: 1440, height: 900 } }, false)
     await fields(hybrid, origin, 'hybrid', { viewport: { width: 820, height: 1180 } }, true)
-    await note(browser, origin, false)
-    await note(browser, origin, true)
     await keyboard(browser, origin)
     await attachments(browser, origin)
-    await feedback(browser, origin, 'no-preference')
-    await feedback(browser, origin, 'reduce')
     await styles(browser, origin, 'desk', { viewport: { width: 1440, height: 900 } })
     await styles(browser, origin, 'phone', { viewport: { width: 390, height: 844 }, hasTouch: true })
     await styles(hybrid, origin, 'hybrid', { viewport: { width: 820, height: 1180 } })

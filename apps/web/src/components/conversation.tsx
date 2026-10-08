@@ -19,9 +19,6 @@ import { turnLabel } from '../lib/turn-map.ts'
 import { PartView } from './parts/registry.tsx'
 import { type InlineThreads, InlineThreadsProvider, MessageThreads } from './inline-thread.tsx'
 import { OpenThread } from './parts/text-part.tsx'
-import { HomeLanding, NowButton } from './home/landing.tsx'
-import { HomeSurface } from './home/surface.tsx'
-import { HOME_MARK } from '../lib/home.ts'
 import { glide } from '../lib/motion.ts'
 import { type Turn, TurnMap } from './turn-map.tsx'
 
@@ -34,11 +31,10 @@ type ConversationProps = {
   /** What comes before the parts (a thread's root message); with it, no empty state is shown. */
   readonly lead?: ReactNode
   /** The transcript is still on its way: no empty state yet. */
-  readonly home?: { readonly onDraft: (text: string) => void } | undefined
   readonly loading?: boolean
 }
 
-/** A thread's way to its end; it jumps instead of gliding when the person asks for less motion. */
+/** A conversation's way to its end; it jumps instead of gliding when the person asks for less motion. */
 function EndButton() {
   const { scrollToEnd } = useMessageScroller()
   return (
@@ -61,28 +57,21 @@ function EndButton() {
  * the transcript itself and opens at its end. The turn map on its right edge (`TurnMap`) jumps between the owner's
  * turns.
  */
-export function Conversation({
-  parts,
-  canSwitchModel,
-  threads,
-  onEarlier,
-  lead,
-  loading = false,
-  home,
-}: ConversationProps) {
+export function Conversation({ parts, canSwitchModel, threads, onEarlier, lead, loading = false }: ConversationProps) {
   const empty = !loading && parts.length === 0 && lead === undefined
   const viewport = useRef<HTMLDivElement>(null)
-  const turns = useMemo(() => {
-    const own = parts
-      .filter(isOwnTurn)
-      .map((part): Turn => ({ id: part.id, label: turnLabel(part.text), telegram: part.author === TELEGRAM_AUTHOR }))
-    return home === undefined ? own : [...own, { id: HOME_MARK, label: 'Home', telegram: false }]
-  }, [parts, home])
+  const turns = useMemo(
+    () =>
+      parts
+        .filter(isOwnTurn)
+        .map((part): Turn => ({ id: part.id, label: turnLabel(part.text), telegram: part.author === TELEGRAM_AUTHOR })),
+    [parts],
+  )
   return (
-    <MessageScrollerProvider autoScroll {...(home === undefined && { defaultScrollPosition: 'end' as const })}>
+    <MessageScrollerProvider autoScroll defaultScrollPosition="end">
       <InlineThreadsProvider value={threads}>
         <OpenThread value={threads?.open}>
-          <MessageScroller data-home-transcript={home !== undefined || undefined}>
+          <MessageScroller>
             <MessageScrollerViewport aria-label="Conversation" ref={viewport}>
               <MessageScrollerContent>
                 {onEarlier !== undefined && (
@@ -92,7 +81,7 @@ export function Conversation({
                   </button>
                 )}
                 {lead}
-                {empty && home === undefined ? (
+                {empty ? (
                   <Empty className="m-auto">
                     <EmptyHeader>
                       <EmptyTitle>Your conversation starts here</EmptyTitle>
@@ -111,22 +100,10 @@ export function Conversation({
                     </MessageScrollerItem>
                   ))
                 )}
-                {home !== undefined && !loading && (
-                  <MessageScrollerItem messageId={HOME_MARK}>
-                    <HomeSurface onDraft={home.onDraft} />
-                  </MessageScrollerItem>
-                )}
               </MessageScrollerContent>
             </MessageScrollerViewport>
             <TurnMap viewport={viewport} turns={turns} onEarlier={onEarlier} />
-            {home === undefined ? (
-              <EndButton />
-            ) : (
-              <>
-                <HomeLanding parts={parts} loading={loading} viewport={viewport} />
-                <NowButton parts={parts} />
-              </>
-            )}
+            <EndButton />
           </MessageScroller>
         </OpenThread>
       </InlineThreadsProvider>

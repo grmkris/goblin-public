@@ -94,12 +94,11 @@ describe('official MCP App bridge stays bound to its originating connection', ()
       expect(await first.app.callServerTool({ name: 'read', arguments: { serverId: 'evil' } })).toMatchObject({
         content: [{ text: 'notes' }],
       })
-      for (const surface of ['page', 'home', 'inline'] as const) {
+      for (const surface of ['page', 'inline'] as const) {
         first.bridge.setHostContext({
           displayMode: surface === 'page' ? 'fullscreen' : 'inline',
           containerDimensions: { width: 400, maxHeight: 600 },
           surface,
-          ...(surface === 'home' ? { tileSize: 'small' } : {}),
         })
         expect(
           await first.app.callServerTool({ name: 'after-placement', arguments: { serverId: 'evil' } }),
@@ -120,8 +119,6 @@ describe('official MCP App bridge stays bound to its originating connection', ()
     }
     expect(reached).toEqual([
       'notes:read',
-      'notes:after-placement',
-      'notes:data://value',
       'notes:after-placement',
       'notes:data://value',
       'notes:after-placement',

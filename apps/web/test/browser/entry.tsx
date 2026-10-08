@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   Button,
@@ -24,11 +24,9 @@ import {
   SidebarMenuButton,
   SidebarProvider,
 } from '@goblin/ui'
-import { HomeNoteReader } from '../../src/components/home/note-reader.tsx'
 import { useDockInsets } from '../../src/components/use-conversation.ts'
 import { CHAT_SNAPS, HALF_CHAT, useChatSnap } from '../../src/components/use-chat-snap.ts'
 import { MessageComposer } from '../../src/components/composer.tsx'
-import { HomeFeedback } from '../../src/components/home/feedback.ts'
 import { PaneHeader } from '../../src/components/pane-header.tsx'
 import { LinkOffer } from '../../src/components/apps/offers.tsx'
 import '../../src/styles.css'
@@ -98,34 +96,6 @@ function KeyboardDrawer() {
   )
 }
 
-function Note() {
-  const [open, setOpen] = useState(false)
-  const trigger = useRef<HTMLButtonElement>(null)
-  return (
-    <>
-      <Button ref={trigger} onClick={() => setOpen(true)}>
-        Read more
-      </Button>
-      <HomeNoteReader
-        open={open}
-        onOpenChange={setOpen}
-        returnFocus={trigger.current}
-        tile={{
-          kind: 'note',
-          id: 'note',
-          title: 'Long note',
-          size: 'small',
-          placedBy: 'owner',
-          markdown: Array.from(
-            { length: 30 },
-            (_, n) => `Paragraph ${n + 1}. **Full content** with a [safe link](https://example.com).`,
-          ).join('\n\n'),
-        }}
-      />
-    </>
-  )
-}
-
 function Attachments() {
   const [sent, setSent] = useState(0)
   return (
@@ -143,33 +113,6 @@ function Attachments() {
       />
       <output aria-label="Sent">{sent}</output>
     </main>
-  )
-}
-
-function Feedback() {
-  const root = useRef<HTMLElement>(null)
-  const feedback = useRef<HomeFeedback>(undefined)
-  useEffect(() => {
-    if (root.current === null) return
-    const current = new HomeFeedback(root.current)
-    feedback.current = current
-    return () => current.dispose()
-  }, [])
-  return (
-    <section className="home-surface p-6" ref={root}>
-      <Button onClick={() => feedback.current?.highlight(['note'])}>Show tile</Button>
-      <Button onClick={() => feedback.current?.remove(['note', 'app'])}>Remove tiles</Button>
-      <Button onClick={() => feedback.current?.dispose()}>Dispose feedback</Button>
-      <div className="home-grid">
-        <article className="home-tile" data-home-tile="note" data-kind="note" data-size="medium">
-          <p id="note-title">A note</p>
-          <Button>Read more</Button>
-        </article>
-        <article className="home-tile" data-home-tile="app" data-kind="app" data-size="medium">
-          <iframe title="Resident app" srcDoc="<p>Resident app</p>" />
-        </article>
-      </div>
-    </section>
   )
 }
 
@@ -197,15 +140,8 @@ function Styles() {
         <div className="workspace-pane" style={{ position: 'relative', height: 96 }} data-focused="true">
           <PaneHeader item="c:1" title="Main" first onClose={() => undefined} />
         </div>
-        <div className="home-surface">
-          <div className="home-header-actions">
-            <Button variant="ghost" size="home-action" data-sample="home-action">
-              Ask for a tile
-            </Button>
-          </div>
-          <div className="app-stage" data-mode="home" style={{ position: 'relative', height: 140 }}>
-            <LinkOffer link={new URL('https://example.com')} serverId="Example" onDone={() => undefined} />
-          </div>
+        <div className="app-stage" data-mode="inline" style={{ position: 'relative', height: 140 }}>
+          <LinkOffer link={new URL('https://example.com')} serverId="Example" onDone={() => undefined} />
         </div>
         <div className="composer-context">
           <Button variant="ghost" size="model" aria-label="Model: Example" data-sample="model">
@@ -233,12 +169,8 @@ if (root)
   createRoot(root).render(
     mode === 'keyboard' ? (
       <KeyboardDrawer />
-    ) : mode === 'note' ? (
-      <Note />
     ) : mode === 'attachments' ? (
       <Attachments />
-    ) : mode === 'feedback' ? (
-      <Feedback />
     ) : mode === 'styles' ? (
       <Styles />
     ) : (

@@ -145,7 +145,7 @@
   /*
    * Stacking, bottom to top. Raised and float order siblings inside one component; the rest order the app's layers:
    * the rails along a pane's edge (the turn map, the desktop sidebar), App stages fixed over their slots, the dock over
-   * an App, a pane's chrome (its pill, the top bar, a lifted Home tile), the phone's floating Chat button, overlays
+   * an App, a pane's chrome (its pill and top bar), the phone's floating Chat button, overlays
    * (menus, popovers, drawers) and a pane being dragged.
    */
   --z-raised: 1;

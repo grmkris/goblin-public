@@ -201,10 +201,10 @@ export function AppFrame({
   useEffect(() => {
     if (revision !== undefined) push.current?.want(revision)
   }, [revision])
-  const { mode, width, height: room, surface, tileSize } = placement
+  const { mode, width, height: room, surface } = placement
   useEffect(() => {
     bridge.current?.setHostContext(contextFor(latest.current.placement))
-  }, [mode, width, room, surface, tileSize])
+  }, [mode, width, room, surface])
   return (
     <iframe
       ref={iframe}

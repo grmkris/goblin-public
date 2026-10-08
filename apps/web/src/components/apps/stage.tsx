@@ -15,7 +15,6 @@ import { useAppGrantAsks } from './grant-ask.tsx'
 import { type Instance, type SlotName, useAppHost } from './host.tsx'
 import { DownloadOffer, LinkOffer } from './offers.tsx'
 import { useAppPlacement } from './placement.ts'
-import { useHomePin } from '../home/pin.ts'
 import { appNames } from '../../lib/workspace-tree.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 
@@ -61,9 +60,8 @@ function rectOf(element: HTMLElement): Rect {
   return { x, y, width, height }
 }
 
-function slotName(surface: 'inline' | 'home' | 'page', id: string): SlotName {
+function slotName(surface: 'inline' | 'page', id: string): SlotName {
   if (surface === 'page') return `app-page:${id}`
-  if (surface === 'home') return `app-home:${id}`
   return `app-inline:${id}`
 }
 
@@ -86,7 +84,7 @@ const boxOf = (axes: Axes): Rect => ({
 
 /**
  * Follows the slot while something may be moving it, and rests otherwise. A kick starts it: the host's (a slot that
- * resized or registered, the Home drag), any scroll, a window or keyboard resize, and the transcript around the slot
+ * resized or registered), any scroll, a window or keyboard resize, and the transcript around the slot
  * changing size (a disclosure opening above it, a reply streaming in). It keeps a short settled tail after each kick,
  * because layout observers report a frame or two late. Within one run it keeps the slot's clipping ancestors, so a
  * frame reads only their rectangles, not every ancestor's style.
@@ -123,7 +121,6 @@ function useStageMotion({ stage, live, slot, onTarget, onVisible }: StageMotion)
         onVisible(false)
         return
       }
-      element.toggleAttribute('data-editing', followed.closest('[data-editing]') !== null)
       delete element.dataset.hidden
       watch(followed)
       if (clips?.slot !== followed) clips = { slot: followed, ancestors: clippingAncestors(followed) }
@@ -134,7 +131,7 @@ function useStageMotion({ stage, live, slot, onTarget, onVisible }: StageMotion)
       const moving = advance(live.current, rect, seconds, reduced.matches)
       write(element, live.current.axes)
       onVisible(clipStage(element, followed, boxOf(live.current.axes), clips.ancestors))
-      // A viewport change can reflow the Home row one or two frames after its first measurement.
+      // A viewport change can reflow the slot one or two frames after its first measurement.
       // Keep a short settled tail so reduced-motion stages do not retain their old slot rectangle.
       if (moving || quiet < 8) raf = requestAnimationFrame(frame)
       else {
@@ -176,17 +173,10 @@ function ChromeButton({ label, icon: Icon, onClick }: { label: string; icon: typ
 /** The host's bar above the App in its transcript: its name, to its page, and close. On its page the pill does this. */
 function AppChrome({ instance, onPage }: { readonly instance: Instance; readonly onPage: () => void }) {
   const host = useAppHost()
-  const home = useHomePin(instance.app)
   const title = appNames(useWorkspaceFeed().apps).get(instance.app.id) ?? instance.app.title
   return (
     <div className="app-chrome">
       <span className="app-chrome-title">{title}</span>
-      {home.available && (
-        <Button variant="ghost" size="sm" disabled={home.pending} onClick={() => void home.pin()}>
-          Put on Home
-        </Button>
-      )}
-      {home.notice && <span role="status">{home.notice}</span>}
       {instance.app.source.kind === 'agent' && <AppJobs jobs={instance.app.source.jobs} />}
       <ChromeButton label="Open as a page" icon={PanelRightOpenIcon} onClick={onPage} />
       <ChromeButton label="Close the app" icon={XIcon} onClick={() => host.close(instance.app.id)} />
@@ -239,7 +229,7 @@ function Stage({ instance }: { readonly instance: Instance }) {
     visible: undefined,
   })
   const [error, setError] = useState('')
-  const grants = useAppGrantAsks(origin, place.surface === 'home' ? place.page : undefined)
+  const grants = useAppGrantAsks(origin)
   const chrome = useRef(CHROME_HEIGHT)
   chrome.current = place.surface === 'inline' ? CHROME_HEIGHT : 0
   const { box, onTarget } = useRoom(chrome)
@@ -267,7 +257,6 @@ function Stage({ instance }: { readonly instance: Instance }) {
     width: box.width,
     height: place.surface === 'inline' ? inlineHeight(10_000, window.innerHeight) : box.height,
     surface: place.surface,
-    ...(place.surface === 'home' && place.tile !== undefined ? { tileSize: place.tile.size } : {}),
   }
   return (
     <div ref={stage} className="app-stage" data-mode={surface} data-source={source} data-app={id} data-hidden="">
@@ -288,9 +277,7 @@ function Stage({ instance }: { readonly instance: Instance }) {
         placement={placement}
         events={{
           report: setError,
-          resize: (height) => {
-            if (place.surface !== 'home') host.setHeight(id, height)
-          },
+          resize: (height) => host.setHeight(id, height),
           close: () => host.close(id),
           requestMode: place.request,
           share: (text) => host.setContext(id, text),

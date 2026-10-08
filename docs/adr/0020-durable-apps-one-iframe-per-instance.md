@@ -40,7 +40,7 @@ folds the rest into "n more apps". App panes come back with a stored layout and 
 
 Consequences:
 
-- [ADR 0025](0025-home-surface.md) adds Main's Home slot with page > Home > inline precedence, fixed tile room and displaced stubs; the same canonical frame and grant boundaries apply.
+- [ADR 0025](0025-home-surface.md) records the deferred Home design. Current web placement is page > inline; saved Home layouts do not displace the canonical frame.
 - Moving an App between its place and its page keeps it running. Reloading the page, unloading or closing it starts
   it fresh; an App keeps whatever state it wants to survive that itself.
 - A call shown outside its own transcript (the message a thread branched from, above the thread) is a plain tool card.

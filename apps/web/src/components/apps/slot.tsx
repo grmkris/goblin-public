@@ -10,8 +10,6 @@ import { inlineHeight } from '../../lib/host-context.ts'
 import { appKey, isOpen } from '../../lib/workspace.ts'
 import { useOnScreen } from '../on-screen.ts'
 import { useWorkspace } from '../workspace.tsx'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
-import { showHome } from '../../lib/home.ts'
 import { type SlotName, useAppHost } from './host.tsx'
 
 /** A ref callback that registers the slot's element under `name` and tells the stages whenever it resizes. */
@@ -93,22 +91,6 @@ function InlinePlace({ app }: { readonly app: AppView }) {
 export function AppPlace({ app }: { readonly app: AppView }) {
   const workspace = useWorkspace()
   const key = appKey(app.id)
-  const tile = useWorkspaceFeed().home?.tiles.find((each) => each.kind === 'app' && each.appId === app.id)
-  if (tile !== undefined && !isOpen(workspace.state, key))
-    return (
-      <AppNote app={app} note="is on Home">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            workspace.open('c:1', 'beside')
-            requestAnimationFrame(() => showHome([tile.id]))
-          }}
-        >
-          On Home
-        </Button>
-      </AppNote>
-    )
   if (!isOpen(workspace.state, key)) return <InlinePlace app={app} />
   return (
     <AppNote app={app} note="is open as a page">

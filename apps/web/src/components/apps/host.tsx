@@ -42,7 +42,7 @@ export type Instance = {
 }
 
 /** Where a stage can be: an App's place in its transcript, or its page. */
-export type SlotName = `app-inline:${string}` | `app-home:${string}` | `app-page:${string}`
+export type SlotName = `app-inline:${string}` | `app-page:${string}`
 
 type Host = {
   readonly instances: ReadonlyMap<string, Instance>

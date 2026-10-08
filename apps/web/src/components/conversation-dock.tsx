@@ -165,13 +165,11 @@ export function ConversationDock({
   hint,
   placeholder,
   sendLabel,
-  draft,
 }: {
   readonly ref: RefObject<HTMLDivElement | null>
   readonly id: string
   readonly conversation: ReturnType<typeof useConversation>
   readonly model: ReturnType<typeof useModelChoice>
-  readonly draft?: { readonly text: string } | undefined
   readonly parts: readonly Part[]
   /** Who closed it, when it is closed. */
   readonly closed: 'owner' | 'done' | undefined
@@ -207,7 +205,6 @@ export function ConversationDock({
             <MessageComposer
               conversation={id}
               onNewThread={(contents) => workspace.moveDraft(contents, conversationKey(id))}
-              draft={draft}
               onSend={sendOwn}
               attach
               running={running}

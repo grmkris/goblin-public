@@ -1,6 +1,5 @@
 import {
   AppView,
-  HomeLayout,
   ConversationActivity,
   ConversationView,
   WorkspaceChange,
@@ -14,7 +13,6 @@ export type WorkspaceState = {
   readonly conversations: readonly ConversationView[]
   readonly activity: ReadonlyMap<string, ConversationActivity>
   readonly apps: readonly AppView[]
-  readonly home?: HomeLayout
 }
 
 export const EMPTY_WORKSPACE: WorkspaceState = { conversations: [], activity: new Map(), apps: [] }
@@ -29,14 +27,10 @@ export function fromSnapshot(snapshot: WorkspaceSnapshot): WorkspaceState {
     conversations: snapshot.conversations.toSorted(oldestFirst),
     activity: new Map(busy.map((activity) => [activity.id, activity])),
     apps: snapshot.apps.toSorted(byId),
-    ...(snapshot.home === undefined ? {} : { home: snapshot.home }),
   }
 }
 
 const byId = (a: AppView, b: AppView) => Number(a.id) - Number(b.id)
-const newestHome = (current: HomeLayout | undefined, next: HomeLayout): HomeLayout =>
-  next.revision >= (current?.revision ?? -1) ? next : (current ?? next)
-
 /** `items` with `item` in place of the one with its id, or added in `order`. */
 function upsert<T extends { readonly id: string }>(items: readonly T[], item: T, order: (a: T, b: T) => number) {
   const index = items.findIndex(({ id }) => id === item.id)
@@ -48,7 +42,7 @@ function upsert<T extends { readonly id: string }>(items: readonly T[], item: T,
  * order of creation), a removed App goes, and an activity replaces what its conversation was doing (idle drops it).
  */
 export function applyChanges(state: WorkspaceState, changes: readonly WorkspaceChange[]): WorkspaceState {
-  let { conversations, apps, home } = state
+  let { conversations, apps } = state
   const activity = new Map(state.activity)
   for (const change of changes) {
     if (change.type === 'activity') {
@@ -56,10 +50,10 @@ export function applyChanges(state: WorkspaceState, changes: readonly WorkspaceC
       else activity.set(change.activity.id, change.activity)
     } else if (change.type === 'app') apps = upsert(apps, change.app, byId)
     else if (change.type === 'app-removed') apps = apps.filter((app) => app.id !== change.id)
-    else if (change.type === 'home') home = newestHome(home, change.home)
+    else if (change.type === 'home') continue
     else conversations = upsert(conversations, change.conversation, oldestFirst)
   }
-  return { conversations, activity, apps, ...(home === undefined ? {} : { home }) }
+  return { conversations, activity, apps }
 }
 
 /**
@@ -81,29 +75,13 @@ export function withPendingApps(
   return { state: changes.length === 0 ? state : applyChanges(state, changes), settled }
 }
 
-/** An owner's Home edit shown as it will be, until the feed's Home reaches revision `until`. */
-export type PendingHome = { readonly until: number; readonly layout: HomeLayout }
-
-/**
- * `state` with the owner's Home edit shown, until the feed's own Home has caught up with it (`settled`): a change the
- * feed sends meanwhile about something else must not put the old order back on screen for a moment.
- */
-export function withPendingHome(
-  state: WorkspaceState,
-  pending: PendingHome | undefined,
-): { readonly state: WorkspaceState; readonly settled: boolean } {
-  if (pending === undefined) return { state, settled: false }
-  if ((state.home?.revision ?? -1) >= pending.until) return { state, settled: true }
-  return { state: { ...state, home: pending.layout }, settled: false }
-}
-
 /** What a conversation's agent is doing now. */
 export const activityState = (state: WorkspaceState, id: string): ConversationActivity['state'] =>
   state.activity.get(id)?.state ?? 'idle'
 
 const Items = Schema.Array(Schema.Unknown)
 const decodeSnapshotFrame = Schema.decodeUnknownSync(
-  Schema.Struct({ conversations: Items, activity: Items, apps: Items, home: Schema.optional(HomeLayout) }),
+  Schema.Struct({ conversations: Items, activity: Items, apps: Items }),
 )
 const decodeChangeFrame = Schema.decodeUnknownSync(Items)
 const decodeConversation = Schema.decodeUnknownOption(ConversationView)
@@ -125,7 +103,6 @@ export function decodeSnapshot(data: unknown): WorkspaceSnapshot {
     conversations: readable(frame.conversations, decodeConversation),
     activity: readable(frame.activity, decodeActivity),
     apps: readable(frame.apps, decodeApp),
-    ...(frame.home !== undefined && { home: frame.home }),
   }
 }
 

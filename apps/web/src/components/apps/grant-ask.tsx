@@ -11,7 +11,7 @@ const WAIT_MS = 120_000
 type Pending = { readonly name: string; readonly settle: (allowed: boolean) => void }
 
 /** The owner's answer for one tool, asked once however many calls wait on it. */
-export function useAppGrantAsks(serverId: string, onOpen?: () => void) {
+export function useAppGrantAsks(serverId: string) {
   const [asks, setAsks] = useState<readonly string[]>([])
   const waiting = useRef(new Map<string, Promise<boolean>>())
   const settlers = useRef(new Map<string, Pending['settle']>())
@@ -37,12 +37,7 @@ export function useAppGrantAsks(serverId: string, onOpen?: () => void) {
   const [first] = asks
   const card =
     first === undefined ? null : (
-      <AppGrantCard
-        serverId={serverId}
-        name={first}
-        {...(onOpen === undefined ? {} : { onOpen })}
-        onAnswer={(allowed) => answer(first, allowed)}
-      />
+      <AppGrantCard serverId={serverId} name={first} onAnswer={(allowed) => answer(first, allowed)} />
     )
   return { ask, card }
 }
@@ -56,11 +51,9 @@ function AppGrantCard({
   serverId,
   name,
   onAnswer,
-  onOpen,
 }: {
   readonly serverId: string
   readonly name: string
-  readonly onOpen?: () => void
   readonly onAnswer: (allowed: boolean) => void
 }) {
   const [busy, setBusy] = useState(false)
@@ -77,7 +70,7 @@ function AppGrantCard({
     }
   }
   return (
-    <div className="app-offer app-grant" role="alertdialog" aria-label="Permission request from the app">
+    <div className="app-offer" role="alertdialog" aria-label="Permission request from the app">
       <KeyRoundIcon aria-hidden />
       <span className="truncate">
         The app wants to use{' '}
@@ -92,11 +85,6 @@ function AppGrantCard({
       <Button size="app-action" disabled={busy} onClick={() => void allow()}>
         Allow
       </Button>
-      {onOpen !== undefined && (
-        <Button variant="ghost" size="app-action" onClick={onOpen}>
-          Open
-        </Button>
-      )}
     </div>
   )
 }

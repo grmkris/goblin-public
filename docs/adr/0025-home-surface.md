@@ -1,6 +1,8 @@
 # ADR 0025: Home surface
 
-Accepted 2026-10-06 with the owner; delivered to the dev stage separately from production.
+Accepted 2026-10-06. Web presentation deferred 2026-10-08 at the owner's request.
+
+The decision below records the original design. Main now contains the transcript and composer; Apps use page > inline placement. The Home grid, navigation, pinning and edit UI are removed. Runtime layouts, operations and app state remain intact for a later iteration.
 
 **Main has a desk below the conversation.** Home is a row after the newest exchange, inside the existing scroller and above the fixed composer. Threads and subagents have no Home. Main opens at its latest owner turn when that turn is today in local time; otherwise it opens Home. Now returns to that turn and the turn map's Home mark explicitly reaches the desk. Home is never a message anchor. Fixed size classes and opaque tiles keep loading and updates from moving the history reader.
 

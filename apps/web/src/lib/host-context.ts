@@ -1,4 +1,3 @@
-import type { TileSize } from '@goblin/contracts'
 import type {
   McpUiDisplayMode,
   McpUiHostContext,
@@ -61,10 +60,10 @@ const FIXED: Partial<McpUiStyles> = {
 }
 
 /** Our theme as MCP Apps style variables; tokens the document does not define are left out. */
-export function hostStyles(read: TokenReader, surface?: AppPlacement['surface']): McpUiStyles {
+export function hostStyles(read: TokenReader): McpUiStyles {
   const styles: Partial<McpUiStyles> = { ...FIXED }
   for (const [key, token] of THEMED) {
-    const value = read(surface === 'home' && key === '--color-background-primary' ? '--card' : token).trim()
+    const value = read(token).trim()
     if (value !== '') styles[key] = value
   }
   // SAFETY: McpUiStyles is Record<key, string | undefined>; a key that is absent reads as undefined, as the type allows.
@@ -78,8 +77,7 @@ export type AppPlacement = {
   readonly width: number
   /** Fixed on its page; inline the App picks its height up to this. */
   readonly height: number
-  readonly surface?: 'inline' | 'home' | 'page'
-  readonly tileSize?: TileSize
+  readonly surface?: 'inline' | 'page'
 }
 
 export type Device = {
@@ -99,13 +97,11 @@ export function hostContext(read: TokenReader, device: Device, placement: AppPla
   const height = Math.round(placement.height)
   return {
     theme: device.dark ? 'dark' : 'light',
-    styles: { variables: hostStyles(read, placement.surface) },
+    styles: { variables: hostStyles(read) },
     displayMode: placement.mode,
     availableDisplayModes: [...placement.available],
-    containerDimensions:
-      placement.mode === 'inline' && placement.surface !== 'home' ? { width, maxHeight: height } : { width, height },
+    containerDimensions: placement.mode === 'inline' ? { width, maxHeight: height } : { width, height },
     surface: placement.surface ?? (placement.mode === 'inline' ? 'inline' : 'page'),
-    tileSize: placement.tileSize ?? null,
     locale: device.locale,
     timeZone: device.timeZone,
     platform: device.touch && !device.hover ? 'mobile' : 'web',

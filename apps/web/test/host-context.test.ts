@@ -48,24 +48,6 @@ describe('the host context an MCP App receives', () => {
       containerDimensions: { width: 390, height: 700 },
     })
   })
-  it('gives Home a fixed box and a presentation hint without any authority', () => {
-    const home = hostContext(read, device, {
-      mode: 'inline',
-      available: APP_MODES,
-      width: 300,
-      height: 110,
-      surface: 'home',
-      tileSize: 'medium',
-    })
-    expect(home).toMatchObject({
-      surface: 'home',
-      tileSize: 'medium',
-      containerDimensions: { width: 300, height: 110 },
-    })
-    expect(home.styles?.variables?.['--color-background-primary']).toBe('oklch(0.24 0.006 255)')
-    expect(home.containerDimensions).not.toHaveProperty('maxHeight')
-    expect(home).not.toHaveProperty('grants')
-  })
   it('keeps an inline App between a usable minimum and most of the viewport', () => {
     expect(inlineHeight(undefined, 900)).toBe(440)
     expect(inlineHeight(40, 900)).toBe(160)

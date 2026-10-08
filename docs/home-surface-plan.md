@@ -1,6 +1,8 @@
 # Home Surface and Agent-Controlled Widgets
 
-Status: **Implemented for dev (2026-10-06)**. Reviewed against the code on 2026-10-06; the review's changes are
+> Deferred 2026-10-08: the Home UI is removed from Main. Runtime layouts and app data remain intact. The design below is a proposal for a later iteration, not current browser behavior.
+
+Status: **Deferred (2026-10-08)**. The original dev implementation was reviewed on 2026-10-06; the review's changes are
 folded into the sections below, its answers to the open questions are in section 10, the visual and motion direction is
 section 11 and the definition of "delivered" is section 12. Slices 1–5 describe the implementation; the items under Later remain deferred.
 The delivery target is `https://dev.goblin.surf`; production stays a separate owner step. Round 2 adds agent-made

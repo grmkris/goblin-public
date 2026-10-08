@@ -119,28 +119,10 @@ import { Check, Trash2 } from 'lucide-react'
 Use Recharts or react-leaflet directly for what the kit does not draw; on a react-leaflet map use `CircleMarker`, not
 `Marker`.
 
-## Home tiles
+## App placement
 
-An app has one live frame, shared by its chat, Home and page. `useHost()` from `@goblin/app` follows its placement:
-`{ surface: 'inline' | 'home' | 'page', tileSize?: 'small' | 'medium' | 'large' | 'wide', width, height }`. On Home,
-width and height are fixed; resize requests do not change the tile. Use a compact glance view, a handful of rows and
-one primary action. Open gives the owner the full page without resetting React state or the action bridge.
-Home supplies the tile's card colour as the frame background and places the frame flush under its label. Draw the glance contents directly; reserve an outer Card for the full-page variant.
+An app has one live frame shared by its chat and page. `useHost()` from `@goblin/app` follows the current surface (`inline` or `page`) and available width and height. Inline height requests are bounded by the host; a page fills its pane. Opening a page and returning to chat preserves React state and the action bridge.
 
-```tsx
-const host = useHost()
-const compact = host.surface === 'home'
-const shown = compact ? books.slice(0, host.tileSize === 'large' ? 5 : 2) : books
-```
+Home dashboard presentation is deferred. Do not offer to place new apps there: saved layouts are retained by the runtime, but currently have no browser surface.
 
-After building an app with a view in Main, offer to put it on Home. Read `home_read` for its App id and layout revision, then call `home_edit` with an
-`add` operation (`kind: 'app'`, that `appId`, a new tile `id`, and `size: 'medium'` or `'large'`). Read again if the
-revision is stale. Placing grants no power and starts no model. Remove from Home keeps the app; Close unloads the
-view and leaves a Closed · Show tile. Page > Home > chat is the placement order; other places show a stub. Only the owner pins MCP Apps; agent apps
-continue to use `home_edit`. A note figure is a snapshot and names when it was true; scheduled app state is the path
-for live data. Keep compact rows and freshness inside `host.height`, with clip/fade only as a fallback.
-
-For a live inbox or calendar glance, use an agent app rather than a built-in tile adapter. Declare the exact connected
-tool in `uses.tools`, refresh it with a `{ action: 'refresh', every: '15m' }` schedule, validate and bound the response in
-`prepare`, and retain the last good state when a refresh fails. Show freshness and the last error on Home; the complete
-example is in the `app_docs` `examples` topic. The owner must connect the real server and approve the app power.
+For a live inbox or calendar view, declare the exact connected tool in `uses.tools`, refresh it with a `{ action: 'refresh', every: '15m' }` schedule, validate and bound the response in `prepare`, and retain the last good state when a refresh fails. Show freshness and the last error; the complete example is in the `app_docs` `examples` topic. The owner must connect the real server and approve the app power.

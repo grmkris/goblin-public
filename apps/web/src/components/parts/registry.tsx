@@ -13,7 +13,6 @@ import { type Interaction, interactionOf } from '../../lib/interactions.ts'
 import { type Part, type ToolPart, samePart } from '../../lib/parts.ts'
 import { subagentAction } from '../../lib/threads.ts'
 import { ThreadStartedRow } from '../inline-thread.tsx'
-import { HomeReceipt } from '../home/receipt.tsx'
 import { AppBuildPart } from './app-build-part.tsx'
 import { McpToolPart } from './mcp-tool-part.tsx'
 import { AssistantText, UserText } from './text-part.tsx'
@@ -87,7 +86,6 @@ function ToolView({ part }: { readonly part: ToolPart }) {
   if (interaction !== undefined) return <InteractionReceipt interaction={interaction} />
   if (part.target) return <McpToolPart part={part} />
   if (part.built !== undefined) return <AppBuildPart part={part} />
-  if (part.call.name === 'home_edit') return <HomeReceipt part={part} />
   // `routine` is the single tool older transcripts used (ADR 0027).
   if (part.call.name === 'routine_propose' || part.call.name === 'routine') return <RoutineProposalPart part={part} />
   return subagentAction(part) === undefined ? <GenericToolPart part={part} /> : <SubagentBlock part={part} />

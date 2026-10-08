@@ -13,8 +13,7 @@ let ready: Promise<void> | undefined
 let snapshot: Snapshot | undefined
 const listeners = new Set<() => void>()
 export type Host = {
-  readonly surface: 'inline' | 'home' | 'page'
-  readonly tileSize?: 'small' | 'medium' | 'large' | 'wide'
+  readonly surface: 'inline' | 'page'
   readonly width: number
   readonly height: number
 }
@@ -24,11 +23,9 @@ const hostListeners = new Set<() => void>()
 /** Presentation only: the host's current surface and fixed room grant no powers. */
 function acceptHost(context: ReturnType<App['getHostContext']>): void {
   if (context === undefined) return
-  const size = context.tileSize
   const dimensions = context.containerDimensions ?? { width: 0, height: 0 }
   host = {
-    surface: context.surface === 'home' || context.surface === 'page' ? context.surface : 'inline',
-    ...(size === 'small' || size === 'medium' || size === 'large' || size === 'wide' ? { tileSize: size } : {}),
+    surface: context.surface === 'page' ? 'page' : 'inline',
     width: 'width' in dimensions ? dimensions.width : (dimensions.maxWidth ?? 0),
     height: 'height' in dimensions ? dimensions.height : (dimensions.maxHeight ?? 0),
   }
@@ -40,7 +37,7 @@ const subscribeHost = (listener: () => void) => {
   return () => hostListeners.delete(listener)
 }
 
-/** Follows tile ↔ page moves without remounting the view or discarding its local state. */
+/** Follows conversation ↔ page moves without remounting the view or discarding its local state. */
 export function useHost(): Host {
   return useSyncExternalStore(subscribeHost, () => host)
 }

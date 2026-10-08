@@ -242,7 +242,7 @@ phones it is a drawer from the left edge (`DrawerSide` in `@goblin/ui`) that a s
 released yet; `bun run check:patches` proves the patch is installed). Each of
 the owner's turns (typed in the app or sent from Telegram, `isOwnTurn` in `lib/parts.ts`) is a scroll anchor; a
 message from an MCP client, a subagent, a routine or a thread's share-back arrives without moving the view. Until its
-snapshot arrives a pane shows nothing. Ordinary conversations open at their end; Main opens at today's latest owner turn or at Home on a new day. A turn map in the transcript's right gutter
+snapshot arrives a pane shows nothing. Conversations open at their end. A turn map in the transcript's right gutter
 (`components/turn-map.tsx`) marks each of the owner's turns where it sits, with a band for what is on screen; hovering it
 lists the turns and a click jumps to one. Without a fine pointer, or in a narrow window, an edge tab opens the list as a
 bottom drawer that a swipe down closes. The view follows a streaming reply only while the reader is at the end, and
@@ -404,8 +404,8 @@ transcript; keeping and launching grant nothing.
 
 Several Apps run at once, in any conversation the owner views (`components/apps`). `AppHost` holds one instance per
 loaded App, and `AppLayer` draws one fixed stage per instance outside the panes, never moved in the DOM, so nothing
-reparents an opaque frame or replaces its bridge. A stage follows its App's page, then its Home tile, then its place
-under its tool row (`app-page:<id>`, `app-home:<id>`, `app-inline:<id>` slots), frame by frame, including while panes scroll, and
+reparents an opaque frame or replaces its bridge. A stage follows its App's page, then its place
+under its tool row (`app-page:<id>`, `app-inline:<id>` slots), frame by frame, including while panes scroll, and
 springs between these places (`lib/spring.ts`). It clips itself to the containers that scroll its slot and to the band of
 the pane's pill and its composer (`data-app-cover`, `lib/app-occlusion.ts`), which also keeps pointer events off what is
 hidden; text fades out under the same chrome through a mask on the transcript. An App
@@ -421,8 +421,8 @@ Apps group and on the Apps page (`/apps`, `/apps/<name>`: `components/apps-page.
 host-drawn, per App.
 
 The App learns the host context (`lib/host-context.ts`): theme, our tokens as MCP Apps style variables, device,
-locale and time zone, its display mode, surface and tile size, the modes on offer, and its measured box. The host re-sends it when these change.
-On its page the App fills the pane; Home supplies a fixed tile box and card background; in its transcript its own height request is bounded (160px to 70% of the window).
+locale and time zone, its display mode, surface, the modes on offer, and its measured box. The host re-sends it when these change.
+On its page the App fills the pane; in its transcript its own height request is bounded (160px to 70% of the window).
 
 Two more requests are drawn by the host, where the App cannot reach (`lib/app-context.ts`). A link the App asks to
 open (https only, no credentials) becomes an offer with a real anchor, so only the owner's click opens it. Context
@@ -486,7 +486,7 @@ failed names that bundle, a view module that throws shows the error card instead
 come together go out as one notice once the frame is connected (`packages/app/src/ui/core.ts`, `sdk.ts`). A bundle's
 own message reads "Script error." because the frame is a different origin from the bundles. A new release reloads the
 frame; a new revision is pushed into it. In the transcript the view shows under the newest build of it with one.
-Inline agent app views have a borderless host surface and a quiet toolbar for page, Home and close controls; the view
+Inline agent app views have a borderless host surface and a quiet toolbar for page and close controls; the view
 owns its canvas styling. External MCP Apps retain their framed host surface.
 
 Beyond its state and files, an app reaches only the powers it declares and the owner approves (ADR 0021):
@@ -891,15 +891,8 @@ and requires owner reconfirmation. Pause/edit/archive retire the consumer; pause
 retired receipt cannot become live again. Local signed-fixture proof is separate from real producer acceptance. See
 [ADR 0012](adr/0012-routines.md).
 
-## Home surface
+## Deferred Home dashboard
 
-Main alone renders Home below the newest transcript row, inside the MessageScroller and above the fixed dock (ADR 0025). Today's latest owner turn is the landing anchor; otherwise Main opens Home. The turn map's Home mark reaches the scroller's end, with the last grid row within 24 px of the dock and no jump arrow. Reserved turn space sits above Home. Home is never a new-message anchor. Fixed tile spans and rows keep frame loads and content updates from shifting earlier messages.
+Main contains the transcript and composer, without a dashboard above the input. It opens at the transcript's end and uses the same jump button as other conversations. Apps follow page > inline placement; saved Home tiles no longer displace their tool-row views. The browser has no Home pinning, edit mode, tile renderer or special receipt actions.
 
-`HomeService` (`home/service.ts`) owns `app_home` and `app_home_operations`, separate from Pi and app state. `HomeLayout` in contracts is an ordered list, revision and bounded note/app/conversation tiles: 24 tiles, eight distinct Apps (agent rows need a view), 60-character note titles and 4 KiB markdown. `/api/home` reads or edits only the authenticated owner's agent. Every atomic edit has an operation id and expected revision: replays return the stored receipt; stale writes return the current layout. `home_read` and `home_edit` are offered on Main and threads, never routine/subagent runs. The agent manages its own tiles; changing an owner tile returns an ask. The owner UI calls the same service. Undo refuses to overwrite an intervening edit. App deletion drops its placement in the same service operation. The workspace snapshot includes Home and each change sends the full layout to every tab.
-
-`app-home:<id>` joins the stage slots, with page > Home > inline precedence. One canonical iframe and bridge remain in the fixed App layer. Displaced places show stubs. Home has fixed room and ignores resize requests; `useHost()` exposes surface, tile size, width and height to an agent-app view. Nearby tiles load lazily, closed and dormant frames wait for Show, and the existing six-instance soft cap retains visible Apps. Remove keeps the app, Close leaves its tile, and release changes reload in place. The stage keeps measuring through resize reflow in reduced motion, and Home grant cards overlay the frame inside the fixed body. Show for a closed MCP App uses the keep-call POST to reverify its declaration. Placement never grants a power or MCP authority. An owner can add an open MCP App after the runtime launches it and rechecks the originating tool's declared resource; an agent cannot add one. Closed MCP tiles remain in the layout and do not block other edits. The browser's `/api/mcp/` writes are same-origin checked, and the browser App bridge forwards calls only to the originating server. Server-side App-id-to-server routes remain a follow-up. There are no built-in metric or chart adapters: live external data uses an agent app, such as the MyInbox 15-minute newest-five pattern with last-good retention and freshness/error state.
-
-Home notes use the same lazy transcript figure renderer for Mermaid, map and chart fences, flattened onto the tile card
-surface. The fixed body clips with a bottom fade only as a fallback. A note is a dated snapshot; live updates belong
-to agent apps. Ask for a tile, empty-state starters and the edit placeholder only fill the composer. The agent's Home
-guidance distinguishes snapshots, scheduled apps and MCP Apps pinned by the owner.
+The runtime Home service, `/api/home`, tools, contracts and application tables remain active. Layout revisions, operation replay, owner authority and app-deletion cleanup still apply. Saved layouts and app state remain intact for a later UI iteration (ADR 0025). Layout edits currently have no visible browser surface; the agent's guidance says so and does not offer Home placement.

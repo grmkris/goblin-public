@@ -42,7 +42,7 @@ import { defineApp, s } from '@goblin/app'
 import { tally } from './lib'
 ```
 
-## An inbox or calendar glance tile
+## An inbox or calendar glance
 
 Use the server id shown in Connections. This example calls `myinbox/message_list` every 15 minutes, validates the
 untrusted result in `prepare`, and keeps the newest five messages. A failed refresh keeps the last good messages and
@@ -132,9 +132,9 @@ export default defineApp({
 })
 ```
 
-## Home view
+## Inline and page view
 
-The view is presentation only. On Home it shows two rows and freshness, or one row with the last refresh error; the page can show five. It never calls the server directly.
+The view is presentation only. In the conversation it shows two rows and freshness, or one row with the last refresh error; the page can show five. It never calls the server directly.
 
 ```tsx
 import { useAppState, useHost } from '@goblin/app'
@@ -143,16 +143,16 @@ import type { State } from './app'
 export default function View() {
   const host = useHost()
   const [state] = useAppState<State>()
-  const home = host.surface === 'home'
-  const rows = state.messages.slice(0, home ? (state.error === undefined ? 2 : 1) : 5)
+  const inline = host.surface === 'inline'
+  const rows = state.messages.slice(0, inline ? (state.error === undefined ? 2 : 1) : 5)
   const updated = state.refreshedAt === null ? null : new Date(state.refreshedAt)
   return (
-    <div className={home ? 'flex flex-col gap-1 p-2' : 'flex flex-col gap-2 p-3'}>
-      {!home && <strong>Inbox</strong>}
+    <div className={inline ? 'flex flex-col gap-1 p-2' : 'flex flex-col gap-2 p-3'}>
+      {!inline && <strong>Inbox</strong>}
       <span className="truncate text-xs text-muted-foreground">
         {updated === null
           ? 'Never refreshed'
-          : `Updated ${home ? updated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : updated.toLocaleString()}`}
+          : `Updated ${inline ? updated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : updated.toLocaleString()}`}
       </span>
       {state.error !== undefined && <span className="truncate text-xs text-destructive">{state.error}</span>}
       {rows.map((message) => (
