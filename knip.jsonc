@@ -35,6 +35,10 @@
       "entry": ["scripts/server.ts!", "scripts/prepare.ts!"],
       "project": ["scripts/**/*.ts", "test/**/*.ts"],
     },
+    "spikes/coding-cf": {
+      "entry": ["src/index.ts!", "runner/server.ts!", "scripts/prepare.ts!", "scripts/stack.ts!"],
+      "project": ["src/**/*.ts", "runner/**/*.ts", "scripts/**/*.ts"],
+    },
     "tools": {
       "entry": ["*.ts!", "oxlint/*.ts!"],
       "ignoreDependencies": ["@effect/tsgo"],

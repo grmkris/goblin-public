@@ -7,6 +7,7 @@ import { GitHub } from './github.ts'
 import { OAuth } from './oauth.ts'
 import { SpikeError } from './overlay.ts'
 import { compilers } from './binaries.ts'
+import { RemoteVerifier } from './remote.ts'
 
 const ConfigFile = Schema.Struct({
   repo: Schema.String,
@@ -18,6 +19,7 @@ const ConfigFile = Schema.Struct({
   origin: Schema.String,
   ownerOrigin: Schema.String,
   adminKey: Schema.String,
+  runner: Schema.optional(Schema.Struct({ endpoint: Schema.String, token: Schema.String })),
 })
 const configPath = Bun.argv[2] ?? '.local/coding-spike/config.json'
 const config = Schema.decodeUnknownSync(ConfigFile)(await Bun.file(configPath).json())
@@ -32,6 +34,7 @@ for (const name of names) {
   const file = Bun.file(path.join(config.root, name))
   if (file.size <= 100_000) files.set(name, await file.text())
 }
+const runner = config.runner
 const coding = new Coding({
   root: config.root,
   base: config.base,
@@ -39,6 +42,7 @@ const coding = new Coding({
   compilers: compilers(config.state),
   github: new GitHub(config.repo, config.gh),
   state: path.join(config.state, 'sessions.json'),
+  ...(runner ? { verifier: (overlay) => new RemoteVerifier(runner.endpoint, runner.token, overlay) } : {}),
 })
 const oauth = new OAuth(config.origin, config.ownerOrigin, config.adminKey, path.join(config.state, 'oauth.json'))
 await oauth.restore()
@@ -57,6 +61,7 @@ const server = Bun.serve({
           repo: config.repo,
           base: config.base,
           sessions: coding.sessions.size,
+          verifier: config.runner ? 'cloudflare-container' : 'netcup-native',
         })
       if (request.method === 'POST' && Number(request.headers.get('content-length') ?? 0) > 200_000)
         return new Response(null, { status: 413 })

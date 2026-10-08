@@ -36,6 +36,8 @@ native regression requires the prepared snapshot. Run the root `heavy bun run ch
 Start from the repository root with `bun spikes/coding/scripts/server.ts .local/coding-spike/config.json`. It binds
 loopback port 18983. A private tmux session can retain this temporary service; do not install a permanent host unit.
 Expose that port with an HTTPS Cloudflare tunnel, put its origin in the private config, and restart the server.
+An optional private `runner` field selects the isolated Cloudflare verifier instead of native checks; see
+`spikes/coding-cf/README.md` for a parallel connection and a comparison using the same fixture.
 
 Add the HTTPS `/mcp` endpoint to Goblin's dev connections. Complete its authorization URL through an operator script
 that sends the private admin key as an Authorization header and follows the returned callback with the owner's dev

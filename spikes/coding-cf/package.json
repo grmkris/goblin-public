@@ -1,0 +1,23 @@
+{
+  "name": "goblin-coding-cf-spike",
+  "private": true,
+  "workspaces": [],
+  "type": "module",
+  "scripts": {
+    "image:prepare": "bun scripts/prepare.ts",
+    "compare": "bun scripts/compare.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "infra": "bun ../../node_modules/alchemy/bin/alchemy.js",
+    "account": "wrangler whoami"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "0.3.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260928.1",
+    "@types/bun": "1.4.2",
+    "@types/node": "22.18.0",
+    "typescript": "7.0.2",
+    "wrangler": "4.148.0"
+  }
+}

@@ -1,6 +1,6 @@
 import { McpServer, type StandardSchemaWithJSON } from '@modelcontextprotocol/server'
 import * as Schema from 'effect/Schema'
-import { digest, Overlay, SpikeError } from './overlay.ts'
+import { digest, Overlay, SpikeError, type Check } from './overlay.ts'
 import type { GitHub } from './github.ts'
 import { Verifier } from './verifier.ts'
 import { State } from './state.ts'
@@ -12,8 +12,13 @@ const Bounded = (max: number) => Schema.String.check(Schema.isMinLength(1), Sche
 const Session = Schema.Struct({ session: Bounded(64) })
 const Revision = Schema.Struct({ session: Bounded(64), revision: Bounded(64) })
 
+export interface CodingVerifier {
+  ready(): Promise<Check>
+  close(): Promise<void>
+}
+
 export class Coding {
-  readonly sessions = new Map<string, { overlay: Overlay; verifier: Verifier }>()
+  readonly sessions = new Map<string, { overlay: Overlay; verifier: CodingVerifier }>()
   checking = false
   readonly state: State
   constructor(
@@ -24,6 +29,7 @@ export class Coding {
       compilers: { type: string; effect: string }
       github: GitHub
       state: string
+      verifier?: (overlay: Overlay) => CodingVerifier
     },
   ) {
     this.state = new State(options.state)
@@ -32,7 +38,10 @@ export class Coding {
 
   private add(overlay: Overlay): void {
     const { root, compilers } = this.options
-    this.sessions.set(overlay.id, { overlay, verifier: new Verifier(root, overlay, compilers.effect, compilers.type) })
+    this.sessions.set(overlay.id, {
+      overlay,
+      verifier: this.options.verifier?.(overlay) ?? new Verifier(root, overlay, compilers.effect, compilers.type),
+    })
   }
 
   private save(): void {
@@ -204,9 +213,9 @@ export class Coding {
       async (args) => {
         const { overlay, verifier } = this.session(args.session)
         if (overlay.busy) throw new SpikeError('session_busy')
+        await verifier.close()
         this.sessions.delete(args.session)
         this.save()
-        await verifier.close()
         return { closed: true }
       },
     )
