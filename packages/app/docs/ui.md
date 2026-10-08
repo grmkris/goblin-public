@@ -110,7 +110,9 @@ import { MapView } from '@goblin/kit/map'
 
 import { Diagram } from '@goblin/kit/diagram'
 const flow = 'graph TD\n  A --> B'
+// Offers an explorer for zoom, pan and node connections inside this frame.
 <Diagram source={flow} fallback={<pre>{flow}</pre>} />
+// Pass interactive={false} for an image preview only.
 
 import { Check, Trash2 } from 'lucide-react'
 <Trash2 className="size-4" />

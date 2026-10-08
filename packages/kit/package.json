@@ -17,6 +17,7 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
+    "@panzoom/panzoom": "4.6.2",
     "beautiful-mermaid": "1.1.3",
     "effect": "4.0.0",
     "leaflet": "1.9.4",

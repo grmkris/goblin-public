@@ -1,10 +1,10 @@
 import { renderMermaidSVG } from 'beautiful-mermaid'
-import { type ReactNode, useMemo } from 'react'
+import { type ReactNode, useId, useMemo, useRef, useState } from 'react'
+import { DiagramExplorer } from './diagram-explorer.tsx'
 import { type Theme, useTheme } from './theme.ts'
 
-/** Longer Mermaid sources are shown as code: layout runs on the page's thread. */
+/** Longer Mermaid sources stay readable code: layout runs on the page thread. */
 const MAX_SOURCE = 20_000
-
 type Colors = {
   readonly bg: string
   readonly fg: string
@@ -48,18 +48,46 @@ export function diagramSvg(source: string, colors: Colors): string | undefined {
   }
 }
 
-/**
- * A Mermaid diagram, inert: an `<img>` of the SVG, so nothing in it runs or loads, redrawn when the theme changes.
- * `fallback` shows when the source is not a diagram it can draw.
- */
-export function Diagram({ source, fallback }: { readonly source: string; readonly fallback: ReactNode }) {
+/** An inert SVG preview with an optional read-only explorer; unsupported sources show the fallback. */
+export function Diagram({
+  source,
+  fallback,
+  interactive = true,
+}: {
+  readonly source: string
+  readonly fallback: ReactNode
+  readonly interactive?: boolean
+}) {
   const theme = useTheme()
+  const scope = `kit-diagram-${useId().replaceAll(/[^a-zA-Z0-9_-]/gu, '-')}`
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [open, setOpen] = useState(false)
   const svg = useMemo(() => diagramSvg(source, colorsFor(theme)), [source, theme])
   if (svg === undefined) return fallback
   const kind = source.trim().split(/\s/u, 1)[0] ?? 'diagram'
   return (
     <figure className="kit-diagram">
       <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`} alt={`Diagram (${kind})`} />
+      {interactive && (
+        <button
+          ref={triggerRef}
+          type="button"
+          className="kit-diagram-explore"
+          onClick={() => setOpen(true)}
+          aria-haspopup="dialog"
+        >
+          Explore diagram
+        </button>
+      )}
+      {interactive && open && (
+        <DiagramExplorer
+          key={`${theme}:${source}`}
+          svg={svg}
+          scope={scope}
+          onClose={() => setOpen(false)}
+          triggerRef={triggerRef}
+        />
+      )}
     </figure>
   )
 }

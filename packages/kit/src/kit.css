@@ -18,6 +18,177 @@
   height: auto;
   margin: 0;
 }
+.kit-diagram-explore {
+  margin-block-start: 0.5rem;
+}
+.kit-diagram-explore,
+.kit-diagram-explorer-toolbar button {
+  min-block-size: 2.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding-inline: 0.75rem;
+  background: var(--card);
+  color: var(--card-foreground);
+  font: inherit;
+  font-size: var(--text-13);
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.kit-diagram-explore:active,
+.kit-diagram-explorer-toolbar button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+@media (hover: hover) and (pointer: fine) {
+  .kit-diagram-explore:hover,
+  .kit-diagram-explorer-toolbar button:hover:not(:disabled) {
+    background: color-mix(in oklch, var(--card) 88%, var(--foreground));
+  }
+}
+.kit-diagram-explore:focus-visible,
+.kit-diagram-explorer-toolbar button:focus-visible,
+.kit-diagram-explorer-canvas [data-diagram-selectable]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.kit-diagram-explorer {
+  box-sizing: border-box;
+  block-size: min(85dvh, 60rem);
+  inline-size: min(96vw, 72rem);
+  max-inline-size: min(96vw, 72rem);
+  max-block-size: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  overflow: clip;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 1.5rem 4rem color-mix(in oklch, var(--foreground) 22%, transparent);
+}
+.kit-diagram-explorer::backdrop {
+  background: color-mix(in oklch, var(--background) 58%, transparent);
+  backdrop-filter: blur(3px);
+}
+.kit-diagram-explorer[open] {
+  display: flex;
+  flex-direction: column;
+  padding-block-end: env(safe-area-inset-bottom, 0px);
+}
+.kit-diagram-explorer-header {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-block-end: 1px solid var(--border);
+}
+.kit-diagram-explorer-header h2 {
+  margin: 0;
+  font-size: var(--text-15);
+  font-weight: 600;
+}
+.kit-diagram-explorer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.kit-diagram-explorer-toolbar output {
+  min-inline-size: 3.5rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.kit-diagram-explorer-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.kit-diagram-explorer-viewport {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  min-block-size: 0;
+  overflow: clip;
+  overscroll-behavior: contain;
+  background: color-mix(in oklch, var(--muted) 35%, var(--card));
+  touch-action: none;
+}
+.kit-diagram-explorer-canvas {
+  display: grid;
+  place-items: center;
+  inline-size: 100%;
+  block-size: 100%;
+  max-inline-size: none;
+  max-block-size: none;
+}
+.kit-diagram-explorer-canvas > svg {
+  display: block;
+  max-inline-size: none;
+  max-block-size: none;
+}
+.kit-diagram-explorer-canvas [data-diagram-selectable] {
+  cursor: pointer;
+  user-select: none;
+}
+.kit-diagram-explorer-canvas [data-diagram-selectable]:active {
+  opacity: 0.75;
+}
+.kit-diagram-explorer-canvas .kit-diagram-selected {
+  filter: drop-shadow(0 0 0.3rem var(--ring));
+}
+.kit-diagram-explorer-canvas .kit-diagram-related {
+  filter: drop-shadow(0 0 0.18rem color-mix(in oklch, var(--ring) 72%, transparent));
+}
+.kit-diagram-explorer-canvas .kit-diagram-dimmed {
+  opacity: 0.2;
+}
+.kit-diagram-explorer-help {
+  flex: none;
+  margin: 0;
+  padding: 0.625rem 1rem 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-13);
+}
+.kit-diagram-explorer-status {
+  flex: none;
+  margin: 0;
+  min-block-size: 1.5rem;
+  padding: 0.25rem 1rem 0.75rem;
+  color: var(--muted-foreground);
+  font-size: var(--text-13);
+}
+@media (pointer: coarse) {
+  .kit-diagram-explore,
+  .kit-diagram-explorer-toolbar button {
+    min-block-size: 2.75rem;
+    min-inline-size: 2.75rem;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .kit-diagram-explore,
+  .kit-diagram-explorer-toolbar button,
+  .kit-diagram-explorer-canvas .kit-diagram-related,
+  .kit-diagram-explorer-canvas .kit-diagram-dimmed {
+    transition:
+      transform 160ms ease-out,
+      background 160ms ease-out,
+      opacity 160ms ease-out,
+      filter 160ms ease-out;
+  }
+}
+@media (max-width: 40rem) {
+  .kit-diagram-explorer {
+    block-size: 100dvh;
+    inline-size: 100vw;
+    max-inline-size: 100vw;
+    max-block-size: 100dvh;
+    border-inline: 0;
+    border-radius: 0;
+  }
+}
 .kit-chart-plot {
   height: 16rem;
 }

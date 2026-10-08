@@ -13,7 +13,7 @@ message. While a reply streams, the block whose fence is still open stays code u
 `Chart` and `MapView`. Agent apps use the same components in their sandboxes; there is no second chart or map stack.
 Ordinary Markdown is the default for timelines, checklists, comparisons and small sets of values.
 
-**Diagrams are inert images.** beautiful-mermaid (1.5 MB, a fraction of Mermaid's 5.2 MB) lays out flowchart,
+**Diagram previews are inert images.** beautiful-mermaid (1.5 MB, a fraction of Mermaid's 5.2 MB) lays out flowchart,
 sequence, class, state and ER diagrams and xycharts. Its SVG becomes an `<img>` data URI, so nothing in it runs, links
 or loads; its unconditional Google Fonts import is removed and it uses the system font. An image cannot read the
 page's CSS, so the theme's tokens are resolved to concrete colours when it is drawn, and it redraws when the theme
@@ -40,3 +40,16 @@ Consequences:
   and app views. Historical fences remain readable code. New app builds reject its imports; old releases receive no
   compatibility bundle and can fail through the existing app-view error handling. Historical acceptance stays in
   `evidence/mdxcn-20261006/`.
+
+- **2026-10-08: read-only diagram explorer.** Keep beautiful-mermaid 1.1.3 and the inert image preview. `Diagram`
+  defaults to `interactive={true}`; **Explore diagram** opens a native dialog shared by chat and agent apps, within
+  each app's frame. Panzoom 4.6.2 handles wheel/pinch zoom and dragging, bounded to 1–4× the fitted size. Fit restores
+  that size. Click/tap/Enter/Space selects a node; immediate neighbors and incident relationships stay bright while
+  unrelated elements dim. Fine-pointer hover previews those connections. Blank space clears selection; Escape clears
+  it, then closes. Focus enters the dialog and returns to the trigger; node buttons and selection announcements
+  support keyboard and assistive technology. XY charts keep view navigation without inventing graph nodes.
+  Before inline insertion, the kit rebuilds a passive SVG allowlist, scopes the renderer's CSS and namespaces IDs
+  and marker references per instance. It drops scripts, event attributes, foreignObject, imports, links, external
+  paint URLs and arbitrary CSS. Unsupported sources still show code. No editing, model callbacks or node links;
+  search and asking the agent about a selection are deferred. Local Chromium acceptance covers source chat rendering
+  and built app bundles in an opaque sandbox; this is not physical-device or deployed acceptance.

@@ -170,6 +170,7 @@
       "name": "@goblin/kit",
       "version": "0.1.0",
       "dependencies": {
+        "@panzoom/panzoom": "4.6.2",
         "beautiful-mermaid": "1.1.3",
         "effect": "4.0.0",
         "leaflet": "1.9.4",
@@ -887,6 +888,8 @@
     "@oxlint/binding-win32-x64-msvc": ["@oxlint/binding-win32-x64-msvc@1.81.0", "", { "os": "win32", "cpu": "x64" }, "sha512-IZuUCwGw9emG5JtCp+fYGB+Z4OWEoeEcM8R5BA1pYw63/ieYFVdcU2ylxTpHbVHSenZnsYE+ZZ20uHAJszQ4cA=="],
 
     "@oxlint/plugins": ["@oxlint/plugins@1.81.0", "", {}, "sha512-HhD8kd3r6XpelZkhxhRty/po8V6yK1VV63Eq4kSsOS2IoHUywG3DV2EX+z/ZHw46aLI74Y6aA604NRiAqLKW9w=="],
+
+    "@panzoom/panzoom": ["@panzoom/panzoom@4.6.2", "", {}, "sha512-Zn3B5/hwa6eYIPRSKX0xf2clv8nviTX8AnAU5kU/EugiTDhG41ya2wlBqYrZJYCWQROr/5XkWObZhIkepi89qw=="],
 
     "@paper-design/shaders": ["@paper-design/shaders@0.0.81", "", {}, "sha512-jeGdyjMscZ2bxmQdo8lhwUufHUf4iq3s1ayjh8PXU7Go42Rw8E3I0It1FZdc3HuWt5J82m//DRWaxsRqRfA4Gg=="],
 
