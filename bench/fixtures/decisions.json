@@ -1,0 +1,4428 @@
+[
+  {
+    "id": "context-relevance-01",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "What did we choose for deploy?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "deploy",
+          "excerpt": "Use retry limit 5.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "other",
+          "excerpt": "A hiking party retries a summit ascent.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "no",
+      "c3": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "The latest owner choice directly answers the request."
+  },
+  {
+    "id": "context-relevance-02",
+    "task": "context-relevance",
+    "category": "ambiguous",
+    "state": {
+      "request": "Help with our deploy plan.",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "different",
+          "excerpt": "A hiking party retries a summit ascent.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "Superficial vocabulary overlap has a different subject."
+  },
+  {
+    "id": "context-relevance-03",
+    "task": "context-relevance",
+    "category": "do-nothing",
+    "state": {
+      "request": "What is the dentist appointment time?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "deploy",
+          "excerpt": "Use retry limit 5.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c6",
+          "topic": "music",
+          "excerpt": "Practice the cello scales.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "c6": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "No candidate supplies the requested appointment information."
+  },
+  {
+    "id": "context-relevance-04",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "Use the discussion in deploy even though it is archived.",
+      "explicitReferences": ["deploy"],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "deploy",
+          "excerpt": "Use retry limit 3.",
+          "autoEnabled": false,
+          "archived": true,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c6",
+          "topic": "music",
+          "excerpt": "Practice the cello scales.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c7",
+          "topic": "laundry",
+          "excerpt": "Use the delicate wash cycle.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "c6": "no",
+      "c7": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Explicit owner reference overrides automatic retrieval exclusion."
+  },
+  {
+    "id": "context-relevance-05",
+    "task": "context-relevance",
+    "category": "stale",
+    "state": {
+      "request": "What is the current deploy plan?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "deploy",
+          "excerpt": "Use retry limit 3.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": "c2"
+        },
+        {
+          "id": "c2",
+          "topic": "deploy",
+          "excerpt": "Use retry limit 5.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c6",
+          "topic": "music",
+          "excerpt": "Practice the cello scales.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "c6": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Use the correction and exclude the superseded excerpt."
+  },
+  {
+    "id": "context-relevance-06",
+    "task": "context-relevance",
+    "category": "contradictory",
+    "state": {
+      "request": "Compare the two currently unresolved deploy proposals.",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "deploy",
+          "excerpt": "Owner: I favor Use retry limit 3.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "deploy",
+          "excerpt": "Owner: I also favor Use retry limit 5. No choice yet.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Both conflicting current proposals are needed for the comparison."
+  },
+  {
+    "id": "context-relevance-07",
+    "task": "context-relevance",
+    "category": "do-nothing",
+    "state": {
+      "request": "What is the deploy plan?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "deploy",
+          "excerpt": "Use retry limit 5.",
+          "autoEnabled": false,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "An opted-out topic cannot be used automatically."
+  },
+  {
+    "id": "context-relevance-08",
+    "task": "context-relevance",
+    "category": "ambiguous",
+    "state": {
+      "request": "What did we choose for the other project?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "deploy",
+          "excerpt": "Use retry limit 5.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "deploy",
+          "excerpt": "Same subject in an unrelated project.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "no",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "The unnamed other project cannot be identified from these candidates."
+  },
+  {
+    "id": "context-relevance-09",
+    "task": "context-relevance",
+    "category": "missing-evidence",
+    "state": {
+      "request": "What is the approved deploy date?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "deploy",
+          "excerpt": "We have not discussed any dates.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "Matching subject alone supplies no date evidence."
+  },
+  {
+    "id": "context-relevance-10",
+    "task": "context-relevance",
+    "category": "stale",
+    "state": {
+      "request": "Remind me what the old deploy note said.",
+      "explicitReferences": ["deploy"],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "deploy",
+          "excerpt": "Use retry limit 3.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": "c2"
+        },
+        {
+          "id": "c2",
+          "topic": "deploy",
+          "excerpt": "Use retry limit 5.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Explicitly referenced old note is retained with the current correction for context."
+  },
+  {
+    "id": "context-relevance-11",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "What did we choose for hotel?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "hotel",
+          "excerpt": "Book River Hotel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "other",
+          "excerpt": "A hotel-themed board game guide.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "no",
+      "c3": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "The latest owner choice directly answers the request."
+  },
+  {
+    "id": "context-relevance-12",
+    "task": "context-relevance",
+    "category": "ambiguous",
+    "state": {
+      "request": "Help with our hotel plan.",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "different",
+          "excerpt": "A hotel-themed board game guide.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "Superficial vocabulary overlap has a different subject."
+  },
+  {
+    "id": "context-relevance-13",
+    "task": "context-relevance",
+    "category": "do-nothing",
+    "state": {
+      "request": "What is the dentist appointment time?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "hotel",
+          "excerpt": "Book River Hotel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c6",
+          "topic": "music",
+          "excerpt": "Practice the cello scales.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "c6": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "No candidate supplies the requested appointment information."
+  },
+  {
+    "id": "context-relevance-14",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "Use the discussion in hotel even though it is archived.",
+      "explicitReferences": ["hotel"],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "hotel",
+          "excerpt": "Book Cedar Hotel.",
+          "autoEnabled": false,
+          "archived": true,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c6",
+          "topic": "music",
+          "excerpt": "Practice the cello scales.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c7",
+          "topic": "laundry",
+          "excerpt": "Use the delicate wash cycle.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "c6": "no",
+      "c7": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Explicit owner reference overrides automatic retrieval exclusion."
+  },
+  {
+    "id": "context-relevance-15",
+    "task": "context-relevance",
+    "category": "stale",
+    "state": {
+      "request": "What is the current hotel plan?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "hotel",
+          "excerpt": "Book Cedar Hotel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": "c2"
+        },
+        {
+          "id": "c2",
+          "topic": "hotel",
+          "excerpt": "Book River Hotel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c6",
+          "topic": "music",
+          "excerpt": "Practice the cello scales.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "c6": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Use the correction and exclude the superseded excerpt."
+  },
+  {
+    "id": "context-relevance-16",
+    "task": "context-relevance",
+    "category": "contradictory",
+    "state": {
+      "request": "Compare the two currently unresolved hotel proposals.",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "hotel",
+          "excerpt": "Owner: I favor Book Cedar Hotel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "hotel",
+          "excerpt": "Owner: I also favor Book River Hotel. No choice yet.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Both conflicting current proposals are needed for the comparison."
+  },
+  {
+    "id": "context-relevance-17",
+    "task": "context-relevance",
+    "category": "do-nothing",
+    "state": {
+      "request": "What is the hotel plan?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "hotel",
+          "excerpt": "Book River Hotel.",
+          "autoEnabled": false,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "An opted-out topic cannot be used automatically."
+  },
+  {
+    "id": "context-relevance-18",
+    "task": "context-relevance",
+    "category": "ambiguous",
+    "state": {
+      "request": "What did we choose for the other project?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "hotel",
+          "excerpt": "Book River Hotel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "hotel",
+          "excerpt": "Same subject in an unrelated project.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "no",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "The unnamed other project cannot be identified from these candidates."
+  },
+  {
+    "id": "context-relevance-19",
+    "task": "context-relevance",
+    "category": "missing-evidence",
+    "state": {
+      "request": "What is the approved hotel date?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "hotel",
+          "excerpt": "We have not discussed any dates.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "Matching subject alone supplies no date evidence."
+  },
+  {
+    "id": "context-relevance-20",
+    "task": "context-relevance",
+    "category": "stale",
+    "state": {
+      "request": "Remind me what the old hotel note said.",
+      "explicitReferences": ["hotel"],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "hotel",
+          "excerpt": "Book Cedar Hotel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": "c2"
+        },
+        {
+          "id": "c2",
+          "topic": "hotel",
+          "excerpt": "Book River Hotel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Explicitly referenced old note is retained with the current correction for context."
+  },
+  {
+    "id": "context-relevance-21",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "What did we choose for tuition?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "tuition",
+          "excerpt": "Tuition budget is 6000.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "other",
+          "excerpt": "A blog about budgeting computer memory.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "no",
+      "c3": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "The latest owner choice directly answers the request."
+  },
+  {
+    "id": "context-relevance-22",
+    "task": "context-relevance",
+    "category": "ambiguous",
+    "state": {
+      "request": "Help with our tuition plan.",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "different",
+          "excerpt": "A blog about budgeting computer memory.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "Superficial vocabulary overlap has a different subject."
+  },
+  {
+    "id": "context-relevance-23",
+    "task": "context-relevance",
+    "category": "do-nothing",
+    "state": {
+      "request": "What is the dentist appointment time?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "tuition",
+          "excerpt": "Tuition budget is 6000.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c6",
+          "topic": "music",
+          "excerpt": "Practice the cello scales.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "c6": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "No candidate supplies the requested appointment information."
+  },
+  {
+    "id": "context-relevance-24",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "Use the discussion in tuition even though it is archived.",
+      "explicitReferences": ["tuition"],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "tuition",
+          "excerpt": "Tuition budget is 4000.",
+          "autoEnabled": false,
+          "archived": true,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c6",
+          "topic": "music",
+          "excerpt": "Practice the cello scales.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c7",
+          "topic": "laundry",
+          "excerpt": "Use the delicate wash cycle.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "c6": "no",
+      "c7": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Explicit owner reference overrides automatic retrieval exclusion."
+  },
+  {
+    "id": "context-relevance-25",
+    "task": "context-relevance",
+    "category": "stale",
+    "state": {
+      "request": "What is the current tuition plan?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "tuition",
+          "excerpt": "Tuition budget is 4000.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": "c2"
+        },
+        {
+          "id": "c2",
+          "topic": "tuition",
+          "excerpt": "Tuition budget is 6000.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c6",
+          "topic": "music",
+          "excerpt": "Practice the cello scales.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "c6": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Use the correction and exclude the superseded excerpt."
+  },
+  {
+    "id": "context-relevance-26",
+    "task": "context-relevance",
+    "category": "contradictory",
+    "state": {
+      "request": "Compare the two currently unresolved tuition proposals.",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "tuition",
+          "excerpt": "Owner: I favor Tuition budget is 4000.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "tuition",
+          "excerpt": "Owner: I also favor Tuition budget is 6000. No choice yet.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Both conflicting current proposals are needed for the comparison."
+  },
+  {
+    "id": "context-relevance-27",
+    "task": "context-relevance",
+    "category": "do-nothing",
+    "state": {
+      "request": "What is the tuition plan?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "tuition",
+          "excerpt": "Tuition budget is 6000.",
+          "autoEnabled": false,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "An opted-out topic cannot be used automatically."
+  },
+  {
+    "id": "context-relevance-28",
+    "task": "context-relevance",
+    "category": "ambiguous",
+    "state": {
+      "request": "What did we choose for the other project?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "tuition",
+          "excerpt": "Tuition budget is 6000.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "tuition",
+          "excerpt": "Same subject in an unrelated project.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "no",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "The unnamed other project cannot be identified from these candidates."
+  },
+  {
+    "id": "context-relevance-29",
+    "task": "context-relevance",
+    "category": "missing-evidence",
+    "state": {
+      "request": "What is the approved tuition date?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "tuition",
+          "excerpt": "We have not discussed any dates.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "Matching subject alone supplies no date evidence."
+  },
+  {
+    "id": "context-relevance-30",
+    "task": "context-relevance",
+    "category": "stale",
+    "state": {
+      "request": "Remind me what the old tuition note said.",
+      "explicitReferences": ["tuition"],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "tuition",
+          "excerpt": "Tuition budget is 4000.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": "c2"
+        },
+        {
+          "id": "c2",
+          "topic": "tuition",
+          "excerpt": "Tuition budget is 6000.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Explicitly referenced old note is retained with the current correction for context."
+  },
+  {
+    "id": "context-relevance-31",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "What did we choose for garden?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "garden",
+          "excerpt": "Plant beans in April.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "other",
+          "excerpt": "Software named Garden has a spring release.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "no",
+      "c3": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "The latest owner choice directly answers the request."
+  },
+  {
+    "id": "context-relevance-32",
+    "task": "context-relevance",
+    "category": "ambiguous",
+    "state": {
+      "request": "Help with our garden plan.",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "different",
+          "excerpt": "Software named Garden has a spring release.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "Superficial vocabulary overlap has a different subject."
+  },
+  {
+    "id": "context-relevance-33",
+    "task": "context-relevance",
+    "category": "do-nothing",
+    "state": {
+      "request": "What is the dentist appointment time?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "garden",
+          "excerpt": "Plant beans in April.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c6",
+          "topic": "music",
+          "excerpt": "Practice the cello scales.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "c6": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "No candidate supplies the requested appointment information."
+  },
+  {
+    "id": "context-relevance-34",
+    "task": "context-relevance",
+    "category": "ordinary",
+    "state": {
+      "request": "Use the discussion in garden even though it is archived.",
+      "explicitReferences": ["garden"],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "garden",
+          "excerpt": "Plant tulips in March.",
+          "autoEnabled": false,
+          "archived": true,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c6",
+          "topic": "music",
+          "excerpt": "Practice the cello scales.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c7",
+          "topic": "laundry",
+          "excerpt": "Use the delicate wash cycle.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "c6": "no",
+      "c7": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Explicit owner reference overrides automatic retrieval exclusion."
+  },
+  {
+    "id": "context-relevance-35",
+    "task": "context-relevance",
+    "category": "stale",
+    "state": {
+      "request": "What is the current garden plan?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "garden",
+          "excerpt": "Plant tulips in March.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": "c2"
+        },
+        {
+          "id": "c2",
+          "topic": "garden",
+          "excerpt": "Plant beans in April.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c6",
+          "topic": "music",
+          "excerpt": "Practice the cello scales.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "c6": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Use the correction and exclude the superseded excerpt."
+  },
+  {
+    "id": "context-relevance-36",
+    "task": "context-relevance",
+    "category": "contradictory",
+    "state": {
+      "request": "Compare the two currently unresolved garden proposals.",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "garden",
+          "excerpt": "Owner: I favor Plant tulips in March.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "garden",
+          "excerpt": "Owner: I also favor Plant beans in April. No choice yet.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Both conflicting current proposals are needed for the comparison."
+  },
+  {
+    "id": "context-relevance-37",
+    "task": "context-relevance",
+    "category": "do-nothing",
+    "state": {
+      "request": "What is the garden plan?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "garden",
+          "excerpt": "Plant beans in April.",
+          "autoEnabled": false,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "An opted-out topic cannot be used automatically."
+  },
+  {
+    "id": "context-relevance-38",
+    "task": "context-relevance",
+    "category": "ambiguous",
+    "state": {
+      "request": "What did we choose for the other project?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "garden",
+          "excerpt": "Plant beans in April.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c2",
+          "topic": "garden",
+          "excerpt": "Same subject in an unrelated project.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c2": "no",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "The unnamed other project cannot be identified from these candidates."
+  },
+  {
+    "id": "context-relevance-39",
+    "task": "context-relevance",
+    "category": "missing-evidence",
+    "state": {
+      "request": "What is the approved garden date?",
+      "explicitReferences": [],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "garden",
+          "excerpt": "We have not discussed any dates.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c5",
+          "topic": "books",
+          "excerpt": "I finished a mystery novel.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "no",
+      "c3": "no",
+      "c4": "no",
+      "c5": "no",
+      "none-relevant": "yes"
+    },
+    "rationale": "Matching subject alone supplies no date evidence."
+  },
+  {
+    "id": "context-relevance-40",
+    "task": "context-relevance",
+    "category": "stale",
+    "state": {
+      "request": "Remind me what the old garden note said.",
+      "explicitReferences": ["garden"],
+      "candidates": [
+        {
+          "id": "c1",
+          "topic": "garden",
+          "excerpt": "Plant tulips in March.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": "c2"
+        },
+        {
+          "id": "c2",
+          "topic": "garden",
+          "excerpt": "Plant beans in April.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c3",
+          "topic": "recipes",
+          "excerpt": "Boil pasta for ten minutes.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        },
+        {
+          "id": "c4",
+          "topic": "bike",
+          "excerpt": "The brake pads need replacement.",
+          "autoEnabled": true,
+          "archived": false,
+          "supersededBy": null
+        }
+      ]
+    },
+    "expected": {
+      "c1": "yes",
+      "c2": "yes",
+      "c3": "no",
+      "c4": "no",
+      "none-relevant": "no"
+    },
+    "rationale": "Explicitly referenced old note is retained with the current correction for context."
+  },
+  {
+    "id": "brief-update-01",
+    "task": "brief-update",
+    "category": "ambiguous",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Orchid looks promising for release."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Tentative preference is not a settled decision."
+  },
+  {
+    "id": "brief-update-02",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "We are going with Orchid for release."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "decision",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Owner explicitly chooses an option."
+  },
+  {
+    "id": "brief-update-03",
+    "task": "brief-update",
+    "category": "do-nothing",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Pat wrote: \"We are going with Orchid.\" I have not chosen yet."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Quoted third-party choice is not an owner decision."
+  },
+  {
+    "id": "brief-update-04",
+    "task": "brief-update",
+    "category": "contradictory",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Correction: use Cedar instead of Orchid for release."
+        }
+      ],
+      "brief": ["Use Orchid for release."]
+    },
+    "expected": {
+      "entry": "decision",
+      "duplicate": "no",
+      "conflict": "yes"
+    },
+    "rationale": "Explicit later correction contradicts the old choice."
+  },
+  {
+    "id": "brief-update-05",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Use Orchid for release."
+        }
+      ],
+      "brief": ["Use Orchid for release."]
+    },
+    "expected": {
+      "entry": "decision",
+      "duplicate": "yes",
+      "conflict": "no"
+    },
+    "rationale": "Same settled choice already exists in the brief."
+  },
+  {
+    "id": "brief-update-06",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Our goal is to finish release by Friday."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "goal",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Owner states a durable objective."
+  },
+  {
+    "id": "brief-update-07",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Never spend more than 800 on release."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "constraint",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Explicit budget restriction is durable."
+  },
+  {
+    "id": "brief-update-08",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "report",
+          "text": "Measured result: Orchid costs 200 less than Cedar."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "finding",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "A measured result is a finding, not a choice."
+  },
+  {
+    "id": "brief-update-09",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Does Orchid support a full refund for release?"
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "open-question",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Unresolved owner question should be retained."
+  },
+  {
+    "id": "brief-update-10",
+    "task": "brief-update",
+    "category": "do-nothing",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Thanks."
+        },
+        {
+          "role": "assistant",
+          "text": "You are welcome."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Pleasantries add no durable information."
+  },
+  {
+    "id": "brief-update-11",
+    "task": "brief-update",
+    "category": "ambiguous",
+    "state": {
+      "exchange": [
+        {
+          "role": "assistant",
+          "text": "I suggest Cedar for release."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Assistant proposal lacks an owner decision."
+  },
+  {
+    "id": "brief-update-12",
+    "task": "brief-update",
+    "category": "missing-evidence",
+    "state": {
+      "exchange": [
+        {
+          "role": "report",
+          "text": "Someone told me Orchid is approved, but I cannot verify that."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Unverified secondhand claim is not a verified finding."
+  },
+  {
+    "id": "brief-update-13",
+    "task": "brief-update",
+    "category": "contradictory",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Our goal is Thursday, replacing Friday for release."
+        }
+      ],
+      "brief": ["Our goal is Friday for release."]
+    },
+    "expected": {
+      "entry": "goal",
+      "duplicate": "no",
+      "conflict": "yes"
+    },
+    "rationale": "Later goal corrects the current goal."
+  },
+  {
+    "id": "brief-update-14",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "report",
+          "text": "Measured result: Orchid costs 200 less than Cedar."
+        }
+      ],
+      "brief": ["Measured result: Orchid costs 200 less than Cedar."]
+    },
+    "expected": {
+      "entry": "finding",
+      "duplicate": "yes",
+      "conflict": "no"
+    },
+    "rationale": "Repeated verified observation is duplicate."
+  },
+  {
+    "id": "brief-update-15",
+    "task": "brief-update",
+    "category": "stale",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Last week I considered Orchid. Today I have no new information."
+        }
+      ],
+      "brief": ["Use Cedar for release."]
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Historical consideration supplies no current update."
+  },
+  {
+    "id": "brief-update-16",
+    "task": "brief-update",
+    "category": "ambiguous",
+    "state": {
+      "exchange": [
+        {
+          "role": "assistant",
+          "text": "Could Cedar be a possibility?"
+        },
+        {
+          "role": "owner",
+          "text": "Maybe. No decision yet."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Tentative exchange does not settle an owner question or decision."
+  },
+  {
+    "id": "brief-update-17",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Keep release private until I confirm otherwise."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "constraint",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Owner states a durable visibility restriction."
+  },
+  {
+    "id": "brief-update-18",
+    "task": "brief-update",
+    "category": "contradictory",
+    "state": {
+      "exchange": [
+        {
+          "role": "report",
+          "text": "The measured price is now 500, not the 400 in our brief."
+        }
+      ],
+      "brief": ["Measured price is 400."]
+    },
+    "expected": {
+      "entry": "finding",
+      "duplicate": "no",
+      "conflict": "yes"
+    },
+    "rationale": "Verified later measurement contradicts the stored finding."
+  },
+  {
+    "id": "brief-update-19",
+    "task": "brief-update",
+    "category": "missing-evidence",
+    "state": {
+      "exchange": [
+        {
+          "role": "report",
+          "text": "No measurements were returned."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Absent measurement adds no concrete finding."
+  },
+  {
+    "id": "brief-update-20",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Never spend more than 800 on release."
+        }
+      ],
+      "brief": ["Never spend more than 800 on release."]
+    },
+    "expected": {
+      "entry": "constraint",
+      "duplicate": "yes",
+      "conflict": "no"
+    },
+    "rationale": "Duplicate durable restriction still has constraint type."
+  },
+  {
+    "id": "brief-update-21",
+    "task": "brief-update",
+    "category": "ambiguous",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "River looks promising for holiday."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Tentative preference is not a settled decision."
+  },
+  {
+    "id": "brief-update-22",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "We are going with River for holiday."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "decision",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Owner explicitly chooses an option."
+  },
+  {
+    "id": "brief-update-23",
+    "task": "brief-update",
+    "category": "do-nothing",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Pat wrote: \"We are going with River.\" I have not chosen yet."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Quoted third-party choice is not an owner decision."
+  },
+  {
+    "id": "brief-update-24",
+    "task": "brief-update",
+    "category": "contradictory",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Correction: use Maple instead of River for holiday."
+        }
+      ],
+      "brief": ["Use River for holiday."]
+    },
+    "expected": {
+      "entry": "decision",
+      "duplicate": "no",
+      "conflict": "yes"
+    },
+    "rationale": "Explicit later correction contradicts the old choice."
+  },
+  {
+    "id": "brief-update-25",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Use River for holiday."
+        }
+      ],
+      "brief": ["Use River for holiday."]
+    },
+    "expected": {
+      "entry": "decision",
+      "duplicate": "yes",
+      "conflict": "no"
+    },
+    "rationale": "Same settled choice already exists in the brief."
+  },
+  {
+    "id": "brief-update-26",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Our goal is to finish holiday by Friday."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "goal",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Owner states a durable objective."
+  },
+  {
+    "id": "brief-update-27",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Never spend more than 800 on holiday."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "constraint",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Explicit budget restriction is durable."
+  },
+  {
+    "id": "brief-update-28",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "report",
+          "text": "Measured result: River costs 200 less than Maple."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "finding",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "A measured result is a finding, not a choice."
+  },
+  {
+    "id": "brief-update-29",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Does River support a full refund for holiday?"
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "open-question",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Unresolved owner question should be retained."
+  },
+  {
+    "id": "brief-update-30",
+    "task": "brief-update",
+    "category": "do-nothing",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Thanks."
+        },
+        {
+          "role": "assistant",
+          "text": "You are welcome."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Pleasantries add no durable information."
+  },
+  {
+    "id": "brief-update-31",
+    "task": "brief-update",
+    "category": "ambiguous",
+    "state": {
+      "exchange": [
+        {
+          "role": "assistant",
+          "text": "I suggest Maple for holiday."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Assistant proposal lacks an owner decision."
+  },
+  {
+    "id": "brief-update-32",
+    "task": "brief-update",
+    "category": "missing-evidence",
+    "state": {
+      "exchange": [
+        {
+          "role": "report",
+          "text": "Someone told me River is approved, but I cannot verify that."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Unverified secondhand claim is not a verified finding."
+  },
+  {
+    "id": "brief-update-33",
+    "task": "brief-update",
+    "category": "contradictory",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Our goal is Thursday, replacing Friday for holiday."
+        }
+      ],
+      "brief": ["Our goal is Friday for holiday."]
+    },
+    "expected": {
+      "entry": "goal",
+      "duplicate": "no",
+      "conflict": "yes"
+    },
+    "rationale": "Later goal corrects the current goal."
+  },
+  {
+    "id": "brief-update-34",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "report",
+          "text": "Measured result: River costs 200 less than Maple."
+        }
+      ],
+      "brief": ["Measured result: River costs 200 less than Maple."]
+    },
+    "expected": {
+      "entry": "finding",
+      "duplicate": "yes",
+      "conflict": "no"
+    },
+    "rationale": "Repeated verified observation is duplicate."
+  },
+  {
+    "id": "brief-update-35",
+    "task": "brief-update",
+    "category": "stale",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Last week I considered River. Today I have no new information."
+        }
+      ],
+      "brief": ["Use Maple for holiday."]
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Historical consideration supplies no current update."
+  },
+  {
+    "id": "brief-update-36",
+    "task": "brief-update",
+    "category": "ambiguous",
+    "state": {
+      "exchange": [
+        {
+          "role": "assistant",
+          "text": "Could Maple be a possibility?"
+        },
+        {
+          "role": "owner",
+          "text": "Maybe. No decision yet."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Tentative exchange does not settle an owner question or decision."
+  },
+  {
+    "id": "brief-update-37",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Keep holiday private until I confirm otherwise."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "constraint",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Owner states a durable visibility restriction."
+  },
+  {
+    "id": "brief-update-38",
+    "task": "brief-update",
+    "category": "contradictory",
+    "state": {
+      "exchange": [
+        {
+          "role": "report",
+          "text": "The measured price is now 500, not the 400 in our brief."
+        }
+      ],
+      "brief": ["Measured price is 400."]
+    },
+    "expected": {
+      "entry": "finding",
+      "duplicate": "no",
+      "conflict": "yes"
+    },
+    "rationale": "Verified later measurement contradicts the stored finding."
+  },
+  {
+    "id": "brief-update-39",
+    "task": "brief-update",
+    "category": "missing-evidence",
+    "state": {
+      "exchange": [
+        {
+          "role": "report",
+          "text": "No measurements were returned."
+        }
+      ],
+      "brief": []
+    },
+    "expected": {
+      "entry": "none",
+      "duplicate": "no",
+      "conflict": "no"
+    },
+    "rationale": "Absent measurement adds no concrete finding."
+  },
+  {
+    "id": "brief-update-40",
+    "task": "brief-update",
+    "category": "ordinary",
+    "state": {
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Never spend more than 800 on holiday."
+        }
+      ],
+      "brief": ["Never spend more than 800 on holiday."]
+    },
+    "expected": {
+      "entry": "constraint",
+      "duplicate": "yes",
+      "conflict": "no"
+    },
+    "rationale": "Duplicate durable restriction still has constraint type."
+  },
+  {
+    "id": "attention-triage-01",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Hotel booking",
+      "result": "Cedar Hotel is unavailable for tomorrow; both remaining options cost twice as much.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "highlight"
+    },
+    "rationale": "Preferred plan changed materially just before travel."
+  },
+  {
+    "id": "attention-triage-02",
+    "task": "attention-triage",
+    "category": "do-nothing",
+    "state": {
+      "focus": "Release",
+      "result": "Formatting completed; whitespace changes only.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Trivial completion has no substantive result."
+  },
+  {
+    "id": "attention-triage-03",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Apartment search",
+      "result": "Compared five apartments by rent, commute and lease terms; a ranked table is ready.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "recap"
+    },
+    "rationale": "Substantive comparison merits recap."
+  },
+  {
+    "id": "attention-triage-04",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Release",
+      "result": "Saved a useful reference about next month's library upgrade.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "show-on-return"
+    },
+    "rationale": "Useful nonurgent information can wait."
+  },
+  {
+    "id": "attention-triage-05",
+    "task": "attention-triage",
+    "category": "ambiguous",
+    "state": {
+      "focus": "Hotel booking",
+      "result": "The hotel might be unavailable; no availability check has been done.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Ungrounded speculation does not deserve highlight."
+  },
+  {
+    "id": "attention-triage-06",
+    "task": "attention-triage",
+    "category": "contradictory",
+    "state": {
+      "focus": "Hotel booking",
+      "result": "Two current listings disagree on whether Cedar is available; neither was verified.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "show-on-return"
+    },
+    "rationale": "Conflicting ordinary evidence is worth review but unverified."
+  },
+  {
+    "id": "attention-triage-07",
+    "task": "attention-triage",
+    "category": "missing-evidence",
+    "state": {
+      "focus": "Apartment search",
+      "result": "Research returned no apartment details.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "No useful new evidence."
+  },
+  {
+    "id": "attention-triage-08",
+    "task": "attention-triage",
+    "category": "stale",
+    "state": {
+      "focus": "Hotel booking",
+      "result": "Yesterday's update said Cedar was unavailable; the owner already booked River afterward.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Superseded bad news should not interrupt."
+  },
+  {
+    "id": "attention-triage-09",
+    "task": "attention-triage",
+    "category": "do-nothing",
+    "state": {
+      "focus": "Release",
+      "result": "A routine background metadata refresh completed.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Routine completion."
+  },
+  {
+    "id": "attention-triage-10",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Travel",
+      "result": "The last train tonight is sold out; taxi is now the only timely option.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "highlight"
+    },
+    "rationale": "Material time-sensitive bad news."
+  },
+  {
+    "id": "attention-triage-11",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Relocation",
+      "result": "Preferred apartment was rented this morning; application closes tomorrow.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "highlight"
+    },
+    "rationale": "Current plan needs attention soon."
+  },
+  {
+    "id": "attention-triage-12",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Insurance",
+      "result": "Compared premiums, exclusions and deductibles for four policies.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "recap"
+    },
+    "rationale": "Synthesis merits recap."
+  },
+  {
+    "id": "attention-triage-13",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Release",
+      "result": "A peripheral documentation typo was corrected.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Trivial completion."
+  },
+  {
+    "id": "attention-triage-14",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Release",
+      "result": "Found a small nonurgent speed improvement in a different service.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "show-on-return"
+    },
+    "rationale": "Useful peripheral update."
+  },
+  {
+    "id": "attention-triage-15",
+    "task": "attention-triage",
+    "category": "ambiguous",
+    "state": {
+      "focus": "Relocation",
+      "result": "A forum commenter guesses rents could rise next year.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Speculation without grounded evidence."
+  },
+  {
+    "id": "attention-triage-16",
+    "task": "attention-triage",
+    "category": "contradictory",
+    "state": {
+      "focus": "Insurance",
+      "result": "Two providers list different refund terms; the comparison retains both source versions.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "recap"
+    },
+    "rationale": "Substantive conflicting evidence deserves recap."
+  },
+  {
+    "id": "attention-triage-17",
+    "task": "attention-triage",
+    "category": "missing-evidence",
+    "state": {
+      "focus": "Travel",
+      "result": "No fares or availability information could be obtained.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "No actionable evidence."
+  },
+  {
+    "id": "attention-triage-18",
+    "task": "attention-triage",
+    "category": "stale",
+    "state": {
+      "focus": "Travel",
+      "result": "An old fare increase was already superseded by the owner's completed booking.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Stale information adds no new attention need."
+  },
+  {
+    "id": "attention-triage-19",
+    "task": "attention-triage",
+    "category": "do-nothing",
+    "state": {
+      "focus": "Writing",
+      "result": "Draft spellcheck completed without changes.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Trivial no-op completion."
+  },
+  {
+    "id": "attention-triage-20",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Events",
+      "result": "The selected venue cancelled our reservation for tomorrow.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "highlight"
+    },
+    "rationale": "Near-term preferred plan is unavailable."
+  },
+  {
+    "id": "attention-triage-21",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "School choice",
+      "result": "The preferred course is full; enrollment closes tonight.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "highlight"
+    },
+    "rationale": "Important deadline-sensitive loss."
+  },
+  {
+    "id": "attention-triage-22",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Purchasing",
+      "result": "Produced a table comparing reliability, warranty and cost for three bicycles.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "recap"
+    },
+    "rationale": "Substantive choice support."
+  },
+  {
+    "id": "attention-triage-23",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Writing",
+      "result": "Found a useful reference for the next essay with no deadline.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "show-on-return"
+    },
+    "rationale": "Useful nonurgent update."
+  },
+  {
+    "id": "attention-triage-24",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Release",
+      "result": "Local file rename completed as requested.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Trivial completion."
+  },
+  {
+    "id": "attention-triage-25",
+    "task": "attention-triage",
+    "category": "ambiguous",
+    "state": {
+      "focus": "Events",
+      "result": "The venue may be better than expected based on one vague comment.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "No concrete new evidence."
+  },
+  {
+    "id": "attention-triage-26",
+    "task": "attention-triage",
+    "category": "contradictory",
+    "state": {
+      "focus": "School choice",
+      "result": "Current program pages disagree about tuition; both amounts and dates are summarized.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "recap"
+    },
+    "rationale": "Comparison with conflicting evidence is substantive."
+  },
+  {
+    "id": "attention-triage-27",
+    "task": "attention-triage",
+    "category": "missing-evidence",
+    "state": {
+      "focus": "Purchasing",
+      "result": "Search found no vendor price or stock data.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Missing evidence."
+  },
+  {
+    "id": "attention-triage-28",
+    "task": "attention-triage",
+    "category": "stale",
+    "state": {
+      "focus": "Events",
+      "result": "A report about the old date arrived after the owner moved the event.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Old-date information is stale."
+  },
+  {
+    "id": "attention-triage-29",
+    "task": "attention-triage",
+    "category": "do-nothing",
+    "state": {
+      "focus": "Release",
+      "result": "Cache cleanup finished.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Routine completion."
+  },
+  {
+    "id": "attention-triage-30",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Relocation",
+      "result": "The owner's preferred moving slot is gone; the remaining slot overlaps the lease handover.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "highlight"
+    },
+    "rationale": "Material impact on near-term plan."
+  },
+  {
+    "id": "attention-triage-31",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Finance",
+      "result": "The selected mortgage rate is withdrawn before today's signing.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "highlight"
+    },
+    "rationale": "Important current plan changed."
+  },
+  {
+    "id": "attention-triage-32",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Release",
+      "result": "Compared migration strategies and rollback tradeoffs with measurements.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "recap"
+    },
+    "rationale": "Substantive technical synthesis."
+  },
+  {
+    "id": "attention-triage-33",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Fitness",
+      "result": "Found a useful training reference for next season.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "show-on-return"
+    },
+    "rationale": "Useful later reference."
+  },
+  {
+    "id": "attention-triage-34",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Release",
+      "result": "Routine index refresh completed.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Trivial completion."
+  },
+  {
+    "id": "attention-triage-35",
+    "task": "attention-triage",
+    "category": "ambiguous",
+    "state": {
+      "focus": "Finance",
+      "result": "A blog predicts rates might change, without a current quote.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Speculation is not confirmed bad news."
+  },
+  {
+    "id": "attention-triage-36",
+    "task": "attention-triage",
+    "category": "contradictory",
+    "state": {
+      "focus": "Travel",
+      "result": "The train timetable sources conflict; a detailed table of both is ready for later review.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "recap"
+    },
+    "rationale": "Substantive comparison is worth recap."
+  },
+  {
+    "id": "attention-triage-37",
+    "task": "attention-triage",
+    "category": "missing-evidence",
+    "state": {
+      "focus": "Finance",
+      "result": "No rate details were returned.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "No useful facts."
+  },
+  {
+    "id": "attention-triage-38",
+    "task": "attention-triage",
+    "category": "stale",
+    "state": {
+      "focus": "Fitness",
+      "result": "An earlier cancellation report arrived after the owner selected another gym.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "Superseded information."
+  },
+  {
+    "id": "attention-triage-39",
+    "task": "attention-triage",
+    "category": "do-nothing",
+    "state": {
+      "focus": "Release",
+      "result": "A health poll returned the same ordinary status.",
+      "runtimeKind": "delegate-result"
+    },
+    "expected": {
+      "attention": "quiet"
+    },
+    "rationale": "No change worth attention."
+  },
+  {
+    "id": "attention-triage-40",
+    "task": "attention-triage",
+    "category": "ordinary",
+    "state": {
+      "focus": "Travel",
+      "result": "The airline moved tomorrow's departure earlier by four hours.",
+      "runtimeKind": "thread-update"
+    },
+    "expected": {
+      "attention": "highlight"
+    },
+    "rationale": "Changed imminent schedule matters."
+  },
+  {
+    "id": "separate-work-01",
+    "task": "separate-work",
+    "category": "do-nothing",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "One quick question: where should we eat tonight?"
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Passing restaurant question stays in the travel conversation."
+  },
+  {
+    "id": "separate-work-02",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "I want to research apartments for my move over the next month. First compare neighborhoods; then rents and viewing schedules."
+        },
+        {
+          "role": "owner",
+          "text": "We should track this for the next several weeks."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-topic"
+    },
+    "rationale": "Sustained independent durable subject."
+  },
+  {
+    "id": "separate-work-03",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Continue our apartment search in Berlin home."
+        }
+      ],
+      "topics": [
+        {
+          "id": "home",
+          "name": "Berlin home"
+        },
+        {
+          "id": "travel",
+          "name": "Japan trip"
+        }
+      ],
+      "threads": []
+    },
+    "expected": {
+      "organization": "reuse-existing:home"
+    },
+    "rationale": "Matching existing topic should be reused."
+  },
+  {
+    "id": "separate-work-04",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Let us investigate rail-pass costs as a separate angle of this trip."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-thread"
+    },
+    "rationale": "Distinct angle within current subject."
+  },
+  {
+    "id": "separate-work-05",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Clarify the current itinerary for Tuesday."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Direct continuation."
+  },
+  {
+    "id": "separate-work-06",
+    "task": "separate-work",
+    "category": "ambiguous",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Perhaps apartments sometime; I have not decided whether to research them."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "uncertain"
+    },
+    "rationale": "Vague intent does not justify new organization."
+  },
+  {
+    "id": "separate-work-07",
+    "task": "separate-work",
+    "category": "contradictory",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Start apartment research. Actually I may only mean a holiday rental; I cannot say yet."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "uncertain"
+    },
+    "rationale": "Conflicting subject intent."
+  },
+  {
+    "id": "separate-work-08",
+    "task": "separate-work",
+    "category": "missing-evidence",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Can we work on that thing?"
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "uncertain"
+    },
+    "rationale": "No identifiable subject."
+  },
+  {
+    "id": "separate-work-09",
+    "task": "separate-work",
+    "category": "stale",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Last year I considered buying a bicycle. That idea is no longer active."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Historical mention is not sustained new work."
+  },
+  {
+    "id": "separate-work-10",
+    "task": "separate-work",
+    "category": "do-nothing",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Thanks for the itinerary."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Acknowledgment adds no separate work."
+  },
+  {
+    "id": "separate-work-11",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Berlin home",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Research mortgage options for the next several weeks, including rates and lenders."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-thread"
+    },
+    "rationale": "A sustained distinct angle within housing."
+  },
+  {
+    "id": "separate-work-12",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Resume comparing flight options for this trip."
+        }
+      ],
+      "topics": [],
+      "threads": [
+        {
+          "id": "flights",
+          "name": "Flight comparison"
+        },
+        {
+          "id": "food",
+          "name": "Restaurants"
+        }
+      ]
+    },
+    "expected": {
+      "organization": "reuse-existing:flights"
+    },
+    "rationale": "Reuse the matching existing thread."
+  },
+  {
+    "id": "separate-work-13",
+    "task": "separate-work",
+    "category": "ambiguous",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "How is an apartment lease different from a hotel booking? Just a one-off comparison."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Passing comparison stays here."
+  },
+  {
+    "id": "separate-work-14",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "I want an ongoing language-learning plan for the next year, with lessons and progress tracking."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-topic"
+    },
+    "rationale": "Independent durable subject."
+  },
+  {
+    "id": "separate-work-15",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Berlin home",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Compare insulation choices as a separate angle for this apartment."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-thread"
+    },
+    "rationale": "Same durable subject, distinct angle."
+  },
+  {
+    "id": "separate-work-16",
+    "task": "separate-work",
+    "category": "contradictory",
+    "state": {
+      "currentTopic": "Berlin home",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Maybe start a new travel topic, but I have no travel plan and may stay home."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "uncertain"
+    },
+    "rationale": "No settled sustained work."
+  },
+  {
+    "id": "separate-work-17",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Continue this trip's planning."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Existing current subject needs no organization."
+  },
+  {
+    "id": "separate-work-18",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Japan trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Resume the tax-planning work we already track in Finance."
+        }
+      ],
+      "topics": [
+        {
+          "id": "finance",
+          "name": "Finance"
+        },
+        {
+          "id": "health",
+          "name": "Health"
+        }
+      ],
+      "threads": []
+    },
+    "expected": {
+      "organization": "reuse-existing:finance"
+    },
+    "rationale": "Reuse existing durable subject."
+  },
+  {
+    "id": "separate-work-19",
+    "task": "separate-work",
+    "category": "missing-evidence",
+    "state": {
+      "currentTopic": "Berlin home",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "A different project, perhaps?"
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "uncertain"
+    },
+    "rationale": "The other project is unspecified."
+  },
+  {
+    "id": "separate-work-20",
+    "task": "separate-work",
+    "category": "do-nothing",
+    "state": {
+      "currentTopic": "Berlin home",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "What time is it in Rome? A quick aside."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Passing aside should not create a topic."
+  },
+  {
+    "id": "separate-work-21",
+    "task": "separate-work",
+    "category": "do-nothing",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "One quick question: where should we eat tonight?"
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Passing restaurant question stays in the travel conversation."
+  },
+  {
+    "id": "separate-work-22",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "I want to research apartments for my move over the next month. First compare neighborhoods; then rents and viewing schedules."
+        },
+        {
+          "role": "owner",
+          "text": "We should track this for the next several weeks."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-topic"
+    },
+    "rationale": "Sustained independent durable subject."
+  },
+  {
+    "id": "separate-work-23",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Continue our apartment search in Hamburg home."
+        }
+      ],
+      "topics": [
+        {
+          "id": "home",
+          "name": "Hamburg home"
+        },
+        {
+          "id": "travel",
+          "name": "Italy trip"
+        }
+      ],
+      "threads": []
+    },
+    "expected": {
+      "organization": "reuse-existing:home"
+    },
+    "rationale": "Matching existing topic should be reused."
+  },
+  {
+    "id": "separate-work-24",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Let us investigate rail-pass costs as a separate angle of this trip."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-thread"
+    },
+    "rationale": "Distinct angle within current subject."
+  },
+  {
+    "id": "separate-work-25",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Clarify the current itinerary for Tuesday."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Direct continuation."
+  },
+  {
+    "id": "separate-work-26",
+    "task": "separate-work",
+    "category": "ambiguous",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Perhaps apartments sometime; I have not decided whether to research them."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "uncertain"
+    },
+    "rationale": "Vague intent does not justify new organization."
+  },
+  {
+    "id": "separate-work-27",
+    "task": "separate-work",
+    "category": "contradictory",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Start apartment research. Actually I may only mean a holiday rental; I cannot say yet."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "uncertain"
+    },
+    "rationale": "Conflicting subject intent."
+  },
+  {
+    "id": "separate-work-28",
+    "task": "separate-work",
+    "category": "missing-evidence",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Can we work on that thing?"
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "uncertain"
+    },
+    "rationale": "No identifiable subject."
+  },
+  {
+    "id": "separate-work-29",
+    "task": "separate-work",
+    "category": "stale",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Last year I considered buying a bicycle. That idea is no longer active."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Historical mention is not sustained new work."
+  },
+  {
+    "id": "separate-work-30",
+    "task": "separate-work",
+    "category": "do-nothing",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Thanks for the itinerary."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Acknowledgment adds no separate work."
+  },
+  {
+    "id": "separate-work-31",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Hamburg home",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Research mortgage options for the next several weeks, including rates and lenders."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-thread"
+    },
+    "rationale": "A sustained distinct angle within housing."
+  },
+  {
+    "id": "separate-work-32",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Resume comparing flight options for this trip."
+        }
+      ],
+      "topics": [],
+      "threads": [
+        {
+          "id": "flights",
+          "name": "Flight comparison"
+        },
+        {
+          "id": "food",
+          "name": "Restaurants"
+        }
+      ]
+    },
+    "expected": {
+      "organization": "reuse-existing:flights"
+    },
+    "rationale": "Reuse the matching existing thread."
+  },
+  {
+    "id": "separate-work-33",
+    "task": "separate-work",
+    "category": "ambiguous",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "How is an apartment lease different from a hotel booking? Just a one-off comparison."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Passing comparison stays here."
+  },
+  {
+    "id": "separate-work-34",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "I want an ongoing language-learning plan for the next year, with lessons and progress tracking."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-topic"
+    },
+    "rationale": "Independent durable subject."
+  },
+  {
+    "id": "separate-work-35",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Hamburg home",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Compare insulation choices as a separate angle for this apartment."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "suggest-thread"
+    },
+    "rationale": "Same durable subject, distinct angle."
+  },
+  {
+    "id": "separate-work-36",
+    "task": "separate-work",
+    "category": "contradictory",
+    "state": {
+      "currentTopic": "Hamburg home",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Maybe start a new travel topic, but I have no travel plan and may stay home."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "uncertain"
+    },
+    "rationale": "No settled sustained work."
+  },
+  {
+    "id": "separate-work-37",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Continue this trip's planning."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Existing current subject needs no organization."
+  },
+  {
+    "id": "separate-work-38",
+    "task": "separate-work",
+    "category": "ordinary",
+    "state": {
+      "currentTopic": "Italy trip",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "Resume the tax-planning work we already track in Finance."
+        }
+      ],
+      "topics": [
+        {
+          "id": "finance",
+          "name": "Finance"
+        },
+        {
+          "id": "health",
+          "name": "Health"
+        }
+      ],
+      "threads": []
+    },
+    "expected": {
+      "organization": "reuse-existing:finance"
+    },
+    "rationale": "Reuse existing durable subject."
+  },
+  {
+    "id": "separate-work-39",
+    "task": "separate-work",
+    "category": "missing-evidence",
+    "state": {
+      "currentTopic": "Hamburg home",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "A different project, perhaps?"
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "uncertain"
+    },
+    "rationale": "The other project is unspecified."
+  },
+  {
+    "id": "separate-work-40",
+    "task": "separate-work",
+    "category": "do-nothing",
+    "state": {
+      "currentTopic": "Hamburg home",
+      "currentThread": "Main",
+      "exchange": [
+        {
+          "role": "owner",
+          "text": "What time is it in Rome? A quick aside."
+        }
+      ],
+      "topics": [],
+      "threads": []
+    },
+    "expected": {
+      "organization": "continue-here"
+    },
+    "rationale": "Passing aside should not create a topic."
+  }
+]

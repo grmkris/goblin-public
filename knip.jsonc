@@ -44,7 +44,7 @@
       "ignoreDependencies": ["@effect/tsgo"],
     },
     "bench": {
-      "entry": ["scripts/cli.ts!", "scripts/stack.ts!", "worker/worker.ts!"],
+      "entry": ["scripts/cli.ts!", "scripts/stack.ts!", "scripts/decisions.ts!", "worker/worker.ts!"],
     },
     "apps/runtime": {
       "entry": ["test/provider-probe.ts!"],

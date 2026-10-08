@@ -471,3 +471,28 @@ Only credible recall findings justify the next continuation experiment: fresh re
 snapshots, a real next owner request, bounded tools/API use, and acceptance based on the resulting diff and actual
 repository checks. Plan that experiment separately; recall correctness alone does not prove successful coding
 continuation or authorize deployed writes.
+
+## Typed decision-model evaluation
+
+`bench:decisions` compares deterministic rules, a rules-first Clef critic, dev-stage cheap chat, Clef,
+Clef-flash, Jev and CLIProxy's OpenAI Decisions route on 160 committed synthetic fixtures. Labels and
+rationales stay outside provider evidence. Each live arm gets three repetitions with identical state,
+and typed questions require complete, normalized answer distributions.
+
+```sh
+bun run bench:decisions plan --run decisions-20261008-v2
+heavy bun run bench:decisions run --live --manifest .local/bench/decisions/decisions-20261008-v2/manifest.json
+bun run bench:decisions report --run decisions-20261008-v2
+```
+
+The immutable manifest freezes source/fixture hashes, prompts, questions, model IDs, endpoints and price
+assumptions. Planning prints estimates and full reservations before inference. One append-only ledger
+spans all runs and enforces 2,000 requests, $3, input/completion ceilings and a 30-second call deadline.
+Unknown usage retains the full reservation and halts later admission; terminal HTTP access/route
+rejections retain their reservation, skip that arm and allow other arms to continue. There are no
+implicit retries. Existing result files are terminal; a fresh named run retains all prior spend.
+Credentials come only from environment variables. Workers AI uses `CLOUDFLARE_AI_TOKEN`; Jev uses
+`AI_GATEWAY_API_KEY`; local chat/Decisions use `CLIPROXY_API_KEY`. Missing credentials and HTTP route
+failures are reported independently from judgment quality. Provider payloads, raw replies and ledgers
+stay in ignored, private `.local/bench/decisions/` files. Generated reports live in `bench/reports/`.
+Thresholds and calibration are exploratory fits on these fixtures, not independently validated defaults.

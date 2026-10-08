@@ -65,6 +65,7 @@
     "smoke:prod": "bun scripts/stage.ts smoke:prod",
     "drift:dev": "bun scripts/stage.ts drift:dev",
     "drift:prod": "bun scripts/stage.ts drift:prod",
+    "bench:decisions": "bun bench/scripts/decisions.ts",
     "check:public": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run graph && bun run typecheck && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run build"
   },
   "devDependencies": {
