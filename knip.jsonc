@@ -56,6 +56,7 @@
         "src/worker.ts!",
         "test/ui-*.ts!",
         "test/browser/*.tsx!",
+        "test/browser/question-app.ts!",
         "test/browser/vite.config.ts!",
       ],
     },
