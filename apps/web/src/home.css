@@ -191,12 +191,6 @@
 .home-recent button:active {
   color: var(--foreground);
 }
-@media (prefers-reduced-transparency: reduce) {
-  .chat-dock::before {
-    background: var(--background);
-    backdrop-filter: none;
-  }
-}
 .home-tile-label > button {
   display: flex;
   align-items: center;
@@ -244,11 +238,6 @@
   inset: auto 0 0;
   height: 12px;
   background: linear-gradient(transparent, var(--card));
-}
-@media (prefers-reduced-motion: reduce) {
-  .app-stage {
-    transition: opacity 150ms;
-  }
 }
 .home-tile-label > button:first-of-type {
   flex: 1;

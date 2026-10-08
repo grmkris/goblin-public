@@ -175,12 +175,6 @@ main.shell {
     rotate: 1turn;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .tree-row-below,
-  .tree-row-waiting {
-    animation: none;
-  }
-}
 .tree-row-alert {
   flex: none;
   width: 0.5rem;
@@ -292,11 +286,6 @@ main.shell {
   border-radius: 9999px;
   animation: tree-turn 1s linear infinite;
   content: '';
-}
-@media (prefers-reduced-motion: reduce) {
-  .tree-row-under::before {
-    animation: none;
-  }
 }
 /* An open conversation's row is set apart a little from those not in any pane. */
 .tree-row[data-open='true'] > [data-slot='sidebar-menu-button'] .tree-row-name {
@@ -467,8 +456,12 @@ main.shell {
     --chat-inset-left: var(--sidebar-width-icon);
   }
 }
-/* One transcript with its composer: a centred 44rem column clear of the pane's pill and the dock. */
+/*
+ * One transcript with its composer: a centred 44rem column clear of the pane's pill and the dock. The pane's width,
+ * not the screen's, decides the composer's secondary labels.
+ */
 .chat-pane {
+  container: conversation / inline-size;
   --chat-gutter: 1rem;
   --chat-column: 44rem;
   --message-scroller-max-width: calc(var(--chat-column) + 2 * var(--message-scroller-inset-x));
@@ -839,19 +832,25 @@ main.shell {
   }
 }
 /*
- * Threads under the message they branched from, as Slack shows them: the reply count stands out, the name and the
- * last reply follow quietly, and the whole row answers the press at once.
+ * Threads under the message they branched from, as Slack shows them: set in from that message's side, the reply count
+ * stands out, the name and the last reply follow quietly, and the whole row answers the press at once.
  */
 .thread-rows {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  align-self: flex-start;
   gap: 0.125rem;
+  width: min(100%, 42rem);
   max-width: 100%;
-  margin-top: 0.25rem;
+  padding-left: 1.5rem;
+  margin-top: 0;
 }
 .thread-rows[data-side='end'] {
   align-items: flex-end;
+  align-self: flex-end;
+  padding-left: 0;
+  padding-right: 1.5rem;
 }
 .thread-row {
   display: inline-flex;
@@ -1393,9 +1392,6 @@ a.file-chip:active {
 .message-text {
   margin: 0;
   white-space: pre-wrap;
-}
-.list {
-  padding-left: 1.25rem;
 }
 /* Pages outside the workspace (Connections, Settings): sections, each a heading, a note and its cards. */
 .page-stack {
@@ -2062,12 +2058,6 @@ code.grant-about {
   width: 0.5rem;
   height: 0.5rem;
 }
-@media (prefers-reduced-motion: reduce) {
-  .state-icon[data-state='working'],
-  .state-icon[data-state='waiting'] {
-    animation: none;
-  }
-}
 
 .tool-output {
   max-height: 20rem;
@@ -2203,24 +2193,7 @@ code.grant-about {
 .capability-error {
   color: var(--destructive);
 }
-@media (prefers-reduced-motion: reduce) {
-  .capability-expand > svg {
-    transition: none;
-  }
-}
 
-/* The connector starts at the owning message's edge and turns into the thread unfolded under it. */
-.thread-rows {
-  align-self: flex-start;
-  width: min(100%, 42rem);
-  padding-left: 1.5rem;
-  margin-top: 0;
-}
-.thread-rows[data-side='end'] {
-  align-self: flex-end;
-  padding-left: 0;
-  padding-right: 1.5rem;
-}
 /* A thread unfolded under its message: set in by a quiet rule at its left, not boxed, at any depth. */
 .inline-thread,
 .inline-thread-stub {
@@ -2624,11 +2597,6 @@ button.pane-title:active {
 .pane-drag-ghost[data-refused='true'] {
   opacity: 0.6;
 }
-@media (prefers-reduced-motion: reduce) {
-  .pane-drag-preview {
-    transition: none;
-  }
-}
 /* A closed conversation's dock: why nothing runs, and the way back. */
 /* A banner in place of the composer: an inset fill and a hairline, rising into place, its action at the end. */
 .pane-closed {
@@ -2661,11 +2629,6 @@ button.pane-title:active {
   .sidebar-credit:hover {
     color: var(--foreground);
   }
-}
-/* Pane width, rather than screen width, controls the composer's secondary labels. */
-.chat-pane {
-  container-type: inline-size;
-  container-name: conversation;
 }
 /* Today's usage beside the model: the ring, and in a wide pane its figures; a tap or hover opens them in words. */
 .usage-indicator {
