@@ -98,6 +98,38 @@ function ComposerContext({
 }
 
 /**
+ * The dock's notices and what waits on the owner (cards, shared context). They scroll on their own, so however much
+ * there is, the transcript and the composer still show.
+ */
+function DockCards({
+  notices,
+  open,
+  waiting,
+  id,
+  onAnswer,
+}: {
+  readonly notices: readonly string[]
+  readonly open: boolean
+  readonly waiting: ReturnType<typeof openInteractions>
+  readonly id: string
+  readonly onAnswer: Parameters<typeof InteractionCards>[0]['onAnswer']
+}) {
+  return (
+    <div className="dock-cards">
+      {notices.map((text, index) => (
+        <Notice key={`${index}:${text}`} text={text} />
+      ))}
+      {open && (
+        <>
+          <InteractionCards interactions={waiting} thread={id} onAnswer={onAnswer} />
+          <SharedContextChips conversation={id} />
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
  * Under a conversation's transcript, floating over its bottom edge: what waits on the owner, then the composer with
  * what the agent is doing, the model, what it may use here and the day's usage. A closed conversation offers Reopen
  * instead of a composer.
@@ -148,17 +180,12 @@ export function ConversationDock({
   })
   return (
     <div className="chat-dock" ref={ref} data-app-cover>
-      <Notice text={notice} />
-      {notices.map((text) => (
-        <Notice key={text} text={text} />
-      ))}
+      <DockCards notices={[notice, ...notices]} open={closed === undefined} waiting={waiting} id={id} onAnswer={send} />
       {closed !== undefined ? (
         <ClosedNotice by={closed} onReopen={onReopen} />
       ) : (
         <>
-          <InteractionCards interactions={waiting} thread={id} onAnswer={send} />
-          <SharedContextChips conversation={id} />
-          <div className="relative">
+          <div className="dock-composer relative">
             {presence.state === 'waiting' && <PresenceBorder />}
             <MessageComposer
               draft={draft}

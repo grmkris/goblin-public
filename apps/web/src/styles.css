@@ -930,6 +930,27 @@ main.shell {
   padding: 1.5rem var(--message-scroller-inset-x)
     max(0.75rem, calc(env(safe-area-inset-bottom, 0px) - var(--keyboard-inset, 0px)));
   pointer-events: none;
+  /* Never over the whole transcript: the pane less the keyboard, the pill's room and a few lines of conversation. */
+  max-height: calc(100% - var(--keyboard-inset, 0px) - var(--message-scroller-inset-top, 0px) - 4rem);
+}
+/* Notices and the cards that wait on the owner: they scroll here when there are more than the dock has room for. */
+.dock-cards {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Room for the cards' shadows inside the scroll area. */
+  padding-block: 0.25rem;
+  margin-block: -0.25rem;
+}
+.dock-cards:empty {
+  display: none;
+}
+.dock-composer {
+  flex: none;
 }
 .dock-hint {
   color: var(--muted-foreground);
