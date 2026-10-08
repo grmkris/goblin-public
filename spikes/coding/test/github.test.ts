@@ -47,6 +47,7 @@ class InterruptedPublish extends GitHub {
   override async api(route: string, body?: unknown): Promise<unknown> {
     if (route.startsWith('pulls?')) return []
     if (route === 'git/commits/base-sha') return { tree: { sha: 'base-tree' } }
+    if (route === 'git/trees/base-tree?recursive=1') return { tree: [{ path: 'apps/cli/src/main.ts', mode: '100755' }] }
     if (route === 'git/trees') {
       this.trees.push(body)
       return { sha: 'checked-tree' }
@@ -96,6 +97,6 @@ test('reconciles an interrupted publication using the saved commit and existing 
   expect(github.commits).toBe(1)
   expect(github.trees[0]).toEqual({
     base_tree: 'base-tree',
-    tree: [{ path, mode: '100644', type: 'blob', content: 'change\n' }],
+    tree: [{ path, mode: '100755', type: 'blob', content: 'change\n' }],
   })
 })

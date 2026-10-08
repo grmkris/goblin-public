@@ -8,7 +8,12 @@ export const editable = (file: string): boolean =>
   /^apps\/cli\/(?:src|test)\/[\w./-]+\.ts$/u.test(file) && !file.split('/').includes('..')
 
 export function sourcePath(file: string): string {
-  if (path.isAbsolute(file) || file.includes('\\') || file.split('/').some((part) => part === '..' || part === '.'))
+  if (
+    path.isAbsolute(file) ||
+    file.includes('\\') ||
+    path.posix.normalize(file) !== file ||
+    file.split('/').some((part) => part === '..' || part === '.')
+  )
     throw new SpikeError('invalid_repo_path')
   return file
 }

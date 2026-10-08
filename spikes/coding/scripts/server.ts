@@ -1,7 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server'
 import * as Schema from 'effect/Schema'
 import path from 'node:path'
-import { chmod } from 'node:fs/promises'
+import { chmod, lstat } from 'node:fs/promises'
 import { Coding } from './tools.ts'
 import { GitHub } from './github.ts'
 import { OAuth } from './oauth.ts'
@@ -28,6 +28,7 @@ const names = Schema.decodeUnknownSync(Schema.Array(Schema.String))(
 const files = new Map<string, string>()
 for (const name of names) {
   if (!/\.(?:ts|tsx|json|jsonc|md|css)$/u.test(name) || name.startsWith('.')) continue
+  if (!(await lstat(path.join(config.root, name))).isFile()) continue
   const file = Bun.file(path.join(config.root, name))
   if (file.size <= 100_000) files.set(name, await file.text())
 }

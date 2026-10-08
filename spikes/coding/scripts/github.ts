@@ -1,5 +1,8 @@
 import { SpikeError, type Overlay, type Published } from './overlay.ts'
 import { bounded } from './lsp.ts'
+import * as Schema from 'effect/Schema'
+
+const Tree = Schema.Struct({ tree: Schema.Array(Schema.Struct({ path: Schema.String, mode: Schema.String })) })
 
 const object = (value: unknown): Record<string, unknown> => {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new SpikeError('github_response')
@@ -59,9 +62,17 @@ export class GitHub {
       return receipt
     }
     const base = await this.api(`git/commits/${overlay.base}`)
+    const baseTree = field(object(base)['tree'], 'sha')
+    const original = Schema.decodeUnknownSync(Tree)(await this.api(`git/trees/${baseTree}?recursive=1`))
+    const modes = new Map(original.tree.map((entry) => [entry.path, entry.mode]))
     const tree = await this.api('git/trees', {
-      base_tree: field(object(base)['tree'], 'sha'),
-      tree: [...overlay.changes].map(([file, content]) => ({ path: file, mode: '100644', type: 'blob', content })),
+      base_tree: baseTree,
+      tree: [...overlay.changes].map(([file, content]) => ({
+        path: file,
+        mode: modes.get(file) ?? '100644',
+        type: 'blob',
+        content,
+      })),
     })
     const sha =
       overlay.publication?.commit ??
