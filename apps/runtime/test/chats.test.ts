@@ -1,0 +1,103 @@
+import { afterEach, describe, expect, it } from 'vitest'
+import { ChatDirectory } from '../src/chats/directory.ts'
+import { appConversations } from '../src/storage/schema.ts'
+import { chatDatabase } from './chats-sqlite.ts'
+
+const noop = (): void => undefined
+const cleanups: (() => void)[] = []
+afterEach(() => {
+  for (const close of cleanups.splice(0)) close()
+})
+const fixture = () => {
+  const { db, close } = chatDatabase()
+  cleanups.push(close)
+  db.insert(appConversations)
+    .values([
+      { chatId: '1', piSession: '41', kind: 'main', role: 'primary', createdAt: 1 },
+      { chatId: '2', piSession: '42', kind: 'thread', parentSession: '1', createdAt: 1 },
+    ])
+    .run()
+  return { chats: new ChatDirectory(db), db }
+}
+
+describe('logical chat directory', () => {
+  it('resolves both directions and refuses unregistered chats', () => {
+    const { chats } = fixture()
+    expect(chats.primary()).toBe('1')
+    expect(chats.session(chats.primary())).toBe('41')
+    expect(chats.chatOf('41')).toBe('1')
+    expect(chats.chatOf('1')).toBeUndefined()
+    expect(() => chats.session('99')).toThrow(expect.objectContaining({ _tag: 'NotFound' }))
+  })
+
+  it('records intent first and keeps retries on the original session after a fenced rebind', () => {
+    const { chats, db } = fixture()
+    const rebound: string[] = []
+    const unsubscribe = chats.onRebind((chat) => rebound.push(chat))
+    expect(chats.admit('1', 'owner:1', 10)).toEqual({ session: '41', existing: false })
+    chats.rebind('1', { from: '41', epoch: 0 }, '43', 11)
+    expect(chats.session('1')).toBe('43')
+    expect(chats.chatOf('41')).toBeUndefined()
+    expect(chats.chatOf('43')).toBe('1')
+    expect(chats.admit('1', 'owner:1', 12)).toEqual({ session: '41', existing: true })
+    expect(chats.operation('1', 'owner:1')).toBe('41')
+    expect(chats.admit('1', 'owner:2', 12)).toEqual({ session: '43', existing: false })
+    expect(chats.operation('2', 'owner:1')).toBeUndefined()
+    expect(db.select().from(appConversations).all()[0]).toMatchObject({ chatId: '1', epoch: 1, role: 'primary' })
+    expect(rebound).toEqual(['1'])
+    unsubscribe()
+    chats.rebind('1', { from: '43', epoch: 1 }, '44', 13)
+    expect(rebound).toEqual(['1'])
+  })
+
+  it('rejects stale epochs, stale sessions and another chat’s session without changing ownership', () => {
+    const { chats } = fixture()
+    for (const [expected, to] of [
+      [{ from: '41', epoch: 1 }, '43'],
+      [{ from: '40', epoch: 0 }, '43'],
+      [{ from: '41', epoch: 0 }, '42'],
+    ] as const) {
+      expect(() => chats.rebind('1', expected, to, 10)).toThrow(expect.objectContaining({ _tag: 'Conflict' }))
+    }
+    expect(chats.session('1')).toBe('41')
+    expect(chats.session('2')).toBe('42')
+  })
+
+  it('prunes receipts older than thirty days while preserving the current retry and other chat keys', () => {
+    const { chats } = fixture()
+    chats.admit('1', 'old', 1)
+    chats.admit('1', 'retry', 1)
+    chats.admit('2', 'retry', 2)
+    const now = 30 * 24 * 60 * 60 + 10
+    expect(chats.admit('1', 'retry', now)).toEqual({ session: '41', existing: true })
+    expect(chats.operation('1', 'old')).toBeUndefined()
+    expect(chats.operation('2', 'retry')).toBe('42')
+  })
+
+  it('serializes one chat, allows independent chats, and releases after a failed admission', async () => {
+    const { chats } = fixture()
+    const events: string[] = []
+    let release = noop
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const first = chats.withChat('1', async () => {
+      events.push('first')
+      await held
+      throw new Error('fixture')
+    })
+    const second = chats.withChat('1', async () => {
+      events.push('second')
+      return 2
+    })
+    await chats.withChat('2', async () => {
+      events.push('independent')
+    })
+    expect(events).toEqual(['first', 'independent'])
+    release()
+    await expect(first).rejects.toThrow('fixture')
+    await expect(second).resolves.toBe(2)
+    await expect(chats.withChat('1', async () => 3)).resolves.toBe(3)
+    expect(events).toEqual(['first', 'independent', 'second'])
+  })
+})

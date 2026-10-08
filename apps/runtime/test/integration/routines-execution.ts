@@ -40,7 +40,7 @@ export async function routineExecutionProbe(
   await agent.routinesWake()
   const record = store.get(first.id)
   if (record.sessionId === null) throw new Error('Routine session did not bind')
-  const thread = db.select().from(appConversations).where(eq(appConversations.sessionId, record.sessionId)).get()
+  const thread = db.select().from(appConversations).where(eq(appConversations.chatId, record.sessionId)).get()
   const pi = await agent.harness.pi()
   const main = await pi.conversation(conversationId(MAIN_THREAD), BACKGROUND)
   const history = await main?.entries({}, 100, undefined, BACKGROUND)

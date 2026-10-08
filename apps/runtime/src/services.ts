@@ -7,6 +7,7 @@ import type { ModelBudget } from './budget.ts'
 import type { ModelPicker } from './models.ts'
 import type { McpHost } from './mcp/host.ts'
 import type { ResidentAuthority } from './resident.ts'
+import type { ChatDirectory } from './chats/directory.ts'
 import type { ConversationRegistry } from './conversations.ts'
 import type { MainMemory } from './memory/memory.ts'
 import type { SkillLearner } from './skills/learner.ts'
@@ -31,6 +32,7 @@ import type { McpApprovalStore } from './mcp/approvals.ts'
 export class Mcp extends Context.Service<Mcp, McpHost>()('goblin/Mcp') {}
 export class Approvals extends Context.Service<Approvals, McpApprovalStore>()('goblin/Approvals') {}
 export class Resident extends Context.Service<Resident, ResidentAuthority>()('goblin/Resident') {}
+export class Chats extends Context.Service<Chats, ChatDirectory>()('goblin/Chats') {}
 export class Conversations extends Context.Service<Conversations, ConversationRegistry>()('goblin/Conversations') {}
 export class Budget extends Context.Service<Budget, ModelBudget>()('goblin/Budget') {}
 export class Models extends Context.Service<Models, ModelPicker>()('goblin/Models') {}
@@ -62,6 +64,7 @@ export type AgentServices =
   | Mcp
   | Approvals
   | Resident
+  | Chats
   | Conversations
   | Budget
   | Models
@@ -85,6 +88,7 @@ export const agentLayer = (services: {
   readonly approvals: McpApprovalStore
   readonly resident: ResidentAuthority
   readonly conversations: ConversationRegistry
+  readonly chats: ChatDirectory
   readonly budget: ModelBudget
   readonly models: ModelPicker
   readonly memory: MainMemory
@@ -104,6 +108,7 @@ export const agentLayer = (services: {
     Layer.succeed(Approvals, services.approvals),
     Layer.succeed(Resident, services.resident),
     Layer.succeed(Conversations, services.conversations),
+    Layer.succeed(Chats, services.chats),
     Layer.succeed(Budget, services.budget),
     Layer.succeed(Models, services.models),
     Layer.succeed(Memory, services.memory),

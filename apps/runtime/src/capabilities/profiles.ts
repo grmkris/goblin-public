@@ -153,7 +153,7 @@ export class CapabilityProfiles {
         routineRunId: appConversations.routineRunId,
       })
       .from(appConversations)
-      .where(eq(appConversations.sessionId, session))
+      .where(eq(appConversations.chatId, session))
       .get()
   }
 
@@ -333,7 +333,7 @@ export class CapabilityProfiles {
   async retoolOnce(marker: string, now: number): Promise<void> {
     if (this.#db.select().from(appMetadata).where(eq(appMetadata.id, marker)).get() !== undefined) return
     // Registered conversations only: one not registered yet (a new agent's main) has no switches to apply.
-    for (const { session } of this.#db.select({ session: appConversations.sessionId }).from(appConversations).all()) {
+    for (const { session } of this.#db.select({ session: appConversations.chatId }).from(appConversations).all()) {
       const tools = this.piTools(session)
       if (tools !== null) await this.#retool(session, tools)
     }

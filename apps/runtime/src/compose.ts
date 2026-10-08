@@ -7,6 +7,7 @@ import { creditRates } from './budget-credits.ts'
 import { CapabilityProfiles, type PiTools } from './capabilities/profiles.ts'
 import { TelegramChannel } from './channel/channel.ts'
 import { nowMillis, nowSeconds } from './clock.ts'
+import { ChatDirectory } from './chats/directory.ts'
 import { ConversationRegistry, type ThreadKit } from './conversations.ts'
 import { WorkspaceFeed } from './workspace/feed.ts'
 import { AppRegistry } from './apps/registry.ts'
@@ -210,7 +211,6 @@ export async function composeServices(
   const options = modelOptions(env.MODELS, env.MODEL_ID)
   const models = new ModelPicker(new ModelChoiceStore(db), options)
   const cheapModelId = memoryModelId(env.MEMORY_MODEL, options)
-  // One cheap model per purpose, so the run ledger tells what each call outside a turn was for (ADR 0024).
   const cheap = (purpose: AuxPurpose) =>
     new CheapModel(
       input.pi.models,
@@ -218,9 +218,9 @@ export async function composeServices(
       (use) => budget.record(use, nowSeconds(), cheapModelId),
       auxReporter(input.telemetry, purpose),
     )
-  const namer = cheap('naming')
   const fold = Number(env.MEMORY_FOLD_TOKENS ?? Number.NaN)
   const memory = new MainMemory(db, harness, cheap('memory'), Number.isFinite(fold) ? { foldTokens: fold } : {})
+  const chats = new ChatDirectory(db)
   const { recall } = input.memory
   await memory.activate([input.memory.memory, recall])
   const capabilities = new CapabilityProfiles(db, input.subagentTools, retool(harness))
@@ -228,7 +228,7 @@ export async function composeServices(
   // Apply the current complete delegation tool set to retained Pi filters.
   await capabilities.retoolOnce('retool:subagent-config', nowSeconds())
   const routineServices = await makeRoutines(input)
-  const kit = { thread: input.thread, recall, memory, namer, capabilities }
+  const kit = { thread: input.thread, recall, memory, namer: cheap('naming'), capabilities, chats }
   const conversations = conversationServices(db, input, kit)
   const skills = new SkillLibrary(host.manager, skillState, nowMillis)
   const learner = new SkillLearner({
@@ -260,6 +260,7 @@ export async function composeServices(
       agentLayer({
         host,
         approvals,
+        chats,
         resident,
         ...conversations,
         budget,

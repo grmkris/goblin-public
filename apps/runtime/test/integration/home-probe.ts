@@ -80,7 +80,7 @@ function mcpPlacementProbe(home: HomeService, apps: AppRegistry, db: ReturnType<
       'owner',
     ),
   )
-  db.insert(appConversations).values({ sessionId: '222', kind: 'thread', parentSession: '1', createdAt: 1 }).run()
+  db.insert(appConversations).values({ chatId: '222', kind: 'thread', parentSession: '1', createdAt: 1 }).run()
   const threaded = apps.register('222', 'home-thread-board', origin, 4)
   edit(
     'home-owner-thread-mcp',
@@ -88,7 +88,7 @@ function mcpPlacementProbe(home: HomeService, apps: AppRegistry, db: ReturnType<
     [{ kind: 'add', tile: { kind: 'app', id: 'thread-board', appId: threaded.id, size: 'medium' } }],
     'owner',
   )
-  db.update(appConversations).set({ closedAt: 5 }).where(eq(appConversations.sessionId, '222')).run()
+  db.update(appConversations).set({ closedAt: 5 }).where(eq(appConversations.chatId, '222')).run()
   apps.closeWithConversations(['222'], 5)
   const afterThreadClose = edit('home-after-thread-close', 9, [{ kind: 'resize', id: 'today', size: 'large' }])
   const threadClosed = apps.list().find((app) => app.id === threaded.id)?.closedAt !== undefined

@@ -321,11 +321,11 @@ export class PersonalAgentProbe extends PersonalAgent {
     const db = drizzle(this.ctx.storage)
     db.insert(appConversations)
       .values([
-        { sessionId: MAIN_THREAD, kind: 'main', createdAt: 1 },
-        { sessionId: '900', kind: 'thread', parentSession: MAIN_THREAD, createdAt: 1 },
-        { sessionId: '901', kind: 'subagent', parentSession: '900', createdAt: 1 },
-        { sessionId: '902', kind: 'subagent', parentSession: '901', createdAt: 1 },
-        { sessionId: '903', kind: 'subagent', parentSession: '999', createdAt: 1 },
+        { chatId: MAIN_THREAD, kind: 'main', createdAt: 1 },
+        { chatId: '900', kind: 'thread', parentSession: MAIN_THREAD, createdAt: 1 },
+        { chatId: '901', kind: 'subagent', parentSession: '900', createdAt: 1 },
+        { chatId: '902', kind: 'subagent', parentSession: '901', createdAt: 1 },
+        { chatId: '903', kind: 'subagent', parentSession: '999', createdAt: 1 },
       ])
       .onConflictDoNothing()
       .run()
@@ -356,7 +356,7 @@ export class PersonalAgentProbe extends PersonalAgent {
     }
     // Twenty subagents deep is bounded by the thread at the top, not refused; a cycle of spawners may use nothing.
     const chain = Array.from({ length: 20 }, (_, index) => ({
-      sessionId: String(910 + index),
+      chatId: String(910 + index),
       kind: 'subagent' as const,
       parentSession: index === 0 ? '900' : String(909 + index),
       createdAt: 1,
@@ -364,9 +364,9 @@ export class PersonalAgentProbe extends PersonalAgent {
     db.insert(appConversations).values(chain).run()
     db.insert(appConversations)
       .values([
-        { sessionId: '950', kind: 'subagent', parentSession: '951', createdAt: 1 },
-        { sessionId: '951', kind: 'subagent', parentSession: '950', createdAt: 1 },
-        { sessionId: '960', kind: 'thread', parentSession: '902', createdAt: 1 },
+        { chatId: '950', kind: 'subagent', parentSession: '951', createdAt: 1 },
+        { chatId: '951', kind: 'subagent', parentSession: '950', createdAt: 1 },
+        { chatId: '960', kind: 'thread', parentSession: '902', createdAt: 1 },
       ])
       .run()
     // A thread branched from a subagent copies what the subagent works under: every spawner's switches.

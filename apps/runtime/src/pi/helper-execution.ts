@@ -16,7 +16,7 @@ export async function restoreHelperExecution(
   const pi = await harness.pi()
   const names = extensions.map((extension) => extension.name).join('\n')
   for (const helper of helpers) {
-    const conversation = await pi.conversation(conversationId(helper.sessionId), BACKGROUND)
+    const conversation = await pi.conversation(conversationId(helper.chatId), BACKGROUND)
     if (conversation === undefined) continue
     const current = await conversation.agent(BACKGROUND)
     if (current.extensions.map((extension) => extension.name).join('\n') !== names)

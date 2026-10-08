@@ -96,7 +96,11 @@ export const appUsageDaily = sqliteTable('app_usage_daily', {
  * column stays in the table (migrations are additive) and is no longer read.
  */
 export const appConversations = sqliteTable('app_conversations', {
-  sessionId: text('session_id').primaryKey().notNull(),
+  chatId: text('session_id').primaryKey().notNull(),
+  piSession: text('pi_session').unique(),
+  epoch: integer('epoch').notNull().default(0),
+  role: text('role', { enum: ['primary'] }),
+  spawnerSession: text('spawner_session'),
   kind: text('kind', { enum: ['main', 'thread', 'subagent'] }).notNull(),
   title: text('title'),
   parentSession: text('parent_session'),
@@ -115,6 +119,18 @@ export const appConversations = sqliteTable('app_conversations', {
   mainNote: text('main_note', { enum: ['owed', 'written'] }),
   routineRunId: text('routine_run_id'),
 })
+
+/** Pi deduplicates per session; chat admission remembers the original session across future rebinds. */
+export const appChatOperations = sqliteTable(
+  'app_chat_operations',
+  {
+    chatId: text('chat_id').notNull(),
+    operationId: text('operation_id').notNull(),
+    sessionId: text('session_id').notNull(),
+    admittedAt: integer('admitted_at').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.chatId, table.operationId] })],
+)
 
 /**
  * What each conversation switched off for its agent (ADR 0010): one row per thing off there, so anything granted later
@@ -497,6 +513,7 @@ export const appRegistry = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     source: text('source', { enum: ['mcp', 'agent'] }).notNull(),
     sessionId: text('session_id').notNull(),
+    chatId: text('chat_id'),
     callId: text('call_id'),
     entryId: integer('entry_id'),
     serverId: text('server_id'),

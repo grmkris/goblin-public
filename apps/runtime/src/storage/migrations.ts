@@ -350,6 +350,24 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     tables: ['app_execution_exclusions'],
     sql: 'CREATE TABLE app_execution_exclusions (session_id TEXT NOT NULL, app TEXT NOT NULL, off_at INTEGER NOT NULL, PRIMARY KEY (session_id, app))',
   },
+  {
+    key: '20261025000000_logical_chats',
+    tables: ['app_conversations', 'app_chat_operations', 'app_registry'],
+    sql: [
+      'ALTER TABLE app_conversations ADD COLUMN pi_session TEXT',
+      'ALTER TABLE app_conversations ADD COLUMN epoch INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE app_conversations ADD COLUMN role TEXT',
+      'ALTER TABLE app_conversations ADD COLUMN spawner_session TEXT',
+      'UPDATE app_conversations SET pi_session = session_id',
+      "UPDATE app_conversations SET role = 'primary' WHERE kind = 'main'",
+      "UPDATE app_conversations SET spawner_session = parent_session WHERE kind = 'subagent'",
+      'CREATE UNIQUE INDEX app_conversation_pi_session ON app_conversations (pi_session)',
+      'CREATE TABLE app_chat_operations (chat_id TEXT NOT NULL, operation_id TEXT NOT NULL, session_id TEXT NOT NULL, admitted_at INTEGER NOT NULL, PRIMARY KEY (chat_id, operation_id))',
+      'CREATE INDEX app_chat_operations_admitted ON app_chat_operations (admitted_at)',
+      'ALTER TABLE app_registry ADD COLUMN chat_id TEXT',
+      'UPDATE app_registry SET chat_id = session_id',
+    ].join(BREAK),
+  },
 ]
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {

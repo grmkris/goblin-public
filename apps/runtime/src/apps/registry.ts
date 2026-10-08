@@ -256,9 +256,9 @@ export class AppRegistry {
   closeWithConversations(sessions: readonly string[], now: number): void {
     if (sessions.length === 0) return
     const closed = this.#db
-      .select({ id: appConversations.sessionId })
+      .select({ id: appConversations.chatId })
       .from(appConversations)
-      .where(and(inArray(appConversations.sessionId, [...sessions]), isNotNull(appConversations.closedAt)))
+      .where(and(inArray(appConversations.chatId, [...sessions]), isNotNull(appConversations.closedAt)))
       .all()
       .map((row) => row.id)
     if (closed.length === 0) return

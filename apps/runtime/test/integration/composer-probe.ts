@@ -12,10 +12,10 @@ export async function helperExclusionsProbe(storage: DurableObjectStorage) {
   const db = drizzle(storage)
   db.insert(appConversations)
     .values([
-      { sessionId: '700', kind: 'thread', createdAt: 1 },
-      { sessionId: '701', kind: 'subagent', parentSession: '700', createdAt: 1 },
-      { sessionId: '702', kind: 'subagent', parentSession: '701', createdAt: 1 },
-      { sessionId: '703', kind: 'thread', parentSession: '702', createdAt: 1 },
+      { chatId: '700', kind: 'thread', createdAt: 1 },
+      { chatId: '701', kind: 'subagent', parentSession: '700', createdAt: 1 },
+      { chatId: '702', kind: 'subagent', parentSession: '701', createdAt: 1 },
+      { chatId: '703', kind: 'thread', parentSession: '702', createdAt: 1 },
     ])
     .run()
   const profiles = new CapabilityProfiles(db, [], async () => undefined)

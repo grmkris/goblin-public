@@ -5,6 +5,7 @@ import type { Conversation, EntryRecord, Extension } from '@earendil-works/pi-du
 import type { PiHarness } from 'agents/harness/pi'
 import type { CapabilityProfiles } from './capabilities/profiles.ts'
 import { writeHelperExclusions } from './capabilities/profiles.ts'
+import type { ChatDirectory } from './chats/directory.ts'
 import { InvalidInput, NotFound } from './http/errors.ts'
 import type { MainMemory } from './memory/memory.ts'
 import type { CheapModel } from './memory/model.ts'
@@ -52,9 +53,7 @@ const cleanTitle = (raw: string): string =>
 const labelOf = (row: Row): string => (row.title === null ? `${row.kind} (untitled)` : `${row.kind} "${row.title}"`)
 
 /**
- * What threads need beyond the registry: their own extension, `recall` for the ones that see main's history (they
- * start with main's memory view), the memory that bounds their zooms, the cheap model that names them, and the switches
- * a new thread copies from the conversation it came from.
+ * Thread extensions, bounded recall, naming, copied switches and logical chat resolution.
  */
 export type ThreadKit = {
   readonly thread: Extension
@@ -62,13 +61,11 @@ export type ThreadKit = {
   readonly memory: MainMemory
   readonly namer: CheapModel
   readonly capabilities: CapabilityProfiles
+  readonly chats: ChatDirectory
 }
 
 /**
- * The agent's conversations the owner can reach, as a tree: main at the root, each thread under the conversation it
- * branched from (main for one started empty), each subagent under its spawner. Pi owns every transcript; this registry
- * is what Pi does not keep (kind, title, origin, closed) and the gate in front of Pi: a session id reaches Pi only if it
- * is registered here, so no request can open a conversation by guessing its number.
+ * Registered chats form a tree. Pi owns transcripts; the registry owns names, origins, closure and access.
  */
 export class ConversationRegistry {
   readonly #db: DrizzleSqliteDODatabase
@@ -83,7 +80,7 @@ export class ConversationRegistry {
     this.#harness = harness
     this.#kit = kit
     db.insert(appConversations)
-      .values({ sessionId: MAIN_THREAD, kind: 'main', createdAt: now })
+      .values({ chatId: MAIN_THREAD, piSession: MAIN_THREAD, role: 'primary', kind: 'main', createdAt: now })
       .onConflictDoNothing()
       .run()
   }
@@ -99,7 +96,7 @@ export class ConversationRegistry {
   }
 
   #row(id: string): Row | undefined {
-    return this.#db.select().from(appConversations).where(eq(appConversations.sessionId, id)).get()
+    return this.#db.select().from(appConversations).where(eq(appConversations.chatId, id)).get()
   }
 
   /** A registered conversation's row; anything else is `NotFound`. */
@@ -111,7 +108,7 @@ export class ConversationRegistry {
 
   /** The Pi session of a registered conversation; anything else is `NotFound`. */
   require(id: string): string {
-    return this.#registered(id).sessionId
+    return this.#registered(id).chatId
   }
 
   /** The Pi session of a registered conversation that is open: a closed one is read, never written to. */
@@ -177,11 +174,11 @@ export class ConversationRegistry {
     const agent = { extensions, instructions: null, tools: this.#kit.capabilities.piTools(parent) }
     const fork = await source.fork(at.id, { ownership: { kind: 'ownerless' }, agent }, BACKGROUND)
     if (from.kind === 'subagent') {
-      this.#db.update(appConversations).set({ keepOpenAt: now }).where(eq(appConversations.sessionId, parent)).run()
+      this.#db.update(appConversations).set({ keepOpenAt: now }).where(eq(appConversations.chatId, parent)).run()
       this.#changed([parent])
     }
     return this.#insert(
-      { sessionId: String(fork.id), kind: 'thread', parentSession: parent, forkEntry: at.id, recallThrough },
+      { chatId: String(fork.id), kind: 'thread', parentSession: parent, forkEntry: at.id, recallThrough },
       now,
     )
   }
@@ -202,7 +199,7 @@ export class ConversationRegistry {
     await (
       await this.#conversation(session.id)
     ).configure({ extensions: { add: [this.#kit.thread] }, tools }, BACKGROUND)
-    return this.#insert({ sessionId: session.id, kind: 'thread', parentSession: MAIN_THREAD, mainNote: 'owed' }, now)
+    return this.#insert({ chatId: session.id, kind: 'thread', parentSession: MAIN_THREAD, mainNote: 'owed' }, now)
   }
 
   /** How far `zoom` reaches into main's memory from `session`: all of it from main, up to its fork from a thread. */
@@ -224,7 +221,15 @@ export class ConversationRegistry {
     this.#db.transaction(() => {
       this.#db
         .insert(appConversations)
-        .values({ sessionId: session, kind: 'subagent', title: name, parentSession: parent, createdAt: now })
+        .values({
+          chatId: session,
+          piSession: session,
+          spawnerSession: parent,
+          kind: 'subagent',
+          title: name,
+          parentSession: parent,
+          createdAt: now,
+        })
         .run()
       writeHelperExclusions(this.#db, session, exclusions, now)
     })
@@ -236,7 +241,8 @@ export class ConversationRegistry {
     this.#db
       .insert(appConversations)
       .values({
-        sessionId: session,
+        chatId: session,
+        piSession: session,
         kind: 'thread',
         title,
         parentSession: MAIN_THREAD,
@@ -285,7 +291,7 @@ export class ConversationRegistry {
     const parent = this.#registered(row.parentSession)
     const model = [{ role: 'user' as const, content: authoredContent(labelOf(row), note), timestamp: Date.now() }]
     await (
-      await this.#conversation(parent.sessionId)
+      await this.#conversation(parent.chatId)
     ).submit({ type: 'write', requestId, entry: { kind: 'app.shared', data: { thread }, model } }, BACKGROUND)
     return parent.kind === 'main' ? 'main' : labelOf(parent)
   }
@@ -312,7 +318,7 @@ export class ConversationRegistry {
     this.#db
       .update(appConversations)
       .set({ mainNote: 'written' })
-      .where(and(eq(appConversations.sessionId, thread), eq(appConversations.mainNote, 'owed')))
+      .where(and(eq(appConversations.chatId, thread), eq(appConversations.mainNote, 'owed')))
       .run()
   }
 
@@ -330,7 +336,7 @@ export class ConversationRegistry {
       this.#db
         .update(appConversations)
         .set({ title })
-        .where(and(eq(appConversations.sessionId, thread), isNull(appConversations.title)))
+        .where(and(eq(appConversations.chatId, thread), isNull(appConversations.title)))
         .run()
       this.#changed([thread])
     } finally {
@@ -372,7 +378,7 @@ export class ConversationRegistry {
       ...(change.closed === false ? { closedAt: null, closedBy: null } : {}),
     }
     if (Object.keys(set).length > 0) {
-      this.#db.update(appConversations).set(set).where(eq(appConversations.sessionId, id)).run()
+      this.#db.update(appConversations).set(set).where(eq(appConversations.chatId, id)).run()
       this.#changed([id])
     }
     const closed = change.closed === true ? await this.close(id, 'owner', now) : []
@@ -461,11 +467,11 @@ export class ConversationRegistry {
   ): Promise<ConversationView> {
     this.#db
       .insert(appConversations)
-      .values({ ...values, createdAt: now })
+      .values({ ...values, piSession: values.chatId, createdAt: now })
       .run()
-    this.#kit.capabilities.copy(values.parentSession, values.sessionId, now)
-    this.#changed([values.sessionId])
-    return this.#describe(this.#registered(values.sessionId))
+    this.#kit.capabilities.copy(values.parentSession, values.chatId, now)
+    this.#changed([values.chatId])
+    return this.#describe(this.#registered(values.chatId))
   }
 
   /**
@@ -473,11 +479,11 @@ export class ConversationRegistry {
    * conversation is gone still lists, with no replies, so it never takes the whole list down.
    */
   async #describe(row: Row): Promise<ConversationView> {
-    const pi = await (await this.#harness.pi()).conversation(conversationId(row.sessionId), BACKGROUND)
+    const pi = await (await this.#harness.pi()).conversation(conversationId(row.chatId), BACKGROUND)
     const activity: ReplyStats =
-      pi === undefined ? { replies: 0 } : await this.#replies.stats(row.sessionId, pi, row.forkEntry ?? 0)
+      pi === undefined ? { replies: 0 } : await this.#replies.stats(row.chatId, pi, row.forkEntry ?? 0)
     return {
-      id: row.sessionId,
+      id: row.chatId,
       kind: row.kind,
       ...(row.title === null ? {} : { title: row.title }),
       ...(row.parentSession === null ? {} : { parent: row.parentSession }),
