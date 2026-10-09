@@ -3,6 +3,7 @@
 // typed JSON API, so this module calls them itself, with the headers the typed client sends.
 import { type Attachment, FILE_LIMITS, FileEntry, FileListing } from '@goblin/contracts'
 import { API_ERRORS, AppError, PayloadTooLarge } from '@goblin/contracts/api'
+import * as Data from 'effect/Data'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { isString, record } from './values.ts'
@@ -58,12 +59,9 @@ const decodeEnvelope = Schema.decodeUnknownOption(Schema.Union(API_ERRORS))
 const decodeTagged = Schema.decodeUnknownOption(AppError)
 
 /** A files request whose answer names no failure: its status says what happened. */
-class FilesFailure extends Error {
-  override readonly name = 'FilesFailure'
-  readonly status: number
+class FilesFailure extends Data.TaggedError('FilesFailure')<{ readonly status: number }> {
   constructor(status: number) {
-    super(`HTTP ${String(status)}`)
-    this.status = status
+    super({ status })
   }
 }
 

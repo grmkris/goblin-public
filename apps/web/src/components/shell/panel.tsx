@@ -1,3 +1,4 @@
+import * as Data from 'effect/Data'
 import { type ReactNode, createContext, use, useCallback, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { type PanelItem, type PanelSearch, panelSearch } from '../../lib/panel.ts'
@@ -26,8 +27,10 @@ type Panel = {
 const PanelContext = createContext<Panel | undefined>(undefined)
 
 /** A component asked for the panel outside a channel: a wiring mistake in the page, not a failure to show. */
-class NoPanel extends Error {
-  override readonly name = 'NoPanel'
+class NoPanel extends Data.TaggedError('NoPanel')<{ readonly message: string }> {
+  constructor(message: string) {
+    super({ message })
+  }
 }
 
 export function usePanel(): Panel {

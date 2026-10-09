@@ -2,6 +2,7 @@
 // opaque frame. The bridge lives as long as the iframe element; placement changes only update the host context, so
 // moving the App between display modes never reloads it. An MCP App's document comes from its server; an agent app's
 // is assembled here from its launch and goblin's frame bundles (ADR 0021).
+import * as Data from 'effect/Data'
 import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -83,8 +84,10 @@ function contextFor(placement: AppPlacement): McpUiHostContext {
 }
 
 /** A failure of this frame's own making, whose words the owner reads as they are. */
-class FrameFailure extends Error {
-  override readonly name = 'FrameFailure'
+class FrameFailure extends Data.TaggedError('FrameFailure')<{ readonly message: string }> {
+  constructor(message: string) {
+    super({ message })
+  }
 }
 
 /** Why an App did not load, as the owner reads it: the API's copy of its failures, this frame's words for its own. */

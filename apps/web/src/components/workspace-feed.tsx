@@ -1,3 +1,4 @@
+import * as Data from 'effect/Data'
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -164,8 +165,10 @@ export function WorkspaceFeedProvider({
 }
 
 /** A component asked for the workspace feed outside its provider: a wiring mistake in the page, not a failure to show. */
-class NoWorkspaceFeed extends Error {
-  override readonly name = 'NoWorkspaceFeed'
+class NoWorkspaceFeed extends Data.TaggedError('NoWorkspaceFeed')<{ readonly message: string }> {
+  constructor(message: string) {
+    super({ message })
+  }
 }
 
 export function useWorkspaceFeed(): WorkspaceFeed {

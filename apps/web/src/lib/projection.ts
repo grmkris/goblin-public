@@ -8,7 +8,7 @@ import {
   ThreadHeadData,
   TopicSeedData,
 } from '@goblin/contracts'
-import { Option, Schema } from 'effect'
+import { Data, Option, Schema } from 'effect'
 import type { SharedContext } from './app-context.ts'
 import { isString, isNumber, identifier, record, records, text } from './values.ts'
 import { sharedContext } from './app-context.ts'
@@ -381,10 +381,12 @@ export const queuedProgress = (queuedCount: number): string =>
   `${queuedCount} queued ${queuedCount === 1 ? 'message' : 'messages'}`
 
 /** A frame of a chat's stream that is not the shape Pi sends: a bug, or a server this tab does not know. */
-export class UnreadableFrame extends Error {
-  override readonly name = 'UnreadableFrame'
-  constructor(readonly frame: 'snapshot' | 'batch') {
-    super(frame === 'snapshot' ? 'Invalid Pi snapshot' : 'Invalid Pi event batch')
+export class UnreadableFrame extends Data.TaggedError('UnreadableFrame')<{
+  readonly frame: 'snapshot' | 'batch'
+  readonly message: string
+}> {
+  constructor(frame: 'snapshot' | 'batch') {
+    super({ frame, message: frame === 'snapshot' ? 'Invalid Pi snapshot' : 'Invalid Pi event batch' })
   }
 }
 

@@ -1,3 +1,4 @@
+import * as Data from 'effect/Data'
 import { createContext, use } from 'react'
 import type { ComposerDraft } from './composer.ts'
 
@@ -21,8 +22,10 @@ export type Navigation = {
 export const NavigationContext = createContext<Navigation | undefined>(undefined)
 
 /** A component asked for the shell's navigation outside the shell: a wiring mistake in the page, not a failure to show. */
-class NoNavigation extends Error {
-  override readonly name = 'NoNavigation'
+class NoNavigation extends Data.TaggedError('NoNavigation')<{ readonly message: string }> {
+  constructor(message: string) {
+    super({ message })
+  }
 }
 
 /** The shell's navigation, for components under it. */

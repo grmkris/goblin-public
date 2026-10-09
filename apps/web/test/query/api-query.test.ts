@@ -88,6 +88,7 @@ describe('the owner API bridge', () => {
     await expect(mutation.mutate({ name: 'Garden', operationId: 'op-1' })).resolves.toMatchObject({ name: 'Garden' })
     const failure: unknown = await mutation
       .mutate({ name: 'garden', operationId: 'op-2' })
+      // expected: the test asserts on the failure it captures
       .catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(Conflict)
     expect(failure).toMatchObject({ reason: 'topic_name_taken', ref: RAY })
@@ -113,6 +114,7 @@ describe('the owner API bridge', () => {
         { preconnect: () => undefined },
       ),
     })
+    // expected: the test asserts on the failure it captures
     const failure: unknown = await offline.run((api) => api.topics.list()).catch((error: unknown) => error)
     expect(sent).toHaveLength(1)
     expect(describeError(failure)).toMatchObject({ kind: 'unavailable', code: 'transport_error', ref: 'a1b2c3d4' })
@@ -127,6 +129,7 @@ describe('the owner API bridge', () => {
     controller.abort()
     const failure: unknown = await owner
       .run((api) => api.topics.list(), controller.signal)
+      // expected: the test asserts on the failure it captures
       .catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(ApiDefect)
     expect(describeError(failure).kind).toBe('cancelled')

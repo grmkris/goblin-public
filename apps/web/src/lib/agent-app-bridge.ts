@@ -1,6 +1,7 @@
 // An agent app's view in its frame (ADR 0021): its action calls go to its own route with the frame's operation id, its
 // state goes in as tool results carrying `goblin/state` (the newest revision wins), and its failures go back to the
 // runtime, where the agent sees them.
+import * as Data from 'effect/Data'
 import type { AppBridge } from '@modelcontextprotocol/ext-apps/app-bridge'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import type { AppCall, AppCallResult, AppSnapshot } from '@goblin/contracts'
@@ -10,8 +11,10 @@ import { messageOf } from './query/app-error.ts'
 const OP = /^ui:([0-9a-f-]{36})$/u
 
 /** A call an App made that failed, in the owner's copy of the failure: the App never sees the raw error. */
-export class AppCallFailure extends Error {
-  override readonly name = 'AppCallFailure'
+export class AppCallFailure extends Data.TaggedError('AppCallFailure')<{ readonly message: string }> {
+  constructor(message: string) {
+    super({ message })
+  }
 }
 
 /** The routes an agent app's frame reaches, by App id (the frame builds them over `apps/queries.ts`). */

@@ -4,6 +4,7 @@
 // that the least recently seen unloads and its place shows a stub. Nothing here grants anything: an MCP App's
 // resource and every call it makes go through the owner's grants, live, and an agent app's view calls only its own
 // actions (frame.tsx). An agent app's new release reloads its frame; a new state is pushed into it.
+import * as Data from 'effect/Data'
 import {
   type Dispatch,
   type ReactNode,
@@ -82,8 +83,10 @@ type Host = {
 const HostContext = createContext<Host | undefined>(undefined)
 
 /** A component asked for the App host outside `AppHost`: a wiring mistake in the page, not a failure to show. */
-class NoAppHost extends Error {
-  override readonly name = 'NoAppHost'
+class NoAppHost extends Data.TaggedError('NoAppHost')<{ readonly message: string }> {
+  constructor(message: string) {
+    super({ message })
+  }
 }
 
 export function useAppHost(): Host {
