@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Schema } from 'effect'
-import { type CapabilityChange, ConversationCapabilities } from '@goblin/contracts'
+import type { CapabilityChange, ConversationCapabilities } from '@goblin/contracts'
 import {
   Button,
   Collapsible,
@@ -16,10 +16,9 @@ import {
   Switch,
 } from '@goblin/ui'
 import { ChevronRightIcon, SlidersHorizontalIcon } from 'lucide-react'
-import { failureText, request } from '../lib/boundary.ts'
-import { applyChange, capabilityCount, serverState } from '../lib/capabilities.ts'
-
-const decode = Schema.decodeUnknownSync(ConversationCapabilities)
+import { capabilityCount, serverState } from '../lib/capabilities.ts'
+import { capabilitiesQuery, setCapabilityMutation } from '../lib/capabilities/queries.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 
 type View = ConversationCapabilities
 type Change = (change: CapabilityChange) => void
@@ -29,29 +28,24 @@ type Change = (change: CapabilityChange) => void
  * the panel opens. A change shows at once and is replaced by the agent's answer, or undone with the reason.
  */
 export function useCapabilities(thread: string, running: boolean) {
-  const [view, setView] = useState<View>()
-  const [error, setError] = useState('')
-  const url = `/api/conversations/${thread}/capabilities`
-  const load = useCallback(() => {
-    request(url)
-      .then((data) => setView(decode(data)))
-      .catch((failure: unknown) => setError(failureText(failure)))
-  }, [url])
-  useEffect(load, [load, running])
-  const change = useCallback(
-    (next: CapabilityChange) => {
-      setError('')
-      setView((shown) => shown && applyChange(shown, next))
-      request(url, { method: 'PATCH', body: next })
-        .then((data) => setView(decode(data)))
-        .catch((failure: unknown) => {
-          setError(failureText(failure))
-          load()
-        })
-    },
-    [url, load],
-  )
-  return { view, error, change, load }
+  const queryClient = useQueryClient()
+  const read = useQuery(capabilitiesQuery(thread))
+  const setting = useMutation(setCapabilityMutation(queryClient, thread))
+  const { refetch } = read
+  const load = useCallback(() => void refetch(), [refetch])
+  const started = useRef(running)
+  useEffect(() => {
+    if (started.current === running) return
+    started.current = running
+    load()
+  }, [running, load])
+  const error =
+    (setting.error !== null && messageOf(setting.error, 'change that switch')) ||
+    (read.error !== null && messageOf(read.error, "read this conversation's switches")) ||
+    ''
+  const { mutate } = setting
+  const change = useCallback((next: CapabilityChange) => mutate(next), [mutate])
+  return { view: read.data, error, change, load }
 }
 
 /** One switch with its name; the whole row toggles it, at least 44px tall on touch screens. */
