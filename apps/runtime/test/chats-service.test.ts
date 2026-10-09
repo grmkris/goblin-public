@@ -16,7 +16,6 @@ import type { ConversationRegistry } from '../src/conversations.ts'
 import type { FoundationServices } from '../src/layers/core.ts'
 import { ConversationLive } from '../src/layers/conversation.ts'
 import { Budget } from '../src/budget.ts'
-import { InvalidInput } from '../src/http/errors.ts'
 import { Models } from '../src/models.ts'
 import { FlowEvents } from '../src/observability/flows.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
@@ -36,13 +35,9 @@ const fake = <T>(members: Partial<T>): T =>
 /** What the legacy instances were asked, with the time each was given. */
 type Calls = string[]
 
-/** The registry: a gate that refuses chat `3` as closed, and writes that record what they were given. */
-const registryOf = (calls: Calls, directory: ChatDirectory) =>
+/** The registry: writes that record what they were given, a Close of `2` and its child, and the notes it prepares. */
+const registryOf = (calls: Calls) =>
   fake<ConversationRegistry>({
-    requireOpen: (chat) => {
-      if (chat === '3') throw new InvalidInput({ reason: 'conversation_closed' })
-      return directory.session(chat)
-    },
     markRead: (chat, now) => void calls.push(`read:${chat}@${now}`),
     registerRoutine: (session, runId, _title, now, topic) =>
       void calls.push(`routine:${session}:${runId}@${now}:${topic}`),
@@ -93,6 +88,15 @@ const services = (calls: Calls) => {
     .values([
       { chatId: '1', piSession: '41', kind: 'main', role: 'primary', createdAt: 1 },
       { chatId: '2', piSession: '42', kind: 'thread', parentSession: '1', createdAt: 1 },
+      {
+        chatId: '3',
+        piSession: '43',
+        kind: 'thread',
+        parentSession: '1',
+        createdAt: 1,
+        closedAt: 2,
+        closedBy: 'owner',
+      },
     ])
     .run()
   const moves = fake<ChatMover>({
@@ -103,7 +107,7 @@ const services = (calls: Calls) => {
   })
   const harness = harnessOf(calls)
   const directory = new ChatDirectory(db)
-  const registry = registryOf(calls, directory)
+  const registry = registryOf(calls)
   const routines = fake<RoutineController>({ answer: async (_session, operationId) => operationId === 'op-r' })
   const input = Layer.succeed(AgentInput, fake<AgentInputs>({ harness, applied: new Map(), routines }))
   const plans = Layer.mergeAll(

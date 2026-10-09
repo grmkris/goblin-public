@@ -17,7 +17,7 @@ import { type PiFailure, PiSessions } from '../pi/sessions.ts'
 import type { RoutineController } from '../routines/controller.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
-import { type ChatDirectory, SessionId } from './directory.ts'
+import { type ChatDirectory, ChatReads, SessionId } from './directory.ts'
 import { epochSeconds, instanceCall } from './instance.ts'
 import {
   type ReceiptChange,
@@ -30,14 +30,10 @@ import {
 import { type Admission, type Admitted, ChatOperations, type PassiveWrite, type Submit } from './service.ts'
 
 /**
- * What admission reads from the legacy start's one instance of each, until this layer builds them: the chat directory
- * (each chat's current session, and the lock its Promise callers still take) and the registry's gate.
+ * The one chat directory of the agent, whose per-chat lock its Promise callers (the mover, the registry's own writes,
+ * the Topic ports) still take: admission holds it inside `KeyedLock`'s until they move onto `ChatOperations`.
  */
-export type AdmissionInstances = {
-  readonly chats: ChatDirectory
-  /** The Pi session of a chat that takes new work: open, not a Persona's, its Topic not archived. */
-  readonly requireOpen: (chat: string) => string
-}
+export type AdmissionLocks = { readonly locks: ChatDirectory }
 
 /** A synchronous read or write of the receipts, its throw a typed `AppError` (`NotFound` for an unknown chat). */
 const sql = <A>(run: () => A) => Effect.try({ try: run, catch: toAppError })
@@ -73,7 +69,7 @@ const chatLock =
       .pipe(Effect.withSpan('ChatOperations.withChat'))
 
 /** The receipts in the agent's SQLite (chats/receipts.ts), each read or write with the Clock's time. */
-const receiptsOf = (db: Db['Service'], chats: ChatDirectory) => ({
+const receiptsOf = (db: Db['Service'], chats: ChatReads) => ({
   record: Effect.fn('ChatOperations.record')(function* (chat: string, operationId: string, receipt: ReceiptInput) {
     const now = yield* epochSeconds
     const admitted = yield* sql(() =>
@@ -189,19 +185,20 @@ const sendWith =
     }).pipe(Effect.withSpan('ChatOperations.send'))
 
 /**
- * The chat operations natively: receipts in the agent's SQLite, the chat's lock in `KeyedLock`, Pi through
- * `PiSessions`, flows through `FlowEvents`, over the legacy start's chat directory and registry gate.
+ * The chat operations natively: chats and receipts read from the agent's SQLite, the chat's lock in `KeyedLock` (with
+ * the legacy directory's inside it), Pi through `PiSessions`, flows through `FlowEvents`.
  */
-export const makeChatOperations = (instances: AdmissionInstances) =>
+export const makeChatOperations = ({ locks }: AdmissionLocks) =>
   Effect.gen(function* () {
     const db = yield* Db
     const pi = yield* PiSessions
     const flows = yield* FlowEvents
     const { harness, applied, routines } = yield* AgentInput
-    const withChat = chatLock(yield* KeyedLock, instances.chats)
-    const receipts = receiptsOf(db, instances.chats)
+    const chats = new ChatReads(db)
+    const withChat = chatLock(yield* KeyedLock, locks)
+    const receipts = receiptsOf(db, chats)
     const written = writeHeld(receipts, pi)
-    const admit = admitWith({ withChat, receipts, flows, requireOpen: instances.requireOpen })
+    const admit = admitWith({ withChat, receipts, flows, requireOpen: (chat) => chats.requireOpen(chat) })
     const sending = { admit, budget: yield* Budget, models: yield* Models, pi, harness, applied, routines }
     return ChatOperations.of({
       ...receipts,

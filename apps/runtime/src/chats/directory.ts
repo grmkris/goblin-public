@@ -3,7 +3,7 @@ import { PRIMARY_CHAT } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Brand from 'effect/Brand'
-import { NotFound } from '../http/errors.ts'
+import { InvalidInput, NotFound } from '../http/errors.ts'
 import { appConversations } from '../storage/schema.ts'
 import { appTopics } from '../storage/topics.ts'
 import { receiptIn } from './receipts.ts'
@@ -53,10 +53,12 @@ export function registerPrimary<RunResult>(db: SQLiteAsyncDatabase<'sync', RunRe
   registerChat(db, { chatId: PRIMARY_CHAT, piSession: primary, role: 'primary', kind: 'main', createdAt: now }, 'keep')
 }
 
-/** Stable application identities over Pi sessions. Locks cover admission only, never model execution or waits. */
-export class ChatDirectory<RunResult = unknown> {
+/**
+ * Stable application identities over Pi sessions (ADR 0030), read from the agent's SQLite. It keeps no state of its
+ * own, so any number of readers over one database agree.
+ */
+export class ChatReads<RunResult = unknown> {
   readonly #db: SQLiteAsyncDatabase<'sync', RunResult>
-  readonly #locks = new Map<string, Promise<void>>()
 
   constructor(db: SQLiteAsyncDatabase<'sync', RunResult>) {
     this.#db = db
@@ -125,11 +127,39 @@ export class ChatDirectory<RunResult = unknown> {
     return this.conversationOf(start.topicId)
   }
 
+  /**
+   * The Pi session of a registered chat that takes new work: open, not a Persona's (ADR 0033), its Topic not archived
+   * (ADR 0032). Anything else is refused: `NotFound` when unregistered, else `InvalidInput` with the reason.
+   */
+  requireOpen(chat: string): SessionId {
+    const row = this.#find(chat)
+    if (row === undefined) throw new NotFound({ what: 'conversation' })
+    if (row.role === 'persona') throw new InvalidInput({ reason: 'persona_turn' })
+    if (row.closedAt !== null) throw new InvalidInput({ reason: 'conversation_closed' })
+    const topic = this.#db
+      .select({ at: appTopics.archivedAt })
+      .from(appTopics)
+      .where(eq(appTopics.id, row.topicId))
+      .get()
+    if (topic === undefined) throw new NotFound({ what: 'topic' })
+    if (topic.at !== null) throw new InvalidInput({ reason: 'topic_archived' })
+    return this.session(chat)
+  }
+
   /** The session `op` was admitted to in `chat`, if it was (chats/receipts.ts). */
   operation(chat: string, op: string): SessionId | undefined {
     const receipt = receiptIn(this.#db, chat, op)
     return receipt === undefined ? undefined : SessionId(receipt.session)
   }
+}
+
+/**
+ * The chat reads, with each chat's admission lock for the Promise callers that still take it (the mover, the
+ * registry's own writes, the Topic ports): `ChatOperations` holds it inside its own (`KeyedLock`), so both kinds of
+ * caller stay one at a time per chat. Locks cover admission only, never model execution or waits. One per agent.
+ */
+export class ChatDirectory<RunResult = unknown> extends ChatReads<RunResult> {
+  readonly #locks = new Map<string, Promise<void>>()
 
   async withChat<A>(chat: string, run: () => Promise<A>): Promise<A> {
     const previous = this.#locks.get(chat)

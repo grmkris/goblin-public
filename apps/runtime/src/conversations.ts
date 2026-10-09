@@ -124,18 +124,7 @@ export class ConversationRegistry {
 
   /** The Pi session of a registered conversation that is open: a closed one is read, never written to. */
   requireOpen(id: string): string {
-    const row = this.#registered(id)
-    if (row.role === 'persona') throw new InvalidInput({ reason: 'persona_turn' })
-    if (row.closedAt !== null) throw new InvalidInput({ reason: 'conversation_closed' })
-    if (this.#archived(row.topicId)) throw new InvalidInput({ reason: 'topic_archived' })
-    return this.#kit.chats.session(id)
-  }
-
-  /** Whether Topic `topic` is archived: none of its chats takes new work until it is restored. */
-  #archived(topic: number): boolean {
-    const row = this.#db.select({ at: appTopics.archivedAt }).from(appTopics).where(eq(appTopics.id, topic)).get()
-    if (row === undefined) throw new NotFound({ what: 'topic' })
-    return row.at !== null
+    return this.#kit.chats.requireOpen(id)
   }
 
   /** Whether a registered conversation is main, a thread or a subagent; anything else is `NotFound`. */

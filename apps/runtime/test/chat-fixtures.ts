@@ -6,14 +6,13 @@ import type { ChatDirectory } from '../src/chats/directory.ts'
 import { toAppError } from '../src/http/errors.ts'
 import { makeChatOperations } from '../src/chats/operations.ts'
 import { ChatOperations } from '../src/chats/service.ts'
-import { ChatsAdapter } from '../src/layers/conversation.ts'
+import { ChatsLive } from '../src/layers/conversation.ts'
 import { Models, type ModelPicker } from '../src/models.ts'
 import { FlowEvents } from '../src/observability/flows.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
 import { PiSessions } from '../src/pi/sessions.ts'
 import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
-import { Chats as LegacyChats } from '../src/services.ts'
 
 /** A probe's own instances, which the Telegram ports' programs read (channel/turns.ts). */
 type PortInstances = {
@@ -25,9 +24,9 @@ type PortInstances = {
 }
 
 /**
- * The services the Telegram ports' programs read, over a probe's own instances: lane C's directory adapter and native
- * admission over its database and chat directory (main, the only chat Telegram reaches, is always open), and its budget
- * and model picker as the routines lane's services wrap them, and Pi as its sessions. Flows are not recorded.
+ * The services the Telegram ports' programs read, over a probe's own instances: lane C's chat directory and admission
+ * over its database (admission also holding its chat directory's lock), its budget and model picker as the routines
+ * lane's services wrap them, and Pi as its sessions. Flows are not recorded.
  */
 export const portServices = ({ db, chats, harness, budget, models }: PortInstances) => {
   // SAFETY: admission reads only Pi's harness and the models it applied from the instance input; no routine answers.
@@ -52,12 +51,9 @@ export const portServices = ({ db, chats, harness, budget, models }: PortInstanc
   )
   const pi = PiSessions.layer.pipe(Layer.provide(input))
   const core = Layer.mergeAll(Layer.succeed(Db, db), KeyedLock.layer, pi, FlowEvents.noop, plans, input)
-  const operations = Layer.effect(
-    ChatOperations,
-    makeChatOperations({ chats, requireOpen: (chat) => chats.session(chat) }),
-  )
+  const operations = Layer.effect(ChatOperations, makeChatOperations({ locks: chats }))
   return Layer.mergeAll(
-    ChatsAdapter.pipe(Layer.provide(Layer.merge(Layer.succeed(LegacyChats, chats), Layer.succeed(Db, db)))),
+    ChatsLive.pipe(Layer.provide(Layer.succeed(Db, db))),
     operations.pipe(Layer.provide(core)),
     plans,
     pi,

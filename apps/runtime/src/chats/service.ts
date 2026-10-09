@@ -19,8 +19,9 @@ import type { Receipt, ReceiptChange, ReceiptInput, ReceiptOrigin } from './rece
 
 /**
  * The conversation services (ADRs 0030, 0032, 0034) as Effects. Each reads the current time from the Clock and fails
- * with a typed `AppError`. Until wave 3 they are adapters over the legacy instances (layers/conversation.ts), so each
- * call behaves exactly as the instance method it wraps; programs move onto these from the `services.ts` tags.
+ * with a typed `AppError`. `Chats` and `ChatOperations` are native (layers/conversation.ts); `Conversations` and
+ * `Moves` still wrap the legacy start's registry and mover, the agent's one instance of each, which other lanes'
+ * instances share.
  */
 
 /** Stable chat identities over Pi sessions (ADR 0030): which session a chat is on now, and where it sits. */
