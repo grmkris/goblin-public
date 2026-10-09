@@ -202,7 +202,7 @@ describe('the owner forward', () => {
 
   it('names a path that is no endpoint by its area only', async () => {
     const { edge } = deployment()
-    const { lines } = await through('owner', new Request(`${APP}/api/agent-apps/${SECRET}`), edge)
+    const { lines } = await through('owner', new Request(`${APP}/api/agent-apps/${SECRET}/nothing`), edge)
     expect(lines).toMatchObject([{ route: '/api/agent-apps/{path}', status: 401, code: 'unauthenticated' }])
     expect(JSON.stringify(lines)).not.toContain(SECRET)
   })
