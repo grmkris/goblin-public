@@ -1,7 +1,9 @@
-import { SubscriptionRequired } from '@goblin/contracts/api'
+import { SubscriptionRequired, TopicsGroup, ownerApiOf } from '@goblin/contracts/api'
 import { TopicView } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import * as HttpServer from 'effect/http/HttpServer'
+import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
@@ -9,7 +11,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { StopRuntime } from '../../../src/agent-program.ts'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
+import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
+import { TopicsHandlers } from '../../../src/topics/api.ts'
 import { OrganizeReceipts } from '../../../src/organize/receipts.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
 import { Conversations, Invocations, Receipts, Resident, RoutineRuns, Topics } from '../../../src/services.ts'
@@ -40,6 +44,17 @@ class CountingResident extends ResidentAuthority {
     this.renewals.push(now)
   }
 }
+
+/**
+ * Only the Topics group, behind the real gate, router and failure rendering: the pattern every area's test copies, so
+ * it fakes the services its own handlers read and nothing else.
+ */
+const TOPICS_API = ownerApiOf(TopicsGroup)
+const TOPICS = HttpApiBuilder.layer(TOPICS_API).pipe(
+  Layer.provide(TopicsHandlers),
+  Layer.provide(OwnerGateLive),
+  Layer.provide(HttpServer.layerServices),
+)
 
 const runtimes: ManagedRuntime.ManagedRuntime<OwnerHttp, never>[] = []
 const closes: (() => void)[] = []
@@ -91,7 +106,7 @@ const fixture = (options: { readonly active?: boolean } = {}) => {
   const unread = undefined as never
   const stopping = (): StopRuntime => unread
   const runtime = ManagedRuntime.make(
-    OwnerHttp.layer.pipe(
+    OwnerHttp.serve(TOPICS_API, TOPICS).pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.succeed(Topics, topics),

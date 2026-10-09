@@ -1,4 +1,6 @@
+import type { NonEmptyReadonlyArray } from 'effect/Array'
 import * as HttpApi from 'effect/http-api/HttpApi'
+import type * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import * as HttpApiMiddleware from 'effect/http-api/HttpApiMiddleware'
 import { AgentGroup } from './agent.ts'
 import { AgentAppsGroup } from './agent-apps.ts'
@@ -44,3 +46,13 @@ export class OwnerApi extends HttpApi.make('goblin-owner')
   )
   .prefix('/api')
   .middleware(OwnerGate) {}
+
+/**
+ * The owner API with only `groups`, under the same id, prefix and gate: a test serves one area's handlers with only
+ * the services that area needs (`apps/runtime/test/http/api/serve.ts`).
+ */
+export const ownerApiOf = <const A extends NonEmptyReadonlyArray<HttpApiGroup.Constraint>>(...groups: A) =>
+  HttpApi.make('goblin-owner')
+    .add(...groups)
+    .prefix('/api')
+    .middleware(OwnerGate)
