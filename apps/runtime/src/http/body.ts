@@ -8,7 +8,7 @@ const DEFAULT_LIMIT = 65_536
 export const readBytes = async (
   request: Pick<Request, 'headers' | 'body'>,
   limit = DEFAULT_LIMIT,
-): Promise<Uint8Array> => {
+): Promise<Uint8Array<ArrayBuffer>> => {
   const declared = Number(request.headers.get('content-length') ?? 0)
   if (declared > limit) throw new PayloadTooLarge({ limit })
   if (request.body === null) return new Uint8Array()

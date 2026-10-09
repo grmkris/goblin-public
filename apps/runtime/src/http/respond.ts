@@ -3,6 +3,7 @@ import * as Match from 'effect/Match'
 import * as Schema from 'effect/Schema'
 import { AppError, toAppError } from './errors.ts'
 import { writeLine } from '../observability/logger.ts'
+import { routeTemplate } from './api/context.ts'
 import { expectedFailure } from '../telemetry/safety.ts'
 
 export const statusOf = (error: AppError): number =>
@@ -35,15 +36,6 @@ export const secured = (response: Response): Response => {
   result.headers.set('cache-control', 'no-store')
   result.headers.set('x-content-type-options', 'nosniff')
   return result
-}
-
-/**
- * The route a failure line names: the API area (`/api/conversations/{path}`), never the ids or names below it, which
- * the owner chose.
- */
-const routeTemplate = (path: string): string => {
-  const [, root = '', area, ...rest] = path.split('/')
-  return area === undefined ? path : `/${root}/${area}${rest.length === 0 ? '' : '/{path}'}`
 }
 
 /** One structured log line per failed request: route, status, code and reference. Bodies and credentials never. */

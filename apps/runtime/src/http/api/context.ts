@@ -42,6 +42,15 @@ export const requestFacts = (request: Request, route: string): RequestFacts => (
   route,
 })
 
+/**
+ * The route a log line names for a path that is not an API endpoint: its area (`/api/conversations/{path}`), never
+ * the ids or names below it, which the owner chose.
+ */
+export const routeTemplate = (path: string): string => {
+  const [, root = '', area, ...rest] = path.split('/')
+  return area === undefined ? path : `/${root}/${area}${rest.length === 0 ? '' : '/{path}'}`
+}
+
 /** HttpApi paths are absolute; the guard only tells the router so. */
 const isPath = (path: string): path is FindMyWay.PathInput => path.startsWith('/')
 
