@@ -33,7 +33,8 @@ export class Inspection extends Context.Service<
   {
     /** Any query, as the agent's `/inspect` route (and so /mcp's `inspect_*` tools) asks it. */
     readonly run: (query: InspectQuery) => Effect.Effect<InspectAnswer, AppError>
-    readonly conversations: () => Effect.Effect<InspectConversations, AppError>
+    /** Every conversation the agent keeps (main, threads, subagents, clients), with titles and activity. */
+    readonly conversations: Effect.Effect<InspectConversations, AppError>
     /** A page of a conversation's entries, oldest first, ending before `before` (the newest page without it). */
     readonly conversation: (input: Input<'conversation'>) => Effect.Effect<InspectEntries, AppError>
     /** Turns since `since` (the last day by default), newest first, optionally of one conversation. */

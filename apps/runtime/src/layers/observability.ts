@@ -17,9 +17,7 @@ export const InspectionFromLegacy: Layer.Layer<Inspection, never, Inspect> = Lay
       run: Effect.fn('Inspection.run')(function* (query: InspectQuery) {
         return yield* attempt(() => inspector.run(query))
       }),
-      conversations: Effect.fn('Inspection.conversations')(function* () {
-        return yield* attempt(() => inspector.conversations())
-      }),
+      conversations: attempt(() => inspector.conversations()).pipe(Effect.withSpan('Inspection.conversations')),
       conversation: Effect.fn('Inspection.conversation')(function* (input: typeof InspectInput.conversation.Type) {
         return yield* attempt(() => inspector.conversation(input.conversation, input.before))
       }),
