@@ -1,6 +1,6 @@
 import { RunAttributes, RunEvent, RunEventKind, RunEventStatus } from '@goblin/contracts/telemetry'
 import { and, asc, desc, eq, gte, inArray, lt, like, or } from 'drizzle-orm'
-import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
+import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Schema from 'effect/Schema'
 import { appRunEvents } from '../storage/schema.ts'
 import { boundAttributes, type RunSink } from './events.ts'
@@ -10,23 +10,27 @@ import { expectedFailure } from './safety.ts'
 /** How long the ledger keeps an event (ADR 0024). */
 export const LEDGER_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
-const decodeKind = Schema.decodeUnknownSync(RunEventKind)
+const isKind = Schema.is(RunEventKind)
 const decodeStatus = Schema.decodeUnknownSync(RunEventStatus)
 const decodeAttributes = Schema.decodeUnknownSync(Schema.fromJsonString(RunAttributes))
 
 type Row = typeof appRunEvents.$inferSelect
 
-const eventOf = (row: Row): RunEvent => ({
-  id: row.id,
-  kind: decodeKind(row.kind),
-  status: decodeStatus(row.status),
-  ...(row.conversationId === null ? {} : { conversationId: row.conversationId }),
-  ...(row.operationId === null ? {} : { operationId: row.operationId }),
-  ...(row.taskId === null ? {} : { taskId: row.taskId }),
-  startedAt: row.startedAt,
-  ...(row.endedAt === null ? {} : { endedAt: row.endedAt }),
-  attributes: boundAttributes(decodeAttributes(row.attributes)),
-})
+/** A row of a kind this build does not know (a newer build wrote it) is `undefined`, never a failed read. */
+const eventOf = (row: Row): RunEvent | undefined =>
+  isKind(row.kind)
+    ? {
+        id: row.id,
+        kind: row.kind,
+        status: decodeStatus(row.status),
+        ...(row.conversationId === null ? {} : { conversationId: row.conversationId }),
+        ...(row.operationId === null ? {} : { operationId: row.operationId }),
+        ...(row.taskId === null ? {} : { taskId: row.taskId }),
+        startedAt: row.startedAt,
+        ...(row.endedAt === null ? {} : { endedAt: row.endedAt }),
+        attributes: boundAttributes(decodeAttributes(row.attributes)),
+      }
+    : undefined
 
 const rowOf = (event: RunEvent): Row => ({
   id: event.id,
@@ -45,14 +49,21 @@ const PROBLEM_PAGE_SIZE = 64
 
 /**
  * The agent's run ledger in its own SQLite (`app_run_events`). Writes are single statements, never held across an
- * await, so they are safe inside Pi's synchronous commit listener.
+ * await, so they are safe inside Pi's synchronous commit listener. Reads skip rows of a kind this build does not know,
+ * so a rollback past a new kind still reads the rest; `skipped` counts them.
  */
-export class RunLedger implements RunSink {
+export class RunLedger<RunResult = unknown> implements RunSink {
   readonly name = 'ledger'
-  readonly #db: DrizzleSqliteDODatabase
+  readonly #db: SQLiteAsyncDatabase<'sync', RunResult>
+  #skipped = 0
 
-  constructor(db: DrizzleSqliteDODatabase) {
+  constructor(db: SQLiteAsyncDatabase<'sync', RunResult>) {
     this.#db = db
+  }
+
+  /** Rows the reads of this ledger skipped because their kind is unknown here. */
+  get skipped(): number {
+    return this.#skipped
   }
 
   started(event: RunEvent): void {
@@ -66,7 +77,7 @@ export class RunLedger implements RunSink {
   /** The event `id`, in whatever state it was last written. */
   read(id: string): RunEvent | undefined {
     const row = this.#db.select().from(appRunEvents).where(eq(appRunEvents.id, id)).get()
-    return row === undefined ? undefined : eventOf(row)
+    return row === undefined ? undefined : this.#events([row])[0]
   }
 
   /** The newest event of `kind` for a Pi task: the model attempt a response answers, after a restart too. */
@@ -78,64 +89,68 @@ export class RunLedger implements RunSink {
       .orderBy(desc(appRunEvents.startedAt))
       .limit(1)
       .get()
-    return row === undefined ? undefined : eventOf(row)
+    return row === undefined ? undefined : this.#events([row])[0]
   }
 
   /** Every event of one turn, in the order they started. */
   forOperation(operationId: string): readonly RunEvent[] {
-    return this.#db
-      .select()
-      .from(appRunEvents)
-      .where(eq(appRunEvents.operationId, operationId))
-      .orderBy(asc(appRunEvents.startedAt), asc(appRunEvents.id))
-      .all()
-      .map(eventOf)
+    return this.#events(
+      this.#db
+        .select()
+        .from(appRunEvents)
+        .where(eq(appRunEvents.operationId, operationId))
+        .orderBy(asc(appRunEvents.startedAt), asc(appRunEvents.id))
+        .all(),
+    )
   }
 
   /** The events of several turns, for their summaries. */
   forOperations(operationIds: readonly string[]): readonly RunEvent[] {
     if (operationIds.length === 0) return []
-    return this.#db
-      .select()
-      .from(appRunEvents)
-      .where(inArray(appRunEvents.operationId, [...operationIds]))
-      .all()
-      .map(eventOf)
+    return this.#events(
+      this.#db
+        .select()
+        .from(appRunEvents)
+        .where(inArray(appRunEvents.operationId, [...operationIds]))
+        .all(),
+    )
   }
 
   /** Turns that started since `since`, newest first, optionally in one conversation. */
   turns(since: number, limit: number, conversationId?: string): readonly RunEvent[] {
     const conversation = conversationId === undefined ? [] : [eq(appRunEvents.conversationId, conversationId)]
-    return this.#db
-      .select()
-      .from(appRunEvents)
-      .where(and(eq(appRunEvents.kind, 'turn.submitted'), gte(appRunEvents.startedAt, since), ...conversation))
-      .orderBy(desc(appRunEvents.startedAt))
-      .limit(limit)
-      .all()
-      .map(eventOf)
+    return this.#events(
+      this.#db
+        .select()
+        .from(appRunEvents)
+        .where(and(eq(appRunEvents.kind, 'turn.submitted'), gte(appRunEvents.startedAt, since), ...conversation))
+        .orderBy(desc(appRunEvents.startedAt))
+        .limit(limit)
+        .all(),
+    )
   }
 
   /** Events that failed, were blocked or were cut short since `since`, newest first. */
   problems(since: number, limit: number, all = false): readonly RunEvent[] {
     const problems: RunEvent[] = []
-    let before: RunEvent | undefined
+    let before: Row | undefined
     while (problems.length < limit) {
-      const page = this.#problemPage(since, before)
-      const candidates = page.filter(
+      const rows = this.#problemPage(since, before)
+      const candidates = this.#events(rows).filter(
         (event) => (event.status !== 'ok' && event.status !== 'started') || incompleteAnswer(event),
       )
       const peers = all ? [] : this.#successfulAttempts(candidates)
       problems.push(
         ...candidates.filter((event) => all || needsAttention(event, peers)).slice(0, limit - problems.length),
       )
-      if (page.length < PROBLEM_PAGE_SIZE) break
-      before = page.at(-1)
+      // Page by rows, not events: a skipped row still moves the cursor and still counts towards a full page.
+      if (rows.length < PROBLEM_PAGE_SIZE) break
+      before = rows.at(-1)
     }
     return problems
   }
 
-  #problemPage(since: number, before?: RunEvent): readonly RunEvent[] {
+  #problemPage(since: number, before?: Row): readonly Row[] {
     const cursor =
       before === undefined
         ? undefined
@@ -167,7 +182,6 @@ export class RunLedger implements RunSink {
       .orderBy(desc(appRunEvents.startedAt), desc(appRunEvents.id))
       .limit(PROBLEM_PAGE_SIZE)
       .all()
-      .map(eventOf)
   }
 
   #successfulAttempts(events: readonly RunEvent[]): readonly RunEvent[] {
@@ -182,18 +196,19 @@ export class RunLedger implements RunSink {
         : [],
     )
     if (taskIds.length === 0) return []
-    return this.#db
-      .select()
-      .from(appRunEvents)
-      .where(
-        and(
-          eq(appRunEvents.kind, 'model.attempt'),
-          eq(appRunEvents.status, 'ok'),
-          inArray(appRunEvents.taskId, taskIds),
-        ),
-      )
-      .all()
-      .map(eventOf)
+    return this.#events(
+      this.#db
+        .select()
+        .from(appRunEvents)
+        .where(
+          and(
+            eq(appRunEvents.kind, 'model.attempt'),
+            eq(appRunEvents.status, 'ok'),
+            inArray(appRunEvents.taskId, taskIds),
+          ),
+        )
+        .all(),
+    )
   }
 
   /**
@@ -212,6 +227,14 @@ export class RunLedger implements RunSink {
       .where(lt(appRunEvents.startedAt, now - LEDGER_RETENTION_MS))
       .run()
     return interrupted
+  }
+
+  #events(rows: readonly Row[]): RunEvent[] {
+    return rows.flatMap((row) => {
+      const event = eventOf(row)
+      if (event === undefined) this.#skipped += 1
+      return event === undefined ? [] : [event]
+    })
   }
 
   #write(event: RunEvent): void {
