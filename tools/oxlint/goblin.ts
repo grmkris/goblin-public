@@ -6,7 +6,7 @@
  * - `resource-name-via-stage`: named Alchemy resources take their physical name from the stage
  *   (`stage.resourceName(role)` or `stage.workerName`), so the naming scheme and the pinned prod names apply.
  * - `require-disable-description`: every disable directive says why (`-- reason`): oxlint and eslint ones, and an
- *   `@effect-diagnostics` directive that turns a diagnostic off.
+ *   `@effect-diagnostics` directive that turns a diagnostic off or lowers its severity.
  * - `no-silent-catch`: a handler that catches a failure rethrows it, carries a failure on, or reports it; dropping one
  *   needs `// expected: <reason>`.
  * - `no-transport-outside-client`, `no-network-in-effect`, `no-loader-data`: the web data layer's invariants
@@ -232,8 +232,12 @@ export const resourceNameViaStage = defineRule({
 // require-disable-description
 
 const DIRECTIVE = /^\s*(?:oxlint|eslint)-disable(?:-next-line|-line)?(?:\s|$)/
-/** `@effect-diagnostics[-next-line] <name>:off` (effect:check); one that raises a severity needs no reason. */
-const EFFECT_OFF = /^\s*@effect-diagnostics(?:-next-line)?\s[^-]*:off\b/
+/**
+ * `@effect-diagnostics[-next-line] <name>:<severity>` below `error` (effect:check). A lowered severity is as good as
+ * off: messages and suggestions never gate, and a warning is one stop from either. Raising one to `error` needs no
+ * reason.
+ */
+const EFFECT_LOWERED = /^\s*@effect-diagnostics(?:-next-line)?\s[^-]*:(?:off|warning|message|suggestion)\b/
 const MIN_REASON = 10
 
 export const requireDisableDescription = defineRule({
@@ -251,12 +255,12 @@ export const requireDisableDescription = defineRule({
       Program: (): void => {
         for (const comment of context.sourceCode.getAllComments()) {
           const text = comment.value
-          if (!DIRECTIVE.test(text) && !EFFECT_OFF.test(text)) continue
+          if (!DIRECTIVE.test(text) && !EFFECT_LOWERED.test(text)) continue
           const separator = text.indexOf('--')
           const reason = separator === -1 ? '' : text.slice(separator + 2).trim()
           if (reason.length >= MIN_REASON) continue
           const directive = text.trim().split(/\s/)[0] ?? 'oxlint-disable'
-          const target = directive.startsWith('@effect') ? '<diagnostic>:off' : '<rule>'
+          const target = directive.startsWith('@effect') ? '<diagnostic>:<severity>' : '<rule>'
           context.report({ messageId: 'reason', data: { directive, target }, loc: comment.loc })
         }
       },

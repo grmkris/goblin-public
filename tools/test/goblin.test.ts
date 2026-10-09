@@ -77,6 +77,7 @@ tester.run('require-disable-description', requireDisableDescription, {
     '// a comment that mentions oxlint-disable in passing\nconst x = 1',
     '// @effect-diagnostics-next-line globalDate:off -- the log line needs wall-clock time\nconst t = Date.now()',
     '// @effect-diagnostics floatingEffect:error\nconst x = 1',
+    '// @effect-diagnostics-next-line schemaNumber:message -- a count decoded from our own storage\nconst n = 1',
   ],
   invalid: [
     { code: '// oxlint-disable-next-line no-console\nconsole.log(1)', errors: [{ messageId: 'reason' }] },
@@ -87,6 +88,13 @@ tester.run('require-disable-description', requireDisableDescription, {
       errors: [{ messageId: 'reason' }],
     },
     { code: '// @effect-diagnostics globalFetch:off\nconst x = 1', errors: [{ messageId: 'reason' }] },
+    // A lowered severity is as good as off.
+    { code: '// @effect-diagnostics-next-line floatingEffect:warning\nconst x = 1', errors: [{ messageId: 'reason' }] },
+    { code: '// @effect-diagnostics leakingRequirements:message\nconst x = 1', errors: [{ messageId: 'reason' }] },
+    {
+      code: '/* @effect-diagnostics-next-line globalDate:error schemaSync:suggestion */\nconst x = 1',
+      errors: [{ messageId: 'reason' }],
+    },
   ],
 })
 
