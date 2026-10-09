@@ -274,10 +274,12 @@ export async function moveRestartCase(url: string): Promise<void> {
     const before = (await state(url, owner)).sessions
     expect((await call(url, owner, '/__test/move/crash', { phase })).status).toBe(200)
     const operationId = crypto.randomUUID()
+    // expected: the object stops at the boundary, so the request may fail before it answers.
     const crashed = await move(url, owner, '1', entry, operationId).catch(() => undefined)
     expect(crashed?.status ?? 500).toBeGreaterThanOrEqual(500)
     const receipt = await until(
       async () => {
+        // expected: the object may still be restarting; the next read tries again.
         const response = await move(url, owner, '1', entry, operationId).catch(() => undefined)
         return response?.status === 200 ? decodeReceipt(await response.json()) : undefined
       },

@@ -28,6 +28,7 @@ export const ownerResult = <A, E>(
   Effect.runPromise(
     Effect.flatMap(ownerApi(agent), call).pipe(
       Effect.map((value): RpcResult<A> => ({ ok: true, value })),
+      // expected: the API answered this failure; the checks read it as the RPC method's refusal.
       Effect.catchIf(isAppError, (error) =>
         Effect.succeed<RpcResult<A>>({ ok: false, error: Schema.encodeSync(AppError)(error) }),
       ),

@@ -44,6 +44,7 @@ export async function helperExclusionsProbe(storage: DurableObjectStorage) {
   try {
     await profiles.configureHelper('700', '702', [], 3)
   } catch {
+    // expected: a spawner that is not the helper's own is refused; the probe records that it was.
     foreignRefused = true
   }
   await profiles.configureHelper('700', '701', [], 4)

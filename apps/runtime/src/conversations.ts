@@ -247,6 +247,7 @@ export class ConversationRegistry {
    */
   async startThread(parent: string, op: string, now: number): Promise<ConversationView> {
     const previous = this.#starting.get(op) ?? Promise.resolve()
+    // expected: an earlier start's failure is its own caller's; this one runs after it either way.
     const next = previous.catch(() => undefined).then(async () => this.#startOnce(parent, op, now))
     this.#starting.set(op, next)
     try {

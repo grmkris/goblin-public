@@ -336,10 +336,11 @@ describe('the conversations API served by the agent', () => {
       json('POST', '/api/conversations/1/threads', { input: 'plan it', operationId: 'op-t' }),
     )
     expect(response.status).toBe(201)
-    expect(await response.json()).toEqual({
-      thread: expect.objectContaining({ id: NEW, forkEntry: 3 }),
-      receipt: { operationId: 'op-t', session: NEW, accepted: true },
-    })
+    const started = Schema.decodeUnknownSync(Schema.Struct({ thread: ConversationView, receipt: Schema.Unknown }))(
+      await response.json(),
+    )
+    expect(started.thread).toMatchObject({ id: NEW, forkEntry: 3 })
+    expect(started.receipt).toEqual({ operationId: 'op-t', session: NEW, accepted: true })
     expect(calls).toContain('start:1:op-t')
     expect(record.writes).toEqual([{ conversation: 1, requestId: 'thread-head:op-t', kind: 'app.thread_head' }])
     expect(record.submitted).toEqual([{ session: NEW, operationId: 'op-t', content: 'plan it' }])

@@ -38,7 +38,11 @@ async function answerOf(harness: PiHarness, operationId: string, run: Run): Prom
       return chats.operation(chats.primary(), operationId) ?? chats.admit(chats.primary(), operationId, now).session
     }),
   )
-  const result = await harness.wait(operationId, { session, signal: AbortSignal.timeout(200) }).catch(() => undefined)
+  const result = await harness
+    .wait(operationId, { session, signal: AbortSignal.timeout(200) })
+    // Wave 3 (C3) stops this also swallowing a wait that failed for another reason.
+    // expected: a wait that outlives its 200 ms means the turn is still running.
+    .catch(() => undefined)
   if (result === undefined) return undefined
   if (result.status === 'unanswered') return `(No answer: ${result.reason ?? 'the turn ended without one'}.)`
   const entries = await harness.messages({ session })

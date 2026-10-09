@@ -335,6 +335,8 @@ export const askClient = (
     const result = yield* attempt(() =>
       input.harness
         .wait(input.operationId, { session, signal: AbortSignal.timeout(input.waitMs) })
+        // Wave 3 (C2) stops this also swallowing a wait that failed for another reason.
+        // expected: a wait that outlives `waitMs` means the answer is still running.
         .catch(() => undefined),
     )
     if (result === undefined) return { status: 'running' as const, operationId: input.operationId }
