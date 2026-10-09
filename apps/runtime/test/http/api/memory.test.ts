@@ -12,16 +12,16 @@ import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates
 import { ChatDirectory } from '../../../src/chats/directory.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
-import { KnowledgeLive } from '../../../src/layers/knowledge.ts'
 import { MemoryHandlers } from '../../../src/memory/api.ts'
 import { ChatMemories } from '../../../src/memory/memory.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
-import { Chats, Learner, Memories, Resident, Retrieval, Skills } from '../../../src/services.ts'
+import { Resident } from '../../../src/services.ts'
 import { appChatMemoryLog, appChatMemoryState } from '../../../src/storage/chat-memory.ts'
 import { appConversations } from '../../../src/storage/schema.ts'
 import { appTopics } from '../../../src/storage/topics.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 import { callOwner } from '../../integration/owner-api.ts'
+import { knowledgeOver } from '../../knowledge-layer.ts'
 
 /** Resident authority the gate renews on every admitted request; nothing here reads it back. */
 class RenewedResident extends ResidentAuthority {
@@ -95,18 +95,11 @@ const fixture = () => {
   const chats = new ChatDirectory(db)
   // SAFETY: `status` reads SQLite only; Pi and the model are never called.
   const memories = new ChatMemories({ db, harness: undefined as never, model: undefined as never, chats }, {}, [])
-  // SAFETY: the memory group reads Memories alone; the other adapters only hold these and never call them.
-  const unread = undefined as never
   const runtime = ManagedRuntime.make(
     OwnerHttp.serve(MEMORY_API, MEMORY).pipe(
-      Layer.provide(KnowledgeLive),
       Layer.provide(
         Layer.mergeAll(
-          Layer.succeed(Memories, memories),
-          Layer.succeed(Chats, chats),
-          Layer.succeed(Retrieval, unread),
-          Layer.succeed(Skills, unread),
-          Layer.succeed(Learner, unread),
+          knowledgeOver({ memories, chats }),
           Layer.succeed(Resident, new RenewedResident()),
           Layer.succeed(Entitlements, plans),
         ),
