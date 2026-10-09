@@ -20,13 +20,14 @@ import { AppDispatch, type CallRequest } from './dispatch.ts'
 import { AppFiles } from './files.ts'
 import { Isolates } from './isolates.ts'
 import { mismatches } from './json.ts'
-import { type Manifest, type Power, type PowerKind, requestedPowers } from './manifest.ts'
+import { type Power, type PowerKind, requestedPowers } from './manifest.ts'
 import { type Send, egress } from './egress.ts'
 import { eraseApp } from './erase.ts'
 import { AppJobs, type JobSchedules, type JobView } from './jobs.ts'
 import type { AppServices } from './ports.ts'
 import { AppPowers } from './powers.ts'
-import { AppCodeError, AppQueues, problemText } from './queue.ts'
+import { AppCodeError, type AppLock, type AppRunner, appLock, problemText } from './queue.ts'
+import { schedulesText, signatures } from './signatures.ts'
 import { AgentAppStore, type UsageKind, isApproved } from './store.ts'
 import { readFiles } from './stored.ts'
 import { AppToolset } from './toolset.ts'
@@ -47,6 +48,8 @@ export type AgentAppsDeps = {
   readonly appUrl: string
   /** The agent object's native schedules, which run the apps' jobs. */
   readonly schedules: JobSchedules
+  /** The agent's runtime, where the apps' locks are: the bridge's `local`. */
+  readonly local: AppRunner
 }
 
 /** What `app_inspect` can include besides the summary. */
@@ -125,57 +128,6 @@ export type AgentAppInfo = {
 const isAgentAppLib = Schema.is(AgentAppLib)
 const clip = (text: string, bytes: number) => (text.length <= bytes ? text : `${text.slice(0, bytes)}… (cut)`)
 
-const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
-/** A schema as a short type: `string`, `integer[]`, `"a" | "b"`, `{ title: string }`; nested objects two deep. */
-function typeOf(schema: unknown, depth: number): string {
-  if (!isObject(schema)) return 'unknown'
-  if (Array.isArray(schema.enum)) return schema.enum.map((value) => JSON.stringify(value)).join(' | ')
-  if (Array.isArray(schema.anyOf)) return schema.anyOf.map((option) => typeOf(option, depth + 1)).join(' | ')
-  if (schema.type === 'array') return `${typeOf(schema.items, depth + 1)}[]`
-  if (schema.type === 'object' && isObject(schema.properties))
-    return depth < 2 ? `{ ${fields(schema, depth + 1)} }` : 'object'
-  return typeof schema.type === 'string' ? schema.type : 'unknown'
-}
-
-/** An input schema's fields with their types; an optional one ends in `?`. */
-function fields(schema: Readonly<Record<string, unknown>>, depth = 0): string {
-  const required = new Set(Array.isArray(schema.required) ? schema.required : [])
-  const properties = isObject(schema.properties) ? Object.entries(schema.properties) : []
-  return properties
-    .map(([name, field]) => `${name}${required.has(name) ? '' : '?'}: ${typeOf(field, depth)}`)
-    .join(', ')
-}
-
-/** One line per member: `name(input fields)`, and a view's output type after `→`, called with `app_call`. */
-function signatures(manifest: Manifest): string {
-  const actions = Object.entries(manifest.actions).map(
-    ([name, action]) => `${name}(${fields(action.input)})${action.agent ? '' : ' [UI only]'}`,
-  )
-  const views = Object.entries(manifest.views).map(
-    ([name, view]) =>
-      `${name}(${fields(view.input)})${view.output === undefined ? '' : ` → ${typeOf(view.output, 0)}`}`,
-  )
-  return [
-    actions.length > 0 ? `actions ${actions.join(', ')}` : '',
-    views.length > 0 ? `views ${views.join(', ')}` : '',
-  ]
-    .filter(Boolean)
-    .join('; ')
-}
-
-/** An app's schedules for the model: each action, how often, and how its last run went or why it is paused. */
-function schedulesText(jobs: readonly JobView[]): string {
-  if (jobs.length === 0) return ''
-  const each = jobs.map((job) => {
-    const when = `${job.action} every ${job.every}${job.at === null ? '' : ` at ${job.at} UTC`}`
-    if (job.paused !== null) return `${when} (paused by ${job.paused === 'owner' ? 'the owner' : 'failures'})`
-    return job.status === null ? when : `${when} (last run ${job.status})`
-  })
-  return ` Schedules: ${each.join(', ')}.`
-}
-
 /**
  * The agent's apps (ADR 0021), built by the agent object before Pi opens: build and activate releases, dispatch calls,
  * keep each app's tools installed, roll back, and describe the apps to the model.
@@ -187,7 +139,7 @@ export class AgentApps {
   readonly ownerFiles: FileStore
   readonly jobs: AppJobs
   readonly #deps: AgentAppsDeps
-  readonly #queues = new AppQueues()
+  readonly #lock: AppLock
   readonly #toolset: AppToolset
   readonly #builder: AppBuilder
   readonly #files = new Map<string, AppFiles>()
@@ -197,6 +149,7 @@ export class AgentApps {
 
   constructor(deps: AgentAppsDeps) {
     this.#deps = deps
+    this.#lock = appLock(deps.local)
     this.store = new AgentAppStore(drizzle(deps.storage))
     const isolates = new Isolates(deps.loader)
     this.isolates = isolates
@@ -204,7 +157,7 @@ export class AgentApps {
     this.dispatch = new AppDispatch({
       store: this.store,
       isolates,
-      queues: this.#queues,
+      lock: this.#lock,
       powers: (request) => this.#powers(request),
       authorize: async ({ session, app }) => {
         if (session === undefined) return
@@ -231,7 +184,7 @@ export class AgentApps {
     this.#builder = new AppBuilder({
       store: this.store,
       isolates,
-      queues: this.#queues,
+      lock: this.#lock,
       toolchain: deps.toolchain,
       now: deps.now,
       activated: async (app) => {
@@ -438,7 +391,7 @@ export class AgentApps {
    * newest snapshot taken while that release was active comes back.
    */
   rollback(app: string, release: string): Promise<RolledBack> {
-    return this.#queues.run(app, async () => {
+    return this.#lock(app, async () => {
       const row = this.store.release(release)
       if (row?.app !== app || row.status !== 'retired')
         throw new InvalidInput({
@@ -551,7 +504,7 @@ export class AgentApps {
    */
   async remove(app: string): Promise<void> {
     this.dispatch.active(app)
-    await this.#queues.run(app, async () => {
+    await this.#lock(app, async () => {
       await this.jobs.removeApp(app)
       await this.files(app).purge()
       eraseApp(drizzle(this.#deps.storage), app)
@@ -573,13 +526,22 @@ export class AgentApps {
   }
 }
 
-/** What the agent object lends its apps: its native schedules; tests also replace the internet and the clock. */
-export type AppPorts = { readonly schedules: JobSchedules; readonly fetch?: Send; readonly now?: () => number }
+/**
+ * What the agent object lends its apps: its native schedules and its runtime (for the apps' locks); tests also replace
+ * the internet and the clock.
+ */
+export type AppPorts = {
+  readonly schedules: JobSchedules
+  readonly local: AppRunner
+  readonly fetch?: Send
+  readonly now?: () => number
+}
 
 /** The agent object's apps: over its SQLite, its Worker Loader and the stage's files bucket, owned by `owner`. */
 export function agentApps(storage: DurableObjectStorage, env: RuntimeEnv, owner: () => string, ports: AppPorts) {
   return new AgentApps({
     schedules: ports.schedules,
+    local: ports.local,
     storage,
     loader: env.LOADER,
     bucket: env.FILES,

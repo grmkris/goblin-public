@@ -1,10 +1,17 @@
 import { createRegistry } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
+import * as ManagedRuntime from 'effect/ManagedRuntime'
 import * as Predicate from 'effect/Predicate'
 import { agentApps } from '../../src/agent-apps/engine.ts'
 import { JOB_CALLBACK, type JobSchedules, type JobSlot } from '../../src/agent-apps/jobs.ts'
+import type { AppRunner } from '../../src/agent-apps/queue.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
+import { KeyedLock } from '../../src/observability/lock.ts'
 import { type AgentFetch, type OwnerClient, callOwner } from './owner-api.ts'
+
+/** A runtime with only the per-key lock, for the apps engines a probe makes outside an agent's own runtime. */
+const probeRuntime = ManagedRuntime.make(KeyedLock.layer)
+export const probeLocal: AppRunner = (program) => probeRuntime.runPromise(program)
 
 /** Native schedules kept in memory, for probes whose apps declare none. */
 export function memorySchedules(): JobSchedules {
@@ -55,7 +62,7 @@ const MINUTE = 60_000
 function jobsBench(storage: DurableObjectStorage, env: RuntimeEnv, owner: string, schedules: JobSchedules) {
   const clock = { now: Math.ceil((Date.now() + 30 * 24 * 60 * MINUTE) / (60 * MINUTE)) * 60 * MINUTE + 7 * MINUTE }
   const authority: { blocked: string | undefined } = { blocked: undefined }
-  const apps = agentApps(storage, env, () => owner, { schedules, now: () => clock.now })
+  const apps = agentApps(storage, env, () => owner, { schedules, local: probeLocal, now: () => clock.now })
   apps.attach(createRegistry())
   apps.restore()
   apps.connect({

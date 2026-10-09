@@ -13,7 +13,7 @@ import { HomeService } from '../../src/home/service.ts'
 import { readHome } from '../../src/home/store.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
-import { memorySchedules } from './apps-jobs-probe.ts'
+import { memorySchedules, probeLocal } from './apps-jobs-probe.ts'
 
 const APP = `import { defineApp, s } from '@goblin/app'
 export type State = { count: number }
@@ -102,7 +102,7 @@ function mcpPlacementProbe(home: HomeService, apps: AppRegistry, db: ReturnType<
 export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string, harness: PiHarness) {
   runApplicationMigrations(storage)
   const db = drizzle(storage)
-  const engine = agentApps(storage, env, () => owner, { schedules: memorySchedules() })
+  const engine = agentApps(storage, env, () => owner, { schedules: memorySchedules(), local: probeLocal })
   engine.attach(createRegistry())
   engine.restore()
   const apps = new AppRegistry(

@@ -6,7 +6,7 @@ import { AppFiles } from '../../src/agent-apps/files.ts'
 import { problemText } from '../../src/agent-apps/queue.ts'
 import { runScript } from '../../src/agent-apps/script.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
-import { memorySchedules } from './apps-jobs-probe.ts'
+import { memorySchedules, probeLocal } from './apps-jobs-probe.ts'
 import type { SeenRequest } from './model.ts'
 
 const LIB = 'export const bump = (count: number, by: number): number => count + by\n'
@@ -76,7 +76,7 @@ const refusal = (result: { readonly ok: true } | { readonly ok: false; readonly 
  * engine. Plus a one-off script over the owner's files with no network.
  */
 export async function appsEngineProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string) {
-  const apps = agentApps(storage, env, () => owner, { schedules: memorySchedules() })
+  const apps = agentApps(storage, env, () => owner, { schedules: memorySchedules(), local: probeLocal })
   apps.attach(createRegistry())
   apps.restore()
   const changes: string[] = []
@@ -114,7 +114,7 @@ export async function appsEngineProbe(storage: DurableObjectStorage, env: Runtim
   )
   const rolledBack = v1.status === 'active' ? await outcome(() => apps.rollback('counter', v1.release)) : undefined
   const afterRollback = apps.store.state('counter')
-  const fresh = agentApps(storage, env, () => owner, { schedules: memorySchedules() })
+  const fresh = agentApps(storage, env, () => owner, { schedules: memorySchedules(), local: probeLocal })
   fresh.attach(createRegistry())
   fresh.restore()
   const script = await runScript(
@@ -271,7 +271,11 @@ const approvalOf = (built: Awaited<ReturnType<ReturnType<typeof agentApps>['buil
  * agent's services within the app's caps.
  */
 export async function appsPowersProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string) {
-  const apps = agentApps(storage, env, () => owner, { schedules: memorySchedules(), fetch: internet })
+  const apps = agentApps(storage, env, () => owner, {
+    schedules: memorySchedules(),
+    local: probeLocal,
+    fetch: internet,
+  })
   apps.attach(createRegistry())
   apps.restore()
   const seen: unknown[] = []

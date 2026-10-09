@@ -1,8 +1,10 @@
+import * as ManagedRuntime from 'effect/ManagedRuntime'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mismatches, plainJson, schemaProblems } from '../src/agent-apps/json.ts'
 import { everyOf, readManifest, requestedPowers, storedManifest } from '../src/agent-apps/manifest.ts'
 import { backoff, lastSlot, nextSlot } from '../src/agent-apps/jobs.ts'
-import { AppQueues, problemText, refusalOf } from '../src/agent-apps/queue.ts'
+import { appLock, problemText, refusalOf } from '../src/agent-apps/queue.ts'
+import { KeyedLock } from '../src/observability/lock.ts'
 import { StoredDataInvalid, readFiles, storedValue } from '../src/agent-apps/stored.ts'
 import { reconcileAppJobs } from '../src/agent-apps/wake.ts'
 import { InvalidInput } from '../src/http/errors.ts'
@@ -162,19 +164,23 @@ describe('app schedules', () => {
   })
 })
 
-describe('app queues', () => {
-  it('run one app’s changes in arrival order, even after a failure', async () => {
-    const queues = new AppQueues()
+describe('app locks', () => {
+  it('run one app’s changes in arrival order through the runtime’s KeyedLock, and hand a failure back as thrown', async () => {
+    const runtime = ManagedRuntime.make(KeyedLock.layer)
+    const lock = appLock((program) => runtime.runPromise(program))
     const order: string[] = []
-    const slow = queues.run('a', async () => {
+    const slow = lock('a', async () => {
       await new Promise((resolve) => setTimeout(resolve, 20))
       order.push('first')
-      throw new Error('boom')
+      throw new InvalidInput({ reason: 'boom' })
     })
-    const next = queues.run('a', async () => order.push('second'))
-    await expect(slow).rejects.toThrow('boom')
+    const next = lock('a', async () => order.push('second'))
+    const other = lock('b', async () => order.push('other app'))
+    await expect(slow).rejects.toBeInstanceOf(InvalidInput)
     await next
-    expect(order).toEqual(['first', 'second'])
+    await other
+    expect(order).toEqual(['other app', 'first', 'second'])
+    await runtime.dispose()
   })
   it("hand an isolate a refusal it reads as an Error with the failure's line, across a structured clone", () => {
     const refusal = refusalOf(new InvalidInput({ reason: 'the agent writes only /agent' }))

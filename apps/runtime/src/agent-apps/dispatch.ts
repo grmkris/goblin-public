@@ -3,7 +3,7 @@ import { type Isolates, type Outcome, isolateFailure } from './isolates.ts'
 import { mismatches, plainJson } from './json.ts'
 import { type Manifest, storedManifest } from './manifest.ts'
 import type { AppPowers } from './powers.ts'
-import { AppCodeError, type AppQueues } from './queue.ts'
+import { AppCodeError, type AppLock } from './queue.ts'
 import type { AgentAppStore } from './store.ts'
 
 /** Sizes a call may move: its input, what `prepare` hands `run` or a view returns, and the state. */
@@ -28,10 +28,21 @@ export type CallResult =
   | { readonly kind: 'action'; readonly revision: number; readonly state?: unknown }
   | { readonly kind: 'view'; readonly revision: number; readonly value: unknown }
 
+/** An action checked and prepared, waiting for the app's lock to run and commit. */
+export type PendingAction = {
+  readonly kind: 'pending'
+  readonly request: CallRequest
+  readonly release: string
+  readonly manifest: Manifest
+  readonly api: ReturnType<Isolates['release']>
+  readonly input: unknown
+  readonly prepared: unknown
+}
+
 type DispatchDeps = {
   readonly store: AgentAppStore
   readonly isolates: Isolates
-  readonly queues: AppQueues
+  readonly lock: AppLock
   /** What one `prepare` of `app` may reach, for the call `op` at `depth`. */
   readonly powers: (request: CallRequest) => AppPowers
   readonly authorize: (request: CallRequest) => Promise<void>
@@ -49,7 +60,7 @@ function seedOf(op: string): number {
 
 /**
  * Calls an app's actions and views, one path for every caller (ADR 0021). An action's `prepare` runs once outside the
- * app's queue, then in the queue `run` reads the current state, and the next state is checked and committed as one
+ * app's lock, then holding it `run` reads the current state, and the next state is checked and committed as one
  * revision with the call's receipt. A replayed operation id gets its receipt back and runs nothing.
  */
 export class AppDispatch {
@@ -78,7 +89,17 @@ export class AppDispatch {
     return manifest
   }
 
+  /** A call from outside the runtime: `begin`, then `commit` holding the app's lock. */
   async call(request: CallRequest): Promise<CallResult> {
+    const begun = await this.begin(request)
+    return begun.kind === 'pending' ? this.#deps.lock(request.app, () => this.commit(begun)) : begun
+  }
+
+  /**
+   * Everything a call does outside the app's lock: checks, a view's answer, a replay's receipt, or an action's
+   * `prepare`, after which it is pending until `commit`.
+   */
+  async begin(request: CallRequest): Promise<CallResult | PendingAction> {
     await this.#deps.authorize(request)
     const { store } = this.#deps
     const release = this.active(request.app)
@@ -109,35 +130,39 @@ export class AppDispatch {
       )
       prepared = plainJson(this.#outcome(request.app, `${request.member}.prepare`, out), BYTES.value, 'prepare')
     }
-    return this.#deps.queues.run(request.app, async () => {
-      await this.#deps.authorize(request)
-      const current = this.#state(request.app)
-      if (current.release !== release)
-        throw new Conflict({ reason: `${request.app} changed while this call was in flight; call it again` })
-      const out = await this.#isolate(MS.run, `run of ${request.member}`, () =>
-        api.run(request.member, input, current.state, prepared, { now: this.#deps.now(), seed: seedOf(request.op) }),
-      )
-      const next = plainJson(this.#outcome(request.app, `${request.member}.run`, out), BYTES.state, 'the next state')
-      const misfit = mismatches(manifest.state.schema, next)
-      if (misfit.length > 0) {
-        const message = `${request.member} returned a state that does not fit state.schema: ${misfit.join('; ')}`
-        store.event(request.app, 'error', message, this.#deps.now())
-        throw new AppCodeError(message)
-      }
-      const revision = current.revision + 1
-      store.commit({
-        app: request.app,
-        revision: current.revision,
-        state: next,
-        release,
-        op: request.op,
-        result: { revision },
-        event: `${request.member} → r${String(revision)}`,
-        now: this.#deps.now(),
-      })
-      this.#deps.changed(request.app)
-      return { kind: 'action', revision, state: next }
+    return { kind: 'pending', request, release, manifest, api, input, prepared }
+  }
+
+  /** An action's `run` on the current state, checked and committed: only while holding the app's lock. */
+  async commit({ request, release, manifest, api, input, prepared }: PendingAction): Promise<CallResult> {
+    const { store } = this.#deps
+    await this.#deps.authorize(request)
+    const current = this.#state(request.app)
+    if (current.release !== release)
+      throw new Conflict({ reason: `${request.app} changed while this call was in flight; call it again` })
+    const out = await this.#isolate(MS.run, `run of ${request.member}`, () =>
+      api.run(request.member, input, current.state, prepared, { now: this.#deps.now(), seed: seedOf(request.op) }),
+    )
+    const next = plainJson(this.#outcome(request.app, `${request.member}.run`, out), BYTES.state, 'the next state')
+    const misfit = mismatches(manifest.state.schema, next)
+    if (misfit.length > 0) {
+      const message = `${request.member} returned a state that does not fit state.schema: ${misfit.join('; ')}`
+      store.event(request.app, 'error', message, this.#deps.now())
+      throw new AppCodeError(message)
+    }
+    const revision = current.revision + 1
+    store.commit({
+      app: request.app,
+      revision: current.revision,
+      state: next,
+      release,
+      op: request.op,
+      result: { revision },
+      event: `${request.member} → r${String(revision)}`,
+      now: this.#deps.now(),
     })
+    this.#deps.changed(request.app)
+    return { kind: 'action', revision, state: next }
   }
 
   #state(app: string) {

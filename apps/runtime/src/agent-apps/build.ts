@@ -4,7 +4,7 @@ import { type Isolates, type ReleaseApi, type Rendered, isolateFailure } from '.
 import { jsonBytes, mismatches, plainJson } from './json.ts'
 import { type Manifest, Power, readManifest, requestedPowers } from './manifest.ts'
 import { APP_NAME } from './names.ts'
-import type { AppQueues } from './queue.ts'
+import type { AppLock } from './queue.ts'
 import type { AgentAppStore, AppViewCode } from './store.ts'
 import { readFiles, storedJson } from './stored.ts'
 
@@ -187,7 +187,7 @@ type Candidate = {
 type BuilderDeps = {
   readonly store: AgentAppStore
   readonly isolates: Isolates
-  readonly queues: AppQueues
+  readonly lock: AppLock
   readonly toolchain: () => Promise<Toolchain>
   readonly now: () => number
   /** Re-installs the app's tools once its new release is active. */
@@ -260,7 +260,7 @@ export class AppBuilder {
     const { manifest } = read
     const view = await this.#view(toolchain, files[VIEW], transpiled)
     if ('problems' in view) return fail(view.problems)
-    return this.#deps.queues.run(request.name, async () => {
+    return this.#deps.lock(request.name, async () => {
       const state = await this.#nextState(api, manifest, candidate.home === undefined)
       if ('problems' in state) return fail(state.problems)
       const startsWith = state.value === undefined ? store.state(request.name)?.state : state.value

@@ -7,7 +7,7 @@ import { AppRegistry } from '../../src/apps/registry.ts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { HomeService } from '../../src/home/service.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
-import { memorySchedules } from './apps-jobs-probe.ts'
+import { memorySchedules, probeLocal } from './apps-jobs-probe.ts'
 import { InboxMcpFixture } from './inbox-mcp.ts'
 import { INBOX_APP, INBOX_VIEW } from './inbox-source.ts'
 
@@ -19,7 +19,7 @@ export async function inboxAppProbe(storage: DurableObjectStorage, env: RuntimeE
     new StreamableHTTPClientTransport(new URL('https://inbox-fixture.test/mcp'), { fetch: fixture.fetch }),
   )
   let now = Date.now()
-  const apps = agentApps(storage, env, () => owner, { schedules: memorySchedules(), now: () => now })
+  const apps = agentApps(storage, env, () => owner, { schedules: memorySchedules(), local: probeLocal, now: () => now })
   apps.attach(createRegistry())
   apps.restore()
   apps.connect({
