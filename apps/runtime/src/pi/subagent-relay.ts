@@ -3,6 +3,7 @@ import {
   type EntryId,
   type Harness,
   type EntryRecord,
+  type PhaseHandler,
   LiveDoc,
   type SettledSubmissionRecord,
   type Task,
@@ -16,7 +17,7 @@ import type { UserMessage } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { type HelperExclusion } from '@goblin/contracts'
+import { type DelegateResultData, type HelperExclusion } from '@goblin/contracts'
 import { Channel, Chats, Conversations, attempt, attemptSync, nowSecondsEffect, requireResident } from '../services.ts'
 import { authoredContent } from './content.ts'
 import { BACKGROUND, entryId, conversationId as piConversationId } from './context.ts'
@@ -34,6 +35,8 @@ export type Subagent = {
   readonly reported: EntryId[]
   /** What the owner wrote to it since its last report, quoted in the next one. */
   quotes?: string[]
+  /** The spawn asked for synthesis: its report is an input Goblin answers once, not a passive result (spec §5). */
+  synthesize?: boolean
 }
 
 /** The subagents a conversation started, by name. A thread branched from main starts without main's. */
@@ -59,6 +62,8 @@ export type RelayInput = {
   /** The owner's operation id: the submission carries it, so their browser waits on it like on any message. */
   readonly requestId?: string
   readonly exclusions?: readonly HelperExclusion[]
+  /** Whether its report is an input the spawner answers (`synthesize`), else a passive Delegate result. */
+  readonly synthesize?: boolean
 }
 
 type RelayState =
@@ -66,14 +71,17 @@ type RelayState =
   /** The message was answered at `after`; waiting until the subagent and its own helpers are done. */
   | { readonly phase: 'drain'; readonly after: number; readonly round: number }
   /** `close`: it ended in an answer, so it closes as done unless the owner keeps it. */
-  | { readonly phase: 'report'; readonly report?: string; readonly close: boolean }
+  | { readonly phase: 'report'; readonly report?: string; readonly close: boolean; readonly failed?: boolean }
 
 export type Relay = Task<RelayInput, RelayState, null, object>
 
 export const background = { ownership: { kind: 'conversation' }, background: true } as const
 
-const toReport = (close: boolean, report?: string) =>
-  ({ status: 'running', checkpoint: { phase: 'report', close, ...(report === undefined ? {} : { report }) } }) as const
+const toReport = (close: boolean, report?: string, failed = false) =>
+  ({
+    status: 'running',
+    checkpoint: { phase: 'report', close, ...(report === undefined ? {} : { report }), ...(failed ? { failed } : {}) },
+  }) as const
 
 /** The text of an answer entry; empty when it has none (a run that a tool ended). */
 export function answerText(entry: Pick<EntryRecord, 'model'> | undefined): string {
@@ -87,6 +95,9 @@ const stopped = (entry: EntryRecord) => {
   const message = entry.model?.[0]
   return message?.role === 'assistant' && message.stopReason === 'aborted'
 }
+
+/** The most a Delegate result entry keeps for display; the chat's model reads the whole report. */
+const RESULT_TEXT = 8000
 
 const LIVE = ['pending', 'running', 'waiting', 'completing'] as const
 
@@ -141,7 +152,7 @@ export const quoted = (text: string) => {
 /** After the message was answered: wait for the subagent to finish, or report what stopped it. */
 function delivered(settled: SettledSubmissionRecord) {
   if (settled.status === 'unanswered')
-    return toReport(false, settled.reason === 'aborted' ? undefined : `It failed: ${settled.reason}.`)
+    return toReport(false, settled.reason === 'aborted' ? undefined : `It failed: ${settled.reason}.`, true)
   if (settled.type !== 'input') return toReport(false)
   return { status: 'running', checkpoint: { phase: 'drain', after: Number(settled.entry), round: 0 } } as const
 }
@@ -169,14 +180,60 @@ async function decide(tx: Tx, spawner: ConversationId, self: TaskId, input: Rela
     agent.quotes = []
   }
   const text = answerText(answer)
-  if (text === '') return toReport(false, 'It ended without an answer; its conversation shows why.')
+  if (text === '') return toReport(false, 'It ended without an answer; its conversation shows why.', true)
   return toReport(true, [...quotes.map((quote) => `The owner wrote to it: "${quote}"`), text].join('\n\n'))
 }
+
+type ReportPhase = PhaseHandler<RelayInput, Extract<RelayState, { readonly phase: 'report' }>, RelayState, null, object>
+
+/**
+ * The report reaches the spawner's chat as a passive Delegate result (spec section 5): Goblin sees it at its next turn
+ * and does not answer it, unless the spawn asked for synthesis, when it is an input that starts or joins a turn.
+ */
+const reportPhase =
+  (run: RunProgram): ReportPhase =>
+  async (relay, runtime, context) => {
+    const { report, close, failed = false } = relay.state.checkpoint
+    const { name, conversationId, origin, synthesize = false } = relay.input
+    if (report !== undefined) {
+      await run(requireResident)
+      const chats = await run(Chats.useSync((directory) => directory))
+      const parentChat = chats.chatOf(String(runtime.conversationId))
+      if (parentChat === undefined) throw new Error('Subagent spawner is not registered')
+      const requestId = `subagent-report:${relay.id}`
+      const content = authoredContent(`subagent ${name}`, report)
+      if (synthesize) {
+        await chats.passiveWrite(parentChat, async (session) => {
+          const spawner = await runtime.conversation(piConversationId(session), context)
+          if (parentChat === chats.primary() && origin === 'spawner') await run(track(requestId))
+          await spawner?.submit({ type: 'input', content, whenBusy: 'followUp', requestId }, context)
+        })
+      } else {
+        const data = {
+          delegate: String(conversationId),
+          name,
+          status: failed ? 'failed' : 'done',
+          text: report.slice(0, RESULT_TEXT),
+        } satisfies DelegateResultData
+        const model = [{ role: 'user' as const, content, timestamp: Date.now() }]
+        await run(
+          Conversations.use((conversations) =>
+            attempt(() =>
+              conversations.writeEntry(parentChat, requestId, { kind: 'app.delegate_result', data, model }),
+            ),
+          ),
+        )
+      }
+    }
+    if (close) await run(closeAsDone(String(conversationId)))
+    await runtime.commit(() => ({ status: 'terminal', outcome: { status: 'completed', result: null } }), context)
+  }
 
 /**
  * Carries one message to a subagent (its spawner's or the owner's), then waits until the subagent is done: idle, with
  * none of its own helpers still at work, so it reports its final answer, never "waiting on my helpers". The answer goes
- * to the spawner as an input it answers, and only there. Then the subagent closes as done unless the owner wrote in
+ * to the spawner's chat as a passive Delegate result (an input it answers once when the spawn asked for `synthesize`),
+ * and only there. Then the subagent closes as done unless the owner wrote in
  * it, branched from it or pinned it. Request ids keep a restart from delivering or reporting twice.
  */
 export function relayTask(run: RunProgram): Relay {
@@ -220,32 +277,7 @@ export function relayTask(run: RunProgram): Relay {
           return decide(tx, runtime.conversationId, relay.id, relay.input, after)
         }, context)
       },
-      // A follow-up input: it starts a turn when the spawner is idle, or waits for its current answer.
-      report: async (relay, runtime, context) => {
-        const { report, close } = relay.state.checkpoint
-        const { name, conversationId, origin } = relay.input
-        if (report !== undefined) {
-          await run(requireResident)
-          const chats = await run(Chats.useSync((directory) => directory))
-          const parentChat = chats.chatOf(String(runtime.conversationId))
-          if (parentChat === undefined) throw new Error('Subagent spawner is not registered')
-          await chats.passiveWrite(parentChat, async (session) => {
-            if (parentChat === chats.primary() && origin === 'spawner') await run(track(`subagent-report:${relay.id}`))
-            const spawner = await runtime.conversation(piConversationId(session), context)
-            await spawner?.submit(
-              {
-                type: 'input',
-                content: authoredContent(`subagent ${name}`, report),
-                whenBusy: 'followUp',
-                requestId: `subagent-report:${relay.id}`,
-              },
-              context,
-            )
-          })
-        }
-        if (close) await run(closeAsDone(String(conversationId)))
-        await runtime.commit(() => ({ status: 'terminal', outcome: { status: 'completed', result: null } }), context)
-      },
+      report: reportPhase(run),
     },
     abort: (_relay, runtime, context) =>
       runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), context),

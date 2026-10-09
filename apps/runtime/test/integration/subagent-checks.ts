@@ -26,8 +26,9 @@ export async function chainChecks(base: string, name: string): Promise<void> {
     { type: 'text', text: '[from subagent lead]' },
     { type: 'text', text: 'echo: echo: find deeper' },
   ]
-  expect(reportsFrom(result.main, 'lead')).toEqual([`pi.user: ${JSON.stringify(report)}`])
-  expect(result.main.at(-1)).toBe('pi.assistant: [{"type":"text","text":"echo: echo: echo: find deeper"}]')
+  expect(reportsFrom(result.main, 'lead')).toEqual([`app.delegate_result: ${JSON.stringify(report)}`])
+  // Main did not spawn lead with synthesize, so the result is the last thing in its transcript: no answer follows.
+  expect(result.main.at(-1)).toBe(`app.delegate_result: ${JSON.stringify(report)}`)
   expect(reportsFrom(result.leadLines, 'digger')).toHaveLength(1)
   expect(result.lead).toMatchObject({ kind: 'subagent', parent: '1', closedBy: 'done' })
   expect(result.digger).toMatchObject({ kind: 'subagent', parent: result.lead.id, closedBy: 'done' })
@@ -97,4 +98,37 @@ export async function closeChecks(base: string, name: string): Promise<void> {
   expect(reportsFrom(result.main, 'quick')).toHaveLength(2)
   expect(result.quickLines.at(-1)).toBe('pi.assistant: [{"type":"text","text":"echo: once more"}]')
   expect(result.again.closedBy).toBe('done')
+}
+
+const SynthesisRun = Schema.Struct({
+  passive: Lines,
+  both: Lines,
+  settled: Lines,
+  quiet: Listed,
+  loud: Listed,
+})
+
+/** A Delegate's result is passive unless the spawn asked for synthesis, which gets exactly one answer. */
+export async function synthesisChecks(base: string, name: string): Promise<void> {
+  const result = await decode(base, 'subagent-synthesis', name, SynthesisRun)
+  const quiet = [
+    { type: 'text', text: '[from subagent quiet]' },
+    { type: 'text', text: 'echo: say little' },
+  ]
+  expect(reportsFrom(result.passive, 'quiet')).toEqual([`app.delegate_result: ${JSON.stringify(quiet)}`])
+  expect(result.passive.at(-1)).toBe(`app.delegate_result: ${JSON.stringify(quiet)}`)
+  const loud = [
+    { type: 'text', text: '[from subagent loud]' },
+    { type: 'text', text: 'echo: say more' },
+  ]
+  expect(reportsFrom(result.both, 'loud')).toEqual([`pi.user: ${JSON.stringify(loud)}`])
+  expect(result.both.at(-1)).toBe('pi.assistant: [{"type":"text","text":"echo: echo: say more"}]')
+  // Exactly one answer followed it, and the quiet result still has none.
+  const afterLoud = result.settled.slice(result.settled.findIndex((line) => line.includes('[from subagent loud]')))
+  expect(afterLoud.filter((line) => line.startsWith('pi.assistant'))).toHaveLength(1)
+  expect(
+    result.settled.slice(result.settled.findIndex((line) => line.includes('[from subagent quiet]')) + 1)[0],
+  ).not.toMatch(/^pi\.assistant: .*echo: echo: say little/u)
+  expect(result.quiet.closedBy).toBe('done')
+  expect(result.loud.closedBy).toBe('done')
 }

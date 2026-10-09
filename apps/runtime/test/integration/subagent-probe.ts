@@ -5,7 +5,7 @@ import type { PersonalAgentProbe } from './worker.ts'
 type Probe = DurableObjectStub<PersonalAgentProbe>
 
 /** What the scripted model reads as a call of the subagent tool for `action`. */
-const subagentCall = ({ action, ...args }: { action: string; name: string; message?: string }) =>
+const subagentCall = ({ action, ...args }: { action: string; name: string; message?: string; synthesize?: boolean }) =>
   `call subagent_${action} ${JSON.stringify(args)}`
 
 const named = (views: readonly ConversationView[], title: string) => views.find((view) => view.title === title)
@@ -14,22 +14,31 @@ const named = (views: readonly ConversationView[], title: string) => views.find(
 const turnsOf = async (agent: Probe, session: string) =>
   (await transcript(agent, session)).filter((line) => !line.startsWith('app.memory'))
 
-/** A conversation's turns once it has `count` reports from subagent `name` and has answered the last one. */
-const reportsUntil = (agent: Probe, session: string, name: string, count = 1) =>
-  until(
+/**
+ * A conversation's turns once it has `count` reports from subagent `name`; with `answered`, once it has also answered
+ * the last one. A passive Delegate result gets no answer, so after it the read waits a moment and reads again: a
+ * Goblin run that wrongly followed would show.
+ */
+const reportsUntil = async (agent: Probe, session: string, name: string, count = 1, answered = false) => {
+  const lines = await until(
     () => turnsOf(agent, session),
-    (lines) =>
-      lines.filter((line) => line.includes(`[from subagent ${name}]`)).length >= count &&
-      lines.at(-1)?.startsWith('pi.assistant') === true,
+    (all) =>
+      all.filter((line) => line.includes(`[from subagent ${name}]`)).length >= count &&
+      (!answered || all.at(-1)?.startsWith('pi.assistant') === true),
     20_000,
   )
+  if (answered) return lines
+  await new Promise((resolve) => setTimeout(resolve, 600))
+  return turnsOf(agent, session)
+}
 
 /**
- * Main starts `lead`, which starts `digger` of its own. Main hears once, from lead, with lead's final answer (after
- * digger's report), never lead's "started digger". Both close as done; lead was offered subagents, not `ask_user`.
+ * Main starts `lead`, which starts `digger` of its own with `synthesize`, so lead answers digger's report. Main hears
+ * once, from lead, with lead's final answer (after digger's report), never lead's "started digger", and does not answer
+ * it. Both close as done; lead was offered subagents, not `ask_user`.
  */
 export async function subagentChainSequence(agent: Probe): Promise<Response> {
-  const inner = subagentCall({ action: 'spawn', name: 'digger', message: 'find deeper' })
+  const inner = subagentCall({ action: 'spawn', name: 'digger', message: 'find deeper', synthesize: true })
   await exchange(agent, PRIMARY_CHAT, subagentCall({ action: 'spawn', name: 'lead', message: inner }), 'chain-spawn')
   const main = await reportsUntil(agent, PRIMARY_CHAT, 'lead')
   const views = await threadsUntil(
@@ -127,4 +136,34 @@ export async function subagentCloseSequence(agent: Probe): Promise<Response> {
     leadLines: await transcript(agent, lead.id),
     quickLines: done === undefined ? [] : await transcript(agent, done.id),
   })
+}
+
+/**
+ * A Delegate's result is passive by default: main sees it in its transcript, attributed, and does not answer. With
+ * `synthesize: true` the report is an input and main answers it exactly once. A nested Delegate without it posts its
+ * result in its spawner's chat and the spawner does not answer either.
+ */
+export async function subagentSynthesisSequence(agent: Probe): Promise<Response> {
+  await exchange(
+    agent,
+    PRIMARY_CHAT,
+    subagentCall({ action: 'spawn', name: 'quiet', message: 'say little' }),
+    'syn-quiet',
+  )
+  const passive = await reportsUntil(agent, PRIMARY_CHAT, 'quiet')
+  await exchange(
+    agent,
+    PRIMARY_CHAT,
+    subagentCall({ action: 'spawn', name: 'loud', message: 'say more', synthesize: true }),
+    'syn-loud',
+  )
+  const both = await reportsUntil(agent, PRIMARY_CHAT, 'loud', 1, true)
+  await new Promise((resolve) => setTimeout(resolve, 600))
+  const settled = await turnsOf(agent, PRIMARY_CHAT)
+  const views = await threadsUntil(
+    agent,
+    (all) => ['quiet', 'loud'].every((title) => named(all, title)?.closedBy === 'done'),
+    15_000,
+  )
+  return Response.json({ passive, both, settled, quiet: named(views, 'quiet'), loud: named(views, 'loud') })
 }

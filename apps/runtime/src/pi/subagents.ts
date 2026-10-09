@@ -43,8 +43,10 @@ const SUBAGENT_TOOLS: readonly string[] = [
 const GUIDE = [
   '`subagent_spawn` starts a subagent: a helper that works in the background, in a conversation of its own, with the',
   "owner's tools and grants, and subagents of its own when a job splits. Use one for a job that takes a while or can",
-  "be done apart from the conversation. A subagent's final answer comes back to you as a message starting",
-  '`[from subagent <name>]`, once it and its own helpers are done: tell whoever you answer what matters in it. A',
+  "be done apart from the conversation. A subagent's final answer is posted in the conversation, attributed to it, once",
+  'it and its own helpers are done; the owner reads it there and you do not answer it. You see it as a message',
+  'starting `[from subagent <name>]` at your next turn. Spawn with `synthesize: true` only when you will combine',
+  'its result with other work: then it comes to you as a message and you answer once. A',
   'subagent closes when its job is done; `subagent_send` gives it another job and it picks up where it left off.',
   '`subagent_stop` stops one and its own subagents; `subagent_status` says who is working.',
   'Helpers inherit your execution capabilities live. Set exclusions at spawn or replace them with `subagent_config`',
@@ -189,6 +191,8 @@ type Delivery = {
   readonly name: string
   readonly message: string
   readonly exclusions?: readonly HelperExclusion[]
+  /** The spawn asked for synthesis (default no): its reports are inputs Goblin answers, not passive results. */
+  readonly synthesize?: boolean
 }
 type Deliver = (api: Api, delivery: Delivery, context: CallContext) => Promise<Done>
 
@@ -237,15 +241,31 @@ function subagentTools(run: RunProgram, deliver: Deliver): readonly ToolRegistra
   return [
     typedTool({
       name: 'subagent_spawn',
-      description: 'Start a subagent named `name` on a job (`message`). Its final answer is reported back to you.',
-      input: Schema.Struct({ name: Name, message: Message, exclusions: Schema.optionalKey(HelperExclusions) }),
+      description:
+        'Start a subagent named `name` on a job (`message`). Its final answer is posted in the conversation as its attributed result and you do not answer it, unless you set `synthesize: true`: then it comes back to you as a message and you answer once. Set `synthesize` only when you will combine its result with other work.',
+      input: Schema.Struct({
+        name: Name,
+        message: Message,
+        exclusions: Schema.optionalKey(HelperExclusions),
+        synthesize: Schema.optionalKey(Schema.Boolean),
+      }),
       ...common,
       replay: 'unsafe',
-      execute: async ({ name, message, exclusions }, api, context) => {
+      execute: async ({ name, message, exclusions, synthesize }, api, context) => {
         await roster(api, context)
         return (
           (await off(api)) ??
-          deliver(api, { action: 'spawn', name, message, ...(exclusions === undefined ? {} : { exclusions }) }, context)
+          deliver(
+            api,
+            {
+              action: 'spawn',
+              name,
+              message,
+              ...(exclusions === undefined ? {} : { exclusions }),
+              ...(synthesize === true ? { synthesize } : {}),
+            },
+            context,
+          )
         )
       },
     }),
@@ -320,6 +340,7 @@ async function ownerRelay(relay: Relay, pi: Harness, send: OwnerSend): Promise<b
       whenBusy: send.busy ? 'steer' : 'followUp',
       quote: quoted(send.text),
       requestId: send.operationId,
+      synthesize: roster.agents[name ?? '']?.synthesize === true,
     } as const
     await tx.createTask(relay, input, background)
     return true
@@ -360,7 +381,11 @@ export function subagentsExtension(run: RunProgram, members: (self: Extension) =
   }
 
   /** spawn and send: one commit starts the subagent if new, and a relay for the message. */
-  async function deliver(api: Api, { action, name, message, exclusions = [] }: Delivery, context: CallContext) {
+  async function deliver(
+    api: Api,
+    { action, name, message, exclusions = [], synthesize = false }: Delivery,
+    context: CallContext,
+  ) {
     const roster = await api.snapshot(Subagents, api.conversationId, context)
     const before = roster === undefined ? undefined : known(roster.agents, name)
     const admitted = await admit(run, before)
@@ -370,7 +395,7 @@ export function subagentsExtension(run: RunProgram, members: (self: Extension) =
       const existing = known(state.agents, name)
       if (action === 'spawn' && existing !== undefined) return 'exists' as const
       const child = existing?.conversationId ?? (await spawn(tx, name))
-      state.agents[name] ??= { conversationId: child, reported: [] }
+      state.agents[name] ??= { conversationId: child, reported: [], ...(synthesize ? { synthesize } : {}) }
       const input = {
         name,
         conversationId: child,
@@ -378,6 +403,7 @@ export function subagentsExtension(run: RunProgram, members: (self: Extension) =
         origin: 'spawner',
         whenBusy: 'followUp',
         exclusions,
+        synthesize: state.agents[name]?.synthesize === true,
       } as const
       await tx.createTask(Relay, input, background)
       if (action === 'spawn') return 'started' as const

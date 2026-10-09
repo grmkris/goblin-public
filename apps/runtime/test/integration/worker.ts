@@ -38,7 +38,12 @@ import { ChatDirectory } from '../../src/chats/directory.ts'
 import { unwrap } from '../../src/http/rpc.ts'
 import { skillsCacheProbe, skillsLearnerRejectionProbe, skillsPersistedRead } from './skills-probe.ts'
 import { exchange, historyOf, linesOf, snapshotOf, threadsUntil, transcript, until } from './probe-reads.ts'
-import { subagentChainSequence, subagentCloseSequence, subagentOwnerSequence } from './subagent-probe.ts'
+import {
+  subagentChainSequence,
+  subagentCloseSequence,
+  subagentOwnerSequence,
+  subagentSynthesisSequence,
+} from './subagent-probe.ts'
 import { filesSequence, filesStoreProbe } from './files-probe.ts'
 import { appsEngineProbe, appsPowersProbe, appsTurnProbe } from './apps-probe.ts'
 import { appsJobsProbe } from './apps-jobs-probe.ts'
@@ -701,17 +706,19 @@ async function capabilitySequence(agent: DurableObjectStub<PersonalAgentProbe>):
 
 /**
  * Main spawns a subagent: it works in its own conversation with the owner's tools but no subagents or ask_user, and
- * its answer comes back into main as an input labelled with it, which main answers.
+ * its answer comes back into main as a passive Delegate result labelled with it, which main does not answer.
  */
 async function subagentSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
   const spawn = `call subagent_spawn ${JSON.stringify({ name: 'scout', message: 'find the word' })}`
   await agent.submit(PRIMARY_CHAT, spawn, 'subagent-spawn')
   const spawned = await agent.settle(PRIMARY_CHAT, 'subagent-spawn')
-  const main = await until(
+  await until(
     () => transcript(agent, PRIMARY_CHAT),
-    (lines) =>
-      lines.some((line) => line.includes('[from subagent')) && lines.at(-1)?.startsWith('pi.assistant') === true,
+    (lines) => lines.some((line) => line.includes('[from subagent')),
   )
+  // The report is a passive Delegate result: a Goblin run that wrongly followed it would show after a moment.
+  await new Promise((resolve) => setTimeout(resolve, 600))
+  const main = await transcript(agent, PRIMARY_CHAT)
   const listed = (await threadsUntil(agent, (views) => views.some(({ kind }) => kind === 'subagent'))).find(
     ({ kind }) => kind === 'subagent',
   )
@@ -1019,6 +1026,8 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return subagentOwnerSequence(agent)
     case '/subagent-close':
       return subagentCloseSequence(agent)
+    case '/subagent-synthesis':
+      return subagentSynthesisSequence(agent)
     case '/memory':
       return memorySequence(agent)
     case '/topic-memory':

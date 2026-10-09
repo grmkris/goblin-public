@@ -27,7 +27,7 @@ import {
   subagentBranchChecks,
   treeChecks,
 } from './conversation-checks.ts'
-import { chainChecks, closeChecks, ownerChecks } from './subagent-checks.ts'
+import { chainChecks, closeChecks, ownerChecks, synthesisChecks } from './subagent-checks.ts'
 
 const phase = await Effect.runPromise(
   Config.String('GOBLIN_NATIVE_LIFECYCLE_PHASE').pipe(
@@ -859,7 +859,7 @@ const SubagentRun = Schema.Struct({
 })
 
 harness.test(
-  'local workerd: a subagent works in the background and its answer comes back to main, which answers it',
+  'local workerd: a subagent works in the background and its answer is posted in main as a passive result main does not answer',
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `subagent-${yield* nextInt}`
@@ -875,10 +875,8 @@ harness.test(
       { type: 'text', text: '[from subagent scout]' },
       { type: 'text', text: 'echo: find the word' },
     ]
-    expect(turns(result.main).slice(-2)).toEqual([
-      `pi.user: ${JSON.stringify(report)}`,
-      'pi.assistant: [{"type":"text","text":"echo: echo: find the word"}]',
-    ])
+    expect(turns(result.main).at(-1)).toBe(`app.delegate_result: ${JSON.stringify(report)}`)
+    expect(turns(result.main).filter((line) => line.includes('echo: echo: find the word'))).toEqual([])
     expect(result.mainRequest.tools).toEqual(expect.arrayContaining(['subagent_spawn', 'ask_user', 'mcp_call']))
     expect(result.childRequest.tools).toEqual(expect.arrayContaining(['mcp_list', 'mcp_call', 'subagent_spawn']))
     expect(result.childRequest.tools).not.toContain('ask_user')
@@ -896,6 +894,11 @@ for (const [title, path, check] of [
     'Stop and Close reach subagents of subagents and report nothing; a closed one refuses its spawner',
     'close',
     closeChecks,
+  ],
+  [
+    "a Delegate's result is passive unless the spawn asked for synthesis, which gets exactly one answer",
+    'synthesis',
+    synthesisChecks,
   ],
 ] as const)
   harness.test(
