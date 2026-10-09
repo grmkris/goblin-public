@@ -1,5 +1,6 @@
 import { createMcpHandler, Server } from '@modelcontextprotocol/server'
 import * as Effect from 'effect/Effect'
+import * as Layer from 'effect/Layer'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import type { RoutineDefinition } from '@goblin/contracts'
@@ -13,6 +14,8 @@ import { TelegramChannel } from '../../src/channel/channel.ts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { Entitlements } from '../../src/billing/gates.ts'
 import { Channel, Mcp, Resident, RoutineRuns } from '../../src/services.ts'
+import { ChannelAdapter, RoutineRunsAdapter } from '../../src/layers/routines.ts'
+import { McpConnectionsAdapter, ResidentAdapter } from '../../src/layers/mcp.ts'
 import { MemoryCredentials, MemoryGrants } from '../mcp/memory.ts'
 import { appRoutineRuns } from '../../src/storage/routines.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
@@ -87,13 +90,21 @@ async function setupNotifications(storage: DurableObjectStorage, owner: string) 
   const attempts: Record<string, unknown>[] = []
   const accepted: Record<string, unknown>[] = []
   const host = notificationHost(credentials, attempts, accepted)
+  // The services notifyRoutine reads, over these instances as the agent's layers build them.
+  const services = Layer.mergeAll(RoutineRunsAdapter, ChannelAdapter, McpConnectionsAdapter, ResidentAdapter).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.succeed(RoutineRuns, runs),
+        Layer.succeed(Mcp, host),
+        Layer.succeed(Channel, channel),
+        Layer.succeed(Resident, resident),
+      ),
+    ),
+  )
   const notify = (id: string) =>
     Effect.runPromise(
       notifyRoutine(runs.get(id)).pipe(
-        Effect.provideService(RoutineRuns, runs),
-        Effect.provideService(Mcp, host),
-        Effect.provideService(Channel, channel),
-        Effect.provideService(Resident, resident),
+        Effect.provide(services),
         Effect.provideService(Entitlements, { state: fixturePlan, require: fixturePlan }),
       ),
     )

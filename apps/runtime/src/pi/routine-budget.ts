@@ -1,8 +1,8 @@
 import { ToolTask, defineExtension, hook } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
-import { RoutineRuns } from '../services.ts'
 import { requireRoutine } from '../routines/authority.ts'
-import type { RunProgram } from './resident-mcp.ts'
+import { RoutineRuns } from '../routines/service.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 
 /** Routine calls use the same model and tool authority gate, with deduplicated response usage receipts. */
 export function routineBudgetExtension(run: RunProgram) {
@@ -13,7 +13,7 @@ export function routineBudgetExtension(run: RunProgram) {
         beforeTool: async (_call, api) => {
           const blocked = await run(
             Effect.gen(function* () {
-              const current = (yield* RoutineRuns).session(String(api.conversationId))
+              const current = yield* (yield* RoutineRuns).session(String(api.conversationId))
               if (current === undefined) return true
               return yield* requireRoutine(current.id).pipe(
                 Effect.as(false),

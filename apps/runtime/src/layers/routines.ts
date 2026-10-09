@@ -29,7 +29,7 @@ const sync = <Args extends readonly unknown[], A>(name: string, method: Method<A
   })
 
 /** The owner's routines over the started store (services.ts `Routines`), each call wrapped as its callers wrap it. */
-const RoutinesAdapter = Layer.effect(
+export const RoutinesAdapter = Layer.effect(
   Routines,
   Effect.gen(function* () {
     const store = yield* Legacy.Routines
@@ -57,7 +57,7 @@ const RoutinesAdapter = Layer.effect(
 )
 
 /** Routine runs over the started run store (services.ts `RoutineRuns`). */
-const RoutineRunsAdapter = Layer.effect(
+export const RoutineRunsAdapter = Layer.effect(
   RoutineRuns,
   Effect.gen(function* () {
     const store = yield* Legacy.RoutineRuns
@@ -141,7 +141,7 @@ const ModelsAdapter = Layer.effect(
 )
 
 /** The Telegram channel over the started one (services.ts `Channel`). */
-const ChannelAdapter = Layer.effect(
+export const ChannelAdapter = Layer.effect(
   Channel,
   Effect.gen(function* () {
     const channel = yield* Legacy.Channel

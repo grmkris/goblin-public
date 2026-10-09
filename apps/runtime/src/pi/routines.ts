@@ -2,7 +2,7 @@ import { defineExtension, section } from '@earendil-works/pi-durable'
 import * as Schema from 'effect/Schema'
 import { RoutineDefinition, RoutinePage, RoutineView } from '@goblin/contracts'
 import { changeRoutine, proposeRoutineFrom, routinesList } from '../routines/program.ts'
-import type { RunProgram } from './resident-mcp.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { typedTool } from './typed-tool.ts'
 
 const operationOf = (api: { readonly conversationId: unknown; readonly callId: string }) =>

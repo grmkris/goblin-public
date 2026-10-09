@@ -2,11 +2,10 @@ import type { Extension } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
-import { RoutineRuns, attempt } from '../services.ts'
-import { RoutineControl, Routines } from './service.ts'
+import { RoutineControl, RoutineRuns, Routines } from './service.ts'
 import type { RoutineRevision } from '@goblin/contracts'
 import { changeRoutine } from './program.ts'
-import type { RunProgram } from '../pi/resident-mcp.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { askingExtension } from '../pi/ask-user.ts'
 import { personaExtension } from '../pi/persona.ts'
 import { routineBudgetExtension } from '../pi/routine-budget.ts'
@@ -26,7 +25,7 @@ export function routineExtensions(run: RunProgram, resident: Extension, key: str
       Effect.gen(function* () {
         const store = yield* RoutineRuns
         const at = yield* Clock.currentTimeMillis
-        yield* attempt(() => store.ask(session, callId, questions, cipher, at))
+        yield* store.ask(session, callId, questions, cipher, at)
       }),
     )
   })

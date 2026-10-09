@@ -12,17 +12,10 @@ import {
 import type { PiHarness } from 'agents/harness/pi'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
-import {
-  Chats,
-  Conversations,
-  Routines,
-  RoutineRuns,
-  RoutineUsageProjection,
-  attempt,
-  attemptSync,
-} from '../services.ts'
+import { Chats, Conversations } from '../chats/service.ts'
+import { RoutineRuns, RoutineUsage, Routines } from '../routines/service.ts'
 import { definitionOf, type RoutineRun } from '../routines/runs.ts'
-import type { RunProgram } from './resident-mcp.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { BACKGROUND, conversationId } from './context.ts'
 import { CredentialCipher } from '../mcp/cipher.ts'
 import { Internal } from '../http/errors.ts'
@@ -56,21 +49,17 @@ const settleRoutine = (runId: string, result: Extract<State, { phase: 'report' }
   Effect.gen(function* () {
     const at = yield* Clock.currentTimeMillis
     const store = yield* RoutineRuns
-    const record = store.get(runId)
+    const record = yield* store.get(runId)
     const session = record.sessionId
-    if (session !== null) yield* RoutineUsageProjection.use((projection) => attempt(() => projection.snapshot(session)))
-    const used = store.used(record.id, at)
+    if (session !== null) yield* RoutineUsage.use((projection) => projection.snapshot(session))
+    const used = yield* store.used(record.id, at)
     const budget = definitionOf(record).budget
     const capped = used.run >= budget.tokensPerRun || used.day >= budget.tokensPerDay
-    yield* attemptSync(() =>
-      store.settle(
-        record.id,
-        capped ? 'failed' : result.state,
-        capped
-          ? 'Routine token budget exhausted; the in-flight response is retained in its run thread.'
-          : result.summary,
-        at,
-      ),
+    yield* store.settle(
+      record.id,
+      capped ? 'failed' : result.state,
+      capped ? 'Routine token budget exhausted; the in-flight response is retained in its run thread.' : result.summary,
+      at,
     )
   })
 
@@ -87,15 +76,12 @@ function reporterTask(run: RunProgram) {
           Effect.gen(function* () {
             const store = yield* RoutineRuns
             const conversations = yield* Conversations
-            const record = store.get(runId)
-            const topic = (yield* Routines).topicOf(record.routineId)
+            const record = yield* store.get(runId)
+            const topic = yield* (yield* Routines).topicOf(record.routineId)
             const at = yield* Clock.currentTimeMillis
-            yield* attemptSync(() => {
-              const title = definitionOf(record).title
-              conversations.registerRoutine(String(sessionId), runId, title, Math.floor(at / 1000), topic)
-              store.bind(runId, String(sessionId), at)
-            })
-            return store.get(runId).state === 'running'
+            yield* conversations.registerRoutine(String(sessionId), runId, definitionOf(record).title, topic)
+            yield* store.bind(runId, String(sessionId), at)
+            return (yield* store.get(runId)).state === 'running'
           }),
         )
         if (!executing) {
@@ -115,7 +101,9 @@ function reporterTask(run: RunProgram) {
         const asked =
           answerMessage?.role === 'assistant' &&
           answerMessage.content.some((block) => block.type === 'toolCall' && block.name === 'ask_user')
-        const waiting = await run(RoutineRuns.useSync((store) => store.get(runId).state === 'waiting_owner'))
+        const waiting = await run(
+          RoutineRuns.use((store) => Effect.map(store.get(runId), (record) => record.state === 'waiting_owner')),
+        )
         if (waiting || asked) {
           await runtime.commit(() => ({ status: 'terminal', outcome: { status: 'completed', result: null } }), context)
           return
@@ -154,7 +142,7 @@ export function routineRunExtension(run: RunProgram, members: readonly Extension
     model: string,
     ownerInput?: { operationId: string; text: string },
   ): Promise<string> => {
-    const primary = await run(Chats.useSync((chats) => chats.session(chats.primary())))
+    const primary = await run(Chats.use((chats) => chats.session(chats.primary)))
     const main = await (await harness.pi()).conversation(conversationId(primary), BACKGROUND)
     if (main === undefined) throw new Internal({ reason: 'routine main conversation missing' })
     const eventContext =

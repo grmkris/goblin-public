@@ -2,12 +2,12 @@ import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { Entitlements, type EntitlementPolicy } from '../billing/gates.ts'
-import type { ResidentAuthority } from '../resident.ts'
-import { nowSeconds } from '../clock.ts'
-import { Forbidden } from '../http/errors.ts'
+import { Channel } from '../channel/service.ts'
+import { Forbidden, toAppError } from '../http/errors.ts'
+import { McpConnections, Resident } from '../mcp/service.ts'
 import { reportFailure } from '../observability/report.ts'
-import { Channel, Mcp, Resident, RoutineRuns, attempt, attemptSync, requireResident } from '../services.ts'
 import { definitionOf, type RoutineRun } from './runs.ts'
+import { RoutineRuns } from './service.ts'
 
 const Receipt = Schema.Struct({
   id: Schema.optional(Schema.String.check(Schema.isMaxLength(200))),
@@ -15,13 +15,20 @@ const Receipt = Schema.Struct({
 })
 const authority = Effect.gen(function* () {
   yield* Entitlements.use((plans) => plans.require('routines'))
-  yield* requireResident
+  yield* Resident.use((resident) => resident.require())
 })
+/** Checked again right before the call leaves: the plan, resident authority, and that the channel is still `serverId`. */
 const dispatchAuthority =
-  (plans: EntitlementPolicy, resident: ResidentAuthority, channel: () => boolean) => async () => {
-    await Effect.runPromise(plans.require('routines'))
-    resident.require(nowSeconds())
-    if (!channel()) throw new Forbidden({ reason: 'routine notification channel changed' })
+  (plans: EntitlementPolicy, resident: typeof Resident.Service, channels: typeof Channel.Service, serverId: string) =>
+  async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* plans.require('routines')
+        yield* resident.require()
+        if ((yield* channels.status)?.serverId !== serverId)
+          return yield* new Forbidden({ reason: 'routine notification channel changed' })
+      }),
+    )
   }
 type Delivery = { state: 'accepted' | 'suppressed' | 'pending'; receipt: string | null }
 const suppress = () => Effect.succeed<Delivery>({ state: 'suppressed', receipt: null })
@@ -36,43 +43,36 @@ export const notifyRoutine = (record: RoutineRun) =>
     if (!definitionOf(record).notifyTelegram || record.notificationText === null) return
     const text = record.notificationText.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     const channels = yield* Channel
-    const channel = channels.status()
+    const channel = yield* channels.status
     const serverId = record.notificationServerId ?? channel?.serverId ?? null
     if (record.notificationAttempts >= 5 || at >= record.updatedAt + 900_000) {
-      yield* attemptSync(() =>
-        store.notification(record.id, {
-          serverId,
-          state: 'failed',
-          receipt: null,
-          nextAt: 0,
-          attempt: record.notificationAttempts,
-        }),
-      )
+      yield* store.notification(record.id, {
+        serverId,
+        state: 'failed',
+        receipt: null,
+        nextAt: 0,
+        attempt: record.notificationAttempts,
+      })
       return
     }
-    const claimed = yield* attemptSync(() =>
-      store.claimNotification(record.id, record.notificationAttempts, serverId, at),
-    )
+    const claimed = yield* store.claimNotification(record.id, record.notificationAttempts, serverId, at)
     if (!claimed) return
     const receipt = yield* Effect.gen(function* () {
       yield* authority
       if (serverId === null || channel?.serverId !== serverId)
         return yield* new Forbidden({ reason: 'routine notification channel changed' })
-      const mcp = yield* Mcp
-      const result = yield* attempt(() =>
-        mcp.manager.callTool(
+      const result = yield* McpConnections.use((connections) =>
+        connections.callTool(
           serverId,
           'send_message',
           { operationId: `routine-${record.id}-0`, text },
-          {
-            caller: 'model',
-            timeout: 5000,
-            authorize: dispatchAuthority(plans, resident, () => channels.status()?.serverId === serverId),
-          },
+          { caller: 'model', timeout: 5000, authorize: dispatchAuthority(plans, resident, channels, serverId) },
         ),
       )
       if (result.isError === true) return yield* new Forbidden({ reason: 'routine notification refused' })
-      const metadata = yield* attemptSync(() => Schema.decodeUnknownSync(Receipt)(result.structuredContent ?? {}))
+      const metadata = yield* Schema.decodeUnknownEffect(Receipt)(result.structuredContent ?? {}).pipe(
+        Effect.mapError(toAppError),
+      )
       return JSON.stringify({
         operationId: `routine-${record.id}-0`,
         ...metadata,
@@ -85,14 +85,12 @@ export const notifyRoutine = (record: RoutineRun) =>
       Effect.catch(() => Effect.succeed<Delivery>({ state: 'pending', receipt: null })),
     )
     const attempts = record.notificationAttempts + 1
-    yield* attemptSync(() =>
-      store.notification(record.id, {
-        serverId,
-        receipt: receipt.receipt,
-        state:
-          receipt.state === 'pending' && (attempts >= 5 || at >= record.updatedAt + 900_000) ? 'failed' : receipt.state,
-        attempt: attempts,
-        nextAt: at + Math.min(15_000 * 2 ** attempts, 300_000),
-      }),
-    )
+    yield* store.notification(record.id, {
+      serverId,
+      receipt: receipt.receipt,
+      state:
+        receipt.state === 'pending' && (attempts >= 5 || at >= record.updatedAt + 900_000) ? 'failed' : receipt.state,
+      attempt: attempts,
+      nextAt: at + Math.min(15_000 * 2 ** attempts, 300_000),
+    })
   })
