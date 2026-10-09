@@ -6,6 +6,14 @@ import { INSPECT_SCOPE, consentBody, requestedScopes } from '../lib/consent-scop
 import { AuthShell } from './auth-shell.tsx'
 
 type ClientInfo = { readonly name: string; readonly uri?: string }
+/** The client asking, once looked up, or why it could not be: then the owner is not asked to allow it. */
+type ClientLookup =
+  | { readonly kind: 'loading' }
+  | { readonly kind: 'found'; readonly client: ClientInfo }
+  | { readonly kind: 'failed'; readonly reason: string }
+
+const LOOKUP_FAILED = 'Could not look up the app asking for access. Reload the page to try again.'
+const UNKNOWN_CLIENT = 'goblin does not know this app. Start connecting from the app again.'
 
 /** What every MCP client may do once allowed. */
 const ASK = [
@@ -20,20 +28,34 @@ const INSPECT = [
 ]
 
 /** The client's registered name and address: untrusted, shown as the client's own claim. */
-function useClient(clientId: string): ClientInfo | undefined {
-  const [client, setClient] = useState<ClientInfo>()
+function useClient(clientId: string): ClientLookup {
+  const [lookup, setLookup] = useState<ClientLookup>({ kind: 'loading' })
   useEffect(() => {
+    let current = true
     void authClient
       .$fetch('/oauth2/public-client', { method: 'GET', query: { client_id: clientId } })
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         const info = record(data)
         const name = info?.client_name
         const uri = info?.client_uri
-        setClient({ name: isString(name) ? name : 'Unnamed client', ...(isString(uri) ? { uri } : {}) })
+        if (!current) return
+        if (error || info === undefined)
+          setLookup({ kind: 'failed', reason: error?.status === 404 ? UNKNOWN_CLIENT : LOOKUP_FAILED })
+        else
+          setLookup({
+            kind: 'found',
+            client: { name: isString(name) ? name : 'Unnamed client', ...(isString(uri) ? { uri } : {}) },
+          })
       })
-      .catch(() => setClient({ name: 'Unknown client' }))
+      .catch(() => {
+        // expected: the page shows `failed` as an alert in place of the question, and Allow stays off
+        if (current) setLookup({ kind: 'failed', reason: LOOKUP_FAILED })
+      })
+    return () => {
+      current = false
+    }
   }, [clientId])
-  return client
+  return lookup
 }
 
 /** The opt-in for inspection, with what it adds; off until the owner turns it on. */
@@ -64,7 +86,8 @@ export function Consent() {
   const query = new URLSearchParams(window.location.search)
   const clientId = query.get('client_id') ?? ''
   const requested = requestedScopes(query.get('scope'))
-  const client = useClient(clientId)
+  const lookup = useClient(clientId)
+  const client = lookup.kind === 'found' ? lookup.client : undefined
   const [inspect, setInspect] = useState(false)
   const [error, setError] = useState('')
   const [pending, setPending] = useState<'allow' | 'deny'>()
@@ -101,16 +124,16 @@ export function Consent() {
           ))}
         </ul>
         {requested.includes(INSPECT_SCOPE) && <InspectChoice on={inspect} onChange={setInspect} />}
-        {error && (
+        {(error || lookup.kind === 'failed') && (
           <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>{error || (lookup.kind === 'failed' && lookup.reason)}</AlertDescription>
           </Alert>
         )}
         <div className="card-actions">
           <Button
             size="lg"
             pending={pending === 'allow'}
-            disabled={pending !== undefined || !clientId}
+            disabled={pending !== undefined || client === undefined}
             onClick={() => void decide(true)}
           >
             Allow
