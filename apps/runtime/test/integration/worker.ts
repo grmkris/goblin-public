@@ -49,6 +49,7 @@ import {
   ownerMarkRead,
   ownerSend,
   ownerSetCapability,
+  ownerSnapshot,
   ownerUpdate,
   snapshotOf,
   threadsUntil,
@@ -320,7 +321,7 @@ export class PersonalAgentProbe extends PersonalAgent {
         return yield* service.get('probe')
       }).pipe(Effect.provide(AppMetadata.layer(this.ctx.storage))),
     )
-    return Response.json({ snapshot: await this.sessionSnapshot(PRIMARY_CHAT), before, after, metadata })
+    return Response.json({ snapshot: await ownerSnapshot(this.#ownerFetch, PRIMARY_CHAT), before, after, metadata })
   }
 
   /** Endpoint binding on the real SQLite store: a re-pointed server loses its credentials, grants and pending state. */

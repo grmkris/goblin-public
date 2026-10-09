@@ -90,13 +90,13 @@ const decodeEntries = Schema.decodeUnknownSync(
   Schema.Struct({ entries: Schema.optionalKey(Schema.Array(EntrySchema)) }),
 )
 
-/** A conversation's snapshot through the owner API (`GET /api/conversations/:id/snapshot`), as far as its entries. */
+/** A conversation's Pi snapshot through the owner API (`GET /api/conversations/:id/snapshot`), as JSON. */
+export const ownerSnapshot = (agent: AgentFetch, chat: string) =>
+  Effect.runPromise(Effect.flatMap(ownerApi(agent), (api) => api.conversations.snapshot({ params: { id: chat } })))
+
+/** A conversation's snapshot, as far as its entries. */
 export const snapshotOf = async (agent: Probe, session: string): Promise<{ readonly entries?: readonly Entry[] }> =>
-  decodeEntries(
-    await Effect.runPromise(
-      Effect.flatMap(ownerApi(agent), (api) => api.conversations.snapshot({ params: { id: session } })),
-    ),
-  )
+  decodeEntries(await ownerSnapshot(agent, session))
 
 /** Entries as `kind: content`, one line per model message. */
 export const linesOf = (records: readonly Entry[]) =>
