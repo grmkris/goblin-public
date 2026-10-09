@@ -1,4 +1,5 @@
 import * as Schema from 'effect/Schema'
+import { PersonaId } from './ids.ts'
 
 const Server = Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u))
 export const ComposerSelection = Schema.Union([
@@ -12,6 +13,8 @@ export const ComposerSelection = Schema.Union([
     kind: Schema.Literal('subagent'),
     conversationId: Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)),
   }),
+  /** `@Persona`: this Persona answers the message, with attribution, instead of Goblin. */
+  Schema.Struct({ kind: Schema.Literal('persona'), personaId: PersonaId }),
 ])
 export type ComposerSelection = typeof ComposerSelection.Type
 export const ComposerSelections = Schema.Array(ComposerSelection).check(Schema.isMaxLength(16))
@@ -46,5 +49,7 @@ export const selectionKey = (selection: ComposerSelection): string => {
       return `skill:${selection.serverId}:${selection.uri}`
     case 'subagent':
       return `subagent:${selection.conversationId}`
+    case 'persona':
+      return `persona:${selection.personaId}`
   }
 }

@@ -101,6 +101,8 @@ const resolveOne = (session: string, selection: ComposerSelection, run: RunProgr
         },
       }
     }
+    // A Persona chooses who answers; it is routed before context resolution and is never a context hint.
+    if (selection.kind === 'persona') return yield* new NotFound({ what: 'persona' })
     const report = yield* Conversations.use((conversations) =>
       attempt(() => conversations.helperReference(selection.conversationId)),
     )

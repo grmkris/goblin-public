@@ -2,15 +2,13 @@ import * as Schema from 'effect/Schema'
 import * as Effect from 'effect/Effect'
 import {
   AppCall,
-  AppContext,
   AppDiagnostic,
   AgentAppChange,
   DeleteAgentApp,
   CapabilityChange,
-  ComposerSelections,
   CreateApp,
   CreateConversation,
-  FilePath,
+  SendMessage,
   UpdateApp,
   UpdateConversation,
   QueueRemoval,
@@ -44,13 +42,6 @@ import { browserWrite } from './http/csrf.ts'
 export { PersonalAgent } from './agent.ts'
 
 const Bounded = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max))
-const Submit = Schema.Struct({
-  input: Schema.String.check(Schema.isMaxLength(20_000)),
-  operationId: Bounded(200),
-  appContext: Schema.optional(Schema.Array(AppContext).check(Schema.isMaxLength(2))),
-  attachments: Schema.optional(Schema.Array(FilePath).check(Schema.isMaxLength(8))),
-  selections: Schema.optional(ComposerSelections),
-})
 const Stop = Schema.Struct({ operationId: Schema.optional(Bounded(200)) })
 const ToolCall = Schema.Struct({
   name: Bounded(256),
@@ -160,7 +151,7 @@ const conversationRoutes: Readonly<
   Record<string, (request: Request, agent: DurableObjectStub<AgentRpc>, thread: string) => Promise<Response>>
 > = {
   'POST messages': async (request, agent, thread) => {
-    const body = await readJson(request, Submit)
+    const body = await readJson(request, SendMessage)
     const { input, operationId, appContext = [], attachments = [], selections = [] } = body
     return json(unwrap(await agent.submit(thread, input, operationId, { appContext, attachments, selections })), 202)
   },

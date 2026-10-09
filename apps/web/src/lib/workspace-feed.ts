@@ -50,8 +50,8 @@ export function applyChanges(state: WorkspaceState, changes: readonly WorkspaceC
       else activity.set(change.activity.id, change.activity)
     } else if (change.type === 'app') apps = upsert(apps, change.app, byId)
     else if (change.type === 'app-removed') apps = apps.filter((app) => app.id !== change.id)
-    else if (change.type === 'home') continue
-    else conversations = upsert(conversations, change.conversation, oldestFirst)
+    else if (change.type === 'conversation') conversations = upsert(conversations, change.conversation, oldestFirst)
+    // Home, Topic, Persona, invocation and receipt changes are read by their own views, not this state.
   }
   return { conversations, activity, apps }
 }

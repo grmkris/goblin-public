@@ -94,6 +94,21 @@ describe('the workspace feed state', () => {
     expect(next.apps.at(-1)?.closedAt).toBe(9)
   })
 
+  it('leaves conversations alone for a Topic change it does not hold', () => {
+    const start = fromSnapshot({ conversations: [MAIN], activity: [], apps: [] })
+    const topic = {
+      id: 2,
+      name: 'Japan',
+      conversation: '7',
+      searchExcluded: false,
+      revision: 1,
+      createdBy: 'owner' as const,
+      createdAt: 1,
+    }
+    const next = applyChanges(start, [{ type: 'topic', topic }])
+    expect(next.conversations).toEqual(start.conversations)
+  })
+
   it('drops an App the owner deleted', () => {
     const start = fromSnapshot({ conversations: [MAIN], activity: [], apps: [app('3'), app('7')] })
     const next = applyChanges(start, [{ type: 'app-removed', id: '3' }])

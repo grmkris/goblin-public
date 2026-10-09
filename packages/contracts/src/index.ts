@@ -1,4 +1,11 @@
 import * as Schema from 'effect/Schema'
+import { CapabilityTarget } from './capabilities.ts'
+import { ComposerSelections } from './composer.ts'
+import { FilePath } from './files.ts'
+import { ChatId, TopicId } from './ids.ts'
+import { PersonaInvocationView, PersonaView } from './personas.ts'
+import { Attention } from './threads.ts'
+import { OrganizeReceipt, TopicView } from './topics.ts'
 import { HomeLayout } from './home.ts'
 export * from './home.ts'
 export * from './queue.ts'
@@ -203,6 +210,21 @@ export const ModelChoice = Schema.Struct({
 })
 export type ModelChoice = typeof ModelChoice.Type
 
+/**
+ * The body of an owner message: `POST /api/conversations/:id/messages`, and `…/threads` to post it as the head of a new
+ * Thread whose reply lands in that Thread. With Persona selections the tagged Personas answer instead of Goblin, in
+ * parallel unless `personaOrder` is `sequence` ("then").
+ */
+export const SendMessage = Schema.Struct({
+  input: Schema.String.check(Schema.isMaxLength(20_000)),
+  operationId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+  appContext: Schema.optional(Schema.Array(AppContext).check(Schema.isMaxLength(2))),
+  attachments: Schema.optional(Schema.Array(FilePath).check(Schema.isMaxLength(8))),
+  selections: Schema.optional(ComposerSelections),
+  personaOrder: Schema.optional(Schema.Literals(['parallel', 'sequence'])),
+})
+export type SendMessage = typeof SendMessage.Type
+
 /** An MCP client the owner has authorized to use goblin's /mcp server. */
 export const InboundClient = Schema.Struct({
   clientId: Schema.String,
@@ -242,11 +264,23 @@ export const ConversationView = Schema.Struct({
   lastReplyAt: Schema.optional(Schema.Number),
   /** When the owner last saw the newest reply (seconds): a later `lastReplyAt` is unread. */
   readAt: Schema.optional(Schema.Number),
+  /** The Topic it belongs to (Personal when absent, from a server older than Topics). */
+  topic: Schema.optional(TopicId),
+  /** It is its Topic's one Conversation (a channel), not a Thread. */
+  conversation: Schema.optional(Schema.Boolean),
+  /** What in it waits for the owner (questions, approvals, grants), for Activity. */
+  attention: Schema.optional(Schema.Array(Attention)),
+  /** A Thread a running or finished turn was moved into: the chat it left and the move's operation id. */
+  movedFrom: Schema.optional(Schema.Struct({ chat: ChatId, operationId: Schema.String })),
 })
 export type ConversationView = typeof ConversationView.Type
 
-/** A thread from an entry of any open conversation, or (without `from`) an empty one under main. */
+/**
+ * A thread from an entry of any open conversation, or (without `from`) an empty one under a Topic's Conversation:
+ * `topic`'s, else Personal's.
+ */
 export const CreateConversation = Schema.Struct({
+  topic: Schema.optional(TopicId),
   from: Schema.optional(
     Schema.Struct({
       conversation: Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)),
@@ -475,6 +509,12 @@ export const WorkspaceSnapshot = Schema.Struct({
   activity: Schema.Array(ConversationActivity),
   apps: Schema.Array(AppView),
   home: Schema.optional(HomeLayout),
+  topics: Schema.optional(Schema.Array(TopicView)),
+  personas: Schema.optional(Schema.Array(PersonaView)),
+  /** Persona answers not yet settled, so a reload still shows who is answering. */
+  invocations: Schema.optional(Schema.Array(PersonaInvocationView)),
+  /** Recent organizing receipts, newest first, for Activity and Undo. */
+  receipts: Schema.optional(Schema.Array(OrganizeReceipt)),
 })
 export type WorkspaceSnapshot = typeof WorkspaceSnapshot.Type
 
@@ -486,32 +526,12 @@ export const WorkspaceChange = Schema.Union([
   Schema.Struct({ type: Schema.Literal('app'), app: AppView }),
   /** An App that is gone: the owner deleted the agent app it showed. */
   Schema.Struct({ type: Schema.Literal('app-removed'), id: Schema.String }),
+  Schema.Struct({ type: Schema.Literal('topic'), topic: TopicView }),
+  Schema.Struct({ type: Schema.Literal('persona'), persona: PersonaView }),
+  Schema.Struct({ type: Schema.Literal('invocation'), invocation: PersonaInvocationView }),
+  Schema.Struct({ type: Schema.Literal('receipt'), receipt: OrganizeReceipt }),
 ])
 export type WorkspaceChange = typeof WorkspaceChange.Type
-
-/** A server id as configuration and the owner's added servers spell it. */
-const ServerId = Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u))
-const ToolName = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256))
-
-/**
- * One thing a conversation can switch off for its agent: a connected server, one of that server's granted tools, the
- * server's skills library, or starting subagents. Switching off only narrows the owner's grants (ADR 0010).
- */
-export const CapabilityTarget = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal('server'), serverId: ServerId }),
-  Schema.Struct({ kind: Schema.Literal('tool'), serverId: ServerId, name: ToolName }),
-  Schema.Struct({ kind: Schema.Literal('skills'), serverId: ServerId }),
-  Schema.Struct({ kind: Schema.Literal('subagents') }),
-])
-export type CapabilityTarget = typeof CapabilityTarget.Type
-
-/** A helper may narrow its inherited execution capabilities, never grant new ones. */
-export const HelperExclusion = Schema.Union([
-  CapabilityTarget,
-  Schema.Struct({ kind: Schema.Literal('app'), app: Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9-]{0,23}$/u)) }),
-])
-export type HelperExclusion = typeof HelperExclusion.Type
-export const HelperExclusions = Schema.Array(HelperExclusion).check(Schema.isMaxLength(100))
 
 /** Switch one thing on or off in a conversation, or give a thread its parent's switches again. */
 export const CapabilityChange = Schema.Union([
@@ -560,6 +580,12 @@ export const authorOf = (block: string): string | undefined => AUTHOR_TAG.exec(b
 export const TELEGRAM_AUTHOR = 'Telegram'
 
 export { BillingState } from './billing.ts'
+export { CapabilityTarget, HelperExclusion, HelperExclusions } from './capabilities.ts'
+export * from './ids.ts'
+export * from './topics.ts'
+export * from './personas.ts'
+export * from './threads.ts'
+export * from './retrieval.ts'
 export {
   ComposerSelection,
   ComposerSelections,
