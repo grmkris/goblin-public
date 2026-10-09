@@ -11,6 +11,7 @@ import { routineUsageProbe } from './routines-usage.ts'
 import { routineNotificationProbe } from './routines-notifications.ts'
 import { routineEventsProbe } from './routines-events.ts'
 import { ownerResult } from './routines-owner.ts'
+import { budgetOutageProbe } from './budget-outage.ts'
 import { EventsFixture } from '../mcp/events-fixture.ts'
 import { PersonalAgent } from '../../src/agent.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
@@ -88,6 +89,9 @@ const fixturePlan = () =>
     cancelAtPeriodEnd: false,
   })
 
+/** A plan lookup while auth D1 is down (the budget outage probe). */
+const planOutage = () => Effect.fail(new Internal({ reason: 'auth D1 unavailable' }))
+
 const notesAt = (endpoint: string) => [{ serverId: 'notes', endpoint }]
 
 /** The actual PersonalAgent on a scripted model (no network): every request it makes is kept for the test to read. */
@@ -112,14 +116,25 @@ export class PersonalAgentProbe extends PersonalAgent {
 
   /** Which coming plan lookup fails, counted down (the Events ingress case arms it); 0 for none. */
   #failPlanAt = 0
+  /** Set by the budget outage probe: no plan lookup succeeds (auth D1 down). */
+  #planOutage = false
   protected override entitlementPolicy(): EntitlementPolicy {
+    const state = () => Effect.suspend(() => (this.#planOutage ? planOutage() : fixturePlan()))
     const require = () =>
-      Effect.suspend(() =>
-        this.#failPlanAt > 0 && --this.#failPlanAt === 0
+      Effect.suspend(() => {
+        if (this.#planOutage) return planOutage()
+        return this.#failPlanAt > 0 && --this.#failPlanAt === 0
           ? Effect.fail(new Internal({ reason: 'fixture plan lookup failed' }))
-          : fixturePlan(),
-      )
-    return { state: fixturePlan, require }
+          : fixturePlan()
+      })
+    return { state, require }
+  }
+
+  async budgetOutageProbe(): Promise<Response> {
+    const outage = (on: boolean) => {
+      this.#planOutage = on
+    }
+    return Response.json(await budgetOutageProbe(this.ctx.storage, this.harness, outage))
   }
 
   async primaryProfileProbe() {
@@ -1037,6 +1052,8 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return agent.routineScheduleProbe().then((result) => Response.json(result))
     case '/routine-usage':
       return agent.routineUsageProbe()
+    case '/budget-outage':
+      return agent.budgetOutageProbe()
     case '/routine-notifications':
       return agent.routineNotificationProbe()
     case '/routine-events':

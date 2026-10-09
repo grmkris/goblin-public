@@ -9,7 +9,12 @@ import { expect } from 'vitest'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { URL as FileURL } from 'node:url'
 import Stack from './stack.ts'
-import { routineEventsCase, routineSchedulingCase } from './native-routines-events.ts'
+import {
+  budgetOutageCase,
+  routineEventsCase,
+  routineSchedulingCase,
+  routineUsageCase,
+} from './native-routines-events.ts'
 import { filesCase } from './native-files.ts'
 import { appsCase } from './native-apps.ts'
 import { scopesCase } from './native-scopes.ts'
@@ -259,23 +264,12 @@ if (phase === 'read')
 
 harness.test(
   'local workerd: routines charge committed native compaction, dedupe UTC-day replay and bound cap overshoot',
-  Effect.gen(function* () {
-    const { url } = yield* stack
-    const response = yield* Effect.promise(() =>
-      nativeFetch(`${baseUrl(url)}/routine-usage?name=routine-usage-${Date.now()}`),
-    )
-    expect(response.status).toBe(200)
-    const result = yield* Effect.promise(() => response.json())
-    expect(result).toMatchObject({
-      compactionStatus: 'completed',
-      compactedTokens: 45,
-      afterReplay: 45,
-      nextDay: 0,
-      capState: 'failed',
-      overshoot: 10,
-      capModelRequests: 1,
-    })
-  }),
+  stack.pipe(Effect.flatMap(({ url }) => routineUsageCase(url))),
+)
+
+harness.test(
+  'local workerd: a budget check auth D1 cannot answer blocks the tool as failed, not as a spent budget',
+  stack.pipe(Effect.flatMap(({ url }) => budgetOutageCase(url))),
 )
 
 harness.test(
