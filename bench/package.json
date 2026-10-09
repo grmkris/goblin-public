@@ -16,14 +16,14 @@
     "@goblin/runtime": "workspace:*",
     "agents": "0.26.0",
     "drizzle-orm": "1.0.0-rc.5-ab785fc",
-    "effect": "4.0.0"
+    "effect": "4.0.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260928.1",
-    "@effect/platform-bun": "4.0.0",
+    "@effect/platform-bun": "4.0.1",
     "@types/bun": "1.4.2",
     "@types/node": "22.18.0",
-    "alchemy": "2.0.0-beta.80",
+    "alchemy": "2.0.0-beta.81",
     "typescript": "7.0.2",
     "vitest": "5.0.1"
   }

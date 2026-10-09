@@ -12,7 +12,7 @@
   "dependencies": {
     "@effect/tsgo": "0.47.2",
     "@modelcontextprotocol/server": "2.2.0",
-    "effect": "4.0.0",
+    "effect": "4.0.1",
     "typescript": "7.0.2"
   },
   "devDependencies": {

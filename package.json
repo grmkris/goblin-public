@@ -71,10 +71,12 @@
   },
   "devDependencies": {
     "@shadcn/lint": "0.2.0",
+    "@tanstack/eslint-plugin-query": "5.104.1",
+    "@tanstack/eslint-plugin-router": "1.162.0",
     "@types/bun": "1.4.2",
     "@types/node": "22.18.0",
-    "alchemy": "2.0.0-beta.80",
-    "effect": "4.0.0",
+    "alchemy": "2.0.0-beta.81",
+    "effect": "4.0.1",
     "jscpd": "5.4.0",
     "knip": "6.39.0",
     "oxfmt": "0.66.0",
@@ -89,7 +91,12 @@
   },
   "overrides": {
     "@better-auth/oauth-provider": "1.7.6",
-    "@effect/platform-node-shared": "4.0.0"
+    "@effect/platform-bun": "4.0.1",
+    "@effect/platform-node": "4.0.1",
+    "@effect/platform-node-shared": "4.0.1",
+    "@effect/sql-d1": "4.0.1",
+    "@effect/sql-sqlite-do": "4.0.1",
+    "@effect/vitest": "4.0.1"
   },
   "packageManager": "bun@1.4.2",
   "patchedDependencies": {
