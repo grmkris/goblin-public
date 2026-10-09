@@ -1,4 +1,4 @@
-import { boundedJson, decodeRunnerResult } from '../wire.ts'
+import { boundedJson, boundedText, decodeRunnerResult } from '../wire.ts'
 import * as Schema from 'effect/Schema'
 import {
   ExecutionReceipt,
@@ -33,6 +33,37 @@ export function httpsTransport(endpoint: string, token: string): Transport {
     })
   }
 }
+async function responseFailure(response: Response): Promise<RunnerError> {
+  if (response.status === 429) {
+    await response.body?.cancel()
+    return new RunnerError('busy')
+  }
+  if (response.status === 413) {
+    await response.body?.cancel()
+    return new RunnerError('rejected-input')
+  }
+  const body = await boundedText(response, 1024)
+  let name = body
+  try {
+    name = Schema.decodeUnknownSync(Schema.Struct({ error: Schema.String }))(JSON.parse(body)).error
+  } catch {
+    /* Workers can return fixed plaintext rejection tags. */
+  }
+  if (name === 'revision_mismatch' || name === 'stale-revision') return new RunnerError('stale-revision')
+  const rejected = [
+    'invalid_input',
+    'invalid_job',
+    'session_mismatch',
+    'snapshot_mismatch',
+    'content_limit',
+    'overlay_limit',
+    'file_count_limit',
+    'invalid_repo_path',
+    'path_outside_cli_spike',
+    'rejected-input',
+  ]
+  return new RunnerError(rejected.includes(name) ? 'rejected-input' : 'provider-unavailable')
+}
 export class HttpLease extends Lease {
   private latest: VerifyRequest
   constructor(
@@ -52,10 +83,9 @@ export class HttpLease extends Lease {
     try {
       const response = await this.transport(operation, input, timeoutMs)
       if (!response.ok) {
-        await response.body?.cancel()
-        if (response.status === 429) throw new RunnerError('busy')
-        if (response.status === 400 || response.status === 413) throw new RunnerError('rejected-input')
-        throw new RunnerError('provider-unavailable')
+        const failure = await responseFailure(response)
+        console.error(JSON.stringify({ runner: this.backend, status: response.status, error: failure.reason }))
+        throw failure
       }
       return await boundedJson(response, operation === 'execute' ? this.spec.limits.maxOutputBytes + 2000 : 500_000)
     } catch (error) {

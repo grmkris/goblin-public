@@ -36,7 +36,16 @@
       "project": ["scripts/**/*.ts", "test/**/*.ts"],
     },
     "spikes/coding-cf": {
-      "entry": ["src/index.ts!", "runner/server.ts!", "scripts/prepare.ts!", "scripts/stack.ts!"],
+      "entry": [
+        "src/index.ts!",
+        "runner/server.ts!",
+        "scripts/prepare.ts!",
+        "scripts/stack.ts!",
+        "scripts/compare.ts!",
+        "scripts/benchmark.ts!",
+        "scripts/isolation.ts!",
+        "scripts/image-receipt.ts!",
+      ],
       "project": ["src/**/*.ts", "runner/**/*.ts", "scripts/**/*.ts"],
     },
     "tools": {

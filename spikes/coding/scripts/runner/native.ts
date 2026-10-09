@@ -12,10 +12,17 @@ import {
 } from './contract.ts'
 import { Lease } from './lease.ts'
 
+export type NativeExecution = (spec: RunnerSessionSpec, checked: VerifyRequest) => Promise<ExecutionReceipt>
+
 export class NativeLease extends Lease {
   readonly overlay: Overlay
   readonly verifier: Verifier
-  constructor(spec: RunnerSessionSpec, files: ReadonlyMap<string, string>, binaries: { type: string; effect: string }) {
+  constructor(
+    spec: RunnerSessionSpec,
+    files: ReadonlyMap<string, string>,
+    binaries: { type: string; effect: string },
+    readonly execution?: NativeExecution,
+  ) {
     super(spec)
     this.overlay = new Overlay(spec.base, files, spec.taskId)
     this.verifier = new Verifier(spec.snapshot, this.overlay, binaries.effect, binaries.type)
@@ -34,7 +41,8 @@ export class NativeLease extends Lease {
     }
   }
   protected async run(_request: ExecuteRequest, _checked: VerifyRequest): Promise<ExecutionReceipt> {
-    throw new RunnerError('provider-unavailable')
+    if (!this.execution) throw new RunnerError('provider-unavailable')
+    return this.execution(this.spec, _checked)
   }
   protected dispose(): Promise<void> {
     return this.verifier.close()
@@ -44,8 +52,9 @@ export class NativeRunner implements CodingRunnerFactory {
   constructor(
     readonly files: ReadonlyMap<string, string>,
     readonly binaries: { type: string; effect: string },
+    readonly execution?: NativeExecution,
   ) {}
   async create(spec: RunnerSessionSpec): Promise<NativeLease> {
-    return new NativeLease(spec, this.files, this.binaries)
+    return new NativeLease(spec, this.files, this.binaries, this.execution)
   }
 }

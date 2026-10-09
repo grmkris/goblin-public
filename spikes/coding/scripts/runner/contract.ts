@@ -73,6 +73,7 @@ export const ExecutionReceipt = Schema.Struct({
 export type ExecutionReceipt = typeof ExecutionReceipt.Type
 export type RunnerErrorTag = 'provider-unavailable' | 'rejected-input' | 'stale-revision' | 'closed' | 'busy'
 export class RunnerError extends SpikeError {
+  cleanupFailed = false
   constructor(readonly reason: RunnerErrorTag) {
     super(reason)
   }

@@ -1,5 +1,6 @@
-import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { Config, Effect } from 'effect'
 import { Overlay, SpikeError } from '../../coding/scripts/overlay.ts'
 import { Verifier } from '../../coding/scripts/verifier.ts'
 import { compilers } from '../../coding/scripts/binaries.ts'
@@ -39,8 +40,9 @@ const ready = async (next: Overlay) => {
 
 /** Fixed execution happens in a separate container, destroyed by the Worker after this response. */
 const execute = async (overlay: Overlay) => {
-  await rm('/execution', { recursive: true, force: true })
   await mkdir('/execution', { recursive: true })
+  for (const name of await readdir('/execution'))
+    await rm(path.join('/execution', name), { recursive: true, force: true })
   const copy = Bun.spawn(
     ['tar', '-cf', '/execution/base.tar', '--exclude=node_modules', '--exclude=*/node_modules', '.'],
     {
@@ -82,26 +84,30 @@ const execute = async (overlay: Overlay) => {
   }
 }
 
-Bun.serve({
-  port: 8787,
-  idleTimeout: 120,
-  maxRequestBodySize: 500_000,
-  async fetch(request) {
-    const pathname = new URL(request.url).pathname
-    if (pathname === '/health') return Response.json({ ready: true, base })
-    if (request.method !== 'POST' || !['/verify', '/execute'].includes(pathname))
-      return new Response(null, { status: 404 })
-    if (busy) return Response.json({ error: 'verifier_busy' }, { status: 429 })
-    busy = true
-    try {
-      const next = await receive(request)
-      return Response.json(pathname === '/verify' ? await ready(next) : await execute(next))
-    } catch (error) {
-      await session?.verifier.close()
-      session = undefined
-      return Response.json({ error: error instanceof SpikeError ? error.message : 'runner_failed' }, { status: 400 })
-    } finally {
-      busy = false
-    }
-  },
-})
+const handler = async (request: Request): Promise<Response> => {
+  const pathname = new URL(request.url).pathname
+  if (pathname === '/health') return Response.json({ ready: true, base })
+  if (request.method !== 'POST' || !['/verify', '/execute', '/close'].includes(pathname))
+    return new Response(null, { status: 404 })
+  if (pathname === '/close') {
+    await session?.verifier.close()
+    session = undefined
+    return Response.json({ closed: true })
+  }
+  if (busy) return Response.json({ error: 'verifier_busy' }, { status: 429 })
+  busy = true
+  try {
+    const next = await receive(request)
+    return Response.json(pathname === '/verify' ? await ready(next) : await execute(next))
+  } catch (error) {
+    await session?.verifier.close()
+    session = undefined
+    return Response.json({ error: error instanceof SpikeError ? error.message : 'runner_failed' }, { status: 400 })
+  } finally {
+    busy = false
+  }
+}
+
+Bun.serve({ port: 8787, idleTimeout: 120, maxRequestBodySize: 500_000, fetch: handler })
+const socket = await Effect.runPromise(Config.String('RUNNER_SOCKET').pipe(Config.withDefault('')))
+if (socket) Bun.serve({ unix: socket, fetch: handler })

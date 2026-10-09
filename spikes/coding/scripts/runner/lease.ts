@@ -36,14 +36,18 @@ export abstract class Lease implements CodingRunnerLease {
   }
   async verify(value: VerifyRequest): Promise<CheckReceipt> {
     return this.exclusive(async () => {
-      const request = validateRequest(this.spec, value)
       this.checked = undefined
       try {
+        const request = validateRequest(this.spec, value)
         const result = validateCheck(await this.check(request), request.revision)
         if (result.passed) this.checked = request
         return result
       } catch (error) {
-        await this.close()
+        try {
+          await this.close()
+        } catch {
+          if (error instanceof RunnerError) error.cleanupFailed = true
+        }
         throw error
       }
     })

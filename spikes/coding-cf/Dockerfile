@@ -14,5 +14,11 @@ COPY coding/ /spikes/coding/
 RUN cd /spikes/coding && bun install --frozen-lockfile
 COPY runner/ /spikes/coding-cf/runner/
 COPY fixture/ /fixture/
+RUN mkdir -p /state /execution \
+  && chown 1000:1000 /state /execution \
+  && chmod a+rx /repo /spikes /fixture /spikes/coding /spikes/coding-cf \
+  && ln -s /spikes/coding/node_modules /spikes/coding-cf/node_modules
+ENV HOME=/state TMPDIR=/state BUN_INSTALL_CACHE_DIR=/state/cache BUN_RUNTIME_TRANSPILER_CACHE_PATH=/state/transpiler
+USER 1000:1000
 WORKDIR /spikes/coding
 CMD ["bun", "/spikes/coding-cf/runner/server.ts"]
