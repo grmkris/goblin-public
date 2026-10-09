@@ -7,6 +7,8 @@
  *   (`stage.resourceName(role)` or `stage.workerName`), so the naming scheme and the pinned prod names apply.
  * - `require-disable-description`: every disable directive says why (`-- reason`): oxlint and eslint ones, and an
  *   `@effect-diagnostics` directive that turns a diagnostic off.
+ * - `no-silent-catch`: a handler that catches a failure rethrows it, carries a failure on, or reports it; dropping one
+ *   needs `// expected: <reason>`.
  */
 import { definePlugin, defineRule } from '@oxlint/plugins'
 import type { Context, ESTree } from '@oxlint/plugins'
@@ -259,11 +261,141 @@ export const requireDisableDescription = defineRule({
   },
 })
 
+// ---------------------------------------------------------------------------------------------------------------------
+// no-silent-catch
+
+/** Calls that report a failure: the observability helpers and anything named `report*`. */
+const REPORTERS = new Set(['reportFailure', 'reportAndRecover', 'logEvent', 'writeLine', 'failureResponse'])
+/** Calls and values that carry a failure on: `Effect.fail(…)`, `Effect.interrupt`, `Promise.reject(…)`, `reject(…)`. */
+const FAILURES = new Set([
+  'fail',
+  'failCause',
+  'failSync',
+  'failCauseSync',
+  'die',
+  'dieSync',
+  'dieMessage',
+  'interrupt',
+  'reject',
+])
+/** Effect combinators whose last argument handles a failure. */
+const EFFECT_HANDLERS = new Set(['catch', 'catchCause', 'catchIf', 'orElse', 'orElseSucceed'])
+/** Effect combinators that drop a failure without any handler. */
+const EFFECT_DROPS = new Set(['ignore', 'ignoreCause'])
+const EXPECTED = /^\s*expected:(.*)$/su
+
+const passesOn = (name: string | undefined): boolean =>
+  name !== undefined && (REPORTERS.has(name) || name.startsWith('report') || FAILURES.has(name))
+
+/** `x` for `Effect.x`, where the object is the identifier `Effect`. */
+const effectMember = (node: AnyNode): string | undefined => {
+  const member = unwrap(node)
+  if (member.type !== 'MemberExpression') return undefined
+  const object = unwrap(member.object)
+  return object.type === 'Identifier' && object.name === 'Effect' ? propertyName(member) : undefined
+}
+
+/** The handler a call installs: the last argument of `x.catch(…)` or of an Effect handler combinator. */
+const handlerOf = (call: ESTree.CallExpression): AnyNode | undefined => {
+  const callee = unwrap(call.callee)
+  if (callee.type !== 'MemberExpression') return undefined
+  const name = propertyName(callee)
+  if (name !== 'catch' && !EFFECT_HANDLERS.has(effectMember(callee) ?? '')) return undefined
+  const handler = call.arguments.at(-1)
+  return handler === undefined || handler.type === 'SpreadElement' ? undefined : handler
+}
+
+/** A handler given by name, not written inline: fine only when the name reports or fails. */
+const namedHandlerPassesOn = (handler: AnyNode): boolean => {
+  const node = unwrap(handler)
+  if (node.type === 'Identifier') return passesOn(node.name)
+  return node.type === 'MemberExpression' && passesOn(propertyName(node))
+}
+
+/** Does `node` itself rethrow, carry a failure on, or report one? */
+const passesFailureOn = (node: AnyNode): boolean => {
+  if (node.type === 'ThrowStatement') return true
+  if (node.type === 'CallExpression') return passesOn(calleeName(node))
+  if (node.type === 'MemberExpression') return effectMember(node) === 'interrupt'
+  return node.type === 'YieldExpression' && node.delegate && node.argument?.type === 'NewExpression'
+}
+
+/** Where a handler's own code starts, for an `expected:` comment written as its first line. */
+const bodyOf = (handler: AnyNode): ESTree.BlockStatement | undefined => {
+  if (handler.type === 'CatchClause') return handler.body
+  if (
+    (handler.type === 'ArrowFunctionExpression' || handler.type === 'FunctionExpression') &&
+    handler.body?.type === 'BlockStatement'
+  )
+    return handler.body
+  return undefined
+}
+
+export const noSilentCatch = defineRule({
+  meta: {
+    type: 'problem',
+    docs: {
+      description:
+        'A handler that catches a failure rethrows it, carries it on or reports it; dropping one says why (`// expected: …`).',
+    },
+    messages: {
+      silent:
+        'This handler drops the failure: it neither rethrows, returns or yields a failure (`Effect.fail`, `yield* new X()`, `Promise.reject`), nor calls a reporter (`reportFailure`, `reportAndRecover`, `report*`, `logEvent`, `writeLine`, `failureResponse`). Handle the specific failure (`catchTag`), report it, or, when dropping it is right, say why on the line above or as its first line: `// expected: <reason>` (docs/agents/lint-quality.md).',
+    },
+    schema: [],
+  },
+  create(context: Context) {
+    const handlers = new Set<AnyNode>()
+    const passing = new Set<AnyNode>()
+    const watch = (handler: AnyNode): void => {
+      if (namedHandlerPassesOn(handler)) return
+      handlers.add(handler)
+    }
+    /** Every enclosing handler of `node` passes the failure on: ancestors are visited first, so they are known. */
+    const evidence = (node: AnyNode): void => {
+      if (handlers.size === 0 || !passesFailureOn(node)) return
+      for (let current = node.parent; current !== undefined && current !== null; current = current.parent) {
+        if (handlers.has(current)) passing.add(current)
+      }
+    }
+    const expected = (handler: AnyNode): boolean => {
+      const body = bodyOf(handler)
+      const firstLine = body?.body[0]?.start ?? body?.end ?? -1
+      return context.sourceCode.getAllComments().some((comment) => {
+        const reason = EXPECTED.exec(comment.value)?.[1]?.trim() ?? ''
+        if (reason.length < MIN_REASON) return false
+        if (comment.loc.end.line === handler.loc.start.line - 1) return true
+        return body !== undefined && comment.start > body.start && comment.end <= firstLine
+      })
+    }
+    return {
+      CatchClause: (node: ESTree.CatchClause): void => watch(node),
+      CallExpression: (node: ESTree.CallExpression): void => {
+        const handler = handlerOf(node)
+        if (handler !== undefined) watch(handler)
+        evidence(node)
+      },
+      MemberExpression: (node: ESTree.MemberExpression): void => {
+        if (EFFECT_DROPS.has(effectMember(node) ?? '')) handlers.add(node)
+        evidence(node)
+      },
+      ThrowStatement: (node: ESTree.ThrowStatement): void => evidence(node),
+      YieldExpression: (node: ESTree.YieldExpression): void => evidence(node),
+      'Program:exit': (): void => {
+        for (const handler of handlers) {
+          if (!passing.has(handler) && !expected(handler)) context.report({ messageId: 'silent', node: handler })
+        }
+      },
+    }
+  },
+})
+
 export default definePlugin({
   meta: { name: 'goblin' },
   rules: {
     'no-process-env': noProcessEnv,
     'resource-name-via-stage': resourceNameViaStage,
     'require-disable-description': requireDisableDescription,
+    'no-silent-catch': noSilentCatch,
   },
 })

@@ -1,6 +1,6 @@
 import { RuleTester } from 'oxlint/plugins-dev'
 import { describe, it } from 'vitest'
-import { noProcessEnv, requireDisableDescription, resourceNameViaStage } from '../oxlint/goblin.ts'
+import { noProcessEnv, noSilentCatch, requireDisableDescription, resourceNameViaStage } from '../oxlint/goblin.ts'
 
 RuleTester.describe = describe
 RuleTester.it = it
@@ -87,5 +87,53 @@ tester.run('require-disable-description', requireDisableDescription, {
       errors: [{ messageId: 'reason' }],
     },
     { code: '// @effect-diagnostics globalFetch:off\nconst x = 1', errors: [{ messageId: 'reason' }] },
+  ],
+})
+
+tester.run('no-silent-catch', noSilentCatch, {
+  valid: [
+    // rethrow, report, or carry a failure on
+    'try { run() } catch (error) { throw new Wrapped(error) }',
+    "try { run() } catch (error) { logEvent('warn', 'job', { kind: 'reconcile' }) }",
+    'try { run() } catch (error) { reportJobFailure(error) }',
+    "promise.catch((error: unknown) => reportFailure('sync')(error))",
+    'promise.catch((error: unknown) => Promise.reject(error))',
+    'new Promise((resolve, reject) => source.then(resolve).catch((error: unknown) => reject(error)))',
+    'promise.catch(reportError)',
+    'effect.pipe(Effect.catch((error) => Effect.fail(new Internal({ reason: error._tag }))))',
+    'effect.pipe(Effect.catchCause(Effect.failCause))',
+    'effect.pipe(Effect.catchCause((cause) => (Cause.hasInterruptsOnly(cause) ? Effect.interrupt : Effect.succeed(1))))',
+    'effect.pipe(Effect.catch(() => Effect.gen(function* () { return yield* new NotFound({ what: "x" }) })))',
+    "Effect.catch(effect, (error) => Effect.gen(function* () { yield* logEvent('warn', 'rpc'); return 0 }))",
+    // typed handling of one failure is not a catch-all
+    "effect.pipe(Effect.catchTag('NotFound', () => Effect.succeed(undefined)))",
+    // the reason is on the line above, or the handler's first line
+    '// expected: a missing config file means defaults\ntry { read() } catch { use(defaults) }',
+    'try { read() } catch {\n  // expected: a missing config file means defaults\n  use(defaults)\n}',
+    'try { read() } catch { /* expected: a missing config file means defaults */ }',
+    '// expected: the beacon is best effort, nothing waits\nvoid fetch(url).catch(() => undefined)',
+    'effect.pipe(\n  // expected: a closed socket has nothing left to tell\n  Effect.ignore,\n)',
+    'effect.pipe(\n  // expected: no saved draft is an empty draft\n  Effect.orElseSucceed(() => ""),\n)',
+  ],
+  invalid: [
+    { code: 'try { run() } catch {}', errors: [{ messageId: 'silent' }] },
+    { code: 'try { run() } catch (error) { return undefined }', errors: [{ messageId: 'silent' }] },
+    { code: 'try { run() } catch (error) { console.error(error) }', errors: [{ messageId: 'silent' }] },
+    { code: 'promise.catch(() => undefined)', errors: [{ messageId: 'silent' }] },
+    { code: 'promise.catch(noop)', errors: [{ messageId: 'silent' }] },
+    { code: 'effect.pipe(Effect.catch(() => Effect.succeed(0)))', errors: [{ messageId: 'silent' }] },
+    { code: 'Effect.catchCause(effect, () => Effect.void)', errors: [{ messageId: 'silent' }] },
+    { code: 'effect.pipe(Effect.catchIf(isRetryable, () => Effect.void))', errors: [{ messageId: 'silent' }] },
+    { code: 'effect.pipe(Effect.orElseSucceed(() => []))', errors: [{ messageId: 'silent' }] },
+    { code: 'effect.pipe(Effect.ignore)', errors: [{ messageId: 'silent' }] },
+    { code: 'Effect.ignoreCause(effect)', errors: [{ messageId: 'silent' }] },
+    // a reason must say something, and a comment further up does not count
+    { code: '// expected: yes\ntry { read() } catch {}', errors: [{ messageId: 'silent' }] },
+    {
+      code: '// expected: a missing config file means defaults\nconst x = 1\ntry { read() } catch {}',
+      errors: [{ messageId: 'silent' }],
+    },
+    // a report in the try block does not cover the catch
+    { code: "try { reportFailure('x') } catch {}", errors: [{ messageId: 'silent' }] },
   ],
 })
