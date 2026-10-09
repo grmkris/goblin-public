@@ -301,6 +301,7 @@ function doctor(root: string): number {
       }
     }
     console.log(`MCP servers: ${Object.keys(servers).join(", ") || "none"}`);
+    // @effect-diagnostics-next-line processEnv:off -- a one-shot config check reports which MCP env vars are set, never their values
     for (const v of vars) console.log(`  env ${v}: ${process.env[v] ? "set" : "MISSING"}`);
   }
   const home = homedir();
