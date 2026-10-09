@@ -34,11 +34,17 @@ export type RecorderLedger = {
     | undefined
   readonly read?: (id: string) => { readonly operationId?: string | undefined } | undefined
   readonly forOperation?: (operationId: string) => readonly RunEvent[]
+  /** The receipt an operation was admitted with (chats/receipts.ts `receiptOf`), synchronously. */
+  readonly receipt?: (operationId: string) => ReceiptSource | undefined
 }
 
+/** What a turn's source is read from in its operation's receipt: its kind and who started it. */
+export type ReceiptSource = { readonly kind: string; readonly origin?: string | undefined }
+
 /**
- * Where a turn came from, by the operation id each source gives its submissions: a Persona's answer is
- * `persona:<operation>:<persona>` (pi/persona-turn.ts). Everything else, the owner's app and MCP clients, is `direct`.
+ * Where a turn came from when its operation has no receipt (a row admitted before receipts had kinds, or a turn no
+ * chat admits), by the operation id each source gives its submissions: a Persona's answer is
+ * `persona:<operation>:<persona>` (pi/persona-turn.ts). Everything else is `direct`.
  */
 const SOURCES: readonly (readonly [string, string])[] = [
   ['telegram-', 'telegram'],
@@ -48,8 +54,22 @@ const SOURCES: readonly (readonly [string, string])[] = [
   ['subagent:', 'subagent'],
   ['persona:', 'persona'],
 ]
-export const sourceOf = (operationId: string): string =>
-  SOURCES.find(([prefix]) => operationId.startsWith(prefix))?.[1] ?? 'direct'
+/** A turn's source by its receipt's kind; an input of any other kind (the owner's own) is `direct`. */
+const RECEIPT_SOURCES: Readonly<Record<string, string>> = {
+  telegram: 'telegram',
+  routine_input: 'routine',
+  subagent_report: 'subagent_report',
+  ask_client: 'client',
+}
+
+/**
+ * Where a turn came from: its operation's receipt when it has one with a kind (O2), else its operation id's prefix. A
+ * passive write's receipt starts no turn of its own, so it falls back too.
+ */
+export const sourceOf = (operationId: string, receipt?: ReceiptSource): string =>
+  receipt === undefined || receipt.kind === 'legacy' || receipt.kind.startsWith('write:')
+    ? (SOURCES.find(([prefix]) => operationId.startsWith(prefix))?.[1] ?? 'direct')
+    : (RECEIPT_SOURCES[receipt.kind] ?? 'direct')
 
 /** The kind of tool a call is, by its name. */
 const familyOf = (tool: string): string =>
@@ -276,7 +296,10 @@ export class PiRunRecorder {
       conversationId: String(submission.conversationId),
       operationId,
       startedAt: now,
-      attributes: { [RunAttribute.operation]: 'invoke_agent', [RunAttribute.source]: sourceOf(operationId) },
+      attributes: {
+        [RunAttribute.operation]: 'invoke_agent',
+        [RunAttribute.source]: sourceOf(operationId, this.#ledger.receipt?.(operationId)),
+      },
     }
   }
 

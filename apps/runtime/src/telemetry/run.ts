@@ -1,5 +1,6 @@
 import { RunAttribute } from '@goblin/contracts/telemetry'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
+import { receiptOf } from '../chats/receipts.ts'
 import { RunTelemetry, type RunSink, reportTelemetryFailure } from './events.ts'
 import { RunLedger } from './ledger.ts'
 import { RunLog } from './log.ts'
@@ -23,9 +24,16 @@ export function runTelemetry(
   agent: () => string,
   sinks: readonly RunSink[] = [],
 ): RunTelemetryKit {
-  const ledger = new RunLedger(drizzle(storage))
+  const db = drizzle(storage)
+  const ledger = new RunLedger(db)
   const telemetry = new RunTelemetry([ledger, new RunLog(agent), ...sinks], (id) => ledger.read(id))
-  const recorder = new PiRunRecorder(telemetry, ledger)
+  // A turn's source is its operation's receipt (O2): one short synchronous read inside Pi's commit.
+  const recorder = new PiRunRecorder(telemetry, {
+    latestForTask: (kind, taskId) => ledger.latestForTask(kind, taskId),
+    read: (id) => ledger.read(id),
+    forOperation: (operationId) => ledger.forOperation(operationId),
+    receipt: (operationId) => receiptOf(db, operationId),
+  })
   return {
     telemetry,
     ledger,
