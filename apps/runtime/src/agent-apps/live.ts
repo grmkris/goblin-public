@@ -6,7 +6,7 @@ import * as Layer from 'effect/Layer'
 import type { TokenUse } from '../budget-credits.ts'
 import { Budget } from '../budget.ts'
 import { InvalidInput, NotFound, toAppError } from '../http/errors.ts'
-import { CheapModel } from '../memory/model.ts'
+import { CheapModel, ModelFailed, modelFailureText } from '../memory/model.ts'
 import { memoryModelId, modelOptions } from '../models.ts'
 import { KeyedLock } from '../observability/lock.ts'
 import { AgentInput, type AgentInputs } from '../runtime/input.ts'
@@ -136,6 +136,12 @@ const AppEngineLive = Layer.effect(
   }),
 )
 
+/** An app reads a cheap-model failure as the text it always read: an AppCodeError's problemText is its message. */
+export const appAnswer = (answer: Promise<string>): Promise<string> =>
+  answer.catch((error: unknown) => {
+    throw error instanceof ModelFailed ? new AppCodeError(modelFailureText(error)) : error
+  })
+
 /** The cheap model's completion for apps (`app_llm`): its tokens are recorded even when its answer fails. */
 const completion = (input: AgentInputs): AppCompletion => {
   const { env, pi, telemetry } = input
@@ -151,7 +157,7 @@ const completion = (input: AgentInputs): AppCompletion => {
           Effect.flatMap(Clock.currentTimeMillis, (millis) => budget.record(use, Math.floor(millis / 1000), id)),
         ),
       )
-      return yield* promised(() => model.complete(system, prompt, maxTokens)).pipe(Effect.ensuring(record))
+      return yield* promised(() => appAnswer(model.complete(system, prompt, maxTokens))).pipe(Effect.ensuring(record))
     })
 }
 

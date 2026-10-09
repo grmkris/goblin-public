@@ -1,6 +1,5 @@
-import * as Effect from 'effect/Effect'
 import { describe, expect, it } from 'vitest'
-import { appServices } from '../src/agent-apps/ports.ts'
+import { appAnswer } from '../src/agent-apps/live.ts'
 import { AppCodeError, problemText } from '../src/agent-apps/queue.ts'
 import { CheapModel, ModelFailed, modelFailureText } from '../src/memory/model.ts'
 
@@ -45,14 +44,8 @@ describe('the cheap model (unit)', () => {
   })
 
   it("reaches an agent app's llm() as the same text it always read", async () => {
-    // SAFETY: `complete` reads only the plan, resident authority, the budget gate and the model given here.
-    const services = appServices({
-      entitlements: { require: () => Effect.void },
-      resident: { require: () => undefined },
-      budget: { require: async () => undefined },
-      model: cheap({ stopReason: 'error', errorMessage: 'HTTP 429 rate limited' }),
-    } as never)
-    const failure = await services.complete('system', 'prompt', 10).then(
+    const model = cheap({ stopReason: 'error', errorMessage: 'HTTP 429 rate limited' })
+    const failure = await appAnswer(model.complete('system', 'prompt', 10)).then(
       () => undefined,
       (error: unknown) => error,
     )
