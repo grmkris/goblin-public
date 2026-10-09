@@ -30,7 +30,7 @@ const connect = async (read: InspectReader) => {
 const turns = { turns: [] }
 
 describe('inspection on /mcp (unit, ADR 0024)', () => {
-  it('adds five read-only tools with input and output schemas, and passes queries through', async () => {
+  it('adds seven read-only tools with input and output schemas, and passes queries through', async () => {
     const reads: Read[] = []
     const client = await connect(async (query) => {
       reads.push({ query })
@@ -45,6 +45,8 @@ describe('inspection on /mcp (unit, ADR 0024)', () => {
         'inspect_turns',
         'inspect_turn',
         'inspect_problems',
+        'inspect_flows',
+        'inspect_details',
       ])
       for (const tool of inspection) {
         expect(tool.annotations?.readOnlyHint, tool.name).toBe(true)
@@ -60,6 +62,19 @@ describe('inspection on /mcp (unit, ADR 0024)', () => {
       const bad = await client.callTool({ name: 'inspect_turns', arguments: { limit: 500 } })
       expect(bad.isError).toBe(true)
       expect(reads).toHaveLength(1)
+      // Details take an operation or a chat entry through one flat object; the reader decides which it was given.
+      const details = inspection.find((tool) => tool.name === 'inspect_details')?.inputSchema
+      expect(details).toMatchObject({ type: 'object' })
+      expect(details?.required ?? []).toEqual([])
+      await client.callTool({ name: 'inspect_flows', arguments: { chat: '12', flow: 'move' } })
+      await client.callTool({ name: 'inspect_details', arguments: { chat: '12', entry: 40 } })
+      expect(reads.slice(1)).toEqual([
+        { query: { kind: 'flows', chat: '12', flow: 'move' } },
+        { query: { kind: 'details', chat: '12', entry: 40 } },
+      ])
+      const unknown = await client.callTool({ name: 'inspect_flows', arguments: { flow: 'nonsense' } })
+      expect(unknown.isError).toBe(true)
+      expect(reads).toHaveLength(3)
     } finally {
       await client.close()
     }

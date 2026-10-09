@@ -2,8 +2,13 @@ import type { EntryRecord } from '@earendil-works/pi-durable'
 import { authorOf } from '@goblin/contracts'
 import type {
   InspectConversations,
+  InspectDetails,
+  InspectDetailsArguments,
+  InspectDetailsInput,
   InspectEntries,
   InspectEntry,
+  InspectFlows,
+  InspectFlowsInput,
   InspectProblems,
   InspectQuery,
   InspectTurns,
@@ -16,9 +21,10 @@ import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { nowMillis } from '../clock.ts'
 import type { ConversationRegistry } from '../conversations.ts'
-import { NotFound } from '../http/errors.ts'
+import { InvalidInput, NotFound } from '../http/errors.ts'
 import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { textBlocks } from '../pi/transcript.ts'
+import { flowOf } from '../telemetry/events.ts'
 import type { RunLedger } from '../telemetry/ledger.ts'
 import { coverageGaps } from './coverage.ts'
 
@@ -30,6 +36,8 @@ const MAX_JSON = 2000
 const DAY_MS = 24 * 60 * 60 * 1000
 /** Newer than any entry: the newest page of a conversation. */
 const NEWEST = 2 ** 31
+/** How many flow steps `flows` answers by default. */
+const FLOWS = 50
 
 const Message = Schema.Struct({
   role: Schema.String,
@@ -176,6 +184,13 @@ export function summarize(turn: RunEvent, events: readonly RunEvent[]): TurnSumm
   }
 }
 
+/** A details query's reader input: an operation, or a chat with one of its entries. Anything else is invalid. */
+function detailsInput({ operation, chat, entry }: InspectDetailsArguments): InspectDetailsInput {
+  if (operation !== undefined) return { operation }
+  if (chat !== undefined && entry !== undefined) return { chat, entry }
+  throw new InvalidInput({ reason: 'details take an operation, or a chat and an entry' })
+}
+
 /** Read-only inspection of this agent (ADR 0024): Pi for content and settlement, the run ledger for how it ran. */
 export class Inspector {
   readonly #ledger: RunLedger
@@ -202,6 +217,10 @@ export class Inspector {
         return this.turn(query.operationId)
       case 'problems':
         return this.problems(query.since, query.limit, query.all)
+      case 'flows':
+        return this.flows(query)
+      case 'details':
+        return this.details(detailsInput(query))
     }
   }
 
@@ -251,6 +270,26 @@ export class Inspector {
   problems(since?: number, limit = 50, all = false): InspectProblems {
     const from = since ?? this.#clock() - DAY_MS
     return { since: from, problems: this.#ledger.problems(from, limit, all) }
+  }
+
+  /** Conversation flow steps since `since` (the last day by default), newest first, of one chat or flow if asked. */
+  flows(input: InspectFlowsInput): InspectFlows {
+    const since = input.since ?? this.#clock() - DAY_MS
+    const flows = this.#ledger.flows(since, input.limit ?? FLOWS, input).flatMap((event) => {
+      const step = flowOf(event)
+      return step === undefined ? [] : [{ ...step, at: event.endedAt ?? event.startedAt }]
+    })
+    return { since, flows }
+  }
+
+  /**
+   * The details behind a message. So far only an operation that ran a turn has them: its timeline, with no related
+   * operations. An entry's operation, a passive write and related operations need the operation receipts, which are
+   * not read yet.
+   */
+  async details(input: InspectDetailsInput): Promise<InspectDetails> {
+    if (!('operation' in input)) throw new NotFound({ what: 'operation' })
+    return { ...(await this.turn(input.operation)), related: [] }
   }
 
   /** Pi's own settlement of a turn: whether its submission was answered, and with which entry. */

@@ -1,5 +1,6 @@
-import { RunAttributes, RunEvent, RunEventKind, RunEventStatus } from '@goblin/contracts/telemetry'
-import { and, asc, desc, eq, gte, inArray, lt, like, or } from 'drizzle-orm'
+import type { InspectFlowsInput } from '@goblin/contracts/inspect'
+import { RunAttribute, RunAttributes, RunEvent, RunEventKind, RunEventStatus } from '@goblin/contracts/telemetry'
+import { and, asc, desc, eq, gte, inArray, lt, like, or, sql } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Schema from 'effect/Schema'
 import { appRunEvents } from '../storage/schema.ts'
@@ -43,6 +44,10 @@ const rowOf = (event: RunEvent): Row => ({
   endedAt: event.endedAt ?? null,
   attributes: JSON.stringify(event.attributes),
 })
+
+/** An attribute equals `value`: its JSON path quotes the key, whose dots are part of the name. */
+const attributeIs = (key: string, value: string) =>
+  sql`json_extract(${appRunEvents.attributes}, ${`$."${key}"`}) = ${value}`
 
 /** Leave room for fixed query parameters below Workers SQLite's 100-parameter limit. */
 const PROBLEM_PAGE_SIZE = 64
@@ -125,6 +130,26 @@ export class RunLedger<RunResult = unknown> implements RunSink {
         .from(appRunEvents)
         .where(and(eq(appRunEvents.kind, 'turn.submitted'), gte(appRunEvents.startedAt, since), ...conversation))
         .orderBy(desc(appRunEvents.startedAt))
+        .limit(limit)
+        .all(),
+    )
+  }
+
+  /** Flow steps (kind `flow`) that started since `since`, newest first, optionally of one chat or one flow. */
+  flows(since: number, limit: number, filter: Pick<InspectFlowsInput, 'chat' | 'flow'> = {}): readonly RunEvent[] {
+    return this.#events(
+      this.#db
+        .select()
+        .from(appRunEvents)
+        .where(
+          and(
+            eq(appRunEvents.kind, 'flow'),
+            gte(appRunEvents.startedAt, since),
+            filter.chat === undefined ? undefined : attributeIs(RunAttribute.chat, filter.chat),
+            filter.flow === undefined ? undefined : attributeIs(RunAttribute.flow, filter.flow),
+          ),
+        )
+        .orderBy(desc(appRunEvents.startedAt), desc(appRunEvents.id))
         .limit(limit)
         .all(),
     )

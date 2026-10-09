@@ -34,7 +34,7 @@ describe('goblin inbound MCP server (unit)', () => {
       await client.close()
     }
   })
-  it('adds the five inspection tools for a client holding goblin:inspect', async () => {
+  it('adds the seven inspection tools for a client holding goblin:inspect', async () => {
     const client = await connect({
       ask: async () => ({ status: 'running', operationId: 'x' }),
       recent: async () => [],
@@ -42,8 +42,8 @@ describe('goblin inbound MCP server (unit)', () => {
     })
     try {
       const { tools } = await client.listTools()
-      expect(tools).toHaveLength(7)
-      expect(tools.filter((tool) => tool.name.startsWith('inspect_'))).toHaveLength(5)
+      expect(tools).toHaveLength(9)
+      expect(tools.filter((tool) => tool.name.startsWith('inspect_'))).toHaveLength(7)
     } finally {
       await client.close()
     }

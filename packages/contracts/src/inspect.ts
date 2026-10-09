@@ -5,7 +5,8 @@ import { FlowEvent, FlowName, RunEvent, RunEventStatus } from './telemetry.ts'
 
 /**
  * Read-only inspection of one agent (ADR 0024): its conversations, a conversation's entries, its turns and their
- * timelines, and what went wrong. Full content for conversations, bounded and paged; no reads call a model.
+ * timelines, what went wrong, its conversation flows and the details behind a message. Full content for conversations,
+ * bounded and paged; no reads call a model.
  */
 const Session = Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)).annotate({
   description: 'A conversation id as `inspect_conversations` lists it; "1" is the main conversation.',
@@ -16,6 +17,43 @@ const Limit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 })).a
 const Since = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).annotate({
   description: 'Only what started since this time, in epoch milliseconds. Without it, the last day.',
 })
+
+/** `inspect_flows`' input: recent conversation flows, optionally of one chat or one flow. */
+export const InspectFlowsInput = Schema.Struct({
+  since: Schema.optional(Since),
+  limit: Schema.optional(Limit),
+  chat: Schema.optional(ChatId.annotate({ description: 'Only the flows of this chat (its id in /c/<id> URLs).' })),
+  flow: Schema.optional(FlowName.annotate({ description: 'Only the steps of this flow (`reply`, `move`, …).' })),
+})
+export type InspectFlowsInput = typeof InspectFlowsInput.Type
+
+/** What the details reader takes: one operation, or the operation that wrote an entry of a chat. */
+export const InspectDetailsInput = Schema.Union([
+  Schema.Struct({ operation: OperationId }),
+  Schema.Struct({ chat: ChatId, entry: EntryId }),
+])
+export type InspectDetailsInput = typeof InspectDetailsInput.Type
+
+/**
+ * `inspect_details`' input as one flat object, because a tool's input schema is an object: `operation`, or `chat` with
+ * `entry`. The reader takes it as {@link InspectDetailsInput} and refuses any other combination.
+ */
+const DetailsArguments = Schema.Struct({
+  operation: Schema.optional(
+    OperationId.annotate({
+      description: 'An operation id, from `inspect_turns`, `inspect_problems` or `inspect_flows`.',
+    }),
+  ),
+  chat: Schema.optional(
+    ChatId.annotate({ description: 'With `entry`: the chat the entry is in (its id in /c/<id> URLs).' }),
+  ),
+  entry: Schema.optional(
+    EntryId.annotate({
+      description: 'With `chat`: an entry id; the details are those of the operation that wrote it.',
+    }),
+  ),
+})
+export type InspectDetailsArguments = typeof DetailsArguments.Type
 
 /** What each query takes apart from its kind: the inputs of the inspection tools. */
 export const InspectInput = {
@@ -45,6 +83,8 @@ export const InspectInput = {
       description: 'Include expected waits and confirmed recovered attempts; default shows events needing attention.',
     }),
   }),
+  flows: InspectFlowsInput,
+  details: DetailsArguments,
 }
 export type InspectKind = keyof typeof InspectInput
 
@@ -54,6 +94,8 @@ export const InspectQuery = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('turns'), ...InspectInput.turns.fields }),
   Schema.Struct({ kind: Schema.Literal('turn'), ...InspectInput.turn.fields }),
   Schema.Struct({ kind: Schema.Literal('problems'), ...InspectInput.problems.fields }),
+  Schema.Struct({ kind: Schema.Literal('flows'), ...InspectInput.flows.fields }),
+  Schema.Struct({ kind: Schema.Literal('details'), ...InspectInput.details.fields }),
 ])
 export type InspectQuery = typeof InspectQuery.Type
 
@@ -155,15 +197,6 @@ export type TurnTimeline = typeof TurnTimeline.Type
 export const InspectProblems = Schema.Struct({ since: Schema.Number, problems: Schema.Array(RunEvent) })
 export type InspectProblems = typeof InspectProblems.Type
 
-/** `inspect_flows`' input: recent conversation flows, optionally of one chat or one flow. */
-export const InspectFlowsInput = Schema.Struct({
-  since: Schema.optional(Since),
-  limit: Schema.optional(Limit),
-  chat: Schema.optional(ChatId.annotate({ description: 'Only the flows of this chat (its id in /c/<id> URLs).' })),
-  flow: Schema.optional(FlowName),
-})
-export type InspectFlowsInput = typeof InspectFlowsInput.Type
-
 /** One recorded flow event and when it was recorded (epoch ms). */
 export const FlowRecord = Schema.Struct({ ...FlowEvent.fields, at: Schema.Number })
 export type FlowRecord = typeof FlowRecord.Type
@@ -171,13 +204,6 @@ export type FlowRecord = typeof FlowRecord.Type
 /** Flow events since `since`, newest first. */
 export const InspectFlows = Schema.Struct({ since: Schema.Number, flows: Schema.Array(FlowRecord) })
 export type InspectFlows = typeof InspectFlows.Type
-
-/** `inspect_details`' input: one operation, or the operation that wrote an entry of a chat. */
-export const InspectDetailsInput = Schema.Union([
-  Schema.Struct({ operation: OperationId }),
-  Schema.Struct({ chat: ChatId, entry: EntryId }),
-])
-export type InspectDetailsInput = typeof InspectDetailsInput.Type
 
 /** An operation linked to the one in view: its parent, the thread it started, the Personas it asked. */
 export const RelatedOperation = Schema.Struct({
@@ -206,4 +232,6 @@ export const InspectResult = {
   turns: InspectTurns,
   turn: TurnTimeline,
   problems: InspectProblems,
+  flows: InspectFlows,
+  details: InspectDetails,
 }

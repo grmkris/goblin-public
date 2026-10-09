@@ -147,6 +147,8 @@ const INSPECTION = [
   'inspect_turns',
   'inspect_turn',
   'inspect_problems',
+  'inspect_flows',
+  'inspect_details',
 ]
 
 /** One resource: every metadata path names /mcp and offers inspection; the 401 asks for every scope. */
