@@ -1,4 +1,4 @@
-import { PRIMARY_CHAT } from '@goblin/contracts'
+import { Attention, PRIMARY_CHAT } from '@goblin/contracts'
 import { Effect, Schema } from 'effect'
 import { nextInt } from 'effect/Random'
 import { expect } from 'vitest'
@@ -49,6 +49,15 @@ export async function topicRoutineSequence(agent: Probe): Promise<Response> {
   const created = await agent.createTopic({ name: 'Errands', operationId: 'topic-routine' })
   if (!created.ok) return Response.json({ created })
   const errands = created.value.conversation
+  const attentionOf = async () => {
+    const views = await agent.conversations()
+    return (views.ok ? views.value : []).find((view) => view.id === errands)?.attention ?? []
+  }
+  const question = { questions: [{ id: 'day', prompt: 'Which day suits you?', kind: 'text' }] }
+  await exchange(agent, errands, `call ask_user ${JSON.stringify(question)}`, 'topic-ask')
+  const asked = await attentionOf()
+  await exchange(agent, errands, 'Tuesday', 'topic-answer')
+  const answered = await attentionOf()
   const definition = {
     title: 'Errand check',
     prompt: 'Return a short reminder.',
@@ -75,6 +84,8 @@ export async function topicRoutineSequence(agent: Probe): Promise<Response> {
   return Response.json({
     topic: created.value.id,
     errands,
+    asked,
+    answered,
     reported: reported.some((run) => run.reportAcceptedAt !== null),
     runChat: (views.ok ? views.value : []).find((view) => view.title === 'Errand check') ?? null,
     errandsLines: await transcript(agent, errands),
@@ -96,6 +107,8 @@ const TopicMemoryRun = Schema.Struct({
 const TopicRoutineRun = Schema.Struct({
   topic: Schema.Number,
   errands: Schema.String,
+  asked: Schema.Array(Attention),
+  answered: Schema.Array(Attention),
   reported: Schema.Boolean,
   runChat: Schema.Struct({ parent: Schema.optional(Schema.String), topic: Schema.optional(Schema.Number) }),
   errandsLines: Schema.Array(Schema.String),
@@ -131,6 +144,11 @@ export const topicsNativeCase = (url: string) =>
     expect(result.personalLines.some((line) => line.startsWith('app.memory'))).toBe(false)
     expect(result.gardenLines.join('\n')).not.toContain('personal gamma')
     const routine = yield* probe(url, 'topic-routine', TopicRoutineRun)
+    // A question waits on the owner in its chat's attention until their next message answers it.
+    expect(routine.asked).toEqual([
+      { kind: 'question', since: expect.any(Number), entry: expect.any(Number), label: 'Which day suits you?' },
+    ])
+    expect(routine.answered).toEqual([])
     expect(routine.reported).toBe(true)
     expect(routine.runChat).toMatchObject({ parent: routine.errands, topic: routine.topic })
     expect(routine.errandsLines.some((line) => line.startsWith('app.routine'))).toBe(true)

@@ -597,6 +597,9 @@ chat's work through the owner's Stop (runs, queued inputs, subagents and routine
 
 All three are strict-CSRF browser writes and owner requests. The workspace feed's snapshot lists `topics`, a change is
 `{ type: 'topic', topic }`, and each `ConversationView` carries `topic` and, for a Conversation, `conversation: true`.
+Its `attention` (`attention.ts`) lists what in that chat waits on the owner for the Activity rail: the asks since its
+newest user message from goblin's own tool-result markers (`ask_user`, a grant request, something switched off), its
+pending held MCP calls, and the unanswered powers of agent apps living there.
 Unit tests run the real migrations in `node:sqlite`; the local workerd owner case `topics-case.ts` runs in both
 native profiles. Neither is deployed-stage evidence.
 

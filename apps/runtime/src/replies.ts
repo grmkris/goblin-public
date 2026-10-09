@@ -1,4 +1,6 @@
 import type { Conversation, EntryRecord } from '@earendil-works/pi-durable'
+import type { Attention } from '@goblin/contracts'
+import { openAsks } from './attention.ts'
 import { BACKGROUND, entryId } from './pi/context.ts'
 import { type ReplyStats, replyStats } from './pi/transcript.ts'
 
@@ -9,8 +11,11 @@ const MAX_PAGES = 20
 /** The one read the ledger needs of a conversation. */
 type Entries = Pick<Conversation, 'entries'>
 
+/** What a chat's own entries say: its messages, and what in them still waits on the owner (A5, ADR 0032). */
+export type ChatActivity = ReplyStats & { readonly asks: readonly Attention[] }
+
 /** A thread's count so far, through its entry `through`. */
-type Tally = ReplyStats & { readonly through: number }
+type Tally = ChatActivity & { readonly through: number }
 
 /**
  * Counts each thread's own messages for the thread list, from Pi itself, so the count follows replays and needs no
@@ -21,22 +26,27 @@ type Tally = ReplyStats & { readonly through: number }
 export class ReplyLedger {
   readonly #tallies = new Map<string, Tally>()
 
-  async stats(session: string, conversation: Entries, floor: number): Promise<ReplyStats> {
+  async stats(session: string, conversation: Entries, floor: number): Promise<ChatActivity> {
     const known = this.#tallies.get(session)
     const fresh = await newerEntries(conversation, known?.through ?? floor)
     if (fresh.length > 0) {
-      const own = replyStats(fresh.filter((entry) => String(entry.conversationId) === session))
+      const mine = fresh
+        .filter((entry) => String(entry.conversationId) === session)
+        .toSorted((a, b) => Number(a.id) - Number(b.id))
+      const own = replyStats(mine)
       const lastReplyAt = own.lastReplyAt ?? known?.lastReplyAt
       this.#tallies.set(session, {
         through: Math.max(...fresh.map((entry) => Number(entry.id))),
         replies: (known?.replies ?? 0) + own.replies,
+        asks: openAsks(mine, known?.asks),
         ...(lastReplyAt === undefined ? {} : { lastReplyAt }),
       })
     }
     const tally = this.#tallies.get(session)
+    const asks = tally?.asks ?? []
     return tally?.lastReplyAt === undefined
-      ? { replies: tally?.replies ?? 0 }
-      : { replies: tally.replies, lastReplyAt: tally.lastReplyAt }
+      ? { replies: tally?.replies ?? 0, asks }
+      : { replies: tally.replies, lastReplyAt: tally.lastReplyAt, asks }
   }
 }
 

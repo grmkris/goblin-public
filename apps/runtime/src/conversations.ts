@@ -13,9 +13,10 @@ import type { CheapModel } from './memory/model.ts'
 import { authoredContent, threadStartedContent } from './pi/content.ts'
 import { BACKGROUND, conversationId, entryId } from './pi/context.ts'
 import { answerText, Subagents } from './pi/subagent-relay.ts'
-import { type ReplyStats, recentMessages } from './pi/transcript.ts'
+import { recentMessages } from './pi/transcript.ts'
 import { settledEnd } from './pi/turns.ts'
-import { ReplyLedger } from './replies.ts'
+import { type ChatActivity, ReplyLedger } from './replies.ts'
+import { storedAsks } from './attention.ts'
 import { appConversations } from './storage/schema.ts'
 import { appTopics } from './storage/topics.ts'
 
@@ -642,8 +643,9 @@ export class ConversationRegistry {
   async #describe(row: Row): Promise<ConversationView> {
     const session = this.#kit.chats.session(row.chatId)
     const pi = await (await this.#harness.pi()).conversation(conversationId(session), BACKGROUND)
-    const activity: ReplyStats =
-      pi === undefined ? { replies: 0 } : await this.#replies.stats(session, pi, row.forkEntry ?? 0)
+    const activity: ChatActivity =
+      pi === undefined ? { replies: 0, asks: [] } : await this.#replies.stats(session, pi, row.forkEntry ?? 0)
+    const attention = [...activity.asks, ...storedAsks(this.#db, { id: row.chatId, session }, Date.now())]
     return {
       id: row.chatId,
       ...(row.role === 'primary' ? { primary: true } : {}),
@@ -660,6 +662,7 @@ export class ConversationRegistry {
       replies: activity.replies,
       ...(activity.lastReplyAt === undefined ? {} : { lastReplyAt: activity.lastReplyAt }),
       ...(row.readAt === null ? {} : { readAt: row.readAt }),
+      ...(attention.length === 0 ? {} : { attention }),
     }
   }
 }

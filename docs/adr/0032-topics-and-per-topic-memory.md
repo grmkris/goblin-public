@@ -86,6 +86,19 @@ write there. While the Topic is archived, archive v1 leaves its schedules runnin
 never out of sight; restoring the Topic brings them back. Stopping an archived Topic's chats stops a run already in
 one of them.
 
+## What needs the owner
+
+`ConversationView.attention` lists what in a chat waits on the owner, for the web's Activity rail, from existing
+sources only (`attention.ts`, no new storage): from the chat's own Pi entries, the asks since its newest user message
+(an `ask_user` question, an `mcp_call` grant request, something switched off here), read from goblin's own tool-result
+markers and never from a remote result (which carries an `origin`), as the web's cards are; from
+`app_mcp_approvals`, the chat's held MCP calls still pending (by its current Pi session); and from
+`app_agent_powers`, the powers the running release of an agent app living in the chat asks for and the owner has not
+answered. Each item has its kind, when it began (seconds) and a bounded label; the entry for transcript asks. The
+transcript part is read incrementally with the reply counts (`replies.ts`), so a quiet chat costs one empty read. A
+chat's view is sent again when its run settles or the registry changes it; an approval or power answered elsewhere
+shows on its next description.
+
 ## Inbound stays in Personal
 
 `askClient`, Telegram turns and `recentOwnerMessages` resolve `primary()`, unchanged: every inbound channel lands in

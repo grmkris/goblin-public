@@ -79,15 +79,15 @@ describe('thread replies (unit)', () => {
     const all = [said(3, MAIN, 'user', 10), said(4, MAIN, 'assistant', 11), said(20, THREAD, 'user', 50)]
     const conversation = conversationOf(all)
     const ledger = new ReplyLedger()
-    expect(await ledger.stats(THREAD, conversation, 4)).toEqual({ replies: 1, lastReplyAt: 50 })
-    expect(await ledger.stats(THREAD, conversation, 4)).toEqual({ replies: 1, lastReplyAt: 50 })
+    expect(await ledger.stats(THREAD, conversation, 4)).toEqual({ replies: 1, lastReplyAt: 50, asks: [] })
+    expect(await ledger.stats(THREAD, conversation, 4)).toEqual({ replies: 1, lastReplyAt: 50, asks: [] })
     all.push(said(21, THREAD, 'assistant', 60))
-    expect(await ledger.stats(THREAD, conversation, 4)).toEqual({ replies: 2, lastReplyAt: 60 })
+    expect(await ledger.stats(THREAD, conversation, 4)).toEqual({ replies: 2, lastReplyAt: 60, asks: [] })
     expect(conversation.reads).toEqual([5, 21, 21])
   })
 
   it('reports nothing for a thread nobody has written in yet', async () => {
-    expect(await new ReplyLedger().stats(THREAD, conversationOf([]), 0)).toEqual({ replies: 0 })
+    expect(await new ReplyLedger().stats(THREAD, conversationOf([]), 0)).toEqual({ replies: 0, asks: [] })
   })
 
   it('knows a turn whose last answer reached the output limit, and only the newest turn', () => {
