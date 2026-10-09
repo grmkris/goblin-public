@@ -115,8 +115,8 @@ const fixture = () => {
     Layer.succeed(Legacy.Channel, Object.create(TelegramChannel.prototype)),
     Layer.succeed(Legacy.Resident, resident),
     Layer.succeed(Entitlements, plans),
-    // SAFETY: the routines handlers read only the routine controller from the instance input.
-    Layer.succeed(AgentInput, { routines: controller } as AgentInputs),
+    // SAFETY: the routines handlers and the lane's layers read only the routine controller and the plan policy.
+    Layer.succeed(AgentInput, { routines: controller, entitlements: plans } as AgentInputs),
   )
   const runtime = ManagedRuntime.make(
     OwnerHttp.serve(API, SERVED).pipe(Layer.provide(Layer.provideMerge(RoutinesLive, legacy))),

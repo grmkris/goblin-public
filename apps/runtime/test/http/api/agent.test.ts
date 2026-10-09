@@ -112,6 +112,7 @@ const fixture = () => {
         harness,
         applied,
         routines: Object.create(RoutineController.prototype),
+        entitlements: plans,
         env: { APP_URL: 'https://goblin.test', CREDENTIAL_KEY: 'unused' },
         userId: 'owner',
         schedulePull: async () => undefined,

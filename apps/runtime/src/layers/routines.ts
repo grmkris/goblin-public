@@ -1,5 +1,6 @@
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import { Entitlements, cachedPolicy } from '../billing/gates.ts'
 import { Budget } from '../budget.ts'
 import { Channel } from '../channel/service.ts'
 import { Models } from '../models.ts'
@@ -160,10 +161,20 @@ export const ChannelAdapter = Layer.effect(
 )
 
 /**
+ * The account's plan as the agent checks it, an active one kept a minute (`cachedPolicy`). It replaces the legacy
+ * start's uncached policy for the bridge, the owner gate and every program that reads `Entitlements` when it runs.
+ */
+export const EntitlementsLive = Layer.effect(
+  Entitlements,
+  AgentInput.use((input) => cachedPolicy(input.entitlements)),
+)
+
+/**
  * Lane R's services: routines, the Telegram channel, the model budget and the model picker. Until each gets its own
  * implementation they are adapters over the one instance the legacy start made (layers/legacy.ts), never a second one.
  */
 export const RoutinesLive = Layer.mergeAll(
+  EntitlementsLive,
   RoutinesAdapter,
   RoutineRunsAdapter,
   RoutineUsageAdapter,

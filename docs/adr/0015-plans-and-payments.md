@@ -1,6 +1,7 @@
 # ADR 0015: Plans and payments
 
-Accepted implementation decision, 2026-10-05. Live payment and legal acceptance remain operator gates.
+Accepted implementation decision, 2026-10-05. Live payment and legal acceptance remain operator gates. Amended
+2026-10-10 (see Amendments).
 
 goblin accounts sign up before paying. Pro costs $10/month through Dodo Payments, with no trial or free tier,
 and grants 2M weighted tokens per account per UTC day. Unsubscribed accounts can sign in and manage account/billing
@@ -37,3 +38,14 @@ Test mode is required outside prod; prod requires live mode. All payment keys/pr
 Terms, privacy and refund pages are drafts. Prod live payments require operator identity, contact, jurisdiction,
 refund/withdrawal and privacy review, Dodo live configuration and Kris's production go. A real dev test checkout and
 webhook receipt remain acceptance gates until test keys and product are supplied through operator env updates.
+
+## Amendments
+
+- **2026-10-10: the agent keeps an active plan for a minute.** "Admission reads current plan state" now holds at the
+  Worker edge only: every owner request, MCP call and hook still reads the plan fresh from auth D1 before it reaches
+  the Agent, so an owner whose plan lapsed is refused at once. Inside the Agent (its owner gate, routine dispatch, the
+  model budget, every tool call) the plan comes from `Entitlements`, which keeps an active plan for 60 seconds
+  (`cachedPolicy` in `billing/gates.ts`); about four D1 reads per tool call become at most one a minute. A plan that
+  is not active, or a read that failed, is not kept, so a new subscription counts at once and a D1 failure is retried
+  on the next check. A cancelled plan can keep the Agent's own background work (routines, alarms) going for up to a
+  minute after the edge stops admitting the owner.
