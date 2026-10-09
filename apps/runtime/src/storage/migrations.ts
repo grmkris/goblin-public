@@ -451,6 +451,17 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     ].join(BREAK),
   },
   {
+    // Move to thread (ADR 0034): one row per owner operation through requested, forked and settled, or refused; a
+    // chat has at most one move still working. `swap`/`swapped` stay allowed for the running-turn identity swap.
+    key: '20261026000400_chat_moves',
+    tables: ['app_chat_moves'],
+    sql: [
+      `CREATE TABLE app_chat_moves (operation_id TEXT PRIMARY KEY NOT NULL, chat_id TEXT NOT NULL, thread_chat TEXT, source_session TEXT, fork_session TEXT, message_entry INTEGER NOT NULL, cut_entry INTEGER, mode TEXT NOT NULL CHECK (mode IN ('swap', 'settled')), state TEXT NOT NULL CHECK (state IN ('requested', 'forked', 'swapped', 'settled', 'refused')), reason TEXT, relays TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
+      "CREATE UNIQUE INDEX app_chat_moves_active ON app_chat_moves (chat_id) WHERE state IN ('requested', 'forked', 'swapped')",
+      'CREATE INDEX app_chat_moves_message ON app_chat_moves (chat_id, message_entry)',
+    ].join(BREAK),
+  },
+  {
     // A routine belongs to the Topic whose chat proposed it (ADR 0032); every earlier one to Personal.
     key: '20261026000500_routine_topics',
     tables: ['app_routines'],

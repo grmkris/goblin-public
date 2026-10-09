@@ -12,8 +12,8 @@ import * as Exit from 'effect/Exit'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import type { AgentRpcMethods, RuntimeEnv } from './env.ts'
 import { type AppError, toAppError } from './http/errors.ts'
-import { type ChannelPorts, TelegramChannel, channelCall, logChannelFailure } from './channel/channel.ts'
-import { channelPorts } from './channel/turns.ts'
+import { type ChannelPorts, type TelegramChannel, logChannelFailure } from './channel/channel.ts'
+import { onChannel } from './channel/turns.ts'
 import { type Doorbell } from './channel/doorbell.ts'
 import { type RpcResult, encodeExit, unwrap } from './http/rpc.ts'
 import { FileStore } from './files/store.ts'
@@ -36,7 +36,7 @@ import { skillLearningExtension, skillsExtension } from './pi/skills.ts'
 import { composeServices } from './compose.ts'
 import { capabilitiesOf, changeCapabilities } from './capabilities/program.ts'
 import { type AgentServices, Channel, Conversations, Mcp, Models, attempt } from './services.ts'
-import { attemptSync, requireResident, Routines, RoutineRuns } from './services.ts'
+import { attemptSync, Routines, RoutineRuns } from './services.ts'
 import { accountEntitlements, Entitlements, type EntitlementPolicy } from './billing/gates.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
 import { nowSeconds } from './clock.ts'
@@ -62,13 +62,14 @@ import {
 } from './agent-program.ts'
 import * as AppPrograms from './apps/program.ts'
 import { startThread } from './chats/thread-heads.ts'
+import { type MovePhase, moveToThread } from './chats/mover.ts'
 import { budgetExtension } from './pi/budget.ts'
 import { retrievalExtension } from './pi/retrieval.ts'
 import { chooseOwnerModel, type Applied } from './agent-model.ts'
 import { routinesExtension } from './pi/routines.ts'
 import { editRoutine, proposeRoutine, routinesList, setRoutineSettings } from './routines/program.ts'
 import type { CreateConversation, RoutineEdit, RoutineProposal, RoutineRevision } from '@goblin/contracts'
-import type { RoutineSettings, RoutineManualRun, UpdateConversation } from '@goblin/contracts'
+import type { MoveToThread, RoutineSettings, RoutineManualRun, UpdateConversation } from '@goblin/contracts'
 import { requireRoutine, requireRoutineSession } from './routines/authority.ts'
 import { approvalView, ownerApprovalDecision, ownerResource, setAskFirst } from './mcp/approval-owner.ts'
 import { runView } from './routines/runs.ts'
@@ -187,12 +188,18 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
       mcpFetch: this.mcpFetch(),
       agentApps: this.#apps,
       telemetry: this.#telemetry.telemetry,
+      moves: {
+        handover: this.#subagents.handover,
+        after: async (phase, operation) => this.moveBoundary(phase, operation),
+      },
     })
     this.#runtime.catch(() => {
       this.#runtime = undefined
     })
     return this.#runtime
   }
+  /** A move committed `phase`; the integration harness stops the object here to prove a restart finishes it. */
+  protected async moveBoundary(_phase: MovePhase, _operation: string): Promise<void> {}
   /** One earliest Events wake. Agent schedules are durable and reconstructed independently of Pi. */
   async #scheduleWake(callback: 'mcpEventsWake' | 'routinesWake', at: number): Promise<void> {
     // listSchedules includes the currently executing wake; only future jobs can replace the next sweep.
@@ -260,6 +267,10 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
   /** The owner's message into a thread, with what an open App shared for the agent as separate untrusted blocks. */
   submit(thread: string, input: string, operationId: string, context: OwnerMessageContext = {}) {
     return this.#owner(submitOwner({ ...this.#submitRuntime(), thread, text: input, operationId, context }))
+  }
+  /** Move to thread (ADR 0034): the turn `input.entry` started becomes a Thread; the run continues there. */
+  moveToThread(thread: string, input: MoveToThread) {
+    return this.#owner(moveToThread(thread, input))
   }
   /** The owner's message posted as the head of a new Thread of `thread`; the reply lands in the Thread (ADR 0034). */
   startThread(thread: string, input: string, operationId: string, context: OwnerMessageContext = {}) {
@@ -513,17 +524,7 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
   }
 
   async #onChannel<T>(work: (channel: TelegramChannel, ports: ChannelPorts) => Promise<T>): Promise<T | undefined> {
-    const run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program)
-    const { mcp, channel } = await run(
-      Effect.gen(function* () {
-        yield* requireResident
-        return { mcp: yield* Mcp, channel: yield* Channel }
-      }),
-    )
-    const status = channel.status()
-    if (status === null) return undefined
-    const call = channelCall(mcp.manager, status.serverId)
-    return work(channel, channelPorts(this.harness, call, run, this.#applied))
+    return onChannel(this.harness, this.#applied, (program) => this.#runOrThrow(program), work)
   }
   async channelPull(): Promise<void> {
     this.#pulling = this.#pulling

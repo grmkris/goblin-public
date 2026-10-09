@@ -126,6 +126,27 @@ export const appConversations = sqliteTable('app_conversations', {
   originOp: text('origin_op').unique(),
 })
 
+/**
+ * Move to thread (ADR 0034): one row per owner operation. A settled move forks the Thread `fork_session` (chat
+ * `thread_chat`) from `source_session` at `cut_entry`, the last entry of the turn the owner's message `message_entry`
+ * started, and omits that turn in the chat. `relays` holds the relays handed to the Thread, chosen once.
+ */
+export const appChatMoves = sqliteTable('app_chat_moves', {
+  operationId: text('operation_id').primaryKey().notNull(),
+  chatId: text('chat_id').notNull(),
+  threadChat: text('thread_chat'),
+  sourceSession: text('source_session'),
+  forkSession: text('fork_session'),
+  messageEntry: integer('message_entry').notNull(),
+  cutEntry: integer('cut_entry'),
+  mode: text('mode', { enum: ['swap', 'settled'] }).notNull(),
+  state: text('state', { enum: ['requested', 'forked', 'swapped', 'settled', 'refused'] }).notNull(),
+  reason: text('reason'),
+  relays: text('relays'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
 /** Pi deduplicates per session; chat admission remembers the original session across future rebinds. */
 export const appChatOperations = sqliteTable(
   'app_chat_operations',

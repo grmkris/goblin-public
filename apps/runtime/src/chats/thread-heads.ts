@@ -1,4 +1,5 @@
 import type { TextContent } from '@earendil-works/pi-ai'
+import type { Conversation, EntryId } from '@earendil-works/pi-durable'
 import type { ThreadHeadData } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
@@ -14,11 +15,34 @@ import type { ChatDirectory } from './directory.ts'
 const HEAD_TEXT = 400
 
 /**
+ * Submits `app.thread_head` into `conversation` as a passive write, request id `thread-head:<operation>`. A moved
+ * turn's head also omits that turn from the model's context there (`omit`, Pi edits).
+ */
+export async function submitThreadHead(
+  conversation: Conversation,
+  head: ThreadHeadData,
+  content: readonly TextContent[],
+  omit: readonly EntryId[] = [],
+): Promise<void> {
+  const data = {
+    thread: head.thread,
+    text: head.text,
+    operationId: head.operationId,
+    ...(head.author === undefined ? {} : { author: head.author }),
+    ...(head.moved === undefined ? {} : { moved: head.moved }),
+  }
+  const model = [{ role: 'user' as const, content: [...content], timestamp: Date.now() }]
+  const edits = omit.map((target) => ({ target, action: 'omit' as const }))
+  const entry = { kind: 'app.thread_head', data, model, ...(edits.length === 0 ? {} : { edits }) }
+  await conversation.submit({ type: 'write', requestId: `thread-head:${head.operationId}`, entry }, BACKGROUND)
+}
+
+/**
  * Writes `app.thread_head` into `chat`: the head of a Thread that started there, which the web draws with the
  * Thread's replies under it. A passive write (it starts no run) under the chat's admission lock, so a busy chat places
  * it at its next boundary; the request id `thread-head:<operation>` makes a retry the same entry.
  */
-export async function writeThreadHead(
+async function writeThreadHead(
   harness: PiHarness,
   chats: ChatDirectory,
   chat: string,
@@ -28,18 +52,7 @@ export async function writeThreadHead(
   await chats.passiveWrite(chat, async (session) => {
     const conversation = await (await harness.pi()).conversation(conversationId(session), BACKGROUND)
     if (conversation === undefined) throw new NotFound({ what: 'conversation' })
-    const data = {
-      thread: head.thread,
-      text: head.text,
-      operationId: head.operationId,
-      ...(head.author === undefined ? {} : { author: head.author }),
-      ...(head.moved === undefined ? {} : { moved: head.moved }),
-    }
-    const model = [{ role: 'user' as const, content: [...content], timestamp: Date.now() }]
-    await conversation.submit(
-      { type: 'write', requestId: `thread-head:${head.operationId}`, entry: { kind: 'app.thread_head', data, model } },
-      BACKGROUND,
-    )
+    await submitThreadHead(conversation, head, content)
   })
 }
 

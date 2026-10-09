@@ -3,6 +3,7 @@ import {
   type Extension,
   type Harness,
   LiveDoc,
+  type TaskId,
   type ToolExecutionApi,
   type ToolRegistration,
   type Tx,
@@ -21,12 +22,14 @@ import { BACKGROUND, conversationId } from './context.ts'
 import type { RunProgram } from './resident-mcp.ts'
 import {
   type Relay,
+  SUBAGENT_RELAY,
   type Subagent,
   Subagents,
   background,
   carriesRequest,
   liveRelays,
   quoted,
+  relayInput,
   relayTask,
 } from './subagent-relay.ts'
 import { ReadyResult, typedTool } from './typed-tool.ts'
@@ -349,6 +352,39 @@ async function ownerRelay(relay: Relay, pi: Harness, send: OwnerSend): Promise<b
   return created
 }
 
+/**
+ * Move to thread (ADR 0034): the relays `ids` in `from` carry messages to helpers that now belong to `to`'s chat. Each
+ * still live is made again in `to` with its original delivery request id (so its message is not delivered twice and
+ * its report reaches `to`), then stopped in `from`. One already in `to` for that request is not made again. Returns
+ * the helpers whose relays moved.
+ */
+async function handover(
+  relay: Relay,
+  pi: Harness,
+  move: { readonly from: ConversationId; readonly to: ConversationId; readonly ids: readonly number[] },
+): Promise<readonly string[]> {
+  const target = await pi.conversation(move.to, BACKGROUND)
+  if (target === undefined) throw new Error('The move fork is missing')
+  const helpers = new Set<string>()
+  for (const id of move.ids) {
+    // SAFETY: relay ids come from this agent's own task records; Pi ids are plain integers.
+    const record = await pi.getTask(id as TaskId, BACKGROUND)
+    if (record?.kind !== SUBAGENT_RELAY || record.conversationId !== move.from || record.state.status === 'terminal')
+      continue
+    const input = relayInput(record)
+    if (input === undefined) continue
+    const requestId = input.requestId ?? `subagent:${record.id}`
+    helpers.add(String(input.conversationId))
+    await target.commit(async (tx) => {
+      if ((await liveRelays(tx, move.to)).some((live) => carriesRequest(live, requestId))) return
+      await tx.createTask(relay, { ...input, requestId }, background)
+    }, BACKGROUND)
+    await pi.abortTask(record.id, BACKGROUND)
+  }
+  pi.resume()
+  return [...helpers]
+}
+
 export type SubagentKit = {
   readonly extension: Extension
   readonly members: () => readonly Extension[]
@@ -359,6 +395,11 @@ export type SubagentKit = {
    * False when that operation is already on its way or delivered.
    */
   readonly ownerSend: (pi: Harness, send: OwnerSend) => Promise<boolean>
+  /** Move to thread: hands the relays `ids` of `from` over to `to` (ADR 0034); returns the helpers they carry to. */
+  readonly handover: (
+    pi: Harness,
+    move: { readonly from: ConversationId; readonly to: ConversationId; readonly ids: readonly number[] },
+  ) => Promise<readonly string[]>
 }
 
 /**
@@ -424,5 +465,11 @@ export function subagentsExtension(run: RunProgram, members: (self: Extension) =
     tasks: [Anchor, Relay],
     tools,
   })
-  return { extension, tools, members: () => members(extension), ownerSend: (pi, send) => ownerRelay(Relay, pi, send) }
+  return {
+    extension,
+    tools,
+    members: () => members(extension),
+    ownerSend: (pi, send) => ownerRelay(Relay, pi, send),
+    handover: (pi, move) => handover(Relay, pi, move),
+  }
 }

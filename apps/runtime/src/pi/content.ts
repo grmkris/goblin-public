@@ -100,3 +100,8 @@ export function threadHeadContent(text: string): TextContent[] {
   const quote = words.length > HEAD_QUOTE ? `${words.slice(0, HEAD_QUOTE)}…` : words
   return [{ type: 'text', text: `[the owner started a thread: "${quote}"]` }]
 }
+
+/** The note the chat's model reads where a turn was moved out into a Thread: only the Thread's name (ADR 0034). */
+export function movedToThreadContent(title: string): TextContent[] {
+  return [{ type: 'text', text: `[moved to thread "${quotable(title)}"]` }]
+}

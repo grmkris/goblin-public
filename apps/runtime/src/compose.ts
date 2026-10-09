@@ -9,6 +9,7 @@ import { TelegramChannel } from './channel/channel.ts'
 import { nowMillis, nowSeconds } from './clock.ts'
 import { ChatDirectory } from './chats/directory.ts'
 import { ConversationRegistry, type ThreadKit } from './conversations.ts'
+import { ChatMover, type MoverPorts } from './chats/mover.ts'
 import { WorkspaceFeed } from './workspace/feed.ts'
 import { TopicRegistry } from './topics/registry.ts'
 import { PersonaRegistry } from './personas/registry.ts'
@@ -86,6 +87,8 @@ export type ComposeInput = {
   readonly agentApps: AgentApps
   /** The run ledger and log lines the agent's services report to (ADR 0024). */
   readonly telemetry: RunTelemetry
+  /** Move to thread (ADR 0034): hands the moved turn's relays to the Thread, and the boundaries tests stop at. */
+  readonly moves: Pick<MoverPorts, 'handover' | 'after'>
 }
 /** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
 const retool = (harness: PiHarness) => async (session: string, tools: PiTools) => {
@@ -168,7 +171,24 @@ function conversationServices(db: DrizzleSqliteDODatabase, input: ComposeInput, 
     { conversations, apps, home, topics, personas, invocations, receipts },
     kit.chats,
   )
-  return { conversations, apps, home, topics, personas, invocations, receipts, workspace }
+  // Cross-Topic retrieval (ADR 0035): one transcript index, which a Move to thread also reassigns (ADR 0034).
+  const transcripts = new TranscriptIndex(db, piTranscripts(harness), nowSeconds)
+  const { thread, recall, capabilities, chats, memories } = kit
+  const moves = new ChatMover({
+    db,
+    harness,
+    chats,
+    conversations,
+    capabilities,
+    memories,
+    thread,
+    recall,
+    reassign: (session, from, chat) => transcripts.reassign(session, from, chat),
+    ...input.moves,
+  })
+  // A move a restart interrupted finishes once the services are up again (ADR 0034); it never holds up the start.
+  void moves.reconcile()
+  return { conversations, apps, home, topics, personas, invocations, receipts, workspace, moves, transcripts }
 }
 async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {
   const env = input.env
@@ -231,10 +251,6 @@ function makeMemories(input: ComposeInput, deps: MemoryDeps): ChatMemories {
   const options = Number.isFinite(fold) ? { foldTokens: fold } : {}
   return new ChatMemories(deps, options, [input.memory.memory, input.memory.recall])
 }
-
-/** Cross-Topic retrieval (ADR 0035) over the agent's SQLite and Pi. */
-const chatRetrieval = (db: DrizzleSqliteDODatabase, harness: PiHarness, model: CheapModel) =>
-  new ChatRetrieval(new TranscriptIndex(db, piTranscripts(harness), nowSeconds), model, nowSeconds)
 
 /**
  * The agent's services over its SQLite, built once per isolate on first use: MCP host and grants, budget and models,
@@ -318,7 +334,7 @@ export async function composeServices(
       Layer.succeed(Files, new FileStore(input.storage.sql, env.FILES, () => input.userId)),
       Layer.succeed(AppEngine, input.agentApps),
       Layer.succeed(Inspect, new Inspector(new RunLedger(db), conversations.conversations, harness)),
-      Layer.succeed(Retrieval, chatRetrieval(db, harness, cheap('retrieval'))),
+      Layer.succeed(Retrieval, new ChatRetrieval(conversations.transcripts, cheap('retrieval'), nowSeconds)),
     ),
   )
 }

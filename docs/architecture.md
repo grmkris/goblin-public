@@ -142,6 +142,18 @@ running turn (an empty Thread when it has none) in the same Topic, writes an `ap
 (`ThreadHeadData`, request id `thread-head:<op>`) into the chat as a passive write whose model text is a bounded `[the
 owner started a thread: "…"]`, then submits the message into the Thread through the ordinary owner path.
 `app_conversations.origin_op` (unique) makes one Thread per operation id, also for concurrent repeats.
+**Move to thread** (ADR 0034, `chats/mover.ts`) moves a channel's newest finished turn into a new Thread:
+`POST /api/conversations/:id/move` with `MoveToThread` returns a `MoveReceipt` (the same operation id, the same
+receipt). The Thread is a Pi fork of the chat at the turn's last entry, made a thread with the chat's switches, in its
+Topic; the chat keeps its session and gets an `app.thread_head` (`moved: true`, request id `thread-head:<op>`) whose
+model text is only `[moved to thread "<title>"]` and whose Pi `edits` omit the turn's own entries from the chat's
+model context. Helpers the turn started report to the Thread from then on (their relays are handed over), the threads
+branched from the turn and its App placements move under it, the chat's memory forgets the turn
+(`ChatMemories.truncate`; its collector skips omitted entries), and the transcript index gives it to the Thread. A
+turn still running, an older turn, a turn already moved and a turn waiting on an MCP approval are refused with a
+reason (`streaming`, `not_latest`, `moved`, `awaiting_approval`). Each move is an `app_chat_moves` row (`requested`,
+`forked`, `settled` or `refused`) that a restart finishes. The running-turn identity swap was built and measured
+first; it hit the latency kill criterion and is not shipped (ADR 0034).
 
 Queued inputs in Main and ordinary threads stay in Pi's native `InboxDoc`. The browser projects native inbox IDs
 and modes, then reads contents through `GET /api/conversations/:id/queue`; helper and routine queues are absent
@@ -180,6 +192,7 @@ The owner API is conversation-scoped:
 | `GET /api/conversations/:id/queue` | Ordered queued input IDs, modes and contents for Main and ordinary threads, from Pi InboxDoc. Passive writes, helpers and routine inputs are excluded. |
 | `DELETE /api/conversations/:id/queue` | Remove a queued input by positive safe-integer `submissionId`, with the same-origin CSRF marker. Returns `removed`, `already_started`, `already_settled` or `not_found`; never stops a running input. |
 | `POST /api/conversations/:id/threads` | Start thread (ADR 0034): the `SendMessage` body is posted as the head of a new Thread of this chat and answered there. Returns 201 `{ thread, receipt }`; the same `operationId` returns the same Thread (another chat's is 409). Strict CSRF marker. |
+| `POST /api/conversations/:id/move` | Move to thread (ADR 0034): `{ entry, operationId }` moves the newest finished turn the owner's message `entry` started into a new Thread. Returns the `MoveReceipt` (`mode: 'settled'`; `state` `settled` with `thread`, or `refused` with `reason`); the same `operationId` returns the same receipt (another chat's is 409, a move already in flight in the chat is 409). Strict CSRF marker. |
 | `POST /api/conversations/:id/messages` | Submit `input`, a stable `operationId`, optional `appContext` (by App id), up to eight `attachments` (owner file paths that must exist) and up to sixteen stable composer `selections`; skill-only input is allowed. Returns 202 acceptance. |
 | `GET /api/files?dir=` | A directory of the owner's files (`FileListing`): `/uploads`, `/agent` or a folder under one, with the storage in use. |
 | `GET`, `PUT`, `DELETE /api/files/content?path=` | Download, write (the body, `content-length` required) or delete one of the owner's files. Downloads are attachments, except PNG, JPEG, GIF and WebP, which open in place; all are sandboxed by CSP. |
@@ -240,7 +253,8 @@ retry still submits the same operation for Pi to deduplicate. Rows older than 30
 The in-isolate per-chat lock covers admission only, and releases before model execution or waiting for an answer.
 `rebind` compare-and-sets the expected session and epoch, rejects a session owned by another chat, and increments the
 epoch. It notifies listeners to close that chat's SSE streams and emit a workspace change. There is no production
-mover yet: Move to thread remains future work; Topics and their memory are below.
+mover: Move to thread (ADR 0034) forks the moved turn's Thread and never rebinds a chat; Topics and their memory
+are below.
 
 **Capabilities** (ADR 0010, `capabilities/`): each conversation can switch off, for its own agent, a connected server,
 one granted tool of it, a skills library, or subagents. `app_conversation_capabilities` stores only what is off, so a

@@ -32,6 +32,7 @@ import type { PersonaRegistry } from './personas/registry.ts'
 import type { PersonaInvocations } from './personas/invocations.ts'
 import type { OrganizeReceipts } from './organize/receipts.ts'
 import type { ChatRetrieval } from './retrieval/service.ts'
+import type { ChatMover } from './chats/mover.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('goblin/Mcp') {}
@@ -45,6 +46,8 @@ export class Topics extends Context.Service<Topics, TopicRegistry>()('goblin/Top
 export class Personas extends Context.Service<Personas, PersonaRegistry>()('goblin/Personas') {}
 export class Invocations extends Context.Service<Invocations, PersonaInvocations>()('goblin/Invocations') {}
 export class Receipts extends Context.Service<Receipts, OrganizeReceipts>()('goblin/Receipts') {}
+/** Move to thread (ADR 0034): a chat's newest finished turn into a Thread. */
+export class Moves extends Context.Service<Moves, ChatMover>()('goblin/Moves') {}
 export class Budget extends Context.Service<Budget, ModelBudget>()('goblin/Budget') {}
 export class Models extends Context.Service<Models, ModelPicker>()('goblin/Models') {}
 /** Each Topic Conversation's memory (ADR 0032). */
@@ -84,6 +87,7 @@ export type AgentServices =
   | Personas
   | Invocations
   | Receipts
+  | Moves
   | Budget
   | Models
   | Memories
@@ -111,6 +115,7 @@ export const agentLayer = (services: {
   readonly personas: PersonaRegistry
   readonly invocations: PersonaInvocations
   readonly receipts: OrganizeReceipts
+  readonly moves: ChatMover
   readonly chats: ChatDirectory
   readonly budget: ModelBudget
   readonly models: ModelPicker
@@ -137,6 +142,7 @@ export const agentLayer = (services: {
     Layer.succeed(Personas, services.personas),
     Layer.succeed(Invocations, services.invocations),
     Layer.succeed(Receipts, services.receipts),
+    Layer.succeed(Moves, services.moves),
     Layer.succeed(Chats, services.chats),
     Layer.succeed(Budget, services.budget),
     Layer.succeed(Models, services.models),

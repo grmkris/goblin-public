@@ -13,6 +13,15 @@ import { topicsCase } from './topics-case.ts'
 import { threadHeadsCase } from './thread-heads-case.ts'
 import { organizeCase, personasCase } from './persona-case.ts'
 import { retrievalCase } from './retrieval-case.ts'
+import {
+  moveApprovalCase,
+  moveHelpersCase,
+  moveRefusedCase,
+  moveRestartCase,
+  moveSettledCase,
+  moveStopCase,
+  moveTopicCase,
+} from './move-case.ts'
 import { person, call, ownerFetch } from './owner-requests.ts'
 
 const harness = Test.make({
@@ -68,6 +77,34 @@ harness.test(
 harness.test(
   'native: cross-Topic retrieval indexes owned entries, searches active Topics unless named, records sources and injects reranked ones',
   stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => retrievalCase(url)))),
+)
+harness.test(
+  'native: Move to thread moves the newest settled turn into a Thread and the chat leaves it out from then on',
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => moveSettledCase(url)))),
+)
+harness.test(
+  'native: a running, older or moved turn is refused with its reason; one operation makes one move',
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => moveRefusedCase(url)))),
+)
+harness.test(
+  'native: a restart after the fork or after the head finishes the move once',
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => moveRestartCase(url)))),
+)
+harness.test(
+  'native: Stop and Close around a move reach the right run',
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => moveStopCase(url)))),
+)
+harness.test(
+  "native: after a move the turn's helpers report to the Thread, older ones to the chat, and zoom stops at the move",
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => moveHelpersCase(url)))),
+)
+harness.test(
+  'native: a turn waiting on an approval stays in its chat',
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => moveApprovalCase(url)))),
+)
+harness.test(
+  "native: a Topic's Conversation moves too, and 20 chained moves keep its reads within twice their cost",
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => moveTopicCase(url)))),
 )
 harness.test(
   'native: only the session user reaches their own Agent; request selectors cannot redirect it',

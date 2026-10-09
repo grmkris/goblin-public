@@ -18,6 +18,7 @@ import { settledEnd } from './pi/turns.ts'
 import { type ChatActivity, ReplyLedger } from './replies.ts'
 import { storedAsks } from './attention.ts'
 import { appConversations } from './storage/schema.ts'
+import { movedFrom } from './chats/moves.ts'
 import { appTopics } from './storage/topics.ts'
 
 type Row = typeof appConversations.$inferSelect
@@ -272,6 +273,11 @@ export class ConversationRegistry {
       { chatId: session, kind: 'thread', parentSession: parent, topicId: from.topicId, originOp: op },
       now,
     )
+  }
+
+  /** How far a thread cut from `chat` at `entry` may zoom into its memory (a moved Thread, ADR 0034). */
+  recallAt(chat: string, entry: number): number | null {
+    return this.#recallAt(this.#registered(chat), entry)
   }
 
   /**
@@ -663,6 +669,7 @@ export class ConversationRegistry {
       ...(activity.lastReplyAt === undefined ? {} : { lastReplyAt: activity.lastReplyAt }),
       ...(row.readAt === null ? {} : { readAt: row.readAt }),
       ...(attention.length === 0 ? {} : { attention }),
+      ...movedFrom(this.#db, row.originOp),
     }
   }
 }

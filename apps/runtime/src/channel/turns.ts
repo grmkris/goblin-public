@@ -5,9 +5,20 @@ import * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
 import { authoredContent } from '../pi/content.ts'
 import { askedText, cutOff } from '../pi/transcript.ts'
-import { Budget, Chats, Models, attempt, nowSecondsEffect, requireBudget } from '../services.ts'
+import {
+  type AgentServices,
+  Budget,
+  Channel,
+  Chats,
+  Mcp,
+  Models,
+  attempt,
+  nowSecondsEffect,
+  requireBudget,
+  requireResident,
+} from '../services.ts'
 import { useModel, type Applied } from '../agent-model.ts'
-import type { ChannelPorts } from './channel.ts'
+import { type ChannelPorts, type TelegramChannel, channelCall } from './channel.ts'
 
 type Run = <A>(program: Effect.Effect<A, AppError, Budget | Chats | Models>) => Promise<A>
 
@@ -65,3 +76,26 @@ export const channelPorts = (
     ),
   answer: (operationId) => answerOf(harness, operationId, run),
 })
+
+type AgentRun = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<A>
+
+/**
+ * Runs `work` on the Telegram channel and its ports while the channel is on and resident authority is current;
+ * undefined when the channel is off.
+ */
+export async function onChannel<T>(
+  harness: PiHarness,
+  applied: Applied,
+  run: AgentRun,
+  work: (channel: TelegramChannel, ports: ChannelPorts) => Promise<T>,
+): Promise<T | undefined> {
+  const { mcp, channel } = await run(
+    Effect.gen(function* () {
+      yield* requireResident
+      return { mcp: yield* Mcp, channel: yield* Channel }
+    }),
+  )
+  const status = channel.status()
+  if (status === null) return undefined
+  return work(channel, channelPorts(harness, channelCall(mcp.manager, status.serverId), run, applied))
+}

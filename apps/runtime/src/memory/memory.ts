@@ -265,7 +265,12 @@ export class ChatMemory {
       cursor = page.next
     } while (cursor !== undefined)
     let idx = last === undefined ? 0 : last.idx + 1
+    // A turn moved to a Thread (ADR 0034) stays in the Conversation's session, omitted by its head: never remembered.
+    const omitted = new Set(
+      fresh.flatMap((entry) => (entry.edits ?? []).flatMap((edit) => (edit.action === 'omit' ? [edit.target] : []))),
+    )
     for (const entry of fresh.toReversed()) {
+      if (omitted.has(entry.id)) continue
       const message = logMessage(entry)
       if (message === undefined) continue
       this.#db.insert(appChatMemoryLog).values({ chatId: this.#chat, idx, entryId: entry.id, kind: message.kind }).run()

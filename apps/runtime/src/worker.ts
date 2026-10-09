@@ -8,6 +8,7 @@ import {
   CapabilityChange,
   CreateApp,
   CreateConversation,
+  MoveToThread,
   SendMessage,
   UpdateApp,
   UpdateConversation,
@@ -183,6 +184,8 @@ const conversationRoutes: Readonly<
       201,
     )
   },
+  'POST move': async (request, agent, thread) =>
+    json(unwrap(await agent.moveToThread(thread, await readJson(request, MoveToThread)))),
   'POST stop': async (request, agent, thread) =>
     json({ stopped: unwrap(await agent.stop(thread, (await readJson(request, Stop)).operationId)) }),
   'GET queue': async (_request, agent, thread) => json(unwrap(await agent.conversationQueue(thread))),

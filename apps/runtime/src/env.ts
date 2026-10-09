@@ -71,6 +71,11 @@ export interface AgentRpcMethods {
       readonly selections?: readonly ComposerSelection[]
     },
   ) => Promise<RpcResult<StartedThread>>
+  /** Move to thread (ADR 0034): the same operation id returns the same receipt. */
+  readonly moveToThread: (
+    thread: string,
+    input: import('@goblin/contracts').MoveToThread,
+  ) => Promise<RpcResult<import('@goblin/contracts').MoveReceipt>>
   readonly conversationQueue: (thread: string) => Promise<RpcResult<ConversationQueue>>
   readonly removeQueuedInput: (thread: string, input: QueueRemoval) => Promise<RpcResult<QueueRemovalResult>>
   readonly composerOptions: (thread: string) => Promise<RpcResult<ComposerOptions>>

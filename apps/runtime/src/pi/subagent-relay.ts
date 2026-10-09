@@ -17,7 +17,7 @@ import type { UserMessage } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { type DelegateResultData, type HelperExclusion } from '@goblin/contracts'
+import { type DelegateResultData, type HelperExclusion, HelperExclusions } from '@goblin/contracts'
 import { Channel, Chats, Conversations, attempt, attemptSync, nowSecondsEffect, requireResident } from '../services.ts'
 import { authoredContent } from './content.ts'
 import { BACKGROUND, entryId, conversationId as piConversationId } from './context.ts'
@@ -127,6 +127,35 @@ export async function dropRelaysTo(pi: Harness, spawner: ConversationId, subagen
     if (record.kind === SUBAGENT_RELAY && record.conversationId === spawner && carriesTo(record, subagent))
       await pi.abortTask(record.id, BACKGROUND)
 }
+
+/** A relay's whole input as Pi stores it, read back for a handover to another conversation (ADR 0034). */
+const StoredInput = Schema.Struct({
+  name: Schema.String,
+  conversationId: Schema.Number,
+  content: Schema.Union([Schema.String, Schema.Array(Schema.Unknown)]),
+  origin: Schema.Literals(['spawner', 'owner']),
+  whenBusy: Schema.Literals(['followUp', 'steer']),
+  quote: Schema.optionalKey(Schema.String),
+  requestId: Schema.optionalKey(Schema.String),
+  exclusions: Schema.optionalKey(HelperExclusions),
+  synthesize: Schema.optionalKey(Schema.Boolean),
+})
+
+/** A stored relay's input; undefined when it does not read as one. */
+export function relayInput(relay: TaskRecord<unknown, unknown, unknown>): RelayInput | undefined {
+  const stored = Option.getOrUndefined(Schema.decodeUnknownOption(StoredInput)(relay.input))
+  if (stored === undefined) return undefined
+  return {
+    ...stored,
+    conversationId: piConversationId(String(stored.conversationId)),
+    // SAFETY: the content is the user content this relay was created with, stored by Pi as JSON.
+    content: stored.content as UserMessage['content'],
+  }
+}
+
+/** The subagent conversation a relay carries its message to. */
+export const relayTarget = (relay: TaskRecord<unknown, unknown, unknown>): number | undefined =>
+  carried(relay)?.conversationId
 
 /** Whether a relay carries a message to subagent `conversation`. */
 export const carriesTo = (relay: TaskRecord<unknown, unknown, unknown>, conversation: ConversationId) =>

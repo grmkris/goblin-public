@@ -16,9 +16,28 @@ import { permutePrimary, profileEnabled } from './primary-profile.ts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { unwrap } from '../../src/http/rpc.ts'
+import type { MovePhase } from '../../src/chats/mover.ts'
+import { moveState, readRounds } from './move-probe.ts'
 
 export class OwnerAgent extends PersonalAgent {
   readonly #mcp = new AppsMcpFixture()
+  /** The move boundary at which the next move stops the object (a restart then finishes the move). */
+  #crashAt: MovePhase | undefined
+  /** The move boundary at which the next move waits for `/test/move/resume`, and the phase it waits at. */
+  #pauseAt: MovePhase | undefined
+  #paused: { readonly phase: MovePhase; readonly resume: () => void } | undefined
+  protected override async moveBoundary(phase: MovePhase): Promise<void> {
+    if (this.#pauseAt === phase) {
+      this.#pauseAt = undefined
+      const gate = Promise.withResolvers<void>()
+      this.#paused = { phase, resume: gate.resolve }
+      await gate.promise
+      this.#paused = undefined
+    }
+    if (this.#crashAt !== phase) return
+    this.#crashAt = undefined
+    this.ctx.abort(`move restart after ${phase}`)
+  }
   override async onStart(): Promise<void> {
     await super.onStart()
     if (profileEnabled(this.env)) await permutePrimary(this.ctx.storage, this.harness)
@@ -48,6 +67,7 @@ export class OwnerAgent extends PersonalAgent {
       )(await request.json())
       return Response.json(unwrap(await this.askAsClient('topics-client', input, operationId, 5000)))
     }
+    if (path.startsWith('/test/move/')) return this.#moveProbe(path, request)
     if (path === '/test/queue/held') return Response.json({ inputs: queueModel(this).held() })
     if (path === '/test/queue/seen') return Response.json({ requests: queueModel(this).requests() })
     if (path === '/test/retrieval/excerpts')
@@ -66,6 +86,35 @@ export class OwnerAgent extends PersonalAgent {
     if (path === '/test/approvals/recovery')
       return Response.json(await approvalsProbe(this.ctx.storage, this.env.CREDENTIAL_KEY))
     return super.onRequest(request)
+  }
+  /** Move to thread probes (ADR 0034): arm a restart, read model attempts, rows and Pi sessions, time reads. */
+  async #moveProbe(path: string, request: Request): Promise<Response> {
+    if (path === '/test/move/crash' || path === '/test/move/pause') {
+      const { phase } = Schema.decodeUnknownSync(Schema.Struct({ phase: Schema.Literals(['fork', 'head']) }))(
+        await request.json(),
+      )
+      if (path === '/test/move/crash') this.#crashAt = phase
+      else this.#pauseAt = phase
+      return Response.json({ armed: phase })
+    }
+    if (path === '/test/move/paused') return Response.json({ phase: this.#paused?.phase ?? null })
+    if (path === '/test/move/resume') {
+      this.#paused?.resume()
+      return Response.json({ resumed: true })
+    }
+    if (path === '/test/move/requests')
+      return Response.json(
+        queueModel(this)
+          .requests()
+          .map((seen) => seen.messages.flatMap((message) => (message.role === 'system' ? [] : [message.text]))),
+      )
+    if (path === '/test/move/latency') {
+      const { chat, rounds } = Schema.decodeUnknownSync(Schema.Struct({ chat: Schema.String, rounds: Schema.Number }))(
+        await request.json(),
+      )
+      return Response.json(await readRounds(this.harness, new ChatDirectory(drizzle(this.ctx.storage)), chat, rounds))
+    }
+    return Response.json(await moveState(this.harness, drizzle(this.ctx.storage)))
   }
   protected override mcpFetch(): typeof fetch {
     return this.#mcp.fetch
@@ -94,6 +143,12 @@ export default {
       if (url.pathname === '/__test/retrieval/excerpts') {
         const { userId } = await requireUserSession(input, env)
         return env.AGENTS.getByName(userId).fetch('https://agent/test/retrieval/excerpts')
+      }
+      if (url.pathname.startsWith('/__test/move/')) {
+        const { userId } = await requireUserSession(input, env)
+        return env.AGENTS.getByName(userId).fetch(
+          new Request(`https://agent/test/move/${url.pathname.split('/').at(-1)}`, input),
+        )
       }
       if (url.pathname.startsWith('/__test/queue/')) {
         const { userId } = await requireUserSession(input, env)

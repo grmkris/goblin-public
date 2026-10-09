@@ -1,11 +1,11 @@
 import { recallExtension } from '../memory/recall.ts'
 import { GenerationTask, type TaskId, defineDoc, defineExtension, defineTask, hook } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
-import { Chats, Conversations, Memories, attempt, requireBudget } from '../services.ts'
+import { Chats, Conversations, Memories, Moves, attempt, requireBudget } from '../services.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
-/** A Conversation's newest builder task: a new one starts only once it has ended. */
-const Builder = defineDoc<{ task: TaskId | null }>({
+/** A Conversation's newest builder task: a new one starts only once it has ended. A move stops it (ADR 0034). */
+export const MemoryBuilder = defineDoc<{ task: TaskId | null }>({
   kind: 'app.memory-builder',
   version: 1,
   scope: 'conversation',
@@ -81,11 +81,14 @@ export function memoryExtensions(run: RunProgram) {
         afterResponse: (_message, api) => {
           void run(
             Effect.gen(function* () {
+              // A Conversation in the middle of a move (ADR 0034) builds nothing: its memory is cut to the moved turn.
+              const chat = (yield* Chats).chatOf(String(api.conversationId))
+              if (chat === undefined || (yield* Moves).moving(chat)) return
               const remembered = yield* conversationMemory(String(api.conversationId))
               if (remembered === undefined) return
               yield* attempt(() =>
                 remembered.startBuilder(async (tx) => {
-                  const state = await tx.doc(Builder, api.conversationId)
+                  const state = await tx.doc(MemoryBuilder, api.conversationId)
                   const last = state.task === null ? undefined : await tx.task(state.task)
                   if (last !== undefined && last.state.status !== 'terminal') return
                   state.task = await tx.createTask(BuilderTask, null, {
