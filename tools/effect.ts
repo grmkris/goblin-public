@@ -6,7 +6,10 @@
 import { Schema } from 'effect'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import { parseSync } from 'oxc-parser'
 import { nodes } from './graph.ts'
+import { UNUSED_DIRECTIVE } from './report.ts'
+import type { EffectOutput } from './report.ts'
 import { repoRoot } from './run.ts'
 
 /** The plugin name `@effect/tsgo` reads its options under, in `compilerOptions.plugins`. */
@@ -156,3 +159,34 @@ const decodeSeverities = Schema.decodeUnknownSync(Schema.Record(Schema.String, S
 /** A plugin block's `diagnosticSeverity` map. */
 export const severities = (block: PluginEntry | undefined): Readonly<Record<string, string>> =>
   decodeSeverities(block?.['diagnosticSeverity'])
+
+/**
+ * effect-tsgo also reads directive-shaped text inside strings (a lint rule's test cases), and reports it as a directive
+ * that changes nothing. Only a directive inside a real comment is kept. Ported from myapps (`grmkris/myapps`
+ * `27416c98`, `tools/effect.ts`). A source that cannot be read or parsed throws: the gate fails instead of guessing.
+ */
+export const verifiedEffectOutput = (
+  output: EffectOutput,
+  readSource: (file: string) => string = (file) => readFileSync(file, 'utf8'),
+): EffectOutput => {
+  const spans = new Map<string, { source: string; comments: readonly { start: number; end: number }[] }>()
+  return {
+    ...output,
+    diagnostics: output.diagnostics.filter((diagnostic) => {
+      if (diagnostic.code !== UNUSED_DIRECTIVE) return true
+      let parsed = spans.get(diagnostic.file)
+      if (parsed === undefined) {
+        const source = readSource(diagnostic.file)
+        const result = parseSync(diagnostic.file, source)
+        if (result.errors.length > 0)
+          throw new Error(`Effect directive check cannot parse ${diagnostic.file}: ${result.errors[0]?.message}`)
+        parsed = { source, comments: result.comments }
+        spans.set(diagnostic.file, parsed)
+      }
+      const lines = parsed.source.split('\n')
+      const offset =
+        lines.slice(0, diagnostic.line - 1).reduce((sum, line) => sum + line.length + 1, 0) + diagnostic.column - 1
+      return parsed.comments.some((comment) => comment.start <= offset && offset < comment.end)
+    }),
+  }
+}

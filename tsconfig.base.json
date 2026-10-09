@@ -18,8 +18,9 @@
     "singleThreaded": true,
     "types": ["node"],
     // Effect language-service diagnostics, run by `bun run effect:check` (tools/effect-check.ts; docs/agents/effect.md).
-    // Only errors gate. Diagnostics left out keep @effect/tsgo's default severity and show in editors only. Override
-    // globs are relative to the tsconfig that holds this block and must end in a file pattern (`**/*`, not `**`).
+    // Errors, warnings and `@effect-diagnostics` directives that change nothing gate; messages and suggestions show in
+    // editors only. Diagnostics left out keep @effect/tsgo's default severity. Override globs are relative to the
+    // tsconfig that holds this block and must end in a file pattern (`**/*`, not `**`).
     // has no Effect dependency, so only the structural diagnostics apply there).
     "plugins": [
       {
@@ -49,6 +50,9 @@
           "promiseInEffectSuccess": "error",
           "scopeInLayerEffect": "error",
           "runEffectInsideEffect": "error",
+          // Off: the typed API and the HTTP clients are built on Effect's HTTP modules, which 4.0 marks unstable. The
+          // exact version pinned in package.json is the stability boundary; a bump runs every gate.
+          "unstableApiUsage": "off",
           // Global APIs inside Effect programs: use HttpClient, Clock/DateTime, Effect.log, Effect.sleep and Schedule,
           // Random and Crypto there. Plain async code at the Worker/DO/SDK edges may use the platform APIs directly
           // (Effect is used at service seams, not as a wrapper around every clock read).

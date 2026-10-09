@@ -92,6 +92,7 @@ const EffectDiagnostic = Schema.Struct({
   line: Schema.Number,
   column: Schema.Number,
   severity: Schema.String,
+  code: Schema.Number,
   name: Schema.String,
   message: Schema.String,
 })
@@ -106,11 +107,25 @@ export type EffectOutput = typeof EffectOutput.Type
 /** `effect-tsgo diagnostics --format json` output. */
 export const decodeEffect = Schema.decodeUnknownSync(EffectOutput)
 
-/** The diagnostics that gate (severity error), with repository-relative paths. */
-export const effectErrors = (output: EffectOutput): EffectDiagnostic[] =>
+/** effect-tsgo's code for an `@effect-diagnostics` directive that changes nothing. It has no diagnostic name. */
+export const UNUSED_DIRECTIVE = 377000
+
+/**
+ * The diagnostics that gate, with repository-relative paths: errors, warnings (tsconfig.base.json turns off the
+ * diagnostics goblin accepts, so a warning left on is a finding) and directives that change nothing, whatever their
+ * severity, named `unusedDirective`. Messages and suggestions are editor advice.
+ */
+export const gatingDiagnostics = (output: EffectOutput): EffectDiagnostic[] =>
   output.diagnostics
-    .filter((diagnostic) => diagnostic.severity === 'error')
-    .map((diagnostic) => ({ ...diagnostic, file: path.relative(repoRoot, diagnostic.file).split(path.sep).join('/') }))
+    .filter(
+      (diagnostic) =>
+        diagnostic.severity === 'error' || diagnostic.severity === 'warning' || diagnostic.code === UNUSED_DIRECTIVE,
+    )
+    .map((diagnostic) => ({
+      ...diagnostic,
+      name: diagnostic.code === UNUSED_DIRECTIVE ? 'unusedDirective' : diagnostic.name,
+      file: path.relative(repoRoot, diagnostic.file).split(path.sep).join('/'),
+    }))
 
 /**
  * Why a project's diagnostics are incomplete: files its tsconfig checks without the plugin, which go unchecked. `label`
@@ -124,7 +139,7 @@ export const uncheckedFiles = (label: string, output: EffectOutput): string | un
 
 /** effect-tsgo output as findings. Its diagnostics have no automatic fix here (quick fixes are editor-only). */
 export const fromEffect = (output: EffectOutput): Finding[] =>
-  effectErrors(output).map((diagnostic) => ({
+  gatingDiagnostics(output).map((diagnostic) => ({
     source: 'effect',
     rule: `effect(${diagnostic.name})`,
     file: diagnostic.file,

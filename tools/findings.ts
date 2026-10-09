@@ -1,11 +1,12 @@
 /**
  * The collectors of `bun run lint:report` and `bun run lint:gate`: every finding of oxlint (type-aware), of the Effect
  * diagnostics of every effect:check project, and of knip, together with the reasons a collection is incomplete. Each
- * tool runs from the repository root, through `heavy` when it is installed (tools/run.ts). The Effect diagnostics read
+ * tool runs from the repository root, through `heavy` when it is installed (tools/run.ts). The Effect diagnostics that
+ * gate are errors, warnings and directives that change nothing (`gatingDiagnostics` in report.ts).
  */
 import { Schema } from 'effect'
 import path from 'node:path'
-import { effectProjects, effectTsgoArgs } from './effect.ts'
+import { effectProjects, effectTsgoArgs, verifiedEffectOutput } from './effect.ts'
 import type { Project } from './effect.ts'
 import { decodeEffect, fromEffect, fromKnip, fromOxlint, safeFixCodes, uncheckedFiles } from './report.ts'
 import type { Finding, Source } from './report.ts'
@@ -105,7 +106,7 @@ const effectProject = async ({ dir, tsconfig }: Project): Promise<Collected> => 
   const result = await run(effectTsgoArgs(label))
   const failures = didNotRun(`effect-tsgo on ${label}`, result)
   if (failures.length > 0) return { findings: [], failures }
-  const output = decodeEffect(JSON.parse(result.stdout))
+  const output = verifiedEffectOutput(decodeEffect(JSON.parse(result.stdout)))
   const unchecked = uncheckedFiles(label, output)
   return { findings: fromEffect(output), failures: unchecked === undefined ? [] : [unchecked] }
 }
