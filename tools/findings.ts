@@ -71,6 +71,17 @@ const pluginFixCodes = async (config: string): Promise<Set<string>> => {
   return codes
 }
 
+/**
+ * Why an oxlint run cannot be trusted: it did not run, or it wrote to stderr. A JS plugin that fails to load or a
+ * type-aware pass that cannot check a file says so on stderr and still exits 0 or 1, so stderr fails the gate too.
+ */
+export const oxlintFailures = (lint: RunResult): readonly string[] => {
+  const failures = didNotRun('oxlint', lint)
+  if (failures.length > 0) return failures
+  const stderr = lint.stderr.trim()
+  return stderr === '' ? [] : [`oxlint wrote to stderr\n${stderr}`]
+}
+
 /** The whole repository, type-aware, with `config`. */
 export const oxlintFindings = async (config: string): Promise<Collected> => {
   const rules = await run([bin('oxlint'), '--rules', '-f', 'json'])
@@ -78,9 +89,8 @@ export const oxlintFindings = async (config: string): Promise<Collected> => {
     return { findings: [], failures: [`oxlint --rules exited ${rules.exitCode}: ${rules.stderr}`] }
   const fixCodes = new Set([...safeFixCodes(JSON.parse(rules.stdout)), ...(await pluginFixCodes(config))])
   const lint = await run([bin('oxlint'), '-c', config, '-f', 'json', '.'])
-  const failures = didNotRun('oxlint', lint)
+  const failures = oxlintFailures(lint)
   if (failures.length > 0) return { findings: [], failures }
-  if (lint.stderr.trim() !== '') console.error(lint.stderr.trim())
   return { findings: fromOxlint(JSON.parse(lint.stdout), (code) => fixCodes.has(code)), failures: [] }
 }
 
