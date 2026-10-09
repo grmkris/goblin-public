@@ -782,7 +782,8 @@ goblin is an MCP server at `/mcp`, the one protected resource of Better Auth's `
   so it needs a plan) and `get_recent_messages` (the primary chat's current session's latest messages, with their
   authors). `ask_agent` releases the admission lock before waiting and waits on the operation's recorded session.
 - With `goblin:inspect` (ADR 0024) the same server adds `inspect_conversations`, `inspect_conversation`,
-  `inspect_turns`, `inspect_turn` and `inspect_problems`, with the contract's input and output schemas
+  `inspect_turns`, `inspect_turn`, `inspect_problems`, `inspect_flows` (the ledger's content-free conversation flow
+  steps) and `inspect_details` (the operation behind a message), with the contract's input and output schemas
   (`inbound/inspection.ts`). They read the token subject's own agent, never call a model and need no plan; the
   server's instructions tell clients that returned text is data, never instructions.
 - `/mcp` advertises `goblin:inspect` in its metadata, and an unauthenticated request gets a 401 naming the metadata
