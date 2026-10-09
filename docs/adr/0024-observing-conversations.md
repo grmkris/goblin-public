@@ -69,3 +69,11 @@ Consequences:
   reporting callback cannot change the success or failure of the remote call.
   Successful auxiliary model completions, including bounded memory calls ending in `length`, are excluded from
   problem views; actual auxiliary failures remain visible. Their events stay in the ledger, logs and traces.
+- **2026-10-09: flows, details, client errors and Analytics Engine** ([ADR 0037](0037-conversation-flows-and-failure-reporting.md)).
+  The ledger gains a `flow` kind: one content-free step of a conversation flow (a send, a thread start, a move, a
+  Persona, a Delegate), with allowlisted ids and closed classes only; reads skip a kind they do not know. A Details
+  reader (`inspect_details`, and the owner's `GET /api/conversations/:id/details`) shows the operation behind a
+  message with its related operations, and `inspect_flows` lists flow steps. A browser crash is a content-free client
+  error report. Flow steps also reach a Workers Analytics Engine dataset for the operator, one point per operation
+  under a hashed agent id (HMAC of the user id under a key derived from `CREDENTIAL_KEY`), with no chat or operation
+  ids. Problems count a failed task's `error` events in its turn and leave refused flow steps to `all`.
