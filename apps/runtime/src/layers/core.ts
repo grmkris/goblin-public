@@ -1,6 +1,7 @@
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import { flowAnalytics } from '../observability/ae.ts'
 import { FlowEvents } from '../observability/flows.ts'
 import { KeyedLock } from '../observability/lock.ts'
 import { LoggerLive } from '../observability/logger.ts'
@@ -12,12 +13,18 @@ import { AgentInput, type AgentInputs } from '../runtime/input.ts'
 import { flowRunEvent } from '../telemetry/events.ts'
 import type { LegacyLive } from './legacy.ts'
 
-/** Conversation flows go to the agent's run ledger and its log line (ADR 0024); lane O adds Analytics Engine. */
+/**
+ * Conversation flows go to the agent's run ledger and its log line (ADR 0024), then, one point per operation with a
+ * hashed agent id, to Analytics Engine for the operator (observability/ae.ts, ADR 0037).
+ */
 const FlowsLive = Layer.unwrap(
   Effect.gen(function* () {
-    const { telemetry } = yield* AgentInput
+    const { telemetry, env, userId } = yield* AgentInput
+    const analytics = yield* flowAnalytics(env, userId)
     return FlowEvents.layerWith((event) =>
-      Effect.map(Clock.currentTimeMillis, (at) => telemetry.record(flowRunEvent(event, telemetry.id('flow', at), at))),
+      Effect.map(Clock.currentTimeMillis, (at) =>
+        telemetry.record(flowRunEvent(event, telemetry.id('flow', at), at)),
+      ).pipe(Effect.andThen(analytics(event))),
     )
   }),
 )

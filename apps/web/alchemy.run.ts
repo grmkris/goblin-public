@@ -46,6 +46,8 @@ export default Alchemy.Stack(
       migrations: fileURLToPath(new URL('../../apps/runtime/migrations', import.meta.url)),
     })
     const files = yield* Cloudflare.R2.Bucket('Files', { name: stage.resourceName('files') })
+    // Conversation flows across every agent, one point per operation with a hashed agent id (ADR 0037).
+    const flows = yield* Cloudflare.AnalyticsEngine.Dataset('Flows', { dataset: stage.resourceName('flows') })
     const agents = Cloudflare.DurableObject('PersonalAgent', { className: 'PersonalAgent' })
     const web = yield* Cloudflare.Website.Vite('Web', {
       name: stage.workerName,
@@ -73,6 +75,7 @@ export default Alchemy.Stack(
         AGENTS: agents,
         AUTH_DB: db,
         FILES: files,
+        FLOWS: flows,
         LOADER: Cloudflare.WorkerLoader(),
         APP_URL: appUrl,
         BETTER_AUTH_SECRET: Config.Redacted('GOBLIN_BETTER_AUTH_SECRET'),

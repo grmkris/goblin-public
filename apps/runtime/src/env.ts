@@ -40,6 +40,7 @@ export interface RuntimeEnv {
   readonly AUTH_DB: D1Database
   /** The owner's larger files (over 128 KiB), under `agents/<user>/` (ADR 0022). */
   readonly FILES: R2Bucket
+  readonly FLOWS?: AnalyticsEngineDataset
   /** Dynamic Workers: every agent app release, the app transpiler and `code_run` scripts run in one (ADR 0021). */
   readonly LOADER: WorkerLoader
   readonly APP_URL: string
