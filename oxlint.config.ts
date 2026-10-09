@@ -1,16 +1,10 @@
 import { defineConfig, type OxlintOverride } from 'oxlint'
-import { STRICT_PATHS, STRICT_REACT_PATHS, STRICT_REACT_RULES, STRICT_RULES } from './tools/strict/index.ts'
-import { paths as w1 } from './tools/strict/w1.ts'
-import { paths as w2 } from './tools/strict/w2.ts'
-import { paths as w3 } from './tools/strict/w3.ts'
 import { agentIgnorePatterns } from './tools/vendored.ts'
 
 /** Where React runs, and the plugins its files are linted with. */
 const REACT_FILES = ['apps/web/**', 'packages/ui/**', 'packages/kit/**', 'packages/app/src/ui/**']
 const REACT_PLUGINS: OxlintOverride['plugins'] = ['typescript', 'unicorn', 'oxc', 'import', 'react']
 
-/** The web app's source among the web lanes' strict paths: the data-layer rules apply where a lane has opted in. */
-const WEB_DATA_PATHS = [...w1, ...w2, ...w3].filter((glob) => glob.startsWith('apps/web/src/'))
 /** What reaches the server from the browser: myapps' list without its extension messaging, plus SSE. */
 const TRANSPORT = {
   callees: ['fetch', 'XMLHttpRequest', 'EventSource', 'HttpClient.*', 'HttpApiClient.make', '*.run', '*.callTool'],
@@ -22,9 +16,7 @@ const TRANSPORT = {
  *   modules (`bun`, `bun:*`, `@effect/platform-bun`, `cloudflare:*`, `node:*`, the `Bun` global) only where the file's
  *   runtime allows them. It replaces the per-directory Bun and `cloudflare:workers` bans.
  * - `goblin` (tools/oxlint/goblin.ts) enforces repository invariants from AGENTS.md.
- * Relaxations are targeted overrides, each with its reason (docs/agents/lint-quality.md). The strict set
- * (tools/strict/) applies to the files each lane has made pass it; a strict rule with no finding anywhere is on for
- * every file.
+ * Relaxations are targeted overrides, each with its reason (docs/agents/lint-quality.md).
  */
 export default defineConfig({
   ignorePatterns: [
@@ -107,9 +99,18 @@ export default defineConfig({
     'boundaries/no-runtime-global': 'error',
     'goblin/no-process-env': 'error',
     'goblin/require-disable-description': 'error',
-    // Strict rules (tools/strict/index.ts) that no file breaks any more.
+    // No silent failure, no floating promise, no `any` flowing through.
+    'no-console': 'error',
     'no-empty': 'error',
     'prefer-promise-reject-errors': 'error',
+    'goblin/no-silent-catch': 'error',
+    'typescript/use-unknown-in-catch-callback-variable': 'error',
+    'typescript/no-floating-promises': ['error', { ignoreVoid: false }],
+    'typescript/no-unsafe-argument': 'error',
+    'typescript/no-unsafe-assignment': 'error',
+    'typescript/no-unsafe-call': 'error',
+    'typescript/no-unsafe-member-access': 'error',
+    'typescript/no-unsafe-return': 'error',
   },
   overrides: [
     // Stack files declare the named Cloudflare resources; their physical names come from the stage (ADR 0002).
@@ -151,25 +152,37 @@ export default defineConfig({
       },
     },
     // The web app, the shadcn components, the kit's drawn blocks and the agent app UI are React: enable the react
-    // plugin (automatic JSX runtime). Hooks follow their rules everywhere; exhaustive-deps is still strict-only.
+    // plugin (automatic JSX runtime). Hooks follow their rules and declare their dependencies.
     {
       files: REACT_FILES,
       plugins: REACT_PLUGINS,
-      rules: { 'react/react-in-jsx-scope': 'off', 'react/rules-of-hooks': 'error' },
+      rules: { 'react/react-in-jsx-scope': 'off', 'react/rules-of-hooks': 'error', 'react/exhaustive-deps': 'error' },
     },
-    // `any` is banned in shipped code (src, app, entrypoints). Tests, fixtures and one-shot tooling (scripts, deploy)
-    // poke at untyped JSON, provider responses and mocks, where `any` is the honest type.
+    // `any` is banned in shipped code (src, app, entrypoints), and the unsafe rules keep it from flowing through.
+    // Tests, fixtures and one-shot tooling (scripts, deploy, config files) poke at untyped JSON, provider responses and
+    // mocks, where `any` is the honest type.
     {
       files: [
         '**/test/**',
         '**/tests/**',
         '**/*.test.ts',
         '**/*.test.tsx',
+        '**/*.config.ts',
+        'scripts/**',
         'apps/*/scripts/**',
         'apps/*/deploy/**',
         'apps/*/fixtures/**',
+        'bench/scripts/**',
+        'spikes/**/scripts/**',
       ],
-      rules: { 'typescript/no-explicit-any': 'off' },
+      rules: {
+        'typescript/no-explicit-any': 'off',
+        'typescript/no-unsafe-argument': 'off',
+        'typescript/no-unsafe-assignment': 'off',
+        'typescript/no-unsafe-call': 'off',
+        'typescript/no-unsafe-member-access': 'off',
+        'typescript/no-unsafe-return': 'off',
+      },
     },
     // Test files: a `describe` block is the file's outline, not a function to split, and table-driven suites run
     // long. They still have a size limit.
@@ -180,34 +193,43 @@ export default defineConfig({
         'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
       },
     },
-    // The strict set, last so no relaxation above undoes it (docs/agents/lint-quality.md).
-    { files: [...STRICT_PATHS], rules: STRICT_RULES },
-    ...(STRICT_REACT_PATHS.length === 0
-      ? []
-      : [{ files: [...STRICT_REACT_PATHS], plugins: REACT_PLUGINS, rules: STRICT_REACT_RULES }]),
+    // `console` is the interface of the CLI, tooling, operator, build and spike scripts, and tests; the runtime writes
+    // through its logger.
+    {
+      files: [
+        'apps/runtime/src/observability/logger.ts',
+        'apps/cli/**',
+        'tools/**',
+        'scripts/**',
+        'bench/scripts/**',
+        'packages/*/scripts/**',
+        'spikes/**/scripts/**',
+        '**/test/**',
+        '**/tests/**',
+        '**/*.test.ts',
+        '**/*.test.tsx',
+      ],
+      rules: { 'no-console': 'off' },
+    },
     // The web data layer (tools/oxlint/data-invariants.ts): server data comes through the typed client in query and
     // mutation factories, effects start no network work, views read the Query cache, and Query and Router are used as
-    // their plugins require. On the web lanes' strict paths.
-    ...(WEB_DATA_PATHS.length === 0
-      ? []
-      : [
-          {
-            files: WEB_DATA_PATHS,
-            rules: {
-              'goblin/no-transport-outside-client': ['error', TRANSPORT],
-              'goblin/no-network-in-effect': ['error', TRANSPORT],
-              'goblin/no-loader-data': ['error', { mode: 'all' }],
-              '@tanstack/query/exhaustive-deps': 'error',
-              '@tanstack/query/no-rest-destructuring': 'error',
-              '@tanstack/query/stable-query-client': 'error',
-              '@tanstack/query/no-unstable-deps': 'error',
-              '@tanstack/query/prefer-query-options': 'error',
-              '@tanstack/query/mutation-property-order': 'error',
-              '@tanstack/router/create-route-property-order': 'error',
-              '@tanstack/router/route-param-names': 'error',
-            },
-          } satisfies OxlintOverride,
-        ]),
+    // their plugins require.
+    {
+      files: ['apps/web/src/**'],
+      rules: {
+        'goblin/no-transport-outside-client': ['error', TRANSPORT],
+        'goblin/no-network-in-effect': ['error', TRANSPORT],
+        'goblin/no-loader-data': ['error', { mode: 'all' }],
+        '@tanstack/query/exhaustive-deps': 'error',
+        '@tanstack/query/no-rest-destructuring': 'error',
+        '@tanstack/query/stable-query-client': 'error',
+        '@tanstack/query/no-unstable-deps': 'error',
+        '@tanstack/query/prefer-query-options': 'error',
+        '@tanstack/query/mutation-property-order': 'error',
+        '@tanstack/router/create-route-property-order': 'error',
+        '@tanstack/router/route-param-names': 'error',
+      },
+    },
     // The transport modules: the typed client (lib/api*.ts) and its query bridge (lib/query/), each feature's query
     // factories (queries.ts); the owner's file bytes, which the JSON API does not carry (lib/files.ts); and the two SSE
     // stores, whose EventSource streams feed the views and invalidate query keys (conversation-stream, workspace-feed).

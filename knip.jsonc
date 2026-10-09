@@ -19,7 +19,7 @@
     "unlisted": "error",
     "unresolved": "error",
   },
-  "treatConfigHintsAsErrors": false,
+  "treatConfigHintsAsErrors": true,
   "ignore": ["tools/oxlint/anti-slop/**"],
   // `cloudflare:workers` is a Workers runtime module (RpcTarget, WorkerEntrypoint), not a package.
   "ignoreDependencies": ["@effect/language-service", "cloudflare"],

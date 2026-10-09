@@ -50,6 +50,9 @@
           "promiseInEffectSuccess": "error",
           "scopeInLayerEffect": "error",
           "runEffectInsideEffect": "error",
+          // Errors are tagged classes, and a handler on an Effect that cannot fail is dead code.
+          "extendsNativeError": "error",
+          "catchUnfailableEffect": "error",
           // Off: the typed API and the HTTP clients are built on Effect's HTTP modules, which 4.0 marks unstable. The
           // exact version pinned in package.json is the stability boundary; a bump runs every gate.
           "unstableApiUsage": "off",
