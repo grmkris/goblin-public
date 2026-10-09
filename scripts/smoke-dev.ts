@@ -9,6 +9,7 @@ import { Config, Effect, Option, Redacted, Schema } from 'effect'
 import { createHash, randomBytes } from 'node:crypto'
 import { chmod, readFile, stat, writeFile } from 'node:fs/promises'
 import { appChecks } from './smoke-apps.ts'
+import { edgeChecks } from './smoke-edge.ts'
 import { delegateReported } from './smoke-entries.ts'
 import { publicSmoke } from './smoke-public.ts'
 
@@ -27,7 +28,8 @@ const MCP_MARKER = 'GOBLIN_MCP_OK'
 const SMOKE_CLIENT_NAME = 'goblin-smoke'
 const MAIN_HISTORY = '/api/conversations/1/history?before=2147483647'
 
-type Step = { readonly step: string; readonly status: number }
+/** One request the smoke sent: its status, and the reference the answer quoted (`goblin lookup <ref>`). */
+type Step = { readonly step: string; readonly status: number; readonly ref?: string }
 type Settings = {
   readonly stage: string
   readonly url: string
@@ -72,12 +74,15 @@ class DevClient {
     return this.#url.origin
   }
 
-  async send(path: string, init: RequestInit & { readonly owner?: boolean } = {}): Promise<Response> {
-    const { owner = true, ...rest } = init
+  async send(
+    path: string,
+    init: RequestInit & { readonly owner?: boolean; readonly csrf?: boolean } = {},
+  ): Promise<Response> {
+    const { owner = true, csrf = true, ...rest } = init
     const headers = new Headers(rest.headers)
     headers.set('origin', this.#url.origin)
-    // As the web does: every write carries the CSRF header, which the account API and owner routes require.
-    if ((rest.method ?? 'GET') !== 'GET') headers.set('x-goblin-csrf', '1')
+    // As the web does: every write carries the CSRF header, which every /api write requires.
+    if (csrf && (rest.method ?? 'GET') !== 'GET') headers.set('x-goblin-csrf', '1')
     if (owner && this.#cookie) headers.set('cookie', this.#cookie)
     const response = await fetch(new URL(path, this.#url), {
       ...rest,
@@ -85,7 +90,9 @@ class DevClient {
       redirect: 'manual',
       signal: rest.signal ?? AbortSignal.timeout(150_000),
     })
-    this.#steps.push({ step: `${rest.method ?? 'GET'} ${path.split('?')[0] ?? path}`, status: response.status })
+    const ref = response.headers.get('x-goblin-ref')
+    const step = `${rest.method ?? 'GET'} ${path.split('?')[0] ?? path}`
+    this.#steps.push({ step, status: response.status, ...(ref === null ? {} : { ref }) })
     return response
   }
 
@@ -490,6 +497,7 @@ type Receipt = {
   readonly subagent: SubagentCheck['subagent']
   readonly memory: MemoryCheck['memory']
   readonly files: FileCheck['files']
+  readonly edge: Awaited<ReturnType<typeof edgeChecks>>['edge']
   readonly app: 'ok'
 }
 
@@ -514,6 +522,7 @@ async function smokeDev(
   const snapshot = await dev.json('/api/conversations/1/snapshot')
   if (snapshot['type'] !== 'snapshot') throw new Error('main_snapshot_missing')
   const { files } = await fileChecks(dev)
+  const { edge } = await edgeChecks(dev)
   const servers: ServerReport[] = []
   for (const server of await dev.list('/api/mcp/servers')) servers.push(await serverReport(dev, server))
   const client = await InboundClient.register(dev)
@@ -527,7 +536,7 @@ async function smokeDev(
       return { inbound, ...thread, ...subagent, ...memory, ...app }
     })
     const model = config.smokeModel ?? 'owner pick'
-    return { stage: config.stage, model, signup, resident: string(resident['state']), servers, files, ...checks }
+    return { stage: config.stage, model, signup, resident: string(resident['state']), servers, files, edge, ...checks }
   } finally {
     // Never leave the throwaway client authorized, whatever failed above.
     await dev.send(`/api/clients/${encodeURIComponent(client.clientId)}`, { method: 'DELETE' })
