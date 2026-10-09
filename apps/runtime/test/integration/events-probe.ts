@@ -17,6 +17,7 @@ import { ModelBudget, UsageStore } from '../../src/budget.ts'
 import { ModelChoiceStore, ModelPicker, modelOptions } from '../../src/models.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { appEventDeliveries } from '../../src/storage/schema.ts'
+import { portServices } from '../chat-fixtures.ts'
 import { EventsFixture } from '../mcp/events-fixture.ts'
 import type { EventEnvelope } from '../../src/mcp/events/protocol.ts'
 import { SqliteSkillState } from '../../src/skills/store.ts'
@@ -91,6 +92,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
         Effect.provideService(Chats, chats),
         Effect.provideService(Budget, budget),
         Effect.provideService(Models, models),
+        Effect.provide(portServices({ chats, harness, budget, models })),
       ),
     )
   const ports = channelPorts(harness, channelCall(manager, 'mygram'), run, new Map())

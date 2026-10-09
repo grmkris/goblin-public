@@ -18,6 +18,7 @@ import { ChatDirectory, registerPrimary } from '../../../src/chats/directory.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { AgentHandlers } from '../../../src/routines/agent-api.ts'
+import { ChatsAdapter } from '../../../src/layers/conversation.ts'
 import { RoutinesLive } from '../../../src/layers/routines.ts'
 import { Events, McpConnections, McpGrants, McpServers } from '../../../src/mcp/service.ts'
 import { ModelChoiceStore, ModelPicker, modelOptions } from '../../../src/models.ts'
@@ -118,7 +119,9 @@ const fixture = () => {
     ),
   )
   const runtime = ManagedRuntime.make(
-    OwnerHttp.serve(API, SERVED).pipe(Layer.provide(Layer.provideMerge(RoutinesLive, legacy))),
+    OwnerHttp.serve(API, SERVED).pipe(
+      Layer.provide(Layer.provideMerge(Layer.merge(RoutinesLive, ChatsAdapter), legacy)),
+    ),
   )
   runtimes.push(runtime)
   const fetch = async (request: Request) =>
