@@ -33,6 +33,8 @@ import { logEndpointsReset } from '../mcp/log.ts'
 import { AddedServerStore } from '../mcp/servers.ts'
 import { ChatMemories, type MemoryDeps } from '../memory/memory.ts'
 import { CheapModel } from '../memory/model.ts'
+import { writeLine } from '../observability/logger.ts'
+import { safeErrorType } from '../observability/report.ts'
 import { RunLedger } from '../telemetry/ledger.ts'
 import { Inspector } from '../inspect/inspector.ts'
 import { type AuxPurpose, auxReporter, mcpReporter } from '../telemetry/report.ts'
@@ -142,6 +144,7 @@ function conversationServices(db: DrizzleSqliteDODatabase, input: ComposeInput, 
     try {
       return (kind.startsWith('topic.') ? topics : personas).get(Number(target)).revision
     } catch {
+      // expected: a Topic or Persona deleted since has no revision for the receipt to compare
       return undefined
     }
   })
@@ -166,7 +169,9 @@ function conversationServices(db: DrizzleSqliteDODatabase, input: ComposeInput, 
     ...input.moves,
   })
   // A move a restart interrupted finishes once the services are up again (ADR 0034); it never holds up the start.
-  void moves.reconcile()
+  moves.reconcile().catch((error: unknown) => {
+    writeLine('error', { event: 'failure', where: 'moves.reconcile', 'error.type': safeErrorType(error) })
+  })
   return { conversations, apps, home, topics, personas, invocations, receipts, workspace, moves, transcripts }
 }
 async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {

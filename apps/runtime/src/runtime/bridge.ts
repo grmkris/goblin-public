@@ -4,6 +4,7 @@ import type * as ManagedRuntime from 'effect/ManagedRuntime'
 import { Entitlements } from '../billing/gates.ts'
 import { type AppError, toAppError } from '../http/errors.ts'
 import { encodeExit, unwrap } from '../http/rpc.ts'
+import { reportAndRecover } from '../observability/report.ts'
 import { type AgentServices, Mcp, attempt } from '../services.ts'
 import { type Instrument, uninstrumented } from './instrument.ts'
 
@@ -60,7 +61,10 @@ export async function openRuntime(runtime: Runtime): Promise<Runtime> {
 
 /** Closes a built runtime's MCP connections, then disposes it. One that never finished building has nothing to close. */
 export async function closeRuntime(runtime: Promise<Runtime>): Promise<void> {
+  // expected: a runtime that failed to build has nothing to close, and its callers already had its failure
   const services = await runtime.catch(() => undefined)
-  await services?.runPromise(Mcp.use((mcp) => attempt(() => mcp.manager.closeAll()))).catch(() => undefined)
+  await services?.runPromise(
+    Mcp.use((mcp) => attempt(() => mcp.manager.closeAll())).pipe(reportAndRecover('runtime.close', undefined)),
+  )
   await services?.dispose()
 }

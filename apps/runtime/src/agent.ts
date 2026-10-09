@@ -151,6 +151,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
   #services(): Promise<Runtime> {
     this.#runtime ??= openRuntime(ManagedRuntime.make(AgentLive(this.#input())))
+    // expected: every caller awaiting the runtime gets its start failure; this only lets the next caller start again
     this.#runtime.catch(() => {
       this.#runtime = undefined
     })
