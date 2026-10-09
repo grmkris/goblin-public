@@ -24,7 +24,7 @@ import { Workspace } from '../workspace/service.ts'
 
 /*
  * Lane D's services over the legacy instances (services.ts tags), one instance each: every call is wrapped as the
- * programs wrap it today. A promise goes through `attempt` and a call that can refuse (a missing row, a taken name, a
+ * programs wrapped it, and a change reads the clock (epoch seconds) as they did. A promise goes through `attempt` and a call that can refuse (a missing row, a taken name, a
  * stale revision) through `attemptSync`, both into `AppError`; a plain SQLite read or write runs as it is.
  */
 
@@ -37,16 +37,16 @@ const TopicsAdapter = Layer.effect(
       get: Effect.fn('Topics.get')(function* (id: number) {
         return yield* Legacy.attemptSync(() => topics.get(id))
       }),
-      create: Effect.fn('Topics.create')(function* (
-        input: CreateTopic,
-        actor: TopicActor,
-        now: number,
-        seed?: TopicSeedData,
-      ) {
+      create: Effect.fn('Topics.create')(function* (input: CreateTopic, actor: TopicActor, seed?: TopicSeedData) {
+        const now = yield* Legacy.nowSecondsEffect
         return yield* Legacy.attempt(() => topics.create(input, actor, now, seed))
       }),
-      update: Effect.fn('Topics.update')(function* (id: number, change: UpdateTopic, now: number) {
-        return yield* Legacy.attemptSync(() => topics.update(id, change, now))
+      update: Effect.fn('Topics.update')(function* (id: number, change: UpdateTopic) {
+        const now = yield* Legacy.nowSecondsEffect
+        return yield* Legacy.attemptSync(() => {
+          const before = topics.get(id)
+          return { before, after: topics.update(id, change, now) }
+        })
       }),
     })
   }),
@@ -74,16 +74,16 @@ const PersonasAdapter = Layer.effect(
       offers: Effect.fn('Personas.offers')(function* (model: string | undefined) {
         return yield* Effect.sync(() => personas.offers(model))
       }),
-      create: Effect.fn('Personas.create')(function* (input: CreatePersona, actor: PersonaActor, now: number) {
+      create: Effect.fn('Personas.create')(function* (input: CreatePersona, actor: PersonaActor) {
+        const now = yield* Legacy.nowSecondsEffect
         return yield* Legacy.attemptSync(() => personas.create(input, actor, now))
       }),
-      update: Effect.fn('Personas.update')(function* (
-        id: number,
-        change: UpdatePersona,
-        actor: PersonaActor,
-        now: number,
-      ) {
-        return yield* Legacy.attemptSync(() => personas.update(id, change, actor, now))
+      update: Effect.fn('Personas.update')(function* (id: number, change: UpdatePersona, actor: PersonaActor) {
+        const now = yield* Legacy.nowSecondsEffect
+        return yield* Legacy.attemptSync(() => {
+          const before = personas.get(id)
+          return { before, after: personas.update(id, change, actor, now) }
+        })
       }),
     })
   }),
@@ -128,7 +128,8 @@ const ReceiptsAdapter = Layer.effect(
   Effect.gen(function* () {
     const receipts = yield* Legacy.Receipts
     return Receipts.of({
-      record: Effect.fn('Receipts.record')(function* (input: NewReceipt, now: number) {
+      record: Effect.fn('Receipts.record')(function* (input: NewReceipt) {
+        const now = yield* Legacy.nowSecondsEffect
         return yield* Legacy.attemptSync(() => receipts.record(input, now))
       }),
       list: Effect.fn('Receipts.list')(function* (limit?: number) {
@@ -137,7 +138,8 @@ const ReceiptsAdapter = Layer.effect(
       get: Effect.fn('Receipts.get')(function* (id: string) {
         return yield* Legacy.attemptSync(() => receipts.get(id))
       }),
-      markUndone: Effect.fn('Receipts.markUndone')(function* (id: string, now: number) {
+      markUndone: Effect.fn('Receipts.markUndone')(function* (id: string) {
+        const now = yield* Legacy.nowSecondsEffect
         return yield* Legacy.attemptSync(() => receipts.markUndone(id, now))
       }),
     })

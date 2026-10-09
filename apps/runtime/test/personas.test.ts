@@ -2,8 +2,8 @@ import type { PersonaDefinition } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { StopRuntime } from '../src/agent-program.ts'
-import { ConversationRegistry } from '../src/conversations.ts'
+import { ChatOperations, Conversations } from '../src/chats/service.ts'
+import { DelegationLive } from '../src/layers/delegation.ts'
 import { OrganizeReceipts } from '../src/organize/receipts.ts'
 import { undoReceipt } from '../src/organize/program.ts'
 import { addressedTo } from '../src/personas/ask.ts'
@@ -12,9 +12,10 @@ import { createPersona, updatePersona } from '../src/personas/program.ts'
 import { logMessage } from '../src/memory/log.ts'
 import { PersonaRegistry, defaultAvatar } from '../src/personas/registry.ts'
 import { PERSONA_DENIED_TOOLS, personaSelection, personaText } from '../src/pi/persona-turn.ts'
-import { ChatDirectory } from '../src/chats/directory.ts'
-import { RoutineRunStore } from '../src/routines/runs.ts'
-import { Chats, Conversations, Invocations, Personas, Receipts, RoutineRuns, Topics } from '../src/services.ts'
+import { Receipts } from '../src/organize/service.ts'
+import { Personas } from '../src/personas/service.ts'
+import * as Legacy from '../src/services.ts'
+import { Topics } from '../src/topics/service.ts'
 import { appConversations } from '../src/storage/schema.ts'
 import { updateTopic } from '../src/topics/program.ts'
 import { TopicRegistry } from '../src/topics/registry.ts'
@@ -258,7 +259,7 @@ describe('what a Persona turn changes in its fork', () => {
 })
 
 /** The services the Undo programs read. */
-type Provided = Personas | Topics | Receipts | Invocations | Conversations | RoutineRuns | Chats
+type Provided = Personas | Topics | Receipts | Conversations | ChatOperations
 const run = <A, E>(layer: Layer.Layer<Provided>, program: Effect.Effect<A, E, Provided>) =>
   Effect.runPromise(Effect.provide(program, layer))
 const fails = <A, E>(layer: Layer.Layer<Provided>, program: Effect.Effect<A, E, Provided>) =>
@@ -280,20 +281,26 @@ describe('organize receipts and Undo', () => {
   /** The services Undo runs over: real registries on real SQLite, no Pi. */
   const services = () => {
     const parts = fixture()
-    const layer = Layer.mergeAll(
-      Layer.succeed(Personas, parts.personas),
-      Layer.succeed(Topics, parts.topics),
-      Layer.succeed(Receipts, parts.receipts),
-      Layer.succeed(Invocations, parts.invocations),
-      // Renaming a Topic never reaches the registry's chat list; only an archive does, so a bare registry will do.
-      Layer.succeed(Conversations, Object.assign(Object.create(ConversationRegistry.prototype), { openIn: () => [] })),
-      // Neither is read unless Undo stops a chat, which only archiving does.
-      Layer.succeed(RoutineRuns, Object.create(RoutineRunStore.prototype)),
-      Layer.succeed(Chats, Object.create(ChatDirectory.prototype)),
+    // SAFETY: Home and the workspace feed are never read here, nor is Stop: no Undo here archives a Topic with chats.
+    const unread = undefined as never
+    const stores = Layer.mergeAll(
+      Layer.succeed(Legacy.Personas, parts.personas),
+      Layer.succeed(Legacy.Topics, parts.topics),
+      Layer.succeed(Legacy.Receipts, parts.receipts),
+      Layer.succeed(Legacy.Invocations, parts.invocations),
+      Layer.succeed(Legacy.Home, unread),
+      Layer.succeed(Legacy.Workspace, unread),
     )
-    // Undo of a rename or a Persona change never stops a chat, so Pi, routines and Persona turns stay unused.
-    const runtime: StopRuntime = Object.create(null)
-    return { ...parts, layer, runtime }
+    // SAFETY: renaming a Topic never reaches the chat registry; only an archive reads its open chats (`openIn`).
+    const conversations = Object.assign(Object.create(null) as Conversations['Service'], {
+      openIn: () => Effect.succeed([]),
+    })
+    const layer = Layer.mergeAll(
+      Layer.provide(DelegationLive, stores),
+      Layer.succeed(Conversations, conversations),
+      Layer.succeed(ChatOperations, unread),
+    )
+    return { ...parts, layer }
   }
 
   it('records what changed with the revision it left, and offers Undo only while that holds', async () => {
@@ -307,18 +314,18 @@ describe('organize receipts and Undo', () => {
   })
 
   it('refuses Undo as touched once anything edited the target since', async () => {
-    const { layer, receipts, personas, runtime } = services()
+    const { layer, receipts, personas } = services()
     await run(layer, createPersona({ ...scout, operationId: 'op-1' }, { actor: 'agent' }))
     const [receipt] = receipts.list()
     personas.update(1, { role: 'Later', expectedRevision: 1 }, 'owner', 30)
-    const refused = await fails(layer, undoReceipt(runtime, receipt?.id ?? ''))
+    const refused = await fails(layer, undoReceipt(receipt?.id ?? ''))
     expect(refused).toMatchObject({ _tag: 'Conflict', reason: 'touched' })
     expect(personas.get(1)).toMatchObject({ role: 'Later', revision: 2 })
     expect(receipts.list().find((each) => each.id === receipt?.id)?.undoneAt).toBeUndefined()
   })
 
   it('undoes a Persona update by restoring what it was, once', async () => {
-    const { layer, receipts, personas, runtime } = services()
+    const { layer, receipts, personas } = services()
     await run(layer, createPersona({ ...scout, operationId: 'op-1' }, { actor: 'owner' }))
     await run(
       layer,
@@ -326,11 +333,11 @@ describe('organize receipts and Undo', () => {
     )
     const update = receipts.list().find((each) => each.kind === 'persona.update')
     expect(update).toMatchObject({ summary: 'Updated persona @Scout', undoable: true })
-    const undone = await run(layer, undoReceipt(runtime, update?.id ?? ''))
+    const undone = await run(layer, undoReceipt(update?.id ?? ''))
     expect(undone.undoneAt).toBeTypeOf('number')
     expect(personas.get(1)).toMatchObject({ role: scout.role, instructions: scout.instructions, revision: 3 })
     // The change that undid it is a receipt of its own; the old one cannot repeat.
-    expect(await fails(layer, undoReceipt(runtime, update?.id ?? ''))).toMatchObject({
+    expect(await fails(layer, undoReceipt(update?.id ?? ''))).toMatchObject({
       _tag: 'Conflict',
       reason: 'undone',
     })
@@ -338,22 +345,22 @@ describe('organize receipts and Undo', () => {
   })
 
   it('undoes a creation by archiving the Persona', async () => {
-    const { layer, receipts, personas, runtime } = services()
+    const { layer, receipts, personas } = services()
     await run(layer, createPersona({ ...scout, operationId: 'op-1' }, { actor: 'agent' }))
-    await run(layer, undoReceipt(runtime, receipts.list()[0]?.id ?? ''))
+    await run(layer, undoReceipt(receipts.list()[0]?.id ?? ''))
     expect(personas.get(1).archivedAt).toBeTypeOf('number')
   })
 
   it('undoes a Topic rename and refuses once the Topic was renamed again', async () => {
-    const { layer, receipts, topics, runtime } = services()
+    const { layer, receipts, topics } = services()
     await topics.create({ name: 'Garden', operationId: 'topic-1' }, 'owner', 5)
-    const renamed = await run(layer, updateTopic(runtime, 2, { name: 'Garden shed' }, { actor: 'agent', chat: '1' }))
+    const renamed = await run(layer, updateTopic(2, { name: 'Garden shed' }, { actor: 'agent', chat: '1' }))
     expect(renamed).toMatchObject({ name: 'Garden shed', revision: 2 })
     const rename = receipts.list().find((each) => each.kind === 'topic.rename')
     expect(rename).toMatchObject({ summary: 'Renamed topic "Garden" to "Garden shed"', actor: 'agent', undoable: true })
-    await run(layer, undoReceipt(runtime, rename?.id ?? ''))
+    await run(layer, undoReceipt(rename?.id ?? ''))
     expect(topics.get(2)).toMatchObject({ name: 'Garden', revision: 3 })
-    await run(layer, updateTopic(runtime, 2, { name: 'Allotment' }, { actor: 'owner' }))
+    await run(layer, updateTopic(2, { name: 'Allotment' }, { actor: 'owner' }))
     expect(receipts.list().find((each) => each.id === rename?.id)?.undoable).toBe(false)
   })
 })

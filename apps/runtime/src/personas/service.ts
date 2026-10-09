@@ -16,10 +16,13 @@ import type { PersonaActor } from './registry.ts'
 /** What `create` answers: the Persona, and whether this call made it rather than finding it by its operation id. */
 type MadePersona = { readonly persona: PersonaView; readonly created: boolean }
 
+/** A Persona just before and just after one change, read in the step that made it. */
+export type PersonaChange = { readonly before: PersonaView; readonly after: PersonaView }
+
 /**
  * The owner's Personas (ADR 0033): named, versioned agent definitions. Every change is a new revision of the one it
  * names (`expectedRevision`), a model must be one the deployment offers, and archiving keeps the history and frees the
- * name.
+ * name. Times are read inside, in epoch seconds.
  */
 export class Personas extends Context.Service<
   Personas,
@@ -39,14 +42,12 @@ export class Personas extends Context.Service<
     /** Whether this deployment offers `model` now. */
     readonly offers: (model: string | undefined) => Effect.Effect<boolean>
     /** A new Persona at revision 1, or the one `input.operationId` already made. A taken name is a `Conflict`. */
-    readonly create: (input: CreatePersona, actor: PersonaActor, now: number) => Effect.Effect<MadePersona, AppError>
-    /** A new revision with `change` applied, if `change.expectedRevision` is the current one (else `Conflict`). */
-    readonly update: (
-      id: number,
-      change: UpdatePersona,
-      actor: PersonaActor,
-      now: number,
-    ) => Effect.Effect<PersonaView, AppError>
+    readonly create: (input: CreatePersona, actor: PersonaActor) => Effect.Effect<MadePersona, AppError>
+    /**
+     * A new revision with `change` applied, if `change.expectedRevision` is the current one (else `Conflict`), answered
+     * before and after; nothing changed is no revision.
+     */
+    readonly update: (id: number, change: UpdatePersona, actor: PersonaActor) => Effect.Effect<PersonaChange, AppError>
   }
 >()('goblin/personas/Personas') {}
 

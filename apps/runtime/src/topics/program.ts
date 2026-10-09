@@ -1,14 +1,15 @@
 import type { CreateTopic, TopicSeedData, TopicView, UpdateTopic } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
-import { type StopRuntime, stopOwner } from '../agent-program.ts'
+import { ChatOperations, Conversations } from '../chats/service.ts'
 import type { AppError } from '../http/errors.ts'
-import { Conversations, Receipts, Topics, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
-import type { TopicActor } from './registry.ts'
 import type { NewReceipt } from '../organize/receipts.ts'
+import { Receipts } from '../organize/service.ts'
+import type { TopicActor } from './registry.ts'
+import { Topics } from './service.ts'
 
 /** Every Topic, archived ones included. */
-export const topicList = Topics.useSync((topics) => topics.list())
+export const topicList = Topics.use((topics) => topics.list)
 
 /** Who changed a Topic and from where: the receipt it leaves says so. `chat` is the run that did it, for the agent. */
 export type Provenance = { readonly actor: TopicActor; readonly chat?: string; readonly operationId?: string }
@@ -22,25 +23,19 @@ export const createTopic = (input: CreateTopic, provenance: Provenance | TopicAc
   return Effect.gen(function* () {
     const topics = yield* Topics
     const receipts = yield* Receipts
-    const now = yield* nowSecondsEffect
-    const made = yield* attempt(() => topics.create(input, actor, now, seed))
+    const made = yield* topics.create(input, actor, seed)
     if (made.created)
-      yield* attemptSync(() =>
-        receipts.record(
-          {
-            kind: 'topic.create',
-            target: String(made.topic.id),
-            summary: `Created topic "${made.topic.name}"`,
-            actor,
-            ...(chat === undefined ? {} : { chat }),
-            before: null,
-            after: { name: made.topic.name },
-            afterRevision: made.topic.revision,
-            operationId: `topic.create:${input.operationId}`,
-          },
-          now,
-        ),
-      )
+      yield* receipts.record({
+        kind: 'topic.create',
+        target: String(made.topic.id),
+        summary: `Created topic "${made.topic.name}"`,
+        actor,
+        ...(chat === undefined ? {} : { chat }),
+        before: null,
+        after: { name: made.topic.name },
+        afterRevision: made.topic.revision,
+        operationId: `topic.create:${input.operationId}`,
+      })
     return made.topic
   })
 }
@@ -51,33 +46,22 @@ export const createTopic = (input: CreateTopic, provenance: Provenance | TopicAc
  * a routine run in it. Every chat is stopped even when one fails, and an archive asked again stops them again, so a
  * failed request is retried by repeating it. Schedules are left as they are. Restoring starts nothing again.
  */
-export const updateTopic = (
-  runtime: StopRuntime,
-  id: number,
-  change: UpdateTopic,
-  provenance: Provenance = { actor: 'owner' },
-) =>
+export const updateTopic = (id: number, change: UpdateTopic, provenance: Provenance = { actor: 'owner' }) =>
   Effect.gen(function* () {
     const topics = yield* Topics
     const receipts = yield* Receipts
-    const conversations = yield* Conversations
-    const now = yield* nowSecondsEffect
-    const topic = yield* attemptSync(() => {
-      const before = topics.get(id)
-      const changed = topics.update(id, change, now)
-      const organized = changed.name !== before.name || changed.archivedAt !== before.archivedAt
-      if (changed.revision !== before.revision && organized)
-        receipts.record(topicReceipt(before, changed, provenance), now)
-      return changed
-    })
-    if (change.archived !== true) return topic
+    const { before, after } = yield* topics.update(id, change)
+    const organized = after.name !== before.name || after.archivedAt !== before.archivedAt
+    if (after.revision !== before.revision && organized) yield* receipts.record(topicReceipt(before, after, provenance))
+    if (change.archived !== true) return after
+    const operations = yield* ChatOperations
     const stops: Exit.Exit<boolean, AppError>[] = []
     // A run that archives its own Topic is not stopped from inside itself: it ends with its turn.
-    for (const thread of conversations.openIn(id).filter((open) => open !== provenance.chat))
-      stops.push(yield* Effect.exit(stopOwner({ ...runtime, thread, operationId: undefined })))
+    for (const thread of (yield* (yield* Conversations).openIn(id)).filter((open) => open !== provenance.chat))
+      stops.push(yield* Effect.exit(operations.stop(thread)))
     const failed = stops.find(Exit.isFailure)
     if (failed !== undefined) return yield* Effect.failCause(failed.cause)
-    return topic
+    return after
   })
 
 const snapshot = (topic: TopicView) => ({

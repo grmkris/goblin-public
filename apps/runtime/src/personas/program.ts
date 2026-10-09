@@ -1,17 +1,18 @@
 import type { CreatePersona, PersonaDefinition, PersonaView, UpdatePersona } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
-import { Personas, Receipts, attemptSync, nowSecondsEffect } from '../services.ts'
 import type { NewReceipt } from '../organize/receipts.ts'
+import { Receipts } from '../organize/service.ts'
 import type { PersonaActor } from './registry.ts'
+import { Personas } from './service.ts'
 
 /** Who changed a Persona and from where: the receipt it leaves says so. `chat` is the run that did it, for the agent. */
 export type PersonaProvenance = { readonly actor: PersonaActor; readonly chat?: string; readonly operationId?: string }
 
 /** Every Persona, archived ones included. */
-export const personaList = Personas.useSync((personas) => personas.list())
+export const personaList = Personas.use((personas) => personas.list)
 
 /** One Persona with its revisions. */
-export const personaDetail = (id: number) => Personas.useSync((personas) => personas.detail(id))
+export const personaDetail = (id: number) => Personas.use((personas) => personas.detail(id))
 
 /** What Undo restores: a Persona's definition and whether it was archived. */
 export type PersonaSnapshot = PersonaDefinition & { readonly archived: boolean }
@@ -31,26 +32,20 @@ export const createPersona = (input: CreatePersona, provenance: PersonaProvenanc
   Effect.gen(function* () {
     const personas = yield* Personas
     const receipts = yield* Receipts
-    const now = yield* nowSecondsEffect
-    return yield* attemptSync(() => {
-      const made = personas.create(input, provenance.actor, now)
-      if (made.created)
-        receipts.record(
-          {
-            kind: 'persona.create',
-            target: String(made.persona.id),
-            summary: `Created persona @${made.persona.name}`,
-            actor: provenance.actor,
-            ...(provenance.chat === undefined ? {} : { chat: provenance.chat }),
-            before: null,
-            after: snapshotOf(made.persona),
-            afterRevision: made.persona.revision,
-            operationId: `persona.create:${input.operationId}`,
-          },
-          now,
-        )
-      return made.persona
-    })
+    const made = yield* personas.create(input, provenance.actor)
+    if (made.created)
+      yield* receipts.record({
+        kind: 'persona.create',
+        target: String(made.persona.id),
+        summary: `Created persona @${made.persona.name}`,
+        actor: provenance.actor,
+        ...(provenance.chat === undefined ? {} : { chat: provenance.chat }),
+        before: null,
+        after: snapshotOf(made.persona),
+        afterRevision: made.persona.revision,
+        operationId: `persona.create:${input.operationId}`,
+      })
+    return made.persona
   })
 
 /** What a change did to a Persona, in a line. */
@@ -66,24 +61,20 @@ export const updatePersona = (id: number, change: UpdatePersona, provenance: Per
   Effect.gen(function* () {
     const personas = yield* Personas
     const receipts = yield* Receipts
-    const now = yield* nowSecondsEffect
-    return yield* attemptSync(() => {
-      const before = personas.get(id)
-      const after = personas.update(id, change, provenance.actor, now)
-      if (after.revision !== before.revision) {
-        const receipt: NewReceipt = {
-          kind: 'persona.update',
-          target: String(id),
-          summary: summaryOf(before, after),
-          actor: provenance.actor,
-          ...(provenance.chat === undefined ? {} : { chat: provenance.chat }),
-          before: snapshotOf(before),
-          after: snapshotOf(after),
-          afterRevision: after.revision,
-          ...(provenance.operationId === undefined ? {} : { operationId: `persona.update:${provenance.operationId}` }),
-        }
-        receipts.record(receipt, now)
+    const { before, after } = yield* personas.update(id, change, provenance.actor)
+    if (after.revision !== before.revision) {
+      const receipt: NewReceipt = {
+        kind: 'persona.update',
+        target: String(id),
+        summary: summaryOf(before, after),
+        actor: provenance.actor,
+        ...(provenance.chat === undefined ? {} : { chat: provenance.chat }),
+        before: snapshotOf(before),
+        after: snapshotOf(after),
+        afterRevision: after.revision,
+        ...(provenance.operationId === undefined ? {} : { operationId: `persona.update:${provenance.operationId}` }),
       }
-      return after
-    })
+      yield* receipts.record(receipt)
+    }
+    return after
   })

@@ -1,16 +1,20 @@
 import { HelperExclusions, PersonaName, type PersonaView, type TopicView } from '@goblin/contracts'
 import { defineExtension, section } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { NotFound } from '../http/errors.ts'
-import { defaultAvatar } from '../personas/registry.ts'
-import { createPersona, updatePersona } from '../personas/program.ts'
 import type { StopRuntime } from '../agent-program.ts'
-import { Chats, Personas, Topics, attempt, attemptSync, requireResident } from '../services.ts'
+import { Chats } from '../chats/service.ts'
+import { NotFound, toAppError } from '../http/errors.ts'
+import { Resident } from '../mcp/service.ts'
+import { createPersona, updatePersona } from '../personas/program.ts'
+import { defaultAvatar } from '../personas/registry.ts'
+import { Personas } from '../personas/service.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { createTopic, updateTopic } from '../topics/program.ts'
 import { discussionSeed } from '../topics/seed.ts'
+import { Topics } from '../topics/service.ts'
 import { BACKGROUND } from './context.ts'
-import type { RunProgram } from './resident-mcp.ts'
 import { typedTool } from './typed-tool.ts'
 
 const GUIDE = [
@@ -34,30 +38,30 @@ const Text = (max: number) => Schema.String.check(Schema.isMaxLength(max))
 const operationOf = (api: { readonly conversationId: unknown; readonly callId: string }) =>
   `organize:${String(api.conversationId)}:${api.callId}`
 
-/** The runtime pieces archiving needs (it stops the Topic's chats' work); read when a tool runs, not at definition. */
+/** The instance pieces a Topic made from a discussion reads (its Pi conversation); read when a tool runs. */
 export type OrganizeRuntime = () => StopRuntime
+
+/** Fails with `ResidentInactive` unless the owner's resident authority is current. */
+const requireResident = Resident.use((resident) => resident.require())
 
 /** The chat the calling run belongs to, which a receipt records. */
 const chatOf = (api: { readonly conversationId: unknown }) =>
-  Chats.useSync((chats) => chats.chatOf(String(api.conversationId)))
+  Chats.use((chats) => chats.chatOf(String(api.conversationId))).pipe(Effect.map(Option.getOrUndefined))
 
 const topicNamed = (name: string) =>
-  Topics.use((topics) =>
-    attemptSync(() => {
-      const wanted = name.trim().toLowerCase()
-      const found = topics.list().find((topic) => topic.archivedAt === undefined && topic.name.toLowerCase() === wanted)
-      if (found === undefined) throw new NotFound({ what: 'topic' })
-      return found
-    }),
-  )
+  Effect.gen(function* () {
+    const wanted = name.trim().toLowerCase()
+    const topics = yield* Topics.use((registry) => registry.list)
+    const found = topics.find((topic) => topic.archivedAt === undefined && topic.name.toLowerCase() === wanted)
+    if (found === undefined) return yield* new NotFound({ what: 'topic' })
+    return found
+  })
 
 const personaNamed = (name: string) =>
-  Personas.use((personas) =>
-    attemptSync(() => {
-      const found = personas.byName(name.replace(/^@/u, ''))
-      if (found === undefined) throw new NotFound({ what: 'persona' })
-      return found
-    }),
+  Personas.use((personas) => personas.byName(name.replace(/^@/u, ''))).pipe(
+    Effect.flatMap(
+      Option.match({ onNone: () => Effect.fail(new NotFound({ what: 'persona' })), onSome: Effect.succeed }),
+    ),
   )
 
 /** Who made the change: the agent, from this chat, under this call (a rerun finds its receipt). */
@@ -99,7 +103,7 @@ const topicTools = (run: RunProgram, runtime: OrganizeRuntime) => [
           const seed =
             chat === undefined || conversation === undefined
               ? undefined
-              : yield* attempt(() => discussionSeed(conversation, chat, brief))
+              : yield* Effect.tryPromise({ try: () => discussionSeed(conversation, chat, brief), catch: toAppError })
           return yield* createTopic({ name, operationId }, by, seed)
         }),
       )
@@ -120,7 +124,7 @@ const topicTools = (run: RunProgram, runtime: OrganizeRuntime) => [
       const renamed = await run(
         Effect.gen(function* () {
           const found = yield* topicNamed(topic)
-          return yield* updateTopic(runtime(), found.id, { name }, yield* byAgent(api))
+          return yield* updateTopic(found.id, { name }, yield* byAgent(api))
         }),
       )
       return topicDone(renamed, `Renamed topic "${topic}" to "${renamed.name}"`)
@@ -140,7 +144,7 @@ const topicTools = (run: RunProgram, runtime: OrganizeRuntime) => [
       const archived = await run(
         Effect.gen(function* () {
           const found = yield* topicNamed(topic)
-          return yield* updateTopic(runtime(), found.id, { archived: true }, yield* byAgent(api))
+          return yield* updateTopic(found.id, { archived: true }, yield* byAgent(api))
         }),
       )
       return topicDone(archived, `Archived topic "${archived.name}"`)

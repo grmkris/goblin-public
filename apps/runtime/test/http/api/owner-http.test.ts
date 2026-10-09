@@ -8,16 +8,16 @@ import * as ManagedRuntime from 'effect/ManagedRuntime'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { StopRuntime } from '../../../src/agent-program.ts'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
+import { ChatOperations, Conversations } from '../../../src/chats/service.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
+import { DelegationLive } from '../../../src/layers/delegation.ts'
 import { TopicsHandlers } from '../../../src/topics/api.ts'
 import { OrganizeReceipts } from '../../../src/organize/receipts.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
-import { Conversations, Invocations, Personas, Receipts, Resident, RoutineRuns, Topics } from '../../../src/services.ts'
-import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
+import { Home, Invocations, Personas, Receipts, Resident, Topics, Workspace } from '../../../src/services.ts'
 import { appConversations } from '../../../src/storage/schema.ts'
 import { TopicRegistry } from '../../../src/topics/registry.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
@@ -104,22 +104,24 @@ const fixture = (options: { readonly active?: boolean } = {}) => {
   }
   // SAFETY: see the fixture's comment: only an archive of a Topic with open chats reads these.
   const unread = undefined as never
-  const stopping = (): StopRuntime => unread
+  // Lane D's services over the Topic and receipt stores; the other stores are never read.
+  const stores = Layer.mergeAll(
+    Layer.succeed(Topics, topics),
+    Layer.succeed(Receipts, receipts),
+    Layer.succeed(Personas, unread),
+    Layer.succeed(Invocations, unread),
+    Layer.succeed(Home, unread),
+    Layer.succeed(Workspace, unread),
+  )
   const runtime = ManagedRuntime.make(
     OwnerHttp.serve(TOPICS_API, TOPICS).pipe(
       Layer.provide(
         Layer.mergeAll(
-          Layer.succeed(Topics, topics),
-          Layer.succeed(Receipts, receipts),
+          Layer.provide(DelegationLive, stores),
           Layer.succeed(Conversations, unread),
-          Layer.succeed(RoutineRuns, unread),
-          Layer.succeed(Invocations, unread),
-          // The other groups' services, which no Topics request reaches.
-          Layer.succeed(Personas, unread),
+          Layer.succeed(ChatOperations, unread),
           Layer.succeed(Resident, resident),
           Layer.succeed(Entitlements, plans),
-          // SAFETY: the Topics handlers read only `stopping` from the instance input; the rest stays unused here.
-          Layer.succeed(AgentInput, { stopping } as AgentInputs),
         ),
       ),
     ),

@@ -71,9 +71,10 @@ describe("lane D's services over the legacy instances", () => {
       return {
         topics: (yield* topics.list).map((topic) => topic.name),
         missingTopic: yield* Effect.flip(topics.get(99)),
-        made: yield* personas.create({ ...scout, operationId: 'op-1' }, 'owner', 10),
+        made: yield* personas.create({ ...scout, operationId: 'op-1' }, 'owner'),
         named: yield* personas.byName('scout'),
-        stale: yield* Effect.flip(personas.update(1, { role: 'x', expectedRevision: 9 }, 'owner', 11)),
+        stale: yield* Effect.flip(personas.update(1, { role: 'x', expectedRevision: 9 }, 'owner')),
+        changed: yield* personas.update(1, { role: 'Digs', expectedRevision: 1 }, 'owner'),
         offers: yield* personas.offers('model-b'),
         invocation: yield* invocations.get('op-1', 1),
         receipts: yield* receipts.list(),
@@ -87,6 +88,10 @@ describe("lane D's services over the legacy instances", () => {
     expect(result.made).toMatchObject({ created: true, persona: { id: 1, revision: 1 } })
     expect(Option.getOrUndefined(result.named)).toMatchObject({ id: 1, name: 'Scout' })
     expect(result.stale).toMatchObject({ _tag: 'Conflict', reason: 'revision' })
+    expect(result.changed).toMatchObject({
+      before: { role: scout.role, revision: 1 },
+      after: { role: 'Digs', revision: 2 },
+    })
     expect(result.offers).toBe(false)
     expect(Option.isNone(result.invocation)).toBe(true)
     expect(result.receipts).toEqual([])

@@ -13,21 +13,22 @@ import * as Option from 'effect/Option'
 import * as HttpServer from 'effect/http/HttpServer'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { afterEach } from 'vitest'
-import type { StopRuntime } from '../../../src/agent-program.ts'
 import type { AgentApps } from '../../../src/agent-apps/engine.ts'
 import type { AppRegistry } from '../../../src/apps/registry.ts'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
-import { ConversationRegistry } from '../../../src/conversations.ts'
+import { ChatOperations, Conversations } from '../../../src/chats/service.ts'
+import { Apps } from '../../../src/apps/service.ts'
 import { HomeHandlers } from '../../../src/home/api.ts'
 import { HomeService } from '../../../src/home/service.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
+import { DelegationLive } from '../../../src/layers/delegation.ts'
+import { McpConnections, Resident } from '../../../src/mcp/service.ts'
 import { OrganizeHandlers } from '../../../src/organize/api.ts'
 import { PersonasHandlers } from '../../../src/personas/api.ts'
 import { OrganizeReceipts } from '../../../src/organize/receipts.ts'
 import { PersonaRegistry } from '../../../src/personas/registry.ts'
-import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import * as Legacy from '../../../src/services.ts'
 import { appConversations } from '../../../src/storage/schema.ts'
 import { TopicsHandlers } from '../../../src/topics/api.ts'
@@ -61,6 +62,9 @@ const LAYER = HttpApiBuilder.layer(API).pipe(
   Layer.provide(HttpServer.layerServices),
 )
 
+/** A service method no request here calls. */
+const unused = () => Effect.die('not used')
+
 const runtimes: ManagedRuntime.ManagedRuntime<OwnerHttp, never>[] = []
 const closes: (() => void)[] = []
 afterEach(async () => {
@@ -69,9 +73,9 @@ afterEach(async () => {
 })
 
 /**
- * The organizing groups (topics, personas, organize, home) as the agent serves them, over real Topic, Persona, receipt
- * and Home stores on SQLite. The gate's plan and resident authority are the only fakes. Nothing here has an open chat
- * to stop, an agent app or an MCP App, so Pi, what a Stop reaches, the apps and the MCP host are never read.
+ * The organizing groups (topics, personas, organize, home) as the agent serves them: lane D's services over real Topic,
+ * Persona, receipt and Home stores on SQLite. The gate's plan and resident authority are the only fakes. Nothing here
+ * has an open chat to stop, an agent app or an MCP App, so Pi, Stop, the apps and the MCP host are never read.
  */
 export const organizing = (options: { readonly active?: boolean } = {}) => {
   const { db, close } = chatDatabase()
@@ -117,29 +121,38 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
   }
   // SAFETY: what only a Stop of an open chat or an App on Home reads, which no request here reaches.
   const unread = undefined as never
-  // SAFETY: an archive of a Topic with open chats is the only thing that reads what a Stop reaches; none has any here.
-  const stopping = (): StopRuntime => unread
   // SAFETY: a Topic created here has no open chat, so an archive (an Undo of its creation) reads only `openIn`.
-  const conversations = Object.assign(Object.create(ConversationRegistry.prototype) as ConversationRegistry, {
-    openIn: () => [],
+  const conversations = Object.assign(Object.create(null) as Conversations['Service'], {
+    openIn: () => Effect.succeed([]),
   })
+  // The organizing programs ask resident authority only to `require` itself; the gate renews the legacy one.
+  const authority = Resident.of({
+    status: unused,
+    renew: unused,
+    revoke: unused,
+    enable: unused,
+    require: () => Effect.void,
+  })
+  const stores = Layer.mergeAll(
+    Layer.succeed(Legacy.Topics, topics),
+    Layer.succeed(Legacy.Personas, personas),
+    Layer.succeed(Legacy.Receipts, receipts),
+    Layer.succeed(Legacy.Home, home),
+    Layer.succeed(Legacy.Invocations, unread),
+    Layer.succeed(Legacy.Workspace, unread),
+  )
   const runtime = ManagedRuntime.make(
     OwnerHttp.serve(API, LAYER).pipe(
       Layer.provide(
         Layer.mergeAll(
-          Layer.succeed(Legacy.Topics, topics),
-          Layer.succeed(Legacy.Personas, personas),
-          Layer.succeed(Legacy.Receipts, receipts),
-          Layer.succeed(Legacy.Home, home),
-          Layer.succeed(Legacy.Conversations, conversations),
+          Layer.provide(DelegationLive, stores),
+          Layer.succeed(Conversations, conversations),
+          Layer.succeed(ChatOperations, unread),
+          Layer.succeed(Apps, unread),
+          Layer.succeed(McpConnections, unread),
+          Layer.succeed(Resident, authority),
           Layer.succeed(Legacy.Resident, resident),
           Layer.succeed(Entitlements, plans),
-          // SAFETY: the organizing handlers read only `stopping` from the instance input.
-          Layer.succeed(AgentInput, { stopping } as AgentInputs),
-          Layer.succeed(Legacy.RoutineRuns, unread),
-          Layer.succeed(Legacy.Invocations, unread),
-          Layer.succeed(Legacy.Apps, unread),
-          Layer.succeed(Legacy.Mcp, unread),
         ),
       ),
     ),
