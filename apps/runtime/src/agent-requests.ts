@@ -3,7 +3,7 @@ import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import { type AppError, NotFound } from './http/errors.ts'
 import { refusal } from './http/api/render.ts'
-import { type AgentServices, attempt } from './services.ts'
+import type { AgentServices } from './services.ts'
 import { registeredConversation } from './agent-program.ts'
 import { piEventResponse } from './pi/events.ts'
 import { Workspace } from './workspace/service.ts'
@@ -20,9 +20,6 @@ export async function sessionSnapshot(harness: PiHarness, session: string): Prom
   // SAFETY: Pi snapshots are structured cloneable; normalization enforces JSON at the RPC boundary.
   return JSON.parse(JSON.stringify(snapshot)) as JsonObject
 }
-/** RPC snapshots take the same registered chat identity as the HTTP routes. */
-export const chatSnapshot = (harness: PiHarness, chat: string) =>
-  Effect.flatMap(registeredConversation(chat), (session) => attempt(() => sessionSnapshot(harness, session)))
 
 const EVENTS = /^\/api\/conversations\/(\d{1,12})\/events$/u
 

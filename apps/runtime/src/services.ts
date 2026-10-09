@@ -78,17 +78,3 @@ export const attemptSync = <A>(run: () => A): Effect.Effect<A, AppError> => Effe
 export const nowSecondsEffect: Effect.Effect<number> = Effect.map(Clock.currentTimeMillis, (millis) =>
   Math.floor(millis / 1000),
 )
-
-/** Fails with `ResidentInactive` unless the owner's resident authority is current. */
-export const requireResident: Effect.Effect<void, AppError, Resident> = Effect.gen(function* () {
-  const resident = yield* Resident
-  const now = yield* nowSecondsEffect
-  yield* attemptSync(() => resident.require(now))
-})
-
-/** Fails with `BudgetExhausted` once the user's agent has spent today's model budget. */
-export const requireBudget: Effect.Effect<void, AppError, Budget> = Effect.gen(function* () {
-  const budget = yield* Budget
-  const now = yield* nowSecondsEffect
-  yield* attempt(() => budget.require(now))
-})
