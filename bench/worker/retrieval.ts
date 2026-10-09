@@ -39,7 +39,7 @@ export class Retrieval {
     try {
       result = JSON.parse(text)
     } catch {
-      /* Plain availability messages are also legitimate retrieval output. */
+      // expected: plain availability messages are legitimate retrieval output too
     }
     const envelope = (remainingBytes: number) =>
       JSON.stringify({ result, remainingCalls: Math.max(0, this.calls - this.trace.length - 1), remainingBytes })

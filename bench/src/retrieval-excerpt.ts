@@ -19,7 +19,7 @@ export function redactedExcerpt(text: string): string {
   try {
     safe = JSON.stringify(scrub(JSON.parse(text)))
   } catch {
-    /* Plain transcript text remains text. */
+    // expected: plain transcript text remains text
   }
   safe = safe
     .replace(/\b(?:Bearer\s+)[A-Za-z0-9._~+/=-]+/giu, 'Bearer [redacted]')

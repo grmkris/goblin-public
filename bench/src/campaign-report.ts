@@ -17,7 +17,7 @@ function renderedContext(traces: readonly Trace[]) {
       const request: unknown = JSON.parse(t.request)
       if (typeof request === 'object' && request !== null && 'messages' in request) messages = request.messages
     } catch {
-      // Missing or invalid legacy payloads remain unmeasured.
+      // expected: missing or invalid legacy payloads remain unmeasured
     }
     return {
       attempt: t.attempt,

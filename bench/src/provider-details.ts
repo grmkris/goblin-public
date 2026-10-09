@@ -35,7 +35,7 @@ export function providerDetails(text: string) {
       responseId = decoded.value.id ?? responseId
       usage = decoded.value.usage ?? usage
     } catch {
-      /* A non-JSON provider failure has no measurable token usage. */
+      // expected: a non-JSON provider failure has no measurable token usage
     }
   }
   return {

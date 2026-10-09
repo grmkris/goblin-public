@@ -84,6 +84,7 @@ const frozenThresholds = Effect.fn('decisions.frozenThresholds')(function* (fixt
 const createManifest = Effect.fn('decisions.createManifest')(function* (runId: string, fixtureFile: string) {
   const fixtures = yield* loadFixtures(fixtureFile)
   const account = yield* discoverAccount().pipe(
+    // expected: the manifest records an account it could not discover as `unavailable`
     Effect.catch(() => Effect.succeed({ account: 'unavailable', status: 0 })),
   )
   const manifest: Manifest = {

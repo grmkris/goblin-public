@@ -101,7 +101,7 @@ function toolFailure(message: typeof Message.Type): boolean | undefined {
     if (result.success !== undefined) return !result.success
     if (result.error !== undefined && result.error !== null) return true
   } catch {
-    /* Non-JSON tool text has no structured error flag; preserve unknown rather than infer success. */
+    // expected: non-JSON tool text has no structured error flag; it stays unknown rather than a success
   }
   return undefined
 }

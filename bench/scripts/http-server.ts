@@ -20,6 +20,7 @@ export async function serveLocal(port: number, handle: (request: Request) => Pro
       outgoing.writeHead(response.status, { ...Object.fromEntries(response.headers), connection: 'close' })
       outgoing.end(Buffer.from(await response.arrayBuffer()))
     })().catch(() => {
+      // expected: the client gets a 500; the private run traces hold what failed
       outgoing.writeHead(500)
       outgoing.end('Local transport failed; inspect private run traces.')
     })

@@ -50,6 +50,7 @@ export const liveProvider = Effect.fn('decisions.provider')(function* (request: 
           })),
         ),
       ),
+      // expected: a provider that fails is a `provider-error` row of the decision run, not a crash of it
       Effect.catch(() => Effect.succeed({ status: 0, text: '', error: 'provider-error' })),
       Effect.timeoutOption('30 seconds'),
     )

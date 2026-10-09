@@ -227,6 +227,7 @@ function rangeErrors(scenario: Scenario, probe: Probe): string[] {
       try {
         new TextDecoder('utf-8', { fatal: true }).decode(bytes.slice(range.offsetBytes, range.endBytes))
       } catch {
+        // expected: a range that splits UTF-8 is a fixture error, collected with the others
         errors.push(`label evidence range splits UTF-8 ${probe.id}`)
       }
     }

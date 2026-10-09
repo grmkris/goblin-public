@@ -30,6 +30,7 @@ export function validDelivery(
       receipt.text
     )
   } catch {
+    // expected: bytes that are not UTF-8 are not a valid delivery
     return false
   }
 }
@@ -41,7 +42,7 @@ export function evaluated(resolved: Resolved, episode: Episode, native: ProbeRes
   try {
     answer = Schema.decodeUnknownSync(Answer)(JSON.parse(native.text), { onExcessProperty: 'error' })
   } catch {
-    /* Preserve malformed answers verbatim; no JSON repair. */
+    // expected: a malformed answer is kept verbatim, with no JSON repair
   }
   const prefix = scenario.events.slice(0, episode.probe.cutoff)
   const deliveries = native.deliveries.filter((receipt) => validDelivery(receipt, prefix))
