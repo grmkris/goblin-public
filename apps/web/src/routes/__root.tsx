@@ -1,6 +1,14 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { HeadContent, Outlet, Scripts, createRootRouteWithContext, useRouterState } from '@tanstack/react-router'
-import type { ReactNode } from 'react'
+import {
+  type ErrorComponentProps,
+  HeadContent,
+  Outlet,
+  Scripts,
+  createRootRouteWithContext,
+  useRouter,
+  useRouterState,
+} from '@tanstack/react-router'
+import { type ReactNode, useEffect } from 'react'
 import { AppHost } from '../components/apps/host.tsx'
 import { AppLayer } from '../components/apps/stage.tsx'
 import { EphemeralProvider } from '../components/shell/ephemeral-slot.tsx'
@@ -10,7 +18,9 @@ import { WorkspaceFeedProvider } from '../components/workspace-feed.tsx'
 import { SessionProvider, useSession } from '../lib/session.tsx'
 import { BillingProvider, useBilling } from '../lib/billing.tsx'
 import { startupImages } from '../lib/startup-images.ts'
-import { RouteError } from '../lib/query/route-error.tsx'
+import { reportCrash } from '../lib/api.ts'
+import { reportUncaught } from '../lib/query/crash-report.ts'
+import { type CrashReport, RouteError } from '../lib/query/route-error.tsx'
 import css from '../styles.css?url'
 
 /** Follows the system's light or dark preference, before first paint and when it changes (as the myapps apps do). */
@@ -45,15 +55,26 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     ],
   }),
   component: Root,
-  // A failure the app did not catch: calm copy with the reference to quote, and a retry. Crash reports plug into
-  // RouteError's `onCrash`.
-  errorComponent: RouteError,
+  // A failure the app did not catch: calm copy with the reference to quote, and a retry; the crash is reported.
+  errorComponent: RootError,
   shellComponent: Document,
 })
 /** Pages that are part of signing in: no app navigation there. */
 const AUTH_PAGES = new Set(['/login', '/consent', '/subscribe', '/subscribe/success', '/terms', '/privacy', '/refunds'])
 
+const reportRouteCrash = ({ routeId, error }: CrashReport) => reportCrash(error, routeId)
+
+function RootError(props: ErrorComponentProps) {
+  return <RouteError {...props} onCrash={reportRouteCrash} />
+}
+
 function Root() {
+  const router = useRouter()
+  // Errors and rejections nothing caught are reported too, on the route showing when they happened.
+  useEffect(
+    () => reportUncaught(window, reportCrash, () => router.state.matches.at(-1)?.routeId ?? '__root__'),
+    [router],
+  )
   return (
     <SessionProvider>
       <BillingProvider>

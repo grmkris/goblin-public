@@ -1,4 +1,12 @@
-import { AppError, type ApiCode, ERROR_COPY, ErrorEnvelope, statusOf } from '@goblin/contracts/api'
+import {
+  AppError,
+  type ApiCode,
+  BILLING_REFUSALS,
+  BillingRefused,
+  ERROR_COPY,
+  ErrorEnvelope,
+  statusOf,
+} from '@goblin/contracts/api'
 import { onlineManager } from '@tanstack/react-query'
 import * as Option from 'effect/Option'
 import * as Predicate from 'effect/Predicate'
@@ -50,7 +58,18 @@ export const ERROR_KINDS: ErrorKindTable<ApiCode> = {
   upstream_mcp: 'unavailable',
   internal: 'defect',
 }
-const KIND_OF_CODE: ReadonlyMap<string, ErrorKind> = new Map(Object.entries(ERROR_KINDS))
+/** The account API's billing refusals (`BillingRefused`), pinned the same way. */
+export const BILLING_KINDS: ErrorKindTable<BillingRefused['code']> = {
+  billing_unavailable: 'unavailable',
+  already_subscribed: 'conflict',
+  checkout_limit: 'rate_limited',
+  account_missing: 'not_found',
+  no_customer: 'not_found',
+}
+const KIND_OF_CODE: ReadonlyMap<string, ErrorKind> = new Map([
+  ...Object.entries(ERROR_KINDS),
+  ...Object.entries(BILLING_KINDS),
+])
 const kindOf = (code: string, codes: Readonly<Record<string, ErrorKind>>): ErrorKind | undefined =>
   codes[code] ?? KIND_OF_CODE.get(code)
 
@@ -91,6 +110,20 @@ const appView = (error: AppError, codes: Readonly<Record<string, ErrorKind>>): A
     message: copy.message,
     recovery: 'recovery' in copy ? copy.recovery : undefined,
     recoveryHref: subscribe,
+    retryable: gateway(status),
+    ref: error.ref,
+  }
+}
+
+/** A billing refusal the account API answered, with its fixed copy; a checkout set up later is worth a retry. */
+const billingView = (error: BillingRefused, codes: Readonly<Record<string, ErrorKind>>): AppErrorView => {
+  const { status, ...copy } = BILLING_REFUSALS[error.code]
+  return {
+    kind: kindOf(error.code, codes) ?? kindForStatus(status),
+    code: error.code,
+    status,
+    message: copy.message,
+    recovery: 'recovery' in copy ? copy.recovery : undefined,
     retryable: gateway(status),
     ref: error.ref,
   }
@@ -142,6 +175,7 @@ export function describeError(error: unknown, codes: Readonly<Record<string, Err
   }
   if (Predicate.isTagged(error, 'SchemaError')) return { kind: 'defect', code: 'contract_drift', retryable: false }
   if (isAppError(error)) return appView(error, codes)
+  if (error instanceof BillingRefused) return billingView(error, codes)
   if (HttpClientError.isHttpClientError(error)) return transportView(error)
   const envelope = Schema.decodeUnknownOption(ErrorEnvelope)(error)
   const status = Option.getOrUndefined(Schema.decodeUnknownOption(WithStatus)(error))?.status
