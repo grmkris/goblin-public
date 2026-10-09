@@ -135,6 +135,7 @@ function objectArgument(value: unknown): Record<string, unknown> | undefined {
   try {
     return record(JSON.parse(value))
   } catch {
+    // expected: a free-form argument that is not JSON is no object, and the call shows without one
     return undefined
   }
 }
@@ -256,6 +257,7 @@ export function builtApp(
   try {
     value = JSON.parse(result.text)
   } catch {
+    // expected: a result that is not JSON is no built App, and the call shows as an ordinary tool result
     return undefined
   }
   const built = record(value)

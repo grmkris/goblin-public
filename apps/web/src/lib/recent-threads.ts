@@ -10,6 +10,7 @@ export function recentThreads(): readonly string[] {
       ? stored.filter((id): id is string => typeof id === 'string' && /^\d{1,12}$/u.test(id))
       : []
   } catch {
+    // expected: storage is off or holds something else, so the browser remembers no recent threads
     return []
   }
 }
@@ -20,6 +21,6 @@ export function rememberThread(thread: string): void {
     const next = [thread, ...recentThreads().filter((id) => id !== thread)].slice(0, KEPT)
     localStorage.setItem(KEY, JSON.stringify(next))
   } catch {
-    /* Only the sidebar's recent list is lost. */
+    // expected: storage is off or full, so only the sidebar's recent list is lost
   }
 }

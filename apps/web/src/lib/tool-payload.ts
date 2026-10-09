@@ -17,7 +17,7 @@ function textBlock(text: string): PayloadBlock {
     const value: unknown = JSON.parse(text)
     if (isJson(value)) return { kind: 'json', value }
   } catch {
-    // Tool results may be ordinary text, errors or incomplete JSON; all remain readable.
+    // expected: tool results may be ordinary text, errors or incomplete JSON; all remain readable as text
   }
   return { kind: looksLikeMarkdown(text) ? 'markdown' : 'text', text }
 }

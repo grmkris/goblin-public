@@ -8,6 +8,7 @@ export function lastChannel(): string {
     const stored = sessionStorage.getItem(KEY)
     return stored !== null && /^\d{1,12}$/u.test(stored) ? stored : PRIMARY_CHAT
   } catch {
+    // expected: storage is off in this tab (private mode, a policy), so Home opens Personal
     return PRIMARY_CHAT
   }
 }
@@ -17,6 +18,6 @@ export function rememberChannel(channel: string): void {
   try {
     sessionStorage.setItem(KEY, channel)
   } catch {
-    /* Home opens Personal instead. */
+    // expected: storage is off in this tab (private mode, a policy), so Home opens Personal instead
   }
 }

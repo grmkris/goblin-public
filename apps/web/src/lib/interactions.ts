@@ -107,6 +107,7 @@ function serverOf(part: ToolPart, details: Record<string, unknown>): Interaction
     const url = new URL(endpoint)
     if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') return undefined
   } catch {
+    // expected: an endpoint that is not a URL is no server request, and the call shows as an ordinary tool call
     return undefined
   }
   return { kind: 'server', callId: part.call.id, endpoint, name: name.slice(0, 80), reason: reason.slice(0, 300) }
