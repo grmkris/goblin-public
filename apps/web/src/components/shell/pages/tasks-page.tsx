@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { type PersonaInvocationView, RoutinePage, type RoutineView } from '@goblin/contracts'
-import { Schema } from 'effect'
+import type { PersonaInvocationView, RoutineView } from '@goblin/contracts'
 import { RepeatIcon } from 'lucide-react'
-import { failureText, request } from '../../../lib/boundary.ts'
+import { QueryError } from '../../../lib/query/query-boundary.tsx'
 import { delegates, personaTasks } from '../../../lib/rail.ts'
 import { subagentState } from '../../../lib/subagent-state.ts'
 import { relativeTime, threadTitle } from '../../../lib/threads.ts'
+import { reportUnexpected } from '../../../lib/unexpected.ts'
+import { routinesQuery } from '../../../routines/queries.ts'
 import { PageSection } from '../../page-section.tsx'
 import { SubagentStateIcon, SubagentStateText } from '../../parts/subagent-block.tsx'
 import { PersonaAvatar } from '../../persona-avatar.tsx'
@@ -14,31 +15,20 @@ import { useMinute } from '../../use-now.ts'
 import { useWorkspaceFeed } from '../../workspace-feed.tsx'
 import { ChatRow, RowContents } from './chat-link.tsx'
 
-const decodeRoutines = Schema.decodeUnknownSync(RoutinePage)
 const NEXT = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 const SCHEDULED: readonly RoutineView['state'][] = ['activating', 'active', 'paused']
 
-type ScheduledRoutines = { readonly routines: readonly RoutineView[]; readonly error: string }
-
 /**
- * The routines that run on their own: their names, when each runs next or last ran. Read once the page opens; a failed
- * read says so (`error`), so it never passes for having none.
+ * The routines that run on their own: their names, when each runs next or last ran. A failed read says so, with a
+ * retry, so it never passes for having none.
  */
-function useRoutines(): ScheduledRoutines {
-  const [read, setRead] = useState<ScheduledRoutines>({ routines: [], error: '' })
-  useEffect(() => {
-    const controller = new AbortController()
-    request('/api/routines', { signal: controller.signal })
-      .then((data) => {
-        const routines = decodeRoutines(data).routines.filter((each) => SCHEDULED.includes(each.state))
-        setRead({ routines, error: '' })
-      })
-      .catch((failure: unknown) => {
-        if (!controller.signal.aborted) setRead({ routines: [], error: failureText(failure) })
-      })
-    return () => controller.abort()
-  }, [])
-  return read
+function useRoutines() {
+  const read = useQuery(routinesQuery)
+  const routines = (read.data?.routines ?? []).filter((each) => SCHEDULED.includes(each.state))
+  const retry = () => {
+    read.refetch().catch(reportUnexpected)
+  }
+  return { routines, error: read.error, retry }
 }
 
 const STATES: Readonly<Record<PersonaInvocationView['state'], string>> = {
@@ -105,14 +95,11 @@ function PersonaAnswers({ now }: { readonly now: number }) {
  * The routines on a schedule: each by its title, when it runs next (or that it is paused); they open in Settings. A
  * failed read shows in their place.
  */
-function Routines({ routines, error }: ScheduledRoutines) {
-  if (routines.length === 0 && error === '') return null
+function Routines({ routines, error, retry }: ReturnType<typeof useRoutines>) {
+  if (routines.length === 0 && error === null) return null
   return (
-    <PageSection
-      id="routines"
-      title="Routines"
-      {...(error !== '' && { note: <span role="alert">Routines could not be read. {error}</span> })}
-    >
+    <PageSection id="routines" title="Routines">
+      {error !== null && <QueryError error={error} action="read your routines" onRetry={retry} />}
       <ul className="list-rows">
         {routines.map((routine) => (
           <li key={routine.id}>
@@ -143,7 +130,7 @@ export function TasksPage() {
   const work = delegates(feed.conversations, feed.activity)
   const scheduled = useRoutines()
   const listed = [...work.active, ...work.finished]
-  if (listed.length + feed.invocations.length + scheduled.routines.length === 0 && scheduled.error === '')
+  if (listed.length + feed.invocations.length + scheduled.routines.length === 0 && scheduled.error === null)
     return <p className="page-empty">No delegated work.</p>
   return (
     <div className="page-stack">

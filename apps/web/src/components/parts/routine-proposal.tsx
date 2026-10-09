@@ -1,8 +1,11 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Option, Schema } from 'effect'
-import { RoutinePage, type RoutineView } from '@goblin/contracts'
+import type { RoutineView } from '@goblin/contracts'
 import { Alert, AlertDescription, Button } from '@goblin/ui'
-import { failureText, record, request } from '../../lib/boundary.ts'
+import { record } from '../../lib/boundary.ts'
+import { messageOf } from '../../lib/query/app-error.ts'
+import { routinesQuery } from '../../routines/queries.ts'
 import type { ToolPart } from '../../lib/parts.ts'
 import { RoutineReview } from '../routines.tsx'
 import { ToolCard } from './tool-part.tsx'
@@ -17,6 +20,7 @@ const decodeReceipt = Schema.decodeUnknownOption(Receipt)
 export function RoutineProposalPart({ part }: { readonly part: ToolPart }) {
   const details = record(part.result?.details)
   const receipt = Option.getOrUndefined(decodeReceipt(details))
+  const queryClient = useQueryClient()
   const [routine, setRoutine] = useState<RoutineView>()
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
@@ -24,7 +28,8 @@ export function RoutineProposalPart({ part }: { readonly part: ToolPart }) {
     if (!receipt) return
     setPending(true)
     try {
-      const page = Schema.decodeUnknownSync(RoutinePage)(await request('/api/routines'))
+      // The review reads the routines as they are now, never a cached list.
+      const page = await queryClient.query({ ...routinesQuery, staleTime: 0 })
       const current = page.routines.find((item) => item.id === receipt.routineId)
       if (!current) {
         setError('This routine has been archived or removed.')
@@ -33,7 +38,7 @@ export function RoutineProposalPart({ part }: { readonly part: ToolPart }) {
       setRoutine(current)
       if (current.revision !== receipt.revision) setError('The routine has changed. Review its current revision below.')
     } catch (cause) {
-      setError(failureText(cause))
+      setError(messageOf(cause, 'read the routine'))
     } finally {
       setPending(false)
     }

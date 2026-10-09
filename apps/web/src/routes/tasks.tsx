@@ -2,8 +2,17 @@ import { createFileRoute } from '@tanstack/react-router'
 import { OwnerGate } from '../components/owner-gate.tsx'
 import { PageBar } from '../components/page-bar.tsx'
 import { TasksPage } from '../components/shell/pages/tasks-page.tsx'
+import { primeOwnerRead } from '../lib/prime.ts'
+import { reportUnexpected } from '../lib/unexpected.ts'
+import { routinesQuery } from '../routines/queries.ts'
 
-export const Route = createFileRoute('/tasks')({ component: TasksRoute })
+/** Delegated work: the Delegates and Persona answers come from the workspace feed; the loader primes the routines. */
+export const Route = createFileRoute('/tasks')({
+  loader: ({ context }) => {
+    primeOwnerRead(context.queryClient, routinesQuery).catch(reportUnexpected)
+  },
+  component: TasksRoute,
+})
 function TasksRoute() {
   return (
     <OwnerGate>
