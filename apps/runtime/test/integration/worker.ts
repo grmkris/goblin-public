@@ -56,6 +56,9 @@ import { inboxAppProbe } from './inbox-app-probe.ts'
 import { FileStore } from '../../src/files/store.ts'
 import { composerSequence, helperExclusionsProbe } from './composer-probe.ts'
 import { topicMemorySequence, topicRoutineSequence } from './native-topics.ts'
+import { callOwner } from './owner-api.ts'
+import { ownerResult } from './owner-result.ts'
+import { ResidentAuthority } from '../../src/resident.ts'
 
 const fixturePlan = () =>
   Effect.succeed({
@@ -161,7 +164,7 @@ export class PersonalAgentProbe extends PersonalAgent {
 
   async appsTurnProbe(): Promise<string> {
     // This probe submits directly to Pi; establish the resident authority an owner request normally renews.
-    await this.residentSet(true)
+    new ResidentAuthority(drizzle(this.ctx.storage)).enable(Math.floor(Date.now() / 1000))
     const session = new ChatDirectory(drizzle(this.ctx.storage)).session(PRIMARY_CHAT)
     return JSON.stringify(await appsTurnProbe(this.harness, () => this.seen, session))
   }
@@ -490,13 +493,17 @@ interface Env {
 
 /** Owner RPC through a real stub: resident authority renews, revocation is sticky, errors cross as AppError data. */
 async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
-  const first = await agent.residentStatus()
-  const revoked = await agent.residentSet(false)
-  const afterOwnerRequest = await agent.residentStatus()
-  const enabled = await agent.residentSet(true)
-  const servers = await agent.mcpServers()
-  const unknownServer = await agent.mcpSetToolGrant('missing', 'tool', true)
-  const unknownApp = await agent.mcpSetAppGrant('missing', 'ui://missing/app.html', true)
+  const first = await ownerResult(agent, (api) => api.resident.status())
+  const revoked = await ownerResult(agent, (api) => api.resident.set({ payload: { enabled: false } }))
+  const afterOwnerRequest = await ownerResult(agent, (api) => api.resident.status())
+  const enabled = await ownerResult(agent, (api) => api.resident.set({ payload: { enabled: true } }))
+  const servers = await ownerResult(agent, (api) => api.mcp.servers())
+  const unknownServer = await ownerResult(agent, (api) =>
+    api.mcp.setToolGrant({ payload: { serverId: 'missing', name: 'tool', allowed: true } }),
+  )
+  const unknownApp = await ownerResult(agent, (api) =>
+    api.mcp.setAppGrant({ payload: { serverId: 'missing', uri: 'ui://missing/app.html', allowed: true } }),
+  )
   const noConversation = await agent.recentMessages(5)
   const thread = await agent.createConversation({})
   const threads = await agent.conversations()
@@ -507,7 +514,7 @@ async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promis
   const usage = await ownerResult(agent, (api) => api.agent.usage())
   const modelChoice = await ownerResult(agent, (api) => api.agent.model())
   const unknownModel = await ownerResult(agent, (api) => api.agent.chooseModel({ payload: { model: 'not-offered' } }))
-  await agent.residentSet(false)
+  await callOwner(agent, (api) => api.resident.set({ payload: { enabled: false } }))
   const askWhileRevoked = await agent.askAsClient('Test client', 'hello', 'op-1', 1000)
   return Response.json({
     first,
@@ -929,7 +936,7 @@ async function memorySequence(agent: DurableObjectStub<PersonalAgentProbe>): Pro
 /** Account deletion's agent half: state before, what the caller of deleteAgentData sees, state after. */
 async function destroySequence(env: Env, name: string): Promise<Response> {
   const agent = env.AGENTS.getByName(name)
-  await agent.residentSet(false)
+  await callOwner(agent, (api) => api.resident.set({ payload: { enabled: false } }))
   const submitted = await agent.submit(PRIMARY_CHAT, 'remember this before deletion', 'destroy-op-1')
   const before = await entries(agent)
   let deleted: unknown
@@ -944,7 +951,7 @@ async function destroySequence(env: Env, name: string): Promise<Response> {
     before,
     deleted,
     after: await entries(fresh),
-    resident: await fresh.residentStatus(),
+    resident: await ownerResult(fresh, (api) => api.resident.status()),
   })
 }
 
