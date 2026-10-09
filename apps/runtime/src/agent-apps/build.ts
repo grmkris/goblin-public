@@ -253,7 +253,7 @@ export class AppBuilder {
     if (!transpiled.ok) return fail(transpiled.problems)
     const modules = { ...transpiled.modules, 'release.js': toolchain.RELEASE, '@goblin/app': toolchain.SDK }
     const api = this.#deps.isolates.release(release, () => modules)
-    const described = await this.#attempt(3000, 'describe', () => api.describe())
+    const described = await this.#isolated(3000, 'describe', () => api.describe())
     if (!described.ok) return fail([{ file: 'app.ts', message: described.error }])
     const read = readManifest(described.value, request.name)
     if ('problems' in read) return fail(read.problems.map((message) => ({ message })))
@@ -307,7 +307,7 @@ export class AppBuilder {
   ): Promise<{ readonly view: AppViewCode | undefined } | { readonly problems: readonly Problem[] }> {
     if (source === undefined || transpiled.view === '') return { view: undefined }
     const style = this.#deps.isolates.style(toolchain.TOOLCHAIN_HASH, toolchain.STYLE, toolchain.STYLE_SHEETS)
-    const css = await this.#attempt(10_000, 'styles', () => style.css(source))
+    const css = await this.#isolated(10_000, 'styles', () => style.css(source))
     if (!css.ok) return { problems: [{ file: VIEW, message: `Its styles did not compile: ${css.error}` }] }
     return { view: { module: transpiled.view, css: css.value, libs: transpiled.libs } }
   }
@@ -319,7 +319,7 @@ export class AppBuilder {
   async #rendered(toolchain: Toolchain, view: AppViewCode, state: unknown): Promise<RenderCheck> {
     const id = await sha256(`${toolchain.RENDER}\n${view.module}`)
     const check = this.#deps.isolates.render(id, toolchain.RENDER, view.module, toolchain.RENDER_IMPORTS)
-    const out = await this.#attempt(5000, 'the render check', async (): Promise<Rendered> =>
+    const out = await this.#isolated(5000, 'the render check', async (): Promise<Rendered> =>
       check.render(JSON.stringify(state ?? null)),
     )
     return out.ok ? out.value : { outcome: 'not-run', error: out.error }
@@ -344,7 +344,7 @@ export class AppBuilder {
           },
         ],
       }
-    const attempted = await this.#attempt(3000, 'migrate', () => api.migrate(current.state))
+    const attempted = await this.#isolated(3000, 'migrate', () => api.migrate(current.state))
     const migrated = attempted.ok ? attempted.value : attempted
     if (!migrated.ok) return { problems: [{ file: 'app.ts', message: `state.migrate failed: ${migrated.error}` }] }
     const value = plainJson(migrated.value, STATE_BYTES, 'migrated state')
@@ -380,7 +380,7 @@ export class AppBuilder {
   }
 
   /** An isolate call whose failure (a module that does not load, a throw at top level, a timeout) is the app's. */
-  async #attempt<T>(
+  async #isolated<T>(
     ms: number,
     what: string,
     work: () => Promise<T>,
