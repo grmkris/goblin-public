@@ -1,12 +1,12 @@
 import { defineExtension } from '@earendil-works/pi-durable'
 import { Coverage, TurnSummary, TurnTimeline } from '@goblin/contracts/inspect'
 import { RunAttribute, RunAttributes, RunEventKind, RunEventStatus, type RunEvent } from '@goblin/contracts/telemetry'
+import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { nowMillis } from '../clock.ts'
 import type { AppError } from '../http/errors.ts'
-import { Inspect, attempt, attemptSync } from '../services.ts'
-import type { RunProgram } from './resident-mcp.ts'
+import { Inspection } from '../inspect/service.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { typedTool } from './typed-tool.ts'
 
 const HOUR_MS = 60 * 60 * 1000
@@ -66,6 +66,32 @@ const brief = (event: RunEvent): typeof Brief.Type => ({
   ),
 })
 
+type Diagnosed = typeof Diagnosis.Type
+
+/** One turn's timeline in brief, or a note that the ledger has no such turn. */
+const turnDiagnosis = (operationId: string): Effect.Effect<Diagnosed, AppError, Inspection> =>
+  Inspection.use((inspection) => inspection.turn(operationId)).pipe(
+    Effect.map((timeline) => ({
+      trusted: false as const,
+      turn: timeline.turn,
+      ...(timeline.submission === undefined ? {} : { submission: timeline.submission }),
+      events: timeline.events.map(brief),
+      coverage: timeline.coverage,
+    })),
+    Effect.catchTag('NotFound', () =>
+      Effect.succeed({ found: false as const, note: 'No turn with that operation id in the last 30 days.' }),
+    ),
+  )
+
+/** What needs attention and the recent turns, over the last `hours`. */
+const recentDiagnosis = Effect.fn('diagnose.recent')(function* (hours: number, all: boolean) {
+  const inspection = yield* Inspection
+  const since = (yield* Clock.currentTimeMillis) - hours * HOUR_MS
+  const problems = yield* inspection.problems({ since, limit: PROBLEMS, all })
+  const turns = yield* inspection.turns({ since, limit: TURNS })
+  return { trusted: false as const, problems: problems.problems.map(brief), turns: turns.turns }
+})
+
 /**
  * `diagnose`: the agent's own read of how its recent turns ran (ADR 0024), so it can tell the owner why something
  * failed. Read-only, never content, never a model call. Error text can come from remote servers: it is data.
@@ -83,29 +109,7 @@ const diagnoseTool = (run: RunProgram) =>
     output: Diagnosis,
     replay: 'safe',
     execute: async ({ operationId, hours, all }) =>
-      run(
-        Inspect.use((inspector): Effect.Effect<typeof Diagnosis.Type, AppError> => {
-          if (operationId !== undefined)
-            return attempt(() => inspector.turn(operationId)).pipe(
-              Effect.map((timeline) => ({
-                trusted: false as const,
-                turn: timeline.turn,
-                ...(timeline.submission === undefined ? {} : { submission: timeline.submission }),
-                events: timeline.events.map(brief),
-                coverage: timeline.coverage,
-              })),
-              Effect.catchTag('NotFound', () =>
-                Effect.succeed({ found: false as const, note: 'No turn with that operation id in the last 30 days.' }),
-              ),
-            )
-          const since = nowMillis() - (hours ?? 24) * HOUR_MS
-          return attemptSync(() => ({
-            trusted: false as const,
-            problems: inspector.problems(since, PROBLEMS, all === true).problems.map(brief),
-            turns: inspector.turns(since, TURNS).turns,
-          }))
-        }),
-      ),
+      run(operationId === undefined ? recentDiagnosis(hours ?? 24, all === true) : turnDiagnosis(operationId)),
   })
 
 /** The resident agent's read-only self-diagnosis, for its main conversation (where Telegram and clients talk). */

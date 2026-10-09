@@ -1,7 +1,7 @@
 import type { Extension } from '@earendil-works/pi-durable'
 import * as workers from 'cloudflare:workers'
 import { diagnoseExtension } from '../pi/diagnose.ts'
-import type { RunProgram } from '../pi/resident-mcp.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { type RunTelemetryKit, runTelemetry } from './run.ts'
 import { TraceSink } from './trace.ts'
 

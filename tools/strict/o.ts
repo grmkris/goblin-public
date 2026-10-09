@@ -9,7 +9,7 @@ export const paths: string[] = [
   // The CLI's main.ts and connect.ts write to the terminal with console, which it is for.
   'apps/cli/src/{args,commands,config,logs,oauth,render,store}.ts',
   'apps/cli/test/**',
-  'apps/runtime/test/{inspect,inspect-service,telemetry,telemetry-attention,telemetry-flows,telemetry-ledger,telemetry-recovery,trace}.test.ts',
+  'apps/runtime/test/{diagnose,inspect,inspect-service,telemetry,telemetry-attention,telemetry-flows,telemetry-ledger,telemetry-recovery,trace}.test.ts',
   'apps/runtime/test/mcp/inspection.test.ts',
   'apps/runtime/test/http/api/inspect.test.ts',
   'apps/runtime/test/integration/telemetry-probe.ts',

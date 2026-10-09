@@ -4,9 +4,10 @@ import type * as Exit from 'effect/Exit'
 import * as Schema from 'effect/Schema'
 import { type AppError, InvalidInput } from '../http/errors.ts'
 import { encodeExit } from '../http/rpc.ts'
-import { type AgentServices, Inspect, attempt } from '../services.ts'
+import { Inspection } from './service.ts'
 
-type Execute = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<Exit.Exit<A, AppError>>
+/** Runs an inspection program to its exit; it needs nothing but `Inspection`. */
+type Execute = <A>(program: Effect.Effect<A, AppError, Inspection>) => Promise<Exit.Exit<A, AppError>>
 
 const decodeQuery = Schema.decodeUnknownEffect(Schema.fromJsonString(InspectQuery))
 
@@ -21,7 +22,7 @@ export async function inspectRequest(request: Request, execute: Execute): Promis
   const exit = await execute(
     decodeQuery(body).pipe(
       Effect.mapError(() => new InvalidInput({ reason: 'inspect query' })),
-      Effect.flatMap((query) => Inspect.use((inspector) => attempt(() => inspector.run(query)))),
+      Effect.flatMap((query) => Inspection.use((inspection) => inspection.run(query))),
     ),
   )
   return Response.json(encodeExit(exit))
