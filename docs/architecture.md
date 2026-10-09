@@ -10,7 +10,7 @@ flowchart LR
   Web --> Worker[Worker routes]
   Client[MCP client\nClaude Code, agents] -->|Bearer| Worker
   Worker --> Auth[(D1\nBetter Auth)]
-  Worker -->|DO RPC| Agent[PersonalAgent DO]
+  Worker -->|owner API over fetch, five RPCs| Agent[PersonalAgent DO]
   Agent --> Pi[(Pi tables)]
   Agent --> App[(app_* tables\nDrizzle)]
   Agent --> MCP[MyPlan, MyBrowser\nOAuth, refreshed in the DO]
@@ -24,13 +24,107 @@ Runtime paths below are relative to `apps/runtime/src/`; browser paths are relat
 
 | Path | What happens |
 | --- | --- |
-| `/health` | Stage, service name, sign-up mode and whether mail is configured. |
+| `/health` | Stage, service name, sign-up mode, whether mail is configured, and the billing mode. |
 | `/.well-known/oauth-protected-resource*` | Protected-resource metadata for `/mcp`, the same document at every path. |
 | `/.well-known/*`, `/api/auth/*` | Better Auth: sign-up and sign-in, the OAuth authorization server for inbound clients. |
 | `/mcp` | goblin's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented, and `goblin:inspect` adds read-only inspection (ADR 0024). |
-| `/api/*` | Owner API. A session cookie selects the signed-in user's agent; writes reject an `Origin` header if it names another origin. Browser writes under `/api/mcp/`, `/api/apps`, `/api/agent-apps`, `/api/home`, `/api/files` and `/api/routines`, plus queue removal, also require the same-origin CSRF marker. |
+| `/api/billing/…`, `/api/clients…`, `/api/client-errors` | The account API, answered in the Worker without waking an agent (see The owner API). |
+| `/api/*` | The owner API: admitted at the Worker's edge, then forwarded to the signed-in user's own agent (see The owner API). |
 | `/hooks/mcp-events/<userId>/<token>` | Signed MCP Events; the user-bound route token is checked before object lookup. |
 | `/hooks/myagent/<userId>/<token>` | Legacy Telegram doorbell fallback for servers without Events. |
+| `/hooks/dodo` | Signed payment webhooks (see Plans and payments). |
+
+## The owner API
+
+The browser's API is one typed Effect HttpApi contract ([ADR 0038](adr/0038-typed-owner-api-served-by-the-agent.md)),
+in `packages/contracts/src/api`: `OwnerApi`, which each user's agent serves, `AccountApi`, which the Worker serves,
+and `errors.ts`, the failure vocabulary (`AppError`) and its envelope. Paths, methods and success statuses are the ones
+the hand-written routes had.
+
+**The edge** (`http/api/edge.ts`, built once per isolate). The account API's groups are answered in the Worker
+(`http/api/account.ts`): `billing` for any signed-in account, `clients` for one with a plan, and `clientErrors`, a
+browser crash report, without a session. Every other `/api/*` request is admitted in this order, then forwarded:
+
+1. a write whose `Origin` names another site is refused;
+2. the session comes from the cookie alone; a request with an `Authorization` header is refused;
+3. every write needs the app's own `Origin` and `x-goblin-csrf: 1` (`http/csrf.ts`), which the web sends on every write;
+4. the account's plan is read fresh from auth D1 (402 without one);
+5. a body is capped at 64 KiB, except file bytes, which stream through to the agent's own limits;
+6. `AGENTS.getByName(userId).fetch` gets the request with only `content-type`, `content-length`, `accept`,
+   `last-event-id`, `x-goblin-request`, `x-goblin-operation` and `x-mcp-caller`, plus the edge's reference in
+   `x-goblin-ref` (the request's cf-ray, or a random id where there is none). Cookies and authorization stay at the
+   edge.
+
+Every answer carries `x-goblin-ref`, `cache-control: no-store` and `nosniff`. Each failed one, the edge's refusals and
+the agent's answers alike, is one `http.failure` log line: route template, method, status, code, reference, the
+browser's request and operation ids, and the agent; never a body.
+
+**The agent** (`PersonalAgent.onRequest`) answers with `OwnerHttp` (`http/api/server.ts`): a router over every group's
+handlers (`http/api/groups.ts`), built once inside the agent's runtime as one of its layers, never at module level.
+Each group's handlers (`HttpApiBuilder.group`) live in their area (`<area>/api.ts`) and read the agent's services
+from context. The `OwnerGate` middleware (`http/api/middleware.ts`) admits every request before its handler,
+and before its body is decoded: the plan through the agent's `Entitlements`, then a renewal of resident authority
+(except `POST /api/agent/resident`, annotated `RenewsResident: false`). It annotates the request's logs with
+`goblin.rpc` (`<group>.<endpoint>`), `goblin.operation` and `ref`, and stamps `ref` on every typed failure.
+
+| Group | Paths under `/api` | Handlers |
+| --- | --- | --- |
+| `conversations` | `/conversations`, `/conversations/:id`, and under it `messages`, `threads`, `move`, `stop`, `queue`, `read`, `capabilities`, `composer`, `snapshot`, `history`, `sources` | `chats/api.ts` |
+| `inspect` | `GET /conversations/:id/details` | `inspect/api.ts` |
+| `topics` | `/topics`, `/topics/:id` | `topics/api.ts` |
+| `personas` | `/personas`, `/personas/:id` | `personas/api.ts` |
+| `organize` | `/organize`, `/organize/:id/undo` | `organize/api.ts` |
+| `home` | `/home` | `home/api.ts` |
+| `mcp` | `/mcp/servers`, `/mcp/suggested`, `/mcp/catalog`, `/mcp/registries`, `/mcp/registries/remove`, `/mcp/grants`, `/mcp/ask-first`, `/mcp/skills`, `/mcp/app-grants`, `/mcp/approvals/:id`, and `/mcp/:id/` `tools`, `connect`, `disconnect`, `remove`, `tools/call`, `resources/read`, `prompts/get` | `mcp/api.ts` |
+| `resident` | `/agent/resident` | `mcp/resident-api.ts` |
+| `agent` | `/agent/usage`, `/agent/model`, `/agent/channel` | `routines/agent-api.ts` |
+| `memory` | `/agent/memory` | `memory/api.ts` |
+| `routines` | `/routines`, `/routines/settings`, `/routines/:id`, and under it `confirm`, `pause`, `run`, `runs` | `routines/api.ts` |
+| `apps` | `/apps`, `/apps/:id`, and under it `launch`, `state`, `call`, `diagnostics` | `apps/api.ts` |
+| `agentApps` | `/agent-apps`, `/agent-apps/:name` | `agent-apps/api.ts` |
+| raw routes | `GET /conversations/:id/events`, `GET /workspace/events`, `/files`, `/files/content`, `GET /mcp/oauth/callback` | `agent-requests.ts` |
+| account (Worker) | `billing`: `/billing/state`, `/billing/checkout`, `/billing/portal`; `clients`: `/clients`, `/clients/:clientId`; `clientErrors`: `/client-errors` | `http/api/account.ts` |
+
+A path no group names goes to the agent's raw routes, which are not JSON in and out: the two event streams (SSE), the
+owner's file bytes, and the MCP OAuth callback, a redirect to Connections that carries `ref` when it failed. Anything
+else is a 404. The agent's `/inspect` route is outside `/api`, so only `/mcp` reaches it (see Inspection).
+
+A failure answers the envelope `{ error: { code, message, recovery?, …safe fields, ref? } }`: `code` is the
+`AppError` tag in lower_snake_case, which the typed client decodes back into the class, `message` and `recovery` are
+fixed copy (`ERROR_COPY`), and the safe fields are the ones the UI uses (`reason`, `what`, `serverId`, `name`,
+`state`, `subscribe`, `limit`, `resetsAt`, `rpcCode`). A request that does not decode is answered as the old routes
+answered it: a path parameter that does not parse is 404, a body, query or header that does not match is 400. A
+failure from stored data, a response that does not encode, or a defect is a 500 `Internal`, reported with its stack
+locations and never its message. The raw routes and the hooks still answer the older `{ error: Tag, …fields }`.
+
+Five Durable Object RPC methods remain, for callers that are not the owner's browser: `askAsClient` and
+`recentMessages` (inbound `/mcp`), `channelDoorbell` and `mcpEventsWebhook` (the hooks) and `deleteAgentData` (account
+deletion). Workers RPC drops custom error classes, so they return an encoded `RpcResult` (`http/rpc.ts`) that the
+Worker unwraps; `/inspect` answers the same shape as JSON.
+
+### In the browser
+
+`lib/api.ts` builds two typed clients over the query bridge (`lib/query/api-query.ts`, a port of myapps'
+`@myapps/query` with its provenance in `lib/query/PROVENANCE.md`): `owner` (`OwnerApi`) and `account` (`AccountApi`).
+Every request carries a fresh `x-goblin-request` id, every write `x-goblin-csrf: 1`, and a write run with
+`withOperation` its `x-goblin-operation`. Besides them, only the file bytes (`lib/files.ts`), the two event streams
+and Better Auth's client (`/api/auth`) reach `/api`. Server data follows myapps ADR 0013, as
+the web's instructions spell out:
+
+- One `src/<feature>/queries.ts` per feature holds the `owner.apiQuery` and `owner.apiMutation` factories, keyed
+  `[feature, kind, input]`; a mutation's `onSuccess` returns its invalidation.
+- The `QueryClient` is made per router (`router.tsx`): data stays fresh for 30 seconds, only a retryable failure is
+  retried, and a read that finds the session gone clears the cache and goes to sign-in.
+- Owner pages render inside `OwnerGate` (sign-in on the page, `/subscribe` without a plan), not a signed-in layout. A
+  route loader may prime a read with `primeOwnerRead` (`lib/prime.ts`), which runs ahead of the gate and decides
+  nothing. Components read with `useSuspenseQuery` inside a `QueryBoundary` (`lib/query/query-boundary.tsx`), which
+  keeps a failure inline with its reference and a retry; a section that reads with `useQuery` shows `QueryError`.
+- The conversation stream and the workspace feed stay dedicated SSE stores; their events only invalidate the query
+  keys they affect.
+- A failure reads through `messageOf` or `describeError` (`lib/query/app-error.ts`) and quotes its reference. A route
+  that fails shows `ReportedRouteError`, which reports a defect as a crash (see Logs, failures and references).
+
+The web's tests serve the real contract in memory (`fakeHttpApi`, `lib/query/testing.ts`).
 
 ## Per-call MCP approval
 
@@ -67,19 +161,53 @@ Pi, Agents and application tables, its alarm and isolate. Only then does Better 
 sessions, consents and tokens. Agent-erasure failure leaves the account intact for retry. Outbound OAuth tokens are
 forgotten, not revoked remotely. Conversations, credentials, grants and resident authority belong to one user.
 
-The owner API forwards to the agent object over DO RPC. Workers RPC drops custom error classes, so every DO method
-returns an encoded `RpcResult`; the Worker decodes it and maps the tagged error to a status in one place
-(`http/errors.ts`, `http/respond.ts`). Failures are logged as one JSON line with route, request ID, status and
-error tag, never bodies or credentials.
-
 ## The agent object
 
 `PersonalAgent extends Agent` and registers the native `PiHarness` with the Agent lifecycle. Pi owns transcripts,
-tasks, submissions, recovery and tool replay. The object builds one Effect `ManagedRuntime` lazily, providing its
-services: `Mcp` (the MCP host), `Resident` (resident authority), `Chats` (logical chat resolution), `Conversations` (the conversation registry), `Topics` (the owner's Topics),
-`Budget`, `Models`, `Memory`, `Skills`, `Learner`, `Channel`, `Files` and `Retrieval` (cross-Topic retrieval, ADR 0035) (`services.ts`). DO methods are thin: each runs one Effect
-program and encodes the exit. PiHarness and Pi Durable are experimental; Alchemy is a pinned beta and Drizzle an RC. `@shadcn/react` is pinned at
-0.3.1 and patched (`patches/shadcn-react/README.md`): its MessageScroller carries unreleased upstream fixes.
+tasks, submissions, recovery and tool replay. PiHarness and Pi Durable are experimental; Alchemy is a pinned beta and
+Drizzle an RC. `@shadcn/react` is pinned at 0.3.1 and patched (`patches/shadcn-react/README.md`): its MessageScroller
+carries unreleased upstream fixes. The owner reaches the object through its typed API (`onRequest`, see The owner
+API); five RPC methods serve the Worker's other callers.
+
+The object builds one Effect `ManagedRuntime` lazily, on first use, from `AgentLive` (`layers/index.ts`). A runtime
+that fails to start is dropped, so the next caller starts it again; `deleteAgentData` closes it. What the services need
+from the instance (its storage and env, the Pi pieces its constructor made, schedules, the plan policy, Stop) is one
+record, `AgentInput` (`runtime/input.ts`). The layers build in a fixed order, each over everything before it:
+
+- **Core** (`layers/core.ts`): `AgentInput`, the application database (`Db`), the change bus (`Changes`), Pi's calls
+  as Effects (`PiSessions`), the per-key lock (`KeyedLock`), conversation flow events (`FlowEvents`), and goblin's
+  content-free logger and failure reporter in place of Effect's defaults (see Logs, failures and references).
+- **The legacy start** (`layers/legacy.ts`, being retired): the agent's original start, step for step in its order
+  (migrations, endpoint bindings, the MCP host and grants, budget, chats, memory, capabilities, routines, the
+  conversations, Topics and Apps over them, then skills, the Telegram channel and Events), behind the old service tags
+  of `services.ts`.
+- **One layer per area**, in order: conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`), delegation
+  (`Topics`, `Personas`, `Invocations`, `Receipts`, `Home`, `Workspace`), MCP (`Resident`, `McpServers`,
+  `McpGrants`, `McpConnections`, `Approvals`, `Events`, `Capabilities`), knowledge (`Memories`, `Retrieval`, `Skills`,
+  `Learner`), routines (`Entitlements`, `Budget`, `Routines`, `RoutineRuns`, `RoutineUsage`, `RoutineControl`,
+  `Models`, `Channel`), observability (`Inspection`), apps (`Apps`, `AppEngine`, `Files`) and HTTP (`OwnerHttp`).
+
+`AgentServices`, every service a program may require, is derived from the layers, so no area edits a shared union. A
+service is a `Context.Service` tag in its area (`<area>/service.ts`) whose methods are `Effect.fn` Effects with typed
+`AppError` failures; synchronous Drizzle stores stay plain classes, wrapped once where the service is built. Some area
+services are still adapters over the legacy start's one instance of a stateful class; none builds a second.
+
+The object runs its programs through one bridge (`runtime/bridge.ts`): `run` checks the plan
+(`Entitlements.require()`) first, `local` does not (the ledger, budget records, routine gates, diagnose), and `exit`
+returns the program's exit, for `onRequest` and the RPC methods. Every program it runs reports an `Internal` failure
+or a defect with its code location (`runtime/instrument.ts`). Pi extensions receive `run` and `local`; a program never
+calls them from inside an Effect, it composes instead.
+
+- `KeyedLock` (`observability/lock.ts`): mutual exclusion per key, strictly first come, first served (Effect's
+  `Semaphore` wakes waiters in no fixed order). It is held for admission only, never across a model call or another
+  wait. Topic creates, retrieval catch-up, an agent app's state changes and the Telegram pull take it; chat admission
+  still takes the chat directory's own per-chat lock.
+- `Changes` (`runtime/changes.ts`): a synchronous topic bus with no fibers or timers. An area declares its topics
+  where it publishes them, with ids as payloads (`topics.changed`, `personas.changed`, `receipts.changed`,
+  `home.changed`), and the workspace feed reads each item as it is then. Handlers run inline in order; a failing one
+  is reported and ends only itself.
+- `PiSessions` (`pi/sessions.ts`): Pi's submit, write, wait, abort and reads as Effects with a typed `PiFailure`.
+  Every call names its session, and interrupting a `wait` ends only the wait.
 
 Conversations (`conversations.ts`): every agent has one **main** conversation, stable chat id `1` (`PRIMARY_CHAT`),
 where the owner's browser and every inbound MCP client talk. `ChatDirectory` resolves that chat to its current Pi
@@ -171,11 +299,12 @@ and input type, then calls Pi's native `abortSubmission` with the conversation I
 placement winning the race returns `already_started` without interrupting the run. Repeated removal returns a settled
 outcome. Only the selected row is busy, failures keep it visible, and native inbox updates refresh every view.
 
-The owner API is conversation-scoped:
+The conversation-scoped routes of the owner API: the `conversations`, `inspect`, `apps` and `agentApps` groups, and the
+agent's raw routes (marked raw). Like every owner write, each write needs the CSRF header.
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/workspace/events` | The workspace feed (SSE): a `WorkspaceSnapshot` of every conversation and kept App and what each conversation that is not idle is doing (`working`, `waiting` on subagents), then batches of `WorkspaceChange` (`workspace/feed.ts`, from Pi's task graph and the registries' writes). A tab skips any item or change it cannot read, so a newer server never stops it. |
+| `GET /api/workspace/events` | Raw. The workspace feed (SSE): a `WorkspaceSnapshot` of every conversation and kept App and what each conversation that is not idle is doing (`working`, `waiting` on subagents), then batches of `WorkspaceChange` (`workspace/feed.ts`, from Pi's task graph and the registries' writes). A tab skips any item or change it cannot read, so a newer server never stops it. |
 | `POST /api/apps` | Keep the App of a call in a conversation (`{ conversation, callId }`): one made before Apps were kept, or one closed. The call must be an `mcp_call` whose tool still renders that App; the same call keeps the same App. |
 | `GET /api/apps/:id/launch` | What loads an App (`AppLaunch`): an MCP App's server and `ui://` resource, and the call's arguments and redacted result read back from Pi; an agent app's view module, stylesheet, frame bundles and state. It grants nothing. |
 | `PATCH /api/apps/:id` | Close or reopen an App (`{ closed }`). Closing a conversation closes its MCP Apps. |
@@ -187,23 +316,25 @@ The owner API is conversation-scoped:
 | `POST /api/agent-apps/:name` | A change by the owner (`AgentAppChange`): roll back, pause or resume a schedule, run one now, move its home, allow or revoke a power. Only the owner answers a power; the agent cannot. |
 | `DELETE /api/agent-apps/:name` | Erases an agent app once the owner typed its name (`DeleteAgentApp`): tools, schedules, files and rows. |
 | `GET /api/conversations` | List registered conversations (`ConversationView`), closed ones included, each with its `parent`, where it branched (`forkEntry`), and its own `replies` and `lastReplyAt`, counted from Pi (`replies.ts`). |
-| `POST /api/conversations` | Create an empty thread (`{}`) or branch an open conversation at an entry (`{ from: { conversation, entry } }`). |
+| `POST /api/conversations` | Create an empty thread (`{}`, under `topic`'s Conversation when given) or branch an open conversation at an entry (`{ from: { conversation, entry } }`); 201. An `operationId` is accepted but does not make the create idempotent yet. |
 | `PATCH /api/conversations/:id` | Rename, close or reopen (`closed`) a thread or subagent, or pin a subagent open (`keepOpen`). Closing stops it and everything under it; main cannot be changed this way. |
 | `PUT /api/conversations/:id/read` | The owner has seen its newest reply: `read_at` moves forward to now, and the feed carries it as `readAt` (a later `lastReplyAt` is unread). |
 | `GET /api/conversations/:id/capabilities` | What the conversation lets its agent use (`ConversationCapabilities`): each server with a granted tool and those tools, each skills library, subagents, and for a thread whether it has its parent's switches (`sameAsParent`). |
 | `GET /api/conversations/:id/composer` | Conversation-scoped connected servers, enabled skills by stable URI, existing helpers and unavailable libraries. |
 | `PATCH /api/conversations/:id/capabilities` | Switch one `CapabilityTarget` on or off there (only what is shown can be switched off), or `{ reset: 'parent' }` a thread back to its parent's switches. A subagent's are not editable. |
 | `GET /api/conversations/:id/queue` | Ordered queued input IDs, modes and contents for Main and ordinary threads, from Pi InboxDoc. Passive writes, helpers and routine inputs are excluded. |
-| `DELETE /api/conversations/:id/queue` | Remove a queued input by positive safe-integer `submissionId`, with the same-origin CSRF marker. Returns `removed`, `already_started`, `already_settled` or `not_found`; never stops a running input. |
-| `POST /api/conversations/:id/threads` | Start thread (ADR 0034): the `SendMessage` body is posted as the head of a new Thread of this chat and answered there. Returns 201 `{ thread, receipt }`; the same `operationId` returns the same Thread (another chat's is 409). Strict CSRF marker. |
-| `POST /api/conversations/:id/move` | Move to thread (ADR 0034): `{ entry, operationId }` moves the newest finished turn the owner's message `entry` started into a new Thread. Returns the `MoveReceipt` (`mode: 'settled'`; `state` `settled` with `thread`, or `refused` with `reason`); the same `operationId` returns the same receipt (another chat's is 409, a move already in flight in the chat is 409). Strict CSRF marker. |
+| `DELETE /api/conversations/:id/queue` | Remove a queued input by positive safe-integer `submissionId`. Returns `removed`, `already_started`, `already_settled` or `not_found`; never stops a running input. |
+| `POST /api/conversations/:id/threads` | Start thread (ADR 0034): the `SendMessage` body is posted as the head of a new Thread of this chat and answered there. Returns 201 `{ thread, receipt }`; the same `operationId` returns the same Thread (another chat's is 409). |
+| `POST /api/conversations/:id/move` | Move to thread (ADR 0034): `{ entry, operationId }` moves the newest finished turn the owner's message `entry` started into a new Thread. Returns the `MoveReceipt` (`mode: 'settled'`; `state` `settled` with `thread`, or `refused` with `reason`); the same `operationId` returns the same receipt (another chat's is 409, a move already in flight in the chat is 409). |
 | `POST /api/conversations/:id/messages` | Submit `input`, a stable `operationId`, optional `appContext` (by App id), up to eight `attachments` (owner file paths that must exist) and up to sixteen stable composer `selections`; skill-only input is allowed. Returns 202 acceptance. |
-| `GET /api/files?dir=` | A directory of the owner's files (`FileListing`): `/uploads`, `/agent` or a folder under one, with the storage in use. |
-| `GET`, `PUT`, `DELETE /api/files/content?path=` | Download, write (the body, `content-length` required) or delete one of the owner's files. Downloads are attachments, except PNG, JPEG, GIF and WebP, which open in place; all are sandboxed by CSP. |
-| `POST /api/conversations/:id/stop` | Stop a conversation or one `operationId`, and the subagents it started (not its threads). |
-| `GET /api/conversations/:id/snapshot`, `GET /api/conversations/:id/events` | Pi snapshot or SSE snapshot followed by committed batches. |
+| `GET /api/files?dir=` | Raw. A directory of the owner's files (`FileListing`): `/uploads`, `/agent` or a folder under one, with the storage in use. |
+| `GET`, `PUT`, `DELETE /api/files/content?path=` | Raw. Download, write (the body, `content-length` required) or delete one of the owner's files. Downloads are attachments, except PNG, JPEG, GIF and WebP, which open in place; all are sandboxed by CSP. |
+| `POST /api/conversations/:id/stop` | Stop a conversation or one `operationId`, and the subagents it started (not its threads); answers `{ stopped }`, whether anything was running. |
+| `GET /api/conversations/:id/snapshot` | The chat's Pi snapshot as JSON. |
+| `GET /api/conversations/:id/events` | Raw. The chat's Pi events (SSE): a snapshot followed by committed batches. |
 | `GET /api/conversations/:id/history?before=<entry>` | Earlier entries, oldest first, with a `more` flag. |
 | `GET /api/conversations/:id/sources` | What the chat's answers retrieved from other chats (`SourceUse[]`, newest first, empty results left out): the source strips (ADR 0035). |
+| `GET /api/conversations/:id/details?operation=` or `?entry=` | The `inspect` group: what happened behind one message, its operation's timeline (with its turn when it ran one) and the operations related to it (`InspectDetails`, ADR 0037). |
 
 Every thread runs the `goblin.thread` extension (`pi/thread.ts`), added to that conversation alone when it is made;
 main never has it. It tells the model it is in a side thread and offers `share_back`: when the owner asks (the
@@ -560,8 +691,10 @@ over the frame bundles from `packages/app/dist/runtime` (React, the UI SDK and g
 charts, maps, diagrams and icons only when the view imports them), served as hashed assets. The frame has no network
 (`connect-src 'none'`); it loads scripts from goblin's origin only, and tiles from OpenStreetMap only for maps. The
 bridge (`lib/agent-app-bridge.ts`) sends the state as tool results carrying `goblin/state` (the newest revision wins),
-routes the view's action calls to `POST /api/apps/:id/call` with the frame's operation id (`ui:<app>:<uuid>`), and
-reports the view's failures, which the agent sees in its `<apps>` list and in `app_inspect`. The frame's first script
+routes the view's action calls to `POST /api/apps/:id/call` with the frame's operation id (the agent keeps it as
+`ui:<app>:<uuid>`), and reports the view's failures, which the agent sees in its `<apps>` list and in `app_inspect`.
+The frame (`components/apps/frame.tsx`) makes those calls through the factories in `apps/queries.ts`, which also carry
+an MCP App's own tool calls and resource reads to its server with `x-mcp-caller: app`. The frame's first script
 keeps errors from before the core runs (a bundle that throws as it loads or never arrives), a view import whose bundle
 failed names that bundle, a view module that throws shows the error card instead of a blank frame, and failures that
 come together go out as one notice once the frame is connected (`packages/app/src/ui/core.ts`, `sdk.ts`). A bundle's
@@ -610,9 +743,10 @@ number of threads. `app_topics` holds them (`storage/topics.ts`); Personal is To
 keep `kind = 'main'`. `ChatDirectory` answers `isConversation`, `topicOf`, `conversationOf(topic)` and
 `conversationAbove(chat)`; `primary()` stays Personal's Conversation, where Telegram and inbound MCP clients land.
 
-`TopicRegistry` (`topics/registry.ts`, the `Topics` service) creates a Topic with a new Pi session as its
-Conversation, configured like Personal's (its tool filter and copied switches) but not forked from it. Create is
-idempotent by operation id and serialized, so a retry or concurrent repeat finds one Topic and one Pi session; active
+`TopicRegistry` (`topics/registry.ts`, a store behind the `Topics` service in `topics/service.ts`) creates a Topic
+with a new Pi session as its Conversation, configured like Personal's (its tool filter and copied switches) but not
+forked from it. Create is idempotent by operation id and serialized by the service's `KeyedLock` (key
+`topics.create`), so a retry or concurrent repeat finds one Topic and one Pi session; active
 names are unique ignoring case (409). A Topic's Conversation is never renamed or closed directly and takes its Topic's
 name. Branches, "+" threads (`CreateConversation.topic`) and subagents inherit their parent's Topic, and a "+" thread
 announces itself in its Topic's Conversation. Archiving (`topics/program.ts`) marks the Topic and then stops each open
@@ -625,7 +759,7 @@ chat's work through the owner's Stop (runs, queued inputs, subagents and routine
 | `POST /api/topics` | `CreateTopic` (`{ name, operationId }`): a new Topic and Conversation, or the one that operation made; 201. |
 | `PATCH /api/topics/:id` | `UpdateTopic`: rename, archive or restore, and the automatic-search opt-out; one new revision per change. |
 
-All three are strict-CSRF browser writes and owner requests. The workspace feed's snapshot lists `topics`, a change is
+They are the owner API's `topics` group (`topics/api.ts`). The workspace feed's snapshot lists `topics`, a change is
 `{ type: 'topic', topic }`, and each `ConversationView` carries `topic` and, for a Conversation, `conversation: true`.
 Its `attention` (`attention.ts`) lists what in that chat waits on the owner for the Activity rail: the asks since its
 newest user message from goblin's own tool-result markers (`ask_user`, a grant request, something switched off), its
@@ -670,7 +804,8 @@ entries the session owns (`entry.conversationId`), so forked history is indexed 
 persona forks are skipped. Inputs, answers, share-backs, Persona answers, Delegate results and Topic seeds are
 indexed; tool traffic is not. The `goblin.retrieval` extension (`pi/retrieval.ts`, in the default list, so in every
 Conversation and thread but not in subagents or routine runs) catches its conversation up after each response, and
-every search first catches up about 400 entries across chats.
+every search first catches up about 400 entries across chats. Each catch-up of a session holds that session's turn of
+the agent's `KeyedLock` (`retrieval:<session>`), so two never read the same windows at once.
 
 `search_chats { query, topic? }` turns the query into quoted literal terms joined with `OR`, ranks the top 20 hits,
 groups them into ±2-entry ranges per chat and returns at most five sources with excerpts of at most 1,200 characters,
@@ -769,7 +904,10 @@ skill drafts, an app's `llm` power) and routine runs (`routines/usage.ts`, from 
 Compaction summaries in main and threads are not counted yet. Once the day is spent, new turns are refused with `BudgetExhausted`: HTTP 429 from the owner API,
 or a tool error from `/mcp`. Telegram submissions check the same budget. Tool calls inside a running turn are blocked,
 so a looping turn ends after one more reply. Pi reports and swallows exceptions thrown by hooks, so the in-turn lever
-is blocking tools, not throwing. Settings shows today's usage, and the composer shows it as a ring, re-read whenever
+is blocking tools, not throwing. Only a spent budget blocks a tool as spent: an account without a plan is told to
+subscribe, and a check that could not read the plan or the ledger blocks the tool as a failed check and is reported
+(ADR 0026, amended). The allowance is the plan's, read through the agent's `Entitlements`.
+Settings shows today's usage, and the composer shows it as a ring, re-read whenever
 a run ends. On wider screens the composer also
 shows how full the context was at the latest response, measured against the model's `contextWindow`. The model key's
 own cap stays the backstop.
@@ -777,11 +915,12 @@ own cap stays the backstop.
 ## Resident authority
 
 The agent acts for the owner when the owner is not there, so it needs its own standing permission rather than a
-borrowed browser session. `ResidentAuthority` (`app_resident`) is active for 30 days. Owner RPC calls renew the window;
-inbound calls and hooks do not. Turning it off in Settings ("Work while you're away") sticks: activity does not
-re-enable it, only the explicit toggle does. Model MCP tools, skills, inbound `ask_agent` and scheduled Telegram pulls and replies require current authority.
-Owner MCP RPC methods renew it but do not call `requireResident`; their tool/resource calls still check exact grants
-(`agent.ts`, `pi/resident-mcp.ts`, `pi/skills.ts`).
+borrowed browser session. `ResidentAuthority` (`app_resident`) is active for 30 days. Every owner API request renews
+the window (the owner gate), except changing it (`POST /api/agent/resident`); inbound calls and hooks do not. Turning
+it off in Settings ("Work while you're away") sticks: activity does not re-enable it, only the explicit toggle does.
+Model MCP tools, skills, inbound `ask_agent` and scheduled Telegram pulls and replies require current authority. The
+owner's own `mcp` endpoints are renewed like the rest and do not call `requireResident`; their tool and resource calls
+still check exact grants (`mcp/api.ts`, `pi/resident-mcp.ts`, `pi/skills.ts`).
 
 ## Inbound MCP
 
@@ -857,8 +996,8 @@ and `LiveDoc`; the synchronous listener never calls Pi or awaits it. Final-answe
 a run. The ledger supplies exact submission/task correlation when a cache entry is gone:
 
 - **Turn:** an input submission from admission to settlement, by its operation id. Its source comes from the id's
-  prefix (`telegram-`, `routine-input:`, `subagent:`, …; anything else is `direct`, the owner or an MCP client). An
-  unanswered turn keeps Pi's reason.
+  prefix (`telegram-`, `routine-input:`, `subagent:`, `persona:`, …; anything else is `direct`, the owner or an MCP
+  client). An unanswered turn keeps Pi's reason.
 - **Model attempt:** a generation task entering `request`, ended by the assistant entry it appends (or the task's
   fault): model, finish reason, input, output, cache and reasoning tokens, fixed error summaries, cutoff and
   empty-answer markers. The first committed partial
@@ -878,9 +1017,16 @@ Outside Pi, the agent's services report to the same telemetry (`telemetry/report
   attributing it to a turn. Reporter failures cannot change or retry the call.
 - **Telegram** (`channel.received`, `channel.reply`): each inbox message by mygram id and its turn's operation id; each
   answer `sent` in pieces, or `given_up` after a day.
-- An unexpected failure logs a fixed type and summary where it becomes `Internal` (`http/errors.ts`).
+- **Flow steps** (`flow`, ADR 0037): one content-free step of a conversation flow, recorded where it happens through
+  `FlowEvents.record` (`observability/flows.ts`), which never fails the flow it describes. Today the agent records a
+  Persona's answer, a Delegate's spawn and report, a Topic created or archived, an organize Undo, a routine firing and
+  report, and a Telegram delivery; `FlowName` also names the conversation flows (send, reply, start, move, …), which
+  are not recorded yet. The operation id has its own column and the operation that caused it is
+  `goblin.operation.parent`; the rest are allowlisted ids and closed classes. A `refused` step is stored `blocked`,
+  an `error` step `error`. Ledger reads skip a row of a kind they do not know.
 
-Each event goes to `app_run_events` (kept 30 days) and to one Workers Log line when it ends (`event: "run"`, its ids,
+Each event goes to `app_run_events` (kept 30 days) and to one Workers Log line when it ends, through the logger below
+(`event: "run"`, its ids,
 `ms`, and attributes named after the OpenTelemetry GenAI conventions, `contracts/src/telemetry.ts`). Model and tool
 calls also become spans (`chat {model}`, `execute_tool {tool}`, `telemetry/trace.ts`), with the same attributes and
 the agent, conversation and operation ids. A call often starts in one invocation and ends in another, and a Workers
@@ -904,15 +1050,60 @@ Pass a `CollectedRuns` sink to read events in process
 failures, tool calls and tokens. Attempt timing runs from the generation entering `request` to its assistant entry;
 the first chunk is the first committed partial, so it is good to about 100 ms.
 
+### Logs, failures and references
+
+Every line the runtime writes goes through one logger (`observability/logger.ts`, the runtime's only `console`
+writer): `GoblinLogger` for `Effect.log*`, `logEvent` for named events inside Effect, and `writeLine` for synchronous
+code outside it (the run log, Pi's commit listener). A line is one JSON object: allowlisted keys, each only with a value
+of its shape (`LOG_KEYS`: where, operation, request, ref, agent, route, method, status, code, error type, frames,
+counts, timings and a few more), then run attributes through their own allowlist (`telemetry/safety.ts`). The logger
+reads a fiber's log annotations and spans only, never a log message or a cause. Event names are a closed list
+(`LOG_EVENTS`: `client_error`, `failure`, `flow`, `http.failure`, `job`, `mcp`, `rpc`, `run`, `skill-learner`, `wake`).
+
+A failure that should be seen is reported by the failure reporter (`observability/report.ts`, on Effect's
+`ErrorReporter`): one `failure` line with where it was reported (`goblin.where`), its type (its `_tag` or class name),
+the `file:line:col` locations of its stack and a severity, never its message. The typed answers an owner gets in the
+normal course (every `AppError` but `Internal`: a 404, a 409, a 402) are not reported when they arrive as failures.
+`reportFailure(where)` reports and keeps failing; `reportAndRecover(where, fallback)` reports and falls back, for a
+legitimate fallback only; `expectedFailure` marks an error to log at `Info` or not at all. Every program the bridge
+runs, every owner API request and every change handler is reported this way, and `toAppError` (`http/errors.ts`)
+reports an unexpected failure where it becomes `Internal`.
+
+References join what the owner sees to the logs:
+
+1. The browser sends a fresh `x-goblin-request` id (eight characters) with every API request, and a write its
+   operation's `x-goblin-operation`.
+2. The Worker's edge forwards both with its own reference, `x-goblin-ref` (the request's cf-ray), answers with that
+   header and `error.ref`, and logs a failed answer as one `http.failure` line (see The owner API).
+3. Inside the agent, the owner gate annotates the request's lines with `goblin.rpc`, `goblin.operation` and `ref`.
+4. The web quotes the reference with a failure ("… · ref 7f3a9c12"): the answer's, or the request id when nothing
+   answered (`describeError` and `messageOf`, `lib/query/app-error.ts`). Sign-in and `/health`, outside the API, do the
+   same (`AuthRefused`, `auth/queries.ts`).
+5. `goblin lookup <ref|request|operation>` finds the Worker's log lines that mention it, then shows the details of the
+   operation they name.
+
+A crash nothing on the page caught (a route that failed with a defect, an uncaught error or unhandled rejection) is
+reported to `POST /api/client-errors` (`lib/query/crash-report.ts`): each distinct crash once, at most five a page
+load, with the route id, the error's type, at most twelve `url:line:col` frames, the build and the failing answer's
+reference, within 2 KiB; never its message, the URL or anything the owner typed. An answer the API gave is not a
+crash. The Worker logs it as one `client_error` line and writes a `client_error` flow point; nothing is stored.
+
+For the operator, flow steps also go to Workers Analytics Engine (`observability/ae.ts`, ADR 0037): the optional
+`FLOWS` dataset (`goblin-<stage>-flows`), one point per operation (its first step), indexed by a hashed agent id (an
+HMAC of the user id under a key derived from `GOBLIN_CREDENTIAL_KEY`), with closed classes, counts and timings and no
+chat or operation ids. Without the binding nothing is written. `goblin stats` sums them per flow and outcome through
+the Analytics Engine SQL API with the operator's own Cloudflare token.
+
 ### Inspection
 
-`Inspector` (`inspect/inspector.ts`, the `Inspect` service) reads the agent back without changing it or calling a
-model. The queries are in `contracts/src/inspect.ts`:
+The `Inspection` service (`inspect/service.ts`, over `Inspector` in `inspect/inspector.ts`) reads the agent back
+without changing it or calling a model. The queries are in `contracts/src/inspect.ts`:
 
 - `conversations`: every conversation the agent keeps.
 - `conversation`: a page of one conversation's Pi entries, oldest first, in full. Text is cut at 4000 characters and
   arguments or data at 2000, with `truncated` set. A leading author tag becomes `author`.
-- `turns`: recent turns as one-line summaries (source, outcome, attempts, tool calls, failures, tokens). A chat filter
+- `turns`: recent turns as one-line summaries (source, outcome, attempts, tool calls, failures, `error` events,
+  tokens). A chat filter
   resolves to its current Pi session; historical events keep their recorded Pi session.
 - `turn`: one operation end to end. It joins Pi's own settlement of the submission (`done` with its answer entry, or
   `unanswered` with a reason) with every run event of the operation, in order, and `coverage` names what the
@@ -921,10 +1112,17 @@ model. The queries are in `contracts/src/inspect.ts`:
   recovered model retries are filtered before applying the limit. Pass `all: true` for the full problem history.
   Cutoffs, empty answers and coverage gaps remain visible. Tool failures remain until reviewed; a successful turn
   alone never proves a failed tool recovered. Successful auxiliary model completions are excluded, including a
-  `length` finish on a bounded memory call; actual auxiliary failures remain visible.
+  `length` finish on a bounded memory call; actual auxiliary failures remain visible. A failed flow step is a problem;
+  a refused one (an answer the owner already saw) only with `all: true`.
+- `flows`: flow steps since a time, newest first, by chat or flow.
+- `details`: what happened behind one message, by its operation id or by the chat entry that is its answer or tool
+  result: the operation's timeline (with its turn when it ran one) and `related`, the operations it came from and
+  led to.
 
 The agent answers them on its internal `/inspect` route as the RPC result shape (`agent-requests.ts`,
-`inspect/request.ts`), which only `/mcp` calls, for a client that holds `goblin:inspect` (see Inbound MCP).
+`inspect/request.ts`), which only `/mcp` calls, for a client that holds `goblin:inspect` (see Inbound MCP). The owner's
+own app reads `details` through the owner API (`GET /api/conversations/:id/details`, the `inspect` group), for a
+message's Details sheet.
 
 The agent reads itself too: main has a `diagnose` tool (`pi/diagnose.ts`, wired by `telemetry/agent.ts`), so the
 owner can ask in Telegram why something failed. Without an operation id it returns the last day's problems and turns;
@@ -961,7 +1159,8 @@ The withdrawn Members feature left dormant auth D1 tables and DO columns/tables.
 remain intact to preserve real data and migration history; the runtime no longer reads or writes that access metadata.
 See [ADR 0014](adr/0014-members-and-workspace-authority.md) for the withdrawal.
 
-Application tables are declared in `storage/schema.ts` and migrated inline in `storage/migrations.ts`.
+Application tables are declared in `storage/schema.ts` and migrated inline by `storage/migrations.ts`, which applies
+the area lists in `storage/migrations/` (`base.ts`, `conversation.ts`) in key order.
 `app_client_sessions` was dropped when inbound clients moved to main; it is not a current table.
 
 Logical chat migration is additive: existing chat keys, capabilities, exclusions, titles, close/read marks and tree
@@ -975,7 +1174,8 @@ The chat layer has unit proof for lookup, operation retries, retention, CAS owne
 local workerd profile that rebinds chat `1` to a fresh non-root Pi session in test subclasses before service
 composition. Owner, helper, routine, channel and memory cases run under that profile; explicit owner and inbound
 proofs assert the non-root session and an empty root transcript. The AST guard bans root constants, session-less
-harness submission/session calls, and private `ChatDirectory` instances outside service composition and tests. These
+harness submission/session calls, and private `ChatDirectory` instances outside the legacy start (`layers/legacy.ts`)
+and tests. These
 prove local behavior; deployed-stage, live-provider,
 Telegram-service and remote-eviction acceptance remain separate.
 
@@ -985,8 +1185,9 @@ meet its contract (ADR 0001). SQLite transactions are short and never span model
 ## Infrastructure
 
 `apps/web/alchemy.run.ts` declares the Vite Worker, the `PersonalAgent` namespace, the D1 database, the `FILES` R2
-bucket and the `LOADER` Worker Loader (Dynamic Workers, open beta, Workers Paid); it is the only deployment
-entrypoint. `scripts/stage.ts` builds `packages/app`'s toolchain before Alchemy runs. The local stage runs in workerd with CLIProxy; the dev stage calls Railway LiteLLM with a
+bucket, the `FLOWS` Analytics Engine dataset (`goblin-<stage>-flows`, ADR 0037) and the `LOADER` Worker Loader
+(Dynamic Workers, open beta, Workers Paid); it is the only deployment entrypoint.
+`scripts/stage.ts` builds `packages/app`'s toolchain before Alchemy runs. The local stage runs in workerd with CLIProxy; the dev stage calls Railway LiteLLM with a
 dedicated model-limited, budget-capped key. Offered models and Credit rates come from stage configuration; the per-account allowance comes from its plan or
 operator override. The key's provider caps and shared quotas are managed outside this repository; source does not prove
 their active values. Secrets are Worker secret bindings, never in the browser bundle. Every stage turns on Workers
@@ -1014,16 +1215,20 @@ The account boundary in auth D1 is independent of the agent's Pi store (ADR 0015
 subscriptions, checkout rate accounting and the verified webhook inbox through Drizzle `app_billing_*` tables. Better
 Auth continues to own identity and inbound OAuth. No billing operation writes Pi or Agents tables.
 
-`GET /api/billing/state`, `POST /api/billing/checkout` and `POST /api/billing/portal` authenticate the owner without
-resolving an Agent. Product and checkout metadata are selected server-side. Checkout and the return page grant no
+`GET /api/billing/state`, `POST /api/billing/checkout` and `POST /api/billing/portal` (the account API's `billing`
+group, answered in the Worker) authenticate the owner without resolving an Agent.
+Product and checkout metadata are selected server-side. Checkout and the return page grant no
 access: `POST /hooks/dodo` verifies Standard Webhooks HMAC over the raw body, checks freshness and stores the first
 body under `webhook-id` before responding 2xx. A leased background run updates the subscription; an hourly Worker cron
 retries unfinished receipts and reads stale subscriptions back from Dodo. Provider timestamps prevent old events
 from overwriting newer states. This is durable idempotent reconciliation, not exactly-once provider effects.
 
-Worker APIs, inbound MCP and user-bound hooks require an active plan before selecting the user's Agent. Agent owner,
-client and background runs also check the shared `Entitlements` service. It reads current account state at admission,
-without a cached plan or a lifecycle lock around D1/network waits. Pro is $10/month, without trial or free tier; active
+Worker APIs, inbound MCP and user-bound hooks require an active plan, read fresh from auth D1, before selecting the
+user's Agent. Inside the Agent, the owner gate, client and background runs, the model budget and every tool call check
+its `Entitlements` service, which keeps an active plan for 60 seconds (`cachedPolicy` in `billing/gates.ts`, ADR 0015
+amended); a plan that is not active, or a read that failed, is not kept. No lifecycle lock is held around the D1 read.
+A cancelled plan can keep the Agent's own background work going for up to a minute after the edge stops admitting
+the owner. Pro is $10/month, without trial or free tier; active
 or cancelled subscriptions remain usable only through their recorded paid period. Failed renewals use the provider's
 grace end or three days after the period end; missing dates fail closed. Existing users at the billing migration get a
 dev-only override, which grants nothing on prod. Operator overrides may supply their own allowance.
