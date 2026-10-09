@@ -1,4 +1,5 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
+import { InspectConversations } from '@goblin/contracts/inspect'
 import { Schema } from 'effect'
 import { createHash } from 'node:crypto'
 import { expect } from 'vitest'
@@ -191,15 +192,13 @@ export async function inspectAuthCase(base: string) {
     expect(inspection((await client.listTools()).tools.map((tool) => tool.name))).toEqual(INSPECTION)
     const conversations = await client.callTool({ name: 'inspect_conversations', arguments: {} })
     expect(conversations.isError, JSON.stringify(conversations)).toBeFalsy()
-    expect(conversations.structuredContent).toMatchObject({ conversations: expect.any(Array) })
+    expect(Schema.is(InspectConversations)(conversations.structuredContent)).toBe(true)
     const missing = await client.callTool({ name: 'inspect_turn', arguments: { operationId: 'no-such-turn' } })
     expect(missing).toMatchObject({ isError: true, content: [{ text: '{"_tag":"NotFound","what":"turn"}' }] })
     // Reading needs no plan; asking runs the model and does.
     const refused = await client.callTool({ name: 'ask_agent', arguments: { input: 'hello' } })
-    expect(refused).toMatchObject({
-      isError: true,
-      content: [{ text: expect.stringContaining('SubscriptionRequired') }],
-    })
+    expect(refused.isError).toBe(true)
+    expect(JSON.stringify(refused.content)).toContain('SubscriptionRequired')
   } finally {
     await client.close()
   }

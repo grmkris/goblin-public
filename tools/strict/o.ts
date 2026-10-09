@@ -12,5 +12,5 @@ export const paths: string[] = [
   'apps/runtime/test/inspection-fixture.ts',
   'apps/runtime/test/mcp/inspection.test.ts',
   'apps/runtime/test/http/api/inspect.test.ts',
-  'apps/runtime/test/integration/telemetry-probe.ts',
+  'apps/runtime/test/integration/{auth-inspect,native-telemetry,telemetry-probe}.ts',
 ]

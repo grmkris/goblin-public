@@ -2,6 +2,9 @@ import { RunAttribute } from '@goblin/contracts/telemetry'
 import * as Effect from 'effect/Effect'
 import { expect } from 'vitest'
 
+/** A vitest matcher where an object property expects a value: vitest types matchers `any`, this one `unknown`. */
+const like = (matcher: unknown): unknown => matcher
+
 /** The run ledger a real turn leaves in the agent's SQLite, the agent's `/inspect` route over it, and the restart sweep (ADR 0024). */
 export function telemetryCase(url: string) {
   return Effect.promise(async () => {
@@ -48,14 +51,18 @@ export function telemetryCase(url: string) {
         conversation: {
           ok: true,
           value: {
-            entries: expect.arrayContaining([
-              expect.objectContaining({ role: 'user', text: expect.stringContaining('call subagent') }),
-              expect.objectContaining({
-                role: 'assistant',
-                toolCalls: [expect.objectContaining({ name: 'subagent_status' })],
-              }),
-              expect.objectContaining({ tool: expect.objectContaining({ name: 'subagent_status', isError: false }) }),
-            ]),
+            entries: like(
+              expect.arrayContaining([
+                expect.objectContaining({ role: 'user', text: like(expect.stringContaining('call subagent')) }),
+                expect.objectContaining({
+                  role: 'assistant',
+                  toolCalls: [expect.objectContaining({ name: 'subagent_status' })],
+                }),
+                expect.objectContaining({
+                  tool: like(expect.objectContaining({ name: 'subagent_status', isError: false })),
+                }),
+              ]),
+            ),
           },
         },
         missing: { ok: false, error: { _tag: 'NotFound', what: 'turn' } },
@@ -83,7 +90,7 @@ export function telemetryCase(url: string) {
           },
         },
       },
-      diagnosed: expect.stringMatching(/done: .*trusted.*telemetry-turn.*tool\.call/u),
+      diagnosed: like(expect.stringMatching(/done: .*trusted.*telemetry-turn.*tool\.call/u)),
       left: 'interrupted',
       recovery: [{ [RunAttribute.recovery]: 'restarted', [RunAttribute.interrupted]: 1 }],
       attention: {
@@ -92,7 +99,7 @@ export function telemetryCase(url: string) {
           problems: [
             expect.objectContaining({
               id: 'filter:unresolved',
-              attributes: expect.objectContaining({ [RunAttribute.error]: 'Model provider failed.' }),
+              attributes: like(expect.objectContaining({ [RunAttribute.error]: 'Model provider failed.' })),
             }),
           ],
         },
@@ -100,14 +107,16 @@ export function telemetryCase(url: string) {
       all: {
         ok: true,
         value: {
-          problems: expect.arrayContaining([
-            expect.objectContaining({ id: 'filter:aux-failure' }),
-            expect.objectContaining({ id: 'filter:authorization' }),
-            expect.objectContaining({ id: 'filter:failure' }),
-            expect.objectContaining({ id: 'filter:cutoff' }),
-            expect.objectContaining({ id: 'filter:empty' }),
-            expect.objectContaining({ id: 'filter:gap' }),
-          ]),
+          problems: like(
+            expect.arrayContaining([
+              expect.objectContaining({ id: 'filter:aux-failure' }),
+              expect.objectContaining({ id: 'filter:authorization' }),
+              expect.objectContaining({ id: 'filter:failure' }),
+              expect.objectContaining({ id: 'filter:cutoff' }),
+              expect.objectContaining({ id: 'filter:empty' }),
+              expect.objectContaining({ id: 'filter:gap' }),
+            ]),
+          ),
         },
       },
       incomplete: {
@@ -125,7 +134,9 @@ export function telemetryCase(url: string) {
       problems: {
         ok: true,
         value: {
-          problems: expect.arrayContaining([expect.objectContaining({ id: 'probe:left', status: 'interrupted' })]),
+          problems: like(
+            expect.arrayContaining([expect.objectContaining({ id: 'probe:left', status: 'interrupted' })]),
+          ),
         },
       },
       paged: {
