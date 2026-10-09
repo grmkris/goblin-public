@@ -174,9 +174,7 @@ export class PersonalAgentProbe extends PersonalAgent {
     }
     const result = await appsJobsProbe(this.ctx.storage, this.env, this.name, schedules, {
       fire: (slot) => this.runAppJob(slot),
-      list: () => this.agentApps(),
-      change: (name, change) => this.changeAgentApp(name, change),
-      remove: (name, confirm) => this.deleteAgentApp(name, { confirm }),
+      fetch: (request) => this.onRequest(request),
     })
     return JSON.stringify(result)
   }

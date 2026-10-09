@@ -1,8 +1,10 @@
 import { createRegistry } from '@earendil-works/pi-durable'
-import type { AgentAppChange } from '@goblin/contracts'
+import * as Effect from 'effect/Effect'
+import * as Predicate from 'effect/Predicate'
 import { agentApps } from '../../src/agent-apps/engine.ts'
 import { JOB_CALLBACK, type JobSchedules, type JobSlot } from '../../src/agent-apps/jobs.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
+import { type AgentFetch, type OwnerClient, callOwner } from './owner-api.ts'
 
 /** Native schedules kept in memory, for probes whose apps declare none. */
 export function memorySchedules(): JobSchedules {
@@ -135,22 +137,18 @@ async function releases(bench: Bench, fire: (slot: JobSlot) => Promise<void>) {
   }
 }
 
-/** The agent object as the owner reaches it: its native job callback, and its owner RPC for agent apps. */
-export type AgentPort = {
-  readonly fire: (slot: JobSlot) => Promise<void>
-  readonly list: () => Promise<unknown>
-  readonly change: (name: string, change: AgentAppChange) => Promise<unknown>
-  readonly remove: (name: string, confirm: string) => Promise<unknown>
-}
+/** The agent object as the owner reaches it: its native job callback, and the owner API over its own `fetch`. */
+export type AgentPort = AgentFetch & { readonly fire: (slot: JobSlot) => Promise<void> }
 
-/** A value of an owner RPC result, or its error's tag. */
-const valueOf = (result: unknown): unknown => {
-  if (typeof result !== 'object' || result === null) return result
-  if ('value' in result) return result.value
-  return 'error' in result && typeof result.error === 'object' && result.error !== null && '_tag' in result.error
-    ? result.error._tag
-    : result
-}
+/** An owner API call's value, or the tag of the failure it answered. */
+const settle = <A, E>(agent: AgentFetch, call: (api: OwnerClient) => Effect.Effect<A, E>): Promise<A | string> =>
+  callOwner(agent, (api) =>
+    call(api).pipe(
+      Effect.catch((error) =>
+        Effect.succeed(Predicate.hasProperty(error, '_tag') && Predicate.isString(error._tag) ? error._tag : 'failed'),
+      ),
+    ),
+  )
 
 /** The flaky schedule of an app detail. */
 const flakyOf = (detail: unknown) => {
@@ -164,24 +162,33 @@ async function objects(bucket: R2Bucket, owner: string): Promise<number> {
 }
 
 /**
- * The owner manages the app through the agent's RPC: pause, resume and run a schedule now, move its home (only to an
- * open conversation), see it listed, and delete it only when they type its name: its schedules, files (R2 too) and
+ * The owner manages the app through the agent's owner API: pause, resume and run a schedule now, move its home (only to
+ * an open conversation), see it listed, and delete it only when they type its name: its schedules, files (R2 too) and
  * rows go.
  */
 async function management(bench: Bench, agent: AgentPort, bucket: R2Bucket, owner: string) {
+  // Each change is its own call: the client takes one member of the change union at a time.
+  const apps = (call: (api: OwnerClient['agentApps']) => Effect.Effect<unknown, unknown>) =>
+    settle(agent, (api) => call(api.agentApps))
+  const params = { name: 'ticker' }
+  const remove = (confirm: string) => apps((api) => api.delete({ params, payload: { confirm } }))
   const files = bench.apps.files('ticker')
   await files.write('/big.txt', 'x'.repeat(200 * 1024))
   await files.write('/small.txt', 'hi')
-  const paused = flakyOf(valueOf(await agent.change('ticker', { kind: 'pause', action: 'flaky', paused: true })))
+  const paused = flakyOf(
+    await apps((api) => api.change({ params, payload: { kind: 'pause', action: 'flaky', paused: true } })),
+  )
   const armedPaused = (await bench.armed()).length
-  const resumed = flakyOf(valueOf(await agent.change('ticker', { kind: 'pause', action: 'flaky', paused: false })))
-  const ran = flakyOf(valueOf(await agent.change('ticker', { kind: 'run', action: 'flaky' })))
-  const moved = valueOf(await agent.change('ticker', { kind: 'home', conversation: '1' }))
-  const badHome = valueOf(await agent.change('ticker', { kind: 'home', conversation: '999' }))
-  const listed = valueOf(await agent.list())
-  const refused = valueOf(await agent.remove('ticker', 'nope'))
+  const resumed = flakyOf(
+    await apps((api) => api.change({ params, payload: { kind: 'pause', action: 'flaky', paused: false } })),
+  )
+  const ran = flakyOf(await apps((api) => api.change({ params, payload: { kind: 'run', action: 'flaky' } })))
+  const moved = await apps((api) => api.change({ params, payload: { kind: 'home', conversation: '1' } }))
+  const badHome = await apps((api) => api.change({ params, payload: { kind: 'home', conversation: '999' } }))
+  const listed = await apps((api) => api.list())
+  const refused = await remove('nope')
   const before = await objects(bucket, owner)
-  const removed = valueOf(await agent.remove('ticker', 'ticker'))
+  const removed = await remove('ticker')
   return {
     manage: {
       paused,
