@@ -1,19 +1,25 @@
-import { SubscriptionRequired } from '@goblin/contracts/api'
+import { OrganizeGroup, PersonasGroup, SubscriptionRequired, TopicsGroup, ownerApiOf } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import * as Option from 'effect/Option'
+import * as HttpServer from 'effect/http/HttpServer'
+import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { afterEach } from 'vitest'
 import type { StopRuntime } from '../../../src/agent-program.ts'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { ConversationRegistry } from '../../../src/conversations.ts'
+import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
+import { OrganizeHandlers } from '../../../src/organize/api.ts'
+import { PersonasHandlers } from '../../../src/personas/api.ts'
 import { OrganizeReceipts } from '../../../src/organize/receipts.ts'
 import { PersonaRegistry } from '../../../src/personas/registry.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import * as Legacy from '../../../src/services.ts'
 import { appConversations } from '../../../src/storage/schema.ts'
+import { TopicsHandlers } from '../../../src/topics/api.ts'
 import { TopicRegistry } from '../../../src/topics/registry.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 import { ActiveResident } from '../../fixed-services.ts'
@@ -36,6 +42,14 @@ class OwnerResident extends ActiveResident {
   }
 }
 
+/** Lane D's groups only, behind the real gate, router and failure rendering (the pattern of owner-http.test.ts). */
+const API = ownerApiOf(TopicsGroup, PersonasGroup, OrganizeGroup)
+const LAYER = HttpApiBuilder.layer(API).pipe(
+  Layer.provide([TopicsHandlers, PersonasHandlers, OrganizeHandlers]),
+  Layer.provide(OwnerGateLive),
+  Layer.provide(HttpServer.layerServices),
+)
+
 const runtimes: ManagedRuntime.ManagedRuntime<OwnerHttp, never>[] = []
 const closes: (() => void)[] = []
 afterEach(async () => {
@@ -44,9 +58,9 @@ afterEach(async () => {
 })
 
 /**
- * The owner API as the agent serves it, over real Topic, Persona and receipt stores on SQLite, for the organizing
- * groups (topics, personas, organize). The gate's plan and resident authority are the only fakes. Nothing here has an
- * open chat to stop, so Pi and what a Stop reaches are never read.
+ * The organizing groups (topics, personas, organize) as the agent serves them, over real Topic, Persona and receipt
+ * stores on SQLite. The gate's plan and resident authority are the only fakes. Nothing here has an open chat to stop,
+ * so Pi and what a Stop reaches are never read.
  */
 export const organizing = (options: { readonly active?: boolean } = {}) => {
   const { db, close } = chatDatabase()
@@ -86,7 +100,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
         current.active ? Effect.succeed(current) : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' })),
       ),
   }
-  // SAFETY: the other groups' services, which no request here reaches.
+  // SAFETY: what only a Stop of an open chat reads, which no request here reaches.
   const unread = undefined as never
   // SAFETY: an archive of a Topic with open chats is the only thing that reads what a Stop reaches; none has any here.
   const stopping = (): StopRuntime => unread
@@ -95,7 +109,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
     openIn: () => [],
   })
   const runtime = ManagedRuntime.make(
-    OwnerHttp.layer.pipe(
+    OwnerHttp.serve(API, LAYER).pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.succeed(Legacy.Topics, topics),
