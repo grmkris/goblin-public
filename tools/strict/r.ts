@@ -8,4 +8,6 @@ export const paths: string[] = [
   'apps/runtime/src/routines/api.ts',
   'apps/runtime/src/routines/controller.ts',
   'packages/contracts/src/api/routines.ts',
+  'apps/runtime/src/routines/agent-api.ts',
+  'packages/contracts/src/api/agent.ts',
 ]
