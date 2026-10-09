@@ -1,6 +1,7 @@
 import * as Schema from 'effect/Schema'
+import { ChatId, EntryId, OperationId } from './ids.ts'
 import { ConversationView } from './index.ts'
-import { RunEvent, RunEventStatus } from './telemetry.ts'
+import { FlowEvent, FlowName, RunEvent, RunEventStatus } from './telemetry.ts'
 
 /**
  * Read-only inspection of one agent (ADR 0024): its conversations, a conversation's entries, its turns and their
@@ -120,6 +121,8 @@ export const TurnSummary = Schema.Struct({
   failedToolCalls: Schema.Number,
   inputTokens: Schema.Number,
   outputTokens: Schema.Number,
+  /** Its `error` events; a reader older than the field sees none. */
+  errors: Schema.optional(Schema.Number),
 })
 export type TurnSummary = typeof TurnSummary.Type
 
@@ -151,6 +154,50 @@ export type TurnTimeline = typeof TurnTimeline.Type
 /** Events needing attention since `since`, newest first; `all` includes expected waits and recovered attempts. */
 export const InspectProblems = Schema.Struct({ since: Schema.Number, problems: Schema.Array(RunEvent) })
 export type InspectProblems = typeof InspectProblems.Type
+
+/** `inspect_flows`' input: recent conversation flows, optionally of one chat or one flow. */
+export const InspectFlowsInput = Schema.Struct({
+  since: Schema.optional(Since),
+  limit: Schema.optional(Limit),
+  chat: Schema.optional(ChatId.annotate({ description: 'Only the flows of this chat (its id in /c/<id> URLs).' })),
+  flow: Schema.optional(FlowName),
+})
+export type InspectFlowsInput = typeof InspectFlowsInput.Type
+
+/** One recorded flow event and when it was recorded (epoch ms). */
+export const FlowRecord = Schema.Struct({ ...FlowEvent.fields, at: Schema.Number })
+export type FlowRecord = typeof FlowRecord.Type
+
+/** Flow events since `since`, newest first. */
+export const InspectFlows = Schema.Struct({ since: Schema.Number, flows: Schema.Array(FlowRecord) })
+export type InspectFlows = typeof InspectFlows.Type
+
+/** `inspect_details`' input: one operation, or the operation that wrote an entry of a chat. */
+export const InspectDetailsInput = Schema.Union([
+  Schema.Struct({ operation: OperationId }),
+  Schema.Struct({ chat: ChatId, entry: EntryId }),
+])
+export type InspectDetailsInput = typeof InspectDetailsInput.Type
+
+/** An operation linked to the one in view: its parent, the thread it started, the Personas it asked. */
+export const RelatedOperation = Schema.Struct({
+  operation: OperationId,
+  kind: Schema.String.check(Schema.isMaxLength(80)),
+  chat: Schema.optional(ChatId),
+  state: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
+})
+export type RelatedOperation = typeof RelatedOperation.Type
+
+/**
+ * A message's details: the timeline of the operation behind it (a passive write has no turn, so `turn` is optional)
+ * and the operations related to it.
+ */
+export const InspectDetails = Schema.Struct({
+  ...TurnTimeline.fields,
+  turn: Schema.optional(TurnSummary),
+  related: Schema.Array(RelatedOperation),
+})
+export type InspectDetails = typeof InspectDetails.Type
 
 /** What each query answers. */
 export const InspectResult = {

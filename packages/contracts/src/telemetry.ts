@@ -1,4 +1,5 @@
 import * as Schema from 'effect/Schema'
+import { ChatId, OperationId, TopicId } from './ids.ts'
 
 /**
  * What one run event records (ADR 0024). A turn, a model attempt, a tool call: their ids, timing, outcome and scalar
@@ -15,6 +16,7 @@ export const RunEventKind = Schema.Literals([
   'recovery',
   'mcp.request',
   'error',
+  'flow',
 ])
 export type RunEventKind = typeof RunEventKind.Type
 
@@ -102,4 +104,92 @@ export const RunAttribute = {
   interrupted: 'goblin.interrupted',
   /** Set when attributes were dropped or shortened to stay within the bound. */
   truncated: 'goblin.truncated',
+  /** A `flow` event's `FlowName`, how it came in, who acted and how it ended (`FlowEvent`). */
+  flow: 'goblin.flow',
+  flowVia: 'goblin.flow.via',
+  flowStatus: 'goblin.flow.status',
+  actor: 'goblin.actor',
+  /** Who an operation's receipt says started it: `owner`, `client`, `telegram`, `agent`, `routine` or `system`. */
+  origin: 'goblin.origin',
+  /** Logical chat ids (ADR 0030), never a Pi session id. */
+  chat: 'goblin.chat',
+  parentChat: 'goblin.chat.parent',
+  topic: 'goblin.topic',
+  /** The operation that caused this one: a thread's first send names its `startThread`. */
+  parentOperation: 'goblin.operation.parent',
+  /** How many of what a flow handled: Personas asked, Delegates spawned, entries moved. */
+  count: 'goblin.count',
+  personaOrder: 'goblin.persona.order',
+  synthesize: 'goblin.subagent.synthesize',
 } as const
+
+/**
+ * The conversation flows that record a `flow` event: how people and agents move through conversations (replies, "+",
+ * start thread, move, Personas, Delegates, Topics, routines, Telegram), plus browser crashes.
+ */
+export const FlowName = Schema.Literals([
+  'send',
+  'ask_client',
+  'telegram',
+  'persona_ask',
+  'persona_answer',
+  'start',
+  'reply',
+  'empty',
+  'move',
+  'share',
+  'close',
+  'stop',
+  'subagent_spawn',
+  'subagent_report',
+  'subagent_synthesize',
+  'topic_create',
+  'topic_archive',
+  'thread_announce',
+  'organize_undo',
+  'routine_fire',
+  'routine_report',
+  'telegram_delivery',
+  'client_error',
+])
+export type FlowName = typeof FlowName.Type
+
+/** The surface a flow came in through. */
+export const FlowVia = Schema.Literals(['app', 'mcp', 'telegram', 'tool', 'schedule', 'system'])
+export type FlowVia = typeof FlowVia.Type
+
+/** Who acted. */
+export const FlowActor = Schema.Literals(['owner', 'client', 'agent', 'persona', 'subagent', 'routine', 'system'])
+export type FlowActor = typeof FlowActor.Type
+
+/** How a flow ended: `replayed` found an earlier result for the same operation id; `refused` was turned away. */
+export const FlowStatus = Schema.Literals(['ok', 'replayed', 'refused', 'error'])
+export type FlowStatus = typeof FlowStatus.Type
+
+export const PersonaOrder = Schema.Literals(['parallel', 'sequence'])
+export type PersonaOrder = typeof PersonaOrder.Type
+
+const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+
+/**
+ * One step of a conversation flow, content-free (ADR 0024): ids, closed classifications, counts and a duration only.
+ * It becomes one run-ledger event of kind `flow`.
+ */
+export const FlowEvent = Schema.Struct({
+  flow: FlowName,
+  via: FlowVia,
+  actor: FlowActor,
+  chat: Schema.optional(ChatId),
+  parentChat: Schema.optional(ChatId),
+  topic: Schema.optional(TopicId),
+  operationId: Schema.optional(OperationId),
+  parentOperation: Schema.optional(OperationId),
+  count: Schema.optional(Count),
+  personaOrder: Schema.optional(PersonaOrder),
+  synthesize: Schema.optional(Schema.Boolean),
+  status: FlowStatus,
+  /** A safe failure code (`safeErrorType`), never error text. */
+  errorType: Schema.optional(Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_.:-]{1,80}$/u))),
+  ms: Schema.optional(Count),
+})
+export type FlowEvent = typeof FlowEvent.Type

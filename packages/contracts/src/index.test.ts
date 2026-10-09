@@ -2,10 +2,13 @@ import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 import {
   ApiError,
+  ClientErrorReport,
   ConversationView,
+  CreateConversation,
   FilePath,
   PersonaName,
   SendMessage,
+  StartThread,
   UpdatePersona,
   WorkspaceChange,
   selectionKey,
@@ -73,5 +76,47 @@ describe('topics, personas and threads', () => {
   it('bounds a message body like the messages route always did', () => {
     expect(Schema.is(SendMessage)({ input: 'hi', operationId: 'op-1', personaOrder: 'sequence' })).toBe(true)
     expect(Schema.is(SendMessage)({ input: 'x'.repeat(20_001), operationId: 'op-1' })).toBe(false)
+  })
+})
+
+describe('thread operations', () => {
+  it('keeps a create without an operation id valid and accepts one', () => {
+    expect(Schema.is(CreateConversation)({ topic: 2 })).toBe(true)
+    expect(Schema.is(CreateConversation)({ operationId: 'op-1', from: { conversation: '3', entry: 9 } })).toBe(true)
+  })
+  it('starts a thread from an entry or empty, with the message fields of a send', () => {
+    const message = { input: 'hi', selections: [{ kind: 'persona', personaId: 3 }] }
+    expect(Schema.is(StartThread)({ operationId: 'op-1', anchor: { entry: 9 }, message })).toBe(true)
+    expect(Schema.is(StartThread)({ operationId: 'op-1', anchor: 'empty', message, personaOrder: 'sequence' })).toBe(
+      true,
+    )
+    expect(Schema.is(StartThread)({ operationId: 'op-1', anchor: { entry: 0 }, message })).toBe(false)
+    expect(Schema.is(StartThread)({ operationId: '', anchor: 'empty', message })).toBe(false)
+  })
+})
+
+describe('client error reports', () => {
+  const report = {
+    route: '/c/$chatId',
+    name: 'TypeError',
+    frames: ['https://goblin.surf/assets/index-3f2a.js:1:2345'],
+    build: 'd5ac526',
+    ref: '7f3a9c12',
+  }
+  const valid = Schema.is(ClientErrorReport)
+  it('accepts a route template, a class name, locations and a build', () => {
+    expect(valid(report)).toBe(true)
+  })
+  it('refuses anything that could carry a message', () => {
+    expect(valid({ ...report, name: 'Cannot read x of undefined' })).toBe(false)
+    expect(valid({ ...report, route: '/c/1?q=my secret' })).toBe(false)
+    expect(valid({ ...report, frames: ['at render (index.js:1:2)'] })).toBe(false)
+    expect(valid({ ...report, frames: ['secret words'] })).toBe(false)
+    expect(valid({ ...report, build: 'a b' })).toBe(false)
+  })
+  it('bounds the frames and the whole report', () => {
+    expect(valid({ ...report, frames: Array.from({ length: 13 }, () => 'index.js:1:2') })).toBe(false)
+    const long = `https://goblin.surf/${'a'.repeat(270)}.js:1:2`
+    expect(valid({ ...report, frames: Array.from({ length: 12 }, () => long) })).toBe(false)
   })
 })
