@@ -1,11 +1,10 @@
 import { type ConversationId, GenerationTask, defineExtension, hook, section } from '@earendil-works/pi-durable'
-import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { Budget } from '../budget.ts'
+import { requireBudget } from '../budget.ts'
 import { Capabilities } from '../capabilities/service.ts'
 import { NotFound } from '../http/errors.ts'
-import { Resident } from '../mcp/service.ts'
+import { requireResident } from '../mcp/service.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { logLearnOutcome, type LearnOutcome } from '../skills/learner.ts'
 import type { Catalog } from '../skills/library.ts'
@@ -59,14 +58,6 @@ const SkillFile = Schema.Union([
     mimeType: Schema.optionalKey(Schema.String),
   }),
 ])
-
-/** `ResidentInactive` unless the owner's resident authority is current: skills run without a live browser. */
-const requireResident = Resident.use((resident) => resident.require())
-
-/** `BudgetExhausted` once the agent has spent today's model budget: the learner's model call costs Credits. */
-const requireBudget = Effect.flatMap(Clock.currentTimeMillis, (millis) =>
-  Budget.use((budget) => budget.require(Math.floor(millis / 1000))),
-)
 
 /** What a conversation may use now: its switches over the owner's skills libraries among the rest. */
 const scopeFor = (session: string) => Capabilities.use((capabilities) => capabilities.scope(session))

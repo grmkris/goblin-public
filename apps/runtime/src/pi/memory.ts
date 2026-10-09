@@ -1,8 +1,7 @@
 import { GenerationTask, type TaskId, defineDoc, defineExtension, defineTask, hook } from '@earendil-works/pi-durable'
-import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
-import { Budget } from '../budget.ts'
+import { requireBudget } from '../budget.ts'
 import { Chats, Conversations, Moves } from '../chats/service.ts'
 import { recallExtension } from '../memory/recall.ts'
 import { Memories } from '../memory/service.ts'
@@ -17,11 +16,6 @@ export const MemoryBuilder = defineDoc<{ task: TaskId | null }>({
   fork: 'initial',
   initial: () => ({ task: null }),
 })
-
-/** `BudgetExhausted` once the agent has spent today's model budget: the builder's summaries cost Credits. */
-const requireBudget = Effect.flatMap(Clock.currentTimeMillis, (millis) =>
-  Budget.use((budget) => budget.require(Math.floor(millis / 1000))),
-)
 
 /**
  * The Topic's Conversation whose session `session` is now, or none: a thread, a subagent or a session that is no
