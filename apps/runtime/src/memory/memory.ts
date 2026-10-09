@@ -3,6 +3,7 @@ import { estimateMessageTokens } from '@earendil-works/pi-ai/utils/estimate'
 import type { PiHarness } from 'agents/harness/pi'
 import { and, count, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
+import * as Schema from 'effect/Schema'
 import type { ChatDirectory } from '../chats/directory.ts'
 import { BACKGROUND, conversationId, entryId } from '../pi/context.ts'
 import { appChatMemoryLog, appChatMemoryNodes, appChatMemoryState } from '../storage/chat-memory.ts'
@@ -52,6 +53,15 @@ export type MemoryOptions = {
   readonly foldTokens?: number
 }
 
+/**
+ * Something a chat's memory refers to is gone: the Conversation in Pi, a remembered message's row or its Pi entry, or
+ * a summary a merge builds on. The memory's own tables or Pi no longer agree with what it wrote; it arrives as
+ * `Internal`, and never carries the chat's words.
+ */
+class MemoryMissing extends Schema.TaggedError<MemoryMissing>()('MemoryMissing', {
+  what: Schema.Literals(['conversation', 'message', 'entry', 'summary']),
+}) {}
+
 /** What one builder step did: there is more to build, or the memory has caught up. */
 export type StepResult = 'more' | 'done'
 
@@ -88,7 +98,7 @@ export class ChatMemory {
   async #main(): Promise<Conversation> {
     const session = this.#deps.chats.session(this.#chat)
     const main = await (await this.#deps.harness.pi()).conversation(conversationId(session), BACKGROUND)
-    if (main === undefined) throw new Error('The remembered conversation is missing')
+    if (main === undefined) throw new MemoryMissing({ what: 'conversation' })
     return main
   }
 
@@ -320,12 +330,12 @@ export class ChatMemory {
       .from(appChatMemoryLog)
       .where(this.#log(eq(appChatMemoryLog.idx, idx)))
       .get()
-    if (row === undefined) throw new Error(`Memory message ${idx} is missing`)
+    if (row === undefined) throw new MemoryMissing({ what: 'message' })
     const id = entryId(row.entryId)
     const [entry] = (await (await this.#main()).entries({ minEntryId: id, maxEntryId: id }, 1, undefined, BACKGROUND))
       .items
     const message = entry === undefined ? undefined : logMessage(entry)
-    if (message === undefined) throw new Error(`Memory message ${idx} has no entry`)
+    if (message === undefined) throw new MemoryMissing({ what: 'entry' })
     return message
   }
 
@@ -350,7 +360,7 @@ export class ChatMemory {
     const [a, b] = childrenOf(node)
     const texts = this.#texts([a, b])
     const [first, second] = [texts.get(nodeKey(a)), texts.get(nodeKey(b))]
-    if (first === undefined || second === undefined) throw new Error(`Memory node ${nodeKey(node)} lacks a child`)
+    if (first === undefined || second === undefined) throw new MemoryMissing({ what: 'summary' })
     return { kind: 'merge', lines: [first, second] }
   }
 

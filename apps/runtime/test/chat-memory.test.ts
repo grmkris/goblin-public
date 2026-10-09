@@ -91,4 +91,20 @@ describe('per-Topic memory (ADR 0032)', () => {
     ])
     expect([memories.of('1').size(), memories.of('1').viewThrough()]).toEqual([4, 3])
   })
+
+  it('names what is missing when a zoom reaches a message the memory no longer holds, never its words', async () => {
+    const { db, close } = chatDatabase()
+    cleanups.push(close)
+    db.insert(appChatMemoryLog)
+      .values(log('1', [11, 12]))
+      .run()
+    // SAFETY: the missing row is found in SQLite before Pi or the model would be asked.
+    const memories = new ChatMemories(
+      { db, harness: undefined as never, model: undefined as never, chats: new ChatDirectory(db) },
+      {},
+      [],
+    )
+    await expect(memories.of('1').zoom(5, 1, 10)).rejects.toMatchObject({ _tag: 'MemoryMissing', what: 'message' })
+    expect(await memories.of('1').zoom(5, 1, 4)).toBe('No line 5+1.')
+  })
 })

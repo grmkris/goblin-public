@@ -98,7 +98,9 @@ export function memoryExtensions(run: RunProgram) {
                 }),
               )
             }),
-          ).catch(() => undefined)
+          ).catch(() => {
+            // expected: the next response starts a builder again; run reported anything unexpected
+          })
         },
       }),
     ],

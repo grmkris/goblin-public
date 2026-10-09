@@ -2,10 +2,18 @@
 export const paths: string[] = [
   'apps/runtime/src/layers/knowledge.ts',
   'apps/runtime/src/memory/api.ts',
+  'apps/runtime/src/memory/benchmark.ts',
+  'apps/runtime/src/memory/log.ts',
+  'apps/runtime/src/memory/memory.ts',
+  'apps/runtime/src/memory/recall.ts',
   'apps/runtime/src/memory/service.ts',
+  'apps/runtime/src/memory/summarize.ts',
+  'apps/runtime/src/memory/tree.ts',
+  'apps/runtime/src/pi/memory.ts',
   'apps/runtime/src/pi/retrieval.ts',
   'apps/runtime/src/pi/skills.ts',
   'apps/runtime/src/retrieval/**',
   'apps/runtime/src/skills/**',
+  'apps/runtime/src/storage/chat-memory.ts',
   'apps/runtime/src/storage/retrieval.ts',
 ]
