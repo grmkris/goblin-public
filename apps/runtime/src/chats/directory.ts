@@ -1,11 +1,12 @@
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { PRIMARY_CHAT } from '@goblin/contracts'
-import { and, eq, lt, ne } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Brand from 'effect/Brand'
-import { Conflict, NotFound } from '../http/errors.ts'
-import { appChatOperations, appConversations } from '../storage/schema.ts'
+import { NotFound } from '../http/errors.ts'
+import { appConversations } from '../storage/schema.ts'
 import { appTopics } from '../storage/topics.ts'
+import { receiptIn } from './receipts.ts'
 
 export type ChatId = string & Brand.Brand<'ChatId'>
 export const ChatId = Brand.nominal<ChatId>()
@@ -21,8 +22,6 @@ const deferred = (): { readonly promise: Promise<void>; readonly release: () => 
   })
   return { promise, release: resolvePromise }
 }
-
-const RETENTION = 30 * 24 * 60 * 60
 
 /** The roles of a Topic's one Conversation: Personal's (`primary`, the inbound target) and every other Topic's. */
 const channelRoles: ReadonlySet<string> = new Set(['primary', 'conversation'])
@@ -45,7 +44,6 @@ export function registerPrimary<RunResult>(db: SQLiteAsyncDatabase<'sync', RunRe
 export class ChatDirectory<RunResult = unknown> {
   readonly #db: SQLiteAsyncDatabase<'sync', RunResult>
   readonly #locks = new Map<string, Promise<void>>()
-  readonly #listeners = new Set<(chat: ChatId) => void>()
 
   constructor(db: SQLiteAsyncDatabase<'sync', RunResult>) {
     this.#db = db
@@ -114,31 +112,10 @@ export class ChatDirectory<RunResult = unknown> {
     return this.conversationOf(start.topicId)
   }
 
+  /** The session `op` was admitted to in `chat`, if it was (chats/receipts.ts). */
   operation(chat: string, op: string): SessionId | undefined {
-    const row = this.#db
-      .select()
-      .from(appChatOperations)
-      .where(and(eq(appChatOperations.chatId, chat), eq(appChatOperations.operationId, op)))
-      .get()
-    return row === undefined ? undefined : SessionId(row.sessionId)
-  }
-
-  /** Persist intent before submitting to Pi. Replays keep their first session, even after a rebind. */
-  admit(chat: string, op: string, now: number): { session: SessionId; existing: boolean } {
-    return this.#db.transaction(() => {
-      this.#db
-        .delete(appChatOperations)
-        .where(and(lt(appChatOperations.admittedAt, now - RETENTION), ne(appChatOperations.operationId, op)))
-        .run()
-      const previous = this.operation(chat, op)
-      if (previous !== undefined) return { session: previous, existing: true }
-      const session = this.session(chat)
-      this.#db
-        .insert(appChatOperations)
-        .values({ chatId: chat, operationId: op, sessionId: session, admittedAt: now })
-        .run()
-      return { session, existing: false }
-    })
+    const receipt = receiptIn(this.#db, chat, op)
+    return receipt === undefined ? undefined : SessionId(receipt.session)
   }
 
   async withChat<A>(chat: string, run: () => Promise<A>): Promise<A> {
@@ -157,36 +134,5 @@ export class ChatDirectory<RunResult = unknown> {
   /** Resolve a chat and submit one passive write while admission for that chat is locked. */
   async passiveWrite<A>(chat: string, run: (session: SessionId) => Promise<A>): Promise<A> {
     return this.withChat(chat, async () => run(this.session(chat)))
-  }
-
-  /** Fence stale movers and preserve the old operation receipts. No production caller yet. */
-  rebind(chat: string, expected: { from: string; epoch: number }, to: string, now: number): void {
-    this.#db.transaction(() => {
-      const owner = this.chatOf(to)
-      if (owner !== undefined && owner !== chat) throw new Conflict({ reason: 'session belongs to another chat' })
-      const changed = this.#db
-        .update(appConversations)
-        .set({ piSession: to, epoch: expected.epoch + 1 })
-        .where(
-          and(
-            eq(appConversations.chatId, chat),
-            eq(appConversations.piSession, expected.from),
-            eq(appConversations.epoch, expected.epoch),
-          ),
-        )
-        .returning()
-        .all()
-      if (changed.length === 0) throw new Conflict({ reason: 'chat binding changed' })
-      this.#db
-        .delete(appChatOperations)
-        .where(lt(appChatOperations.admittedAt, now - RETENTION))
-        .run()
-    })
-    for (const listener of this.#listeners) listener(ChatId(chat))
-  }
-
-  onRebind(listener: (chat: ChatId) => void): () => void {
-    this.#listeners.add(listener)
-    return () => this.#listeners.delete(listener)
   }
 }

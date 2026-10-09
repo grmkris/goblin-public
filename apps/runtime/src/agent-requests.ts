@@ -3,7 +3,7 @@ import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import { type AppError, NotFound } from './http/errors.ts'
 import { refusal } from './http/api/render.ts'
-import { type AgentServices, Chats, attempt } from './services.ts'
+import { type AgentServices, attempt } from './services.ts'
 import { registeredConversation } from './agent-program.ts'
 import { piEventResponse } from './pi/events.ts'
 import { Workspace } from './workspace/service.ts'
@@ -60,17 +60,11 @@ export async function agentRequest(
   return refusal(new NotFound({ what: 'route' }), ref)
 }
 
-/** A chat's Pi event stream, closed when the chat moves to another Pi session (a Move rebinds it). */
+/** A chat's Pi event stream: a chat keeps its Pi session (a Move makes a new Thread), so the stream is its session's. */
 async function eventsResponse(chat: string, harness: PiHarness, execute: Execute): Promise<Response> {
   const session = await execute(registeredConversation(chat))
   if (Exit.isFailure(session)) return Response.json({ error: 'NotFound' }, { status: 404 })
-  const directory = await execute(Chats.useSync((chats) => chats))
-  if (Exit.isFailure(directory)) return Response.json({ error: 'Unavailable' }, { status: 503 })
-  return piEventResponse(await harness.session(session.value).events(), (close) =>
-    directory.value.onRebind((rebound) => {
-      if (rebound === chat) close()
-    }),
-  )
+  return piEventResponse(await harness.session(session.value).events())
 }
 
 /** Where an outbound sign-in returns the owner: Connections, quoting the request's reference when it failed. */

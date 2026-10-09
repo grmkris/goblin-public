@@ -89,7 +89,6 @@ export class ConversationRegistry {
     this.#kit = kit
     this.#stops = new ChatStops(db, harness, kit.chats)
     registerPrimary(db, now)
-    kit.chats.onRebind((chat) => this.#changed([chat]))
   }
 
   /** Calls `listener` after each write with the conversations it changed; returns what unsubscribes it. */

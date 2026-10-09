@@ -1,5 +1,7 @@
+import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ChatDirectory } from '../src/chats/directory.ts'
+import { admitReceipt } from '../src/chats/receipts.ts'
 import { appConversations } from '../src/storage/schema.ts'
 import { appTopics } from '../src/storage/topics.ts'
 import { chatDatabase } from './chats-sqlite.ts'
@@ -31,48 +33,13 @@ describe('logical chat directory', () => {
     expect(() => chats.session('99')).toThrow(expect.objectContaining({ _tag: 'NotFound' }))
   })
 
-  it('records intent first and keeps retries on the original session after a fenced rebind', () => {
+  it('finds the session an operation was admitted to from its receipt', () => {
     const { chats, db } = fixture()
-    const rebound: string[] = []
-    const unsubscribe = chats.onRebind((chat) => rebound.push(chat))
-    expect(chats.admit('1', 'owner:1', 10)).toEqual({ session: '41', existing: false })
-    chats.rebind('1', { from: '41', epoch: 0 }, '43', 11)
-    expect(chats.session('1')).toBe('43')
-    expect(chats.chatOf('41')).toBeUndefined()
-    expect(chats.chatOf('43')).toBe('1')
-    expect(chats.admit('1', 'owner:1', 12)).toEqual({ session: '41', existing: true })
+    const receipt = { kind: 'send', origin: 'owner' } as const
+    admitReceipt(db, { chat: '1', operationId: 'owner:1', receipt, session: () => chats.session('1'), now: 10 })
+    db.update(appConversations).set({ piSession: '43' }).where(eq(appConversations.chatId, '1')).run()
     expect(chats.operation('1', 'owner:1')).toBe('41')
-    expect(chats.admit('1', 'owner:2', 12)).toEqual({ session: '43', existing: false })
     expect(chats.operation('2', 'owner:1')).toBeUndefined()
-    expect(db.select().from(appConversations).all()[0]).toMatchObject({ chatId: '1', epoch: 1, role: 'primary' })
-    expect(rebound).toEqual(['1'])
-    unsubscribe()
-    chats.rebind('1', { from: '43', epoch: 1 }, '44', 13)
-    expect(rebound).toEqual(['1'])
-  })
-
-  it('rejects stale epochs, stale sessions and another chat’s session without changing ownership', () => {
-    const { chats } = fixture()
-    for (const [expected, to] of [
-      [{ from: '41', epoch: 1 }, '43'],
-      [{ from: '40', epoch: 0 }, '43'],
-      [{ from: '41', epoch: 0 }, '42'],
-    ] as const) {
-      expect(() => chats.rebind('1', expected, to, 10)).toThrow(expect.objectContaining({ _tag: 'Conflict' }))
-    }
-    expect(chats.session('1')).toBe('41')
-    expect(chats.session('2')).toBe('42')
-  })
-
-  it('prunes receipts older than thirty days while preserving the current retry and other chat keys', () => {
-    const { chats } = fixture()
-    chats.admit('1', 'old', 1)
-    chats.admit('1', 'retry', 1)
-    chats.admit('2', 'retry', 2)
-    const now = 30 * 24 * 60 * 60 + 10
-    expect(chats.admit('1', 'retry', now)).toEqual({ session: '41', existing: true })
-    expect(chats.operation('1', 'old')).toBeUndefined()
-    expect(chats.operation('2', 'retry')).toBe('42')
   })
 
   it('serializes one chat, allows independent chats, and releases after a failed admission', async () => {
@@ -102,15 +69,15 @@ describe('logical chat directory', () => {
     expect(events).toEqual(['first', 'independent', 'second'])
   })
 
-  it('resolves passive writes after an earlier rebind and holds admission only through submission', async () => {
-    const { chats } = fixture()
+  it('resolves a passive write to the session current when its turn comes, and holds admission only through it', async () => {
+    const { chats, db } = fixture()
     let releaseMove = noop
     const moved = new Promise<void>((resolve) => {
       releaseMove = resolve
     })
     const move = chats.withChat('1', async () => {
       await moved
-      chats.rebind('1', { from: '41', epoch: 0 }, '43', 10)
+      db.update(appConversations).set({ piSession: '43' }).where(eq(appConversations.chatId, '1')).run()
     })
     const submitted: string[] = []
     const write = chats.passiveWrite('1', async (session) => {
@@ -124,10 +91,7 @@ describe('logical chat directory', () => {
     await move
     await write
     expect(submitted).toEqual(['42', '43'])
-    await expect(chats.withChat('1', async () => chats.admit('1', 'next', 11))).resolves.toEqual({
-      session: '43',
-      existing: false,
-    })
+    await expect(chats.withChat('1', async () => chats.session('1'))).resolves.toBe('43')
   })
 
   it("tells a Topic's Conversation from its threads and finds the Conversation above any chat", () => {

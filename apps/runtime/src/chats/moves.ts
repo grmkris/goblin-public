@@ -8,8 +8,11 @@ import { appChatMoves, appConversations, appRegistry } from '../storage/schema.t
 
 export type MoveRow = typeof appChatMoves.$inferSelect
 
-/** The states a move is still working through; a chat has at most one move in them (a partial unique index). */
-const ACTIVE_MOVE = ['requested', 'forked', 'swapped'] as const
+/**
+ * The states a move is still working through; a chat has at most one move in them (a partial unique index, which also
+ * allows `swapped`: the running-turn identity swap was never built, so no move reaches it).
+ */
+const ACTIVE_MOVE = ['requested', 'forked'] as const
 
 /** What the owner and the web see of a move. */
 export const moveReceipt = (row: MoveRow): MoveReceipt => ({
@@ -86,7 +89,7 @@ export class MoveStore<RunResult = unknown> {
         and(
           eq(appChatMoves.chatId, chat),
           eq(appChatMoves.messageEntry, entry),
-          inArray(appChatMoves.state, ['forked', 'swapped', 'settled']),
+          inArray(appChatMoves.state, ['forked', 'settled']),
         ),
       )
       .get()
