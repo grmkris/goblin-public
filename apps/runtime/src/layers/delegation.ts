@@ -3,6 +3,7 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { ProfilesInstance } from '../capabilities/profiles.ts'
 import { Home, HomeService } from '../home/service.ts'
+import { MemoriesInstance } from '../memory/memory.ts'
 import { modelOptions } from '../models.ts'
 import type { KeyedLock } from '../observability/lock.ts'
 import { OrganizeReceipts } from '../organize/receipts.ts'
@@ -67,7 +68,7 @@ const stores: Effect.Effect<DelegationStores, never, FoundationServices> = Effec
   const db = yield* Db
   const conversations = yield* Legacy.Conversations
   const chats = yield* Legacy.Chats
-  const kit = { capabilities: yield* ProfilesInstance, chats, memories: yield* Legacy.Memories }
+  const kit = { capabilities: yield* ProfilesInstance, chats, memories: yield* MemoriesInstance }
   const apps = yield* Legacy.Apps
   const invocations = yield* Legacy.Invocations
   const topics = new TopicRegistry(db, topicPorts(db, conversations, kit))

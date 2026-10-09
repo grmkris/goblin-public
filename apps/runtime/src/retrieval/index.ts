@@ -3,6 +3,7 @@ import { RetrievalSource, type SourceUse } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import { and, count, desc, eq, gte, ne, sql } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
+import * as Context from 'effect/Context'
 import * as Schema from 'effect/Schema'
 import { BACKGROUND, conversationId, entryId } from '../pi/context.ts'
 import { appConversations } from '../storage/schema.ts'
@@ -290,3 +291,11 @@ function useOf(row: typeof appRetrievalUses.$inferSelect): SourceUse {
     retrievedAt: row.retrievedAt,
   }
 }
+
+/**
+ * Cross-Topic retrieval's one transcript index (ADR 0035), made at the start (`layers/knowledge.ts`): retrieval reads it
+ * and a Move to thread reassigns its rows (ADR 0034).
+ */
+export class TranscriptsInstance extends Context.Service<TranscriptsInstance, TranscriptIndex>()(
+  'goblin/retrieval/TranscriptsInstance',
+) {}

@@ -2,13 +2,8 @@ import * as Clock from 'effect/Clock'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import { type AppError, toAppError } from './http/errors.ts'
-import type { ModelBudget } from './budget.ts'
-import type { ModelPicker } from './models.ts'
 import type { ChatDirectory } from './chats/directory.ts'
 import type { ConversationRegistry } from './conversations.ts'
-import type { ChatMemories } from './memory/memory.ts'
-import type { SkillLearner } from './skills/learner.ts'
-import type { SkillLibrary } from './skills/library.ts'
 import type { TelegramChannel } from './channel/channel.ts'
 import type { RoutineStore } from './routines/store.ts'
 import type { RoutineRunStore } from './routines/runs.ts'
@@ -22,7 +17,6 @@ import type { TopicRegistry } from './topics/registry.ts'
 import type { PersonaRegistry } from './personas/registry.ts'
 import type { PersonaInvocations } from './personas/invocations.ts'
 import type { OrganizeReceipts } from './organize/receipts.ts'
-import type { ChatRetrieval } from './retrieval/service.ts'
 import type { ChatMover } from './chats/mover.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
@@ -36,12 +30,6 @@ export class Invocations extends Context.Service<Invocations, PersonaInvocations
 export class Receipts extends Context.Service<Receipts, OrganizeReceipts>()('goblin/Receipts') {}
 /** Move to thread (ADR 0034): a chat's newest finished turn into a Thread. */
 export class Moves extends Context.Service<Moves, ChatMover>()('goblin/Moves') {}
-export class Budget extends Context.Service<Budget, ModelBudget>()('goblin/Budget') {}
-export class Models extends Context.Service<Models, ModelPicker>()('goblin/Models') {}
-/** Each Topic Conversation's memory (ADR 0032). */
-export class Memories extends Context.Service<Memories, ChatMemories>()('goblin/Memories') {}
-export class Skills extends Context.Service<Skills, SkillLibrary>()('goblin/Skills') {}
-export class Learner extends Context.Service<Learner, SkillLearner>()('goblin/Learner') {}
 export class Channel extends Context.Service<Channel, TelegramChannel>()('goblin/Channel') {}
 export class Routines extends Context.Service<Routines, RoutineStore>()('goblin/Routines') {}
 export class RoutineRuns extends Context.Service<RoutineRuns, RoutineRunStore>()('goblin/RoutineRuns') {}
@@ -56,8 +44,6 @@ export class Files extends Context.Service<Files, FileStore>()('goblin/Files') {
 /** The agent's apps (ADR 0021): their builds, calls and views. */
 export class AppEngine extends Context.Service<AppEngine, AgentApps>()('goblin/AppEngine') {}
 export class Home extends Context.Service<Home, HomeService>()('goblin/Home') {}
-/** Cross-Topic retrieval (ADR 0035): the transcript index, `search_chats` and automatic sources. */
-export class Retrieval extends Context.Service<Retrieval, ChatRetrieval>()('goblin/Retrieval') {}
 export type { AgentServices } from './layers/index.ts'
 
 /** Wrap a plain async step so its failure lands in the typed `AppError` channel. */

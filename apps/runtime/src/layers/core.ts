@@ -15,6 +15,10 @@ import type { ProfilesInstance } from '../capabilities/profiles.ts'
 import type { Cipher } from '../mcp/cipher.ts'
 import type { McpHostInstance } from '../mcp/host.ts'
 import type { Events } from '../mcp/service.ts'
+import type { MemoriesInstance } from '../memory/memory.ts'
+import type { CheapModels } from '../memory/model.ts'
+import type { TranscriptsInstance } from '../retrieval/index.ts'
+import type { Learner, Skills } from '../skills/service.ts'
 import type { LegacyServices } from './legacy.ts'
 
 /**
@@ -46,7 +50,16 @@ export const CoreLive = (
   )
 
 /** What the start's steps outside the legacy start provide (layers/index.ts). */
-type StartServices = McpHostInstance | Cipher | ProfilesInstance | Events
+type StartServices =
+  | McpHostInstance
+  | Cipher
+  | ProfilesInstance
+  | Events
+  | CheapModels
+  | MemoriesInstance
+  | TranscriptsInstance
+  | Skills
+  | Learner
 
 /**
  * What a lane's layer may require: the core services and what the start made (the legacy steps' until each moves into

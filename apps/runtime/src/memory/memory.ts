@@ -9,6 +9,7 @@ import { estimateMessageTokens } from '@earendil-works/pi-ai/utils/estimate'
 import type { PiHarness } from 'agents/harness/pi'
 import { and, count, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
+import * as Context from 'effect/Context'
 import * as Schema from 'effect/Schema'
 import type { ChatDirectory } from '../chats/directory.ts'
 import { BACKGROUND, conversationId, entryId } from '../pi/context.ts'
@@ -518,3 +519,11 @@ export class ChatMemories {
     this.of(chat).truncate(size)
   }
 }
+
+/**
+ * The agent's one memory engine, made at the start (`layers/knowledge.ts`): the conversations, Topics and the mover
+ * reach it inside their own writes. Programs use the `Memories` service.
+ */
+export class MemoriesInstance extends Context.Service<MemoriesInstance, ChatMemories>()(
+  'goblin/memory/MemoriesInstance',
+) {}

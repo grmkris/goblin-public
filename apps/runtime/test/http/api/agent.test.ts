@@ -21,7 +21,6 @@ import { AgentHandlers } from '../../../src/routines/agent-api.ts'
 import { ChatsLive } from '../../../src/layers/conversation.ts'
 import { ModelBudgetLive, RoutinesLive } from '../../../src/layers/routines.ts'
 import { Events, McpConnections, McpGrants, McpServers, Resident } from '../../../src/mcp/service.ts'
-import { ModelChoiceStore, ModelPicker, modelOptions } from '../../../src/models.ts'
 import { RoutineController } from '../../../src/routines/controller.ts'
 import { RoutineUsage } from '../../../src/routines/usage.ts'
 import { Db } from '../../../src/runtime/db.ts'
@@ -68,7 +67,6 @@ const fixture = () => {
   registerPrimary(db, 1)
   const chats = new ChatDirectory(db)
   const budget = new ModelBudget(new UsageStore(sqlite), 100)
-  const models = new ModelPicker(new ModelChoiceStore(sqlite), modelOptions('model-b', 'model-a'))
   // SAFETY: the channel's status and disable read and clear its tables only; the cipher and telemetry stay unused.
   const channel = new TelegramChannel(sqlite, undefined as never, () => undefined, undefined, chats)
   const pinned: string[] = []
@@ -81,8 +79,6 @@ const fixture = () => {
   const applied: Applied = new Map()
   const plans: EntitlementPolicy = { state: () => Effect.succeed(PLAN), require: () => Effect.succeed(PLAN) }
   const legacy = Layer.mergeAll(
-    Layer.succeed(Legacy.Budget, budget),
-    Layer.succeed(Legacy.Models, models),
     Layer.succeed(Legacy.Channel, channel),
     Layer.succeed(Legacy.Chats, chats),
     // The channel's tools: the server offers none, so turning the channel on is refused before anything is granted.

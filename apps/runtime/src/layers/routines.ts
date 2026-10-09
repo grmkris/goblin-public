@@ -1,8 +1,8 @@
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { Entitlements, cachedPolicy } from '../billing/gates.ts'
-import { Budget, UsageStore, utcDay } from '../budget.ts'
-import { creditRates, milliCredits, totalTokens } from '../budget-credits.ts'
+import { Budget, UsageStore, recordUse, utcDay } from '../budget.ts'
+import { creditRates } from '../budget-credits.ts'
 import { Channel } from '../channel/service.ts'
 import { BudgetExhausted, toAppError } from '../http/errors.ts'
 import { ModelChoiceStore, ModelPicker, Models, modelOptions } from '../models.ts'
@@ -154,9 +154,7 @@ const BudgetLive: Layer.Layer<Budget, never, AgentInput | Db | Entitlements> = L
     return Budget.of({
       today,
       record: Effect.fn('Budget.record')(function* (use, now, model?: string) {
-        const tokens = totalTokens(use)
-        if (!Number.isFinite(tokens) || tokens <= 0) return
-        yield* Effect.sync(() => ledger.add(utcDay(now).day, tokens, milliCredits(use, model, rates), now))
+        yield* Effect.sync(() => recordUse(ledger, rates, use, now, model))
       }),
       require: Effect.fn('Budget.require')(function* (now) {
         const current = yield* today(now)

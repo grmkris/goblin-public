@@ -1,9 +1,10 @@
 import type { Models } from '@earendil-works/pi-ai'
+import * as Context from 'effect/Context'
 import * as Schema from 'effect/Schema'
 import type { TokenUse } from '../budget-credits.ts'
 import { nowMillis } from '../clock.ts'
 import { MODEL_PROVIDER } from '../pi/model.ts'
-import type { AuxCall } from '../telemetry/report.ts'
+import type { AuxCall, AuxPurpose } from '../telemetry/report.ts'
 
 /** Room for the thinking a model does before answering by default: it counts against `maxTokens`. */
 const THINKING_HEADROOM = 2048
@@ -77,3 +78,11 @@ export class CheapModel {
       .trim()
   }
 }
+
+/**
+ * The cheap model for one housekeeping purpose (`purpose` names its run-ledger calls), its tokens counted in the daily
+ * budget: made once at the start (`layers/knowledge.ts`) for memory, thread names, the skill learner and retrieval.
+ */
+export class CheapModels extends Context.Service<CheapModels, (purpose: AuxPurpose) => CheapModel>()(
+  'goblin/memory/CheapModels',
+) {}

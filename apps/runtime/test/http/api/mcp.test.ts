@@ -15,7 +15,6 @@ import { McpHandlers } from '../../../src/mcp/api.ts'
 import { McpHost, McpHostInstance } from '../../../src/mcp/host.ts'
 import { Approvals, Events } from '../../../src/mcp/service.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
-import { Skills } from '../../../src/services.ts'
 import { Apps } from '../../../src/apps/service.ts'
 import { Budget } from '../../../src/budget.ts'
 import { Capabilities } from '../../../src/capabilities/service.ts'
@@ -24,7 +23,7 @@ import { Files } from '../../../src/files/service.ts'
 import { Invocations, Personas } from '../../../src/personas/service.ts'
 import { PiSessions } from '../../../src/pi/sessions.ts'
 import { RoutineRuns } from '../../../src/routines/service.ts'
-import { Skills as SkillLibraries } from '../../../src/skills/service.ts'
+import { Skills } from '../../../src/skills/service.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 import { callOwner } from '../../integration/owner-api.ts'
 import { MemoryAddedServers, MemoryCredentials, MemoryGrants } from '../../mcp/memory.ts'
@@ -133,9 +132,8 @@ const fixture = async () => {
           ResidentLive.pipe(Layer.provide(sqliteDb(db))),
           plans(),
           Layer.mergeAll(
-            Layer.succeed(Skills, unread),
             Layer.succeed(ChatOperations, unread),
-            Layer.succeed(SkillLibraries, unread),
+            Layer.succeed(Skills, unread),
             Layer.succeed(Chats, unread),
             Layer.succeed(RoutineRuns, unread),
           ),

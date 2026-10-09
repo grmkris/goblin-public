@@ -5,23 +5,25 @@ import { ConversationLive } from './conversation.ts'
 import { CoreLive } from './core.ts'
 import { DelegationLive } from './delegation.ts'
 import { HttpLive } from './http.ts'
-import { KnowledgeLive } from './knowledge.ts'
 import {
-  ActivateMemoriesStep,
+  ActivateMemoriesLive,
+  CheapModelsLive,
+  KnowledgeLive,
+  MemoryEngineLive,
+  SkillsLive,
+  TranscriptsLive,
+} from './knowledge.ts'
+import {
   AppsStep,
-  BudgetStep,
   ChannelStep,
   ChatsStep,
   ConversationsStep,
   DelegationStep,
   HelperExecutionStep,
-  MemoryStep,
   MigrationsStep,
   MovesStep,
   RestStep,
   RoutinesStep,
-  SkillsStep,
-  TranscriptsStep,
 } from './legacy.ts'
 import { McpEventsLive, McpHostLive, McpLive, ProfilesLive, RetoolLive } from './mcp.ts'
 import { ObservabilityLive } from './observability.ts'
@@ -41,9 +43,9 @@ const start = (input: AgentInputs) =>
   CoreLive(input).pipe(
     then(MigrationsStep),
     then(McpHostLive),
-    then(BudgetStep),
+    then(CheapModelsLive),
     then(ChatsStep),
-    then(MemoryStep),
+    then(MemoryEngineLive),
     then(ProfilesLive),
     then(HelperExecutionStep),
     then(RetoolLive),
@@ -51,10 +53,10 @@ const start = (input: AgentInputs) =>
     then(ConversationsStep),
     then(AppsStep),
     then(DelegationStep),
-    then(TranscriptsStep),
+    then(TranscriptsLive),
     then(MovesStep),
-    then(ActivateMemoriesStep),
-    then(SkillsStep),
+    then(ActivateMemoriesLive),
+    then(SkillsLive),
     then(ChannelStep),
     then(McpEventsLive),
     then(RestStep),

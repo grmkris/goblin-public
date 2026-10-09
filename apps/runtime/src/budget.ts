@@ -48,6 +48,13 @@ export class UsageStore implements UsageLedger {
   }
 }
 
+/** Counts one model response's tokens in `ledger`, priced at `model`'s rate: what the daily budget sums. */
+export function recordUse(ledger: UsageLedger, rates: CreditRates, use: TokenUse, now: number, model?: string): void {
+  const tokens = totalTokens(use)
+  if (!Number.isFinite(tokens) || tokens <= 0) return
+  ledger.add(utcDay(now).day, tokens, milliCredits(use, model, rates), now)
+}
+
 /**
  * This agent's model budget in estimated Token Plan Credits (ADR 0026): every model response counts against the
  * user's UTC day at its model's rate, fresh input, cached input and output each priced as the plan prices them. Users
@@ -76,9 +83,7 @@ export class ModelBudget {
   }
 
   record(use: TokenUse, now: number, model?: string): void {
-    const tokens = totalTokens(use)
-    if (!Number.isFinite(tokens) || tokens <= 0) return
-    this.#ledger.add(utcDay(now).day, tokens, milliCredits(use, model, this.#rates), now)
+    recordUse(this.#ledger, this.#rates, use, now, model)
   }
 
   /** Fails with `BudgetExhausted` once today's spend has reached the limit. */

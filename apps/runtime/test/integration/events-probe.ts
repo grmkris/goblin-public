@@ -12,7 +12,7 @@ import { McpConnectionManager, offersEvents } from '../../src/mcp/connection.ts'
 import { McpEvents } from '../../src/mcp/events.ts'
 import { SqliteEventStore, EventStorage, eventStorageEffect } from '../../src/mcp/events/store.ts'
 import { channelPorts } from '../../src/channel/turns.ts'
-import { Budget, Chats, Models } from '../../src/services.ts'
+import { Chats } from '../../src/services.ts'
 import { ModelBudget, UsageStore } from '../../src/budget.ts'
 import { ModelChoiceStore, ModelPicker, modelOptions } from '../../src/models.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
@@ -90,8 +90,6 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
     Effect.runPromise(
       program.pipe(
         Effect.provideService(Chats, chats),
-        Effect.provideService(Budget, budget),
-        Effect.provideService(Models, models),
         Effect.provide(portServices({ db, chats, harness, budget, models })),
       ),
     )
