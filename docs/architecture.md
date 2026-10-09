@@ -177,20 +177,32 @@ record, `AgentInput` (`runtime/input.ts`). The layers build in a fixed order, ea
 - **Core** (`layers/core.ts`): `AgentInput`, the application database (`Db`), the change bus (`Changes`), Pi's calls
   as Effects (`PiSessions`), the per-key lock (`KeyedLock`), conversation flow events (`FlowEvents`), and goblin's
   content-free logger and failure reporter in place of Effect's defaults (see Logs, failures and references).
-- **The legacy start** (`layers/legacy.ts`, being retired): the agent's original start, step for step in its order
-  (migrations, endpoint bindings, the MCP host and grants, budget, chats, memory, capabilities, routines, the
-  conversations, Topics and Apps over them, then skills, the Telegram channel and Events), behind the old service tags
-  of `services.ts`.
-- **One layer per area**, in order: conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`), delegation
-  (`Topics`, `Personas`, `Invocations`, `Receipts`, `Home`, `Workspace`), MCP (`Resident`, `McpServers`,
-  `McpGrants`, `McpConnections`, `Approvals`, `Events`, `Capabilities`), knowledge (`Memories`, `Retrieval`, `Skills`,
-  `Learner`), routines (`Entitlements`, `Budget`, `Routines`, `RoutineRuns`, `RoutineUsage`, `RoutineControl`,
-  `Models`, `Channel`), observability (`Inspection`), apps (`Apps`, `AppEngine`, `Files`) and HTTP (`OwnerHttp`).
+- **The start** (`layers/index.ts`): the agent's start, step by step in one fixed order, each step a layer in its
+  owning area's file and built after every step before it, so each await holds up the steps after it. In order: the
+  migrations; the MCP host (each server's endpoint binding checked, so a re-pointed server loses what it had, the
+  credential cipher, held calls a restart cut off recovered); the cheap models; the chat directory; the memory engine;
+  the capability profiles; helper execution restored and the retained Pi filters retooled once; the routine usage
+  projection, subscribed to Pi's commits; the conversation registry (main is registered here); the App registry; the
+  transcript index; the mover (a move a restart interrupted finishes in the background, never holding up the start);
+  every Topic Conversation given memory; skills and the learner; the Telegram channel; and Events, with the routine
+  trigger and then the Telegram and skills consumers registered. A stateful object is made once, by its step, and
+  shared with the layers that wire it by an instance tag in its own module (`McpHostInstance`, `Cipher`,
+  `ProfilesInstance`, `MemoriesInstance`, `TranscriptsInstance`, `AppsInstance`); programs use the area's services.
+  The chat directory, conversation registry and mover are still made by `layers/legacy.ts`, behind the `services.ts`
+  tags, until the conversation layer makes them.
+- **One layer per area** after the start, in order: the plan, model budget and picker (`Entitlements`, `Budget`,
+  `Models`, which a send's admission reads), conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`),
+  delegation (`Topics`, `Personas`, `Invocations`, `Receipts`, `Home`, `Workspace`), MCP (`Resident`, `McpServers`,
+  `McpGrants`, `McpConnections`, `Approvals`, `Capabilities`), knowledge (`Memories`, `Retrieval`), routines
+  (`Routines`, `RoutineRuns`, `RoutineControl`), observability (`Inspection`), apps (`Apps`, `AppEngine`, `Files`)
+  and HTTP (`OwnerHttp`). `Events`, `Skills`, `Learner`, `RoutineUsage` and `Channel` are served by their start steps.
 
 `AgentServices`, every service a program may require, is derived from the layers, so no area edits a shared union. A
 service is a `Context.Service` tag in its area (`<area>/service.ts`) whose methods are `Effect.fn` Effects with typed
-`AppError` failures; synchronous Drizzle stores stay plain classes, wrapped once where the service is built. Some area
-services are still adapters over the legacy start's one instance of a stateful class; none builds a second.
+`AppError` failures; synchronous Drizzle stores stay plain classes, wrapped once where the service is built. A service
+over a stateful object reads it by its instance tag; none builds a second. The Worker runs its own programs (the edge,
+the fresh plan reads, billing) through `runAtEdge` (`http/api/edge.ts`): with the bridge, the only place Effects are
+run.
 
 The object runs its programs through one bridge (`runtime/bridge.ts`): `run` checks the plan
 (`Entitlements.require()`) first, `local` does not (the ledger, budget records, routine gates, diagnose), and `exit`
