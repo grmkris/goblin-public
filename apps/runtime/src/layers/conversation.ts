@@ -1,10 +1,26 @@
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
-import type { CreateConversation, HelperExclusion, MoveToThread, UpdateConversation } from '@goblin/contracts'
+import type {
+  CreateConversation,
+  HelperExclusion,
+  MoveToThread,
+  QueueRemoval,
+  UpdateConversation,
+} from '@goblin/contracts'
 import type { EntryDraft } from '@earendil-works/pi-durable'
-import { ChatOperations, Chats, Conversations, Moves, type PassiveWrite, type RoutineReport } from '../chats/service.ts'
-import type { ChatDirectory } from '../chats/directory.ts'
+import { createOwnerConversation, stopOwner, submitOwner } from '../agent-program.ts'
+import {
+  ChatOperations,
+  Chats,
+  Conversations,
+  Moves,
+  type OwnerMessage,
+  type PassiveWrite,
+  type RoutineReport,
+} from '../chats/service.ts'
+import { startThread } from '../chats/thread-heads.ts'
+import { ownerQueue, removeOwnerQueuedInput } from '../conversation-queue.ts'
 import { NotFound } from '../http/errors.ts'
 import type { ConversationRegistry } from '../conversations.ts'
 import { BACKGROUND, conversationId } from '../pi/context.ts'
@@ -14,7 +30,7 @@ import { attempt, attemptSync, nowSecondsEffect } from '../services.ts'
 import type { FoundationServices } from './core.ts'
 
 /** The chat directory's reads over the legacy `ChatDirectory`. */
-export const ChatsAdapter = Layer.effect(
+const ChatsAdapter = Layer.effect(
   Chats,
   Effect.gen(function* () {
     const chats = yield* LegacyChats
@@ -46,24 +62,17 @@ export const ChatsAdapter = Layer.effect(
 )
 
 /**
- * Holds `chat`'s admission lock on the legacy directory, which the mover, the registry's passive writes and the
- * subagent relays still take: one lock per chat for old and new callers alike. The lock is held from when its turn
- * comes until the returned release runs. Wave 3 moves every caller onto `KeyedLock`.
+ * Admission, passive writes and the owner's operations over the legacy directory and today's programs, with the
+ * services those read captured once and the instance's pieces (Pi, the routine controller, the bridge) from the input.
  */
-const legacyLock = (chats: ChatDirectory, chat: string) =>
-  Effect.callback<() => void>((resume) => {
-    chats
-      .withChat(chat, () => new Promise<void>((release) => resume(Effect.succeed(() => release()))))
-      // expected: the lock's own run never rejects, so neither does its promise.
-      .catch(() => undefined)
-  })
-
-/** Admission and passive writes over the legacy directory, the lock shared with its other callers. */
-export const ChatOperationsAdapter = Layer.effect(
+const ChatOperationsAdapter = Layer.effect(
   ChatOperations,
   Effect.gen(function* () {
     const chats = yield* LegacyChats
-    const { harness } = yield* AgentInput
+    const input = yield* AgentInput
+    const context = yield* Effect.context<FoundationServices>()
+    const { harness, applied, routines, subagents, personas, run } = input
+    const runtime = { harness, applied, routines, subagents, personas, run }
     return ChatOperations.of({
       admit: Effect.fn('ChatOperations.admit')(function* (chat: string, operationId: string) {
         const now = yield* nowSecondsEffect
@@ -72,12 +81,6 @@ export const ChatOperationsAdapter = Layer.effect(
       operation: Effect.fn('ChatOperations.operation')(function* (chat: string, operationId: string) {
         return Option.fromNullishOr(yield* attemptSync(() => chats.operation(chat, operationId)))
       }),
-      withChat: (chat, effect) =>
-        Effect.acquireUseRelease(
-          legacyLock(chats, chat),
-          () => effect,
-          (release) => Effect.sync(release),
-        ).pipe(Effect.withSpan('ChatOperations.withChat')),
       passiveWrite: Effect.fn('ChatOperations.passiveWrite')(function* (chat: string, write: PassiveWrite) {
         return yield* attempt(() =>
           chats.passiveWrite(chat, async (session) => {
@@ -86,6 +89,29 @@ export const ChatOperationsAdapter = Layer.effect(
             return conversation.submit({ type: 'write', ...write }, BACKGROUND)
           }),
         )
+      }),
+      send: Effect.fn('ChatOperations.send')(function* (chat: string, message: OwnerMessage) {
+        const { text, operationId, context: extra = {} } = message
+        return yield* Effect.provideContext(
+          submitOwner({ ...runtime, thread: chat, text, operationId, context: extra }),
+          context,
+        )
+      }),
+      startThread: Effect.fn('ChatOperations.startThread')(function* (chat: string, message: OwnerMessage) {
+        const { text, operationId, context: extra = {} } = message
+        return yield* Effect.provideContext(
+          startThread({ ...runtime, parent: chat, text, operationId, context: extra }),
+          context,
+        )
+      }),
+      stop: Effect.fn('ChatOperations.stop')(function* (chat: string, operationId?: string) {
+        return yield* Effect.provideContext(stopOwner({ ...input.stopping(), thread: chat, operationId }), context)
+      }),
+      queue: Effect.fn('ChatOperations.queue')(function* (chat: string) {
+        return yield* Effect.provideContext(ownerQueue(harness, chat), context)
+      }),
+      removeQueued: Effect.fn('ChatOperations.removeQueued')(function* (chat: string, removal: QueueRemoval) {
+        return yield* Effect.provideContext(removeOwnerQueuedInput(harness, chat, removal), context)
       }),
     })
   }),
@@ -135,11 +161,7 @@ const registryReads = (conversations: ConversationRegistry) => ({
 /** The registry's new chats over the legacy `ConversationRegistry`: Threads, Topic Conversations and registrations. */
 const registryChats = (conversations: ConversationRegistry) => ({
   create: Effect.fn('Conversations.create')(function* (input: CreateConversation) {
-    const now = yield* nowSecondsEffect
-    const { from, topic } = input
-    return yield* attempt(() =>
-      from === undefined ? conversations.create(now, topic) : conversations.branch(from.conversation, from.entry, now),
-    )
+    return yield* Effect.provideService(createOwnerConversation(input), LegacyConversations, conversations)
   }),
   startThread: Effect.fn('Conversations.startThread')(function* (parent: string, operationId: string) {
     const now = yield* nowSecondsEffect
