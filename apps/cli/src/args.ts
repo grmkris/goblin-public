@@ -1,3 +1,5 @@
+import * as Data from 'effect/Data'
+
 /** A command line split into its command, positional words and `--flags`. */
 export type Args = {
   readonly command: string | undefined
@@ -8,8 +10,11 @@ export type Args = {
 /** Flags that never take a value. */
 const SWITCHES = new Set(['json', 'help', 'open', 'all'])
 
-export class UsageError extends Error {
-  override readonly name = 'UsageError'
+/** A command line the CLI cannot run: its message says what to type instead. */
+export class UsageError extends Data.TaggedError('UsageError')<{ readonly message: string }> {
+  constructor(message: string) {
+    super({ message })
+  }
 }
 
 /** `goblin turn telegram-12 --json --since=1h`: `--name value`, `--name=value` and the switches above. */
