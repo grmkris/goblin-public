@@ -7,9 +7,8 @@ import { AppWindowIcon } from 'lucide-react'
 import { Button } from '@goblin/ui'
 import { CHROME_HEIGHT } from '../../lib/app-stage.ts'
 import { inlineHeight } from '../../lib/host-context.ts'
-import { appKey, isOpen } from '../../lib/workspace.ts'
+import { useNavigation } from '../../lib/navigation.ts'
 import { useOnScreen } from '../on-screen.ts'
-import { useWorkspace } from '../workspace.tsx'
 import { type SlotName, useAppHost } from './host.tsx'
 
 /** A ref callback that registers the slot's element under `name` and tells the stages whenever it resizes. */
@@ -89,15 +88,14 @@ function InlinePlace({ app }: { readonly app: AppView }) {
 
 /** A kept App's place in its tool row: the App itself, or, while it is a page, a note of that. */
 export function AppPlace({ app }: { readonly app: AppView }) {
-  const workspace = useWorkspace()
-  const key = appKey(app.id)
-  if (!isOpen(workspace.state, key)) return <InlinePlace app={app} />
+  const navigation = useNavigation()
+  if (!navigation.isAppPage(app.id)) return <InlinePlace app={app} />
   return (
     <AppNote app={app} note="is open as a page">
-      <Button variant="outline" size="sm" onClick={() => workspace.focus(key)}>
+      <Button variant="outline" size="sm" onClick={() => navigation.focusApp(app.id)}>
         Go to it
       </Button>
-      <Button variant="ghost" size="sm" onClick={() => workspace.close(key)}>
+      <Button variant="ghost" size="sm" onClick={() => navigation.closeAppPage(app.id)}>
         Show here
       </Button>
     </AppNote>

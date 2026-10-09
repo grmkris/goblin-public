@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import type { AppView } from '@goblin/contracts'
 import { Button, DropdownMenuItem, DropdownMenuSeparator } from '@goblin/ui'
 import { Maximize2Icon, MessageSquareIcon, Minimize2Icon, PanelLeftCloseIcon, XIcon } from 'lucide-react'
+import { useNavigation } from '../../lib/navigation.ts'
 import { type ItemKey, dockOf } from '../../lib/workspace.ts'
 import { appNames, appOrigin, isUnread } from '../../lib/workspace-tree.ts'
 import { usePlace } from '../conversation-pane.tsx'
@@ -84,6 +85,7 @@ function DockToggle({ app }: { readonly app: AppView }) {
  */
 export function AppPage({ item, id }: { readonly item: ItemKey; readonly id: string }) {
   const workspace = useWorkspace()
+  const navigation = useNavigation()
   const host = useAppHost()
   const { apps } = useWorkspaceFeed()
   const app = apps.find((candidate) => candidate.id === id)
@@ -115,7 +117,7 @@ export function AppPage({ item, id }: { readonly item: ItemKey; readonly id: str
             </>
           ),
         })}
-        onClose={only ? undefined : () => workspace.close(item)}
+        onClose={only ? undefined : () => navigation.closeAppPage(id)}
       />
       {asleep && app !== undefined ? (
         <PageNote app={app} {...(problem === undefined ? {} : { problem })} onShow={() => show(app)} />

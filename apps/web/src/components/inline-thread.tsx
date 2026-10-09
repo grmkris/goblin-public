@@ -12,11 +12,12 @@ import {
   XIcon,
 } from 'lucide-react'
 import { failureText } from '../lib/boundary.ts'
+import { useNavigation } from '../lib/navigation.ts'
 import { openInteractions } from '../lib/interactions.ts'
 import { type Part, partKey } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
 import { entryOfPart, isClosed, relativeTime, repliesLabel, threadTitle, threadsByFork } from '../lib/threads.ts'
-import { type ItemKey, conversationKey, isOpen } from '../lib/workspace.ts'
+import { type ItemKey, conversationKey, isOpen, itemOf } from '../lib/workspace.ts'
 import { activityState } from '../lib/workspace-feed.ts'
 import { isUnread } from '../lib/workspace-tree.ts'
 import { MessageComposer } from './composer.tsx'
@@ -170,7 +171,7 @@ function InlineDock({
   readonly parts: readonly Part[]
 }) {
   const { projection, status, notice, send, stop, removeQueued } = conversation
-  const workspace = useWorkspace()
+  const navigation = useNavigation()
   const sendOwn = useSendWithAppContext(id, send)
   const running = projection?.running ?? false
   const waiting = useMemo(() => openInteractions(parts), [parts])
@@ -190,7 +191,7 @@ function InlineDock({
       )}
       <MessageComposer
         conversation={id}
-        onNewThread={(draft) => workspace.moveDraft(draft, conversationKey(id))}
+        onNewThread={(draft) => navigation.newThreadWith(draft, id)}
         onSend={sendOwn}
         running={running}
         onStop={() => void stop()}
@@ -278,9 +279,15 @@ function InlineThread({ view, threads }: { readonly view: ConversationView; read
 
 const NOTHING_TO_STOP = () => undefined
 
+/** The conversation of the pane the inline threads are in, where a new thread's draft opens beside. */
+function paneConversation(threads: InlineThreads): string {
+  const item = itemOf(threads.source)
+  return item?.kind === 'conversation' ? item.id : threads.parent
+}
+
 /** A reply under a message that becomes a thread from it when it is sent; nothing exists until then. */
 function InlineDraft({ entry, threads }: { readonly entry: number; readonly threads: InlineThreads }) {
-  const workspace = useWorkspace()
+  const navigation = useNavigation()
   const { create } = useWorkspaceFeed()
   const [notice, setNotice] = useState('')
   const started = useRef<string | undefined>(undefined)
@@ -309,7 +316,7 @@ function InlineDraft({ entry, threads }: { readonly entry: number; readonly thre
       <MessageComposer
         onSend={start}
         conversation={threads.parent}
-        onNewThread={(draft) => workspace.moveDraft(draft, threads.source)}
+        onNewThread={(draft) => navigation.newThreadWith(draft, paneConversation(threads))}
         running={false}
         onStop={NOTHING_TO_STOP}
         placeholder="Reply in thread…"

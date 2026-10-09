@@ -6,7 +6,7 @@ import { openInteractions } from '../lib/interactions.ts'
 import type { Part } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
 import { budgetFraction, contextTokens } from '../lib/usage.ts'
-import { conversationKey } from '../lib/workspace.ts'
+import { useNavigation } from '../lib/navigation.ts'
 import { SharedContextChips, useSharedContext } from './apps/offers.tsx'
 import { CapabilitiesButton } from './capabilities.tsx'
 import { MessageComposer } from './composer.tsx'
@@ -15,7 +15,6 @@ import { InteractionCards } from './interaction-cards.tsx'
 import { ModelPicker, type useModelChoice } from './model-picker.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
 import type { useConversation } from './use-conversation.ts'
-import { useWorkspace } from './workspace.tsx'
 import { useUsageToday } from './use-usage.ts'
 
 type Send = ReturnType<typeof useConversation>['send']
@@ -65,6 +64,7 @@ function ClosedNotice({ by, onReopen }: { readonly by: 'owner' | 'done'; readonl
 /** What the composer shows beside its buttons: what the agent is doing, the model, what it may use, the day's usage. */
 function ComposerContext({
   id,
+  active,
   running,
   presence,
   model,
@@ -77,12 +77,12 @@ function ComposerContext({
   readonly model: ReturnType<typeof useModelChoice>
   readonly usage: ReturnType<typeof useUsageToday>
   readonly context: number | undefined
+  readonly active: boolean
 }) {
-  const focused = useWorkspace().state.focused === conversationKey(id)
   return (
     <>
       <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-        <PresenceOrb state={presence.state} label={presence.label} active={focused} />
+        <PresenceOrb state={presence.state} label={presence.label} active={active} />
         <span className="truncate">{presence.label}</span>
       </span>
       <ModelPicker choice={model.choice} onChoose={(picked) => void model.choose(picked)} />
@@ -167,9 +167,12 @@ export function ConversationDock({
   hint,
   placeholder,
   sendLabel,
+  active,
 }: {
   readonly ref: RefObject<HTMLDivElement | null>
   readonly id: string
+  /** The owner is working here now: its presence may move. */
+  readonly active: boolean
   readonly conversation: ReturnType<typeof useConversation>
   readonly model: ReturnType<typeof useModelChoice>
   readonly parts: readonly Part[]
@@ -184,7 +187,7 @@ export function ConversationDock({
   /** What the send button says; Send by default. */
   readonly sendLabel?: string | undefined
 }) {
-  const workspace = useWorkspace()
+  const navigation = useNavigation()
   const { projection, notice, send, stop, removeQueued } = conversation
   const sendOwn = useSendWithAppContext(id, send)
   const { running, usage, waiting, context, presence } = useDockStatus(conversation, parts)
@@ -207,7 +210,7 @@ export function ConversationDock({
             {presence.state === 'waiting' && <PresenceBorder />}
             <MessageComposer
               conversation={id}
-              onNewThread={(contents) => workspace.moveDraft(contents, conversationKey(id))}
+              onNewThread={(contents) => navigation.newThreadWith(contents, id)}
               onSend={sendOwn}
               attach
               running={running}
@@ -217,6 +220,7 @@ export function ConversationDock({
               context={
                 <ComposerContext
                   id={id}
+                  active={active}
                   running={running}
                   presence={presence}
                   model={model}

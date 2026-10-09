@@ -23,8 +23,7 @@ import type { DownloadFile } from '../../lib/app-download.ts'
 import { type QuestionAnswerReceipt, receiptText } from '../../lib/app-message.ts'
 import { LIVE_APPS, evictions } from '../../lib/app-residency.ts'
 import { failureText, record, records, request } from '../../lib/boundary.ts'
-import { appKey } from '../../lib/workspace.ts'
-import { useWorkspace } from '../workspace.tsx'
+import { useNavigation } from '../../lib/navigation.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import type { AppSelection } from './frame.tsx'
 
@@ -301,16 +300,16 @@ function useInstancePatches(setInstances: Dispatch<SetStateAction<ReadonlyMap<st
 
 export function AppHost({ children }: { readonly children: ReactNode }) {
   const feed = useWorkspaceFeed()
-  const workspace = useWorkspace()
+  const navigation = useNavigation()
   const { kick, onKick } = useKicks()
   const { slot, element } = useSlots(kick)
   const { instances, setInstances, dormant, problems, setProblems, show, seen, unload } = useResidency(feed.apps)
-  const outside = useRef({ feed, workspace, instances })
-  outside.current = { feed, workspace, instances }
+  const outside = useRef({ feed, navigation, instances })
+  outside.current = { feed, navigation, instances }
   const close = useCallback(
     (id: string) => {
       unload([id], false)
-      outside.current.workspace.close(appKey(id))
+      outside.current.navigation.closeAppPage(id)
       outside.current.feed.closeApp(id).catch((cause: unknown) => {
         setProblems((current) => withItem(current, id, failureText(cause)))
       })

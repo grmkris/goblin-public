@@ -3,29 +3,26 @@
 // its stage's bar and its page's pill.
 import type { McpUiDisplayMode } from '@modelcontextprotocol/ext-apps/app-bridge'
 import type { AppView } from '@goblin/contracts'
-import { appKey, conversationKey, isOpen, order } from '../../lib/workspace.ts'
+import { useNavigation } from '../../lib/navigation.ts'
+import { appKey, conversationKey } from '../../lib/workspace.ts'
 import { useWorkspace } from '../workspace.tsx'
 import { useAppHost } from './host.tsx'
 
 /** Where an App is shown and how it moves: to its page beside its transcript, back, filling the workspace, or not. */
 export function useAppPlacement(app: AppView) {
   const workspace = useWorkspace()
+  const navigation = useNavigation()
   const host = useAppHost()
   const { id, conversation } = app
   const key = appKey(id)
-  const paged = isOpen(workspace.state, key)
+  const paged = navigation.isAppPage(id)
   const filled = workspace.state.maximized === key
   const page = () => {
-    const source = host.element(`app-inline:${id}`)?.closest<HTMLElement>('[data-workspace-item]')
-      ?.dataset.workspaceItem
-    workspace.open(key, 'beside', source)
+    const near = host.element(`app-inline:${id}`)?.closest<HTMLElement>('[data-workspace-item]')?.dataset.workspaceItem
+    navigation.openApp(id, near)
   }
   /** Back in its transcript: the page closes, or, as the last pane, shows the App's conversation in its place. */
-  const inline = () => {
-    if (filled) workspace.maximize(undefined)
-    if (order(workspace.state).length > 1) workspace.close(key)
-    else workspace.open(conversationKey(conversation), 'here', key)
-  }
+  const inline = () => navigation.closeAppPage(id)
   const docked = conversationKey(conversation)
   /** Fills the workspace with the App and its conversation docked beside it, or gives the panes back. */
   const fill = () => workspace.maximize(filled ? undefined : key, docked)

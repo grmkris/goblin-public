@@ -316,6 +316,7 @@ function ConversationBody({ view }: { readonly view: ConversationView }) {
         closed={closedBy(view)}
         onReopen={() => void feed.update(id, { closed: false })}
         notices={feed.error === '' ? [] : [feed.error]}
+        active={workspace.state.focused === item}
         {...composerOf(view, feed.conversations)}
       />
     </section>

@@ -3,18 +3,17 @@ import type { AppView } from '@goblin/contracts'
 import { Button } from '@goblin/ui'
 import { failureText } from '../../lib/boundary.ts'
 import type { ToolPart } from '../../lib/parts.ts'
-import { appKey } from '../../lib/workspace.ts'
+import { useNavigation } from '../../lib/navigation.ts'
 import { useAppHost } from '../apps/host.tsx'
 import { AppPlace } from '../apps/slot.tsx'
 import { AppPowers } from './app-powers.tsx'
-import { useWorkspace } from '../workspace.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { useAppsConversation } from './mcp-tool-part.tsx'
 import { ToolCard } from './tool-part.tsx'
 
 /** Opens an agent app's view, shown again first when it was closed: here in place, or as a page beside. */
 function OpenApp({ app, here }: { readonly app: AppView; readonly here: boolean }) {
-  const workspace = useWorkspace()
+  const navigation = useNavigation()
   const { show } = useAppHost()
   const { reopenApp } = useWorkspaceFeed()
   const [error, setError] = useState('')
@@ -22,7 +21,7 @@ function OpenApp({ app, here }: { readonly app: AppView; readonly here: boolean 
     setError('')
     try {
       show(app.closedAt === undefined ? app : await reopenApp(app.id))
-      if (!here) workspace.open(appKey(app.id), 'beside')
+      if (!here) navigation.openApp(app.id)
     } catch (cause) {
       setError(failureText(cause))
     }

@@ -1,7 +1,18 @@
-import { type ReactNode, createContext, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type ReactNode,
+  type RefObject,
+  createContext,
+  use,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { LayoutDocument } from '@danfessler/trellis'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { record, request } from '../lib/boundary.ts'
+import { type Navigation, NavigationContext } from '../lib/navigation.ts'
 import type { Part } from '../lib/parts.ts'
 import type { ComposerDraft } from '../lib/composer.ts'
 import { threadTitle } from '../lib/threads.ts'
@@ -21,6 +32,7 @@ import {
   withDock,
   type Dock,
   openItem,
+  order,
   parseWorkspace,
   prune,
   replaceItem,
@@ -158,6 +170,26 @@ function useUrlFocus(
   }, [state.focused, url, path, ready, navigate])
 }
 
+/** The shell's navigation (`lib/navigation.ts`) as panes: an App's page is a pane of its own. */
+function usePaneNavigation(workspace: Workspace, views: RefObject<ReturnType<typeof useWorkspaceFeed>>): Navigation {
+  return useMemo<Navigation>(() => {
+    const { state } = workspace
+    return {
+      isAppPage: (app) => isOpen(state, appKey(app)),
+      openApp: (app, near) => workspace.open(appKey(app), 'beside', near),
+      closeAppPage: (app) => {
+        const key = appKey(app)
+        const conversation = views.current.apps.find((candidate) => candidate.id === app)?.conversation
+        if (state.maximized === key) workspace.maximize(undefined)
+        if (order(state).length > 1 || conversation === undefined) workspace.close(key)
+        else workspace.open(conversationKey(conversation), 'here', key)
+      },
+      focusApp: (app) => workspace.focus(appKey(app)),
+      newThreadWith: (draft, from) => workspace.moveDraft(draft, conversationKey(from)),
+    }
+  }, [workspace, views])
+}
+
 /**
  * The owner's panes for the whole app, so the sidebar and every transcript link can open things in them, and the
  * layout survives a visit to Settings. The panes themselves render only on workspace pages (`workspace-surface.tsx`).
@@ -228,5 +260,10 @@ export function WorkspaceProvider({ enabled, children }: { readonly enabled: boo
     }),
     [owner, state, setState, title],
   )
-  return <WorkspaceContext value={value}>{children}</WorkspaceContext>
+  const navigation = usePaneNavigation(value, views)
+  return (
+    <WorkspaceContext value={value}>
+      <NavigationContext value={navigation}>{children}</NavigationContext>
+    </WorkspaceContext>
+  )
 }
