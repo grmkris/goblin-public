@@ -16,7 +16,7 @@ import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { TopicsHandlers } from '../../../src/topics/api.ts'
 import { OrganizeReceipts } from '../../../src/organize/receipts.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
-import { Conversations, Invocations, Receipts, Resident, RoutineRuns, Topics } from '../../../src/services.ts'
+import { Conversations, Invocations, Personas, Receipts, Resident, RoutineRuns, Topics } from '../../../src/services.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import { appConversations } from '../../../src/storage/schema.ts'
 import { TopicRegistry } from '../../../src/topics/registry.ts'
@@ -114,6 +114,8 @@ const fixture = (options: { readonly active?: boolean } = {}) => {
           Layer.succeed(Conversations, unread),
           Layer.succeed(RoutineRuns, unread),
           Layer.succeed(Invocations, unread),
+          // The other groups' services, which no Topics request reaches.
+          Layer.succeed(Personas, unread),
           Layer.succeed(Resident, resident),
           Layer.succeed(Entitlements, plans),
           // SAFETY: the Topics handlers read only `stopping` from the instance input; the rest stays unused here.
