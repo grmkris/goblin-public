@@ -21,12 +21,10 @@ import * as Schema from 'effect/Schema'
 import { type DelegateResultData, type HelperExclusion, HelperExclusions } from '@goblin/contracts'
 import { Channel } from '../channel/service.ts'
 import { ChatOperations, Chats, Conversations } from '../chats/service.ts'
+import { toAppError } from '../http/errors.ts'
 import { Resident } from '../mcp/service.ts'
 import { recordFlow } from '../organize/flows.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
-// The synthesized report needs the chat's admission lock around a Pi input: ChatOperations has no such call yet
-// (PATCH-REQUEST to lane C for `withChat`), so this one reads the legacy directory.
-import { Chats as LegacyChats } from '../services.ts'
 import { authoredContent } from './content.ts'
 import { BACKGROUND, entryId, conversationId as piConversationId } from './context.ts'
 
@@ -259,41 +257,48 @@ const reportFlow = ({ relay, chat, requestId, failed }: Report) =>
   })
 
 /** The passive Delegate result: Goblin sees it at its next turn and does not answer it. */
-const writeResult = (report: Report) => {
-  const { relay, chat, requestId, text, failed } = report
-  const data = {
-    delegate: String(relay.input.conversationId),
-    name: relay.input.name,
-    status: failed ? 'failed' : 'done',
-    text: text.slice(0, RESULT_TEXT),
-  } satisfies DelegateResultData
-  const model = [
-    { role: 'user' as const, content: authoredContent(`subagent ${relay.input.name}`, text), timestamp: Date.now() },
-  ]
-  return Conversations.use((conversations) =>
-    conversations.writeEntry(chat, requestId, { kind: 'app.delegate_result', data, model }),
-  ).pipe(Effect.andThen(reportFlow(report)))
-}
-
-/** The synthesized report: an input to the spawner's current session, under its chat's admission lock. */
-async function submitInput(
-  run: RunProgram,
-  runtime: ReportArgs[1],
-  context: ReportArgs[2],
-  report: Report,
-): Promise<void> {
-  const { relay, chat, requestId, text } = report
-  const content = authoredContent(`subagent ${relay.input.name}`, text)
-  const primary = await run(Chats.use((chats) => Effect.succeed(chats.primary)))
-  const directory = await run(LegacyChats.useSync((legacy) => legacy))
-  await directory.passiveWrite(chat, async (session) => {
-    const spawner = await runtime.conversation(piConversationId(session), context)
-    if (chat === primary && relay.input.origin === 'spawner') await run(track(requestId))
-    await spawner?.submit({ type: 'input', content, whenBusy: 'followUp', requestId }, context)
+const writeResult = (report: Report) =>
+  Effect.gen(function* () {
+    const { relay, chat, requestId, text, failed } = report
+    const data = {
+      delegate: String(relay.input.conversationId),
+      name: relay.input.name,
+      status: failed ? 'failed' : 'done',
+      text: text.slice(0, RESULT_TEXT),
+    } satisfies DelegateResultData
+    const content = authoredContent(`subagent ${relay.input.name}`, text)
+    const model = [{ role: 'user' as const, content, timestamp: yield* Clock.currentTimeMillis }]
+    yield* (yield* ChatOperations).passiveWrite(chat, {
+      requestId,
+      entry: { kind: 'app.delegate_result', data, model },
+    })
+    yield* reportFlow(report)
   })
-  // expected: the report is delivered; a refusal (plan) only loses its flow line, and the bridge reports a fault.
-  await run(reportFlow(report)).catch(() => undefined)
-}
+
+/** A Pi call from the relay, its failure taken as the programs take one (`toAppError`). */
+const piCall = <A>(call: () => Promise<A>) => Effect.tryPromise({ try: call, catch: toAppError })
+
+/**
+ * The synthesized report: an input to the spawner's current session, under its chat's admission lock, so it never
+ * lands in a session a Move is taking the chat away from.
+ */
+const submitInput = (runtime: ReportArgs[1], context: ReportArgs[2], report: Report) =>
+  Effect.gen(function* () {
+    const { relay, chat, requestId, text } = report
+    const content = authoredContent(`subagent ${relay.input.name}`, text)
+    const chats = yield* Chats
+    yield* (yield* ChatOperations).withChat(
+      chat,
+      Effect.gen(function* () {
+        const session = yield* chats.session(chat)
+        const spawner = yield* piCall(() => runtime.conversation(piConversationId(session), context))
+        if (chat === chats.primary && relay.input.origin === 'spawner') yield* track(requestId)
+        if (spawner !== undefined)
+          yield* piCall(() => spawner.submit({ type: 'input', content, whenBusy: 'followUp', requestId }, context))
+      }),
+    )
+    yield* reportFlow(report)
+  })
 
 /**
  * The report reaches the spawner's chat as a passive Delegate result (spec section 5): Goblin sees it at its next turn
@@ -308,8 +313,7 @@ const reportPhase =
       const chat = Option.getOrUndefined(await run(Chats.use((chats) => chats.chatOf(String(runtime.conversationId)))))
       if (chat === undefined) throw new ConversationMissing({ missing: 'spawner_chat' })
       const delivery = { relay, chat, requestId: `subagent-report:${relay.id}`, text: report, failed }
-      if (relay.input.synthesize === true) await submitInput(run, runtime, context, delivery)
-      else await run(writeResult(delivery))
+      await run(relay.input.synthesize === true ? submitInput(runtime, context, delivery) : writeResult(delivery))
     }
     if (close) await run(closeAsDone(String(relay.input.conversationId)))
     await runtime.commit(() => ({ status: 'terminal', outcome: { status: 'completed', result: null } }), context)
