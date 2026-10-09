@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, writeSync } from 'node:fs'
 import path from 'node:path'
 import { chromium, type Page, type Locator } from 'playwright-core'
 import { createServer } from 'vite'
+
+/** The file descriptor this script's result line goes to (`process` is `any` here: @cloudflare/workers-types). */
+const STDOUT = 1
 
 const out = path.resolve(import.meta.dirname, '../../../.local/goblin-acceptance', `diagram-${Date.now()}`)
 const checks: string[] = []
@@ -253,6 +256,6 @@ async function main() {
     await browser.close()
     await server.close()
   }
-  console.log(JSON.stringify({ checks, errors, externalRequests: requests, out }))
+  writeSync(STDOUT, `${JSON.stringify({ checks, errors, externalRequests: requests, out })}\n`)
 }
 await main()
