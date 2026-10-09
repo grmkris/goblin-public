@@ -1,4 +1,5 @@
-import { type ReactNode, useCallback, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   Alert,
   AlertDescription,
@@ -14,7 +15,7 @@ import {
   succeeded,
 } from '@goblin/ui'
 import { authClient, redirectOf } from '../lib/auth-client.ts'
-import { record, request } from '../lib/boundary.ts'
+import { healthQuery } from '../lib/auth/queries.ts'
 import { AuthShell } from './auth-shell.tsx'
 
 type SignupMode = 'open' | 'invite' | 'closed'
@@ -26,27 +27,11 @@ type AuthConfig = {
   readonly retry: () => void
 }
 function useAuthConfig(): AuthConfig {
-  const [config, setConfig] = useState<Omit<AuthConfig, 'retry'>>({ signup: 'closed', mail: false, status: 'loading' })
-  const [reads, setReads] = useState(0)
-  useEffect(() => {
-    const controller = new AbortController()
-    void request('/health', { signal: controller.signal })
-      .then((data) => {
-        const health = record(data)
-        const signup = health?.signup === 'open' || health?.signup === 'invite' ? health.signup : 'closed'
-        if (!controller.signal.aborted) setConfig({ signup, mail: health?.mail === true, status: 'loaded' })
-      })
-      .catch(() => {
-        // expected: the form shows `failed` as an alert with a way to read the settings again
-        if (!controller.signal.aborted) setConfig({ signup: 'closed', mail: false, status: 'failed' })
-      })
-    return () => controller.abort()
-  }, [reads])
-  const retry = useCallback(() => {
-    setConfig({ signup: 'closed', mail: false, status: 'loading' })
-    setReads((count) => count + 1)
-  }, [])
-  return { ...config, retry }
+  const read = useQuery(healthQuery)
+  const { refetch } = read
+  const retry = useCallback(() => void refetch(), [refetch])
+  if (read.data !== undefined) return { ...read.data, status: 'loaded', retry }
+  return { signup: 'closed', mail: false, status: read.isError && !read.isFetching ? 'failed' : 'loading', retry }
 }
 /** What the form shows once the settings are read: the email form, or why there is none. */
 function SignInBody({ config, form }: { readonly config: AuthConfig; readonly form: ReactNode }) {

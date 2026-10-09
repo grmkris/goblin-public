@@ -17,7 +17,7 @@ import {
   Skeleton,
   Switch,
 } from '@goblin/ui'
-import { ApiFailure, failureText, request } from '../lib/boundary.ts'
+import { AuthRefused, deleteAccountMutation } from '../lib/auth/queries.ts'
 import { residentStatus } from '../lib/labels.ts'
 import { budgetFraction } from '../lib/usage.ts'
 import { BillingCard } from './billing.tsx'
@@ -210,24 +210,20 @@ function ClientsCard() {
 }
 
 /** Permanent: the account, its agent's conversations, MCP connections and grants. A fresh code sign-in confirms it. */
-function DeleteAccountCard({ onError }: { readonly onError: (message: string) => void }) {
+function DeleteAccountCard() {
   const [open, setOpen] = useState(false)
-  const [pending, setPending] = useState(false)
-  async function remove(event: SubmitEvent<HTMLFormElement>): Promise<void> {
+  const deleting = useMutation(deleteAccountMutation)
+  // A deleted account is leaving for the start page, so the button stays busy.
+  const pending = deleting.isPending || deleting.isSuccess
+  const failure =
+    deleting.error === null
+      ? ''
+      : deleting.error instanceof AuthRefused && (deleting.error.status === 400 || deleting.error.status === 401)
+        ? 'Sign in again with an emailed code, then delete within 10 minutes.'
+        : messageOf(deleting.error, 'delete your account')
+  function remove(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault()
-    setPending(true)
-    try {
-      await request('/api/auth/delete-user', { body: {} })
-      window.location.assign('/')
-    } catch (error) {
-      onError(
-        error instanceof ApiFailure && (error.status === 400 || error.status === 401)
-          ? 'Sign in again with an emailed code, then delete within 10 minutes.'
-          : failureText(error),
-      )
-    } finally {
-      setPending(false)
-    }
+    deleting.mutate(undefined, { onSuccess: () => window.location.assign('/') })
   }
   return (
     <Card>
@@ -240,8 +236,13 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
       </CardHeader>
       <CardContent>
         {open ? (
-          <form onSubmit={(event) => void remove(event)}>
+          <form onSubmit={remove}>
             <FieldGroup>
+              {failure && (
+                <Alert variant="destructive">
+                  <AlertDescription>{failure}</AlertDescription>
+                </Alert>
+              )}
               <p className="text-sm text-muted-foreground">
                 Sign in again with an emailed code first. Deleting works for 10 minutes after signing in.
               </p>
@@ -270,15 +271,9 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
  * apps that use their agent, and last the account itself. A lapsed plan shows only what still applies.
  */
 export function Settings() {
-  const [error, setError] = useState('')
   const active = useBilling().state?.active === true
   return (
     <div className="page-stack">
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
       <PageSection id="plan" title="Plan and usage">
         <BillingCard />
         {active && <UsageCard />}
@@ -304,7 +299,7 @@ export function Settings() {
         </PageSection>
       )}
       <PageSection id="account" title="Account">
-        <DeleteAccountCard onError={setError} />
+        <DeleteAccountCard />
       </PageSection>
     </div>
   )

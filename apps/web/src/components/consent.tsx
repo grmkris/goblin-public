@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { Alert, AlertDescription, Button, Switch } from '@goblin/ui'
-import { isString, record } from '../lib/boundary.ts'
-import { authClient, redirectOf } from '../lib/auth-client.ts'
+import { AuthRefused, consentClientQuery, consentMutation } from '../lib/auth/queries.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 import { INSPECT_SCOPE, consentBody, requestedScopes } from '../lib/consent-scope.ts'
 import { AuthShell } from './auth-shell.tsx'
 
-type ClientInfo = { readonly name: string; readonly uri?: string }
+type ClientInfo = { readonly name: string; readonly uri?: string | undefined }
 /** The client asking, once looked up, or why it could not be: then the owner is not asked to allow it. */
 type ClientLookup =
   | { readonly kind: 'loading' }
@@ -29,33 +30,11 @@ const INSPECT = [
 
 /** The client's registered name and address: untrusted, shown as the client's own claim. */
 function useClient(clientId: string): ClientLookup {
-  const [lookup, setLookup] = useState<ClientLookup>({ kind: 'loading' })
-  useEffect(() => {
-    let current = true
-    void authClient
-      .$fetch('/oauth2/public-client', { method: 'GET', query: { client_id: clientId } })
-      .then(({ data, error }) => {
-        const info = record(data)
-        const name = info?.client_name
-        const uri = info?.client_uri
-        if (!current) return
-        if (error || info === undefined)
-          setLookup({ kind: 'failed', reason: error?.status === 404 ? UNKNOWN_CLIENT : LOOKUP_FAILED })
-        else
-          setLookup({
-            kind: 'found',
-            client: { name: isString(name) ? name : 'Unnamed client', ...(isString(uri) ? { uri } : {}) },
-          })
-      })
-      .catch(() => {
-        // expected: the page shows `failed` as an alert in place of the question, and Allow stays off
-        if (current) setLookup({ kind: 'failed', reason: LOOKUP_FAILED })
-      })
-    return () => {
-      current = false
-    }
-  }, [clientId])
-  return lookup
+  const read = useQuery(consentClientQuery(clientId))
+  if (read.data !== undefined) return { kind: 'found', client: read.data }
+  if (read.error === null) return { kind: 'loading' }
+  const unknown = read.error instanceof AuthRefused && read.error.status === 404
+  return { kind: 'failed', reason: unknown ? UNKNOWN_CLIENT : LOOKUP_FAILED }
 }
 
 /** The opt-in for inspection, with what it adds; off until the owner turns it on. */
@@ -89,20 +68,14 @@ export function Consent() {
   const lookup = useClient(clientId)
   const client = lookup.kind === 'found' ? lookup.client : undefined
   const [inspect, setInspect] = useState(false)
-  const [error, setError] = useState('')
-  const [pending, setPending] = useState<'allow' | 'deny'>()
-  async function decide(accept: boolean): Promise<void> {
-    setPending(accept ? 'allow' : 'deny')
-    setError('')
-    const body = consentBody(requested, accept, inspect)
-    const { data, error: failure } = await authClient.$fetch('/oauth2/consent', { method: 'POST', body })
-    const next = redirectOf(data)
-    if (failure || next === undefined) {
-      setError(failure?.message ?? 'The authorization could not be completed.')
-      setPending(undefined)
-      return
-    }
-    window.location.assign(next)
+  const deciding = useMutation(consentMutation)
+  const [choice, setChoice] = useState<'allow' | 'deny'>()
+  // A decision that succeeded is leaving for the client, so its button stays busy.
+  const pending = deciding.isPending || deciding.isSuccess ? choice : undefined
+  const error = deciding.error === null ? '' : messageOf(deciding.error, 'complete the authorization')
+  function decide(accept: boolean): void {
+    setChoice(accept ? 'allow' : 'deny')
+    deciding.mutate(consentBody(requested, accept, inspect), { onSuccess: (next) => window.location.assign(next) })
   }
   return (
     <AuthShell
@@ -134,7 +107,7 @@ export function Consent() {
             size="lg"
             pending={pending === 'allow'}
             disabled={pending !== undefined || client === undefined}
-            onClick={() => void decide(true)}
+            onClick={() => decide(true)}
           >
             Allow
           </Button>
@@ -143,7 +116,7 @@ export function Consent() {
             variant="outline"
             pending={pending === 'deny'}
             disabled={pending !== undefined}
-            onClick={() => void decide(false)}
+            onClick={() => decide(false)}
           >
             Deny
           </Button>
