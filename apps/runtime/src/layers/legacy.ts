@@ -35,14 +35,12 @@ import { ChatMemories, type MemoryDeps } from '../memory/memory.ts'
 import { CheapModel } from '../memory/model.ts'
 import { writeLine } from '../observability/logger.ts'
 import { safeErrorType } from '../observability/report.ts'
-import { RunLedger } from '../telemetry/ledger.ts'
-import { Inspector } from '../inspect/inspector.ts'
 import { type AuxPurpose, auxReporter, mcpReporter } from '../telemetry/report.ts'
 import { ModelChoiceStore, ModelPicker, memoryModelId, modelOptions } from '../models.ts'
 import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { ResidentAuthority } from '../resident.ts'
 import { AppEngine, Approvals, Apps, Budget, Capabilities, Channel, Chats, Conversations, Files } from '../services.ts'
-import { Home, Inspect, Invocations, Learner, Mcp, Memories, Models, Moves, Personas, Receipts } from '../services.ts'
+import { Home, Invocations, Learner, Mcp, Memories, Models, Moves, Personas, Receipts } from '../services.ts'
 import {
   Resident,
   Retrieval,
@@ -281,8 +279,8 @@ const startConversations = Effect.gen(function* () {
 })
 
 /**
- * The second half: skills and the learner, the Telegram channel, then Events and their consumers. The Files, Inspect
- * and Retrieval services are made last. The agent apps are connected to the agent's services by lane A's layer
+ * The second half: skills and the learner, the Telegram channel, then Events and their consumers. The Files and
+ * Retrieval services are made last. The agent apps are connected to the agent's services by lane A's layer
  * (agent-apps/live.ts), after this whole start.
  */
 const startChannels = Effect.fn('LegacyLive.startChannels')(function* (
@@ -290,7 +288,7 @@ const startChannels = Effect.fn('LegacyLive.startChannels')(function* (
 ) {
   const { input, db, cheap, routineServices } = started
   const { host, cipher, resident, eventStore, skillState, grants } = started.mcp
-  const { chats, conversations, transcripts } = started.services
+  const { chats, transcripts } = started.services
   const skills = new SkillLibrary(host.manager, skillState, nowMillis)
   const learner = new SkillLearner({
     drafts: new SqliteDraftLog(db),
@@ -316,7 +314,6 @@ const startChannels = Effect.fn('LegacyLive.startChannels')(function* (
     eventStore,
     files: new FileStore(input.storage.sql, input.env.FILES, () => input.userId),
     appEngine: input.agentApps,
-    inspect: new Inspector(new RunLedger(db), conversations, input.harness),
     retrieval: new ChatRetrieval(transcripts, cheap('retrieval'), nowSeconds),
   }
 })
@@ -351,7 +348,6 @@ type LegacyServices =
   | EventStorage
   | Files
   | AppEngine
-  | Inspect
   | Retrieval
 
 /** The legacy service tags over the started instances, one instance each. */
@@ -385,7 +381,6 @@ const legacyContext = (started: Effect.Success<ReturnType<typeof startChannels>>
     EventStorage.context(started.eventStore),
     Files.context(started.files),
     AppEngine.context(started.appEngine),
-    Inspect.context(started.inspect),
     Retrieval.context(started.retrieval),
   )
 

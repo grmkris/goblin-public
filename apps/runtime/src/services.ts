@@ -20,7 +20,6 @@ import type { WorkspaceFeed } from './workspace/feed.ts'
 import type { AppRegistry } from './apps/registry.ts'
 import type { FileStore } from './files/store.ts'
 import type { AgentApps } from './agent-apps/engine.ts'
-import type { Inspector } from './inspect/inspector.ts'
 import type { HomeService } from './home/service.ts'
 import type { McpApprovalStore } from './mcp/approvals.ts'
 import type { TopicRegistry } from './topics/registry.ts'
@@ -65,8 +64,6 @@ export class Apps extends Context.Service<Apps, AppRegistry>()('goblin/Apps') {}
 export class Files extends Context.Service<Files, FileStore>()('goblin/Files') {}
 /** The agent's apps (ADR 0021): their builds, calls and views. */
 export class AppEngine extends Context.Service<AppEngine, AgentApps>()('goblin/AppEngine') {}
-/** Read-only inspection of the agent's conversations and runs (ADR 0024). */
-export class Inspect extends Context.Service<Inspect, Inspector>()('goblin/Inspect') {}
 export class Home extends Context.Service<Home, HomeService>()('goblin/Home') {}
 /** Cross-Topic retrieval (ADR 0035): the transcript index, `search_chats` and automatic sources. */
 export class Retrieval extends Context.Service<Retrieval, ChatRetrieval>()('goblin/Retrieval') {}

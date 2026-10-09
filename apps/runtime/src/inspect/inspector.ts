@@ -2,10 +2,8 @@ import type { EntryRecord, SubmissionRecord } from '@earendil-works/pi-durable'
 import { authorOf } from '@goblin/contracts'
 import type { FlowRecord, InspectEntry, RelatedOperation, TurnSummary, TurnTimeline } from '@goblin/contracts/inspect'
 import { type FlowEvent, RunAttribute, type RunEvent } from '@goblin/contracts/telemetry'
-import type { PiHarness } from 'agents/harness/pi'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import type { ConversationRegistry } from '../conversations.ts'
 import { textBlocks } from '../pi/transcript.ts'
 import { flowOf } from '../telemetry/events.ts'
 import type { RunLedger } from '../telemetry/ledger.ts'
@@ -231,16 +229,4 @@ export function settlementOf(record: SubmissionRecord | undefined): TurnTimeline
 export function flowRecord(event: RunEvent): FlowRecord | undefined {
   const step = flowOf(event)
   return step === undefined ? undefined : { ...step, at: event.endedAt ?? event.startedAt }
-}
-
-/**
- * What the legacy start (layers/legacy.ts) still builds for the legacy `Inspect` tag, which nothing reads any more:
- * inspection is the `Inspection` service (inspect/service.ts). It goes with the legacy start.
- */
-export class Inspector {
-  readonly ledger: RunLedger
-
-  constructor(ledger: RunLedger, _registry: ConversationRegistry, _harness: PiHarness) {
-    this.ledger = ledger
-  }
 }

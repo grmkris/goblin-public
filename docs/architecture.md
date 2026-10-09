@@ -1096,7 +1096,7 @@ the Analytics Engine SQL API with the operator's own Cloudflare token.
 
 ### Inspection
 
-The `Inspection` service (`inspect/service.ts`, over `Inspector` in `inspect/inspector.ts`) reads the agent back
+The `Inspection` service (`inspect/service.ts`, over the readers in `inspect/inspector.ts`) reads the agent back
 without changing it or calling a model. The queries are in `contracts/src/inspect.ts`:
 
 - `conversations`: every conversation the agent keeps.
