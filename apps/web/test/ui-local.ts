@@ -1,9 +1,14 @@
 /** Local browser acceptance against real source components. No account, model call, upload is made. */
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync, writeSync } from 'node:fs'
 import path from 'node:path'
 import { createServer } from 'vite'
 import { chromium, type Browser, type BrowserContextOptions } from 'playwright-core'
+
+// SAFETY: @cloudflare/workers-types declares the Buffer global `any` over @types/node's; this script runs under Bun.
+const NodeBuffer = Buffer as BufferConstructor
+/** The file descriptor this script's result line goes to (`process` is `any` here, like Buffer). */
+const STDOUT = 1
 
 type Result = { readonly name: string; readonly detail: unknown }
 const results: Result[] = []
@@ -73,7 +78,7 @@ async function attachments(browser: Browser, origin: string) {
   await page.getByRole('textbox', { name: 'Message' }).fill('Keep this message')
   await page
     .locator('input[type="file"]')
-    .setInputFiles({ name: 'example.txt', mimeType: 'text/plain', buffer: Buffer.from('example') })
+    .setInputFiles({ name: 'example.txt', mimeType: 'text/plain', buffer: NodeBuffer.from('example') })
   const alert = page.getByRole('alert')
   await alert.waitFor()
   assert((await alert.innerText()).includes('TemporaryFailure'))
@@ -184,7 +189,7 @@ async function main() {
     await hybrid.close()
     await server.close()
   }
-  console.log(JSON.stringify({ checks: results.length, errors, out }))
+  writeSync(STDOUT, `${JSON.stringify({ checks: results.length, errors, out })}\n`)
 }
 
 await main()

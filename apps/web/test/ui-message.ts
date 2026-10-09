@@ -1,8 +1,14 @@
 /** Local SDK-frame acceptance: no account, remote tool, deployment or model call. */
 import assert from 'node:assert/strict'
+import { writeSync } from 'node:fs'
 import path from 'node:path'
 import { build, createServer } from 'vite'
 import { chromium } from 'playwright-core'
+import { record, records } from '../src/lib/boundary.ts'
+
+/** Where this script reports (@cloudflare/workers-types makes `process` `any`). */
+const STDOUT = 1
+const STDERR = 2
 
 const built = await build({
   configFile: false,
@@ -41,8 +47,9 @@ const origin = server.resolvedUrls?.local[0]
 assert(origin, 'missing browser fixture origin')
 const browser = await chromium.launch()
 const errors: string[] = []
-const submissions: Array<{ input: string; operationId: string; appContext: readonly { app: string; text: string }[] }> =
-  []
+/** The owner messages the page posted, as sent: read through `submitted`. */
+const submissions: unknown[] = []
+const submitted = (index: number) => record(submissions[index])
 let saved = false
 try {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
@@ -54,8 +61,8 @@ try {
   )
   await page.route('**/api/mcp/myplan/tools/call', (route) => {
     assert.equal(route.request().headers()['x-mcp-caller'], 'app')
-    const body: { name: string } = route.request().postDataJSON()
-    if (body.name === 'question_answer') saved = true
+    const body = record(route.request().postDataJSON())
+    if (body?.name === 'question_answer') saved = true
     return route.fulfill({ json: { content: [], structuredContent: saved ? { continuation: receipt } : {} } })
   })
   await page.route('**/api/conversations/*/messages', (route) => {
@@ -72,11 +79,12 @@ try {
   try {
     await frame.getByRole('status').filter({ hasText: 'Ready' }).waitFor({ timeout: 10000 })
   } catch (cause) {
-    console.info('Fixture diagnostics', {
+    const diagnostics = {
       frames: page.frames().map((item) => item.url()),
       body: await page.locator('body').innerText(),
       errors,
-    })
+    }
+    writeSync(STDERR, `Fixture diagnostics ${JSON.stringify(diagnostics)}\n`)
     throw cause
   }
   await frame.getByRole('textbox', { name: 'Answer' }).fill('answer stays inside MyPlan')
@@ -90,9 +98,9 @@ try {
   await offer.getByRole('button', { name: 'Continue' }).click()
   await offer.waitFor({ state: 'hidden' })
   assert.equal(submissions.length, 2)
-  assert.equal(submissions[0]?.operationId, submissions[1]?.operationId, 'retry uses the same receipt operation')
-  assert.equal(submissions[0]?.input, 'Continue with the saved MyPlan answer.')
-  assert.equal(submissions[0]?.appContext[0]?.app, '42')
+  assert.equal(submitted(0)?.operationId, submitted(1)?.operationId, 'retry uses the same receipt operation')
+  assert.equal(submitted(0)?.input, 'Continue with the saved MyPlan answer.')
+  assert.equal(records(submitted(0)?.appContext)[0]?.app, '42')
   assert(
     !JSON.stringify(submissions).includes('answer stays inside MyPlan'),
     'owner continuation carries no answer text',
@@ -102,14 +110,17 @@ try {
   assert.equal(submissions.length, 2, 'reload may stage but cannot auto-send')
   await offer.getByRole('button', { name: 'Continue' }).click()
   await offer.waitFor({ state: 'hidden' })
-  assert.equal(submissions[2]?.operationId, submissions[0]?.operationId, 'reload reuses receipt identity')
+  assert.equal(submitted(2)?.operationId, submitted(0)?.operationId, 'reload reuses receipt identity')
   await page.reload()
   await offer.waitFor()
   await offer.getByRole('button', { name: 'Dismiss' }).click()
   await offer.waitFor({ state: 'hidden' })
   assert.equal(submissions.length, 3, 'Dismiss leaves the saved answer without conversation continuation')
   assert.deepEqual(errors, [])
-  console.info('MCP question App browser acceptance: save, stage, owner Continue, retry, reload, dismiss passed.')
+  writeSync(
+    STDOUT,
+    'MCP question App browser acceptance: save, stage, owner Continue, retry, reload, dismiss passed.\n',
+  )
 } finally {
   await browser.close()
   await server.close()

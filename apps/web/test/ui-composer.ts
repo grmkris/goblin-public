@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync, writeSync } from 'node:fs'
 import path from 'node:path'
 import { chromium, type Page } from 'playwright-core'
 import { createServer } from 'vite'
+
+// SAFETY: @cloudflare/workers-types declares the Buffer global `any` over @types/node's; this script runs under Bun.
+const NodeBuffer = Buffer as BufferConstructor
+/** The file descriptor this script's result line goes to (`process` is `any` here, like Buffer). */
+const STDOUT = 1
 
 const out = path.resolve(import.meta.dirname, '../../../.local/goblin-acceptance', `composer-${Date.now()}`)
 const errors: string[] = []
@@ -87,7 +92,7 @@ async function failureAndMove(page: Page) {
   })
   await source
     .locator('input[type="file"]')
-    .setInputFiles({ name: 'example.txt', mimeType: 'text/plain', buffer: Buffer.from('example') })
+    .setInputFiles({ name: 'example.txt', mimeType: 'text/plain', buffer: NodeBuffer.from('example') })
   await field.fill('Keep the draft /new-thread')
   await page.getByRole('option', { name: '/new-thread' }).waitFor()
   await field.press('Enter')
@@ -133,7 +138,7 @@ async function main() {
     await browser.close()
     await server.close()
   }
-  console.log(JSON.stringify({ checks, errors, out }))
+  writeSync(STDOUT, `${JSON.stringify({ checks, errors, out })}\n`)
 }
 
 await main()

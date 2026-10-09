@@ -1,11 +1,14 @@
 /** Real source UI with controlled owner HTTP and native event fixtures; no account or model calls. */
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync, writeSync } from 'node:fs'
 import path from 'node:path'
 import { createServer } from 'vite'
 import { chromium, type Page, type Route } from 'playwright-core'
 import { ConversationQueue, type QueuedInput } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
+
+/** The file descriptor this script's result line goes to (@cloudflare/workers-types makes `process` `any`). */
+const STDOUT = 1
 
 const out = path.resolve(import.meta.dirname, '../../../.local/goblin-acceptance', `queue-${Date.now()}`)
 mkdirSync(out, { recursive: true, mode: 0o700 })
@@ -72,7 +75,9 @@ async function install(page: Page) {
     let opened = 0
     class Events extends EventTarget {
       readonly forward = (event: Event) => {
-        if (event instanceof MessageEvent) this.dispatchEvent(new MessageEvent('batch', { data: event.data }))
+        if (!(event instanceof MessageEvent)) return
+        const data: unknown = event.data
+        this.dispatchEvent(new MessageEvent('batch', { data }))
       }
       constructor() {
         super()
@@ -270,4 +275,4 @@ try {
   await browser.close()
   await server.close()
 }
-console.log(JSON.stringify({ checks: results.length, errors, out }))
+writeSync(STDOUT, `${JSON.stringify({ checks: results.length, errors, out })}\n`)

@@ -7,6 +7,9 @@ export const paths: string[] = [
   'apps/web/src/components/shell/*',
   // persona-form.tsx is lane W2's.
   'apps/web/src/components/shell/pages/{activity-page,chat-link,persona-page,tasks-page,threads-page}.tsx',
+  'apps/web/src/routes/{index,c.$chatId,threads,activity,tasks,p.$id}.tsx',
+  'apps/web/test/ui-{composer,local,message,queue}.ts',
+  'apps/web/test/browser/{composer,entry,message,queue}.tsx',
   'apps/web/test/{drawn-parts,shell-extras,text-blocks,tool-markdown}.test.ts',
   'apps/web/test/{composer,conversation-stream,fences,interactions,keyboard,keys,labels,local-time,markdown,panel,parts,presence,projection,rail,spring,stream-pool,subagent-state,submission-retry,threads,tool-payload,topics,turn-map,workspace-feed}.test.ts',
 ]
