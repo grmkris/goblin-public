@@ -1,8 +1,12 @@
-import type { TopicView } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
+import * as Effect from 'effect/Effect'
+import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
+import { KeyedLock } from '../src/observability/lock.ts'
+import { Changes, makeChanges } from '../src/runtime/changes.ts'
 import { appConversations } from '../src/storage/schema.ts'
 import { TopicRegistry } from '../src/topics/registry.ts'
+import { Topics } from '../src/topics/service.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 
 const cleanups: (() => void)[] = []
@@ -44,8 +48,6 @@ const fixture = () => {
     seed: async (chat, operationId, seed) => void seeded.push(`${chat}:${operationId}:${seed.brief}`),
     retitle: (chat, name) => void retitled.push(`${chat}:${name}`),
   })
-  const changes: TopicView[] = []
-  topics.onChange((changed) => changes.push(...changed))
   return {
     db,
     topics,
@@ -53,13 +55,26 @@ const fixture = () => {
     retitled,
     activated,
     seeded,
-    changes,
     hold: () => {
       const { promise, resolve } = Promise.withResolvers<void>()
       gate = promise
       return resolve
     },
   }
+}
+
+/**
+ * The Topics service over `store` with one lock and one change bus: `run` runs a program with it, and `changed` holds
+ * the Topic ids each write told the bus.
+ */
+const serviceOf = (store: TopicRegistry) => {
+  const changes = makeChanges()
+  const changed: number[] = []
+  Effect.runSync(changes.on('topics.changed', ({ ids }) => Effect.sync(() => void changed.push(...ids))))
+  const layer = Layer.merge(KeyedLock.layer, Layer.succeed(Changes, changes))
+  const run = <A, E>(use: (topics: Topics['Service']) => Effect.Effect<A, E>) =>
+    Effect.runPromise(Effect.flatMap(Topics.make(store), use).pipe(Effect.provide(layer)))
+  return { run, changed }
 }
 
 describe('Topics (ADR 0032)', () => {
@@ -72,17 +87,27 @@ describe('Topics (ADR 0032)', () => {
   })
 
   it('creates one Topic and one Pi session per operation id, on retry and concurrently', async () => {
-    const { topics, opened, db, changes, hold, activated } = fixture()
+    const { topics: store, opened, db, hold, activated } = fixture()
+    const { run, changed } = serviceOf(store)
     const release = hold()
-    const first = topics.create({ name: '  Work   stuff ', operationId: 'op-1' }, 'owner', 10)
-    const repeat = topics.create({ name: 'Work stuff', operationId: 'op-1' }, 'owner', 11)
+    const both = run((topics) =>
+      Effect.all(
+        [
+          topics.create({ name: '  Work   stuff ', operationId: 'op-1' }, 'owner'),
+          topics.create({ name: 'Work stuff', operationId: 'op-1' }, 'owner'),
+        ],
+        { concurrency: 'unbounded' },
+      ),
+    )
     release()
-    const [made, again] = await Promise.all([first, repeat])
+    const [made, again] = await both
     expect(made.created).toBe(true)
     expect(again).toEqual({ topic: made.topic, created: false })
     expect(made.topic).toMatchObject({ name: 'Work stuff', conversation: '100', createdBy: 'owner', revision: 1 })
     expect(made.topic.personal).toBeUndefined()
-    expect((await topics.create({ name: 'Renamed later', operationId: 'op-1' }, 'agent', 12)).created).toBe(false)
+    expect(
+      (await run((topics) => topics.create({ name: 'Renamed later', operationId: 'op-1' }, 'agent'))).created,
+    ).toBe(false)
     expect(opened).toEqual(['100'])
     // Its memory is turned on with it, and again by a retry, which finishes what a failed first attempt began.
     expect(activated).toEqual(['100', '100', '100'])
@@ -92,7 +117,8 @@ describe('Topics (ADR 0032)', () => {
       title: 'Work stuff',
       topicId: made.topic.id,
     })
-    expect(changes.map((topic) => topic.id)).toEqual([made.topic.id])
+    // Each create tells the bus the Topic it made or found, so a retry announces what a failed first attempt made.
+    expect(changed).toEqual([made.topic.id, made.topic.id, made.topic.id])
   })
 
   it('refuses an active name in any case before making a Pi session, and frees an archived one', async () => {
@@ -116,9 +142,8 @@ describe('Topics (ADR 0032)', () => {
   })
 
   it('renames, archives, restores and opts out of search with one revision per change', async () => {
-    const { topics, retitled, changes } = fixture()
+    const { topics, retitled } = fixture()
     const { topic } = await topics.create({ name: 'Trips', operationId: 'op' }, 'owner', 10)
-    changes.length = 0
     const renamed = topics.update(topic.id, { name: 'Travel' }, 11)
     expect(renamed).toMatchObject({ name: 'Travel', revision: 2 })
     expect(retitled).toEqual([`${topic.conversation}:Travel`])
@@ -131,7 +156,20 @@ describe('Topics (ADR 0032)', () => {
     expect(restored.archivedAt).toBeUndefined()
     expect(restored.revision).toBe(4)
     expect(topics.update(topic.id, { name: 'travel' }, 16)).toMatchObject({ name: 'travel', revision: 5 })
-    expect(changes.map((change) => change.revision)).toEqual([2, 3, 4, 5])
+  })
+
+  it('answers a change before and after, and tells the bus only of a real one', async () => {
+    const { topics: store } = fixture()
+    const { run, changed } = serviceOf(store)
+    const { topic } = await run((topics) => topics.create({ name: 'Trips', operationId: 'op' }, 'owner'))
+    changed.length = 0
+    const renamed = await run((topics) => topics.update(topic.id, { name: 'Travel' }))
+    expect(renamed).toMatchObject({ before: { name: 'Trips', revision: 1 }, after: { name: 'Travel', revision: 2 } })
+    const same = await run((topics) => topics.update(topic.id, { name: 'Travel' }))
+    expect(same.after).toEqual(same.before)
+    const refused = await run((topics) => Effect.flip(topics.update(1, { archived: true })))
+    expect(refused).toMatchObject({ _tag: 'InvalidInput', reason: 'personal_topic' })
+    expect(changed).toEqual([topic.id])
   })
 
   it('never archives Personal, but renames it and changes its search opt-out', () => {

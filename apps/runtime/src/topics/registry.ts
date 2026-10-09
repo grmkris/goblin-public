@@ -50,32 +50,19 @@ const cleanName = (name: string): string => {
 }
 
 /**
- * The owner's Topics (ADR 0032). Personal (id 1) is seeded by the migration with Main as its Conversation; every other
- * Topic gets a new Pi session as its Conversation when it is created. Creating is idempotent by operation id and
- * serialized in the isolate, so a retry or a concurrent repeat finds the one Topic and its one Pi session. Archive here
- * only marks the Topic; stopping its chats' work is the caller's (`topics/program.ts`), through the existing Stop paths.
+ * The owner's Topics (ADR 0032), as rows: a store with no state of its own. Personal (id 1) is seeded by the migration
+ * with Main as its Conversation; every other Topic gets a new Pi session as its Conversation when it is created.
+ * Creating is idempotent by operation id; the Topics service serializes it (`topics/service.ts`), so a concurrent repeat
+ * finds the one Topic and its one Pi session, and tells the change bus what each write changed. Archive here only marks
+ * the Topic; stopping its chats' work is the caller's (`topics/program.ts`), through the owner's Stop.
  */
 export class TopicRegistry<RunResult = unknown> {
   readonly #db: SQLiteAsyncDatabase<'sync', RunResult>
   readonly #ports: TopicPorts
-  readonly #listeners = new Set<(topics: readonly TopicView[]) => void>()
-  #creating: Promise<unknown> = Promise.resolve()
 
   constructor(db: SQLiteAsyncDatabase<'sync', RunResult>, ports: TopicPorts) {
     this.#db = db
     this.#ports = ports
-  }
-
-  /** Calls `listener` with the Topics each write changed; returns what unsubscribes it. */
-  onChange(listener: (topics: readonly TopicView[]) => void): () => void {
-    this.#listeners.add(listener)
-    return () => this.#listeners.delete(listener)
-  }
-
-  #changed(rows: readonly Row[]): void {
-    if (rows.length === 0) return
-    const topics = rows.map(view)
-    for (const listener of this.#listeners) listener(topics)
   }
 
   #row(id: number): Row {
@@ -117,25 +104,14 @@ export class TopicRegistry<RunResult = unknown> {
   /**
    * A new Topic named `name` with a new Conversation, or the Topic `operationId` already made (whatever its name now).
    * The name is checked before the Pi session is made, so a clash leaves nothing behind. A Topic made from a discussion
-   * (the organize tools) starts with `seed`, its brief and frozen excerpts, as an `app.topic_seed` entry.
+   * (the organize tools) starts with `seed`, its brief and frozen excerpts, as an `app.topic_seed` entry. Two creates
+   * at once are the caller's to serialize: each would make a Pi session before the other's row exists.
    */
   async create(
     input: CreateTopic,
     actor: TopicActor,
     now: number,
     seed?: TopicSeedData,
-  ): Promise<{ topic: TopicView; created: boolean }> {
-    const run = this.#creating.then(async () => this.#create(input, actor, now, seed))
-    // expected: this create's caller gets its failure from `run`; the queue only waits for it to settle.
-    this.#creating = run.catch(() => undefined)
-    return run
-  }
-
-  async #create(
-    input: CreateTopic,
-    actor: TopicActor,
-    now: number,
-    seed: TopicSeedData | undefined,
   ): Promise<{ topic: TopicView; created: boolean }> {
     const existing = this.#db.select().from(appTopics).where(eq(appTopics.operationId, input.operationId)).get()
     if (existing !== undefined) {
@@ -164,7 +140,6 @@ export class TopicRegistry<RunResult = unknown> {
       this.#ports.register(chat, inserted.id, name, now)
       return inserted
     })
-    this.#changed([row])
     await this.#ready(chat, input.operationId, seed)
     return { topic: view(row), created: true }
   }
@@ -199,7 +174,6 @@ export class TopicRegistry<RunResult = unknown> {
       if (name !== row.name) this.#ports.retitle(row.chatId, name)
       return next
     })
-    this.#changed([updated])
     return view(updated)
   }
 }

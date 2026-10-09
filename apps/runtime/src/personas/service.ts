@@ -7,11 +7,20 @@ import type {
   UpdatePersona,
 } from '@goblin/contracts'
 import * as Context from 'effect/Context'
-import type * as Effect from 'effect/Effect'
-import type * as Option from 'effect/Option'
+import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
 import type { AppError } from '../http/errors.ts'
-import type { NewInvocation } from './invocations.ts'
-import type { PersonaActor } from './registry.ts'
+import { fromStore, nowSeconds } from '../organize/effects.ts'
+import { Changes } from '../runtime/changes.ts'
+import type { NewInvocation, PersonaInvocations } from './invocations.ts'
+import type { PersonaActor, PersonaRegistry } from './registry.ts'
+
+declare module '../runtime/changes.ts' {
+  interface ChangeTopics {
+    /** Personas a write made or changed, by id (ADR 0033). */
+    'personas.changed': { readonly ids: readonly number[] }
+  }
+}
 
 /** What `create` answers: the Persona, and whether this call made it rather than finding it by its operation id. */
 type MadePersona = { readonly persona: PersonaView; readonly created: boolean }
@@ -49,7 +58,48 @@ export class Personas extends Context.Service<
      */
     readonly update: (id: number, change: UpdatePersona, actor: PersonaActor) => Effect.Effect<PersonaChange, AppError>
   }
->()('goblin/personas/Personas') {}
+>()('goblin/personas/Personas') {
+  /** The Personas over `store`, the one per agent: each new Persona and real change tells `personas.changed`. */
+  static readonly make = (store: PersonaRegistry) =>
+    Effect.gen(function* () {
+      const changes = yield* Changes
+      const changed = (id: number) => changes.publish('personas.changed', { ids: [id] })
+      return Personas.of({
+        list: Effect.sync(() => store.list()).pipe(Effect.withSpan('Personas.list')),
+        active: Effect.sync(() => store.active()).pipe(Effect.withSpan('Personas.active')),
+        get: Effect.fn('Personas.get')(function* (id: number) {
+          return yield* fromStore(() => store.get(id))
+        }),
+        byName: Effect.fn('Personas.byName')(function* (name: string) {
+          return yield* Effect.sync(() => Option.fromUndefinedOr(store.byName(name)))
+        }),
+        detail: Effect.fn('Personas.detail')(function* (id: number) {
+          return yield* fromStore(() => store.detail(id))
+        }),
+        revision: Effect.fn('Personas.revision')(function* (id: number, revision: number) {
+          return yield* fromStore(() => store.revision(id, revision))
+        }),
+        offers: Effect.fn('Personas.offers')(function* (model: string | undefined) {
+          return yield* Effect.sync(() => store.offers(model))
+        }),
+        create: Effect.fn('Personas.create')(function* (input: CreatePersona, actor: PersonaActor) {
+          const now = yield* nowSeconds
+          const made = yield* fromStore(() => store.create(input, actor, now))
+          if (made.created) yield* changed(made.persona.id)
+          return made
+        }),
+        update: Effect.fn('Personas.update')(function* (id: number, change: UpdatePersona, actor: PersonaActor) {
+          const now = yield* nowSeconds
+          const result = yield* fromStore(() => {
+            const before = store.get(id)
+            return { before, after: store.update(id, change, actor, now) }
+          })
+          if (result.after.revision !== result.before.revision) yield* changed(id)
+          return result
+        }),
+      })
+    })
+}
 
 /**
  * Which Persona answers which owner message, and how far it got (ADR 0033). A settled invocation never moves again, so
@@ -81,4 +131,37 @@ export class Invocations extends Context.Service<
     /** Stops every unsettled invocation in `chat` (the owner's Stop); answers how many it stopped. */
     readonly stopChat: (chat: string, now: number) => Effect.Effect<number>
   }
->()('goblin/personas/Invocations') {}
+>()('goblin/personas/Invocations') {
+  /**
+   * The invocations over `store`, the one per agent. Its own listeners still tell the workspace feed what changed:
+   * the Persona asks and Stop write through the same instance.
+   */
+  static readonly make = (store: PersonaInvocations) =>
+    Invocations.of({
+      insert: Effect.fn('Invocations.insert')(function* (asked: readonly NewInvocation[], now: number) {
+        return yield* Effect.sync(() => store.insert(asked, now))
+      }),
+      get: Effect.fn('Invocations.get')(function* (operationId: string, persona: number) {
+        return yield* Effect.sync(() => Option.fromUndefinedOr(store.get(operationId, persona)))
+      }),
+      live: Effect.sync(() => store.live()).pipe(Effect.withSpan('Invocations.live')),
+      of: Effect.fn('Invocations.of')(function* (operationId: string) {
+        return yield* Effect.sync(() => store.of(operationId))
+      }),
+      running: Effect.fn('Invocations.running')(function* (operationId: string, persona: number) {
+        yield* Effect.sync(() => store.running(operationId, persona))
+      }),
+      settle: Effect.fn('Invocations.settle')(function* (
+        operationId: string,
+        persona: number,
+        state: 'answered' | 'failed' | 'stopped',
+        now: number,
+        answerEntry?: number,
+      ) {
+        return yield* Effect.sync(() => store.settle(operationId, persona, state, now, answerEntry))
+      }),
+      stopChat: Effect.fn('Invocations.stopChat')(function* (chat: string, now: number) {
+        return yield* Effect.sync(() => store.stopChat(chat, now))
+      }),
+    })
+}

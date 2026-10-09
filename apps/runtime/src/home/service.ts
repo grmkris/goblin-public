@@ -9,16 +9,25 @@ import {
 import { eq } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Context from 'effect/Context'
-import type * as Effect from 'effect/Effect'
+import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import type { AppRegistry } from '../apps/registry.ts'
 import type { AgentApps } from '../agent-apps/engine.ts'
 import { type AppError, Conflict, Forbidden, InvalidInput, NotFound } from '../http/errors.ts'
+import { fromStore } from '../organize/effects.ts'
+import { Changes } from '../runtime/changes.ts'
 import { appHomeOperations } from '../storage/schema.ts'
 import { applyHomeOperations, ownerTargets, touchedTiles } from './operations.ts'
 import { readHome, writeHome } from './store.ts'
 
 type Actor = HomeTile['placedBy']
+
+declare module '../runtime/changes.ts' {
+  interface ChangeTopics {
+    /** The Home layout changed: an edit applied, or an App's deletion took its tile (its new revision). */
+    'home.changed': { readonly revision: number }
+  }
+}
 
 /**
  * The owner's Home surface: its saved layout and the edits that arrange it. Placement changes presentation and never
@@ -37,11 +46,36 @@ export class Home extends Context.Service<
     /** Announces the layout an App deletion already changed in its own transaction. */
     readonly appRemoved: Effect.Effect<void, AppError>
   }
->()('goblin/home/Home') {}
+>()('goblin/home/Home') {
+  /** Home over `store`, the one per agent: an applied edit, and an App's deletion, tell `home.changed`. */
+  static readonly make = (store: HomeService) =>
+    Effect.gen(function* () {
+      const changes = yield* Changes
+      const changed = Effect.flatMap(
+        fromStore(() => store.layout()),
+        (layout) => changes.publish('home.changed', { revision: layout.revision }),
+      )
+      return Home.of({
+        read: fromStore(() => store.read()).pipe(Effect.withSpan('Home.read')),
+        layout: fromStore(() => store.layout()).pipe(Effect.withSpan('Home.layout')),
+        needsAppVerification: Effect.fn('Home.needsAppVerification')(function* (input: HomeEdit, actor: Actor) {
+          return yield* fromStore(() => store.needsAppVerification(input, actor))
+        }),
+        edit: Effect.fn('Home.edit')(function* (input: HomeEdit, actor: Actor) {
+          const result = yield* fromStore(() => store.edit(input, actor))
+          if (result.kind === 'applied') yield* changed
+          return result
+        }),
+        appRemoved: changed.pipe(Effect.withSpan('Home.appRemoved')),
+      })
+    })
+}
 
-/** Owner-scoped application metadata. No network or Pi calls occur in a layout transaction. */
+/**
+ * Owner-scoped application metadata, as rows: a store with no state of its own (the Home service tells the change
+ * bus). No network or Pi calls occur in a layout transaction.
+ */
 export class HomeService<RunResult = unknown> {
-  readonly #listeners = new Set<(layout: HomeLayout) => void>()
   readonly #db: SQLiteAsyncDatabase<'sync', RunResult>
   constructor(
     db: SQLiteAsyncDatabase<'sync', RunResult>,
@@ -62,14 +96,6 @@ export class HomeService<RunResult = unknown> {
         hasView: this.engine.info(app.name)?.ui ?? false,
       })),
     }
-  }
-  onChange(listener: (layout: HomeLayout) => void): () => void {
-    this.#listeners.add(listener)
-    return () => this.#listeners.delete(listener)
-  }
-  /** App deletion already changed the layout in its transaction; announce the committed result. */
-  appRemoved(): void {
-    this.#announce(this.layout())
   }
   /** Replays and stale intent need no network pre-check. The transaction repeats both guards before writing. */
   needsAppVerification(input: HomeEdit, actor: Actor): boolean {
@@ -118,7 +144,6 @@ export class HomeService<RunResult = unknown> {
         .run()
       return receipt
     })
-    if (result.kind === 'applied') this.#announce(this.layout())
     return result
   }
   #undo(input: HomeEdit, current: HomeLayout, actor: Actor): HomeLayout {
@@ -169,8 +194,5 @@ export class HomeService<RunResult = unknown> {
       return `Placed ${title ?? 'a tile'} on Home`
     }
     return 'Updated Home'
-  }
-  #announce(layout: HomeLayout): void {
-    for (const listener of this.#listeners) listener(layout)
   }
 }

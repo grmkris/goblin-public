@@ -1,8 +1,18 @@
 import type { CreateTopic, TopicSeedData, TopicView, UpdateTopic } from '@goblin/contracts'
 import * as Context from 'effect/Context'
-import type * as Effect from 'effect/Effect'
+import * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
-import type { TopicActor } from './registry.ts'
+import { KeyedLock } from '../observability/lock.ts'
+import { fromStore, fromStoreAsync, nowSeconds } from '../organize/effects.ts'
+import { Changes } from '../runtime/changes.ts'
+import type { TopicActor, TopicRegistry } from './registry.ts'
+
+declare module '../runtime/changes.ts' {
+  interface ChangeTopics {
+    /** Topics a write made or changed, by id (ADR 0032). */
+    'topics.changed': { readonly ids: readonly number[] }
+  }
+}
 
 /** What `create` answers: the Topic, and whether this call made it rather than finding it by its operation id. */
 type MadeTopic = { readonly topic: TopicView; readonly created: boolean }
@@ -34,4 +44,39 @@ export class Topics extends Context.Service<
      */
     readonly update: (id: number, change: UpdateTopic) => Effect.Effect<TopicChange, AppError>
   }
->()('goblin/topics/Topics') {}
+>()('goblin/topics/Topics') {
+  /**
+   * The Topics over `store`, the one per agent. Creates run one at a time (one Topic and one Pi session per operation
+   * id, also for repeats that arrive together), and each create and real change tells `topics.changed` which Topic it
+   * touched; a create found by its operation id tells it too, so a retry announces what a failed first attempt made.
+   */
+  static readonly make = (store: TopicRegistry) =>
+    Effect.gen(function* () {
+      const lock = yield* KeyedLock
+      const changes = yield* Changes
+      const changed = (id: number) => changes.publish('topics.changed', { ids: [id] })
+      return Topics.of({
+        list: Effect.sync(() => store.list()).pipe(Effect.withSpan('Topics.list')),
+        get: Effect.fn('Topics.get')(function* (id: number) {
+          return yield* fromStore(() => store.get(id))
+        }),
+        create: Effect.fn('Topics.create')(function* (input: CreateTopic, actor: TopicActor, seed?: TopicSeedData) {
+          const now = yield* nowSeconds
+          const made = yield* lock.withLock('topics.create')(
+            fromStoreAsync(() => store.create(input, actor, now, seed)),
+          )
+          yield* changed(made.topic.id)
+          return made
+        }),
+        update: Effect.fn('Topics.update')(function* (id: number, change: UpdateTopic) {
+          const now = yield* nowSeconds
+          const result = yield* fromStore(() => {
+            const before = store.get(id)
+            return { before, after: store.update(id, change, now) }
+          })
+          if (result.after.revision !== result.before.revision) yield* changed(id)
+          return result
+        }),
+      })
+    })
+}

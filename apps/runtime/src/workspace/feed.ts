@@ -43,7 +43,11 @@ const reportFeedFailure = (where: string, error: unknown): void =>
     frames: error instanceof Error ? framesOf(error) : [],
   })
 
-/** What the feed shows: the conversations, Apps, Home, Topics, Personas and receipts, each telling it what changed. */
+/**
+ * What the feed shows: the conversations, Apps, Home, Topics, Personas, invocations and receipts. The conversations,
+ * Apps and invocations tell it what changed through their own listeners (`listen`); the Topics, Personas, receipts and
+ * Home services through the change bus (`workspace/service.ts`), which calls the methods below.
+ */
 export type FeedSources = {
   readonly conversations: ConversationRegistry
   readonly apps: AppRegistry
@@ -56,8 +60,9 @@ export type FeedSources = {
 
 /**
  * The owner's workspace as one live feed: every conversation and what each is doing, so a client needs no polling and
- * no stream per conversation to draw the tree. It watches Pi's task graph while anyone listens, and the registry's
- * writes. Activity lives in this isolate; a client that reconnects starts again from a fresh snapshot.
+ * no stream per conversation to draw the tree. It watches Pi's task graph while anyone listens, and the stores' writes
+ * once `listen` is called; one feed per agent listens. Activity lives in this isolate; a client that reconnects starts
+ * again from a fresh snapshot.
  */
 export class WorkspaceFeed {
   readonly #harness: PiHarness
@@ -87,19 +92,43 @@ export class WorkspaceFeed {
     this.#personas = personas
     this.#invocations = invocations
     this.#receipts = receipts
-    topics.onChange((changed) => this.#emit(changed.map((topic) => ({ type: 'topic' as const, topic }))))
-    personas.onChange((changed) => this.#emit(changed.map((persona) => ({ type: 'persona' as const, persona }))))
-    invocations.onChange((changed) =>
+  }
+
+  /** Follows the conversations', Apps' and invocations' own listeners. Call it once, on the agent's one feed. */
+  listen(): void {
+    this.#invocations.onChange((changed) =>
       this.#emit(changed.map((invocation) => ({ type: 'invocation' as const, invocation }))),
     )
-    receipts.onChange((changed) => this.#emit(changed.map((receipt) => ({ type: 'receipt' as const, receipt }))))
-    conversations.onChange((ids) => {
+    this.#conversations.onChange((ids) => {
       if (this.#listeners.size > 0)
         this.#describe(ids).catch((error: unknown) => reportFeedFailure('workspace.describe', error))
     })
-    apps.onChange((changed) => this.#emit(changed.map((app) => ({ type: 'app' as const, app }))))
-    apps.onRemove((id) => this.#emit([{ type: 'app-removed' as const, id }]))
-    home.onChange((layout) => this.#emit([{ type: 'home' as const, home: layout }]))
+    this.#apps.onChange((changed) => this.#emit(changed.map((app) => ({ type: 'app' as const, app }))))
+    this.#apps.onRemove((id) => this.#emit([{ type: 'app-removed' as const, id }]))
+  }
+
+  /** Topics a write changed, each as it is now; read only while someone listens. */
+  topicsChanged(ids: readonly number[]): void {
+    if (this.#listeners.size === 0) return
+    this.#emit(ids.map((id) => ({ type: 'topic' as const, topic: this.#topics.get(id) })))
+  }
+
+  /** Personas a write changed, each as it is now. */
+  personasChanged(ids: readonly number[]): void {
+    if (this.#listeners.size === 0) return
+    this.#emit(ids.map((id) => ({ type: 'persona' as const, persona: this.#personas.get(id) })))
+  }
+
+  /** Receipts written or undone, each as Activity shows it now. */
+  receiptsChanged(ids: readonly string[]): void {
+    if (this.#listeners.size === 0) return
+    this.#emit(ids.map((id) => ({ type: 'receipt' as const, receipt: this.#receipts.view(id) })))
+  }
+
+  /** The Home layout as it is now. */
+  homeChanged(): void {
+    if (this.#listeners.size === 0) return
+    this.#emit([{ type: 'home' as const, home: this.#home.layout() }])
   }
 
   /**

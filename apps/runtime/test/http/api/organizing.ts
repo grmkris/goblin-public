@@ -24,7 +24,10 @@ import { HomeHandlers } from '../../../src/home/api.ts'
 import { HomeService } from '../../../src/home/service.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
-import { DelegationLive } from '../../../src/layers/delegation.ts'
+import { delegationServices } from '../../../src/layers/delegation.ts'
+import { KeyedLock } from '../../../src/observability/lock.ts'
+import { Changes, makeChanges } from '../../../src/runtime/changes.ts'
+import { WorkspaceFeed } from '../../../src/workspace/feed.ts'
 import { McpConnections, Resident } from '../../../src/mcp/service.ts'
 import { FlowEvents } from '../../../src/observability/flows.ts'
 import { OrganizeHandlers } from '../../../src/organize/api.ts'
@@ -136,19 +139,20 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
     require: () => Effect.void,
   })
   const flows: FlowEvent[] = []
-  const stores = Layer.mergeAll(
-    Layer.succeed(Legacy.Topics, topics),
-    Layer.succeed(Legacy.Personas, personas),
-    Layer.succeed(Legacy.Receipts, receipts),
-    Layer.succeed(Legacy.Home, home),
-    Layer.succeed(Legacy.Invocations, unread),
-    Layer.succeed(Legacy.Workspace, unread),
+  // The feed reads its sources only for a listener, and none listens here.
+  const feed = new WorkspaceFeed(
+    unread,
+    { conversations: unread, apps: unread, home, topics, personas, invocations: unread, receipts },
+    unread,
+  )
+  const lane = delegationServices({ topics, personas, invocations: unread, receipts, home, feed }).pipe(
+    Layer.provide(Layer.merge(KeyedLock.layer, Layer.succeed(Changes, makeChanges()))),
   )
   const runtime = ManagedRuntime.make(
     OwnerHttp.serve(API, LAYER).pipe(
       Layer.provide(
         Layer.mergeAll(
-          Layer.provide(DelegationLive, stores),
+          lane,
           Layer.succeed(Conversations, conversations),
           Layer.succeed(ChatOperations, unread),
           Layer.succeed(Apps, unread),

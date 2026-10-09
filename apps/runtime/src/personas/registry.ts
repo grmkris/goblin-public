@@ -78,28 +78,17 @@ const stored = (definition: PersonaDefinition) => ({
  * and bumps `revision`; an update names the revision it edits (`expectedRevision`), so two edits never silently
  * overwrite each other. A model must be one the deployment offers. Exclusions can only narrow what the Persona may use,
  * so they are stored as given, de-duplicated; nothing here can grant a capability. Archiving keeps the history; an
- * archived Persona no longer answers and frees its name. All writes are synchronous in one SQLite step.
+ * archived Persona no longer answers and frees its name. All writes are synchronous in one SQLite step. The store keeps
+ * no state; the Personas service tells the change bus what each write changed (`personas/service.ts`).
  */
 export class PersonaRegistry<RunResult = unknown> {
   readonly #db: SQLiteAsyncDatabase<'sync', RunResult>
   readonly #models: readonly string[]
-  readonly #listeners = new Set<(personas: readonly PersonaView[]) => void>()
 
   /** `models`: the ids of the models this deployment offers (`modelOptions`). */
   constructor(db: SQLiteAsyncDatabase<'sync', RunResult>, models: readonly string[]) {
     this.#db = db
     this.#models = models
-  }
-
-  /** Calls `listener` with the Personas each write changed; returns what unsubscribes it. */
-  onChange(listener: (personas: readonly PersonaView[]) => void): () => void {
-    this.#listeners.add(listener)
-    return () => this.#listeners.delete(listener)
-  }
-
-  #emit(row: Row): void {
-    const personas = [view(row)]
-    for (const listener of this.#listeners) listener(personas)
   }
 
   #row(id: number): Row {
@@ -210,7 +199,6 @@ export class PersonaRegistry<RunResult = unknown> {
         .run()
       return inserted
     })
-    this.#emit(row)
     return { persona: view(row), created: true }
   }
 
@@ -254,7 +242,6 @@ export class PersonaRegistry<RunResult = unknown> {
         .run()
       return changed
     })
-    this.#emit(updated)
     return view(updated)
   }
 }

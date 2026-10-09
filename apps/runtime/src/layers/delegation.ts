@@ -1,188 +1,100 @@
-import type {
-  CreatePersona,
-  CreateTopic,
-  HomeEdit,
-  HomeTile,
-  TopicSeedData,
-  UpdatePersona,
-  UpdateTopic,
-} from '@goblin/contracts'
+import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import * as Option from 'effect/Option'
-import { Home } from '../home/service.ts'
-import type { NewReceipt } from '../organize/receipts.ts'
+import { Home, HomeService } from '../home/service.ts'
+import { modelOptions } from '../models.ts'
+import type { KeyedLock } from '../observability/lock.ts'
+import { OrganizeReceipts } from '../organize/receipts.ts'
 import { Receipts } from '../organize/service.ts'
-import type { NewInvocation } from '../personas/invocations.ts'
-import type { PersonaActor } from '../personas/registry.ts'
+import type { PersonaInvocations } from '../personas/invocations.ts'
+import { PersonaRegistry } from '../personas/registry.ts'
 import { Invocations, Personas } from '../personas/service.ts'
+import { AgentInput } from '../runtime/input.ts'
+import type { Changes } from '../runtime/changes.ts'
+import type { FoundationServices } from './core.ts'
+import { Db } from '../runtime/db.ts'
 import * as Legacy from '../services.ts'
-import type { TopicActor } from '../topics/registry.ts'
+import { topicPorts } from '../topics/ports.ts'
+import { TopicRegistry } from '../topics/registry.ts'
 import { Topics } from '../topics/service.ts'
-import { workspaceEventResponse } from '../workspace/feed.ts'
+import { WorkspaceFeed } from '../workspace/feed.ts'
 import { Workspace } from '../workspace/service.ts'
 
-/*
- * Lane D's services over the legacy instances (services.ts tags), one instance each: every call is wrapped as the
- * programs wrapped it, and a change reads the clock (epoch seconds) as they did. A promise goes through `attempt` and a call that can refuse (a missing row, a taken name, a
- * stale revision) through `attemptSync`, both into `AppError`; a plain SQLite read or write runs as it is.
+/** Lane D's stores, one each per agent: the SQLite stores and the workspace feed over them. */
+export type DelegationStores = {
+  readonly topics: TopicRegistry
+  readonly personas: PersonaRegistry
+  readonly invocations: PersonaInvocations
+  readonly receipts: OrganizeReceipts
+  readonly home: HomeService
+  readonly feed: WorkspaceFeed
+}
+
+/**
+ * Lane D's services over `stores`: Topics (creates serialized by the per-key lock), Personas, receipts and Home tell
+ * the change bus what each write changed, and the workspace feed follows it.
  */
+export const delegationServices = (
+  stores: DelegationStores,
+): Layer.Layer<Topics | Personas | Invocations | Receipts | Home | Workspace, never, KeyedLock | Changes> =>
+  Layer.effectContext(
+    Effect.gen(function* () {
+      const topics = yield* Topics.make(stores.topics)
+      const personas = yield* Personas.make(stores.personas)
+      const receipts = yield* Receipts.make(stores.receipts)
+      const home = yield* Home.make(stores.home)
+      const workspace = yield* Workspace.make(stores.feed)
+      return Context.mergeAll(
+        Topics.context(topics),
+        Personas.context(personas),
+        Invocations.context(Invocations.make(stores.invocations)),
+        Receipts.context(receipts),
+        Home.context(home),
+        Workspace.context(workspace),
+      )
+    }),
+  )
 
-const TopicsAdapter = Layer.effect(
-  Topics,
-  Effect.gen(function* () {
-    const topics = yield* Legacy.Topics
-    return Topics.of({
-      list: Effect.sync(() => topics.list()).pipe(Effect.withSpan('Topics.list')),
-      get: Effect.fn('Topics.get')(function* (id: number) {
-        return yield* Legacy.attemptSync(() => topics.get(id))
-      }),
-      create: Effect.fn('Topics.create')(function* (input: CreateTopic, actor: TopicActor, seed?: TopicSeedData) {
-        const now = yield* Legacy.nowSecondsEffect
-        return yield* Legacy.attempt(() => topics.create(input, actor, now, seed))
-      }),
-      update: Effect.fn('Topics.update')(function* (id: number, change: UpdateTopic) {
-        const now = yield* Legacy.nowSecondsEffect
-        return yield* Legacy.attemptSync(() => {
-          const before = topics.get(id)
-          return { before, after: topics.update(id, change, now) }
-        })
-      }),
-    })
-  }),
-)
-
-const PersonasAdapter = Layer.effect(
-  Personas,
-  Effect.gen(function* () {
-    const personas = yield* Legacy.Personas
-    return Personas.of({
-      list: Effect.sync(() => personas.list()).pipe(Effect.withSpan('Personas.list')),
-      active: Effect.sync(() => personas.active()).pipe(Effect.withSpan('Personas.active')),
-      get: Effect.fn('Personas.get')(function* (id: number) {
-        return yield* Legacy.attemptSync(() => personas.get(id))
-      }),
-      byName: Effect.fn('Personas.byName')(function* (name: string) {
-        return yield* Effect.sync(() => Option.fromUndefinedOr(personas.byName(name)))
-      }),
-      detail: Effect.fn('Personas.detail')(function* (id: number) {
-        return yield* Legacy.attemptSync(() => personas.detail(id))
-      }),
-      revision: Effect.fn('Personas.revision')(function* (id: number, revision: number) {
-        return yield* Legacy.attemptSync(() => personas.revision(id, revision))
-      }),
-      offers: Effect.fn('Personas.offers')(function* (model: string | undefined) {
-        return yield* Effect.sync(() => personas.offers(model))
-      }),
-      create: Effect.fn('Personas.create')(function* (input: CreatePersona, actor: PersonaActor) {
-        const now = yield* Legacy.nowSecondsEffect
-        return yield* Legacy.attemptSync(() => personas.create(input, actor, now))
-      }),
-      update: Effect.fn('Personas.update')(function* (id: number, change: UpdatePersona, actor: PersonaActor) {
-        const now = yield* Legacy.nowSecondsEffect
-        return yield* Legacy.attemptSync(() => {
-          const before = personas.get(id)
-          return { before, after: personas.update(id, change, actor, now) }
-        })
-      }),
-    })
-  }),
-)
-
-const InvocationsAdapter = Layer.effect(
-  Invocations,
-  Effect.gen(function* () {
-    const invocations = yield* Legacy.Invocations
-    return Invocations.of({
-      insert: Effect.fn('Invocations.insert')(function* (asked: readonly NewInvocation[], now: number) {
-        return yield* Effect.sync(() => invocations.insert(asked, now))
-      }),
-      get: Effect.fn('Invocations.get')(function* (operationId: string, persona: number) {
-        return yield* Effect.sync(() => Option.fromUndefinedOr(invocations.get(operationId, persona)))
-      }),
-      live: Effect.sync(() => invocations.live()).pipe(Effect.withSpan('Invocations.live')),
-      of: Effect.fn('Invocations.of')(function* (operationId: string) {
-        return yield* Effect.sync(() => invocations.of(operationId))
-      }),
-      running: Effect.fn('Invocations.running')(function* (operationId: string, persona: number) {
-        yield* Effect.sync(() => invocations.running(operationId, persona))
-      }),
-      settle: Effect.fn('Invocations.settle')(function* (
-        operationId: string,
-        persona: number,
-        state: 'answered' | 'failed' | 'stopped',
-        now: number,
-        answerEntry?: number,
-      ) {
-        return yield* Effect.sync(() => invocations.settle(operationId, persona, state, now, answerEntry))
-      }),
-      stopChat: Effect.fn('Invocations.stopChat')(function* (chat: string, now: number) {
-        return yield* Effect.sync(() => invocations.stopChat(chat, now))
-      }),
-    })
-  }),
-)
-
-const ReceiptsAdapter = Layer.effect(
-  Receipts,
-  Effect.gen(function* () {
-    const receipts = yield* Legacy.Receipts
-    return Receipts.of({
-      record: Effect.fn('Receipts.record')(function* (input: NewReceipt) {
-        const now = yield* Legacy.nowSecondsEffect
-        return yield* Legacy.attemptSync(() => receipts.record(input, now))
-      }),
-      list: Effect.fn('Receipts.list')(function* (limit?: number) {
-        return yield* Effect.sync(() => receipts.list(limit))
-      }),
-      get: Effect.fn('Receipts.get')(function* (id: string) {
-        return yield* Legacy.attemptSync(() => receipts.get(id))
-      }),
-      markUndone: Effect.fn('Receipts.markUndone')(function* (id: string) {
-        const now = yield* Legacy.nowSecondsEffect
-        return yield* Legacy.attemptSync(() => receipts.markUndone(id, now))
-      }),
-    })
-  }),
-)
-
-const HomeAdapter = Layer.effect(
-  Home,
-  Effect.gen(function* () {
-    const home = yield* Legacy.Home
-    return Home.of({
-      read: Legacy.attemptSync(() => home.read()).pipe(Effect.withSpan('Home.read')),
-      layout: Legacy.attemptSync(() => home.layout()).pipe(Effect.withSpan('Home.layout')),
-      needsAppVerification: Effect.fn('Home.needsAppVerification')(function* (
-        input: HomeEdit,
-        actor: HomeTile['placedBy'],
-      ) {
-        return yield* Legacy.attemptSync(() => home.needsAppVerification(input, actor))
-      }),
-      edit: Effect.fn('Home.edit')(function* (input: HomeEdit, actor: HomeTile['placedBy']) {
-        return yield* Legacy.attemptSync(() => home.edit(input, actor))
-      }),
-      appRemoved: Legacy.attemptSync(() => home.appRemoved()).pipe(Effect.withSpan('Home.appRemoved')),
-    })
-  }),
-)
-
-const WorkspaceAdapter = Layer.effect(
-  Workspace,
-  Effect.gen(function* () {
-    const feed = yield* Legacy.Workspace
-    return Workspace.of({
-      events: Effect.sync(() => workspaceEventResponse(feed)).pipe(Effect.withSpan('Workspace.events')),
-    })
-  }),
-)
+/**
+ * The agent's own lane D stores. Topics, Personas, receipts, Home and the feed are made here, once; the legacy start's
+ * copies of them are no longer read. The invocations stay the legacy start's one instance, which the Persona asks and
+ * Stop still write through. A Topic's Conversation is made, listed and given memory by the conversation, capability and
+ * memory instances of the legacy start, the agent's only ones, synchronously inside the Topic's own transaction.
+ */
+const stores: Effect.Effect<DelegationStores, never, FoundationServices> = Effect.gen(function* () {
+  const input = yield* AgentInput
+  const db = yield* Db
+  const conversations = yield* Legacy.Conversations
+  const chats = yield* Legacy.Chats
+  const kit = { capabilities: yield* Legacy.Capabilities, chats, memories: yield* Legacy.Memories }
+  const apps = yield* Legacy.Apps
+  const invocations = yield* Legacy.Invocations
+  const topics = new TopicRegistry(db, topicPorts(db, conversations, kit))
+  const personas = new PersonaRegistry(
+    db,
+    modelOptions(input.env.MODELS, input.env.MODEL_ID).map((option) => option.id),
+  )
+  const receipts = new OrganizeReceipts(db, (kind, target) => {
+    try {
+      return (kind.startsWith('topic.') ? topics : personas).get(Number(target)).revision
+    } catch {
+      // expected: a receipt whose target is gone is not undoable.
+      return undefined
+    }
+  })
+  const home = new HomeService(db, apps, input.agentApps)
+  const feed = new WorkspaceFeed(
+    input.harness,
+    { conversations, apps, home, topics, personas, invocations, receipts },
+    chats,
+  )
+  feed.listen()
+  return { topics, personas, invocations, receipts, home, feed } satisfies DelegationStores
+})
 
 /** Lane D's services: delegation, Topics, Personas, organizing, Home and the workspace feed. */
-export const DelegationLive = Layer.mergeAll(
-  TopicsAdapter,
-  PersonasAdapter,
-  InvocationsAdapter,
-  ReceiptsAdapter,
-  HomeAdapter,
-  WorkspaceAdapter,
-)
+export const DelegationLive: Layer.Layer<
+  Topics | Personas | Invocations | Receipts | Home | Workspace,
+  never,
+  FoundationServices
+> = Layer.unwrap(Effect.map(stores, delegationServices))

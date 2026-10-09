@@ -42,22 +42,15 @@ const RECENT = 50
  * Organizing receipts (ADR 0033): one row per change the owner or the agent made to Topics and Personas, with the
  * target before and after. Undo is offered while the target's revision is still the one the change left
  * (`undoable`); a later edit by anyone touches it, and then Undo is refused. The registry of the target is the
- * authority on its revision; this store only compares.
+ * authority on its revision; this store only compares. It keeps no state; the Receipts service tells the change bus.
  */
 export class OrganizeReceipts<RunResult = unknown> {
   readonly #db: SQLiteAsyncDatabase<'sync', RunResult>
   readonly #revisionOf: RevisionOf
-  readonly #listeners = new Set<(receipts: readonly OrganizeReceipt[]) => void>()
 
   constructor(db: SQLiteAsyncDatabase<'sync', RunResult>, revisionOf: RevisionOf) {
     this.#db = db
     this.#revisionOf = revisionOf
-  }
-
-  /** Calls `listener` with each receipt written or undone; returns what unsubscribes it. */
-  onChange(listener: (receipts: readonly OrganizeReceipt[]) => void): () => void {
-    this.#listeners.add(listener)
-    return () => this.#listeners.delete(listener)
   }
 
   #base(row: Row): StoredBase {
@@ -76,11 +69,6 @@ export class OrganizeReceipts<RunResult = unknown> {
   #view(row: Row): OrganizeReceipt {
     const undoable = row.undoneAt === null && this.#revisionOf(row.kind, row.target) === row.afterRevision
     return { ...this.#base(row), undoable }
-  }
-
-  #emit(...rows: Row[]): void {
-    const receipts = rows.map((row) => this.#view(row))
-    for (const listener of this.#listeners) listener(receipts)
   }
 
   /** Records a change; the same `operationId` finds the receipt it already made. */
@@ -111,7 +99,13 @@ export class OrganizeReceipts<RunResult = unknown> {
       .returning()
       .all()
     if (row === undefined) throw new NotFound({ what: 'receipt' })
-    this.#emit(row)
+    return this.#view(row)
+  }
+
+  /** One receipt as Activity shows it. */
+  view(id: string): OrganizeReceipt {
+    const row = this.#db.select().from(appOrganizeReceipts).where(eq(appOrganizeReceipts.id, id)).get()
+    if (row === undefined) throw new NotFound({ what: 'receipt' })
     return this.#view(row)
   }
 
@@ -147,7 +141,6 @@ export class OrganizeReceipts<RunResult = unknown> {
       .returning()
       .all()
     if (row === undefined) throw new NotFound({ what: 'receipt' })
-    this.#emit(row)
     return this.#view(row)
   }
 }

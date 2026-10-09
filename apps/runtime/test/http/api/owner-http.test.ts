@@ -13,12 +13,15 @@ import { ChatOperations, Conversations } from '../../../src/chats/service.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
-import { DelegationLive } from '../../../src/layers/delegation.ts'
 import { FlowEvents } from '../../../src/observability/flows.ts'
+import { KeyedLock } from '../../../src/observability/lock.ts'
 import { TopicsHandlers } from '../../../src/topics/api.ts'
 import { OrganizeReceipts } from '../../../src/organize/receipts.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
-import { Home, Invocations, Personas, Receipts, Resident, Topics, Workspace } from '../../../src/services.ts'
+import { Receipts } from '../../../src/organize/service.ts'
+import { Changes, makeChanges } from '../../../src/runtime/changes.ts'
+import { Resident } from '../../../src/services.ts'
+import { Topics } from '../../../src/topics/service.ts'
 import { appConversations } from '../../../src/storage/schema.ts'
 import { TopicRegistry } from '../../../src/topics/registry.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
@@ -105,20 +108,16 @@ const fixture = (options: { readonly active?: boolean } = {}) => {
   }
   // SAFETY: see the fixture's comment: only an archive of a Topic with open chats reads these.
   const unread = undefined as never
-  // Lane D's services over the Topic and receipt stores; the other stores are never read.
-  const stores = Layer.mergeAll(
-    Layer.succeed(Topics, topics),
-    Layer.succeed(Receipts, receipts),
-    Layer.succeed(Personas, unread),
-    Layer.succeed(Invocations, unread),
-    Layer.succeed(Home, unread),
-    Layer.succeed(Workspace, unread),
-  )
+  // Lane D's Topics and receipts over their stores, with one lock and one change bus.
+  const lane = Layer.mergeAll(
+    Layer.effect(Topics, Topics.make(topics)),
+    Layer.effect(Receipts, Receipts.make(receipts)),
+  ).pipe(Layer.provide(Layer.merge(KeyedLock.layer, Layer.succeed(Changes, makeChanges()))))
   const runtime = ManagedRuntime.make(
     OwnerHttp.serve(TOPICS_API, TOPICS).pipe(
       Layer.provide(
         Layer.mergeAll(
-          Layer.provide(DelegationLive, stores),
+          lane,
           Layer.succeed(Conversations, unread),
           Layer.succeed(ChatOperations, unread),
           Layer.succeed(Resident, resident),

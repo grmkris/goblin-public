@@ -3,8 +3,9 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ChatOperations, Conversations } from '../src/chats/service.ts'
-import { DelegationLive } from '../src/layers/delegation.ts'
 import { FlowEvents } from '../src/observability/flows.ts'
+import { KeyedLock } from '../src/observability/lock.ts'
+import { Changes, makeChanges } from '../src/runtime/changes.ts'
 import { OrganizeReceipts } from '../src/organize/receipts.ts'
 import { undoReceipt } from '../src/organize/program.ts'
 import { addressedTo } from '../src/personas/ask.ts'
@@ -15,7 +16,6 @@ import { PersonaRegistry, defaultAvatar } from '../src/personas/registry.ts'
 import { PERSONA_DENIED_TOOLS, personaSelection, personaText } from '../src/pi/persona-turn.ts'
 import { Receipts } from '../src/organize/service.ts'
 import { Personas } from '../src/personas/service.ts'
-import * as Legacy from '../src/services.ts'
 import { Topics } from '../src/topics/service.ts'
 import { appConversations } from '../src/storage/schema.ts'
 import { updateTopic } from '../src/topics/program.ts'
@@ -157,13 +157,21 @@ describe('Personas (ADR 0033)', () => {
     expect(personas.update(1, { exclusions: [], expectedRevision: 1 }, 'owner', 11).exclusions).toEqual([])
   })
 
-  it('tells listeners what changed', () => {
-    const { personas } = fixture()
+  it('tells the change bus which Persona each real write changed', async () => {
+    const { personas: store } = fixture()
+    const changes = makeChanges()
     const seen: number[] = []
-    personas.onChange((changed) => seen.push(...changed.map((each) => each.revision)))
-    personas.create({ ...scout, operationId: 'op-1' }, 'owner', 10)
-    personas.update(1, { role: 'x', expectedRevision: 1 }, 'owner', 11)
-    expect(seen).toEqual([1, 2])
+    Effect.runSync(changes.on('personas.changed', ({ ids }) => Effect.sync(() => void seen.push(...ids))))
+    const program = Effect.gen(function* () {
+      const personas = yield* Personas.make(store)
+      yield* personas.create({ ...scout, operationId: 'op-1' }, 'owner')
+      yield* personas.create({ ...scout, operationId: 'op-1' }, 'owner')
+      yield* personas.update(1, { role: scout.role, expectedRevision: 1 }, 'owner')
+      return yield* personas.update(1, { role: 'x', expectedRevision: 1 }, 'owner')
+    })
+    const changed = await Effect.runPromise(program.pipe(Effect.provideService(Changes, changes)))
+    expect(changed).toMatchObject({ before: { revision: 1 }, after: { role: 'x', revision: 2 } })
+    expect(seen).toEqual([1, 1])
   })
 
   it('gives a Persona made without an avatar its first letter on a hue from its name', () => {
@@ -282,26 +290,20 @@ describe('organize receipts and Undo', () => {
   /** The services Undo runs over: real registries on real SQLite, no Pi. */
   const services = () => {
     const parts = fixture()
-    // SAFETY: Home and the workspace feed are never read here, nor is Stop: no Undo here archives a Topic with chats.
+    // SAFETY: Stop is never reached here: no Undo here archives a Topic with chats.
     const unread = undefined as never
-    const stores = Layer.mergeAll(
-      Layer.succeed(Legacy.Personas, parts.personas),
-      Layer.succeed(Legacy.Topics, parts.topics),
-      Layer.succeed(Legacy.Receipts, parts.receipts),
-      Layer.succeed(Legacy.Invocations, parts.invocations),
-      Layer.succeed(Legacy.Home, unread),
-      Layer.succeed(Legacy.Workspace, unread),
-    )
     // SAFETY: renaming a Topic never reaches the chat registry; only an archive reads its open chats (`openIn`).
     const conversations = Object.assign(Object.create(null) as Conversations['Service'], {
       openIn: () => Effect.succeed([]),
     })
     const layer = Layer.mergeAll(
-      Layer.provide(DelegationLive, stores),
+      Layer.effect(Topics, Topics.make(parts.topics)),
+      Layer.effect(Personas, Personas.make(parts.personas)),
+      Layer.effect(Receipts, Receipts.make(parts.receipts)),
       Layer.succeed(Conversations, conversations),
       Layer.succeed(ChatOperations, unread),
       FlowEvents.noop,
-    )
+    ).pipe(Layer.provide(Layer.merge(KeyedLock.layer, Layer.succeed(Changes, makeChanges()))))
     return { ...parts, layer }
   }
 

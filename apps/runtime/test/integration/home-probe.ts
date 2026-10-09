@@ -117,8 +117,6 @@ export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, 
   )
   engine.onChange((name) => apps.agentChanged(name, 1))
   const home = new HomeService(db, apps, engine)
-  const changes: HomeLayout[] = []
-  home.onChange((layout) => changes.push(layout))
   const edit = (
     operationId: string,
     expectedRevision: number,
@@ -177,7 +175,6 @@ export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, 
   const closePreserved = home.layout().tiles.some(hasApp)
   await engine.remove('home-list')
   apps.removeAgent('home-list')
-  home.appRemoved()
   const erased = !home.layout().tiles.some(hasApp)
   const mcpPlacement = mcpPlacementProbe(home, apps, db)
   const reconstructed = new HomeService(drizzle(storage), apps, engine)
@@ -200,7 +197,6 @@ export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, 
     erased,
     ...mcpPlacement,
     retained: reconstructed.layout(),
-    changes: changes.length,
   }
 }
 export const retainedHome = (storage: DurableObjectStorage) => readHome(drizzle(storage))
