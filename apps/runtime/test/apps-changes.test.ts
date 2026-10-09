@@ -1,10 +1,15 @@
+import { eq } from 'drizzle-orm'
 import * as Effect from 'effect/Effect'
+import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AgentAppInfo } from '../src/agent-apps/engine.ts'
-import { AppRegistry } from '../src/apps/registry.ts'
-import { ChatDirectory, registerPrimary } from '../src/chats/directory.ts'
-import { appsOver } from '../src/layers/apps.ts'
-import { makeChanges } from '../src/runtime/changes.ts'
+import { AppRegistry, AppsInstance } from '../src/apps/registry.ts'
+import { ChatDirectory, ChatsInstance, registerChat, registerPrimary } from '../src/chats/directory.ts'
+import { AppRegistryLive, appsOver } from '../src/layers/apps.ts'
+import { Changes, makeChanges } from '../src/runtime/changes.ts'
+import { Db } from '../src/runtime/db.ts'
+import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
+import { appConversations } from '../src/storage/schema.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 
 const closes: (() => void)[] = []
@@ -54,5 +59,45 @@ describe('the Apps tell the change bus what they changed (unit)', () => {
     const { registry } = apps()
     expect(registry.agentChanged('counter', 2)).toHaveLength(1)
     expect(registry.closeWithConversations(['1'], 3)).toEqual([])
+  })
+})
+
+describe("a conversation's close reaches its Apps through the change bus (unit)", () => {
+  it('closes the open MCP Apps of a closed conversation inline, and tells the bus which', async () => {
+    const { db, close } = chatDatabase()
+    closes.push(close)
+    registerPrimary(db, 1)
+    registerChat(db, { chatId: '7', kind: 'thread', parentSession: '1', createdAt: 1 })
+    const changes = makeChanges()
+    const told: (readonly string[])[] = []
+    // SAFETY: the registry's start reads only these from the instance input; nothing here changes an agent app.
+    const input = Object.assign(Object.create(null), {
+      agentApps: { info: () => undefined, launch: () => undefined, rehome: () => undefined, onChange: () => () => {} },
+    }) as AgentInputs
+    const registry = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* changes.on('apps.changed', ({ ids }) => Effect.sync(() => void told.push(ids)))
+        return yield* AppsInstance
+      }).pipe(
+        Effect.provide(
+          AppRegistryLive.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(AgentInput, input),
+                // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
+                Layer.succeed(Db, db as never),
+                Layer.succeed(ChatsInstance, new ChatDirectory(db)),
+                Layer.succeed(Changes, changes),
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+    const app = registry.register('7', 'call-1', ORIGIN, 2)
+    db.update(appConversations).set({ closedAt: 3 }).where(eq(appConversations.chatId, '7')).run()
+    await Effect.runPromise(changes.publish('conversations.changed', { ids: ['7'] }))
+    expect(registry.view(app.id).closedAt).toBeTypeOf('number')
+    expect(told).toEqual([[app.id]])
   })
 })

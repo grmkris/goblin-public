@@ -7,11 +7,11 @@ import { type AppOrigin, AppRegistry, AppsInstance } from '../apps/registry.ts'
 import { Apps } from '../apps/service.ts'
 import { ChatsInstance } from '../chats/directory.ts'
 import { nowSeconds as clockSeconds } from '../clock.ts'
-import { ConversationsInstance } from '../conversations.ts'
 import { FilesLive } from '../files/live.ts'
 import type { Files } from '../files/service.ts'
 import { toAppError } from '../http/errors.ts'
 import type { KeyedLock } from '../observability/lock.ts'
+import { runNow } from '../runtime/bridge.ts'
 import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
@@ -22,41 +22,37 @@ const stepSync = <A>(work: () => A) => Effect.try({ try: work, catch: toAppError
 const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
 
 /**
- * Start step 11: the one App registry. Closing a conversation closes its MCP Apps, and an agent app's change (a build,
- * a rollback) updates its App, each written at once. The conversation registry and the apps engine tell of those from
- * synchronous code inside their own Promise work, which cannot run the change bus, so the Apps they changed are told
- * to it right after, through the bridge's `local`.
+ * Start step 11: the one App registry. Closing a conversation (`conversations.changed`) closes its MCP Apps, and an
+ * agent app's change (a build, a rollback) updates its App, each written at once and told to the change bus inline:
+ * the apps engine tells of its change from synchronous code inside its own Promise work, so that notice runs on its
+ * stack.
  */
-export const AppRegistryLive: Layer.Layer<
-  AppsInstance,
-  never,
-  AgentInput | Db | ChatsInstance | ConversationsInstance
-> = Layer.effect(
-  AppsInstance,
-  Effect.gen(function* () {
-    const { harness, agentApps, local } = yield* AgentInput
-    const conversations = yield* ConversationsInstance
-    const registry = new AppRegistry(
-      yield* Db,
-      harness,
-      {
-        info: (name) => agentApps.info(name),
-        launch: (name) => agentApps.launch(name),
-        rehome: (closed, to) => agentApps.rehome(closed, to),
-      },
-      yield* ChatsInstance,
-    )
-    const told = (ids: readonly string[]) => {
-      if (ids.length === 0) return
-      local(Changes.use((changes) => changes.publish('apps.changed', { ids }))).catch(() => {
-        // expected: the bridge reported the failure; the next change of these Apps tells the feed again.
-      })
-    }
-    conversations.onChange((ids) => told(registry.closeWithConversations(ids, clockSeconds())))
-    agentApps.onChange((name) => told(registry.agentChanged(name, clockSeconds())))
-    return registry
-  }),
-)
+export const AppRegistryLive: Layer.Layer<AppsInstance, never, AgentInput | Db | ChatsInstance | Changes> =
+  Layer.effect(
+    AppsInstance,
+    Effect.gen(function* () {
+      const { harness, agentApps } = yield* AgentInput
+      const changes = yield* Changes
+      const tell = runNow(yield* Effect.context<Changes>())
+      const registry = new AppRegistry(
+        yield* Db,
+        harness,
+        {
+          info: (name) => agentApps.info(name),
+          launch: (name) => agentApps.launch(name),
+          rehome: (closed, to) => agentApps.rehome(closed, to),
+        },
+        yield* ChatsInstance,
+      )
+      const told = (ids: readonly string[]) =>
+        ids.length === 0 ? Effect.void : changes.publish('apps.changed', { ids })
+      yield* changes.on('conversations.changed', ({ ids }) =>
+        Effect.suspend(() => told(registry.closeWithConversations(ids, clockSeconds()))),
+      )
+      agentApps.onChange((name) => tell(told(registry.agentChanged(name, clockSeconds()))))
+      return registry
+    }),
+  )
 
 /** The owner's Apps over `registry`, the agent's one: each write tells the change bus which Apps it changed. */
 export const appsOver = (registry: AppRegistry, changes: Changes['Service']) => {

@@ -17,6 +17,13 @@ import type { AppError } from '../http/errors.ts'
 import type { ChatId, ChatRow, SessionId } from './directory.ts'
 import type { Receipt, ReceiptChange, ReceiptInput, ReceiptOrigin } from './receipts.ts'
 
+declare module '../runtime/changes.ts' {
+  interface ChangeTopics {
+    /** Conversations a write made, changed or closed, by chat id (ADR 0030). */
+    'conversations.changed': { readonly ids: readonly string[] }
+  }
+}
+
 /**
  * The conversation services (ADRs 0030, 0032, 0034) as Effects. Each reads the current time from the Clock and fails
  * with a typed `AppError`. `Chats` and `ChatOperations` are native (layers/conversation.ts); `Conversations` and

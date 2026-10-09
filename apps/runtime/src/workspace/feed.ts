@@ -44,9 +44,9 @@ const reportFeedFailure = (where: string, error: unknown): void =>
   })
 
 /**
- * What the feed shows: the conversations, Apps, Home, Topics, Personas, invocations and receipts. The conversations
- * and invocations tell it what changed through their own listeners (`listen`); the Apps, Topics, Personas, receipts
- * and Home services through the change bus (`workspace/service.ts`), which calls the methods below.
+ * What the feed shows: the conversations, Apps, Home, Topics, Personas, invocations and receipts. The invocations tell
+ * it what changed through their own listener (`listen`); the conversations, Apps, Topics, Personas, receipts and Home
+ * through the change bus (`workspace/service.ts`), which calls the methods below.
  */
 export type FeedSources = {
   readonly conversations: ConversationRegistry
@@ -94,15 +94,17 @@ export class WorkspaceFeed {
     this.#receipts = receipts
   }
 
-  /** Follows the conversations' and invocations' own listeners. Call it once, on the agent's one feed. */
+  /** Follows the invocations' own listener. Call it once, on the agent's one feed. */
   listen(): void {
     this.#invocations.onChange((changed) =>
       this.#emit(changed.map((invocation) => ({ type: 'invocation' as const, invocation }))),
     )
-    this.#conversations.onChange((ids) => {
-      if (this.#listeners.size > 0)
-        this.#describe(ids).catch((error: unknown) => reportFeedFailure('workspace.describe', error))
-    })
+  }
+
+  /** Conversations a write changed, each described as it is now; read only while someone listens. */
+  conversationsChanged(ids: readonly string[]): void {
+    if (this.#listeners.size > 0)
+      this.#describe(ids).catch((error: unknown) => reportFeedFailure('workspace.describe', error))
   }
 
   /** Apps a write changed, each as it is now. */

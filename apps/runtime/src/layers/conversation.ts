@@ -30,6 +30,8 @@ import { safeErrorType } from '../observability/report.ts'
 import { failedFlow } from '../organize/flows.ts'
 import { BACKGROUND } from '../pi/context.ts'
 import { TranscriptsInstance } from '../retrieval/index.ts'
+import { runNow } from '../runtime/bridge.ts'
+import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 import type { FoundationServices } from './core.ts'
@@ -40,11 +42,14 @@ export const ChatDirectoryLive: Layer.Layer<ChatsInstance, never, Db> = Layer.ef
   Db.useSync((db) => new ChatDirectory(db)),
 )
 
-/** Start step 10: the conversation registry, made once; main is registered here. */
+/**
+ * Start step 10: the conversation registry, made once; main is registered here. Each write tells
+ * `conversations.changed` which conversations it changed, before it returns (the Apps registry and the feed follow).
+ */
 export const ConversationRegistryLive: Layer.Layer<
   ConversationsInstance,
   never,
-  AgentInput | Db | ChatsInstance | MemoriesInstance | ProfilesInstance | CheapModels
+  AgentInput | Db | Changes | ChatsInstance | MemoriesInstance | ProfilesInstance | CheapModels
 > = Layer.effect(
   ConversationsInstance,
   Effect.gen(function* () {
@@ -58,7 +63,11 @@ export const ConversationRegistryLive: Layer.Layer<
       capabilities: yield* ProfilesInstance,
       chats: yield* ChatsInstance,
     }
-    return new ConversationRegistry(yield* Db, input.harness, kit, nowSeconds())
+    // The registry is Promise code that writes synchronously: it tells the change bus inline, on its own stack.
+    const changes = yield* Changes
+    const tell = runNow(yield* Effect.context<Changes>())
+    const changed = (ids: readonly string[]) => tell(changes.publish('conversations.changed', { ids }))
+    return new ConversationRegistry(yield* Db, input.harness, kit, nowSeconds(), changed)
   }),
 )
 

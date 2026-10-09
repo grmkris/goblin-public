@@ -85,25 +85,27 @@ export class ConversationRegistry {
   /** Thread starts in flight by operation id: a repeat waits for the first, then finds its Thread. */
   readonly #starting = new Map<string, Promise<unknown>>()
   readonly #replies = new ReplyLedger()
-  readonly #listeners = new Set<(ids: readonly string[]) => void>()
+  readonly #tell: (ids: readonly string[]) => void
   readonly #stops: ChatStops
 
-  constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, kit: ThreadKit, now: number) {
+  /** `tell` hears, after each write and inside it, the conversations it changed (`conversations.changed`). */
+  constructor(
+    db: DrizzleSqliteDODatabase,
+    harness: PiHarness,
+    kit: ThreadKit,
+    now: number,
+    tell: (ids: readonly string[]) => void,
+  ) {
     this.#db = db
     this.#harness = harness
     this.#kit = kit
+    this.#tell = tell
     this.#stops = new ChatStops(db, harness, kit.chats)
     registerPrimary(db, now)
   }
 
-  /** Calls `listener` after each write with the conversations it changed; returns what unsubscribes it. */
-  onChange(listener: (ids: readonly string[]) => void): () => void {
-    this.#listeners.add(listener)
-    return () => this.#listeners.delete(listener)
-  }
-
   #changed(ids: readonly string[]): void {
-    if (ids.length > 0) for (const listener of this.#listeners) listener(ids)
+    if (ids.length > 0) this.#tell(ids)
   }
 
   #row(id: string): Row | undefined {

@@ -1,3 +1,4 @@
+import type * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import type * as ManagedRuntime from 'effect/ManagedRuntime'
@@ -53,6 +54,16 @@ export function makeBridge(
     }
   return { run: settle(true), local: settle(false), exit }
 }
+
+/**
+ * Runs `effect` to its end at once, on the caller's stack, with `context` (the services of the layer that captured it):
+ * for telling the change bus (`Changes`, whose handlers run inline and never wait) from the synchronous code of a
+ * Promise class, which has no fiber to yield to. Never for work that waits: an asynchronous step is a defect there.
+ */
+export const runNow =
+  <R>(context: Context.Context<R>) =>
+  <A, E>(effect: Effect.Effect<A, E, R>): A =>
+    Effect.runSyncWith(context)(effect)
 
 /** Builds the runtime's layers before handing it out, so a failed start rejects (and the next caller starts again). */
 export async function openRuntime(runtime: Runtime): Promise<Runtime> {
