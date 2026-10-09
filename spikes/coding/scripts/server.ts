@@ -7,7 +7,8 @@ import { GitHub } from './github.ts'
 import { OAuth } from './oauth.ts'
 import { SpikeError } from './overlay.ts'
 import { compilers } from './binaries.ts'
-import { RemoteVerifier } from './remote.ts'
+import { NativeRunner } from './runner/native.ts'
+import { HttpRunner, httpsTransport } from './runner/http.ts'
 
 const ConfigFile = Schema.Struct({
   repo: Schema.String,
@@ -39,10 +40,11 @@ const coding = new Coding({
   root: config.root,
   base: config.base,
   files,
-  compilers: compilers(config.state),
   github: new GitHub(config.repo, config.gh),
   state: path.join(config.state, 'sessions.json'),
-  ...(runner ? { verifier: (overlay) => new RemoteVerifier(runner.endpoint, runner.token, overlay) } : {}),
+  runner: runner
+    ? new HttpRunner(httpsTransport(runner.endpoint, runner.token))
+    : new NativeRunner(files, compilers(config.state)),
 })
 const oauth = new OAuth(config.origin, config.ownerOrigin, config.adminKey, path.join(config.state, 'oauth.json'))
 await oauth.restore()
