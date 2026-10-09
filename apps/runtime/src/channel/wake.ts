@@ -1,12 +1,12 @@
 import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
 import type { Applied } from '../agent-model.ts'
 import { nowSeconds } from '../clock.ts'
-import { toAppError } from '../http/errors.ts'
 import { FlowEvents } from '../observability/flows.ts'
 import { KeyedLock } from '../observability/lock.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
-import { type ChannelPorts, type DeliveredReply, type TelegramChannel, reportChannelFailure } from './channel.ts'
+import { type DeliveredReply, reportChannelFailure } from './channel.ts'
 import { onChannel } from './turns.ts'
 
 type Ports = {
@@ -40,24 +40,21 @@ export class ChannelWakes {
   constructor(ports: Ports) {
     this.#ports = ports
   }
-  async #onChannel<T>(work: (channel: TelegramChannel, ports: ChannelPorts) => Promise<T>): Promise<T | undefined> {
-    return onChannel(this.#ports.harness, this.#ports.applied, this.#ports.run, work)
-  }
   async pull(): Promise<void> {
-    const pull = Effect.tryPromise({
-      try: () => this.#onChannel((channel, ports) => channel.pull(ports, nowSeconds())),
-      catch: toAppError,
-    })
-    await this.#ports
-      .run(KeyedLock.use((locks) => locks.withLock(PULL_LOCK)(Effect.asVoid(pull))))
-      .catch((error: unknown) => reportChannelFailure('pull', error))
+    const { harness, applied, run } = this.#ports
+    const pull = onChannel(harness, applied, run, (channel, ports) => channel.pull(ports, nowSeconds()))
+    await run(KeyedLock.use((locks) => locks.withLock(PULL_LOCK)(Effect.asVoid(pull)))).catch((error: unknown) =>
+      reportChannelFailure('pull', error),
+    )
   }
   async replies(): Promise<void> {
     // A flow that cannot be recorded never holds up, or repeats, a delivery.
     const delivered = (reply: DeliveredReply) =>
       this.#ports.run(deliveryFlow(reply)).catch((error: unknown) => reportChannelFailure('replies', error))
-    const again = await this.#onChannel(async (channel, ports) =>
-      (await channel.deliver(ports, nowSeconds(), delivered)) ? 15 : undefined,
+    const { harness, applied, run } = this.#ports
+    const more = onChannel(harness, applied, run, (channel, ports) => channel.deliver(ports, nowSeconds(), delivered))
+    const again = await run(
+      Effect.map(more, (running) => (Option.getOrElse(running, () => false) ? 15 : undefined)),
     ).catch((error: unknown) => {
       reportChannelFailure('replies', error)
       return 300

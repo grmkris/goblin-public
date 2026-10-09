@@ -11,8 +11,10 @@ import { authoredContent } from '../pi/content.ts'
 import { askedText, cutOff } from '../pi/transcript.ts'
 import type { AppError } from '../http/errors.ts'
 import type { Models } from '../models.ts'
-import { type AgentServices, Channel, Mcp, requireResident } from '../services.ts'
-import { type ChannelPorts, type TelegramChannel, channelCall } from './channel.ts'
+import { McpConnections, Resident } from '../mcp/service.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
+import { type ChannelPorts, channelTool } from './channel.ts'
+import { Channel } from './service.ts'
 
 /** What the ports' programs read; whoever runs them provides these (the bridge provides every agent service). */
 type PortServices = Budget | Chats | ChatOperations | Models
@@ -86,25 +88,22 @@ export const channelPorts = (
   answer: (operationId) => answerOf(harness, operationId, run),
 })
 
-type AgentRun = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<A>
-
 /**
- * Runs `work` on the Telegram channel and its ports while the channel is on and resident authority is current;
- * undefined when the channel is off.
+ * Runs `work` on the Telegram channel and its ports while the channel is on and resident authority is current; none
+ * when the channel is off. The ports' Promise calls run through the bridge, at the port's boundary.
  */
-export async function onChannel<T>(
+export const onChannel = <A, E, R>(
   harness: PiHarness,
   applied: Applied,
-  run: AgentRun,
-  work: (channel: TelegramChannel, ports: ChannelPorts) => Promise<T>,
-): Promise<T | undefined> {
-  const { mcp, channel } = await run(
-    Effect.gen(function* () {
-      yield* requireResident
-      return { mcp: yield* Mcp, channel: yield* Channel }
-    }),
-  )
-  const status = channel.status()
-  if (status === null) return undefined
-  return work(channel, channelPorts(harness, channelCall(mcp.manager, status.serverId), run, applied))
-}
+  run: RunProgram,
+  work: (channel: typeof Channel.Service, ports: ChannelPorts) => Effect.Effect<A, E, R>,
+) =>
+  Effect.gen(function* () {
+    yield* (yield* Resident).require()
+    const channel = yield* Channel
+    const status = yield* channel.status
+    if (status === null) return Option.none<A>()
+    const tool = channelTool(yield* McpConnections, status.serverId)
+    const call: ChannelPorts['call'] = (name, args) => run(tool(name, args))
+    return Option.some(yield* work(channel, channelPorts(harness, call, run, applied)))
+  })

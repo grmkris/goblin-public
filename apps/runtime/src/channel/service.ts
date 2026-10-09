@@ -2,7 +2,7 @@ import type { ChannelStatus } from '@goblin/contracts'
 import * as Context from 'effect/Context'
 import type * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
-import type { ChannelCall, ChannelPorts } from './channel.ts'
+import type { ChannelCall, ChannelPorts, DeliveredReply } from './channel.ts'
 
 /**
  * The Telegram channel (ADR 0009): the one connection the owner chose to carry Telegram, its inbox cursor, the doorbell
@@ -32,7 +32,11 @@ export class Channel extends Context.Service<
     readonly track: (operationId: string, now: number) => Effect.Effect<void>
     /** Reads the inbox from the cursor and puts each new message from the owner into main. */
     readonly pull: (ports: ChannelPorts, now: number) => Effect.Effect<void, AppError>
-    /** Sends every answer that is ready; true while some are still running. */
-    readonly deliver: (ports: ChannelPorts, now: number) => Effect.Effect<boolean, AppError>
+    /** Sends every answer that is ready, telling `delivered` about each; true while some are still running. */
+    readonly deliver: (
+      ports: ChannelPorts,
+      now: number,
+      delivered?: (reply: DeliveredReply) => Promise<void>,
+    ) => Effect.Effect<boolean, AppError>
   }
 >()('goblin/channel/Channel') {}
