@@ -95,4 +95,7 @@ describe("a new Topic's seed", () => {
       },
     ])
   })
+  it('leaves out an empty brief', () => {
+    expect(topicSeedContent({ brief: '', sources: [] })).toEqual([])
+  })
 })

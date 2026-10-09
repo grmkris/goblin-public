@@ -403,7 +403,12 @@ const personaOf = async (url: string, owner: Person, id: number | string) =>
 
 /** Topics: the agent creates, renames and archives; Undo is refused after a later edit and applies once. */
 async function organizingTopics(url: string, owner: Person): Promise<void> {
-  await ask(url, owner, 'call topic_create {"name":"Orchard"}', 'Created topic')
+  await ask(
+    url,
+    owner,
+    'call topic_create {"name":"Orchard","brief":"Fruit trees for the back garden"}',
+    'Created topic',
+  )
   const created = await newest(url, owner)
   expect(created).toMatchObject({
     kind: 'topic.create',
@@ -414,6 +419,16 @@ async function organizingTopics(url: string, owner: Person): Promise<void> {
   })
   const orchard = (await topics(url, owner)).find((topic) => topic.name === 'Orchard')
   expect(orchard).toMatchObject({ createdBy: 'agent', revision: 1 })
+  // The new Conversation starts with its seed: the brief and a frozen excerpt of the owner's request, as quoted history.
+  const seeded = await waitFor(
+    url,
+    owner,
+    `/api/conversations/${orchard?.conversation ?? ''}/snapshot`,
+    'app.topic_seed',
+  )
+  expect(seeded).toContain('Fruit trees for the back garden')
+  expect(seeded).toContain('quoted-history')
+  expect(seeded).toContain('call topic_create')
   await ask(url, owner, 'call topic_rename {"topic":"orchard","name":"Grove"}', 'Renamed topic')
   const list = await receipts(url, owner)
   const rename = list[0]

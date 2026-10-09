@@ -1,4 +1,4 @@
-import type { CreateTopic, TopicView, UpdateTopic } from '@goblin/contracts'
+import type { CreateTopic, TopicSeedData, TopicView, UpdateTopic } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import { type StopRuntime, stopOwner } from '../agent-program.ts'
@@ -13,14 +13,17 @@ export const topicList = Topics.useSync((topics) => topics.list())
 /** Who changed a Topic and from where: the receipt it leaves says so. `chat` is the run that did it, for the agent. */
 export type Provenance = { readonly actor: TopicActor; readonly chat?: string; readonly operationId?: string }
 
-/** A new Topic with its own Conversation, or the one this operation id already made; a new one leaves a receipt. */
-export const createTopic = (input: CreateTopic, provenance: Provenance | TopicActor) => {
+/**
+ * A new Topic with its own Conversation, or the one this operation id already made; a new one leaves a receipt. A
+ * Topic made from a discussion starts with `seed` (its brief and frozen excerpts).
+ */
+export const createTopic = (input: CreateTopic, provenance: Provenance | TopicActor, seed?: TopicSeedData) => {
   const { actor, chat } = typeof provenance === 'string' ? { actor: provenance, chat: undefined } : provenance
   return Effect.gen(function* () {
     const topics = yield* Topics
     const receipts = yield* Receipts
     const now = yield* nowSecondsEffect
-    const made = yield* attempt(() => topics.create(input, actor, now))
+    const made = yield* attempt(() => topics.create(input, actor, now, seed))
     if (made.created)
       yield* attemptSync(() =>
         receipts.record(

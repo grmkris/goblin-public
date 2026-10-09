@@ -69,7 +69,7 @@ const quotable = (text: string): string =>
  */
 export function topicSeedContent(seed: TopicSeedData): TextContent[] {
   return [
-    { type: 'text', text: `[topic brief]\n${seed.brief}` },
+    ...(seed.brief === '' ? [] : [{ type: 'text' as const, text: `[topic brief]\n${seed.brief}` }]),
     ...seed.sources.map((source): TextContent => ({
       type: 'text',
       text: JSON.stringify({

@@ -6,8 +6,10 @@ import { NotFound } from '../http/errors.ts'
 import { defaultAvatar } from '../personas/registry.ts'
 import { createPersona, updatePersona } from '../personas/program.ts'
 import type { StopRuntime } from '../agent-program.ts'
-import { Chats, Personas, Topics, attemptSync, requireResident } from '../services.ts'
+import { Chats, Personas, Topics, attempt, attemptSync, requireResident } from '../services.ts'
 import { createTopic, updateTopic } from '../topics/program.ts'
+import { discussionSeed } from '../topics/seed.ts'
+import { BACKGROUND } from './context.ts'
 import type { RunProgram } from './resident-mcp.ts'
 import { typedTool } from './typed-tool.ts'
 
@@ -83,16 +85,22 @@ const topicTools = (run: RunProgram, runtime: OrganizeRuntime) => [
   typedTool({
     name: 'topic_create',
     description:
-      "Create a Topic with its own Conversation, only on the owner's direct request. A name another active Topic has is refused.",
-    input: Schema.Struct({ name: TopicName }),
+      "Create a Topic with its own Conversation, only on the owner's direct request. A name another active Topic has is refused. `brief` (optional) says in a few sentences what the Topic is for, from this discussion; the new Conversation starts with it and a frozen excerpt of the owner's latest message here.",
+    input: Schema.Struct({ name: TopicName, brief: Schema.optionalKey(Text(4000)) }),
     output: Done,
     replay: 'safe',
-    execute: async ({ name }, api) => {
+    execute: async ({ name, brief }, api) => {
       await run(requireResident)
+      const conversation = await (await runtime().harness.pi()).conversation(api.conversationId, BACKGROUND)
       const topic = await run(
         Effect.gen(function* () {
           const { operationId, ...by } = yield* byAgent(api)
-          return yield* createTopic({ name, operationId }, by)
+          const { chat } = by
+          const seed =
+            chat === undefined || conversation === undefined
+              ? undefined
+              : yield* attempt(() => discussionSeed(conversation, chat, brief))
+          return yield* createTopic({ name, operationId }, by, seed)
         }),
       )
       return topicDone(topic, `Created topic "${topic.name}"`)

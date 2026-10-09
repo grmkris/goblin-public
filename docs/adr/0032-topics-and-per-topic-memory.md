@@ -42,6 +42,10 @@ compact brief and at most eight frozen excerpts. The seed is a passive `app.topi
 Conversation (request id `topic-seed:<operation>`, so a retry writes it once, and it starts no run); its model text is
 the brief, then each excerpt in a block of its own labelled with its source chat and entries and as quoted history,
 never as an instruction (`pi/content.ts` `topicSeedContent`). A Topic created in the owner UI has no seed.
+`topic_create` (still only on the owner's direct request) takes an optional `brief` of at most 4,000 characters; called
+from a chat, it seeds the new Conversation with that brief and one frozen excerpt (`topics/seed.ts`): the calling
+chat's latest user message, as the entry range from it through the chat's newest entry, cut to 1,200 characters. A
+call with neither a brief nor such a message writes no seed.
 
 Threads inherit their Topic: a branch from any chat, an empty thread (`CreateConversation.topic`, under that Topic's
 Conversation) and a subagent (its spawner's). A thread started empty announces its name to its own Topic's
