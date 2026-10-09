@@ -18,7 +18,7 @@ import { useOrganize } from './organize.ts'
 /** What the owner reads when a Topic could not be named so. */
 function refusal(failure: unknown): string {
   if (failure instanceof ApiFailure && failure.status === 409) return 'A topic already has that name.'
-  if (failure instanceof ApiFailure && failure.status === 404) return 'Topics are not on this server yet.'
+  if (failure instanceof ApiFailure && failure.status === 404) return 'There is no such Topic.'
   return failureText(failure)
 }
 

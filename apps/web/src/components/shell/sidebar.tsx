@@ -12,7 +12,6 @@ import { activityState } from '../../lib/workspace-feed.ts'
 import { AppTile } from '../apps/app-tile.tsx'
 import { PersonaAvatar } from '../persona-avatar.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
-import { usePersonasOn } from './personas-on.ts'
 import { TopicDialog } from './topic-dialog.tsx'
 
 /** The sections the owner folded, remembered in this browser (a convenience: without storage they open on reload). */
@@ -225,10 +224,9 @@ function PersonaRow({ persona, current }: { readonly persona: PersonaView; reado
   )
 }
 
-/** The Personas, on a server that has them, then "+ Add persona". */
+/** The Personas, then "+ Add persona". */
 function Personas({ path }: { readonly path: string }) {
   const feed = useWorkspaceFeed()
-  if (!usePersonasOn()) return null
   return (
     <Section id="personas" label="Personas">
       {activePersonas(feed.personas).map((persona) => (
@@ -249,7 +247,7 @@ function Personas({ path }: { readonly path: string }) {
   )
 }
 
-/** "+ Add topic" at the end of the Topics, on a server that has them: it opens the new Topic's dialog. */
+/** "+ Add topic" at the end of the Topics: it opens the new Topic's dialog. */
 function AddTopic() {
   const [open, setOpen] = useState(false)
   return (
@@ -285,7 +283,7 @@ export function Sidebar() {
             <ChannelWithThreads key={topic.id} topic={topic} current={current} recent={recent} />
           ))}
           <Archived topics={archived} current={current.channel} />
-          {feed.topics !== undefined && <AddTopic />}
+          <AddTopic />
         </Section>
         <Personas path={path} />
         {apps.length > 0 && (

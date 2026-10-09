@@ -12,7 +12,7 @@ import {
 } from '@goblin/ui'
 import { ArrowUpIcon, CircleHelpIcon, MessageSquarePlusIcon, SquareIcon, XIcon } from 'lucide-react'
 import { sendsMessage } from '../lib/keys.ts'
-import { activePersonas, personaOption, taggedPersonas } from '../lib/personas.ts'
+import { activePersonas, taggedPersonas } from '../lib/personas.ts'
 import { AttachButton, PendingFiles } from './attachments.tsx'
 import { ComposerPicker, useComposerPicker } from './composer-picker.tsx'
 import { type ComposerProps, useComposer } from './composer-state.ts'
@@ -26,7 +26,7 @@ type Props = ComposerProps & {
   readonly compact?: boolean
   readonly sendLabel?: string
   readonly autoFocus?: boolean
-  /** The owner's Personas, offered as `@` references when the server has them. */
+  /** The owner's Personas: a tagged one's chip shows its avatar, and two or more offer the order they answer in. */
   readonly personas?: readonly PersonaView[] | undefined
 }
 
@@ -215,9 +215,8 @@ export function MessageComposer({
   ...props
 }: Props) {
   const state = useComposer({ ...props, onStop })
-  const offered = useMemo(() => activePersonas(personas), [personas])
-  const extra = useMemo(() => offered.map(personaOption), [offered])
-  const picker = useComposerPicker(props.conversation, state.selected, state.choose, extra)
+  const offered = useMemo(() => activePersonas(personas ?? []), [personas])
+  const picker = useComposerPicker(props.conversation, state.selected, state.choose)
   return (
     <Composer
       ref={state.form}

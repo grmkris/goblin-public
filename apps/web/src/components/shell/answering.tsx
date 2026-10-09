@@ -11,9 +11,9 @@ const byOrder = (a: PersonaInvocationView, b: PersonaInvocationView) => a.order 
  */
 export function Answering({ chat }: { readonly chat: string }) {
   const feed = useWorkspaceFeed()
-  const pending = (feed.invocations ?? []).filter((each) => each.chat === chat && answering(each)).toSorted(byOrder)
+  const pending = feed.invocations.filter((each) => each.chat === chat && answering(each)).toSorted(byOrder)
   if (pending.length === 0) return null
-  const personas = new Map((feed.personas ?? []).map((persona) => [persona.id, persona]))
+  const personas = new Map(feed.personas.map((persona) => [persona.id, persona]))
   return (
     <div className="answering" aria-live="polite">
       {pending.map((invocation) => {

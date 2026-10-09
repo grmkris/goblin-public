@@ -18,7 +18,7 @@ const decodePersona = Schema.decodeUnknownSync(PersonaView)
 function refusal(failure: unknown): string {
   if (failure instanceof ApiFailure && failure.status === 409)
     return 'It changed since you opened it. Reload to see the newest version.'
-  if (failure instanceof ApiFailure && failure.status === 404) return 'Personas are not on this server yet.'
+  if (failure instanceof ApiFailure && failure.status === 404) return 'There is no such Persona.'
   return failureText(failure)
 }
 

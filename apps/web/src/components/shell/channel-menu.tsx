@@ -52,7 +52,7 @@ export function ChannelMenu({
   const feed = useWorkspaceFeed()
   const organize = useOrganize()
   const [renaming, setRenaming] = useState(false)
-  if (topic === undefined || feed.topics === undefined) return <ChannelName name={name} working={working} />
+  if (topic === undefined || feed.topics.length === 0) return <ChannelName name={name} working={working} />
   const change = (patch: Parameters<typeof organize.updateTopic>[1]) =>
     void organize.updateTopic(topic.id, patch).catch((failure: unknown) => onFailure(failureText(failure)))
   const archived = isArchived(topic)

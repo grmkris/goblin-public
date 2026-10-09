@@ -162,17 +162,17 @@ describe('the workspace feed state', () => {
       { type: 'receipt', receipt: receipt('r1', 5) },
       { type: 'receipt', receipt: receipt('r2', 9) },
     ])
-    expect(next.topics?.map(({ id, name }) => [id, name])).toEqual([
+    expect(next.topics.map(({ id, name }) => [id, name])).toEqual([
       [1, 'Personal'],
       [2, 'Japan 2027'],
     ])
-    expect(next.personas?.map(({ name }) => name)).toEqual(['Critic'])
-    expect(next.invocations?.map(({ persona, state }) => [persona, state])).toEqual([
+    expect(next.personas.map(({ name }) => name)).toEqual(['Critic'])
+    expect(next.invocations.map(({ persona, state }) => [persona, state])).toEqual([
       [1, 'running'],
       [2, 'answered'],
     ])
-    expect(next.receipts?.map(({ id }) => id)).toEqual(['r2', 'r1'])
-    expect(start.topics).toBeUndefined()
+    expect(next.receipts.map(({ id }) => id)).toEqual(['r2', 'r1'])
+    expect(start.topics).toEqual([])
   })
 
   it('reads the Topics a snapshot lists, and none from a server without them', () => {

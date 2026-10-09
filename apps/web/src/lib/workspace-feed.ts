@@ -13,21 +13,29 @@ import { Option, Schema } from 'effect'
 import { type PiEventSource, type ReconnectScheduler, browserScheduler, reconnectDelay } from './conversation-stream.ts'
 
 /**
- * The owner's conversations, oldest first, what each one that is not idle is doing, and their kept Apps, oldest first;
- * from a server that has them, the Topics and Personas (absent from one without), the Persona answers still on their
- * way and the latest organizing receipts, newest first.
+ * The owner's conversations, oldest first, what each one that is not idle is doing, their kept Apps, oldest first, the
+ * Topics and Personas, the Persona answers still on their way (and the newest settled ones), and the latest organizing
+ * receipts, newest first.
  */
 export type WorkspaceState = {
   readonly conversations: readonly ConversationView[]
   readonly activity: ReadonlyMap<string, ConversationActivity>
   readonly apps: readonly AppView[]
-  readonly topics?: readonly TopicView[]
-  readonly personas?: readonly PersonaView[]
-  readonly invocations?: readonly PersonaInvocationView[]
-  readonly receipts?: readonly OrganizeReceipt[]
+  readonly topics: readonly TopicView[]
+  readonly personas: readonly PersonaView[]
+  readonly invocations: readonly PersonaInvocationView[]
+  readonly receipts: readonly OrganizeReceipt[]
 }
 
-export const EMPTY_WORKSPACE: WorkspaceState = { conversations: [], activity: new Map(), apps: [] }
+export const EMPTY_WORKSPACE: WorkspaceState = {
+  conversations: [],
+  activity: new Map(),
+  apps: [],
+  topics: [],
+  personas: [],
+  invocations: [],
+  receipts: [],
+}
 
 /** How many settled Persona answers and organizing receipts the state keeps: enough for Activity and Tasks. */
 const KEPT = 50
@@ -38,15 +46,15 @@ const oldestFirst = (a: ConversationView, b: ConversationView) =>
 /** The workspace as the feed's snapshot describes it. */
 export function fromSnapshot(snapshot: WorkspaceSnapshot): WorkspaceState {
   const busy = snapshot.activity.filter(({ state }) => state !== 'idle')
-  const { topics, personas, invocations, receipts } = snapshot
+  const { topics = [], personas = [], invocations = [], receipts = [] } = snapshot
   return {
     conversations: snapshot.conversations.toSorted(oldestFirst),
     activity: new Map(busy.map((activity) => [activity.id, activity])),
     apps: snapshot.apps.toSorted(byId),
-    ...(topics !== undefined && { topics: topics.toSorted(byNumber) }),
-    ...(personas !== undefined && { personas: personas.toSorted(byNumber) }),
-    ...(invocations !== undefined && { invocations }),
-    ...(receipts !== undefined && { receipts: receipts.toSorted(newestReceipt).slice(0, KEPT) }),
+    topics: topics.toSorted(byNumber),
+    personas: personas.toSorted(byNumber),
+    invocations,
+    receipts: receipts.toSorted(newestReceipt).slice(0, KEPT),
   }
 }
 
@@ -76,15 +84,14 @@ const same = <T extends { readonly id: unknown }>(a: T, b: T) => a.id === b.id
 
 /** The Topic, Persona, invocation and receipt changes of a batch, applied in order. */
 function organizing(state: WorkspaceState, change: WorkspaceChange): WorkspaceState {
-  if (change.type === 'topic') return { ...state, topics: upsertBy(state.topics ?? [], change.topic, same, byNumber) }
-  if (change.type === 'persona')
-    return { ...state, personas: upsertBy(state.personas ?? [], change.persona, same, byNumber) }
+  if (change.type === 'topic') return { ...state, topics: upsertBy(state.topics, change.topic, same, byNumber) }
+  if (change.type === 'persona') return { ...state, personas: upsertBy(state.personas, change.persona, same, byNumber) }
   if (change.type === 'invocation') {
-    const next = upsertBy(state.invocations ?? [], change.invocation, sameInvocation, (a, b) => a.order - b.order)
+    const next = upsertBy(state.invocations, change.invocation, sameInvocation, (a, b) => a.order - b.order)
     return { ...state, invocations: keptInvocations(next) }
   }
   if (change.type === 'receipt')
-    return { ...state, receipts: upsertBy(state.receipts ?? [], change.receipt, same, newestReceipt).slice(0, KEPT) }
+    return { ...state, receipts: upsertBy(state.receipts, change.receipt, same, newestReceipt).slice(0, KEPT) }
   return state
 }
 

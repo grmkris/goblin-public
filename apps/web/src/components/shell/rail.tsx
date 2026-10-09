@@ -47,7 +47,7 @@ export function Rail() {
   const path = useRouterState({ select: (router) => router.location.pathname })
   const at = (prefix: string) => path === prefix || path.startsWith(`${prefix}/`)
   const feed = useWorkspaceFeed()
-  const counts = railCounts(feed.conversations, feed.apps, feed.activity, feed.invocations ?? [])
+  const counts = railCounts(feed.conversations, feed.apps, feed.activity, feed.invocations)
   return (
     <nav className="shell-rail" aria-label="Places">
       <Link to="/" className="rail-brand" aria-label="goblin home">

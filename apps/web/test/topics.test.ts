@@ -30,8 +30,8 @@ const TOPICS = [
 
 describe('Topics as channels', () => {
   it('is Personal alone on a server without Topics', () => {
-    expect(topicsOf(undefined)).toEqual([PERSONAL])
-    expect(channels(undefined).active.map(({ name }) => name)).toEqual(['Personal'])
+    expect(topicsOf([])).toEqual([PERSONAL])
+    expect(channels([]).active.map(({ name }) => name)).toEqual(['Personal'])
   })
 
   it('lists Personal first, then by name whatever the case, and the archived apart', () => {
@@ -42,7 +42,7 @@ describe('Topics as channels', () => {
 
   it("finds a channel's Topic", () => {
     expect(topicOfChannel('20', TOPICS)?.name).toBe('Japan')
-    expect(topicOfChannel('1', undefined)).toBe(PERSONAL)
+    expect(topicOfChannel('1', [])).toBe(PERSONAL)
     expect(topicOfChannel('99', TOPICS)).toBeUndefined()
   })
 })
@@ -68,7 +68,7 @@ describe('the channel a chat belongs to', () => {
   it('walks up threads and subagents to their channel, or takes their Topic', () => {
     expect(channelOf('7', views, TOPICS)).toBe('1')
     expect(channelOf('9', views, TOPICS)).toBe('20')
-    expect(channelOf('8', views, undefined)).toBe('20')
+    expect(channelOf('8', views, [])).toBe('20')
   })
 
   it("ends a loop in stored parents at Personal's channel, and an unknown chat there too", () => {
@@ -101,7 +101,7 @@ describe("a Topic's threads in the sidebar", () => {
       views[0] ?? view('1'),
       ...Array.from({ length: 8 }, (_, n) => view(String(30 + n), { lastReplyAt: n + 1 })),
     ]
-    expect(topicThreads('1', many, undefined, new Map(), new Set()).map(({ id }) => id)).toEqual([
+    expect(topicThreads('1', many, [], new Map(), new Set()).map(({ id }) => id)).toEqual([
       '37',
       '36',
       '35',

@@ -1,11 +1,18 @@
 import { useMemo } from 'react'
 import { OrganizeReceipt, TopicView, type UpdateTopic } from '@goblin/contracts'
-import { Option, Schema } from 'effect'
-import { request } from '../../lib/boundary.ts'
+import { Schema } from 'effect'
+import { ApiFailure, failureText, request } from '../../lib/boundary.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 
 const decodeTopic = Schema.decodeUnknownSync(TopicView)
-const decodeReceipt = Schema.decodeUnknownOption(OrganizeReceipt)
+const decodeReceipt = Schema.decodeUnknownSync(OrganizeReceipt)
+
+/** Why an Undo was refused, in words: something changed the target since, or it was already undone. */
+export function undoRefusal(failure: unknown): string {
+  if (failure instanceof ApiFailure && failure.reason === 'touched') return 'Changed since, so it cannot be undone.'
+  if (failure instanceof ApiFailure && failure.reason === 'undone') return 'Already undone.'
+  return failureText(failure)
+}
 
 /**
  * The owner's organizing: create a Topic (the same `operationId` finds the same one), rename, archive, restore or
@@ -27,8 +34,8 @@ export function useOrganize() {
         return topic
       },
       undo: async (receipt: string): Promise<void> => {
-        const answer = decodeReceipt(await request(`/api/organize/${receipt}/undo`, { body: {} }))
-        if (Option.isSome(answer)) apply([{ type: 'receipt', receipt: answer.value }])
+        const undone = decodeReceipt(await request(`/api/organize/${receipt}/undo`, { body: {} }))
+        apply([{ type: 'receipt', receipt: undone }])
       },
     }),
     [apply],

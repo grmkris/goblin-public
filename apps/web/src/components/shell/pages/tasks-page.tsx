@@ -66,9 +66,9 @@ function DelegateRow({ id }: { readonly id: string }) {
 /** The Personas answering, then those that answered: each with its mark, what it is doing, and the chat it is in. */
 function PersonaAnswers({ now }: { readonly now: number }) {
   const feed = useWorkspaceFeed()
-  const answers = personaTasks(feed.invocations ?? [])
+  const answers = personaTasks(feed.invocations)
   if (answers.length === 0) return null
-  const personas = new Map((feed.personas ?? []).map((persona) => [persona.id, persona]))
+  const personas = new Map(feed.personas.map((persona) => [persona.id, persona]))
   return (
     <PageSection id="personas" title="Personas">
       <ul className="list-rows">
@@ -126,7 +126,7 @@ export function TasksPage() {
   const work = delegates(feed.conversations, feed.activity)
   const routines = useRoutines()
   const listed = [...work.active, ...work.finished]
-  if (listed.length + (feed.invocations ?? []).length + routines.length === 0)
+  if (listed.length + feed.invocations.length + routines.length === 0)
     return <p className="page-empty">No delegated work.</p>
   return (
     <div className="page-stack">

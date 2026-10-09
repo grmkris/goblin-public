@@ -10,13 +10,12 @@ import {
   PowerIcon,
   WandSparklesIcon,
 } from 'lucide-react'
-import { failureText } from '../../../lib/boundary.ts'
 import { type NeedsYou, needsYou, unreadChats } from '../../../lib/rail.ts'
 import { relativeTime, threadTitle } from '../../../lib/threads.ts'
 import { PageSection } from '../../page-section.tsx'
 import { useMinute } from '../../use-now.ts'
 import { useWorkspaceFeed } from '../../workspace-feed.tsx'
-import { useOrganize } from '../organize.ts'
+import { undoRefusal, useOrganize } from '../organize.ts'
 import { ChatRow, RowContents } from './chat-link.tsx'
 
 const ASKS: Readonly<Record<Attention['kind'], { readonly icon: typeof KeyRoundIcon; readonly label: string }>> = {
@@ -82,7 +81,7 @@ function ReceiptRow({ receipt, now }: { readonly receipt: OrganizeReceipt; reado
                   setError('')
                   organize
                     .undo(receipt.id)
-                    .catch((failure: unknown) => setError(failureText(failure)))
+                    .catch((failure: unknown) => setError(undoRefusal(failure)))
                     .finally(() => setPending(false))
                 }}
               >
@@ -104,7 +103,7 @@ export function ActivityPage() {
   const feed = useWorkspaceFeed()
   const now = useMinute()
   const needs = needsYou(feed.conversations, feed.apps)
-  const receipts = feed.receipts ?? []
+  const { receipts } = feed
   const unread = unreadChats(feed.conversations)
   if (needs.length + receipts.length + unread.length === 0) return <p className="page-empty">Nothing needs you.</p>
   return (

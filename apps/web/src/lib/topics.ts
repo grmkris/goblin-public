@@ -19,9 +19,9 @@ export const PERSONAL: TopicView = {
   createdAt: 0,
 }
 
-/** The owner's Topics as the server lists them, or Personal alone from a server that lists none. */
-export const topicsOf = (topics: readonly TopicView[] | undefined): readonly TopicView[] =>
-  topics === undefined || topics.length === 0 ? [PERSONAL] : topics
+/** The owner's Topics as the feed lists them, or Personal alone before it has. */
+export const topicsOf = (topics: readonly TopicView[]): readonly TopicView[] =>
+  topics.length === 0 ? [PERSONAL] : topics
 
 export const isArchived = (topic: TopicView): boolean => topic.archivedAt !== undefined
 
@@ -31,7 +31,7 @@ const byName = (a: TopicView, b: TopicView) =>
   a.id - b.id
 
 /** The sidebar's channels: the active Topics, Personal first and then by name, and apart from them the archived ones. */
-export function channels(topics: readonly TopicView[] | undefined): {
+export function channels(topics: readonly TopicView[]): {
   readonly active: readonly TopicView[]
   readonly archived: readonly TopicView[]
 } {
@@ -46,11 +46,7 @@ export const isChannel = (view: ConversationView): boolean => view.conversation 
  * The channel a chat belongs to: itself when it is one, else its Topic's Conversation, else the nearest channel above
  * it, else Personal's. Stored parents that loop end the walk instead of looping.
  */
-export function channelOf(
-  id: string,
-  views: readonly ConversationView[],
-  topics: readonly TopicView[] | undefined,
-): string {
+export function channelOf(id: string, views: readonly ConversationView[], topics: readonly TopicView[]): string {
   const byId = new Map(views.map((view) => [view.id, view]))
   const seen = new Set<string>()
   for (let view = byId.get(id); view !== undefined && !seen.has(view.id); view = byId.get(view.parent ?? '')) {
@@ -63,7 +59,7 @@ export function channelOf(
 }
 
 /** The Topic whose Conversation `channel` is; Personal for Main on a server without Topics. */
-export const topicOfChannel = (channel: string, topics: readonly TopicView[] | undefined): TopicView | undefined =>
+export const topicOfChannel = (channel: string, topics: readonly TopicView[]): TopicView | undefined =>
   topicsOf(topics).find((topic) => topic.conversation === channel)
 
 /** How many of a Topic's threads the sidebar lists under it. */
@@ -77,7 +73,7 @@ const latest = (view: ConversationView) => view.lastReplyAt ?? view.createdAt
 export function topicThreads(
   channel: string,
   views: readonly ConversationView[],
-  topics: readonly TopicView[] | undefined,
+  topics: readonly TopicView[],
   activity: ReadonlyMap<string, ConversationActivity>,
   recent: ReadonlySet<string>,
 ): ConversationView[] {

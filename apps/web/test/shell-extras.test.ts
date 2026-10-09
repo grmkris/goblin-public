@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { EphemeralMessage, PersonaView, SourcesDetails, SourceUse } from '@goblin/contracts'
 import { Schema } from 'effect'
 import { ephemeralPlaces } from '../src/lib/ephemeral.ts'
-import { activePersonas, personaOption, taggedPersonas } from '../src/lib/personas.ts'
+import { activePersonas, taggedPersonas } from '../src/lib/personas.ts'
 import { sourcePlaces, sourceTopics, sourcesOf } from '../src/lib/sources.ts'
 
 // Every fixture decodes with the contract schema the runtime answers with.
@@ -95,19 +95,18 @@ describe('owner-only messages', () => {
 })
 
 describe('Personas in the composer', () => {
-  it('offers the ones not archived, by name, with their role under them', () => {
+  it('shows the ones not archived, by name', () => {
     const offered = activePersonas([persona(2, 'critic'), persona(1, 'Coach'), persona(3, 'Old', 5)])
     expect(offered.map(({ name }) => name)).toEqual(['Coach', 'critic'])
-    expect(personaOption(offered[0] ?? persona(9, 'X'))).toEqual({
-      selection: { kind: 'persona', personaId: 1 },
-      label: 'Coach',
-      description: 'Coach role',
-    })
-    expect(activePersonas(undefined)).toEqual([])
+    expect(activePersonas([])).toEqual([])
   })
 
   it('counts the Personas a draft tags, for the together-or-in-turn choice', () => {
-    const tagged = [personaOption(persona(1, 'A')), personaOption(persona(2, 'B'))]
+    const tagged = [1, 2].map((personaId) => ({
+      selection: { kind: 'persona' as const, personaId },
+      label: `P${String(personaId)}`,
+      description: '',
+    }))
     const connection = {
       selection: { kind: 'connection' as const, serverId: 'myplan' },
       label: 'myplan',
