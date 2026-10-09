@@ -4,13 +4,8 @@ import * as Layer from 'effect/Layer'
 import { ChatOperations } from '../chats/service.ts'
 import { Memories, type MemoryLine } from '../memory/service.ts'
 import type { SkillRequestOptions } from '../mcp/types.ts'
-import {
-  type AutoPlace,
-  type IndexedInput,
-  Retrieval,
-  type SearchInput,
-  type SearchPlace,
-} from '../retrieval/service.ts'
+import { KeyedLock } from '../observability/lock.ts'
+import { Retrieval, retrievalOver } from '../retrieval/service.ts'
 import {
   Chats,
   Learner as LegacyLearner,
@@ -73,43 +68,11 @@ const MemoriesAdapter = Layer.effect(
   }),
 )
 
+/** Retrieval over the started ChatRetrieval and its index, every catch-up under the agent's KeyedLock. */
 const RetrievalAdapter = Layer.effect(
   Retrieval,
   Effect.gen(function* () {
-    const retrieval = yield* LegacyRetrieval
-    return Retrieval.of({
-      search: Effect.fn('Retrieval.search')(function* (input: SearchInput, where: SearchPlace) {
-        return yield* attempt(() => retrieval.search(input, where))
-      }),
-      automatic: Effect.fn('Retrieval.automatic')(function* (
-        where: AutoPlace,
-        input: IndexedInput,
-        signal?: AbortSignal,
-      ) {
-        return yield* attempt(() => retrieval.automatic(where, input, signal))
-      }),
-      catchUp: Effect.fn('Retrieval.catchUp')(function* (session: string) {
-        return yield* attempt(() => retrieval.index.catchUp(session))
-      }),
-      chatFor: Effect.fn('Retrieval.chatFor')(function* (session: string) {
-        return yield* Effect.sync(() => retrieval.index.chatFor(session))
-      }),
-      topicNamed: Effect.fn('Retrieval.topicNamed')(function* (name: string) {
-        return yield* Effect.sync(() => retrieval.index.topicNamed(name))
-      }),
-      latestInput: Effect.fn('Retrieval.latestInput')(function* (session: string) {
-        return yield* attempt(() => retrieval.index.latestInput(session))
-      }),
-      recorded: Effect.fn('Retrieval.recorded')(function* (id: string) {
-        return yield* Effect.sync(() => retrieval.index.recorded(id))
-      }),
-      uses: Effect.fn('Retrieval.uses')(function* (chat: string) {
-        return yield* Effect.sync(() => retrieval.index.uses(chat))
-      }),
-      reassign: Effect.fn('Retrieval.reassign')(function* (session: string, fromEntry: number, chat: string) {
-        yield* Effect.sync(() => retrieval.index.reassign(session, fromEntry, chat))
-      }),
-    })
+    return retrievalOver(yield* LegacyRetrieval, yield* KeyedLock)
   }),
 )
 

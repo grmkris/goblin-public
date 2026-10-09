@@ -1,11 +1,14 @@
 import type { Message } from '@earendil-works/pi-ai'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { SourcesDetails } from '@goblin/contracts'
+import * as Effect from 'effect/Effect'
+import * as ManagedRuntime from 'effect/ManagedRuntime'
 import * as Schema from 'effect/Schema'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it } from 'vitest'
+import { KeyedLock } from '../src/observability/lock.ts'
 import { TranscriptIndex, type TranscriptSource } from '../src/retrieval/index.ts'
 import { AUTO_THRESHOLD, chooseSources, gateFor, parseSelection } from '../src/retrieval/auto.ts'
-import { ChatRetrieval, autoUseId } from '../src/retrieval/service.ts'
+import { ChatRetrieval, autoUseId, catchUpChats, catchUpSession, retrievalOver } from '../src/retrieval/service.ts'
 import { EXCERPT_CHARS, excerptOf, ftsQuery, mergeRanges, sourcesText } from '../src/retrieval/text.ts'
 import { conversationId, entryId } from '../src/pi/context.ts'
 import { chatDatabase } from './chats-sqlite.ts'
@@ -63,6 +66,18 @@ afterEach(() => {
   for (const close of open.splice(0)) close()
 })
 
+/** The agent's per-key lock, as the Retrieval service takes it: catch-ups of one session run one at a time. */
+const locks = ManagedRuntime.make(KeyedLock.layer)
+const lock = await locks.runPromise(KeyedLock.useSync((service) => service))
+afterAll(() => locks.dispose())
+/** One session's catch-up under its turn of the lock. */
+const indexOne = (index: TranscriptIndex, session: string, maxEntries?: number) =>
+  Effect.runPromise(catchUpSession(index, lock, session, maxEntries))
+/** The bounded catch-up of every chat a search makes first. */
+const indexAll = (index: TranscriptIndex) => Effect.runPromise(catchUpChats(index, lock))
+/** The Retrieval service over `retrieval`, its calls run to their value. */
+const serviceOf = (retrieval: ChatRetrieval) => retrievalOver(retrieval, lock)
+
 /** Topics: Personal (1), Garden (2), Old (3, archived), Quiet (4, opted out of search); their chats and a persona fork. */
 function fixture() {
   const database = chatDatabase()
@@ -116,8 +131,8 @@ describe('transcript index', () => {
   it('indexes only the entries each session owns, never a persona fork, and catches up from where it stopped', async () => {
     const { sqlite, index, pi } = fixture()
     // The thread first: its inherited Garden entries must still be left to Garden's own session.
-    expect(await index.catchUp('13')).toBe('done')
-    await index.catchUpAll()
+    expect(await indexOne(index, '13')).toMatchObject({ more: false })
+    await indexAll(index)
     expect(excerpts(sqlite).map((row) => [row.entry, row.chat])).toEqual([
       [2, '1'],
       [3, '1'],
@@ -131,7 +146,7 @@ describe('transcript index', () => {
       [51, '50'],
     ])
     const reads = pi.reads
-    await index.catchUpAll()
+    await indexAll(index)
     expect(pi.reads).toBe(reads)
   })
 
@@ -143,8 +158,8 @@ describe('transcript index', () => {
     )
     const pi = piSource({ '1': [entry(2, 1, 'pi.user', 'first'), entry(1_400, 1, 'pi.user', 'far later')] })
     const index = new TranscriptIndex(database.db, pi, () => 1)
-    expect(await index.catchUp('1', 1)).toBe('more')
-    expect(await index.catchUp('1')).toBe('done')
+    expect(await indexOne(index, '1', 1)).toMatchObject({ more: true })
+    expect(await indexOne(index, '1')).toMatchObject({ more: false })
     expect(excerpts(database.sqlite).map((row) => row.entry)).toEqual([2, 1_400])
   })
 
@@ -170,16 +185,16 @@ describe('transcript index', () => {
       },
     }
     const index = new TranscriptIndex(database.db, source, () => 1)
-    const [first, second] = await Promise.allSettled([index.catchUp('1'), index.catchUp('1')])
+    const [first, second] = await Promise.allSettled([indexOne(index, '1'), indexOne(index, '1')])
     expect(first.status).toBe('rejected')
-    expect(second).toEqual({ status: 'fulfilled', value: 'done' })
+    expect(second).toEqual({ status: 'fulfilled', value: { more: false, read: 2 } })
     expect(overlapped).toBe(false)
     expect(excerpts(database.sqlite).map((row) => row.entry)).toEqual([2, 3])
   })
 
   it('scrubs credential-shaped values before they are stored or shown', async () => {
     const { sqlite, index } = fixture()
-    await index.catchUpAll()
+    await indexAll(index)
     const [stored] = excerpts(sqlite).filter((row) => row.entry === 51)
     expect(stored?.text).not.toContain('hunter2')
     expect(stored?.text).not.toContain('abc.def.ghi')
@@ -190,7 +205,7 @@ describe('transcript index', () => {
 
   it('searches active Topics that take part, unless a Topic is named, and never the asking chat', async () => {
     const { index } = fixture()
-    await index.catchUpAll()
+    await indexAll(index)
     const chats = (topic?: number, exclude?: string) =>
       index
         .search('tomatoes', {
@@ -212,7 +227,7 @@ describe('transcript index', () => {
 
   it('returns sources in the frozen contract shape, grouped by chat and bounded', async () => {
     const { index } = fixture()
-    await index.catchUpAll()
+    await indexAll(index)
     const sources = index.search('raised beds tomatoes "OR" NEAR(*)', { limit: 5 })
     const details = Schema.decodeUnknownSync(SourcesDetails)({ kind: 'sources', mode: 'tool', sources })
     const garden = details.sources.find((found) => found.chat === '10')
@@ -225,7 +240,7 @@ describe('transcript index', () => {
 
   it('records a use once, so a replay returns the first frozen sources, and lists a chat newest first', async () => {
     const { index } = fixture()
-    await index.catchUpAll()
+    await indexAll(index)
     const sources = index.search('tomatoes', { limit: 1 })
     const first = index.record({ id: 'tool:1:a', chat: '1', session: '1', mode: 'tool', sources, retrievedAt: 5 })
     const again = index.record({ id: 'tool:1:a', chat: '1', session: '1', mode: 'tool', sources: [], retrievedAt: 6 })
@@ -240,7 +255,7 @@ describe('transcript index', () => {
 
   it('reassigns a moved stretch of a session to its new chat', async () => {
     const { sqlite, index } = fixture()
-    await index.catchUpAll()
+    await indexAll(index)
     index.reassign('13', 15, '50')
     expect(
       excerpts(sqlite)
@@ -326,10 +341,9 @@ describe('automatic retrieval', () => {
   it('injects what the rerank selects and records it under the input it served', async () => {
     const { index } = fixture()
     const model = scripted('{"ids":[1],"none":false}')
-    const retrieval = new ChatRetrieval(index, model, () => 9)
-    const use = await retrieval.automatic(
-      { session: '1', chat: '1' },
-      { entry: 2, text: 'What about the tomatoes in raised beds?' },
+    const retrieval = serviceOf(new ChatRetrieval(index, model, () => 9))
+    const use = await Effect.runPromise(
+      retrieval.automatic({ session: '1', chat: '1' }, { entry: 2, text: 'What about the tomatoes in raised beds?' }),
     )
     expect(use).toMatchObject({ id: autoUseId('1', 2), mode: 'auto', inputEntry: 2, chat: '1' })
     expect(use?.sources).toHaveLength(1)
@@ -339,16 +353,18 @@ describe('automatic retrieval', () => {
   it('abstains when the rerank says none, answers badly or fails, and records nothing', async () => {
     for (const answer of ['{"ids":[],"none":true}', 'I think 1', new Error('provider down')]) {
       const { index } = fixture()
-      const retrieval = new ChatRetrieval(index, scripted(answer), () => 9)
+      const retrieval = serviceOf(new ChatRetrieval(index, scripted(answer), () => 9))
       expect(
-        await retrieval.automatic({ session: '1', chat: '1' }, { entry: 2, text: 'tomatoes raised beds' }),
+        await Effect.runPromise(
+          retrieval.automatic({ session: '1', chat: '1' }, { entry: 2, text: 'tomatoes raised beds' }),
+        ),
       ).toBeUndefined()
       expect(index.uses('1')).toEqual([])
     }
   })
   it('asks no model when nothing passes the bm25 gate', async () => {
     const { index } = fixture()
-    await index.catchUpAll()
+    await indexAll(index)
     const model = scripted('{"ids":[1],"none":false}')
     const weak = index.search('tomatoes', { limit: 8 }).map((found) => ({ ...found, score: 0 }))
     expect(await chooseSources('tomatoes', weak, -1, model)).toEqual([])
@@ -359,12 +375,14 @@ describe('automatic retrieval', () => {
 describe('search_chats', () => {
   it('searches with a frozen result per tool call', async () => {
     const { index } = fixture()
-    const retrieval = new ChatRetrieval(index, scripted('{"ids":[],"none":true}'), () => 9)
-    const first = await retrieval.search({ query: 'tomatoes' }, { session: '1', chat: '1', useId: 'tool:1:c1' })
+    const retrieval = serviceOf(new ChatRetrieval(index, scripted('{"ids":[],"none":true}'), () => 9))
+    const search = (query: string, useId: string, topic?: number) =>
+      Effect.runPromise(
+        retrieval.search({ query, ...(topic === undefined ? {} : { topic }) }, { session: '1', chat: '1', useId }),
+      )
+    const first = await search('tomatoes', 'tool:1:c1')
     expect(first.map((found) => found.chat).toSorted()).toEqual(['10', '13', '50'])
-    expect(await retrieval.search({ query: 'japan' }, { session: '1', chat: '1', useId: 'tool:1:c1' })).toEqual(first)
-    expect(
-      await retrieval.search({ query: 'tomatoes', topic: 3 }, { session: '1', chat: '1', useId: 'tool:1:c2' }),
-    ).toMatchObject([{ chat: '20', topicName: 'Old' }])
+    expect(await search('japan', 'tool:1:c1')).toEqual(first)
+    expect(await search('tomatoes', 'tool:1:c2', 3)).toMatchObject([{ chat: '20', topicName: 'Old' }])
   })
 })

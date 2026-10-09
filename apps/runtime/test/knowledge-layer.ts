@@ -3,6 +3,7 @@ import { ChatOperations } from '../src/chats/service.ts'
 import type { ChatDirectory } from '../src/chats/directory.ts'
 import { KnowledgeLive } from '../src/layers/knowledge.ts'
 import type { ChatMemories } from '../src/memory/memory.ts'
+import { KeyedLock } from '../src/observability/lock.ts'
 import type { ChatRetrieval } from '../src/retrieval/service.ts'
 import { Chats, Learner, Memories, Retrieval, Skills } from '../src/services.ts'
 import type { SkillLearner } from '../src/skills/learner.ts'
@@ -19,7 +20,10 @@ type Given = {
   readonly operations?: Layer.Layer<ChatOperations>
 }
 
-/** Lane K's services (layers/knowledge.ts: Memories, Retrieval, Skills, Learner) over the instances `given`. */
+/**
+ * Lane K's services (layers/knowledge.ts: Memories, Retrieval, Skills, Learner) over the instances `given`, with a
+ * KeyedLock of their own.
+ */
 export const knowledgeOver = (given: Given) => {
   // SAFETY: an adapter only holds its instance until one of its methods runs; a test reaches only the ones it gave.
   const unread = undefined as never
@@ -32,6 +36,7 @@ export const knowledgeOver = (given: Given) => {
         Layer.succeed(Skills, given.skills ?? unread),
         Layer.succeed(Learner, given.learner ?? unread),
         given.operations ?? Layer.mock(ChatOperations)({}),
+        KeyedLock.layer,
       ),
     ),
   )

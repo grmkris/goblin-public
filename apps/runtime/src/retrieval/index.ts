@@ -74,13 +74,14 @@ const encodeSources = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Retri
  * The owner's transcripts as a full-text index (ADR 0035): an FTS5 (unicode61, bm25) external-content table over one
  * bounded, redacted excerpt per indexed entry. Each Pi session is read through Pi's API in id windows from where it
  * stopped, and only entries the session owns are kept, so fork-inherited history is indexed once, under its own chat.
- * Persona forks are never indexed. Writes are short synchronous transactions; nothing is held across Pi reads.
+ * Persona forks are never indexed. Writes are short synchronous transactions; nothing is held across Pi reads. A
+ * session's catch-ups must not overlap: the Retrieval service runs each under that session's turn of the agent's
+ * KeyedLock (`retrieval/service.ts`).
  */
 export class TranscriptIndex<RunResult = unknown> {
   readonly #db: SQLiteAsyncDatabase<'sync', RunResult>
   readonly #source: TranscriptSource
   readonly #now: () => number
-  readonly #locks = new Map<string, Promise<unknown>>()
 
   constructor(db: SQLiteAsyncDatabase<'sync', RunResult>, source: TranscriptSource, now: () => number) {
     this.#db = db
@@ -88,28 +89,12 @@ export class TranscriptIndex<RunResult = unknown> {
     this.#now = now
   }
 
-  /** Runs `work` after any catch-up of `session` in progress, so two never read the same windows at once. */
-  async #serial<A>(session: string, work: () => Promise<A>): Promise<A> {
-    const run = (this.#locks.get(session) ?? Promise.resolve()).then(work, work)
-    const settled: Promise<void> = run
-      // expected: the next catch-up only waits for this one to end; its own caller gets the failure through `run`
-      .catch(() => undefined)
-      .then(() => {
-        if (this.#locks.get(session) === settled) this.#locks.delete(session)
-      })
-    this.#locks.set(session, settled)
-    return run
-  }
-
   /**
    * Indexes the session's own entries after its progress mark, reading at most about `maxEntries` of them: `more` when
-   * it stopped before the session's newest entry. An unregistered session or a persona fork indexes nothing.
+   * it stopped before the session's newest entry, and how many it read. An unregistered session or a persona fork
+   * indexes nothing. Never two at once for one session (see the class).
    */
-  async catchUp(session: string, maxEntries = 400): Promise<'more' | 'done'> {
-    return (await this.#serial(session, async () => this.#catchUp(session, maxEntries))).more ? 'more' : 'done'
-  }
-
-  async #catchUp(session: string, maxEntries: number): Promise<{ readonly more: boolean; readonly read: number }> {
+  async catchUp(session: string, maxEntries: number): Promise<{ readonly more: boolean; readonly read: number }> {
     const chat = this.chatFor(session)
     if (chat === undefined || chat.persona) return { more: false, read: 0 }
     const newest = await this.#source.newest(session)
@@ -159,16 +144,11 @@ export class TranscriptIndex<RunResult = unknown> {
   }
 
   /**
-   * A bounded catch-up of every chat that may have new entries (open ones, and closed ones not read since they closed),
-   * before a search: about `budget` entries in all. The rest follows on later searches and responses.
+   * The sessions a catch-up of every chat visits, stalest first: open chats, and closed ones not read since they
+   * closed.
    */
-  async catchUpAll(budget = 400): Promise<void> {
-    let left = budget
-    for (const session of chatsToIndex(this.#db)) {
-      if (left <= 0) return
-      const { read } = await this.#serial(session, async () => this.#catchUp(session, left))
-      left -= Math.max(1, read)
-    }
+  toIndex(): readonly string[] {
+    return chatsToIndex(this.#db)
   }
 
   #through(session: string): number | undefined {
