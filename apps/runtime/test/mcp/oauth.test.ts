@@ -62,9 +62,13 @@ class FixtureAuthorizationServer {
     return Response.json({ error: 'invalid_grant' }, { status: 400 })
   }
 
+  /** Paths no request reaches: a fetch to one fails as a network failure does. */
+  readonly unreachable = new Set<string>()
+
   readonly fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const request = new Request(input, init)
     const { pathname } = new URL(request.url)
+    if (this.unreachable.has(pathname)) throw new TypeError('fetch failed')
     if (pathname.startsWith('/.well-known/oauth-protected-resource'))
       return Response.json({ resource: `${BASE}/mcp`, authorization_servers: [BASE] })
     if (pathname === '/.well-known/oauth-authorization-server')
@@ -168,6 +172,33 @@ describe('outbound OAuth connect and refresh (unit, fixture authorization server
     } finally {
       await host.manager.closeAll()
     }
+  })
+
+  it('keeps the server connected when a refresh cannot reach the token endpoint, and refreshes once it can', async () => {
+    const { host, authorizationServer, connect } = setup()
+    try {
+      await connect()
+      await host.setToolGrant('fixture', 'read', true)
+      authorizationServer.access = 'revoked-server-side'
+      authorizationServer.unreachable.add('/token')
+      await expect(host.manager.callTool('fixture', 'read')).rejects.toMatchObject({
+        _tag: 'UpstreamMcp',
+        reason: 'transport',
+      })
+      expect(host.servers()[0]?.status).toBe('connected')
+      authorizationServer.unreachable.clear()
+      expect((await host.manager.callTool('fixture', 'read')).isError ?? false).toBe(false)
+      expect(authorizationServer.refreshCount).toBe(1)
+    } finally {
+      await host.manager.closeAll()
+    }
+  })
+
+  it('starts no sign-in for a server it cannot reach', async () => {
+    const { host, authorizationServer } = setup()
+    authorizationServer.unreachable.add('/mcp')
+    await expect(host.beginConnect('fixture')).rejects.toMatchObject({ _tag: 'UpstreamMcp', reason: 'transport' })
+    expect(host.servers()[0]?.status).not.toBe('connected')
   })
 
   it('accepts each authorization state once', async () => {

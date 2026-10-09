@@ -1,17 +1,27 @@
 import type { StepReport } from './log.ts'
-import { auth, type AuthProvider, discoverOAuthServerInfo, type Tool } from '@modelcontextprotocol/client'
+import {
+  auth,
+  type AuthProvider,
+  discoverOAuthServerInfo,
+  type FetchLike,
+  type Tool,
+} from '@modelcontextprotocol/client'
 import type { CatalogEntry, RegistryView, ServerView, ToolView } from '@goblin/contracts'
 import { nowSeconds } from '../clock.ts'
-import { Forbidden, Internal, InvalidInput, NeedsAuthorization, NotFound } from '../http/errors.ts'
+import { Forbidden, Internal, InvalidInput, NeedsAuthorization, NotFound, UpstreamMcp } from '../http/errors.ts'
 import { McpConnectionManager, offersEvents, offersSkills, toolAppResource, toolOffered } from './connection.ts'
 import type { Credentials } from './credentials.ts'
 import type { Grant, Grants } from './grants.ts'
 import { addedServerId, serverClaims, userEndpoint } from './endpoint.ts'
+import { isOAuthRejection, mapMcpError } from './errors.ts'
 import { StoredOAuthProvider } from './oauth-provider.ts'
 import { type AddedRegistries, MAX_ADDED_REGISTRIES } from './registries.ts'
 import { DEFAULT_REGISTRIES, RegistryCatalog } from './registry.ts'
 import { type AddedServers, MAX_ADDED_SERVERS, type ServerSource } from './servers.ts'
 import type { McpServerConfig } from './types.ts'
+
+/** The failures that mean a server was not reached at all, rather than that it refused this agent. */
+const UNREACHABLE: ReadonlySet<UpstreamMcp['reason']> = new Set(['transport', 'timeout', 'cancelled'])
 
 /** Refresh this many seconds before the access token's recorded expiry. */
 const REFRESH_SKEW_SECONDS = 60
@@ -140,11 +150,28 @@ export class McpHost {
     const refresh = (async () => {
       const current = await this.#credentials.tokens(serverId)
       if (current !== undefined && current.access_token !== stale) return
-      const provider = new StoredOAuthProvider(this.#credentials, serverId, this.#appUrl, { kind: 'background' })
+      // Whether every request of this refresh got an answer the server meant (no network failure, no 5xx).
+      let reached = true
+      const fetchFn: FetchLike = async (input, init) => {
+        try {
+          const response = await this.#fetch(input, init)
+          if (response.status >= 500) reached = false
+          return response
+        } catch (error) {
+          reached = false
+          throw error
+        }
+      }
+      const provider = new StoredOAuthProvider(this.#credentials, serverId, this.#appUrl, {
+        kind: 'background',
+        reached: () => reached,
+      })
       let result: 'AUTHORIZED' | 'REDIRECT'
       try {
-        result = await auth(provider, { serverUrl: server.endpoint, fetchFn: this.#fetch })
-      } catch {
+        result = await auth(provider, { serverUrl: server.endpoint, fetchFn })
+      } catch (error) {
+        // A refresh the authorization server could not be reached for keeps the credentials: the next call tries again.
+        if (!isOAuthRejection(error)) throw mapMcpError(error, serverId)
         this.#credentials.markNeedsAuth(serverId, nowSeconds())
         throw new NeedsAuthorization({ serverId })
       }
@@ -266,16 +293,18 @@ export class McpHost {
   /**
    * Many servers need no sign-in (public documentation servers, for example), some only offer it. Try the server with
    * an empty token, which the transport leaves out: if it answers discovery, it is connected. If it refuses, the
-   * OAuth flow runs. A server that later demands sign-in is marked needs_auth by the refused refresh, as any other.
+   * OAuth flow runs. A server that cannot be reached is that failure: no sign-in is started for it. A server that
+   * later demands sign-in is marked needs_auth by the refused refresh, as any other.
    */
   async #connectsOpenly(server: McpServerConfig): Promise<boolean> {
     await this.#credentials.saveTokens(server.serverId, OPEN_ACCESS, nowSeconds())
     try {
       await this.manager.connect(server.serverId)
       return true
-    } catch {
+    } catch (error) {
       await this.manager.close(server.serverId)
       this.#credentials.invalidate(server.serverId, 'tokens', nowSeconds())
+      if (error instanceof UpstreamMcp && UNREACHABLE.has(error.reason)) throw error
       return false
     }
   }
