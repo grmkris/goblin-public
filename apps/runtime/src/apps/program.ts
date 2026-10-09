@@ -9,11 +9,11 @@ import type {
 } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
-import { appDetail, appSummaries, changeApp } from '../agent-apps/manage.ts'
-import { nowMillis } from '../clock.ts'
+import { AppEngine } from '../agent-apps/service.ts'
 import { InvalidInput, NotFound } from '../http/errors.ts'
 import { toolAppResource } from '../mcp/connection.ts'
-import { AppEngine, Apps, Conversations, Home, Mcp, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
+import { Conversations, Home, Mcp, attempt, attemptSync } from '../services.ts'
+import { Apps } from './service.ts'
 
 /**
  * Keep the App of a call in one of the owner's conversations, read from its transcript: a call made before Apps were
@@ -23,63 +23,53 @@ export const createOwnerApp = ({ conversation, callId }: CreateApp) =>
   Effect.gen(function* () {
     const session = yield* Conversations.use((conversations) => attemptSync(() => conversations.require(conversation)))
     const apps = yield* Apps
-    const call = yield* attempt(() => apps.call(session, callId))
+    const call = yield* apps.call(session, callId)
     const mcp = yield* Mcp
     const snapshot = yield* attempt(() => mcp.manager.connect(call.serverId))
     const tool = snapshot.tools.find(({ name }) => name === call.tool)
     const uri = tool === undefined ? undefined : toolAppResource(tool)
     if (uri === undefined) return yield* new NotFound({ what: 'app' })
     const origin = { serverId: call.serverId, tool: call.tool, uri, title: tool?.title ?? call.tool }
-    return apps.register(session, callId, origin, yield* nowSecondsEffect)
+    return yield* apps.register(session, callId, origin)
   })
 
 /** Close an App, or open it again. */
-export const updateOwnerApp = (id: string, change: UpdateApp) =>
-  Effect.gen(function* () {
-    const apps = yield* Apps
-    const now = yield* nowSecondsEffect
-    return yield* attemptSync(() => apps.update(id, change.closed, now))
-  })
+export const updateOwnerApp = (id: string, change: UpdateApp) => Apps.use((apps) => apps.update(id, change.closed))
 
 /** What the browser needs to load an App; it grants nothing (its calls are checked live). */
-export const launchOwnerApp = (id: string) => Apps.use((apps) => attempt(() => apps.launch(id)))
+export const launchOwnerApp = (id: string) => Apps.use((apps) => apps.launch(id))
 
 /** The agent app an App id names, with the engine that runs it. */
 const agentApp = (id: string) =>
   Effect.gen(function* () {
-    const apps = yield* Apps
-    const name = yield* attemptSync(() => apps.agentApp(id))
+    const name = yield* Apps.use((apps) => apps.agentApp(id))
     return { name, engine: yield* AppEngine }
   })
 
 /** An agent app's state now, for its view (ADR 0021). */
 export const agentAppSnapshot = (id: string) =>
-  Effect.flatMap(agentApp(id), ({ name, engine }) => attemptSync(() => engine.snapshot(name)))
+  Effect.flatMap(agentApp(id), ({ name, engine }) => engine.snapshot(name))
 
 /** An action an agent app's view calls, as the owner: the state after it, or the app's own error. */
 export const callAgentApp = (id: string, call: AppCall) =>
-  Effect.flatMap(agentApp(id), ({ name, engine }) =>
-    attempt(() => engine.viewCall(name, call.name, call.arguments, call.op)),
-  )
+  Effect.flatMap(agentApp(id), ({ name, engine }) => engine.viewCall(name, call.name, call.arguments, call.op))
 
 /** A failure an agent app's view reported, kept where the agent sees it. */
 export const reportAgentApp = (id: string, diagnostic: AppDiagnostic) =>
-  Effect.flatMap(agentApp(id), ({ name, engine }) => attemptSync(() => engine.viewError(name, diagnostic.message)))
+  Effect.flatMap(agentApp(id), ({ name, engine }) => engine.viewError(name, diagnostic.message))
 
 /** The owner's agent apps, newest change first, each with its App id once it has a view (ADR 0021). */
 export const agentAppList = Effect.gen(function* () {
-  const engine = yield* AppEngine
+  const summaries = yield* AppEngine.use((engine) => engine.summaries())
   const apps = yield* Apps
-  return yield* attemptSync(() => appSummaries(engine).map((app) => ({ ...app, app: apps.agentId(app.name) })))
+  return yield* Effect.forEach(summaries, (app) => Effect.map(apps.agentId(app.name), (id) => ({ ...app, app: id })))
 })
 
 /** One agent app in full. */
 export const agentAppDetail = (name: string): Effect.Effect<AgentAppDetail, AppError, AppEngine | Apps> =>
   Effect.gen(function* () {
-    const engine = yield* AppEngine
-    const apps = yield* Apps
-    const detail = yield* attempt(() => appDetail(engine, name, nowMillis()))
-    return { ...detail, app: apps.agentId(name) }
+    const detail = yield* AppEngine.use((engine) => engine.detail(name))
+    return { ...detail, app: yield* Apps.use((apps) => apps.agentId(name)) }
   })
 
 /**
@@ -98,8 +88,8 @@ export const changeAgentApp = (name: string, change: AgentAppChange) =>
           return change.conversation
         }),
       )
-      yield* attemptSync(() => engine.moveHome(name, session))
-    } else yield* attempt(() => changeApp(engine, name, change))
+      yield* engine.moveHome(name, session)
+    } else yield* engine.change(name, change)
     return yield* agentAppDetail(name)
   })
 
@@ -107,9 +97,8 @@ export const changeAgentApp = (name: string, change: AgentAppChange) =>
 export const deleteAgentApp = (name: string, input: DeleteAgentApp) =>
   Effect.gen(function* () {
     if (input.confirm !== name) return yield* new InvalidInput({ reason: `type ${name} to delete it` })
-    const engine = yield* AppEngine
-    yield* attempt(() => engine.remove(name))
-    yield* Apps.use((apps) => attemptSync(() => apps.removeAgent(name)))
+    yield* AppEngine.use((engine) => engine.remove(name))
+    yield* Apps.use((apps) => apps.removeAgent(name))
     yield* Home.use((home) => attemptSync(() => home.appRemoved()))
     return { deleted: name }
   })
