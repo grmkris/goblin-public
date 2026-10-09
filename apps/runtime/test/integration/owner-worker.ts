@@ -37,6 +37,9 @@ export class OwnerAgent extends PersonalAgent {
     if (this.#crashAt !== phase) return
     this.#crashAt = undefined
     this.ctx.abort(`move restart after ${phase}`)
+    // Hold the mover here until the reset lands: nothing past this boundary runs in the aborted instance, so the
+    // restart always interrupts the move at `phase`.
+    await new Promise<never>(() => undefined)
   }
   override async onStart(): Promise<void> {
     await super.onStart()

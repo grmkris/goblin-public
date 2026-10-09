@@ -252,7 +252,12 @@ export async function moveRefusedCase(url: string): Promise<void> {
   expect(earlierThread).not.toContain(running)
 }
 
-/** A restart after the fork or after the head finishes the move once: one Thread, one head, the turn omitted. */
+/**
+ * A restart after the fork or after the head finishes the move once: one Thread, one head, the turn omitted. The test
+ * agent stops the object at that boundary and holds the mover there, so the first request can only end in the reset.
+ * What the restarted object holds before the repeat is not asserted: its start finishes the move by itself
+ * (`reconcile`), so the invariants are checked after the repeat instead.
+ */
 export async function moveRestartCase(url: string): Promise<void> {
   const owner = await owned(url)
   await turn(url, owner, '1', 'restart history')
@@ -264,8 +269,6 @@ export async function moveRestartCase(url: string): Promise<void> {
     const operationId = crypto.randomUUID()
     const crashed = await move(url, owner, '1', entry, operationId).catch(() => undefined)
     expect(crashed?.status ?? 500).toBeGreaterThanOrEqual(500)
-    // The object stopped before its last writes committed; whatever it kept, the repeat finishes the same move.
-    expect((await state(url, owner)).moves.find((row) => row.operationId === operationId)?.state).not.toBe('settled')
     const receipt = await until(
       async () => {
         const response = await move(url, owner, '1', entry, operationId).catch(() => undefined)
@@ -275,7 +278,12 @@ export async function moveRestartCase(url: string): Promise<void> {
       `move settled after a restart at ${phase}`,
     )
     const thread = receipt?.thread ?? ''
-    expect((await state(url, owner)).sessions).toBe(before + 1)
+    const after = await state(url, owner)
+    expect(after.sessions).toBe(before + 1)
+    expect(after.moves.filter((row) => row.operationId === operationId)).toEqual([
+      expect.objectContaining({ state: 'settled', forkSession: thread }),
+    ])
+    expect(after.chats.filter((chat) => chat.session === thread)).toHaveLength(1)
     expect((await heads(url, owner, '1')).filter((head) => head.operationId === operationId)).toEqual([
       { thread, text: moved, operationId, moved: true },
     ])
