@@ -178,11 +178,9 @@ const conversationRoutes: Readonly<
   },
   'POST threads': async (request, agent, thread) => {
     const body = await readJson(request, SendMessage)
-    const { input, operationId, appContext = [], attachments = [], selections = [] } = body
-    return json(
-      unwrap(await agent.startThread(thread, input, operationId, { appContext, attachments, selections })),
-      201,
-    )
+    const { input, operationId, appContext = [], attachments = [], selections = [], personaOrder } = body
+    const context = { appContext, attachments, selections, ...(personaOrder === undefined ? {} : { personaOrder }) }
+    return json(unwrap(await agent.startThread(thread, input, operationId, context)), 201)
   },
   'POST move': async (request, agent, thread) =>
     json(unwrap(await agent.moveToThread(thread, await readJson(request, MoveToThread)))),
