@@ -28,6 +28,7 @@ const rejected = (work: () => void): boolean => {
     work()
     return false
   } catch {
+    // expected: the probe answers whether the edit was refused
     return true
   }
 }
@@ -58,6 +59,7 @@ function mcpPlacementProbe(home: HomeService, apps: AppRegistry, db: ReturnType<
   try {
     edit('home-agent-mcp', 6, [{ kind: 'add', tile: { kind: 'app', id: 'mcp-board', appId: mcp.id, size: 'medium' } }])
   } catch (cause) {
+    // expected: the probe answers with the reason the agent's MCP tile was refused
     if (cause instanceof InvalidInput) agentMcpReason = cause.reason
   }
   const ownerMcp = edit(

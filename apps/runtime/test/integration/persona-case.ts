@@ -321,7 +321,10 @@ function watchFeed(url: string, owner: Person) {
         if (frame.startsWith('event: change') && data !== undefined) changes.push(...decodeChanges(JSON.parse(data)))
       }
     }
-  })().catch(() => undefined)
+  })().catch(() => {
+    // expected: stop() aborts the stream, which ends the read loop with an abort
+    return undefined
+  })
   return {
     changes,
     stop: async () => {

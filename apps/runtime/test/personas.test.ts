@@ -66,6 +66,7 @@ const fixture = () => {
     try {
       return (kind.startsWith('topic.') ? topics : personas).get(Number(target)).revision
     } catch {
+      // expected: a Topic or Persona deleted since has no revision for the receipt to compare
       return undefined
     }
   })

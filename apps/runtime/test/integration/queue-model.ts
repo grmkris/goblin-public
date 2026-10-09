@@ -80,7 +80,7 @@ class QueueModel {
       const output = createAssistantMessageEventStream()
       options?.signal?.addEventListener('abort', release, { once: true })
       if (options?.signal?.aborted) release()
-      void this.#base
+      this.#base
         .stream(target, context, options)
         .result()
         .then(async (reply) => {
@@ -91,6 +91,29 @@ class QueueModel {
           if (message.stopReason === 'aborted') output.push({ type: 'error', reason: 'aborted', error: message })
           else output.push({ type: 'done', reason: 'stop', message })
           output.end(message)
+        })
+        .catch((error: unknown) => {
+          // expected: a scripted answer that throws fails the held turn as a model error instead of hanging it
+          const failed: AssistantMessage = {
+            role: 'assistant',
+            api: target.api,
+            provider: target.provider,
+            model: target.id,
+            content: [],
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            stopReason: 'error',
+            errorMessage: error instanceof Error ? error.message : String(error),
+            timestamp: 0,
+          }
+          output.push({ type: 'error', reason: 'error', error: failed })
+          output.end(failed)
         })
       return output
     },

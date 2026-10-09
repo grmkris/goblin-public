@@ -6,6 +6,7 @@ const refused = (name: string): unknown => {
   try {
     assertApplicationTable(name)
   } catch (error) {
+    // expected: the test asserts on the failure it captures
     return error
   }
   return undefined

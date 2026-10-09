@@ -49,6 +49,7 @@ export function homeCase(url: string) {
       threadClosed: true,
       retained: { revision: 10 },
     })
+    // expected: evicting the object can drop this very request; what the case checks is the restore below
     yield* Effect.promise(() => fetch(`${base}/routine-evict?name=${name}`).catch(() => undefined))
     const restored = yield* Effect.promise(() => fetch(`${base}/home-retained?name=${name}`).then((res) => res.json()))
     expect(restored).toMatchObject({
