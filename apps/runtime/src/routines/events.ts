@@ -1,5 +1,6 @@
 import { RoutineDefinition } from '@goblin/contracts'
 import * as Match from 'effect/Match'
+import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { AppError, Conflict, NotFound } from '../http/errors.ts'
@@ -8,7 +9,7 @@ import { safeErrorType } from '../observability/report.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { CredentialCipher } from '../mcp/cipher.ts'
 import { redactSecretFields } from '../mcp/redaction.ts'
-import type { McpEvents } from '../mcp/events.ts'
+import type { Events } from '../mcp/service.ts'
 import type { EventContext } from '../mcp/events/dispatcher.ts'
 import { canonicalArguments } from '../mcp/events/store.ts'
 import { RoutineStore } from './store.ts'
@@ -45,7 +46,7 @@ const busy = (error: unknown) =>
 export class RoutineEventBindings {
   readonly #run: RunProgram
   readonly #store: RoutineStore
-  readonly #events: McpEvents
+  readonly #events: Events['Service']
   readonly #runner: RoutineRunner
   readonly #cipher: Promise<CredentialCipher>
   readonly #wake: RoutineWake
@@ -54,7 +55,7 @@ export class RoutineEventBindings {
     run: RunProgram
     storage: DurableObjectStorage
     owner: string
-    events: McpEvents
+    events: Events['Service']
     runner: RoutineRunner
     key: string
     wake: RoutineWake
@@ -73,7 +74,7 @@ export class RoutineEventBindings {
     if (row.revision !== revision || row.state !== 'activating' || row.confirmedAt === null) return
     const trigger = decode(row.definitionJson).trigger
     if (trigger.kind !== 'event') return
-    this.#events.grant(trigger.serverId, trigger.name, trigger.arguments, true)
+    await this.#run(this.#events.grant(trigger.serverId, trigger.name, trigger.arguments, true))
     await this.#run(
       this.#events.subscribe({
         consumerId: consumerId(id),
@@ -91,7 +92,7 @@ export class RoutineEventBindings {
     for (const row of this.#store.scheduling()) await this.#repair(row)
   }
   async #repair(row: ReturnType<RoutineStore['get']>): Promise<void> {
-    const binding = this.#events.store.activeConsumer(consumerId(row.id))
+    const binding = Option.getOrUndefined(await this.#run(this.#events.activeConsumer(consumerId(row.id))))
     const definition = decode(row.definitionJson)
     if (binding !== undefined && (binding.revision !== row.revision || !['active', 'activating'].includes(row.state)))
       await this.#run(this.#events.unsubscribe(binding))
@@ -102,7 +103,7 @@ export class RoutineEventBindings {
     )
       return
     if (binding?.revision === row.revision) {
-      const lease = this.#events.store.get(binding.subscriptionId)
+      const lease = Option.getOrUndefined(await this.#run(this.#events.subscription(binding.subscriptionId)))
       if (lease?.status === 'terminated' || lease?.status === 'tombstone') {
         this.#store.pause(row.id, row.revision, `event-ended:${row.id}:${row.revision}`, Date.now())
         this.#store.eventHealth(
@@ -225,10 +226,9 @@ export class RoutineEventBindings {
       ).encrypt(JSON.stringify(firing), `routine-pending:${row.id}:${row.revision}`)
       await this.#wake(Date.now() + 60_000)
       // The pending handoff and this consumer's acknowledgement share one short app transaction.
-      this.#events.store.db.transaction(() => {
-        this.#store.pending(row.id, row.revision, pending, Date.now())
-        this.#events.store.ack(context.receipt, Date.now())
-      })
+      await this.#run(
+        this.#events.ackWith(context.receipt, () => this.#store.pending(row.id, row.revision, pending, Date.now())),
+      )
     }
   }
 }

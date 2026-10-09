@@ -1,9 +1,8 @@
-import type { PiHarness } from 'agents/harness/pi'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Context from 'effect/Context'
 import { ModelBudget, UsageStore } from '../budget.ts'
 import { creditRates } from '../budget-credits.ts'
-import { CapabilityProfiles, type PiTools } from '../capabilities/profiles.ts'
+import { ProfilesInstance } from '../capabilities/profiles.ts'
 import { TelegramChannel } from '../channel/channel.ts'
 import { nowMillis, nowSeconds } from '../clock.ts'
 import { ChatDirectory } from '../chats/directory.ts'
@@ -16,38 +15,25 @@ import { PersonaInvocations } from '../personas/invocations.ts'
 import { OrganizeReceipts } from '../organize/receipts.ts'
 import { topicPorts } from '../topics/ports.ts'
 import { AppRegistry } from '../apps/registry.ts'
-import { CredentialCipher } from '../mcp/cipher.ts'
-import { configuredServers } from '../mcp/config.ts'
-import { CredentialStore } from '../mcp/credentials.ts'
-import { bindEndpoints } from '../mcp/endpoints.ts'
+import { Cipher } from '../mcp/cipher.ts'
 import { GrantStore } from '../mcp/grants.ts'
-import { McpApprovalStore } from '../mcp/approvals.ts'
-import { installEventConsumers } from '../mcp/events/consumers.ts'
-import { Events, McpEvents } from '../mcp/events.ts'
-import { EventStorage, SqliteEventStore } from '../mcp/events/store.ts'
-import { eventsHookToken, eventsHookUrl } from '../mcp/events/route-token.ts'
-import { GrantDenied, Forbidden } from '../http/errors.ts'
 import * as Layer from 'effect/Layer'
-import { McpHost } from '../mcp/host.ts'
-import { logEndpointsReset } from '../mcp/log.ts'
-import { AddedServerStore } from '../mcp/servers.ts'
+import { McpHostInstance } from '../mcp/host.ts'
 import { ChatMemories, type MemoryDeps } from '../memory/memory.ts'
 import { CheapModel } from '../memory/model.ts'
 import { writeLine } from '../observability/logger.ts'
 import { safeErrorType } from '../observability/report.ts'
-import { type AuxPurpose, auxReporter, mcpReporter } from '../telemetry/report.ts'
+import { type AuxPurpose, auxReporter } from '../telemetry/report.ts'
 import { ModelChoiceStore, ModelPicker, memoryModelId, modelOptions } from '../models.ts'
-import { BACKGROUND, conversationId } from '../pi/context.ts'
-import { ResidentAuthority } from '../resident.ts'
-import { AppEngine, Approvals, Apps, Budget, Capabilities, Channel, Chats, Conversations, Files } from '../services.ts'
-import { Home, Invocations, Learner, Mcp, Memories, Models, Moves, Personas, Receipts } from '../services.ts'
+import { AppEngine, Apps, Budget, Channel, Chats, Conversations, Files, Home } from '../services.ts'
+import { Invocations, Learner, Memories, Models, Moves, Personas, Receipts } from '../services.ts'
 import { Retrieval, RoutineRuns, Routines, RoutineUsageProjection, Skills, Topics, Workspace } from '../services.ts'
 import { FileStore } from '../files/store.ts'
 import { SkillLearner } from '../skills/learner.ts'
 import { SkillLibrary } from '../skills/library.ts'
 import { SqliteDraftLog, SqliteSkillState } from '../skills/store.ts'
 import { runApplicationMigrations } from '../storage/migrations.ts'
-import { Entitlements, type EntitlementPolicy } from '../billing/gates.ts'
+import { Entitlements } from '../billing/gates.ts'
 import { RoutineStore } from '../routines/store.ts'
 import { RoutineRunStore } from '../routines/runs.ts'
 import { RoutineUsage, installRoutineUsage } from '../routines/usage.ts'
@@ -66,17 +52,6 @@ import { ChatRetrieval } from '../retrieval/service.ts'
 
 /** What the agent's services are built from: its storage and env, and the Pi pieces its constructor made. */
 type ComposeInput = AgentInputs
-/** What the MCP host step made besides the host and the held calls, for the steps after it. */
-class McpStart extends Context.Service<
-  McpStart,
-  {
-    readonly cipher: CredentialCipher
-    readonly resident: ResidentAuthority
-    readonly eventStore: SqliteEventStore
-    readonly skillState: SqliteSkillState
-    readonly grants: GrantStore
-  }
->()('goblin/legacy/McpStart') {}
 /** The cheap model for one housekeeping purpose, its tokens counted in the legacy budget. */
 class CheapModels extends Context.Service<CheapModels, (purpose: AuxPurpose) => CheapModel>()(
   'goblin/legacy/CheapModels',
@@ -84,93 +59,12 @@ class CheapModels extends Context.Service<CheapModels, (purpose: AuxPurpose) => 
 /** The one transcript index, which retrieval reads and a Move to thread reassigns. */
 class Transcripts extends Context.Service<Transcripts, TranscriptIndex>()('goblin/legacy/Transcripts') {}
 
-/** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
-const retool = (harness: PiHarness) => async (session: string, tools: PiTools) => {
-  const conversation = await (await harness.pi()).conversation(conversationId(session), BACKGROUND)
-  await conversation?.configure({ tools }, BACKGROUND)
-}
-const authorizeEvents =
-  (resident: ResidentAuthority, credentials: CredentialStore, store: SqliteEventStore, policy: EntitlementPolicy) =>
-  async (serverId: string, name: string, argumentsJson: string): Promise<void> => {
-    await Effect.runPromise(policy.require())
-    resident.require(nowSeconds())
-    if (credentials.status(serverId) !== 'connected')
-      throw new Forbidden({ reason: 'event connection requires authorization' })
-    if (!store.allows(serverId, name, argumentsJson)) throw new GrantDenied({ serverId, name })
-  }
-async function makeEvents(
-  input: ComposeInput,
-  host: McpHost,
-  resident: ResidentAuthority,
-  eventStore: SqliteEventStore,
-  cipher: CredentialCipher,
-): Promise<McpEvents> {
-  const env = input.env
-  const events = new McpEvents({
-    manager: host.manager,
-    store: eventStore,
-    cipher,
-    principal: input.userId,
-    callback: eventsHookUrl(env.APP_URL, input.userId, await eventsHookToken(env.CREDENTIAL_KEY, input.userId)),
-    wake: input.scheduleEvents,
-    authorize: async () => {
-      await Effect.runPromise(input.entitlements.require())
-      resident.require(nowSeconds())
-    },
-  })
-  events.register('routine-trigger', input.routineEvent)
-  return events
-}
 async function makeRoutines(input: ComposeInput, db: DrizzleSqliteDODatabase) {
   const routines = new RoutineStore(db, input.userId)
   const routineRuns = new RoutineRunStore(db, input.userId)
   const routineUsage = new RoutineUsage(db, routineRuns, creditRates(input.env.MODEL_CREDIT_RATES), input.harness)
   await installRoutineUsage(input.harness, routineUsage, routineRuns)
   return { routines, routineRuns, routineUsage }
-}
-async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {
-  const env = input.env
-  const servers = configuredServers(env.MCP_SERVERS)
-  const added = new AddedServerStore(db)
-  const reset = bindEndpoints(db, [...servers, ...added.list()], nowSeconds())
-  if (reset.length > 0) logEndpointsReset(reset)
-  const skillState = new SqliteSkillState(db)
-  const grants = new GrantStore(db)
-  const cipher = await CredentialCipher.fromBase64(env.CREDENTIAL_KEY)
-  const approvals = new McpApprovalStore(db, cipher)
-  approvals.recover(nowMillis())
-  const resident = new ResidentAuthority(db)
-  const eventStore = new SqliteEventStore(db)
-  const credentials = new CredentialStore(db, cipher)
-  const host = new McpHost({
-    servers,
-    added,
-    credentials,
-    authorizeEvents: authorizeEvents(resident, credentials, eventStore, input.entitlements),
-    grants,
-    authorizeTool: async (call, approvalId, dispatch, authorize) => {
-      if (call.caller === 'human') return
-      const policy = grants.policy({ serverId: call.serverId, capability: 'tool', name: call.name })
-      if (approvalId !== undefined) {
-        if (policy === undefined) throw new GrantDenied({ serverId: call.serverId, name: call.name })
-        await approvals.assert({
-          id: approvalId,
-          call,
-          version: () => grants.policy({ serverId: call.serverId, capability: 'tool', name: call.name })?.version,
-          now: nowMillis(),
-          dispatch,
-          ...(authorize === undefined ? {} : { authorize }),
-        })
-      } else if (policy?.askFirst === true) {
-        throw new Forbidden({ reason: 'Owner approval required for this exact call' })
-      }
-    },
-    skillsEnabled: (serverId) => skillState.enabled(serverId),
-    appUrl: env.APP_URL,
-    fetch: input.mcpFetch,
-    report: mcpReporter(input.telemetry),
-  })
-  return { host, cipher, resident, eventStore, skillState, grants, approvals }
 }
 function makeBudgets(input: ComposeInput, db: DrizzleSqliteDODatabase) {
   const env = input.env
@@ -192,19 +86,6 @@ function makeMemories(input: ComposeInput, deps: MemoryDeps): ChatMemories {
 /** 1. The application tables' migrations, before anything reads them. */
 export const MigrationsStep: Layer.Layer<never, never, AgentInput> = Layer.effectDiscard(
   AgentInput.useSync((input) => runApplicationMigrations(input.storage)),
-)
-
-/**
- * 2. Every server's endpoint binding is checked (a re-pointed server loses what it had), held calls a restart cut off
- * are recovered, and the MCP host is made over the grants, credentials and resident authority.
- */
-export const McpHostStep: Layer.Layer<Mcp | Approvals | McpStart, never, AgentInput | Db> = Layer.effectContext(
-  Effect.gen(function* () {
-    const input = yield* AgentInput
-    const db = yield* Db
-    const { host, approvals, ...start } = yield* Effect.promise(() => makeHost(input, db))
-    return Context.mergeAll(Mcp.context(host), Approvals.context(approvals), McpStart.context(start))
-  }),
 )
 
 /** 3. The model budget and picker, and the cheap model each housekeeping purpose calls. */
@@ -246,15 +127,6 @@ export const MemoryStep: Layer.Layer<Memories, never, AgentInput | Db | Chats | 
   }),
 )
 
-/** 6. Each conversation's switches. */
-export const CapabilitiesStep: Layer.Layer<Capabilities, never, AgentInput | Db | Chats> = Layer.effect(
-  Capabilities,
-  Effect.gen(function* () {
-    const input = yield* AgentInput
-    return new CapabilityProfiles(yield* Db, input.subagentTools, retool(input.harness), yield* Chats)
-  }),
-)
-
 /** 7. Each helper conversation runs with the execution extensions the agent has now. */
 export const HelperExecutionStep: Layer.Layer<never, never, AgentInput | Db | Chats> = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -263,13 +135,6 @@ export const HelperExecutionStep: Layer.Layer<never, never, AgentInput | Db | Ch
     const chats = yield* Chats
     yield* Effect.promise(() => restoreHelperExecution(db, input.harness, input.helperExtensions, chats))
   }),
-)
-
-/** 8. The current complete delegation tool set is applied to the retained Pi filters, once. */
-export const RetoolStep: Layer.Layer<never, never, Capabilities> = Layer.effectDiscard(
-  Effect.flatMap(Capabilities, (capabilities) =>
-    Effect.promise(() => capabilities.retoolOnce('retool:subagent-config', nowSeconds())),
-  ),
 )
 
 /** 9. The routine stores, and the usage projection subscribed to Pi's commits (a snapshot of each live run first). */
@@ -291,7 +156,7 @@ export const RoutinesStep: Layer.Layer<Routines | RoutineRuns | RoutineUsageProj
 export const ConversationsStep: Layer.Layer<
   Conversations,
   never,
-  AgentInput | Db | Chats | Memories | Capabilities | CheapModels
+  AgentInput | Db | Chats | Memories | ProfilesInstance | CheapModels
 > = Layer.effect(
   Conversations,
   Effect.gen(function* () {
@@ -302,7 +167,7 @@ export const ConversationsStep: Layer.Layer<
       recall: input.memory.recall,
       memories: yield* Memories,
       namer: cheap('naming'),
-      capabilities: yield* Capabilities,
+      capabilities: yield* ProfilesInstance,
       chats: yield* Chats,
     }
     return new ConversationRegistry(yield* Db, input.harness, kit, nowSeconds())
@@ -335,7 +200,7 @@ export const AppsStep: Layer.Layer<Apps, never, AgentInput | Db | Chats | Conver
 export const DelegationStep: Layer.Layer<
   Home | Topics | Personas | Invocations | Receipts | Workspace,
   never,
-  AgentInput | Db | Chats | Conversations | Memories | Capabilities | Apps
+  AgentInput | Db | Chats | Conversations | Memories | ProfilesInstance | Apps
 > = Layer.effectContext(
   Effect.gen(function* () {
     const input = yield* AgentInput
@@ -343,7 +208,7 @@ export const DelegationStep: Layer.Layer<
     const chats = yield* Chats
     const conversations = yield* Conversations
     const apps = yield* Apps
-    const kit = { memories: yield* Memories, capabilities: yield* Capabilities, chats }
+    const kit = { memories: yield* Memories, capabilities: yield* ProfilesInstance, chats }
     const home = new HomeService(db, apps, input.agentApps)
     const topics = new TopicRegistry(db, topicPorts(db, conversations, kit))
     const personas = new PersonaRegistry(
@@ -391,7 +256,7 @@ export const TranscriptsStep: Layer.Layer<Transcripts, never, AgentInput | Db> =
 export const MovesStep: Layer.Layer<
   Moves,
   never,
-  AgentInput | Db | Chats | Conversations | Capabilities | Memories | Transcripts
+  AgentInput | Db | Chats | Conversations | ProfilesInstance | Memories | Transcripts
 > = Layer.effect(
   Moves,
   Effect.gen(function* () {
@@ -402,7 +267,7 @@ export const MovesStep: Layer.Layer<
       harness: input.harness,
       chats: yield* Chats,
       conversations: yield* Conversations,
-      capabilities: yield* Capabilities,
+      capabilities: yield* ProfilesInstance,
       memories: yield* Memories,
       thread: input.thread,
       recall: input.memory.recall,
@@ -422,16 +287,18 @@ export const ActivateMemoriesStep: Layer.Layer<never, never, Memories> = Layer.e
 )
 
 /** 16. Skills from the owner's MCP libraries, and the learner that proposes new ones. */
-export const SkillsStep: Layer.Layer<Skills | Learner, never, AgentInput | Db | Mcp | McpStart | CheapModels> =
+export const SkillsStep: Layer.Layer<Skills | Learner, never, AgentInput | Db | McpHostInstance | CheapModels> =
   Layer.effectContext(
     Effect.gen(function* () {
       const input = yield* AgentInput
-      const host = yield* Mcp
-      const { skillState, grants } = yield* McpStart
+      const db = yield* Db
+      const host = yield* McpHostInstance
+      const skillState = new SqliteSkillState(db)
+      const grants = new GrantStore(db)
       const cheap = yield* CheapModels
       const skills = new SkillLibrary(host.manager, skillState, nowMillis)
       const learner = new SkillLearner({
-        drafts: new SqliteDraftLog(yield* Db),
+        drafts: new SqliteDraftLog(db),
         harness: input.harness,
         manager: host.manager,
         library: skills,
@@ -445,27 +312,14 @@ export const SkillsStep: Layer.Layer<Skills | Learner, never, AgentInput | Db | 
   )
 
 /** 17. The Telegram channel. */
-export const ChannelStep: Layer.Layer<Channel, never, AgentInput | Db | McpStart | Chats> = Layer.effect(
+export const ChannelStep: Layer.Layer<Channel, never, AgentInput | Db | Cipher | Chats> = Layer.effect(
   Channel,
   Effect.gen(function* () {
     const input = yield* AgentInput
-    const { cipher } = yield* McpStart
+    const cipher = yield* Cipher
     return new TelegramChannel(yield* Db, cipher, input.scheduleReplies, input.telemetry, yield* Chats)
   }),
 )
-
-/** 18. Events, with the routine trigger and then the Telegram and skills consumers registered. */
-export const EventsStep: Layer.Layer<Events | EventStorage, never, AgentInput | Mcp | McpStart | Channel | Skills> =
-  Layer.effectContext(
-    Effect.gen(function* () {
-      const input = yield* AgentInput
-      const host = yield* Mcp
-      const { resident, eventStore, cipher } = yield* McpStart
-      const events = yield* Effect.promise(() => makeEvents(input, host, resident, eventStore, cipher))
-      installEventConsumers(events, yield* Channel, yield* Skills, input.pullTelegram)
-      return Context.mergeAll(Events.context(events), EventStorage.context(eventStore))
-    }),
-  )
 
 /**
  * 19. Last, the files, the plan policy, the agent's apps and retrieval. The agent apps are connected to the agent's
@@ -490,11 +344,9 @@ export const RestStep: Layer.Layer<
 
 /** What the legacy steps provide: the services.ts tags and the start's own, until each lane's layer replaces one. */
 export type LegacyServices =
-  | Layer.Success<typeof McpHostStep>
   | Layer.Success<typeof BudgetStep>
   | Layer.Success<typeof ChatsStep>
   | Layer.Success<typeof MemoryStep>
-  | Layer.Success<typeof CapabilitiesStep>
   | Layer.Success<typeof RoutinesStep>
   | Layer.Success<typeof ConversationsStep>
   | Layer.Success<typeof AppsStep>
@@ -503,5 +355,4 @@ export type LegacyServices =
   | Layer.Success<typeof MovesStep>
   | Layer.Success<typeof SkillsStep>
   | Layer.Success<typeof ChannelStep>
-  | Layer.Success<typeof EventsStep>
   | Layer.Success<typeof RestStep>

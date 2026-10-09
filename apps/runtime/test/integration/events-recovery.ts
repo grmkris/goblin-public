@@ -26,7 +26,14 @@ export async function eventsSkillsProbe(state: EventsProbeState) {
   const { manager, skillState, fixture, events, channel } = state
   const library = new SkillLibrary(manager, skillState, () => fixture.now)
   library.setEnabled('mygram', true)
-  installEventConsumers(events, channel, library, state.pull)
+  installEventConsumers(events, {
+    channel: async () => channel.status(),
+    pull: state.pull,
+    skills: {
+      enabled: async (serverId) => library.enabled(serverId),
+      invalidate: async (serverId, unavailable) => library.invalidate(serverId, unavailable),
+    },
+  })
   await skillVersion(state, '1')
   const first = await library.activate('skills-old', 'mygram:events-test')
   events.grant('mygram', 'skills.updated', {}, true)

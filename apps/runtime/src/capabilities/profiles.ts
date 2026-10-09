@@ -16,6 +16,7 @@ import {
   appTelegramChannel,
 } from '../storage/schema.ts'
 import { appRoutineRuns } from '../storage/routines.ts'
+import * as Context from 'effect/Context'
 import * as Schema from 'effect/Schema'
 import type { ChatDirectory } from '../chats/directory.ts'
 import { InvalidInput } from '../http/errors.ts'
@@ -370,3 +371,11 @@ export class CapabilityProfiles {
       .run()
   }
 }
+
+/**
+ * The agent's one profile store, made at the start (`layers/mcp.ts`): the conversations, Topics and the mover change
+ * switches through it inside their own synchronous writes. Programs use the `Capabilities` service.
+ */
+export class ProfilesInstance extends Context.Service<ProfilesInstance, CapabilityProfiles>()(
+  'goblin/capabilities/ProfilesInstance',
+) {}

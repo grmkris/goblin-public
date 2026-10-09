@@ -11,6 +11,10 @@ import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../runtime/input.ts'
 import { flowRunEvent } from '../telemetry/events.ts'
+import type { ProfilesInstance } from '../capabilities/profiles.ts'
+import type { Cipher } from '../mcp/cipher.ts'
+import type { McpHostInstance } from '../mcp/host.ts'
+import type { Events } from '../mcp/service.ts'
 import type { LegacyServices } from './legacy.ts'
 
 /**
@@ -41,8 +45,11 @@ export const CoreLive = (
     Layer.provideMerge(Layer.mergeAll(Layer.succeed(AgentInput, input), LoggerLive, ReporterLive)),
   )
 
+/** What the start's steps outside the legacy start provide (layers/index.ts). */
+type StartServices = McpHostInstance | Cipher | ProfilesInstance | Events
+
 /**
- * What a lane's layer may require: the core services and, until each moves into its lane, the legacy ones. A lane
- * layer also sees the lanes below it in `layers/index.ts`.
+ * What a lane's layer may require: the core services and what the start made (the legacy steps' until each moves into
+ * its lane). A lane layer also sees the lanes before it in `layers/index.ts`.
  */
-export type FoundationServices = Layer.Success<ReturnType<typeof CoreLive>> | LegacyServices
+export type FoundationServices = Layer.Success<ReturnType<typeof CoreLive>> | StartServices | LegacyServices

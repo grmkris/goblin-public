@@ -1,3 +1,4 @@
+import * as Context from 'effect/Context'
 import type { StepReport } from './log.ts'
 import {
   auth,
@@ -355,3 +356,9 @@ export class McpHost {
     return this.#grants.list()
   }
 }
+
+/**
+ * The agent's one MCP host, made at the start (`layers/mcp.ts`) and shared by the layers that wire it; programs reach
+ * it through the `mcp/service.ts` services.
+ */
+export class McpHostInstance extends Context.Service<McpHostInstance, McpHost>()('goblin/mcp/McpHostInstance') {}

@@ -218,6 +218,14 @@ export class Events extends Context.Service<
     readonly ack: (
       input: Pick<Receipt, 'subscriptionId' | 'webhookId' | 'consumerId' | 'revision' | 'operationId'>,
     ) => Effect.Effect<void, AppError>
+    /**
+     * The acknowledgement and `write`, a synchronous write to the agent's database (a routine's pending handoff), in
+     * one transaction: a crash keeps both or neither.
+     */
+    readonly ackWith: (
+      input: Pick<Receipt, 'subscriptionId' | 'webhookId' | 'consumerId' | 'revision' | 'operationId'>,
+      write: () => void,
+    ) => Effect.Effect<void, AppError>
     /** Unsubscribes every consumer of one server (or of all), while the authorization that made them still holds. */
     readonly disableServer: (serverId?: string) => Effect.Effect<void, AppError>
     /** One signed webhook delivery, verified and stored before it is answered. */

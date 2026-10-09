@@ -3,13 +3,13 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AppError } from '../src/http/errors.ts'
-import { McpHost } from '../src/mcp/host.ts'
-import { type CapabilityScope, type Exclusion, scopeOf } from '../src/capabilities/profiles.ts'
+import { McpHost, McpHostInstance } from '../src/mcp/host.ts'
+import { type CapabilityScope, type Exclusion, ProfilesInstance, scopeOf } from '../src/capabilities/profiles.ts'
 import { residentMcpExtension } from '../src/pi/resident-mcp.ts'
 import { CapabilitiesLive, McpConnectionsLive, McpGrantsLive, McpServersLive } from '../src/layers/mcp.ts'
 import { Resident } from '../src/mcp/service.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
-import { type AgentServices, Capabilities, Mcp } from '../src/services.ts'
+import type { AgentServices } from '../src/layers/index.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 import { FixedProfiles } from './fixed-services.ts'
 import { partial, sqliteDb } from './http/api/mcp-serve.ts'
@@ -65,8 +65,8 @@ const scopes: Readonly<Record<string, CapabilityScope>> = {
 const layer = Layer.mergeAll(McpServersLive, McpGrantsLive, McpConnectionsLive, CapabilitiesLive).pipe(
   Layer.provideMerge(
     Layer.mergeAll(
-      Layer.succeed(Mcp, host),
-      Layer.succeed(Capabilities, new FixedProfiles(scopes)),
+      Layer.succeed(McpHostInstance, host),
+      Layer.succeed(ProfilesInstance, new FixedProfiles(scopes)),
       Layer.succeed(AgentInput, instance),
       sqliteDb(chatDatabase().db),
     ),

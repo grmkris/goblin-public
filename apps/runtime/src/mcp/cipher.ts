@@ -1,3 +1,4 @@
+import * as Context from 'effect/Context'
 import { Internal } from '../http/errors.ts'
 
 const VERSION = 'v1'
@@ -53,3 +54,6 @@ export class CredentialCipher {
     }
   }
 }
+
+/** The agent's credential cipher over `CREDENTIAL_KEY`, made once at the start (`layers/mcp.ts`). */
+export class Cipher extends Context.Service<Cipher, CredentialCipher>()('goblin/mcp/Cipher') {}

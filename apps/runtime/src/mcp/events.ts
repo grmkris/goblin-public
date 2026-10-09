@@ -1,4 +1,3 @@
-import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import type { EventHealth } from '@goblin/contracts'
 import { type AppError, InvalidInput, NotFound, toAppError } from '../http/errors.ts'
@@ -122,6 +121,20 @@ export class McpEvents {
     input: Pick<Receipt, 'subscriptionId' | 'webhookId' | 'consumerId' | 'revision' | 'operationId'>,
   ): Effect.Effect<void, AppError> {
     return Effect.try({ try: () => this.store.ack(input, this.#now()), catch: toAppError })
+  }
+  /** `write`, a synchronous write to the same database, and the acknowledgement, in one short transaction. */
+  ackWith(
+    input: Pick<Receipt, 'subscriptionId' | 'webhookId' | 'consumerId' | 'revision' | 'operationId'>,
+    write: () => void,
+  ): Effect.Effect<void, AppError> {
+    return Effect.try({
+      try: () =>
+        this.store.db.transaction(() => {
+          write()
+          this.store.ack(input, this.#now())
+        }),
+      catch: toAppError,
+    })
   }
   unsubscribe(input: {
     readonly consumerId: string
@@ -283,5 +296,3 @@ export class McpEvents {
     await this.#wake(now + 60_000)
   }
 }
-
-export class Events extends Context.Service<Events, McpEvents>()('goblin/Events') {}

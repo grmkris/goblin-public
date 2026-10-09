@@ -4,14 +4,12 @@ import * as Effect from 'effect/Effect'
 import { type AppError, toAppError } from './http/errors.ts'
 import type { ModelBudget } from './budget.ts'
 import type { ModelPicker } from './models.ts'
-import type { McpHost } from './mcp/host.ts'
 import type { ChatDirectory } from './chats/directory.ts'
 import type { ConversationRegistry } from './conversations.ts'
 import type { ChatMemories } from './memory/memory.ts'
 import type { SkillLearner } from './skills/learner.ts'
 import type { SkillLibrary } from './skills/library.ts'
 import type { TelegramChannel } from './channel/channel.ts'
-import type { CapabilityProfiles } from './capabilities/profiles.ts'
 import type { RoutineStore } from './routines/store.ts'
 import type { RoutineRunStore } from './routines/runs.ts'
 import type { RoutineUsage } from './routines/usage.ts'
@@ -20,7 +18,6 @@ import type { AppRegistry } from './apps/registry.ts'
 import type { FileStore } from './files/store.ts'
 import type { AgentApps } from './agent-apps/engine.ts'
 import type { HomeService } from './home/service.ts'
-import type { McpApprovalStore } from './mcp/approvals.ts'
 import type { TopicRegistry } from './topics/registry.ts'
 import type { PersonaRegistry } from './personas/registry.ts'
 import type { PersonaInvocations } from './personas/invocations.ts'
@@ -29,8 +26,6 @@ import type { ChatRetrieval } from './retrieval/service.ts'
 import type { ChatMover } from './chats/mover.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
-export class Mcp extends Context.Service<Mcp, McpHost>()('goblin/Mcp') {}
-export class Approvals extends Context.Service<Approvals, McpApprovalStore>()('goblin/Approvals') {}
 export class Chats extends Context.Service<Chats, ChatDirectory>()('goblin/Chats') {}
 export class Conversations extends Context.Service<Conversations, ConversationRegistry>()('goblin/Conversations') {}
 /** The owner's Topics (ADR 0032): each with one Conversation; Personal holds Main. */
@@ -48,8 +43,6 @@ export class Memories extends Context.Service<Memories, ChatMemories>()('goblin/
 export class Skills extends Context.Service<Skills, SkillLibrary>()('goblin/Skills') {}
 export class Learner extends Context.Service<Learner, SkillLearner>()('goblin/Learner') {}
 export class Channel extends Context.Service<Channel, TelegramChannel>()('goblin/Channel') {}
-/** What each conversation switched off: the one gate every MCP, skills and subagent tool asks (ADR 0010). */
-export class Capabilities extends Context.Service<Capabilities, CapabilityProfiles>()('goblin/Capabilities') {}
 export class Routines extends Context.Service<Routines, RoutineStore>()('goblin/Routines') {}
 export class RoutineRuns extends Context.Service<RoutineRuns, RoutineRunStore>()('goblin/RoutineRuns') {}
 export class RoutineUsageProjection extends Context.Service<RoutineUsageProjection, RoutineUsage>()(

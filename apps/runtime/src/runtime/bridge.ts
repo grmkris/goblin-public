@@ -5,7 +5,8 @@ import { Entitlements } from '../billing/gates.ts'
 import { type AppError, toAppError } from '../http/errors.ts'
 import { encodeExit, unwrap } from '../http/rpc.ts'
 import { reportAndRecover } from '../observability/report.ts'
-import { type AgentServices, Mcp, attempt } from '../services.ts'
+import type { AgentServices } from '../layers/index.ts'
+import { McpConnections } from '../mcp/service.ts'
 import { type Instrument, uninstrumented } from './instrument.ts'
 
 type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
@@ -64,7 +65,7 @@ export async function closeRuntime(runtime: Promise<Runtime>): Promise<void> {
   // expected: a runtime that failed to build has nothing to close, and its callers already had its failure
   const services = await runtime.catch(() => undefined)
   await services?.runPromise(
-    Mcp.use((mcp) => attempt(() => mcp.manager.closeAll())).pipe(reportAndRecover('runtime.close', undefined)),
+    McpConnections.use((connections) => connections.closeAll()).pipe(reportAndRecover('runtime.close', undefined)),
   )
   await services?.dispose()
 }

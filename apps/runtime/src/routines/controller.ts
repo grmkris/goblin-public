@@ -15,7 +15,7 @@ import { RoutineRunner, type StartRun } from './runner.ts'
 import { RoutineScheduler, type RoutineSchedules, type RoutineSlot } from './scheduler.ts'
 import type { RoutineRun } from './runs.ts'
 import type { EventContext } from '../mcp/events/dispatcher.ts'
-import { Events } from '../mcp/events.ts'
+import { Events } from '../mcp/service.ts'
 import { RoutineEventBindings } from './events.ts'
 
 export function routineExtensions(run: RunProgram, resident: Extension, key: string) {

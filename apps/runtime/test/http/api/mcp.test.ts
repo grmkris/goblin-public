@@ -12,11 +12,10 @@ import { NotFound } from '../../../src/http/errors.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { McpConnectionsLive, McpGrantsLive, McpServersLive, ResidentLive } from '../../../src/layers/mcp.ts'
 import { McpHandlers } from '../../../src/mcp/api.ts'
-import { Events as LegacyEvents } from '../../../src/mcp/events.ts'
-import { McpHost } from '../../../src/mcp/host.ts'
+import { McpHost, McpHostInstance } from '../../../src/mcp/host.ts'
 import { Approvals, Events } from '../../../src/mcp/service.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
-import { Mcp, Skills } from '../../../src/services.ts'
+import { Skills } from '../../../src/services.ts'
 import { Apps } from '../../../src/apps/service.ts'
 import { Budget } from '../../../src/budget.ts'
 import { Capabilities } from '../../../src/capabilities/service.ts'
@@ -126,7 +125,7 @@ const fixture = async () => {
         Layer.mergeAll(
           Layer.mergeAll(McpServersLive, McpGrantsLive, McpConnectionsLive).pipe(
             Layer.provideMerge(
-              Layer.mergeAll(Layer.succeed(Mcp, host), Layer.succeed(AgentInput, input), sqliteDb(db)),
+              Layer.mergeAll(Layer.succeed(McpHostInstance, host), Layer.succeed(AgentInput, input), sqliteDb(db)),
             ),
           ),
           Layer.succeed(Events, events),
@@ -134,7 +133,6 @@ const fixture = async () => {
           ResidentLive.pipe(Layer.provide(sqliteDb(db))),
           plans(),
           Layer.mergeAll(
-            Layer.succeed(LegacyEvents, unread),
             Layer.succeed(Skills, unread),
             Layer.succeed(ChatOperations, unread),
             Layer.succeed(SkillLibraries, unread),
