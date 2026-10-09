@@ -13,14 +13,15 @@ type Placed = { readonly id: string; readonly kind: string }
 
 /**
  * Where each automatic retrieval's strip shows: under the answer to the owner input it served, that is the last text of
- * the turn the input started (or the input itself while no answer has come). A use naming no input, or one not shown,
- * has no place.
+ * the turn the input started (or the input itself while no answer has come). A `search_chats` call draws its own strip
+ * where it was made, so a tool use has no place here; nor has a use naming no input, or one not shown.
  */
 export function sourcePlaces(parts: readonly Placed[], uses: readonly SourceUse[]): ReadonlyMap<string, SourceUse[]> {
   const places = new Map<string, SourceUse[]>()
   for (const use of uses) {
+    if (use.mode !== 'auto' || use.inputEntry === undefined || use.sources.length === 0) continue
     const start = parts.findIndex((part) => entryOfPart(part.id) === use.inputEntry)
-    const place = start === -1 || use.sources.length === 0 ? undefined : answerOf(parts, start)
+    const place = start === -1 ? undefined : answerOf(parts, start)
     if (place !== undefined) places.set(place, [...(places.get(place) ?? []), use])
   }
   return places

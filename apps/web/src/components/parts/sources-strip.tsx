@@ -7,10 +7,14 @@ import { sourceTopics } from '../../lib/sources.ts'
 import { relativeTime } from '../../lib/threads.ts'
 import { OpenThread } from './text-part.tsx'
 
-/** One source: where it is (Topic › chat, the messages), when it was read, the excerpt, and the way to it. */
+/**
+ * One source: where it is (the Topic, and the thread when it is not the Topic's channel itself), when it was read, the
+ * excerpt, and the way to it.
+ */
 function Source({ source, now }: { readonly source: RetrievalSource; readonly now: number }) {
   const open = use(OpenThread)
-  const where = `#${source.topicName}${source.chatTitle === undefined ? '' : ` › ${source.chatTitle}`}`
+  const thread = source.chatTitle === undefined || source.chatTitle === source.topicName ? '' : ` › ${source.chatTitle}`
+  const where = `#${source.topicName}${thread}`
   return (
     <li>
       <p className="source-where">
@@ -49,7 +53,7 @@ export function SourcesStrip({
       <button type="button" className="sources-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
         <LibraryIcon aria-hidden />
         <span className="truncate">
-          {searched ? 'Searched your chats: ' : 'Used '}
+          {searched ? <span className="sources-searched">Searched your chats: </span> : 'Used '}
           {sources.length} {sources.length === 1 ? 'source' : 'sources'} from {named}
         </span>
         <ChevronRightIcon className="sources-chevron" aria-hidden />

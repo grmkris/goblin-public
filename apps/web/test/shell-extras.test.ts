@@ -21,12 +21,12 @@ const details = Schema.decodeUnknownSync(SourcesDetails)({
   mode: 'tool',
   sources: [source('Japan', '20', 4), source('Personal', '1', 9), source('Japan', '21', 2)],
 })
-const use = (inputEntry: number, topicName = 'Japan') =>
+const use = (inputEntry: number | undefined, topicName = 'Japan', mode = 'auto') =>
   Schema.decodeUnknownSync(SourceUse)({
-    id: `use-${inputEntry}`,
+    id: `use-${String(inputEntry)}-${mode}`,
     chat: '1',
-    inputEntry,
-    mode: 'auto',
+    ...(inputEntry !== undefined && { inputEntry }),
+    mode,
     sources: [source(topicName, '20', 4)],
     retrievedAt: 100,
   })
@@ -77,7 +77,11 @@ describe('the source strip', () => {
   it('puts an automatic retrieval under the last answer text of the turn its input started', () => {
     const places = sourcePlaces(PARTS, [use(3), use(7), use(9), use(42)])
     expect([...places.keys()]).toEqual(['6:0:text', '7:0', '9:0'])
-    expect(places.get('6:0:text')?.[0]?.id).toBe('use-3')
+    expect(places.get('6:0:text')?.[0]?.id).toBe('use-3-auto')
+  })
+
+  it('leaves a search_chats call, which draws its own strip, and a use naming no input without a place', () => {
+    expect(sourcePlaces(PARTS, [use(3, 'Japan', 'tool'), use(undefined)]).size).toBe(0)
   })
 })
 

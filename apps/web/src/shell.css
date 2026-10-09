@@ -876,8 +876,23 @@
   height: 0.875rem;
   flex: none;
 }
-.sources-chevron {
-  transition: rotate 150ms var(--ease-out);
+@media (prefers-reduced-motion: no-preference) {
+  .sources-chevron {
+    transition: rotate 150ms var(--ease-out);
+  }
+}
+/* Where the chat is narrow the strip's line keeps its count and Topics; "Searched your chats" stays for screen readers. */
+.sources-searched {
+  white-space: nowrap;
+}
+@container conversation (max-width: 28rem) {
+  .sources-searched {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: clip;
+    clip-path: inset(50%);
+  }
 }
 .sources-toggle[aria-expanded='true'] > .sources-chevron {
   rotate: 90deg;
