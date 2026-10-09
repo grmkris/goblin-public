@@ -15,6 +15,12 @@ export function telemetryCase(url: string) {
     const result: unknown = JSON.parse(text)
     expect(result).toMatchObject({
       rows: [
+        // The owner's send is a flow step of the same operation, recorded as it was admitted (ADR 0037).
+        {
+          kind: 'flow',
+          status: 'ok',
+          attributes: { [RunAttribute.flow]: 'send', [RunAttribute.flowVia]: 'app', [RunAttribute.actor]: 'owner' },
+        },
         { kind: 'turn.submitted', status: 'ok', attributes: { [RunAttribute.source]: 'direct' } },
         { kind: 'model.attempt', status: 'ok', attributes: { [RunAttribute.finishReason]: 'toolUse' } },
         {
@@ -39,6 +45,7 @@ export function telemetryCase(url: string) {
             },
             submission: { status: 'done' },
             events: [
+              { kind: 'flow' },
               { kind: 'turn.submitted' },
               { kind: 'model.attempt' },
               { kind: 'tool.call' },
@@ -86,7 +93,8 @@ export function telemetryCase(url: string) {
           ok: true,
           value: {
             events: [{ kind: 'flow', operationId: 'telemetry-thread' }],
-            related: [{ operation: 'telemetry-turn', kind: 'operation' }],
+            // The parent is described by its own newest flow step: the owner's send.
+            related: [{ operation: 'telemetry-turn', kind: 'send', chat: '1', state: 'ok' }],
           },
         },
       },
