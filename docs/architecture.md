@@ -526,8 +526,10 @@ at once, and wall timeouts.
 
 A call (`agent-apps/dispatch.ts`) checks its input against the member's schema; an action's `prepare` runs once
 with a read-only state snapshot and the app's powers (its own files in Shell's namespace `app_<name>`, a log line),
-then in the app's queue `run` reads the current state and returns the next, which is checked and committed as one
-revision with the operation's receipt. A replayed operation id returns its receipt. The agent calls every app through
+then, holding the app's lock (the agent runtime's `KeyedLock`, one key per app, first come first served), `run` reads
+the current state and returns the next, which is checked and committed as one revision with the operation's receipt.
+The owner's paths hold that lock in the runtime (`agent-apps/live.ts`); Pi's tools, job alarms and an isolate's calls
+take the same lock through the bridge's `local`. A replayed operation id returns its receipt. The agent calls every app through
 one typed tool, `app_call(app, member, input)` (`agent-apps/toolset.ts`, ADR 0027), so the tool list stays the same
 whatever apps exist and a build leaves the prompt the provider caches alone; an action the app keeps for its view is
 refused, and a state or value over 8 KB comes back as a valid summary (its size and fields). The `<apps>` part of the
@@ -565,7 +567,8 @@ owns its canvas styling. External MCP Apps retain their framed host surface.
 
 Beyond its state and files, an app reaches only the powers it declares and the owner approves (ADR 0021):
 `ctx.fetch` to exact `egress` hosts (`agent-apps/egress.ts`: https on 443, never goblin's own domain, redirects checked
-again, no cookies, bounded), and through the agent (`agent-apps/ports.ts`, connected in `layers/legacy.ts`) the owner's MCP
+again, no cookies, bounded), and through the agent (`agent-apps/ports.ts`, connected once by `agent-apps/live.ts` while the runtime is built, each call entering it
+through the bridge's `run`) the owner's MCP
 tools under their exact grants, the cheap model within the owner's budget, Telegram through their channel, and other
 apps' actions and views (`agent-apps/engine.ts` composes each `prepare`'s `AppPowers`). Every use checks the approval
 (`app_agent_powers`), the app's daily cap (`app_agent_usage`) and, for what goes through the agent, the owner's plan

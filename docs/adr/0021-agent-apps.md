@@ -32,8 +32,9 @@ and does not automatically execute it again. Native recovery tests evict the age
 reconstructed tool leaves that file unchanged.
 
 **Calls.** One path for every caller: check the input, return the receipt of a replayed operation id, run `prepare`
-outside the app's queue, then in the queue run `run` on the current state and commit the checked next state as one
-revision with its receipt. Tool calls use `c<conversation>:<call>` as the operation id and pin the release they began
+outside the app's lock, then holding it run `run` on the current state and commit the checked next state as one
+revision with its receipt. (2026-10-09: the per-app queue became the agent runtime's FIFO `KeyedLock`, one key per
+app, taken by the owner's paths in the runtime and by the engine's other callers through the bridge.) Tool calls use `c<conversation>:<call>` as the operation id and pin the release they began
 on. goblin never claims exactly-once effects: `prepare` may repeat when a call is retried before its commit.
 
 **Limits.** 16 apps; 12 actions and views each; 384 KB of source; state 1 MiB; input 64 KiB; what `prepare` hands on
