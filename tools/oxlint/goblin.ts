@@ -265,7 +265,18 @@ export const requireDisableDescription = defineRule({
 // no-silent-catch
 
 /** Calls that report a failure: the observability helpers and anything named `report*`. */
-const REPORTERS = new Set(['reportFailure', 'reportAndRecover', 'logEvent', 'writeLine', 'failureResponse'])
+// The web turns a failure into what the owner sees (`failureText`, `describeError`, `messageOf`): showing it is not
+// dropping it.
+const REPORTERS = new Set([
+  'reportFailure',
+  'reportAndRecover',
+  'logEvent',
+  'writeLine',
+  'failureResponse',
+  'failureText',
+  'describeError',
+  'messageOf',
+])
 /** Calls and values that carry a failure on: `Effect.fail(…)`, `Effect.interrupt`, `Promise.reject(…)`, `reject(…)`. */
 const FAILURES = new Set([
   'fail',
@@ -340,7 +351,7 @@ export const noSilentCatch = defineRule({
     },
     messages: {
       silent:
-        'This handler drops the failure: it neither rethrows, returns or yields a failure (`Effect.fail`, `yield* new X()`, `Promise.reject`), nor calls a reporter (`reportFailure`, `reportAndRecover`, `report*`, `logEvent`, `writeLine`, `failureResponse`). Handle the specific failure (`catchTag`), report it, or, when dropping it is right, say why on the line above or as its first line: `// expected: <reason>` (docs/agents/lint-quality.md).',
+        'This handler drops the failure: it neither rethrows, returns or yields a failure (`Effect.fail`, `yield* new X()`, `Promise.reject`), nor calls a reporter (`reportFailure`, `reportAndRecover`, `report*`, `logEvent`, `writeLine`, `failureResponse`, or in the web `failureText`, `describeError`, `messageOf`). Handle the specific failure (`catchTag`), report it, or, when dropping it is right, say why on the line above or as its first line: `// expected: <reason>` (docs/agents/lint-quality.md).',
     },
     schema: [],
   },

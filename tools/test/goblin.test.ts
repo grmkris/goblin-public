@@ -100,6 +100,7 @@ tester.run('no-silent-catch', noSilentCatch, {
     'promise.catch((error: unknown) => Promise.reject(error))',
     'new Promise((resolve, reject) => source.then(resolve).catch((error: unknown) => reject(error)))',
     'promise.catch(reportError)',
+    'load().catch((error: unknown) => setError(failureText(error)))',
     'effect.pipe(Effect.catch((error) => Effect.fail(new Internal({ reason: error._tag }))))',
     'effect.pipe(Effect.catchCause(Effect.failCause))',
     'effect.pipe(Effect.catchCause((cause) => (Cause.hasInterruptsOnly(cause) ? Effect.interrupt : Effect.succeed(1))))',
