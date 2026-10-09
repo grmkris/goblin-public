@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@effect/vitest'
 import * as Deferred from 'effect/Deferred'
 import * as Effect from 'effect/Effect'
-import { NotFound } from '../../src/http/errors.ts'
+import { Internal } from '../../src/http/errors.ts'
 import { background } from '../../src/observability/background.ts'
 import { ReporterLive } from '../../src/observability/report.ts'
 import { eventually, withLines } from './lines.ts'
@@ -13,7 +13,7 @@ describe('background work', () => {
       const { value: returned, lines } = yield* withLines(
         Effect.gen(function* () {
           yield* Deferred.await(started).pipe(
-            Effect.andThen(Effect.fail(new NotFound({ what: 'x' }))),
+            Effect.andThen(Effect.fail(new Internal({ reason: 'x' }))),
             background('test.background'),
           )
           return 'returned'
@@ -24,7 +24,7 @@ describe('background work', () => {
       yield* Deferred.succeed(started, undefined)
       yield* eventually(() => lines.length > 0)
       expect(lines.map(({ line }) => [line['event'], line['where'], line['error.type']])).toEqual([
-        ['failure', 'test.background', 'NotFound'],
+        ['failure', 'test.background', 'Internal'],
       ])
     }),
   )

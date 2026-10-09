@@ -62,12 +62,40 @@ const LEVELS: Readonly<Record<Severity, LineLevel>> = {
 }
 
 /**
- * Logs each reported failure as one `failure` line: where, its type, its stack locations and a severity. An error that
- * declares a severity (`expectedFailure`) keeps it; an expected owner decision (budget, grant, authorization) is
- * `Info`; anything else is `Error`. Interruptions and errors marked to skip are not reported.
+ * The typed failures an owner request ends with in the normal course (the AppError tags of
+ * packages/contracts/src/api/errors.ts, all but `Internal`): a 404, 409 or 402 is an answer, not a fault. HttpApi
+ * reports every handler failure, so the reporter skips these when they arrive as a failure. `Internal`, any other
+ * failure and any defect, even one of these thrown, are reported. Update it with AppError.
  */
-export const goblinReporter = ErrorReporter.make(({ error, severity: declared, fiber }) => {
+export const EXPECTED_ERROR_TAGS: ReadonlySet<string> = new Set([
+  'Unauthenticated',
+  'Forbidden',
+  'GrantDenied',
+  'NotFound',
+  'Conflict',
+  'InvalidInput',
+  'PayloadTooLarge',
+  'ResidentInactive',
+  'BudgetExhausted',
+  'SubscriptionRequired',
+  'NeedsAuthorization',
+  'UpstreamMcp',
+])
+
+/** `type` is an expected typed failure, and the cause failed with it rather than dying of it. */
+const answered = (cause: Cause.Cause<unknown>, type: string): boolean =>
+  EXPECTED_ERROR_TAGS.has(type) &&
+  cause.reasons.some((reason) => Cause.isFailReason(reason) && safeErrorType(reason.error) === type)
+
+/**
+ * Logs each reported failure as one `failure` line: where, its type, its stack locations and a severity. An expected
+ * typed failure (`EXPECTED_ERROR_TAGS`) is not logged. An error that declares a severity (`expectedFailure`) keeps it;
+ * an expected owner decision (budget, grant, authorization) that died is `Info`; anything else is `Error`.
+ * Interruptions and errors marked to skip are not reported.
+ */
+export const goblinReporter = ErrorReporter.make(({ cause, error, severity: declared, fiber }) => {
   const type = safeErrorType(error)
+  if (answered(cause, type)) return
   const severity: Severity = Object.hasOwn(error, ErrorReporter.severity)
     ? declared
     : expectedCode(type)

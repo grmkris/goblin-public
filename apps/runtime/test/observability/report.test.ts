@@ -1,8 +1,9 @@
 import { describe, expect, it } from '@effect/vitest'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
-import { BudgetExhausted, GrantDenied, NotFound } from '../../src/http/errors.ts'
+import { BudgetExhausted, Conflict, GrantDenied, Internal, NotFound, UpstreamMcp } from '../../src/http/errors.ts'
 import {
+  EXPECTED_ERROR_TAGS,
   ReporterLive,
   expectedFailure,
   reportAndRecover,
@@ -14,8 +15,8 @@ import { withLines } from './lines.ts'
 const SECRET = 'the owner wrote: please keep my diagnosis private'
 const FRAME = /^at .*:\d+:\d+\)?$/u
 
-const notFound = Effect.fn('Probe.notFound')(function* () {
-  return yield* new NotFound({ what: SECRET })
+const internal = Effect.fn('Probe.internal')(function* () {
+  return yield* new Internal({ reason: SECRET })
 })
 const thrown = Effect.fn('Probe.thrown')(function* () {
   yield* Effect.void
@@ -27,7 +28,7 @@ describe('failure reporter', () => {
   it.effect('logs where, the type and stack locations, never the message', () =>
     Effect.gen(function* () {
       const { value, lines } = yield* withLines(
-        notFound().pipe(reportFailure('test.report'), Effect.exit, Effect.provide(ReporterLive)),
+        internal().pipe(reportFailure('test.report'), Effect.exit, Effect.provide(ReporterLive)),
       )
       expect(Exit.isFailure(value)).toBe(true)
       expect(lines).toHaveLength(1)
@@ -36,7 +37,7 @@ describe('failure reporter', () => {
         level: 'error',
         event: 'failure',
         where: 'test.report',
-        'error.type': 'NotFound',
+        'error.type': 'Internal',
         severity: 'Error',
       })
       expect(lines[0]?.line['frames']).toEqual(expect.arrayContaining([expect.stringMatching(FRAME)]))
@@ -57,13 +58,40 @@ describe('failure reporter', () => {
     }),
   )
 
-  it.effect('lowers expected failures and skips the ones marked to skip', () =>
+  it.effect('does not report the typed failures a request ends with, only Internal and defects', () =>
+    Effect.gen(function* () {
+      const expected = [
+        new NotFound({ what: 'x' }),
+        new Conflict({ reason: 'x' }),
+        new BudgetExhausted({ limit: 1, resetsAt: 2 }),
+        new UpstreamMcp({ serverId: 's', reason: 'timeout' }),
+      ]
+      const { lines } = yield* withLines(
+        Effect.gen(function* () {
+          for (const error of expected) yield* Effect.exit(Effect.fail(error).pipe(reportFailure('typed')))
+          yield* Effect.exit(Effect.fail(new Internal({ reason: 'x' })).pipe(reportFailure('internal')))
+          yield* Effect.exit(Effect.die(new NotFound({ what: 'x' })).pipe(reportFailure('thrown')))
+        }).pipe(Effect.provide(ReporterLive)),
+      )
+      expect(expected.every((error) => EXPECTED_ERROR_TAGS.has(error._tag))).toBe(true)
+      expect(EXPECTED_ERROR_TAGS.has('Internal')).toBe(false)
+      expect(lines.map(({ method, line }) => [method, line['where'], line['error.type']])).toEqual([
+        ['error', 'internal', 'Internal'],
+        ['error', 'thrown', 'NotFound'],
+      ])
+      expect(lines.every(({ line }) => Array.isArray(line['frames']) && line['frames'].length > 0)).toBe(true)
+    }),
+  )
+
+  it.effect('lowers failures marked expected and skips the ones marked to skip', () =>
     Effect.gen(function* () {
       const { lines } = yield* withLines(
         Effect.gen(function* () {
-          yield* Effect.exit(Effect.fail(expectedFailure(new NotFound({ what: 'x' }))).pipe(reportFailure('a')))
-          yield* Effect.exit(Effect.fail(new BudgetExhausted({ limit: 1, resetsAt: 2 })).pipe(reportFailure('b')))
-          yield* Effect.exit(Effect.fail(expectedFailure(new NotFound({ what: 'x' }), 'skip')).pipe(reportFailure('c')))
+          yield* Effect.exit(Effect.fail(expectedFailure(new Internal({ reason: 'x' }))).pipe(reportFailure('a')))
+          yield* Effect.exit(Effect.die(new BudgetExhausted({ limit: 1, resetsAt: 2 })).pipe(reportFailure('b')))
+          yield* Effect.exit(
+            Effect.fail(expectedFailure(new Internal({ reason: 'x' }), 'skip')).pipe(reportFailure('c')),
+          )
         }).pipe(Effect.provide(ReporterLive)),
       )
       expect(lines.map(({ method, line }) => [method, line['where'], line['severity']])).toEqual([
@@ -77,7 +105,7 @@ describe('failure reporter', () => {
     Effect.gen(function* () {
       const { value, lines } = yield* withLines(
         Effect.gen(function* () {
-          const recovered = yield* notFound().pipe(reportAndRecover('test.recover', 'fallback'))
+          const recovered = yield* internal().pipe(reportAndRecover('test.recover', 'fallback'))
           const interrupted = yield* Effect.exit(Effect.interrupt.pipe(reportAndRecover('test.interrupt', 'fallback')))
           return { recovered, interrupted }
         }).pipe(Effect.provide(ReporterLive)),
