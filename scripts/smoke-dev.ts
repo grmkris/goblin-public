@@ -76,6 +76,8 @@ class DevClient {
     const { owner = true, ...rest } = init
     const headers = new Headers(rest.headers)
     headers.set('origin', this.#url.origin)
+    // As the web does: every write carries the CSRF header, which the account API and owner routes require.
+    if ((rest.method ?? 'GET') !== 'GET') headers.set('x-goblin-csrf', '1')
     if (owner && this.#cookie) headers.set('cookie', this.#cookie)
     const response = await fetch(new URL(path, this.#url), {
       ...rest,

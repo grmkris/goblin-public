@@ -15,25 +15,22 @@ import {
   QueueRemoval,
 } from '@goblin/contracts'
 import type { AgentRpc, RuntimeEnv } from './env.ts'
-import {
-  handleAuth,
-  listInboundClients,
-  resourceMetadata,
-  requireUserSession,
-  revokeInboundClient,
-} from './auth/index.ts'
+import { handleAuth, resourceMetadata, requireUserSession } from './auth/index.ts'
 import { mailerOf } from './auth/mail.ts'
 import { signupMode } from './auth/signup.ts'
 import { readBytes, readJson } from './http/body.ts'
-import { Forbidden, InvalidInput, NotFound } from './http/errors.ts'
-import { failureResponse, requestIdOf, secured } from './http/respond.ts'
+import { Forbidden, InvalidInput, NotFound, toAppError } from './http/errors.ts'
+import { failureResponse } from './http/respond.ts'
+import { accountRecords } from './http/api/account.ts'
+import { type Edge, type EdgeHttp, isAccountPath, makeEdgeHttp, refOf } from './http/api/edge.ts'
+import { secured } from './http/api/render.ts'
 import { unwrap } from './http/rpc.ts'
 import { handleInboundMcp } from './inbound/route.ts'
 import { eventsHookTokenValid } from './mcp/events/route-token.ts'
 import { EVENT_BODY_BYTES } from './mcp/events/webhook.ts'
 import { hookTokenValid } from './channel/doorbell.ts'
 import { canonicalRedirect } from './http/canonical.ts'
-import { billingApi, billingDeps } from './billing/routes.ts'
+import { billingDeps } from './billing/routes.ts'
 import { billingWebhook } from './billing/webhook.ts'
 import { runBillingCron } from './billing/cron.ts'
 import { billingMode, requireAccountPlan } from './billing/gates.ts'
@@ -41,7 +38,7 @@ import { routineRoute } from './routines/routes.ts'
 import { topicRoute } from './topics/routes.ts'
 import { personaRoute } from './personas/routes.ts'
 import { organizeRoute } from './organize/routes.ts'
-import { browserWrite } from './http/csrf.ts'
+import { browserWrite, crossOrigin } from './http/csrf.ts'
 
 export { PersonalAgent } from './agent.ts'
 
@@ -86,6 +83,23 @@ const chatParam = (request: Request): string | undefined => {
 }
 /** Only the authenticated user ID supplies the native Agent name. */
 const agentOf = (env: RuntimeEnv, userId: string): DurableObjectStub<AgentRpc> => env.AGENTS.getByName(userId)
+
+/** The deployment as the typed API's edge sees it (`http/api/edge.ts`). */
+const edgeOf = (env: RuntimeEnv): Edge => ({
+  origin: new URL(env.APP_URL).origin,
+  session: (request) =>
+    Effect.map(
+      Effect.tryPromise({ try: () => requireUserSession(request, env), catch: toAppError }),
+      (session) => session.userId,
+    ),
+  plan: (userId) => Effect.asVoid(Effect.tryPromise({ try: () => requireAccountPlan(env, userId), catch: toAppError })),
+  agent: (userId) => agentOf(env, userId),
+  records: accountRecords(env),
+})
+
+/** The edge, built once per isolate on its first request. */
+let edgeHttp: Promise<EdgeHttp> | undefined
+const edge = (): Promise<EdgeHttp> => (edgeHttp ??= Effect.runPromise(makeEdgeHttp))
 
 type Route = (request: Request, agent: DurableObjectStub<AgentRpc>) => Promise<Response>
 
@@ -351,10 +365,7 @@ async function mcpRoute(request: Request, agent: DurableObjectStub<AgentRpc>, pa
 }
 
 function apiOrigin(request: Request, env: RuntimeEnv): void {
-  if (request.method !== 'GET') {
-    const origin = request.headers.get('origin')
-    if (origin !== null && origin !== new URL(env.APP_URL).origin) throw new Forbidden({ reason: 'origin' })
-  }
+  if (crossOrigin(request, new URL(env.APP_URL).origin)) throw new Forbidden({ reason: 'origin' })
 }
 
 /** Every /api route below belongs to the signed-in user and their agent: a cookie session, same-origin for writes. */
@@ -379,9 +390,8 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
     (request.method === 'POST' && /^\/api\/conversations\/\d{1,12}\/(?:threads|move)$/u.test(path))
   )
     browserWrite(request, env.APP_URL)
-  if (path.startsWith('/api/billing/')) return Effect.runPromise(billingApi(request, env, userId))
   await requireAccountPlan(env, userId)
-  return ownerApiRequest(request, env, path, agentOf(env, userId), userId)
+  return ownerApiRequest(request, env, path, agentOf(env, userId))
 }
 
 /** `path` is `prefix` or a path below it. */
@@ -403,7 +413,6 @@ async function ownerApiRequest(
   env: RuntimeEnv,
   path: string,
   agent: DurableObjectStub<AgentRpc>,
-  userId: string,
 ): Promise<Response> {
   if (path.startsWith('/api/agent/')) return agentRoute(request, agent, path)
   if (path === '/api/home') return agent.fetch(new Request('https://agent/home', request))
@@ -416,12 +425,6 @@ async function ownerApiRequest(
   if (under(path, '/api/apps')) return appRoute(request, agent, path)
   if (under(path, '/api/agent-apps')) return agentAppRoute(request, agent, path)
   if (path.startsWith('/api/mcp/')) return mcpRoute(request, agent, path, env)
-  if (path === '/api/clients' && request.method === 'GET') return json(await listInboundClients(env, userId))
-  const revoke = /^\/api\/clients\/([\w.-]{1,200})$/u.exec(path)?.[1]
-  if (revoke !== undefined && request.method === 'DELETE') {
-    await revokeInboundClient(env, userId, revoke)
-    return json({ revoked: true })
-  }
   throw new NotFound({ what: path })
 }
 
@@ -460,14 +463,17 @@ export default {
         },
       })
     if (url.pathname.startsWith('/.well-known/oauth-protected-resource'))
-      return secured(Response.json(resourceMetadata(env)))
+      return secured(Response.json(resourceMetadata(env)), undefined)
     if (url.pathname.startsWith('/.well-known/') || url.pathname.startsWith('/api/auth/'))
       return handleAuth(request, env)
+    if (isAccountPath(url.pathname)) return Effect.runPromise((await edge()).account(request, edgeOf(env)))
 
+    // Every answer quotes the request's reference (its cf-ray), which its failure line carries too.
+    const ref = refOf(request)
     try {
-      return secured(await admittedRoute(request, env, ctx))
+      return secured(await admittedRoute(request, env, ctx), ref)
     } catch (cause) {
-      return failureResponse(cause, url.pathname, requestIdOf(request))
+      return secured(failureResponse(cause, url.pathname, ref), ref)
     }
   },
 }

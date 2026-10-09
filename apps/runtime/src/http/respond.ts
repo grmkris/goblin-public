@@ -51,5 +51,3 @@ export const failureResponse = (cause: unknown, route: string, requestId: string
   })
   return secured(Response.json(errorBody(error), { status }))
 }
-
-export const requestIdOf = (request: Request): string => request.headers.get('cf-ray') ?? crypto.randomUUID()
