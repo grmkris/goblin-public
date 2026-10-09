@@ -1,8 +1,9 @@
 import { Attention, PRIMARY_CHAT } from '@goblin/contracts'
-import { Effect, Schema } from 'effect'
+import { Effect, Result, Schema } from 'effect'
 import { nextInt } from 'effect/Random'
 import { expect } from 'vitest'
 import { ModelRequest, requestTurns } from './conversation-checks.ts'
+import { callOwner } from './owner-api.ts'
 import { exchange, linesOf, snapshotOf, transcript, until } from './probe-reads.ts'
 import type { PersonalAgentProbe } from './worker.ts'
 
@@ -13,14 +14,18 @@ const status = async (agent: Probe, chat: string) => {
   return result.ok ? result.value : { messages: -1, summarized: -1 }
 }
 
+/** A new Topic through the owner API, or the failure it answered (which the run's decode then shows). */
+const createTopic = (agent: Probe, name: string, operationId: string) =>
+  callOwner(agent, (api) => Effect.result(api.topics.create({ payload: { name, operationId } })))
+
 /**
  * Two Topics remember apart (ADR 0032): a new Topic's Conversation gets its own memory, its builder places the view
  * only there, Personal's memory holds only Personal's messages, and a thread reports its Conversation's memory.
  */
 export async function topicMemorySequence(agent: Probe): Promise<Response> {
-  const created = await agent.createTopic({ name: 'Garden', operationId: 'topic-memory' })
-  if (!created.ok) return Response.json({ created })
-  const garden = created.value.conversation
+  const created = await createTopic(agent, 'Garden', 'topic-memory')
+  if (Result.isFailure(created)) return Response.json({ created: created.failure })
+  const garden = created.success.conversation
   await exchange(agent, garden, 'garden alpha', 'topic-memory-1')
   await exchange(agent, garden, 'garden beta', 'topic-memory-2')
   await exchange(agent, PRIMARY_CHAT, 'personal gamma', 'topic-memory-3')
@@ -29,7 +34,7 @@ export async function topicMemorySequence(agent: Probe): Promise<Response> {
     ({ summarized }) => summarized >= 2,
   )
   await exchange(agent, garden, 'what grows here?', 'topic-memory-4')
-  const thread = await agent.createConversation({ topic: created.value.id })
+  const thread = await agent.createConversation({ topic: created.success.id })
   return Response.json({
     garden: remembered,
     personal: await status(agent, PRIMARY_CHAT),
@@ -46,9 +51,9 @@ export async function topicMemorySequence(agent: Probe): Promise<Response> {
  * Conversation and its report lands there, never in Personal.
  */
 export async function topicRoutineSequence(agent: Probe): Promise<Response> {
-  const created = await agent.createTopic({ name: 'Errands', operationId: 'topic-routine' })
-  if (!created.ok) return Response.json({ created })
-  const errands = created.value.conversation
+  const created = await createTopic(agent, 'Errands', 'topic-routine')
+  if (Result.isFailure(created)) return Response.json({ created: created.failure })
+  const errands = created.success.conversation
   const attentionOf = async () => {
     const views = await agent.conversations()
     return (views.ok ? views.value : []).find((view) => view.id === errands)?.attention ?? []
@@ -82,7 +87,7 @@ export async function topicRoutineSequence(agent: Probe): Promise<Response> {
   const reported = await until(runs, (each) => each.some((run) => run.reportAcceptedAt !== null))
   const views = await agent.conversations()
   return Response.json({
-    topic: created.value.id,
+    topic: created.success.id,
     errands,
     asked,
     answered,
