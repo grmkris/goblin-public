@@ -1,7 +1,8 @@
 import { ConversationQueue, type QueuedInput } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { isString } from './values.ts'
-import { projectBatch, projectSnapshot, type ConversationProjection } from './projection.ts'
+import { projectBatch, projectSnapshot, type ConversationProjection, UnreadableFrame } from './projection.ts'
+import { withRef } from './refusal.ts'
 import { reportUnexpected } from './unexpected.ts'
 
 export interface PiEventSource {
@@ -121,8 +122,9 @@ export class ConversationStream {
       this.#attempt = 0
       this.report('connected')
     } catch (error) {
-      // expected: an unreachable or unreadable snapshot shows as reconnecting, with its reason, and is retried
-      if (!controller.signal.aborted) this.#retry(error instanceof Error ? error.message : 'Connection failed')
+      // expected: an unreachable or unreadable snapshot shows as reconnecting, with its reference, and is retried
+      const reason = error instanceof UnreadableFrame ? 'Stream data could not be read' : 'Connection failed'
+      if (!controller.signal.aborted) this.#retry(withRef(reason, error))
     }
   }
 
@@ -141,10 +143,11 @@ export class ConversationStream {
       this.#projection = { ...this.#projection, queueNotice: '' }
       this.#queueAttempt = 0
       this.#publishQueue()
-    } catch {
-      // expected: the last contents stay, the queue's notice says the read failed, and it is retried with backoff
+    } catch (error) {
+      // expected: the last contents stay, the queue's notice says the read failed (with its reference) and it is retried
       if (controller.signal.aborted || this.#disposed) return
-      this.#projection = { ...this.#projection, queueNotice: 'Queued messages could not be refreshed. Retrying…' }
+      const notice = `${withRef('Queued messages could not be refreshed', error)}. Retrying…`
+      this.#projection = { ...this.#projection, queueNotice: notice }
       this.#publishQueue()
       this.#cancelQueueRetry = this.scheduler.schedule(
         () => void this.refreshQueue(),

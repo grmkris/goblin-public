@@ -6,6 +6,7 @@ import { Conflict } from '@goblin/contracts/api'
 import { Alert, AlertDescription, Button, Skeleton } from '@goblin/ui'
 import { messageOf } from '../../../lib/query/app-error.ts'
 import { QueryBoundary } from '../../../lib/query/query-boundary.tsx'
+import { withRef } from '../../../lib/refusal.ts'
 import { relativeTime } from '../../../lib/threads.ts'
 import { reportUnexpected } from '../../../lib/unexpected.ts'
 import { createPersonaMutation, personaDetailQuery, updatePersonaMutation } from '../../../personas/queries.ts'
@@ -19,8 +20,9 @@ import { BLANK, NAME, PersonaForm } from './persona-form.tsx'
 function refusal(failure: Error | null, action: string): string {
   if (failure === null) return ''
   if (failure instanceof Conflict && failure.reason === 'persona_name_taken')
-    return 'Another persona already has that name.'
-  if (failure instanceof Conflict) return 'It changed since you opened it. Reload to see the newest version.'
+    return withRef('Another persona already has that name.', failure)
+  if (failure instanceof Conflict)
+    return withRef('It changed since you opened it. Reload to see the newest version.', failure)
   return messageOf(failure, action)
 }
 

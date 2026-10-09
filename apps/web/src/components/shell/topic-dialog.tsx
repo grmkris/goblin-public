@@ -14,13 +14,15 @@ import {
 } from '@goblin/ui'
 import { Conflict, NotFound } from '@goblin/contracts/api'
 import { messageOf } from '../../lib/query/app-error.ts'
+import { withRef } from '../../lib/refusal.ts'
 import { reportUnexpected } from '../../lib/unexpected.ts'
 import { useOrganize } from './organize.ts'
 
 /** What the owner reads when a Topic could not be named so. */
 function refusal(failure: unknown, action: string): string {
-  if (failure instanceof Conflict && failure.reason === 'topic_name_taken') return 'A topic already has that name.'
-  if (failure instanceof NotFound) return 'There is no such Topic.'
+  if (failure instanceof Conflict && failure.reason === 'topic_name_taken')
+    return withRef('A topic already has that name.', failure)
+  if (failure instanceof NotFound) return withRef('There is no such Topic.', failure)
   return messageOf(failure, action)
 }
 

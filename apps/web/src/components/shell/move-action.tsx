@@ -4,6 +4,7 @@ import { Conflict } from '@goblin/contracts/api'
 import { MessageSquareShareIcon } from 'lucide-react'
 import { moveMutation } from '../../conversations/queries.ts'
 import { messageOf } from '../../lib/query/app-error.ts'
+import { withRef } from '../../lib/refusal.ts'
 import { usePanel } from './panel.tsx'
 
 /** Move to thread in a channel: the message it is offered on, why it cannot move, and the move itself. */
@@ -29,7 +30,7 @@ const REASONS: Readonly<Record<string, string>> = {
 
 /** A refused move's reason, or what went wrong asking for it, in one short line. */
 function refusalText(failure: unknown): string {
-  if (failure instanceof Conflict) return 'A move of this turn is under way.'
+  if (failure instanceof Conflict) return withRef('A move of this turn is under way.', failure)
   return messageOf(failure, 'move it')
 }
 
