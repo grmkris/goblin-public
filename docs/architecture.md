@@ -110,10 +110,15 @@ front). A channel is `/c/:id`; its threads open in the thread panel beside it (A
 them, and `reply=<chat>-<entry>` or `reply=new` a draft on top (`lib/panel.ts`); a thread's or subagent's own `/c/<id>`
 opens its channel with the panel showing it. Under the message a thread started from, a summary (reply count, when the
 last reply came, a dot while unread, a pulse while it works) opens it; threads opened inside a thread stack with a back
-crumb. A message offers Reply in thread and Copy in a small toolbar over its top edge where a pointer rests, and on a
-touch screen once the message is tapped. Reply in thread opens a draft in the panel, with the focus in its composer,
-that branches the thread only when it is sent, because Pi cannot delete a conversation; `/new-thread` moves the
-composer's draft into a new thread's draft the same way. The channel and the panel follow conversations through one
+crumb. A message offers Reply in thread, Copy and Details in a small toolbar over its top edge where a pointer rests,
+and on a touch screen once the message is tapped. Reply in thread opens a draft in the panel, with the focus in its
+composer, that branches the thread only when it is sent, because Pi cannot delete a conversation; `/new-thread` moves the
+composer's draft into a new thread's draft the same way. A draft's (Reply's or "+"'s) first send makes the thread under
+the draft's one operation id, which every send meanwhile waits for and a retry asks for again (`lib/draft-thread.ts`), in
+the shape of the unified `StartThread` operation. Details opens a sheet of what ran behind the message
+(`GET /api/conversations/:id/details?entry=`, the inspect group): its operation in a few lines, its steps in order with
+their status and duration, the operations it led to, and what was not recorded; a message with nothing recorded says
+so. The channel and the panel follow conversations through one
 stream pool (`lib/stream-pool.ts`): one event stream per conversation however many show it, at most eight following
 beyond those on screen, and one off screen stops following after ten seconds, resuming from a fresh snapshot when it
 comes back. Start thread, a toggle in the composer (and `/new-thread`), posts the message as the head of a new thread whose
