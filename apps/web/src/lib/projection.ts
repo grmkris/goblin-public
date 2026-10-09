@@ -380,9 +380,17 @@ function inputInbox(value: unknown): Pick<QueuedInput, 'id' | 'mode'>[] {
 export const queuedProgress = (queuedCount: number): string =>
   `${queuedCount} queued ${queuedCount === 1 ? 'message' : 'messages'}`
 
+/** A frame of a chat's stream that is not the shape Pi sends: a bug, or a server this tab does not know. */
+export class UnreadableFrame extends Error {
+  override readonly name = 'UnreadableFrame'
+  constructor(readonly frame: 'snapshot' | 'batch') {
+    super(frame === 'snapshot' ? 'Invalid Pi snapshot' : 'Invalid Pi event batch')
+  }
+}
+
 export function projectSnapshot(value: unknown): ConversationProjection {
   const snapshot = record(value)
-  if (snapshot?.type !== 'snapshot' || !Array.isArray(snapshot.entries)) throw new Error('Invalid Pi snapshot')
+  if (snapshot?.type !== 'snapshot' || !Array.isArray(snapshot.entries)) throw new UnreadableFrame('snapshot')
   const entries = records(snapshot.entries)
   const tools = liveTools(snapshot.tools)
   const generation = record(snapshot.generation)
@@ -549,7 +557,7 @@ export function projectBatch(
   value: unknown,
   now: number = Date.now(),
 ): ConversationProjection {
-  if (!Array.isArray(value)) throw new Error('Invalid Pi event batch')
+  if (!Array.isArray(value)) throw new UnreadableFrame('batch')
   return refreshed(
     records(value).reduce<ConversationProjection>((next, event) => projectedEvent(next, event, now), previous),
   )

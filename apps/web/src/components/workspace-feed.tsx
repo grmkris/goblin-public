@@ -164,8 +164,13 @@ export function WorkspaceFeedProvider({
   return <WorkspaceFeedContext.Provider value={value}>{children}</WorkspaceFeedContext.Provider>
 }
 
+/** A component asked for the workspace feed outside its provider: a wiring mistake in the page, not a failure to show. */
+class NoWorkspaceFeed extends Error {
+  override readonly name = 'NoWorkspaceFeed'
+}
+
 export function useWorkspaceFeed(): WorkspaceFeed {
   const feed = useContext(WorkspaceFeedContext)
-  if (feed === undefined) throw new Error('useWorkspaceFeed outside WorkspaceFeedProvider')
+  if (feed === undefined) throw new NoWorkspaceFeed('useWorkspaceFeed outside WorkspaceFeedProvider')
   return feed
 }

@@ -25,9 +25,14 @@ type Panel = {
 
 const PanelContext = createContext<Panel | undefined>(undefined)
 
+/** A component asked for the panel outside a channel: a wiring mistake in the page, not a failure to show. */
+class NoPanel extends Error {
+  override readonly name = 'NoPanel'
+}
+
 export function usePanel(): Panel {
   const panel = use(PanelContext)
-  if (panel === undefined) throw new Error('usePanel outside a channel')
+  if (panel === undefined) throw new NoPanel('usePanel outside a channel')
   return panel
 }
 

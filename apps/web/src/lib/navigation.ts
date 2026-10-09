@@ -20,9 +20,14 @@ export type Navigation = {
 
 export const NavigationContext = createContext<Navigation | undefined>(undefined)
 
+/** A component asked for the shell's navigation outside the shell: a wiring mistake in the page, not a failure to show. */
+class NoNavigation extends Error {
+  override readonly name = 'NoNavigation'
+}
+
 /** The shell's navigation, for components under it. */
 export function useNavigation(): Navigation {
   const navigation = use(NavigationContext)
-  if (navigation === undefined) throw new Error('useNavigation outside the shell')
+  if (navigation === undefined) throw new NoNavigation('useNavigation outside the shell')
   return navigation
 }

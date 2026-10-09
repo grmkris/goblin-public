@@ -1,6 +1,6 @@
 import { authorTag } from '@goblin/contracts'
 import { describe, expect, it } from 'vitest'
-import { projectBatch, projectSnapshot } from '../src/lib/projection.ts'
+import { UnreadableFrame, projectBatch, projectSnapshot } from '../src/lib/projection.ts'
 
 /** The one assistant message of a snapshot holding just it. */
 const assistant = (message: Record<string, unknown>) =>
@@ -17,6 +17,12 @@ const user = (content: unknown) =>
     .messages[0]
 
 describe('Pi committed state projected for the chat', () => {
+  it('refuses a frame of another shape as an UnreadableFrame naming the frame', () => {
+    expect(() => projectSnapshot({ type: 'batch' })).toThrow(UnreadableFrame)
+    const snapshot = projectSnapshot({ type: 'snapshot', entries: [], tools: [], inbox: [] })
+    expect(() => projectBatch(snapshot, { type: 'run_start' })).toThrow(expect.objectContaining({ frame: 'batch' }))
+  })
+
   it('projects Pi whole-block replacements without duplicating streamed text', () => {
     const initial = projectSnapshot({ type: 'snapshot', entries: [], tools: [], inbox: [] })
     const next = projectBatch(initial, [
