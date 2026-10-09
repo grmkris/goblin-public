@@ -24,6 +24,7 @@ import type { FileStore } from '../../../src/files/store.ts'
 import type { McpHost } from '../../../src/mcp/host.ts'
 import type { PersonaInvocations } from '../../../src/personas/invocations.ts'
 import type { PersonaRegistry } from '../../../src/personas/registry.ts'
+import type { PersonaView } from '@goblin/contracts'
 import { ResidentAuthority } from '../../../src/resident.ts'
 import type { ChatRetrieval } from '../../../src/retrieval/service.ts'
 import type { PersonaTurnKit } from '../../../src/organize/kit.ts'
@@ -178,16 +179,25 @@ const fakeHarness = (record: PiRecord, calls: Calls): PiHarness => {
   })
 }
 
-/** The other services the conversation programs read: everything allowed, nothing running, nothing to tag. */
-const services = (calls: Calls) =>
+/** The other services the conversation programs read: everything allowed, nothing running, only `personas` to tag. */
+const services = (calls: Calls, personas: readonly PersonaView[]) =>
   Layer.mergeAll(
     // No message here carries files or App context, so neither store is read.
     Layer.succeed(Files, fake<FileStore>({})),
     Layer.succeed(Apps, fake<AppRegistry>({})),
     Layer.succeed(Budget, fake<ModelBudget>({ require: async () => undefined })),
     Layer.succeed(RoutineRuns, fake<RoutineRunStore>({ session: () => undefined })),
-    Layer.succeed(Invocations, fake<PersonaInvocations>({ stopChat: (chat) => calls.push(`invocations:${chat}`) })),
-    Layer.succeed(Personas, fake<PersonaRegistry>({ active: () => [] })),
+    Layer.succeed(
+      Invocations,
+      fake<PersonaInvocations>({
+        stopChat: (chat) => calls.push(`invocations:${chat}`),
+        insert: (asked) => {
+          calls.push(`asked:${asked.map(({ persona }) => persona).join(',')}`)
+          return []
+        },
+      }),
+    ),
+    Layer.succeed(Personas, fake<PersonaRegistry>({ active: () => personas, offers: () => false })),
     Layer.succeed(
       Capabilities,
       fake<CapabilityProfiles>({ scope: () => scopeOf([], true), own: () => [], inherited: () => [] }),
@@ -215,7 +225,10 @@ const run = async () =>
 /** The instance's pieces the handlers read: Pi, the model choices, no routine answers, the Personas and the bridge. */
 const instance = (harness: PiHarness, calls: Calls) => {
   const routines = fake<RoutineController>({ answer: async () => false, stop: async () => undefined })
-  const personas = fake<PersonaTurnKit>({ drop: async () => calls.push('personas:drop') })
+  const personas = fake<PersonaTurnKit>({
+    drop: async () => calls.push('personas:drop'),
+    start: async (_pi, ask) => void calls.push(`personas:${ask.order}`),
+  })
   const stopping = () => ({ harness, routines, personas })
   return fake<AgentInputs>({ harness, applied: new Map(), routines, personas, run, stopping })
 }
@@ -239,7 +252,7 @@ afterEach(async () => {
  * The conversations group as the agent serves it, running the conversation programs over a real chat directory on
  * SQLite. The registry, Pi and the instance are fakes that record what the programs asked of them.
  */
-const fixture = () => {
+const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) => {
   const { db, close } = chatDatabase()
   closes.push(close)
   const chats = Object.values(CHATS).map(({ id, kind, primary }) =>
@@ -261,7 +274,7 @@ const fixture = () => {
         Layer.mergeAll(
           Layer.succeed(Chats, new ChatDirectory(db)),
           Layer.succeed(Conversations, registry),
-          services(calls),
+          services(calls, options.personas ?? []),
           Layer.succeed(Resident, resident),
           Layer.succeed(Entitlements, plans),
           Layer.succeed(AgentInput, instance(harness, calls)),
@@ -344,6 +357,27 @@ describe('the conversations API served by the agent', () => {
     expect(calls).toContain('start:1:op-t')
     expect(record.writes).toEqual([{ conversation: 1, requestId: 'thread-head:op-t', kind: 'app.thread_head' }])
     expect(record.submitted).toEqual([{ session: NEW, operationId: 'op-t', content: 'plan it' }])
+  })
+
+  it('starts a Thread whose tagged Personas answer there in the order the message asks (H1)', async () => {
+    const ada = fake<PersonaView>({
+      id: 5,
+      name: 'Ada',
+      revision: 2,
+      role: 'critic',
+      instructions: 'Brief.',
+      exclusions: [],
+    })
+    const { fetch, calls, record } = fixture({ personas: [ada] })
+    const body = { input: 'compare them', operationId: 'op-p', selections: [{ kind: 'persona', personaId: 5 }] }
+    const response = await fetch(json('POST', '/api/conversations/1/threads', { ...body, personaOrder: 'sequence' }))
+    expect(response.status).toBe(201)
+    expect(calls).toEqual(['start:1:op-p', 'asked:5', 'personas:sequence'])
+    expect(record.writes.map(({ conversation, kind }) => [conversation, kind])).toEqual([
+      [1, 'app.thread_head'],
+      [9, 'app.persona_ask'],
+    ])
+    expect(record.submitted).toEqual([])
   })
 
   it('stops a chat, marks it read and renames it', async () => {

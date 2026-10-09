@@ -51,24 +51,40 @@ const submitRuntime = ({ harness, applied, routines, subagents, personas, run }:
   run,
 })
 
-/**
- * The owner's message into a chat: the Worker's `POST messages` route took these fields from the body and passed
- * `personaOrder` only when the body had one.
- */
-const submit = ({ params, payload }: ChatWrite<SendMessage>) =>
-  AgentInput.use((input) => {
-    const { input: text, operationId, appContext = [], attachments = [], selections = [], personaOrder } = payload
-    const context = { appContext, attachments, selections, ...(personaOrder === undefined ? {} : { personaOrder }) }
-    return submitOwner({ ...submitRuntime(input), thread: params.id, text, operationId, context })
-  })
+/** What came with the owner's message: App context, files and composer tags, and `personaOrder` when the body had one. */
+const contextOf = ({ appContext = [], attachments = [], selections = [], personaOrder }: SendMessage) => ({
+  appContext,
+  attachments,
+  selections,
+  ...(personaOrder === undefined ? {} : { personaOrder }),
+})
 
-/** The owner's message as the head of a new Thread. The Worker's `POST threads` route never passed `personaOrder`. */
+/** The owner's message into a chat, or an ask of the Personas it tags. */
+const submit = ({ params, payload }: ChatWrite<SendMessage>) =>
+  AgentInput.use((input) =>
+    submitOwner({
+      ...submitRuntime(input),
+      thread: params.id,
+      text: payload.input,
+      operationId: payload.operationId,
+      context: contextOf(payload),
+    }),
+  )
+
+/**
+ * The owner's message as the head of a new Thread, its Personas answering there in the order it asks. The Worker's
+ * `POST threads` route dropped `personaOrder` (H1), so tagged Personas always answered in parallel.
+ */
 const threadStart = ({ params, payload }: ChatWrite<SendMessage>) =>
-  AgentInput.use((input) => {
-    const { input: text, operationId, appContext = [], attachments = [], selections = [] } = payload
-    const context = { appContext, attachments, selections }
-    return startThread({ ...submitRuntime(input), parent: params.id, text, operationId, context })
-  })
+  AgentInput.use((input) =>
+    startThread({
+      ...submitRuntime(input),
+      parent: params.id,
+      text: payload.input,
+      operationId: payload.operationId,
+      context: contextOf(payload),
+    }),
+  )
 
 /** Every registered chat, closed ones included. */
 const list = () => Conversations.use((conversations) => attempt(() => conversations.list()))
