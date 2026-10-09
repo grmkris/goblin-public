@@ -8,7 +8,7 @@ import {
   mutationOptions,
   queryOptions,
 } from '@tanstack/react-query'
-import type { AppCall, ResourceRead, ToolCall } from '@goblin/contracts'
+import type { AppCall, CreateApp, ResourceRead, ToolCall } from '@goblin/contracts'
 import { owner } from '../lib/api.ts'
 
 const appKeys = {
@@ -34,6 +34,17 @@ export const appStateQuery = (id: string) =>
     staleTime: 0,
     gcTime: 0,
   })
+
+/** Keeps the App of call `callId` in a conversation, reopening it if it was closed; the workspace feed shows it. */
+export const keepAppMutation = owner.apiMutation({
+  mutationFn: (api, keep: CreateApp) => api.apps.create({ payload: keep }),
+})
+
+/** Closes a kept App, or opens a closed one again; the workspace feed shows it. */
+export const appClosedMutation = owner.apiMutation({
+  mutationFn: (api, { id, closed }: { readonly id: string; readonly closed: boolean }) =>
+    api.apps.update({ params: { id }, payload: { closed } }),
+})
 
 /** One of agent app `id`'s actions, called by its view with the frame's operation id. */
 export const appCallMutation = owner.apiMutation({

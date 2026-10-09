@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { AppView } from '@goblin/contracts'
 import { Button } from '@goblin/ui'
-import { failureText } from '../../lib/boundary.ts'
+import { messageOf } from '../../lib/query/app-error.ts'
 import type { ToolPart } from '../../lib/parts.ts'
 import { useNavigation } from '../../lib/navigation.ts'
 import { useAppHost } from '../apps/host.tsx'
@@ -23,7 +23,7 @@ function OpenApp({ app, here }: { readonly app: AppView; readonly here: boolean 
       show(app.closedAt === undefined ? app : await reopenApp(app.id))
       if (!here) navigation.openApp(app.id)
     } catch (cause) {
-      setError(failureText(cause))
+      setError(messageOf(cause, 'open the app'))
     }
   }
   return (

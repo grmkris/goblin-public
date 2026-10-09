@@ -1,8 +1,7 @@
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Schema } from 'effect'
 import {
-  AppView,
+  type AppView,
   type ConversationView,
   type CreateConversation,
   type UpdateConversation,
@@ -14,7 +13,7 @@ import {
   markReadMutation,
   updateConversationMutation,
 } from '../conversations/queries.ts'
-import { request } from '../lib/boundary.ts'
+import { appClosedMutation, keepAppMutation } from '../apps/queries.ts'
 import { BrowserPiEvents } from '../lib/conversation-stream.ts'
 import {
   EMPTY_WORKSPACE,
@@ -26,8 +25,6 @@ import {
 import { messageOf } from '../lib/query/app-error.ts'
 import { reportUnexpected } from '../lib/unexpected.ts'
 import { personaKeys } from '../personas/queries.ts'
-
-const decodeApp = Schema.decodeUnknownSync(AppView)
 
 type WorkspaceFeed = WorkspaceState & {
   readonly error: string
@@ -99,6 +96,8 @@ export function WorkspaceFeedProvider({
   const read = useMutation(markReadMutation).mutate
   const created = useMutation(createConversationMutation).mutateAsync
   const updated = useMutation(updateConversationMutation).mutateAsync
+  const kept = useMutation(keepAppMutation).mutateAsync
+  const closing = useMutation(appClosedMutation).mutateAsync
   const markRead = useCallback(
     (id: string) => {
       const at = Math.floor(Date.now() / 1000)
@@ -125,22 +124,20 @@ export function WorkspaceFeedProvider({
       error,
       markRead,
       apply: (changes) => setState((current) => applyChanges(current, changes)),
-      keepApp: async (conversation, callId) =>
-        showApp(decodeApp(await request('/api/apps', { body: { conversation, callId } }))),
+      keepApp: async (conversation, callId) => showApp(await kept({ conversation, callId })),
       closeApp: async (id) => {
         // Shown closed at once, so nothing loads it again while the server confirms; back as it was if that fails.
         const before = state.apps.find((app) => app.id === id)
         if (before !== undefined) showApp({ ...before, closedAt: Math.floor(Date.now() / 1000) })
         try {
-          showApp(decodeApp(await request(`/api/apps/${id}`, { method: 'PATCH', body: { closed: true } })))
+          showApp(await closing({ id, closed: true }))
         } catch (failure) {
           pending.current.delete(id)
           if (before !== undefined) setState((current) => applyChanges(current, [{ type: 'app', app: before }]))
           throw failure
         }
       },
-      reopenApp: async (id) =>
-        showApp(decodeApp(await request(`/api/apps/${id}`, { method: 'PATCH', body: { closed: false } }))),
+      reopenApp: async (id) => showApp(await closing({ id, closed: false })),
       create: async (from, topic) => {
         try {
           const body = {
@@ -163,7 +160,7 @@ export function WorkspaceFeedProvider({
         }
       },
     }
-  }, [state, error, markRead, setState, setError, pending, created, updated])
+  }, [state, error, markRead, setState, setError, pending, created, updated, kept, closing])
   return <WorkspaceFeedContext.Provider value={value}>{children}</WorkspaceFeedContext.Provider>
 }
 

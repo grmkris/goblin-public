@@ -1,6 +1,7 @@
 import { type ReactNode, createContext, use, useState } from 'react'
+import { NotFound } from '@goblin/contracts/api'
 import { Button } from '@goblin/ui'
-import { ApiFailure, failureText } from '../../lib/boundary.ts'
+import { messageOf } from '../../lib/query/app-error.ts'
 import type { ToolPart } from '../../lib/parts.ts'
 import { useAppHost } from '../apps/host.tsx'
 import { AppPlace } from '../apps/slot.tsx'
@@ -17,8 +18,7 @@ function ShowApp({ conversation, callId }: { readonly conversation: string; read
     try {
       show(await keepApp(conversation, callId))
     } catch (cause) {
-      const none = cause instanceof ApiFailure && cause.tag === 'NotFound'
-      setError(none ? 'This tool has no app view.' : failureText(cause))
+      setError(cause instanceof NotFound ? 'This tool has no app view.' : messageOf(cause, 'show the app'))
     }
   }
   return (

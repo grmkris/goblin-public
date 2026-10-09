@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { AppPower } from '@goblin/contracts'
 import { AskCard, AskCardDescription, AskCardHeader, Button } from '@goblin/ui'
 import { ShieldCheckIcon } from 'lucide-react'
-import { changeAgentApp, readAgentApp } from '../../lib/agent-apps.ts'
-import { failureText } from '../../lib/boundary.ts'
+import { agentAppQuery, changeAgentAppMutation } from '../../agent-apps/queries.ts'
+import { messageOf } from '../../lib/query/app-error.ts'
 
 /** A power in the owner's words. */
 export function powerText(power: Pick<AppPower, 'kind' | 'target'>): string {
@@ -27,34 +28,23 @@ export function powerText(power: Pick<AppPower, 'kind' | 'target'>): string {
  * for, read live, with Allow. Its powers fail until the owner allows them; nothing is allowed by the agent.
  */
 export function AppPowers({ app, title }: { readonly app: string; readonly title: string }) {
-  const [powers, setPowers] = useState<readonly AppPower[]>()
+  const queryClient = useQueryClient()
+  const detail = useQuery(agentAppQuery(app))
+  const change = useMutation(changeAgentAppMutation(queryClient, app)).mutateAsync
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  useEffect(() => {
-    let live = true
-    readAgentApp(app)
-      .then((detail) => {
-        if (live) setPowers(detail.powers)
-      })
-      .catch((cause: unknown) => {
-        if (live) setError(failureText(cause))
-      })
-    return () => {
-      live = false
-    }
-  }, [app])
+  const [refused, setRefused] = useState('')
+  const powers = detail.data?.powers
+  const error = refused !== '' || detail.error === null ? refused : messageOf(detail.error, 'read what it asks')
   const waiting = (powers ?? []).filter((power) => power.status !== 'approved')
+  /** Allows each waiting power in turn; each answer is the app as it now is, so the card follows it. */
   async function allow(): Promise<void> {
     setBusy(true)
-    setError('')
+    setRefused('')
     try {
-      let next = powers
       for (const power of waiting)
-        next = (await changeAgentApp(app, { kind: 'power', power: power.kind, target: power.target, allowed: true }))
-          .powers
-      setPowers(next)
+        await change({ kind: 'power', power: power.kind, target: power.target, allowed: true })
     } catch (cause) {
-      setError(failureText(cause))
+      setRefused(messageOf(cause, 'allow it'))
     } finally {
       setBusy(false)
     }
