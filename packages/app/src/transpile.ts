@@ -62,6 +62,7 @@ function transpiled(file: string, source: string, stems: ReadonlySet<string>, di
     })
     return linked(file, code, stems, diagnostics)
   } catch (cause) {
+    // expected: a syntax error is the author's, reported back to them as a diagnostic
     const message = cause instanceof Error ? cause.message : String(cause)
     const line = syntaxLine(message)
     diagnostics.push({ file, ...(line === undefined ? {} : { line }), message })
@@ -83,6 +84,7 @@ function viewModule(source: string, diagnostics: Diagnostic[]): { readonly code:
       filePath: VIEW,
     }).code
   } catch (cause) {
+    // expected: a syntax error is the author's, reported back to them as a diagnostic
     const message = cause instanceof Error ? cause.message : String(cause)
     const line = syntaxLine(message)
     diagnostics.push({ file: VIEW, ...(line === undefined ? {} : { line }), message })

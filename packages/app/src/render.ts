@@ -131,6 +131,7 @@ export class Render extends WorkerEntrypoint {
       renderToString(React.createElement(view as React.ComponentType))
       return { outcome: 'rendered' }
     } catch (cause) {
+      // expected: the view's own error goes back as the render's `threw` outcome
       return described(cause)
     }
   }

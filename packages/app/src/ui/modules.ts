@@ -13,10 +13,8 @@ export function provide(added: Registry): void {
   Object.assign(modules, added)
 }
 
-/** A module the view requires that this frame cannot give it. */
-class ModuleUnavailable extends Error {
-  override readonly name = 'ModuleUnavailable'
-}
+/** A module the view requires that this frame cannot give it. The frame runs without Effect: a plain named Error. */
+const moduleUnavailable = (message: string): Error => Object.assign(new Error(message), { name: 'ModuleUnavailable' })
 
 /**
  * A module of the frame by name; the transpiler already refused names that are not among them. A name a view may
@@ -24,7 +22,7 @@ class ModuleUnavailable extends Error {
  */
 export function frameRequire(name: string): unknown {
   if (name in modules) return modules[name]
-  if (!(name in VIEW_IMPORTS)) throw new ModuleUnavailable(`"${name}" is not available in an app's view.`)
+  if (!(name in VIEW_IMPORTS)) throw moduleUnavailable(`"${name}" is not available in an app's view.`)
   const bundle = VIEW_IMPORTS[name] ?? 'core'
-  throw new ModuleUnavailable(`"${name}" is unavailable: goblin's ${bundle} bundle failed to load in this frame.`)
+  throw moduleUnavailable(`"${name}" is unavailable: goblin's ${bundle} bundle failed to load in this frame.`)
 }

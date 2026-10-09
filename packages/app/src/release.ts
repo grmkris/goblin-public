@@ -166,6 +166,7 @@ export class App extends WorkerEntrypoint {
     try {
       return { ok: true, value: migrate(previous) ?? null }
     } catch (cause) {
+      // expected: the app's own error goes back as its `ok: false` result, stack included
       return failure(cause)
     }
   }
@@ -176,6 +177,7 @@ export class App extends WorkerEntrypoint {
     try {
       return { ok: true, value: (await prepare(input, prepareContext(state, now, powers))) ?? null }
     } catch (cause) {
+      // expected: the app's own error goes back as its `ok: false` result, stack included
       return failure(cause)
     }
   }
@@ -197,6 +199,7 @@ export class App extends WorkerEntrypoint {
         ? { ok: false, error: `Action ${action} returned nothing: return the next state.` }
         : { ok: true, value: next }
     } catch (cause) {
+      // expected: the app's own error goes back as its `ok: false` result, stack included
       return failure(cause)
     }
   }
@@ -207,6 +210,7 @@ export class App extends WorkerEntrypoint {
     try {
       return { ok: true, value: select(input, Object.freeze({ state: frozen(state), now })) ?? null }
     } catch (cause) {
+      // expected: the app's own error goes back as its `ok: false` result, stack included
       return failure(cause)
     }
   }
