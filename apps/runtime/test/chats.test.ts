@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ChatDirectory } from '../src/chats/directory.ts'
+import { ChatDirectory, registerChat } from '../src/chats/directory.ts'
 import { admitReceipt } from '../src/chats/receipts.ts'
 import { appConversations } from '../src/storage/schema.ts'
 import { appTopics } from '../src/storage/topics.ts'
@@ -31,6 +31,18 @@ describe('logical chat directory', () => {
     expect(chats.chatOf('41')).toBe('1')
     expect(chats.chatOf('1')).toBeUndefined()
     expect(() => chats.session('99')).toThrow(expect.objectContaining({ _tag: 'NotFound' }))
+  })
+
+  it('registers every chat row through one inserter: its own session unless given, kept or refused when there', () => {
+    const { chats, db } = fixture()
+    expect(registerChat(db, { chatId: '7', kind: 'thread', parentSession: '1', createdAt: 3 })).toBe(true)
+    expect(chats.session('7')).toBe('7')
+    expect(registerChat(db, { chatId: '7', kind: 'thread', title: 'again', createdAt: 4 }, 'keep')).toBe(false)
+    expect(db.select().from(appConversations).where(eq(appConversations.chatId, '7')).get()).toMatchObject({
+      title: null,
+      createdAt: 3,
+    })
+    expect(() => registerChat(db, { chatId: '7', kind: 'thread', createdAt: 5 })).toThrow()
   })
 
   it('finds the session an operation was admitted to from its receipt', () => {

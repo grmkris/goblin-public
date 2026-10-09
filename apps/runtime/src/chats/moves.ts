@@ -4,6 +4,7 @@ import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { Internal } from '../http/errors.ts'
+import { registerChat } from './directory.ts'
 import { appChatMoves, appConversations, appRegistry } from '../storage/schema.ts'
 
 export type MoveRow = typeof appChatMoves.$inferSelect
@@ -175,21 +176,18 @@ export class MoveStore<RunResult = unknown> {
             WHERE parent_session = ${chat} AND kind = 'subagent' AND spawner_session = ${source}
               AND CAST(session_id AS INTEGER) > ${row.messageEntry}`,
       )
-      this.#db
-        .insert(appConversations)
-        .values({
-          chatId: thread.chat,
-          piSession: fork,
-          kind: 'thread',
-          title: thread.title,
-          parentSession: chat,
-          forkEntry: thread.before,
-          recallThrough: thread.recallThrough,
-          topicId: thread.topic,
-          originOp: row.operationId,
-          createdAt: now,
-        })
-        .run()
+      registerChat(this.#db, {
+        chatId: thread.chat,
+        piSession: fork,
+        kind: 'thread',
+        title: thread.title,
+        parentSession: chat,
+        forkEntry: thread.before,
+        recallThrough: thread.recallThrough,
+        topicId: thread.topic,
+        originOp: row.operationId,
+        createdAt: now,
+      })
       this.#db
         .update(appRegistry)
         .set({ chatId: thread.chat })

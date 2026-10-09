@@ -26,18 +26,31 @@ const deferred = (): { readonly promise: Promise<void>; readonly release: () => 
 /** The roles of a Topic's one Conversation: Personal's (`primary`, the inbound target) and every other Topic's. */
 const channelRoles: ReadonlySet<string> = new Set(['primary', 'conversation'])
 
+/** A chat row to register: its Pi session is its own id unless it says otherwise (ADR 0030). */
+export type ChatRow = Omit<typeof appConversations.$inferInsert, 'piSession'> & { readonly piSession?: string }
+
+/**
+ * The one chat-row inserter (plan §3): every chat the agent registers goes in here, synchronously, so a caller's
+ * transaction holds it. A chat registered already fails the insert, unless `again` is `keep`, which leaves its row as
+ * it is. True when this call wrote the row.
+ */
+export function registerChat<RunResult>(
+  db: SQLiteAsyncDatabase<'sync', RunResult>,
+  row: ChatRow,
+  again: 'fail' | 'keep' = 'fail',
+): boolean {
+  const insert = db.insert(appConversations).values({ ...row, piSession: row.piSession ?? row.chatId })
+  const written =
+    again === 'keep'
+      ? insert.onConflictDoNothing().returning({ chat: appConversations.chatId }).all()
+      : insert.returning({ chat: appConversations.chatId }).all()
+  return written.length > 0
+}
+
 /** Register a fresh agent's stable primary; a retained or rebound binding is never overwritten. */
 export function registerPrimary<RunResult>(db: SQLiteAsyncDatabase<'sync', RunResult>, now: number): void {
-  db.insert(appConversations)
-    .values({
-      chatId: PRIMARY_CHAT,
-      piSession: String(ROOT_CONVERSATION_ID),
-      role: 'primary',
-      kind: 'main',
-      createdAt: now,
-    })
-    .onConflictDoNothing()
-    .run()
+  const primary = String(ROOT_CONVERSATION_ID)
+  registerChat(db, { chatId: PRIMARY_CHAT, piSession: primary, role: 'primary', kind: 'main', createdAt: now }, 'keep')
 }
 
 /** Stable application identities over Pi sessions. Locks cover admission only, never model execution or waits. */

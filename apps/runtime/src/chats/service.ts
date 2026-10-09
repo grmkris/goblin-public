@@ -14,7 +14,7 @@ import * as Context from 'effect/Context'
 import type * as Effect from 'effect/Effect'
 import type * as Option from 'effect/Option'
 import type { AppError } from '../http/errors.ts'
-import type { ChatId, SessionId } from './directory.ts'
+import type { ChatId, ChatRow, SessionId } from './directory.ts'
 import type { Receipt, ReceiptChange, ReceiptInput, ReceiptOrigin } from './receipts.ts'
 
 /**
@@ -43,6 +43,11 @@ export class Chats extends Context.Service<
     readonly isConversation: (chat: string) => Effect.Effect<boolean, AppError>
     /** Whether `chat` is a Persona's hidden fork (ADR 0033): never listed, never reported on its own. */
     readonly isHidden: (chat: string) => Effect.Effect<boolean, AppError>
+    /**
+     * Registers a chat's row (`registerChat`, the one chat-row inserter); a chat registered already fails, unless
+     * `again` is `keep`. True when this call wrote the row.
+     */
+    readonly register: (row: ChatRow, again?: 'fail' | 'keep') => Effect.Effect<boolean, AppError>
   }
 >()('goblin/chats/Chats') {}
 

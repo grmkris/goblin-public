@@ -13,7 +13,7 @@ import type { EntryDraft, Submission } from '@earendil-works/pi-durable'
 import * as Clock from 'effect/Clock'
 import type { Budget } from '../budget.ts'
 import { makeChatOperations } from '../chats/operations.ts'
-import type { ChatDirectory } from '../chats/directory.ts'
+import { type ChatDirectory, type ChatRow, registerChat } from '../chats/directory.ts'
 import { ChatOperations, Chats, Conversations, Moves, type RoutineReport, type ThreadAnchor } from '../chats/service.ts'
 import type { ConversationRegistry } from '../conversations.ts'
 import type { Models } from '../models.ts'
@@ -22,6 +22,7 @@ import { FlowEvents } from '../observability/flows.ts'
 import { safeErrorType } from '../observability/report.ts'
 import { failedFlow } from '../organize/flows.ts'
 import { BACKGROUND } from '../pi/context.ts'
+import { Db } from '../runtime/db.ts'
 import { Chats as LegacyChats, Conversations as LegacyConversations, Moves as LegacyMoves } from '../services.ts'
 import { attempt, attemptSync, nowSecondsEffect } from '../services.ts'
 import type { FoundationServices } from './core.ts'
@@ -31,6 +32,7 @@ export const ChatsAdapter = Layer.effect(
   Chats,
   Effect.gen(function* () {
     const chats = yield* LegacyChats
+    const db = yield* Db
     return Chats.of({
       primary: chats.primary(),
       session: Effect.fn('Chats.session')(function* (chat: string) {
@@ -53,6 +55,9 @@ export const ChatsAdapter = Layer.effect(
       }),
       isHidden: Effect.fn('Chats.isHidden')(function* (chat: string) {
         return yield* attemptSync(() => chats.isHidden(chat))
+      }),
+      register: Effect.fn('Chats.register')(function* (row: ChatRow, again: 'fail' | 'keep' = 'fail') {
+        return yield* attemptSync(() => registerChat(db, row, again))
       }),
     })
   }),

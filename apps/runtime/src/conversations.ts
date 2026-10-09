@@ -5,7 +5,7 @@ import type { Conversation, EntryDraft, EntryId, EntryRecord, Extension } from '
 import type { PiHarness } from 'agents/harness/pi'
 import type { CapabilityProfiles } from './capabilities/profiles.ts'
 import { writeHelperExclusions } from './capabilities/profiles.ts'
-import { registerPrimary, type ChatDirectory } from './chats/directory.ts'
+import { type ChatDirectory, type ChatRow, registerChat, registerPrimary } from './chats/directory.ts'
 import { ChatStops } from './chats/stops.ts'
 import { Conflict, InvalidInput, NotFound } from './http/errors.ts'
 import type { ChatMemories } from './memory/memory.ts'
@@ -378,19 +378,15 @@ export class ConversationRegistry {
     if (parentChat === undefined) throw new NotFound({ what: 'spawner chat' })
     const topicId = this.#kit.chats.topicOf(parentChat)
     this.#db.transaction(() => {
-      this.#db
-        .insert(appConversations)
-        .values({
-          chatId: session,
-          piSession: session,
-          spawnerSession: parent,
-          kind: 'subagent',
-          title: name,
-          parentSession: parentChat,
-          topicId,
-          createdAt: now,
-        })
-        .run()
+      registerChat(this.#db, {
+        chatId: session,
+        spawnerSession: parent,
+        kind: 'subagent',
+        title: name,
+        parentSession: parentChat,
+        topicId,
+        createdAt: now,
+      })
       writeHelperExclusions(this.#db, session, exclusions, now)
     })
     this.#changed([session])
@@ -426,21 +422,8 @@ export class ConversationRegistry {
    */
   registerRoutine(session: string, runId: string, title: string, now: number, topic: number = PERSONAL_TOPIC): void {
     const home = this.#routineHome(topic)
-    this.#db
-      .insert(appConversations)
-      .values({
-        chatId: session,
-        piSession: session,
-        kind: 'thread',
-        title,
-        parentSession: home.chat,
-        topicId: home.topic,
-        routineRunId: runId,
-        createdAt: now,
-        mainNote: null,
-      })
-      .onConflictDoNothing()
-      .run()
+    const row = { chatId: session, kind: 'thread', title, parentSession: home.chat, topicId: home.topic } as const
+    registerChat(this.#db, { ...row, routineRunId: runId, createdAt: now, mainNote: null }, 'keep')
     this.#changed([session])
   }
 
@@ -639,13 +622,10 @@ export class ConversationRegistry {
 
   /** Registers a new thread with the switches its parent works under, copied in the same synchronous step. */
   async #insert(
-    values: Omit<typeof appConversations.$inferInsert, 'createdAt'> & { readonly parentSession: string },
+    values: Omit<ChatRow, 'createdAt'> & { readonly parentSession: string },
     now: number,
   ): Promise<ConversationView> {
-    this.#db
-      .insert(appConversations)
-      .values({ ...values, piSession: values.chatId, createdAt: now })
-      .run()
+    registerChat(this.#db, { ...values, createdAt: now })
     this.#kit.capabilities.copy(values.parentSession, values.chatId, now)
     this.#changed([values.chatId])
     return this.#describe(this.#registered(values.chatId))

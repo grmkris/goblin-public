@@ -57,7 +57,7 @@ export const portServices = ({ db, chats, harness, budget, models }: PortInstanc
     makeChatOperations({ chats, requireOpen: (chat) => chats.session(chat) }),
   )
   return Layer.mergeAll(
-    ChatsAdapter.pipe(Layer.provide(Layer.succeed(LegacyChats, chats))),
+    ChatsAdapter.pipe(Layer.provide(Layer.merge(Layer.succeed(LegacyChats, chats), Layer.succeed(Db, db)))),
     operations.pipe(Layer.provide(core)),
     plans,
     pi,
