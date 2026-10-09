@@ -1,9 +1,9 @@
 import { defineExtension } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { type Stage, suggestions } from '../mcp/suggested.ts'
-import { Mcp, attempt, requireResident } from '../services.ts'
-import type { RunProgram } from './resident-mcp.ts'
+import { McpServers, Resident } from '../mcp/service.ts'
+import type { Stage } from '../mcp/suggested.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { typedTool } from './typed-tool.ts'
 
 /** Whether one of the query's words is in `fields`. */
@@ -63,11 +63,12 @@ const suggestTool = (run: RunProgram, stage: Stage | undefined) =>
     execute: async ({ query }) =>
       run(
         Effect.gen(function* () {
-          yield* requireResident
-          const mcp = yield* Mcp
-          const endpoints = new Set(mcp.manager.servers.map((server) => server.endpoint))
-          const shelf = suggestions(stage, endpoints).filter((entry) => matches(query, entry.title, entry.description))
-          const found = yield* attempt(() => mcp.searchCatalog(query))
+          yield* (yield* Resident).require()
+          const servers = yield* McpServers
+          const shelf = (yield* servers.suggested(stage)).filter((entry) =>
+            matches(query, entry.title, entry.description),
+          )
+          const found = yield* servers.catalog(query)
           return {
             trusted: false as const,
             suggested: shelf.map(({ title, description, endpoint, signIn, added }) => ({

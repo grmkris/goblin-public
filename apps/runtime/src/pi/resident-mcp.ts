@@ -1,21 +1,26 @@
 import { type ToolExecutionApi, ToolTask, defineExtension, hook } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { type GrantDenied, NotFound } from '../http/errors.ts'
+import type { Grant } from '@goblin/contracts'
+import type { Tool } from '@modelcontextprotocol/client'
+import * as Option from 'effect/Option'
+import { Apps } from '../apps/service.ts'
+import type { CapabilityScope } from '../capabilities/profiles.ts'
+import { Capabilities } from '../capabilities/service.ts'
+import { type GrantDenied, NotFound, toAppError } from '../http/errors.ts'
 import { toolAppResource, toolOffered } from '../mcp/connection.ts'
 import { grantRequiredResult, mcpModelResult } from '../mcp/extension.ts'
-import type { McpHost } from '../mcp/host.ts'
+import { McpConnections, McpGrants, McpServers, Resident } from '../mcp/service.ts'
 import type { McpRequestOptions } from '../mcp/types.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
-import { Apps, Capabilities, Mcp, attempt, nowSecondsEffect, requireResident } from '../services.ts'
 import { capabilityOffResult, mcpOff } from './capabilities.ts'
 import { ReadyResult, typedTool } from './typed-tool.ts'
 import { McpCallInput, holdModelCall, approvalResult } from '../mcp/approval-request.ts'
 
 const executionAuthority = (session: string, authorize?: (session: string) => Promise<void>) =>
   Effect.gen(function* () {
-    yield* requireResident
-    if (authorize !== undefined) yield* attempt(() => authorize(session))
+    yield* (yield* Resident).require()
+    if (authorize !== undefined) yield* Effect.tryPromise({ try: () => authorize(session), catch: toAppError })
   })
 
 /** Runs a program on the Agent DO's services; failures reject with the typed `AppError` (the bridge's `run`). */
@@ -32,7 +37,7 @@ const dispatchAuthority =
     run(
       Effect.gen(function* () {
         yield* executionAuthority(session, authorize)
-        if (!(yield* Capabilities).scope(session).tool(input.serverId, input.name))
+        if (!(yield* (yield* Capabilities).scope(session)).tool(input.serverId, input.name))
           return yield* new NotFound({ what: 'tool scope' })
       }),
     )
@@ -41,9 +46,9 @@ const dispatchAuthority =
  * A call the owner has not granted becomes a request for their decision, but only for a tool that exists and the
  * model may call: anything else stays NotFound, so the owner is never asked about a tool that is not there.
  */
-const grantRequired = (mcp: McpHost, denied: GrantDenied, options: McpRequestOptions) =>
+const grantRequired = (denied: GrantDenied, options: McpRequestOptions) =>
   Effect.gen(function* () {
-    const snapshot = yield* attempt(() => mcp.manager.connect(denied.serverId, options))
+    const snapshot = yield* (yield* McpConnections).connect(denied.serverId, options)
     const tool = snapshot.tools.find((item) => item.name === denied.name)
     if (tool === undefined || !toolOffered(tool, 'model')) return yield* new NotFound({ what: `tool ${denied.name}` })
     return grantRequiredResult(denied.serverId, denied.name)
@@ -55,11 +60,12 @@ const grantRequired = (mcp: McpHost, denied: GrantDenied, options: McpRequestOpt
  */
 const keepApp = (session: string, callId: string, input: { readonly serverId: string; readonly name: string }) =>
   Effect.gen(function* () {
-    const tool = (yield* Mcp).manager.snapshot(input.serverId)?.tools.find(({ name }) => name === input.name)
+    const snapshot = Option.getOrUndefined(yield* (yield* McpConnections).snapshot(input.serverId))
+    const tool = snapshot?.tools.find(({ name }) => name === input.name)
     const uri = tool === undefined ? undefined : toolAppResource(tool)
     if (uri === undefined) return
     const origin = { serverId: input.serverId, tool: input.name, uri, title: tool?.title ?? input.name }
-    ;(yield* Apps).register(session, callId, origin, yield* nowSecondsEffect)
+    yield* (yield* Apps).register(session, callId, origin)
   })
 
 /** A remote tool as `mcp_list` shows it: its words and schemas are the server's, untrusted data. */
@@ -83,9 +89,9 @@ const Listing = Schema.Union([
 ])
 
 function offered(
-  listing: readonly import('@modelcontextprotocol/client').Tool[],
-  grants: ReturnType<McpHost['grants']>,
-  current: import('../capabilities/profiles.ts').CapabilityScope,
+  listing: readonly Tool[],
+  grants: readonly Grant[],
+  current: CapabilityScope,
   serverId: string,
 ): (typeof RemoteTool.Type)[] {
   return listing
@@ -144,20 +150,19 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
           run(
             Effect.gen(function* () {
               yield* executionAuthority(String(api.conversationId), authorize)
-              const mcp = yield* Mcp
-              const scope = (yield* Capabilities).scope(String(api.conversationId))
+              const capabilities = yield* Capabilities
+              const scope = yield* capabilities.scope(String(api.conversationId))
               if (serverId === undefined)
                 return {
-                  servers: mcp
-                    .servers()
+                  servers: (yield* (yield* McpServers).list())
                     .filter(({ serverId: id }) => scope.server(id))
                     .map(({ serverId: id, status }) => ({ serverId: id, status })),
                 }
               if (!scope.server(serverId)) return yield* new NotFound({ what: `server ${serverId}` })
-              const snapshot = yield* attempt(() => mcp.manager.connect(serverId, requestFor(api, context.abortSignal)))
+              const snapshot = yield* (yield* McpConnections).connect(serverId, requestFor(api, context.abortSignal))
               yield* executionAuthority(String(api.conversationId), authorize)
-              const current = (yield* Capabilities).scope(String(api.conversationId))
-              const tools = offered(snapshot.tools, mcp.grants(), current, serverId)
+              const current = yield* capabilities.scope(String(api.conversationId))
+              const tools = offered(snapshot.tools, yield* (yield* McpGrants).list(), current, serverId)
               return { origin: serverId, trusted: false as const, tools }
             }),
           ),
@@ -176,31 +181,29 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
           run(
             Effect.gen(function* () {
               yield* executionAuthority(String(api.conversationId), authorize)
-              const scope = yield* Capabilities.useSync((capabilities) =>
-                capabilities.scope(String(api.conversationId)),
-              )
+              const scope = yield* (yield* Capabilities).scope(String(api.conversationId))
               const off = mcpOff(scope, input.serverId, input.name)
               const session = String(api.conversationId)
               if (off !== undefined) return new ReadyResult(capabilityOffResult(off, scope))
               const held = yield* holdModelCall(session, api.callId, String(api.taskId), input)
               if (held !== undefined) return new ReadyResult(yield* approvalResult(session, api.callId, held.id, input))
-              const mcp = yield* Mcp
-              return yield* attempt(() =>
-                mcp.manager.callTool(input.serverId, input.name, input.arguments, {
+              const connections = yield* McpConnections
+              return yield* connections
+                .callTool(input.serverId, input.name, input.arguments, {
                   caller: 'model',
                   authorize: dispatchAuthority(run, String(api.conversationId), input, authorize),
                   ...requestFor(api, context.abortSignal),
-                }),
-              ).pipe(
-                Effect.tap(() => keepApp(session, api.callId, input)),
-                Effect.map((result) => new ReadyResult(mcpModelResult(input.serverId, result))),
-                Effect.catchTag('GrantDenied', (denied) =>
-                  Effect.map(
-                    grantRequired(mcp, denied, requestFor(api, context.abortSignal)),
-                    (result) => new ReadyResult(result),
+                })
+                .pipe(
+                  Effect.tap(() => keepApp(session, api.callId, input)),
+                  Effect.map((result) => new ReadyResult(mcpModelResult(input.serverId, result))),
+                  Effect.catchTag('GrantDenied', (denied) =>
+                    Effect.map(
+                      grantRequired(denied, requestFor(api, context.abortSignal)),
+                      (result) => new ReadyResult(result),
+                    ),
                   ),
-                ),
-              )
+                )
             }),
           ),
       }),

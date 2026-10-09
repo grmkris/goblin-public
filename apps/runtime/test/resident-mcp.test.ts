@@ -6,6 +6,13 @@ import type { AppError } from '../src/http/errors.ts'
 import { McpHost } from '../src/mcp/host.ts'
 import { type CapabilityScope, type Exclusion, scopeOf } from '../src/capabilities/profiles.ts'
 import { residentMcpExtension } from '../src/pi/resident-mcp.ts'
+import {
+  CapabilitiesAdapter,
+  McpConnectionsAdapter,
+  McpGrantsAdapter,
+  McpServersAdapter,
+  ResidentAdapter,
+} from '../src/layers/mcp.ts'
 import { type AgentServices, Capabilities, Mcp, Resident } from '../src/services.ts'
 import { ActiveResident, FixedProfiles } from './fixed-services.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
@@ -52,13 +59,24 @@ const scopes: Readonly<Record<string, CapabilityScope>> = {
   '9': scopeOf([off('tool', 'notes', 'read')], true),
   '10': scopeOf([off('server', 'notes')], false),
 }
+/** The tools' services, built by the wave 1 adapters over the host, the authority and the fixed switches above. */
 const layer = Layer.mergeAll(
-  Layer.succeed(Mcp, host),
-  Layer.succeed(Resident, resident),
-  Layer.succeed(Capabilities, new FixedProfiles(scopes)),
+  McpServersAdapter,
+  McpGrantsAdapter,
+  McpConnectionsAdapter,
+  ResidentAdapter,
+  CapabilitiesAdapter,
+).pipe(
+  Layer.provideMerge(
+    Layer.mergeAll(
+      Layer.succeed(Mcp, host),
+      Layer.succeed(Resident, resident),
+      Layer.succeed(Capabilities, new FixedProfiles(scopes)),
+    ),
+  ),
 )
 const run = <A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<A> =>
-  // SAFETY: mcp_call and mcp_list need only the Mcp, Resident and Capabilities services provided here.
+  // SAFETY: mcp_call and mcp_list need only the MCP, resident authority and capability services provided here.
   Effect.runPromise(Effect.provide(program, layer) as Effect.Effect<A, AppError>)
 const tools = residentMcpExtension(run).tools ?? []
 const execute = (tool: string, input: Record<string, unknown>, conversationId: number) => {
