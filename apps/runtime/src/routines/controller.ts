@@ -2,7 +2,8 @@ import type { Extension } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
-import { Routines, RoutineRuns, attempt, attemptSync } from '../services.ts'
+import { RoutineRuns, attempt } from '../services.ts'
+import { RoutineControl, Routines } from './service.ts'
 import type { RoutineRevision } from '@goblin/contracts'
 import { changeRoutine } from './program.ts'
 import type { RunProgram } from '../pi/resident-mcp.ts'
@@ -52,19 +53,26 @@ export function routineSchedulePorts(input: {
     },
   }
 }
-export const routineChangeProgram = (
-  routines: RoutineController,
+/** The owner confirms, pauses or archives a routine: confirm subscribes an event routine, archive stops its runs. */
+export const routineChange = Effect.fn('routines.change')(function* (
   id: string,
   input: RoutineRevision,
   action: 'confirm' | 'pause' | 'archive',
-) =>
-  Effect.gen(function* () {
-    const changed = yield* changeRoutine(id, input, action)
-    if (action === 'confirm') yield* attempt(() => routines.confirmEvents(changed.id, changed.revision))
-    if (action === 'archive') yield* attempt(() => routines.archive(id))
-    yield* attempt(() => routines.reconcile())
-    return yield* Routines.use((store) => attemptSync(() => store.view(id)))
-  })
+) {
+  const changed = yield* changeRoutine(id, input, action)
+  const control = yield* RoutineControl
+  if (action === 'confirm') yield* control.confirmEvents(changed.id, changed.revision)
+  if (action === 'archive') yield* control.archive(id)
+  yield* control.reconcile
+  return yield* (yield* Routines).view(id)
+})
+/** The RPC method's form: `routines` is the controller `RoutineControl` wraps. It goes with the RPC method. */
+export const routineChangeProgram = (
+  _routines: RoutineController,
+  id: string,
+  input: RoutineRevision,
+  action: 'confirm' | 'pause' | 'archive',
+) => routineChange(id, input, action)
 /** Keeps the Agent shell thin while the native scheduler and Pi own their respective lifecycle boundaries. */
 export class RoutineController extends RoutineRunner {
   readonly #input: Input
@@ -94,7 +102,7 @@ export class RoutineController extends RoutineRunner {
             wake: this.#input.schedules.wake,
           }),
       ),
-    ).catch((error) => {
+    ).catch((error: unknown) => {
       this.#events = undefined
       throw error
     })

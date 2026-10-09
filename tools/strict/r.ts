@@ -5,4 +5,7 @@ export const paths: string[] = [
   'apps/runtime/src/channel/service.ts',
   'apps/runtime/src/layers/routines.ts',
   'apps/runtime/src/routines/service.ts',
+  'apps/runtime/src/routines/api.ts',
+  'apps/runtime/src/routines/controller.ts',
+  'packages/contracts/src/api/routines.ts',
 ]
