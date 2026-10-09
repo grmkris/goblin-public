@@ -18,10 +18,12 @@ import {
   statusOf as contractStatusOf,
 } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
 import { describe, expect, it } from 'vitest'
-import type { AccountRecords } from '../../../src/http/api/account.ts'
+import { type AccountRecords, crashPoint } from '../../../src/http/api/account.ts'
 import { type Edge, type EdgeHttp, isAccountPath, makeEdgeHttp } from '../../../src/http/api/edge.ts'
 import { statusOf } from '../../../src/http/respond.ts'
+import { FlowPointFailure } from '../../../src/observability/ae.ts'
 import { withLines } from '../../observability/lines.ts'
 
 const APP = 'https://goblin.test'
@@ -41,16 +43,28 @@ const STATE = {
   priceCents: 1000,
 } as const
 
-const records: AccountRecords = {
-  clients: () => Effect.succeed([{ clientId: 'client.1', name: 'Claude' }]),
-  revokeClient: () => Effect.void,
-  billingState: () => Effect.succeed(STATE),
-  checkout: () => Effect.fail(new BillingRefused({ code: 'already_subscribed' })),
-  portal: () => Effect.succeed({ url: 'https://portal.test/x' }),
+/** The account's records, keeping the crash points asked for: each one's user, if the report came with a session. */
+const accountRecords = (crash: AccountRecords['crash'] = () => Effect.void) => {
+  const crashes: (string | undefined)[] = []
+  const records: AccountRecords = {
+    clients: () => Effect.succeed([{ clientId: 'client.1', name: 'Claude' }]),
+    revokeClient: () => Effect.void,
+    billingState: () => Effect.succeed(STATE),
+    checkout: () => Effect.fail(new BillingRefused({ code: 'already_subscribed' })),
+    portal: () => Effect.succeed({ url: 'https://portal.test/x' }),
+    crash: (report, userId) => {
+      crashes.push(Option.getOrUndefined(userId))
+      return crash(report, userId)
+    },
+  }
+  return { records, crashes }
 }
 
 /** The deployment as the edge sees it, with an agent that records what reached it and answers `reply`. */
-const deployment = (reply: () => Response = () => Response.json({ ok: true })) => {
+const deployment = (
+  reply: () => Response = () => Response.json({ ok: true }),
+  { records, crashes } = accountRecords(),
+) => {
   const seen: Request[] = []
   const edge: Edge = {
     origin: APP,
@@ -70,7 +84,7 @@ const deployment = (reply: () => Response = () => Response.json({ ok: true })) =
     }),
     records,
   }
-  return { seen, edge }
+  return { seen, edge, crashes }
 }
 
 const built = Effect.runPromise(makeEdgeHttp)
@@ -218,13 +232,15 @@ describe('the account API in the Worker', () => {
   }
 
   it('takes a crash report with the CSRF header and no session, and logs it without its query', async () => {
-    const { edge } = deployment()
-    const request = write('/api/client-errors', {
-      headers: { cookie: '', 'content-type': 'application/json' },
+    const { edge, crashes } = deployment()
+    const request = new Request(`${APP}/api/client-errors`, {
+      method: 'POST',
+      headers: { origin: APP, 'x-goblin-csrf': '1', 'content-type': 'application/json' },
       body: JSON.stringify(report),
     })
     const { response, lines } = await through('account', request, edge)
     expect(response.status).toBe(204)
+    expect(crashes).toEqual([undefined])
     expect(lines).toEqual([
       {
         level: 'warn',
@@ -236,6 +252,39 @@ describe('the account API in the Worker', () => {
         ref: '7f3a9c12',
       },
     ])
+  })
+
+  it("writes a signed-in report's point under its user, and still takes a report whose point cannot be written", async () => {
+    const body = JSON.stringify(report)
+    const signedIn = deployment()
+    const withSession = write('/api/client-errors', { headers: { 'content-type': 'application/json' }, body })
+    expect((await through('account', withSession, signedIn.edge)).response.status).toBe(204)
+    expect(signedIn.crashes).toEqual([OWNER])
+    const failing = deployment(
+      undefined,
+      accountRecords(() => Effect.fail(new FlowPointFailure({ step: 'write', cause: 'x' }))),
+    )
+    const { response, lines } = await through(
+      'account',
+      write('/api/client-errors', { headers: { 'content-type': 'application/json' }, body }),
+      failing.edge,
+    )
+    expect(response.status).toBe(204)
+    expect(lines).toContainEqual(
+      expect.objectContaining({ event: 'failure', where: 'http.clientErrors', 'error.type': 'FlowPointFailure' }),
+    )
+  })
+
+  it("puts a crash's point in the flow layout: content-free, indexed by the agent's hash only when there is one", () => {
+    const point = crashPoint(report, 'a1b2c3d4e5f60718', 'dev')
+    expect(point).toEqual({
+      indexes: ['a1b2c3d4e5f60718'],
+      blobs: ['client_error', 'app', 'owner', '', 'error', 'TypeError', 'dev', 'd5ac526', ''],
+      doubles: [1, 0, 0, 0],
+    })
+    expect(crashPoint(report, undefined, 'dev').indexes).toEqual([])
+    expect(JSON.stringify(point)).not.toContain('/c/')
+    expect(JSON.stringify(point)).not.toContain('index-3f2a')
   })
 
   it('refuses a crash report without the CSRF header, or one that could carry a message', async () => {

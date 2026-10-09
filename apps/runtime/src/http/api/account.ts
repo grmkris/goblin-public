@@ -1,5 +1,6 @@
 import { AccountApi, type AppError, BillingRefused, withRef } from '@goblin/contracts/api'
 import type { BillingState, ClientErrorReport, InboundClient } from '@goblin/contracts'
+import type { FlowEvent } from '@goblin/contracts/telemetry'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -13,7 +14,8 @@ import { billingDeps, startCheckout } from '../../billing/routes.ts'
 import { makeBillingStore } from '../../billing/store.ts'
 import type { RuntimeEnv } from '../../env.ts'
 import { logEvent } from '../../observability/logger.ts'
-import { expectedFailure } from '../../observability/report.ts'
+import { expectedFailure, reportAndRecover } from '../../observability/report.ts'
+import { FlowPointFailure, agentHash, flowPoint } from '../../observability/ae.ts'
 import { Unauthenticated, toAppError } from '../errors.ts'
 import { RequestContext } from './context.ts'
 
@@ -26,6 +28,36 @@ export interface AccountRecords {
     userId: string,
   ) => Effect.Effect<{ readonly checkoutUrl: string; readonly sessionId: string }, BillingRefused | AppError>
   readonly portal: (userId: string) => Effect.Effect<{ readonly url: string }, BillingRefused | AppError>
+  /**
+   * A browser crash's `client_error` flow point (ADR 0037), under the hash of `userId`'s agent when the report came
+   * with a session; nothing without the `FLOWS` binding.
+   */
+  readonly crash: (report: ClientErrorReport, userId: Option.Option<string>) => Effect.Effect<void, FlowPointFailure>
+}
+
+/**
+ * The `client_error` flow step of a crash report: the browser's user, through the app, ended in an error of the
+ * report's type. Content-free (ADR 0024): no route, frames or reference.
+ */
+const crashStep = (report: ClientErrorReport): FlowEvent => ({
+  flow: 'client_error',
+  via: 'app',
+  actor: 'owner',
+  status: 'error',
+  errorType: report.name,
+})
+
+/**
+ * Its Analytics Engine point (`observability/ae.ts`'s layout), with the report's own build. A report needs no session:
+ * with one it is indexed by the agent's hash, without one it has no index.
+ */
+export const crashPoint = (
+  report: ClientErrorReport,
+  agent: string | undefined,
+  stage: string,
+): AnalyticsEngineDataPoint => {
+  const point = flowPoint(crashStep(report), agent ?? '', { stage, build: report.build })
+  return agent === undefined ? { ...point, indexes: [] } : point
 }
 
 /** A refusal that is an answer, not a fault: the reporter skips it. */
@@ -41,7 +73,18 @@ export const accountRecords = (env: RuntimeEnv): AccountRecords => {
   const store = makeBillingStore(env.AUTH_DB)
   const deps = billingDeps(env)
   const stage = env.STAGE ?? 'test'
+  const flows = env.FLOWS
   return {
+    crash: (report, userId) =>
+      flows === undefined
+        ? Effect.void
+        : Effect.gen(function* () {
+            const agent = Option.isSome(userId) ? yield* agentHash(env.CREDENTIAL_KEY, userId.value) : undefined
+            yield* Effect.try({
+              try: () => flows.writeDataPoint(crashPoint(report, agent, env.STAGE ?? 'local')),
+              catch: (cause) => new FlowPointFailure({ step: 'write', cause }),
+            })
+          }),
     clients: (userId) => stored(() => listInboundClients(env, userId)),
     revokeClient: (userId, clientId) => stored(() => revokeInboundClient(env, userId, clientId)),
     billingState: (userId) =>
@@ -108,7 +151,15 @@ const quoted = <A, E extends AppError | BillingRefused, R>(self: Effect.Effect<A
 /** Frame locations as the browser sent them, without query or fragment. */
 const location = (frame: string): string => frame.replace(/[?#][^\s]*?(?=:\d{1,7}:\d{1,7}$)/u, '')
 
-/** One content-free line per crash report (ADR 0024); the flow sink takes it once it exists. */
+/** One content-free line per crash report (ADR 0024), then its flow point; a point that fails is reported, not answered. */
+const takeReport = (report: ClientErrorReport) =>
+  Effect.andThen(
+    logReport(report),
+    AccountRequest.use(({ records, userId }) => records.crash(report, userId)).pipe(
+      reportAndRecover('http.clientErrors', undefined),
+    ),
+  )
+
 const logReport = (report: ClientErrorReport) =>
   logEvent('warn', 'client_error', {
     route: report.route,
@@ -138,7 +189,7 @@ const ClientsHandlers = HttpApiBuilder.group(AccountApi, 'clients', (handlers) =
 )
 
 const ClientErrorsHandlers = HttpApiBuilder.group(AccountApi, 'clientErrors', (handlers) =>
-  handlers.handle('report', ({ payload }) => logReport(payload)),
+  handlers.handle('report', ({ payload }) => takeReport(payload)),
 )
 
 /** The account API's routes, served by the Worker (`edge.ts`). */

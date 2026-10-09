@@ -145,11 +145,19 @@ const ACCOUNT_PATHS = ['/api/billing', '/api/clients', '/api/client-errors'] as 
 const under = (path: string, prefix: string): boolean => path === prefix || path.startsWith(`${prefix}/`)
 export const isAccountPath = (path: string): boolean => ACCOUNT_PATHS.some((prefix) => under(path, prefix))
 
-/** Each account group's admission: billing for any signed-in account, clients with a plan, crash reports for anyone. */
+/**
+ * Each account group's admission: billing for any signed-in account, clients with a plan, crash reports for anyone.
+ * A crash report needs no session, but one that comes with a session names its user (its flow point is indexed by
+ * the agent's hash).
+ */
 const admitAccount = (group: string, request: Request, edge: Edge): Effect.Effect<Option.Option<string>, AppError> =>
   group === 'clientErrors'
-    ? Effect.as(refusedWrite(request, edge), Option.none())
+    ? Effect.andThen(refusedWrite(request, edge), sessionUser(request, edge))
     : Effect.map(admitUser(request, edge, group === 'clients'), Option.some)
+
+/** The signed-in user of a request that may come without a session: none for no cookie, or one that does not admit. */
+const sessionUser = (request: Request, edge: Edge): Effect.Effect<Option.Option<string>> =>
+  request.headers.has('cookie') ? Effect.option(edge.session(request)) : Effect.succeedNone
 
 export interface EdgeHttp {
   /** Answers a request under the account API's paths (`isAccountPath`) in the Worker, without waking the agent. */
