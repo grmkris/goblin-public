@@ -7,7 +7,7 @@ import {
   type HomeOperation,
 } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
-import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
+import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Schema from 'effect/Schema'
 import type { AppRegistry } from '../apps/registry.ts'
 import type { AgentApps } from '../agent-apps/engine.ts'
@@ -18,15 +18,18 @@ import { readHome, writeHome } from './store.ts'
 
 type Actor = HomeTile['placedBy']
 /** Owner-scoped application metadata. No network or Pi calls occur in a layout transaction. */
-export class HomeService {
+export class HomeService<RunResult = unknown> {
   readonly #listeners = new Set<(layout: HomeLayout) => void>()
+  readonly #db: SQLiteAsyncDatabase<'sync', RunResult>
   constructor(
-    readonly db: DrizzleSqliteDODatabase,
+    db: SQLiteAsyncDatabase<'sync', RunResult>,
     readonly apps: AppRegistry,
     readonly engine: AgentApps,
-  ) {}
+  ) {
+    this.#db = db
+  }
   layout(): HomeLayout {
-    return readHome(this.db)
+    return readHome(this.#db)
   }
   read(): HomeRead {
     return {
@@ -48,7 +51,7 @@ export class HomeService {
   }
   /** Replays and stale intent need no network pre-check. The transaction repeats both guards before writing. */
   needsAppVerification(input: HomeEdit, actor: Actor): boolean {
-    const row = this.db
+    const row = this.#db
       .select()
       .from(appHomeOperations)
       .where(eq(appHomeOperations.operationId, input.operationId))
@@ -58,7 +61,7 @@ export class HomeService {
   }
   edit(input: HomeEdit, actor: Actor): HomeEditResult {
     const valid = Schema.decodeUnknownSync(HomeEdit)(input)
-    const result = this.db.transaction((tx) => {
+    const result = this.#db.transaction((tx) => {
       const replay = tx
         .select()
         .from(appHomeOperations)
@@ -98,7 +101,7 @@ export class HomeService {
   }
   #undo(input: HomeEdit, current: HomeLayout, actor: Actor): HomeLayout {
     if (actor !== 'owner') throw new Forbidden({ reason: 'only the owner can Undo a receipt' })
-    const row = this.db
+    const row = this.#db
       .select()
       .from(appHomeOperations)
       .where(eq(appHomeOperations.operationId, input.undoOf ?? ''))

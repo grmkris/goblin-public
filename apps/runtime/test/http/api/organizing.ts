@@ -1,4 +1,11 @@
-import { OrganizeGroup, PersonasGroup, SubscriptionRequired, TopicsGroup, ownerApiOf } from '@goblin/contracts/api'
+import {
+  HomeGroup,
+  OrganizeGroup,
+  PersonasGroup,
+  SubscriptionRequired,
+  TopicsGroup,
+  ownerApiOf,
+} from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
@@ -7,9 +14,13 @@ import * as HttpServer from 'effect/http/HttpServer'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { afterEach } from 'vitest'
 import type { StopRuntime } from '../../../src/agent-program.ts'
+import type { AgentApps } from '../../../src/agent-apps/engine.ts'
+import type { AppRegistry } from '../../../src/apps/registry.ts'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { ConversationRegistry } from '../../../src/conversations.ts'
+import { HomeHandlers } from '../../../src/home/api.ts'
+import { HomeService } from '../../../src/home/service.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { OrganizeHandlers } from '../../../src/organize/api.ts'
@@ -43,9 +54,9 @@ class OwnerResident extends ActiveResident {
 }
 
 /** Lane D's groups only, behind the real gate, router and failure rendering (the pattern of owner-http.test.ts). */
-const API = ownerApiOf(TopicsGroup, PersonasGroup, OrganizeGroup)
+const API = ownerApiOf(TopicsGroup, PersonasGroup, OrganizeGroup, HomeGroup)
 const LAYER = HttpApiBuilder.layer(API).pipe(
-  Layer.provide([TopicsHandlers, PersonasHandlers, OrganizeHandlers]),
+  Layer.provide([TopicsHandlers, PersonasHandlers, OrganizeHandlers, HomeHandlers]),
   Layer.provide(OwnerGateLive),
   Layer.provide(HttpServer.layerServices),
 )
@@ -58,9 +69,9 @@ afterEach(async () => {
 })
 
 /**
- * The organizing groups (topics, personas, organize) as the agent serves them, over real Topic, Persona and receipt
- * stores on SQLite. The gate's plan and resident authority are the only fakes. Nothing here has an open chat to stop,
- * so Pi and what a Stop reaches are never read.
+ * The organizing groups (topics, personas, organize, home) as the agent serves them, over real Topic, Persona, receipt
+ * and Home stores on SQLite. The gate's plan and resident authority are the only fakes. Nothing here has an open chat
+ * to stop, an agent app or an MCP App, so Pi, what a Stop reaches, the apps and the MCP host are never read.
  */
 export const organizing = (options: { readonly active?: boolean } = {}) => {
   const { db, close } = chatDatabase()
@@ -91,6 +102,10 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
     db,
     (kind, target) => (kind.startsWith('topic.') ? topics : personas).get(Number(target)).revision,
   )
+  // SAFETY: with no agent apps, Home reads only the engine's (empty) app list and never an App placement or its info.
+  const engine = Object.assign(Object.create(null) as AgentApps, { store: { apps: () => [] } })
+  // SAFETY: as above, nothing here places an App, so the App registry is never read.
+  const home = new HomeService(db, Object.create(null) as AppRegistry, engine)
   const resident = new OwnerResident()
   const plan = Effect.succeed({ ...PLAN, active: options.active ?? true })
   const plans: EntitlementPolicy = {
@@ -100,7 +115,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
         current.active ? Effect.succeed(current) : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' })),
       ),
   }
-  // SAFETY: what only a Stop of an open chat reads, which no request here reaches.
+  // SAFETY: what only a Stop of an open chat or an App on Home reads, which no request here reaches.
   const unread = undefined as never
   // SAFETY: an archive of a Topic with open chats is the only thing that reads what a Stop reaches; none has any here.
   const stopping = (): StopRuntime => unread
@@ -115,6 +130,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
           Layer.succeed(Legacy.Topics, topics),
           Layer.succeed(Legacy.Personas, personas),
           Layer.succeed(Legacy.Receipts, receipts),
+          Layer.succeed(Legacy.Home, home),
           Layer.succeed(Legacy.Conversations, conversations),
           Layer.succeed(Legacy.Resident, resident),
           Layer.succeed(Entitlements, plans),
@@ -122,6 +138,8 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
           Layer.succeed(AgentInput, { stopping } as AgentInputs),
           Layer.succeed(Legacy.RoutineRuns, unread),
           Layer.succeed(Legacy.Invocations, unread),
+          Layer.succeed(Legacy.Apps, unread),
+          Layer.succeed(Legacy.Mcp, unread),
         ),
       ),
     ),
@@ -131,7 +149,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
   /** The agent's answer, or a failure if the server passed the request on. */
   const fetch = async (request: Request) =>
     Option.getOrThrowWith(await handle(request), () => new Error(`not an API route: ${request.url}`))
-  return { fetch, resident, topics, personas, receipts }
+  return { fetch, resident, topics, personas, receipts, home }
 }
 
 /** A JSON request to the agent's owner API. */

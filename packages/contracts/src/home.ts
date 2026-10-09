@@ -67,6 +67,11 @@ export const HomeEditResult = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('owner-required'), layout: HomeLayout, tileIds: Schema.Array(Id) }),
 ])
 export type HomeEditResult = typeof HomeEditResult.Type
+/**
+ * An owner's edit made against an older layout, as the owner API answers it: refused with the layout as it is now, so
+ * the client can redo the edit there. Its body is the `stale` result, `{ kind: 'stale', layout }`.
+ */
+export class HomeStale extends Schema.Error<HomeStale>('HomeStale')(HomeEditResult.members[1].fields) {}
 export const HomeRead = Schema.Struct({
   layout: HomeLayout,
   apps: Schema.Array(Schema.Struct({ name: Schema.String, id: Schema.NullOr(Schema.String), hasView: Schema.Boolean })),
