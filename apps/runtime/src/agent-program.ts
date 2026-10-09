@@ -1,4 +1,4 @@
-import type { PiHarness } from 'agents/harness/pi'
+import type { PiHarness, PiReceipt } from 'agents/harness/pi'
 import {
   type AppContext,
   type Attachment,
@@ -10,18 +10,22 @@ import {
 import * as Effect from 'effect/Effect'
 import { type AppError, InvalidInput } from './http/errors.ts'
 import { resolveSelections, type ResolvedSelections } from './composer.ts'
-import type { RunProgram } from './pi/resident-mcp.ts'
+import type { RunProgram } from './runtime/bridge.ts'
 import { Entitlements } from './billing/gates.ts'
 import {
   Apps,
+  type Capabilities,
   Chats,
   Conversations,
   Files,
   Memories,
   Invocations,
+  type Mcp,
+  type Personas,
   RoutineRuns,
   Budget,
   Resident,
+  type Skills,
   attempt,
   attemptSync,
   nowSecondsEffect,
@@ -248,7 +252,20 @@ const sendToSubagent = (
     return { session, operationId: input.operationId, accepted }
   })
 
-export const submitOwner = (input: OwnerSubmit) =>
+/** What the owner's message path reads. Spelled out: `run`'s type names every agent service, the owner API's among them. */
+type SubmitServices =
+  | Budget
+  | Conversations
+  | Files
+  | Apps
+  | Capabilities
+  | Mcp
+  | Skills
+  | Chats
+  | Invocations
+  | Personas
+
+export const submitOwner = (input: OwnerSubmit): Effect.Effect<PiReceipt, AppError, SubmitServices> =>
   Effect.gen(function* () {
     const {
       appContext = [],

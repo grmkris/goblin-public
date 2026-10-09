@@ -1,17 +1,18 @@
 import { type ComposerOption, type ComposerOptions, type ComposerSelection, selectionKey } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
-import { InvalidInput, NotFound } from './http/errors.ts'
+import { type AppError, InvalidInput, NotFound } from './http/errors.ts'
 import {
   Capabilities,
   Conversations,
   Mcp,
   Personas,
+  type Resident,
   Skills,
   attempt,
   attemptSync,
   requireResident,
 } from './services.ts'
-import type { RunProgram } from './pi/resident-mcp.ts'
+import type { RunProgram } from './runtime/bridge.ts'
 
 const authorize = (run: RunProgram, session: string) => (serverId: string) =>
   run(
@@ -21,8 +22,14 @@ const authorize = (run: RunProgram, session: string) => (serverId: string) =>
     }),
   )
 
-/** A conversation-scoped catalog. Remote labels and descriptions are display data only. */
-export const composerOptions = (chat: string, run: RunProgram) =>
+/**
+ * A conversation-scoped catalog. Remote labels and descriptions are display data only. Its type is spelled out: it
+ * takes the bridge's `run`, whose type names every agent service, the owner API's among them.
+ */
+export const composerOptions = (
+  chat: string,
+  run: RunProgram,
+): Effect.Effect<ComposerOptions, AppError, Conversations | Resident | Capabilities | Skills | Mcp | Personas> =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
     const session = yield* attemptSync(() => conversations.require(chat))
