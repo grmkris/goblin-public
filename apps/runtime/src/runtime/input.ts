@@ -17,6 +17,7 @@ import type { SubagentKit } from '../pi/subagents.ts'
 import type { RoutineController } from '../routines/controller.ts'
 import type { AgentServices } from '../services.ts'
 import type { RunTelemetry } from '../telemetry/events.ts'
+import type { Instrument } from './instrument.ts'
 
 type Run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<A>
 
@@ -62,5 +63,7 @@ export class AgentInput extends Context.Service<
     readonly local: Run
     /** What an archive or a Stop reaches: Pi, a routine's runs and the Persona turns asked in a chat. */
     readonly stopping: () => StopRuntime
+    /** How the bridge's programs and the change handlers are wrapped (instrument.ts). */
+    readonly instrument: Instrument
   }
 >()('goblin/runtime/AgentInput') {}
