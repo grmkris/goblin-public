@@ -13,6 +13,8 @@ const Saved = Schema.Array(
         passed: Schema.Boolean,
         diagnostics: Schema.Array(Schema.Unknown),
         elapsedMs: Schema.Number,
+        backend: Schema.optional(Schema.Literals(['native', 'docker', 'cloudflare'])),
+        imageDigest: Schema.optional(Schema.String),
       }),
     ),
     publication: Schema.optional(

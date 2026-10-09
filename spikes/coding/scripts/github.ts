@@ -96,7 +96,7 @@ export class GitHub {
       head: branch,
       base: 'main',
       draft: true,
-      body: `${body}\n\nValidation: in-memory TypeScript and Effect checks, type-aware Oxlint, and formatting.\nChecked revision: \`${revision}\`. Base: \`${overlay.base}\`.\nThis spike does not prove full tests, builds, or deployment.`,
+      body: `${body}\n\nValidation: in-memory TypeScript and Effect checks, type-aware Oxlint, and formatting.\nChecked revision: \`${revision}\`. Base: \`${overlay.base}\`.\nBackend: ${overlay.check?.backend ?? 'unrecorded'}. Image digest: ${overlay.check?.imageDigest ?? (overlay.check?.backend === 'native' ? 'host-native' : 'unrecorded')}.\nThis spike does not prove full tests, builds, or deployment.`,
     })
     const receipt = this.receipt(result, sha)
     if (receipt.commit !== sha) throw new SpikeError('publication_conflict')

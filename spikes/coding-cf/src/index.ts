@@ -30,7 +30,12 @@ export default {
     if (!timingSafeEqual(new Uint8Array(received), new Uint8Array(expected))) return unauthorized()
     const url = new URL(request.url)
     if (request.method === 'GET' && url.pathname === '/health')
-      return Response.json({ service: 'goblin-coding-cf-spike', sandbox: env.SPIKE_NAME })
+      return Response.json({
+        service: 'goblin-coding-cf-spike',
+        sandbox: env.SPIKE_NAME,
+        backend: 'cloudflare',
+        capacity: { maxInstances: 4, availability: 'provider-managed' },
+      })
     if (request.method !== 'POST' || !['/verify', '/execute', '/close'].includes(url.pathname))
       return new Response('not_found', { status: 404 })
     const id = jobId(request)

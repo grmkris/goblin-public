@@ -6,6 +6,7 @@ import { Verifier } from '../../coding/scripts/verifier.ts'
 import { compilers } from '../../coding/scripts/binaries.ts'
 import { boundedJson, boundedText, decodeRunnerInput } from '../../coding/scripts/wire.ts'
 
+const socket = await Effect.runPromise(Config.String('RUNNER_SOCKET').pipe(Config.withDefault('')))
 const root = '/repo'
 const base = (await readFile('/fixture/base', 'utf8')).trim()
 const names: string[] = JSON.parse(await readFile('/fixture/files.json', 'utf8'))
@@ -86,7 +87,13 @@ const execute = async (overlay: Overlay) => {
 
 const handler = async (request: Request): Promise<Response> => {
   const pathname = new URL(request.url).pathname
-  if (pathname === '/health') return Response.json({ ready: true, base })
+  if (pathname === '/health')
+    return Response.json({
+      ready: true,
+      base,
+      backend: socket ? 'docker' : 'cloudflare',
+      capacity: { maxSessions: 1, busy },
+    })
   if (request.method !== 'POST' || !['/verify', '/execute', '/close'].includes(pathname))
     return new Response(null, { status: 404 })
   if (pathname === '/close') {
@@ -109,5 +116,4 @@ const handler = async (request: Request): Promise<Response> => {
 }
 
 Bun.serve({ port: 8787, idleTimeout: 120, maxRequestBodySize: 500_000, fetch: handler })
-const socket = await Effect.runPromise(Config.String('RUNNER_SOCKET').pipe(Config.withDefault('')))
 if (socket) Bun.serve({ unix: socket, fetch: handler })

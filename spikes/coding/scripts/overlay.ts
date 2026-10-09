@@ -23,6 +23,8 @@ export type Check = {
   passed: boolean
   diagnostics: readonly unknown[]
   elapsedMs: number
+  backend?: 'native' | 'docker' | 'cloudflare' | undefined
+  imageDigest?: string | undefined
 }
 export type Published = { url: string; number: number; commit: string }
 export type Publication = { title: string; body: string; commit?: string | undefined }

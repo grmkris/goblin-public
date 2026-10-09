@@ -6,9 +6,8 @@ import { Coding } from './tools.ts'
 import { GitHub } from './github.ts'
 import { OAuth } from './oauth.ts'
 import { SpikeError } from './overlay.ts'
-import { compilers } from './binaries.ts'
-import { NativeRunner } from './runner/native.ts'
-import { HttpRunner, httpsTransport } from './runner/http.ts'
+import { RunnerConfig, configured, FallbackRunner } from './runner/config.ts'
+import { State } from './state.ts'
 
 const ConfigFile = Schema.Struct({
   repo: Schema.String,
@@ -20,10 +19,11 @@ const ConfigFile = Schema.Struct({
   origin: Schema.String,
   ownerOrigin: Schema.String,
   adminKey: Schema.String,
-  runner: Schema.optional(Schema.Struct({ endpoint: Schema.String, token: Schema.String })),
+  runner: Schema.optional(RunnerConfig),
+  fallback: Schema.optional(RunnerConfig),
 })
 const configPath = Bun.argv[2] ?? '.local/coding-spike/config.json'
-const config = Schema.decodeUnknownSync(ConfigFile)(await Bun.file(configPath).json())
+const config = Schema.decodeUnknownSync(ConfigFile)(await Bun.file(configPath).json(), { onExcessProperty: 'error' })
 await chmod(configPath, 0o600)
 const names = Schema.decodeUnknownSync(Schema.Array(Schema.String))(
   await Bun.file(path.join(config.state, 'files.json')).json(),
@@ -35,16 +35,20 @@ for (const name of names) {
   const file = Bun.file(path.join(config.root, name))
   if (file.size <= 100_000) files.set(name, await file.text())
 }
-const runner = config.runner
+const live = new Set(
+  new State(path.join(config.state, 'sessions.json')).load(config.base, files).map((overlay) => overlay.id),
+)
+const runnerOptions = { state: config.state, files, live }
+const runnerConfig = config.runner ?? { kind: 'native' as const }
+const primary = await configured(runnerConfig, runnerOptions)
+const runner = config.fallback ? new FallbackRunner(primary, await configured(config.fallback, runnerOptions)) : primary
 const coding = new Coding({
   root: config.root,
   base: config.base,
   files,
   github: new GitHub(config.repo, config.gh),
   state: path.join(config.state, 'sessions.json'),
-  runner: runner
-    ? new HttpRunner(httpsTransport(runner.endpoint, runner.token))
-    : new NativeRunner(files, compilers(config.state)),
+  runner,
 })
 const oauth = new OAuth(config.origin, config.ownerOrigin, config.adminKey, path.join(config.state, 'oauth.json'))
 await oauth.restore()
@@ -63,7 +67,8 @@ const server = Bun.serve({
           repo: config.repo,
           base: config.base,
           sessions: coding.sessions.size,
-          verifier: config.runner ? 'cloudflare-container' : 'netcup-native',
+          backend: runnerConfig.kind,
+          capacity: { sessions: 4, available: 4 - coding.sessions.size, verifying: coding.checking },
         })
       if (request.method === 'POST' && Number(request.headers.get('content-length') ?? 0) > 200_000)
         return new Response(null, { status: 413 })

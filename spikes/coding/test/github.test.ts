@@ -1,3 +1,4 @@
+import * as Schema from 'effect/Schema'
 import { expect, test } from 'bun:test'
 import { GitHub } from '../scripts/github.ts'
 import { Overlay } from '../scripts/overlay.ts'
@@ -44,6 +45,7 @@ class InterruptedPublish extends GitHub {
   commits = 0
   attempts = 0
   trees: unknown[] = []
+  bodies: unknown[] = []
   override async api(route: string, body?: unknown): Promise<unknown> {
     if (route.startsWith('pulls?')) return []
     if (route === 'git/commits/base-sha') return { tree: { sha: 'base-tree' } }
@@ -65,6 +67,7 @@ class InterruptedPublish extends GitHub {
       return {}
     }
     if (route === 'pulls') {
+      this.bodies.push(body)
       if (++this.attempts === 1) throw new Error('interrupted after ref creation')
       return { number: 78, html_url: 'https://github.com/grmkris/goblin/pull/78', head: { sha: 'checked-commit' } }
     }
@@ -76,7 +79,14 @@ test('reconciles an interrupted publication using the saved commit and existing 
   const path = 'apps/cli/src/main.ts'
   const overlay = new Overlay('base-sha', new Map([[path, 'base\n']]), 'session-id')
   const revision = overlay.edit(path, 'change\n', overlay.revision)
-  overlay.check = { revision, passed: true, diagnostics: [], elapsedMs: 1 }
+  overlay.check = {
+    revision,
+    passed: true,
+    diagnostics: [],
+    elapsedMs: 1,
+    backend: 'docker',
+    imageDigest: `sha256:${'a'.repeat(64)}`,
+  }
   const github = new InterruptedPublish('grmkris/goblin', '/usr/bin/gh')
   let checkpoints = 0
   const persist = () => {
@@ -94,6 +104,10 @@ test('reconciles an interrupted publication using the saved commit and existing 
   expect(() => overlay.edit(path, 'different\n', revision)).toThrow('session_frozen')
   const result = await github.publish(overlay, 'title', 'body', persist)
   expect(result.commit).toBe('checked-commit')
+  const prBody = Schema.decodeUnknownSync(Schema.Struct({ body: Schema.String }))(github.bodies[1]).body
+  expect(prBody).toContain(`Checked revision: \`${revision}\``)
+  expect(prBody).toContain('Backend: docker')
+  expect(prBody).toContain(`Image digest: sha256:${'a'.repeat(64)}`)
   expect(github.commits).toBe(1)
   expect(github.trees[0]).toEqual({
     base_tree: 'base-tree',

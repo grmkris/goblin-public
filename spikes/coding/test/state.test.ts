@@ -11,10 +11,18 @@ test('recovers the exact checked overlay and frozen publication intent after res
   const files = new Map([['apps/cli/src/main.ts', 'baseline\n']])
   const overlay = new Overlay('base-sha', files, 'operation-id')
   const revision = overlay.edit('apps/cli/src/main.ts', 'edited\n', overlay.revision)
-  overlay.check = { revision, passed: true, diagnostics: [], elapsedMs: 12 }
+  overlay.check = {
+    revision,
+    passed: true,
+    diagnostics: [],
+    elapsedMs: 12,
+    backend: 'docker',
+    imageDigest: `sha256:${'a'.repeat(64)}`,
+  }
   overlay.publication = { title: 'title', body: 'body', commit: 'checked-commit' }
   state.save([overlay])
   const [restored] = state.load('base-sha', files)
+  expect(restored?.check).toEqual(overlay.check)
   expect(restored?.revision).toBe(revision)
   expect(restored?.publication?.commit).toBe('checked-commit')
   expect(() => restored?.assertReady(revision)).not.toThrow()

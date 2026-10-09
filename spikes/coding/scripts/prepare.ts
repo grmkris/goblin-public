@@ -36,6 +36,7 @@ const config = {
   port: 18983,
   origin: 'http://127.0.0.1:18983',
   ownerOrigin: 'https://dev.goblin.surf',
+  runner: { kind: 'native' },
   adminKey: randomBytes(32).toString('hex'),
 }
 const file = path.join(destination, 'config.json')
