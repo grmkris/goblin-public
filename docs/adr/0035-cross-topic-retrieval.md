@@ -60,10 +60,36 @@ The model reads the results as quoted history in `<source …>` blocks, after a 
 angle brackets inside excerpts and attributes are neutralised. The result's `details` is `SourcesDetails` (`mode:
 'tool'`), which the web's source strip renders.
 
+## Automatic retrieval
+
+On the first model request after an owner input in a Conversation or thread, a `beforeRequest` hook of
+`goblin.retrieval` retrieves without being asked (`retrieval/auto.ts`, `ChatRetrieval.automatic`). Persona forks never
+do. It catches the index up (bounded), then searches the input's indexed text (bounded and redacted, so a pasted
+credential never reaches the rerank) over the default Topics, never the asking chat, for up to eight candidate ranges.
+
+- **Gate.** The cheap model is asked only when some candidate's bm25 score is at or below the gate: -5 at the
+  calibrated size of 3,000 excerpts (every positive query of the synthetic corpus scored -5.84 or lower; 4 of 10 absent
+  ones scored above -5), scaled down by log size for a smaller index, never under a tenth. bm25 magnitudes grow with
+  the index, so a fixed gate would silence a new owner's retrieval. The gate only saves calls; it decides nothing.
+- **Rerank with abstention.** The deployment's cheap model (`GOBLIN_MEMORY_MODEL`) gets the spike's measured prompt,
+  adapted: excerpts are untrusted quoted history, answer only `{"ids":[…],"none":bool}`, at most three, reject
+  superseded proposals, and none when nothing is relevant. An answer that is not exactly that shape, cites an id it was
+  not offered or twice, or contradicts itself abstains, as does a model failure. Its tokens count toward the daily
+  budget like every cheap-model call, and a spent budget skips the rerank. Telemetry records it as `model.aux` with
+  purpose `retrieval`: tokens and outcome, never content (ADR 0024). No SQLite transaction is open across the call.
+- **Injection.** At most three chosen sources go into the trailing `<goblin-context>` block as a `<sources>` part, for
+  that request only: Pi stores none of it, and the cacheable prefix is untouched. The selection is recorded as
+  `auto:<session>:<input entry>` with `inputEntry`, which is what keys a strip in `/sources`.
+- **Once per input.** The generation task's memo `goblin.retrieval:<input entry>` holds the use id, or that it
+  abstained. Later requests of the same turn (after a tool round), retries and recoveries re-inject the same recorded
+  sources and never rerank again.
+
+When it abstains, `search_chats` and the owner's explicit references remain available.
+
 ## Frozen evidence and `/sources`
 
-Every search records one `app_retrieval_uses` row under a stable id (`tool:<session>:<call id>`), with the sources as
-captured. A replayed or re-run tool call finds the first record and returns it unchanged, so the tool is replay-safe.
+Every search records one `app_retrieval_uses` row under a stable id (`tool:<session>:<call id>`, or the automatic
+`auto:<session>:<input entry>`), with the sources as captured. A replayed or re-run tool call finds the first record and returns it unchanged, so the tool is replay-safe.
 `GET /api/conversations/:id/sources` returns the chat's recorded uses that found something, newest first, as
 `SourceUse[]`. The agent object serves it like a chat's snapshot and history (`agent-requests.ts`): only a registered
 chat of the signed-in owner's own agent, so another account sees none of them.
@@ -77,5 +103,7 @@ chat of the signed-in owner's own agent, so another account sees none of them.
 - Erasure: deleting the agent deletes its SQLite, index and recorded excerpts included.
 
 Proof: unit tests over the real migrations in `node:sqlite` (owned-only indexing, windows, redaction, Topic policy,
-contract shape, frozen records, Move reassignment, query escaping and range grouping) and the local workerd owner case
-`retrieval-case.ts`, in both native profiles. Neither is deployed-stage evidence.
+contract shape, frozen records, Move reassignment, query escaping, range grouping, the rerank's selection and
+abstention and the gate) and the local workerd owner case `retrieval-case.ts`, in both native profiles, where a
+scripted cheap model selects or abstains and the recorded model request shows the `<sources>` block or its absence.
+Neither is deployed-stage evidence, and no real model's rerank quality is claimed beyond the spike.

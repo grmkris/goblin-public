@@ -66,7 +66,7 @@ harness.test(
   stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => threadHeadsCase(url)))),
 )
 harness.test(
-  'native: cross-Topic retrieval indexes owned entries, searches active Topics unless named and records its sources',
+  'native: cross-Topic retrieval indexes owned entries, searches active Topics unless named, records sources and injects reranked ones',
   stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => retrievalCase(url)))),
 )
 harness.test(

@@ -233,8 +233,8 @@ function makeMemories(input: ComposeInput, deps: MemoryDeps): ChatMemories {
 }
 
 /** Cross-Topic retrieval (ADR 0035) over the agent's SQLite and Pi. */
-const chatRetrieval = (db: DrizzleSqliteDODatabase, harness: PiHarness) =>
-  new ChatRetrieval(new TranscriptIndex(db, piTranscripts(harness), nowSeconds), nowSeconds)
+const chatRetrieval = (db: DrizzleSqliteDODatabase, harness: PiHarness, model: CheapModel) =>
+  new ChatRetrieval(new TranscriptIndex(db, piTranscripts(harness), nowSeconds), model, nowSeconds)
 
 /**
  * The agent's services over its SQLite, built once per isolate on first use: MCP host and grants, budget and models,
@@ -318,7 +318,7 @@ export async function composeServices(
       Layer.succeed(Files, new FileStore(input.storage.sql, env.FILES, () => input.userId)),
       Layer.succeed(AppEngine, input.agentApps),
       Layer.succeed(Inspect, new Inspector(new RunLedger(db), conversations.conversations, harness)),
-      Layer.succeed(Retrieval, chatRetrieval(db, harness)),
+      Layer.succeed(Retrieval, chatRetrieval(db, harness, cheap('retrieval'))),
     ),
   )
 }

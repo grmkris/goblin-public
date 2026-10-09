@@ -1,16 +1,24 @@
-import type { RetrievalSource } from '@goblin/contracts'
+import type { RetrievalSource, SourceUse } from '@goblin/contracts'
+import type { TextCompletion } from '../memory/model.ts'
+import { AUTO_CANDIDATES, chooseSources, gateFor } from './auto.ts'
 import type { TranscriptIndex } from './index.ts'
 
 /** Most sources a `search_chats` call returns (`SourcesDetails`). */
 const TOOL_SOURCES = 5
 
-/** Cross-Topic retrieval (ADR 0035): the transcript index and `search_chats`. Nothing here holds a transaction across a Pi read. */
+/**
+ * Cross-Topic retrieval (ADR 0035): the transcript index, `search_chats` and automatic retrieval with the cheap model's
+ * rerank (`AuxPurpose 'retrieval'`, metered into the daily budget by the model's own `spent` callback). Nothing here
+ * holds a transaction across a Pi read or a model call.
+ */
 export class ChatRetrieval {
   readonly index: TranscriptIndex
+  readonly #model: TextCompletion
   readonly #now: () => number
 
-  constructor(index: TranscriptIndex, now: () => number) {
+  constructor(index: TranscriptIndex, model: TextCompletion, now: () => number) {
     this.index = index
+    this.#model = model
     this.#now = now
   }
 
@@ -40,4 +48,32 @@ export class ChatRetrieval {
       retrievedAt: this.#now(),
     }).sources
   }
+
+  /**
+   * Automatic retrieval for the owner input `input` of `chat`: FTS over the default Topics (never this chat), the bm25
+   * gate, then the cheap model's rerank, which may abstain. A selection is recorded as the input's use and returned.
+   */
+  async automatic(
+    where: { readonly session: string; readonly chat: string },
+    input: { readonly entry: number; readonly text: string },
+    signal?: AbortSignal,
+  ): Promise<SourceUse | undefined> {
+    await this.index.catchUpAll()
+    const candidates = this.index.search(input.text, { exclude: where.chat, limit: AUTO_CANDIDATES })
+    if (candidates.length === 0) return undefined
+    const chosen = await chooseSources(input.text, candidates, gateFor(this.index.size()), this.#model, signal)
+    if (chosen.length === 0) return undefined
+    return this.index.record({
+      id: autoUseId(where.session, input.entry),
+      chat: where.chat,
+      session: where.session,
+      inputEntry: input.entry,
+      mode: 'auto',
+      sources: chosen,
+      retrievedAt: this.#now(),
+    })
+  }
 }
+
+/** The stable id of the automatic retrieval for one input of one session. */
+export const autoUseId = (session: string, entry: number): string => `auto:${session}:${entry}`

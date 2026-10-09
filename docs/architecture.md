@@ -648,6 +648,15 @@ marked as quoted history. Without `topic` it searches active Topics that take pa
 id) is searched alone whatever its state. The asking chat is never searched. Each call records its sources under
 `tool:<session>:<call id>`, so a replay returns the same result; `details` is `SourcesDetails`.
 
+Automatic retrieval: on the first model request after an owner input in a Conversation or thread (never a persona
+fork), the `beforeRequest` hook searches the input's indexed text over the default Topics (never the asking chat), and
+when a candidate passes the bm25 gate (-5 at 3,000 excerpts, scaled down by log size for smaller indexes) the cheap
+model reranks up to eight with constrained JSON and may abstain (`model.aux` purpose `retrieval`, metered into the
+daily budget; skipped once it is spent). At most three chosen sources go into the trailing `<goblin-context>` block as
+a `<sources>` part for that request only, and the use is recorded as `auto:<session>:<input entry>` with `inputEntry`.
+The task's memo `goblin.retrieval:<input entry>` keeps the choice (or the abstention), so later requests of the turn,
+retries and recoveries re-inject the same sources without another rerank. No transaction spans the rerank.
+
 ## Topic memory
 
 Every Topic's Conversation (Personal's is Main) keeps its own memory (ADR 0032): `ChatMemory` (`memory/memory.ts`)
@@ -827,7 +836,7 @@ a run. The ledger supplies exact submission/task correlation when a cache entry 
 Outside Pi, the agent's services report to the same telemetry (`telemetry/report.ts`):
 
 - **Model calls outside a turn** (`model.aux`): one cheap model per purpose (`naming`, `memory`, `skill`,
-  `app_llm`), with tokens and errors (`memory/model.ts`).
+  `app_llm`, `retrieval`), with tokens and errors (`memory/model.ts`).
 - **Remote MCP steps** (`mcp.request`): every connect, tool call, skills request and Events request, with server,
   tool, outcome code (`UpstreamMcp:timeout`), expected blocked waits and duration (`mcp/log.ts`). Resident callers pass
   explicit conversation/task metadata, stripped before SDK dispatch; shared connection discovery is marked without

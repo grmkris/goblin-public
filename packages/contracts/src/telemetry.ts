@@ -86,7 +86,7 @@ export const RunAttribute = {
   /** Shared transport discovery belongs to the connection; caller waits carry their own explicit scope. */
   sharedConnection: 'goblin.mcp.shared_connection',
   source: 'goblin.source',
-  /** What a model call outside a turn was for: `naming`, `memory`, `skill` or `app_llm`. */
+  /** What a model call outside a turn was for: `naming`, `memory`, `skill`, `app_llm` or `retrieval`. */
   purpose: 'goblin.purpose',
   channel: 'goblin.channel',
   /** The channel's own id for the message (mygram's inbox id). */

@@ -187,11 +187,11 @@ export class TranscriptIndex<RunResult = unknown> {
   }
 
   /**
-   * The newest owner input of the session among its last few entries, with its id and indexed text (bounded and
-   * redacted); none when the newest entries hold no input with text.
+   * The newest owner input of the session among its last 100 entries (a long tool loop included), with its id and
+   * indexed text (bounded and redacted); none when they hold no input with text.
    */
   async latestInput(session: string): Promise<{ readonly entry: number; readonly text: string } | undefined> {
-    const input = (await this.#source.recent(session, 20)).find((entry) => entry.kind === 'pi.user')
+    const input = (await this.#source.recent(session, 100)).find((entry) => entry.kind === 'pi.user')
     const kept = input === undefined ? undefined : indexable(input, this.#now())
     return input === undefined || kept === undefined ? undefined : { entry: input.id, text: kept.text }
   }

@@ -1,6 +1,8 @@
 import type { AssistantMessage, Message, ProviderStreams } from '@earendil-works/pi-ai'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
 import { isContextBlock } from '../../src/pi/context-tail.ts'
+import * as Option from 'effect/Option'
+import * as Schema from 'effect/Schema'
 import { type SeenRequest, reply as scripted, scriptedStreams } from './model.ts'
 
 const textOf = (message: Message): string =>
@@ -35,13 +37,27 @@ function personaCall(messages: readonly Message[]): AssistantMessage['content'] 
   return undefined
 }
 
+/** A rerank request of automatic retrieval (`retrieval/auto.ts`): the owner's message and the candidates, as JSON. */
+const Rerank = Schema.fromJsonString(
+  Schema.Struct({ message: Schema.String, candidates: Schema.Array(Schema.Unknown) }),
+)
+
+/** Automatic retrieval's rerank selects the first candidate when the owner's message says `pick-sources`, else none. */
+function rerank(messages: readonly Message[]): AssistantMessage['content'] | undefined {
+  const last = messages.at(-1)
+  const asked = last === undefined ? undefined : Option.getOrUndefined(Schema.decodeUnknownOption(Rerank)(textOf(last)))
+  if (asked === undefined) return undefined
+  const pick = asked.message.includes('pick-sources') && asked.candidates.length > 0
+  return [{ type: 'text', text: JSON.stringify(pick ? { ids: [1], none: false } : { ids: [], none: true }) }]
+}
+
 /** Controlled native model gates: release or cancellation ends them, without network or model spend. */
 class QueueModel {
   readonly #held = new Map<string, () => void>()
   readonly #requests: SeenRequest[] = []
   readonly #base = scriptedStreams(
     (request) => void this.#requests.push(request),
-    (messages) => personaCall(messages) ?? scripted(messages),
+    (messages) => personaCall(messages) ?? rerank(messages) ?? scripted(messages),
   )
   readonly streams: ProviderStreams = {
     stream: (target, context, options) => {

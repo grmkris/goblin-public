@@ -11,6 +11,16 @@ const decodeExcerpts = Schema.decodeUnknownSync(
     Schema.Struct({ entry: Schema.Number, session: Schema.String, chat: Schema.String, text: Schema.String }),
   ),
 )
+const decodeSeen = Schema.decodeUnknownSync(
+  Schema.Struct({
+    requests: Schema.Array(
+      Schema.Struct({
+        messages: Schema.Array(Schema.Struct({ role: Schema.String, text: Schema.String })),
+        context: Schema.optional(Schema.String),
+      }),
+    ),
+  }),
+)
 const decodeEntries = Schema.decodeUnknownSync(
   Schema.Struct({ entries: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.Number, kind: Schema.String }))) }),
 )
@@ -85,6 +95,34 @@ async function searches(url: string, owner: Person, garden: TopicView): Promise<
   expect(named).toEqual([['Quiet'], ['Old']])
 }
 
+/** The context block of the newest model request that answered `input` (the scripted model records each request). */
+async function contextOf(url: string, owner: Person, input: string): Promise<string> {
+  const { requests } = decodeSeen(await (await call(url, owner, '/__test/queue/seen')).json())
+  const request = requests.findLast(
+    (seen) => seen.messages.findLast((message) => message.role === 'user')?.text === input,
+  )
+  expect(request).toBeDefined()
+  return request?.context ?? ''
+}
+
+/** The first request after an input carries the sources the rerank picked; an abstention adds nothing. */
+async function automatic(url: string, owner: Person, garden: TopicView): Promise<void> {
+  const picked = 'pick-sources what did we decide about heirloom tomatoes'
+  await say(url, owner, '1', picked)
+  const context = await contextOf(url, owner, picked)
+  expect(context).toContain('<sources>')
+  expect(context).toContain('heirloom tomatoes for the raised beds')
+  expect(context).toContain('Quoted history')
+  const [auto] = await uses(url, owner, '1')
+  expect(auto).toMatchObject({ mode: 'auto', inputEntry: expect.any(Number) })
+  expect(auto?.sources.map((source) => source.chat)).toEqual([garden.conversation])
+  const before = (await uses(url, owner, '1')).length
+  const declined = 'and what about heirloom tomatoes next year'
+  await say(url, owner, '1', declined)
+  expect(await contextOf(url, owner, declined)).not.toContain('<sources>')
+  expect(await uses(url, owner, '1')).toHaveLength(before)
+}
+
 export async function retrievalCase(url: string): Promise<void> {
   const owner = await person(url)
   const other = await person(url)
@@ -92,6 +130,7 @@ export async function retrievalCase(url: string): Promise<void> {
     await call(url, who, '/__test/billing/override', { userId: who.userId, dailyCredits: 1000 })
   const { garden, thread } = await seed(url, owner)
   await searches(url, owner, garden)
+  await automatic(url, owner, garden)
   // The index holds each entry once, under the chat that wrote it, and never a credential-shaped value.
   const excerpts = decodeExcerpts(await (await call(url, owner, '/__test/retrieval/excerpts')).json())
   const said = 'we chose heirloom tomatoes for the raised beds'

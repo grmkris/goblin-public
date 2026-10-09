@@ -4,7 +4,8 @@ import { SourcesDetails } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { afterEach, describe, expect, it } from 'vitest'
 import { TranscriptIndex, type TranscriptSource } from '../src/retrieval/index.ts'
-import { ChatRetrieval } from '../src/retrieval/service.ts'
+import { AUTO_THRESHOLD, chooseSources, gateFor, parseSelection } from '../src/retrieval/auto.ts'
+import { ChatRetrieval, autoUseId } from '../src/retrieval/service.ts'
 import { EXCERPT_CHARS, excerptOf, ftsQuery, mergeRanges, sourcesText } from '../src/retrieval/text.ts'
 import { conversationId, entryId } from '../src/pi/context.ts'
 import { chatDatabase } from './chats-sqlite.ts'
@@ -258,12 +259,78 @@ describe('retrieval helpers', () => {
     expect(text.length).toBeLessThanOrEqual(EXCERPT_CHARS)
     expect(text).toContain('user (Telegram): 2 2')
   })
+  it('accepts only an exact, consistent selection of offered ids', () => {
+    const allowed = new Set([1, 2, 3])
+    expect(parseSelection('{"ids":[2,1],"none":false}', allowed)).toEqual([2, 1])
+    expect(parseSelection('```json\n{"ids":[],"none":true}\n```', allowed)).toEqual([])
+    for (const bad of [
+      '{"ids":[4],"none":false}',
+      '{"ids":[1,1],"none":false}',
+      '{"ids":[1],"none":true}',
+      '{"ids":[],"none":false}',
+      'no',
+      '{"ids":["1"],"none":false}',
+    ])
+      expect(parseSelection(bad, allowed)).toBeUndefined()
+  })
+  it('scales the bm25 gate with the index size', () => {
+    expect(gateFor(3000)).toBeCloseTo(AUTO_THRESHOLD)
+    expect(gateFor(1_000_000)).toBe(AUTO_THRESHOLD)
+    expect(gateFor(20)).toBeGreaterThan(AUTO_THRESHOLD)
+    expect(gateFor(0)).toBeCloseTo(AUTO_THRESHOLD / 10)
+  })
+})
+
+/** A cheap model that answers `answer` (or fails with it) and remembers what it was asked. */
+const scripted = (answer: string | Error) => {
+  const calls: string[] = []
+  return {
+    calls,
+    complete: async (_system: string, user: string) => {
+      calls.push(user)
+      if (answer instanceof Error) throw answer
+      return answer
+    },
+  }
+}
+describe('automatic retrieval', () => {
+  it('injects what the rerank selects and records it under the input it served', async () => {
+    const { index } = fixture()
+    const model = scripted('{"ids":[1],"none":false}')
+    const retrieval = new ChatRetrieval(index, model, () => 9)
+    const use = await retrieval.automatic(
+      { session: '1', chat: '1' },
+      { entry: 2, text: 'What about the tomatoes in raised beds?' },
+    )
+    expect(use).toMatchObject({ id: autoUseId('1', 2), mode: 'auto', inputEntry: 2, chat: '1' })
+    expect(use?.sources).toHaveLength(1)
+    expect(model.calls[0]).toContain('raised beds')
+    expect(index.uses('1')).toEqual([use])
+  })
+  it('abstains when the rerank says none, answers badly or fails, and records nothing', async () => {
+    for (const answer of ['{"ids":[],"none":true}', 'I think 1', new Error('provider down')]) {
+      const { index } = fixture()
+      const retrieval = new ChatRetrieval(index, scripted(answer), () => 9)
+      expect(
+        await retrieval.automatic({ session: '1', chat: '1' }, { entry: 2, text: 'tomatoes raised beds' }),
+      ).toBeUndefined()
+      expect(index.uses('1')).toEqual([])
+    }
+  })
+  it('asks no model when nothing passes the bm25 gate', async () => {
+    const { index } = fixture()
+    await index.catchUpAll()
+    const model = scripted('{"ids":[1],"none":false}')
+    const weak = index.search('tomatoes', { limit: 8 }).map((found) => ({ ...found, score: 0 }))
+    expect(await chooseSources('tomatoes', weak, -1, model)).toEqual([])
+    expect(model.calls).toEqual([])
+  })
 })
 
 describe('search_chats', () => {
   it('searches with a frozen result per tool call', async () => {
     const { index } = fixture()
-    const retrieval = new ChatRetrieval(index, () => 9)
+    const retrieval = new ChatRetrieval(index, scripted('{"ids":[],"none":true}'), () => 9)
     const first = await retrieval.search({ query: 'tomatoes' }, { session: '1', chat: '1', useId: 'tool:1:c1' })
     expect(first.map((found) => found.chat).toSorted()).toEqual(['10', '13', '50'])
     expect(await retrieval.search({ query: 'japan' }, { session: '1', chat: '1', useId: 'tool:1:c1' })).toEqual(first)
