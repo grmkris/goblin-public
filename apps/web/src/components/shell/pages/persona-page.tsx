@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { PersonaDetail, type PersonaDefinition, PersonaView } from '@goblin/contracts'
 import { Schema } from 'effect'
@@ -39,6 +39,31 @@ const definitionOf = ({
 })
 
 const ready = (draft: PersonaDefinition) => NAME.test(draft.name) && draft.avatar.glyph.trim() !== ''
+
+/** The definition's editor, what went wrong saving it, and its actions. */
+function Editor({
+  draft,
+  onChange,
+  error,
+  children,
+}: {
+  readonly draft: PersonaDefinition
+  readonly onChange: (draft: PersonaDefinition) => void
+  readonly error: string
+  readonly children: ReactNode
+}) {
+  return (
+    <>
+      <PersonaForm draft={draft} onChange={onChange} />
+      {error !== '' && (
+        <Alert>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      <div className="card-actions">{children}</div>
+    </>
+  )
+}
 
 /** A Persona's revisions, newest first: what it was called then, who changed it and when. */
 function Revisions({ detail }: { readonly detail: PersonaDetail }) {
@@ -108,13 +133,7 @@ function Profile({ id }: { readonly id: number }) {
   return (
     <div className="page-stack">
       <PageSection id="definition" title={archived ? `${detail.persona.name} (archived)` : detail.persona.name}>
-        <PersonaForm draft={draft} onChange={setDraft} />
-        {error !== '' && (
-          <Alert>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        <div className="card-actions">
+        <Editor draft={draft} onChange={setDraft} error={error}>
           <Button
             pending={pending}
             disabled={!ready(draft)}
@@ -125,7 +144,7 @@ function Profile({ id }: { readonly id: number }) {
           <Button variant="outline" disabled={pending} onClick={() => void save({ archived: !archived })}>
             {archived ? 'Restore' : 'Archive'}
           </Button>
-        </div>
+        </Editor>
       </PageSection>
       <Revisions detail={detail} />
     </div>
@@ -158,17 +177,11 @@ function Create() {
   return (
     <div className="page-stack">
       <PageSection id="definition" title="New persona">
-        <PersonaForm draft={draft} onChange={setDraft} />
-        {error !== '' && (
-          <Alert>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        <div className="card-actions">
+        <Editor draft={draft} onChange={setDraft} error={error}>
           <Button pending={pending} disabled={!ready(draft)} onClick={() => void create()}>
             Create
           </Button>
-        </div>
+        </Editor>
       </PageSection>
     </div>
   )

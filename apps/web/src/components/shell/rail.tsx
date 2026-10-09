@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { PRIMARY_CHAT } from '@goblin/contracts'
 import { GoblinMark } from '@goblin/ui'
 import {
   BellIcon,
@@ -41,7 +40,7 @@ function Stop({ label, icon, count }: { readonly label: string; readonly icon: R
 const current = (active: boolean) => (active ? ('page' as const) : undefined)
 
 /**
- * The rail: Home (the channels) first, then the app's other places, and at its foot the Apps, Connections, Settings and
+ * The rail: Home (the channel this tab showed last) first, then the app's other places, and at its foot the Apps, Connections, Settings and
  * Sign out. A stop's name is under its icon, as on Slack's rail; the current place is filled.
  */
 export function Rail() {
@@ -54,12 +53,7 @@ export function Rail() {
       <Link to="/" className="rail-brand" aria-label="goblin home">
         <GoblinMark />
       </Link>
-      <Link
-        to="/c/$chatId"
-        params={{ chatId: PRIMARY_CHAT }}
-        className="rail-item"
-        aria-current={current(atHome(path))}
-      >
+      <Link to="/" className="rail-item" aria-current={current(atHome(path))}>
         <Stop label="Home" icon={<HouseIcon aria-hidden />} />
       </Link>
       <Link to="/threads" className="rail-item" aria-current={current(at('/threads'))}>
