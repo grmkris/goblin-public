@@ -6,9 +6,10 @@ import { createRegistry, defineExtension, defineTool, hook, Harness, ToolTask } 
 import type { JsonObject } from '@earendil-works/pi-durable'
 import { MemoryStorage } from '@earendil-works/pi-durable/storage/memory'
 import { RunAttribute, type RunEvent } from '@goblin/contracts/telemetry'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { BACKGROUND } from '../src/pi/context.ts'
 import { CollectedRuns, RunTelemetry, boundAttributes, type RunSink } from '../src/telemetry/events.ts'
+import { RunLog } from '../src/telemetry/log.ts'
 import { PiRunRecorder, sourceOf } from '../src/telemetry/pi.ts'
 import { auxReporter, mcpReporter } from '../src/telemetry/report.ts'
 import { CheapModel } from '../src/memory/model.ts'
@@ -283,6 +284,46 @@ describe('run telemetry from Pi commits (unit, in-memory Pi)', () => {
 })
 
 describe('run telemetry (unit)', () => {
+  it('logs each ended event as one `run` line of ids, timing and allowlisted attributes', () => {
+    const info = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      const log = new RunLog(() => 'user-1')
+      const ended: RunEvent = {
+        id: 'tool:t1',
+        kind: 'tool.call',
+        status: 'error',
+        conversationId: '1',
+        operationId: 'telegram-12',
+        taskId: 't1',
+        startedAt: 10,
+        endedAt: 250,
+        attributes: { [RunAttribute.toolName]: 'mcp_call', [RunAttribute.errorType]: 'Internal', note: 'my notes' },
+      }
+      log.ended(ended)
+      log.ended({ ...ended, id: 'tool:t2', status: 'blocked', attributes: { [RunAttribute.errorType]: 'GrantDenied' } })
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(JSON.parse(String(warn.mock.calls[0]?.[0]))).toEqual({
+        level: 'warn',
+        event: 'run',
+        kind: 'tool.call',
+        status: 'error',
+        agent: 'user-1',
+        conversation: '1',
+        operation: 'telegram-12',
+        task: 't1',
+        id: 'tool:t1',
+        ms: 240,
+        [RunAttribute.toolName]: 'mcp_call',
+        [RunAttribute.errorType]: 'Internal',
+      })
+      expect(JSON.parse(String(info.mock.calls[0]?.[0]))).toMatchObject({ level: 'info', id: 'tool:t2' })
+    } finally {
+      info.mockRestore()
+      warn.mockRestore()
+    }
+  })
+
   it('names where a turn came from by its operation id', () => {
     expect(sourceOf('telegram-tg-123')).toBe('telegram')
     expect(sourceOf('routine-input:rr_1:op')).toBe('routine')

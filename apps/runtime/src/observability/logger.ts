@@ -25,6 +25,7 @@ const LOG_EVENTS = [
   'job',
   'mcp',
   'rpc',
+  'run',
   'skill-learner',
   'wake',
 ] as const

@@ -1,7 +1,6 @@
 /** Lane O's files that pass the strict rules (tools/strict/index.ts). Only lane O appends globs here. */
 export const paths: string[] = [
-  // telemetry/log.ts writes its run lines with console until the logger knows a `run` event.
-  'apps/runtime/src/telemetry/{agent,attention,attributes,benchmark,events,ledger,pi-records,pi,rehydrate,report,run,safety,trace}.ts',
+  'apps/runtime/src/telemetry/**',
   'apps/runtime/src/inspect/**',
   'apps/runtime/src/inbound/inspection.ts',
   'apps/runtime/src/pi/diagnose.ts',
