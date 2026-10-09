@@ -56,8 +56,6 @@ import { inboxAppProbe } from './inbox-app-probe.ts'
 import { FileStore } from '../../src/files/store.ts'
 import { composerSequence, helperExclusionsProbe } from './composer-probe.ts'
 import { topicMemorySequence, topicRoutineSequence } from './native-topics.ts'
-import { callOwner } from './owner-api.ts'
-import { ownerResult } from './owner-result.ts'
 import { ResidentAuthority } from '../../src/resident.ts'
 
 const fixturePlan = () =>
