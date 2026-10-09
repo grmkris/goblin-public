@@ -1,45 +1,42 @@
 // The parts of entries the app writes into a chat itself (lib/parts.ts): a Thread's head, the owner's message to
-// Personas, a Persona's answer, a Topic's brief and a Delegate's result. Each is attributed: who wrote it shows first.
-import { use } from 'react'
-import { CornerDownRightIcon, MessagesSquareIcon, SparklesIcon } from 'lucide-react'
+// Personas, a Persona's answer, a Topic's brief and a Delegate's result. Who wrote each shows first, as Slack shows a
+// bot's name on its message; Goblin's own answers carry no name, because Goblin answers unless someone else was asked.
+import { type ReactNode, use } from 'react'
+import { BotIcon, SparklesIcon } from 'lucide-react'
 import type { Part } from '../../lib/parts.ts'
-import { PersonaAvatar } from '../persona-avatar.tsx'
 import { MessageFiles } from '../attachments.tsx'
+import { PersonaAvatar } from '../persona-avatar.tsx'
+import { ThreadSummary } from '../shell/thread-summary.tsx'
+import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { Cause, MessageText, OpenThread } from './text-part.tsx'
 
 type Of<K extends Part['kind']> = Extract<Part, { readonly kind: K }>
 
-/** A link to a thread where the transcript can open one, else its name alone. */
-function ThreadLink({ thread, label }: { readonly thread: string; readonly label: string }) {
-  const open = use(OpenThread)
-  if (open === undefined) return <span>{label}</span>
-  return (
-    <button type="button" className="cause-link" onClick={() => open(thread)}>
-      {label}
-    </button>
-  )
-}
-
-/** The head of a Thread that started here: the message, and the way into the Thread its reply went to. */
+/**
+ * The head of a Thread that started here: the owner's message, and under it the thread's summary, which opens it. A
+ * turn moved out of this chat leaves only this head: its summary says so.
+ */
 export function ThreadHeadPart({ part }: { readonly part: Of<'thread-head'> }) {
+  const { conversations } = useWorkspaceFeed()
+  const view = conversations.find((candidate) => candidate.id === part.thread)
   return (
     <>
       {part.author !== undefined && <p className="message-author">{part.author}</p>}
       <article className="bubble bubble-user">
         <p className="message-text">{part.text}</p>
       </article>
-      <p className="cause-line thread-head-line">
-        <MessagesSquareIcon aria-hidden />
-        <span>
-          {part.moved ? 'Moved to a thread' : 'Started a thread'} ·{' '}
-          <ThreadLink thread={part.thread} label="Open the thread" />
-        </span>
-      </p>
+      <div className="thread-summaries" data-side="end">
+        {view === undefined ? (
+          <p className="thread-summary-meta">{part.moved ? 'Moved to a thread' : 'Started a thread'}</p>
+        ) : (
+          <ThreadSummary view={view} {...(part.moved && { lead: 'Moved to a thread' })} />
+        )}
+      </div>
     </>
   )
 }
 
-/** The owner's message to Personas: their words, and whom they asked, together or one after another. */
+/** The owner's message to Personas: whom they asked (together, or in turn), then their words. */
 export function PersonaAskPart({ part }: { readonly part: Of<'persona-ask'> }) {
   const names = part.personas.map(({ name }) => `@${name}`)
   return (
@@ -53,16 +50,39 @@ export function PersonaAskPart({ part }: { readonly part: Of<'persona-ask'> }) {
   )
 }
 
-/** A Persona's answer, under its mark and name. */
+/** A message from someone other than Goblin: their mark, their name and what they are, then their words. */
+function Attributed({
+  mark,
+  name,
+  tag,
+  status,
+  children,
+}: {
+  readonly mark: ReactNode
+  readonly name: string
+  readonly tag: string
+  readonly status?: ReactNode
+  readonly children: ReactNode
+}) {
+  return (
+    <article className="attributed">
+      <span className="attributed-mark">{mark}</span>
+      <p className="attributed-byline">
+        <b>{name}</b>
+        <span className="attributed-tag">{tag}</span>
+        {status}
+      </p>
+      <div className="attributed-body">{children}</div>
+    </article>
+  )
+}
+
+/** A Persona's answer: its mark, its name, its words. */
 export function PersonaAnswerPart({ part }: { readonly part: Of<'persona-answer'> }) {
   return (
-    <article className="bubble bubble-assistant">
-      <p className="persona-byline">
-        <PersonaAvatar avatar={part.avatar} size="sm" />
-        <b>{part.name}</b>
-      </p>
+    <Attributed mark={<PersonaAvatar avatar={part.avatar} />} name={part.name} tag="Persona">
       <MessageText text={part.text} />
-    </article>
+    </Attributed>
   )
 }
 
@@ -80,19 +100,32 @@ export function TopicSeedPart({ part }: { readonly part: Of<'topic-seed'> }) {
   )
 }
 
-const ENDED = { done: 'finished', failed: 'failed', stopped: 'was stopped' } as const
+const ENDED = { done: 'Done', failed: 'Failed', stopped: 'Stopped' } as const
 
-/** A Delegate's result posted back here: who did the work, how it ended, its report, and the way into its task. */
+/** A Delegate's result posted back here, as a bot's message: who did the work, how it ended, its report, its task. */
 export function DelegateResultPart({ part }: { readonly part: Of<'delegate-result'> }) {
+  const open = use(OpenThread)
   return (
-    <Cause
-      icon={<CornerDownRightIcon aria-hidden />}
-      line={
-        <>
-          <ThreadLink thread={part.delegate} label={part.name} /> {ENDED[part.status]}
-        </>
+    <Attributed
+      mark={
+        <span className="delegate-mark">
+          <BotIcon aria-hidden />
+        </span>
       }
-      text={part.text}
-    />
+      name={part.name}
+      tag="Delegate"
+      status={
+        <span className="attributed-status" data-status={part.status}>
+          {ENDED[part.status]}
+        </span>
+      }
+    >
+      <MessageText text={part.text} />
+      {open !== undefined && (
+        <button type="button" className="cause-link attributed-open" onClick={() => open(part.delegate)}>
+          Open the task
+        </button>
+      )}
+    </Attributed>
   )
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ConversationView } from '@goblin/contracts'
 import { CheckIcon, CopyIcon, MessageSquareReplyIcon } from 'lucide-react'
-import type { Part } from '../../lib/parts.ts'
+import { type Part, isOwnTurn } from '../../lib/parts.ts'
 import {
   entryOfPart,
   isClosed,
@@ -13,6 +13,7 @@ import {
 } from '../../lib/threads.ts'
 import { activityState } from '../../lib/workspace-feed.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { MoveAction, type Mover } from './move-action.tsx'
 import { usePanel } from './panel.tsx'
 
 /**
@@ -26,10 +27,12 @@ export type ChatThreads = {
   /** Opens the thread already started from `entry`, or a draft reply that becomes one when it is sent. */
   readonly reply: (entry: number) => void
   readonly open: (thread: string) => void
+  /** Move to thread, on the owner's messages of a channel whose server can move them. */
+  readonly mover?: Mover | undefined
 }
 
 /** The threads of `chat` for its transcript, opening in the channel's panel. */
-export function useChatThreads(chat: string, branchable: ReadonlySet<number>): ChatThreads {
+export function useChatThreads(chat: string, branchable: ReadonlySet<number>, mover?: Mover): ChatThreads {
   const { conversations } = useWorkspaceFeed()
   const panel = usePanel()
   const at = useMemo(() => threadsByFork(conversations, chat), [conversations, chat])
@@ -44,8 +47,9 @@ export function useChatThreads(chat: string, branchable: ReadonlySet<number>): C
         else panel.open(started.id)
       },
       open: panel.open,
+      mover,
     }),
-    [chat, at, branchable, panel],
+    [chat, at, branchable, panel, mover],
   )
 }
 
@@ -147,6 +151,9 @@ export function MessageFooter({ part, threads }: { readonly part: Part; readonly
         >
           <MessageSquareReplyIcon aria-hidden />
         </button>
+        {threads.mover !== undefined && isOwnTurn(part) && started.length === 0 && (
+          <MoveAction mover={threads.mover} entry={entry} />
+        )}
         {text !== '' && <CopyMessage text={text} />}
       </span>
       {started.length > 0 && (

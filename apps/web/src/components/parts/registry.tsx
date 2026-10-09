@@ -20,6 +20,8 @@ import { AssistantText, UserText } from './text-part.tsx'
 import { SubagentBlock } from './subagent-block.tsx'
 import { GenericToolPart } from './tool-part.tsx'
 import { RoutineProposalPart } from './routine-proposal.tsx'
+import { SourcesStrip } from './sources-strip.tsx'
+import { sourcesOf } from '../../lib/sources.ts'
 
 /** Quiet lines (receipts, thinking) start where the assistant's text does, inside its bubble's padding. */
 function Aside({ children }: { readonly children: ReactNode }) {
@@ -89,6 +91,14 @@ function ToolView({ part }: { readonly part: ToolPart }) {
   if (part.built !== undefined) return <AppBuildPart part={part} />
   // `routine` is the single tool older transcripts used (ADR 0027).
   if (part.call.name === 'routine_propose' || part.call.name === 'routine') return <RoutineProposalPart part={part} />
+  // What a search of the owner's other chats found: a source strip, not a tool card.
+  const sources = part.call.name === 'search_chats' ? sourcesOf(part.result?.details) : []
+  if (sources.length > 0)
+    return (
+      <Aside>
+        <SourcesStrip sources={sources} searched />
+      </Aside>
+    )
   return subagentAction(part) === undefined ? <GenericToolPart part={part} /> : <SubagentBlock part={part} />
 }
 

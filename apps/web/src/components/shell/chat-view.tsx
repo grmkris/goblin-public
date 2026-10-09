@@ -3,6 +3,7 @@ import type { ConversationView } from '@goblin/contracts'
 import { GitBranchIcon, MessageCircleIcon } from 'lucide-react'
 import { type Part, partKey } from '../../lib/parts.ts'
 import { closedBy, entryOfPart, repliesLabel, rootParts, threadTitle } from '../../lib/threads.ts'
+import { channelOf, topicOfChannel } from '../../lib/topics.ts'
 import { Conversation } from '../conversation.tsx'
 import { ConversationDock } from '../conversation-dock.tsx'
 import { useModelChoice } from '../model-picker.tsx'
@@ -12,7 +13,10 @@ import { PartView } from '../parts/registry.tsx'
 import { Cause } from '../parts/text-part.tsx'
 import { useConversation, useDockInsets, useTranscript } from '../use-conversation.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { useChatExtras } from './chat-extras.tsx'
+import { useMover } from './move-action.tsx'
 import { useOpenChat } from './panel.tsx'
+import { useThreadStart } from './thread-start.ts'
 import { useChatThreads } from './thread-summary.tsx'
 
 /** Where a chat shows: the channel's column, or the thread panel beside it. */
@@ -132,8 +136,13 @@ export function ChatView({
   const fork = place === 'panel' ? view.forkEntry : undefined
   const { parts, branchable, earlier } = useTranscript(id, projection, report, fork)
   useMarkRead(view, reading)
-  const threads = useChatThreads(id, branchable)
+  const running = projection?.running ?? false
+  const mover = useMover(id, place === 'channel', running)
+  const threads = useChatThreads(id, branchable, mover)
+  const topic = topicOfChannel(channelOf(id, feed.conversations, feed.topics), feed.topics)
+  const startThread = useThreadStart(id, topic?.id)
   const { lead, shown } = useLead(view, parts, earlier !== undefined, hideRoot)
+  const extras = useChatExtras(id, shown, running)
   const heads = useMemo(
     () => parts.flatMap((part) => (part.kind === 'thread-head' ? [part.thread] : [])).join(' '),
     [parts],
@@ -148,6 +157,8 @@ export function ChatView({
           canSwitchModel={(model.choice?.options.length ?? 0) > 1}
           threads={threads}
           onOpen={openChat}
+          after={extras.after}
+          trail={extras.trail}
           loading={projection === undefined}
           {...(earlier && { onEarlier: earlier })}
           {...(lead !== undefined && { lead })}
@@ -164,6 +175,7 @@ export function ChatView({
           onReopen={() => void feed.update(id, { closed: false })}
           notices={[...notices, ...(feed.error === '' ? [] : [feed.error])]}
           active={active}
+          {...(view.kind !== 'subagent' && { onStartThread: startThread })}
           {...composerOf(view, place)}
         />
       )}

@@ -1,5 +1,5 @@
-import { type ReactNode } from 'react'
-import { selectionKey } from '@goblin/contracts'
+import { type ReactNode, useMemo } from 'react'
+import { type PersonaView, selectionKey } from '@goblin/contracts'
 import {
   Button,
   Composer,
@@ -10,11 +10,13 @@ import {
   PopoverTrigger,
   useMediaQuery,
 } from '@goblin/ui'
-import { ArrowUpIcon, CircleHelpIcon, SquareIcon, XIcon } from 'lucide-react'
+import { ArrowUpIcon, CircleHelpIcon, MessageSquarePlusIcon, SquareIcon, XIcon } from 'lucide-react'
 import { sendsMessage } from '../lib/keys.ts'
+import { activePersonas, personaOption, taggedPersonas } from '../lib/personas.ts'
 import { AttachButton, PendingFiles } from './attachments.tsx'
 import { ComposerPicker, useComposerPicker } from './composer-picker.tsx'
 import { type ComposerProps, useComposer } from './composer-state.ts'
+import { PersonaAvatar } from './persona-avatar.tsx'
 
 type Props = ComposerProps & {
   readonly running: boolean
@@ -24,18 +26,30 @@ type Props = ComposerProps & {
   readonly compact?: boolean
   readonly sendLabel?: string
   readonly autoFocus?: boolean
+  /** The owner's Personas, offered as `@` references when the server has them. */
+  readonly personas?: readonly PersonaView[] | undefined
 }
 
-function SelectionChips({ state }: { readonly state: ReturnType<typeof useComposer> }) {
+function SelectionChips({
+  state,
+  personas,
+}: {
+  readonly state: ReturnType<typeof useComposer>
+  readonly personas: readonly PersonaView[]
+}) {
   if (state.selected.length === 0) return null
   return (
     <ul className="composer-selections" aria-label="Selected references">
       {state.selected.map((option) => {
         const failed = state.failed === selectionKey(option.selection)
+        const { selection } = option
+        const persona =
+          selection.kind === 'persona' ? personas.find((each) => each.id === selection.personaId) : undefined
         return (
-          <li key={selectionKey(option.selection)} data-failed={failed || undefined}>
+          <li key={selectionKey(selection)} data-failed={failed || undefined} data-kind={selection.kind}>
+            {persona !== undefined && <PersonaAvatar avatar={persona.avatar} size="sm" />}
             <span>
-              {option.selection.kind === 'skill' ? '/' : '@'}
+              {selection.kind === 'skill' ? '/' : '@'}
               {option.label}
             </span>
             <Button
@@ -53,6 +67,48 @@ function SelectionChips({ state }: { readonly state: ReturnType<typeof useCompos
         )
       })}
     </ul>
+  )
+}
+
+/** With two or more Personas tagged: whether they answer together, or one after another in the order tagged. */
+function PersonaOrder({ state }: { readonly state: ReturnType<typeof useComposer> }) {
+  if (taggedPersonas(state.selected) < 2) return null
+  const choice = (value: 'parallel' | 'sequence', label: string) => (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={state.order === value}
+      className="composer-order-choice"
+      onClick={() => state.setOrder(value)}
+    >
+      {label}
+    </button>
+  )
+  return (
+    <div className="composer-order" role="radiogroup" aria-label="How the personas answer">
+      {choice('parallel', 'Together')}
+      {choice('sequence', 'In turn')}
+    </div>
+  )
+}
+
+/** While Start thread is on: the message will start a thread, and × goes back to sending here, the draft kept. */
+function ThreadMode({ state }: { readonly state: ReturnType<typeof useComposer> }) {
+  if (!state.thread) return null
+  return (
+    <p className="composer-mode">
+      <MessageSquarePlusIcon aria-hidden />
+      <span>Starts a thread</span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        aria-label="Send here instead"
+        onClick={() => state.setThread(false)}
+      >
+        <XIcon />
+      </Button>
+    </p>
   )
 }
 
@@ -155,10 +211,13 @@ export function MessageComposer({
   attach = false,
   sendLabel = 'Send',
   autoFocus = false,
+  personas,
   ...props
 }: Props) {
   const state = useComposer({ ...props, onStop })
-  const picker = useComposerPicker(props.conversation, state.selected, state.choose)
+  const offered = useMemo(() => activePersonas(personas), [personas])
+  const extra = useMemo(() => offered.map(personaOption), [offered])
+  const picker = useComposerPicker(props.conversation, state.selected, state.choose, extra)
   return (
     <Composer
       ref={state.form}
@@ -170,14 +229,16 @@ export function MessageComposer({
       }}
     >
       <ComposerPicker picker={picker} />
-      <SelectionChips state={state} />
+      <ThreadMode state={state} />
+      <SelectionChips state={state} personas={offered} />
+      <PersonaOrder state={state} />
       {attach && <PendingFiles attachments={state.attachments} />}
       <ComposerField
         state={state}
         picker={picker}
         compact={compact}
         running={running}
-        placeholder={placeholder}
+        placeholder={state.thread ? 'Start a thread…' : placeholder}
         autoFocus={autoFocus}
         onStop={onStop}
       />
@@ -189,6 +250,19 @@ export function MessageComposer({
       {!compact && (
         <ComposerActions>
           {attach && <AttachButton attachments={state.attachments} />}
+          {props.threads === true && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Start a thread"
+              title="Start a thread"
+              aria-pressed={state.thread}
+              onClick={() => state.setThread(!state.thread)}
+            >
+              <MessageSquarePlusIcon />
+            </Button>
+          )}
           <ComposerHelp state={state} />
           <div className="composer-context mr-auto flex min-w-0 items-center gap-2">{context}</div>
           {running && (
@@ -197,7 +271,7 @@ export function MessageComposer({
             </Button>
           )}
           <Button type="submit" disabled={state.cannotSend}>
-            {sendLabel}
+            {state.thread ? 'Start thread' : sendLabel}
           </Button>
         </ComposerActions>
       )}

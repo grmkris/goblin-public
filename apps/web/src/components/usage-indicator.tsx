@@ -30,7 +30,7 @@ export function UsageIndicator({
         render={<button type="button" className="usage-indicator" aria-label={label} />}
       >
         <UsageRing value={today} label={label} />
-        <span className="hidden items-center gap-1 md:flex" aria-hidden>
+        <span className="usage-figures" aria-hidden>
           <Count value={today} percent /> today
           {context !== undefined && (
             <>

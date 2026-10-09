@@ -385,12 +385,6 @@
   .dock-composer {
     flex: none;
   }
-  .dock-hint {
-    color: var(--muted-foreground);
-    font-size: 0.75rem;
-    text-align: center;
-    text-wrap: balance;
-  }
   .chat-dock > * {
     width: 100%;
     max-width: var(--chat-column);
@@ -750,16 +744,6 @@
   .dark .persona-avatar {
     background: oklch(0.38 0.08 var(--hue));
     color: oklch(0.92 0.06 var(--hue));
-  }
-  .persona-byline {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-block-end: 0.25rem;
-    font-size: var(--text-13);
-  }
-  .thread-head-line {
-    justify-content: flex-end;
   }
   .bubble {
     max-width: 100%;
@@ -1628,9 +1612,15 @@
     outline: 2px solid var(--ring);
     outline-offset: 1px;
   }
-  @container conversation (max-width: 40rem) {
-    .usage-indicator > span[aria-hidden] {
-      display: none;
+  /* The day's figures beside the ring, where the chat (not the screen) is wide enough for them. */
+  .usage-figures {
+    display: none;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  @container conversation (min-width: 40rem) {
+    .usage-figures {
+      display: flex;
     }
   }
   @container conversation (max-width: 28rem) {

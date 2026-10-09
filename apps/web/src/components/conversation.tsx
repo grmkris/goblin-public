@@ -34,6 +34,10 @@ type ConversationProps = {
   readonly lead?: ReactNode
   /** The transcript is still on its way: no empty state yet. */
   readonly loading?: boolean
+  /** What shows under a part beside its own footer (a source strip, an owner-only message). */
+  readonly after?: (part: Part) => ReactNode
+  /** What comes after the parts (Personas still answering). */
+  readonly trail?: ReactNode
 }
 
 /** A conversation's way to its end; it jumps instead of gliding when the person asks for less motion. */
@@ -67,6 +71,8 @@ export function Conversation({
   onEarlier,
   lead,
   loading = false,
+  after,
+  trail,
 }: ConversationProps) {
   const empty = !loading && parts.length === 0 && lead === undefined
   const viewport = useRef<HTMLDivElement>(null)
@@ -104,10 +110,12 @@ export function Conversation({
                     <div className="message-item flex flex-col" tabIndex={-1}>
                       <PartView part={part} canSwitchModel={canSwitchModel} />
                       {threads !== undefined && <MessageFooter part={part} threads={threads} />}
+                      {after?.(part)}
                     </div>
                   </MessageScrollerItem>
                 ))
               )}
+              {trail}
             </MessageScrollerContent>
           </MessageScrollerViewport>
           <TurnMap viewport={viewport} turns={turns} onEarlier={onEarlier} />

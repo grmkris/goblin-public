@@ -24,6 +24,11 @@ browser's Back all work. A thread's or a subagent's own `/c/<id>` opens its chan
 phone the panel is a full view over the channel with a reliable back to it. × closes the panel and stops nothing;
 Close thread in its menu stops the thread's work, as before (ADR 0017). Share back is in the same menu.
 
+**Who answers is visible.** Goblin's answers carry no name: Goblin answers unless the owner asked someone else. A
+Persona's answer and a Delegate's result carry a mark, a name and what they are; Personas still answering show as
+"answering…" rows. Start thread (a composer toggle) and Move to thread (in a message's toolbar) are offered where the
+server has their routes. A strip under an answer names the other chats it used.
+
 **An App's page is the main column.** `/a/<id>` shows the App under a bar with "Back to #channel"; inline Apps stay in
 their message's slot, and the one live instance (ADR 0020) springs between the two. The pane system's full screen with
 a docked chat is gone: an App asking for fullscreen gets its page.

@@ -33,10 +33,15 @@ function useCatalog(
   }, [conversation, open])
 }
 
+/**
+ * The `/` and `@` picker of a composer: the conversation's references from the server, with `extra` ones the app knows
+ * itself (the Personas) where the server does not list them yet.
+ */
 export function useComposerPicker(
   conversation: string,
   selected: readonly ComposerOption[],
   choose: (item: PickerItem, trigger: Trigger) => void,
+  extra: readonly ComposerOption[] = [],
 ) {
   const [trigger, setTrigger] = useState<Trigger>()
   const [catalog, setCatalog] = useState<Schema.Schema.Type<typeof ComposerOptions>>({ options: [], unavailable: [] })
@@ -47,10 +52,12 @@ export function useComposerPicker(
   const list = useRef<HTMLDivElement>(null)
   const open = trigger !== undefined
   useCatalog(conversation, open, setCatalog, setError, setLoading)
-  const items = useMemo(
-    () => (trigger === undefined ? [] : pickerItems(trigger, catalog.options, selected)),
-    [trigger, catalog.options, selected],
-  )
+  const items = useMemo(() => {
+    if (trigger === undefined) return []
+    const listed = new Set(catalog.options.map((option) => selectionKey(option.selection)))
+    const options = [...catalog.options, ...extra.filter((option) => !listed.has(selectionKey(option.selection)))]
+    return pickerItems(trigger, options, selected)
+  }, [trigger, catalog.options, selected, extra])
   const index = Math.min(active, Math.max(0, items.length - 1))
   useEffect(() => {
     list.current?.children[index]?.scrollIntoView({ block: 'nearest' })

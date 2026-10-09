@@ -1,5 +1,5 @@
 import { type RefObject, useMemo } from 'react'
-import type { ComposerSelection } from '@goblin/contracts'
+import type { AppContext, ComposerSelection } from '@goblin/contracts'
 import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@goblin/ui'
 import { RotateCcwIcon } from 'lucide-react'
 import { openInteractions } from '../lib/interactions.ts'
@@ -10,14 +10,25 @@ import { useNavigation } from '../lib/navigation.ts'
 import { SharedContextChips, useSharedContext } from './apps/offers.tsx'
 import { CapabilitiesButton } from './capabilities.tsx'
 import { MessageComposer } from './composer.tsx'
+import type { SendExtras } from './composer-state.ts'
 import { QueuedMessages } from './queued-messages.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
 import { ModelPicker, type useModelChoice } from './model-picker.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
 import type { useConversation } from './use-conversation.ts'
 import { useUsageToday } from './use-usage.ts'
+import { useWorkspaceFeed } from './workspace-feed.tsx'
 
 type Send = ReturnType<typeof useConversation>['send']
+
+/** Posts a message as the head of a new thread, its reply landing there: true once it is on its way. */
+export type StartThread = (
+  input: string,
+  attachments: readonly string[],
+  selections: readonly ComposerSelection[],
+  appContext: readonly AppContext[],
+  personaOrder: SendExtras['personaOrder'],
+) => Promise<boolean>
 
 export function Notice({ text }: { readonly text: string }) {
   if (text === '') return null
@@ -29,16 +40,31 @@ export function Notice({ text }: { readonly text: string }) {
 }
 
 /**
- * The owner's message, with the files they attached and what the conversation's Apps share; shared context is sent
- * once, then cleared.
+ * The owner's message, with the files they attached and what the conversation's Apps share (sent once, then cleared):
+ * here, or as a new thread's head when Start thread is on.
  */
 export function useSendWithAppContext(
   conversation: string,
   send: Send,
-): (input: string, attachments: readonly string[], selections: readonly ComposerSelection[]) => Promise<boolean> {
+  startThread?: StartThread,
+): (
+  input: string,
+  attachments: readonly string[],
+  selections: readonly ComposerSelection[],
+  extras: SendExtras,
+) => Promise<boolean> {
   const shared = useSharedContext(conversation)
-  return async (input, attachments, selections) => {
-    const sent = await send(input, undefined, { appContext: shared.context, attachments, selections })
+  return async (input, attachments, selections, extras) => {
+    const { personaOrder } = extras
+    const sent =
+      extras.thread === true && startThread !== undefined
+        ? await startThread(input, attachments, selections, shared.context, personaOrder)
+        : await send(input, undefined, {
+            appContext: shared.context,
+            attachments,
+            selections,
+            ...(personaOrder !== undefined && { personaOrder }),
+          })
     if (sent) shared.clear()
     return sent
   }
@@ -164,15 +190,17 @@ export function ConversationDock({
   closed,
   onReopen,
   notices = [],
-  hint,
   placeholder,
   sendLabel,
   active,
+  onStartThread,
 }: {
   readonly ref: RefObject<HTMLDivElement | null>
   readonly id: string
   /** The owner is working here now: its presence may move. */
   readonly active: boolean
+  /** Offers Start thread in the composer, posting the message as a new thread's head this way. */
+  readonly onStartThread?: StartThread
   readonly conversation: ReturnType<typeof useConversation>
   readonly model: ReturnType<typeof useModelChoice>
   readonly parts: readonly Part[]
@@ -180,16 +208,15 @@ export function ConversationDock({
   readonly closed: 'owner' | 'done' | undefined
   readonly onReopen: () => void
   readonly notices?: readonly string[]
-  /** A quiet line under the composer: what writing here does. */
-  readonly hint?: string | undefined
   /** What the empty composer says; the default asks the agent. */
   readonly placeholder?: string | undefined
   /** What the send button says; Send by default. */
   readonly sendLabel?: string | undefined
 }) {
   const navigation = useNavigation()
+  const { personas } = useWorkspaceFeed()
   const { projection, notice, send, stop, removeQueued } = conversation
-  const sendOwn = useSendWithAppContext(id, send)
+  const sendOwn = useSendWithAppContext(id, send, onStartThread)
   const { running, usage, waiting, context, presence } = useDockStatus(conversation, parts)
   return (
     <div className="chat-dock" ref={ref} data-app-cover>
@@ -212,6 +239,8 @@ export function ConversationDock({
               conversation={id}
               onNewThread={(contents) => navigation.newThreadWith(contents, id)}
               onSend={sendOwn}
+              personas={personas}
+              threads={onStartThread !== undefined}
               attach
               running={running}
               onStop={() => void stop()}
@@ -230,7 +259,6 @@ export function ConversationDock({
               }
             />
           </div>
-          {hint !== undefined && <p className="dock-hint">{hint}</p>}
         </>
       )}
     </div>

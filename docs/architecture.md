@@ -116,7 +116,25 @@ that branches the thread only when it is sent, because Pi cannot delete a conver
 composer's draft into a new thread's draft the same way. The channel and the panel follow conversations through one
 stream pool (`lib/stream-pool.ts`): one event stream per conversation however many show it, at most eight following
 beyond those on screen, and one off screen stops following after ten seconds, resuming from a fresh snapshot when it
-comes back. A thread started with "+" tells its channel its name once it has one (ADR 0010): the channel gets one
+comes back. Start thread, a toggle in the composer (and `/new-thread`), posts the message as the head of a new thread whose
+reply lands there (`POST /api/conversations/:id/threads`, one operation id per draft), and the panel opens on it;
+turning it off keeps the draft, its files and references. A server without that route gets the thread the older way:
+a new empty thread of the Topic, then the message in it. Move to thread, in the toolbar of the owner's messages in a
+channel (`POST …/move`), leaves the message as the thread's head and opens the thread; a refused receipt (such as
+`streaming`) disables it for that message, with the reason, until the run ends. The shell asks once a page load
+whether each route exists (`lib/features.ts`: an empty body is refused as invalid where it does, not found where it
+does not) and offers neither where it does not. The transcript draws what those runtimes write
+(`components/parts/drawn-parts.tsx`): a thread's head with the thread's summary ("Moved to a thread" for a moved
+turn, whose own entries a later entry's edits omit), the owner's message to Personas with whom it went to, a Persona's
+answer and a Delegate's result as attributed messages (a mark, a name, Persona or Delegate), and a Topic's brief.
+Personas still answering show after the transcript ("answering…", from the feed's invocations). With Personas on the
+server the composer offers them as `@` references (with their avatars), and with two or more tagged a Together or
+In turn choice that is sent as `personaOrder`. What an answer used from other chats shows as a strip under it: a
+`search_chats` call's `SourcesDetails`, and automatic retrieval from `GET /api/conversations/:id/sources`
+(`lib/sources.ts`), each source opening its chat. Owner-only messages (`EphemeralMessage`, "Only visible to you")
+have a slot after the entry they follow and a provider (`components/shell/ephemeral-slot.tsx`) that nothing fills
+yet.
+A thread started with "+" tells its channel its name once it has one (ADR 0010): the channel gets one
 `app.thread_started` note, `[thread started: "<title>"]`, and its transcript shows that thread's summary.
 
 Queued inputs in Main and ordinary threads stay in Pi's native `InboxDoc`. The browser projects native inbox IDs

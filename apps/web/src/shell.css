@@ -730,3 +730,247 @@
   width: 0.875rem;
   height: 0.875rem;
 }
+
+/*
+ * A message from someone other than Goblin (a Persona, a Delegate): its mark beside its name and what it is, as Slack
+ * shows a bot's message, then its words. Goblin's own answers stay unnamed: Goblin answers unless someone was asked.
+ */
+.attributed {
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr);
+  column-gap: 0.75rem;
+  row-gap: 0.125rem;
+  padding-inline: 0.875rem;
+}
+.attributed-mark {
+  grid-row: span 2;
+  padding-block-start: 0.125rem;
+}
+.attributed-byline {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-13);
+}
+.attributed-byline > b {
+  color: var(--foreground);
+  font-weight: 650;
+}
+.attributed-tag {
+  padding: 0.0625rem 0.375rem;
+  border-radius: 0.3125rem;
+  background: var(--moss-soft, var(--muted));
+  color: var(--moss);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+}
+.attributed-status[data-status='failed'] {
+  color: var(--destructive);
+}
+.attributed-body {
+  min-width: 0;
+}
+.attributed-open {
+  margin-block-start: 0.25rem;
+  font-size: var(--text-13);
+}
+.delegate-mark {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  border-radius: 0.5rem;
+  background: var(--moss);
+  color: var(--moss-foreground);
+}
+.delegate-mark > svg {
+  width: 1rem;
+  height: 1rem;
+}
+.thread-summaries[data-side='end'] {
+  align-items: flex-end;
+}
+
+/* The Personas still answering, after the transcript: a row each, its mark and name, and what it is doing. */
+.answering {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding-inline: 0.875rem;
+}
+.answering-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: var(--text-13);
+}
+.answering-row > b {
+  color: var(--foreground);
+  font-weight: 650;
+}
+.answering-row > span[data-state='running'] {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* What an answer used from other chats: one quiet line that opens to each source as it was captured. */
+.sources-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.375rem;
+  margin-block-start: 0.375rem;
+  padding-inline: 0.875rem;
+}
+.sources-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  max-width: 100%;
+  min-height: 1.75rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--moss-soft, var(--muted));
+  color: var(--moss);
+  font-size: var(--text-13);
+  font-weight: 550;
+  touch-action: manipulation;
+}
+.sources-toggle > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: none;
+}
+.sources-chevron {
+  transition: rotate 150ms var(--ease-out);
+}
+.sources-toggle[aria-expanded='true'] > .sources-chevron {
+  rotate: 90deg;
+}
+.sources-toggle:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@media (any-pointer: coarse) {
+  .sources-toggle {
+    min-height: 2.75rem;
+  }
+}
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  width: 100%;
+}
+.source-where {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: var(--text-13);
+}
+.source-when {
+  flex: none;
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs);
+}
+.source-excerpt {
+  display: -webkit-box;
+  margin-block-start: 0.125rem;
+  padding-inline-start: 0.625rem;
+  overflow: clip;
+  border-inline-start: 2px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: var(--text-13);
+  white-space: pre-wrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+/* "Only visible to you": a suggestion the owner can act on or dismiss, never part of the transcript. */
+.ephemeral {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin-inline: 0.875rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.75rem;
+  background: var(--moss-soft, var(--muted));
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--moss) 22%, transparent);
+}
+.ephemeral-who {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--moss);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.ephemeral-who > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+.ephemeral-who > [data-slot='button'] {
+  margin-inline-start: auto;
+}
+.ephemeral-title {
+  font-weight: 650;
+}
+.ephemeral-body {
+  font-size: var(--text-13);
+  text-wrap: pretty;
+}
+.ephemeral-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+/* The composer's modes: Start thread on, and with Personas tagged, whether they answer together or in turn. */
+.composer-mode {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding-inline: 0.5rem;
+  color: var(--moss);
+  font-size: var(--text-13);
+  font-weight: 550;
+}
+.composer-mode > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+.composer-order {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  margin-inline: 0.5rem;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--muted);
+}
+.composer-order-choice {
+  min-height: 1.75rem;
+  padding-inline: 0.75rem;
+  border-radius: var(--radius-pill);
+  color: var(--muted-foreground);
+  font-size: var(--text-13);
+  touch-action: manipulation;
+}
+.composer-order-choice[aria-checked='true'] {
+  background: var(--background);
+  box-shadow: var(--shadow-1);
+  color: var(--foreground);
+}
+.composer-order-choice:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+@media (any-pointer: coarse) {
+  .composer-order-choice {
+    min-height: 2.75rem;
+  }
+}

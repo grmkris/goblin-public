@@ -2,6 +2,7 @@ import { HeadContent, Outlet, Scripts, createRootRoute, useRouterState } from '@
 import type { ReactNode } from 'react'
 import { AppHost } from '../components/apps/host.tsx'
 import { AppLayer } from '../components/apps/stage.tsx'
+import { EphemeralProvider } from '../components/shell/ephemeral-slot.tsx'
 import { ShellNavigation } from '../components/shell/navigation.tsx'
 import { ShellFrame } from '../components/shell/shell.tsx'
 import { WorkspaceFeedProvider } from '../components/workspace-feed.tsx'
@@ -69,7 +70,9 @@ function Shell({ children }: { readonly children: ReactNode }) {
     <WorkspaceFeedProvider enabled={enabled}>
       <ShellNavigation>
         <AppHost>
-          <ShellFrame>{children}</ShellFrame>
+          <EphemeralProvider>
+            <ShellFrame>{children}</ShellFrame>
+          </EphemeralProvider>
           <AppLayer />
         </AppHost>
       </ShellNavigation>

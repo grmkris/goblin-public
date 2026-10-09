@@ -14,6 +14,24 @@ type MessageContext = {
   readonly appContext?: readonly AppContext[]
   readonly attachments?: readonly string[]
   readonly selections?: readonly ComposerSelection[]
+  /** With two or more Personas tagged: together, or one after another ("then"). */
+  readonly personaOrder?: 'parallel' | 'sequence'
+}
+
+/** The body of an owner message (`SendMessage`), with nothing empty in it. */
+export function messageBody(
+  input: string,
+  operationId: string,
+  { appContext = [], attachments = [], selections = [], personaOrder }: MessageContext = {},
+) {
+  return {
+    input,
+    operationId,
+    ...(appContext.length > 0 && { appContext }),
+    ...(attachments.length > 0 && { attachments }),
+    ...(selections.length > 0 && { selections }),
+    ...(personaOrder !== undefined && { personaOrder }),
+  }
 }
 
 /**
@@ -24,16 +42,10 @@ export async function postMessage(
   thread: string,
   input: string,
   operationId?: string,
-  { appContext = [], attachments = [], selections = [] }: MessageContext = {},
+  context: MessageContext = {},
 ): Promise<void> {
-  const body = {
-    input,
-    // @effect-diagnostics-next-line cryptoRandomUUID:off -- A fresh idempotency key for this browser submission.
-    operationId: operationId ?? crypto.randomUUID(),
-    ...(appContext.length > 0 && { appContext }),
-    ...(attachments.length > 0 && { attachments }),
-    ...(selections.length > 0 && { selections }),
-  }
+  // @effect-diagnostics-next-line cryptoRandomUUID:off -- A fresh idempotency key for this browser submission.
+  const body = messageBody(input, operationId ?? crypto.randomUUID(), context)
   await request(`/api/conversations/${thread}/messages`, { body })
 }
 
