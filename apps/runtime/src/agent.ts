@@ -85,7 +85,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     const { run, local: routineRun } = this.#bridge
     this.#pi = makePiModels(env, this.modelStreams(), undefined, (id) => routineRun(requireRoutine(id)))
     const residentTools = residentMcpExtension(run, (session) => routineRun(requireRoutineSession(session)))
-    const tools = [residentTools, budgetExtension(run)]
+    const tools = [residentTools, budgetExtension(routineRun)]
     this.#thread = threadExtension(run)
     this.#memory = memoryExtensions(run)
     const { memory, recall } = this.#memory
