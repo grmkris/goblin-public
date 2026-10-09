@@ -7,11 +7,14 @@ import { scopeOf } from '../src/capabilities/profiles.ts'
 import type { AppError } from '../src/http/errors.ts'
 import { McpHost } from '../src/mcp/host.ts'
 import { skillsExtension } from '../src/pi/skills.ts'
-import { type AgentServices, Capabilities, Resident, Skills } from '../src/services.ts'
+import { Capabilities } from '../src/capabilities/service.ts'
+import { Resident } from '../src/mcp/service.ts'
+import type { AgentServices } from '../src/services.ts'
 import { SkillLibrary } from '../src/skills/library.ts'
 import { SKILLS_EXTENSION, type SkillEntry } from '../src/skills/protocol.ts'
 import { digestOf } from '../src/skills/verify.ts'
-import { ActiveResident, FixedProfiles } from './fixed-services.ts'
+import { FixedProfiles } from './fixed-services.ts'
+import { knowledgeOver } from './knowledge-layer.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
 import { MemorySkillState } from './skills-memory.ts'
 
@@ -200,13 +203,11 @@ describe('a skills library switched off in one conversation (unit)', () => {
   })
 
   it('loads nothing when the model still asks for one of its skills, and offers to turn it on there', async () => {
+    const profiles = new FixedProfiles({ '4': scopeOf([{ kind: 'skills', serverId: 'lib', name: '' }], true) })
     const layer = Layer.mergeAll(
-      Layer.succeed(Skills, library),
-      Layer.succeed(Resident, new ActiveResident()),
-      Layer.succeed(
-        Capabilities,
-        new FixedProfiles({ '4': scopeOf([{ kind: 'skills', serverId: 'lib', name: '' }], true) }),
-      ),
+      knowledgeOver({ skills: library }),
+      Layer.mock(Resident)({ require: () => Effect.void }),
+      Layer.mock(Capabilities)({ scope: (session: string) => Effect.sync(() => profiles.scope(session)) }),
     )
     const run = <A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<A> =>
       // SAFETY: skill_activate needs only the Skills, Resident and Capabilities services provided here.

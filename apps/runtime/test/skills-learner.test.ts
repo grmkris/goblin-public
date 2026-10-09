@@ -8,10 +8,10 @@ import { McpHost } from '../src/mcp/host.ts'
 import { SkillLearner, type LearnOutcome, logLearnOutcome } from '../src/skills/learner.ts'
 import { skillLearningExtension } from '../src/pi/skills.ts'
 import type { RunProgram } from '../src/pi/resident-mcp.ts'
-import { ModelBudget } from '../src/budget.ts'
-import { Budget, Learner, Resident } from '../src/services.ts'
+import { Budget } from '../src/budget.ts'
+import { Resident } from '../src/mcp/service.ts'
 import type { AppError } from '../src/http/errors.ts'
-import { ActiveResident } from './fixed-services.ts'
+import { knowledgeOver } from './knowledge-layer.ts'
 import { SkillLibrary } from '../src/skills/library.ts'
 import { SKILLS_EXTENSION } from '../src/skills/protocol.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
@@ -145,9 +145,9 @@ describe('the skill learner (unit)', () => {
     model.answer = 'private malformed model reply, with no decision JSON'
     const outcomes: LearnOutcome[] = []
     const layer = Layer.mergeAll(
-      Layer.succeed(Learner, learner()),
-      Layer.succeed(Resident, new ActiveResident()),
-      Layer.succeed(Budget, new ModelBudget({ milliCredits: () => 0, add: () => undefined }, 300_000)),
+      knowledgeOver({ learner: learner() }),
+      Layer.mock(Resident)({ require: () => Effect.void }),
+      Layer.mock(Budget)({ require: () => Effect.void }),
     )
     const run: RunProgram = <A>(program: Parameters<RunProgram>[0]) =>
       // SAFETY: onYield uses only Learner, Resident and Budget, provided by this test's layer.

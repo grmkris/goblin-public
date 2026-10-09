@@ -20,6 +20,7 @@ import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import { Mcp, Resident as LegacyResident, Skills } from '../../../src/services.ts'
 import { ChatOperations, Chats } from '../../../src/chats/service.ts'
 import { RoutineRuns } from '../../../src/routines/service.ts'
+import { Skills as SkillLibraries } from '../../../src/skills/service.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 import { callOwner } from '../../integration/owner-api.ts'
 import { MemoryAddedServers, MemoryCredentials, MemoryGrants, MemoryRegistries } from '../../mcp/memory.ts'
@@ -130,6 +131,7 @@ const fixture = async () => {
             Layer.succeed(LegacyEvents, unread),
             Layer.succeed(Skills, unread),
             Layer.succeed(ChatOperations, unread),
+            Layer.succeed(SkillLibraries, unread),
             Layer.succeed(Chats, unread),
             Layer.succeed(RoutineRuns, unread),
           ),

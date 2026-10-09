@@ -1,14 +1,17 @@
-import { GenerationTask, defineExtension, hook, section } from '@earendil-works/pi-durable'
+import { type ConversationId, GenerationTask, defineExtension, hook, section } from '@earendil-works/pi-durable'
+import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import type { Catalog } from '../skills/library.ts'
-import { Capabilities, Learner, Skills, attempt, requireBudget, requireResident } from '../services.ts'
+import { Budget } from '../budget.ts'
+import { Capabilities } from '../capabilities/service.ts'
+import { NotFound } from '../http/errors.ts'
+import { Resident } from '../mcp/service.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { logLearnOutcome, type LearnOutcome } from '../skills/learner.ts'
-import type { ConversationId } from '@earendil-works/pi-durable'
+import type { Catalog } from '../skills/library.ts'
+import { Learner, Skills } from '../skills/service.ts'
 import { capabilityOffResult } from './capabilities.ts'
 import { withContext } from './context-tail.ts'
-import { NotFound } from '../http/errors.ts'
-import type { RunProgram } from './resident-mcp.ts'
 import { ReadyResult, typedTool } from './typed-tool.ts'
 
 /** How many skills the prompt lists, and how much of each description. */
@@ -57,13 +60,26 @@ const SkillFile = Schema.Union([
   }),
 ])
 
-const authorizeSkill = (run: RunProgram, session: string) => (serverId: string) =>
-  run(
-    Effect.gen(function* () {
-      yield* requireResident
-      if (!(yield* Capabilities).scope(session).skills(serverId)) return yield* new NotFound({ what: 'skill scope' })
-    }),
-  )
+/** `ResidentInactive` unless the owner's resident authority is current: skills run without a live browser. */
+const requireResident = Resident.use((resident) => resident.require())
+
+/** `BudgetExhausted` once the agent has spent today's model budget: the learner's model call costs Credits. */
+const requireBudget = Effect.flatMap(Clock.currentTimeMillis, (millis) =>
+  Budget.use((budget) => budget.require(Math.floor(millis / 1000))),
+)
+
+/** What a conversation may use now: its switches over the owner's skills libraries among the rest. */
+const scopeFor = (session: string) => Capabilities.use((capabilities) => capabilities.scope(session))
+
+const authorizeSkill =
+  (run: RunProgram, session: string) =>
+  (serverId: string): Promise<void> =>
+    run(
+      Effect.gen(function* () {
+        yield* requireResident
+        if (!(yield* scopeFor(session)).skills(serverId)) return yield* new NotFound({ what: 'skill scope' })
+      }),
+    )
 
 /**
  * The skills on offer: what the owner's skill servers list, from the library's cache, without the libraries this
@@ -76,15 +92,14 @@ const skillsNow = async (run: RunProgram, session: string): Promise<string | und
         Effect.gen(function* () {
           yield* requireResident
           const skills = yield* Skills
-          const scope = yield* Capabilities.useSync((capabilities) => capabilities.scope(session))
-          const sources = skills.sources().filter((serverId) => scope.skills(serverId))
+          const scope = yield* scopeFor(session)
+          const sources = (yield* skills.sources()).filter((serverId) => scope.skills(serverId))
           if (sources.length === 0) return { skills: [], unavailable: [] }
-          const catalog = yield* attempt(() =>
-            skills.catalog({ timeout: 5000, authorize: authorizeSkill(run, session) }, (serverId) =>
-              scope.skills(serverId),
-            ),
+          const catalog = yield* skills.catalog(
+            { timeout: 5000, authorize: authorizeSkill(run, session) },
+            (serverId) => scope.skills(serverId),
           )
-          const current = (yield* Capabilities).scope(session)
+          const current = yield* scopeFor(session)
           return {
             skills: catalog.skills.filter((skill) => current.skills(skill.serverId)),
             unavailable: catalog.unavailable.filter((id) => current.skills(id)),
@@ -109,9 +124,9 @@ const SKILLS_GUIDE =
 const skillsOff = (session: string, handle: string) =>
   Effect.gen(function* () {
     const skills = yield* Skills
-    const scope = yield* Capabilities.useSync((capabilities) => capabilities.scope(session))
+    const scope = yield* scopeFor(session)
     const serverId = handle.split(':', 1)[0] ?? ''
-    if (scope.skills(serverId) || !skills.sources().includes(serverId)) return undefined
+    if (scope.skills(serverId) || !(yield* skills.sources()).includes(serverId)) return undefined
     return capabilityOffResult({ kind: 'skills', serverId }, scope)
   })
 
@@ -130,8 +145,7 @@ const activateTool = (run: RunProgram) =>
           yield* requireResident
           const off = yield* skillsOff(String(api.conversationId), skill)
           if (off !== undefined) return new ReadyResult(off)
-          const skills = yield* Skills
-          const loaded = yield* attempt(() =>
+          const loaded = yield* Skills.use((skills) =>
             skills.activate(String(api.conversationId), skill, {
               authorize: authorizeSkill(run, String(api.conversationId)),
               ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
@@ -172,8 +186,7 @@ const readTool = (run: RunProgram) =>
           yield* requireResident
           const off = yield* skillsOff(String(api.conversationId), skill)
           if (off !== undefined) return new ReadyResult(off)
-          const skills = yield* Skills
-          const file = yield* attempt(() =>
+          const file = yield* Skills.use((skills) =>
             skills.read(String(api.conversationId), skill, path, {
               authorize: authorizeSkill(run, String(api.conversationId)),
               ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
@@ -238,8 +251,7 @@ export function skillLearningExtension(
             Effect.gen(function* () {
               yield* requireResident
               yield* requireBudget
-              const learner = yield* Learner
-              return yield* attempt(() => learner.consider(api.conversationId))
+              return yield* Learner.use((learner) => learner.consider(api.conversationId))
             }),
           )
             .then((outcome) => observe(api.conversationId, outcome))
