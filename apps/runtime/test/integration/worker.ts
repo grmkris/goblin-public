@@ -994,6 +994,7 @@ async function destroySequence(env: Env, name: string): Promise<Response> {
   try {
     deleted = await agent.deleteAgentData()
   } catch (cause) {
+    // expected: the probe answers with what deleteAgentData threw, for the case to assert on
     deleted = { thrown: cause instanceof Error ? cause.message : 'unknown' }
   }
   const fresh = env.AGENTS.getByName(name)
