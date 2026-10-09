@@ -9,6 +9,7 @@ import { undoReceipt } from '../src/organize/program.ts'
 import { addressedTo } from '../src/personas/ask.ts'
 import { PersonaInvocations } from '../src/personas/invocations.ts'
 import { createPersona, updatePersona } from '../src/personas/program.ts'
+import { logMessage } from '../src/memory/log.ts'
 import { PersonaRegistry, defaultAvatar } from '../src/personas/registry.ts'
 import { PERSONA_DENIED_TOOLS, personaSelection, personaText } from '../src/pi/persona-turn.ts'
 import { ChatDirectory } from '../src/chats/directory.ts'
@@ -54,6 +55,7 @@ const fixture = () => {
         })
         .run(),
     retitle: () => undefined,
+    activate: async () => undefined,
   })
   const receipts = new OrganizeReceipts(db, (kind, target) => {
     try {
@@ -255,6 +257,19 @@ const run = <A, E>(layer: Layer.Layer<Provided>, program: Effect.Effect<A, E, Pr
   Effect.runPromise(Effect.provide(program, layer))
 const fails = <A, E>(layer: Layer.Layer<Provided>, program: Effect.Effect<A, E, Provided>) =>
   Effect.runPromise(Effect.flip(Effect.provide(program, layer)))
+
+describe("a chat's memory keeps what Personas and Delegates add", () => {
+  it('logs the ask, the attributed answer and the Delegate result as other authors speaking', () => {
+    const model = (text: string) => [
+      { role: 'user' as const, content: [{ type: 'text' as const, text }], timestamp: 1 },
+    ]
+    for (const kind of ['app.persona_ask', 'app.persona', 'app.delegate_result'])
+      expect(logMessage({ kind, model: model('[from persona Scout]\nhello') })).toEqual({
+        kind: 'user',
+        text: '[from persona Scout]\nhello',
+      })
+  })
+})
 
 describe('organize receipts and Undo', () => {
   /** The services Undo runs over: real registries on real SQLite, no Pi. */
