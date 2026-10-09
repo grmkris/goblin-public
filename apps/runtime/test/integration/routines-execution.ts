@@ -1,7 +1,7 @@
 import type { PersonalAgent } from '../../src/agent.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
-import { unwrap } from '../../src/http/rpc.ts'
+import { proposeRoutine, changeRoutine, runRoutineNow } from './routines-owner.ts'
 import { RoutineRunStore } from '../../src/routines/runs.ts'
 import { appConversations, appConversationCapabilities } from '../../src/storage/schema.ts'
 import { BACKGROUND, conversationId } from '../../src/pi/context.ts'
@@ -24,14 +24,10 @@ export async function routineExecutionProbe(
     allowedTools: [],
     budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
   }
-  const proposal = unwrap(await agent.routinePropose({ operationId: 'execution-proposal', definition }))
-  unwrap(await agent.routineChange(proposal.id, { revision: 1, operationId: 'execution-confirm' }, 'confirm'))
-  const first = unwrap(
-    await agent.routineRun(proposal.id, { revision: 1, operationId: 'execution-manual', confirmRun: true }),
-  )
-  const replay = unwrap(
-    await agent.routineRun(proposal.id, { revision: 1, operationId: 'execution-manual', confirmRun: true }),
-  )
+  const proposal = await proposeRoutine(agent, definition, 'execution-proposal')
+  await changeRoutine(agent, proposal.id, { revision: 1, operationId: 'execution-confirm' }, 'confirm')
+  const first = await runRoutineNow(agent, proposal.id, 1, 'execution-manual')
+  const replay = await runRoutineNow(agent, proposal.id, 1, 'execution-manual')
   const db = drizzle(storage)
   const store = new RoutineRunStore(db, 'fixture')
   for (let count = 0; count < 200; count += 1) {
@@ -55,9 +51,7 @@ export async function routineExecutionProbe(
   const spent = store.used(first.id, Date.now())
   await agent.residentSet(false)
   const calls = seen.length
-  const skipped = unwrap(
-    await agent.routineRun(proposal.id, { revision: 1, operationId: 'execution-skipped', confirmRun: true }),
-  )
+  const skipped = await runRoutineNow(agent, proposal.id, 1, 'execution-skipped')
   await agent.routinesWake()
   return {
     duplicate: first.id === replay.id,

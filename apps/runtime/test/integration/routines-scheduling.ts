@@ -2,7 +2,7 @@ import type { PersonalAgent } from '../../src/agent.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import type { RoutineDefinition } from '@goblin/contracts'
-import { unwrap } from '../../src/http/rpc.ts'
+import { changeRoutine, editRoutine, proposeRoutine } from './routines-owner.ts'
 import { appRoutines } from '../../src/storage/routines.ts'
 import { RoutineStore } from '../../src/routines/store.ts'
 import { RoutineRunStore } from '../../src/routines/runs.ts'
@@ -17,10 +17,10 @@ const definition: RoutineDefinition = {
   budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
 }
 async function confirmed(agent: PersonalAgent, input: RoutineDefinition, operationId: string) {
-  const draft = unwrap(await agent.routinePropose({ definition: input, operationId: `${operationId}-propose` }))
+  const draft = await proposeRoutine(agent, input, `${operationId}-propose`)
   const command = { revision: 1, operationId: `${operationId}-confirm` }
-  unwrap(await agent.routineChange(draft.id, command, 'confirm'))
-  unwrap(await agent.routineChange(draft.id, command, 'confirm'))
+  await changeRoutine(agent, draft.id, command, 'confirm')
+  await changeRoutine(agent, draft.id, command, 'confirm')
   return draft.id
 }
 
@@ -77,13 +77,11 @@ export async function routineScheduleProbe(storage: DurableObjectStorage, agent:
   await agent.runRoutine({ routineId: cronId, revision: 1, firedAt: first })
   const collapsed = routines.get(cronId)
   const current = collapsed.nextFireAt
-  unwrap(
-    await agent.routineEdit(cronId, {
-      revision: 1,
-      operationId: 'edit-cron',
-      definition: { ...cron, prompt: 'Changed draft instructions.' },
-    }),
-  )
+  await editRoutine(agent, cronId, {
+    revision: 1,
+    operationId: 'edit-cron',
+    definition: { ...cron, prompt: 'Changed draft instructions.' },
+  })
   if (current !== null) await agent.runRoutine({ routineId: cronId, revision: 1, firedAt: current })
   const after = runs.list(cronId)
   return {

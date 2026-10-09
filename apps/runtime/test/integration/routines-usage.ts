@@ -8,6 +8,7 @@ import { DEFAULT_RATES } from '../../src/budget-credits.ts'
 import { BACKGROUND, conversationId } from '../../src/pi/context.ts'
 import { unwrap } from '../../src/http/rpc.ts'
 import type { SeenRequest } from './model.ts'
+import { changeRoutine, proposeRoutine, runRoutineNow } from './routines-owner.ts'
 
 async function waitFor(store: RoutineRunStore, id: string, state: string) {
   // Native Pi settles a blocked provider after its bounded retry schedule (up to ~16 s).
@@ -28,9 +29,9 @@ async function start(agent: PersonalAgent, prompt: string, operation: string) {
     allowedTools: [],
     budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
   }
-  const draft = unwrap(await agent.routinePropose({ operationId: `${operation}-propose`, definition }))
-  unwrap(await agent.routineChange(draft.id, { revision: 1, operationId: `${operation}-confirm` }, 'confirm'))
-  return unwrap(await agent.routineRun(draft.id, { revision: 1, operationId: `${operation}-run`, confirmRun: true }))
+  const draft = await proposeRoutine(agent, definition, `${operation}-propose`)
+  await changeRoutine(agent, draft.id, { revision: 1, operationId: `${operation}-confirm` }, 'confirm')
+  return runRoutineNow(agent, draft.id, 1, `${operation}-run`)
 }
 
 /** Actual native compaction spend, cumulative replay, UTC-day delta receipts and measured in-flight cap overshoot. */

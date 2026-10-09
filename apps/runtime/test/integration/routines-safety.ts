@@ -6,6 +6,7 @@ import { unwrap } from '../../src/http/rpc.ts'
 import { RoutineRunStore } from '../../src/routines/runs.ts'
 import { appInteractions, appRoutineRuns, appRoutines } from '../../src/storage/routines.ts'
 import { RoutineStore } from '../../src/routines/store.ts'
+import { changeRoutine, proposeRoutine, runRefused, runRoutineNow } from './routines-owner.ts'
 
 const question: RoutineDefinition = {
   title: 'Native question',
@@ -29,9 +30,9 @@ async function startQuestion(agent: PersonalAgent, suffix: string) {
     budget: { ...question.budget, runtimeSeconds: suffix === 'recovery' ? 1800 : 60 },
     trigger: { kind: 'once' as const, at: new Date(Date.now() + 3_600_000).toISOString() },
   }
-  const draft = unwrap(await agent.routinePropose({ operationId: `question-${suffix}`, definition }))
-  unwrap(await agent.routineChange(draft.id, { revision: 1, operationId: `confirm-${suffix}` }, 'confirm'))
-  return unwrap(await agent.routineRun(draft.id, { revision: 1, operationId: `run-${suffix}`, confirmRun: true }))
+  const draft = await proposeRoutine(agent, definition, `question-${suffix}`)
+  await changeRoutine(agent, draft.id, { revision: 1, operationId: `confirm-${suffix}` }, 'confirm')
+  return runRoutineNow(agent, draft.id, 1, `run-${suffix}`)
 }
 
 export async function routineRecoveryWrite(storage: DurableObjectStorage, agent: PersonalAgent) {
@@ -114,11 +115,8 @@ async function slowRoutine(agent: PersonalAgent, suffix: string) {
     prompt: 'Return a bounded answer.',
     trigger: { kind: 'cron' as const, expression: '*/15 * * * *' },
   }
-  const draft = unwrap(await agent.routinePropose({ operationId: `slow-${suffix}`, definition }))
-  const confirmed = unwrap(
-    await agent.routineChange(draft.id, { revision: 1, operationId: `slow-confirm-${suffix}` }, 'confirm'),
-  )
-  return confirmed
+  const draft = await proposeRoutine(agent, definition, `slow-${suffix}`)
+  return changeRoutine(agent, draft.id, { revision: 1, operationId: `slow-confirm-${suffix}` }, 'confirm')
 }
 
 /** Real delayed model requests let Stop and limits race with an executing background routine. */
@@ -132,19 +130,11 @@ export async function routineStopProbe(storage: DurableObjectStorage, agent: Per
   const secondDefinition = definitions[1]
   const thirdDefinition = definitions[2]
   if (!firstDefinition || !secondDefinition || !thirdDefinition) throw new Error('Slow definitions missing')
-  const first = unwrap(
-    await agent.routineRun(firstDefinition.id, { revision: 1, operationId: 'slow-first-run', confirmRun: true }),
-  )
-  const second = unwrap(
-    await agent.routineRun(secondDefinition.id, { revision: 1, operationId: 'slow-second-run', confirmRun: true }),
-  )
+  const first = await runRoutineNow(agent, firstDefinition.id, 1, 'slow-first-run')
+  const second = await runRoutineNow(agent, secondDefinition.id, 1, 'slow-second-run')
   await waitFor(runs, first.id, 'running')
   await waitFor(runs, second.id, 'running')
-  const capped = await agent.routineRun(thirdDefinition.id, {
-    revision: 1,
-    operationId: 'slow-third-run',
-    confirmRun: true,
-  })
+  const capped = await runRefused(agent, thirdDefinition.id, 1, 'slow-third-run')
   await agent.stop(PRIMARY_CHAT)
   const mainStopPreserved = runs.get(first.id).state === 'running' && runs.get(second.id).state === 'running'
   for (let index = 2; index >= 1; index -= 1) {
@@ -153,8 +143,11 @@ export async function routineStopProbe(storage: DurableObjectStorage, agent: Per
     await agent.runRoutine({ routineId: firstDefinition.id, revision: 1, firedAt: due })
   }
   const pending = routines.get(firstDefinition.id)
-  const archived = unwrap(
-    await agent.routineChange(firstDefinition.id, { revision: 1, operationId: 'slow-archive' }, 'archive'),
+  const archived = await changeRoutine(
+    agent,
+    firstDefinition.id,
+    { revision: 1, operationId: 'slow-archive' },
+    'archive',
   )
   const archivedState = runs.get(first.id).state
   await waitFor(runs, second.id, 'completed')
@@ -162,7 +155,7 @@ export async function routineStopProbe(storage: DurableObjectStorage, agent: Per
   return {
     currentConfirmation: firstDefinition.state,
     mainStopPreserved,
-    capped: !capped.ok,
+    capped,
     noCapRun: runs.list(thirdDefinition.id).length === 0,
     onePending: pending.pendingTrigger !== null && runs.list(firstDefinition.id).length === 1,
     suppressed: pending.suppressedCount,

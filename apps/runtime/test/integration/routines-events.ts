@@ -1,7 +1,6 @@
 import { PRIMARY_CHAT, type RoutineDefinition } from '@goblin/contracts'
 import type { PersonalAgent } from '../../src/agent.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
-import { unwrap } from '../../src/http/rpc.ts'
 import { AddedServerStore } from '../../src/mcp/servers.ts'
 import { CredentialCipher } from '../../src/mcp/cipher.ts'
 import { CredentialStore } from '../../src/mcp/credentials.ts'
@@ -13,6 +12,7 @@ import { SqliteEventStore } from '../../src/mcp/events/store.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import type { EventsFixture } from '../mcp/events-fixture.ts'
 import type { SeenRequest } from './model.ts'
+import { changeRefused, changeRoutine, editRoutine, proposeRoutine } from './routines-owner.ts'
 
 const KEY = 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE='
 const includesPublicTokens = (metadata: string, modelData: string) =>
@@ -27,10 +27,10 @@ const definition: RoutineDefinition = {
   budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
 }
 async function draft(agent: PersonalAgent, operation: string, input = definition) {
-  return unwrap(await agent.routinePropose({ definition: input, operationId: `${operation}-draft` }))
+  return proposeRoutine(agent, input, `${operation}-draft`)
 }
 async function confirm(agent: PersonalAgent, id: string, revision: number, operation: string) {
-  return unwrap(await agent.routineChange(id, { revision, operationId: `${operation}-confirm` }, 'confirm'))
+  return changeRoutine(agent, id, { revision, operationId: `${operation}-confirm` }, 'confirm')
 }
 async function wait(store: RoutineRunStore, id: string, count: number) {
   for (let index = 0; index < 300; index += 1) {
@@ -90,7 +90,7 @@ export async function routineEventsProbe(
   await confirm(agent, second.id, 1, 'second')
   const lease = state.events.activeConsumer(`routine:${first.id}`)
   const shared = lease?.subscriptionId === state.events.activeConsumer(`routine:${second.id}`)?.subscriptionId
-  unwrap(await agent.routineChange(second.id, { revision: 1, operationId: 'second-pause' }, 'pause'))
+  await changeRoutine(agent, second.id, { revision: 1, operationId: 'second-pause' }, 'pause')
   const leavingSharedKeptRemote = fixture.subscriptions.has('sub_message.received')
   const deliver = (id: string, signature?: string) =>
     fixture.deliver(
@@ -139,12 +139,11 @@ export async function routineEventsProbe(
   await deliver('evt_global_spacing')
   await agent.mcpEventsWake()
   const globalSpacing = state.runs.list(second.id).length === 0 && state.routines.get(second.id).pendingTrigger !== null
-  unwrap(
-    await agent.routineChange(
-      second.id,
-      { revision: state.routines.view(second.id).revision, operationId: 'second-pause-again' },
-      'pause',
-    ),
+  await changeRoutine(
+    agent,
+    second.id,
+    { revision: state.routines.view(second.id).revision, operationId: 'second-pause-again' },
+    'pause',
   )
   state.db
     .update(appRoutineRuns)
@@ -179,13 +178,11 @@ export async function routineEventsProbe(
     state.routines.get(first.id).pendingTrigger === null &&
     state.events.work(Date.now() + 600_000).length === 0
   const oldPendingGone = state.routines.get(first.id).pendingTrigger === null
-  unwrap(
-    await agent.routineEdit(first.id, {
-      revision: resumed.revision,
-      operationId: 'event-edit',
-      definition: { ...definition, prompt: 'Changed draft' },
-    }),
-  )
+  await editRoutine(agent, first.id, {
+    revision: resumed.revision,
+    operationId: 'event-edit',
+    definition: { ...definition, prompt: 'Changed draft' },
+  })
   const editedNoBinding = state.events.activeConsumer(`routine:${first.id}`) === undefined
   const noStaleRun = state.runs.list(first.id).length === countBeforeResume
   const requests = seen.filter((request) =>
@@ -203,13 +200,14 @@ export async function routineEventsProbe(
     trigger: { kind: 'event', serverId: 'routine-events', name: 'message.received', arguments: { botId: 7 } },
   })
   const callsBeforeInvalid = fixture.calls.filter((call) => call === 'events/subscribe').length
-  const invalidConfirmation = await agent.routineChange(
+  const invalidConfirmationRefused = await changeRefused(
+    agent,
     invalid.id,
     { revision: 1, operationId: 'invalid-confirm' },
     'confirm',
   )
   const invalidArgumentsRejected =
-    !invalidConfirmation.ok &&
+    invalidConfirmationRefused &&
     state.events.activeConsumer(`routine:${invalid.id}`) === undefined &&
     fixture.calls.filter((call) => call === 'events/subscribe').length === callsBeforeInvalid
   return {

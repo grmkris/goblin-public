@@ -10,6 +10,7 @@ import { routineScheduleProbe } from './routines-scheduling.ts'
 import { routineUsageProbe } from './routines-usage.ts'
 import { routineNotificationProbe } from './routines-notifications.ts'
 import { routineEventsProbe } from './routines-events.ts'
+import { ownerResult } from './routines-owner.ts'
 import { EventsFixture } from '../mcp/events-fixture.ts'
 import { PersonalAgent } from '../../src/agent.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
@@ -503,9 +504,9 @@ async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promis
   const unknownThread = await agent.submit('424242', 'hello', 'op-unknown-thread')
   const closed = thread.ok ? await agent.updateConversation(thread.value.id, { closed: true }) : thread
   const mainUntouchable = await agent.updateConversation(PRIMARY_CHAT, { title: 'renamed' })
-  const usage = await agent.usageToday()
-  const modelChoice = await agent.modelChoice()
-  const unknownModel = await agent.chooseModel('not-offered')
+  const usage = await ownerResult(agent, (api) => api.agent.usage())
+  const modelChoice = await ownerResult(agent, (api) => api.agent.model())
+  const unknownModel = await ownerResult(agent, (api) => api.agent.chooseModel({ payload: { model: 'not-offered' } }))
   await agent.residentSet(false)
   const askWhileRevoked = await agent.askAsClient('Test client', 'hello', 'op-1', 1000)
   return Response.json({
