@@ -21,6 +21,7 @@ export const paths: string[] = [
   'apps/runtime/src/models.ts',
   'apps/runtime/src/pi/budget.ts',
   'apps/runtime/src/pi/model.ts',
+  'apps/runtime/src/pi/routine-budget.ts',
   'apps/runtime/src/pi/routine-run.ts',
   'apps/runtime/src/pi/routines.ts',
   'apps/runtime/src/routines/agent-api.ts',
