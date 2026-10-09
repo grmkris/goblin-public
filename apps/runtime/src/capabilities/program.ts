@@ -1,38 +1,48 @@
 import type { CapabilityChange, ConversationCapabilities } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
+import { Chats, Conversations } from '../chats/service.ts'
 import { type AppError, InvalidInput } from '../http/errors.ts'
-import { Capabilities, Chats, Conversations, Mcp, Skills, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
+import { McpConnections, McpGrants, McpServers } from '../mcp/service.ts'
+import { Skills } from '../skills/service.ts'
+import { Capabilities } from './service.ts'
 import { capabilityView, offers } from './view.ts'
 
 /**
  * What reading a conversation's switches takes, written out: a handler of the owner API calls these programs, and its
  * types must never depend on AgentServices.
  */
-type ReadServices = Conversations | Capabilities | Mcp | Skills
+type ReadServices = Conversations | Capabilities | McpServers | McpGrants | McpConnections | Skills
 
 /** A registered conversation's switches over the agent's servers, grants and skills libraries, as they are now. */
 export const capabilitiesOf = (thread: string): Effect.Effect<ConversationCapabilities, AppError, ReadServices> =>
   Effect.gen(function* () {
-    const kind = yield* Conversations.use((conversations) => attemptSync(() => conversations.kindOf(thread)))
+    const kind = yield* (yield* Conversations).kindOf(thread)
     const capabilities = yield* Capabilities
-    const mcp = yield* Mcp
-    const skills = yield* Skills
+    const connections = yield* McpConnections
+    const servers = yield* (yield* McpServers).list()
+    // What each live connection last listed; a server without one shows its granted tools as they are.
+    const listings = new Map(
+      yield* Effect.forEach(servers, ({ serverId }) =>
+        Effect.map(connections.snapshot(serverId), (snapshot) => [serverId, Option.getOrUndefined(snapshot)] as const),
+      ),
+    )
     return capabilityView({
       thread,
       kind,
-      servers: mcp.servers(),
-      grants: mcp.grants(),
-      listed: (serverId) => mcp.manager.snapshot(serverId)?.tools,
-      skillSources: skills.sources(),
-      own: capabilities.own(thread),
-      inherited: kind === 'thread' ? capabilities.inherited(thread) : [],
+      servers,
+      grants: yield* (yield* McpGrants).list(),
+      listed: (serverId) => listings.get(serverId)?.tools,
+      skillSources: yield* (yield* Skills).sources(),
+      own: yield* capabilities.own(thread),
+      inherited: kind === 'thread' ? yield* capabilities.inherited(thread) : [],
     })
   })
 
 /**
- * The owner switches something on or off in a conversation, or gives a thread the switches of the one it came from. Only what the
- * conversation shows can be switched off; a subagent follows the conversations above it and main has no reset. A change
- * to subagents reaches Pi's tool filter for that conversation.
+ * The owner switches something on or off in a conversation, or gives a thread the switches of the one it came from.
+ * Only what the conversation shows can be switched off; a subagent follows the conversations above it and main has no
+ * reset. A change to subagents reaches Pi's tool filter for that conversation.
  */
 export const changeCapabilities = (
   thread: string,
@@ -41,15 +51,14 @@ export const changeCapabilities = (
   Effect.gen(function* () {
     const view = yield* capabilitiesOf(thread)
     const capabilities = yield* Capabilities
-    const now = yield* nowSecondsEffect
     if (view.kind === 'subagent') return yield* new InvalidInput({ reason: 'subagent_capabilities' })
     if ('reset' in change) {
-      if ((yield* Chats).isConversation(thread)) return yield* new InvalidInput({ reason: 'main_reset' })
-      yield* attempt(() => capabilities.reset(thread, now))
+      if (yield* (yield* Chats).isConversation(thread)) return yield* new InvalidInput({ reason: 'main_reset' })
+      yield* capabilities.reset(thread)
       return yield* capabilitiesOf(thread)
     }
     if (!change.on && !offers(view, change.target)) return yield* new InvalidInput({ reason: 'capability_unknown' })
-    capabilities.set(thread, change.target, change.on, now)
-    if (change.target.kind === 'subagents') yield* attempt(() => capabilities.syncPi(thread))
+    yield* capabilities.set(thread, change.target, change.on)
+    if (change.target.kind === 'subagents') yield* capabilities.syncPi(thread)
     return yield* capabilitiesOf(thread)
   })

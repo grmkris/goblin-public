@@ -34,6 +34,10 @@ import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import { Apps, Budget, Capabilities, Chats, Conversations, Files, Invocations, Mcp } from '../../../src/services.ts'
 import { Moves, Personas, Resident, Retrieval, RoutineRuns, Skills } from '../../../src/services.ts'
 import type { SkillLibrary } from '../../../src/skills/library.ts'
+import { Capabilities as SwitchedOff } from '../../../src/capabilities/service.ts'
+import { Chats as ChatIds, Conversations as ChatRegistry } from '../../../src/chats/service.ts'
+import { McpConnections, McpGrants, McpServers } from '../../../src/mcp/service.ts'
+import { Skills as SkillSources } from '../../../src/skills/service.ts'
 import { appChatOperations, appConversations } from '../../../src/storage/schema.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 import { callOwner } from '../../integration/owner-api.ts'
@@ -179,6 +183,24 @@ const fakeHarness = (record: PiRecord, calls: Calls): PiHarness => {
   })
 }
 
+/** The capability switches (lane M's programs) read the Effect-native services: no servers, grants or skills here. */
+const capabilityServices = () =>
+  Layer.mergeAll(
+    Layer.succeed(McpServers, fake<McpServers['Service']>({ list: () => Effect.succeed([]) })),
+    Layer.succeed(McpGrants, fake<McpGrants['Service']>({ list: () => Effect.succeed([]) })),
+    Layer.succeed(McpConnections, fake<McpConnections['Service']>({})),
+    Layer.succeed(
+      SwitchedOff,
+      fake<SwitchedOff['Service']>({ own: () => Effect.succeed([]), inherited: () => Effect.succeed([]) }),
+    ),
+    Layer.succeed(SkillSources, fake<SkillSources['Service']>({ sources: () => Effect.succeed([]) })),
+    Layer.succeed(ChatIds, fake<ChatIds['Service']>({})),
+    Layer.succeed(
+      ChatRegistry,
+      fake<ChatRegistry['Service']>({ kindOf: (id) => Effect.sync(() => CHATS[known(id)]?.kind ?? 'thread') }),
+    ),
+  )
+
 /** The other services the conversation programs read: everything allowed, nothing running, only `personas` to tag. */
 const services = (calls: Calls, personas: readonly PersonaView[]) =>
   Layer.mergeAll(
@@ -215,6 +237,7 @@ const services = (calls: Calls, personas: readonly PersonaView[]) =>
     ),
     // SAFETY: the sources handler reads only the index's `uses`.
     Layer.succeed(Retrieval, fake<ChatRetrieval>({ index: { uses: () => [] } as never })),
+    capabilityServices(),
   )
 
 /** The bridge: here it only puts a session on the owner's model, and nothing reads what that returns. */
