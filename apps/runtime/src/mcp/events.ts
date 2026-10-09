@@ -1,7 +1,7 @@
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import type { EventHealth } from '@goblin/contracts'
-import { type AppError, InvalidInput, toAppError } from '../http/errors.ts'
+import { type AppError, InvalidInput, NotFound, toAppError } from '../http/errors.ts'
 import type { CredentialCipher } from './cipher.ts'
 import type { McpConnectionManager } from './connection.ts'
 import { EventsClient, envelopeAad, type EventClientOptions } from './events/client.ts'
@@ -158,15 +158,17 @@ export class McpEvents {
         for (const binding of this.store.bindings(row.id)) await Effect.runPromise(this.unsubscribe(binding))
     })
   }
+  /** A subscription stays only while its server is still offered at the same endpoint and its selector is granted. */
   #valid(row: Subscription): boolean {
+    let endpoint: string
     try {
-      return (
-        row.endpoint === this.#manager.server(row.serverId).endpoint &&
-        this.store.allows(row.serverId, row.name, row.argumentsJson)
-      )
-    } catch {
-      return false
+      endpoint = this.#manager.server(row.serverId).endpoint
+    } catch (error) {
+      // expected: a server the owner removed is NotFound, and its subscriptions are no longer valid.
+      if (error instanceof NotFound) return false
+      throw error
     }
+    return row.endpoint === endpoint && this.store.allows(row.serverId, row.name, row.argumentsJson)
   }
   async #persist(row: Subscription, id: string, body: Uint8Array, envelope: EventEnvelope): Promise<void> {
     const encoded = new TextDecoder().decode(body)

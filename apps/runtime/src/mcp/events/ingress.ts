@@ -1,4 +1,6 @@
 import { InvalidInput } from '../../http/errors.ts'
+import { safeErrorType } from '../../observability/report.ts'
+import { reportCaught } from '../report.ts'
 import type { CredentialCipher } from '../cipher.ts'
 import { secretAad } from './client.ts'
 import { challengeResponse, decodeEnvelope, isOccurrence, verifyWebhook } from './webhook.ts'
@@ -15,6 +17,9 @@ export type IngressOptions = {
   readonly authorized: () => void | Promise<void>
   readonly persist: (row: Subscription, id: string, body: Uint8Array, envelope: EventEnvelope) => Promise<void>
 }
+
+/** Why the owner's agent may no longer take events: the plan, resident authority, or a refused connection. */
+const ENDS_SUBSCRIPTION: ReadonlySet<string> = new Set(['SubscriptionRequired', 'ResidentInactive', 'Forbidden'])
 
 /** Verification is bounded to this owner's endpoint-bound pending intents and matching current/previous secrets. */
 export class EventIngress {
@@ -59,13 +64,24 @@ export class EventIngress {
     }
     return true
   }
-  async receive(input: EventWebhook): Promise<EventWebhookResult> {
-    const { store, now, valid, authorized, wake, persist } = this.options
+  /**
+   * Whether the agent may take events now. The owner's own refusal ends the subscription (410); any other failure of
+   * the check is ours and transient, so the sender retries later (503), and it is reported.
+   */
+  async #refused(authorized: IngressOptions['authorized']): Promise<EventWebhookResult | undefined> {
     try {
       await authorized()
-    } catch {
-      return { status: 410 }
+      return undefined
+    } catch (error) {
+      if (ENDS_SUBSCRIPTION.has(safeErrorType(error))) return { status: 410 }
+      reportCaught('mcp.events.ingress', error)
+      return { status: 503 }
     }
+  }
+  async receive(input: EventWebhook): Promise<EventWebhookResult> {
+    const { store, now, valid, authorized, wake, persist } = this.options
+    const refused = await this.#refused(authorized)
+    if (refused !== undefined) return refused
     const tombstone = store
       .list()
       .some((r) => r.remoteId === input.subscriptionId && (r.status === 'tombstone' || !valid(r)))
