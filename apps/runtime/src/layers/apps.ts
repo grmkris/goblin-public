@@ -24,9 +24,7 @@ const AppsAdapter = Layer.effect(
   Effect.gen(function* () {
     const registry = yield* LegacyApps
     return Apps.of({
-      list: Effect.fn('Apps.list')(function* () {
-        return yield* attemptSync(() => registry.list())
-      }),
+      list: attemptSync(() => registry.list()).pipe(Effect.withSpan('Apps.list')),
       placement: Effect.fn('Apps.placement')(function* (id: string) {
         return yield* attemptSync(() => registry.placement(id))
       }),
@@ -69,9 +67,7 @@ const AppEngineAdapter = Layer.effect(
       info: Effect.fn('AppEngine.info')(function* (name: string) {
         return yield* attemptSync(() => engine.info(name))
       }),
-      summaries: Effect.fn('AppEngine.summaries')(function* () {
-        return yield* attemptSync(() => appSummaries(engine))
-      }),
+      summaries: attemptSync(() => appSummaries(engine)).pipe(Effect.withSpan('AppEngine.summaries')),
       detail: Effect.fn('AppEngine.detail')(function* (name: string) {
         return yield* attempt(() => appDetail(engine, name, nowMillis()))
       }),

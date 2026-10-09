@@ -64,7 +64,7 @@ const unused = (what: string) => () => Effect.die(`${what} is not used by this t
 /** `Apps` with `overrides`; any other method dies, so a test names every call it expects. */
 const fakeApps = (overrides: Partial<Apps['Service']> = {}): Apps['Service'] =>
   Apps.of({
-    list: unused('Apps.list'),
+    list: Effect.die('Apps.list is not used by this test'),
     placement: unused('Apps.placement'),
     register: unused('Apps.register'),
     update: unused('Apps.update'),
@@ -81,7 +81,7 @@ const fakeApps = (overrides: Partial<Apps['Service']> = {}): Apps['Service'] =>
 const fakeEngine = (overrides: Partial<AppEngine['Service']> = {}): AppEngine['Service'] =>
   AppEngine.of({
     info: unused('AppEngine.info'),
-    summaries: unused('AppEngine.summaries'),
+    summaries: Effect.die('AppEngine.summaries is not used by this test'),
     detail: unused('AppEngine.detail'),
     change: unused('AppEngine.change'),
     moveHome: unused('AppEngine.moveHome'),
@@ -123,8 +123,10 @@ function appsServer(
   const plans: EntitlementPolicy = {
     state: () => plan,
     require: () =>
-      Effect.flatMap(plan, (current) =>
-        current.active ? Effect.succeed(current) : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' })),
+      Effect.filterOrFail(
+        plan,
+        (current) => current.active,
+        () => new SubscriptionRequired({ subscribe: '/subscribe' }),
       ),
   }
   const legacy = options.legacy ?? {}
@@ -350,7 +352,7 @@ const agentApps = (seen: string[] = []) => ({
     removeAgent: (name) => Effect.sync(() => void seen.push(`apps.removeAgent ${name}`)),
   }),
   engine: fakeEngine({
-    summaries: () => Effect.succeed([tally, notes]),
+    summaries: Effect.succeed([tally, notes]),
     detail: (name) => (name === 'tally' ? Effect.succeed(detail) : Effect.fail(new NotFound({ what: `app ${name}` }))),
     change: (name, change) => Effect.sync(() => void seen.push(`engine.change ${name} ${change.kind}`)),
     moveHome: (name, session) => Effect.sync(() => void seen.push(`engine.moveHome ${name} ${session}`)),

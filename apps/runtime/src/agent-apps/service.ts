@@ -16,7 +16,7 @@ export class AppEngine extends Context.Service<
     /** An app's title, home, release, version, revision, whether it has a view and its schedules; undefined if none. */
     readonly info: (name: string) => Effect.Effect<AgentAppInfo | undefined, AppError>
     /** Every agent app, newest change first, without its App id (the App registry has that). */
-    readonly summaries: () => Effect.Effect<readonly AppSummary[], AppError>
+    readonly summaries: Effect.Effect<readonly AppSummary[], AppError>
     /** One agent app in full: versions, powers, today's usage, files and recent events, without its App id. */
     readonly detail: (name: string) => Effect.Effect<AppDetail, AppError>
     /** One change the owner makes (roll back, pause, run now, answer a power), other than moving its home. */

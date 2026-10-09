@@ -60,7 +60,7 @@ export const reportAgentApp = (id: string, diagnostic: AppDiagnostic) =>
 
 /** The owner's agent apps, newest change first, each with its App id once it has a view (ADR 0021). */
 export const agentAppList = Effect.gen(function* () {
-  const summaries = yield* AppEngine.use((engine) => engine.summaries())
+  const summaries = yield* AppEngine.use((engine) => engine.summaries)
   const apps = yield* Apps
   return yield* Effect.forEach(summaries, (app) => Effect.map(apps.agentId(app.name), (id) => ({ ...app, app: id })))
 })
