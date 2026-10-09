@@ -1,6 +1,5 @@
 import type {
   CapabilityChange,
-  ConversationCapabilities,
   CreateConversation,
   MoveToThread,
   QueueRemoval,
@@ -22,18 +21,8 @@ import { chatSnapshot } from '../agent-requests.ts'
 import { capabilitiesOf, changeCapabilities } from '../capabilities/program.ts'
 import { composerOptions } from '../composer.ts'
 import { ownerQueue, removeOwnerQueuedInput } from '../conversation-queue.ts'
-import type { AppError } from '../http/errors.ts'
 import { type AgentInputs, AgentInput } from '../runtime/input.ts'
-import {
-  type Capabilities,
-  type Chats,
-  type Mcp,
-  type Skills,
-  Conversations,
-  Retrieval,
-  attempt,
-  attemptSync,
-} from '../services.ts'
+import { Conversations, Retrieval, attempt, attemptSync } from '../services.ts'
 import { moveToThread } from './mover.ts'
 import { startThread } from './thread-heads.ts'
 
@@ -104,21 +93,9 @@ const removeQueued = ({ params, payload }: ChatWrite<QueueRemoval>) =>
 const markRead = ({ params }: ChatRequest) => Effect.map(markOwnerRead(params.id), (read) => ({ read }))
 const composer = ({ params }: ChatRequest) => AgentInput.use(({ run }) => composerOptions(params.id, run))
 
-/** What the capability programs read (capabilities/program.ts), which declare every agent service. */
-type CapabilityProgram = Effect.Effect<
-  ConversationCapabilities,
-  AppError,
-  Conversations | Capabilities | Mcp | Skills | Chats
->
+const capabilities = ({ params }: ChatRequest) => capabilitiesOf(params.id)
 
-const capabilities = ({ params }: ChatRequest): CapabilityProgram =>
-  // SAFETY: capabilitiesOf reads only the services CapabilityProgram names. Its declared AgentServices would make the
-  // API's own requirements refer to themselves, since AgentServices includes the API.
-  capabilitiesOf(params.id) as CapabilityProgram
-
-const setCapability = ({ params, payload }: ChatWrite<CapabilityChange>): CapabilityProgram =>
-  // SAFETY: as in `capabilities` above: changeCapabilities reads only the services CapabilityProgram names.
-  changeCapabilities(params.id, payload) as CapabilityProgram
+const setCapability = ({ params, payload }: ChatWrite<CapabilityChange>) => changeCapabilities(params.id, payload)
 
 /** The chat's Pi snapshot, as the raw route served it. */
 const snapshot = ({ params }: ChatRequest) => AgentInput.use(({ harness }) => chatSnapshot(harness, params.id))
