@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   ConversationStream,
   reconnectDelay,
@@ -127,6 +127,50 @@ describe('snapshot reconnection', () => {
     connection.dispose()
     streams.at(-1)?.errorListener?.()
     expect(scheduled).toHaveLength(2)
+  })
+  it('reports a frame it cannot read, keeps what it showed and starts again from a fresh snapshot', async () => {
+    const reported: unknown[] = []
+    vi.stubGlobal('reportError', (error: unknown) => reported.push(error))
+    const streams: FixtureEvents[] = []
+    const scheduled: (() => void)[] = []
+    const statuses: (string | undefined)[] = []
+    const states: ConversationProjection[] = []
+    const connection = new ConversationStream(
+      {
+        snapshot: async () => snapshot,
+        queue: async () => ({ inputs: [] }),
+        events: () => {
+          const source = new FixtureEvents()
+          streams.push(source)
+          return source
+        },
+      },
+      (state) => states.push(state),
+      (status, detail) => statuses.push(detail ?? status),
+      {
+        schedule: (run) => {
+          scheduled.push(run)
+          return () => undefined
+        },
+      },
+    )
+    try {
+      await connection.reconnect()
+      const shown = states.length
+      streams[0]?.emit('batch', { type: 'run_start' })
+      expect(reported).toHaveLength(1)
+      expect(states).toHaveLength(shown)
+      expect(streams[0]?.closed).toBe(true)
+      expect(statuses.at(-1)).toBe('Stream data could not be read')
+      scheduled[0]?.()
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(streams).toHaveLength(2)
+      expect(statuses.at(-1)).toBe('connected')
+    } finally {
+      connection.dispose()
+      vi.unstubAllGlobals()
+    }
   })
   it('caps the backoff at thirty seconds plus jitter', () => {
     expect(reconnectDelay(0, 0)).toBe(1000)

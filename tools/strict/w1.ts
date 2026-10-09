@@ -1,2 +1,8 @@
 /** Lane W1's files that pass the strict rules (tools/strict/index.ts). Only lane W1 appends globs here. */
-export const paths: string[] = []
+export const paths: string[] = [
+  'apps/web/src/lib/unexpected.ts',
+  'apps/web/src/lib/conversation-stream.ts',
+  'apps/web/src/lib/stream-pool.ts',
+  'apps/web/test/conversation-stream.test.ts',
+  'apps/web/test/stream-pool.test.ts',
+]

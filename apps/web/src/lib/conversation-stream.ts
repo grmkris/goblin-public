@@ -2,12 +2,17 @@ import { ConversationQueue, type JsonValue, type QueuedInput } from '@goblin/con
 import * as Schema from 'effect/Schema'
 import { isString } from './boundary.ts'
 import { projectBatch, projectSnapshot, type ConversationProjection } from './projection.ts'
+import { reportUnexpected } from './unexpected.ts'
 
 export interface PiEventSource {
   addEventListener(type: string, listener: (event: MessageEvent<string>) => void): void
   close(): void
   onError(listener: () => void): void
 }
+/** A message event whose data is text, as every server-sent event's is. */
+const isTextMessage = (event: Event): event is MessageEvent<string> =>
+  event instanceof MessageEvent && isString(event.data)
+
 export class BrowserPiEvents implements PiEventSource {
   readonly source: EventSource
   constructor(url: string) {
@@ -15,7 +20,7 @@ export class BrowserPiEvents implements PiEventSource {
   }
   addEventListener(type: string, listener: (event: MessageEvent<string>) => void): void {
     this.source.addEventListener(type, (event) => {
-      if (event instanceof MessageEvent && isString(event.data)) listener(event)
+      if (isTextMessage(event)) listener(event)
     })
   }
   close(): void {
@@ -103,7 +108,7 @@ export class ConversationStream {
       if (controller.signal.aborted) return
       this.#projection = projectSnapshot(snapshot)
       this.#publishQueue()
-      void this.refreshQueue()
+      this.refreshQueue().catch(reportUnexpected)
       const source = this.dependencies.events()
       this.#source = source
       source.addEventListener('snapshot', (event) => this.#receive('snapshot', event, controller, source))
@@ -115,6 +120,7 @@ export class ConversationStream {
       this.#attempt = 0
       this.report('connected')
     } catch (error) {
+      // expected: an unreachable or unreadable snapshot shows as reconnecting, with its reason, and is retried
       if (!controller.signal.aborted) this.#retry(error instanceof Error ? error.message : 'Connection failed')
     }
   }
@@ -135,6 +141,7 @@ export class ConversationStream {
       this.#queueAttempt = 0
       this.#publishQueue()
     } catch {
+      // expected: the last contents stay, the queue's notice says the read failed, and it is retried with backoff
       if (controller.signal.aborted || this.#disposed) return
       this.#projection = { ...this.#projection, queueNotice: 'Queued messages could not be refreshed. Retrying…' }
       this.#publishQueue()
@@ -157,6 +164,10 @@ export class ConversationStream {
     this.publish(this.#projection)
   }
 
+  /**
+   * A frame of the open stream. One this tab cannot read starts again from a fresh snapshot and is reported: the server
+   * sent it, so it is a bug or a contract this tab does not know, never the network.
+   */
   #receive(
     kind: 'snapshot' | 'batch',
     event: MessageEvent<string>,
@@ -164,18 +175,20 @@ export class ConversationStream {
     source: PiEventSource,
   ): void {
     if (controller.signal.aborted) return
+    const previous = this.#projection
+    let next: ConversationProjection | undefined
     try {
       const value: unknown = JSON.parse(event.data)
-      const previous = this.#projection
-      if (kind === 'snapshot') this.#projection = projectSnapshot(value)
-      else if (this.#projection) this.#projection = projectBatch(this.#projection, value)
-      if (this.#projection) {
-        this.#publishQueue()
-        if (kind === 'snapshot' || previous?.inbox !== this.#projection.inbox) void this.refreshQueue()
-      }
-    } catch {
+      next = kind === 'snapshot' ? projectSnapshot(value) : previous && projectBatch(previous, value)
+    } catch (error) {
       source.close()
       this.#retry('Stream data could not be read')
+      reportUnexpected(error)
+      return
     }
+    if (next === undefined) return
+    this.#projection = next
+    this.#publishQueue()
+    if (kind === 'snapshot' || previous?.inbox !== next.inbox) this.refreshQueue().catch(reportUnexpected)
   }
 }

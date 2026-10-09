@@ -6,6 +6,7 @@ import {
   browserScheduler,
 } from './conversation-stream.ts'
 import type { ConversationProjection } from './projection.ts'
+import { reportUnexpected } from './unexpected.ts'
 
 /** What everyone following a conversation sees: its projection, the stream's state and what went wrong. */
 export type StreamState = {
@@ -91,13 +92,13 @@ export class StreamPool {
 
   /** Every following conversation starts again from a fresh snapshot (the tab came back, the network returned). */
   resume(): void {
-    for (const entry of this.#entries.values()) if (entry.live) void entry.stream.reconnect()
+    for (const entry of this.#entries.values()) if (entry.live) entry.stream.reconnect().catch(reportUnexpected)
   }
 
   /** A send or removal changed the native inbox; share its next content read with every consumer. */
   refreshQueue(id: string): void {
     const entry = this.#entries.get(id)
-    if (entry?.live) void entry.stream.refreshQueue()
+    if (entry?.live) entry.stream.refreshQueue().catch(reportUnexpected)
   }
 
   /** How many conversations follow now. */
@@ -150,7 +151,7 @@ export class StreamPool {
 
   #start(entry: Entry): void {
     entry.live = true
-    void entry.stream.reconnect()
+    entry.stream.reconnect().catch(reportUnexpected)
   }
 
   #suspend(entry: Entry): void {
