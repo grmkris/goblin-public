@@ -1,39 +1,30 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
-import { Schema } from 'effect'
-import { BillingState } from '@goblin/contracts'
-import { failureText, request } from './boundary.ts'
+import { createContext, useContext, type ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import type { BillingState } from '@goblin/contracts'
+import { signedInBillingQuery } from './account/queries.ts'
+import { messageOf } from './query/app-error.ts'
 import { useSession } from './session.tsx'
 
-const decode = Schema.decodeUnknownSync(BillingState)
 interface Billing {
   readonly state: BillingState | undefined
   readonly error: string
-  readonly refresh: () => Promise<void>
 }
-const BillingContext = createContext<Billing>({ state: undefined, error: '', refresh: async () => undefined })
+const BillingContext = createContext<Billing>({ state: undefined, error: '' })
+
+/**
+ * The signed-in account's plan, from the Query cache (`account/queries.ts`): read once someone is signed in, and again
+ * when the window comes back into focus after it went stale. Shared by the shell, the gate and the billing pages.
+ */
 export function BillingProvider({ children }: { readonly children: ReactNode }) {
   const [session] = useSession()
-  const [state, setState] = useState<BillingState>()
-  const [error, setError] = useState('')
-  const refresh = useCallback(async () => {
-    try {
-      setState(decode(await request('/api/billing/state')))
-      setError('')
-    } catch (cause) {
-      setError(failureText(cause))
-    }
-  }, [])
-  useEffect(() => {
-    if (session !== 'signed-in') {
-      setState(undefined)
-      setError('')
-      return
-    }
-    const onFocus = () => void refresh()
-    onFocus()
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [session, refresh])
-  return <BillingContext value={{ state, error, refresh }}>{children}</BillingContext>
+  const signedIn = session === 'signed-in'
+  const billing = useQuery(signedInBillingQuery(signedIn))
+  const value: Billing = signedIn
+    ? {
+        state: billing.data,
+        error: billing.error === null ? '' : messageOf(billing.error, 'check your subscription'),
+      }
+    : { state: undefined, error: '' }
+  return <BillingContext value={value}>{children}</BillingContext>
 }
 export const useBilling = (): Billing => useContext(BillingContext)

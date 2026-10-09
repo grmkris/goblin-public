@@ -1,9 +1,16 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Button } from '@goblin/ui'
 import { AuthShell } from '../components/auth-shell.tsx'
 import { OwnerGate } from '../components/owner-gate.tsx'
-import { useBilling } from '../lib/billing.tsx'
+import { billingStateQuery } from '../lib/account/queries.ts'
+import { messageOf } from '../lib/query/app-error.ts'
+
+/** How often the payment return asks whether the plan is active, and for how long before it asks the owner to check. */
+const POLL_MS = 5000
+const PATIENCE_MS = 5 * 60_000
+
 export const Route = createFileRoute('/subscribe/success')({ component: SuccessPage })
 function SuccessPage() {
   return (
@@ -13,28 +20,22 @@ function SuccessPage() {
   )
 }
 function PaymentReturn() {
-  const { state, error, refresh } = useBilling()
   const [waiting, setWaiting] = useState(true)
+  useEffect(() => {
+    const timer = setTimeout(() => setWaiting(false), PATIENCE_MS)
+    return () => clearTimeout(timer)
+  }, [])
+  const billing = useQuery({
+    ...billingStateQuery,
+    refetchInterval: (query) => (waiting && query.state.data?.active !== true ? POLL_MS : false),
+  })
   const [checking, setChecking] = useState(false)
   async function checkAgain(): Promise<void> {
     setChecking(true)
-    await refresh()
+    await billing.refetch()
     setChecking(false)
   }
-  useEffect(() => {
-    if (state?.active) return
-    let attempts = 0
-    const poll = async (): Promise<void> => {
-      if (++attempts >= 60) {
-        clearInterval(timer)
-        setWaiting(false)
-      }
-      await refresh()
-    }
-    const timer = setInterval(() => void poll(), 5000)
-    return () => clearInterval(timer)
-  }, [state?.active, refresh])
-  if (state?.active)
+  if (billing.data?.active)
     return (
       <AuthShell title="Your agent is ready" description="Pro is active.">
         <Button size="lg" className="w-full" nativeButton={false} render={<Link to="/" />}>
@@ -57,7 +58,7 @@ function PaymentReturn() {
       }
     >
       <div className="auth-body" role="status">
-        {error && <p role="alert">{error}</p>}
+        {billing.error !== null && <p role="alert">{messageOf(billing.error, 'check your subscription')}</p>}
         <Button size="lg" variant="outline" className="w-full" pending={checking} onClick={() => void checkAgain()}>
           Check again
         </Button>

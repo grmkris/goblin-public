@@ -45,4 +45,5 @@ export const paths: string[] = [
   'apps/web/test/consent-scope.test.ts',
   'apps/web/test/server-search.test.ts',
   'apps/web/test/usage.test.ts',
+  'apps/web/src/lib/account/queries.ts',
 ]

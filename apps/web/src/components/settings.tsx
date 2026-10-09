@@ -1,6 +1,7 @@
-import { type SubmitEvent, useCallback, useEffect, useId, useState } from 'react'
+import { type SubmitEvent, useEffect, useId, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Schema } from 'effect'
-import { InboundClient, MemoryStatus, ResidentStatus } from '@goblin/contracts'
+import { MemoryStatus, ResidentStatus } from '@goblin/contracts'
 import {
   Alert,
   AlertDescription,
@@ -27,9 +28,10 @@ import { PageSection } from './page-section.tsx'
 import { RoutinesSection } from './routines.tsx'
 import { StatusLabel } from './status-label.tsx'
 import { useUsageRead } from './use-usage.ts'
+import { clientsQuery, revokeClientMutation } from '../lib/account/queries.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 
 const decodeResident = Schema.decodeUnknownSync(ResidentStatus)
-const decodeClients = Schema.decodeUnknownSync(Schema.Array(InboundClient))
 const decodeMemory = Schema.decodeUnknownSync(MemoryStatus)
 const day = (seconds: number): string =>
   new Date(seconds * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })
@@ -165,30 +167,25 @@ function ResidentCard({ onError }: { readonly onError: (message: string) => void
 }
 
 /** The MCP clients the owner let use their agent, each revocable. */
-function ClientsCard({ onError }: { readonly onError: (message: string) => void }) {
-  const [clients, setClients] = useState<readonly InboundClient[]>()
-  const [revoking, setRevoking] = useState('')
-  const load = useCallback(() => {
-    void request('/api/clients')
-      .then((data) => setClients(decodeClients(data)))
-      .catch((error: unknown) => onError(failureText(error)))
-  }, [onError])
-  useEffect(load, [load])
-  async function revoke(clientId: string): Promise<void> {
-    setRevoking(clientId)
-    try {
-      await request(`/api/clients/${encodeURIComponent(clientId)}`, { method: 'DELETE' })
-      load()
-    } catch (error) {
-      onError(failureText(error))
-    } finally {
-      setRevoking('')
-    }
-  }
+function ClientsCard() {
+  const queryClient = useQueryClient()
+  const listed = useQuery(clientsQuery)
+  const revoke = useMutation(revokeClientMutation(queryClient))
+  const clients = listed.data
+  const revoking = revoke.isPending ? revoke.variables : ''
+  const failure =
+    (listed.error !== null && messageOf(listed.error, 'list the apps that use your agent')) ||
+    (revoke.error !== null && messageOf(revoke.error, 'revoke that app')) ||
+    ''
   return (
     <Card>
       <CardContent>
-        {clients === undefined && <Skeleton className="h-6 w-full" />}
+        {failure && (
+          <Alert variant="destructive">
+            <AlertDescription>{failure}</AlertDescription>
+          </Alert>
+        )}
+        {clients === undefined && listed.error === null && <Skeleton className="h-6 w-full" />}
         {clients?.length === 0 && <p className="server-note">None yet.</p>}
         {clients !== undefined && clients.length > 0 && (
           <ul className="pick-list">
@@ -203,7 +200,7 @@ function ClientsCard({ onError }: { readonly onError: (message: string) => void 
                   variant="outline"
                   pending={revoking === client.clientId}
                   disabled={revoking !== '' && revoking !== client.clientId}
-                  onClick={() => void revoke(client.clientId)}
+                  onClick={() => revoke.mutate(client.clientId)}
                 >
                   Revoke
                 </Button>
@@ -307,7 +304,7 @@ export function Settings() {
             </>
           }
         >
-          <ClientsCard onError={setError} />
+          <ClientsCard />
         </PageSection>
       )}
       <PageSection id="account" title="Account">

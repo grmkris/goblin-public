@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { Schema } from 'effect'
+import { useMutation } from '@tanstack/react-query'
 import type { BillingState } from '@goblin/contracts'
 import { Link } from '@tanstack/react-router'
 import {
@@ -14,14 +13,13 @@ import {
   CardTitle,
   Skeleton,
 } from '@goblin/ui'
-import { failureText, request } from '../lib/boundary.ts'
+import { checkoutMutation, portalMutation } from '../lib/account/queries.ts'
 import { useBilling } from '../lib/billing.tsx'
+import { messageOf } from '../lib/query/app-error.ts'
 import { planStatus } from '../lib/labels.ts'
 import { AuthShell } from './auth-shell.tsx'
 import { StatusLabel } from './status-label.tsx'
 
-const PortalLink = Schema.Struct({ url: Schema.String })
-const Checkout = Schema.Struct({ checkoutUrl: Schema.String })
 const date = (at: number) => new Date(at).toLocaleDateString()
 /** When the paid period ends or renews, in words. */
 function periodLine(state: BillingState): string {
@@ -34,18 +32,9 @@ function periodLine(state: BillingState): string {
 
 export function BillingCard() {
   const { state, error } = useBilling()
-  const [failure, setFailure] = useState('')
-  const [pending, setPending] = useState(false)
-  async function manage() {
-    setPending(true)
-    try {
-      const link = Schema.decodeUnknownSync(PortalLink)(await request('/api/billing/portal', { body: {} }))
-      window.location.assign(link.url)
-    } catch (cause) {
-      setFailure(failureText(cause))
-      setPending(false)
-    }
-  }
+  const portal = useMutation(portalMutation)
+  const manage = () => portal.mutate(undefined, { onSuccess: (link) => window.location.assign(link.url) })
+  const failure = portal.error === null ? '' : messageOf(portal.error, 'open the billing portal')
   return (
     <Card>
       <CardHeader>
@@ -63,7 +52,7 @@ export function BillingCard() {
           {state === undefined ? <Skeleton className="h-5 w-48" /> : <p>{periodLine(state)}</p>}
           {state?.hasCustomer && (
             <div className="card-actions">
-              <Button variant="outline" pending={pending} onClick={() => void manage()}>
+              <Button variant="outline" pending={portal.isPending || portal.isSuccess} onClick={manage}>
                 Manage subscription
               </Button>
             </div>
@@ -88,18 +77,9 @@ export function BillingCard() {
 }
 export function Subscribe() {
   const { state, error } = useBilling()
-  const [failure, setFailure] = useState('')
-  const [pending, setPending] = useState(false)
-  async function checkout() {
-    setPending(true)
-    try {
-      const link = Schema.decodeUnknownSync(Checkout)(await request('/api/billing/checkout', { body: {} }))
-      window.location.assign(link.checkoutUrl)
-    } catch (cause) {
-      setFailure(failureText(cause))
-      setPending(false)
-    }
-  }
+  const checkout = useMutation(checkoutMutation)
+  const start = () => checkout.mutate(undefined, { onSuccess: (link) => window.location.assign(link.checkoutUrl) })
+  const failure = checkout.error === null ? '' : messageOf(checkout.error, 'open the checkout', { showRecovery: true })
   return (
     <AuthShell
       size="lg"
@@ -140,9 +120,9 @@ export function Subscribe() {
           <Button
             size="lg"
             className="w-full"
-            pending={pending}
+            pending={checkout.isPending || checkout.isSuccess}
             disabled={state?.mode == null}
-            onClick={() => void checkout()}
+            onClick={start}
           >
             {state?.mode === 'test_mode' ? 'Continue to test checkout' : 'Subscribe for $10 a month'}
           </Button>
