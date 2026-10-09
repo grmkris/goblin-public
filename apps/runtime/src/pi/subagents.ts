@@ -13,13 +13,15 @@ import {
   section,
 } from '@earendil-works/pi-durable'
 import type { UserMessage } from '@earendil-works/pi-ai'
-import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { HelperExclusions, type HelperExclusion } from '@goblin/contracts'
-import { Capabilities, Conversations, attempt, nowSecondsEffect, requireResident } from '../services.ts'
+import { Capabilities } from '../capabilities/service.ts'
+import { Conversations } from '../chats/service.ts'
+import { Resident } from '../mcp/service.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { capabilityOffResult } from './capabilities.ts'
 import { BACKGROUND, conversationId } from './context.ts'
-import type { RunProgram } from './resident-mcp.ts'
 import {
   type Relay,
   SUBAGENT_RELAY,
@@ -165,16 +167,10 @@ async function status(api: Api, agents: Agents, name: string | undefined, contex
 async function admit(run: RunProgram, agent: Subagent | undefined): Promise<'open' | 'reopened' | 'closed-by-owner'> {
   if (agent === undefined) return 'open'
   const session = String(agent.conversationId)
-  const view = await run(Conversations.use((conversations) => attempt(() => conversations.view(session))))
+  const view = Option.getOrUndefined(await run(Conversations.use((conversations) => conversations.view(session))))
   if (view?.closedBy === 'owner') return 'closed-by-owner'
   if (view?.closedBy !== 'done') return 'open'
-  await run(
-    Effect.gen(function* () {
-      const conversations = yield* Conversations
-      const now = yield* nowSecondsEffect
-      yield* attempt(() => conversations.update(session, { closed: false }, now))
-    }),
-  )
+  await run(Conversations.use((conversations) => conversations.update(session, { closed: false })))
   return 'reopened'
 }
 
@@ -185,7 +181,7 @@ async function admit(run: RunProgram, agent: Subagent | undefined): Promise<'ope
 async function stop(run: RunProgram, api: Api, agent: Subagent, context: CallContext) {
   const session = String(agent.conversationId)
   const child = await api.conversation(agent.conversationId, context)
-  await run(Conversations.use((conversations) => attempt(() => conversations.stopSubagents(session))))
+  await run(Conversations.use((conversations) => conversations.stopSubagents(session)))
   await child?.abort(context, { background: true })
 }
 
@@ -213,13 +209,9 @@ const configTool = (run: RunProgram, roster: (api: Api, context: CallContext) =>
       const agent = known(await roster(api, context), name)
       if (agent === undefined) return done(name, 'unknown', undefined)
       await run(
-        Effect.gen(function* () {
-          const capabilities = yield* Capabilities
-          const now = yield* nowSecondsEffect
-          yield* attempt(() =>
-            capabilities.configureHelper(String(api.conversationId), String(agent.conversationId), exclusions, now),
-          )
-        }),
+        Capabilities.use((capabilities) =>
+          capabilities.configureHelper(String(api.conversationId), String(agent.conversationId), exclusions),
+        ),
       )
       return done(name, 'configured', agent)
     },
@@ -232,12 +224,12 @@ const configTool = (run: RunProgram, roster: (api: Api, context: CallContext) =>
  */
 function subagentTools(run: RunProgram, deliver: Deliver): readonly ToolRegistration[] {
   const roster = async (api: Api, context: CallContext): Promise<Agents> => {
-    await run(requireResident)
+    await run(Resident.use((resident) => resident.require()))
     return (await api.snapshot(Subagents, api.conversationId, context))?.agents ?? {}
   }
   /** Pi's tool filter hides these tools where subagents are switched off; a call that still arrives starts nothing. */
   const off = async (api: Api) => {
-    const scope = await run(Capabilities.useSync((capabilities) => capabilities.scope(String(api.conversationId))))
+    const scope = await run(Capabilities.use((capabilities) => capabilities.scope(String(api.conversationId))))
     return scope.subagents() ? undefined : new ReadyResult(capabilityOffResult({ kind: 'subagents' }, scope))
   }
   const common = { output: Done, text: said, details: linked } as const

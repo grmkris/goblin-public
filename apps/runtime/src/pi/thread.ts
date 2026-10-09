@@ -1,11 +1,20 @@
 import { GenerationTask, defineExtension, hook, section } from '@earendil-works/pi-durable'
+import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { Chats, Conversations, attempt, requireBudget } from '../services.ts'
-import type { RunProgram } from './resident-mcp.ts'
-import { NotFound } from '../http/errors.ts'
 import { Entitlements } from '../billing/gates.ts'
+import { Budget } from '../budget.ts'
+import { Chats, Conversations } from '../chats/service.ts'
+import { NotFound } from '../http/errors.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { typedTool } from './typed-tool.ts'
+
+/** Fails with `BudgetExhausted` once today's model budget is spent. */
+const requireBudget = Effect.gen(function* () {
+  const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
+  yield* (yield* Budget).require(now)
+})
 
 const THREAD = [
   'This is a side thread, apart from the conversation it branched from (your main conversation with the owner, unless',
@@ -35,10 +44,10 @@ export function threadExtension(run: RunProgram) {
           await run(Entitlements.use((plans) => plans.require()))
           const parent = await run(
             Effect.gen(function* () {
-              const chat = (yield* Chats).chatOf(String(api.conversationId))
-              if (chat === undefined) return yield* new NotFound({ what: 'chat' })
+              const chat = yield* (yield* Chats).chatOf(String(api.conversationId))
+              if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })
               return yield* Conversations.use((conversations) =>
-                attempt(() => conversations.shareBack(chat, note, `share:${api.callId}`)),
+                conversations.shareBack(chat.value, note, `share:${api.callId}`),
               )
             }),
           )
@@ -56,11 +65,12 @@ export function threadExtension(run: RunProgram) {
           const thread = String(api.conversationId)
           const announce = Effect.gen(function* () {
             const conversations = yield* Conversations
-            const chat = (yield* Chats).chatOf(thread)
-            if (chat === undefined) return
+            const found = yield* (yield* Chats).chatOf(thread)
+            if (Option.isNone(found)) return
+            const chat = found.value
             // expected: a spent budget or a failed name leaves the thread untitled, retried on its next response.
-            yield* Effect.ignore(requireBudget.pipe(Effect.andThen(attempt(() => conversations.nameIfUntitled(chat)))))
-            yield* attempt(() => conversations.announce(chat))
+            yield* Effect.ignore(requireBudget.pipe(Effect.andThen(conversations.nameIfUntitled(chat))))
+            yield* conversations.announce(chat)
           })
           // expected: the bridge reports an unexpected failure; a refusal (plan, authority) only means no announce.
           void run(announce).catch(() => undefined)

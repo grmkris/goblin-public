@@ -14,14 +14,20 @@ import {
   defineTask,
 } from '@earendil-works/pi-durable'
 import type { UserMessage } from '@earendil-works/pi-ai'
+import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { type DelegateResultData, type HelperExclusion, HelperExclusions } from '@goblin/contracts'
-import { Channel, Chats, Conversations, attempt, attemptSync, nowSecondsEffect, requireResident } from '../services.ts'
+import { Channel } from '../channel/service.ts'
+import { ChatOperations, Chats, Conversations } from '../chats/service.ts'
+import { Resident } from '../mcp/service.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
+// The synthesized report needs the chat's admission lock around a Pi input: ChatOperations has no such call yet
+// (PATCH-REQUEST to lane C for `withChat`), so this one reads the legacy directory.
+import { Chats as LegacyChats } from '../services.ts'
 import { authoredContent } from './content.ts'
 import { BACKGROUND, entryId, conversationId as piConversationId } from './context.ts'
-import type { RunProgram } from './resident-mcp.ts'
 
 /**
  * The task that carries one message to a subagent and its answer back to the spawner. While one is live in a
@@ -226,15 +232,18 @@ const reportPhase =
     const { name, conversationId, origin, synthesize = false } = relay.input
     if (report !== undefined) {
       await run(requireResident)
-      const chats = await run(Chats.useSync((directory) => directory))
-      const parentChat = chats.chatOf(String(runtime.conversationId))
+      const parentChat = Option.getOrUndefined(
+        await run(Chats.use((chats) => chats.chatOf(String(runtime.conversationId)))),
+      )
       if (parentChat === undefined) throw new Error('Subagent spawner is not registered')
       const requestId = `subagent-report:${relay.id}`
       const content = authoredContent(`subagent ${name}`, report)
       if (synthesize) {
-        await chats.passiveWrite(parentChat, async (session) => {
+        const primary = await run(Chats.use((chats) => Effect.succeed(chats.primary)))
+        const directory = await run(LegacyChats.useSync((legacy) => legacy))
+        await directory.passiveWrite(parentChat, async (session) => {
           const spawner = await runtime.conversation(piConversationId(session), context)
-          if (parentChat === chats.primary() && origin === 'spawner') await run(track(requestId))
+          if (parentChat === primary && origin === 'spawner') await run(track(requestId))
           await spawner?.submit({ type: 'input', content, whenBusy: 'followUp', requestId }, context)
         })
       } else {
@@ -247,9 +256,7 @@ const reportPhase =
         const model = [{ role: 'user' as const, content, timestamp: Date.now() }]
         await run(
           Conversations.use((conversations) =>
-            attempt(() =>
-              conversations.writeEntry(parentChat, requestId, { kind: 'app.delegate_result', data, model }),
-            ),
+            conversations.writeEntry(parentChat, requestId, { kind: 'app.delegate_result', data, model }),
           ),
         )
       }
@@ -313,30 +320,27 @@ export function relayTask(run: RunProgram): Relay {
   })
 }
 
+/** Fails with `ResidentInactive` unless the owner's resident authority is current. */
+const requireResident = Resident.use((resident) => resident.require())
+
 /** Lists a subagent under its spawner; each relay repeats it, so it is idempotent. */
 const register = (session: string, parent: string, name: string, exclusions: readonly HelperExclusion[]) =>
-  Effect.gen(function* () {
-    const conversations = yield* Conversations
-    const now = yield* nowSecondsEffect
-    yield* attemptSync(() => conversations.registerSubagent(session, parent, name, now, exclusions))
-  })
+  Conversations.use((conversations) => conversations.registerSubagent(session, parent, name, exclusions))
 
 /** Main's answer to its own subagent's report goes to Telegram too when the channel is on (channel/channel.ts). */
 const track = (requestId: string) =>
   Effect.gen(function* () {
-    const channel = yield* Channel
     const chats = yield* Chats
-    const now = yield* nowSecondsEffect
-    chats.admit(chats.primary(), requestId, now)
-    channel.track(requestId, now)
+    const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
+    yield* (yield* ChatOperations).admit(chats.primary, requestId)
+    yield* (yield* Channel).track(requestId, now)
   })
 
 /** A subagent whose job is done closes, with everything under it, unless the owner keeps it open. */
 const closeAsDone = (session: string) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
-    const view = yield* attempt(() => conversations.view(session))
+    const view = Option.getOrUndefined(yield* conversations.view(session))
     if (view === undefined || view.keepOpen || view.closedAt !== undefined) return
-    const now = yield* nowSecondsEffect
-    yield* attempt(() => conversations.close(session, 'done', now))
+    yield* conversations.close(session, 'done')
   })

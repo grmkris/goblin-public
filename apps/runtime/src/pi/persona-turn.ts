@@ -14,22 +14,19 @@ import {
   hook,
 } from '@earendil-works/pi-durable'
 import { type HelperExclusion, type PersonaAnswerData, type PersonaAvatar } from '@goblin/contracts'
+import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
-import {
-  Capabilities,
-  Conversations,
-  Invocations,
-  attempt,
-  attemptSync,
-  nowSecondsEffect,
-  requireBudget,
-  requireResident,
-} from '../services.ts'
+import * as Option from 'effect/Option'
+import { Budget } from '../budget.ts'
+import { Capabilities } from '../capabilities/service.ts'
+import { Conversations } from '../chats/service.ts'
+import { Resident } from '../mcp/service.ts'
+import { Invocations } from '../personas/service.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { withContext } from './context-tail.ts'
 import { authoredContent } from './content.ts'
 import { BACKGROUND, entryId } from './context.ts'
 import { MODEL_PROVIDER } from './model.ts'
-import type { RunProgram } from './resident-mcp.ts'
 import { answerText } from './subagent-relay.ts'
 
 /** The task kind of one Persona answering one owner message. */
@@ -162,32 +159,28 @@ export function personaText(persona: Pick<FrozenPersona, 'name' | 'role' | 'inst
 const terminal = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
 const failed = (message: string) => ({ status: 'terminal', outcome: { status: 'failed', error: { message } } }) as const
 
+/** The instance clock in epoch seconds, as the invocation rows and the budget keep time. */
+const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
+
 /** Settles an invocation row: answered (with its entry), failed or stopped. */
 const settle = (input: Input, state: 'answered' | 'failed' | 'stopped', entry?: number) =>
   Effect.gen(function* () {
-    const now = yield* nowSecondsEffect
-    yield* Invocations.useSync((invocations) =>
-      invocations.settle(input.operationId, input.persona.id, state, now, entry),
-    )
+    const now = yield* nowSeconds
+    yield* (yield* Invocations).settle(input.operationId, input.persona.id, state, now, entry)
   })
 
 /** What a Persona's fork starts with: the parent's switches, narrowed by the Persona's exclusions and no subagents. */
 const registerFork = (input: Input, fork: ConversationId) =>
   Effect.gen(function* () {
-    const conversations = yield* Conversations
-    const capabilities = yield* Capabilities
-    const now = yield* nowSecondsEffect
-    yield* attempt(() => conversations.registerPersona(String(fork), input.chat, input.persona.name, now))
-    yield* attemptSync(() =>
-      capabilities.narrow(String(fork), [...input.persona.exclusions, { kind: 'subagents' }], now),
-    )
-    yield* Invocations.useSync((invocations) => invocations.running(input.operationId, input.persona.id))
+    yield* (yield* Conversations).registerPersona(String(fork), input.chat, input.persona.name)
+    yield* (yield* Capabilities).narrow(String(fork), [...input.persona.exclusions, { kind: 'subagents' }])
+    yield* (yield* Invocations).running(input.operationId, input.persona.id)
   })
 
 /** What the fork may do before the model is asked: the owner's authority is current and the day's budget is not spent. */
 const mayAnswer = Effect.gen(function* () {
-  yield* requireResident
-  yield* requireBudget
+  yield* (yield* Resident).require()
+  yield* (yield* Budget).require(yield* nowSeconds)
 })
 
 type Phase<P extends State['phase']> = PhaseHandler<Input, Extract<State, { phase: P }>, State, null, object>
@@ -216,7 +209,9 @@ const placePhase =
     const before =
       previousPersona === null
         ? undefined
-        : await run(Invocations.useSync((invocations) => invocations.get(operationId, previousPersona)))
+        : Option.getOrUndefined(
+            await run(Invocations.use((invocations) => invocations.get(operationId, previousPersona))),
+          )
     const seen: { outcome: 'placed' | 'waiting' | 'missing' } = { outcome: 'waiting' }
     await runtime.commit(async (tx) => {
       const ask = await tx.submissionByRequest(parent, operationId)
@@ -316,16 +311,15 @@ const writePhase =
       text,
     } satisfies PersonaAnswerData
     const entry = await run(
-      Conversations.use((conversations) =>
-        attempt(async () => {
-          const written = await conversations.writeEntry(chat, `persona:${operationId}:${String(persona.id)}`, {
-            kind: 'app.persona',
-            data,
-            model: [{ role: 'user', content: authoredContent(`persona ${persona.name}`, text), timestamp: Date.now() }],
-          })
-          return written.placed()
-        }),
-      ),
+      Effect.gen(function* () {
+        const timestamp = yield* Clock.currentTimeMillis
+        const written = yield* (yield* Conversations).writeEntry(chat, `persona:${operationId}:${String(persona.id)}`, {
+          kind: 'app.persona',
+          data,
+          model: [{ role: 'user', content: authoredContent(`persona ${persona.name}`, text), timestamp }],
+        })
+        return Option.getOrUndefined(yield* written.placed)
+      }),
     )
     await run(settle(task.input, entry === undefined ? 'failed' : 'answered', entry))
     await runtime.commit(() => terminal, context)
