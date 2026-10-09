@@ -184,7 +184,7 @@ describe('the skill learner (unit)', () => {
       spy.mockRestore()
     }
     expect(lines.map((line) => JSON.parse(String(line)))).toEqual([
-      expect.objectContaining({ level: 'info', where: 'skills.learner', conversation: '0', kind: 'drafted' }),
+      { level: 'info', event: 'skill-learner', conversation: '0', kind: 'drafted' },
     ])
   })
 

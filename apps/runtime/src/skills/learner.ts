@@ -96,7 +96,6 @@ export type LearnOutcome = 'skipped' | 'none' | 'duplicate' | 'drafted' | 'faile
 export const logLearnOutcome = (conversation: ConversationId, outcome: LearnOutcome): void => {
   writeLine('info', {
     event: 'skill-learner',
-    where: 'skills.learner',
     conversation: String(conversation),
     kind: outcome,
   })
