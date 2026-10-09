@@ -394,7 +394,7 @@ async function inboundChecks(dev: DevClient, client: InboundClient, servers: rea
     throw new Error('inbound_tools_missing')
   // Consent granted `goblin:inspect`, so the same /mcp offers read-only inspection (ADR 0024). It reads without a model.
   const inspection = names.filter((name) => typeof name === 'string' && name.startsWith('inspect_'))
-  const problems = inspection.length === 5 ? await client.tool('inspect_problems', {}) : {}
+  const problems = inspection.length === 7 ? await client.tool('inspect_problems', {}) : {}
   if (!Array.isArray(problems['problems'])) throw new Error('inbound_inspection_missing')
   const smokeInput = `Reply with exactly: ${DEV_MARKER}`
   const reply = await client.ask(smokeInput)
