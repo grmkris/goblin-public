@@ -4,4 +4,5 @@ export const paths: string[] = [
   'apps/web/src/components/owner-gate.tsx',
   'apps/web/src/components/authentication.tsx',
   'apps/web/src/components/consent.tsx',
+  'apps/web/src/components/shell/pages/persona-form.tsx',
 ]

@@ -12,7 +12,7 @@ import {
   Switch,
   Textarea,
 } from '@goblin/ui'
-import { request } from '../../../lib/boundary.ts'
+import { failureText, request } from '../../../lib/boundary.ts'
 import { serverTitle } from '../../../lib/labels.ts'
 import { PersonaAvatar } from '../../persona-avatar.tsx'
 
@@ -31,22 +31,30 @@ export const BLANK: PersonaDefinition = {
   exclusions: [],
 }
 
-/** The models and connected servers a Persona can be given or kept from, read once the editor opens. */
+/**
+ * The models and connected servers a Persona can be given or kept from, read once the editor opens. A list that could
+ * not be read says why instead of reading as empty, so "No connections yet" is never shown for a failed read.
+ */
 function useChoices() {
   const [models, setModels] = useState<ModelChoice['options']>([])
   const [servers, setServers] = useState<readonly ServerView[]>([])
+  const [failures, setFailures] = useState<{ readonly models?: string; readonly servers?: string }>({})
   useEffect(() => {
     const controller = new AbortController()
     const signal = controller.signal
     request('/api/agent/model', { signal })
       .then((data) => setModels(decodeModels(data).options))
-      .catch(() => setModels([]))
+      .catch((error: unknown) => {
+        if (!signal.aborted) setFailures((current) => ({ ...current, models: failureText(error) }))
+      })
     request('/api/mcp/servers', { signal })
       .then((data) => setServers(decodeServers(data).filter((server) => server.status === 'connected')))
-      .catch(() => setServers([]))
+      .catch((error: unknown) => {
+        if (!signal.aborted) setFailures((current) => ({ ...current, servers: failureText(error) }))
+      })
     return () => controller.abort()
   }, [])
-  return { models, servers }
+  return { models, servers, failures }
 }
 
 const keyOf = (exclusion: HelperExclusion) => (exclusion.kind === 'server' ? `server:${exclusion.serverId}` : undefined)
@@ -132,7 +140,12 @@ function Identity({ draft, onChange }: Edit) {
 }
 
 /** Its role in a line, its instructions, and its model (the agent's own unless one is chosen). */
-function Behaviour({ draft, onChange, models }: Edit & { readonly models: ModelChoice['options'] }) {
+function Behaviour({
+  draft,
+  onChange,
+  models,
+  failure,
+}: Edit & { readonly models: ModelChoice['options']; readonly failure: string | undefined }) {
   return (
     <>
       <Field>
@@ -172,6 +185,9 @@ function Behaviour({ draft, onChange, models }: Edit & { readonly models: ModelC
             </NativeSelectOption>
           ))}
         </NativeSelect>
+        {failure !== undefined && (
+          <FieldDescription role="alert">Could not load the models: {failure}</FieldDescription>
+        )}
       </Field>
     </>
   )
@@ -183,14 +199,20 @@ function Behaviour({ draft, onChange, models }: Edit & { readonly models: ModelC
  * delegates or loops (ADR 0033); tool, skills and app exclusions it already has are kept as they are.
  */
 export function PersonaForm({ draft, onChange }: Edit) {
-  const { models, servers } = useChoices()
+  const { models, servers, failures } = useChoices()
   return (
     <FieldGroup>
       <Identity draft={draft} onChange={onChange} />
-      <Behaviour draft={draft} onChange={onChange} models={models} />
+      <Behaviour draft={draft} onChange={onChange} models={models} failure={failures.models} />
       <fieldset className="persona-allows">
         <legend>May use</legend>
-        {servers.length === 0 && <p className="list-row-meta">No connections yet.</p>}
+        {failures.servers !== undefined ? (
+          <p className="list-row-meta" role="alert">
+            Could not load your connections: {failures.servers}
+          </p>
+        ) : (
+          servers.length === 0 && <p className="list-row-meta">No connections yet.</p>
+        )}
         {servers.map((server) => (
           <Allowed
             key={server.serverId}
