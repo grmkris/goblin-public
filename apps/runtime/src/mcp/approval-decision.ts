@@ -1,5 +1,6 @@
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
+import type { ApprovalView } from '@goblin/contracts'
 import {
   Approvals,
   Capabilities,
@@ -11,7 +12,7 @@ import {
   attemptSync,
   requireResident,
 } from '../services.ts'
-import { NotFound } from '../http/errors.ts'
+import { type AppError, NotFound } from '../http/errors.ts'
 import { requireRoutineSession } from '../routines/authority.ts'
 import type { ApprovalRow } from './approvals.ts'
 import { redactSecretFields } from './redaction.ts'
@@ -86,13 +87,17 @@ const decisionText = (row: ApprovalRow): string => {
   return `The held call ${row.serverId} · ${row.name} is ${row.state}. Nothing was dispatched. Do not retry without a new owner decision.`
 }
 
-/** A decision dispatches frozen arguments once; retries can deliver the result but cannot repeat the remote call. */
-export const decideApproval = (input: {
+/**
+ * A decision dispatches frozen arguments once; retries can deliver the result but cannot repeat the remote call. Its
+ * type is written out: the owner API's handlers reach it, and their types must not depend on the agent's services.
+ */
+export const decideApproval = <R>(input: {
   readonly id: string
   readonly allowed: boolean
   readonly run: RunProgram
-  readonly continue: (session: string, text: string, operationId: string) => Promise<unknown>
-}) =>
+  /** Delivers the decision to the conversation that held the call: its routine run, or its chat. */
+  readonly continue: (session: string, text: string, operationId: string) => Effect.Effect<unknown, AppError, R>
+}): Effect.Effect<ApprovalView, AppError, Approvals | Mcp | RoutineRuns | R> =>
   Effect.gen(function* () {
     const store = yield* Approvals
     const now = yield* Clock.currentTimeMillis
@@ -112,7 +117,7 @@ export const decideApproval = (input: {
               }),
             ]),
       ].join('\n')
-      yield* attempt(() => input.continue(row.sessionId ?? '', text, `mcp-decision-continue:${row.id}`))
+      yield* input.continue(row.sessionId ?? '', text, `mcp-decision-continue:${row.id}`)
     }
     const at = yield* Clock.currentTimeMillis
     return yield* attempt(() => store.view(input.id, at))

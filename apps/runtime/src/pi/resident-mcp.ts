@@ -1,12 +1,13 @@
 import { type ToolExecutionApi, ToolTask, defineExtension, hook } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { type AppError, type GrantDenied, NotFound } from '../http/errors.ts'
+import { type GrantDenied, NotFound } from '../http/errors.ts'
 import { toolAppResource, toolOffered } from '../mcp/connection.ts'
 import { grantRequiredResult, mcpModelResult } from '../mcp/extension.ts'
 import type { McpHost } from '../mcp/host.ts'
 import type { McpRequestOptions } from '../mcp/types.ts'
-import { type AgentServices, Apps, Capabilities, Mcp, attempt, nowSecondsEffect, requireResident } from '../services.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
+import { Apps, Capabilities, Mcp, attempt, nowSecondsEffect, requireResident } from '../services.ts'
 import { capabilityOffResult, mcpOff } from './capabilities.ts'
 import { ReadyResult, typedTool } from './typed-tool.ts'
 import { McpCallInput, holdModelCall, approvalResult } from '../mcp/approval-request.ts'
@@ -17,8 +18,8 @@ const executionAuthority = (session: string, authorize?: (session: string) => Pr
     if (authorize !== undefined) yield* attempt(() => authorize(session))
   })
 
-/** Runs a program on the Agent DO's services; failures reject with the typed `AppError`. */
-export type RunProgram = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<A>
+/** Runs a program on the Agent DO's services; failures reject with the typed `AppError` (the bridge's `run`). */
+export type { RunProgram }
 
 const dispatchAuthority =
   (

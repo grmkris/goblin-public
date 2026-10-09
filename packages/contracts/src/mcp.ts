@@ -105,10 +105,13 @@ const RemoteObject = Schema.Record(Schema.String, Schema.Unknown)
 const passthrough = <Fields extends Schema.Struct.Fields>(fields: Fields) =>
   Schema.StructWithRest(Schema.Struct(fields), [RemoteObject])
 
-/** A `tools/call` result: content blocks, structured content and whether the tool reports an error. */
+/**
+ * A `tools/call` result: content blocks, structured content (an object by the specification, which the SDK leaves
+ * unchecked) and whether the tool reports an error.
+ */
 export const McpToolResult = passthrough({
   content: Schema.optional(Schema.Array(RemoteObject)),
-  structuredContent: Schema.optional(RemoteObject),
+  structuredContent: Schema.optional(Schema.Unknown),
   isError: Schema.optional(Schema.Boolean),
 })
 export type McpToolResult = typeof McpToolResult.Type
