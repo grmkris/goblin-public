@@ -7,6 +7,7 @@ import { InvalidInput } from '@goblin/contracts/api'
 import { Badge, Button, Input, Spinner } from '@goblin/ui'
 import { optionalCatalogQuery, registriesQuery, registryMutation } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
+import { QueryError } from '../lib/query/query-boundary.tsx'
 import { useAddAndConnect } from './server-add.tsx'
 
 const REGISTRY_REFUSED: Record<string, string> = {
@@ -37,9 +38,7 @@ function Registries({ onMessage }: { readonly onMessage: (message: string) => vo
     <details className="registries">
       <summary>Registries searched ({registries.length})</summary>
       {read.error !== null && (
-        <p className="server-note" role="alert">
-          {messageOf(read.error, 'list the registries')}
-        </p>
+        <QueryError error={read.error} action="list the registries" onRetry={() => void read.refetch()} />
       )}
       <ul className="pick-list">
         {registries.map((registry) => (

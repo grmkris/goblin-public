@@ -7,6 +7,7 @@ import { InvalidInput } from '@goblin/contracts/api'
 import { Button, Field, FieldDescription, FieldGroup, FieldLabel, Input } from '@goblin/ui'
 import { addAndStartConnecting, addServerMutation, serversChanged, suggestedQuery } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
+import { QueryError } from '../lib/query/query-boundary.tsx'
 
 /** Why the runtime refused an endpoint, in words the owner can act on. */
 const REFUSED: Record<string, string> = {
@@ -112,7 +113,8 @@ export function SuggestedServers({
       setBusy('')
     }
   }
-  if (read.error !== null) return <p className="server-note">{messageOf(read.error, 'list the suggested servers')}</p>
+  if (read.error !== null)
+    return <QueryError error={read.error} action="list the suggested servers" onRetry={() => void read.refetch()} />
   if (read.data === undefined) return <p className="server-note">Looking for suggestions…</p>
   if (items.length === 0) return <p className="server-note">Nothing to suggest right now.</p>
   return (

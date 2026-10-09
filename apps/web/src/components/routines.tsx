@@ -25,6 +25,7 @@ import {
 } from '@goblin/ui'
 import { AlarmClockIcon, PlusIcon } from 'lucide-react'
 import { messageOf } from '../lib/query/app-error.ts'
+import { QueryError } from '../lib/query/query-boundary.tsx'
 import {
   changeRoutineMutation,
   routineSettingsMutation,
@@ -266,16 +267,16 @@ function NoRoutines({ onNew }: { readonly onNew: () => void }) {
 function useRoutines() {
   const list = useQuery(routinesQuery)
   const settings = useQuery(routineSettingsQuery)
-  const failed = list.error ?? settings.error
   return {
     routines: list.data?.routines,
     settings: settings.data,
-    error: failed === null ? '' : messageOf(failed, 'list your routines'),
+    error: list.error ?? settings.error,
+    retry: () => void Promise.all([list.refetch(), settings.refetch()]),
   }
 }
 
 export function RoutinesSection() {
-  const { routines, settings, error } = useRoutines()
+  const { routines, settings, error, retry } = useRoutines()
   const [editing, setEditing] = useState<RoutineView | 'new'>()
   const listed = routines ?? []
   return (
@@ -293,12 +294,8 @@ export function RoutinesSection() {
       }
       note={`Up to ${settings?.maxActive ?? 20} on at once, ${settings?.maxRunning ?? 2} running at a time.`}
     >
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      {routines === undefined && <Skeleton className="h-28 w-full" />}
+      {error !== null && <QueryError error={error} action="list your routines" onRetry={retry} />}
+      {routines === undefined && error === null && <Skeleton className="h-28 w-full" />}
       {routines?.length === 0 && editing === undefined && <NoRoutines onNew={() => setEditing('new')} />}
       {editing !== undefined && (
         <RoutineEditor

@@ -13,7 +13,7 @@ import {
 } from '@goblin/ui'
 import { modelQuery } from '../../../agent/queries.ts'
 import { serversQuery } from '../../../mcp/queries.ts'
-import { messageOf } from '../../../lib/query/app-error.ts'
+import { QueryError } from '../../../lib/query/query-boundary.tsx'
 import { serverTitle } from '../../../lib/labels.ts'
 import { PersonaAvatar } from '../../persona-avatar.tsx'
 
@@ -40,11 +40,14 @@ function useChoices() {
     models: models.data?.options ?? [],
     servers: (servers.data ?? []).filter((server) => server.status === 'connected'),
     failures: {
-      models: models.error === null ? undefined : messageOf(models.error, 'load the models'),
-      servers: servers.error === null ? undefined : messageOf(servers.error, 'load your connections'),
+      models: models.error === null ? undefined : { error: models.error, retry: () => void models.refetch() },
+      servers: servers.error === null ? undefined : { error: servers.error, retry: () => void servers.refetch() },
     },
   }
 }
+
+/** A list the form could not read, and a way to read it again. */
+type ReadFailure = { readonly error: unknown; readonly retry: () => void }
 
 const keyOf = (exclusion: HelperExclusion) => (exclusion.kind === 'server' ? `server:${exclusion.serverId}` : undefined)
 
@@ -134,7 +137,7 @@ function Behaviour({
   onChange,
   models,
   failure,
-}: Edit & { readonly models: ModelChoice['options']; readonly failure: string | undefined }) {
+}: Edit & { readonly models: ModelChoice['options']; readonly failure: ReadFailure | undefined }) {
   return (
     <>
       <Field>
@@ -174,7 +177,7 @@ function Behaviour({
             </NativeSelectOption>
           ))}
         </NativeSelect>
-        {failure !== undefined && <FieldDescription role="alert">{failure}</FieldDescription>}
+        {failure !== undefined && <QueryError error={failure.error} action="load the models" onRetry={failure.retry} />}
       </Field>
     </>
   )
@@ -194,9 +197,7 @@ export function PersonaForm({ draft, onChange }: Edit) {
       <fieldset className="persona-allows">
         <legend>May use</legend>
         {failures.servers !== undefined ? (
-          <p className="list-row-meta" role="alert">
-            {failures.servers}
-          </p>
+          <QueryError error={failures.servers.error} action="load your connections" onRetry={failures.servers.retry} />
         ) : (
           servers.length === 0 && <p className="list-row-meta">No connections yet.</p>
         )}

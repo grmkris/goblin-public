@@ -29,13 +29,14 @@ import { useUsageRead } from './use-usage.ts'
 import { clientsQuery, revokeClientMutation } from '../account/queries.ts'
 import { memoryQuery, residentQuery, setResidentMutation } from '../agent/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
+import { QueryError } from '../lib/query/query-boundary.tsx'
 
 const day = (seconds: number): string =>
   new Date(seconds * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })
 
 /** Today's model budget: Credits spent against the daily limit (ADR 0026), rolling as they change. */
 function UsageCard() {
-  const { usage, failure } = useUsageRead()
+  const { usage, error, retry } = useUsageRead()
   return (
     <Card>
       <CardHeader>
@@ -47,13 +48,9 @@ function UsageCard() {
       </CardHeader>
       <CardContent>
         <div className="card-body">
-          {failure && (
-            <Alert variant="destructive">
-              <AlertDescription>{failure}</AlertDescription>
-            </Alert>
-          )}
+          {error !== null && <QueryError error={error} action="read today's usage" onRetry={retry} />}
           {usage === undefined ? (
-            !failure && <Skeleton className="h-10 w-full" />
+            error === null && <Skeleton className="h-10 w-full" />
           ) : (
             <Meter value={budgetFraction(usage) * 100} aria-label="Model budget used today">
               <p className="flex items-baseline gap-1.5 text-sm text-muted-foreground">
@@ -86,9 +83,7 @@ function MemoryCard() {
       </CardHeader>
       <CardContent>
         {read.error !== null ? (
-          <Alert variant="destructive">
-            <AlertDescription>{messageOf(read.error, 'read what your agent remembers')}</AlertDescription>
-          </Alert>
+          <QueryError error={read.error} action="read what your agent remembers" onRetry={() => void read.refetch()} />
         ) : status === undefined ? (
           <Skeleton className="h-8 w-64" />
         ) : (
@@ -116,9 +111,7 @@ function ResidentCard() {
   const status = read.data
   const pending = change.isPending
   const failure =
-    (read.error !== null && messageOf(read.error, 'read whether your agent may work while you are away')) ||
-    (change.error !== null && messageOf(change.error, 'change whether your agent may work while you are away')) ||
-    ''
+    change.error === null ? '' : messageOf(change.error, 'change whether your agent may work while you are away')
   return (
     <Card>
       <CardHeader>
@@ -141,11 +134,20 @@ function ResidentCard() {
           )}
         </CardAction>
       </CardHeader>
-      {failure && (
+      {(read.error !== null || failure) && (
         <CardContent>
-          <Alert variant="destructive">
-            <AlertDescription>{failure}</AlertDescription>
-          </Alert>
+          {read.error !== null && (
+            <QueryError
+              error={read.error}
+              action="read whether your agent may work while you are away"
+              onRetry={() => void read.refetch()}
+            />
+          )}
+          {failure && (
+            <Alert variant="destructive">
+              <AlertDescription>{failure}</AlertDescription>
+            </Alert>
+          )}
         </CardContent>
       )}
       {status !== undefined && (
@@ -169,13 +171,17 @@ function ClientsCard() {
   const revoke = useMutation(revokeClientMutation(queryClient))
   const clients = listed.data
   const revoking = revoke.isPending ? revoke.variables : ''
-  const failure =
-    (listed.error !== null && messageOf(listed.error, 'list the apps that use your agent')) ||
-    (revoke.error !== null && messageOf(revoke.error, 'revoke that app')) ||
-    ''
+  const failure = revoke.error === null ? '' : messageOf(revoke.error, 'revoke that app')
   return (
     <Card>
       <CardContent>
+        {listed.error !== null && (
+          <QueryError
+            error={listed.error}
+            action="list the apps that use your agent"
+            onRetry={() => void listed.refetch()}
+          />
+        )}
         {failure && (
           <Alert variant="destructive">
             <AlertDescription>{failure}</AlertDescription>

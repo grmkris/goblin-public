@@ -1,6 +1,6 @@
 // The owner's MCP servers: theirs first, each with what the agent may use from it, then one place to add another and,
 // last, a way to try a tool by hand.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert,
@@ -16,7 +16,7 @@ import {
 } from '@goblin/ui'
 import { PlugIcon, PlusIcon } from 'lucide-react'
 import { serversQuery } from '../mcp/queries.ts'
-import { messageOf } from '../lib/query/app-error.ts'
+import { QueryError } from '../lib/query/query-boundary.tsx'
 import { serverTitle } from '../lib/labels.ts'
 import { PageSection } from './page-section.tsx'
 import { ServerCard } from './server-card.tsx'
@@ -35,17 +35,14 @@ const callbackNotice = (): string => {
 }
 
 /** The owner's servers from the Query cache; `reload` reads them again after something changed them out of sight. */
-function useServers(onMessage: (message: string) => void) {
+function useServers() {
   const queryClient = useQueryClient()
   const read = useQuery(serversQuery)
-  useEffect(() => {
-    if (read.error !== null) onMessage(messageOf(read.error, 'list your servers'))
-  }, [read.error, onMessage])
   const reload = useCallback(
     () => void queryClient.invalidateQueries({ queryKey: serversQuery.queryKey }),
     [queryClient],
   )
-  return { servers: read.data, reload }
+  return { servers: read.data, error: read.error, retry: () => void read.refetch(), reload }
 }
 
 function NoServers({ onAdd }: { readonly onAdd: () => void }) {
@@ -69,7 +66,7 @@ function NoServers({ onAdd }: { readonly onAdd: () => void }) {
 
 export function Connections() {
   const [message, setMessage] = useState(callbackNotice)
-  const { servers, reload } = useServers(setMessage)
+  const { servers, error, retry, reload } = useServers()
   const channel = useTelegramChannel(setMessage)
   const picker = useRef<HTMLElement>(null)
   const toPicker = () => picker.current?.scrollIntoView({ behavior: glide(), block: 'start' })
@@ -94,7 +91,8 @@ export function Connections() {
         }
         note="Your agent reaches another service only through a server here, and only with the tools you allow."
       >
-        {servers === undefined && (
+        {error !== null && <QueryError error={error} action="list your servers" onRetry={retry} />}
+        {servers === undefined && error === null && (
           <div className="page-stack" aria-busy>
             <Skeleton className="h-28 w-full" />
             <Skeleton className="h-28 w-full" />

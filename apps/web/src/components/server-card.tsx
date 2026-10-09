@@ -28,6 +28,7 @@ import {
   setSkillsMutation,
 } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
+import { QueryError } from '../lib/query/query-boundary.tsx'
 import { serverStatus, serverTitle } from '../lib/labels.ts'
 import { EventsHealth } from './event-health.tsx'
 import { AppTile } from './apps/app-tile.tsx'
@@ -47,12 +48,9 @@ function shortEndpoint(endpoint: string): string {
 }
 
 /** The server's discovered tools, from the Query cache once it is connected; grant changes update them there. */
-function useServerTools(server: ServerView, onMessage: (message: string) => void) {
+function useServerTools(server: ServerView) {
   const read = useQuery(connectedToolsQuery(server.serverId, server.status === 'connected'))
-  useEffect(() => {
-    if (read.error !== null) onMessage(messageOf(read.error, `list the tools of ${serverTitle(server)}`))
-  }, [read.error, onMessage, server])
-  return read.data
+  return { tools: read.data, error: read.error, retry: () => void read.refetch() }
 }
 
 /**
@@ -175,10 +173,13 @@ function RemoveConfirm({
 function ServerBody({
   server,
   tools,
+  failure,
   onMessage,
   channel,
 }: ServerCardProps & {
   readonly tools: readonly ToolView[] | undefined
+  /** Why its tools could not be read, if they could not, and a way to read them again. */
+  readonly failure: { readonly error: unknown; readonly retry: () => void }
 }) {
   const settings = server.skillsOffered === true || server.skillsEnabled === true || hasTelegramTools(tools ?? [])
   return (
@@ -195,7 +196,13 @@ function ServerBody({
             )}
           </section>
         )}
-        {tools === undefined ? (
+        {failure.error !== null ? (
+          <QueryError
+            error={failure.error}
+            action={`list the tools of ${serverTitle(server)}`}
+            onRetry={failure.retry}
+          />
+        ) : tools === undefined ? (
           <p className="server-note" role="status">
             Loading its tools…
           </p>
@@ -247,7 +254,7 @@ function useServerActions(server: ServerView, onMessage: (message: string) => vo
 }
 
 export function ServerCard({ server, onReload, onMessage, channel }: ServerCardProps) {
-  const tools = useServerTools(server, onMessage)
+  const { tools, error, retry } = useServerTools(server)
   const { pending, act } = useServerActions(server, onMessage)
   const [removing, setRemoving] = useState(false)
   const loaded = tools !== undefined
@@ -295,7 +302,14 @@ export function ServerCard({ server, onReload, onMessage, channel }: ServerCardP
         </CardContent>
       )}
       {server.status === 'connected' && (
-        <ServerBody server={server} tools={tools} onReload={onReload} onMessage={onMessage} channel={channel} />
+        <ServerBody
+          server={server}
+          tools={tools}
+          failure={{ error, retry }}
+          onReload={onReload}
+          onMessage={onMessage}
+          channel={channel}
+        />
       )}
     </Card>
   )

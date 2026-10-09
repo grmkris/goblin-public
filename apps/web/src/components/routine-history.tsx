@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { Alert, AlertDescription, Button, Skeleton } from '@goblin/ui'
 import { RefreshCwIcon } from 'lucide-react'
 import { messageOf } from '../lib/query/app-error.ts'
+import { QueryError } from '../lib/query/query-boundary.tsx'
 import { routineRunsQuery, runRoutineMutation, stopRunMutation } from '../routines/queries.ts'
 import { runStatus, telegramReport } from '../lib/labels.ts'
 import { StatusLabel } from './status-label.tsx'
@@ -72,7 +73,6 @@ export function RoutineHistory({
   const runs = read.data?.runs
   const pending = running.isPending ? 'run' : stopping.isPending ? stopping.variables.run : undefined
   const error =
-    (read.error !== null && messageOf(read.error, 'list its runs')) ||
     (running.error !== null && messageOf(running.error, 'run it')) ||
     (stopping.error !== null && messageOf(stopping.error, 'stop the run')) ||
     ''
@@ -97,7 +97,8 @@ export function RoutineHistory({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      {runs === undefined && !error && <Skeleton className="h-6 w-full" />}
+      {read.error !== null && <QueryError error={read.error} action="list its runs" onRetry={reload} />}
+      {runs === undefined && read.error === null && <Skeleton className="h-6 w-full" />}
       {runs?.length === 0 && <p className="server-note">No runs yet.</p>}
       {runs !== undefined && runs.length > 0 && (
         <ul className="grant-list">
