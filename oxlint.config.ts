@@ -50,6 +50,9 @@ export default defineConfig({
     'oxlint-plugin-complexity',
     // Design-system rules for the shadcn components in packages/ui (docs/agents/ui.md).
     '@shadcn/lint',
+    // TanStack Query and Router usage rules, on the web data layer's paths (docs/agents/lint-quality.md).
+    { name: '@tanstack/query', specifier: '@tanstack/eslint-plugin-query' },
+    { name: '@tanstack/router', specifier: '@tanstack/eslint-plugin-router' },
   ],
   // Components come from the @goblin/ui barrel. A file's theme is the Tailwind stylesheet of its package (a
   // components.json, where one exists, names it); apps need no components.json of their own.
@@ -183,7 +186,8 @@ export default defineConfig({
       ? []
       : [{ files: [...STRICT_REACT_PATHS], plugins: REACT_PLUGINS, rules: STRICT_REACT_RULES }]),
     // The web data layer (tools/oxlint/data-invariants.ts): server data comes through the typed client in query and
-    // mutation factories, effects start no network work, views read the Query cache. On the web lanes' strict paths.
+    // mutation factories, effects start no network work, views read the Query cache, and Query and Router are used as
+    // their plugins require. On the web lanes' strict paths.
     ...(WEB_DATA_PATHS.length === 0
       ? []
       : [
@@ -193,6 +197,14 @@ export default defineConfig({
               'goblin/no-transport-outside-client': ['error', TRANSPORT],
               'goblin/no-network-in-effect': ['error', TRANSPORT],
               'goblin/no-loader-data': ['error', { mode: 'all' }],
+              '@tanstack/query/exhaustive-deps': 'error',
+              '@tanstack/query/no-rest-destructuring': 'error',
+              '@tanstack/query/stable-query-client': 'error',
+              '@tanstack/query/no-unstable-deps': 'error',
+              '@tanstack/query/prefer-query-options': 'error',
+              '@tanstack/query/mutation-property-order': 'error',
+              '@tanstack/router/create-route-property-order': 'error',
+              '@tanstack/router/route-param-names': 'error',
             },
           } satisfies OxlintOverride,
         ]),
