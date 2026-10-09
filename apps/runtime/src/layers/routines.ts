@@ -203,7 +203,7 @@ export const channelOver = (channel: TelegramChannel): Channel['Service'] =>
     deliver: tryAsync('Channel.deliver', channel.deliver.bind(channel)),
   })
 
-/** Start step 17: the Telegram channel, the one instance, over the chat directory and the credential cipher. */
+/** Start step 16: the Telegram channel, the one instance, over the chat directory and the credential cipher. */
 export const ChannelLive: Layer.Layer<Channel, never, AgentInput | Db | Cipher | ChatsInstance> = Layer.effect(
   Channel,
   Effect.gen(function* () {
@@ -235,7 +235,7 @@ export const ModelBudgetLive: Layer.Layer<Entitlements | Budget | Models, never,
 /**
  * Lane R's services after the start: the routine stores, built here over the agent's SQLite (they keep no state of
  * their own), and the routine controller the agent's constructor made (`AgentInput.routines`). The usage projection
- * (start step 9) and the Telegram channel (17) are start steps above.
+ * (start step 9) and the Telegram channel (16) are start steps above.
  */
 export const RoutinesLive: Layer.Layer<Routines | RoutineRuns | RoutineControl, never, AgentInput | Db> =
   Layer.mergeAll(RoutineStoreLive, RoutineRunStoreLive, RoutineControlAdapter)

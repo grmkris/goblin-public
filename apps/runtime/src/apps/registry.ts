@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
+import * as Context from 'effect/Context'
 import type { ChatDirectory } from '../chats/directory.ts'
 import { NotFound } from '../http/errors.ts'
 import { BACKGROUND, conversationId, entryId } from '../pi/context.ts'
@@ -92,8 +93,6 @@ export class AppRegistry {
   readonly #db: DrizzleSqliteDODatabase
   readonly #harness: PiHarness
   readonly #agents: AgentAppsPort
-  readonly #listeners = new Set<(apps: readonly AppView[]) => void>()
-  readonly #removals = new Set<(id: string) => void>()
 
   constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, agents: AgentAppsPort, chats: ChatDirectory) {
     this.#db = db
@@ -124,20 +123,9 @@ export class AppRegistry {
     }
   }
 
-  /** Calls `listener` after each write with the Apps it changed; returns what unsubscribes it. */
-  onChange(listener: (apps: readonly AppView[]) => void): () => void {
-    this.#listeners.add(listener)
-    return () => this.#listeners.delete(listener)
-  }
-
-  /** Calls `listener` with the id of each App that is gone; returns what unsubscribes it. */
-  onRemove(listener: (id: string) => void): () => void {
-    this.#removals.add(listener)
-    return () => this.#removals.delete(listener)
-  }
-
-  #changed(rows: readonly Row[]): void {
-    if (rows.length > 0) for (const listener of this.#listeners) listener(rows.map((row) => this.#view(row)))
+  /** One App as it is now; `NotFound` when there is none. */
+  view(id: string): AppView {
+    return this.#view(this.#row(id))
   }
 
   #row(id: string): Row {
@@ -171,20 +159,20 @@ export class AppRegistry {
       .returning()
       .all()
     if (row === undefined) throw new NotFound({ what: 'app' })
-    this.#changed([row])
     return this.#view(row)
   }
 
   /**
    * An agent app changed (a build, a rollback, a new revision): the first release with a view shows it under its home
-   * conversation, and every change after that goes to the feed with its release and revision.
+   * conversation, and every change after that is a change of its App (with its release and revision). Answers the ids
+   * of the Apps it changed.
    */
-  agentChanged(name: string, now: number): void {
+  agentChanged(name: string, now: number): readonly string[] {
     const info = this.#agents.info(name)
-    if (info === undefined) return
+    if (info === undefined) return []
     const home = this.#chats.chatOf(info.home) ?? info.home
     const row = this.#db.select().from(appRegistry).where(eq(appRegistry.name, name)).get()
-    if (row === undefined && !info.ui) return
+    if (row === undefined && !info.ui) return []
     const [changed] =
       row === undefined
         ? this.#db
@@ -205,7 +193,7 @@ export class AppRegistry {
             .where(eq(appRegistry.id, row.id))
             .returning()
             .all()
-    if (changed !== undefined) this.#changed([changed])
+    return changed === undefined ? [] : [String(changed.id)]
   }
 
   /** The App id of an agent app with a view, or null. */
@@ -214,10 +202,10 @@ export class AppRegistry {
     return row === undefined ? null : String(row.id)
   }
 
-  /** The owner deleted an agent app: its App goes from every pane and list. */
-  removeAgent(name: string): void {
+  /** The owner deleted an agent app: its App goes from every pane and list. Answers the App's id, if it had one. */
+  removeAgent(name: string): string | undefined {
     const [row] = this.#db.delete(appRegistry).where(eq(appRegistry.name, name)).returning().all()
-    if (row !== undefined) for (const listener of this.#removals) listener(String(row.id))
+    return row === undefined ? undefined : String(row.id)
   }
 
   /**
@@ -257,37 +245,36 @@ export class AppRegistry {
       .returning()
       .all()
     if (row === undefined) throw new NotFound({ what: 'app' })
-    this.#changed([row])
     return this.#view(row)
   }
 
   /**
    * Closes the open MCP Apps of those of `sessions` that are closed now (Close reaches a conversation's Apps), and
    * moves the home of each agent app that lived in one to its Topic's Conversation: an agent app outlives its
-   * conversation.
+   * conversation. Answers the ids of the Apps it closed.
    */
-  closeWithConversations(sessions: readonly string[], now: number): void {
-    if (sessions.length === 0) return
+  closeWithConversations(sessions: readonly string[], now: number): readonly string[] {
+    if (sessions.length === 0) return []
     const closed = this.#db
       .select({ id: appConversations.chatId })
       .from(appConversations)
       .where(and(inArray(appConversations.chatId, [...sessions]), isNotNull(appConversations.closedAt)))
       .all()
       .map((row) => row.id)
-    if (closed.length === 0) return
+    if (closed.length === 0) return []
     const rows = this.#db
       .update(appRegistry)
       .set({ closedAt: now })
       .where(and(eq(appRegistry.source, 'mcp'), isNull(appRegistry.closedAt), inArray(appRegistry.chatId, closed)))
       .returning()
       .all()
-    this.#changed(rows)
     const homes = new Map<string, string[]>()
     for (const chat of closed) {
       const to = this.#chats.conversationAbove(chat)
       homes.set(to, [...(homes.get(to) ?? []), chat, this.#chats.session(chat)])
     }
     for (const [to, moved] of homes) this.#agents.rehome([...new Set(moved)], to)
+    return rows.map((row) => String(row.id))
   }
 
   /** What the browser needs to load an App: an MCP App's call, read from its conversation, or an agent app's view. */
@@ -337,3 +324,9 @@ export class AppRegistry {
     throw new NotFound({ what: 'app call' })
   }
 }
+
+/**
+ * The agent's one App registry, made at the start (`layers/apps.ts`): Home and the workspace feed read it inside their
+ * own synchronous work. Programs use the `Apps` service, which tells the change bus what each write changed.
+ */
+export class AppsInstance extends Context.Service<AppsInstance, AppRegistry>()('goblin/apps/AppsInstance') {}

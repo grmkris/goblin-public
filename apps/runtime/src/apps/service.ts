@@ -4,6 +4,15 @@ import type * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
 import type { AppCall, AppOrigin } from './registry.ts'
 
+declare module '../runtime/changes.ts' {
+  interface ChangeTopics {
+    /** Apps a write kept, closed, reopened or changed, by id (ADRs 0020, 0021). */
+    'apps.changed': { readonly ids: readonly string[] }
+    /** An App that is gone because its agent app was deleted, by id. */
+    'apps.removed': { readonly id: string }
+  }
+}
+
 /** What Home reads of an App before placing it: never an agent app's view. */
 export type AppPlacement = {
   readonly source: 'mcp' | 'agent'

@@ -13,7 +13,7 @@ export class Workspace extends Context.Service<
 >()('goblin/workspace/Workspace') {
   /**
    * The workspace over `feed`, the agent's one feed, which follows the change bus's `topics.changed`,
-   * `personas.changed`, `receipts.changed` and `home.changed`, each read as it is now.
+   * `personas.changed`, `receipts.changed`, `home.changed`, `apps.changed` and `apps.removed`, each read as it is now.
    */
   static readonly make = (feed: WorkspaceFeed) =>
     Effect.gen(function* () {
@@ -22,6 +22,8 @@ export class Workspace extends Context.Service<
       yield* changes.on('personas.changed', ({ ids }) => Effect.sync(() => feed.personasChanged(ids)))
       yield* changes.on('receipts.changed', ({ ids }) => Effect.sync(() => feed.receiptsChanged(ids)))
       yield* changes.on('home.changed', () => Effect.sync(() => feed.homeChanged()))
+      yield* changes.on('apps.changed', ({ ids }) => Effect.sync(() => feed.appsChanged(ids)))
+      yield* changes.on('apps.removed', ({ id }) => Effect.sync(() => feed.appRemoved(id)))
       return Workspace.of({
         events: Effect.sync(() => workspaceEventResponse(feed)).pipe(Effect.withSpan('Workspace.events')),
       })

@@ -35,8 +35,8 @@ import { SqliteDraftLog, SqliteSkillState } from '../skills/store.ts'
 import { auxReporter } from '../telemetry/report.ts'
 
 // Lane K's layers. Five are steps of the agent's start, in its order (layers/index.ts): the cheap models (step 3), the
-// memory engine (5), the transcript index (13), the memory's activation of every Topic Conversation (15) and skills
-// with the learner (16). The memory engine and the index are shared with the conversations, Topics and the mover by
+// memory engine (5), the transcript index (12), the memory's activation of every Topic Conversation (14) and skills
+// with the learner (15). The memory engine and the index are shared with the conversations, Topics and the mover by
 // their instance tags (`MemoriesInstance`, `TranscriptsInstance`); Skills and Learner are the services themselves.
 // After the start, `KnowledgeLive` serves memory and retrieval: what a memory remembers, how far its view reaches and
 // what a Move forgets over the agent's database, a view placed through the chat's passive write (lane C), and every
@@ -87,7 +87,7 @@ export const MemoryEngineLive: Layer.Layer<MemoriesInstance, never, AgentInput |
     }),
   )
 
-/** Start step 13: cross-Topic retrieval's one transcript index (ADR 0035), which a Move to thread also reassigns. */
+/** Start step 12: cross-Topic retrieval's one transcript index (ADR 0035), which a Move to thread also reassigns. */
 export const TranscriptsLive: Layer.Layer<TranscriptsInstance, never, AgentInput | Db> = Layer.effect(
   TranscriptsInstance,
   Effect.gen(function* () {
@@ -96,7 +96,7 @@ export const TranscriptsLive: Layer.Layer<TranscriptsInstance, never, AgentInput
   }),
 )
 
-/** Start step 15: every Topic Conversation without memory yet is given it, after main is registered (step 10). */
+/** Start step 14: every Topic Conversation without memory yet is given it, after main is registered (step 10). */
 export const ActivateMemoriesLive: Layer.Layer<never, never, MemoriesInstance> = Layer.effectDiscard(
   Effect.flatMap(MemoriesInstance, (memories) => Effect.promise(() => memories.activateConversations())),
 )
@@ -152,7 +152,7 @@ export const learnerOver = (learner: SkillLearner): Learner['Service'] =>
   })
 
 /**
- * Start step 16: skills from the owner's MCP libraries over the host's connections, and the learner that proposes new
+ * Start step 15: skills from the owner's MCP libraries over the host's connections, and the learner that proposes new
  * ones, each made once.
  */
 export const SkillsLive: Layer.Layer<Skills | Learner, never, AgentInput | Db | McpHostInstance | CheapModels> =

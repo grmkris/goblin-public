@@ -44,9 +44,9 @@ const reportFeedFailure = (where: string, error: unknown): void =>
   })
 
 /**
- * What the feed shows: the conversations, Apps, Home, Topics, Personas, invocations and receipts. The conversations,
- * Apps and invocations tell it what changed through their own listeners (`listen`); the Topics, Personas, receipts and
- * Home services through the change bus (`workspace/service.ts`), which calls the methods below.
+ * What the feed shows: the conversations, Apps, Home, Topics, Personas, invocations and receipts. The conversations
+ * and invocations tell it what changed through their own listeners (`listen`); the Apps, Topics, Personas, receipts
+ * and Home services through the change bus (`workspace/service.ts`), which calls the methods below.
  */
 export type FeedSources = {
   readonly conversations: ConversationRegistry
@@ -94,7 +94,7 @@ export class WorkspaceFeed {
     this.#receipts = receipts
   }
 
-  /** Follows the conversations', Apps' and invocations' own listeners. Call it once, on the agent's one feed. */
+  /** Follows the conversations' and invocations' own listeners. Call it once, on the agent's one feed. */
   listen(): void {
     this.#invocations.onChange((changed) =>
       this.#emit(changed.map((invocation) => ({ type: 'invocation' as const, invocation }))),
@@ -103,8 +103,17 @@ export class WorkspaceFeed {
       if (this.#listeners.size > 0)
         this.#describe(ids).catch((error: unknown) => reportFeedFailure('workspace.describe', error))
     })
-    this.#apps.onChange((changed) => this.#emit(changed.map((app) => ({ type: 'app' as const, app }))))
-    this.#apps.onRemove((id) => this.#emit([{ type: 'app-removed' as const, id }]))
+  }
+
+  /** Apps a write changed, each as it is now. */
+  appsChanged(ids: readonly string[]): void {
+    if (this.#listeners.size === 0) return
+    this.#emit(ids.map((id) => ({ type: 'app' as const, app: this.#apps.view(id) })))
+  }
+
+  /** An App that is gone. */
+  appRemoved(id: string): void {
+    this.#emit([{ type: 'app-removed' as const, id }])
   }
 
   /** Topics a write changed, each as it is now; read only while someone listens. */

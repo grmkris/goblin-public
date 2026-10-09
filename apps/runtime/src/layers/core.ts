@@ -10,7 +10,9 @@ import { PiSessions } from '../pi/sessions.ts'
 import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../runtime/input.ts'
+import { runApplicationMigrations } from '../storage/migrations.ts'
 import { flowRunEvent } from '../telemetry/events.ts'
+import type { AppsInstance } from '../apps/registry.ts'
 import type { ProfilesInstance } from '../capabilities/profiles.ts'
 import type { Channel } from '../channel/service.ts'
 import type { Cipher } from '../mcp/cipher.ts'
@@ -51,6 +53,11 @@ export const CoreLive = (
     Layer.provideMerge(Layer.mergeAll(Layer.succeed(AgentInput, input), LoggerLive, ReporterLive)),
   )
 
+/** Start step 1: the application tables' migrations, before anything reads them. */
+export const MigrationsLive: Layer.Layer<never, never, AgentInput> = Layer.effectDiscard(
+  AgentInput.useSync((input) => runApplicationMigrations(input.storage)),
+)
+
 /** What the start's steps outside the legacy start provide (layers/index.ts). */
 type StartServices =
   | McpHostInstance
@@ -64,6 +71,7 @@ type StartServices =
   | Learner
   | RoutineUsage
   | Channel
+  | AppsInstance
 
 /**
  * What a lane's layer may require: the core services and what the start made (the legacy steps' until each moves into

@@ -1,6 +1,7 @@
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import { AppsInstance } from '../apps/registry.ts'
 import { ProfilesInstance } from '../capabilities/profiles.ts'
 import { Home, HomeService } from '../home/service.ts'
 import { MemoriesInstance } from '../memory/memory.ts'
@@ -8,18 +9,18 @@ import { modelOptions } from '../models.ts'
 import type { KeyedLock } from '../observability/lock.ts'
 import { OrganizeReceipts } from '../organize/receipts.ts'
 import { Receipts } from '../organize/service.ts'
-import type { PersonaInvocations } from '../personas/invocations.ts'
+import { PersonaInvocations } from '../personas/invocations.ts'
 import { PersonaRegistry } from '../personas/registry.ts'
 import { Invocations, Personas } from '../personas/service.ts'
 import { AgentInput } from '../runtime/input.ts'
 import type { Changes } from '../runtime/changes.ts'
-import type { FoundationServices } from './core.ts'
 import { Db } from '../runtime/db.ts'
 import * as Legacy from '../services.ts'
 import { topicPorts } from '../topics/ports.ts'
 import { TopicRegistry } from '../topics/registry.ts'
 import { Topics } from '../topics/service.ts'
 import { WorkspaceFeed } from '../workspace/feed.ts'
+import { restoreHelperExecution } from '../pi/helper-execution.ts'
 import { Workspace } from '../workspace/service.ts'
 
 /** Lane D's stores, one each per agent: the SQLite stores and the workspace feed over them. */
@@ -58,19 +59,22 @@ export const delegationServices = (
   )
 
 /**
- * The agent's own lane D stores. Topics, Personas, receipts, Home and the feed are made here, once; the legacy start's
- * copies of them are no longer read. The invocations stay the legacy start's one instance, which the Persona asks and
- * Stop still write through. A Topic's Conversation is made, listed and given memory by the conversation, capability and
- * memory instances of the legacy start, the agent's only ones, synchronously inside the Topic's own transaction.
+ * The agent's own lane D stores, each made here once: Topics, Personas, the invocations, receipts, Home and the feed. A
+ * Topic's Conversation is made, listed and given memory by the agent's one conversation registry, profile store and
+ * memory engine, synchronously inside the Topic's own transaction; Home and the feed read the one App registry.
  */
-const stores: Effect.Effect<DelegationStores, never, FoundationServices> = Effect.gen(function* () {
+const stores: Effect.Effect<
+  DelegationStores,
+  never,
+  AgentInput | Db | Legacy.Conversations | Legacy.Chats | ProfilesInstance | MemoriesInstance | AppsInstance
+> = Effect.gen(function* () {
   const input = yield* AgentInput
   const db = yield* Db
   const conversations = yield* Legacy.Conversations
   const chats = yield* Legacy.Chats
   const kit = { capabilities: yield* ProfilesInstance, chats, memories: yield* MemoriesInstance }
-  const apps = yield* Legacy.Apps
-  const invocations = yield* Legacy.Invocations
+  const apps = yield* AppsInstance
+  const invocations = new PersonaInvocations(db)
   const topics = new TopicRegistry(db, topicPorts(db, conversations, kit))
   const personas = new PersonaRegistry(
     db,
@@ -98,5 +102,23 @@ const stores: Effect.Effect<DelegationStores, never, FoundationServices> = Effec
 export const DelegationLive: Layer.Layer<
   Topics | Personas | Invocations | Receipts | Home | Workspace,
   never,
-  FoundationServices
+  | AgentInput
+  | Db
+  | KeyedLock
+  | Changes
+  | Legacy.Conversations
+  | Legacy.Chats
+  | ProfilesInstance
+  | MemoriesInstance
+  | AppsInstance
 > = Layer.unwrap(Effect.map(stores, delegationServices))
+
+/** Start step 7: each helper conversation runs with the execution extensions the agent has now. */
+export const HelperExecutionLive: Layer.Layer<never, never, AgentInput | Db | Legacy.Chats> = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const { harness, helperExtensions } = yield* AgentInput
+    const db = yield* Db
+    const chats = yield* Legacy.Chats
+    yield* Effect.promise(() => restoreHelperExecution(db, harness, helperExtensions, chats))
+  }),
+)

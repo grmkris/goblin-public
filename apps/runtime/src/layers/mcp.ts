@@ -40,7 +40,7 @@ import { Skills } from '../skills/service.ts'
 import { mcpReporter } from '../telemetry/report.ts'
 
 // Lane M's layers. Four are steps of the agent's start, in its order (layers/index.ts): the MCP host (step 2), the
-// capability profiles (6), their one retool (8) and Events with their consumers (18). Each makes its stateful object
+// capability profiles (6), their one retool (8) and Events with their consumers (17). Each makes its stateful object
 // once and shares it by its instance tag (`McpHostInstance`, `Cipher`, `ProfilesInstance`) with the steps and layers
 // that wire it; `Events` is the service itself. The services after the start (`McpLive`) read those instances, and
 // resident authority, held calls and the registry catalog are built over the agent's database.
@@ -212,7 +212,7 @@ const consumerPorts = ({ local, pullTelegram }: AgentInputs): EventConsumerPorts
 })
 
 /**
- * Start step 18: the one Events engine over the host's connections, with the routine trigger and then the Telegram
+ * Start step 17: the one Events engine over the host's connections, with the routine trigger and then the Telegram
  * and skills consumers registered before any delivery can reach it.
  */
 export const McpEventsLive: Layer.Layer<Events, never, AgentInput | Db | McpHostInstance | Cipher> = Layer.effect(
@@ -505,7 +505,7 @@ export const CapabilitiesLive = Layer.effect(
 
 /**
  * Lane M's services after the start: resident authority, the MCP servers, grants, connections and held calls, and each
- * conversation's capabilities (`Events` is start step 18's).
+ * conversation's capabilities (`Events` is start step 17's).
  */
 export const McpLive: Layer.Layer<
   Resident | McpServers | McpGrants | McpConnections | Approvals | Capabilities,
