@@ -1,4 +1,5 @@
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Schema } from 'effect'
 import {
   AppView,
@@ -16,6 +17,8 @@ import {
   applyChanges,
   withPendingApps,
 } from '../lib/workspace-feed.ts'
+import { reportUnexpected } from '../lib/unexpected.ts'
+import { personaKeys } from '../personas/queries.ts'
 
 const decodeView = Schema.decodeUnknownSync(ConversationView)
 const decodeApp = Schema.decodeUnknownSync(AppView)
@@ -41,18 +44,24 @@ const WorkspaceFeedContext = createContext<WorkspaceFeed | undefined>(undefined)
 
 /**
  * The feed's state, live while `enabled`, with the Apps the owner just kept or closed (`pending`)
- * shown over whatever the feed sends until it confirms them.
+ * shown over whatever the feed sends until it confirms them. The feed is also what says that server data changed: a
+ * Persona change makes the Persona reads open now read again.
  */
 function useLiveFeed(enabled: boolean) {
+  const queryClient = useQueryClient()
   const [state, setState] = useState<WorkspaceState>(EMPTY_WORKSPACE)
   const [error, setError] = useState('')
   const pending = useRef(new Map<string, AppView>())
   useEffect(() => {
     if (!enabled) return
+    let personas: WorkspaceState['personas'] | undefined
     const publish = (next: WorkspaceState) => {
       const shown = withPendingApps(next, pending.current)
       for (const id of shown.settled) pending.current.delete(id)
       setState(shown.state)
+      if (personas !== undefined && next.personas !== personas)
+        queryClient.invalidateQueries({ queryKey: personaKeys.all }).catch(reportUnexpected)
+      personas = next.personas
     }
     const connection = new WorkspaceFeedConnection(
       () => new BrowserPiEvents('/api/workspace/events'),
@@ -61,7 +70,7 @@ function useLiveFeed(enabled: boolean) {
     )
     connection.connect()
     return () => connection.dispose()
-  }, [enabled])
+  }, [enabled, queryClient])
   return { state, setState, error, setError, pending }
 }
 

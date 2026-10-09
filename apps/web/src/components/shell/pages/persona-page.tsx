@@ -1,26 +1,26 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, Suspense, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { PersonaDetail, type PersonaDefinition, PersonaView } from '@goblin/contracts'
-import { Schema } from 'effect'
+import { type QueryClient, useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { type PersonaDefinition, type PersonaDetail, type PersonaView, type UpdatePersona } from '@goblin/contracts'
+import { Conflict } from '@goblin/contracts/api'
 import { Alert, AlertDescription, Button, Skeleton } from '@goblin/ui'
-import { ApiFailure, failureText, request } from '../../../lib/boundary.ts'
+import { messageOf } from '../../../lib/query/app-error.ts'
 import { relativeTime } from '../../../lib/threads.ts'
 import { reportUnexpected } from '../../../lib/unexpected.ts'
+import { createPersonaMutation, personaDetailQuery, updatePersonaMutation } from '../../../personas/queries.ts'
 import { PageSection } from '../../page-section.tsx'
 import { PersonaAvatar } from '../../persona-avatar.tsx'
 import { useMinute } from '../../use-now.ts'
 import { useWorkspaceFeed } from '../../workspace-feed.tsx'
 import { BLANK, NAME, PersonaForm } from './persona-form.tsx'
 
-const decodeDetail = Schema.decodeUnknownSync(PersonaDetail)
-const decodePersona = Schema.decodeUnknownSync(PersonaView)
-
-/** What the owner reads when a Persona could not be saved. */
-function refusal(failure: unknown): string {
-  if (failure instanceof ApiFailure && failure.status === 409)
-    return 'It changed since you opened it. Reload to see the newest version.'
-  if (failure instanceof ApiFailure && failure.status === 404) return 'There is no such Persona.'
-  return failureText(failure)
+/** What the owner reads when a Persona could not be saved: a conflict in its own words, anything else as described. */
+function refusal(failure: Error | null, action: string): string {
+  if (failure === null) return ''
+  if (failure instanceof Conflict && failure.reason === 'persona_name_taken')
+    return 'Another persona already has that name.'
+  if (failure instanceof Conflict) return 'It changed since you opened it. Reload to see the newest version.'
+  return messageOf(failure, action)
 }
 
 const definitionOf = ({
@@ -93,58 +93,58 @@ function Revisions({ detail }: { readonly detail: PersonaDetail }) {
   )
 }
 
+/**
+ * The definition being edited: what the owner typed, and the revision it started from, which a save names
+ * (`expectedRevision`), so a revision someone else saved meanwhile is a conflict, never overwritten. A save starts the
+ * draft again from what was saved.
+ */
+function useDraft(persona: PersonaView) {
+  const [draft, setDraft] = useState<PersonaDefinition>(() => definitionOf(persona))
+  const [base, setBase] = useState(persona.revision)
+  const saved = (next: PersonaView) => {
+    setDraft(definitionOf(next))
+    setBase(next.revision)
+  }
+  return { draft, setDraft, base, saved }
+}
+
+/** Saving a new revision of `persona`: the feed shows it at once, and the profile reads it again. */
+function useSave(queryClient: QueryClient, persona: PersonaView, saved: (next: PersonaView) => void) {
+  const feed = useWorkspaceFeed()
+  const save = useMutation(updatePersonaMutation(queryClient, persona.id))
+  const start = (change: UpdatePersona) =>
+    save.mutate(change, {
+      onSuccess: (next) => {
+        feed.apply([{ type: 'persona', persona: next }])
+        saved(next)
+      },
+    })
+  return { start, pending: save.isPending, error: refusal(save.error, 'save the persona') }
+}
+
 /** A Persona's profile (`/p/<id>`): its definition to edit, Save as a new revision, Archive or Restore, its revisions. */
 function Profile({ id }: { readonly id: number }) {
-  const feed = useWorkspaceFeed()
-  const [detail, setDetail] = useState<PersonaDetail>()
-  const [draft, setDraft] = useState<PersonaDefinition>(BLANK)
-  const [error, setError] = useState('')
-  const [pending, setPending] = useState(false)
-  useEffect(() => {
-    const controller = new AbortController()
-    request(`/api/personas/${id}`, { signal: controller.signal })
-      .then((data) => {
-        const loaded = decodeDetail(data)
-        setDetail(loaded)
-        setDraft(definitionOf(loaded.persona))
-      })
-      .catch((failure: unknown) => {
-        // expected: the page shows the refusal (no such Persona) in place of the editor
-        if (!controller.signal.aborted) setError(refusal(failure))
-      })
-    return () => controller.abort()
-  }, [id])
-  async function save(change: Record<string, unknown>): Promise<void> {
-    if (detail === undefined) return
-    setPending(true)
-    setError('')
-    try {
-      const body = { ...change, expectedRevision: detail.persona.revision }
-      const persona = decodePersona(await request(`/api/personas/${id}`, { method: 'PATCH', body }))
-      feed.apply([{ type: 'persona', persona }])
-      setDetail(decodeDetail(await request(`/api/personas/${id}`)))
-    } catch (failure) {
-      // expected: the editor keeps the draft and shows the refusal (changed since it opened) under the form
-      setError(refusal(failure))
-    } finally {
-      setPending(false)
-    }
-  }
-  if (detail === undefined)
-    return error === '' ? <Skeleton className="h-64 w-full" /> : <p className="page-empty">{error}</p>
+  const queryClient = useQueryClient()
+  const detail = useSuspenseQuery(personaDetailQuery(id)).data
+  const { draft, setDraft, base, saved } = useDraft(detail.persona)
+  const save = useSave(queryClient, detail.persona, saved)
   const archived = detail.persona.archivedAt !== undefined
   return (
     <div className="page-stack">
       <PageSection id="definition" title={archived ? `${detail.persona.name} (archived)` : detail.persona.name}>
-        <Editor draft={draft} onChange={setDraft} error={error}>
+        <Editor draft={draft} onChange={setDraft} error={save.error}>
           <Button
-            pending={pending}
+            pending={save.pending}
             disabled={!ready(draft)}
-            onClick={() => void save({ ...draft, model: draft.model ?? null })}
+            onClick={() => save.start({ ...draft, model: draft.model ?? null, expectedRevision: base })}
           >
             Save
           </Button>
-          <Button variant="outline" disabled={pending} onClick={() => void save({ archived: !archived })}>
+          <Button
+            variant="outline"
+            disabled={save.pending}
+            onClick={() => save.start({ archived: !archived, expectedRevision: base })}
+          >
             {archived ? 'Restore' : 'Archive'}
           </Button>
         </Editor>
@@ -156,32 +156,27 @@ function Profile({ id }: { readonly id: number }) {
 
 /** A new Persona (`/p/new`): its definition, then Create, which opens its profile. One operation id per visit. */
 function Create() {
+  const queryClient = useQueryClient()
   const feed = useWorkspaceFeed()
   const navigate = useNavigate()
   const [draft, setDraft] = useState<PersonaDefinition>(BLANK)
-  const [error, setError] = useState('')
-  const [pending, setPending] = useState(false)
   const [operation] = useState(() => crypto.randomUUID())
-  async function create(): Promise<void> {
-    setPending(true)
-    setError('')
-    try {
-      const body = { ...draft, operationId: operation }
-      const persona = decodePersona(await request('/api/personas', { body }))
-      feed.apply([{ type: 'persona', persona }])
-      navigate({ to: '/p/$id', params: { id: String(persona.id) }, replace: true }).catch(reportUnexpected)
-    } catch (failure) {
-      // expected: the form keeps the draft and shows the refusal under it; a retry reuses the visit operation id
-      setError(refusal(failure))
-    } finally {
-      setPending(false)
-    }
-  }
+  const create = useMutation(createPersonaMutation(queryClient))
+  const submit = () =>
+    create.mutate(
+      { ...draft, operationId: operation },
+      {
+        onSuccess: (persona) => {
+          feed.apply([{ type: 'persona', persona }])
+          navigate({ to: '/p/$id', params: { id: String(persona.id) }, replace: true }).catch(reportUnexpected)
+        },
+      },
+    )
   return (
     <div className="page-stack">
       <PageSection id="definition" title="New persona">
-        <Editor draft={draft} onChange={setDraft} error={error}>
-          <Button pending={pending} disabled={!ready(draft)} onClick={() => void create()}>
+        <Editor draft={draft} onChange={setDraft} error={refusal(create.error, 'create the persona')}>
+          <Button pending={create.isPending} disabled={!ready(draft)} onClick={submit}>
             Create
           </Button>
         </Editor>
@@ -190,7 +185,15 @@ function Create() {
   )
 }
 
-/** `/p/<id>` or `/p/new`: a Persona's profile, or a new one. */
+/**
+ * `/p/<id>` or `/p/new`: a Persona's profile, or a new one. The profile waits for its Persona; a read that fails shows
+ * on the route's error view, with the reference to quote.
+ */
 export function PersonaPage({ id }: { readonly id: number | 'new' }) {
-  return id === 'new' ? <Create /> : <Profile key={id} id={id} />
+  if (id === 'new') return <Create />
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+      <Profile key={id} id={id} />
+    </Suspense>
+  )
 }
