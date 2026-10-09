@@ -14,6 +14,7 @@ function domains(value: unknown): string[] {
         ? [url.origin]
         : []
     } catch {
+      // expected: a declared domain that is not a URL is left out of the App's policy
       return []
     }
   })

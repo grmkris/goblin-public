@@ -70,6 +70,7 @@ export async function uploadAttachment(file: File, taken: Set<string>, now = new
     headers: { 'x-goblin-csrf': '1', 'content-type': file.type === '' ? 'application/octet-stream' : file.type },
     body: file,
   })
+  // expected: a body that is not JSON leaves the status to say what happened
   const data: unknown = await response.json().catch(() => null)
   if (!response.ok) {
     const failure = record(data)

@@ -25,6 +25,7 @@ export function safeLink(url: string): URL | undefined {
     const parsed = new URL(url)
     return parsed.protocol === 'https:' && parsed.username === '' && parsed.password === '' ? parsed : undefined
   } catch {
+    // expected: an App's link that is not a URL is never offered
     return undefined
   }
 }
@@ -47,6 +48,7 @@ function sharedBlock(
   try {
     value = JSON.parse(block)
   } catch {
+    // expected: a block that is not JSON is the owner's own words, not files or shared context
     return undefined
   }
   const files = decodeAttachments(value)

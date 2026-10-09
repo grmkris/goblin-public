@@ -1,2 +1,16 @@
 /** Lane W3's files that pass the strict rules (tools/strict/index.ts). Only lane W3 appends globs here. */
-export const paths: string[] = ['packages/kit/**', 'packages/app/src/ui/**']
+export const paths: string[] = [
+  'packages/kit/**',
+  'packages/app/src/ui/**',
+  'apps/web/src/lib/agent-apps.ts',
+  'apps/web/src/lib/app-*.ts',
+  'apps/web/src/lib/attachment-draft.ts',
+  'apps/web/src/lib/files.ts',
+  'apps/web/src/lib/host-context.ts',
+  'apps/web/src/lib/startup-images.ts',
+  'apps/web/test/app-*.test.ts',
+  'apps/web/test/attachment-draft.test.ts',
+  'apps/web/test/files.test.ts',
+  'apps/web/test/host-context.test.ts',
+  'apps/web/test/startup-images.test.ts',
+]

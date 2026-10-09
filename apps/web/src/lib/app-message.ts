@@ -26,6 +26,7 @@ export function questionAnswerReceipt(content: readonly unknown[]): QuestionAnsw
   try {
     value = JSON.parse(block.text)
   } catch {
+    // expected: a message that is not JSON is no answer receipt, and is refused
     return undefined
   }
   const receipt = Option.getOrUndefined(decodeReceipt(value))
@@ -34,6 +35,7 @@ export function questionAnswerReceipt(content: readonly unknown[]): QuestionAnsw
     const url = new URL(receipt.url)
     if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') return undefined
   } catch {
+    // expected: a receipt whose link is not a URL is refused
     return undefined
   }
   return receipt

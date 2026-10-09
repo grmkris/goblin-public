@@ -20,6 +20,7 @@ function bytesOf(resource: Record<string, unknown>): Uint8Array | undefined {
   try {
     return Uint8Array.from(atob(resource.blob), (char) => char.charCodeAt(0))
   } catch {
+    // expected: an App's blob that is not base64 is no file to offer
     return undefined
   }
 }
