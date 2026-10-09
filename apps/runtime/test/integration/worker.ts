@@ -73,6 +73,7 @@ import { inboxAppProbe } from './inbox-app-probe.ts'
 import { FileStore } from '../../src/files/store.ts'
 import { composerSequence, helperExclusionsProbe } from './composer-probe.ts'
 import { topicMemorySequence, topicRoutineSequence } from './native-topics.ts'
+import { delegationFlowsSequence } from './native-delegation.ts'
 import { eventsIngressCase } from './events-ingress-case.ts'
 import { Internal } from '../../src/http/errors.ts'
 import { memoryPlacementSequence } from './native-memory.ts'
@@ -1103,6 +1104,8 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return memoryPlacementSequence(agent)
     case '/topic-routine':
       return topicRoutineSequence(agent)
+    case '/delegation-flows':
+      return delegationFlowsSequence(agent)
     case '/binding':
       return agent.bindingProbe().then((result) => Response.json(result))
     case '/telemetry':

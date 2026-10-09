@@ -22,6 +22,7 @@ import { composerCase } from './native-composer.ts'
 import { telemetryCase } from './native-telemetry.ts'
 import { primaryBindingCase } from './native-chats.ts'
 import { topicsNativeCase } from './native-topics.ts'
+import { delegationChecks } from './native-delegation.ts'
 import { memoryPlacementCase, memoryViewCase } from './native-memory.ts'
 import {
   Listed,
@@ -858,6 +859,7 @@ for (const [title, path, check] of [
   ["a thread branched from a subagent is the owner's, and keeps it open", 'subagent-branch', subagentBranchChecks],
   ['the workspace feed sends a snapshot, then each change and what each is doing', 'feed', feedChecks],
   ["a subagent's subagent reports to it, and only the final answer reaches main", 'chain', chainChecks],
+  ['a Persona answer, a spawn and a report are one flow row each, and details relate them', 'flows', delegationChecks],
   ['the owner steers a busy subagent; the answer reports up once and the subagent stays open', 'owner', ownerChecks],
   [
     'Stop and Close reach subagents of subagents and report nothing; a closed one refuses its spawner',
