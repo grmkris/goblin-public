@@ -73,8 +73,6 @@ export type { AgentServices } from './layers/index.ts'
 export const attempt = <A>(run: () => Promise<A>): Effect.Effect<A, AppError> =>
   Effect.tryPromise({ try: run, catch: toAppError })
 
-export const attemptSync = <A>(run: () => A): Effect.Effect<A, AppError> => Effect.try({ try: run, catch: toAppError })
-
 export const nowSecondsEffect: Effect.Effect<number> = Effect.map(Clock.currentTimeMillis, (millis) =>
   Math.floor(millis / 1000),
 )
