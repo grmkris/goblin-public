@@ -234,9 +234,9 @@ function makeMemories(input: ComposeInput, deps: MemoryDeps): ChatMemories {
 }
 
 /**
- * The first half of the start (compose.ts until the layer tree): migrations first, then every server's endpoint
- * binding is checked (a re-pointed server loses what it had), the MCP host and grants, budget and models, chats,
- * memory, capabilities and helper execution, routines, and the conversations, Topics and Apps over them.
+ * The first half of the agent's start: migrations first, then every server's endpoint binding is checked (a
+ * re-pointed server loses what it had), the MCP host and grants, budget and models, chats, memory, capabilities and
+ * helper execution, routines, and the conversations, Topics and Apps over them.
  */
 const startConversations = Effect.gen(function* () {
   const input = yield* AgentInput
@@ -280,7 +280,7 @@ const startConversations = Effect.gen(function* () {
 
 /**
  * The second half: skills and the learner, the Telegram channel, the agent apps' services, then Events and their
- * consumers. The Files, Inspect and Retrieval services are made last, as compose.ts made them.
+ * consumers. The Files, Inspect and Retrieval services are made last.
  */
 const startChannels = Effect.fn('LegacyLive.startChannels')(function* (
   started: Effect.Success<typeof startConversations>,
@@ -362,7 +362,7 @@ type LegacyServices =
   | Inspect
   | Retrieval
 
-/** The legacy service tags over the started instances; one instance each, as compose.ts provided them. */
+/** The legacy service tags over the started instances, one instance each. */
 const legacyContext = (started: Effect.Success<ReturnType<typeof startChannels>>) =>
   Context.mergeAll(
     Mcp.context(started.host),
@@ -398,9 +398,9 @@ const legacyContext = (started: Effect.Success<ReturnType<typeof startChannels>>
   )
 
 /**
- * The agent's legacy services (services.ts tags) over its SQLite, built once per runtime: compose.ts's start as one
- * layer, step for step in its order, until each step moves into its owning lane's layer. A step that failed rejects the
- * build with its own error, as compose.ts's promise did.
+ * The agent's legacy services (services.ts tags) over its SQLite, built once per runtime: the whole start as one
+ * layer, step for step in one fixed order, until each step moves into its owning lane's layer. A failed step rejects
+ * the build with its own error, so the runtime is made again on the next call (agent.ts).
  */
 export const LegacyLive: Layer.Layer<LegacyServices, never, AgentInput> = Layer.effectContext(
   startConversations.pipe(Effect.flatMap(startChannels), Effect.map(legacyContext)),
