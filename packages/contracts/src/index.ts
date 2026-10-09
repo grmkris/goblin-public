@@ -543,6 +543,10 @@ export type DeleteAgentApp = typeof DeleteAgentApp.Type
 export const AppDiagnostic = Schema.Struct({ message: Schema.String.check(Schema.isMaxLength(4000)) })
 export type AppDiagnostic = typeof AppDiagnostic.Type
 
+/** Whether a view's failure was kept: one every ten seconds at most, so a failing render cannot flood the app's events. */
+export const AppDiagnosticResult = Schema.Struct({ kept: Schema.Boolean })
+export type AppDiagnosticResult = typeof AppDiagnosticResult.Type
+
 /** The workspace feed's first event: every conversation and App, and the conversations not idle. */
 export const WorkspaceSnapshot = Schema.Struct({
   primary: Schema.optional(Schema.String),
