@@ -1,0 +1,209 @@
+import { useEffect, useState } from 'react'
+import { type HelperExclusion, ModelChoice, type PersonaDefinition, ServerView } from '@goblin/contracts'
+import { Schema } from 'effect'
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  Input,
+  NativeSelect,
+  NativeSelectOption,
+  Switch,
+  Textarea,
+} from '@goblin/ui'
+import { request } from '../../../lib/boundary.ts'
+import { PersonaAvatar } from '../../persona-avatar.tsx'
+
+const decodeModels = Schema.decodeUnknownSync(ModelChoice)
+const decodeServers = Schema.decodeUnknownSync(Schema.Array(ServerView))
+
+/** A Persona's name as `@name` takes it: a letter, then up to 31 letters, digits, spaces, `_` or `-`. */
+export const NAME = /^[A-Za-z][\w -]{0,31}$/u
+
+/** A new Persona's definition before the owner writes one. */
+export const BLANK: PersonaDefinition = {
+  name: '',
+  avatar: { glyph: '', hue: 140 },
+  role: '',
+  instructions: '',
+  exclusions: [],
+}
+
+/** The models and connected servers a Persona can be given or kept from, read once the editor opens. */
+function useChoices() {
+  const [models, setModels] = useState<ModelChoice['options']>([])
+  const [servers, setServers] = useState<readonly ServerView[]>([])
+  useEffect(() => {
+    const controller = new AbortController()
+    const signal = controller.signal
+    request('/api/agent/model', { signal })
+      .then((data) => setModels(decodeModels(data).options))
+      .catch(() => setModels([]))
+    request('/api/mcp/servers', { signal })
+      .then((data) => setServers(decodeServers(data).filter((server) => server.status === 'connected')))
+      .catch(() => setServers([]))
+    return () => controller.abort()
+  }, [])
+  return { models, servers }
+}
+
+const keyOf = (exclusion: HelperExclusion) =>
+  exclusion.kind === 'subagents'
+    ? 'subagents'
+    : exclusion.kind === 'server'
+      ? `server:${exclusion.serverId}`
+      : undefined
+
+/** Whether the Persona may use something: on unless its exclusions keep it from it; a switch toggles that. */
+function Allowed({
+  label,
+  exclusion,
+  draft,
+  onChange,
+}: {
+  readonly label: string
+  readonly exclusion: HelperExclusion
+  readonly draft: PersonaDefinition
+  readonly onChange: (draft: PersonaDefinition) => void
+}) {
+  const key = keyOf(exclusion)
+  const off = draft.exclusions.some((each) => keyOf(each) === key)
+  return (
+    <label className="persona-allow">
+      <span>{label}</span>
+      <Switch
+        checked={!off}
+        onCheckedChange={(on) =>
+          onChange({
+            ...draft,
+            exclusions: on ? draft.exclusions.filter((each) => keyOf(each) !== key) : [...draft.exclusions, exclusion],
+          })
+        }
+      />
+    </label>
+  )
+}
+
+type Edit = { readonly draft: PersonaDefinition; readonly onChange: (draft: PersonaDefinition) => void }
+
+/** Its mark beside its name, then the mark's glyph and colour. */
+function Identity({ draft, onChange }: Edit) {
+  const nameOk = draft.name === '' || NAME.test(draft.name)
+  return (
+    <>
+      <div className="persona-identity">
+        <PersonaAvatar avatar={{ glyph: draft.avatar.glyph || '?', hue: draft.avatar.hue }} size="lg" />
+        <Field data-invalid={!nameOk || undefined}>
+          <FieldLabel htmlFor="persona-name">Name</FieldLabel>
+          <Input
+            id="persona-name"
+            value={draft.name}
+            maxLength={32}
+            autoComplete="off"
+            aria-invalid={!nameOk || undefined}
+            onChange={(event) => onChange({ ...draft, name: event.target.value })}
+          />
+          {!nameOk && <FieldDescription>A letter first, then letters, digits, spaces, _ or -.</FieldDescription>}
+        </Field>
+      </div>
+      <div className="persona-mark">
+        <Field>
+          <FieldLabel htmlFor="persona-glyph">Mark</FieldLabel>
+          <Input
+            id="persona-glyph"
+            value={draft.avatar.glyph}
+            maxLength={4}
+            autoComplete="off"
+            onChange={(event) => onChange({ ...draft, avatar: { ...draft.avatar, glyph: event.target.value } })}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="persona-hue">Colour</FieldLabel>
+          <input
+            id="persona-hue"
+            className="persona-hue"
+            type="range"
+            min={0}
+            max={359}
+            value={draft.avatar.hue}
+            onChange={(event) => onChange({ ...draft, avatar: { ...draft.avatar, hue: Number(event.target.value) } })}
+          />
+        </Field>
+      </div>
+    </>
+  )
+}
+
+/** Its role in a line, its instructions, and its model (the agent's own unless one is chosen). */
+function Behaviour({ draft, onChange, models }: Edit & { readonly models: ModelChoice['options'] }) {
+  return (
+    <>
+      <Field>
+        <FieldLabel htmlFor="persona-role">Role</FieldLabel>
+        <Input
+          id="persona-role"
+          value={draft.role}
+          maxLength={120}
+          placeholder="e.g. Finds the weak spot in a plan"
+          onChange={(event) => onChange({ ...draft, role: event.target.value })}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="persona-instructions">Instructions</FieldLabel>
+        <Textarea
+          id="persona-instructions"
+          value={draft.instructions}
+          maxLength={8000}
+          rows={8}
+          onChange={(event) => onChange({ ...draft, instructions: event.target.value })}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="persona-model">Model</FieldLabel>
+        <NativeSelect
+          id="persona-model"
+          value={draft.model ?? ''}
+          onChange={(event) => {
+            const { model: _cleared, ...rest } = draft
+            onChange(event.target.value === '' ? rest : { ...rest, model: event.target.value })
+          }}
+        >
+          <NativeSelectOption value="">Your agent's model</NativeSelectOption>
+          {models.map((model) => (
+            <NativeSelectOption key={model.id} value={model.id}>
+              {model.label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </Field>
+    </>
+  )
+}
+
+/**
+ * A Persona's definition: its mark (a glyph on a hue), name, role, instructions, model, and what it may use of the
+ * owner's grants (it only ever narrows them). Tool, skills and app exclusions it already has are kept as they are.
+ */
+export function PersonaForm({ draft, onChange }: Edit) {
+  const { models, servers } = useChoices()
+  return (
+    <FieldGroup>
+      <Identity draft={draft} onChange={onChange} />
+      <Behaviour draft={draft} onChange={onChange} models={models} />
+      <fieldset className="persona-allows">
+        <legend>May use</legend>
+        <Allowed label="Subagents" exclusion={{ kind: 'subagents' }} draft={draft} onChange={onChange} />
+        {servers.map((server) => (
+          <Allowed
+            key={server.serverId}
+            label={server.title ?? server.serverId}
+            exclusion={{ kind: 'server', serverId: server.serverId }}
+            draft={draft}
+            onChange={onChange}
+          />
+        ))}
+      </fieldset>
+    </FieldGroup>
+  )
+}

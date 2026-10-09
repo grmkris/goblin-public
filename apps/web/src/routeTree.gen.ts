@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as ConsentRouteImport } from './routes/consent'
 import { Route as LoginRouteImport } from './routes/login'
@@ -17,16 +18,24 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as RefundsRouteImport } from './routes/refunds'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SubscribeRouteImport } from './routes/subscribe'
+import { Route as TasksRouteImport } from './routes/tasks'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as ThreadsRouteImport } from './routes/threads'
 import { Route as AAppIdRouteImport } from './routes/a.$appId'
 import { Route as AppsIndexRouteImport } from './routes/apps.index'
 import { Route as AppsNameRouteImport } from './routes/apps.$name'
 import { Route as CChatIdRouteImport } from './routes/c.$chatId'
+import { Route as PIdRouteImport } from './routes/p.$id'
 import { Route as SubscribeSuccessRouteImport } from './routes/subscribe.success'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ActivityRoute = ActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConnectionsRoute = ConnectionsRouteImport.update({
@@ -64,9 +73,19 @@ const SubscribeRoute = SubscribeRouteImport.update({
   path: '/subscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TasksRoute = TasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ThreadsRoute = ThreadsRouteImport.update({
+  id: '/threads',
+  path: '/threads',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AAppIdRoute = AAppIdRouteImport.update({
@@ -89,6 +108,11 @@ const CChatIdRoute = CChatIdRouteImport.update({
   path: '/c/$chatId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PIdRoute = PIdRouteImport.update({
+  id: '/p/$id',
+  path: '/p/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SubscribeSuccessRoute = SubscribeSuccessRouteImport.update({
   id: '/success',
   path: '/success',
@@ -97,6 +121,7 @@ const SubscribeSuccessRoute = SubscribeSuccessRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/activity': typeof ActivityRoute
   '/connections': typeof ConnectionsRoute
   '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
@@ -104,15 +129,19 @@ export interface FileRoutesByFullPath {
   '/refunds': typeof RefundsRoute
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
+  '/tasks': typeof TasksRoute
   '/terms': typeof TermsRoute
+  '/threads': typeof ThreadsRoute
   '/a/$appId': typeof AAppIdRoute
   '/apps/$name': typeof AppsNameRoute
   '/c/$chatId': typeof CChatIdRoute
+  '/p/$id': typeof PIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/apps/': typeof AppsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/activity': typeof ActivityRoute
   '/connections': typeof ConnectionsRoute
   '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
@@ -120,16 +149,20 @@ export interface FileRoutesByTo {
   '/refunds': typeof RefundsRoute
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
+  '/tasks': typeof TasksRoute
   '/terms': typeof TermsRoute
+  '/threads': typeof ThreadsRoute
   '/a/$appId': typeof AAppIdRoute
   '/apps/$name': typeof AppsNameRoute
   '/c/$chatId': typeof CChatIdRoute
+  '/p/$id': typeof PIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/apps': typeof AppsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/activity': typeof ActivityRoute
   '/connections': typeof ConnectionsRoute
   '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
@@ -137,10 +170,13 @@ export interface FileRoutesById {
   '/refunds': typeof RefundsRoute
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
+  '/tasks': typeof TasksRoute
   '/terms': typeof TermsRoute
+  '/threads': typeof ThreadsRoute
   '/a/$appId': typeof AAppIdRoute
   '/apps/$name': typeof AppsNameRoute
   '/c/$chatId': typeof CChatIdRoute
+  '/p/$id': typeof PIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/apps/': typeof AppsIndexRoute
 }
@@ -148,6 +184,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/activity'
     | '/connections'
     | '/consent'
     | '/login'
@@ -155,15 +192,19 @@ export interface FileRouteTypes {
     | '/refunds'
     | '/settings'
     | '/subscribe'
+    | '/tasks'
     | '/terms'
+    | '/threads'
     | '/a/$appId'
     | '/apps/$name'
     | '/c/$chatId'
+    | '/p/$id'
     | '/subscribe/success'
     | '/apps/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/activity'
     | '/connections'
     | '/consent'
     | '/login'
@@ -171,15 +212,19 @@ export interface FileRouteTypes {
     | '/refunds'
     | '/settings'
     | '/subscribe'
+    | '/tasks'
     | '/terms'
+    | '/threads'
     | '/a/$appId'
     | '/apps/$name'
     | '/c/$chatId'
+    | '/p/$id'
     | '/subscribe/success'
     | '/apps'
   id:
     | '__root__'
     | '/'
+    | '/activity'
     | '/connections'
     | '/consent'
     | '/login'
@@ -187,16 +232,20 @@ export interface FileRouteTypes {
     | '/refunds'
     | '/settings'
     | '/subscribe'
+    | '/tasks'
     | '/terms'
+    | '/threads'
     | '/a/$appId'
     | '/apps/$name'
     | '/c/$chatId'
+    | '/p/$id'
     | '/subscribe/success'
     | '/apps/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ActivityRoute: typeof ActivityRoute
   ConnectionsRoute: typeof ConnectionsRoute
   ConsentRoute: typeof ConsentRoute
   LoginRoute: typeof LoginRoute
@@ -204,10 +253,13 @@ export interface RootRouteChildren {
   RefundsRoute: typeof RefundsRoute
   SettingsRoute: typeof SettingsRoute
   SubscribeRoute: typeof SubscribeRouteWithChildren
+  TasksRoute: typeof TasksRoute
   TermsRoute: typeof TermsRoute
+  ThreadsRoute: typeof ThreadsRoute
   AAppIdRoute: typeof AAppIdRoute
   AppsNameRoute: typeof AppsNameRoute
   CChatIdRoute: typeof CChatIdRoute
+  PIdRoute: typeof PIdRoute
   AppsIndexRoute: typeof AppsIndexRoute
 }
 
@@ -218,6 +270,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/activity': {
+      id: '/activity'
+      path: '/activity'
+      fullPath: '/activity'
+      preLoaderRoute: typeof ActivityRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connections': {
@@ -269,11 +328,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tasks': {
+      id: '/tasks'
+      path: '/tasks'
+      fullPath: '/tasks'
+      preLoaderRoute: typeof TasksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/terms': {
       id: '/terms'
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/threads': {
+      id: '/threads'
+      path: '/threads'
+      fullPath: '/threads'
+      preLoaderRoute: typeof ThreadsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/a/$appId': {
@@ -304,6 +377,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CChatIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/p/$id': {
+      id: '/p/$id'
+      path: '/p/$id'
+      fullPath: '/p/$id'
+      preLoaderRoute: typeof PIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/subscribe/success': {
       id: '/subscribe/success'
       path: '/success'
@@ -328,6 +408,7 @@ const SubscribeRouteWithChildren = SubscribeRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ActivityRoute: ActivityRoute,
   ConnectionsRoute: ConnectionsRoute,
   ConsentRoute: ConsentRoute,
   LoginRoute: LoginRoute,
@@ -335,10 +416,13 @@ const rootRouteChildren: RootRouteChildren = {
   RefundsRoute: RefundsRoute,
   SettingsRoute: SettingsRoute,
   SubscribeRoute: SubscribeRouteWithChildren,
+  TasksRoute: TasksRoute,
   TermsRoute: TermsRoute,
+  ThreadsRoute: ThreadsRoute,
   AAppIdRoute: AAppIdRoute,
   AppsNameRoute: AppsNameRoute,
   CChatIdRoute: CChatIdRoute,
+  PIdRoute: PIdRoute,
   AppsIndexRoute: AppsIndexRoute,
 }
 export const routeTree = rootRouteImport

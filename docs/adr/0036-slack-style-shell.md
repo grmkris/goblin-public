@@ -29,6 +29,11 @@ Persona's answer and a Delegate's result carry a mark, a name and what they are;
 "answering…" rows. Start thread (a composer toggle) and Move to thread (in a message's toolbar) are offered where the
 server has their routes. A strip under an answer names the other chats it used.
 
+**The rail's places.** Threads (every thread, unread first), Activity ("Needs you": questions, approvals, grants,
+App schedules, with organizing receipts and Undo) and Tasks (Delegates, Personas answering, routines) each carry a
+count on the rail. Personas sit in the sidebar after the Topics; a click opens a profile page (`/p/<id>`) that edits
+the definition and lists its revisions, never a direct chat.
+
 **An App's page is the main column.** `/a/<id>` shows the App under a bar with "Back to #channel"; inline Apps stay in
 their message's slot, and the one live instance (ADR 0020) springs between the two. The pane system's full screen with
 a docked chat is gone: an App asking for fullscreen gets its page.

@@ -12,6 +12,7 @@ import {
   threadsByFork,
 } from '../../lib/threads.ts'
 import { activityState } from '../../lib/workspace-feed.ts'
+import { useMinute } from '../use-now.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { MoveAction, type Mover } from './move-action.tsx'
 import { usePanel } from './panel.tsx'
@@ -51,16 +52,6 @@ export function useChatThreads(chat: string, branchable: ReadonlySet<number>, mo
     }),
     [chat, at, branchable, panel, mover],
   )
-}
-
-/** Now in seconds, a minute at a time: what "2 minutes ago" is measured against. */
-function useMinute(): number {
-  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 60_000)
-    return () => clearInterval(timer)
-  }, [])
-  return now
 }
 
 /**

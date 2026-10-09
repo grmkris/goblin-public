@@ -2,8 +2,19 @@ import type { ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { PRIMARY_CHAT } from '@goblin/contracts'
 import { GoblinMark } from '@goblin/ui'
-import { HouseIcon, LayoutGridIcon, LogOutIcon, PlugIcon, SettingsIcon } from 'lucide-react'
+import {
+  BellIcon,
+  HouseIcon,
+  LayoutGridIcon,
+  ListChecksIcon,
+  LogOutIcon,
+  MessagesSquareIcon,
+  PlugIcon,
+  SettingsIcon,
+} from 'lucide-react'
+import { railCounts } from '../../lib/rail.ts'
 import { signOut } from '../../lib/session.tsx'
+import { useWorkspaceFeed } from '../workspace-feed.tsx'
 
 /** Whether a path is one of the channel's places: a channel and its threads, an App's page, a Persona's profile. */
 export const atHome = (path: string): boolean =>
@@ -22,6 +33,7 @@ function Stop({ label, icon, count }: { readonly label: string; readonly icon: R
         )}
       </span>
       <span className="rail-label">{label}</span>
+      {count !== undefined && count > 0 && <span className="sr-only">, {count}</span>}
     </>
   )
 }
@@ -35,6 +47,8 @@ const current = (active: boolean) => (active ? ('page' as const) : undefined)
 export function Rail() {
   const path = useRouterState({ select: (router) => router.location.pathname })
   const at = (prefix: string) => path === prefix || path.startsWith(`${prefix}/`)
+  const feed = useWorkspaceFeed()
+  const counts = railCounts(feed.conversations, feed.apps, feed.activity, feed.invocations ?? [])
   return (
     <nav className="shell-rail" aria-label="Places">
       <Link to="/" className="rail-brand" aria-label="goblin home">
@@ -47,6 +61,15 @@ export function Rail() {
         aria-current={current(atHome(path))}
       >
         <Stop label="Home" icon={<HouseIcon aria-hidden />} />
+      </Link>
+      <Link to="/threads" className="rail-item" aria-current={current(at('/threads'))}>
+        <Stop label="Threads" icon={<MessagesSquareIcon aria-hidden />} count={counts.threads} />
+      </Link>
+      <Link to="/activity" className="rail-item" aria-current={current(at('/activity'))}>
+        <Stop label="Activity" icon={<BellIcon aria-hidden />} count={counts.activity} />
+      </Link>
+      <Link to="/tasks" className="rail-item" aria-current={current(at('/tasks'))}>
+        <Stop label="Tasks" icon={<ListChecksIcon aria-hidden />} count={counts.tasks} />
       </Link>
       <span className="rail-spacer" />
       <Link to="/apps" className="rail-item" aria-current={current(at('/apps'))}>

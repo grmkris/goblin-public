@@ -277,10 +277,19 @@ it starts again from a fresh snapshot. The workspace feed maps Pi task activity 
 `ConversationView.primary` is an optional boolean; `WorkspaceSnapshot.primary` is an optional chat id for compatible
 readers.
 
-Every signed-in page sits beside the app's shell (`components/shell`, ADR 0036): a moss rail of places (Home, and at
-its foot Apps, Connections, Settings and Sign out) and the sidebar of channels, both always shown on a desktop; on a
+Every signed-in page sits beside the app's shell (`components/shell`, ADR 0036): a moss rail of places (Home,
+Threads, Activity and Tasks, each with a count of what waits there, and at its foot Apps, Connections, Settings and
+Sign out) and the sidebar of channels, both always shown on a desktop; on a
 phone they share a drawer from the left edge (`DrawerSide` in `@goblin/ui`, `tone="shell"`) that the page's top bar
-opens and a swipe left closes. Connections and Settings are columns of titled sections (`PageSection`)
+opens and a swipe left closes. The rail's pages (`components/shell/pages`, over the pure `lib/rail.ts`): Threads lists every thread, unread first, the
+closed folded; Activity collects what needs the owner across Topics (each chat's `attention` from a server that
+reports it, and agent apps whose schedules need the owner), the unread chats, and organizing receipts with Undo
+(`POST /api/organize/:id/undo`, offered while the receipt is undoable); Tasks lists the Delegates (subagents) at work
+and finished, the Personas answering and answered, and the routines on a schedule. On a server with Personas the
+sidebar lists them after the Topics; a click opens the profile (`/p/<id>`), never a chat: its definition (a glyph on
+a hue, name, role, instructions, a model from the offered ones, and what it may use, which only narrows the owner's
+grants) saved as a new revision with the revision it was read at (`PATCH /api/personas/:id`, a conflict asks for a
+reload), Archive or Restore, and its revisions. `/p/new` creates one (one operation id per visit). Connections and Settings are columns of titled sections (`PageSection`)
 whose states read in words (`lib/labels.ts`), never the raw value the runtime sends. The workspace fills the page beside it. The transcript scrolls in a `MessageScroller` (from `@shadcn/react`, patched with upstream fixes that are not
 released yet; `bun run check:patches` proves the patch is installed). Each of
 the owner's turns (typed in the app or sent from Telegram, `isOwnTurn` in `lib/parts.ts`) is a scroll anchor; a

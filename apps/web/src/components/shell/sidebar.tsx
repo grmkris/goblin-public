@@ -1,15 +1,18 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import type { AppView, ConversationView, TopicView } from '@goblin/contracts'
+import type { AppView, ConversationView, PersonaView, TopicView } from '@goblin/contracts'
 import { ChevronRightIcon, HashIcon, LayoutGridIcon, MessagesSquareIcon, PlusIcon } from 'lucide-react'
 import { jobTrouble } from '../../lib/app-jobs.ts'
 import { agentApps, appOrigin } from '../../lib/app-names.ts'
+import { activePersonas } from '../../lib/personas.ts'
 import { recentThreads } from '../../lib/recent-threads.ts'
 import { isUnread, threadTitle } from '../../lib/threads.ts'
 import { channelOf, channels, topicThreads } from '../../lib/topics.ts'
 import { activityState } from '../../lib/workspace-feed.ts'
 import { AppTile } from '../apps/app-tile.tsx'
+import { PersonaAvatar } from '../persona-avatar.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { usePersonasOn } from './personas-on.ts'
 import { TopicDialog } from './topic-dialog.tsx'
 
 /** The sections the owner folded, remembered in this browser (a convenience: without storage they open on reload). */
@@ -205,6 +208,47 @@ function AppRow({ app, current }: { readonly app: AppView; readonly current: boo
   )
 }
 
+/** A Persona: its mark and `@name`; a click opens its profile (never a chat with it). */
+function PersonaRow({ persona, current }: { readonly persona: PersonaView; readonly current: boolean }) {
+  return (
+    <li>
+      <Link
+        to="/p/$id"
+        params={{ id: String(persona.id) }}
+        className="sidebar-row"
+        aria-current={current ? 'page' : undefined}
+      >
+        <PersonaAvatar avatar={persona.avatar} size="sm" />
+        <span className="sidebar-row-name">@{persona.name}</span>
+      </Link>
+    </li>
+  )
+}
+
+/** The Personas, on a server that has them, then "+ Add persona". */
+function Personas({ path }: { readonly path: string }) {
+  const feed = useWorkspaceFeed()
+  if (!usePersonasOn()) return null
+  return (
+    <Section id="personas" label="Personas">
+      {activePersonas(feed.personas).map((persona) => (
+        <PersonaRow key={persona.id} persona={persona} current={path === `/p/${persona.id}`} />
+      ))}
+      <li>
+        <Link
+          to="/p/$id"
+          params={{ id: 'new' }}
+          className="sidebar-row"
+          aria-current={path === '/p/new' ? 'page' : undefined}
+        >
+          <PlusIcon className="sidebar-row-mark" aria-hidden />
+          <span className="sidebar-row-name">Add persona</span>
+        </Link>
+      </li>
+    </Section>
+  )
+}
+
 /** "+ Add topic" at the end of the Topics, on a server that has them: it opens the new Topic's dialog. */
 function AddTopic() {
   const [open, setOpen] = useState(false)
@@ -221,7 +265,7 @@ function AddTopic() {
 
 /**
  * The sidebar: the Topics as channels (Personal first, each with its live threads under it, the archived folded at the
- * end, then Add topic), then the agent apps. A click on a channel opens it; on a thread, opens it in the panel.
+ * end, then Add topic), then the Personas (a click opens a profile), then the agent apps. A click on a channel opens it; on a thread, opens it in the panel.
  */
 export function Sidebar() {
   const feed = useWorkspaceFeed()
@@ -243,6 +287,7 @@ export function Sidebar() {
           <Archived topics={archived} current={current.channel} />
           {feed.topics !== undefined && <AddTopic />}
         </Section>
+        <Personas path={path} />
         {apps.length > 0 && (
           <Section
             id="apps"
