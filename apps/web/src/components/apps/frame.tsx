@@ -2,6 +2,7 @@
 // opaque frame. The bridge lives as long as the iframe element; placement changes only update the host context, so
 // moving the App between display modes never reloads it. An MCP App's document comes from its server; an agent app's
 // is assembled here from its launch and goblin's frame bundles (ADR 0021).
+import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import {
   type AppBridge,
@@ -13,11 +14,20 @@ import type { CallToolResult, ReadResourceResult } from '@modelcontextprotocol/c
 import type { AgentAppLaunch } from '@goblin/contracts'
 import { Alert, AlertDescription } from '@goblin/ui'
 import { agentAppHtml, appSandbox, isSandboxMessage, sandboxHtml, sandboxProxy } from '../../lib/app-sandbox.ts'
-import { createAppBridge } from '../../lib/app-bridge.ts'
-import { type StatePush, agentAppCalls } from '../../lib/agent-app-bridge.ts'
+import {
+  appCallMutation,
+  appDiagnosticMutation,
+  appResourceReadMutation,
+  appStateQuery,
+  appToolCallMutation,
+  perform,
+} from '../../apps/queries.ts'
+import { type AppCalls, createAppBridge } from '../../lib/app-bridge.ts'
+import type { StatePush } from '../../lib/agent-app-bridge.ts'
 import type { DownloadFile } from '../../lib/app-download.ts'
 import type { QuestionAnswerReceipt } from '../../lib/app-message.ts'
-import { isString, record, records, request, text } from '../../lib/boundary.ts'
+import { isString, records, text } from '../../lib/boundary.ts'
+import { messageOf } from '../../lib/query/app-error.ts'
 import { type AppPlacement, type Device, hostContext, inlineHeight } from '../../lib/host-context.ts'
 import { LinkOffer } from './offers.tsx'
 
@@ -72,28 +82,51 @@ function contextFor(placement: AppPlacement): McpUiHostContext {
   return hostContext((name) => style.getPropertyValue(name), device(), placement)
 }
 
-function forward<T>(serverId: string, path: string, body: unknown, signal: AbortSignal): Promise<T> {
-  // SAFETY: the authenticated endpoints return SDK-validated results and enforce the originating server's grants.
-  return request(`/api/mcp/${encodeURIComponent(serverId)}/${path}`, {
-    body,
-    signal,
-    headers: { 'x-mcp-caller': 'app' },
-  }) as Promise<T>
+/** A failure of this frame's own making, whose words the owner reads as they are. */
+class FrameFailure extends Error {
+  override readonly name = 'FrameFailure'
 }
 
-async function appHtml(selection: AppSelection, signal: AbortSignal): Promise<string> {
+/** Why an App did not load, as the owner reads it: the API's copy of its failures, this frame's words for its own. */
+const loadFailure = (cause: unknown): string =>
+  cause instanceof FrameFailure ? cause.message : messageOf(cause, 'load the app')
+
+/**
+ * The calls an App's frame makes, through the owner's typed client and Query's caches. Remote MCP results are answered
+ * whole, as the official SDK validated them on the server (the contract's results are their passthroughs).
+ */
+function appCalls(queryClient: QueryClient): AppCalls {
+  return {
+    agent: {
+      call: (id, call) => perform(queryClient, appCallMutation, { id, call }),
+      state: (id) => queryClient.query(appStateQuery(id)),
+      report: async (id, message) => {
+        await perform(queryClient, appDiagnosticMutation, { id, message })
+      },
+    },
+    tool: async (serverId, call) =>
+      // SAFETY: the server's tools/call result, validated by the SDK and answered whole (McpToolResult passes it on).
+      (await perform(queryClient, appToolCallMutation, { serverId, call })) as CallToolResult,
+    resource: async (serverId, read) =>
+      // SAFETY: the server's resources/read result, validated by the SDK and answered whole (McpResourceResult).
+      (await perform(queryClient, appResourceReadMutation, { serverId, read })) as ReadResourceResult,
+  }
+}
+
+async function appHtml(selection: AppSelection, calls: AppCalls): Promise<string> {
   if (selection.kind === 'agent') {
     const { frameAssets } = await import('../../lib/app-assets.ts')
     return agentAppHtml(selection.launch.ui, await frameAssets())
   }
-  const data = await forward<unknown>(selection.serverId, 'resources/read', { uri: selection.uri }, signal)
-  const content = records(record(data)?.contents).find(
+  const data = await calls.resource(selection.serverId, { uri: selection.uri })
+  const content = records(data.contents).find(
     (item) =>
       item.uri === selection.uri &&
       isString(item.text) &&
       (item.mimeType === 'text/html;profile=mcp-app' || item.mimeType === 'text/html'),
   )
-  if (!content || !isString(content.text)) throw new Error('The server did not provide a supported App HTML resource')
+  if (!content || !isString(content.text))
+    throw new FrameFailure('The server did not provide a supported App HTML resource')
   return sandboxHtml(text(content.text), content._meta)
 }
 
@@ -102,24 +135,14 @@ async function attachApp(
   selection: AppSelection,
   placement: () => AppPlacement,
   signal: AbortSignal,
-  events: FrameEvents,
+  frame: { readonly calls: AppCalls; readonly events: FrameEvents },
 ): Promise<{ readonly bridge: AppBridge; readonly push?: StatePush } | undefined> {
-  const html = await appHtml(selection, signal)
+  const html = await appHtml(selection, frame.calls)
   if (signal.aborted) return undefined
   element.srcdoc = sandboxProxy(window.location.origin)
   const target = element.contentWindow
-  if (!target) throw new Error('App sandbox could not be created')
-  const attached = createAppBridge(
-    selection,
-    html,
-    contextFor(placement()),
-    {
-      agent: agentAppCalls,
-      tool: (serverId, body) => forward<CallToolResult>(serverId, 'tools/call', body, signal),
-      resource: (serverId, body) => forward<ReadResourceResult>(serverId, 'resources/read', body, signal),
-    },
-    events,
-  )
+  if (!target) throw new FrameFailure('App sandbox could not be created')
+  const attached = createAppBridge(selection, html, contextFor(placement()), frame.calls, frame.events)
   const { bridge } = attached
   // The theme follows the system; tell the App when it switches.
   const theme = new MutationObserver(() => bridge.setHostContext(contextFor(placement())))
@@ -166,6 +189,7 @@ export function AppFrame({
   readonly height?: number
   readonly revision?: number
 }) {
+  const queryClient = useQueryClient()
   const iframe = useRef<HTMLIFrameElement>(null)
   const bridge = useRef<AppBridge>(undefined)
   const push = useRef<StatePush>(undefined)
@@ -190,22 +214,24 @@ export function AppFrame({
         : { message: (receipt: QuestionAnswerReceipt) => latest.current.events.message?.(receipt) ?? false }),
     }
     if (element)
-      attachApp(element, selection, () => latest.current.placement, controller.signal, relay)
+      attachApp(element, selection, () => latest.current.placement, controller.signal, {
+        calls: appCalls(queryClient),
+        events: relay,
+      })
         .then((attached) => {
           bridge.current = attached?.bridge
           push.current = attached?.push
           if (wanted.current !== undefined) push.current?.want(wanted.current)
         })
         .catch((cause: unknown) => {
-          if (!controller.signal.aborted)
-            relay.report(cause instanceof Error ? cause.message : 'App could not be loaded')
+          if (!controller.signal.aborted) relay.report(loadFailure(cause))
         })
     return () => {
       bridge.current = undefined
       push.current = undefined
       controller.abort()
     }
-  }, [selection])
+  }, [selection, queryClient])
   useEffect(() => {
     if (revision !== undefined) push.current?.want(revision)
   }, [revision])

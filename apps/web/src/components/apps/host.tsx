@@ -16,13 +16,15 @@ import {
   useRef,
   useState,
 } from 'react'
-import { Schema } from 'effect'
-import { type AppView, AppLaunch } from '@goblin/contracts'
+import { type QueryClient, useQueryClient } from '@tanstack/react-query'
+import type { AppView } from '@goblin/contracts'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import type { DownloadFile } from '../../lib/app-download.ts'
 import { type QuestionAnswerReceipt, receiptText } from '../../lib/app-message.ts'
 import { LIVE_APPS, evictions } from '../../lib/app-residency.ts'
-import { failureText, record, records, request } from '../../lib/boundary.ts'
+import { appLaunchQuery } from '../../apps/queries.ts'
+import { failureText, record, records } from '../../lib/boundary.ts'
+import { messageOf } from '../../lib/query/app-error.ts'
 import { useNavigation } from '../../lib/navigation.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import type { AppSelection } from './frame.tsx'
@@ -85,8 +87,6 @@ export function useAppHost(): Host {
   return host
 }
 
-const decodeLaunch = Schema.decodeUnknownSync(AppLaunch)
-
 /** The tool result an App expects, rebuilt from the (redacted) details the resident tool committed. */
 function resultOf(details: unknown): CallToolResult {
   const value = record(details)
@@ -100,8 +100,8 @@ function resultOf(details: unknown): CallToolResult {
   }
 }
 
-async function launch(app: AppView): Promise<AppSelection> {
-  const loaded = decodeLaunch(await request(`/api/apps/${app.id}/launch`))
+async function launch(queryClient: QueryClient, app: AppView): Promise<AppSelection> {
+  const loaded = await queryClient.query(appLaunchQuery(app.id))
   if (loaded.kind === 'agent') return { kind: 'agent', id: app.id, launch: loaded }
   return {
     kind: 'mcp',
@@ -170,6 +170,26 @@ function useKicks() {
   return { kick, onKick }
 }
 
+/** Launches an App, one launch at a time per App, and puts what loaded in place; a failure shows on the App's place. */
+function useLaunch(setProblems: Dispatch<SetStateAction<ReadonlyMap<string, string>>>) {
+  const queryClient = useQueryClient()
+  const loading = useRef(new Set<string>())
+  const load = useCallback(
+    (app: AppView, put: (selection: AppSelection) => void) => {
+      if (loading.current.has(app.id)) return
+      loading.current.add(app.id)
+      launch(queryClient, app)
+        .then(put)
+        .catch((cause: unknown) =>
+          setProblems((current) => withItem(current, app.id, messageOf(cause, 'load the app'))),
+        )
+        .finally(() => loading.current.delete(app.id))
+    },
+    [queryClient, setProblems],
+  )
+  return { loading, load }
+}
+
 /**
  * Loading and unloading: `show` launches an App once however often it is asked, the cap unloads the least recently
  * seen, and an App the feed reports closed (or gone) unloads everywhere.
@@ -178,7 +198,7 @@ function useResidency(apps: readonly AppView[]) {
   const [instances, setInstances] = useState<ReadonlyMap<string, Instance>>(new Map())
   const [dormant, setDormant] = useState<ReadonlySet<string>>(new Set())
   const [problems, setProblems] = useState<ReadonlyMap<string, string>>(new Map())
-  const loading = useRef(new Set<string>())
+  const { loading, load } = useLaunch(setProblems)
   const seenAt = useRef(new Map<string, { seenAt: number; visible: boolean }>())
   const latest = useRef(instances)
   latest.current = instances
@@ -195,17 +215,16 @@ function useResidency(apps: readonly AppView[]) {
     }))
     unload(evictions(residents, LIVE_APPS), true)
   }, [unload])
-  const show = useCallback((app: AppView) => {
-    seenAt.current.set(app.id, { seenAt: Date.now(), visible: true })
-    setDormant((current) => (current.has(app.id) ? new Set([...current].filter((id) => id !== app.id)) : current))
-    if (latest.current.has(app.id) || loading.current.has(app.id)) return
-    loading.current.add(app.id)
-    setProblems((current) => without(current, [app.id]))
-    launch(app)
-      .then((selection) => setInstances((current) => withItem(current, app.id, { app, selection })))
-      .catch((cause: unknown) => setProblems((current) => withItem(current, app.id, failureText(cause))))
-      .finally(() => loading.current.delete(app.id))
-  }, [])
+  const show = useCallback(
+    (app: AppView) => {
+      seenAt.current.set(app.id, { seenAt: Date.now(), visible: true })
+      setDormant((current) => (current.has(app.id) ? new Set([...current].filter((id) => id !== app.id)) : current))
+      if (latest.current.has(app.id) || loading.current.has(app.id)) return
+      setProblems((current) => without(current, [app.id]))
+      load(app, (selection) => setInstances((current) => withItem(current, app.id, { app, selection })))
+    },
+    [load, loading],
+  )
   const seen = useCallback(
     (id: string, visible: boolean) => {
       const was = seenAt.current.get(id)
@@ -216,16 +235,13 @@ function useResidency(apps: readonly AppView[]) {
   )
   useEffect(balance, [instances.size, balance])
   /** Loads an agent app's new release in place of the old one. */
-  const reload = useCallback((app: AppView) => {
-    if (loading.current.has(app.id)) return
-    loading.current.add(app.id)
-    launch(app)
-      .then((selection) =>
+  const reload = useCallback(
+    (app: AppView) =>
+      load(app, (selection) =>
         setInstances((current) => patched(current, app.id, (instance) => ({ ...instance, app, selection }))),
-      )
-      .catch((cause: unknown) => setProblems((current) => withItem(current, app.id, failureText(cause))))
-      .finally(() => loading.current.delete(app.id))
-  }, [])
+      ),
+    [load],
+  )
   // The feed is the truth about which Apps are kept: a closed one unloads, a renamed one shows its new name, and an
   // agent app on a new release loads it.
   useEffect(() => {

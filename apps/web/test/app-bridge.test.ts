@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { InMemoryTransport } from '@modelcontextprotocol/client'
 import { App } from '@modelcontextprotocol/ext-apps'
+import { GrantDenied } from '@goblin/contracts/api'
 import { createAppBridge, type AppCalls } from '../src/lib/app-bridge.ts'
 import type { AgentAppCalls } from '../src/lib/agent-app-bridge.ts'
 import type { FrameEvents } from '../src/components/apps/frame.tsx'
@@ -248,10 +249,48 @@ describe('an agent app bridge', () => {
       expect(reads).toBe(2)
       await app.sendLog({ level: 'error', data: 'TypeError: boom' })
       await until(() => shown.length === 1)
-      expect(shown[0]).toMatch(/^Your agent could not be told that this view failed: /u)
+      expect(shown).toEqual(['Could not tell your agent that this view failed. Try again.'])
     } finally {
       await app.close()
       await bridge.close()
+    }
+  })
+})
+
+describe('an MCP App calling a tool the owner has not granted', () => {
+  it("runs the call again once the owner allows it, and otherwise refuses it in the owner's words", async () => {
+    let granted = false
+    const asked: string[] = []
+    const calls: Omit<AppCalls, 'agent'> = {
+      tool: async (_serverId, params) => {
+        if (!granted) throw new GrantDenied({ serverId: 'myplan', name: params.name, ref: 'ray-403' })
+        return { content: [{ type: 'text', text: 'done' }] }
+      },
+      resource: async (_serverId, params) => ({ contents: [{ uri: params.uri, text: '' }] }),
+    }
+    const allowing = await pair('myplan', calls, {
+      askGrant: async (name) => {
+        asked.push(name)
+        granted = true
+        return true
+      },
+    })
+    try {
+      expect(await allowing.app.callServerTool({ name: 'read', arguments: {} })).toMatchObject({
+        content: [{ type: 'text', text: 'done' }],
+      })
+      expect(asked).toEqual(['read'])
+    } finally {
+      await allowing.close()
+    }
+    granted = false
+    const refusing = await pair('myplan', calls)
+    try {
+      await expect(refusing.app.callServerTool({ name: 'read', arguments: {} })).rejects.toThrow(
+        'That tool is not enabled. · ref ray-403',
+      )
+    } finally {
+      await refusing.close()
     }
   })
 })

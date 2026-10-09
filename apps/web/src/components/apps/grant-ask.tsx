@@ -2,9 +2,12 @@
 // naming the exact tool. Allow grants that tool and retries; "Not now", or two minutes without an answer, fails the
 // call as denied. The App's own words never reach this card; only the tool name it called does.
 import { useCallback, useRef, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { KeyRoundIcon } from 'lucide-react'
+import { GrantDenied } from '@goblin/contracts/api'
 import { Button } from '@goblin/ui'
-import { ApiFailure, failureText, request } from '../../lib/boundary.ts'
+import { allowAppToolMutation } from '../../apps/queries.ts'
+import { messageOf } from '../../lib/query/app-error.ts'
 
 const WAIT_MS = 120_000
 
@@ -44,7 +47,7 @@ export function useAppGrantAsks(serverId: string) {
 
 /** True when an App's tool call failed only because the owner has not granted that tool. */
 export function grantDenied(cause: unknown): boolean {
-  return cause instanceof ApiFailure && cause.tag === 'GrantDenied'
+  return cause instanceof GrantDenied
 }
 
 function AppGrantCard({
@@ -56,19 +59,10 @@ function AppGrantCard({
   readonly name: string
   readonly onAnswer: (allowed: boolean) => void
 }) {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  async function allow(): Promise<void> {
-    setBusy(true)
-    setError('')
-    try {
-      await request('/api/mcp/grants', { method: 'PUT', body: { serverId, name, allowed: true } })
-      onAnswer(true)
-    } catch (cause) {
-      setError(failureText(cause))
-      setBusy(false)
-    }
-  }
+  const queryClient = useQueryClient()
+  const allow = useMutation(allowAppToolMutation(queryClient))
+  const busy = allow.isPending || allow.isSuccess
+  const error = allow.error === null ? '' : messageOf(allow.error, 'allow the tool')
   return (
     <div className="app-offer" role="alertdialog" aria-label="Permission request from the app">
       <KeyRoundIcon aria-hidden />
@@ -82,7 +76,11 @@ function AppGrantCard({
       <Button variant="ghost" size="app-action" disabled={busy} onClick={() => onAnswer(false)}>
         Not now
       </Button>
-      <Button size="app-action" disabled={busy} onClick={() => void allow()}>
+      <Button
+        size="app-action"
+        disabled={busy}
+        onClick={() => allow.mutate({ serverId, name }, { onSuccess: () => onAnswer(true) })}
+      >
         Allow
       </Button>
     </div>

@@ -3,28 +3,17 @@
 // runtime, where the agent sees them.
 import type { AppBridge } from '@modelcontextprotocol/ext-apps/app-bridge'
 import type { CallToolResult } from '@modelcontextprotocol/client'
-import { Schema } from 'effect'
-import { type AppCall, AppCallResult, AppSnapshot } from '@goblin/contracts'
-import { failureText, isString, record, request } from './boundary.ts'
+import type { AppCall, AppCallResult, AppSnapshot } from '@goblin/contracts'
+import { isString, record } from './boundary.ts'
+import { messageOf } from './query/app-error.ts'
 
-const decodeCall = Schema.decodeUnknownSync(AppCallResult)
-const decodeSnapshot = Schema.decodeUnknownSync(AppSnapshot)
 const OP = /^ui:([0-9a-f-]{36})$/u
 
-/** The routes an agent app's frame reaches, by App id. */
+/** The routes an agent app's frame reaches, by App id (the frame builds them over `apps/queries.ts`). */
 export type AgentAppCalls = {
   readonly call: (id: string, call: AppCall) => Promise<AppCallResult>
   readonly state: (id: string) => Promise<AppSnapshot>
   readonly report: (id: string, message: string) => Promise<void>
-}
-
-/** The owner's routes for agent app views (ADR 0021). */
-export const agentAppCalls: AgentAppCalls = {
-  call: async (id, body) => decodeCall(await request(`/api/apps/${id}/call`, { body })),
-  state: async (id) => decodeSnapshot(await request(`/api/apps/${id}/state`)),
-  report: async (id, message) => {
-    await request(`/api/apps/${id}/diagnostics`, { body: { message } })
-  },
 }
 
 /** A state as the view's SDK takes it: a tool result whose `_meta` carries the revision, release and state. */
@@ -106,7 +95,7 @@ export function agentBridge(
       push.shown(result.revision)
       return stateResult(result)
     } catch (cause) {
-      return failed(failureText(cause))
+      return failed(messageOf(cause, `run ${params.name}`))
     }
   }
   bridge.onreadresource = async () => {
@@ -118,7 +107,7 @@ export function agentBridge(
     const message = (isString(data) ? data : JSON.stringify(data)).slice(0, 4000)
     calls.report(id, message).catch((cause: unknown) => {
       // The frame says the agent was told; the owner learns it was not.
-      report(`Your agent could not be told that this view failed: ${failureText(cause)}`)
+      report(messageOf(cause, 'tell your agent that this view failed'))
     })
   })
   bridge.addEventListener('initialized', () => {
