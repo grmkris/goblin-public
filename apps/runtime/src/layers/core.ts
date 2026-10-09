@@ -11,7 +11,7 @@ import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../runtime/input.ts'
 import { flowRunEvent } from '../telemetry/events.ts'
-import type { LegacyLive } from './legacy.ts'
+import type { LegacyServices } from './legacy.ts'
 
 /**
  * Conversation flows go to the agent's run ledger and its log line (ADR 0024), then, one point per operation with a
@@ -45,4 +45,4 @@ export const CoreLive = (
  * What a lane's layer may require: the core services and, until each moves into its lane, the legacy ones. A lane
  * layer also sees the lanes below it in `layers/index.ts`.
  */
-export type FoundationServices = Layer.Success<ReturnType<typeof CoreLive>> | Layer.Success<typeof LegacyLive>
+export type FoundationServices = Layer.Success<ReturnType<typeof CoreLive>> | LegacyServices

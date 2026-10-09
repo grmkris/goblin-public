@@ -6,28 +6,81 @@ import { CoreLive } from './core.ts'
 import { DelegationLive } from './delegation.ts'
 import { HttpLive } from './http.ts'
 import { KnowledgeLive } from './knowledge.ts'
-import { LegacyLive } from './legacy.ts'
+import {
+  ActivateMemoriesStep,
+  AppsStep,
+  BudgetStep,
+  CapabilitiesStep,
+  ChannelStep,
+  ChatsStep,
+  ConversationsStep,
+  DelegationStep,
+  EventsStep,
+  HelperExecutionStep,
+  McpHostStep,
+  MemoryStep,
+  MigrationsStep,
+  MovesStep,
+  RestStep,
+  RetoolStep,
+  RoutinesStep,
+  SkillsStep,
+  TranscriptsStep,
+} from './legacy.ts'
 import { McpLive } from './mcp.ts'
 import { ObservabilityLive } from './observability.ts'
 import { ModelBudgetLive, RoutinesLive } from './routines.ts'
 
+/** `step`, built after and over everything `built` provides; the result provides both. */
+const then =
+  <A, E, R>(step: Layer.Layer<A, E, R>) =>
+  <A0, E0, R0>(built: Layer.Layer<A0, E0, R0>) =>
+    Layer.provideMerge(step, built)
+
 /**
- * Every service of one agent, built once per Durable Object (agent.ts): the core services, the legacy start in its
- * order (layers/legacy.ts), the plan, model budget and model picker (a send's admission reads them), then each lane's
- * layer in turn, each built after and over everything before it.
+ * The agent's start over the core services, step by step in its one fixed order (the boot contract): each step is a
+ * layer built after and over every step before it, so each await holds up the steps after it.
  */
-export const AgentLive = (input: AgentInputs) => {
-  const foundation = Layer.provideMerge(LegacyLive, CoreLive(input))
-  const budget = Layer.provideMerge(ModelBudgetLive, foundation)
-  const conversation = Layer.provideMerge(ConversationLive, budget)
-  const delegation = Layer.provideMerge(DelegationLive, conversation)
-  const mcp = Layer.provideMerge(McpLive, delegation)
-  const knowledge = Layer.provideMerge(KnowledgeLive, mcp)
-  const routines = Layer.provideMerge(RoutinesLive, knowledge)
-  const observability = Layer.provideMerge(ObservabilityLive, routines)
-  const apps = Layer.provideMerge(AppsLive, observability)
-  return Layer.provideMerge(HttpLive, apps)
-}
+const start = (input: AgentInputs) =>
+  CoreLive(input).pipe(
+    then(MigrationsStep),
+    then(McpHostStep),
+    then(BudgetStep),
+    then(ChatsStep),
+    then(MemoryStep),
+    then(CapabilitiesStep),
+    then(HelperExecutionStep),
+    then(RetoolStep),
+    then(RoutinesStep),
+    then(ConversationsStep),
+    then(AppsStep),
+    then(DelegationStep),
+    then(TranscriptsStep),
+    then(MovesStep),
+    then(ActivateMemoriesStep),
+    then(SkillsStep),
+    then(ChannelStep),
+    then(EventsStep),
+    then(RestStep),
+  )
+
+/**
+ * Every service of one agent, built once per Durable Object (agent.ts): the start (above), the plan, model budget and
+ * model picker (a send's admission reads them), then each lane's layer in turn, each built after and over everything
+ * before it.
+ */
+export const AgentLive = (input: AgentInputs) =>
+  start(input).pipe(
+    then(ModelBudgetLive),
+    then(ConversationLive),
+    then(DelegationLive),
+    then(McpLive),
+    then(KnowledgeLive),
+    then(RoutinesLive),
+    then(ObservabilityLive),
+    then(AppsLive),
+    then(HttpLive),
+  )
 
 /** Every service a program may require, derived from the layers so no lane edits a shared union. */
 export type AgentServices = Layer.Success<ReturnType<typeof AgentLive>>
