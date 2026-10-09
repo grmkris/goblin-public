@@ -887,7 +887,7 @@ async function* sseEvents(response: Response, deadline: number) {
  * working then idle (with its replies counted again), and its Close.
  */
 async function feedSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
-  const events = sseEvents(await agent.fetch('https://agent/workspace/events'), Date.now() + 8000)
+  const events = sseEvents(await agent.fetch('https://agent/api/workspace/events'), Date.now() + 8000)
   const first = await events.next()
   const created = await ownerCreate(agent, {})
   if (!created.ok) return Response.json({ created })

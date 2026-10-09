@@ -1,165 +1,21 @@
-import type { CallToolResult, GetPromptResult, ReadResourceResult } from '@modelcontextprotocol/client'
 import type { PiReceipt } from 'agents/harness/pi'
 import type { RpcResult } from './http/rpc.ts'
-import type { Grant, GrantCapability } from './mcp/grants.ts'
-import type {
-  AppCall,
-  AppCallResult,
-  AppContext,
-  AppDiagnostic,
-  AppLaunch,
-  AgentAppChange,
-  AgentAppDetail,
-  AgentAppSummary,
-  DeleteAgentApp,
-  AppSnapshot,
-  AppView,
-  ComposerOptions,
-  ConversationQueue,
-  QueueRemoval,
-  QueueRemovalResult,
-  ComposerSelection,
-  CreateApp,
-  UpdateApp,
-  CapabilityChange,
-  CatalogEntry,
-  ChannelStatus,
-  ConversationCapabilities,
-  MemoryStatus,
-  ModelChoice,
-  RegistryView,
-  ResidentStatus,
-  ServerSuggestion,
-  ServerView,
-  ConversationView,
-  CreateConversation,
-  UpdateConversation,
-  ToolView,
-  ApprovalView,
-  UsageToday,
-} from '@goblin/contracts'
+import type { GrantCapability } from './mcp/grants.ts'
+import type { ConversationView } from '@goblin/contracts'
 import type { TranscriptMessage } from './pi/transcript.ts'
 import type { MailBinding } from './auth/mail.ts'
-import type { ServerSource } from './mcp/servers.ts'
 import type { EventWebhook, EventWebhookResult } from './mcp/events.ts'
 import type { Doorbell } from './channel/doorbell.ts'
 
 /** What starting a Thread returns (ADR 0034): the Thread as it is now and the receipt of the owner's message in it. */
 export type StartedThread = { readonly thread: ConversationView; readonly receipt: PiReceipt }
 
-/** Owner-facing RPC of the Agent DO. The Worker authenticates the owner before calling any of these. */
+/**
+ * The Agent DO's RPC, what is left of it: the owner reaches the agent through its typed API (`onRequest`, forwarded by
+ * the Worker's edge), never through RPC. These serve the Worker's other callers, each after its own check: an inbound
+ * MCP client (`/mcp`), myagent's doorbell and MCP Events (`/hooks/*`, by route token), and account erasure.
+ */
 export interface AgentRpcMethods {
-  readonly submit: (
-    thread: string,
-    input: string,
-    operationId: string,
-    context?: {
-      readonly appContext?: readonly AppContext[]
-      readonly attachments?: readonly string[]
-      readonly selections?: readonly ComposerSelection[]
-      readonly personaOrder?: 'parallel' | 'sequence'
-    },
-  ) => Promise<RpcResult<PiReceipt>>
-  /** Post the owner's message as the head of a new Thread of `thread`; the reply lands there (ADR 0034). */
-  readonly startThread: (
-    thread: string,
-    input: string,
-    operationId: string,
-    context?: {
-      readonly appContext?: readonly AppContext[]
-      readonly attachments?: readonly string[]
-      readonly selections?: readonly ComposerSelection[]
-    },
-  ) => Promise<RpcResult<StartedThread>>
-  /** Move to thread (ADR 0034): the same operation id returns the same receipt. */
-  readonly moveToThread: (
-    thread: string,
-    input: import('@goblin/contracts').MoveToThread,
-  ) => Promise<RpcResult<import('@goblin/contracts').MoveReceipt>>
-  readonly conversationQueue: (thread: string) => Promise<RpcResult<ConversationQueue>>
-  readonly removeQueuedInput: (thread: string, input: QueueRemoval) => Promise<RpcResult<QueueRemovalResult>>
-  readonly composerOptions: (thread: string) => Promise<RpcResult<ComposerOptions>>
-  readonly stop: (thread: string, operationId?: string) => Promise<RpcResult<boolean>>
-  readonly conversations: () => Promise<RpcResult<readonly ConversationView[]>>
-  readonly createConversation: (input: CreateConversation) => Promise<RpcResult<ConversationView>>
-  readonly updateConversation: (id: string, change: UpdateConversation) => Promise<RpcResult<ConversationView>>
-  /** The owner's Topics (ADR 0032): list, create (idempotent by operation id), rename/archive/restore/search opt-out. */
-  readonly topics: () => Promise<RpcResult<readonly import('@goblin/contracts').TopicView[]>>
-  readonly createTopic: (
-    input: import('@goblin/contracts').CreateTopic,
-  ) => Promise<RpcResult<import('@goblin/contracts').TopicView>>
-  readonly updateTopic: (
-    id: number,
-    change: import('@goblin/contracts').UpdateTopic,
-  ) => Promise<RpcResult<import('@goblin/contracts').TopicView>>
-  /** The owner's Personas (ADR 0033), what organizing changed, and Undo. */
-  readonly personas: () => Promise<RpcResult<readonly import('@goblin/contracts').PersonaView[]>>
-  readonly createPersona: (
-    input: import('@goblin/contracts').CreatePersona,
-  ) => Promise<RpcResult<import('@goblin/contracts').PersonaView>>
-  readonly personaDetail: (id: number) => Promise<RpcResult<import('@goblin/contracts').PersonaDetail>>
-  readonly updatePersona: (
-    id: number,
-    change: import('@goblin/contracts').UpdatePersona,
-  ) => Promise<RpcResult<import('@goblin/contracts').PersonaView>>
-  readonly organizeReceipts: () => Promise<RpcResult<readonly import('@goblin/contracts').OrganizeReceipt[]>>
-  readonly undoOrganize: (id: string) => Promise<RpcResult<import('@goblin/contracts').OrganizeReceipt>>
-  readonly markRead: (id: string) => Promise<RpcResult<boolean>>
-  readonly createApp: (input: CreateApp) => Promise<RpcResult<AppView>>
-  readonly updateApp: (id: string, change: UpdateApp) => Promise<RpcResult<AppView>>
-  readonly launchApp: (id: string) => Promise<RpcResult<AppLaunch>>
-  readonly appSnapshot: (id: string) => Promise<RpcResult<AppSnapshot>>
-  readonly appCall: (id: string, call: AppCall) => Promise<RpcResult<AppCallResult>>
-  readonly appDiagnostic: (id: string, diagnostic: AppDiagnostic) => Promise<RpcResult<{ readonly kept: boolean }>>
-  readonly agentApps: () => Promise<RpcResult<readonly AgentAppSummary[]>>
-  readonly agentAppDetail: (name: string) => Promise<RpcResult<AgentAppDetail>>
-  readonly changeAgentApp: (name: string, change: AgentAppChange) => Promise<RpcResult<AgentAppDetail>>
-  readonly deleteAgentApp: (name: string, input: DeleteAgentApp) => Promise<RpcResult<{ readonly deleted: string }>>
-  readonly conversationCapabilities: (thread: string) => Promise<RpcResult<ConversationCapabilities>>
-  readonly setConversationCapability: (
-    thread: string,
-    change: CapabilityChange,
-  ) => Promise<RpcResult<ConversationCapabilities>>
-  readonly mcpServers: () => Promise<RpcResult<readonly ServerView[]>>
-  readonly mcpConnect: (serverId: string) => Promise<RpcResult<{ readonly authorizationUrl?: string }>>
-  readonly mcpFinishConnect: (state: string, code: string, issuer?: string) => Promise<RpcResult<string>>
-  readonly mcpDisconnect: (serverId: string) => Promise<RpcResult<null>>
-  readonly mcpSuggested: () => Promise<RpcResult<readonly ServerSuggestion[]>>
-  readonly mcpCatalog: (query: string) => Promise<RpcResult<readonly CatalogEntry[]>>
-  readonly mcpRegistries: () => Promise<RpcResult<readonly RegistryView[]>>
-  readonly mcpAddRegistry: (url: string) => Promise<RpcResult<readonly RegistryView[]>>
-  readonly mcpRemoveRegistry: (url: string) => Promise<RpcResult<readonly RegistryView[]>>
-  readonly mcpAddServer: (endpoint: string, source?: ServerSource) => Promise<RpcResult<ServerView>>
-  readonly mcpRemoveServer: (serverId: string) => Promise<RpcResult<null>>
-  readonly mcpTools: (serverId: string, refresh: boolean) => Promise<RpcResult<readonly ToolView[]>>
-  readonly mcpGrants: () => Promise<RpcResult<readonly Grant[]>>
-  readonly mcpSetToolGrant: (serverId: string, name: string, allowed: boolean) => Promise<RpcResult<readonly Grant[]>>
-  readonly mcpSetAskFirst: (serverId: string, name: string, enabled: boolean) => Promise<RpcResult<readonly Grant[]>>
-  readonly mcpApproval: (id: string) => Promise<RpcResult<ApprovalView>>
-  readonly mcpDecideApproval: (id: string, allowed: boolean) => Promise<RpcResult<ApprovalView>>
-  readonly mcpSetSkills: (
-    serverId: string,
-    enabled: boolean,
-  ) => Promise<RpcResult<{ readonly serverId: string; readonly enabled: boolean }>>
-  readonly mcpSetAppGrant: (serverId: string, uri: string, allowed: boolean) => Promise<RpcResult<readonly Grant[]>>
-  readonly mcpCallTool: (
-    serverId: string,
-    name: string,
-    args: Record<string, unknown>,
-    caller: 'human' | 'app',
-  ) => Promise<RpcResult<CallToolResult>>
-  readonly mcpReadResource: (
-    serverId: string,
-    uri: string,
-    caller: 'human' | 'app',
-  ) => Promise<RpcResult<ReadResourceResult>>
-  readonly mcpGetPrompt: (
-    serverId: string,
-    name: string,
-    args: Record<string, string>,
-  ) => Promise<RpcResult<GetPromptResult>>
-  readonly residentStatus: () => Promise<RpcResult<ResidentStatus>>
-  readonly residentSet: (enabled: boolean) => Promise<RpcResult<ResidentStatus>>
   readonly askAsClient: (
     author: string,
     input: string,
@@ -167,39 +23,10 @@ export interface AgentRpcMethods {
     waitMs: number,
   ) => Promise<RpcResult<AskResult>>
   readonly recentMessages: (limit: number) => Promise<RpcResult<readonly TranscriptMessage[]>>
-  readonly usageToday: () => Promise<RpcResult<UsageToday>>
-  readonly memoryStatus: (chat?: string) => Promise<RpcResult<MemoryStatus>>
-  readonly modelChoice: () => Promise<RpcResult<ModelChoice>>
-  readonly chooseModel: (modelId: string) => Promise<RpcResult<ModelChoice>>
-  readonly channelStatus: () => Promise<RpcResult<ChannelStatus>>
-  readonly channelEnable: (serverId: string) => Promise<RpcResult<ChannelStatus>>
-  readonly channelDisable: () => Promise<RpcResult<null>>
   /** Not an owner request: myagent's doorbell, after the Worker checked the hook token (channel/doorbell.ts). */
   readonly channelDoorbell: (doorbell: Doorbell) => Promise<RpcResult<true>>
   readonly mcpEventsWebhook: (input: EventWebhook) => Promise<RpcResult<EventWebhookResult>>
   readonly deleteAgentData: () => Promise<RpcResult<true>>
-  readonly routines: () => Promise<RpcResult<import('@goblin/contracts').RoutinePage>>
-  readonly routinePropose: (
-    input: import('@goblin/contracts').RoutineProposal,
-  ) => Promise<RpcResult<import('@goblin/contracts').RoutineView>>
-  readonly routineEdit: (
-    id: string,
-    input: import('@goblin/contracts').RoutineEdit,
-  ) => Promise<RpcResult<import('@goblin/contracts').RoutineView>>
-  readonly routineChange: (
-    id: string,
-    input: import('@goblin/contracts').RoutineRevision,
-    action: 'confirm' | 'pause' | 'archive',
-  ) => Promise<RpcResult<import('@goblin/contracts').RoutineView>>
-  readonly routineSettings: () => Promise<RpcResult<import('@goblin/contracts').RoutineSettings>>
-  readonly routineSettingsSet: (
-    settings: import('@goblin/contracts').RoutineSettings,
-  ) => Promise<RpcResult<import('@goblin/contracts').RoutineSettings>>
-  readonly routineRun: (
-    id: string,
-    input: import('@goblin/contracts').RoutineManualRun,
-  ) => Promise<RpcResult<import('@goblin/contracts').RoutineRunView>>
-  readonly routineRuns: (id: string) => Promise<RpcResult<import('@goblin/contracts').RoutineRunPage>>
 }
 export type AskResult =
   | { readonly status: 'done'; readonly operationId: string; readonly text: string }

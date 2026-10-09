@@ -1,10 +1,5 @@
-import { OrganizingAgent } from './organize/rpc.ts'
+import { Agent } from 'agents'
 import { type Extension } from '@earendil-works/pi-durable'
-import { type CapabilityChange, type JsonObject, type QueueRemoval } from '@goblin/contracts'
-import { ownerQueue, removeOwnerQueuedInput } from './conversation-queue.ts'
-import type { OwnerMessageContext } from './agent-program.ts'
-import { composerOptions as composerOptionsProgram } from './composer.ts'
-import type { AgentAppChange, AppCall, AppDiagnostic, CreateApp, DeleteAgentApp, UpdateApp } from '@goblin/contracts'
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
@@ -25,7 +20,7 @@ import { mcpEventsWake } from './mcp/wake.ts'
 import { routinesWake, runRoutine, runRoutineDeadline } from './routines/wake.ts'
 import { appsExtension, appExecutionExtension } from './pi/apps.ts'
 import { serversExtension } from './pi/servers.ts'
-import { agentRequest, chatSnapshot } from './agent-requests.ts'
+import { agentRequest } from './agent-requests.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
 import { type AgentTelemetry, agentTelemetry } from './telemetry/agent.ts'
 import { LITELLM_STREAMS, makePiModels } from './pi/model.ts'
@@ -37,9 +32,7 @@ import { memoryExtensions } from './pi/memory.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { skillLearningExtension, skillsExtension } from './pi/skills.ts'
 import { AgentLive } from './layers/index.ts'
-import { capabilitiesOf, changeCapabilities } from './capabilities/program.ts'
-import { type AgentServices, Channel, Conversations, Mcp, Models, attempt } from './services.ts'
-import { attemptSync, Routines, RoutineRuns } from './services.ts'
+import { type AgentServices } from './services.ts'
 import { accountEntitlements, type EntitlementPolicy } from './billing/gates.ts'
 import { type Bridge, closeRuntime, makeBridge, openRuntime } from './runtime/bridge.ts'
 import type { AgentInputs } from './runtime/input.ts'
@@ -47,46 +40,17 @@ import { type Instrument, reported } from './runtime/instrument.ts'
 import { OwnerHttp } from './http/api/server.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
 import { nowSeconds } from './clock.ts'
-import type { ServerSource } from './mcp/servers.ts'
 import { Events, type EventWebhook } from './mcp/events.ts'
-import { enableTelegram, disableTelegram, acceptDoorbell } from './channel/program.ts'
-import { setSkillEvents } from './skills/events.ts'
-import { disconnectOwnerServer, ownerServers, removeOwnerServer, suggestedServers } from './mcp/program.ts'
-import {
-  askClient,
-  clientRequest,
-  createOwnerConversation,
-  markOwnerRead,
-  memoryStatusOf,
-  ownerRequest,
-  ownerResidentStatus,
-  recentOwnerMessages,
-  ownerUsage,
-  setResident,
-  submitOwner,
-  stopOwner,
-  updateOwnerConversation,
-} from './agent-program.ts'
-import * as AppPrograms from './apps/program.ts'
-import { startThread } from './chats/thread-heads.ts'
-import { type MovePhase, moveToThread } from './chats/mover.ts'
+import { acceptDoorbell } from './channel/program.ts'
+import { askClient, clientRequest, recentOwnerMessages } from './agent-program.ts'
+import { type MovePhase } from './chats/mover.ts'
 import { budgetExtension } from './pi/budget.ts'
 import { retrievalExtension } from './pi/retrieval.ts'
-import { chooseOwnerModel, type Applied } from './agent-model.ts'
+import { type Applied } from './agent-model.ts'
 import { routinesExtension } from './pi/routines.ts'
-import { editRoutine, proposeRoutine, routinesList, setRoutineSettings } from './routines/program.ts'
-import type { CreateConversation, RoutineEdit, RoutineProposal, RoutineRevision } from '@goblin/contracts'
-import type { MoveToThread, RoutineSettings, RoutineManualRun, UpdateConversation } from '@goblin/contracts'
 import { requireRoutine, requireRoutineSession } from './routines/authority.ts'
-import { approvalView, ownerApprovalDecision, ownerResource, setAskFirst } from './mcp/approval-owner.ts'
-import { runView } from './routines/runs.ts'
 import type { RoutineSlot } from './routines/scheduler.ts'
-import {
-  RoutineController,
-  routineExtensions,
-  routineSchedulePorts,
-  routineChangeProgram,
-} from './routines/controller.ts'
+import { RoutineController, routineExtensions, routineSchedulePorts } from './routines/controller.ts'
 
 type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
 
@@ -95,9 +59,11 @@ const instrument: Instrument = reported
 
 /**
  * The resident agent. Pi (through the native PiHarness) owns conversations; the services in `services.ts` own MCP
- * connections, credentials, grants and resident authority. RPC methods are thin: they run one program each.
+ * connections, credentials, grants and resident authority. The owner reaches it through its typed API (`onRequest`);
+ * the five RPC methods left are for the Worker's other callers (an inbound client, myagent, MCP Events, account
+ * erasure), each one program.
  */
-export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
+export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods {
   readonly harness: PiHarness
   readonly #pi: PiModels
   readonly #thread: Extension
@@ -130,7 +96,7 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
     const execution = [...tools, skillsExtension(run), filesExtension(run), appExecutionExtension(apps)]
     this.#subagents = subagentsExtension(run, (self) => [personaExtension, ...execution, ...apps.extensions(), self])
     const subagents = this.#subagents.extension
-    const { personas, organize } = organizingKit(run, () => this.stopping())
+    const { personas, organize } = organizingKit(run, () => this.#stopping())
     this.#personas = personas
     const retrieval = retrievalExtension(run)
     const base = [...execution, skillLearningExtension(run), ...appsExtension(apps, run), organize, retrieval]
@@ -221,7 +187,7 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
       routines: this.#routines,
       run: this.#bridge.run,
       local: this.#bridge.local,
-      stopping: this.stopping,
+      stopping: this.#stopping,
       instrument,
     }
   }
@@ -259,239 +225,8 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
     await runAppJob(this.#apps, slot)
   }
 
-  /** An owner request: renew resident authority, then run the program. */
-  async #owner<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
-    return encodeExit(await this.#bridge.exit(ownerRequest(program)))
-  }
-  /** What the owner's message paths run with. */
-  #submitRuntime() {
-    return {
-      harness: this.harness,
-      applied: this.#applied,
-      routines: this.#routines,
-      subagents: this.#subagents,
-      personas: this.#personas,
-      run: this.#bridge.run,
-    }
-  }
-  /** The owner's message into a thread, with what an open App shared for the agent as separate untrusted blocks. */
-  submit(thread: string, input: string, operationId: string, context: OwnerMessageContext = {}) {
-    return this.#owner(submitOwner({ ...this.#submitRuntime(), thread, text: input, operationId, context }))
-  }
-  /** Move to thread (ADR 0034): the turn `input.entry` started becomes a Thread; the run continues there. */
-  moveToThread(thread: string, input: MoveToThread) {
-    return this.#owner(moveToThread(thread, input))
-  }
-  /** The owner's message posted as the head of a new Thread of `thread`; the reply lands in the Thread (ADR 0034). */
-  startThread(thread: string, input: string, operationId: string, context: OwnerMessageContext = {}) {
-    return this.#owner(startThread({ ...this.#submitRuntime(), parent: thread, text: input, operationId, context }))
-  }
-  conversationQueue(thread: string) {
-    return this.#owner(ownerQueue(this.harness, thread))
-  }
-  removeQueuedInput(thread: string, input: QueueRemoval) {
-    return this.#owner(removeOwnerQueuedInput(this.harness, thread, input))
-  }
-  composerOptions(thread: string) {
-    return this.#owner(composerOptionsProgram(thread, this.#bridge.run))
-  }
-  conversations() {
-    return this.#owner(Conversations.use((conversations) => attempt(() => conversations.list())))
-  }
-  routines() {
-    return this.#owner(routinesList)
-  }
-  routinePropose(input: RoutineProposal) {
-    return this.#owner(proposeRoutine(input.definition, input.operationId))
-  }
-  routineEdit(id: string, input: RoutineEdit) {
-    return this.#owner(Effect.tap(editRoutine(id, input), () => attempt(() => this.#routines.reconcile())))
-  }
-  routineChange(id: string, input: RoutineRevision, action: 'confirm' | 'pause' | 'archive') {
-    return this.#owner(routineChangeProgram(this.#routines, id, input, action))
-  }
-  routineRun(id: string, input: RoutineManualRun) {
-    return this.#owner(attempt(async () => runView(await this.#routines.manual(id, input))))
-  }
-  routineRuns(id: string) {
-    return this.#owner(RoutineRuns.use((store) => attemptSync(() => ({ runs: store.list(id) }))))
-  }
-  routineSettings() {
-    return this.#owner(Routines.useSync((store) => store.settings()))
-  }
-  routineSettingsSet(settings: RoutineSettings) {
-    return this.#owner(setRoutineSettings(settings))
-  }
-
-  /** A thread branched from a message of any open conversation, or an empty one. */
-  createConversation(input: CreateConversation) {
-    return this.#owner(createOwnerConversation(input))
-  }
-  updateConversation(id: string, change: UpdateConversation) {
-    return this.#owner(updateOwnerConversation(this.#routines, id, change))
-  }
-
-  protected override readonly owner = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#owner(program)
   /** What an archive or a Stop reaches: Pi, a routine's runs and the Persona turns asked in a chat. */
-  protected override stopping = () => ({ harness: this.harness, routines: this.#routines, personas: this.#personas })
-
-  /** The owner has seen the conversation's newest reply. */
-  markRead(id: string) {
-    return this.#owner(markOwnerRead(id))
-  }
-
-  /** The owner's kept Apps (ADR 0020): keep one from a call, close or reopen it, or read what loads it. */
-  createApp(input: CreateApp) {
-    return this.#owner(AppPrograms.createOwnerApp(input))
-  }
-  updateApp(id: string, change: UpdateApp) {
-    return this.#owner(AppPrograms.updateOwnerApp(id, change))
-  }
-  launchApp(id: string) {
-    return this.#owner(AppPrograms.launchOwnerApp(id))
-  }
-  appSnapshot(id: string) {
-    return this.#owner(AppPrograms.agentAppSnapshot(id))
-  }
-  appCall(id: string, call: AppCall) {
-    return this.#owner(AppPrograms.callAgentApp(id, call))
-  }
-  appDiagnostic(id: string, diagnostic: AppDiagnostic) {
-    return this.#owner(AppPrograms.reportAgentApp(id, diagnostic))
-  }
-  /** The owner's agent apps (ADR 0021): the list, one in full, a change to one, and deleting one. */
-  agentApps() {
-    return this.#owner(AppPrograms.agentAppList)
-  }
-  agentAppDetail(name: string) {
-    return this.#owner(AppPrograms.agentAppDetail(name))
-  }
-  changeAgentApp(name: string, change: AgentAppChange) {
-    return this.#owner(AppPrograms.changeAgentApp(name, change))
-  }
-  deleteAgentApp(name: string, input: DeleteAgentApp) {
-    return this.#owner(AppPrograms.deleteAgentApp(name, input))
-  }
-
-  /** What a conversation lets its agent use: its switches over the agent's servers, skills and subagents. */
-  conversationCapabilities(thread: string) {
-    return this.#owner(capabilitiesOf(thread))
-  }
-
-  setConversationCapability(thread: string, change: CapabilityChange) {
-    return this.#owner(changeCapabilities(thread, change))
-  }
-
-  modelChoice() {
-    return this.#owner(Models.useSync((models) => models.choice()))
-  }
-
-  /** Stores the pick and moves main to it at once; other threads follow on their next turn. */
-  chooseModel(modelId: string) {
-    return this.#owner(chooseOwnerModel(this.harness, this.#applied, modelId))
-  }
-
-  usageToday() {
-    return this.#owner(ownerUsage)
-  }
-
-  /** The memory of a chat's Conversation (Personal's by default). */
-  memoryStatus(chat?: string) {
-    return this.#owner(memoryStatusOf(chat))
-  }
-
-  stop(thread: string, operationId?: string) {
-    return this.#owner(stopOwner({ ...this.stopping(), thread, operationId }))
-  }
-
-  mcpServers() {
-    return this.#owner(ownerServers)
-  }
-
-  mcpConnect(serverId: string) {
-    return this.#owner(Mcp.use((mcp) => attempt(() => mcp.beginConnect(serverId))))
-  }
-
-  mcpFinishConnect(state: string, code: string, issuer?: string) {
-    return this.#owner(Mcp.use((mcp) => attempt(() => mcp.finishConnect(state, code, issuer))))
-  }
-
-  mcpSuggested() {
-    return this.#owner(suggestedServers(this.env.STAGE))
-  }
-  mcpCatalog(query: string) {
-    return this.#owner(Mcp.use((mcp) => attempt(() => mcp.searchCatalog(query))))
-  }
-  mcpRegistries() {
-    return this.#owner(Mcp.useSync((mcp) => mcp.registries()))
-  }
-  mcpAddRegistry(url: string) {
-    return this.#owner(Mcp.use((mcp) => attempt(() => mcp.addRegistry(url))))
-  }
-  mcpRemoveRegistry(url: string) {
-    return this.#owner(Mcp.use((mcp) => attemptSync(() => mcp.removeRegistry(url))))
-  }
-  mcpAddServer(endpoint: string, source?: ServerSource) {
-    return this.#owner(Mcp.use((mcp) => attempt(() => mcp.addServer(endpoint, source))))
-  }
-  mcpRemoveServer(serverId: string) {
-    return this.#owner(removeOwnerServer(serverId))
-  }
-  mcpDisconnect(serverId: string) {
-    return this.#owner(disconnectOwnerServer(serverId))
-  }
-  mcpTools(serverId: string, refresh: boolean) {
-    return this.#owner(Mcp.use((mcp) => attempt(() => mcp.tools(serverId, refresh))))
-  }
-  mcpGrants() {
-    return this.#owner(Mcp.useSync((mcp) => mcp.grants()))
-  }
-  mcpSetToolGrant(serverId: string, name: string, allowed: boolean) {
-    return this.#owner(Mcp.use((mcp) => attempt(() => mcp.setToolGrant(serverId, name, allowed))))
-  }
-  mcpSetAskFirst(serverId: string, name: string, enabled: boolean) {
-    return this.#owner(setAskFirst(serverId, name, enabled))
-  }
-  mcpApproval(id: string) {
-    return this.#owner(approvalView(id))
-  }
-  mcpDecideApproval(id: string, allowed: boolean) {
-    return this.#owner(
-      ownerApprovalDecision(id, allowed, {
-        run: this.#bridge.run,
-        routines: this.#routines,
-        submit: (session, text, operationId) => this.submit(session, text, operationId),
-      }),
-    )
-  }
-  /** Turn the agent's use of a server's skills on or off. */
-  mcpSetSkills(serverId: string, enabled: boolean) {
-    return this.#owner(setSkillEvents(serverId, enabled))
-  }
-
-  mcpSetAppGrant(serverId: string, uri: string, allowed: boolean) {
-    return this.#owner(Mcp.use((mcp) => attempt(() => mcp.setAppGrant(serverId, uri, allowed))))
-  }
-
-  mcpCallTool(serverId: string, name: string, args: Record<string, unknown>, caller: 'human' | 'app') {
-    return this.#owner(Mcp.use((mcp) => attempt(() => mcp.manager.callTool(serverId, name, args, { caller }))))
-  }
-
-  mcpReadResource(serverId: string, uri: string, caller: 'human' | 'app') {
-    return this.#owner(ownerResource(serverId, uri, caller))
-  }
-
-  mcpGetPrompt(serverId: string, name: string, args: Record<string, string>) {
-    return this.#owner(Mcp.use((mcp) => attempt(() => mcp.manager.getPrompt(serverId, name, args))))
-  }
-
-  residentStatus() {
-    return this.#owner(ownerResidentStatus)
-  }
-  /** Revoke or re-enable resident authority. Not an ordinary owner request: revoking must not renew first. */
-  async residentSet(enabled: boolean) {
-    return encodeExit(await this.#bridge.exit(setResident(enabled)))
-  }
+  readonly #stopping = () => ({ harness: this.harness, routines: this.#routines, personas: this.#personas })
 
   /**
    * An inbound MCP client asks the resident agent something, in main and labelled with the client's name, so the
@@ -502,27 +237,6 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
     const runtime = { harness: this.harness, applied: this.#applied }
     return this.#client(askClient({ ...runtime, author, text: input, operationId, waitMs }, this.#bridge.run))
   }
-  /** The Telegram channel's connection, or null when it is off. */
-  channelStatus() {
-    return this.#owner(Channel.use((channel) => Effect.succeed(channel.status())))
-  }
-
-  /**
-   * Carry Telegram through `serverId`, a myagent connection bound to the agent's own bot: grant its channel tools (an
-   * explicit owner action), checkpoint its inbox and subscribe Events or the legacy doorbell.
-   */
-  channelEnable(serverId: string) {
-    return this.#owner(
-      enableTelegram(serverId, this.env.APP_URL, this.env.CREDENTIAL_KEY, this.name, () =>
-        this.schedule(0, 'channelPull'),
-      ),
-    )
-  }
-
-  channelDisable() {
-    return this.#owner(disableTelegram)
-  }
-
   /**
    * A doorbell from myagent; the Worker already checked the hook token. Checked against the secret the agent gave
    * myagent, then answered at once: the pull runs from a schedule.
@@ -558,13 +272,13 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
   async #client<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
     return encodeExit(await this.#bridge.exit(clientRequest(program)))
   }
-  async sessionSnapshot(session: string): Promise<JsonObject> {
-    return this.#bridge.run(chatSnapshot(this.harness, session))
-  }
-  /** The owner API first (http/api/server.ts); any other path is one of the agent's raw routes (agent-requests.ts). */
+  /**
+   * The owner API first (http/api/server.ts); any other path is one of the agent's raw routes (agent-requests.ts). Only
+   * the Worker reaches either: it admits the owner and forwards `/api/*` unchanged (http/api/edge.ts).
+   */
   override async onRequest(request: Request): Promise<Response> {
     const served = await this.#bridge.exit(OwnerHttp.use((http) => http.handle(request)))
     if (Exit.isSuccess(served) && Option.isSome(served.value)) return served.value.value
-    return agentRequest(request, this.harness, this.#bridge.exit)
+    return agentRequest(request, this.harness, this.#bridge.exit, this.env.APP_URL)
   }
 }

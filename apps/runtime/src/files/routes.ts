@@ -72,13 +72,13 @@ async function content(request: Request, path: string, execute: ExitProgram): Pr
 }
 
 /**
- * The owner's files, as the Worker forwards them after authenticating the owner: `GET /files?dir=` lists, and
- * `/files/content?path=` reads (`GET`), writes (`PUT`, the request's body, `content-length` required) or deletes.
+ * The owner's files, as the Worker forwards them after authenticating the owner: `GET /api/files?dir=` lists, and
+ * `/api/files/content?path=` reads (`GET`), writes (`PUT`, the request's body, `content-length` required) or deletes.
  */
 export async function filesRequest(request: Request, url: URL, execute: ExitProgram): Promise<Response> {
   try {
-    if (url.pathname === '/files/content') return await content(request, required(url, 'path'), execute)
-    if (url.pathname !== '/files' || request.method !== 'GET')
+    if (url.pathname === '/api/files/content') return await content(request, required(url, 'path'), execute)
+    if (url.pathname !== '/api/files' || request.method !== 'GET')
       return Response.json({ error: 'NotFound' }, { status: 404 })
     const dir = url.searchParams.get('dir') ?? '/uploads'
     return answer(await execute(Files.use((files) => files.list(dir))), (listing) => Response.json(listing))

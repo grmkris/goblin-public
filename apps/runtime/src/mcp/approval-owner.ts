@@ -4,10 +4,8 @@ import * as Option from 'effect/Option'
 import { Entitlements } from '../billing/gates.ts'
 import { ChatOperations, Chats } from '../chats/service.ts'
 import { type AppError, NotFound, toAppError } from '../http/errors.ts'
-import { type RpcResult, unwrap } from '../http/rpc.ts'
 import type { RoutineRunner } from '../routines/runner.ts'
 import { RoutineRuns } from '../routines/service.ts'
-import type { RunProgram } from '../runtime/bridge.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { decideApproval } from './approval-decision.ts'
 import { Approvals, McpConnections, McpGrants, Resident } from './service.ts'
@@ -35,25 +33,6 @@ const continuation =
       if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })
       return yield* submit(chat.value, text, operationId)
     })
-
-/** The owner's decision on a held call, its outcome delivered through the Durable Object's own `submit`. */
-export const ownerApprovalDecision = (
-  id: string,
-  allowed: boolean,
-  input: {
-    readonly run: RunProgram
-    readonly routines: RoutineRunner
-    readonly submit: (session: string, text: string, operationId: string) => Promise<RpcResult<unknown>>
-  },
-) =>
-  decideApproval({
-    id,
-    allowed,
-    run: input.run,
-    continue: continuation(input.routines, (chat, text, operationId) =>
-      Effect.tryPromise({ try: async () => unwrap(await input.submit(chat, text, operationId)), catch: toAppError }),
-    ),
-  })
 
 /** What a decision through the owner API reads: the held call and its dispatch, and the owner's message after. */
 type DecisionServices =

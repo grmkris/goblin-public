@@ -125,7 +125,13 @@ async function ownerRoutingCase(url: string): Promise<void> {
   const sentinel = `private-owner-${crypto.randomUUID()}`
   const renamed = await ownerFetch(`${url}/api/conversations/${thread.id}`, {
     method: 'PATCH',
-    headers: { cookie: owner.cookie, origin: 'https://goblin.test', 'content-type': 'application/json' },
+    // Every owner write carries the CSRF header, as the web sends it.
+    headers: {
+      cookie: owner.cookie,
+      origin: 'https://goblin.test',
+      'content-type': 'application/json',
+      'x-goblin-csrf': '1',
+    },
     body: JSON.stringify({ title: sentinel }),
   })
   expect(renamed.status).toBe(200)

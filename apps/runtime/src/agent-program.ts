@@ -18,13 +18,11 @@ import {
   Chats,
   Conversations,
   Files,
-  Memories,
   Invocations,
   type Mcp,
   type Personas,
   RoutineRuns,
   Budget,
-  Resident,
   type Skills,
   attempt,
   attemptSync,
@@ -33,7 +31,6 @@ import {
   requireResident,
   type AgentServices,
 } from './services.ts'
-import { Events } from './mcp/events.ts'
 import type { RoutineRunner } from './routines/runner.ts'
 import { useModel, type Applied } from './agent-model.ts'
 import { BACKGROUND, conversationId } from './pi/context.ts'
@@ -46,12 +43,6 @@ import { askPersonas } from './personas/ask.ts'
 /** The registration gate for every owner conversation request. */
 export const registeredConversation = (id: string) =>
   Conversations.use((conversations) => attemptSync(() => conversations.require(id)))
-
-export const ownerUsage = Effect.gen(function* () {
-  const budget = yield* Budget
-  const now = yield* nowSecondsEffect
-  return yield* attempt(() => budget.today(now))
-})
 
 /**
  * A thread from a message of an open conversation (in that conversation's Topic), or an empty one under a Topic's
@@ -81,18 +72,6 @@ export const updateOwnerConversation = (routines: RoutineRunner, id: string, cha
       for (const run of live) yield* attempt(() => routines.stop(run.id, 'Closed by owner'))
     }
     return (yield* attempt(() => conversations.update(id, change, now))).view
-  })
-
-/**
- * The memory of `chat`'s Conversation (ADR 0032): the messages it remembers and how many its newest view summarizes.
- * A thread reports the memory of the Conversation above it; no chat means Personal's.
- */
-export const memoryStatusOf = (chat: string | undefined) =>
-  Effect.gen(function* () {
-    const chats = yield* Chats
-    const target = chat === undefined ? chats.primary() : yield* attemptSync(() => chats.conversationAbove(chat))
-    const memory = (yield* Memories).of(target)
-    return { messages: memory.size(), summarized: memory.viewThrough() }
   })
 
 /** The owner has seen a conversation's newest reply. */
@@ -146,31 +125,6 @@ export const clientRequest = <A>(program: Effect.Effect<A, AppError, AgentServic
     Entitlements.use((plans) => plans.require()),
     program,
   )
-
-export const ownerRequest = <A>(program: Effect.Effect<A, AppError, AgentServices>) =>
-  Effect.gen(function* () {
-    yield* Entitlements.use((plans) => plans.require())
-    const resident = yield* Resident
-    resident.renew(yield* nowSecondsEffect)
-    return yield* program
-  })
-
-export const ownerResidentStatus = Effect.gen(function* () {
-  const resident = yield* Resident
-  return resident.status(yield* nowSecondsEffect)
-})
-
-export const setResident = (enabled: boolean) =>
-  Effect.gen(function* () {
-    const resident = yield* Resident
-    const now = yield* nowSecondsEffect
-    if (enabled) resident.enable(now)
-    else {
-      yield* (yield* Events).disableServer()
-      resident.revoke(now)
-    }
-    return resident.status(now)
-  })
 
 export type OwnerMessageContext = {
   readonly appContext?: readonly AppContext[]

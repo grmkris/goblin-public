@@ -66,13 +66,6 @@ export const routineChange = Effect.fn('routines.change')(function* (
   yield* control.reconcile
   return yield* (yield* Routines).view(id)
 })
-/** The RPC method's form: `routines` is the controller `RoutineControl` wraps. It goes with the RPC method. */
-export const routineChangeProgram = (
-  _routines: RoutineController,
-  id: string,
-  input: RoutineRevision,
-  action: 'confirm' | 'pause' | 'archive',
-) => routineChange(id, input, action)
 /** Keeps the Agent shell thin while the native scheduler and Pi own their respective lifecycle boundaries. */
 export class RoutineController extends RoutineRunner {
   readonly #input: Input

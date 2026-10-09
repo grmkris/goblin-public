@@ -1,25 +1,10 @@
-import * as Schema from 'effect/Schema'
 import * as Effect from 'effect/Effect'
-import {
-  AppCall,
-  AppDiagnostic,
-  AgentAppChange,
-  DeleteAgentApp,
-  CapabilityChange,
-  CreateApp,
-  CreateConversation,
-  MoveToThread,
-  SendMessage,
-  UpdateApp,
-  UpdateConversation,
-  QueueRemoval,
-} from '@goblin/contracts'
 import type { AgentRpc, RuntimeEnv } from './env.ts'
 import { handleAuth, resourceMetadata, requireUserSession } from './auth/index.ts'
 import { mailerOf } from './auth/mail.ts'
 import { signupMode } from './auth/signup.ts'
-import { readBytes, readJson } from './http/body.ts'
-import { Forbidden, InvalidInput, NotFound, toAppError } from './http/errors.ts'
+import { readBytes } from './http/body.ts'
+import { InvalidInput, NotFound, toAppError } from './http/errors.ts'
 import { failureResponse } from './http/respond.ts'
 import { accountRecords } from './http/api/account.ts'
 import { type Edge, type EdgeHttp, isAccountPath, makeEdgeHttp, refOf } from './http/api/edge.ts'
@@ -34,53 +19,9 @@ import { billingDeps } from './billing/routes.ts'
 import { billingWebhook } from './billing/webhook.ts'
 import { runBillingCron } from './billing/cron.ts'
 import { billingMode, requireAccountPlan } from './billing/gates.ts'
-import { routineRoute } from './routines/routes.ts'
-import { topicRoute } from './topics/routes.ts'
-import { personaRoute } from './personas/routes.ts'
-import { organizeRoute } from './organize/routes.ts'
-import { browserWrite, crossOrigin } from './http/csrf.ts'
 
 export { PersonalAgent } from './agent.ts'
 
-const Bounded = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max))
-const Stop = Schema.Struct({ operationId: Schema.optional(Bounded(200)) })
-const ToolCall = Schema.Struct({
-  name: Bounded(256),
-  arguments: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
-})
-const ResourceRead = Schema.Struct({ uri: Bounded(2048) })
-const PromptGet = Schema.Struct({
-  name: Bounded(256),
-  arguments: Schema.optional(Schema.Record(Schema.String, Schema.String.check(Schema.isMaxLength(16_384)))),
-})
-const GrantChange = Schema.Struct({ serverId: Bounded(64), name: Bounded(256), allowed: Schema.Boolean })
-const AskFirstChange = Schema.Struct({ serverId: Bounded(64), name: Bounded(256), enabled: Schema.Boolean })
-const ApprovalDecision = Schema.Struct({ allowed: Schema.Boolean })
-const AddServer = Schema.Struct({
-  endpoint: Bounded(2048),
-  source: Schema.optional(
-    Schema.Struct({ registry: Bounded(2048), name: Bounded(256), version: Schema.optional(Bounded(64)) }),
-  ),
-})
-const RegistryChange = Schema.Struct({ url: Bounded(2048) })
-const AppGrantChange = Schema.Struct({
-  serverId: Bounded(64),
-  uri: Bounded(2048).check(Schema.isPattern(/^ui:\/\//u)),
-  allowed: Schema.Boolean,
-})
-const SkillsChange = Schema.Struct({ serverId: Bounded(64), enabled: Schema.Boolean })
-const ResidentChange = Schema.Struct({ enabled: Schema.Boolean })
-const ChannelPick = Schema.Struct({ serverId: Bounded(64) })
-const ModelPick = Schema.Struct({ model: Bounded(128) })
-
-const json = (value: unknown, status = 200): Response => Response.json(value, { status })
-/** `?chat=<id>`: a logical chat id, or none. */
-const chatParam = (request: Request): string | undefined => {
-  const chat = new URL(request.url).searchParams.get('chat')
-  if (chat === null) return undefined
-  if (!/^\d{1,12}$/u.test(chat)) throw new InvalidInput({ reason: 'chat' })
-  return chat
-}
 /** Only the authenticated user ID supplies the native Agent name. */
 const agentOf = (env: RuntimeEnv, userId: string): DurableObjectStub<AgentRpc> => env.AGENTS.getByName(userId)
 
@@ -100,24 +41,6 @@ const edgeOf = (env: RuntimeEnv): Edge => ({
 /** The edge, built once per isolate on its first request. */
 let edgeHttp: Promise<EdgeHttp> | undefined
 const edge = (): Promise<EdgeHttp> => (edgeHttp ??= Effect.runPromise(makeEdgeHttp))
-
-type Route = (request: Request, agent: DurableObjectStub<AgentRpc>) => Promise<Response>
-
-/** The agent-wide routes (resident authority, budget, model), keyed `METHOD path`. */
-const agentRoutes: Readonly<Record<string, Route>> = {
-  'GET /api/agent/resident': async (_request, agent) => json(unwrap(await agent.residentStatus())),
-  'GET /api/agent/usage': async (_request, agent) => json(unwrap(await agent.usageToday())),
-  'GET /api/agent/memory': async (request, agent) => json(unwrap(await agent.memoryStatus(chatParam(request)))),
-  'GET /api/agent/model': async (_request, agent) => json(unwrap(await agent.modelChoice())),
-  'PUT /api/agent/model': async (request, agent) =>
-    json(unwrap(await agent.chooseModel((await readJson(request, ModelPick)).model))),
-  'POST /api/agent/resident': async (request, agent) =>
-    json(unwrap(await agent.residentSet((await readJson(request, ResidentChange)).enabled))),
-  'GET /api/agent/channel': async (_request, agent) => json(unwrap(await agent.channelStatus())),
-  'PUT /api/agent/channel': async (request, agent) =>
-    json(unwrap(await agent.channelEnable((await readJson(request, ChannelPick)).serverId))),
-  'DELETE /api/agent/channel': async (_request, agent) => json(unwrap(await agent.channelDisable())),
-}
 
 /** The largest doorbell body accepted (myagent sends `{ botId, cursor }`). */
 const DOORBELL_BYTES = 1024
@@ -165,269 +88,6 @@ async function mcpEventsRoute(request: Request, env: RuntimeEnv, path: string): 
   })
 }
 
-async function agentRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string): Promise<Response> {
-  const route = agentRoutes[`${request.method} ${path}`]
-  if (route === undefined) throw new NotFound({ what: path })
-  return route(request, agent)
-}
-
-/** One conversation's routes, keyed `METHOD action`; the agent checks the conversation is one of the owner's. */
-const conversationRoutes: Readonly<
-  Record<string, (request: Request, agent: DurableObjectStub<AgentRpc>, thread: string) => Promise<Response>>
-> = {
-  'POST messages': async (request, agent, thread) => {
-    const body = await readJson(request, SendMessage)
-    const { input, operationId, appContext = [], attachments = [], selections = [], personaOrder } = body
-    return json(
-      unwrap(
-        await agent.submit(thread, input, operationId, {
-          appContext,
-          attachments,
-          selections,
-          ...(personaOrder === undefined ? {} : { personaOrder }),
-        }),
-      ),
-      202,
-    )
-  },
-  'POST threads': async (request, agent, thread) => {
-    const body = await readJson(request, SendMessage)
-    const { input, operationId, appContext = [], attachments = [], selections = [], personaOrder } = body
-    const context = { appContext, attachments, selections, ...(personaOrder === undefined ? {} : { personaOrder }) }
-    return json(unwrap(await agent.startThread(thread, input, operationId, context)), 201)
-  },
-  'POST move': async (request, agent, thread) =>
-    json(unwrap(await agent.moveToThread(thread, await readJson(request, MoveToThread)))),
-  'POST stop': async (request, agent, thread) =>
-    json({ stopped: unwrap(await agent.stop(thread, (await readJson(request, Stop)).operationId)) }),
-  'GET queue': async (_request, agent, thread) => json(unwrap(await agent.conversationQueue(thread))),
-  'DELETE queue': async (request, agent, thread) =>
-    json(unwrap(await agent.removeQueuedInput(thread, await readJson(request, QueueRemoval)))),
-  'GET events': (_request, agent, thread) => agent.fetch(`https://agent/conversations/${thread}/events`),
-  'GET snapshot': (_request, agent, thread) => agent.fetch(`https://agent/conversations/${thread}/snapshot`),
-  'GET history': (request, agent, thread) =>
-    agent.fetch(`https://agent/conversations/${thread}/history${new URL(request.url).search}`),
-  'PUT read': async (_request, agent, thread) => json({ read: unwrap(await agent.markRead(thread)) }),
-  'GET sources': (_request, agent, thread) => agent.fetch(`https://agent/conversations/${thread}/sources`),
-  'PATCH ': async (request, agent, thread) =>
-    json(unwrap(await agent.updateConversation(thread, await readJson(request, UpdateConversation)))),
-  'GET capabilities': async (_request, agent, thread) => json(unwrap(await agent.conversationCapabilities(thread))),
-  'GET composer': async (_request, agent, thread) => json(unwrap(await agent.composerOptions(thread))),
-  'PATCH capabilities': async (request, agent, thread) =>
-    json(unwrap(await agent.setConversationCapability(thread, await readJson(request, CapabilityChange)))),
-}
-
-async function conversationRoute(
-  request: Request,
-  agent: DurableObjectStub<AgentRpc>,
-  path: string,
-): Promise<Response> {
-  if (path === '/api/conversations' && request.method === 'GET') return json(unwrap(await agent.conversations()))
-  if (path === '/api/conversations' && request.method === 'POST')
-    return json(unwrap(await agent.createConversation(await readJson(request, CreateConversation))), 201)
-  const [, id = '', action = ''] = /^\/api\/conversations\/(\d{1,12})(?:\/([a-z-]+))?$/u.exec(path) ?? []
-  const route = conversationRoutes[`${request.method} ${action}`]
-  if (id === '' || route === undefined) throw new NotFound({ what: path })
-  return route(request, agent, id)
-}
-
-type AppRoute = (request: Request, agent: DurableObjectStub<AgentRpc>, id: string) => Promise<Response>
-
-/** One App's routes by method and action: load it, close or reopen it, and an agent app's view's state, calls, errors. */
-const appRoutes: Readonly<Record<string, AppRoute>> = {
-  'GET launch': async (_request, agent, id) => json(unwrap(await agent.launchApp(id))),
-  'PATCH ': async (request, agent, id) => json(unwrap(await agent.updateApp(id, await readJson(request, UpdateApp)))),
-  'GET state': async (_request, agent, id) => json(unwrap(await agent.appSnapshot(id))),
-  'POST call': async (request, agent, id) => json(unwrap(await agent.appCall(id, await readJson(request, AppCall)))),
-  'POST diagnostics': async (request, agent, id) =>
-    json(unwrap(await agent.appDiagnostic(id, await readJson(request, AppDiagnostic)))),
-}
-
-/**
- * The owner's agent apps by name (ADR 0021): the list, one in full, a change to one (roll back, pause, run now, move
- * home, answer a power), and deleting one, confirmed by its name.
- */
-async function agentAppRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string): Promise<Response> {
-  if (path === '/api/agent-apps' && request.method === 'GET') return json(unwrap(await agent.agentApps()))
-  const name = /^\/api\/agent-apps\/([a-z][a-z0-9-]{1,23})$/u.exec(path)?.[1]
-  if (name === undefined) throw new NotFound({ what: path })
-  if (request.method === 'GET') return json(unwrap(await agent.agentAppDetail(name)))
-  if (request.method === 'POST')
-    return json(unwrap(await agent.changeAgentApp(name, await readJson(request, AgentAppChange))))
-  if (request.method === 'DELETE')
-    return json(unwrap(await agent.deleteAgentApp(name, await readJson(request, DeleteAgentApp))))
-  throw new NotFound({ what: path })
-}
-
-/** The owner's Apps (ADRs 0020, 0021): keep an MCP App from a call, then each App's own routes. */
-async function appRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string): Promise<Response> {
-  if (path === '/api/apps' && request.method === 'POST')
-    return json(unwrap(await agent.createApp(await readJson(request, CreateApp))), 201)
-  const [, id = '', action = ''] = /^\/api\/apps\/(\d{1,12})(?:\/([a-z]+))?$/u.exec(path) ?? []
-  const route = appRoutes[`${request.method} ${action}`]
-  if (id === '' || route === undefined) throw new NotFound({ what: path })
-  return route(request, agent, id)
-}
-
-/** Completes an outbound OAuth authorization, then sends the owner back to the Connections page. */
-async function oauthCallback(request: Request, agent: DurableObjectStub<AgentRpc>, env: RuntimeEnv) {
-  const params = new URL(request.url).searchParams
-  const target = new URL('/connections', env.APP_URL)
-  const state = params.get('state')
-  const code = params.get('code')
-  if (params.get('error') !== null || state === null || code === null) {
-    target.searchParams.set('error', params.get('error') ?? 'authorization_failed')
-    return Response.redirect(target.href, 302)
-  }
-  const issuer = params.get('iss') ?? undefined
-  const result = await agent.mcpFinishConnect(state, code, issuer)
-  if (result.ok) target.searchParams.set('connected', result.value)
-  else target.searchParams.set('error', result.error._tag)
-  return Response.redirect(target.href, 302)
-}
-
-async function mcpServerRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string) {
-  const [, serverId = '', action = ''] = /^\/api\/mcp\/([\w-]{1,64})\/([a-z/]+)$/u.exec(path) ?? []
-  const caller = request.headers.get('x-mcp-caller') === 'app' ? 'app' : 'human'
-  if (action === 'tools' && request.method === 'GET')
-    return json(unwrap(await agent.mcpTools(serverId, new URL(request.url).searchParams.has('refresh'))))
-  if (request.method !== 'POST') throw new NotFound({ what: path })
-  if (action === 'connect') return json(unwrap(await agent.mcpConnect(serverId)))
-  if (action === 'disconnect') return json(unwrap(await agent.mcpDisconnect(serverId)))
-  if (action === 'remove') return json(unwrap(await agent.mcpRemoveServer(serverId)))
-  if (action === 'tools/call') {
-    const body = await readJson(request, ToolCall)
-    return json(unwrap(await agent.mcpCallTool(serverId, body.name, body.arguments ?? {}, caller)))
-  }
-  if (action === 'resources/read')
-    return json(unwrap(await agent.mcpReadResource(serverId, (await readJson(request, ResourceRead)).uri, caller)))
-  if (action === 'prompts/get') {
-    const body = await readJson(request, PromptGet)
-    return json(unwrap(await agent.mcpGetPrompt(serverId, body.name, body.arguments ?? {})))
-  }
-  throw new NotFound({ what: path })
-}
-
-async function mcpApprovalRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string) {
-  const match = /^\/api\/mcp\/approvals\/([\w:-]{1,256})$/u.exec(decodeURIComponent(path))
-  const id = match?.[1]
-  if (id === undefined) throw new NotFound({ what: path })
-  if (request.method === 'GET') return json(unwrap(await agent.mcpApproval(id)))
-  if (request.method === 'POST') {
-    const body = await readJson(request, ApprovalDecision)
-    return json(unwrap(await agent.mcpDecideApproval(id, body.allowed)))
-  }
-  throw new NotFound({ what: path })
-}
-
-/** The owner's MCP routes that are not about one server, keyed `METHOD path`. */
-const mcpRoutes: Readonly<Record<string, Route>> = {
-  'GET /api/mcp/servers': async (_request, agent) => json(unwrap(await agent.mcpServers())),
-  'POST /api/mcp/servers': async (request, agent) => {
-    const body = await readJson(request, AddServer)
-    return json(unwrap(await agent.mcpAddServer(body.endpoint, body.source)), 201)
-  },
-  'GET /api/mcp/suggested': async (_request, agent) => json(unwrap(await agent.mcpSuggested())),
-  'GET /api/mcp/catalog': async (request, agent) => {
-    const query = new URL(request.url).searchParams.get('q') ?? ''
-    if (query.length > 100) throw new InvalidInput({ reason: 'query_too_long' })
-    return json(unwrap(await agent.mcpCatalog(query)))
-  },
-  'GET /api/mcp/registries': async (_request, agent) => json(unwrap(await agent.mcpRegistries())),
-  'POST /api/mcp/registries': async (request, agent) =>
-    json(unwrap(await agent.mcpAddRegistry((await readJson(request, RegistryChange)).url)), 201),
-  'POST /api/mcp/registries/remove': async (request, agent) =>
-    json(unwrap(await agent.mcpRemoveRegistry((await readJson(request, RegistryChange)).url))),
-  'GET /api/mcp/grants': async (_request, agent) => json(unwrap(await agent.mcpGrants())),
-  'PUT /api/mcp/grants': async (request, agent) => {
-    const body = await readJson(request, GrantChange)
-    return json(unwrap(await agent.mcpSetToolGrant(body.serverId, body.name, body.allowed)))
-  },
-  'PUT /api/mcp/ask-first': async (request, agent) => {
-    const body = await readJson(request, AskFirstChange)
-    return json(unwrap(await agent.mcpSetAskFirst(body.serverId, body.name, body.enabled)))
-  },
-  'PUT /api/mcp/skills': async (request, agent) => {
-    const body = await readJson(request, SkillsChange)
-    return json(unwrap(await agent.mcpSetSkills(body.serverId, body.enabled)))
-  },
-  'PUT /api/mcp/app-grants': async (request, agent) => {
-    const body = await readJson(request, AppGrantChange)
-    return json(unwrap(await agent.mcpSetAppGrant(body.serverId, body.uri, body.allowed)))
-  },
-}
-
-async function mcpRoute(request: Request, agent: DurableObjectStub<AgentRpc>, path: string, env: RuntimeEnv) {
-  if (path.startsWith('/api/mcp/approvals/')) return mcpApprovalRoute(request, agent, path)
-  if (path === '/api/mcp/oauth/callback' && request.method === 'GET') return oauthCallback(request, agent, env)
-  const route = mcpRoutes[`${request.method} ${path}`]
-  return route === undefined ? mcpServerRoute(request, agent, path) : route(request, agent)
-}
-
-function apiOrigin(request: Request, env: RuntimeEnv): void {
-  if (crossOrigin(request, new URL(env.APP_URL).origin)) throw new Forbidden({ reason: 'origin' })
-}
-
-/** Every /api route below belongs to the signed-in user and their agent: a cookie session, same-origin for writes. */
-async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> {
-  apiOrigin(request, env)
-  const session = await requireUserSession(request, env)
-  const { userId } = session
-  const path = new URL(request.url).pathname
-  if (
-    [
-      '/api/routines',
-      '/api/topics',
-      '/api/personas',
-      '/api/organize',
-      '/api/files',
-      '/api/apps',
-      '/api/agent-apps',
-      '/api/home',
-      '/api/mcp',
-    ].some((prefix) => under(path, prefix)) ||
-    (request.method === 'DELETE' && /^\/api\/conversations\/\d{1,12}\/queue$/u.test(path)) ||
-    (request.method === 'POST' && /^\/api\/conversations\/\d{1,12}\/(?:threads|move)$/u.test(path))
-  )
-    browserWrite(request, env.APP_URL)
-  await requireAccountPlan(env, userId)
-  return ownerApiRequest(request, env, path, agentOf(env, userId))
-}
-
-/** `path` is `prefix` or a path below it. */
-const under = (path: string, prefix: string): boolean => path === prefix || path.startsWith(`${prefix}/`)
-
-/** Routes whose own module reads the path below the prefix: routines, then the workspace's Topics, Personas, receipts. */
-const ownedRoutes: readonly (readonly [
-  string,
-  (request: Request, agent: DurableObjectStub<AgentRpc>, path: string) => Promise<Response>,
-])[] = [
-  ['/api/routines', routineRoute],
-  ['/api/topics', topicRoute],
-  ['/api/personas', personaRoute],
-  ['/api/organize', organizeRoute],
-]
-
-async function ownerApiRequest(
-  request: Request,
-  env: RuntimeEnv,
-  path: string,
-  agent: DurableObjectStub<AgentRpc>,
-): Promise<Response> {
-  if (path.startsWith('/api/agent/')) return agentRoute(request, agent, path)
-  if (path === '/api/home') return agent.fetch(new Request('https://agent/home', request))
-  const owned = ownedRoutes.find(([prefix]) => under(path, prefix))
-  if (owned !== undefined) return owned[1](request, agent, path)
-  if (path === '/api/workspace/events' && request.method === 'GET') return agent.fetch('https://agent/workspace/events')
-  if (under(path, '/api/files'))
-    return agent.fetch(new Request(`https://agent${path.slice('/api'.length)}${new URL(request.url).search}`, request))
-  if (under(path, '/api/conversations')) return conversationRoute(request, agent, path)
-  if (under(path, '/api/apps')) return appRoute(request, agent, path)
-  if (under(path, '/api/agent-apps')) return agentAppRoute(request, agent, path)
-  if (path.startsWith('/api/mcp/')) return mcpRoute(request, agent, path, env)
-  throw new NotFound({ what: path })
-}
-
 async function admittedRoute(
   request: Request,
   env: RuntimeEnv,
@@ -438,7 +98,6 @@ async function admittedRoute(
   if (path === '/hooks/dodo') return Effect.runPromise(billingWebhook(billingDeps(env), request, ctx))
   if (path.startsWith('/hooks/mcp-events/')) return mcpEventsRoute(request, env, path)
   if (path.startsWith('/hooks/')) return doorbellRoute(request, env, path)
-  if (path.startsWith('/api/')) return apiRequest(request, env)
   throw new NotFound({ what: path })
 }
 
@@ -466,7 +125,10 @@ export default {
       return secured(Response.json(resourceMetadata(env)), undefined)
     if (url.pathname.startsWith('/.well-known/') || url.pathname.startsWith('/api/auth/'))
       return handleAuth(request, env)
+    // The typed API: the account's own endpoints answered here, every other `/api/*` request admitted and forwarded
+    // to the owner's own agent (http/api/edge.ts).
     if (isAccountPath(url.pathname)) return Effect.runPromise((await edge()).account(request, edgeOf(env)))
+    if (url.pathname.startsWith('/api/')) return Effect.runPromise((await edge()).owner(request, edgeOf(env)))
 
     // Every answer quotes the request's reference (its cf-ray), which its failure line carries too.
     const ref = refOf(request)

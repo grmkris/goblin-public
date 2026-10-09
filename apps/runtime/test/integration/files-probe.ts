@@ -52,7 +52,7 @@ export async function filesStoreProbe(sql: SqlStorage, bucket: R2Bucket, owner: 
 }
 
 const put = (agent: DurableObjectStub<PersonalAgentProbe>, path: string, body: Uint8Array, type: string) =>
-  agent.fetch(`https://agent/files/content?path=${encodeURIComponent(path)}`, {
+  agent.fetch(`https://agent/api/files/content?path=${encodeURIComponent(path)}`, {
     method: 'PUT',
     body,
     headers: { 'content-type': type },
@@ -72,21 +72,21 @@ export async function filesSequence(agent: DurableObjectStub<PersonalAgentProbe>
     (await put(agent, '/uploads/../escape.txt', new Uint8Array([1]), 'text/plain')).status,
   ]
   const listing = await (
-    await agent.fetch('https://agent/files?dir=/uploads')
+    await agent.fetch('https://agent/api/files?dir=/uploads')
   ).json<{
     entries: { name: string; size: number }[]
     usedBytes: number
   }>()
   const spilled = await keysOf(bucket, owner)
-  const bigRead = await agent.fetch(`https://agent/files/content?path=${encodeURIComponent('/uploads/big.bin')}`)
+  const bigRead = await agent.fetch(`https://agent/api/files/content?path=${encodeURIComponent('/uploads/big.bin')}`)
   const bigBytes = (await bigRead.arrayBuffer()).byteLength
-  const png = await agent.fetch(`https://agent/files/content?path=${encodeURIComponent('/uploads/dot.png')}`)
+  const png = await agent.fetch(`https://agent/api/files/content?path=${encodeURIComponent('/uploads/dot.png')}`)
   await png.arrayBuffer()
-  const deleted = await agent.fetch(`https://agent/files/content?path=${encodeURIComponent('/uploads/big.bin')}`, {
+  const deleted = await agent.fetch(`https://agent/api/files/content?path=${encodeURIComponent('/uploads/big.bin')}`, {
     method: 'DELETE',
   })
   const afterDelete = await keysOf(bucket, owner)
-  const gone = await agent.fetch(`https://agent/files/content?path=${encodeURIComponent('/uploads/big.bin')}`)
+  const gone = await agent.fetch(`https://agent/api/files/content?path=${encodeURIComponent('/uploads/big.bin')}`)
   await gone.arrayBuffer()
   await put(agent, '/uploads/big-again.bin', big, 'application/octet-stream')
   const beforeErase = await keysOf(bucket, owner)

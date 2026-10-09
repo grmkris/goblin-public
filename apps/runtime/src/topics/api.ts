@@ -5,8 +5,8 @@ import { createTopic, topicList, updateTopic } from './program.ts'
 
 /**
  * The `topics` group (ADR 0032), the reference the other groups copy: each handler runs the program its Durable Object
- * RPC method ran (`organize/rpc.ts`). The owner gate has already admitted the request; a program's `AppError` is
- * answered in its envelope, and services come from the agent's runtime.
+ * RPC method ran before the typed API replaced them. The owner gate has already admitted the request; a program's
+ * `AppError` is answered in its envelope, and services come from the agent's runtime.
  */
 export const TopicsHandlers = HttpApiBuilder.group(OwnerApi, 'topics', (handlers) =>
   handlers
