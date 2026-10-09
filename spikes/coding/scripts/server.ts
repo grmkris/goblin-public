@@ -93,6 +93,7 @@ const server = Bun.serve({
         await mcp.close()
       }
     } catch (error) {
+      // expected: the caller gets the spike's error tag (or request_failed) as a 400
       return Response.json({ error: error instanceof SpikeError ? error.message : 'request_failed' }, { status: 400 })
     }
   },

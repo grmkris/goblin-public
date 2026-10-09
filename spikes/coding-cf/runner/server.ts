@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { Config, Effect } from 'effect'
+import { Config, Effect, Schema } from 'effect'
 import { Overlay, SpikeError } from '../../coding/scripts/overlay.ts'
 import { Verifier } from '../../coding/scripts/verifier.ts'
 import { compilers } from '../../coding/scripts/binaries.ts'
@@ -9,7 +9,9 @@ import { boundedJson, boundedText, decodeRunnerInput } from '../../coding/script
 const socket = await Effect.runPromise(Config.String('RUNNER_SOCKET').pipe(Config.withDefault('')))
 const root = '/repo'
 const base = (await readFile('/fixture/base', 'utf8')).trim()
-const names: string[] = JSON.parse(await readFile('/fixture/files.json', 'utf8'))
+const names = Schema.decodeUnknownSync(Schema.Array(Schema.String))(
+  JSON.parse(await readFile('/fixture/files.json', 'utf8')),
+)
 const files = new Map<string, string>()
 for (const name of names) {
   if (!/^apps\/cli\/(?:src|test)\/.*\.ts$/u.test(name)) continue
@@ -107,6 +109,7 @@ const handler = async (request: Request): Promise<Response> => {
     const next = await receive(request)
     return Response.json(pathname === '/verify' ? await ready(next) : await execute(next))
   } catch (error) {
+    // expected: the caller gets the spike's error tag (or runner_failed) as a 400, and the session starts over
     await session?.verifier.close()
     session = undefined
     return Response.json({ error: error instanceof SpikeError ? error.message : 'runner_failed' }, { status: 400 })

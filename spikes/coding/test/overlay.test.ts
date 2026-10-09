@@ -51,6 +51,7 @@ describe('coding overlay', () => {
       try {
         await overlay.exclusive(async () => undefined)
       } catch (error) {
+        // expected: the test asserts on the failure it captures
         busy = String(error).includes('session_busy')
       }
       expect(busy).toBe(true)

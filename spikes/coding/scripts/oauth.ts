@@ -90,6 +90,7 @@ export class OAuth {
     const work = this.dispatch(request, url)
     if (work) {
       const result = this.queue.then(work, work)
+      // expected: the queue only orders requests; each caller still gets its own result's failure
       this.queue = result.catch(() => undefined)
       return result
     }

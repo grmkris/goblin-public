@@ -19,6 +19,7 @@ async function failure(work: Promise<unknown>): Promise<string> {
     await work
     return 'unexpected-success'
   } catch (error) {
+    // expected: the test asserts on the failure it captures
     return error instanceof Error ? error.message : 'unexpected-error'
   }
 }

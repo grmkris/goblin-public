@@ -74,6 +74,7 @@ export class FallbackRunner implements CodingRunnerFactory {
     try {
       lease = await this.primary.create(spec)
     } catch (error) {
+      // expected: switchBackend rethrows anything but an unavailable provider, which the alternate replaces
       await switchBackend(error)
     }
     return {
@@ -82,6 +83,7 @@ export class FallbackRunner implements CodingRunnerFactory {
           return await lease.verify(request)
         } catch (error) {
           if (switched || !(error instanceof RunnerError) || error.reason !== 'provider-unavailable') throw error
+          // expected: closing the lease that failed is best effort before switching backends
           await lease.close().catch(() => undefined)
           await switchBackend(error)
           return lease.verify(request)

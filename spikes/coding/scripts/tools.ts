@@ -82,6 +82,7 @@ export class Coding {
           try {
             return text(await work(Schema.decodeUnknownSync(input)(args)))
           } catch (error) {
+            // expected: the model gets the spike's error tag (or coding_operation_failed) as an error result
             return {
               ...text({ error: error instanceof SpikeError ? error.message : 'coding_operation_failed' }),
               isError: true,

@@ -35,6 +35,7 @@ test('refuses a pre-existing PR without a matching retained publication commit',
   try {
     await new ExistingPr('grmkris/goblin', '/usr/bin/gh').publish(overlay, 'title', 'body', () => undefined)
   } catch (error) {
+    // expected: the test asserts on the failure it captures
     rejected = String(error).includes('publication_conflict')
   }
   expect(rejected).toBe(true)
@@ -96,6 +97,7 @@ test('reconciles an interrupted publication using the saved commit and existing 
   try {
     await github.publish(overlay, 'title', 'body', persist)
   } catch (error) {
+    // expected: the test asserts on the failure it captures
     interrupted = String(error).includes('interrupted')
   }
   expect(interrupted).toBe(true)

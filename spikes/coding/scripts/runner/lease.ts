@@ -46,6 +46,7 @@ export abstract class Lease implements CodingRunnerLease {
         try {
           await this.close()
         } catch {
+          // expected: a failed cleanup is marked on the original error, which is rethrown below
           if (error instanceof RunnerError) error.cleanupFailed = true
         }
         throw error

@@ -75,6 +75,7 @@ test('code failure never changes backend and a failed alternate is not retried',
   try {
     await new FallbackRunner(unavailable, alternate).create(spec)
   } catch (error) {
+    // expected: the test asserts on the failure it captures
     if (error instanceof RunnerError) reason = error.reason
   }
   expect(reason).toBe('provider-unavailable')

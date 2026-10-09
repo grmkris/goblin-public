@@ -34,7 +34,7 @@ export function sampleStats(owner: string) {
           }
         }
       } catch {
-        /* A disposable container can vanish between ps and stats. */
+        // expected: a disposable container can vanish between ps and stats
       }
       await Bun.sleep(500)
     }

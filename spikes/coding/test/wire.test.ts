@@ -25,6 +25,7 @@ test('runner JSON bounds streamed bytes without Content-Length', async () => {
   try {
     await boundedJson(new Response(body), 50)
   } catch (caught) {
+    // expected: the test asserts on the failure it captures
     error = caught
   }
   expect(error).toBeInstanceOf(Error)

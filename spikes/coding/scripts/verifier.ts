@@ -38,6 +38,7 @@ export class Verifier {
     try {
       existing = readdirSync(directory, { withFileTypes: true })
     } catch {
+      // expected: a directory that does not exist yet has no entries
       existing = []
     }
     const files = new Set(existing.filter((entry) => entry.isFile()).map((entry) => entry.name))

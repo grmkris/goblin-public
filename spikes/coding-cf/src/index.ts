@@ -50,6 +50,7 @@ export default {
     try {
       input = decodeRunnerInput(await boundedJson(request))
     } catch {
+      // expected: a body that does not decode is answered as invalid_input
       return new Response('invalid_input', { status: 400 })
     }
     if (input.session !== id) return new Response('session_mismatch', { status: 400 })

@@ -108,6 +108,7 @@ export class GitHub {
       const value = object(await this.api(`git/ref/heads/${branch}`))
       return field(value['object'], 'sha')
     } catch {
+      // expected: a branch whose ref cannot be read is treated as absent
       return undefined
     }
   }

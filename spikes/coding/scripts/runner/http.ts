@@ -47,7 +47,7 @@ async function responseFailure(response: Response): Promise<RunnerError> {
   try {
     name = Schema.decodeUnknownSync(Schema.Struct({ error: Schema.String }))(JSON.parse(body)).error
   } catch {
-    /* Workers can return fixed plaintext rejection tags. */
+    // expected: Workers can return fixed plaintext rejection tags
   }
   if (name === 'revision_mismatch' || name === 'stale-revision') return new RunnerError('stale-revision')
   const rejected = [

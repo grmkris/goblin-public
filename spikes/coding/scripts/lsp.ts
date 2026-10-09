@@ -142,7 +142,7 @@ export class Lsp {
     try {
       await bounded(this.connection.sendRequest('shutdown', null), 1000)
     } catch {
-      /* A crashed LSP has nothing to shut down. */
+      // expected: a crashed LSP has nothing to shut down
     }
     this.dispose()
   }

@@ -176,7 +176,7 @@ export class DockerRunner implements CodingRunnerFactory {
           }
           await response.body?.cancel()
         } catch {
-          /* The container has not opened its socket yet. */
+          // expected: the container has not opened its socket yet
         }
         await Bun.sleep(100)
       }
