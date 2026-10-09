@@ -43,7 +43,8 @@ function useEmailCode(props: EmailSignInFormProps) {
   const enterCode = (value: string) => {
     const digits = codeDigits(value)
     setCode(digits)
-    if (digits.length === 6 && digits !== code && !locked) void verify(digits)
+    // expected: action.run turns every failure into the form's error, so it never rejects
+    if (digits.length === 6 && digits !== code && !locked) verify(digits).catch(() => false)
   }
   const changeEmail = () => {
     setStage('email')
@@ -79,7 +80,8 @@ export function EmailSignInForm(props: EmailSignInFormProps) {
       data-stage={form.stage}
       onSubmit={(event) => {
         event.preventDefault()
-        void form.submit()
+        // expected: action.run turns every failure into the form's error, so it never rejects
+        form.submit().catch(() => false)
       }}
     >
       <FieldGroup>

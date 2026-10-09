@@ -25,6 +25,7 @@ export function useAction(fallback: string): ActionState {
       if (!result.ok) setError(result.error)
       return result.ok
     } catch {
+      // expected: the owner sees the fallback copy; a thrown error's text is never shown
       setError(fallback)
       return false
     } finally {

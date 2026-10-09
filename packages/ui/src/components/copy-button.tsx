@@ -18,6 +18,7 @@ function CopyButton({
       await navigator.clipboard.writeText(typeof text === 'string' ? text : text())
       setState('copied')
     } catch {
+      // expected: a refused clipboard shows "Copy failed" beside the button
       setState('failed')
     }
   }
