@@ -4,7 +4,7 @@ import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import { nextInt } from 'effect/Random'
 import { Entitlements } from '../billing/gates.ts'
-import { Budget } from '../budget.ts'
+import { requireBudget } from '../budget.ts'
 import { Conversations } from '../chats/service.ts'
 import { Resident } from '../mcp/service.ts'
 import { Models } from '../models.ts'
@@ -46,8 +46,7 @@ export class RoutineRunner {
           (yield* Effect.gen(function* () {
             yield* Entitlements.use((plans) => plans.require('routines'))
             yield* Resident.use((resident) => resident.require())
-            const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
-            yield* Budget.use((budget) => budget.require(now))
+            yield* requireBudget
           }).pipe(
             Effect.as(undefined),
             Effect.catch((error) => Effect.succeed(error._tag)),

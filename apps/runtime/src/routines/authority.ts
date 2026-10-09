@@ -1,7 +1,7 @@
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import { Entitlements } from '../billing/gates.ts'
-import { Budget } from '../budget.ts'
+import { requireBudget } from '../budget.ts'
 import { BudgetExhausted, Forbidden } from '../http/errors.ts'
 import { Resident } from '../mcp/service.ts'
 import { definitionOf } from './runs.ts'
@@ -18,8 +18,7 @@ export const requireRoutine = Effect.fn('routines.requireRoutine')(function* (ru
     return yield* new Forbidden({ reason: 'routine run is not executing' })
   const session = run.sessionId
   if (session !== null) yield* RoutineUsage.use((projection) => projection.snapshot(session))
-  const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
-  yield* Budget.use((budget) => budget.require(now))
+  yield* requireBudget
   const definition = definitionOf(run)
   const used = yield* store.used(runId, at)
   if (used.run >= definition.budget.tokensPerRun || used.day >= definition.budget.tokensPerDay)
