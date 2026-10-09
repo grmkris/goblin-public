@@ -367,13 +367,18 @@ in, then up to eight the owner adds (`app_mcp_registries`). A registry is
 added only once it answers `/v0.1/servers`, and removing it keeps the servers added from it. Search reads one page of
 up to twenty entries per registry and keeps https streamable-HTTP remotes, rejecting entries explicitly marked
 inactive or not latest. Missing status metadata is accepted. Results are labelled by registry, each server once
-(the official registry first), and cached for ten minutes. Endpoint placeholders are filled with one safe path
+(the official registry first), and cached for ten minutes. Each registry gets eight seconds (`Effect.timeout`). A
+registry that is not reached fails as `UpstreamMcp` transport and one that answers anything but the registry API as
+`not_a_registry`; in a search either is logged and leaves the answer partial and uncached (`mcp_suggest` says so; the
+HTTP route answers the entries). The catalog lives in the `McpServers` layer (`layers/mcp.ts`), not the host.
+Endpoint placeholders are filled with one safe path
 segment each, and servers that require a secret header are listed but cannot be added yet. An added entry records
 its registry, name and version. The owner connects each server from the Connections page:
 
 1. `POST /api/mcp/:id/connect` first tries without sign-in. If needed, it runs the MCP SDK's `auth()` with our
    `StoredOAuthProvider`: discovery, dynamic client registration, PKCE. Only a flow needing consent returns a remote
-   authorization URL; otherwise it returns `{}`.
+   authorization URL; otherwise it returns `{}`. A server the open try cannot reach answers that transport failure;
+   no sign-in starts for it.
 2. The remote server redirects to `/api/mcp/oauth/callback`. The pending state is single-use and expires after ten
    minutes; the code is exchanged and the tokens stored.
 3. Client registration and tokens are AES-GCM encrypted at rest (`GOBLIN_CREDENTIAL_KEY`, bound to server ID and
@@ -386,8 +391,10 @@ again, so tokens issued by one host never reach another.
 
 Calls go through the `McpConnectionManager`, keyed by server ID, which caches a connection and closes it after five
 minutes idle. Its auth provider refreshes a token a minute before expiry, single-flight per server, and refreshes
-once after a 401. A refused refresh marks the server `needs_auth` and the owner reconnects. Results are bounded (1 MiB,
-16 MiB for App HTML).
+once after a 401. A refresh the authorization server refuses (an OAuth error, a refused flow, a 401) marks the server
+`needs_auth` and the owner reconnects; one that never got an answer (the network, a 5xx) fails as `UpstreamMcp`
+transport and keeps the credentials for the next call (`mcp/errors.ts` `isOAuthRejection`). Results are bounded (1 MiB,
+16 MiB for App HTML); a result JSON cannot hold is `unsupported`, not over the limit.
 
 Grants are per discovered tool (`app_mcp_grants`), toggled by the owner. A tool grant also grants its `ui://` App
 resource. An App's switch (`PUT /api/mcp/app-grants`, `McpHost.setAppGrant`) grants an App as a whole: exactly the
@@ -808,7 +815,11 @@ a failure before that fence leaves the old channel checkpoint intact. A server w
 Webhooks HMAC and five-minute freshness checks precede decoding. A pre-persisted subscribe intent accepts an early
 signed verification challenge; remote ids are cross-checked when subscribe returns. Receipts and their frozen consumer
 revisions commit in short transactions, with an already armed recovery schedule. The hook returns quickly and dispatch
-runs asynchronously. Replay wakes unfinished handlers without duplicating their accepted intent.
+runs asynchronously. Replay wakes unfinished handlers without duplicating their accepted intent. Before any of that,
+the hook checks the agent may take events: the owner's own refusal (no plan, revoked authority, a forbidden connection)
+answers 410 and the producer drops the subscription; any other failure of the check is reported and answers 503, so the
+producer retries. A subscription is dropped as invalid only when its server is gone (`NotFound`) or its grant or
+endpoint changed. A failed maintenance sweep is reported, then retried a minute later (`mcp/wake.ts`).
 
 `message.received` and `question.answered` both pull the authoritative inbox into the primary chat's current Pi
 session. Telegram admission and answer readback use its operation ledger binding. `ask_user` ends its turn;

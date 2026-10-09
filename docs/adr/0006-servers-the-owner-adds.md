@@ -30,3 +30,8 @@ be removed.
 Consequences: a server that only accepts pre-registered OAuth clients cannot be connected, and Connect says so
 rather than failing silently. Registry entries are labelled by registry and status, and they bring no more trust than
 a pasted URL.
+
+Amended 2026-10-09: Connect starts no sign-in for a server its open try cannot reach (transport, timeout, cancelled);
+it answers that failure. A registry that is not reached fails as `UpstreamMcp` transport and one that answers anything
+but the registry API as `not_a_registry`; a search over a registry that failed is logged and flagged partial, and the
+partial answer is not cached. Each registry gets eight seconds.

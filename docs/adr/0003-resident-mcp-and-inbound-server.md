@@ -28,3 +28,7 @@ translation layer was dropped because nothing else consumed it.
 Consequences: `GOBLIN_CREDENTIAL_KEY` is required and rotating it means reconnecting servers. A refused refresh
 shows the server as needing authorization rather than failing silently. Exactly-once external effects are still not
 claimed: `mcp_call` is unsafe to replay and submissions carry operation IDs.
+
+Amended 2026-10-09: only an OAuth rejection (an OAuth error answer, a flow the SDK refused, a 401) marks a server
+`needs_auth`. A refresh whose requests got no answer (the network, a 5xx) fails as `UpstreamMcp` transport and keeps
+the credentials, so the next call refreshes again instead of asking the owner to sign in.

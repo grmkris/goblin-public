@@ -26,3 +26,8 @@ doorbell remains the fallback for servers without Events until the producer cut-
 Cloudflare Workers cannot pin a resolved callback IP between DNS validation and fetch, so v1 documents trusted DNS as a
 residual assumption. A hardened egress service is required for strict SSRF/DNS-pinning conformance. This ADR does not
 claim exactly-once external effects or a live producer round-trip; those require the deployed mygram acceptance gate.
+
+Amended 2026-10-09: ingress answers 410 only for the owner's own refusal (`SubscriptionRequired`, `ResidentInactive`,
+`Forbidden`); any other failure of its authority check is reported and answers 503, so a transient failure no longer
+ends a subscription. A subscription is invalid only when its server is `NotFound` or its grant or endpoint changed; any
+other lookup failure propagates. A failed maintenance sweep is reported before it is rescheduled.
