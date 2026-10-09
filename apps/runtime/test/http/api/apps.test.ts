@@ -16,14 +16,14 @@ import type { AppOrigin } from '../../../src/apps/registry.ts'
 import { Apps } from '../../../src/apps/service.ts'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
-import type { ConversationRegistry } from '../../../src/conversations.ts'
-import type { HomeService } from '../../../src/home/service.ts'
+import { Conversations } from '../../../src/chats/service.ts'
+import { Home } from '../../../src/home/service.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
-import type { McpHost } from '../../../src/mcp/host.ts'
+import { McpConnections } from '../../../src/mcp/service.ts'
 import type { McpConnectionSnapshot } from '../../../src/mcp/types.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
-import { Conversations, Home, Mcp, Resident } from '../../../src/services.ts'
+import { Resident } from '../../../src/services.ts'
 import { callOwner } from '../../integration/owner-api.ts'
 
 const PLAN: AccountPlan = {
@@ -93,11 +93,11 @@ const fakeEngine = (overrides: Partial<AppEngine['Service']> = {}): AppEngine['S
     ...overrides,
   })
 
-/** The legacy services the programs still read, as the parts a test uses; the rest is never touched. */
-type LegacyParts = {
-  readonly conversations?: Pick<ConversationRegistry, 'require' | 'requireOpen' | 'kindOf'>
-  readonly mcp?: { readonly manager: Pick<McpHost['manager'], 'connect'> }
-  readonly home?: Pick<HomeService, 'appRemoved'>
+/** Other lanes' services the programs read, as the parts a test uses; the rest is never touched. */
+type OtherParts = {
+  readonly conversations?: Pick<Conversations['Service'], 'require' | 'requireOpen' | 'kindOf'>
+  readonly connections?: Pick<McpConnections['Service'], 'connect'>
+  readonly home?: Pick<Home['Service'], 'appRemoved'>
 }
 
 const runtimes: ManagedRuntime.ManagedRuntime<OwnerHttp, never>[] = []
@@ -107,14 +107,14 @@ afterEach(async () => {
 })
 
 /**
- * The apps and agentApps groups behind the real owner gate, over `apps` and `engine` and the legacy parts given. The
+ * The apps and agentApps groups behind the real owner gate, over `apps` and `engine` and the other parts given. The
  * gate's plan and resident authority are the only other fakes.
  */
 function appsServer(
   options: {
     readonly apps?: Apps['Service']
     readonly engine?: AppEngine['Service']
-    readonly legacy?: LegacyParts
+    readonly others?: OtherParts
     readonly active?: boolean
   } = {},
 ) {
@@ -129,20 +129,20 @@ function appsServer(
         () => new SubscriptionRequired({ subscribe: '/subscribe' }),
       ),
   }
-  const legacy = options.legacy ?? {}
+  const others = options.others ?? {}
   const runtime = ManagedRuntime.make(
     OwnerHttp.serve(APPS_API, APPS).pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.succeed(Apps, options.apps ?? fakeApps()),
           Layer.succeed(AppEngine, options.engine ?? fakeEngine()),
-          // SAFETY: the programs under test call only the members `LegacyParts` names; a test that leaves one out
+          // SAFETY: the programs under test call only the members `OtherParts` names; a test that leaves one out
           // never reaches it.
-          Layer.succeed(Conversations, legacy.conversations as ConversationRegistry),
-          // SAFETY: as above, only `manager.connect`.
-          Layer.succeed(Mcp, legacy.mcp as McpHost),
+          Layer.succeed(Conversations, others.conversations as Conversations['Service']),
+          // SAFETY: as above, only `connect`.
+          Layer.succeed(McpConnections, others.connections as McpConnections['Service']),
           // SAFETY: as above, only `appRemoved`.
-          Layer.succeed(Home, legacy.home as HomeService),
+          Layer.succeed(Home, others.home as Home['Service']),
           Layer.succeed(Resident, resident),
           Layer.succeed(Entitlements, plans),
         ),
@@ -210,7 +210,11 @@ const registry = (registered: { session: string; callId: string; origin: AppOrig
         : Effect.fail(new NotFound({ what: 'app' })),
   })
 
-const conversations = { require: (id: string) => `session-${id}`, requireOpen: () => '', kindOf: () => 'main' as const }
+const conversations = {
+  require: (id: string) => Effect.succeed(`session-${id}`),
+  requireOpen: (id: string) => Effect.succeed(id),
+  kindOf: () => Effect.succeed('main' as const),
+}
 
 describe('the apps group served by the agent', () => {
   it('keeps the App of a call with 201 while its tool still renders it, and 404 once it does not', async () => {
@@ -218,7 +222,7 @@ describe('the apps group served by the agent', () => {
     let uri: string | undefined = BOARD
     const { fetch, resident } = appsServer({
       apps: registry(registered),
-      legacy: { conversations, mcp: { manager: { connect: async () => connected(uri) } } },
+      others: { conversations, connections: { connect: () => Effect.sync(() => connected(uri)) } },
     })
     const made = await fetch(json('POST', '/api/apps', { conversation: '7', callId: 'call-1' }))
     expect(made.status).toBe(201)
@@ -358,13 +362,13 @@ const agentApps = (seen: string[] = []) => ({
     moveHome: (name, session) => Effect.sync(() => void seen.push(`engine.moveHome ${name} ${session}`)),
     remove: (name) => Effect.sync(() => void seen.push(`engine.remove ${name}`)),
   }),
-  legacy: {
+  others: {
     conversations: {
-      require: (id: string) => id,
-      requireOpen: (id: string) => id,
-      kindOf: (id: string) => (id === '8' ? ('subagent' as const) : ('main' as const)),
+      require: (id: string) => Effect.succeed(id),
+      requireOpen: (id: string) => Effect.succeed(id),
+      kindOf: (id: string) => Effect.succeed(id === '8' ? ('subagent' as const) : ('main' as const)),
     },
-    home: { appRemoved: () => void seen.push('home.appRemoved') },
+    home: { appRemoved: Effect.sync(() => void seen.push('home.appRemoved')) },
   },
 })
 

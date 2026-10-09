@@ -11,8 +11,10 @@ import * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
 import { AppEngine } from '../agent-apps/service.ts'
 import { InvalidInput, NotFound } from '../http/errors.ts'
+import { Conversations } from '../chats/service.ts'
+import { Home } from '../home/service.ts'
 import { toolAppResource } from '../mcp/connection.ts'
-import { Conversations, Home, Mcp, attempt, attemptSync } from '../services.ts'
+import { McpConnections } from '../mcp/service.ts'
 import { Apps } from './service.ts'
 
 /**
@@ -21,11 +23,10 @@ import { Apps } from './service.ts'
  */
 export const createOwnerApp = ({ conversation, callId }: CreateApp) =>
   Effect.gen(function* () {
-    const session = yield* Conversations.use((conversations) => attemptSync(() => conversations.require(conversation)))
+    const session = yield* Conversations.use((conversations) => conversations.require(conversation))
     const apps = yield* Apps
     const call = yield* apps.call(session, callId)
-    const mcp = yield* Mcp
-    const snapshot = yield* attempt(() => mcp.manager.connect(call.serverId))
+    const snapshot = yield* McpConnections.use((connections) => connections.connect(call.serverId))
     const tool = snapshot.tools.find(({ name }) => name === call.tool)
     const uri = tool === undefined ? undefined : toolAppResource(tool)
     if (uri === undefined) return yield* new NotFound({ what: 'app' })
@@ -80,15 +81,11 @@ export const changeAgentApp = (name: string, change: AgentAppChange) =>
   Effect.gen(function* () {
     const engine = yield* AppEngine
     if (change.kind === 'home') {
-      const session = yield* Conversations.use((conversations) =>
-        attemptSync(() => {
-          conversations.requireOpen(change.conversation)
-          if (conversations.kindOf(change.conversation) === 'subagent')
-            throw new InvalidInput({ reason: "an app's home is main or a thread" })
-          return change.conversation
-        }),
-      )
-      yield* engine.moveHome(name, session)
+      const conversations = yield* Conversations
+      yield* conversations.requireOpen(change.conversation)
+      if ((yield* conversations.kindOf(change.conversation)) === 'subagent')
+        return yield* new InvalidInput({ reason: "an app's home is main or a thread" })
+      yield* engine.moveHome(name, change.conversation)
     } else yield* engine.change(name, change)
     return yield* agentAppDetail(name)
   })
@@ -99,6 +96,6 @@ export const deleteAgentApp = (name: string, input: DeleteAgentApp) =>
     if (input.confirm !== name) return yield* new InvalidInput({ reason: `type ${name} to delete it` })
     yield* AppEngine.use((engine) => engine.remove(name))
     yield* Apps.use((apps) => apps.removeAgent(name))
-    yield* Home.use((home) => attemptSync(() => home.appRemoved()))
+    yield* Home.use((home) => home.appRemoved)
     return { deleted: name }
   })
