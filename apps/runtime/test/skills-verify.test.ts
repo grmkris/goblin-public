@@ -32,6 +32,7 @@ const failure = (run: () => unknown) => {
   try {
     run()
   } catch (error) {
+    // expected: the test asserts on which verification failure was thrown
     return error instanceof SkillVerifyError ? error.failure : 'other'
   }
   return 'none'
@@ -40,6 +41,7 @@ const failureAsync = async (run: () => Promise<unknown>) => {
   try {
     await run()
   } catch (error) {
+    // expected: the test asserts on which verification failure was thrown
     return error instanceof SkillVerifyError ? error.failure : 'other'
   }
   return 'none'

@@ -2,6 +2,7 @@
 // file, checks it against that entry: only URIs in the retained manifest, exact byte size and SHA-256 digest, and a
 // `SKILL.md` whose frontmatter equals the entry's field by field. A digest proves consistency with the server's
 // manifest, not trust in the content.
+import * as Data from 'effect/Data'
 import { parse as parseYaml } from 'yaml'
 import { MAX_SKILL_BYTES, MAX_SKILL_FILES, type ManifestFile, type SkillEntry } from './protocol.ts'
 
@@ -15,11 +16,10 @@ export type VerifyFailure =
   | 'frontmatter-mismatch'
   | 'name-mismatch'
 
-export class SkillVerifyError extends Error {
-  readonly failure: VerifyFailure
+/** Which integrity check a skill's content failed. */
+export class SkillVerifyError extends Data.TaggedError('SkillVerifyError')<{ readonly failure: VerifyFailure }> {
   constructor(failure: VerifyFailure) {
-    super(`skill verification failed: ${failure}`)
-    this.failure = failure
+    super({ failure })
   }
 }
 

@@ -1,3 +1,4 @@
+import * as Data from 'effect/Data'
 import { Internal } from '../http/errors.ts'
 
 /** The compatibility date every app isolate runs with: the Worker's own. */
@@ -86,8 +87,10 @@ export interface ScriptApi extends Rpc.WorkerEntrypointBranded {
 }
 
 /** Why an isolate call gave no answer in time (it may still finish; its answer is dropped). */
-export class IsolateTimeout extends Error {
-  override readonly name = 'IsolateTimeout'
+export class IsolateTimeout extends Data.TaggedError('IsolateTimeout')<{ readonly message: string }> {
+  constructor(message: string) {
+    super({ message })
+  }
 }
 
 /** A Dynamic Worker's modules: an ES module as its source, or a CommonJS one as `{ cjs }`. */

@@ -1,8 +1,10 @@
 import * as Cause from 'effect/Cause'
+import * as Data from 'effect/Data'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import * as Schema from 'effect/Schema'
 import { KeyedLock } from '../observability/lock.ts'
+import { IsolateTimeout } from './isolates.ts'
 
 /**
  * Runs a program in the agent's runtime with no plan check (the bridge's `local`). The engine lives outside the
@@ -49,13 +51,16 @@ export function appLock(run: AppRunner): AppLock {
 }
 
 /** An app's own code failed or broke a rule: the message is for the agent, with the app's stack when it has one. */
-export class AppCodeError extends Error {
-  override readonly name = 'AppCodeError'
+export class AppCodeError extends Data.TaggedError('AppCodeError')<{ readonly message: string }> {
+  constructor(message: string) {
+    super({ message })
+  }
 }
 
 /** A failure as one line for the agent: an app error's text, or a tagged goblin error with its fields. */
 export function problemText(cause: unknown): string {
-  if (typeof cause === 'object' && cause !== null && '_tag' in cause) {
+  const text = cause instanceof AppCodeError || cause instanceof IsolateTimeout
+  if (!text && typeof cause === 'object' && cause !== null && '_tag' in cause) {
     const fields = Object.entries(cause)
       .filter(([key]) => key !== '_tag' && key !== 'stack' && key !== 'message')
       .map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`)
