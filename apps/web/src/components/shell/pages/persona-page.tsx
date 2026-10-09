@@ -1,10 +1,11 @@
-import { type ReactNode, Suspense, useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { type QueryClient, useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { type PersonaDefinition, type PersonaDetail, type PersonaView, type UpdatePersona } from '@goblin/contracts'
 import { Conflict } from '@goblin/contracts/api'
 import { Alert, AlertDescription, Button, Skeleton } from '@goblin/ui'
 import { messageOf } from '../../../lib/query/app-error.ts'
+import { QueryBoundary } from '../../../lib/query/query-boundary.tsx'
 import { relativeTime } from '../../../lib/threads.ts'
 import { reportUnexpected } from '../../../lib/unexpected.ts'
 import { createPersonaMutation, personaDetailQuery, updatePersonaMutation } from '../../../personas/queries.ts'
@@ -186,14 +187,14 @@ function Create() {
 }
 
 /**
- * `/p/<id>` or `/p/new`: a Persona's profile, or a new one. The profile waits for its Persona; a read that fails shows
- * on the route's error view, with the reference to quote.
+ * `/p/<id>` or `/p/new`: a Persona's profile, or a new one. The profile waits for its Persona; a read that fails stays
+ * in place with the reference to quote and a retry.
  */
 export function PersonaPage({ id }: { readonly id: number | 'new' }) {
   if (id === 'new') return <Create />
   return (
-    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-      <Profile key={id} id={id} />
-    </Suspense>
+    <QueryBoundary key={id} action="load the persona" pending={<Skeleton className="h-64 w-full" />}>
+      <Profile id={id} />
+    </QueryBoundary>
   )
 }
