@@ -8,10 +8,12 @@ import type { ChatDirectory } from '../chats/directory.ts'
 import { RunAttribute, type RunAttributes } from '@goblin/contracts/telemetry'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
+import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { InvalidInput, UpstreamMcp } from '../http/errors.ts'
 import type { CredentialCipher } from '../mcp/cipher.ts'
 import type { McpConnectionManager } from '../mcp/connection.ts'
+import type { McpConnections } from '../mcp/service.ts'
 import { appChannel, appChannelReplies, appTelegramChannel } from '../storage/schema.ts'
 import { nowMillis } from '../clock.ts'
 import { writeLine } from '../observability/logger.ts'
@@ -99,6 +101,20 @@ export const channelCall =
     if (result.isError === true) throw new UpstreamMcp({ serverId, reason: 'remote-rpc' })
     return result.structuredContent
   }
+
+/** A tool of the channel server through the MCP connections, as `channelCall` calls it; an error result fails. */
+export const channelTool = (connections: typeof McpConnections.Service, serverId: string) =>
+  Effect.fn('Channel.tool')(function* (name: string, args: Record<string, unknown>) {
+    const result = yield* connections.callTool(serverId, name, args, { caller: 'model' })
+    if (result.isError === true) return yield* new UpstreamMcp({ serverId, reason: 'remote-rpc' })
+    return result.structuredContent
+  })
+
+/** `channelTool` as the Promise port the channel's pull and delivery take, until they are Effects themselves. */
+export const channelToolPort =
+  (connections: typeof McpConnections.Service, serverId: string): ChannelPorts['call'] =>
+  (name, args) =>
+    Effect.runPromise(channelTool(connections, serverId)(name, args))
 
 export class TelegramChannel {
   readonly #chats: ChatDirectory

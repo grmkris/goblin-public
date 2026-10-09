@@ -19,7 +19,7 @@ import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { AgentHandlers } from '../../../src/routines/agent-api.ts'
 import { RoutinesLive } from '../../../src/layers/routines.ts'
-import { Events } from '../../../src/mcp/events.ts'
+import { Events, McpConnections, McpGrants, McpServers } from '../../../src/mcp/service.ts'
 import { ModelChoiceStore, ModelPicker, modelOptions } from '../../../src/models.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
 import { RoutineController } from '../../../src/routines/controller.ts'
@@ -94,12 +94,11 @@ const fixture = () => {
     Layer.succeed(Legacy.Models, models),
     Layer.succeed(Legacy.Channel, channel),
     Layer.succeed(Legacy.Chats, chats),
-    // The channel's tools: the host offers none, so turning the channel on is refused before anything is granted.
-    Layer.succeed(
-      Legacy.Mcp,
-      Object.assign(Object.create(null), { tools: async () => [], manager: { snapshot: () => undefined } }),
-    ),
-    Layer.succeed(Events, Object.assign(Object.create(null), { store: { activeConsumer: () => undefined } })),
+    // The channel's tools: the server offers none, so turning the channel on is refused before anything is granted.
+    Layer.succeed(McpServers, Object.assign(Object.create(null), { tools: () => Effect.succeed([]) })),
+    Layer.succeed(McpConnections, Object.assign(Object.create(null), { snapshot: () => Effect.succeedNone })),
+    Layer.succeed(McpGrants, Object.create(null)),
+    Layer.succeed(Events, Object.assign(Object.create(null), { activeConsumer: () => Effect.succeedNone })),
     // The lane's other services: RoutinesLive builds their adapters, and nothing here calls them.
     Layer.succeed(Legacy.Routines, Object.create(RoutineStore.prototype)),
     Layer.succeed(Legacy.RoutineRuns, Object.create(RoutineRunStore.prototype)),
