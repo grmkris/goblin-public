@@ -1,4 +1,5 @@
-import { HeadContent, Outlet, Scripts, createRootRoute, useRouterState } from '@tanstack/react-router'
+import type { QueryClient } from '@tanstack/react-query'
+import { HeadContent, Outlet, Scripts, createRootRouteWithContext, useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { AppHost } from '../components/apps/host.tsx'
 import { AppLayer } from '../components/apps/stage.tsx'
@@ -9,12 +10,18 @@ import { WorkspaceFeedProvider } from '../components/workspace-feed.tsx'
 import { SessionProvider, useSession } from '../lib/session.tsx'
 import { BillingProvider, useBilling } from '../lib/billing.tsx'
 import { startupImages } from '../lib/startup-images.ts'
+import { RouteError } from '../lib/query/route-error.tsx'
 import css from '../styles.css?url'
 
 /** Follows the system's light or dark preference, before first paint and when it changes (as the myapps apps do). */
 const THEME_SCRIPT = `(function(){try{var m=matchMedia('(prefers-color-scheme: dark)');var a=function(){var r=document.documentElement;r.classList.toggle('dark',m.matches);r.style.colorScheme=m.matches?'dark':'light'};a();m.addEventListener('change',a)}catch(e){}})()`
 
-export const Route = createRootRoute({
+/** What every route's loaders and `beforeLoad` receive: the router's own QueryClient (`router.tsx`). */
+interface RouterContext {
+  readonly queryClient: QueryClient
+}
+
+export const Route = createRootRouteWithContext<RouterContext>()({
   head: () => ({
     meta: [
       { charSet: 'utf-8' },
@@ -38,6 +45,9 @@ export const Route = createRootRoute({
     ],
   }),
   component: Root,
+  // A failure the app did not catch: calm copy with the reference to quote, and a retry. Crash reports plug into
+  // RouteError's `onCrash`.
+  errorComponent: RouteError,
   shellComponent: Document,
 })
 /** Pages that are part of signing in: no app navigation there. */
