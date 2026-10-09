@@ -1,5 +1,5 @@
 import type { RoutineDefinition, RoutineManualRun } from '@goblin/contracts'
-import { RoutinePage, RoutineRunPage, RoutineRunView, RoutineView } from '@goblin/contracts'
+import { RoutinePage, RoutineRunView, RoutineView } from '@goblin/contracts'
 import { RoutinesGroup, ownerApiOf } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -246,7 +246,7 @@ describe('the routines group served by the agent', () => {
     expect(run).toMatchObject({ id: 'rr_1', routineId: draft.id, state: 'admitted', source: 'manual' })
     expect(Object.keys(await (await fetch(send('GET', `/api/routines/${draft.id}/runs`))).json())).toEqual(['runs'])
     const page = await callOwner({ fetch }, (api) => api.routines.runs({ params: { id: draft.id } }))
-    expect(Schema.decodeUnknownSync(RoutineRunPage)(page).runs.map((each) => each.id)).toEqual(['rr_1'])
+    expect(page.runs.map((each) => each.id)).toEqual(['rr_1'])
   })
 
   it('answers an unknown routine as 404 not_found, and a path id that does not parse as 404 route', async () => {
