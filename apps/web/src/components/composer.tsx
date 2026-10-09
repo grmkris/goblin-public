@@ -12,6 +12,7 @@ import {
 } from '@goblin/ui'
 import { ArrowUpIcon, CircleHelpIcon, MessageSquarePlusIcon, SquareIcon, XIcon } from 'lucide-react'
 import { sendsMessage } from '../lib/keys.ts'
+import { reportUnexpected } from '../lib/unexpected.ts'
 import { activePersonas, taggedPersonas } from '../lib/personas.ts'
 import { AttachButton, PendingFiles } from './attachments.tsx'
 import { ComposerPicker, useComposerPicker } from './composer-picker.tsx'
@@ -179,7 +180,7 @@ function ComposerField({
           if (sendsMessage({ ...event, isComposing: event.nativeEvent.isComposing }, touch)) {
             event.preventDefault()
             picker.close()
-            void state.submit()
+            state.submit().catch(reportUnexpected)
           }
         }}
         {...(compact && { className: 'min-h-9 py-1.5' })}
@@ -224,7 +225,7 @@ export function MessageComposer({
       onSubmit={(event) => {
         event.preventDefault()
         picker.close()
-        void state.submit()
+        state.submit().catch(reportUnexpected)
       }}
     >
       <ComposerPicker picker={picker} />

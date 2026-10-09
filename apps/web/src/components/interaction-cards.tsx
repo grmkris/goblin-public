@@ -26,6 +26,7 @@ import {
 import { failureText, request } from '../lib/boundary.ts'
 import { targetLabel } from '../lib/capabilities.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
+import { reportUnexpected } from '../lib/unexpected.ts'
 import { useCapabilities } from './capabilities.tsx'
 import { addAndConnect } from './server-add.tsx'
 import { ApprovalCard } from './approval-card.tsx'
@@ -45,6 +46,7 @@ function useToolClaims(serverId: string, name: string): ToolView | undefined {
     const controller = new AbortController()
     void request(`/api/mcp/${encodeURIComponent(serverId)}/tools`, { signal: controller.signal })
       .then((data) => setTool(Option.getOrUndefined(decodeTools(data))?.find((item) => item.name === name)))
+      // expected: the claims are the server's own words beside the grant; the card asks without them
       .catch(() => undefined)
     return () => controller.abort()
   }, [serverId, name])
@@ -234,12 +236,12 @@ function QuestionCard({ interaction, onAnswer }: { readonly interaction: Questio
           event.preventDefault()
           if (busy) return
           const data = new FormData(event.currentTarget)
-          void replying(() =>
+          replying(() =>
             onAnswer(
               answerText(questions, (id) => data.getAll(id)),
               interactionOperation(interaction),
             ),
-          )
+          ).catch(reportUnexpected)
         }}
       >
         {several && <QuestionnaireProgress />}

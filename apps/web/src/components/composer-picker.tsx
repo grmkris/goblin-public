@@ -30,7 +30,7 @@ function useCatalog(
         if (!controller.signal.aborted) setLoading(false)
       })
     return () => controller.abort()
-  }, [conversation, open])
+  }, [conversation, open, setCatalog, setError, setLoading])
 }
 
 /** The `/` and `@` picker of a composer: the conversation's references (Personas among them) from the server. */

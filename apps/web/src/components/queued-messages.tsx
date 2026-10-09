@@ -4,6 +4,7 @@ import { selectionKey } from '@goblin/contracts'
 import { Button } from '@goblin/ui'
 import { Trash2Icon } from 'lucide-react'
 import { sharedContext, contextPreview } from '../lib/app-context.ts'
+import { reportUnexpected } from '../lib/unexpected.ts'
 import { MessageFiles } from './attachments.tsx'
 
 /** Pending Pi inputs belong beside the composer; they become transcript messages only when Pi places them. */
@@ -85,7 +86,9 @@ function RemoveQueued({
       aria-busy={busy}
       onClick={() => {
         setBusy(true)
-        void onRemove(id).finally(() => setBusy(false))
+        onRemove(id)
+          .finally(() => setBusy(false))
+          .catch(reportUnexpected)
       }}
     >
       <Trash2Icon aria-hidden />
