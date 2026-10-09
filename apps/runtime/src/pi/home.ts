@@ -1,5 +1,5 @@
 import { defineExtension, section } from '@earendil-works/pi-durable'
-import { HomeEdit, HomeEditResult, HomeRead } from '@goblin/contracts'
+import { HomeEdit, HomeEditResult, HomeRead, type JsonValue } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { readHomeLayout, editHomeLayout } from '../home/program.ts'
 import { problemText } from '../agent-apps/queue.ts'
@@ -49,7 +49,8 @@ export function homeExtension(run: RunProgram) {
           JSON.stringify(result.kind === 'owner-required' ? { ...result, question: OWNER_QUESTION } : result),
         details: (result, edit) => {
           if (result.kind === 'owner-required')
-            return { kind: 'home-owner-required', edit: JSON.parse(JSON.stringify(edit)) }
+            // SAFETY: a JSON round trip of the decoded edit is JSON.
+            return { kind: 'home-owner-required', edit: JSON.parse(JSON.stringify(edit)) as JsonValue }
           if (result.kind === 'applied')
             return {
               kind: 'home-receipt',

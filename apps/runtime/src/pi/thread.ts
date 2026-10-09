@@ -54,17 +54,16 @@ export function threadExtension(run: RunProgram) {
         // thread the owner named before its first answer is announced too.
         afterResponse: (_message, api) => {
           const thread = String(api.conversationId)
-          void run(
-            Effect.gen(function* () {
-              const conversations = yield* Conversations
-              const chat = (yield* Chats).chatOf(thread)
-              if (chat === undefined) return
-              yield* Effect.ignore(
-                requireBudget.pipe(Effect.andThen(attempt(() => conversations.nameIfUntitled(chat)))),
-              )
-              yield* attempt(() => conversations.announce(chat))
-            }),
-          ).catch(() => undefined)
+          const announce = Effect.gen(function* () {
+            const conversations = yield* Conversations
+            const chat = (yield* Chats).chatOf(thread)
+            if (chat === undefined) return
+            // expected: a spent budget or a failed name leaves the thread untitled, retried on its next response.
+            yield* Effect.ignore(requireBudget.pipe(Effect.andThen(attempt(() => conversations.nameIfUntitled(chat)))))
+            yield* attempt(() => conversations.announce(chat))
+          })
+          // expected: the bridge reports an unexpected failure; a refusal (plan, authority) only means no announce.
+          void run(announce).catch(() => undefined)
         },
       }),
     ],

@@ -126,6 +126,7 @@ export class TopicRegistry<RunResult = unknown> {
     seed?: TopicSeedData,
   ): Promise<{ topic: TopicView; created: boolean }> {
     const run = this.#creating.then(async () => this.#create(input, actor, now, seed))
+    // expected: this create's caller gets its failure from `run`; the queue only waits for it to settle.
     this.#creating = run.catch(() => undefined)
     return run
   }

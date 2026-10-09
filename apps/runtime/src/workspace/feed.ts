@@ -10,6 +10,8 @@ import type { PersonaRegistry } from '../personas/registry.ts'
 import type { PersonaInvocations } from '../personas/invocations.ts'
 import type { OrganizeReceipts } from '../organize/receipts.ts'
 import { sseResponse } from '../http/sse.ts'
+import { writeLine } from '../observability/logger.ts'
+import { framesOf, safeErrorType } from '../observability/report.ts'
 import { BACKGROUND } from '../pi/context.ts'
 import { SUBAGENT_RELAY } from '../pi/subagent-relay.ts'
 
@@ -31,6 +33,15 @@ export function activityOf(graph: TaskGraph): ReadonlyMap<string, Busy> {
 }
 
 type Listener = (changes: readonly WorkspaceChange[]) => void
+
+/** A failure of the feed's own work, which no caller awaits: its type and stack locations only (ADR 0024). */
+const reportFeedFailure = (where: string, error: unknown): void =>
+  writeLine('error', {
+    event: 'failure',
+    where,
+    'error.type': safeErrorType(error),
+    frames: error instanceof Error ? framesOf(error) : [],
+  })
 
 /** What the feed shows: the conversations, Apps, Home, Topics, Personas and receipts, each telling it what changed. */
 export type FeedSources = {
@@ -83,7 +94,8 @@ export class WorkspaceFeed {
     )
     receipts.onChange((changed) => this.#emit(changed.map((receipt) => ({ type: 'receipt' as const, receipt }))))
     conversations.onChange((ids) => {
-      if (this.#listeners.size > 0) void this.#describe(ids)
+      if (this.#listeners.size > 0)
+        this.#describe(ids).catch((error: unknown) => reportFeedFailure('workspace.describe', error))
     })
     apps.onChange((changed) => this.#emit(changed.map((app) => ({ type: 'app' as const, app }))))
     apps.onRemove((id) => this.#emit([{ type: 'app-removed' as const, id }]))
@@ -154,6 +166,7 @@ export class WorkspaceFeed {
     })()
     this.#watch = watch
     watch.catch(() => {
+      // expected: the listener that started the watch gets its failure; this only lets the next one start it again.
       if (this.#watch === watch) this.#watch = undefined
     })
     return watch
@@ -201,8 +214,12 @@ export class WorkspaceFeed {
 /** The feed as SSE: `event: snapshot` (`WorkspaceSnapshot`), then `event: change` batches. */
 export function workspaceEventResponse(feed: WorkspaceFeed): Response {
   return sseResponse((send, finish) => {
-    const opened = feed.open(send)
-    opened.catch((error: unknown) => finish(error instanceof Error ? error : new Error('workspace_feed')))
-    return async () => (await opened.catch(() => undefined))?.()
+    // A feed that failed to open fails the stream and has nothing to close.
+    const opened = feed.open(send).catch((error: unknown) => {
+      reportFeedFailure('workspace.open', error)
+      finish(error instanceof Error ? error : new Error('workspace_feed'))
+      return undefined
+    })
+    return async () => (await opened)?.()
   })
 }
