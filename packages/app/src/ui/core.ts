@@ -51,7 +51,9 @@ function applyTheme(context: McpUiHostContext | undefined): void {
 function followTheme(): void {
   const app = connect()
   app.addEventListener('hostcontextchanged', () => applyTheme(app.getHostContext()))
-  void connected().then(() => applyTheme(app.getHostContext()))
+  connected()
+    .then(() => applyTheme(app.getHostContext()))
+    .catch((cause: unknown) => report(`The host's theme could not be applied: ${String(cause)}`))
 }
 
 /** The view module's component, or one that throws what loading it threw, so the boundary shows and reports it. */

@@ -149,12 +149,15 @@ let queued: string[] = []
 export function report(message: string): void {
   queued.push(message)
   if (queued.length > 1) return
-  void connected()
+  connected()
     .then(() => new Promise((resolve) => setTimeout(resolve, BURST_MS)))
     .then(() => {
       const burst = [...new Set(queued)].join('\n')
       queued = []
       return connect().sendLog({ level: 'error', data: burst.slice(0, 2000) })
+    })
+    .catch(() => {
+      // expected: the host is the only place a report goes; one that cannot reach it has nowhere left to go
     })
 }
 
