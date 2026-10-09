@@ -28,6 +28,7 @@ const SHOWN = [
   RunAttribute.purpose,
   RunAttribute.delivery,
   RunAttribute.recovery,
+  RunAttribute.taskKind,
 ] as const
 
 /** One event in a line: what it was, how it ended, how long it took, and why (the {@link SHOWN} attributes). */

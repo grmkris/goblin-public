@@ -58,18 +58,32 @@ const call: RunEvent = {
   attributes: { [RunAttribute.toolName]: 'mcp_call', [RunAttribute.errorType]: 'GrantDenied' },
 }
 
+const relayFailed: RunEvent = {
+  id: 'task:t2',
+  kind: 'error',
+  status: 'error',
+  operationId: 'op-1',
+  startedAt: at + 300,
+  endedAt: at + 300,
+  attributes: { [RunAttribute.taskKind]: 'subagent.relay' },
+}
+
 describe('diagnose (unit, ADR 0024)', () => {
   it("reads the recent problems and turns through the agent's inspection", async () => {
     const { ledger, diagnose } = fixture()
     ledger.ended(turn)
     ledger.ended(call)
+    ledger.ended(relayFailed)
     expect(await diagnose({ all: true })).toMatchObject({
       trusted: false,
       problems: [
+        { kind: 'error', status: 'error', [RunAttribute.taskKind]: 'subagent.relay' },
         { kind: 'tool.call', status: 'blocked', ms: 100, [RunAttribute.errorType]: 'GrantDenied' },
         { kind: 'turn.submitted', status: 'error', ms: 500, [RunAttribute.source]: 'telegram' },
       ],
-      turns: [{ operationId: 'op-1', status: 'error', source: 'telegram', toolCalls: 1, failedToolCalls: 1 }],
+      turns: [
+        { operationId: 'op-1', status: 'error', source: 'telegram', toolCalls: 1, failedToolCalls: 1, errors: 1 },
+      ],
     })
   })
 

@@ -120,6 +120,25 @@ describe('flow events in the run ledger', () => {
     expect(flowOf(ledger.read('flow:3') ?? flowRunEvent(failed, 'x', 0))).toEqual(failed)
   })
 
+  it('leave a refused step out of problems unless all are asked for, and keep a failed one in', () => {
+    const { ledger, telemetry } = ledgerFixture()
+    const refused: FlowEvent = { flow: 'move', via: 'app', actor: 'owner', chat: '12', status: 'refused' }
+    const failed: FlowEvent = { flow: 'start', via: 'app', actor: 'owner', status: 'error', errorType: 'Internal' }
+    telemetry.record(flowRunEvent(refused, 'flow:4', 4_000))
+    telemetry.record(flowRunEvent(failed, 'flow:5', 5_000))
+    telemetry.record({
+      id: 'task:9',
+      kind: 'error',
+      status: 'error',
+      startedAt: 6_000,
+      endedAt: 6_000,
+      attributes: { [RunAttribute.taskKind]: 'subagent.relay' },
+    })
+
+    expect(ledger.problems(0, 10).map((event) => event.id)).toEqual(['task:9', 'flow:5'])
+    expect(ledger.problems(0, 10, true).map((event) => event.id)).toEqual(['task:9', 'flow:5', 'flow:4'])
+  })
+
   it('reads no flow from another kind of event', () => {
     expect(flowOf({ id: 'turn:1', kind: 'turn.submitted', status: 'ok', startedAt: 1, attributes: {} })).toBeUndefined()
   })

@@ -9,10 +9,14 @@ export const incompleteAnswer = (event: RunEvent): boolean =>
       event.attributes[RunAttribute.emptyAnswer] === true)) ||
   event.attributes[RunAttribute.coverageGap] === true
 
-/** Hide only a confirmed automatic model retry, never an arbitrary tool failure in a successful turn. */
+/**
+ * Hide only a confirmed automatic model retry, an expected authority wait and a refused flow step (a move of a busy
+ * chat, a send to a closed one: an answer, not a fault), never an arbitrary tool failure in a successful turn.
+ */
 export function needsAttention(event: RunEvent, peers: readonly RunEvent[]): boolean {
   if (incompleteAnswer(event)) return true
   if (expectedFailure(event.attributes[RunAttribute.errorType])) return false
+  if (event.kind === 'flow' && event.attributes[RunAttribute.flowStatus] === 'refused') return false
   if (event.status === 'ok' || event.status === 'started') return false
   if (event.kind !== 'model.attempt' || event.taskId === undefined || event.operationId === undefined) return true
   if (

@@ -148,6 +148,7 @@ describe('summarize', () => {
       event('model.attempt', 'ok', { [RunAttribute.inputTokens]: 110, [RunAttribute.outputTokens]: 12 }),
       event('tool.call', 'blocked'),
       event('tool.call', 'ok'),
+      event('error', 'error', { [RunAttribute.taskKind]: 'subagent.relay' }),
     ])
     expect(summary).toEqual({
       operationId: 'op-1',
@@ -163,6 +164,7 @@ describe('summarize', () => {
       failedToolCalls: 1,
       inputTokens: 210,
       outputTokens: 12,
+      errors: 1,
     })
   })
 })

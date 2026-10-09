@@ -173,6 +173,7 @@ const failed = (event: RunEvent) => event.status !== 'ok' && event.status !== 's
 export function summarize(turn: RunEvent, events: readonly RunEvent[]): TurnSummary {
   const attempts = events.filter((event) => event.kind === 'model.attempt')
   const tools = events.filter((event) => event.kind === 'tool.call')
+  const errors = events.filter((event) => event.kind === 'error')
   const reason = stringOf(turn, RunAttribute.reason)
   return {
     operationId: turn.operationId ?? turn.id,
@@ -188,6 +189,7 @@ export function summarize(turn: RunEvent, events: readonly RunEvent[]): TurnSumm
     failedToolCalls: tools.filter(failed).length,
     inputTokens: attempts.reduce((sum, event) => sum + numberOf(event, RunAttribute.inputTokens), 0),
     outputTokens: attempts.reduce((sum, event) => sum + numberOf(event, RunAttribute.outputTokens), 0),
+    errors: errors.length,
   }
 }
 
