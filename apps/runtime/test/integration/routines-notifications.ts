@@ -15,7 +15,8 @@ import { ChatDirectory } from '../../src/chats/directory.ts'
 import { Entitlements } from '../../src/billing/gates.ts'
 import { Channel, Mcp, Resident, RoutineRuns } from '../../src/services.ts'
 import { ChannelAdapter, RoutineRunsAdapter } from '../../src/layers/routines.ts'
-import { McpConnectionsAdapter, ResidentAdapter } from '../../src/layers/mcp.ts'
+import { McpConnectionsLive, ResidentLive } from '../../src/layers/mcp.ts'
+import { Db } from '../../src/runtime/db.ts'
 import { MemoryCredentials, MemoryGrants } from '../mcp/memory.ts'
 import { appRoutineRuns } from '../../src/storage/routines.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
@@ -91,13 +92,14 @@ async function setupNotifications(storage: DurableObjectStorage, owner: string) 
   const accepted: Record<string, unknown>[] = []
   const host = notificationHost(credentials, attempts, accepted)
   // The services notifyRoutine reads, over these instances as the agent's layers build them.
-  const services = Layer.mergeAll(RoutineRunsAdapter, ChannelAdapter, McpConnectionsAdapter, ResidentAdapter).pipe(
+  const services = Layer.mergeAll(RoutineRunsAdapter, ChannelAdapter, McpConnectionsLive, ResidentLive).pipe(
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(RoutineRuns, runs),
         Layer.succeed(Mcp, host),
         Layer.succeed(Channel, channel),
         Layer.succeed(Resident, resident),
+        Layer.succeed(Db, db),
       ),
     ),
   )
