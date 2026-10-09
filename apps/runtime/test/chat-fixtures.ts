@@ -27,7 +27,7 @@ type PortInstances = {
 /**
  * The services the Telegram ports' programs read, over a probe's own instances: lane C's directory adapter and native
  * admission over its database and chat directory (main, the only chat Telegram reaches, is always open), and its budget
- * and model picker as the routines lane's services wrap them. Flows are not recorded.
+ * and model picker as the routines lane's services wrap them, and Pi as its sessions. Flows are not recorded.
  */
 export const portServices = ({ db, chats, harness, budget, models }: PortInstances) => {
   // SAFETY: admission reads only Pi's harness and the models it applied from the instance input; no routine answers.
@@ -50,14 +50,8 @@ export const portServices = ({ db, chats, harness, budget, models }: PortInstanc
       }),
     ),
   )
-  const core = Layer.mergeAll(
-    Layer.succeed(Db, db),
-    KeyedLock.layer,
-    PiSessions.layer.pipe(Layer.provide(input)),
-    FlowEvents.noop,
-    plans,
-    input,
-  )
+  const pi = PiSessions.layer.pipe(Layer.provide(input))
+  const core = Layer.mergeAll(Layer.succeed(Db, db), KeyedLock.layer, pi, FlowEvents.noop, plans, input)
   const operations = Layer.effect(
     ChatOperations,
     makeChatOperations({ chats, requireOpen: (chat) => chats.session(chat) }),
@@ -66,5 +60,6 @@ export const portServices = ({ db, chats, harness, budget, models }: PortInstanc
     ChatsAdapter.pipe(Layer.provide(Layer.succeed(LegacyChats, chats))),
     operations.pipe(Layer.provide(core)),
     plans,
+    pi,
   )
 }

@@ -14,7 +14,7 @@ import { Entitlements } from './billing/gates.ts'
 import type { Budget } from './budget.ts'
 import type { Capabilities } from './capabilities/service.ts'
 import type { SessionId } from './chats/directory.ts'
-import { epochSeconds, instanceCall, withinBudget } from './chats/instance.ts'
+import { epochSeconds, instanceCall, settledWithin, withinBudget } from './chats/instance.ts'
 import { ChatOperations, Chats, Conversations } from './chats/service.ts'
 import { resolveSelections, type ResolvedSelections } from './composer.ts'
 import { Files } from './files/service.ts'
@@ -305,14 +305,9 @@ export const askClient = (
       flow: { flow: 'ask_client', via: 'mcp', actor: 'client' },
       content: authoredContent(input.author, input.text),
     })
-    const result = yield* instanceCall(() =>
-      input.harness
-        .wait(input.operationId, { session, signal: AbortSignal.timeout(input.waitMs) })
-        // Wave 3 (C2) stops this also swallowing a wait that failed for another reason.
-        // expected: a wait that outlives `waitMs` means the answer is still running.
-        .catch(() => undefined),
-    )
-    if (result === undefined) return { status: 'running' as const, operationId: input.operationId }
+    const settled = yield* settledWithin(session, input.operationId, input.waitMs)
+    if (Option.isNone(settled)) return { status: 'running' as const, operationId: input.operationId }
+    const result = settled.value
     return result.status === 'done'
       ? { status: 'done' as const, operationId: input.operationId, text: result.text ?? '' }
       : { status: 'unanswered' as const, operationId: input.operationId, reason: result.reason ?? 'unanswered' }

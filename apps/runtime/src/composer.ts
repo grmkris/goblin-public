@@ -126,16 +126,24 @@ const resolveOne = (session: string, selection: ComposerSelection, run: RunProgr
     }
   })
 
-/** Resolve all selections before model work. A failed selection refuses the entire send with its identity key. */
+/**
+ * Resolve all selections before model work. A selection that is not there for this chat (gone, invalid, not granted)
+ * refuses the entire send with its identity key; any other failure (a connection or an MCP call that failed) is the
+ * send's failure as it is (C1).
+ */
 export const resolveSelections = (session: string, selections: readonly ComposerSelection[], run: RunProgram) =>
   Effect.gen(function* () {
     const unique = [...new Map(selections.map((selection) => [selectionKey(selection), selection])).values()]
     const options: ComposerOption[] = []
     const context: Record<string, unknown>[] = []
     for (const selection of unique) {
-      const resolved = yield* Effect.mapError(
-        resolveOne(session, selection, run),
-        () => new InvalidInput({ reason: `composer:${selectionKey(selection)}` }),
+      const refused = new InvalidInput({ reason: `composer:${selectionKey(selection)}` })
+      const resolved = yield* resolveOne(session, selection, run).pipe(
+        Effect.catchTags({
+          NotFound: () => Effect.fail(refused),
+          InvalidInput: () => Effect.fail(refused),
+          GrantDenied: () => Effect.fail(refused),
+        }),
       )
       options.push(resolved.option)
       context.push(resolved.context)

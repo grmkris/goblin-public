@@ -41,8 +41,8 @@ export class ChannelWakes {
     this.#ports = ports
   }
   async pull(): Promise<void> {
-    const { harness, run } = this.#ports
-    const pull = onChannel(harness, run, (channel, ports) => channel.pull(ports, nowSeconds()))
+    const { run } = this.#ports
+    const pull = onChannel(run, (channel, ports) => channel.pull(ports, nowSeconds()))
     await run(KeyedLock.use((locks) => locks.withLock(PULL_LOCK)(Effect.asVoid(pull)))).catch((error: unknown) =>
       reportChannelFailure('pull', error),
     )
@@ -51,8 +51,8 @@ export class ChannelWakes {
     // A flow that cannot be recorded never holds up, or repeats, a delivery.
     const delivered = (reply: DeliveredReply) =>
       this.#ports.run(deliveryFlow(reply)).catch((error: unknown) => reportChannelFailure('replies', error))
-    const { harness, run } = this.#ports
-    const more = onChannel(harness, run, (channel, ports) => channel.deliver(ports, nowSeconds(), delivered))
+    const { run } = this.#ports
+    const more = onChannel(run, (channel, ports) => channel.deliver(ports, nowSeconds(), delivered))
     const again = await run(
       Effect.map(more, (running) => (Option.getOrElse(running, () => false) ? 15 : undefined)),
     ).catch((error: unknown) => {

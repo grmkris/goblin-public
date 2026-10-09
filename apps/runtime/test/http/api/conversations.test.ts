@@ -1,6 +1,6 @@
 import type { FlowEvent } from '@goblin/contracts/telemetry'
 import { ConversationView } from '@goblin/contracts'
-import { ConversationsGroup, InvalidInput, NotFound, ownerApiOf } from '@goblin/contracts/api'
+import { ConversationsGroup, InvalidInput, NotFound, UpstreamMcp, ownerApiOf } from '@goblin/contracts/api'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
@@ -239,6 +239,11 @@ const services = (calls: Calls, personas: readonly PersonaView[]) =>
       fake<Skills['Service']>({
         catalog: () => Effect.succeed({ skills: [], unavailable: [] }),
         sources: () => Effect.succeed([]),
+        // A skill on server `down` fails to load over the network; any other is not there.
+        activateSelection: (_session, serverId) =>
+          serverId === 'down'
+            ? Effect.fail(new UpstreamMcp({ serverId, reason: 'transport' }))
+            : Effect.fail(new NotFound({ what: 'skill' })),
       }),
     ),
     Layer.succeed(Retrieval, fake<Retrieval['Service']>({ uses: () => Effect.succeed([]) })),
@@ -349,6 +354,13 @@ const json = (method: string, path: string, body?: unknown, headers: Record<stri
 
 const decodeViews = Schema.decodeUnknownSync(Schema.Array(ConversationView))
 
+/** A message that tags a skill of `serverId`. */
+const skill = (serverId: string) => ({
+  input: 'use it',
+  operationId: `op-${serverId}`,
+  selections: [{ kind: 'skill', serverId, uri: 'skill://plan' }],
+})
+
 describe('the conversations API served by the agent', () => {
   it('lists the chats and creates a Thread with 201, empty or branched from an entry', async () => {
     const { fetch } = fixture()
@@ -390,6 +402,17 @@ describe('the conversations API served by the agent', () => {
       expect(response.status).toBe(status)
       if (reason !== undefined) expect(await response.json()).toMatchObject({ error: { reason } })
     }
+    expect(record.submitted).toEqual([])
+  })
+
+  it('refuses a selection that is not there as its own InvalidInput, but passes any other failure on as it is (C1)', async () => {
+    const { fetch, record } = fixture()
+    const gone = await fetch(json('POST', '/api/conversations/2/messages', skill('gone')))
+    expect(gone.status).toBe(400)
+    expect(await gone.json()).toMatchObject({ error: { reason: 'composer:skill:gone:skill://plan' } })
+    const down = await fetch(json('POST', '/api/conversations/2/messages', skill('down')))
+    expect(down.status).toBeGreaterThanOrEqual(500)
+    expect(await down.json()).toMatchObject({ error: { code: 'upstream_mcp', serverId: 'down', reason: 'transport' } })
     expect(record.submitted).toEqual([])
   })
 

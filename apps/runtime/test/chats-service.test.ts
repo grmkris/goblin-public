@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@effect/vitest'
-import type { PiHarness } from 'agents/harness/pi'
+import type { PiHarness, PiOperationResult } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
 import * as Deferred from 'effect/Deferred'
 import * as Effect from 'effect/Effect'
@@ -9,6 +9,7 @@ import * as Option from 'effect/Option'
 import * as TestClock from 'effect/testing/TestClock'
 import type { FlowEvent } from '@goblin/contracts/telemetry'
 import { ChatDirectory } from '../src/chats/directory.ts'
+import { settledWithin } from '../src/chats/instance.ts'
 import type { ChatMover } from '../src/chats/mover.ts'
 import { ChatOperations, Chats, Conversations, Moves } from '../src/chats/service.ts'
 import type { ConversationRegistry } from '../src/conversations.ts'
@@ -20,7 +21,7 @@ import { Models } from '../src/models.ts'
 import { FlowEvents } from '../src/observability/flows.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
 import type { RoutineController } from '../src/routines/controller.ts'
-import { PiSessions } from '../src/pi/sessions.ts'
+import { PiFailure, PiSessions } from '../src/pi/sessions.ts'
 import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 import { Chats as LegacyChats, Conversations as LegacyConversations, Moves as LegacyMoves } from '../src/services.ts'
@@ -271,4 +272,28 @@ describe('the conversation services', () => {
       expect(calls).toEqual(['read:2@90', 'routine:77:run-1@90:3', 'write:41:thread-started:2', 'move:1@90'])
     }).pipe(Effect.provide(layer))
   })
+})
+
+describe('a bounded wait for an operation (C2, C3)', () => {
+  const waiting = (wait: Effect.Effect<PiOperationResult, PiFailure>) =>
+    Layer.succeed(PiSessions, fake<PiSessions['Service']>({ wait: () => wait }))
+  const done: PiOperationResult = { operationId: 'op', session: '41', status: 'done', text: 'hi' }
+
+  it.effect('is still running past its time, settled with its result, and a failed wait is that failure', () =>
+    Effect.gen(function* () {
+      const running = yield* Effect.forkChild(
+        settledWithin('41', 'op', 200).pipe(Effect.provide(waiting(Effect.never))),
+      )
+      yield* TestClock.adjust('201 millis')
+      expect(yield* Fiber.join(running)).toEqual(Option.none())
+      expect(yield* settledWithin('41', 'op', 200).pipe(Effect.provide(waiting(Effect.succeed(done))))).toEqual(
+        Option.some(done),
+      )
+      const failure = new PiFailure({ operation: 'wait', cause: new Error('storage') })
+      const failed = yield* Effect.flip(
+        settledWithin('41', 'op', 200).pipe(Effect.provide(waiting(Effect.fail(failure)))),
+      )
+      expect(failed).toMatchObject({ _tag: 'Internal' })
+    }),
+  )
 })

@@ -86,7 +86,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
   const operations: string[] = []
   const budget = new ModelBudget(new UsageStore(db), 300_000)
   const models = new ModelPicker(new ModelChoiceStore(db), modelOptions(undefined, 'storage-only'))
-  const run: Parameters<typeof channelPorts>[2] = (program) =>
+  const run: Parameters<typeof channelPorts>[1] = (program) =>
     Effect.runPromise(
       program.pipe(
         Effect.provideService(Chats, chats),
@@ -95,7 +95,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
         Effect.provide(portServices({ db, chats, harness, budget, models })),
       ),
     )
-  const ports = channelPorts(harness, channelCall(manager, 'mygram'), run)
+  const ports = channelPorts(channelCall(manager, 'mygram'), run)
   const pull = () =>
     channel.pull(
       {
