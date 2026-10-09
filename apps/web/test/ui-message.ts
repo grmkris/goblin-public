@@ -4,7 +4,7 @@ import { writeSync } from 'node:fs'
 import path from 'node:path'
 import { build, createServer } from 'vite'
 import { chromium } from 'playwright-core'
-import { record, records } from '../src/lib/boundary.ts'
+import { record, records } from '../src/lib/values.ts'
 
 /** Where this script reports (@cloudflare/workers-types makes `process` `any`). */
 const STDOUT = 1

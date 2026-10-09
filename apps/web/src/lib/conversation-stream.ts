@@ -1,6 +1,6 @@
 import { ConversationQueue, type QueuedInput } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
-import { isString } from './boundary.ts'
+import { isString } from './values.ts'
 import { projectBatch, projectSnapshot, type ConversationProjection } from './projection.ts'
 import { reportUnexpected } from './unexpected.ts'
 

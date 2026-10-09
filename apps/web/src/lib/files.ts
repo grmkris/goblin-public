@@ -5,7 +5,7 @@ import { type Attachment, FILE_LIMITS, FileEntry, FileListing } from '@goblin/co
 import { API_ERRORS, AppError, PayloadTooLarge } from '@goblin/contracts/api'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { isString, record } from './boundary.ts'
+import { isString, record } from './values.ts'
 
 const NAME_LIMIT = 80
 

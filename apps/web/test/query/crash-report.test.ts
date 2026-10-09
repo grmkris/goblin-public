@@ -1,7 +1,6 @@
-import { BILLING_REFUSALS, BillingRefused, Conflict } from '@goblin/contracts/api'
+import { BILLING_REFUSALS, BillingRefused, Conflict, NotFound } from '@goblin/contracts/api'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { account, reportCrash } from '../../src/lib/api.ts'
-import { ApiFailure } from '../../src/lib/boundary.ts'
 import { BILLING_KINDS, describeError, messageOf } from '../../src/lib/query/app-error.ts'
 import { crashReport, crashReporter, framesOf, reportUncaught } from '../../src/lib/query/crash-report.ts'
 
@@ -44,8 +43,8 @@ describe('a crash report', () => {
       name: 'Conflict',
       ref: '7f3a9c12e4b5-AMS',
     })
-    expect(crashReport(new ApiFailure('NotFound', 404, SECRET, { ref: 'ray-404' }), '/')).toMatchObject({
-      name: 'Error',
+    expect(crashReport(new NotFound({ what: SECRET, ref: 'ray-404' }), '/')).toMatchObject({
+      name: 'NotFound',
       ref: 'ray-404',
     })
     expect(crashReport(SECRET, `/c/${SECRET}`)).toEqual({ route: '__root__', name: 'Error', frames: [], build: 'dev' })
@@ -62,7 +61,7 @@ describe('a crash report', () => {
     const sent: unknown[] = []
     const report = crashReporter((value) => sent.push(value))
     report(new Conflict({ reason: 'x', ref: 'ray-409' }), '/')
-    report(new ApiFailure('NotFound', 404, undefined, { ref: 'ray-404' }), '/')
+    report(new NotFound({ what: 'x', ref: 'ray-404' }), '/')
     report(new BillingRefused({ code: 'checkout_limit' }), '/subscribe')
     expect(sent).toHaveLength(0)
     report(thrown('x', ['    at f (https://goblin.test/a.js:1:1)']), '/')

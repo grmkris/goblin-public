@@ -1,5 +1,5 @@
 import { Option, Schema } from 'effect'
-import { isString, record } from './boundary.ts'
+import { isString, record } from './values.ts'
 
 /** A saved-answer pointer, never the answer or a capability. */
 const QuestionAnswerReceipt = Schema.Struct({

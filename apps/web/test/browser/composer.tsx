@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { selectionKey, type ComposerSelection } from '@goblin/contracts'
+import { InvalidInput } from '@goblin/contracts/api'
 import { MessageComposer } from '../../src/components/composer.tsx'
-import { ApiFailure } from '../../src/lib/boundary.ts'
 import type { ComposerDraft } from '../../src/lib/composer.ts'
 import '../../src/styles.css'
 
@@ -14,7 +14,7 @@ function Fixture() {
   const compact = new URL(location.href).searchParams.has('compact')
   const onSend = async (input: string, attachments: readonly string[], selections: readonly ComposerSelection[]) => {
     if (reject && selections[0] !== undefined)
-      throw new ApiFailure('InvalidInput', 400, `composer:${selectionKey(selections[0])}`)
+      throw new InvalidInput({ reason: `composer:${selectionKey(selections[0])}` })
     setSent((current) => [...current, { input, attachments, selections }])
     return true
   }

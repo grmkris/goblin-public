@@ -4,7 +4,7 @@
 import { Attachment, ComposerMetadata, type ComposerOption, authorOf } from '@goblin/contracts'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { isString, record, records } from './boundary.ts'
+import { isString, record, records } from './values.ts'
 
 const MAX_CONTEXT = 8192
 

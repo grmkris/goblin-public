@@ -1,5 +1,5 @@
 import type { AgentAppLaunch, AgentAppLib } from '@goblin/contracts'
-import { isString, record } from './boundary.ts'
+import { isString, record } from './values.ts'
 
 function domains(value: unknown): string[] {
   if (!Array.isArray(value)) return []

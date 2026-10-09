@@ -8,8 +8,8 @@ import { crashReporter } from './query/crash-report.ts'
 const requestId = (): string => crypto.randomUUID().replaceAll('-', '').slice(0, 8)
 
 /**
- * What every API request carries: a fresh `x-goblin-request` id, the CSRF header on every write (as `boundary.ts`
- * sends it), and the operation a write runs as (`withOperation`).
+ * What every API request carries: a fresh `x-goblin-request` id, the CSRF header on every write, and the operation a
+ * write runs as (`withOperation`).
  */
 const apiHeaders = (
   request: HttpClientRequest.HttpClientRequest,

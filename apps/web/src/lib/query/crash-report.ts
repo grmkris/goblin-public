@@ -52,10 +52,7 @@ const BUILD: string = (() => {
 
 /** The report of `error` on `route` (a route id such as `/c/$chatId`), or none if nothing of it fits the contract. */
 export function crashReport(error: unknown, route: string): ClientErrorReport | undefined {
-  // A typed API failure's reference, or an older `ApiFailure`'s (`boundary.ts`).
-  const ref =
-    describeError(error).ref ??
-    (Predicate.hasProperty(error, 'ref') && Predicate.isString(error.ref) ? error.ref : undefined)
+  const ref = describeError(error).ref
   const base = {
     route: ROUTE.test(route) ? route : '__root__',
     name: nameOf(error),

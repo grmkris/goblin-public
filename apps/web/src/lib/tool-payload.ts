@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import type { JsonValue } from '@goblin/contracts'
 import type { ToolPayloadView } from '@goblin/ui'
-import { isString, record, records } from './boundary.ts'
+import { isString, record, records } from './values.ts'
 import { looksLikeMarkdown } from './markdown.ts'
 
 /** One part of a tool's output: a JSON value, Markdown to format, or text shown as it is. */

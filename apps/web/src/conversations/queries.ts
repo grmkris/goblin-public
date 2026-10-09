@@ -1,7 +1,7 @@
 import type { CreateConversation, MoveToThread, QueueRemoval, SendMessage, UpdateConversation } from '@goblin/contracts'
 import { infiniteQueryOptions, queryOptions, skipToken } from '@tanstack/react-query'
 import { owner } from '../lib/api.ts'
-import { isNumber, record } from '../lib/boundary.ts'
+import { isNumber, record } from '../lib/values.ts'
 import { withOperation } from '../lib/query/api-query.ts'
 
 /** Every conversation read: keys are `['conversations', kind, …input]`, so `['conversations']` reaches them all. */

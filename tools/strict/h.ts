@@ -14,7 +14,7 @@ export const paths: string[] = [
   'packages/contracts/src/api/billing.test.ts',
   'packages/contracts/src/api/clients.ts',
   'packages/contracts/src/api/client-errors.ts',
-  'apps/web/src/lib/boundary.ts',
+  'apps/web/src/lib/values.ts',
   'apps/web/src/lib/api.ts',
   'apps/web/src/lib/query/**',
   'apps/web/src/router.tsx',
@@ -23,7 +23,7 @@ export const paths: string[] = [
   'apps/web/src/client.tsx',
   'apps/web/src/server.tsx',
   'apps/web/src/worker.ts',
-  'apps/web/test/boundary.test.ts',
+  'apps/web/test/values.test.ts',
   'apps/web/test/query/crash-report.test.ts',
   'apps/web/test/query/query-boundary.test.tsx',
 ]

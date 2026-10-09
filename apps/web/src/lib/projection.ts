@@ -10,7 +10,7 @@ import {
 } from '@goblin/contracts'
 import { Option, Schema } from 'effect'
 import type { SharedContext } from './app-context.ts'
-import { isString, isNumber, identifier, record, records, text } from './boundary.ts'
+import { isString, isNumber, identifier, record, records, text } from './values.ts'
 import { sharedContext } from './app-context.ts'
 
 /** A tool call the assistant made, with its raw arguments. */

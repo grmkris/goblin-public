@@ -7,7 +7,7 @@ import {
   type TopicSeedData,
 } from '@goblin/contracts'
 import type { SharedContext } from './app-context.ts'
-import { isString, record } from './boundary.ts'
+import { isString, record } from './values.ts'
 import type { ChatMessage, ConversationProjection, LiveTool, ToolCallView, TurnFailure } from './projection.ts'
 
 type AssistantMessage = Extract<ChatMessage, { role: 'assistant' }>

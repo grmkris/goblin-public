@@ -9,7 +9,7 @@ import {
   streamReads,
   submitMutation,
 } from '../conversations/queries.ts'
-import { isNumber, records } from '../lib/boundary.ts'
+import { isNumber, records } from '../lib/values.ts'
 import { BrowserPiEvents, type StreamStatus } from '../lib/conversation-stream.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { reportUnexpected } from '../lib/unexpected.ts'

@@ -1,4 +1,4 @@
-import { isString, record, records } from './boundary.ts'
+import { isString, record, records } from './values.ts'
 
 /** A file an App offers the owner to save: its name, type and bytes (ADR 0021). */
 export type DownloadFile = { readonly name: string; readonly type: string; readonly bytes: Uint8Array }

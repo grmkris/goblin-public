@@ -4,7 +4,7 @@
 import type { AppBridge } from '@modelcontextprotocol/ext-apps/app-bridge'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import type { AppCall, AppCallResult, AppSnapshot } from '@goblin/contracts'
-import { isString, record } from './boundary.ts'
+import { isString, record } from './values.ts'
 import { messageOf } from './query/app-error.ts'
 
 const OP = /^ui:([0-9a-f-]{36})$/u

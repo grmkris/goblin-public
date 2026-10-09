@@ -1,5 +1,5 @@
 import type { ConversationView } from '@goblin/contracts'
-import { isString, record } from './boundary.ts'
+import { isString, record } from './values.ts'
 import { type Part, type ToolPart, isOwnTurn } from './parts.ts'
 
 const newestFirst = (a: ConversationView, b: ConversationView) =>
