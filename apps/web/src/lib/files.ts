@@ -63,7 +63,6 @@ export async function uploadAttachment(file: File, taken: Set<string>, now = new
   const held = new Set([...taken, ...listing.entries.map((entry) => entry.name)])
   const name = freeName(uploadName(file.name), held)
   taken.add(name)
-  // @effect-diagnostics-next-line globalFetch:off -- The browser streams the owner's file to their own agent.
   const response = await fetch(fileUrl(`${folder}/${name}`), {
     method: 'PUT',
     credentials: 'same-origin',
