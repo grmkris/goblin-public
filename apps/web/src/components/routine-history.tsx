@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Schema } from 'effect'
-import { RoutineRunPage, type RoutineRunView } from '@goblin/contracts'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { RoutineRunView } from '@goblin/contracts'
 import { Link } from '@tanstack/react-router'
 import { Alert, AlertDescription, Button, Skeleton } from '@goblin/ui'
 import { RefreshCwIcon } from 'lucide-react'
-import { failureText, request } from '../lib/boundary.ts'
+import { messageOf } from '../lib/query/app-error.ts'
+import { routineRunsQuery, runRoutineMutation, stopRunMutation } from '../lib/routines/queries.ts'
 import { runStatus, telegramReport } from '../lib/labels.ts'
 import { StatusLabel } from './status-label.tsx'
 
@@ -65,42 +65,30 @@ export function RoutineHistory({
   readonly revision: number
   readonly active: boolean
 }) {
-  const [runs, setRuns] = useState<readonly RoutineRunView[]>()
-  const [error, setError] = useState('')
-  const [pending, setPending] = useState<string>()
-  const load = useCallback(() => {
-    void request(`/api/routines/${id}/runs`)
-      .then((value) => setRuns(Schema.decodeUnknownSync(RoutineRunPage)(value).runs))
-      .catch((cause: unknown) => setError(failureText(cause)))
-  }, [id])
-  useEffect(load, [load])
-  async function command(run?: RoutineRunView) {
-    setPending(run?.id ?? 'run')
-    setError('')
-    try {
-      if (run?.sessionId) await request(`/api/conversations/${run.sessionId}/stop`, { body: {} })
-      else
-        await request(`/api/routines/${id}/run`, {
-          headers: { 'x-goblin-csrf': '1' },
-          body: { revision, operationId: crypto.randomUUID(), confirmRun: true },
-        })
-      load()
-    } catch (cause) {
-      setError(failureText(cause))
-    } finally {
-      setPending(undefined)
-    }
-  }
+  const queryClient = useQueryClient()
+  const read = useQuery(routineRunsQuery(id))
+  const running = useMutation(runRoutineMutation(queryClient))
+  const stopping = useMutation(stopRunMutation(queryClient))
+  const runs = read.data?.runs
+  const pending = running.isPending ? 'run' : stopping.isPending ? stopping.variables.run : undefined
+  const error =
+    (read.error !== null && messageOf(read.error, 'list its runs')) ||
+    (running.error !== null && messageOf(running.error, 'run it')) ||
+    (stopping.error !== null && messageOf(stopping.error, 'stop the run')) ||
+    ''
+  const runNow = () => running.mutate({ id, revision, operationId: crypto.randomUUID() })
+  const stop = (run: string, chat: string) => stopping.mutate({ routineId: id, chat, run })
+  const reload = () => void read.refetch()
   return (
     <section className="server-part" aria-label="Runs">
       <div className="server-part-head">
         <h3 className="server-part-title">Runs</h3>
         {active && (
-          <Button size="xs" variant="ghost" pending={pending === 'run'} onClick={() => void command()}>
+          <Button size="xs" variant="ghost" pending={pending === 'run'} onClick={runNow}>
             Run now
           </Button>
         )}
-        <Button size="icon-xs" variant="ghost" aria-label="Refresh runs" onClick={load}>
+        <Button size="icon-xs" variant="ghost" aria-label="Refresh runs" pending={read.isFetching} onClick={reload}>
           <RefreshCwIcon />
         </Button>
       </div>
@@ -114,7 +102,12 @@ export function RoutineHistory({
       {runs !== undefined && runs.length > 0 && (
         <ul className="grant-list">
           {runs.map((run) => (
-            <RunRow key={run.id} run={run} pending={pending === run.id} onStop={() => void command(run)} />
+            <RunRow
+              key={run.id}
+              run={run}
+              pending={pending === run.id}
+              onStop={() => run.sessionId && stop(run.id, run.sessionId)}
+            />
           ))}
         </ul>
       )}

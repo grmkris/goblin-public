@@ -48,4 +48,5 @@ export const paths: string[] = [
   'apps/web/src/lib/account/queries.ts',
   'apps/web/src/lib/agent/queries.ts',
   'apps/web/src/lib/mcp/queries.ts',
+  'apps/web/src/lib/routines/queries.ts',
 ]

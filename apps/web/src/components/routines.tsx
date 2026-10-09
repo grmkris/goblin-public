@@ -1,6 +1,6 @@
-import { type SubmitEvent, useCallback, useEffect, useState } from 'react'
-import { Schema } from 'effect'
-import { type RoutineDefinition, RoutinePage, RoutineSettings, RoutineView } from '@goblin/contracts'
+import { type SubmitEvent, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { RoutineDefinition, RoutineSettings, RoutineView } from '@goblin/contracts'
 import {
   Alert,
   AlertDescription,
@@ -24,17 +24,19 @@ import {
   Skeleton,
 } from '@goblin/ui'
 import { AlarmClockIcon, PlusIcon } from 'lucide-react'
-import { failureText, request } from '../lib/boundary.ts'
+import { messageOf } from '../lib/query/app-error.ts'
+import {
+  changeRoutineMutation,
+  routineSettingsMutation,
+  routineSettingsQuery,
+  routinesQuery,
+} from '../lib/routines/queries.ts'
 import { routineStatus } from '../lib/labels.ts'
 import { PageSection } from './page-section.tsx'
 import { RoutineEditor } from './routine-editor.tsx'
 import { RoutineHistory } from './routine-history.tsx'
 import { StatusLabel } from './status-label.tsx'
 
-const decodePage = Schema.decodeUnknownSync(RoutinePage)
-const decodeView = Schema.decodeUnknownSync(RoutineView)
-const decodeSettings = Schema.decodeUnknownSync(RoutineSettings)
-const csrf = { 'x-goblin-csrf': '1' }
 const operation = () => crypto.randomUUID()
 const localTime = (at: number, zone: string) =>
   new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: zone }).format(at)
@@ -53,31 +55,18 @@ function whenOf(definition: RoutineDefinition): string {
 }
 
 /** The account's routine timezone: a line saying it, opening to a field to change it. */
-function RoutineTimezone({
-  settings,
-  onSaved,
-}: {
-  readonly settings: RoutineSettings
-  readonly onSaved: (settings: RoutineSettings) => void
-}) {
+function RoutineTimezone({ settings }: { readonly settings: RoutineSettings }) {
+  const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
-  const [error, setError] = useState('')
-  const [pending, setPending] = useState(false)
+  const update = useMutation(routineSettingsMutation(queryClient))
+  const pending = update.isPending
+  const error = update.error === null ? '' : messageOf(update.error, 'change the timezone')
   const suggested = browserZone()
-  async function save(event: SubmitEvent<HTMLFormElement>): Promise<void> {
+  function save(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault()
     const value = new FormData(event.currentTarget).get('timezone')
     if (typeof value !== 'string') return
-    setPending(true)
-    try {
-      const body = { ...settings, timezone: value }
-      onSaved(decodeSettings(await request('/api/routines/settings', { method: 'PUT', headers: csrf, body })))
-      setOpen(false)
-    } catch (cause) {
-      setError(failureText(cause))
-    } finally {
-      setPending(false)
-    }
+    update.mutate({ ...settings, timezone: value }, { onSuccess: () => setOpen(false) })
   }
   if (!open)
     return (
@@ -89,7 +78,7 @@ function RoutineTimezone({
       </p>
     )
   return (
-    <form className="card-body" onSubmit={(event) => void save(event)}>
+    <form className="card-body" onSubmit={save}>
       <Field>
         <FieldLabel htmlFor="account-routine-zone">Timezone for new routines</FieldLabel>
         <div className="address-row">
@@ -169,24 +158,16 @@ function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
 type Change = 'confirm' | 'pause' | 'archive'
 
 /** Confirm, Pause, Edit and Archive, each busy while it is under way. */
-function useRoutineChange(routine: RoutineView, onChange: (routine: RoutineView) => void) {
-  const [pending, setPending] = useState<Change>()
-  const [error, setError] = useState('')
-  async function change(action: Change) {
-    setPending(action)
-    setError('')
-    try {
-      const path = `/api/routines/${routine.id}${action === 'archive' ? '' : `/${action}`}`
-      const body = { revision: routine.revision, operationId: operation() }
-      onChange(
-        decodeView(await request(path, { method: action === 'archive' ? 'DELETE' : 'POST', headers: csrf, body })),
-      )
-    } catch (cause) {
-      setError(failureText(cause))
-    } finally {
-      setPending(undefined)
-    }
-  }
+function useRoutineChange(routine: RoutineView, onChange?: (routine: RoutineView) => void) {
+  const queryClient = useQueryClient()
+  const changing = useMutation(changeRoutineMutation(queryClient))
+  const pending = changing.isPending ? changing.variables.action : undefined
+  const error = changing.error === null ? '' : messageOf(changing.error, 'change this routine')
+  const change = (action: Change) =>
+    changing.mutate(
+      { action, id: routine.id, revision: routine.revision, operationId: operation() },
+      { onSuccess: (changed) => onChange?.(changed) },
+    )
   return { pending, error, change }
 }
 
@@ -197,7 +178,8 @@ export function RoutineReview({
   onEdit,
 }: {
   readonly routine: RoutineView
-  readonly onChange: (routine: RoutineView) => void
+  /** Hears the routine as the agent answers a change; the list on its own page refreshes either way. */
+  readonly onChange?: (routine: RoutineView) => void
   readonly onEdit?: () => void
 }) {
   const { pending, error, change } = useRoutineChange(routine, onChange)
@@ -223,7 +205,7 @@ export function RoutineReview({
           )}
           <div className="card-actions">
             {(state === 'proposed' || state === 'paused') && (
-              <Button size="sm" pending={pending === 'confirm'} disabled={busy} onClick={() => void change('confirm')}>
+              <Button size="sm" pending={pending === 'confirm'} disabled={busy} onClick={() => change('confirm')}>
                 {state === 'paused' ? 'Resume' : 'Confirm'}
               </Button>
             )}
@@ -233,7 +215,7 @@ export function RoutineReview({
                 variant="outline"
                 pending={pending === 'pause'}
                 disabled={busy}
-                onClick={() => void change('pause')}
+                onClick={() => change('pause')}
               >
                 Pause
               </Button>
@@ -248,7 +230,7 @@ export function RoutineReview({
               variant="ghost"
               pending={pending === 'archive'}
               disabled={busy}
-              onClick={() => void change('archive')}
+              onClick={() => change('archive')}
             >
               Archive
             </Button>
@@ -282,27 +264,18 @@ function NoRoutines({ onNew }: { readonly onNew: () => void }) {
 
 /** The owner's routines, newest change first, with the timezone new ones use. */
 function useRoutines() {
-  const [routines, setRoutines] = useState<readonly RoutineView[]>()
-  const [settings, setSettings] = useState<RoutineSettings>()
-  const [error, setError] = useState('')
-  const load = useCallback(() => {
-    void Promise.all([request('/api/routines'), request('/api/routines/settings')])
-      .then(([page, config]) => {
-        setRoutines(decodePage(page).routines)
-        setSettings(decodeSettings(config))
-      })
-      .catch((cause: unknown) => setError(failureText(cause)))
-  }, [])
-  useEffect(load, [load])
-  const changed = (routine: RoutineView) =>
-    setRoutines((current = []) =>
-      [routine, ...current.filter((item) => item.id !== routine.id)].filter((item) => item.state !== 'archived'),
-    )
-  return { routines, settings, setSettings, error, changed }
+  const list = useQuery(routinesQuery)
+  const settings = useQuery(routineSettingsQuery)
+  const failed = list.error ?? settings.error
+  return {
+    routines: list.data?.routines,
+    settings: settings.data,
+    error: failed === null ? '' : messageOf(failed, 'list your routines'),
+  }
 }
 
 export function RoutinesSection() {
-  const { routines, settings, setSettings, error, changed } = useRoutines()
+  const { routines, settings, error } = useRoutines()
   const [editing, setEditing] = useState<RoutineView | 'new'>()
   const listed = routines ?? []
   return (
@@ -333,18 +306,15 @@ export function RoutinesSection() {
           timezone={settings === undefined || settings.timezone === 'UTC' ? browserZone() : settings.timezone}
           {...(editing !== 'new' && { routine: editing })}
           onCancel={() => setEditing(undefined)}
-          onSaved={(routine) => {
-            changed(routine)
-            setEditing(undefined)
-          }}
+          onSaved={() => setEditing(undefined)}
         />
       )}
       {listed
         .filter((routine) => editing === undefined || editing === 'new' || routine.id !== editing.id)
         .map((routine) => (
-          <RoutineReview key={routine.id} routine={routine} onChange={changed} onEdit={() => setEditing(routine)} />
+          <RoutineReview key={routine.id} routine={routine} onEdit={() => setEditing(routine)} />
         ))}
-      {settings && <RoutineTimezone settings={settings} onSaved={setSettings} />}
+      {settings && <RoutineTimezone settings={settings} />}
     </PageSection>
   )
 }

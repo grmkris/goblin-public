@@ -1,9 +1,9 @@
 // Writing a routine: what it does, when it runs, and what it may use. Saving makes a proposal the owner then confirms
 // on its card; nothing here turns a routine on.
 import { type SubmitEvent, type ReactNode, useEffect, useId, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Schema } from 'effect'
-import { RoutineView, RoutineTrigger, type RoutineDefinition } from '@goblin/contracts'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Option, Schema } from 'effect'
+import type { RoutineDefinition, RoutineView } from '@goblin/contracts'
 import {
   Alert,
   AlertDescription,
@@ -24,12 +24,11 @@ import {
   TabsTrigger,
   Textarea,
 } from '@goblin/ui'
-import { failureText, request } from '../lib/boundary.ts'
 import { grantsQuery } from '../lib/mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
+import { saveRoutineMutation } from '../lib/routines/queries.ts'
 import { localInput, localInstant } from '../lib/local-time.ts'
 
-const decodeView = Schema.decodeUnknownSync(RoutineView)
 type Kind = RoutineDefinition['trigger']['kind']
 type Tool = { readonly serverId: string; readonly name: string }
 
@@ -50,22 +49,29 @@ const PRESETS = [
   { label: 'Mondays at 9:00', expression: '0 9 * * 1' },
 ] as const
 
-/** The trigger the form describes; a reminder's picked wall time becomes an instant with its offset. */
-function triggerFrom(kind: Kind, field: (name: string) => string, cron: string): RoutineDefinition['trigger'] {
+/** An event routine's filters: a JSON object, or nothing for every event. */
+const decodeFilters = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Json)))
+/** A trigger the form cannot make yet, with what to fix. */
+type TriggerProblem = { readonly problem: string }
+
+/**
+ * The trigger the form describes, or what to fix first; a reminder's picked wall time becomes an instant with its
+ * offset.
+ */
+function triggerFrom(
+  kind: Kind,
+  field: (name: string) => string,
+  cron: string,
+): RoutineDefinition['trigger'] | TriggerProblem {
   if (kind === 'cron') return { kind: 'cron', expression: cron }
   if (kind === 'event') {
     const filters = field('eventArguments').trim()
-    // The trigger's schema checks the parsed filters.
-    const parsed: unknown = filters === '' ? {} : JSON.parse(filters)
-    return Schema.decodeUnknownSync(RoutineTrigger)({
-      kind: 'event',
-      serverId: field('eventServer'),
-      name: field('eventName'),
-      arguments: parsed,
-    })
+    const parsed = filters === '' ? Option.some({}) : decodeFilters(filters)
+    if (Option.isNone(parsed)) return { problem: 'Write the filters as a JSON object, or leave them empty.' }
+    return { kind: 'event', serverId: field('eventServer'), name: field('eventName'), arguments: parsed.value }
   }
   const at = localInstant(field('at'))
-  if (at === undefined) throw new Error('Pick the date and time it should run.')
+  if (at === undefined) return { problem: 'Pick the date and time it should run.' }
   return { kind: 'once', at }
 }
 
@@ -95,41 +101,40 @@ function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
   const [cron, setCron] = useState(initial.trigger.kind === 'cron' ? initial.trigger.expression : '')
   const [selected, setSelected] = useState<readonly Tool[]>(initial.allowedTools)
   const [notify, setNotify] = useState(initial.notifyTelegram)
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState('')
-  const available = useAvailableTools(selected, setError)
-  async function save(event: SubmitEvent<HTMLFormElement>): Promise<void> {
+  const queryClient = useQueryClient()
+  const saving = useMutation(saveRoutineMutation(queryClient))
+  const [problem, setProblem] = useState('')
+  const available = useAvailableTools(selected, setProblem)
+  const pending = saving.isPending
+  const error = problem || (saving.error === null ? '' : messageOf(saving.error, 'save the routine'))
+  function save(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
     const field = (name: string) => {
       const value = data.get(name)
       return typeof value === 'string' ? value : ''
     }
-    setPending(true)
-    setError('')
-    try {
-      const definition: RoutineDefinition = {
-        title: field('title'),
-        prompt: field('prompt'),
-        timezone: field('timezone'),
-        trigger: triggerFrom(kind, field, cron),
-        notifyTelegram: notify,
-        allowedTools: selected,
-        budget: {
-          tokensPerRun: Number(field('tokensPerRun')),
-          tokensPerDay: Number(field('tokensPerDay')),
-          runtimeSeconds: Number(field('runtimeMinutes')) * 60,
-        },
-      }
-      const body = { definition, operationId: crypto.randomUUID(), ...(routine ? { revision: routine.revision } : {}) }
-      const path = routine ? `/api/routines/${routine.id}` : '/api/routines'
-      const method = routine ? 'PATCH' : 'POST'
-      onSaved(decodeView(await request(path, { method, headers: { 'x-goblin-csrf': '1' }, body })))
-    } catch (cause) {
-      setError(failureText(cause))
-    } finally {
-      setPending(false)
+    setProblem('')
+    saving.reset()
+    const trigger = triggerFrom(kind, field, cron)
+    if ('problem' in trigger) {
+      setProblem(trigger.problem)
+      return
     }
+    const definition: RoutineDefinition = {
+      title: field('title'),
+      prompt: field('prompt'),
+      timezone: field('timezone'),
+      trigger,
+      notifyTelegram: notify,
+      allowedTools: selected,
+      budget: {
+        tokensPerRun: Number(field('tokensPerRun')),
+        tokensPerDay: Number(field('tokensPerDay')),
+        runtimeSeconds: Number(field('runtimeMinutes')) * 60,
+      },
+    }
+    saving.mutate({ operationId: crypto.randomUUID(), definition, ...(routine && { routine }) }, { onSuccess: onSaved })
   }
   const toggle = (tool: Tool, on: boolean) =>
     setSelected((current) => (on ? [...current, tool] : current.filter((item) => !same(item, tool))))
@@ -394,7 +399,7 @@ export function RoutineEditor(props: EditorProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form className="editor" onSubmit={(event) => void kit.save(event)}>
+        <form className="editor" onSubmit={kit.save}>
           <WhatFields kit={kit} />
           <WhenFields kit={kit} />
           <ToolsAndLimits kit={kit} />
