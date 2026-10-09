@@ -11,7 +11,6 @@ export const paths: string[] = [
   'apps/web/src/routes/a.$appId.tsx',
   'apps/web/src/routes/apps.*.tsx',
   'apps/web/src/lib/agent-app-bridge.ts',
-  'apps/web/src/lib/agent-apps.ts',
   'apps/web/src/lib/app-*.ts',
   'apps/web/src/lib/attachment-draft.ts',
   'apps/web/src/lib/files.ts',

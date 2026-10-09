@@ -23,7 +23,7 @@ import type { DownloadFile } from '../../lib/app-download.ts'
 import { type QuestionAnswerReceipt, receiptText } from '../../lib/app-message.ts'
 import { LIVE_APPS, evictions } from '../../lib/app-residency.ts'
 import { appLaunchQuery } from '../../apps/queries.ts'
-import { failureText, record, records } from '../../lib/boundary.ts'
+import { record, records } from '../../lib/boundary.ts'
 import { messageOf } from '../../lib/query/app-error.ts'
 import { useNavigation } from '../../lib/navigation.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
@@ -332,7 +332,7 @@ export function AppHost({ children }: { readonly children: ReactNode }) {
       unload([id], false)
       outside.current.navigation.closeAppPage(id)
       outside.current.feed.closeApp(id).catch((cause: unknown) => {
-        setProblems((current) => withItem(current, id, failureText(cause)))
+        setProblems((current) => withItem(current, id, messageOf(cause, 'close the app')))
       })
     },
     [unload, setProblems],

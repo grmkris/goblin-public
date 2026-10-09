@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { MessageCircleIcon } from 'lucide-react'
 import { Button } from '@goblin/ui'
 import { type QuestionAnswerReceipt, answerContinuation, receiptOperationId } from '../../lib/app-message.ts'
-import { failureText } from '../../lib/boundary.ts'
+import { messageOf } from '../../lib/query/app-error.ts'
 import { postMessage } from '../use-conversation.ts'
 
 /** The host's own Continue click starts the conversation; saving in MyPlan is already complete. */
@@ -35,7 +35,7 @@ export function MessageOffer({
       await postMessage(conversation, input, operationId, { appContext })
       onDone()
     } catch (cause) {
-      setError(failureText(cause))
+      setError(messageOf(cause, 'continue the conversation'))
     } finally {
       sending.current = false
       setBusy(false)
