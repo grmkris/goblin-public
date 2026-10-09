@@ -1,10 +1,20 @@
 import { defineConfig, type OxlintOverride } from 'oxlint'
 import { STRICT_PATHS, STRICT_REACT_PATHS, STRICT_REACT_RULES, STRICT_RULES } from './tools/strict/index.ts'
+import { paths as w1 } from './tools/strict/w1.ts'
+import { paths as w2 } from './tools/strict/w2.ts'
+import { paths as w3 } from './tools/strict/w3.ts'
 import { agentIgnorePatterns } from './tools/vendored.ts'
 
 /** Where React runs, and the plugins its files are linted with. */
 const REACT_FILES = ['apps/web/**', 'packages/ui/**', 'packages/kit/**', 'packages/app/src/ui/**']
 const REACT_PLUGINS: OxlintOverride['plugins'] = ['typescript', 'unicorn', 'oxc', 'import', 'react']
+
+/** The web app's source among the web lanes' strict paths: the data-layer rules apply where a lane has opted in. */
+const WEB_DATA_PATHS = [...w1, ...w2, ...w3].filter((glob) => glob.startsWith('apps/web/src/'))
+/** What reaches the server from the browser: myapps' list without its extension messaging, plus SSE. */
+const TRANSPORT = {
+  callees: ['fetch', 'XMLHttpRequest', 'EventSource', 'HttpClient.*', 'HttpApiClient.make', '*.run', '*.callTool'],
+}
 
 /**
  * Monorepo lint rules, all at error. Two repository plugins add what generic rules cannot know:
@@ -172,5 +182,33 @@ export default defineConfig({
     ...(STRICT_REACT_PATHS.length === 0
       ? []
       : [{ files: [...STRICT_REACT_PATHS], plugins: REACT_PLUGINS, rules: STRICT_REACT_RULES }]),
+    // The web data layer (tools/oxlint/data-invariants.ts): server data comes through the typed client in query and
+    // mutation factories, effects start no network work, views read the Query cache. On the web lanes' strict paths.
+    ...(WEB_DATA_PATHS.length === 0
+      ? []
+      : [
+          {
+            files: WEB_DATA_PATHS,
+            rules: {
+              'goblin/no-transport-outside-client': ['error', TRANSPORT],
+              'goblin/no-network-in-effect': ['error', TRANSPORT],
+              'goblin/no-loader-data': ['error', { mode: 'all' }],
+            },
+          } satisfies OxlintOverride,
+        ]),
+    // The transport modules: the typed client (lib/api*.ts) and its query bridge (lib/query/), each feature's query
+    // factories (queries.ts); the owner's file bytes, which the JSON API does not carry (lib/files.ts); and the two SSE
+    // stores, whose EventSource streams feed the views and invalidate query keys (conversation-stream, workspace-feed).
+    {
+      files: [
+        'apps/web/src/lib/api*.ts',
+        'apps/web/src/lib/query/**',
+        'apps/web/src/**/queries.ts',
+        'apps/web/src/lib/files.ts',
+        'apps/web/src/lib/conversation-stream.ts',
+        'apps/web/src/lib/workspace-feed.ts',
+      ],
+      rules: { 'goblin/no-transport-outside-client': 'off' },
+    },
   ],
 })

@@ -9,9 +9,12 @@
  *   `@effect-diagnostics` directive that turns a diagnostic off.
  * - `no-silent-catch`: a handler that catches a failure rethrows it, carries a failure on, or reports it; dropping one
  *   needs `// expected: <reason>`.
+ * - `no-transport-outside-client`, `no-network-in-effect`, `no-loader-data`: the web data layer's invariants
+ *   (tools/oxlint/data-invariants.ts, ported from myapps).
  */
 import { definePlugin, defineRule } from '@oxlint/plugins'
 import type { Context, ESTree } from '@oxlint/plugins'
+import { noLoaderData, noNetworkInEffect, noTransportOutsideClient } from './data-invariants.ts'
 import { isFreeReference, isStringLiteral } from './scope.ts'
 
 type AnyNode = ESTree.Node
@@ -408,5 +411,8 @@ export default definePlugin({
     'resource-name-via-stage': resourceNameViaStage,
     'require-disable-description': requireDisableDescription,
     'no-silent-catch': noSilentCatch,
+    'no-transport-outside-client': noTransportOutsideClient,
+    'no-network-in-effect': noNetworkInEffect,
+    'no-loader-data': noLoaderData,
   },
 })
