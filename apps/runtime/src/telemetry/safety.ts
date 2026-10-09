@@ -1,4 +1,13 @@
-import { RunAttribute, type RunAttributes } from '@goblin/contracts/telemetry'
+import { ChatId, OperationId, TopicId } from '@goblin/contracts'
+import {
+  FlowActor,
+  FlowName,
+  FlowStatus,
+  FlowVia,
+  PersonaOrder,
+  RunAttribute,
+  type RunAttributes,
+} from '@goblin/contracts/telemetry'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 
@@ -109,6 +118,24 @@ const FINISH_REASONS = new Set(['stop', 'toolUse', 'length', 'error', 'aborted']
 const finiteText = (value: unknown, values: ReadonlySet<string>, fallback: string): string =>
   typeof value === 'string' && values.has(value) ? value : fallback
 
+const ORIGINS = Schema.Literals(['owner', 'client', 'telegram', 'agent', 'routine', 'system'])
+const COUNT = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+/** Flow attributes keep only a value of their closed set or id shape; anything else is dropped, never coerced. */
+const FLOW_VALUES: Readonly<Record<string, (value: unknown) => boolean>> = {
+  [RunAttribute.flow]: Schema.is(FlowName),
+  [RunAttribute.flowVia]: Schema.is(FlowVia),
+  [RunAttribute.flowStatus]: Schema.is(FlowStatus),
+  [RunAttribute.actor]: Schema.is(FlowActor),
+  [RunAttribute.origin]: Schema.is(ORIGINS),
+  [RunAttribute.chat]: Schema.is(ChatId),
+  [RunAttribute.parentChat]: Schema.is(ChatId),
+  [RunAttribute.topic]: Schema.is(TopicId),
+  [RunAttribute.parentOperation]: (value) => Schema.is(OperationId)(value) && TOKENS.test(value),
+  [RunAttribute.count]: Schema.is(COUNT),
+  [RunAttribute.personaOrder]: Schema.is(PersonaOrder),
+  [RunAttribute.synthesize]: Schema.is(Schema.Boolean),
+}
+
 const scalarMetadata = (value: RunAttributes[string]): RunAttributes[string] | undefined => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
   if (typeof value === 'boolean') return value
@@ -116,6 +143,8 @@ const scalarMetadata = (value: RunAttributes[string]): RunAttributes[string] | u
 }
 
 function safeAttribute(key: string, value: RunAttributes[string], attributes: RunAttributes) {
+  const flowValue = FLOW_VALUES[key]
+  if (flowValue !== undefined) return flowValue(value) ? value : undefined
   switch (key) {
     case RunAttribute.errorType:
       return safeFailureCode(value)

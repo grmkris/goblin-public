@@ -1,4 +1,13 @@
-import { RunAttribute, type RunAttributes, type RunEvent, type RunEventStatus } from '@goblin/contracts/telemetry'
+import {
+  FlowEvent,
+  type FlowStatus,
+  RunAttribute,
+  type RunAttributes,
+  type RunEvent,
+  type RunEventStatus,
+} from '@goblin/contracts/telemetry'
+import * as Option from 'effect/Option'
+import * as Schema from 'effect/Schema'
 import { safeErrorType, sanitizeAttributes } from './safety.ts'
 
 /** Where run events go (ADR 0024): the ledger, a log line, a test's list. */
@@ -45,6 +54,78 @@ export function boundAttributes(attributes: RunAttributes): RunAttributes {
   }
   if (truncated) bounded[RunAttribute.truncated] = true
   return bounded
+}
+
+const FLOW_RUN_STATUS: Readonly<Record<FlowStatus, Exclude<RunEventStatus, 'started' | 'interrupted'>>> = {
+  ok: 'ok',
+  replayed: 'ok',
+  refused: 'blocked',
+  error: 'error',
+}
+
+/** The attribute each optional `FlowEvent` field is kept in. */
+const FLOW_FIELDS = [
+  ['chat', RunAttribute.chat],
+  ['parentChat', RunAttribute.parentChat],
+  ['topic', RunAttribute.topic],
+  ['parentOperation', RunAttribute.parentOperation],
+  ['count', RunAttribute.count],
+  ['personaOrder', RunAttribute.personaOrder],
+  ['synthesize', RunAttribute.synthesize],
+  ['errorType', RunAttribute.errorType],
+] as const satisfies ReadonlyArray<readonly [keyof FlowEvent, string]>
+
+/**
+ * A flow step (ADR 0024) as the run event the ledger keeps: kind `flow`, recorded whole when it ended at `at`. The
+ * operation id gets its own column, so the step shows in its operation's timeline; everything else is an attribute,
+ * and the flow's own status survives in `goblin.flow.status` beside the run status it maps to.
+ */
+export function flowRunEvent(flow: FlowEvent, id: string, at: number): RunEvent {
+  const optional = FLOW_FIELDS.flatMap(([field, attribute]) => {
+    const value = flow[field]
+    return value === undefined ? [] : [[attribute, value] as const]
+  })
+  return {
+    id,
+    kind: 'flow',
+    status: FLOW_RUN_STATUS[flow.status],
+    ...(flow.operationId === undefined ? {} : { operationId: flow.operationId }),
+    startedAt: at - (flow.ms ?? 0),
+    endedAt: at,
+    attributes: {
+      [RunAttribute.flow]: flow.flow,
+      [RunAttribute.flowVia]: flow.via,
+      [RunAttribute.actor]: flow.actor,
+      [RunAttribute.flowStatus]: flow.status,
+      ...Object.fromEntries(optional),
+    },
+  }
+}
+
+const decodeFlow = Schema.decodeUnknownOption(FlowEvent)
+
+/**
+ * The flow step a `flow` run event recorded, for readers: `undefined` for another kind or a row that no longer
+ * decodes. A step that took no time reads back without `ms`.
+ */
+export function flowOf(event: RunEvent): FlowEvent | undefined {
+  if (event.kind !== 'flow') return undefined
+  const optional = FLOW_FIELDS.flatMap(([field, attribute]) => {
+    const value = event.attributes[attribute]
+    return value === undefined ? [] : [[field, value] as const]
+  })
+  const ms = (event.endedAt ?? event.startedAt) - event.startedAt
+  return Option.getOrUndefined(
+    decodeFlow({
+      flow: event.attributes[RunAttribute.flow],
+      via: event.attributes[RunAttribute.flowVia],
+      actor: event.attributes[RunAttribute.actor],
+      status: event.attributes[RunAttribute.flowStatus],
+      ...(event.operationId === undefined ? {} : { operationId: event.operationId }),
+      ...(ms === 0 ? {} : { ms }),
+      ...Object.fromEntries(optional),
+    }),
+  )
 }
 
 /**
