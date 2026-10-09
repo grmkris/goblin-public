@@ -18,7 +18,14 @@ export async function publicSmoke(
   await refusedSignup()
   const metadata = await dev.json('/.well-known/oauth-protected-resource', { owner: false })
   if (metadata['resource'] !== `${dev.origin}/mcp`) throw new Error('prod_mcp_resource_mismatch')
-  const page = await dev.send('/', { owner: false })
+  // Home opens the last channel (ADR 0036): follow one redirect, only within the origin.
+  const home = await dev.send('/', { owner: false })
+  const location = home.headers.get('location')
+  const target = location === null ? undefined : new URL(location, dev.origin)
+  const page =
+    home.status >= 300 && home.status < 400 && target?.origin === dev.origin
+      ? await dev.send(target.pathname, { owner: false })
+      : home
   if (!page.ok || !(await page.text()).includes('goblin')) throw new Error('prod_page_unavailable')
   const alias = await fetch(new URL('/health', `https://www.${new URL(dev.origin).hostname}`), { redirect: 'manual' })
   if (alias.status !== 301 || alias.headers.get('location') !== `${dev.origin}/health`)
