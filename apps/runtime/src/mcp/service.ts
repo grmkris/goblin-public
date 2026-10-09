@@ -18,6 +18,7 @@ import type * as Effect from 'effect/Effect'
 import type * as Option from 'effect/Option'
 import type { AppError } from '../http/errors.ts'
 import type { ApprovalRow, HeldCall } from './approvals.ts'
+import type { CredentialCipher } from './cipher.ts'
 import type { EventWebhook, EventWebhookResult, SubscribeConsumer } from './events.ts'
 import type { Consumer, Receipt, Subscription } from './events/store.ts'
 import type { Stage } from './suggested.ts'
@@ -117,6 +118,8 @@ export class McpConnections extends Context.Service<
   {
     /** Every server the manager offers (configured and added), by id and endpoint. */
     readonly servers: () => Effect.Effect<readonly McpServerConfig[]>
+    /** One offered server, or `NotFound`. */
+    readonly server: (serverId: string) => Effect.Effect<McpServerConfig, AppError>
     /** The live connection's discovered snapshot; none without a connection. */
     readonly snapshot: (serverId: string) => Effect.Effect<Option.Option<McpConnectionSnapshot>>
     /** Connects (or reuses the live connection) and answers what it discovered. */
@@ -150,6 +153,8 @@ export class McpConnections extends Context.Service<
 export class Approvals extends Context.Service<
   Approvals,
   {
+    /** The cipher held calls are sealed with; a routine run's question about a held call is sealed with it too. */
+    readonly cipher: CredentialCipher
     /** Holds `call` (or finds the same call held before); a different call under the same id is a conflict. */
     readonly hold: (call: HeldCall) => Effect.Effect<ApprovalRow, AppError>
     readonly find: (id: string) => Effect.Effect<Option.Option<ApprovalRow>>

@@ -1,27 +1,14 @@
-import * as Effect from 'effect/Effect'
-import { type AppError, NotFound } from '../http/errors.ts'
-import { type RpcResult, unwrap } from '../http/rpc.ts'
-import type { RunProgram } from '../pi/resident-mcp.ts'
-import type { RoutineRunner } from '../routines/runner.ts'
 import type { ApprovalView } from '@goblin/contracts'
-import { submitOwner } from '../agent-program.ts'
+import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
 import { Entitlements } from '../billing/gates.ts'
+import { ChatOperations, Chats } from '../chats/service.ts'
+import { type AppError, NotFound, toAppError } from '../http/errors.ts'
+import { type RpcResult, unwrap } from '../http/rpc.ts'
+import type { RoutineRunner } from '../routines/runner.ts'
+import { RoutineRuns } from '../routines/service.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { AgentInput } from '../runtime/input.ts'
-import {
-  Apps,
-  Approvals as LegacyApprovals,
-  Budget,
-  Capabilities,
-  Chats,
-  Conversations,
-  Files,
-  Invocations,
-  Mcp,
-  Personas,
-  RoutineRuns,
-  Skills,
-  attempt,
-} from '../services.ts'
 import { decideApproval } from './approval-decision.ts'
 import { Approvals, McpConnections, McpGrants, Resident } from './service.ts'
 
@@ -41,11 +28,12 @@ const continuation =
   ) =>
   (session: string, text: string, operationId: string) =>
     Effect.gen(function* () {
-      const record = yield* RoutineRuns.useSync((store) => store.session(session))
-      if (record?.state === 'running') return yield* attempt(() => routines.start(record, { text, operationId }))
-      const chat = yield* Chats.useSync((chats) => chats.chatOf(session))
-      if (chat === undefined) return yield* new NotFound({ what: 'chat' })
-      return yield* submit(chat, text, operationId)
+      const record = yield* (yield* RoutineRuns).session(session)
+      if (record?.state === 'running')
+        return yield* Effect.tryPromise({ try: () => routines.start(record, { text, operationId }), catch: toAppError })
+      const chat = yield* (yield* Chats).chatOf(session)
+      if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })
+      return yield* submit(chat.value, text, operationId)
     })
 
 /** The owner's decision on a held call, its outcome delivered through the Durable Object's own `submit`. */
@@ -63,30 +51,23 @@ export const ownerApprovalDecision = (
     allowed,
     run: input.run,
     continue: continuation(input.routines, (chat, text, operationId) =>
-      attempt(async () => unwrap(await input.submit(chat, text, operationId))),
+      Effect.tryPromise({ try: async () => unwrap(await input.submit(chat, text, operationId)), catch: toAppError }),
     ),
   })
 
 /** What a decision through the owner API reads: the held call and its dispatch, and the owner's message after. */
 type DecisionServices =
   | AgentInput
-  | Apps
-  | Budget
-  | Capabilities
+  | Approvals
+  | ChatOperations
   | Chats
-  | Conversations
   | Entitlements
-  | Files
-  | Invocations
-  | LegacyApprovals
-  | Mcp
-  | Personas
+  | McpConnections
   | Resident
   | RoutineRuns
-  | Skills
 
 /**
- * The owner's decision on a held call, as the owner API runs it: the outcome is the owner's message, submitted in this
+ * The owner's decision on a held call, as the owner API runs it: the outcome is the owner's message, sent in this
  * program after the same admission an owner request gets (the plan, then a renewal of resident authority). Its type is
  * written out: the owner API's handlers reach it, and their types must not depend on the agent's services.
  */
@@ -95,7 +76,7 @@ export const decideOwnerApproval = (
   allowed: boolean,
 ): Effect.Effect<ApprovalView, AppError, DecisionServices> =>
   Effect.gen(function* () {
-    const input = yield* AgentInput
+    const { run, routines } = yield* AgentInput
     const admit = Effect.andThen(
       Entitlements.use((plans) => plans.require()),
       Resident.use((resident) => resident.renew()),
@@ -103,22 +84,11 @@ export const decideOwnerApproval = (
     return yield* decideApproval({
       id,
       allowed,
-      run: input.run,
-      continue: continuation(input.routines, (chat, text, operationId) =>
+      run,
+      continue: continuation(routines, (chat, text, operationId) =>
         Effect.andThen(
           admit,
-          submitOwner({
-            harness: input.harness,
-            applied: input.applied,
-            routines: input.routines,
-            subagents: input.subagents,
-            personas: input.personas,
-            run: input.run,
-            thread: chat,
-            text,
-            operationId,
-            context: {},
-          }),
+          ChatOperations.use((operations) => operations.send(chat, { text, operationId })),
         ),
       ),
     })

@@ -144,6 +144,9 @@ export const McpConnectionsAdapter = Layer.effect(
       servers: Effect.fn('McpConnections.servers')(function* () {
         return yield* Effect.sync(() => manager.servers)
       }),
+      server: Effect.fn('McpConnections.server')(function* (serverId: string) {
+        return yield* attemptSync(() => manager.server(serverId))
+      }),
       snapshot: Effect.fn('McpConnections.snapshot')(function* (serverId: string) {
         return yield* Effect.sync(() => Option.fromNullishOr(manager.snapshot(serverId)))
       }),
@@ -186,6 +189,7 @@ export const ApprovalsAdapter = Layer.effect(
   Effect.gen(function* () {
     const store = yield* LegacyApprovals
     return Approvals.of({
+      cipher: store.cipher,
       hold: Effect.fn('Approvals.hold')(function* (call: HeldCall) {
         const now = yield* Clock.currentTimeMillis
         return yield* attempt(() => store.hold(call, now))

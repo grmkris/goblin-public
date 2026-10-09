@@ -1,21 +1,15 @@
 import type { ToolExecutionResult } from '@earendil-works/pi-durable'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import {
-  Approvals,
-  Capabilities,
-  Conversations,
-  Chats,
-  Mcp,
-  RoutineRuns,
-  attempt,
-  attemptSync,
-  requireResident,
-} from '../services.ts'
+import { Chats, Conversations } from '../chats/service.ts'
+import { Capabilities } from '../capabilities/service.ts'
 import { requireRoutineSession } from '../routines/authority.ts'
+import { RoutineRuns } from '../routines/service.ts'
 import { Conflict, NotFound } from '../http/errors.ts'
 import { objectOrJson } from '../pi/typed-tool.ts'
+import { Approvals, McpConnections, McpGrants, Resident } from './service.ts'
 
 export const McpCallInput = Schema.Struct({
   serverId: Schema.String,
@@ -28,35 +22,28 @@ export const modelApprovalId = (session: string, callId: string): string => `mcp
 /** Prepare an exact call in beforeTool; execution repeats this gate because hook failures cannot grant authority. */
 export const holdModelCall = (session: string, callId: string, taskId: string, input: McpCallInput) =>
   Effect.gen(function* () {
-    const mcp = yield* Mcp
-    const policy = mcp.grantPolicy(input.serverId, input.name)
-    if (policy?.askFirst !== true) return undefined
-    yield* requireResident
+    const policy = yield* (yield* McpGrants).policy(input.serverId, input.name)
+    if (Option.isNone(policy) || !policy.value.askFirst) return undefined
+    yield* (yield* Resident).require()
     yield* requireRoutineSession(session)
-    const chat = (yield* Chats).chatOf(session)
-    if (chat === undefined) return yield* new NotFound({ what: 'chat' })
-    yield* Conversations.use((registry) => attemptSync(() => registry.requireOpen(chat)))
-    const scope = (yield* Capabilities).scope(session)
+    const chat = yield* (yield* Chats).chatOf(session)
+    if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })
+    yield* (yield* Conversations).requireOpen(chat.value)
+    const scope = yield* (yield* Capabilities).scope(session)
     if (!scope.tool(input.serverId, input.name)) return undefined
-    const approvals = yield* Approvals
-    const now = yield* Clock.currentTimeMillis
-    const row = yield* attempt(() =>
-      approvals.hold(
-        {
-          id: modelApprovalId(session, callId),
-          caller: 'model',
-          sessionId: session,
-          sourceCallId: callId,
-          taskId,
-          serverId: input.serverId,
-          name: input.name,
-          arguments: input.arguments,
-          endpoint: mcp.manager.server(input.serverId).endpoint,
-          grantVersion: policy.version,
-        },
-        now,
-      ),
-    )
+    const server = yield* (yield* McpConnections).server(input.serverId)
+    const row = yield* (yield* Approvals).hold({
+      id: modelApprovalId(session, callId),
+      caller: 'model',
+      sessionId: session,
+      sourceCallId: callId,
+      taskId,
+      serverId: input.serverId,
+      name: input.name,
+      arguments: input.arguments,
+      endpoint: server.endpoint,
+      grantVersion: policy.value.version,
+    })
     if (row.state !== 'pending') return yield* new Conflict({ reason: 'Held call has already been decided' })
     return row
   })
@@ -65,25 +52,22 @@ export const holdModelCall = (session: string, callId: string, taskId: string, i
 export const approvalResult = (session: string, callId: string, id: string, input: McpCallInput) =>
   Effect.gen(function* () {
     const runs = yield* RoutineRuns
-    const run = runs.session(session)
+    const run = yield* runs.session(session)
     if (run !== undefined) {
-      const approvals = yield* Approvals
+      const { cipher } = yield* Approvals
       const now = yield* Clock.currentTimeMillis
-      yield* attempt(() =>
-        runs.ask(
-          session,
-          callId,
-          [{ id: 'mcp-approval', prompt: `Approve ${input.serverId} · ${input.name}?`, kind: 'text' }],
-          approvals.cipher,
-          now,
-        ),
+      yield* runs.ask(
+        session,
+        callId,
+        [{ id: 'mcp-approval', prompt: `Approve ${input.serverId} · ${input.name}?`, kind: 'text' }],
+        cipher,
+        now,
       )
     } else {
       const conversations = yield* Conversations
-      const now = yield* Clock.currentTimeMillis
-      const chat = (yield* Chats).chatOf(session)
-      if (chat !== undefined && conversations.kindOf(chat) === 'subagent')
-        yield* attempt(() => conversations.update(chat, { keepOpen: true }, Math.floor(now / 1000)))
+      const chat = yield* (yield* Chats).chatOf(session)
+      if (Option.isSome(chat) && (yield* conversations.kindOf(chat.value)) === 'subagent')
+        yield* conversations.update(chat.value, { keepOpen: true })
     }
     return {
       content: [

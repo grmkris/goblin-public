@@ -17,21 +17,9 @@ import { McpHost } from '../../../src/mcp/host.ts'
 import { Approvals, Events, Resident } from '../../../src/mcp/service.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
-import {
-  Apps,
-  Approvals as LegacyApprovals,
-  Budget,
-  Capabilities,
-  Chats,
-  Conversations,
-  Files,
-  Invocations,
-  Mcp,
-  Personas,
-  Resident as LegacyResident,
-  RoutineRuns,
-  Skills,
-} from '../../../src/services.ts'
+import { Mcp, Resident as LegacyResident, Skills } from '../../../src/services.ts'
+import { ChatOperations, Chats } from '../../../src/chats/service.ts'
+import { RoutineRuns } from '../../../src/routines/service.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 import { callOwner } from '../../integration/owner-api.ts'
 import { MemoryAddedServers, MemoryCredentials, MemoryGrants, MemoryRegistries } from '../../mcp/memory.ts'
@@ -140,16 +128,9 @@ const fixture = async () => {
           Layer.mergeAll(
             Layer.succeed(Resident, unread),
             Layer.succeed(LegacyEvents, unread),
-            Layer.succeed(LegacyApprovals, unread),
             Layer.succeed(Skills, unread),
-            Layer.succeed(Apps, unread),
-            Layer.succeed(Budget, unread),
-            Layer.succeed(Capabilities, unread),
+            Layer.succeed(ChatOperations, unread),
             Layer.succeed(Chats, unread),
-            Layer.succeed(Conversations, unread),
-            Layer.succeed(Files, unread),
-            Layer.succeed(Invocations, unread),
-            Layer.succeed(Personas, unread),
             Layer.succeed(RoutineRuns, unread),
           ),
         ),

@@ -1,5 +1,5 @@
 import type { RunProgram } from '../runtime/bridge.ts'
-import { Events } from './events.ts'
+import { Events } from './service.ts'
 
 /** The Events alarm (`mcpEventsWake`): one maintenance sweep; a failed one is tried again in a minute. */
 export async function mcpEventsWake(run: RunProgram, wake: (at: number) => Promise<void>): Promise<void> {
