@@ -72,6 +72,9 @@ import { inboxAppProbe } from './inbox-app-probe.ts'
 import { FileStore } from '../../src/files/store.ts'
 import { composerSequence, helperExclusionsProbe } from './composer-probe.ts'
 import { topicMemorySequence, topicRoutineSequence } from './native-topics.ts'
+import { eventsIngressCase } from './events-ingress-case.ts'
+import { Internal } from '../../src/http/errors.ts'
+import { ResidentAuthority } from '../../src/resident.ts'
 
 const fixturePlan = () =>
   Effect.succeed({
@@ -106,8 +109,16 @@ export class PersonalAgentProbe extends PersonalAgent {
     if (profileEnabled(this.env)) await permutePrimary(this.ctx.storage, this.harness)
   }
 
+  /** Which coming plan lookup fails, counted down (the Events ingress case arms it); 0 for none. */
+  #failPlanAt = 0
   protected override entitlementPolicy(): EntitlementPolicy {
-    return { state: fixturePlan, require: fixturePlan }
+    const require = () =>
+      Effect.suspend(() =>
+        this.#failPlanAt > 0 && --this.#failPlanAt === 0
+          ? Effect.fail(new Internal({ reason: 'fixture plan lookup failed' }))
+          : fixturePlan(),
+      )
+    return { state: fixturePlan, require }
   }
 
   async primaryProfileProbe() {
@@ -249,6 +260,14 @@ export class PersonalAgentProbe extends PersonalAgent {
   }
   async routineEventsProbe(): Promise<Response> {
     return Response.json(await routineEventsProbe(this.ctx.storage, this, this.routineProducer, this.seen))
+  }
+  /** Events ingress (M1): a transient failure of its authority check answers 503, the owner's refusal 410. */
+  async eventsIngressProbe(): Promise<Response> {
+    const failPlanCheck = (nth: number) => {
+      this.#failPlanAt = nth
+    }
+    const revoke = async () => new ResidentAuthority(drizzle(this.ctx.storage)).revoke(Math.floor(Date.now() / 1000))
+    return Response.json(await eventsIngressCase(this, failPlanCheck, revoke))
   }
   protected override mcpFetch(): typeof fetch {
     return (input, init) =>
@@ -1021,6 +1040,8 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return agent.routineNotificationProbe()
     case '/routine-events':
       return agent.routineEventsProbe()
+    case '/events-ingress':
+      return agent.eventsIngressProbe()
     case '/rpc':
       return rpcSequence(agent)
     case '/skills-cache':

@@ -522,7 +522,7 @@ const Rpc = Schema.Struct({
 })
 
 harness.test(
-  'local workerd: owner RPC renews resident authority, gates threads, and revocation blocks client asks',
+  'local workerd: owner RPC renews resident authority, gates threads, revocation blocks client asks, and Events ingress',
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `rpc-${yield* nextInt}`
@@ -530,13 +530,10 @@ harness.test(
     expect(response.status).toBe(200)
     const raw: unknown = yield* Effect.promise(() => response.json())
     const result = yield* Schema.decodeUnknownEffect(Rpc)(raw)
-    expect(result.first.value.state).toBe('active')
-    expect(result.revoked.value.state).toBe('revoked')
-    expect(result.afterOwnerRequest.value.state).toBe('revoked')
-    expect(result.enabled.value.state).toBe('active')
+    const states = [result.first, result.revoked, result.afterOwnerRequest, result.enabled].map(({ value }) => value)
+    expect(states.map(({ state }) => state)).toEqual(['active', 'revoked', 'revoked', 'active'])
     expect(result.servers.value).toEqual([])
-    expect(result.unknownServer.error._tag).toBe('NotFound')
-    expect(result.unknownApp.error._tag).toBe('NotFound')
+    expect([result.unknownServer.error._tag, result.unknownApp.error._tag]).toEqual(['NotFound', 'NotFound'])
     expect(result.noConversation.value).toEqual([])
     // Main is registered on first use; an empty thread joins it. Only registered conversations reach Pi.
     expect(result.threads.value.map(({ kind, closedAt }) => ({ kind, closed: closedAt !== undefined }))).toEqual([
@@ -554,6 +551,9 @@ harness.test(
     expect(result.model.value).toMatchObject({ current: 'storage-only', default: 'storage-only' })
     expect(result.unknownModel.error._tag).toBe('InvalidInput')
     expect(result.askWhileRevoked.error._tag).toBe('ResidentInactive')
+    // Events ingress (M1): a transient failure of its authority check answers 503; the owner's refusal 410.
+    const ingress = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/events-ingress?name=${name}-events`))
+    expect(yield* Effect.promise(() => ingress.json())).toEqual({ transient: 503, revoked: 410 })
   }),
 )
 
