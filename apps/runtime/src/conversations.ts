@@ -310,38 +310,15 @@ export class ConversationRegistry {
 
   /**
    * A new Topic's Conversation (ADR 0032): a new Pi session configured like Personal's, with its tool filter, not a
-   * fork, so it starts with none of Personal's transcript. `registerConversation` lists it once its Topic exists.
+   * fork, so it starts with none of Personal's transcript. `topics/ports.ts` lists it once its Topic exists.
    */
   async openConversation(): Promise<string> {
     return this.#session([], this.#kit.chats.primary())
   }
 
-  /** Lists `chat` as `topic`'s Conversation, with Personal's switches, titled as the Topic is named. */
-  registerConversation(chat: string, topic: number, name: string, now: number): void {
-    this.#db
-      .insert(appConversations)
-      .values({
-        chatId: chat,
-        piSession: chat,
-        role: 'conversation',
-        kind: 'main',
-        title: name,
-        topicId: topic,
-        createdAt: now,
-      })
-      .run()
-    this.#kit.capabilities.copy(this.#kit.chats.primary(), chat, now)
-    this.#changed([chat])
-  }
-
-  /** A Topic's Conversation takes its Topic's new name. */
-  retitle(chat: string, name: string): void {
-    this.#db
-      .update(appConversations)
-      .set({ title: name })
-      .where(and(eq(appConversations.chatId, chat), eq(appConversations.role, 'conversation')))
-      .run()
-    this.#changed([chat])
+  /** Tells the listeners about chats another registry wrote (a Topic's Conversation, `topics/ports.ts`). */
+  touched(ids: readonly string[]): void {
+    this.#changed(ids)
   }
 
   /** The open chats of `topic` other than subagents: its Conversation and threads, whose work an archive stops. */

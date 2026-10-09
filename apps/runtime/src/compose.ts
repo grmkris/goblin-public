@@ -14,6 +14,7 @@ import { TopicRegistry } from './topics/registry.ts'
 import { PersonaRegistry } from './personas/registry.ts'
 import { PersonaInvocations } from './personas/invocations.ts'
 import { OrganizeReceipts } from './organize/receipts.ts'
+import { topicPorts } from './topics/ports.ts'
 import { AppRegistry } from './apps/registry.ts'
 import type { AgentApps } from './agent-apps/engine.ts'
 import { appServices } from './agent-apps/ports.ts'
@@ -149,12 +150,7 @@ function conversationServices(db: DrizzleSqliteDODatabase, input: ComposeInput, 
   conversations.onChange((ids) => apps.closeWithConversations(ids, nowSeconds()))
   agentApps.onChange((name) => apps.agentChanged(name, nowSeconds()))
   const home = new HomeService(db, apps, agentApps)
-  const topics = new TopicRegistry(db, {
-    open: () => conversations.openConversation(),
-    register: (chat, topic, name, now) => conversations.registerConversation(chat, topic, name, now),
-    activate: (chat) => kit.memories.activate(chat),
-    retitle: (chat, name) => conversations.retitle(chat, name),
-  })
+  const topics = new TopicRegistry(db, topicPorts(db, conversations, kit))
   const personas = new PersonaRegistry(
     db,
     modelOptions(input.env.MODELS, input.env.MODEL_ID).map((option) => option.id),
