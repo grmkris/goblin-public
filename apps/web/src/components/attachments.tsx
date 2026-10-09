@@ -106,22 +106,19 @@ export function PendingFiles({ attachments }: { readonly attachments: ReturnType
   )
 }
 
+/** The files the owner just picked; the input empties, so picking the same file again still counts. */
+function picked(input: HTMLInputElement): File[] {
+  const files = [...(input.files ?? [])]
+  input.value = ''
+  return files
+}
+
 /** The composer's paperclip: picks files for the next message. */
 export function AttachButton({ attachments }: { readonly attachments: ReturnType<typeof useAttachments> }) {
   const input = useRef<HTMLInputElement>(null)
   return (
     <>
-      <input
-        ref={input}
-        type="file"
-        multiple
-        hidden
-        onChange={(event) => {
-          const files = [...(event.target.files ?? [])]
-          event.target.value = ''
-          void attachments.add(files)
-        }}
-      />
+      <input ref={input} type="file" multiple hidden onChange={(event) => void attachments.add(picked(event.target))} />
       <Button
         type="button"
         variant="ghost"

@@ -131,13 +131,15 @@ async function attachApp(
   signal.addEventListener(
     'abort',
     () => {
-      void bridge
+      bridge
         .teardownResource({}, { timeout: 500 })
+        // expected: an App that does not answer its teardown in time is closed all the same
         .catch(() => undefined)
         .finally(() => {
           theme.disconnect()
           window.removeEventListener('message', gate, true)
-          void bridge.close()
+          // expected: the frame is going away, so a transport that fails to close leaves nothing to clean up
+          bridge.close().catch(() => undefined)
         })
     },
     { once: true },
@@ -183,7 +185,7 @@ export function AppFrame({
       offerLink: (link) => latest.current.events.offerLink(link),
       offerDownload: (file) => latest.current.events.offerDownload(file),
       askGrant: (name) => latest.current.events.askGrant(name),
-      ...(events.message === undefined
+      ...(latest.current.events.message === undefined
         ? {}
         : { message: (receipt: QuestionAnswerReceipt) => latest.current.events.message?.(receipt) ?? false }),
     }

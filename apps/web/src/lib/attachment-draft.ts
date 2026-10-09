@@ -35,6 +35,7 @@ export class AttachmentDraft {
   }
   readonly clear = () => this.#set([])
   readonly remove = (id: number) => this.#set(this.#pending.filter((item) => item.id !== id))
+  /** Neither `retry` nor `add` rejects: an upload that fails is its item's state, with the reason and a retry. */
   readonly retry = async (id: number): Promise<void> => {
     const failed = this.#pending.find((item) => item.id === id)
     if (failed?.state !== 'failed') return

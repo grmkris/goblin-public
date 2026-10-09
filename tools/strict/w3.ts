@@ -2,6 +2,12 @@
 export const paths: string[] = [
   'packages/kit/**',
   'packages/app/src/ui/**',
+  'apps/web/src/components/apps/**',
+  'apps/web/src/components/apps-page.tsx',
+  'apps/web/src/components/app-manage.tsx',
+  'apps/web/src/components/attachments.tsx',
+  'apps/web/src/routes/a.$appId.tsx',
+  'apps/web/src/routes/apps.*.tsx',
   'apps/web/src/lib/agent-app-bridge.ts',
   'apps/web/src/lib/agent-apps.ts',
   'apps/web/src/lib/app-*.ts',
