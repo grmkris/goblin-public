@@ -2,6 +2,7 @@ import type { PersonalAgent } from '../../src/agent.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import { proposeRoutine, changeRoutine, runRoutineNow } from './routines-owner.ts'
+import { callOwner } from './owner-api.ts'
 import { RoutineRunStore } from '../../src/routines/runs.ts'
 import { appConversations, appConversationCapabilities } from '../../src/storage/schema.ts'
 import { BACKGROUND, conversationId } from '../../src/pi/context.ts'
@@ -49,7 +50,7 @@ export async function routineExecutionProbe(
     item.messages.some((message) => message.text.includes('Confirmed routine: Isolated native routine')),
   )
   const spent = store.used(first.id, Date.now())
-  await agent.residentSet(false)
+  await callOwner(agent, (api) => api.resident.set({ payload: { enabled: false } }))
   const calls = seen.length
   const skipped = await runRoutineNow(agent, proposal.id, 1, 'execution-skipped')
   await agent.routinesWake()

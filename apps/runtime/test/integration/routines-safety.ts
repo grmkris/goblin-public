@@ -3,6 +3,7 @@ import { PRIMARY_CHAT, type RoutineDefinition } from '@goblin/contracts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import { unwrap } from '../../src/http/rpc.ts'
+import { ownerResult, ownerSend } from './probe-reads.ts'
 import { RoutineRunStore } from '../../src/routines/runs.ts'
 import { appInteractions, appRoutineRuns, appRoutines } from '../../src/storage/routines.ts'
 import { RoutineStore } from '../../src/routines/store.ts'
@@ -17,6 +18,10 @@ const question: RoutineDefinition = {
   allowedTools: [],
   budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
 }
+/** The owner's Stop on main: `POST /api/conversations/1/stop`. */
+const stopMain = (agent: PersonalAgent) =>
+  ownerResult(agent, (api) => api.conversations.stop({ params: { id: PRIMARY_CHAT }, payload: {} }))
+
 async function waitFor(store: RoutineRunStore, id: string, state: string): Promise<void> {
   for (let count = 0; count < 200; count += 1) {
     if (store.get(id).state === state) return
@@ -49,11 +54,11 @@ export async function routineRecoveryRead(storage: DurableObjectStorage, agent: 
   if (!before?.sessionId) throw new Error('Reconstructed routine question missing')
   await agent.routinesWake()
   const usedBefore = store.used(before.id, Date.now()).run
-  unwrap(await agent.submit(before.sessionId, 'Resume the recovered routine.', 'recovery-answer'))
+  unwrap(await ownerSend(agent, before.sessionId, 'Resume the recovered routine.', 'recovery-answer'))
   await waitFor(store, before.id, 'completed')
   await agent.routinesWake()
   const after = store.get(before.id)
-  const replay = await agent.submit(before.sessionId, 'Resume the recovered routine.', 'recovery-answer')
+  const replay = await ownerSend(agent, before.sessionId, 'Resume the recovered routine.', 'recovery-answer')
   return {
     runId: after.id,
     sessionId: after.sessionId,
@@ -74,12 +79,12 @@ export async function routineQuestionProbe(storage: DurableObjectStorage, agent:
   await waitFor(store, first.id, 'waiting_owner')
   const record = store.get(first.id)
   if (record.sessionId === null) throw new Error('Question thread missing')
-  await agent.stop(PRIMARY_CHAT)
+  await stopMain(agent)
   const mainStopPreserved = store.get(first.id).state === 'waiting_owner'
-  const answered = await agent.submit(record.sessionId, 'Use the bounded fixture.', 'question-answer')
+  const answered = await ownerSend(agent, record.sessionId, 'Use the bounded fixture.', 'question-answer')
   await waitFor(store, first.id, 'completed')
-  const replay = await agent.submit(record.sessionId, 'Use the bounded fixture.', 'question-answer')
-  const changed = await agent.submit(record.sessionId, 'Different answer.', 'question-answer')
+  const replay = await ownerSend(agent, record.sessionId, 'Use the bounded fixture.', 'question-answer')
+  const changed = await ownerSend(agent, record.sessionId, 'Different answer.', 'question-answer')
   const late = await startQuestion(agent, 'expired')
   await waitFor(store, late.id, 'waiting_owner')
   const lateSession = store.get(late.id).sessionId
@@ -88,7 +93,7 @@ export async function routineQuestionProbe(storage: DurableObjectStorage, agent:
     .set({ deadlineAt: Date.now() - 1 })
     .where(eq(appRoutineRuns.id, late.id))
     .run()
-  const rejected = await agent.submit(lateSession, 'Too late.', 'question-late-answer')
+  const rejected = await ownerSend(agent, lateSession, 'Too late.', 'question-late-answer')
   await agent.routinesWake()
   return {
     mainStopPreserved,
@@ -135,7 +140,7 @@ export async function routineStopProbe(storage: DurableObjectStorage, agent: Per
   await waitFor(runs, first.id, 'running')
   await waitFor(runs, second.id, 'running')
   const capped = await runRefused(agent, thirdDefinition.id, 1, 'slow-third-run')
-  await agent.stop(PRIMARY_CHAT)
+  await stopMain(agent)
   const mainStopPreserved = runs.get(first.id).state === 'running' && runs.get(second.id).state === 'running'
   for (let index = 2; index >= 1; index -= 1) {
     const due = Math.floor(Date.now() / 900_000) * 900_000 - index * 900_000

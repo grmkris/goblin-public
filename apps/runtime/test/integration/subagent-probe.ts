@@ -1,5 +1,5 @@
 import { type ConversationView, PRIMARY_CHAT } from '@goblin/contracts'
-import { exchange, threadsUntil, transcript, until } from './probe-reads.ts'
+import { exchange, ownerSend, ownerUpdate, threadsUntil, transcript, until } from './probe-reads.ts'
 import type { PersonalAgentProbe } from './worker.ts'
 
 type Probe = DurableObjectStub<PersonalAgentProbe>
@@ -73,7 +73,7 @@ export async function subagentOwnerSequence(agent: Probe): Promise<Response> {
     () => agent.busy(scout.id),
     (busy) => busy,
   )
-  const sent = await agent.submit(scout.id, 'also check the attic', 'owner-steer')
+  const sent = await ownerSend(agent, scout.id, 'also check the attic', 'owner-steer')
   const main = await reportsUntil(agent, PRIMARY_CHAT, 'scout')
   const settled = await agent.settle(scout.id, 'owner-steer')
   const after = named(await threadsUntil(agent, () => true), 'scout')
@@ -98,7 +98,7 @@ export async function subagentCloseSequence(agent: Probe): Promise<Response> {
   )
   const stopped = await exchange(agent, PRIMARY_CHAT, subagentCall({ action: 'stop', name: 'lead' }), 'close-stop')
   const diggerStopped = !(await agent.busy(digger.id))
-  const closed = await agent.updateConversation(lead.id, { closed: true })
+  const closed = await ownerUpdate(agent, lead.id, { closed: true })
   const closedViews = await threadsUntil(agent, () => true)
   const refused = await exchange(
     agent,

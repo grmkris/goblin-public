@@ -18,6 +18,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { unwrap } from '../../src/http/rpc.ts'
 import type { MovePhase } from '../../src/chats/mover.ts'
 import { moveState, readRounds } from './move-probe.ts'
+import { ownerSend } from './probe-reads.ts'
 
 export class OwnerAgent extends PersonalAgent {
   readonly #mcp = new AppsMcpFixture()
@@ -52,7 +53,7 @@ export class OwnerAgent extends PersonalAgent {
     const path = new URL(request.url).pathname
     if (path === '/test/primary-profile' && profileEnabled(this.env)) {
       const operationId = 'permuted-owner-proof'
-      await this.submit('1', 'prove the owner primary binding', operationId)
+      await ownerSend(this, '1', 'prove the owner primary binding', operationId)
       const session = new ChatDirectory(drizzle(this.ctx.storage)).session('1')
       const result = await this.harness.wait(operationId, { session })
       const messages = await this.harness.messages({ session: result.session })

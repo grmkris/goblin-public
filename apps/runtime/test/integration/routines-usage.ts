@@ -7,6 +7,7 @@ import { RoutineUsage } from '../../src/routines/usage.ts'
 import { DEFAULT_RATES } from '../../src/budget-credits.ts'
 import { BACKGROUND, conversationId } from '../../src/pi/context.ts'
 import { unwrap } from '../../src/http/rpc.ts'
+import { ownerSend } from './probe-reads.ts'
 import type { SeenRequest } from './model.ts'
 import { changeRoutine, proposeRoutine, runRoutineNow } from './routines-owner.ts'
 
@@ -65,7 +66,7 @@ export async function routineUsageProbe(
     },
     BACKGROUND,
   )
-  unwrap(await agent.submit(session, 'Continue with Native slow routine.', 'usage-answer'))
+  unwrap(await ownerSend(agent, session, 'Continue with Native slow routine.', 'usage-answer'))
   const task = await child.compact(undefined, BACKGROUND)
   pi.resume()
   const compacted = await pi.waitForTask(task, BACKGROUND)

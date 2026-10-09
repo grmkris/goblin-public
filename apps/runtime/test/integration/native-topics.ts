@@ -4,13 +4,13 @@ import { nextInt } from 'effect/Random'
 import { expect } from 'vitest'
 import { ModelRequest, requestTurns } from './conversation-checks.ts'
 import { callOwner } from './owner-api.ts'
-import { exchange, linesOf, snapshotOf, transcript, until } from './probe-reads.ts'
+import { exchange, linesOf, ownerCreate, ownerList, ownerResult, snapshotOf, transcript, until } from './probe-reads.ts'
 import type { PersonalAgentProbe } from './worker.ts'
 
 type Probe = DurableObjectStub<PersonalAgentProbe>
 
 const status = async (agent: Probe, chat: string) => {
-  const result = await agent.memoryStatus(chat)
+  const result = await ownerResult(agent, (api) => api.memory.status({ query: { chat } }))
   return result.ok ? result.value : { messages: -1, summarized: -1 }
 }
 
@@ -34,7 +34,7 @@ export async function topicMemorySequence(agent: Probe): Promise<Response> {
     ({ summarized }) => summarized >= 2,
   )
   await exchange(agent, garden, 'what grows here?', 'topic-memory-4')
-  const thread = await agent.createConversation({ topic: created.success.id })
+  const thread = await ownerCreate(agent, { topic: created.success.id })
   return Response.json({
     garden: remembered,
     personal: await status(agent, PRIMARY_CHAT),
@@ -55,7 +55,7 @@ export async function topicRoutineSequence(agent: Probe): Promise<Response> {
   if (Result.isFailure(created)) return Response.json({ created: created.failure })
   const errands = created.success.conversation
   const attentionOf = async () => {
-    const views = await agent.conversations()
+    const views = await ownerList(agent)
     return (views.ok ? views.value : []).find((view) => view.id === errands)?.attention ?? []
   }
   const question = { questions: [{ id: 'day', prompt: 'Which day suits you?', kind: 'text' }] }
@@ -73,19 +73,21 @@ export async function topicRoutineSequence(agent: Probe): Promise<Response> {
     budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
   }
   await exchange(agent, errands, `call routine_propose ${JSON.stringify(definition)}`, 'topic-routine-propose')
-  const listed = await agent.routines()
+  const listed = await ownerResult(agent, (api) => api.routines.list())
   const routine = listed.ok ? listed.value.routines.find((each) => each.definition.title === 'Errand check') : undefined
   if (routine === undefined) return Response.json({ listed })
-  await agent.routineChange(routine.id, { revision: 1, operationId: 'topic-routine-confirm' }, 'confirm')
-  await agent.routineRun(routine.id, { revision: 1, operationId: 'topic-routine-run', confirmRun: true })
+  const confirm = { revision: 1, operationId: 'topic-routine-confirm' }
+  await ownerResult(agent, (api) => api.routines.confirm({ params: { id: routine.id }, payload: confirm }))
+  const manual = { revision: 1, operationId: 'topic-routine-run', confirmRun: true } as const
+  await ownerResult(agent, (api) => api.routines.run({ params: { id: routine.id }, payload: manual }))
   const runs = async () => {
-    const page = await agent.routineRuns(routine.id)
+    const page = await ownerResult(agent, (api) => api.routines.runs({ params: { id: routine.id } }))
     return page.ok ? page.value.runs : []
   }
   await until(runs, (each) => each.some((run) => run.state === 'completed'))
   await agent.routinesWake()
   const reported = await until(runs, (each) => each.some((run) => run.reportAcceptedAt !== null))
-  const views = await agent.conversations()
+  const views = await ownerList(agent)
   return Response.json({
     topic: created.success.id,
     errands,
