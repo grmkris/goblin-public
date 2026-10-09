@@ -9,7 +9,7 @@ import {
   type PickerItem,
   type Trigger,
 } from '../lib/composer.ts'
-import { failureText } from '../lib/boundary.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 import { useAttachments } from './attachments.tsx'
 
 /**
@@ -129,7 +129,7 @@ export function useComposer(props: ComposerProps) {
       }
     } catch (failure) {
       setFailed(selectionFailure(failure, selections))
-      setError(failureText(failure))
+      setError(messageOf(failure, 'send the message'))
     } finally {
       setPending(false)
     }

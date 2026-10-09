@@ -1,4 +1,4 @@
-import { ConversationQueue, type JsonValue, type QueuedInput } from '@goblin/contracts'
+import { ConversationQueue, type QueuedInput } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { isString } from './boundary.ts'
 import { projectBatch, projectSnapshot, type ConversationProjection } from './projection.ts'
@@ -30,9 +30,10 @@ export class BrowserPiEvents implements PiEventSource {
     this.source.addEventListener('error', listener)
   }
 }
+/** The stream's own reads (`conversations/queries.ts`): a Pi snapshot and the queued inputs, each read as it comes. */
 export type PiStreamDependencies = {
-  readonly snapshot: (signal: AbortSignal) => Promise<JsonValue>
-  readonly queue: (signal: AbortSignal) => Promise<JsonValue>
+  readonly snapshot: (signal: AbortSignal) => Promise<unknown>
+  readonly queue: (signal: AbortSignal) => Promise<unknown>
   readonly events: () => PiEventSource
 }
 /** Timers, injectable so tests can drive reconnection without waiting. */

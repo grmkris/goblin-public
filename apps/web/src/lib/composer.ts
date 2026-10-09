@@ -1,5 +1,5 @@
 import { type ComposerOption, type ComposerSelection, selectionKey } from '@goblin/contracts'
-import { ApiFailure } from './boundary.ts'
+import { InvalidInput } from '@goblin/contracts/api'
 import type { AttachmentDraft } from './attachment-draft.ts'
 
 export type ComposerDraft = {
@@ -57,7 +57,8 @@ export function withoutTrigger(input: string, trigger: Trigger): string {
 export function canSend(input: string, selections: readonly ComposerOption[]): boolean {
   return input.trim() !== '' || selections.some((option) => option.selection.kind === 'skill')
 }
+/** The chip a refused send names (`InvalidInput` with reason `composer:<key>`), if it names one. */
 export function selectionFailure(error: unknown, selections: readonly ComposerSelection[]): string | undefined {
-  if (!(error instanceof ApiFailure) || error.tag !== 'InvalidInput') return undefined
+  if (!(error instanceof InvalidInput)) return undefined
   return selections.map(selectionKey).find((key) => error.reason === `composer:${key}`)
 }

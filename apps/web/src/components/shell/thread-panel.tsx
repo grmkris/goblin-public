@@ -10,9 +10,9 @@ import {
   Input,
 } from '@goblin/ui'
 import { ChevronLeftIcon, EllipsisIcon, PencilIcon, RotateCcwIcon, ShareIcon, XIcon } from 'lucide-react'
-import { failureText } from '../../lib/boundary.ts'
 import { type PanelItem, draftFrom } from '../../lib/panel.ts'
 import { rememberThread } from '../../lib/recent-threads.ts'
+import { messageOf } from '../../lib/query/app-error.ts'
 import { isClosed, rootParts, threadTitle } from '../../lib/threads.ts'
 import { reportUnexpected } from '../../lib/unexpected.ts'
 import { activityState } from '../../lib/workspace-feed.ts'
@@ -213,7 +213,7 @@ function DraftView({ item, topic }: { readonly item: PanelItem; readonly topic: 
     try {
       await postMessage(thread, input, undefined, { attachments, selections })
     } catch (failure) {
-      setNotice(failureText(failure))
+      setNotice(messageOf(failure, 'send the message'))
       if (selections.length > 0) throw failure
       return false
     }

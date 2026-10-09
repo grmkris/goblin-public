@@ -1,36 +1,20 @@
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
-import { type ComposerOption, ComposerOptions, selectionKey } from '@goblin/contracts'
-import * as Schema from 'effect/Schema'
+import { useQuery } from '@tanstack/react-query'
+import { type ComposerOption, type ComposerOptions, selectionKey } from '@goblin/contracts'
+import { openComposerQuery } from '../conversations/queries.ts'
 import { composerTrigger, pickerItems, type PickerItem, type Trigger } from '../lib/composer.ts'
-import { failureText, request } from '../lib/boundary.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 
-const decode = Schema.decodeUnknownSync(ComposerOptions)
+const NOTHING: ComposerOptions = { options: [], unavailable: [] }
 
-function useCatalog(
-  conversation: string,
-  open: boolean,
-  setCatalog: (catalog: ComposerOptions) => void,
-  setError: (error: string) => void,
-  setLoading: (loading: boolean) => void,
-) {
-  useEffect(() => {
-    if (!open) return
-    const controller = new AbortController()
-    setCatalog({ options: [], unavailable: [] })
-    setLoading(true)
-    setError('')
-    request(`/api/conversations/${conversation}/composer`, { signal: controller.signal })
-      .then((data) => {
-        if (!controller.signal.aborted) setCatalog(decode(data))
-      })
-      .catch((failure: unknown) => {
-        if (!controller.signal.aborted) setError(failureText(failure))
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
-      })
-    return () => controller.abort()
-  }, [conversation, open, setCatalog, setError, setLoading])
+/** The conversation's references, read while the picker is open: the last read shows at once, a stale one is read again. */
+function useCatalog(conversation: string, open: boolean) {
+  const catalog = useQuery(openComposerQuery(open ? conversation : undefined))
+  return {
+    catalog: catalog.data ?? NOTHING,
+    loading: open && catalog.isPending,
+    error: catalog.error === null ? '' : messageOf(catalog.error, 'load what you can tag'),
+  }
 }
 
 /** The `/` and `@` picker of a composer: the conversation's references (Personas among them) from the server. */
@@ -40,14 +24,11 @@ export function useComposerPicker(
   choose: (item: PickerItem, trigger: Trigger) => void,
 ) {
   const [trigger, setTrigger] = useState<Trigger>()
-  const [catalog, setCatalog] = useState<Schema.Schema.Type<typeof ComposerOptions>>({ options: [], unavailable: [] })
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
   const [active, setActive] = useState(0)
   const id = useId()
   const list = useRef<HTMLDivElement>(null)
   const open = trigger !== undefined
-  useCatalog(conversation, open, setCatalog, setError, setLoading)
+  const { catalog, loading, error } = useCatalog(conversation, open)
   const items = useMemo(() => {
     if (trigger === undefined) return []
     return pickerItems(trigger, catalog.options, selected)

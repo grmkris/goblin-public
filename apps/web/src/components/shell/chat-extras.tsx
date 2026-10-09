@@ -1,7 +1,8 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-import { type RetrievalSource, SourceUse } from '@goblin/contracts'
-import { Schema } from 'effect'
-import { request } from '../../lib/boundary.ts'
+import { type ReactNode, useEffect, useMemo, useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import type { RetrievalSource, SourceUse } from '@goblin/contracts'
+import { conversationKeys, sourcesQuery } from '../../conversations/queries.ts'
+import { reportUnexpected } from '../../lib/unexpected.ts'
 import { ephemeralPlaces } from '../../lib/ephemeral.ts'
 import type { Part } from '../../lib/parts.ts'
 import { sourcePlaces } from '../../lib/sources.ts'
@@ -9,30 +10,22 @@ import { SourcesStrip } from '../parts/sources-strip.tsx'
 import { Answering } from './answering.tsx'
 import { EphemeralRow, useEphemeral } from './ephemeral-slot.tsx'
 
-const decodeUses = Schema.decodeUnknownSync(Schema.Array(SourceUse))
+const NONE: readonly SourceUse[] = []
 
 /**
  * What retrieval gave a chat's answers (`GET …/sources`, ADR 0035): read when the chat opens and again each time a run
- * ends. A read that fails keeps what was shown.
+ * ends, which the chat's stream says. Sources are a note under answers: a read that fails keeps what was shown, and the
+ * next run's end reads again.
  */
 function useSourceUses(chat: string, running: boolean): readonly SourceUse[] {
-  const [uses, setUses] = useState<readonly SourceUse[]>([])
+  const queryClient = useQueryClient()
   const was = useRef(running)
   const ended = was.current && !running
   was.current = running
-  const [round, setRound] = useState(0)
   useEffect(() => {
-    if (ended) setRound((count) => count + 1)
-  }, [ended])
-  useEffect(() => {
-    const controller = new AbortController()
-    request(`/api/conversations/${chat}/sources`, { signal: controller.signal })
-      .then((data) => setUses(decodeUses(data)))
-      // expected: sources are a note under answers; a failed read keeps what was shown, and the next run's end reads again
-      .catch(() => undefined)
-    return () => controller.abort()
-  }, [chat, round])
-  return uses
+    if (ended) queryClient.invalidateQueries({ queryKey: conversationKeys.sources(chat) }).catch(reportUnexpected)
+  }, [ended, chat, queryClient])
+  return useQuery(sourcesQuery(chat)).data ?? NONE
 }
 
 const flat = (uses: readonly SourceUse[]): RetrievalSource[] => uses.flatMap((use) => use.sources)

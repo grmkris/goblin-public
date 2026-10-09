@@ -1,8 +1,18 @@
-import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { type AppContext, type ComposerSelection, QueueRemovalResult } from '@goblin/contracts'
-import * as Schema from 'effect/Schema'
-import { failureText, isNumber, record, records, request } from '../lib/boundary.ts'
+import { type RefObject, useEffect, useMemo, useRef, useState } from 'react'
+import { useInfiniteQuery, useMutation } from '@tanstack/react-query'
+import type { AppContext, ComposerSelection } from '@goblin/contracts'
+import {
+  historyQuery,
+  removeQueuedMutation,
+  sendMessage,
+  stopMutation,
+  streamReads,
+  submitMutation,
+} from '../conversations/queries.ts'
+import { isNumber, records } from '../lib/boundary.ts'
 import { BrowserPiEvents, type StreamStatus } from '../lib/conversation-stream.ts'
+import { messageOf } from '../lib/query/app-error.ts'
+import { reportUnexpected } from '../lib/unexpected.ts'
 import { type Lease, type StreamState, StreamPool } from '../lib/stream-pool.ts'
 import { conversationParts } from '../lib/parts.ts'
 import { type ConversationProjection, entryMessages, historyStart, omittedEntries } from '../lib/projection.ts'
@@ -44,14 +54,12 @@ export async function postMessage(
   operationId?: string,
   context: MessageContext = {},
 ): Promise<void> {
-  const body = messageBody(input, operationId ?? crypto.randomUUID(), context)
-  await request(`/api/conversations/${thread}/messages`, { body })
+  await sendMessage({ id: thread, message: messageBody(input, operationId ?? crypto.randomUUID(), context) })
 }
 
 /** Every conversation the browser follows, shared by the panes and inline threads that show it. */
 const streams = new StreamPool((thread) => ({
-  snapshot: (signal) => request(`/api/conversations/${thread}/snapshot`, { signal }),
-  queue: (signal) => request(`/api/conversations/${thread}/queue`, { signal }),
+  ...streamReads(thread),
   events: () => new BrowserPiEvents(`/api/conversations/${thread}/events`),
 }))
 
@@ -95,33 +103,34 @@ export function useConversation(thread: string, visible = true) {
     }
   }, [thread])
   useEffect(() => lease.current?.setVisible(visible), [visible])
+  const submit = useMutation(submitMutation).mutateAsync
+  const stopping = useMutation(stopMutation).mutateAsync
+  const removing = useMutation(removeQueuedMutation).mutateAsync
   /** Replies retain their supplied operation; an unchanged failed draft reuses its browser operation. */
   async function send(input: string, operationId?: string, context: MessageContext = {}): Promise<boolean> {
     const id = operationId ?? retry.current.operation({ thread, input, context })
     try {
-      await postMessage(thread, input, id, context)
+      await submit({ id: thread, message: messageBody(input, id, context) })
       retry.current.accepted(id)
       streams.refreshQueue(thread)
       setFailure('')
       return true
     } catch (error) {
-      setFailure(failureText(error))
+      setFailure(messageOf(error, 'send the message'))
       if ((context.selections?.length ?? 0) > 0) throw error
       return false
     }
   }
   async function stop(): Promise<void> {
     try {
-      await request(`/api/conversations/${thread}/stop`, { body: {} })
+      await stopping(thread)
     } catch (error) {
-      setFailure(failureText(error))
+      setFailure(messageOf(error, 'stop'))
     }
   }
   async function removeQueued(submissionId: number): Promise<boolean> {
     try {
-      const result = Schema.decodeUnknownSync(QueueRemovalResult)(
-        await request(`/api/conversations/${thread}/queue`, { method: 'DELETE', body: { submissionId } }),
-      )
+      const result = await removing({ id: thread, removal: { submissionId } })
       streams.refreshQueue(thread)
       setFailure(
         result.status === 'removed'
@@ -132,7 +141,7 @@ export function useConversation(thread: string, visible = true) {
       )
       return result.status === 'removed'
     } catch (error) {
-      setFailure(failureText(error))
+      setFailure(messageOf(error, 'remove the queued message'))
       return false
     }
   }
@@ -149,41 +158,24 @@ export function useConversation(thread: string, visible = true) {
   }
 }
 
-type HistoryPage = { readonly entries: readonly Record<string, unknown>[]; readonly more: boolean }
-
 /**
  * The conversation before what its snapshot shows: once a memory view or a summary starts the model's context later,
- * the snapshot starts there too. The page before `start` loads on its own; `earlier` loads the next older one.
+ * the snapshot starts there too. The page before `start` loads on its own; `earlier` loads the next older one. A failed
+ * page is reported as the conversation's notice.
  */
 function useHistory(thread: string, start: number | undefined, report: (text: string) => void) {
-  const [page, setPage] = useState<HistoryPage>({ entries: [], more: false })
-  const load = useCallback(
-    async (before: number): Promise<HistoryPage> => {
-      const data = record(await request(`/api/conversations/${thread}/history?before=${before}`))
-      return { entries: records(data?.entries), more: data?.more === true }
-    },
-    [thread],
-  )
+  const history = useInfiniteQuery(historyQuery(thread, start))
+  const { error, data, hasNextPage, fetchNextPage } = history
   useEffect(() => {
-    let current = true
-    setPage({ entries: [], more: false })
-    if (start !== undefined)
-      load(start)
-        .then((first) => current && setPage(first))
-        .catch((failure: unknown) => report(failureText(failure)))
-    return () => {
-      current = false
-    }
-  }, [load, start, report])
-  const oldest = page.entries[0]?.id
-  const earlier =
-    page.more && isNumber(oldest)
-      ? () =>
-          void load(oldest)
-            .then((older) => setPage((shown) => ({ entries: [...older.entries, ...shown.entries], more: older.more })))
-            .catch((failure: unknown) => report(failureText(failure)))
-      : undefined
-  return { entries: page.entries, earlier }
+    if (error !== null) report(messageOf(error, 'load earlier messages'))
+  }, [error, report])
+  const entries = useMemo(() => (data?.pages ?? []).toReversed().flatMap((page) => records(page.entries)), [data])
+  const earlier = hasNextPage
+    ? () => {
+        fetchNextPage().catch(reportUnexpected)
+      }
+    : undefined
+  return { entries, earlier }
 }
 
 /**

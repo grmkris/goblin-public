@@ -1,4 +1,5 @@
 import { type ReactNode, use, useEffect, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import type { ConversationView } from '@goblin/contracts'
 import { Button, Duration } from '@goblin/ui'
 import {
@@ -11,7 +12,8 @@ import {
   SquareIcon,
   XIcon,
 } from 'lucide-react'
-import { failureText, request } from '../../lib/boundary.ts'
+import { stopMutation } from '../../conversations/queries.ts'
+import { messageOf } from '../../lib/query/app-error.ts'
 import type { ToolPart } from '../../lib/parts.ts'
 import { type SubagentState, isBusy, subagentLabel, subagentState, workingUnder } from '../../lib/subagent-state.ts'
 import { subagentAction, subagentOf, threadTitle } from '../../lib/threads.ts'
@@ -53,6 +55,7 @@ export function SubagentStateText({ state }: { readonly state: SubagentState }) 
  */
 export function useSubagent(view: ConversationView) {
   const feed = useWorkspaceFeed()
+  const stopping = useMutation(stopMutation).mutate
   const [stopped, setStopped] = useState(false)
   const [failure, setFailure] = useState('')
   const activity = feed.activity.get(view.id)
@@ -61,7 +64,7 @@ export function useSubagent(view: ConversationView) {
   }, [activity])
   const act = (change: Promise<unknown>) => {
     setFailure('')
-    change.catch((cause: unknown) => setFailure(failureText(cause)))
+    change.catch((cause: unknown) => setFailure(messageOf(cause, 'change the subagent')))
   }
   const state = subagentState(view, activity, stopped)
   const below = workingUnder(view.id, feed.conversations, feed.activity)
@@ -72,7 +75,13 @@ export function useSubagent(view: ConversationView) {
     failure,
     parent: threadTitle(feed.conversations.find((candidate) => candidate.id === view.parent)),
     children: feed.conversations.filter((candidate) => candidate.kind === 'subagent' && candidate.parent === view.id),
-    stop: () => act(request(`/api/conversations/${view.id}/stop`, { body: {} }).then(() => setStopped(true))),
+    stop: () => {
+      setFailure('')
+      stopping(view.id, {
+        onSuccess: () => setStopped(true),
+        onError: (cause) => setFailure(messageOf(cause, 'stop the subagent')),
+      })
+    },
     keepOpen: () => act(feed.update(view.id, { keepOpen: true })),
     dismiss: () => act(feed.update(view.id, { closed: true })),
     reopen: () => act(feed.update(view.id, { closed: false })),

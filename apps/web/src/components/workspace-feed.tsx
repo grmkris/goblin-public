@@ -1,14 +1,20 @@
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Schema } from 'effect'
 import {
   AppView,
-  ConversationView,
+  type ConversationView,
   type CreateConversation,
   type UpdateConversation,
   type WorkspaceChange,
 } from '@goblin/contracts'
-import { failureText, request } from '../lib/boundary.ts'
+import {
+  conversationKeys,
+  createConversationMutation,
+  markReadMutation,
+  updateConversationMutation,
+} from '../conversations/queries.ts'
+import { request } from '../lib/boundary.ts'
 import { BrowserPiEvents } from '../lib/conversation-stream.ts'
 import {
   EMPTY_WORKSPACE,
@@ -17,10 +23,10 @@ import {
   applyChanges,
   withPendingApps,
 } from '../lib/workspace-feed.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 import { reportUnexpected } from '../lib/unexpected.ts'
 import { personaKeys } from '../personas/queries.ts'
 
-const decodeView = Schema.decodeUnknownSync(ConversationView)
 const decodeApp = Schema.decodeUnknownSync(AppView)
 
 type WorkspaceFeed = WorkspaceState & {
@@ -45,7 +51,7 @@ const WorkspaceFeedContext = createContext<WorkspaceFeed | undefined>(undefined)
 /**
  * The feed's state, live while `enabled`, with the Apps the owner just kept or closed (`pending`)
  * shown over whatever the feed sends until it confirms them. The feed is also what says that server data changed: a
- * Persona change makes the Persona reads open now read again.
+ * Persona change makes the Persona reads, and what composers can tag, read again.
  */
 function useLiveFeed(enabled: boolean) {
   const queryClient = useQueryClient()
@@ -60,7 +66,10 @@ function useLiveFeed(enabled: boolean) {
       for (const id of shown.settled) pending.current.delete(id)
       setState(shown.state)
       if (personas !== undefined && next.personas !== personas)
-        queryClient.invalidateQueries({ queryKey: personaKeys.all }).catch(reportUnexpected)
+        Promise.all([
+          queryClient.invalidateQueries({ queryKey: personaKeys.all }),
+          queryClient.invalidateQueries({ queryKey: conversationKeys.composers }),
+        ]).catch(reportUnexpected)
       personas = next.personas
     }
     const connection = new WorkspaceFeedConnection(
@@ -87,6 +96,9 @@ export function WorkspaceFeedProvider({
   readonly children: ReactNode
 }) {
   const { state, setState, error, setError, pending } = useLiveFeed(enabled)
+  const read = useMutation(markReadMutation).mutate
+  const created = useMutation(createConversationMutation).mutateAsync
+  const updated = useMutation(updateConversationMutation).mutateAsync
   const markRead = useCallback(
     (id: string) => {
       const at = Math.floor(Date.now() / 1000)
@@ -96,11 +108,9 @@ export function WorkspaceFeedProvider({
         const readAt = Math.max(at, view.lastReplyAt ?? 0, view.readAt ?? 0)
         return applyChanges(current, [{ type: 'conversation', conversation: { ...view, readAt } }])
       })
-      request(`/api/conversations/${id}/read`, { method: 'PUT', body: {} }).catch((failure: unknown) =>
-        setError(failureText(failure)),
-      )
+      read(id, { onError: (failure) => setError(messageOf(failure, 'mark it read')) })
     },
-    [setState, setError],
+    [setState, setError, read],
   )
   const value = useMemo<WorkspaceFeed>(() => {
     const show = (view: ConversationView) =>
@@ -137,23 +147,23 @@ export function WorkspaceFeedProvider({
             ...(from !== undefined && { from }),
             ...(from === undefined && topic !== undefined && { topic }),
           }
-          const view = decodeView(await request('/api/conversations', { body }))
+          const view = await created(body)
           show(view)
           return view
         } catch (failure) {
-          setError(failureText(failure))
+          setError(messageOf(failure, 'start the thread'))
           return undefined
         }
       },
       update: async (id, change) => {
         try {
-          show(decodeView(await request(`/api/conversations/${id}`, { method: 'PATCH', body: change })))
+          show(await updated({ id, change }))
         } catch (failure) {
-          setError(failureText(failure))
+          setError(messageOf(failure, 'change the conversation'))
         }
       },
     }
-  }, [state, error, markRead, setState, setError, pending])
+  }, [state, error, markRead, setState, setError, pending, created, updated])
   return <WorkspaceFeedContext.Provider value={value}>{children}</WorkspaceFeedContext.Provider>
 }
 

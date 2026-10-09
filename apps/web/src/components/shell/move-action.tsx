@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
+import { Conflict } from '@goblin/contracts/api'
 import { MessageSquareShareIcon } from 'lucide-react'
-import { ApiFailure, failureText } from '../../lib/boundary.ts'
+import { moveMutation } from '../../conversations/queries.ts'
+import { messageOf } from '../../lib/query/app-error.ts'
 import { usePanel } from './panel.tsx'
-import { moveToThread } from './thread-start.ts'
 
 /** Move to thread in a channel: the message it is offered on, why it cannot move, and the move itself. */
 export type Mover = {
@@ -27,8 +29,8 @@ const REASONS: Readonly<Record<string, string>> = {
 
 /** A refused move's reason, or what went wrong asking for it, in one short line. */
 function refusalText(failure: unknown): string {
-  if (failure instanceof ApiFailure && failure.status === 409) return 'A move of this turn is under way.'
-  return failureText(failure)
+  if (failure instanceof Conflict) return 'A move of this turn is under way.'
+  return messageOf(failure, 'move it')
 }
 
 /**
@@ -38,6 +40,7 @@ function refusalText(failure: unknown): string {
  */
 export function useMover(chat: string, offered: boolean, running: boolean, entry: number | undefined) {
   const panel = usePanel()
+  const moving = useMutation(moveMutation).mutate
   const [refused, setRefused] = useState<{ readonly entry: number; readonly reason: string }>()
   useEffect(() => {
     if (!running) setRefused((now) => (now?.reason === 'streaming' ? undefined : now))
@@ -49,17 +52,19 @@ export function useMover(chat: string, offered: boolean, running: boolean, entry
       entry,
       waiting: running,
       refusal: reason === undefined ? undefined : (REASONS[reason] ?? reason),
-      move: () => {
-        moveToThread(chat, entry, crypto.randomUUID()).then(
-          (receipt) => {
-            if (receipt.state === 'refused') setRefused({ entry, reason: receipt.reason ?? 'refused' })
-            else if (receipt.thread !== undefined) panel.open(receipt.thread)
+      move: () =>
+        moving(
+          { id: chat, move: { entry, operationId: crypto.randomUUID() } },
+          {
+            onSuccess: (receipt) => {
+              if (receipt.state === 'refused') setRefused({ entry, reason: receipt.reason ?? 'refused' })
+              else if (receipt.thread !== undefined) panel.open(receipt.thread)
+            },
+            onError: (failure) => setRefused({ entry, reason: refusalText(failure) }),
           },
-          (failure: unknown) => setRefused({ entry, reason: refusalText(failure) }),
-        )
-      },
+        ),
     }
-  }, [offered, entry, running, refused, chat, panel])
+  }, [offered, entry, running, refused, chat, panel, moving])
 }
 
 /** The message pill's Move to thread: unavailable, with its reason, while the turn cannot move. */

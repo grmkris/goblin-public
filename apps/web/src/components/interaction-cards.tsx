@@ -23,7 +23,8 @@ import {
   QuestionnaireTitle,
   Receipt,
 } from '@goblin/ui'
-import { failureText, request } from '../lib/boundary.ts'
+import { ApiFailure, failureText, request } from '../lib/boundary.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 import { targetLabel } from '../lib/capabilities.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
 import { reportUnexpected } from '../lib/unexpected.ts'
@@ -63,7 +64,8 @@ function useReplying() {
     try {
       await send()
     } catch (cause) {
-      setError(failureText(cause))
+      // The grant and the switch still answer through request() (ApiFailure); a reply through the typed client.
+      setError(cause instanceof ApiFailure ? failureText(cause) : messageOf(cause, 'send your answer'))
     } finally {
       setBusy(false)
     }

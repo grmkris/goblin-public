@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { canSend, composerTrigger, pickerItems, selectionFailure, withoutTrigger } from '../src/lib/composer.ts'
-import { ApiFailure } from '../src/lib/boundary.ts'
+import { InvalidInput } from '@goblin/contracts/api'
 
 const skill = {
   selection: { kind: 'skill' as const, serverId: 'myskills', uri: 'skill://one/SKILL.md' },
@@ -38,9 +38,7 @@ describe('composer selection semantics', () => {
   })
   it('maps a server selection failure to its chip', () => {
     expect(
-      selectionFailure(new ApiFailure('InvalidInput', 400, 'composer:skill:myskills:skill://one/SKILL.md'), [
-        skill.selection,
-      ]),
+      selectionFailure(new InvalidInput({ reason: 'composer:skill:myskills:skill://one/SKILL.md' }), [skill.selection]),
     ).toBe('skill:myskills:skill://one/SKILL.md')
   })
 })
