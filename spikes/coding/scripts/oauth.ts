@@ -179,7 +179,8 @@ export class OAuth {
           headers: {
             'content-type': 'text/html; charset=utf-8',
             'cache-control': 'no-store',
-            'referrer-policy': 'no-referrer',
+            // Not no-referrer: browsers then send `Origin: null` on the form post and the origin check refuses it.
+            'referrer-policy': 'same-origin',
             'content-security-policy':
               "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
           },
