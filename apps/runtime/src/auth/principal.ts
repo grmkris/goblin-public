@@ -53,6 +53,7 @@ export const grantedScopes = (consent: ConsentRow): readonly string[] => {
     const parsed: unknown = JSON.parse(consent.scopes)
     return Array.isArray(parsed) ? parsed.filter(text) : []
   } catch {
+    // expected: stored scopes that do not parse grant nothing, which is the safe reading.
     return []
   }
 }

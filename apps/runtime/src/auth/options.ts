@@ -4,6 +4,8 @@ import { betterAuth, type BetterAuthPlugin } from 'better-auth'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { emailOTP, jwt } from 'better-auth/plugins'
 import type { RuntimeEnv } from '../env.ts'
+import { writeLine } from '../observability/logger.ts'
+import { safeErrorType } from '../observability/report.ts'
 import { deleteAgentOf } from './account.ts'
 import { CODE_SEND, CODE_SIGN_IN, guardEmailCode } from './email-code.ts'
 import { codeMail, mailerOf } from './mail.ts'
@@ -19,6 +21,7 @@ const isLoopbackHttp = (uri: unknown): boolean => {
     const url = new URL(uri)
     return url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname)
   } catch {
+    // expected: a redirect URI that does not parse is not a loopback one.
     return false
   }
 }
@@ -71,7 +74,9 @@ const codePlugin = (env: AuthEnvironment, delivery: MailDelivery) =>
             ...(env.STAGE === undefined ? {} : { stage: env.STAGE }),
           }),
         )
-      } catch {
+      } catch (cause) {
+        // The after hook answers the owner with a 503; the operator sees the mailer's failure here.
+        writeLine('error', { event: 'failure', where: 'auth.sendCode', 'error.type': safeErrorType(cause) })
         delivery.failed = true
       }
     },
@@ -92,6 +97,9 @@ const unavailableMethod = (path: string): boolean =>
     '/change-email',
   ].some((route) => path === route || path.startsWith(`${route}/`))
 
+/** A field of a request body, which Better Auth hands its hooks untyped. */
+const bodyField = (body: unknown, name: string): unknown => (Predicate.hasProperty(body, name) ? body[name] : undefined)
+
 /** Every gate Better Auth's own options cannot express, before any endpoint runs. */
 const beforeAuth = (env: AuthEnvironment, database: D1Database) =>
   createAuthMiddleware(async (context) => {
@@ -102,7 +110,12 @@ const beforeAuth = (env: AuthEnvironment, database: D1Database) =>
     if (unavailableMethod(context.path ?? '')) throw new APIError('NOT_FOUND', { message: 'Not found' })
     // Deletion requires a fresh OTP session; no token or password bypass is available.
     if (context.path?.startsWith('/delete-user')) {
-      if (context.path !== '/delete-user' || context.body?.token !== undefined || context.body?.password !== undefined)
+      const body: unknown = context.body
+      if (
+        context.path !== '/delete-user' ||
+        bodyField(body, 'token') !== undefined ||
+        bodyField(body, 'password') !== undefined
+      )
         throw new APIError('BAD_REQUEST', { message: 'Invalid request' })
       return
     }
@@ -159,7 +172,9 @@ const authOptions = (env: AuthEnvironment, database: D1Database) => {
       before: beforeAuth(env, database),
       after: createAuthMiddleware(async (context) => {
         if (context.path !== CODE_SEND || !delivery.failed) return
-        await context.context.internalAdapter.deleteVerificationByIdentifier(`sign-in-otp-${context.body.email}`)
+        const email = bodyField(context.body, 'email')
+        const identifier = `sign-in-otp-${Predicate.isString(email) ? email : ''}`
+        await context.context.internalAdapter.deleteVerificationByIdentifier(identifier)
         throw new APIError('SERVICE_UNAVAILABLE', { message: 'Could not send a sign-in code. Try again.' })
       }),
     },

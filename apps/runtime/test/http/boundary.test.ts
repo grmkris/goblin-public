@@ -1,3 +1,5 @@
+import * as Cause from 'effect/Cause'
+import * as Exit from 'effect/Exit'
 import * as Schema from 'effect/Schema'
 import { expect, test, vi } from 'vitest'
 import { readJson } from '../../src/http/body.ts'
@@ -14,13 +16,14 @@ import {
 import { failureResponse, statusOf } from '../../src/http/respond.ts'
 
 const SECRET = 'secret-value'
+const parseLine = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))
 
 /** The JSON lines `write` sent to `console[method]`, which prints nothing meanwhile. */
 const linesOf = (method: 'log' | 'warn' | 'error', write: () => void): unknown[] => {
   const spy = vi.spyOn(console, method).mockImplementation(() => undefined)
   try {
     write()
-    return spy.mock.calls.map(([line]) => (typeof line === 'string' ? JSON.parse(line) : line))
+    return spy.mock.calls.map(([line]): unknown => (typeof line === 'string' ? parseLine(line) : line))
   } finally {
     spy.mockRestore()
   }
@@ -85,13 +88,10 @@ test('a typed failure passes through; anything else, stored data that does not d
   const known = new GrantDenied({ serverId: 'myplan', name: 'x' })
   expect(toAppError(known)).toBe(known)
   const Stored = Schema.Struct({ revision: Schema.Number })
+  const decoded = Schema.decodeUnknownExit(Stored)({ revision: SECRET })
   let error: unknown
   const lines = linesOf('error', () => {
-    try {
-      Schema.decodeUnknownSync(Stored)({ revision: SECRET })
-    } catch (cause) {
-      error = toAppError(cause)
-    }
+    if (Exit.isFailure(decoded)) error = toAppError(Cause.squash(decoded.cause))
   })
   expect(error).toBeInstanceOf(Internal)
   expect(lines).toHaveLength(1)

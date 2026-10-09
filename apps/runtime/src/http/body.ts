@@ -1,4 +1,5 @@
 import * as Exit from 'effect/Exit'
+import * as Predicate from 'effect/Predicate'
 import * as Schema from 'effect/Schema'
 import { InvalidInput, PayloadTooLarge } from './errors.ts'
 
@@ -16,8 +17,11 @@ export const readBytes = async (
   const chunks: Uint8Array[] = []
   let size = 0
   for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
+    // The stream's chunk type differs between runtimes' lib types; a request body streams bytes either way.
+    const read: unknown = await reader.read()
+    if (Predicate.hasProperty(read, 'done') && read.done === true) break
+    const value = Predicate.hasProperty(read, 'value') ? read.value : undefined
+    if (!(value instanceof Uint8Array)) throw new InvalidInput({ reason: 'body is not bytes' })
     size += value.byteLength
     if (size > limit) {
       await reader.cancel()

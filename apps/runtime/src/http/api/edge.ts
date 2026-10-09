@@ -131,9 +131,11 @@ const settle = (
 ): Effect.Effect<Response> =>
   Effect.gen(function* () {
     let agent: string | undefined
-    const response = yield* serve((userId) => {
+    const served = serve((userId) => {
       agent = userId
-    }).pipe(Effect.catchIf(isAppError, (error) => Effect.succeed(refusal(error, facts.ref))))
+    })
+    // expected: an AppError is answered as its envelope, and failureLine below logs it.
+    const response = yield* Effect.catchIf(served, isAppError, (error) => Effect.succeed(refusal(error, facts.ref)))
     yield* failureLine(response, facts, request.method, agent)
     return response
   })

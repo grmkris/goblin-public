@@ -83,6 +83,7 @@ export const answer = <E>(
     Effect.provideService(HttpServerRequest.HttpServerRequest, HttpServerRequest.fromWeb(request)),
     Effect.scoped,
     Effect.map((response) => unsupported(HttpServerResponse.toWeb(response), facts.ref)),
+    // expected: every failure becomes its answer; renderFailure logs an internal one, HttpApi reported its cause.
     Effect.catchCause((cause) => renderFailure(cause, facts)),
     Effect.map((response) => secured(response, facts.ref)),
   )
