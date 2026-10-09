@@ -74,6 +74,13 @@ const ChannelPick = Schema.Struct({ serverId: Bounded(64) })
 const ModelPick = Schema.Struct({ model: Bounded(128) })
 
 const json = (value: unknown, status = 200): Response => Response.json(value, { status })
+/** `?chat=<id>`: a logical chat id, or none. */
+const chatParam = (request: Request): string | undefined => {
+  const chat = new URL(request.url).searchParams.get('chat')
+  if (chat === null) return undefined
+  if (!/^\d{1,12}$/u.test(chat)) throw new InvalidInput({ reason: 'chat' })
+  return chat
+}
 /** Only the authenticated user ID supplies the native Agent name. */
 const agentOf = (env: RuntimeEnv, userId: string): DurableObjectStub<AgentRpc> => env.AGENTS.getByName(userId)
 
@@ -83,7 +90,7 @@ type Route = (request: Request, agent: DurableObjectStub<AgentRpc>) => Promise<R
 const agentRoutes: Readonly<Record<string, Route>> = {
   'GET /api/agent/resident': async (_request, agent) => json(unwrap(await agent.residentStatus())),
   'GET /api/agent/usage': async (_request, agent) => json(unwrap(await agent.usageToday())),
-  'GET /api/agent/memory': async (_request, agent) => json(unwrap(await agent.memoryStatus())),
+  'GET /api/agent/memory': async (request, agent) => json(unwrap(await agent.memoryStatus(chatParam(request)))),
   'GET /api/agent/model': async (_request, agent) => json(unwrap(await agent.modelChoice())),
   'PUT /api/agent/model': async (request, agent) =>
     json(unwrap(await agent.chooseModel((await readJson(request, ModelPick)).model))),

@@ -57,6 +57,25 @@ requests through `topics`, `createTopic` and `updateTopic` on the Agent. The wor
 `topics`, each change is a `{ type: 'topic' }` item, and every `ConversationView` carries its `topic` and, for a
 Topic's Conversation, `conversation: true`. An older client ignores all of these.
 
+## Per-Topic memory
+
+Every Topic's Conversation keeps the long-lived summary memory Main has had (OptChat, `memory/`). The additive
+migration `20261026000100_chat_memory` creates `app_chat_memory_log`, `app_chat_memory_nodes` and
+`app_chat_memory_state`, keyed by `chat_id`, and copies Main's agent-wide `app_memory_*` rows into chat `1` with every
+idx, entry id and node unchanged. The old tables stay, no longer read.
+
+`ChatMemory(chat)` is the old `MainMemory` with every query keyed by chat id and the chat's Pi session resolved on each
+use, so a rebind moves no row. `ChatMemories` (the `Memories` service) holds them: `of(chat)`, `activate(chat)` (the
+`goblin.memory` and `goblin.recall` extensions, once) and `truncate(chat, size)`, which forgets the messages from
+`size` on and every summary covering one, and pulls the view back to `size` at most; Move to thread uses it.
+Composition activates every Conversation without memory (a fresh agent's Personal, or a Topic whose activation a crash
+cut short), and creating a Topic activates its Conversation, again on a retry with the same operation id.
+
+The builder (`pi/memory.ts`) resolves its chat with `chatOf(conversationId)` and works only for a Conversation; a
+thread or subagent remembers nothing of its own. `zoom` reads the memory of the Conversation above its caller
+(`conversationAbove`), bounded, in a thread, by its fork. `GET /api/agent/memory?chat=<id>` reports the memory of
+that chat's Conversation, Personal's by default.
+
 ## Inbound stays in Personal
 
 `askClient`, Telegram turns and `recentOwnerMessages` resolve `primary()`, unchanged: every inbound channel lands in
@@ -70,4 +89,7 @@ search revisions, Personal's protection and the directory roles. The local worke
 (`test/integration/topics-case.ts`, in the ordinary and permuted-primary profiles) proves one Pi session per create,
 409 on a clash, a reply in a Topic that Personal never sees, a thread that inherits its Topic and announces there, an
 archive that aborts a held run and refuses sends, a restore that restarts nothing, Personal's protection, an inbound
-ask landing in chat `1` and account isolation. None of this is deployed-stage or live-provider evidence.
+ask landing in chat `1` and account isolation. Memory unit tests (`test/chat-memory.test.ts`) apply the copy migration
+to seeded rows and check per-chat sizes and truncation; the local workerd case `native-topics.ts` (both profiles)
+proves two Topics remember apart: the new Conversation's builder places its view only there, and Personal's memory
+holds only Personal's messages. None of this is deployed-stage or live-provider evidence.

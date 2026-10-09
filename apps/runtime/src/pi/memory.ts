@@ -1,10 +1,10 @@
 import { recallExtension } from '../memory/recall.ts'
 import { GenerationTask, type TaskId, defineDoc, defineExtension, defineTask, hook } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
-import { Conversations, Memory, attempt, requireBudget } from '../services.ts'
+import { Chats, Conversations, Memories, attempt, requireBudget } from '../services.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
-/** Main's newest builder task: a new one starts only once it has ended. */
+/** A Conversation's newest builder task: a new one starts only once it has ended. */
 const Builder = defineDoc<{ task: TaskId | null }>({
   kind: 'app.memory-builder',
   version: 1,
@@ -14,7 +14,22 @@ const Builder = defineDoc<{ task: TaskId | null }>({
   initial: () => ({ task: null }),
 })
 
-/** The builder: one `MainMemory` step per phase until caught up, the budget is spent or a step fails. */
+/**
+ * The memory of the Topic's Conversation whose session `session` is now, or none: a thread, a subagent or a session
+ * that is no chat's any more remembers nothing of its own.
+ */
+const conversationMemory = (session: string) =>
+  Effect.gen(function* () {
+    const chats = yield* Chats
+    const chat = chats.chatOf(session)
+    if (chat === undefined || !chats.isConversation(chat)) return undefined
+    return (yield* Memories).of(chat)
+  })
+
+/**
+ * The builder: one `ChatMemory` step per phase, for the Conversation it runs in, until caught up, the budget is spent
+ * or a step fails.
+ */
 function builderTask(run: RunProgram) {
   // Each step commits a new checkpoint: Pi faults a phase that commits no durable progress.
   return defineTask<null, { readonly phase: 'step'; readonly steps: number }, null>({
@@ -26,7 +41,8 @@ function builderTask(run: RunProgram) {
         const result = await run(
           Effect.gen(function* () {
             yield* requireBudget
-            const memory = yield* Memory
+            const memory = yield* conversationMemory(String(runtime.conversationId))
+            if (memory === undefined) return 'done' as const
             return yield* attempt(() => memory.step(runtime.signal))
           }),
         ).catch((error: unknown) => {
@@ -49,9 +65,10 @@ function builderTask(run: RunProgram) {
 }
 
 /**
- * Main's memory as two extensions. `memory` (main only) keeps it built: after every response it makes sure one
- * background builder task runs, which steps `MainMemory` until caught up, the budget is spent or a step fails (the
- * next response starts another). `recall` (main and the threads branched from it) explains the view and offers `zoom`.
+ * Each Topic Conversation's memory as two extensions (ADR 0032). `memory` (Conversations only) keeps it built: after
+ * every response it makes sure one background builder task runs there, which steps that Conversation's `ChatMemory`
+ * until caught up, the budget is spent or a step fails (the next response starts another). `recall` (a Conversation and
+ * the threads branched from it) explains the view and offers `zoom` into the Conversation above the caller.
  */
 export function memoryExtensions(run: RunProgram) {
   const BuilderTask = builderTask(run)
@@ -63,9 +80,11 @@ export function memoryExtensions(run: RunProgram) {
         // Fire and forget: building never holds up the turn. A builder that ended in any way is replaced.
         afterResponse: (_message, api) => {
           void run(
-            Memory.use((main) =>
-              attempt(() =>
-                main.startBuilder(async (tx) => {
+            Effect.gen(function* () {
+              const remembered = yield* conversationMemory(String(api.conversationId))
+              if (remembered === undefined) return
+              yield* attempt(() =>
+                remembered.startBuilder(async (tx) => {
                   const state = await tx.doc(Builder, api.conversationId)
                   const last = state.task === null ? undefined : await tx.task(state.task)
                   if (last !== undefined && last.state.status !== 'terminal') return
@@ -74,8 +93,8 @@ export function memoryExtensions(run: RunProgram) {
                     background: true,
                   })
                 }),
-              ),
-            ),
+              )
+            }),
           ).catch(() => undefined)
         },
       }),
@@ -88,8 +107,11 @@ export function memoryExtensions(run: RunProgram) {
       run(
         Effect.gen(function* () {
           const conversations = yield* Conversations
-          const main = yield* Memory
-          return yield* attempt(() => main.zoom(id, n, conversations.recallLimit(conversation, main.size())))
+          const chats = yield* Chats
+          const chat = chats.chatOf(conversation)
+          if (chat === undefined) return `No line ${id}+${n}.`
+          const above = (yield* Memories).of(chats.conversationAbove(chat))
+          return yield* attempt(() => above.zoom(id, n, conversations.recallLimit(conversation, above.size())))
         }),
       ),
     ),

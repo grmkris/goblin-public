@@ -17,6 +17,7 @@ const fixture = () => {
   db.insert(appConversations).values({ chatId: '1', piSession: '1', kind: 'main', role: 'primary', createdAt: 1 }).run()
   const opened: string[] = []
   const retitled: string[] = []
+  const activated: string[] = []
   let gate: Promise<void> = Promise.resolve()
   const topics = new TopicRegistry(db, {
     open: async () => {
@@ -38,6 +39,7 @@ const fixture = () => {
           createdAt: now,
         })
         .run(),
+    activate: async (chat) => void activated.push(chat),
     retitle: (chat, name) => void retitled.push(`${chat}:${name}`),
   })
   const changes: TopicView[] = []
@@ -47,6 +49,7 @@ const fixture = () => {
     topics,
     opened,
     retitled,
+    activated,
     changes,
     hold: () => {
       const { promise, resolve } = Promise.withResolvers<void>()
@@ -66,7 +69,7 @@ describe('Topics (ADR 0032)', () => {
   })
 
   it('creates one Topic and one Pi session per operation id, on retry and concurrently', async () => {
-    const { topics, opened, db, changes, hold } = fixture()
+    const { topics, opened, db, changes, hold, activated } = fixture()
     const release = hold()
     const first = topics.create({ name: '  Work   stuff ', operationId: 'op-1' }, 'owner', 10)
     const repeat = topics.create({ name: 'Work stuff', operationId: 'op-1' }, 'owner', 11)
@@ -78,6 +81,8 @@ describe('Topics (ADR 0032)', () => {
     expect(made.topic.personal).toBeUndefined()
     expect((await topics.create({ name: 'Renamed later', operationId: 'op-1' }, 'agent', 12)).created).toBe(false)
     expect(opened).toEqual(['100'])
+    // Its memory is turned on with it, and again by a retry, which finishes what a failed first attempt began.
+    expect(activated).toEqual(['100', '100', '100'])
     expect(db.select().from(appConversations).where(eq(appConversations.chatId, '100')).get()).toMatchObject({
       role: 'conversation',
       kind: 'main',

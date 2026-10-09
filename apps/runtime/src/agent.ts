@@ -34,7 +34,7 @@ import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { skillLearningExtension, skillsExtension } from './pi/skills.ts'
 import { composeServices } from './compose.ts'
 import { capabilitiesOf, changeCapabilities } from './capabilities/program.ts'
-import { type AgentServices, Channel, Conversations, Mcp, Memory, Models, attempt } from './services.ts'
+import { type AgentServices, Channel, Conversations, Mcp, Models, attempt } from './services.ts'
 import { attemptSync, requireResident, Routines, RoutineRuns } from './services.ts'
 import { accountEntitlements, Entitlements, type EntitlementPolicy } from './billing/gates.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
@@ -49,6 +49,7 @@ import {
   clientRequest,
   createOwnerConversation,
   markOwnerRead,
+  memoryStatusOf,
   ownerRequest,
   ownerResidentStatus,
   recentOwnerMessages,
@@ -375,8 +376,9 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return this.#owner(ownerUsage)
   }
 
-  memoryStatus() {
-    return this.#owner(Memory.useSync((memory) => ({ messages: memory.size(), summarized: memory.viewThrough() })))
+  /** The memory of a chat's Conversation (Personal's by default). */
+  memoryStatus(chat?: string) {
+    return this.#owner(memoryStatusOf(chat))
   }
 
   stop(thread: string, operationId?: string) {

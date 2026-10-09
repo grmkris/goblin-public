@@ -48,6 +48,7 @@ import { homeProbe, retainedHome } from './home-probe.ts'
 import { inboxAppProbe } from './inbox-app-probe.ts'
 import { FileStore } from '../../src/files/store.ts'
 import { composerSequence, helperExclusionsProbe } from './composer-probe.ts'
+import { topicMemorySequence } from './native-topics.ts'
 
 const fixturePlan = () =>
   Effect.succeed({
@@ -1020,6 +1021,8 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return subagentCloseSequence(agent)
     case '/memory':
       return memorySequence(agent)
+    case '/topic-memory':
+      return topicMemorySequence(agent)
     case '/binding':
       return agent.bindingProbe().then((result) => Response.json(result))
     case '/telemetry':

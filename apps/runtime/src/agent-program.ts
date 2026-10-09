@@ -17,6 +17,7 @@ import {
   Chats,
   Conversations,
   Files,
+  Memories,
   RoutineRuns,
   Budget,
   Resident,
@@ -73,6 +74,18 @@ export const updateOwnerConversation = (routines: RoutineRunner, id: string, cha
       for (const run of live) yield* attempt(() => routines.stop(run.id, 'Closed by owner'))
     }
     return (yield* attempt(() => conversations.update(id, change, now))).view
+  })
+
+/**
+ * The memory of `chat`'s Conversation (ADR 0032): the messages it remembers and how many its newest view summarizes.
+ * A thread reports the memory of the Conversation above it; no chat means Personal's.
+ */
+export const memoryStatusOf = (chat: string | undefined) =>
+  Effect.gen(function* () {
+    const chats = yield* Chats
+    const target = chat === undefined ? chats.primary() : yield* attemptSync(() => chats.conversationAbove(chat))
+    const memory = (yield* Memories).of(target)
+    return { messages: memory.size(), summarized: memory.viewThrough() }
   })
 
 /** The owner has seen a conversation's newest reply. */

@@ -161,32 +161,6 @@ export const appExecutionExclusions = sqliteTable(
   (table) => [primaryKey({ columns: [table.sessionId, table.app] })],
 )
 
-/** Main's memory log: the messages it covers, in order, each pointing at its Pi entry (`memory/log.ts`). */
-export const appMemoryLog = sqliteTable('app_memory_log', {
-  idx: integer('idx').primaryKey().notNull(),
-  entryId: integer('entry_id').notNull(),
-  kind: text('kind', { enum: ['user', 'talk', 'echo'] }).notNull(),
-})
-
-/** The summary tree over the log (`memory/tree.ts`): node (level, idx) and its line. Never rewritten. */
-export const appMemoryNodes = sqliteTable(
-  'app_memory_nodes',
-  {
-    level: integer('level').notNull(),
-    idx: integer('idx').notNull(),
-    text: text('text').notNull(),
-    bytes: integer('bytes').notNull(),
-  },
-  (table) => [primaryKey({ columns: [table.level, table.idx] })],
-)
-
-/** Main's memory (one row, id 1): main's newest entry when it began, and how far its newest view reaches. */
-export const appMemoryState = sqliteTable('app_memory_state', {
-  id: integer('id').primaryKey().notNull(),
-  originEntry: integer('origin_entry').notNull(),
-  viewThrough: integer('view_through').notNull(),
-})
-
 /** The user's model pick (one row, id 1); none means the deployment default (`models.ts`). */
 export const appModelChoice = sqliteTable('app_model_choice', {
   id: integer('id').primaryKey().notNull(),

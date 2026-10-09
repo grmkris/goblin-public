@@ -238,7 +238,7 @@ retry still submits the same operation for Pi to deduplicate. Rows older than 30
 The in-isolate per-chat lock covers admission only, and releases before model execution or waiting for an answer.
 `rebind` compare-and-sets the expected session and epoch, rejects a session owned by another chat, and increments the
 epoch. It notifies listeners to close that chat's SSE streams and emit a workspace change. There is no production
-mover yet: Move to thread and per-Topic memory remain future work; Topics are below.
+mover yet: Move to thread remains future work; Topics and their memory are below.
 
 **Capabilities** (ADR 0010, `capabilities/`): each conversation can switch off, for its own agent, a connected server,
 one granted tool of it, a skills library, or subagents. `app_conversation_capabilities` stores only what is off, so a
@@ -598,14 +598,21 @@ All three are strict-CSRF browser writes and owner requests. The workspace feed'
 Unit tests run the real migrations in `node:sqlite`; the local workerd owner case `topics-case.ts` runs in both
 native profiles. Neither is deployed-stage evidence.
 
-## Main's memory
+## Topic memory
 
-Activation, entry reads and builder writes resolve the primary chat's current Pi session. The Builder document uses
-the generation API's `conversationId`. The memory store remains agent-wide; rebinding is no memory reset or
-per-primary memory implementation. Memory log entry ids remain Pi's globally unique ids.
+Every Topic's Conversation (Personal's is Main) keeps its own memory (ADR 0032): `ChatMemory` (`memory/memory.ts`)
+keys every row by chat id, and `ChatMemories` (the `Memories` service) gives each chat's (`of`), turns one on with
+the `goblin.memory` and `goblin.recall` extensions (`activate`, once; composition activates every Conversation that
+has none yet, and creating a Topic activates its Conversation) and forgets a moved turn (`truncate(chat, size)`).
+Activation, entry reads and builder writes resolve the chat's current Pi session on each use, so a rebind moves no
+memory row. The Builder document uses the generation API's `conversationId`; the builder works only for a
+Conversation (`chatOf`, then `isConversation`). The additive migration `20261026000100_chat_memory` copied Main's
+agent-wide memory into chat `1` with every idx, entry id and node unchanged; the old tables stay, no longer read.
+Memory log entry ids remain Pi's globally unique ids.
 
-Main never ends, so it keeps a memory instead of an ever-longer context (`memory/`, after VictorTaelin's OptChat
-gist). Every message of main since the memory was activated is logged in `app_memory_log` with its Pi entry id:
+A Conversation never ends, so it keeps a memory instead of an ever-longer context (`memory/`, after VictorTaelin's
+OptChat gist). Every message of it since the memory was activated is logged in `app_chat_memory_log` with its Pi
+entry id:
 
 - the owner's and other authors' words, notes shared from threads, and the notes naming threads started with "+";
 - the agent's replies, with their tool calls;
@@ -615,27 +622,30 @@ System entries and thinking are never logged. Memory text keeps at most 12 000 J
 message's head and tail, plus a truncation note (`memory/log.ts`); Pi retains the original entry. This also bounds a
 single-message `zoom`.
 
-A background builder task (`pi/memory.ts`), which main starts after each of its responses, summarizes each message in
-order into one line of about 512 bytes with the memory model. It then merges adjacent lines in pairs into a binary
-tree (`app_memory_nodes`). A short message, or a pair that fits, is its own line word for word, with no model call.
+A background builder task (`pi/memory.ts`), which a Conversation starts after each of its responses, summarizes each
+message in order into one line of about 512 bytes with the memory model. It then merges adjacent lines in pairs into a
+binary tree (`app_chat_memory_nodes`). A short message, or a pair that fits, is its own line word for word, with no model call.
 An empty reply uses up one of a line's three tries; when all three come back empty, the line keeps its source cut to
 size, so one message cannot stall the builder. The view folds the tree toward 48 000 bytes (`memory/tree.ts`): one
 line per recent message, and older lines covering more messages, merging the pair that is oldest relative to its size
 first. Only the merges the view needs are built.
 
-The builder writes the view into main as an `app.memory` entry, a Pi write submission whose head is main's newest
-input, which is how Pi places a compaction. The model then sees the view and, verbatim, everything from that input
+The builder writes the view into its Conversation as an `app.memory` entry, a Pi write submission whose head is that
+Conversation's newest input, which is how Pi places a compaction. The model then sees the view and, verbatim, everything from that input
 on, so nothing waits for the summarizer. A new view rewrites the start of main's context, which empties the
 provider's prompt cache, so the builder places one only once main has run past the last view by an estimated 30 000
 tokens (`FOLD_TOKENS`, `memory/memory.ts`); until then the newer messages stay verbatim after the old view.
 `zoom(id, n)` (the `goblin.recall` extension) opens a line into the two under it, down to a single message. It is
-offered in main and in threads branched from it; a branched thread is bounded at its fork.
+offered in a Conversation and in threads branched from it, and reads the memory of the Conversation above the caller
+(`conversationAbove`); a branched thread is bounded at its fork.
 
 The summarizer's tokens count toward the budget, and the builder stops once the budget is spent. The memory begins at
 activation: older history stays in Pi, out of the model's context once the first view lands. Once a view or a
 compaction starts a conversation's snapshot later, the web reads the earlier entries through
 `GET /api/conversations/:id/history?before=<entry>`; it never shows the marker entries themselves. Settings shows how many
-messages main remembers.
+messages main remembers; `GET /api/agent/memory?chat=<id>` reports the memory of that chat's Conversation (Personal's
+without one). Unit tests prove the copy migration and per-chat isolation and truncation in `node:sqlite`; the local
+workerd case `native-topics.ts` proves two Topics remember apart with each view placed only in its own Conversation.
 
 ## Models
 
@@ -837,7 +847,8 @@ that is not in `app_conversations` (a routine's run) has no entries page; its tu
 | Agent DO SQLite | `app_resident`, `app_conversations`, `app_model_choice`, `app_usage_daily`, `app_metadata` | Drizzle: agent metadata and logical chat bindings (ADR 0030). |
 | Agent DO SQLite | `app_chat_operations` | Drizzle: chat/operation admission intents pinned to their original Pi session, pruned opportunistically after 30 days (ADR 0030). |
 | Agent DO SQLite | `app_conversation_capabilities`, `app_execution_exclusions` | Drizzle: conversation switches and helper app exclusions (ADRs 0010, 0029). |
-| Agent DO SQLite | `app_memory_log`, `app_memory_nodes`, `app_memory_state` | Drizzle: main's memory. |
+| Agent DO SQLite | `app_chat_memory_log`, `app_chat_memory_nodes`, `app_chat_memory_state` | Drizzle: each Topic Conversation's memory, keyed by chat id (ADR 0032). `app_memory_log`, `app_memory_nodes` and `app_memory_state`, Main's agent-wide predecessors, were copied into chat `1` and are no longer read. |
+| Agent DO SQLite | `app_topics` | Drizzle: the owner's Topics, each with its Conversation's chat id (ADR 0032). |
 | Agent DO SQLite | `app_skill_sources`, `app_skill_activations`, `app_skill_files`, `app_skill_drafts` | Drizzle: skills and draft tracking. |
 | Agent DO SQLite | `app_channel`, `app_telegram_channel`, `app_channel_replies` | Drizzle: Telegram transport checkpoints and replies. |
 | Agent DO SQLite | `app_mcp_event_grants`, `app_mcp_event_subscriptions`, `app_event_deliveries`, `app_mcp_event_consumers`, `app_event_consumer_receipts` | Drizzle: exact Events grants, leases, encrypted receipts and independent acknowledgements. |

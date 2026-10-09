@@ -381,6 +381,28 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     ].join(BREAK),
   },
   {
+    // Every Topic's Conversation keeps its own memory (ADR 0032). Main's agent-wide memory is copied into chat 1; the
+    // old app_memory_* tables stay, no longer read.
+    key: '20261026000100_chat_memory',
+    tables: [
+      'app_chat_memory_log',
+      'app_chat_memory_nodes',
+      'app_chat_memory_state',
+      'app_memory_log',
+      'app_memory_nodes',
+      'app_memory_state',
+    ],
+    sql: [
+      `CREATE TABLE app_chat_memory_log (chat_id TEXT NOT NULL, idx INTEGER NOT NULL, entry_id INTEGER NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('user', 'talk', 'echo')), PRIMARY KEY (chat_id, idx))`,
+      'CREATE INDEX app_chat_memory_log_entry ON app_chat_memory_log (chat_id, entry_id)',
+      'CREATE TABLE app_chat_memory_nodes (chat_id TEXT NOT NULL, level INTEGER NOT NULL, idx INTEGER NOT NULL, text TEXT NOT NULL, bytes INTEGER NOT NULL, PRIMARY KEY (chat_id, level, idx))',
+      'CREATE TABLE app_chat_memory_state (chat_id TEXT PRIMARY KEY NOT NULL, origin_entry INTEGER NOT NULL, view_through INTEGER NOT NULL)',
+      "INSERT INTO app_chat_memory_log (chat_id, idx, entry_id, kind) SELECT '1', idx, entry_id, kind FROM app_memory_log",
+      "INSERT INTO app_chat_memory_nodes (chat_id, level, idx, text, bytes) SELECT '1', level, idx, text, bytes FROM app_memory_nodes",
+      "INSERT INTO app_chat_memory_state (chat_id, origin_entry, view_through) SELECT '1', origin_entry, view_through FROM app_memory_state",
+    ].join(BREAK),
+  },
+  {
     // Start thread (ADR 0034): the owner's operation that started a Thread, so one operation makes one Thread.
     key: '20261026000350_thread_heads',
     tables: ['app_conversations'],

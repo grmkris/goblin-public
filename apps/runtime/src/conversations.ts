@@ -8,7 +8,7 @@ import { writeHelperExclusions } from './capabilities/profiles.ts'
 import { registerPrimary, type ChatDirectory } from './chats/directory.ts'
 import { ChatStops } from './chats/stops.ts'
 import { Conflict, InvalidInput, NotFound } from './http/errors.ts'
-import type { MainMemory } from './memory/memory.ts'
+import type { ChatMemories } from './memory/memory.ts'
 import type { CheapModel } from './memory/model.ts'
 import { authoredContent, threadStartedContent } from './pi/content.ts'
 import { BACKGROUND, conversationId, entryId } from './pi/context.ts'
@@ -51,14 +51,14 @@ const channelRefusal = (row: Row) =>
 const labelOf = (row: Row): string => (row.title === null ? `${row.kind} (untitled)` : `${row.kind} "${row.title}"`)
 
 /**
- * What threads need beyond the registry: their own extension, `recall` for the ones that see main's history (they
- * start with main's memory view), the memory that bounds their zooms, the cheap model that names them, and the switches
- * a new thread copies from the conversation it came from.
+ * What threads need beyond the registry: their own extension, `recall` for the ones that see a Conversation's history
+ * (they start with its memory view), the memories that bound their zooms, the cheap model that names them, and the
+ * switches a new thread copies from the conversation it came from.
  */
 export type ThreadKit = {
   readonly thread: Extension
   readonly recall: Extension
-  readonly memory: MainMemory
+  readonly memories: ChatMemories
   readonly namer: CheapModel
   readonly capabilities: CapabilityProfiles
   readonly chats: ChatDirectory
@@ -268,12 +268,14 @@ export class ConversationRegistry {
   }
 
   /**
-   * How far a thread branched from `from` at `entry` may zoom into main's memory: main's memory as it was there when it
-   * branches main, never further than its parent could; nothing when it never saw main (a subagent, a "+" thread).
+   * How far a thread branched from `from` at `entry` may zoom into the memory of the Conversation above it: that memory
+   * as it was there when it branches the Conversation, never further than its parent could; nothing when it never saw
+   * one (a subagent, a "+" thread).
    */
   #recallAt(from: Row, entry: number): number | null {
-    if (from.role === 'primary') return this.#kit.memory.sizeAt(entry)
-    return from.recallThrough === null ? null : Math.min(from.recallThrough, this.#kit.memory.sizeAt(entry))
+    const memory = this.#kit.memories.of(this.#kit.chats.conversationAbove(from.chatId))
+    if (isChannel(from)) return memory.sizeAt(entry)
+    return from.recallThrough === null ? null : Math.min(from.recallThrough, memory.sizeAt(entry))
   }
 
   /**
@@ -352,10 +354,14 @@ export class ConversationRegistry {
       .map((row) => row.id)
   }
 
-  /** How far `zoom` reaches into main's memory from `session`: all of it from main, up to its fork from a thread. */
-  recallLimit(session: string, mainSize: number): number {
+  /**
+   * How far `zoom` reaches from `session` into the memory of the Conversation above it (`size` messages): all of it
+   * from that Conversation, up to its fork from a thread.
+   */
+  recallLimit(session: string, size: number): number {
     const row = this.#row(this.#kit.chats.chatOf(session) ?? '')
-    return row?.role === 'primary' ? mainSize : (row?.recallThrough ?? 0)
+    if (row === undefined) return 0
+    return isChannel(row) ? size : (row.recallThrough ?? 0)
   }
 
   /** Registers a subagent's conversation under the one that started it; a relay repeats it, so it is idempotent. */

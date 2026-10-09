@@ -1,11 +1,12 @@
 import { type Conversation, type EntryRecord, type Extension, type Tx } from '@earendil-works/pi-durable'
 import { estimateMessageTokens } from '@earendil-works/pi-ai/utils/estimate'
 import type { PiHarness } from 'agents/harness/pi'
-import { and, count, desc, eq, inArray, lte } from 'drizzle-orm'
-import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
+import { and, count, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
+import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import type { ChatDirectory } from '../chats/directory.ts'
 import { BACKGROUND, conversationId, entryId } from '../pi/context.ts'
-import { appMemoryLog, appMemoryNodes, appMemoryState } from '../storage/schema.ts'
+import { appChatMemoryLog, appChatMemoryNodes, appChatMemoryState } from '../storage/chat-memory.ts'
+import { appConversations } from '../storage/schema.ts'
 import { type LogMessage, logMessage, messageLine } from './log.ts'
 import type { TextCompletion } from './model.ts'
 import { type Step, summarize } from './summarize.ts'
@@ -54,75 +55,115 @@ export type MemoryOptions = {
 /** What one builder step did: there is more to build, or the memory has caught up. */
 export type StepResult = 'more' | 'done'
 
+/** What a chat's memory works with: its tables, Pi, the cheap model that summarizes, and the chat directory. */
+export type MemoryDeps = {
+  readonly db: SQLiteAsyncDatabase<'sync', unknown>
+  readonly harness: PiHarness
+  readonly model: TextCompletion
+  readonly chats: ChatDirectory
+}
+
 /**
- * Main's memory, after OptChat: every message of main from activation on is logged, summarized into a binary tree of
- * one-line summaries by the cheap model, and folded into a view of `VIEW_BYTES`. The view is written into main as an
- * `app.memory` entry whose head is main's newest input, the way Pi places a compaction: the model then sees the view
- * and, verbatim, everything from that input on. Nothing waits for the summarizer: until a message is summarized it is
- * simply still shown in full. The builder task (`pi/memory.ts`) drives `step`; `zoom` opens a line.
+ * One Conversation's memory (ADR 0032), after OptChat: every message of a Topic's Conversation from activation on is
+ * logged, summarized into a binary tree of one-line summaries by the cheap model, and folded into a view of
+ * `VIEW_BYTES`. The view is written into that Conversation as an `app.memory` entry whose head is its newest input, the
+ * way Pi places a compaction: the model then sees the view and, verbatim, everything from that input on. Nothing waits
+ * for the summarizer: until a message is summarized it is simply still shown in full. The builder task
+ * (`pi/memory.ts`) drives `step`; `zoom` opens a line. Every row is keyed by the chat id, and the chat's Pi session is
+ * resolved on each use, so a rebind moves nothing here.
  */
-export class MainMemory {
-  readonly #db: DrizzleSqliteDODatabase
-  readonly #harness: PiHarness
-  readonly #model: TextCompletion
-  readonly #chats: ChatDirectory
+export class ChatMemory {
+  readonly #chat: string
+  readonly #db: SQLiteAsyncDatabase<'sync', unknown>
+  readonly #deps: MemoryDeps
   readonly #options: MemoryOptions
 
-  constructor(
-    db: DrizzleSqliteDODatabase,
-    harness: PiHarness,
-    model: TextCompletion,
-    options: MemoryOptions = {},
-    chats: ChatDirectory,
-  ) {
-    this.#db = db
-    this.#harness = harness
-    this.#model = model
+  constructor(chat: string, deps: MemoryDeps, options: MemoryOptions = {}) {
+    this.#chat = chat
+    this.#db = deps.db
+    this.#deps = deps
     this.#options = options
-    this.#chats = chats
   }
 
   async #main(): Promise<Conversation> {
-    const main = await (
-      await this.#harness.pi()
-    ).conversation(conversationId(this.#chats.session(this.#chats.primary())), BACKGROUND)
-    if (main === undefined) throw new Error('The main conversation is missing')
+    const session = this.#deps.chats.session(this.#chat)
+    const main = await (await this.#deps.harness.pi()).conversation(conversationId(session), BACKGROUND)
+    if (main === undefined) throw new Error('The remembered conversation is missing')
     return main
   }
 
   #state() {
-    return this.#db.select().from(appMemoryState).where(eq(appMemoryState.id, 1)).get()
+    return this.#db.select().from(appChatMemoryState).where(eq(appChatMemoryState.chatId, this.#chat)).get()
+  }
+
+  /** The chat's rows of the log (or nodes) table, and any further conditions. */
+  #log(...more: Parameters<typeof and>) {
+    return and(eq(appChatMemoryLog.chatId, this.#chat), ...more)
+  }
+
+  #nodes(...more: Parameters<typeof and>) {
+    return and(eq(appChatMemoryNodes.chatId, this.#chat), ...more)
+  }
+
+  /** Whether the memory is on: activated once, its state kept. */
+  active(): boolean {
+    return this.#state() !== undefined
   }
 
   /**
-   * Turns the memory on, once: main gets `extensions` (the builder and `zoom`), and every message after main's newest
-   * entry is remembered. Older history stays in Pi, unseen by the model once the first view lands.
+   * Turns the memory on, once: the Conversation gets `extensions` (the builder and `zoom`) and every message after its
+   * newest entry is remembered. Older history stays in Pi, unseen by the model once the first view lands.
    */
   async activate(extensions: readonly Extension[]): Promise<void> {
-    if (this.#state() !== undefined) return
+    if (this.active()) return
     const main = await this.#main()
     const [newest] = (await main.entries({}, 1, undefined, BACKGROUND)).items
     await main.configure({ extensions: { add: extensions } }, BACKGROUND)
     this.#db
-      .insert(appMemoryState)
-      .values({ id: 1, originEntry: newest?.id ?? 0, viewThrough: 0 })
+      .insert(appChatMemoryState)
+      .values({ chatId: this.#chat, originEntry: newest?.id ?? 0, viewThrough: 0 })
       .onConflictDoNothing()
       .run()
   }
 
-  /** Starts the builder unless one runs: `start` runs in a commit on main, where the builder's record lives. */
+  /** Starts the builder unless one runs: `start` runs in a commit on the chat, where the builder's record lives. */
   async startBuilder(start: (tx: Tx) => Promise<void>): Promise<void> {
     await (await this.#main()).commit(start, BACKGROUND)
   }
 
   /** Messages remembered so far. */
   size(): number {
-    return this.#db.select({ n: count() }).from(appMemoryLog).get()?.n ?? 0
+    return this.#db.select({ n: count() }).from(appChatMemoryLog).where(this.#log()).get()?.n ?? 0
   }
 
-  /** Messages remembered up to and including main's entry `entry`: what a thread branched there may zoom into. */
+  /** Messages remembered up to and including its entry `entry`: what a thread branched there may zoom into. */
   sizeAt(entry: number): number {
-    return this.#db.select({ n: count() }).from(appMemoryLog).where(lte(appMemoryLog.entryId, entry)).get()?.n ?? 0
+    return (
+      this.#db
+        .select({ n: count() })
+        .from(appChatMemoryLog)
+        .where(this.#log(lte(appChatMemoryLog.entryId, entry)))
+        .get()?.n ?? 0
+    )
+  }
+
+  /**
+   * Forgets every message from `size` on, with each summary that covers one, and pulls the view back to `size` at most:
+   * a moved turn (Move to thread) leaves the memory of the chat it left. The view entry already in Pi is the mover's.
+   */
+  truncate(size: number): void {
+    this.#db.transaction((tx) => {
+      tx.delete(appChatMemoryLog)
+        .where(this.#log(gte(appChatMemoryLog.idx, size)))
+        .run()
+      tx.delete(appChatMemoryNodes)
+        .where(this.#nodes(sql`(${appChatMemoryNodes.idx} + 1) * (1 << ${appChatMemoryNodes.level}) > ${size}`))
+        .run()
+      tx.update(appChatMemoryState)
+        .set({ viewThrough: sql`min(${appChatMemoryState.viewThrough}, ${size})` })
+        .where(eq(appChatMemoryState.chatId, this.#chat))
+        .run()
+    })
   }
 
   /** How far the newest view reaches, in messages. */
@@ -131,9 +172,9 @@ export class MainMemory {
   }
 
   /**
-   * One unit of work: log main's new entries, then summarize the first message not summarized yet, else build the
-   * merge the view waits for, else place a view that reaches further than the last one, once main has run far enough
-   * past the last one ({@link FOLD_TOKENS}).
+   * One unit of work: log the Conversation's new entries, then summarize the first message not summarized yet, else
+   * build the merge the view waits for, else place a view that reaches further than the last one, once the
+   * Conversation has run far enough past the last one ({@link FOLD_TOKENS}).
    */
   async step(signal: AbortSignal): Promise<StepResult> {
     await this.#collect()
@@ -157,7 +198,7 @@ export class MainMemory {
 
   /**
    * Whether what the model reads verbatim after the current view (from its head, or from activation before the first
-   * view) is past the fold threshold. Reads main newest first and stops as soon as it is.
+   * view) is past the fold threshold. Reads the Conversation newest first and stops as soon as it is.
    */
   async #pastFold(): Promise<boolean> {
     const limit = this.#options.foldTokens ?? FOLD_TOKENS
@@ -166,7 +207,11 @@ export class MainMemory {
     const head =
       state.viewThrough === 0
         ? undefined
-        : this.#db.select().from(appMemoryLog).where(eq(appMemoryLog.idx, state.viewThrough)).get()
+        : this.#db
+            .select()
+            .from(appChatMemoryLog)
+            .where(this.#log(eq(appChatMemoryLog.idx, state.viewThrough)))
+            .get()
     const from = entryId(head === undefined ? state.originEntry + 1 : head.entryId)
     const main = await this.#main()
     let tokens = 0
@@ -195,11 +240,17 @@ export class MainMemory {
     return lines.every((line) => line !== undefined) ? lines.join('\n') : missing
   }
 
-  /** Adds main's entries since the last remembered one, oldest first. */
+  /** Adds the Conversation's entries since the last remembered one, oldest first. */
   async #collect(): Promise<void> {
     const state = this.#state()
     if (state === undefined) return
-    const last = this.#db.select().from(appMemoryLog).orderBy(desc(appMemoryLog.idx)).limit(1).get()
+    const last = this.#db
+      .select()
+      .from(appChatMemoryLog)
+      .where(this.#log())
+      .orderBy(desc(appChatMemoryLog.idx))
+      .limit(1)
+      .get()
     const main = await this.#main()
     const fresh: EntryRecord[] = []
     let cursor: Parameters<Conversation['entries']>[2]
@@ -217,7 +268,7 @@ export class MainMemory {
     for (const entry of fresh.toReversed()) {
       const message = logMessage(entry)
       if (message === undefined) continue
-      this.#db.insert(appMemoryLog).values({ idx, entryId: entry.id, kind: message.kind }).run()
+      this.#db.insert(appChatMemoryLog).values({ chatId: this.#chat, idx, entryId: entry.id, kind: message.kind }).run()
       idx += 1
     }
   }
@@ -225,10 +276,10 @@ export class MainMemory {
   /** The newest message from someone other than the agent: the view reaches up to it, and it stays verbatim. */
   #newestInput(): number | undefined {
     return this.#db
-      .select({ idx: appMemoryLog.idx })
-      .from(appMemoryLog)
-      .where(eq(appMemoryLog.kind, 'user'))
-      .orderBy(desc(appMemoryLog.idx))
+      .select({ idx: appChatMemoryLog.idx })
+      .from(appChatMemoryLog)
+      .where(this.#log(eq(appChatMemoryLog.kind, 'user')))
+      .orderBy(desc(appChatMemoryLog.idx))
       .limit(1)
       .get()?.idx
   }
@@ -236,8 +287,9 @@ export class MainMemory {
   /** The text bytes of every built node: all the fold needs. */
   #sizes(): Map<string, number> {
     const rows = this.#db
-      .select({ level: appMemoryNodes.level, idx: appMemoryNodes.idx, bytes: appMemoryNodes.bytes })
-      .from(appMemoryNodes)
+      .select({ level: appChatMemoryNodes.level, idx: appChatMemoryNodes.idx, bytes: appChatMemoryNodes.bytes })
+      .from(appChatMemoryNodes)
+      .where(this.#nodes())
       .all()
     return new Map(rows.map((row) => [nodeKey({ level: row.level, index: row.idx }), row.bytes]))
   }
@@ -248,17 +300,21 @@ export class MainMemory {
       const indexes = nodes.filter((node) => node.level === level).map((node) => node.index)
       const rows = this.#db
         .select()
-        .from(appMemoryNodes)
-        .where(and(eq(appMemoryNodes.level, level), inArray(appMemoryNodes.idx, indexes)))
+        .from(appChatMemoryNodes)
+        .where(this.#nodes(eq(appChatMemoryNodes.level, level), inArray(appChatMemoryNodes.idx, indexes)))
         .all()
       for (const row of rows) texts.set(nodeKey({ level: row.level, index: row.idx }), row.text)
     }
     return texts
   }
 
-  /** Message `idx` as main's entry holds it now. */
+  /** Message `idx` as the Conversation's entry holds it now. */
   async #message(idx: number): Promise<LogMessage> {
-    const row = this.#db.select().from(appMemoryLog).where(eq(appMemoryLog.idx, idx)).get()
+    const row = this.#db
+      .select()
+      .from(appChatMemoryLog)
+      .where(this.#log(eq(appChatMemoryLog.idx, idx)))
+      .get()
     if (row === undefined) throw new Error(`Memory message ${idx} is missing`)
     const id = entryId(row.entryId)
     const [entry] = (await (await this.#main()).entries({ minEntryId: id, maxEntryId: id }, 1, undefined, BACKGROUND))
@@ -277,10 +333,10 @@ export class MainMemory {
       node.level === 0
         ? { kind: 'compress', message: messageLine(await this.#message(node.index)) }
         : this.#mergeStep(node)
-    const text = await summarize(this.#model, context, step, signal, this.#options.summaryPrompt)
+    const text = await summarize(this.#deps.model, context, step, signal, this.#options.summaryPrompt)
     this.#db
-      .insert(appMemoryNodes)
-      .values({ level: node.level, idx: node.index, text, bytes: byteLength(text) })
+      .insert(appChatMemoryNodes)
+      .values({ chatId: this.#chat, level: node.level, idx: node.index, text, bytes: byteLength(text) })
       .onConflictDoNothing()
       .run()
   }
@@ -295,7 +351,7 @@ export class MainMemory {
 
   /**
    * Writes the view into main, its head at the newest input so the model sees the view and then everything from that
-   * input on. A write submission, never a direct append: a busy main places it at its next boundary. The request id
+   * input on. A write submission, never a direct append: a busy Conversation places it at its next boundary. The request id
    * makes a repeated step write it once.
    */
   async #place(parts: readonly Node[], bytes: number, through: number): Promise<void> {
@@ -304,7 +360,11 @@ export class MainMemory {
       const text = texts.get(nodeKey(part))
       return text === undefined ? [] : [renderLine(part, text)]
     })
-    const head = this.#db.select().from(appMemoryLog).where(eq(appMemoryLog.idx, through)).get()
+    const head = this.#db
+      .select()
+      .from(appChatMemoryLog)
+      .where(this.#log(eq(appChatMemoryLog.idx, through)))
+      .get()
     if (head === undefined) return
     const text = `<memory>\n${lines.join('\n')}\n</memory>`
     await (
@@ -322,6 +382,66 @@ export class MainMemory {
       },
       BACKGROUND,
     )
-    this.#db.update(appMemoryState).set({ viewThrough: through }).where(eq(appMemoryState.id, 1)).run()
+    this.#db
+      .update(appChatMemoryState)
+      .set({ viewThrough: through })
+      .where(eq(appChatMemoryState.chatId, this.#chat))
+      .run()
+  }
+}
+
+/**
+ * Every Topic Conversation's memory (ADR 0032): `of(chat)` is one chat's, `activate` turns it on with the memory
+ * extensions (the builder and `zoom`), and `truncate` forgets a moved turn. Threads have none of their own: they zoom
+ * into the Conversation above them (`ChatDirectory.conversationAbove`).
+ */
+export class ChatMemories {
+  readonly #deps: MemoryDeps
+  readonly #options: MemoryOptions
+  readonly #extensions: readonly Extension[]
+  readonly #memories = new Map<string, ChatMemory>()
+
+  constructor(deps: MemoryDeps, options: MemoryOptions, extensions: readonly Extension[]) {
+    this.#deps = deps
+    this.#options = options
+    this.#extensions = extensions
+  }
+
+  of(chat: string): ChatMemory {
+    let memory = this.#memories.get(chat)
+    if (memory === undefined) {
+      memory = new ChatMemory(chat, this.#deps, this.#options)
+      this.#memories.set(chat, memory)
+    }
+    return memory
+  }
+
+  /** Turns on the memory of `chat`, a Topic's Conversation, once. */
+  async activate(chat: string): Promise<void> {
+    await this.of(chat).activate(this.#extensions)
+  }
+
+  /**
+   * Turns on the memory of every Topic's Conversation that has none yet: a fresh agent's Personal, and a Topic whose
+   * activation a crash cut short.
+   */
+  async activateConversations(): Promise<void> {
+    const missing = this.#deps.db
+      .select({ chat: appConversations.chatId })
+      .from(appConversations)
+      .leftJoin(appChatMemoryState, eq(appChatMemoryState.chatId, appConversations.chatId))
+      .where(
+        and(
+          or(eq(appConversations.role, 'primary'), eq(appConversations.role, 'conversation')),
+          isNull(appChatMemoryState.chatId),
+        ),
+      )
+      .all()
+    for (const { chat } of missing) await this.activate(chat)
+  }
+
+  /** Forgets `chat`'s messages from `size` on (Move to thread). */
+  truncate(chat: string, size: number): void {
+    this.of(chat).truncate(size)
   }
 }

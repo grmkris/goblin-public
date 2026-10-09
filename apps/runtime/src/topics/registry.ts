@@ -12,12 +12,13 @@ export type TopicActor = 'owner' | 'agent'
 /**
  * What a new Topic's Conversation needs beyond this table, injected so the registry is tested without Pi: `open` makes
  * a new Pi session configured like Personal's Conversation (never a fork of it) and returns its id; `register` lists
- * it in the chat registry as the Topic's Conversation, inside the registry's transaction; `retitle` keeps the
- * Conversation's title the Topic's name.
+ * it in the chat registry as the Topic's Conversation, inside the registry's transaction; `activate` turns its memory
+ * on (once; repeating it does nothing); `retitle` keeps the Conversation's title the Topic's name.
  */
 export type TopicPorts = {
   readonly open: () => Promise<string>
   readonly register: (chat: string, topic: number, name: string, now: number) => void
+  readonly activate: (chat: string) => Promise<void>
   readonly retitle: (chat: string, name: string) => void
 }
 
@@ -117,7 +118,11 @@ export class TopicRegistry<RunResult = unknown> {
 
   async #create(input: CreateTopic, actor: TopicActor, now: number): Promise<{ topic: TopicView; created: boolean }> {
     const existing = this.#db.select().from(appTopics).where(eq(appTopics.operationId, input.operationId)).get()
-    if (existing !== undefined) return { topic: view(existing), created: false }
+    if (existing !== undefined) {
+      // A retry finishes what a failed first attempt began: the Conversation's memory.
+      await this.#ports.activate(existing.chatId)
+      return { topic: view(existing), created: false }
+    }
     const name = cleanName(input.name)
     this.#assertFree(name)
     const chat = await this.#ports.open()
@@ -140,6 +145,7 @@ export class TopicRegistry<RunResult = unknown> {
       return inserted
     })
     this.#changed([row])
+    await this.#ports.activate(chat)
     return { topic: view(row), created: true }
   }
 

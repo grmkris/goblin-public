@@ -31,7 +31,7 @@ import { McpHost } from './mcp/host.ts'
 import { logEndpointsReset } from './mcp/log.ts'
 import { RegistryStore } from './mcp/registries.ts'
 import { AddedServerStore } from './mcp/servers.ts'
-import { MainMemory } from './memory/memory.ts'
+import { ChatMemories, type MemoryDeps } from './memory/memory.ts'
 import { CheapModel } from './memory/model.ts'
 import type { RunTelemetry } from './telemetry/events.ts'
 import { RunLedger } from './telemetry/ledger.ts'
@@ -147,6 +147,7 @@ function conversationServices(db: DrizzleSqliteDODatabase, input: ComposeInput, 
   const topics = new TopicRegistry(db, {
     open: () => conversations.openConversation(),
     register: (chat, topic, name, now) => conversations.registerConversation(chat, topic, name, now),
+    activate: (chat) => kit.memories.activate(chat),
     retitle: (chat, name) => conversations.retitle(chat, name),
   })
   const workspace = new WorkspaceFeed(harness, { conversations, apps, home, topics }, kit.chats)
@@ -207,6 +208,13 @@ function makeBudgets(input: ComposeInput, db: DrizzleSqliteDODatabase) {
   return budget
 }
 
+/** Each Topic Conversation's memory, with the memory extensions it turns on and the native fixture's fold override. */
+function makeMemories(input: ComposeInput, deps: MemoryDeps): ChatMemories {
+  const fold = Number(input.env.MEMORY_FOLD_TOKENS ?? Number.NaN)
+  const options = Number.isFinite(fold) ? { foldTokens: fold } : {}
+  return new ChatMemories(deps, options, [input.memory.memory, input.memory.recall])
+}
+
 /**
  * The agent's services over its SQLite, built once per isolate on first use: MCP host and grants, budget and models,
  * main's memory, conversations, resident authority, skills and the Telegram channel. Migrations run first, and every
@@ -230,18 +238,17 @@ export async function composeServices(
       (use) => budget.record(use, nowSeconds(), cheapModelId),
       auxReporter(input.telemetry, purpose),
     )
-  const fold = Number(env.MEMORY_FOLD_TOKENS ?? Number.NaN)
   const chats = new ChatDirectory(db)
-  const memory = new MainMemory(db, harness, cheap('memory'), Number.isFinite(fold) ? { foldTokens: fold } : {}, chats)
   const { recall } = input.memory
+  const memories = makeMemories(input, { db, harness, model: cheap('memory'), chats })
   const capabilities = new CapabilityProfiles(db, input.subagentTools, retool(harness), chats)
   await restoreHelperExecution(db, harness, input.helperExtensions, chats)
   // Apply the current complete delegation tool set to retained Pi filters.
   await capabilities.retoolOnce('retool:subagent-config', nowSeconds())
   const routineServices = await makeRoutines(input)
-  const kit = { thread: input.thread, recall, memory, namer: cheap('naming'), capabilities, chats }
+  const kit = { thread: input.thread, recall, memories, namer: cheap('naming'), capabilities, chats }
   const conversations = conversationServices(db, input, kit)
-  await memory.activate([input.memory.memory, recall])
+  await memories.activateConversations()
   const skills = new SkillLibrary(host.manager, skillState, nowMillis)
   const learner = new SkillLearner({
     drafts: new SqliteDraftLog(db),
@@ -277,7 +284,7 @@ export async function composeServices(
         ...conversations,
         budget,
         models,
-        memory,
+        memories,
         skills,
         learner,
         channel,

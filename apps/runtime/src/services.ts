@@ -9,7 +9,7 @@ import type { McpHost } from './mcp/host.ts'
 import type { ResidentAuthority } from './resident.ts'
 import type { ChatDirectory } from './chats/directory.ts'
 import type { ConversationRegistry } from './conversations.ts'
-import type { MainMemory } from './memory/memory.ts'
+import type { ChatMemories } from './memory/memory.ts'
 import type { SkillLearner } from './skills/learner.ts'
 import type { SkillLibrary } from './skills/library.ts'
 import type { TelegramChannel } from './channel/channel.ts'
@@ -39,7 +39,8 @@ export class Conversations extends Context.Service<Conversations, ConversationRe
 export class Topics extends Context.Service<Topics, TopicRegistry>()('goblin/Topics') {}
 export class Budget extends Context.Service<Budget, ModelBudget>()('goblin/Budget') {}
 export class Models extends Context.Service<Models, ModelPicker>()('goblin/Models') {}
-export class Memory extends Context.Service<Memory, MainMemory>()('goblin/Memory') {}
+/** Each Topic Conversation's memory (ADR 0032). */
+export class Memories extends Context.Service<Memories, ChatMemories>()('goblin/Memories') {}
 export class Skills extends Context.Service<Skills, SkillLibrary>()('goblin/Skills') {}
 export class Learner extends Context.Service<Learner, SkillLearner>()('goblin/Learner') {}
 export class Channel extends Context.Service<Channel, TelegramChannel>()('goblin/Channel') {}
@@ -72,7 +73,7 @@ export type AgentServices =
   | Topics
   | Budget
   | Models
-  | Memory
+  | Memories
   | Skills
   | Learner
   | Channel
@@ -96,7 +97,7 @@ export const agentLayer = (services: {
   readonly chats: ChatDirectory
   readonly budget: ModelBudget
   readonly models: ModelPicker
-  readonly memory: MainMemory
+  readonly memories: ChatMemories
   readonly skills: SkillLibrary
   readonly learner: SkillLearner
   readonly channel: TelegramChannel
@@ -117,7 +118,7 @@ export const agentLayer = (services: {
     Layer.succeed(Chats, services.chats),
     Layer.succeed(Budget, services.budget),
     Layer.succeed(Models, services.models),
-    Layer.succeed(Memory, services.memory),
+    Layer.succeed(Memories, services.memories),
     Layer.succeed(Skills, services.skills),
     Layer.succeed(Learner, services.learner),
     Layer.succeed(Channel, services.channel),

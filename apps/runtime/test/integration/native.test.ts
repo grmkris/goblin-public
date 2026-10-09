@@ -16,6 +16,7 @@ import { scopesCase } from './native-scopes.ts'
 import { composerCase } from './native-composer.ts'
 import { telemetryCase } from './native-telemetry.ts'
 import { primaryBindingCase } from './native-chats.ts'
+import { topicMemoryCase } from './native-topics.ts'
 import {
   Listed,
   ModelRequest,
@@ -841,6 +842,11 @@ harness.test(
     expect(result.view).toBe('app.memory')
     expect(result.earlier).toContain('pi.user: "remember alpha"')
   }),
+)
+
+harness.test(
+  'local workerd: each Topic Conversation remembers apart, with its view only there',
+  stack.pipe(Effect.flatMap(({ url }) => topicMemoryCase(url))),
 )
 
 const SubagentRun = Schema.Struct({
