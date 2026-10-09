@@ -25,8 +25,9 @@ const Snapshot = Schema.Struct({
 const decodeSnapshot = Schema.decodeUnknownSync(Snapshot)
 const decodeHead = Schema.decodeUnknownSync(ThreadHeadData)
 
+/** Start thread from `chat`'s composer: the unified thread operation at the chat's newest settled entry. */
 const start = (url: string, owner: Person, chat: string, input: string, operationId: string) =>
-  call(url, owner, `/api/conversations/${chat}/threads`, { input, operationId })
+  call(url, owner, `/api/conversations/${chat}/threads`, { operationId, anchor: 'latest', message: { input } })
 const send = (url: string, owner: Person, chat: string, input: string) =>
   call(url, owner, `/api/conversations/${chat}/messages`, { input, operationId: crypto.randomUUID() })
 const entries = async (url: string, owner: Person, chat: string) =>
@@ -48,7 +49,7 @@ async function headAndInput(url: string, owner: Person): Promise<void> {
   const { thread, receipt } = decodeStarted(await response.json())
   expect(thread).toMatchObject({ kind: 'thread', parent: '1', topic: 1 })
   expect(thread.forkEntry).toBeTypeOf('number')
-  expect(receipt).toMatchObject({ operationId, accepted: true })
+  expect(receipt).toMatchObject({ operationId: `${operationId}:first`, accepted: true })
   await waitFor(url, owner, `/api/conversations/${thread.id}/snapshot`, 'echo: plan the trip')
   const channel = await heads(url, owner, '1')
   expect(channel.map((entry) => decodeHead(entry.data))).toEqual([
@@ -62,7 +63,7 @@ async function headAndInput(url: string, owner: Person): Promise<void> {
   // A retry, sequential or concurrent, finds the same Thread, head and message.
   const retried = decodeStarted(await (await start(url, owner, '1', 'plan the trip', operationId)).json())
   expect(retried.thread.id).toBe(thread.id)
-  expect(retried.receipt).toMatchObject({ operationId, accepted: false })
+  expect(retried.receipt).toMatchObject({ operationId: `${operationId}:first`, accepted: false })
   const concurrent = crypto.randomUUID()
   const pair = await Promise.all([0, 1].map(async () => start(url, owner, '1', 'twice at once', concurrent)))
   expect(pair.map((each) => each.status)).toEqual([201, 201])

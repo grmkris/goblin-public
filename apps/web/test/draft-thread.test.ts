@@ -43,7 +43,25 @@ describe('a draft thread on its first send', () => {
     expect(made).toEqual(['op-draft', 'op-draft'])
   })
 
-  it('keeps the first message on one operation while it is retried unchanged', () => {
+  it('asks again under the same operation after a make that threw, and the failure reaches the send', async () => {
+    const draft = new DraftThread('op-draft', ids())
+    const made: string[] = []
+    await expect(
+      draft.thread(async (operationId) => {
+        made.push(operationId)
+        throw new Error('offline')
+      }),
+    ).rejects.toThrow('offline')
+    await expect(
+      draft.thread(async (operationId) => {
+        made.push(operationId)
+        return '14'
+      }),
+    ).resolves.toBe('14')
+    expect(made).toEqual(['op-draft', 'op-draft'])
+  })
+
+  it('keeps a later message on one operation while it is retried unchanged', () => {
     const draft = new DraftThread('op-draft', ids())
     const first = draft.message({ input: 'Hello' })
     expect(draft.message({ input: 'Hello' })).toBe(first)

@@ -42,6 +42,7 @@ import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import * as Legacy from '../../../src/services.ts'
 import { Skills } from '../../../src/skills/service.ts'
+import type { ThreadAnchor } from '../../../src/chats/service.ts'
 import { appChatOperations, appConversations } from '../../../src/storage/schema.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 import { callOwner } from '../../integration/owner-api.ts'
@@ -127,22 +128,30 @@ const registryReads = (): Partial<ConversationRegistry> => ({
   history: async (id, before) => ({ entries: [{ id: before - 1, kind: 'pi.user', chat: id }] as never, more: true }),
 })
 
-/** The registry's writes, recorded; a Thread start registers its Thread in the real directory, as the registry does. */
+/** How a recorded thread operation names its anchor. */
+const anchorOf = (anchor: ThreadAnchor): string => (typeof anchor === 'string' ? anchor : String(anchor.entry))
+
+/**
+ * The registry's writes, recorded; a Thread start registers its Thread in the real directory, as the registry does, and
+ * a repeat of its operation finds it.
+ */
 const registryWrites = (db: ReturnType<typeof chatDatabase>['db'], calls: Calls): Partial<ConversationRegistry> => ({
-  create: async (_now, topic) => view(NEW, topic === undefined ? {} : { topic }),
+  createIn: async (channel) => view(NEW, { parent: channel }),
   branch: async (parent, entry) => view(NEW, { parent, forkEntry: entry }),
   update: async (id, change) => ({
     view: view(known(id), change.title === undefined ? {} : { title: change.title }),
     closed: [],
   }),
   markRead: (id) => void calls.push(`read:${known(id)}`),
-  startThread: async (parent, operationId) => {
-    calls.push(`start:${parent}:${operationId}`)
-    db.insert(appConversations)
+  startThread: async (parent, operationId, anchor) => {
+    calls.push(`start:${parent}:${operationId}:${anchorOf(anchor)}`)
+    const made = db
+      .insert(appConversations)
       .values({ chatId: NEW, piSession: NEW, kind: 'thread', parentSession: parent, createdAt: 2 })
       .onConflictDoNothing()
-      .run()
-    return view(NEW)
+      .returning()
+      .all()
+    return { view: view(NEW), existing: made.length === 0 }
   },
   stopSubagents: async (id) => void calls.push(`subagents:${id}`),
 })
@@ -346,9 +355,9 @@ describe('the conversations API served by the agent', () => {
     const list = await fetch(json('GET', '/api/conversations'))
     expect(list.status).toBe(200)
     expect(decodeViews(await list.json()).map(({ id }) => id)).toEqual(['1', '2', '3', '4'])
-    const empty = await fetch(json('POST', '/api/conversations', { topic: 2 }))
+    const empty = await fetch(json('POST', '/api/conversations', {}))
     expect(empty.status).toBe(201)
-    expect(await empty.json()).toMatchObject({ id: NEW, topic: 2 })
+    expect(await empty.json()).toMatchObject({ id: NEW, parent: '1' })
     const branched = await fetch(json('POST', '/api/conversations', { from: { conversation: '2', entry: 4 } }))
     expect(branched.status).toBe(201)
     expect(await branched.json()).toMatchObject({ id: NEW, parent: '2', forkEntry: 4 })
@@ -384,20 +393,73 @@ describe('the conversations API served by the agent', () => {
     expect(record.submitted).toEqual([])
   })
 
-  it('starts a Thread with 201: the head goes into the chat, the message into the Thread', async () => {
-    const { fetch, calls, record } = fixture()
-    const response = await fetch(
-      json('POST', '/api/conversations/1/threads', { input: 'plan it', operationId: 'op-t' }),
-    )
+  it('starts a Thread with 201 in one call: the head goes into the chat, the first message into the Thread', async () => {
+    const { fetch, calls, record, operations, flows } = fixture()
+    const body = { operationId: 'op-t', anchor: 'latest', message: { input: 'plan it' } }
+    const response = await fetch(json('POST', '/api/conversations/1/threads', body))
     expect(response.status).toBe(201)
     const started = Schema.decodeUnknownSync(Schema.Struct({ thread: ConversationView, receipt: Schema.Unknown }))(
       await response.json(),
     )
     expect(started.thread).toMatchObject({ id: NEW, forkEntry: 3 })
-    expect(started.receipt).toEqual({ operationId: 'op-t', session: NEW, accepted: true })
-    expect(calls).toContain('start:1:op-t')
-    expect(record.writes).toEqual([{ conversation: 1, requestId: 'thread-head:op-t', kind: 'app.thread_head' }])
-    expect(record.submitted).toEqual([{ session: NEW, operationId: 'op-t', content: 'plan it' }])
+    expect(started.receipt).toEqual({ operationId: 'op-t:first', session: NEW, accepted: true })
+    expect((await fetch(json('POST', '/api/conversations/1/threads', body))).status).toBe(201)
+    expect(calls.filter((call) => call.startsWith('start:'))).toEqual(['start:1:op-t:latest', 'start:1:op-t:latest'])
+    expect(record.writes).toEqual([
+      { conversation: 1, requestId: 'thread-head:op-t', kind: 'app.thread_head' },
+      { conversation: 1, requestId: 'thread-head:op-t', kind: 'app.thread_head' },
+    ])
+    expect(record.submitted.map(({ session, operationId }) => [session, operationId])).toEqual([
+      [NEW, 'op-t:first'],
+      [NEW, 'op-t:first'],
+    ])
+    expect(operations()).toEqual([
+      expect.objectContaining({ chatId: '1', operationId: 'op-t', kind: 'start', state: 'settled', targetChat: NEW }),
+      expect.objectContaining({
+        chatId: '1',
+        operationId: 'thread-head:op-t',
+        kind: 'write:app.thread_head',
+        parentOp: 'op-t',
+      }),
+      expect.objectContaining({
+        chatId: NEW,
+        operationId: 'op-t:first',
+        kind: 'send',
+        parentOp: 'op-t',
+        state: 'submitted',
+      }),
+    ])
+    expect(flows.map(({ flow, status }) => [flow, status])).toEqual([
+      ['start', 'ok'],
+      ['send', 'ok'],
+      ['start', 'replayed'],
+      ['send', 'replayed'],
+    ])
+  })
+
+  it('replies at an entry and starts "+" empty with no head; a create with an operation id is the same operation (C4)', async () => {
+    const { fetch, calls, record, flows } = fixture()
+    const reply = { operationId: 'op-r', anchor: { entry: 4 }, message: { input: 'about this' } }
+    expect((await fetch(json('POST', '/api/conversations/2/threads', reply))).status).toBe(201)
+    const plus = { operationId: 'op-e', anchor: 'empty', message: { input: 'new idea' } }
+    expect((await fetch(json('POST', '/api/conversations/1/threads', plus))).status).toBe(201)
+    expect(record.writes).toEqual([])
+    expect(record.submitted.map(({ operationId }) => operationId)).toEqual(['op-r:first', 'op-e:first'])
+    expect((await fetch(json('POST', '/api/conversations', { operationId: 'op-c' }))).status).toBe(201)
+    const from = { operationId: 'op-b', from: { conversation: '2', entry: 4 } }
+    expect((await fetch(json('POST', '/api/conversations', from))).status).toBe(201)
+    expect(calls.filter((call) => call.startsWith('start:'))).toEqual([
+      'start:2:op-r:4',
+      'start:1:op-e:empty',
+      'start:1:op-c:empty',
+      'start:2:op-b:4',
+    ])
+    expect(flows.filter(({ flow }) => flow !== 'send').map(({ flow }) => flow)).toEqual([
+      'reply',
+      'empty',
+      'empty',
+      'reply',
+    ])
   })
 
   it('starts a Thread whose tagged Personas answer there in the order the message asks (H1)', async () => {
@@ -410,10 +472,11 @@ describe('the conversations API served by the agent', () => {
       exclusions: [],
     })
     const { fetch, calls, record } = fixture({ personas: [ada] })
-    const body = { input: 'compare them', operationId: 'op-p', selections: [{ kind: 'persona', personaId: 5 }] }
-    const response = await fetch(json('POST', '/api/conversations/1/threads', { ...body, personaOrder: 'sequence' }))
+    const message = { input: 'compare them', selections: [{ kind: 'persona', personaId: 5 }] }
+    const body = { operationId: 'op-p', anchor: 'latest', message, personaOrder: 'sequence' }
+    const response = await fetch(json('POST', '/api/conversations/1/threads', body))
     expect(response.status).toBe(201)
-    expect(calls).toEqual(['start:1:op-p', 'asked:5', 'personas:sequence'])
+    expect(calls).toEqual(['start:1:op-p:latest', 'asked:5', 'personas:sequence'])
     expect(record.writes.map(({ conversation, kind }) => [conversation, kind])).toEqual([
       [1, 'app.thread_head'],
       [9, 'app.persona_ask'],

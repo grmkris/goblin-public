@@ -65,7 +65,7 @@ function ChannelLayout({ view, search }: { readonly view: ConversationView; read
             onHeads={setHeads}
           />
         </div>
-        {open && <ThreadPanel topic={topic?.id} heads={heads} />}
+        {open && <ThreadPanel heads={heads} />}
       </div>
     </PanelProvider>
   )

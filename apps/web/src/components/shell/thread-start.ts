@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import type { StartThread as StartThreadOperation } from '@goblin/contracts'
+import type { AppContext, ComposerSelection, StartThread as StartThreadOperation } from '@goblin/contracts'
 import { startThreadMutation, submitMutation } from '../../conversations/queries.ts'
 import { DraftThread } from '../../lib/draft-thread.ts'
 import { SubmissionRetry } from '../../lib/submission-retry.ts'
@@ -9,10 +9,26 @@ import { messageBody } from '../use-conversation.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { usePanel } from './panel.tsx'
 
+/** A thread operation's first message as the API takes it: the words, and only what came with them. */
+function threadMessage(
+  input: string,
+  attachments: readonly string[],
+  selections: readonly ComposerSelection[],
+  appContext: readonly AppContext[],
+): StartThreadOperation['message'] {
+  return {
+    input,
+    ...(appContext.length > 0 && { appContext }),
+    ...(attachments.length > 0 && { attachments }),
+    ...(selections.length > 0 && { selections }),
+  }
+}
+
 /**
- * Start thread from `chat`'s composer (ADR 0034): the message posts as the head of a new thread (`POST …/threads`; the
- * runtime writes the head into `chat`, and the same operation id finds the same thread on a retry), the thread shows at
- * once and the panel opens on it, where the reply lands.
+ * Start thread from `chat`'s composer (ADR 0034): one call (`POST …/threads`, anchored at the chat's newest settled
+ * entry) makes the thread, posts the message as its head in `chat` and sends it as the thread's first message; the same
+ * operation id finds the same thread on a retry. The thread shows at once and the panel opens on it, where the reply
+ * lands.
  */
 export function useThreadStart(chat: string): StartThread {
   const panel = usePanel()
@@ -25,9 +41,13 @@ export function useThreadStart(chat: string): StartThread {
   )
   return useCallback<StartThread>(
     async (input, attachments, selections, appContext, personaOrder) => {
-      const context = { appContext, attachments, selections, ...(personaOrder !== undefined && { personaOrder }) }
       const operationId = retry.current.operation({ chat, input, attachments, selections })
-      const { thread } = await start({ id: chat, message: messageBody(input, operationId, context) })
+      const message = threadMessage(input, attachments, selections, appContext)
+      const anchor = 'latest'
+      const { thread } = await start({
+        id: chat,
+        start: { operationId, anchor, message, ...(personaOrder !== undefined && { personaOrder }) },
+      })
       apply([{ type: 'conversation', conversation: thread }])
       retry.current.accepted(operationId)
       panel.open(thread.id)
@@ -41,25 +61,27 @@ export function useThreadStart(chat: string): StartThread {
 export type DraftStart = Omit<StartThreadOperation, 'operationId'>
 
 /**
- * A draft thread's first send, Reply on a message of `chat` or "+" in it (ADR 0034). The draft lives in the browser
- * until then: the thread is made only now, under the draft's one operation id, so a second send while the first is on
- * its way waits for the same Thread, and a retry asks for the same one. It speaks the unified operation's shape
- * (`StartThread`); until the API takes that in one call, it runs as the create of the operation (`topic` places an empty
- * thread), then the first message as an operation of its own. Resolves the thread's id, or undefined when it could not
- * be made (the workspace feed says why).
+ * A draft thread's sends, Reply on a message of `chat` or "+" in it (ADR 0034). The draft lives in the browser until
+ * its first send, which is one call of the unified operation under the draft's one operation id: it makes the thread
+ * and sends that message as its first, so a retry asks for the same thread and the same message. A send while the first
+ * is on its way waits for the same thread, then goes into it as a message of its own. Resolves the thread's id.
  */
-export function useDraftStart(chat: string, topic: number | undefined) {
-  const { create } = useWorkspaceFeed()
+export function useDraftStart(chat: string) {
+  const { apply } = useWorkspaceFeed()
+  const start = useMutation(startThreadMutation).mutateAsync
   const submit = useMutation(submitMutation).mutateAsync
   const [draft] = useState(() => new DraftThread(crypto.randomUUID(), () => crypto.randomUUID()))
   return useCallback(
     async ({ anchor, message, personaOrder }: DraftStart): Promise<string | undefined> => {
+      let first = false
       const thread = await draft.thread(async (operationId) => {
-        const where =
-          anchor === 'empty' ? topic !== undefined && { topic } : { from: { conversation: chat, ...anchor } }
-        return (await create({ operationId, ...where }))?.id
+        first = true
+        const order = personaOrder !== undefined && { personaOrder }
+        const started = await start({ id: chat, start: { operationId, anchor, message, ...order } })
+        apply([{ type: 'conversation', conversation: started.thread }])
+        return started.thread.id
       })
-      if (thread === undefined) return undefined
+      if (thread === undefined || first) return thread
       const id = draft.message({ thread, message, personaOrder })
       const { input, appContext = [], attachments = [], selections = [] } = message
       const context = { appContext, attachments, selections, ...(personaOrder !== undefined && { personaOrder }) }
@@ -67,6 +89,6 @@ export function useDraftStart(chat: string, topic: number | undefined) {
       draft.sent(id)
       return thread
     },
-    [chat, topic, draft, create, submit],
+    [chat, draft, apply, start, submit],
   )
 }

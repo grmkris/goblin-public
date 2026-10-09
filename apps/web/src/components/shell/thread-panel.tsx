@@ -194,7 +194,7 @@ const NOTHING_TO_STOP = () => undefined
  * starts the thread, from that message or empty, and the panel shows it; a draft left unsent leaves nothing behind
  * (Pi cannot delete a conversation).
  */
-function DraftView({ item, topic }: { readonly item: PanelItem; readonly topic: number | undefined }) {
+function DraftView({ item }: { readonly item: PanelItem }) {
   const panel = usePanel()
   const feed = useWorkspaceFeed()
   const from = draftFrom(item)
@@ -203,7 +203,7 @@ function DraftView({ item, topic }: { readonly item: PanelItem; readonly topic: 
   const root = from === undefined ? [] : rootParts(parts, from.entry)
   const [notice, setNotice] = useState('')
   const [draft] = useState(takeDraft)
-  const startDraft = useDraftStart(from?.conversation ?? panel.channel, topic)
+  const startDraft = useDraftStart(from?.conversation ?? panel.channel)
   const section = useRef<HTMLElement>(null)
   const dock = useRef<HTMLDivElement>(null)
   useDockInsets(section, dock)
@@ -261,10 +261,8 @@ function DraftView({ item, topic }: { readonly item: PanelItem; readonly topic: 
  * leaves what runs in its threads running.
  */
 export function ThreadPanel({
-  topic,
   heads,
 }: {
-  readonly topic: number | undefined
   /** Threads the channel shows a head for: no root message above their first one. */
   readonly heads: ReadonlySet<string>
 }) {
@@ -287,8 +285,7 @@ export function ThreadPanel({
       ) : (
         <ThreadPanelView view={view} hideRoot={heads.has(view.id)} />
       )
-  } else
-    body = <DraftView key={top.kind === 'new' ? 'new' : `${top.conversation}-${top.entry}`} item={top} topic={topic} />
+  } else body = <DraftView key={top.kind === 'new' ? 'new' : `${top.conversation}-${top.entry}`} item={top} />
   return (
     <aside className="thread-panel" aria-label="Thread" data-app-overlay>
       {body}

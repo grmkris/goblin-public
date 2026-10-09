@@ -19,7 +19,7 @@ import { type ChatActivity, ReplyLedger } from './replies.ts'
 import { storedAsks } from './attention.ts'
 import { appConversations } from './storage/schema.ts'
 import { movedFrom } from './chats/moves.ts'
-import type { PassiveWrite, RoutineReport } from './chats/service.ts'
+import type { ChatWrite, RoutineReport, StartedOnce, ThreadAnchor } from './chats/service.ts'
 import { appTopics } from './storage/topics.ts'
 
 type Row = typeof appConversations.$inferSelect
@@ -27,8 +27,8 @@ type Row = typeof appConversations.$inferSelect
 /** What an update did: the conversation as it is now, and every conversation a Close closed (it and those below). */
 export type Updated = { readonly view: ConversationView; readonly closed: readonly string[] }
 
-/** A passive write into a chat other than the one asking: where it goes, and the write (`ChatOperations.passiveWrite`). */
-export type ChatWrite = { readonly chat: string; readonly write: PassiveWrite }
+/** The operation that made a thread, when one did: a repeat of it finds the same thread. */
+type Origin = { readonly originOp?: string }
 
 /** Entries in one page of a conversation's history. */
 const HISTORY_PAGE = 40
@@ -198,14 +198,14 @@ export class ConversationRegistry {
    * it. Any open conversation branches: main, a thread or a subagent. Pi forks by reference, so nothing is copied. A
    * thread from a subagent is the owner engaging with it, so that subagent stays open after it reports.
    */
-  async branch(parent: string, entry: number, now: number): Promise<ConversationView> {
+  async branch(parent: string, entry: number, now: number, origin: Origin = {}): Promise<ConversationView> {
     this.requireOpen(parent)
     const from = this.#registered(parent)
     const source = await this.#conversation(parent)
     const id = entryId(entry)
     const [at] = (await source.entries({ minEntryId: id, maxEntryId: id }, 1, undefined, BACKGROUND)).items
     if (at === undefined || !BRANCHABLE.has(at.kind)) throw new InvalidInput({ reason: 'branch_entry' })
-    return this.#forkThread(from, source, at.id, now)
+    return this.#forkThread(from, source, at.id, now, origin)
   }
 
   /**
@@ -218,7 +218,7 @@ export class ConversationRegistry {
     source: Conversation,
     at: EntryId,
     now: number,
-    origin: { readonly originOp?: string } = {},
+    origin: Origin = {},
   ): Promise<ConversationView> {
     const recallThrough = this.#recallAt(from, at)
     const extensions = { add: recallThrough === null ? [this.#kit.thread] : [this.#kit.thread, this.#kit.recall] }
@@ -243,15 +243,16 @@ export class ConversationRegistry {
   }
 
   /**
-   * The Thread the owner's operation `op` starts from `parent`'s composer (ADR 0034): a fork at the parent's newest
-   * entry outside a running turn, or an empty Thread when there is none, in the parent's Topic. One operation makes
-   * one Thread, also when it is repeated concurrently: a repeat finds it by `origin_op`, and the same operation from
-   * another chat is a `Conflict`. A subagent's chat starts none (its composer writes to the subagent).
+   * The Thread the owner's operation `op` starts from `parent` (ADR 0034): forked at `anchor.entry` (Reply), empty
+   * under the Conversation `parent` sits under ("+"), or, from `parent`'s composer (`latest`, Start thread), forked at
+   * its newest entry outside a running turn, or empty when there is none. One operation makes one Thread, also when it
+   * is repeated concurrently: a repeat finds it by `origin_op` (`existing`), and the same operation from another chat
+   * is a `Conflict`. A subagent's composer starts none (it writes to the subagent).
    */
-  async startThread(parent: string, op: string, now: number): Promise<ConversationView> {
+  async startThread(parent: string, op: string, anchor: ThreadAnchor, now: number): Promise<StartedOnce> {
     const previous = this.#starting.get(op) ?? Promise.resolve()
     // expected: an earlier start's failure is its own caller's; this one runs after it either way.
-    const next = previous.catch(() => undefined).then(async () => this.#startOnce(parent, op, now))
+    const next = previous.catch(() => undefined).then(async () => this.#startOnce(parent, op, anchor, now))
     this.#starting.set(op, next)
     try {
       return await next
@@ -260,23 +261,28 @@ export class ConversationRegistry {
     }
   }
 
-  async #startOnce(parent: string, op: string, now: number): Promise<ConversationView> {
+  async #startOnce(parent: string, op: string, anchor: ThreadAnchor, now: number): Promise<StartedOnce> {
+    const home = anchor === 'empty' ? this.#kit.chats.conversationAbove(parent) : parent
     const existing = this.#db.select().from(appConversations).where(eq(appConversations.originOp, op)).get()
     if (existing !== undefined) {
-      if (existing.parentSession !== parent) throw new Conflict({ reason: 'operation_used' })
-      return this.#describe(existing)
+      if (existing.parentSession !== home) throw new Conflict({ reason: 'operation_used' })
+      return { view: await this.#describe(existing), existing: true }
     }
+    const origin = { originOp: op }
+    if (anchor === 'empty') return { view: await this.createIn(home, now, origin), existing: false }
+    if (anchor !== 'latest') return { view: await this.branch(parent, anchor.entry, now, origin), existing: false }
     this.requireOpen(parent)
     const from = this.#registered(parent)
     if (from.kind === 'subagent') throw new InvalidInput({ reason: 'start_thread' })
     const source = await this.#conversation(parent)
     const at = await settledEnd(await this.#harness.pi(), this.#kit.chats.session(parent), source)
-    if (at !== undefined) return this.#forkThread(from, source, at, now, { originOp: op })
+    if (at !== undefined) return { view: await this.#forkThread(from, source, at, now, origin), existing: false }
     const session = await this.#session([this.#kit.thread], parent)
-    return this.#insert(
+    const view = await this.#insert(
       { chatId: session, kind: 'thread', parentSession: parent, topicId: from.topicId, originOp: op },
       now,
     )
+    return { view, existing: false }
   }
 
   /** How far a thread cut from `chat` at `entry` may zoom into its memory (a moved Thread, ADR 0034). */
@@ -296,15 +302,15 @@ export class ConversationRegistry {
   }
 
   /**
-   * An empty thread the owner started under `topic`'s Conversation (Personal's by default); that Conversation learns
-   * its name once it has one (`announce`).
+   * An empty thread the owner started under the Topic Conversation `channel`, which learns its name once it has one
+   * (`announce`).
    */
-  async create(now: number, topic: number = PERSONAL_TOPIC): Promise<ConversationView> {
-    const channel = this.#kit.chats.conversationOf(topic)
+  async createIn(channel: string, now: number, origin: Origin = {}): Promise<ConversationView> {
     this.requireOpen(channel)
+    const { topicId } = this.#registered(channel)
     const session = await this.#session([this.#kit.thread], channel)
     return this.#insert(
-      { chatId: session, kind: 'thread', parentSession: channel, mainNote: 'owed', topicId: topic },
+      { chatId: session, kind: 'thread', parentSession: channel, mainNote: 'owed', topicId, ...origin },
       now,
     )
   }

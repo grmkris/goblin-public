@@ -6,7 +6,7 @@ import type {
   SendMessage,
   UpdateConversation,
 } from '@goblin/contracts'
-import { OwnerApi } from '@goblin/contracts/api'
+import { OwnerApi, type ThreadStart } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import {
@@ -34,7 +34,12 @@ type ChatRequest = { readonly params: { readonly id: string } }
 type ChatWrite<Payload> = ChatRequest & { readonly payload: Payload }
 
 /** What came with the owner's message: App context, files and composer tags, and `personaOrder` when the body had one. */
-const contextOf = ({ appContext = [], attachments = [], selections = [], personaOrder }: SendMessage) => ({
+const contextOf = ({
+  appContext = [],
+  attachments = [],
+  selections = [],
+  personaOrder,
+}: Pick<SendMessage, 'appContext' | 'attachments' | 'selections' | 'personaOrder'>) => ({
   appContext,
   attachments,
   selections,
@@ -46,17 +51,19 @@ const submit = ({ params, payload }: ChatWrite<SendMessage>) =>
   sendOwnerMessage(params.id, { text: payload.input, operationId: payload.operationId, context: contextOf(payload) })
 
 /**
- * The owner's message as the head of a new Thread, its Personas answering there in the order it asks. The Worker's
- * `POST threads` route dropped `personaOrder` (H1), so tagged Personas always answered in parallel.
+ * The unified thread operation from a chat (ADR 0034): Reply at an entry, "+" empty, or Start thread at the chat's
+ * newest settled entry, the first message answered in the Thread, its Personas in the order it asks (the Worker's old
+ * route dropped `personaOrder`, H1).
  */
-const threadStart = ({ params, payload }: ChatWrite<SendMessage>) =>
+const threadStart = ({ params, payload }: ChatWrite<ThreadStart>) =>
   AgentInput.use((input) =>
     startThread({
       ...ownerRuntime(input),
       parent: params.id,
-      text: payload.input,
+      anchor: payload.anchor,
+      text: payload.message.input,
       operationId: payload.operationId,
-      context: contextOf(payload),
+      context: contextOf({ ...payload.message, personaOrder: payload.personaOrder }),
     }),
   )
 

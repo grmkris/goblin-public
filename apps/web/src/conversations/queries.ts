@@ -1,5 +1,6 @@
 import type { CreateConversation, MoveToThread, QueueRemoval, SendMessage, UpdateConversation } from '@goblin/contracts'
 import { infiniteQueryOptions, queryOptions, skipToken } from '@tanstack/react-query'
+import type { ThreadStart } from '@goblin/contracts/api'
 import { owner } from '../lib/api.ts'
 import { isNumber, record } from '../lib/values.ts'
 import { withOperation } from '../lib/query/api-query.ts'
@@ -78,10 +79,13 @@ export const sendMessage = ({ id, message }: Submission) =>
     api.conversations.submit({ params: { id }, payload: message }).pipe(withOperation(message.operationId)),
   )
 
-/** The owner's message as the head of a new Thread of chat `id`, answered there (ADR 0034). */
+/**
+ * The unified thread operation from chat `id` (ADR 0034): one call makes the Thread once per operation id (Reply at an
+ * entry, "+" empty, Start thread at the chat's newest settled entry) and sends its first message, answered there.
+ */
 export const startThreadMutation = owner.apiMutation({
-  mutationFn: (api, { id, message }: Submission) =>
-    api.conversations.startThread({ params: { id }, payload: message }).pipe(withOperation(message.operationId)),
+  mutationFn: (api, { id, start }: { readonly id: string; readonly start: ThreadStart }) =>
+    api.conversations.startThread({ params: { id }, payload: start }).pipe(withOperation(start.operationId)),
 })
 
 /** Move to thread: the owner's message `entry` of chat `id`, and the turn it started. */

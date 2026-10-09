@@ -1,15 +1,24 @@
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
-import type { CreateConversation, HelperExclusion, MoveToThread, UpdateConversation } from '@goblin/contracts'
+import {
+  type CreateConversation,
+  type HelperExclusion,
+  type MoveToThread,
+  PERSONAL_TOPIC,
+  type UpdateConversation,
+} from '@goblin/contracts'
 import type { EntryDraft, Submission } from '@earendil-works/pi-durable'
 import * as Clock from 'effect/Clock'
 import type { Budget } from '../budget.ts'
 import { makeChatOperations } from '../chats/operations.ts'
-import { ChatOperations, Chats, Conversations, Moves, type RoutineReport } from '../chats/service.ts'
+import type { ChatDirectory } from '../chats/directory.ts'
+import { ChatOperations, Chats, Conversations, Moves, type RoutineReport, type ThreadAnchor } from '../chats/service.ts'
 import type { ConversationRegistry } from '../conversations.ts'
 import type { Models } from '../models.ts'
+import type { AppError } from '../http/errors.ts'
 import { FlowEvents } from '../observability/flows.ts'
+import { safeErrorType } from '../observability/report.ts'
 import { failedFlow } from '../organize/flows.ts'
 import { BACKGROUND } from '../pi/context.ts'
 import { Chats as LegacyChats, Conversations as LegacyConversations, Moves as LegacyMoves } from '../services.ts'
@@ -104,17 +113,6 @@ const registryReads = (conversations: ConversationRegistry) => ({
 
 /** The registry's new chats over the legacy `ConversationRegistry`: Threads, Topic Conversations and registrations. */
 const registryChats = (conversations: ConversationRegistry) => ({
-  create: Effect.fn('Conversations.create')(function* (input: CreateConversation) {
-    const now = yield* nowSecondsEffect
-    const { from, topic } = input
-    return yield* attempt(() =>
-      from === undefined ? conversations.create(now, topic) : conversations.branch(from.conversation, from.entry, now),
-    )
-  }),
-  startThread: Effect.fn('Conversations.startThread')(function* (parent: string, operationId: string) {
-    const now = yield* nowSecondsEffect
-    return yield* attempt(() => conversations.startThread(parent, operationId, now))
-  }),
   openConversation: Effect.withSpan(
     attempt(() => conversations.openConversation()),
     'Conversations.openConversation',
@@ -146,6 +144,57 @@ const registryChats = (conversations: ConversationRegistry) => ({
     return yield* attemptSync(() => conversations.registerRoutine(session, runId, title, now, topic))
   }),
 })
+
+/** The flow, and the receipt's kind, of a thread operation by where it starts its Thread. */
+const threadFlow = (anchor: ThreadAnchor) => (anchor === 'latest' ? 'start' : anchor === 'empty' ? 'empty' : 'reply')
+
+/**
+ * Thread operations (ADR 0034) over the legacy registry: the Thread made once per operation, its receipt in the chat it
+ * came from (moved on to `settled` with the Thread it made), and its `start`, `reply` or `empty` flow. A create with an
+ * operation id is that chat's thread operation (C4); one without stays the plain create it always was.
+ */
+const threadStarts = (
+  conversations: ConversationRegistry,
+  chats: ChatDirectory,
+  operations: ChatOperations['Service'],
+  flows: FlowEvents['Service'],
+) => {
+  const startThread = Effect.fn('Conversations.startThread')(function* (
+    parent: string,
+    operationId: string,
+    anchor: ThreadAnchor,
+  ) {
+    const kind = threadFlow(anchor)
+    const flow = { flow: kind, via: 'app', actor: 'owner', parentChat: parent, operationId } as const
+    const started = Effect.gen(function* () {
+      yield* operations.record(parent, operationId, { kind, origin: 'owner' })
+      const now = yield* nowSecondsEffect
+      const { view, existing } = yield* attempt(() => conversations.startThread(parent, operationId, anchor, now))
+      yield* operations.advance(parent, operationId, { state: 'settled', targetChat: view.id })
+      yield* flows.record({ ...flow, chat: view.id, status: existing ? 'replayed' : 'ok' })
+      return view
+    })
+    const refused = (error: AppError) =>
+      Effect.andThen(
+        flows.record({ ...flow, ...failedFlow(error) }),
+        operations.advance(parent, operationId, { state: 'refused', reason: safeErrorType(error) }),
+      )
+    return yield* started.pipe(Effect.tapError(refused))
+  })
+  const create = Effect.fn('Conversations.create')(function* (input: CreateConversation) {
+    const { from, topic, operationId } = input
+    if (operationId !== undefined) {
+      if (from !== undefined) return yield* startThread(from.conversation, operationId, { entry: from.entry })
+      const channel = yield* attemptSync(() => chats.conversationOf(topic ?? PERSONAL_TOPIC))
+      return yield* startThread(channel, operationId, 'empty')
+    }
+    const now = yield* nowSecondsEffect
+    if (from !== undefined) return yield* attempt(() => conversations.branch(from.conversation, from.entry, now))
+    const channel = yield* attemptSync(() => chats.conversationOf(topic ?? PERSONAL_TOPIC))
+    return yield* attempt(() => conversations.createIn(channel, now))
+  })
+  return { startThread, create }
+}
 
 /** The registry's writes into existing chats over the legacy `ConversationRegistry`. */
 /** A thread's note into the chat it came from, as its own `share` flow (plan §4). */
@@ -229,11 +278,13 @@ const ConversationsAdapter = Layer.effect(
   Conversations,
   Effect.gen(function* () {
     const conversations = yield* LegacyConversations
+    const chats = yield* LegacyChats
     const operations = yield* ChatOperations
     const flows = yield* FlowEvents
     return Conversations.of({
       ...registryReads(conversations),
       ...registryChats(conversations),
+      ...threadStarts(conversations, chats, operations, flows),
       ...registryWrites(conversations, operations, flows),
     })
   }),

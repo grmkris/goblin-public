@@ -9,7 +9,7 @@ import { InvalidInput } from '../http/errors.ts'
 import { threadHeadContent } from '../pi/content.ts'
 import { BACKGROUND } from '../pi/context.ts'
 import { withinBudget } from './instance.ts'
-import { ChatOperations, Conversations, type PassiveWrite } from './service.ts'
+import { ChatOperations, Conversations, type PassiveWrite, type ThreadAnchor } from './service.ts'
 
 /** The most of the owner's words a thread head shows (`ThreadHeadData.text`). */
 const HEAD_TEXT = 400
@@ -49,23 +49,34 @@ export async function submitThreadHead(
 }
 
 /**
- * Start thread (ADR 0034): the owner's message is posted as the head of a new Thread of `parent` and its reply lands
- * in that Thread. The Thread is made once per operation id (`ConversationRegistry.startThread`), the head is written
- * into `parent`, then the message goes into the Thread through the ordinary owner path (`submitOwner`), so its
- * attachments, App context and composer selections apply there. A retry with the same operation id repeats each step
- * idempotently and returns the same Thread and receipt.
+ * The unified thread operation (ADR 0034): Reply on a message, "+" and Start thread. The Thread is made once per
+ * operation id (`Conversations.startThread`, at `anchor`); a Start thread from the composer (`latest`) posts the owner's
+ * message as the Thread's head in `parent`. Then the message goes into the Thread through the ordinary owner path
+ * (`submitOwner`) as the operation's first message, `<operation>:first`, so its attachments, App context, composer
+ * selections and Persona order apply there. A retry with the same operation id repeats each step idempotently and
+ * returns the same Thread and receipt.
  */
-export const startThread = (input: Omit<OwnerSubmit, 'thread'> & { readonly parent: string }) =>
+export const startThread = (
+  input: Omit<OwnerSubmit, 'thread' | 'parentOp'> & { readonly parent: string; readonly anchor: ThreadAnchor },
+) =>
   Effect.gen(function* () {
     yield* withinBudget
     const skill = (input.context.selections ?? []).some((selection) => selection.kind === 'skill')
     if (input.text.trim() === '' && !skill) return yield* new InvalidInput({ reason: 'empty_message' })
     const conversations = yield* Conversations
-    const thread = yield* conversations.startThread(input.parent, input.operationId)
-    const head = { thread: thread.id, text: input.text.slice(0, HEAD_TEXT), operationId: input.operationId }
-    // A passive write under the parent's admission lock: a busy parent places it at its next boundary.
-    yield* (yield* ChatOperations).passiveWrite(input.parent, threadHeadWrite(head, threadHeadContent(input.text)))
-    const receipt = yield* submitOwner({ ...input, thread: thread.id })
+    const { parent, anchor, operationId } = input
+    const thread = yield* conversations.startThread(parent, operationId, anchor)
+    if (anchor === 'latest') {
+      const head = { thread: thread.id, text: input.text.slice(0, HEAD_TEXT), operationId }
+      const write = threadHeadWrite(head, threadHeadContent(input.text))
+      // A passive write under the parent's admission lock: a busy parent places it at its next boundary.
+      yield* (yield* ChatOperations).passiveWrite(parent, { ...write, origin: 'owner', parentOp: operationId })
+    }
+    const first = { thread: thread.id, operationId: firstOperation(operationId), parentOp: operationId }
+    const receipt = yield* submitOwner({ ...input, ...first })
     const view = yield* conversations.view(thread.id)
     return { thread: Option.getOrElse(view, () => thread), receipt } satisfies StartedThread
   })
+
+/** The operation id of a thread operation's first message. */
+export const firstOperation = (operationId: string): string => `${operationId}:first`

@@ -58,6 +58,9 @@ export type PassiveWrite = {
   readonly parentOp?: string
 }
 
+/** A passive write into a chat other than the one asking: where it goes, and the write (`ChatOperations.passiveWrite`). */
+export type ChatWrite = { readonly chat: string; readonly write: PassiveWrite }
+
 /** An admitted operation: the session it went to, and whether it was admitted before (a replay). */
 export type Admitted = { readonly session: SessionId; readonly existing: boolean }
 
@@ -135,6 +138,15 @@ export class ChatOperations extends Context.Service<
   }
 >()('goblin/chats/ChatOperations') {}
 
+/**
+ * Where a thread operation starts its Thread (ADR 0034): forked at an entry of the chat (Reply), empty under the
+ * Conversation the chat sits under ("+"), or forked at the chat's newest settled entry (Start thread, `latest`).
+ */
+export type ThreadAnchor = { readonly entry: number } | 'empty' | 'latest'
+
+/** A thread operation's Thread, and whether an earlier run of the same operation made it. */
+export type StartedOnce = { readonly view: ConversationView; readonly existing: boolean }
+
 /** A page of a chat's history before an entry, oldest first, and whether older entries remain. */
 export type HistoryPage = { readonly entries: readonly EntryRecord[]; readonly more: boolean }
 
@@ -181,10 +193,20 @@ export class Conversations extends Context.Service<
     readonly list: Effect.Effect<readonly ConversationView[], AppError>
     /** A subagent's latest report, for the composer's reference. */
     readonly helperReference: (chat: string) => Effect.Effect<HelperReference, AppError>
-    /** The owner's create: a Thread branched from an entry of an open chat, or an empty one under a Topic's. */
+    /**
+     * The owner's create: a Thread branched from an entry of an open chat, or an empty one under a Topic's. With an
+     * operation id it is that chat's thread operation (`startThread`), so a repeat finds the same Thread.
+     */
     readonly create: (input: CreateConversation) => Effect.Effect<ConversationView, AppError>
-    /** The Thread operation `operationId` starts from `parent`'s composer: one per operation, also when repeated. */
-    readonly startThread: (parent: string, operationId: string) => Effect.Effect<ConversationView, AppError>
+    /**
+     * The Thread operation `operationId` starts from `parent` at `anchor`: one per operation, also when repeated, with
+     * its receipt in `parent` and its `start`, `reply` or `empty` flow.
+     */
+    readonly startThread: (
+      parent: string,
+      operationId: string,
+      anchor: ThreadAnchor,
+    ) => Effect.Effect<ConversationView, AppError>
     /** A new Topic's Conversation: a new Pi session configured like Personal's. Returns its session. */
     readonly openConversation: Effect.Effect<string, AppError>
     /** Tells the change listeners about chats another registry wrote. */
