@@ -1,10 +1,10 @@
 import { ApiFailure, request } from './boundary.ts'
 
 /**
- * Runtime routes the shell uses where the server has them: posting a message as a new thread's head (`threads`) and
- * moving a turn to a thread (`move`). Other work builds them, so the shell asks before it offers them.
+ * Runtime routes the shell uses where the server has them: moving a turn to a thread (`move`). Other work builds them,
+ * so the shell asks before it offers them.
  */
-export type Feature = 'threads' | 'move'
+export type Feature = 'move'
 
 const known = new Map<Feature, Promise<boolean>>()
 

@@ -3,7 +3,6 @@ import type { ConversationView } from '@goblin/contracts'
 import { GitBranchIcon, MessageCircleIcon } from 'lucide-react'
 import { type Part, partKey } from '../../lib/parts.ts'
 import { closedBy, entryOfPart, repliesLabel, rootParts, threadTitle } from '../../lib/threads.ts'
-import { channelOf, topicOfChannel } from '../../lib/topics.ts'
 import { Conversation } from '../conversation.tsx'
 import { ConversationDock } from '../conversation-dock.tsx'
 import { useModelChoice } from '../model-picker.tsx'
@@ -139,8 +138,7 @@ export function ChatView({
   const running = projection?.running ?? false
   const mover = useMover(id, place === 'channel', running)
   const threads = useChatThreads(id, branchable, mover)
-  const topic = topicOfChannel(channelOf(id, feed.conversations, feed.topics), feed.topics)
-  const startThread = useThreadStart(id, topic?.id)
+  const startThread = useThreadStart(id)
   const { lead, shown } = useLead(view, parts, earlier !== undefined, hideRoot)
   const extras = useChatExtras(id, shown, running)
   const heads = useMemo(

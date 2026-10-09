@@ -26,8 +26,8 @@ Close thread in its menu stops the thread's work, as before (ADR 0017). Share ba
 
 **Who answers is visible.** Goblin's answers carry no name: Goblin answers unless the owner asked someone else. A
 Persona's answer and a Delegate's result carry a mark, a name and what they are; Personas still answering show as
-"answering…" rows. Start thread (a composer toggle) and Move to thread (in a message's toolbar) are offered where the
-server has their routes. A strip under an answer names the other chats it used.
+"answering…" rows. Start thread is a composer toggle (`POST …/threads`); Move to thread, in a message's toolbar, is
+offered where the server has its route. A strip under an answer names the other chats it used.
 
 **The rail's places.** Threads (every thread, unread first), Activity ("Needs you": questions, approvals, grants,
 App schedules, with organizing receipts and Undo) and Tasks (Delegates, Personas answering, routines) each carry a
