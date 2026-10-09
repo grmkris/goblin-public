@@ -1,6 +1,7 @@
 import { Schema } from 'effect'
 import type { JsonValue } from '@goblin/contracts'
 import { ERROR_COPY } from '@goblin/contracts/api'
+import { describeError } from './query/app-error.ts'
 
 const ObjectSchema = Schema.Record(Schema.String, Schema.Unknown)
 export const isString = Schema.is(Schema.String)
@@ -131,7 +132,13 @@ export async function request(path: string, options: RequestOptions = {}): Promi
 
 /** Plain-language text for an API failure, for alerts, ending with the reference to quote ("… · ref 7f3a9c12"). */
 export function failureText(error: unknown): string {
-  if (!(error instanceof ApiFailure)) return error instanceof Error ? error.message : 'Something went wrong'
+  if (!(error instanceof ApiFailure)) {
+    // A typed client's failure (an AppError, a billing refusal) reads in its contract copy, never its exception text.
+    const view = describeError(error)
+    if (view.message === undefined) return error instanceof Error ? error.message : 'Something went wrong'
+    const words = view.recovery === undefined ? view.message : `${view.message} ${view.recovery}`
+    return view.ref === undefined ? words : `${words} · ref ${view.ref.slice(0, 8)}`
+  }
   const known: Record<string, string> = {
     SubscriptionRequired: 'Subscribe to Pro to use your personal agent.',
     billing_unavailable: 'Checkout is being set up. Please try again later.',

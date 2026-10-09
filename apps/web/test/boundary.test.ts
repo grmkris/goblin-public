@@ -1,4 +1,4 @@
-import { Conflict, envelopeOf } from '@goblin/contracts/api'
+import { BillingRefused, Conflict, envelopeOf } from '@goblin/contracts/api'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiFailure, failureText, request } from '../src/lib/boundary.ts'
 
@@ -62,5 +62,15 @@ describe('request', () => {
     const missing = await failureOf(request('/api/topics/9'))
     expect(missing.ref).toBe(sent[0]?.headers.get('x-goblin-request'))
     expect(missing.request).toBe(missing.ref)
+  })
+})
+
+describe('failureText', () => {
+  it("words a typed client's failure in its contract copy with its reference, never its exception text", () => {
+    expect(failureText(new Conflict({ reason: 'topic_name_taken', ref: '7f3a9c12e4b5-AMS' }))).toBe(
+      'That clashes with something that is already there. Refresh and try again. · ref 7f3a9c12',
+    )
+    expect(failureText(new BillingRefused({ code: 'already_subscribed' }))).toBe('You already have Pro.')
+    expect(failureText(new TypeError('boom'))).toBe('boom')
   })
 })
