@@ -5,7 +5,7 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { McpHost } from '../src/mcp/host.ts'
-import { SkillLearner, type LearnOutcome } from '../src/skills/learner.ts'
+import { SkillLearner, type LearnOutcome, logLearnOutcome } from '../src/skills/learner.ts'
 import { skillLearningExtension } from '../src/pi/skills.ts'
 import type { RunProgram } from '../src/pi/resident-mcp.ts'
 import { ModelBudget } from '../src/budget.ts'
@@ -173,6 +173,19 @@ describe('the skill learner (unit)', () => {
     expect(result).toBeUndefined()
     await vi.waitFor(() => expect(outcomes).toEqual([{ conversation: MAIN, outcome: 'failed' }]))
     expect(JSON.stringify(outcomes)).not.toContain('private')
+  })
+
+  it('logs an outcome as one line through the logger: the conversation and the outcome, nothing else', () => {
+    const lines: unknown[] = []
+    const spy = vi.spyOn(console, 'log').mockImplementation((line: unknown) => void lines.push(line))
+    try {
+      logLearnOutcome(MAIN, 'drafted')
+    } finally {
+      spy.mockRestore()
+    }
+    expect(lines.map((line) => JSON.parse(String(line)))).toEqual([
+      expect.objectContaining({ level: 'info', where: 'skills.learner', conversation: '0', kind: 'drafted' }),
+    ])
   })
 
   it('asks the model nothing when the owner neither corrected nor asked to keep anything', async () => {

@@ -119,6 +119,7 @@ export class SkillLibrary {
         try {
           return { serverId, skills: await this.#listing(serverId, options) }
         } catch {
+          // expected: an unreachable server keeps its last listing while one is cached, else it is named unavailable
           const candidate = this.#cache.get(serverId)
           const stale =
             candidate?.generation === (this.#state.catalogState?.(serverId).dirty ?? 0) ? candidate : undefined
@@ -171,7 +172,7 @@ export class SkillLibrary {
         await verifyBytes(file, cached)
         return { bytes: cached, mimeType: undefined }
       } catch {
-        // A cached row that no longer matches is ignored and fetched again.
+        // expected: a cached row that no longer matches is ignored and fetched again
       }
     }
     const result = await this.#manager.readSkillFile(serverId, file.uri, options)

@@ -93,6 +93,7 @@ const skillsNow = async (run: RunProgram, session: string): Promise<string | und
       ),
     )
   } catch {
+    // expected: the listing is optional context; run reported anything unexpected, and a refusal leaves it out
     return undefined
   }
 }
@@ -242,6 +243,7 @@ export function skillLearningExtension(
             }),
           )
             .then((outcome) => observe(api.conversationId, outcome))
+            // expected: the outcome line records the failure, and run reported anything unexpected
             .catch(() => observe(api.conversationId, 'failed'))
           return undefined
         },

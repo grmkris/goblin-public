@@ -3,6 +3,7 @@ export const paths: string[] = [
   'apps/runtime/src/layers/knowledge.ts',
   'apps/runtime/src/memory/api.ts',
   'apps/runtime/src/memory/service.ts',
+  'apps/runtime/src/pi/skills.ts',
   'apps/runtime/src/retrieval/service.ts',
-  'apps/runtime/src/skills/service.ts',
+  'apps/runtime/src/skills/**',
 ]

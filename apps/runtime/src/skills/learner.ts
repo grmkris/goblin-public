@@ -9,6 +9,7 @@ import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import type { McpConnectionManager } from '../mcp/connection.ts'
 import type { CheapModel } from '../memory/model.ts'
+import { writeLine } from '../observability/logger.ts'
 import { BACKGROUND } from '../pi/context.ts'
 import { type TranscriptMessage, recentMessages } from '../pi/transcript.ts'
 import type { SkillLibrary } from './library.ts'
@@ -93,7 +94,12 @@ export type LearnOutcome = 'skipped' | 'none' | 'duplicate' | 'drafted' | 'faile
 
 /** Log only the bounded learner outcome; transcript, skill body and draft content never enter this line. */
 export const logLearnOutcome = (conversation: ConversationId, outcome: LearnOutcome): void => {
-  console.log(JSON.stringify({ level: 'info', event: 'skill-learner', conversation: String(conversation), outcome }))
+  writeLine('info', {
+    event: 'skill-learner',
+    where: 'skills.learner',
+    conversation: String(conversation),
+    kind: outcome,
+  })
 }
 
 export class SkillLearner {
@@ -138,7 +144,7 @@ export class SkillLearner {
         const snapshot = await this.#manager.connect(serverId, signal === undefined ? {} : { signal })
         if (snapshot.tools.some((tool) => tool.name === DRAFT_TOOL)) return serverId
       } catch {
-        // An unreachable server takes no draft now.
+        // expected: an unreachable server takes no draft now; the next answer asks it again
       }
     }
     return undefined
@@ -158,7 +164,7 @@ export class SkillLearner {
         const status = Option.getOrUndefined(decodeAnswer(result.structuredContent))?.status
         if (status !== undefined && status !== 'open') this.#drafts.update(row.contentHash, { status }, this.#now())
       } catch {
-        // Status is checked again next time.
+        // expected: a status that cannot be read now is checked again next time
       }
     }
   }
@@ -174,6 +180,7 @@ export class SkillLearner {
     try {
       return await this.#consider(conversation, signal)
     } catch {
+      // expected: any failure is the `failed` outcome, which the outcome line records
       return 'failed'
     } finally {
       this.#busy.delete(sessionId)
@@ -267,6 +274,7 @@ export class SkillLearner {
       })
       return result.isError === true ? undefined : Option.getOrUndefined(decodeAnswer(result.structuredContent))
     } catch {
+      // expected: a draft the library did not take is forgotten, and the outcome is `failed`
       return undefined
     }
   }
