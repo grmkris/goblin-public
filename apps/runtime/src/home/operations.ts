@@ -10,7 +10,7 @@ export function applyHomeOperations(
 ): HomeLayout {
   const tiles = [...layout.tiles]
   for (const op of ops) apply(tiles, op, actor)
-  return Schema.decodeUnknownSync(HomeLayout)({ revision: layout.revision + 1, tiles })
+  return Schema.decodeSync(HomeLayout)({ revision: layout.revision + 1, tiles })
 }
 
 function apply(tiles: HomeTile[], op: HomeOperation, actor: HomeTile['placedBy']): void {

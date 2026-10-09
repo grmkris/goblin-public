@@ -108,7 +108,7 @@ export class HomeService<RunResult = unknown> {
     return row === undefined && this.layout().revision === input.expectedRevision && input.undoOf === undefined
   }
   edit(input: HomeEdit, actor: Actor): HomeEditResult {
-    const valid = Schema.decodeUnknownSync(HomeEdit)(input)
+    const valid = Schema.decodeSync(HomeEdit)(input)
     const result = this.#db.transaction((tx) => {
       const replay = tx
         .select()

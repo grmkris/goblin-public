@@ -128,7 +128,7 @@ export async function liveRelays(
 }
 
 /** What a stored relay input says about where it goes, read back from Pi's JSON. */
-const Carried = Schema.Struct({ conversationId: Schema.Number, requestId: Schema.optional(Schema.String) })
+const Carried = Schema.Struct({ conversationId: Schema.Finite, requestId: Schema.optional(Schema.String) })
 const carried = (relay: TaskRecord<unknown, unknown, unknown>) =>
   Option.getOrUndefined(Schema.decodeUnknownOption(Carried)(relay.input))
 
@@ -146,7 +146,7 @@ export async function dropRelaysTo(pi: Harness, spawner: ConversationId, subagen
 /** A relay's whole input as Pi stores it, read back for a handover to another conversation (ADR 0034). */
 const StoredInput = Schema.Struct({
   name: Schema.String,
-  conversationId: Schema.Number,
+  conversationId: Schema.Finite,
   content: Schema.Union([Schema.String, Schema.Array(Schema.Unknown)]),
   origin: Schema.Literals(['spawner', 'owner']),
   whenBusy: Schema.Literals(['followUp', 'steer']),

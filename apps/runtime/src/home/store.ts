@@ -11,7 +11,7 @@ export const readHome = <RunResult>(db: HomeDb<RunResult>): HomeLayout => {
   return row === undefined ? EMPTY_HOME : Schema.decodeUnknownSync(HomeLayout)(JSON.parse(row.layout))
 }
 export function writeHome<RunResult>(db: HomeDb<RunResult>, layout: HomeLayout): void {
-  const valid = Schema.decodeUnknownSync(HomeLayout)(layout)
+  const valid = Schema.decodeSync(HomeLayout)(layout)
   const values = { id: 1, revision: valid.revision, layout: JSON.stringify(valid) }
   db.insert(appHome).values(values).onConflictDoUpdate({ target: appHome.id, set: values }).run()
 }

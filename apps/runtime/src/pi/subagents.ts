@@ -110,7 +110,7 @@ const Done = Schema.Struct({
     'unknown',
     'configured',
   ]),
-  conversationId: Schema.optionalKey(Schema.Number),
+  conversationId: Schema.optionalKey(Schema.Finite),
 })
 type Done = typeof Done.Type
 
