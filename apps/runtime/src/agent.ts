@@ -29,8 +29,7 @@ import { LITELLM_STREAMS, makePiModels } from './pi/model.ts'
 import { personaExtension } from './pi/persona.ts'
 import { type SubagentKit, subagentsExtension } from './pi/subagents.ts'
 import { threadExtension } from './pi/thread.ts'
-import { type PersonaTurnKit, personaTurnExtension } from './pi/persona-turn.ts'
-import { organizeExtension } from './pi/organize.ts'
+import { type PersonaTurnKit, organizingKit } from './organize/kit.ts'
 import { memoryExtensions } from './pi/memory.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { skillLearningExtension, skillsExtension } from './pi/skills.ts'
@@ -117,20 +116,10 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
     const execution = [...tools, skillsExtension(run), filesExtension(run), appExecutionExtension(apps)]
     this.#subagents = subagentsExtension(run, (self) => [personaExtension, ...execution, ...apps.extensions(), self])
     const subagents = this.#subagents.extension
-    this.#personas = personaTurnExtension(run)
-    const organize = organizeExtension(run, () => ({
-      harness: this.harness,
-      routines: this.#routines,
-      personas: this.#personas,
-    }))
-    const base = [...execution, skillLearningExtension(run), ...appsExtension(apps, run)]
-    const own = [
-      serversExtension(run, env.STAGE),
-      subagents,
-      routinesExtension(run),
-      organize,
-      this.#telemetry.diagnose,
-    ]
+    const { personas, organize } = organizingKit(run, () => this.stopping())
+    this.#personas = personas
+    const base = [...execution, skillLearningExtension(run), ...appsExtension(apps, run), organize]
+    const own = [serversExtension(run, env.STAGE), subagents, routinesExtension(run), this.#telemetry.diagnose]
     const extras = [this.#thread, memory, recall, this.#personas.extension, ...routineKit.extra]
     this.harness = makePiHarness(this.#pi, [...base, ...own], extras, apps, this.#telemetry.recorder)
     this.#routines = new RoutineController(routineRun, this.harness, routineKit.start, {
@@ -321,9 +310,7 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
 
   protected override readonly owner = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#owner(program)
   /** What an archive or a Stop reaches: Pi, a routine's runs and the Persona turns asked in a chat. */
-  protected override stopping() {
-    return { harness: this.harness, routines: this.#routines, personas: this.#personas }
-  }
+  protected override stopping = () => ({ harness: this.harness, routines: this.#routines, personas: this.#personas })
 
   /** The owner has seen the conversation's newest reply. */
   markRead(id: string) {

@@ -18,7 +18,7 @@ export abstract class OrganizingAgent extends Agent<RuntimeEnv> {
   /** An owner request: renews resident authority, then runs the program. */
   protected abstract readonly owner: <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<RpcResult<A>>
   /** What an archive or a Stop reaches. */
-  protected abstract stopping(): StopRuntime
+  protected abstract readonly stopping: () => StopRuntime
 
   /** The owner's Topics: each a channel with one Conversation. Archiving one stops its chats' work. */
   topics() {

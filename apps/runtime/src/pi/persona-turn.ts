@@ -148,13 +148,15 @@ export function personaSelection(
 /** The text of a Persona's revision as its fork's model reads it, in the context tail. */
 export function personaText(persona: Pick<FrozenPersona, 'name' | 'role' | 'instructions'>): string {
   const { name, role, instructions } = persona
-  return [
+  const text = [
     `You are ${name}${role === '' ? '' : `, ${role}`}. The owner tagged @${name} in the conversation above: answer their message once, as ${name}, in your own voice. For this answer you are not goblin.`,
     'You cannot start subagents, organize topics or personas, or ask the owner anything; if you need more from them, say so in your answer.',
     instructions === '' ? '' : `The owner's instructions for ${name}:\n${instructions}`,
   ]
     .filter((part) => part !== '')
     .join('\n\n')
+  // The text sits inside the context block: nothing in it may close a tag.
+  return text.replaceAll('</', '<\u200B/')
 }
 
 const terminal = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
