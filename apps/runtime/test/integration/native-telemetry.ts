@@ -61,6 +61,28 @@ export function telemetryCase(url: string) {
         missing: { ok: false, error: { _tag: 'NotFound', what: 'turn' } },
         invalid: { ok: false, error: { _tag: 'InvalidInput' } },
       },
+      details: {
+        byOperation: {
+          ok: true,
+          value: {
+            turn: { operationId: 'telemetry-turn', status: 'ok', toolCalls: 1 },
+            submission: { status: 'done' },
+            coverage: { complete: true, gaps: [] },
+            related: [
+              { operation: 'telemetry-thread', kind: 'start', chat: '1', state: 'ok' },
+              { operation: 'persona:telemetry-turn:7', kind: 'persona_answer' },
+            ],
+          },
+        },
+        byEntry: { ok: true, value: { turn: { operationId: 'telemetry-turn' } } },
+        thread: {
+          ok: true,
+          value: {
+            events: [{ kind: 'flow', operationId: 'telemetry-thread' }],
+            related: [{ operation: 'telemetry-turn', kind: 'operation' }],
+          },
+        },
+      },
       diagnosed: expect.stringMatching(/done: .*trusted.*telemetry-turn.*tool\.call/u),
       left: 'interrupted',
       recovery: [{ [RunAttribute.recovery]: 'restarted', [RunAttribute.interrupted]: 1 }],

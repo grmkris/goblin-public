@@ -1,10 +1,21 @@
 import { PRIMARY_CHAT } from '@goblin/contracts'
 import { RunAttribute } from '@goblin/contracts/telemetry'
 import type { InspectQuery } from '@goblin/contracts/inspect'
+import * as Option from 'effect/Option'
+import * as Schema from 'effect/Schema'
+import { flowRunEvent } from '../../src/telemetry/events.ts'
 import { runTelemetry } from '../../src/telemetry/run.ts'
 
 type Row = { kind: string; status: string; operation_id: string | null; attributes: string }
 const json = (text: string): unknown => JSON.parse(text)
+
+/** The answer entry Pi settled a turn with, from an encoded `turn` timeline. */
+const answerOf = (encoded: unknown): number | undefined =>
+  Option.getOrUndefined(
+    Schema.decodeUnknownOption(
+      Schema.Struct({ value: Schema.Struct({ submission: Schema.Struct({ answer: Schema.Number }) }) }),
+    )(encoded),
+  )?.value.submission.answer
 
 /** The agent's own `/inspect` route: a query in, its encoded result out. */
 type Inspect = (query: InspectQuery | { readonly kind: string }) => Promise<unknown>
@@ -34,6 +45,40 @@ export async function telemetryProbe(
     conversation: await inspect({ kind: 'conversation', conversation: PRIMARY_CHAT }),
     missing: await inspect({ kind: 'turn', operationId: 'no-such-turn' }),
     invalid: await inspect({ kind: 'everything' }),
+  }
+  // A message's details (ADR 0037): the turn by its operation and by its answer's entry, and what it caused, on the
+  // agent's own SQLite (json_extract and LIKE … ESCAPE in workerd): a thread it started, a Persona's answer to it.
+  const links = runTelemetry(storage, () => owner).telemetry
+  const linkedAt = Date.now()
+  links.record(
+    flowRunEvent(
+      {
+        flow: 'start',
+        via: 'app',
+        actor: 'owner',
+        chat: PRIMARY_CHAT,
+        operationId: 'telemetry-thread',
+        parentOperation: 'telemetry-turn',
+        status: 'ok',
+      },
+      'flow:telemetry-thread',
+      linkedAt,
+    ),
+  )
+  links.record({
+    id: 'turn:telemetry-persona',
+    kind: 'turn.submitted',
+    status: 'ok',
+    operationId: 'persona:telemetry-turn:7',
+    startedAt: linkedAt,
+    endedAt: linkedAt,
+    attributes: {},
+  })
+  const answer = answerOf(inspected.turn)
+  const details = {
+    byOperation: await inspect({ kind: 'details', operation: 'telemetry-turn' }),
+    byEntry: await inspect({ kind: 'details', chat: PRIMARY_CHAT, entry: answer ?? 0 }),
+    thread: await inspect({ kind: 'details', operation: 'telemetry-thread' }),
   }
   // The agent's own diagnose tool reads the same turn back from the ledger.
   const diagnosed = JSON.stringify(await turn('call diagnose {"operationId":"telemetry-turn"}', 'diagnose-turn'))
@@ -111,6 +156,7 @@ export async function telemetryProbe(
   return JSON.stringify({
     rows,
     inspected,
+    details,
     diagnosed,
     left: left.status,
     recovery,
