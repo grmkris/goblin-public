@@ -1,15 +1,17 @@
 import { GenerationTask, ToolTask, defineExtension, hook } from '@earendil-works/pi-durable'
+import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
-import { Budget, attempt, nowSecondsEffect } from '../services.ts'
-import type { RunProgram } from './resident-mcp.ts'
+import { Budget } from '../budget.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 
 const EXHAUSTED =
   "Today's model budget is used up, so this tool was not run. Tell the user, and that the budget resets at 00:00 UTC."
 
+const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
+
 const spent = Effect.gen(function* () {
   const budget = yield* Budget
-  const now = yield* nowSecondsEffect
-  const today = yield* attempt(() => budget.today(now))
+  const today = yield* budget.today(yield* nowSeconds)
   return today.used >= today.limit
 })
 
@@ -28,7 +30,7 @@ export function budgetExtension(run: RunProgram) {
           await run(
             Effect.gen(function* () {
               const budget = yield* Budget
-              budget.record(message.usage, yield* nowSecondsEffect, message.model)
+              yield* budget.record(message.usage, yield* nowSeconds, message.model)
             }),
           )
         },
