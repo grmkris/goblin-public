@@ -29,11 +29,13 @@ Personal's, `topic_conversation` for another's), and a Conversation's title is i
 
 ## Creating a Topic
 
-`TopicRegistry` (`topics/registry.ts`, the `Topics` service) creates a Topic with a **new** Pi session as its
+`TopicRegistry` (`topics/registry.ts`, a store with no state of its own, behind the `Topics` service in
+`topics/service.ts`) creates a Topic with a **new** Pi session as its
 Conversation (`harness.sessions.create()`, then `configure` with an explicit extension list and Personal's tool
 filter; Personal's switches are copied as a thread's are). It is not a fork of Personal: a Topic starts with none of
-Personal's transcript. Create is idempotent by operation id and serialized in the isolate: a retry or a concurrent
-repeat returns the same Topic, and only one Pi session is registered. The name is checked before the session is made,
+Personal's transcript. Create is idempotent by operation id and serialized by the service's per-key lock
+(`KeyedLock`, key `topics.create`): a retry or a concurrent repeat returns the same Topic, and only one Pi session is
+registered. The name is checked before the session is made,
 so a clash (409 `Conflict`) leaves nothing behind. A crash between making the session and registering it would leave
 one unregistered, unreachable Pi session; the retry registers a new one.
 
@@ -62,10 +64,16 @@ archived (`personal_topic`).
 
 ## Owner API and feed
 
-`GET/POST /api/topics` and `PATCH /api/topics/:id` (`topics/routes.ts`) are strict-CSRF browser writes, and run as owner
-requests through `topics`, `createTopic` and `updateTopic` on the Agent. The workspace feed's snapshot carries
-`topics`, each change is a `{ type: 'topic' }` item, and every `ConversationView` carries its `topic` and, for a
-Topic's Conversation, `conversation: true`. An older client ignores all of these.
+`GET/POST /api/topics` and `PATCH /api/topics/:id` are the `topics` group of the owner API
+(`packages/contracts/src/api/topics.ts`), served by the agent (`topics/api.ts`) behind the Worker's session, origin,
+CSRF and plan checks; refusals answer in the API's error envelope. Archiving stops each open chat through
+`ChatOperations.stop`, the owner's Stop. The workspace feed's snapshot carries `topics`, each change is a
+`{ type: 'topic' }` item, and every `ConversationView` carries its `topic` and, for a Topic's Conversation,
+`conversation: true`. An older client ignores all of these. A Topic write tells the agent's change bus
+(`topics.changed`, ids only), and the feed reads each Topic as it is then.
+
+Each create and archive records one content-free flow row (`topic_create`, `topic_archive` with how many chats it
+stopped; ADR 0024): `replayed` for a repeat of the same operation, `refused` with the failure's type for a refusal.
 
 ## Per-Topic memory
 

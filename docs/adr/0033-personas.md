@@ -83,11 +83,12 @@ request**. Targets are named, not numbered (the active Topic or Persona with tha
 `after_revision`. A tool call that runs twice finds its receipt (the call id keys it). Archiving from inside the
 Topic's own run does not stop that run from within itself.
 
-`GET /api/organize` lists receipts, newest first; `POST /api/organize/:id/undo` puts the target back (creation undone
+`GET /api/organize` lists receipts, newest first; `POST /api/organize/:id/undo` (the owner API's `organize` group,
+like the `personas` group's `/api/personas` routes) puts the target back (creation undone
 archives; archive undone restores; rename and update restore the old values as a new revision). It applies only while
 the target's revision still equals `after_revision`; otherwise it is refused as `touched` (409), and a receipt can be
 undone once (`undone`). `undoable` in the list is that same test, so the UI never offers what would be refused. The
-Undo is itself a receipt, owned by the owner.
+Undo is itself a receipt, owned by the owner, and records an `organize_undo` flow row.
 
 ## Delegate results (spec section 5)
 
@@ -97,7 +98,9 @@ model content is still the labelled `[from subagent <name>]` message, so Goblin 
 nothing. `subagent_spawn` takes `synthesize` (default false): with it the report stays an input and Goblin answers
 once, as before. `subagent_send` inherits the flag recorded for the Delegate; the owner's own messages to a Delegate
 follow it too. A job cut short still reports nothing. Telegram tracking of main's answer applies only when Goblin
-answers.
+answers. A spawn records a `subagent_spawn` flow row (`refused` when the name exists) and each report a
+`subagent_report` or `subagent_synthesize` row, by the subagent, with the report's operation. A delegation whose
+conversation is gone (a spawner, its chat, the subagent or a move's fork) fails with the tagged `ConversationMissing`.
 
 ## Consequences
 
@@ -105,4 +108,8 @@ answers.
   behind them. A Persona fork costs one model call, on the Persona's model if set, within the same daily budget.
 - A chain of subagents with `synthesize` off gets no synthesis from the lead: its report goes up as soon as the lead's
   own turn ends. The subagent prompt tells Goblin to set `synthesize` when it will combine results.
-- Receipts and invocations are in the workspace feed; none of it carries message content in telemetry (ADR 0024).
+- Receipts and invocations are in the workspace feed: Persona and receipt writes tell the change bus
+  (`personas.changed`, `receipts.changed`, ids only), and invocations their store's own listeners, which the Persona
+  asks and Stop write through. None of it carries message content in telemetry (ADR 0024).
+- Each settled invocation records one `persona_answer` flow row with the ask's order (`personaOrder`); a replayed
+  settle records nothing.
