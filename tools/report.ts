@@ -201,7 +201,12 @@ export const aggregate = (findings: readonly Finding[], sources: readonly Source
   const workspaces = new Map<string, Map<string, number>>()
   for (const finding of findings) {
     const workspace = workspaceOf(finding.file)
-    const row = rules.get(finding.rule) ?? { source: finding.source, count: 0, fixable: 0, workspaces: new Map() }
+    const row = rules.get(finding.rule) ?? {
+      source: finding.source,
+      count: 0,
+      fixable: 0,
+      workspaces: new Map<string, number>(),
+    }
     row.count += 1
     if (finding.fixable) row.fixable += 1
     bump(row.workspaces, workspace)

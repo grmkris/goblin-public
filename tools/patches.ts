@@ -63,6 +63,7 @@ function installedOf(root: string, spec: PatchSpec): Installed | undefined {
   try {
     file = Bun.resolveSync(spec.entry, path.join(root, spec.from))
   } catch {
+    // expected: an entry that does not resolve is reported by checkPatch as "does not resolve"
     return undefined
   }
   const name = spec.key.slice(0, spec.key.lastIndexOf('@'))

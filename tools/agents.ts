@@ -38,6 +38,7 @@ const decodeYaml = <A>(schema: Schema.Decoder<A>, yaml: string): A | undefined =
   try {
     return decodeOrUndefined(schema, parseYaml(yaml))
   } catch {
+    // expected: YAML that does not parse is treated as YAML that does not match, as every caller expects
     return undefined
   }
 }
