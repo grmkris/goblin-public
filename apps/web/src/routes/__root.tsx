@@ -1,7 +1,9 @@
 import { HeadContent, Outlet, Scripts, createRootRoute, useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
+import { AppHost } from '../components/apps/host.tsx'
+import { AppLayer } from '../components/apps/stage.tsx'
+import { ShellNavigation } from '../components/shell/navigation.tsx'
 import { ShellFrame } from '../components/shell/shell.tsx'
-import { WorkspaceProvider } from '../components/workspace.tsx'
 import { WorkspaceFeedProvider } from '../components/workspace-feed.tsx'
 import { SessionProvider, useSession } from '../lib/session.tsx'
 import { BillingProvider, useBilling } from '../lib/billing.tsx'
@@ -53,8 +55,8 @@ function Root() {
 }
 
 /**
- * The app around every page: the rail and the sidebar beside the page (`components/shell`), once someone is (or may
- * be) signed in. Signing in, and a visitor who is signed out, get the bare page. While the session is still being
+ * The app around every page: the rail and the sidebar beside the page (`components/shell`), and above it the stages
+ * of the live Apps, which outlive moving between a channel and an App's page, once someone is (or may be) signed in. Signing in, and a visitor who is signed out, get the bare page. While the session is still being
  * checked the shell already shows, so a signed-in owner's first paint does not jump.
  */
 function Shell({ children }: { readonly children: ReactNode }) {
@@ -65,9 +67,12 @@ function Shell({ children }: { readonly children: ReactNode }) {
   const enabled = state === 'signed-in' && billing.state?.active === true
   return (
     <WorkspaceFeedProvider enabled={enabled}>
-      <WorkspaceProvider enabled={enabled}>
-        <ShellFrame>{children}</ShellFrame>
-      </WorkspaceProvider>
+      <ShellNavigation>
+        <AppHost>
+          <ShellFrame>{children}</ShellFrame>
+          <AppLayer />
+        </AppHost>
+      </ShellNavigation>
     </WorkspaceFeedProvider>
   )
 }

@@ -9,7 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as WorkspaceRouteImport } from './routes/_workspace'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as ConsentRouteImport } from './routes/consent'
 import { Route as LoginRouteImport } from './routes/login'
@@ -18,15 +18,15 @@ import { Route as RefundsRouteImport } from './routes/refunds'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SubscribeRouteImport } from './routes/subscribe'
 import { Route as TermsRouteImport } from './routes/terms'
-import { Route as WorkspaceIndexRouteImport } from './routes/_workspace.index'
+import { Route as AAppIdRouteImport } from './routes/a.$appId'
 import { Route as AppsIndexRouteImport } from './routes/apps.index'
 import { Route as AppsNameRouteImport } from './routes/apps.$name'
+import { Route as CChatIdRouteImport } from './routes/c.$chatId'
 import { Route as SubscribeSuccessRouteImport } from './routes/subscribe.success'
-import { Route as WorkspaceAAppIdRouteImport } from './routes/_workspace.a.$appId'
-import { Route as WorkspaceCConversationIdRouteImport } from './routes/_workspace.c.$conversationId'
 
-const WorkspaceRoute = WorkspaceRouteImport.update({
-  id: '/_workspace',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConnectionsRoute = ConnectionsRouteImport.update({
@@ -69,10 +69,10 @@ const TermsRoute = TermsRouteImport.update({
   path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WorkspaceIndexRoute = WorkspaceIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => WorkspaceRoute,
+const AAppIdRoute = AAppIdRouteImport.update({
+  id: '/a/$appId',
+  path: '/a/$appId',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AppsIndexRoute = AppsIndexRouteImport.update({
   id: '/apps/',
@@ -84,25 +84,19 @@ const AppsNameRoute = AppsNameRouteImport.update({
   path: '/apps/$name',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CChatIdRoute = CChatIdRouteImport.update({
+  id: '/c/$chatId',
+  path: '/c/$chatId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SubscribeSuccessRoute = SubscribeSuccessRouteImport.update({
   id: '/success',
   path: '/success',
   getParentRoute: () => SubscribeRoute,
 } as any)
-const WorkspaceAAppIdRoute = WorkspaceAAppIdRouteImport.update({
-  id: '/a/$appId',
-  path: '/a/$appId',
-  getParentRoute: () => WorkspaceRoute,
-} as any)
-const WorkspaceCConversationIdRoute =
-  WorkspaceCConversationIdRouteImport.update({
-    id: '/c/$conversationId',
-    path: '/c/$conversationId',
-    getParentRoute: () => WorkspaceRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof WorkspaceIndexRoute
+  '/': typeof IndexRoute
   '/connections': typeof ConnectionsRoute
   '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
@@ -111,13 +105,14 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
   '/terms': typeof TermsRoute
+  '/a/$appId': typeof AAppIdRoute
   '/apps/$name': typeof AppsNameRoute
+  '/c/$chatId': typeof CChatIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/apps/': typeof AppsIndexRoute
-  '/a/$appId': typeof WorkspaceAAppIdRoute
-  '/c/$conversationId': typeof WorkspaceCConversationIdRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
   '/connections': typeof ConnectionsRoute
   '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
@@ -126,16 +121,15 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
   '/terms': typeof TermsRoute
+  '/a/$appId': typeof AAppIdRoute
   '/apps/$name': typeof AppsNameRoute
+  '/c/$chatId': typeof CChatIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
-  '/': typeof WorkspaceIndexRoute
   '/apps': typeof AppsIndexRoute
-  '/a/$appId': typeof WorkspaceAAppIdRoute
-  '/c/$conversationId': typeof WorkspaceCConversationIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/_workspace': typeof WorkspaceRouteWithChildren
+  '/': typeof IndexRoute
   '/connections': typeof ConnectionsRoute
   '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
@@ -144,12 +138,11 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/subscribe': typeof SubscribeRouteWithChildren
   '/terms': typeof TermsRoute
+  '/a/$appId': typeof AAppIdRoute
   '/apps/$name': typeof AppsNameRoute
+  '/c/$chatId': typeof CChatIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
-  '/_workspace/': typeof WorkspaceIndexRoute
   '/apps/': typeof AppsIndexRoute
-  '/_workspace/a/$appId': typeof WorkspaceAAppIdRoute
-  '/_workspace/c/$conversationId': typeof WorkspaceCConversationIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -163,13 +156,14 @@ export interface FileRouteTypes {
     | '/settings'
     | '/subscribe'
     | '/terms'
+    | '/a/$appId'
     | '/apps/$name'
+    | '/c/$chatId'
     | '/subscribe/success'
     | '/apps/'
-    | '/a/$appId'
-    | '/c/$conversationId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
     | '/connections'
     | '/consent'
     | '/login'
@@ -178,15 +172,14 @@ export interface FileRouteTypes {
     | '/settings'
     | '/subscribe'
     | '/terms'
-    | '/apps/$name'
-    | '/subscribe/success'
-    | '/'
-    | '/apps'
     | '/a/$appId'
-    | '/c/$conversationId'
+    | '/apps/$name'
+    | '/c/$chatId'
+    | '/subscribe/success'
+    | '/apps'
   id:
     | '__root__'
-    | '/_workspace'
+    | '/'
     | '/connections'
     | '/consent'
     | '/login'
@@ -195,16 +188,15 @@ export interface FileRouteTypes {
     | '/settings'
     | '/subscribe'
     | '/terms'
+    | '/a/$appId'
     | '/apps/$name'
+    | '/c/$chatId'
     | '/subscribe/success'
-    | '/_workspace/'
     | '/apps/'
-    | '/_workspace/a/$appId'
-    | '/_workspace/c/$conversationId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  WorkspaceRoute: typeof WorkspaceRouteWithChildren
+  IndexRoute: typeof IndexRoute
   ConnectionsRoute: typeof ConnectionsRoute
   ConsentRoute: typeof ConsentRoute
   LoginRoute: typeof LoginRoute
@@ -213,17 +205,19 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SubscribeRoute: typeof SubscribeRouteWithChildren
   TermsRoute: typeof TermsRoute
+  AAppIdRoute: typeof AAppIdRoute
   AppsNameRoute: typeof AppsNameRoute
+  CChatIdRoute: typeof CChatIdRoute
   AppsIndexRoute: typeof AppsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/_workspace': {
-      id: '/_workspace'
-      path: ''
+    '/': {
+      id: '/'
+      path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof WorkspaceRouteImport
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connections': {
@@ -282,12 +276,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_workspace/': {
-      id: '/_workspace/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof WorkspaceIndexRouteImport
-      parentRoute: typeof WorkspaceRoute
+    '/a/$appId': {
+      id: '/a/$appId'
+      path: '/a/$appId'
+      fullPath: '/a/$appId'
+      preLoaderRoute: typeof AAppIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/apps/': {
       id: '/apps/'
@@ -303,6 +297,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppsNameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/c/$chatId': {
+      id: '/c/$chatId'
+      path: '/c/$chatId'
+      fullPath: '/c/$chatId'
+      preLoaderRoute: typeof CChatIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/subscribe/success': {
       id: '/subscribe/success'
       path: '/success'
@@ -310,38 +311,8 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SubscribeSuccessRouteImport
       parentRoute: typeof SubscribeRoute
     }
-    '/_workspace/a/$appId': {
-      id: '/_workspace/a/$appId'
-      path: '/a/$appId'
-      fullPath: '/a/$appId'
-      preLoaderRoute: typeof WorkspaceAAppIdRouteImport
-      parentRoute: typeof WorkspaceRoute
-    }
-    '/_workspace/c/$conversationId': {
-      id: '/_workspace/c/$conversationId'
-      path: '/c/$conversationId'
-      fullPath: '/c/$conversationId'
-      preLoaderRoute: typeof WorkspaceCConversationIdRouteImport
-      parentRoute: typeof WorkspaceRoute
-    }
   }
 }
-
-interface WorkspaceRouteChildren {
-  WorkspaceIndexRoute: typeof WorkspaceIndexRoute
-  WorkspaceAAppIdRoute: typeof WorkspaceAAppIdRoute
-  WorkspaceCConversationIdRoute: typeof WorkspaceCConversationIdRoute
-}
-
-const WorkspaceRouteChildren: WorkspaceRouteChildren = {
-  WorkspaceIndexRoute: WorkspaceIndexRoute,
-  WorkspaceAAppIdRoute: WorkspaceAAppIdRoute,
-  WorkspaceCConversationIdRoute: WorkspaceCConversationIdRoute,
-}
-
-const WorkspaceRouteWithChildren = WorkspaceRoute._addFileChildren(
-  WorkspaceRouteChildren,
-)
 
 interface SubscribeRouteChildren {
   SubscribeSuccessRoute: typeof SubscribeSuccessRoute
@@ -356,7 +327,7 @@ const SubscribeRouteWithChildren = SubscribeRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
-  WorkspaceRoute: WorkspaceRouteWithChildren,
+  IndexRoute: IndexRoute,
   ConnectionsRoute: ConnectionsRoute,
   ConsentRoute: ConsentRoute,
   LoginRoute: LoginRoute,
@@ -365,7 +336,9 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SubscribeRoute: SubscribeRouteWithChildren,
   TermsRoute: TermsRoute,
+  AAppIdRoute: AAppIdRoute,
   AppsNameRoute: AppsNameRoute,
+  CChatIdRoute: CChatIdRoute,
   AppsIndexRoute: AppsIndexRoute,
 }
 export const routeTree = rootRouteImport

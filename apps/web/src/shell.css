@@ -315,15 +315,6 @@
 .sidebar-row-busy {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
-/* The credit Trellis's license asks for while the workspace's panes use it (ADR 0016). */
-.sidebar-credit {
-  display: block;
-  margin: 1.5rem 0.625rem 0;
-  color: var(--shell-muted);
-  font-size: var(--text-2xs);
-  line-height: 1.4;
-}
-
 /* A dot for unread replies, on any surface. */
 .unread-dot {
   flex: none;
@@ -352,4 +343,381 @@
   overflow: clip;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * A channel and its thread panel (components/shell/channel.tsx): fixed to the viewport beside the navigation (the
+ * composer's keyboard handling relies on it). On a wide screen the panel sits beside the channel; narrower, it slides
+ * over the channel's right side; on a phone it is a full view of its own over the channel, which stays where it was.
+ */
+.channel-layout,
+.app-page {
+  position: fixed;
+  inset: 0 0 0 var(--chat-inset-left, 0px);
+  display: flex;
+}
+@media (min-width: 48rem) {
+  .shell-main {
+    --chat-inset-left: var(--shell-nav-width);
+  }
+}
+.channel-column {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+.thread-panel {
+  --panel-width: 27rem;
+  position: relative;
+  z-index: var(--z-chrome);
+  display: flex;
+  flex: none;
+  width: var(--panel-width);
+  border-inline-start: 1px solid var(--border);
+  background: var(--background);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .thread-panel {
+    animation: panel-in 220ms var(--ease-out);
+  }
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    translate: 1.5rem 0;
+  }
+}
+@media (max-width: 75rem) {
+  .thread-panel {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    width: min(var(--panel-width), 100%);
+    box-shadow: var(--shadow-3);
+  }
+}
+@media (max-width: 47.99rem) {
+  .thread-panel {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    border: 0;
+    box-shadow: none;
+  }
+  .channel-layout[data-panel] > .channel-column {
+    visibility: hidden;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .thread-panel {
+      animation: panel-push 280ms var(--ease-drawer);
+    }
+  }
+}
+@keyframes panel-push {
+  from {
+    translate: 100% 0;
+  }
+}
+
+/*
+ * One chat with its composer: a centred column clear of the bar above it and the dock below. The chat's width, not the
+ * screen's, decides the composer's secondary labels. `--dock-height` and `--keyboard-inset` are measured in
+ * use-conversation.ts.
+ */
+.chat-view {
+  container: conversation / inline-size;
+  --chat-gutter: 1rem;
+  --chat-column: 46rem;
+  --message-scroller-max-width: calc(var(--chat-column) + 2 * var(--message-scroller-inset-x));
+  --message-scroller-gap: 0.875rem;
+  --message-scroller-inset-x: max(var(--chat-gutter), var(--safe-left), var(--safe-right));
+  --message-scroller-inset-top: calc(var(--top-bar-height) + 0.75rem);
+  --message-scroller-inset-bottom: calc(var(--dock-height, 8rem) + var(--keyboard-inset, 0px) + 1.5rem);
+  --message-scroller-end-offset: calc(var(--dock-height, 8rem) + var(--keyboard-inset, 0px) + 0.5rem);
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+}
+@media (min-width: 48rem) {
+  .chat-view[data-place='channel'] {
+    --chat-gutter: 2rem;
+  }
+}
+.chat-view[data-place='panel'] {
+  --chat-column: 40rem;
+}
+/*
+ * The transcript fades out under the bar and above the composer instead of ending at a hard line, so the chrome floats
+ * over it. Apps are not masked: they clip to the bar and the dock (lib/app-occlusion.ts).
+ */
+.chat-view [data-slot='message-scroller-viewport'] {
+  --dock-top: calc(100% - var(--dock-height, 8rem) - var(--keyboard-inset, 0px));
+  mask-image: linear-gradient(
+    to bottom,
+    transparent calc(var(--top-bar-height) - 1.5rem),
+    #000 calc(var(--top-bar-height) + 0.5rem),
+    #000 var(--dock-top),
+    transparent calc(var(--dock-top) + 1.5rem)
+  );
+}
+.channel-title {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  font-size: var(--text-15);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.channel-title > svg {
+  width: 1.0625rem;
+  height: 1.0625rem;
+  flex: none;
+  color: var(--muted-foreground);
+}
+
+/* The panel's bar: the way back, what it shows with its mark and state, its menu, and ×. */
+.panel-header {
+  position: absolute;
+  z-index: var(--z-chrome);
+  inset-inline: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: var(--top-bar-height);
+  padding: var(--safe-top) max(0.5rem, var(--safe-right)) 0 max(0.5rem, var(--safe-left));
+  background: color-mix(in oklab, var(--background) 82%, transparent);
+  backdrop-filter: blur(20px) saturate(1.6);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .panel-header {
+    background: var(--background);
+    backdrop-filter: none;
+  }
+}
+.panel-back {
+  display: inline-flex;
+  flex: 0 1 auto;
+  max-width: 40%;
+  min-width: 0;
+}
+.panel-title {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding-inline: 0.25rem;
+}
+.panel-title > h2 {
+  min-width: 0;
+  font-size: var(--text-15);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.panel-mark {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  color: var(--muted-foreground);
+}
+.panel-mark > svg {
+  width: 1rem;
+  height: 1rem;
+}
+.panel-rename {
+  flex: 1;
+  min-width: 0;
+}
+.chat-state {
+  flex: none;
+  color: var(--muted-foreground);
+  font-size: var(--text-13);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/*
+ * What a message offers (Reply in thread, Copy): a small toolbar floating over the message's top edge, as Slack's,
+ * shown on hover, or on a touch screen once the message is tapped. It takes no room, so nothing moves when it shows.
+ */
+.message-item {
+  position: relative;
+}
+.message-item > .message-actions {
+  position: absolute;
+  z-index: var(--z-float);
+  top: -0.875rem;
+  inset-inline-end: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 2px;
+  border-radius: 0.625rem;
+  background: var(--background);
+  box-shadow: var(--ring-hairline), var(--shadow-2);
+  opacity: 0;
+  pointer-events: none;
+}
+.message-item > .message-actions:focus-within,
+.message-item:focus-within > .message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: hover) and (pointer: fine) {
+  .message-item:hover > .message-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .message-item > .message-actions {
+    transition: opacity 120ms var(--ease-out);
+  }
+}
+.message-action {
+  display: inline-grid;
+  width: 1.875rem;
+  height: 1.875rem;
+  place-items: center;
+  border-radius: 0.5rem;
+  color: var(--muted-foreground);
+  touch-action: manipulation;
+  transition:
+    background-color 120ms var(--ease-out),
+    color 120ms var(--ease-out);
+}
+.message-action > svg {
+  width: 1rem;
+  height: 1rem;
+}
+.message-action:active {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.message-action:disabled {
+  opacity: 0.45;
+}
+@media (hover: hover) and (pointer: fine) {
+  .message-action:not(:disabled):hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+}
+@media (any-pointer: coarse) {
+  .message-action {
+    position: relative;
+  }
+  .message-action::after {
+    content: '';
+    position: absolute;
+    inset: min(0px, (100% - 2.75rem) / 2);
+  }
+}
+/* A message takes focus when tapped, which is how a touch screen shows its actions; a keyboard's focus is drawn. */
+.message-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
+  border-radius: var(--radius-lg);
+}
+
+/*
+ * A thread under the message it started from, as Slack shows one: the reply count in the shell's green, then when the
+ * last reply came, quietly; "View thread" shows where a pointer rests. The whole row answers the press at once.
+ */
+.thread-summaries {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  margin-block-start: 0.25rem;
+}
+.thread-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  min-height: 2rem;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid transparent;
+  border-radius: 0.625rem;
+  font-size: var(--text-13);
+  text-align: start;
+  touch-action: manipulation;
+  transition:
+    background-color 120ms var(--ease-out),
+    border-color 120ms var(--ease-out),
+    scale 100ms var(--ease-out);
+}
+.thread-summary:active {
+  border-color: var(--border);
+  background: var(--card);
+  scale: 0.98;
+}
+.thread-summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .thread-summary:hover {
+    border-color: var(--border);
+    background: var(--card);
+  }
+}
+@media (any-pointer: coarse) {
+  .thread-summary {
+    min-height: 2.75rem;
+  }
+}
+.thread-summary-lead {
+  flex: none;
+  color: var(--muted-foreground);
+}
+.thread-summary-count {
+  flex: none;
+  color: var(--moss);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.thread-summary-meta {
+  min-width: 0;
+  overflow: clip;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-summary-open {
+  flex: none;
+  color: var(--muted-foreground);
+  opacity: 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .thread-summary:hover > .thread-summary-open {
+    opacity: 1;
+  }
+}
+.thread-summary[data-unread] > .thread-summary-meta {
+  color: var(--foreground);
+}
+
+/* An App's page in the main column: its bar, then the room its stage fills. */
+.app-page {
+  flex-direction: column;
+}
+.app-page-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.app-page-title > .app-tile {
+  width: 1.25rem;
+  height: 1.25rem;
 }

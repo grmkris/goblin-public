@@ -1,7 +1,8 @@
 # ADR 0016: Workspace layout with Trellis
 
 Accepted implementation decision, 2026-10-05. Its layout (the main stage, tabbed thread panes, sheets, `/t/:id` and
-`?thread=`) is superseded by ADR 0019 (panes for everything); its license and credit terms carry over there.
+`?thread=`) was superseded by ADR 0019 (panes for everything), and that by ADR 0036 (Slack-style shell), which removes
+Trellis; its license and credit terms ended with the dependency. Kept for history.
 
 Threads belong visibly to the main message they branch from: expanded inline previews show the first five own
 messages, clipped text and quiet tool/thought summaries. Replies continue live while fewer than five exist; past that,

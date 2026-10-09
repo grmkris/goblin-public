@@ -60,7 +60,8 @@ const clipsOf = (ancestors: readonly HTMLElement[]): Rect[] => [
 
 /**
  * Clips the stage to what of `slot` shows: inside the containers that scroll it (`ancestors`, from
- * `clippingAncestors`), and under what its pane floats over it (`data-app-cover`: the band of its pill, the composer).
+ * `clippingAncestors`), under what its chat floats over it (`data-app-cover`: its bar, the composer), and under what
+ * lies over the chat (`data-app-overlay`: the thread panel beside or over a channel).
  * `box` is where the stage was just written, so nothing is read back from it. Returns whether any of the App shows.
  */
 export function clipStage(
@@ -73,8 +74,11 @@ export function clipStage(
     stage.style.clipPath = ''
     return false
   }
-  const pane = slot.closest('.workspace-pane')
-  const covers = [...(pane?.querySelectorAll('[data-app-cover]') ?? [])]
+  const chat = slot.closest('[data-app-scope]')
+  const covers = [
+    ...(chat?.querySelectorAll('[data-app-cover]') ?? []),
+    ...document.querySelectorAll('[data-app-overlay]'),
+  ]
     .filter((cover) => !cover.contains(slot))
     .map(rectOf)
   const regions = visibleParts(box, clipsOf(ancestors), covers)

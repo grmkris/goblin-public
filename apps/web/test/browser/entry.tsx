@@ -1,13 +1,8 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   Button,
-  Composer,
-  ComposerActions,
   ComposerInput,
-  Drawer,
-  DrawerContent,
-  DrawerTitle,
   Input,
   NativeSelect,
   Questionnaire,
@@ -22,10 +17,7 @@ import {
   ReasoningContent,
   ReasoningTrigger,
 } from '@goblin/ui'
-import { useDockInsets } from '../../src/components/use-conversation.ts'
-import { CHAT_SNAPS, HALF_CHAT, useChatSnap } from '../../src/components/use-chat-snap.ts'
 import { MessageComposer } from '../../src/components/composer.tsx'
-import { PaneHeader } from '../../src/components/pane-header.tsx'
 import { LinkOffer } from '../../src/components/apps/offers.tsx'
 import '../../src/styles.css'
 
@@ -49,48 +41,6 @@ function Fields() {
       </Questionnaire>
       <Input id="rename" variant="pill" aria-label="Rename" />
     </main>
-  )
-}
-
-function KeyboardDrawer() {
-  const [open, setOpen] = useState(true)
-  const { snap, setSnap, keyboardInset } = useChatSnap(open)
-  const pane = useRef<HTMLElement>(null)
-  const dock = useRef<HTMLDivElement>(null)
-  useDockInsets(pane, dock)
-  return (
-    <Drawer
-      open={open}
-      onOpenChange={setOpen}
-      snapPoints={CHAT_SNAPS}
-      snapPoint={snap ?? HALF_CHAT}
-      onSnapPointChange={setSnap}
-    >
-      <DrawerContent snapping data-keyboard={keyboardInset > 0 || undefined}>
-        <DrawerTitle className="sr-only">Chat</DrawerTitle>
-        <div className="chat-sheet-body">
-          <div className="workspace-pane-host">
-            <section className="chat-pane conversation-pane" ref={pane} data-snap={snap}>
-              <div className="chat-dock" ref={dock}>
-                <div className="dock-cards">
-                  {Array.from({ length: 8 }, (_, n) => (
-                    <p key={n}>Question {n + 1}</p>
-                  ))}
-                </div>
-                <div className="dock-composer">
-                  <Composer>
-                    <ComposerInput aria-label="Message" defaultValue={'One\nTwo\nThree'} />
-                    <ComposerActions>
-                      <Button>Send</Button>
-                    </ComposerActions>
-                  </Composer>
-                </div>
-              </div>
-            </section>
-          </div>
-        </div>
-      </DrawerContent>
-    </Drawer>
   )
 }
 
@@ -136,9 +86,6 @@ function Styles() {
           </li>
         </ul>
       </nav>
-      <div className="workspace-pane" style={{ position: 'relative', height: 96 }} data-focused="true">
-        <PaneHeader item="c:1" title="Main" first onClose={() => undefined} />
-      </div>
       <div className="app-stage" data-mode="inline" style={{ position: 'relative', height: 140 }}>
         <LinkOffer link={new URL('https://example.com')} serverId="Example" onDone={() => undefined} />
       </div>
@@ -147,7 +94,7 @@ function Styles() {
           Model
         </Button>
       </div>
-      <Input variant="pill" className="pane-rename" data-sample="rename" aria-label="Rename" />
+      <Input variant="pill" data-sample="rename" aria-label="Rename" />
       <a className="apps-card" href="#card">
         <Card interactive data-sample="interactive-card">
           <CardContent>App card</CardContent>
@@ -164,14 +111,4 @@ function Styles() {
 const mode = new URLSearchParams(location.search).get('mode')
 const root = document.getElementById('root')
 if (root)
-  createRoot(root).render(
-    mode === 'keyboard' ? (
-      <KeyboardDrawer />
-    ) : mode === 'attachments' ? (
-      <Attachments />
-    ) : mode === 'styles' ? (
-      <Styles />
-    ) : (
-      <Fields />
-    ),
-  )
+  createRoot(root).render(mode === 'attachments' ? <Attachments /> : mode === 'styles' ? <Styles /> : <Fields />)

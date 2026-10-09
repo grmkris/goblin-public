@@ -78,8 +78,8 @@ function MemoryCard({ onError }: { readonly onError: (message: string) => void }
       <CardHeader>
         <CardTitle>Memory</CardTitle>
         <CardDescription>
-          Your agent remembers Main in full. It reads older messages as one-line summaries it can open again, so the
-          conversation never has to end.
+          Your agent remembers #Personal in full. It reads older messages as one-line summaries it can open again, so
+          the conversation never has to end.
         </CardDescription>
       </CardHeader>
       <CardContent>

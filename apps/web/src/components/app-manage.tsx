@@ -93,11 +93,13 @@ function Overview({ app, busy, run }: { readonly app: AgentAppDetail; readonly b
             >
               {homes.map((conversation) => (
                 <NativeSelectOption key={conversation.id} value={conversation.id}>
-                  {conversation.kind === 'main' ? 'Main' : (conversation.title ?? `Thread ${conversation.id}`)}
+                  {conversation.kind === 'main'
+                    ? `#${conversation.title ?? 'Personal'}`
+                    : (conversation.title ?? `Thread ${conversation.id}`)}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
-            <Link to="/c/$conversationId" params={{ conversationId: app.home }} className="underline">
+            <Link to="/c/$chatId" params={{ chatId: app.home }} className="underline">
               Go there
             </Link>
           </label>

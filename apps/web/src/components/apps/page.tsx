@@ -1,18 +1,24 @@
-// An App as a page of its own (ADR 0020): one pane showing it, its stage filling the pane under the pill. Filling the
-// workspace is maximizing that pane; that is what an App asking for fullscreen gets.
+// An App as a page of its own (ADR 0020): the main column under a bar with the way back to the chat it belongs to, its
+// stage filling the rest. That is also what an App asking for fullscreen gets.
 import { useEffect, useMemo, useRef } from 'react'
 import type { AppView } from '@goblin/contracts'
-import { Button, DropdownMenuItem, DropdownMenuSeparator } from '@goblin/ui'
-import { Maximize2Icon, MessageSquareIcon, Minimize2Icon, PanelLeftCloseIcon, XIcon } from 'lucide-react'
-import { useNavigation } from '../../lib/navigation.ts'
-import { type ItemKey, dockOf } from '../../lib/workspace.ts'
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  TopBar,
+  TopBarTitle,
+} from '@goblin/ui'
+import { ChevronLeftIcon, EllipsisIcon, PanelLeftCloseIcon, XIcon } from 'lucide-react'
 import { appNames, appOrigin } from '../../lib/app-names.ts'
-import { isUnread } from '../../lib/threads.ts'
-import { usePlace } from '../conversation-pane.tsx'
-import { PaneHeader } from '../pane-header.tsx'
-import { AppTile } from './app-tile.tsx'
-import { useWorkspace } from '../workspace.tsx'
+import { channelOf, topicOfChannel } from '../../lib/topics.ts'
+import { NavigationButton } from '../shell/shell.tsx'
+import { useOpenChat } from '../shell/panel.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { AppTile } from './app-tile.tsx'
 import { useAppHost } from './host.tsx'
 import { useAppPlacement } from './placement.ts'
 import { AppNote, useSlot } from './slot.tsx'
@@ -38,59 +44,52 @@ function PageNote({
   )
 }
 
-/**
- * The page's pill menu: back in its conversation, full screen with its conversation docked beside it (ADR 0021) and
- * back, and close.
- */
+/** The page's menu: back in the conversation, and close the App. */
 function AppPageMenu({ app }: { readonly app: AppView }) {
   const host = useAppHost()
   const place = useAppPlacement(app)
   return (
-    <>
-      <DropdownMenuItem onClick={place.inline}>
-        <PanelLeftCloseIcon aria-hidden />
-        Back in the conversation
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={place.fill}>
-        {place.filled ? <Minimize2Icon aria-hidden /> : <Maximize2Icon aria-hidden />}
-        {place.filled ? 'Show all panes' : 'Full screen with the chat'}
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem onClick={() => host.close(app.id)}>
-        <XIcon aria-hidden />
-        Close the app
-      </DropdownMenuItem>
-    </>
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="App actions" />}>
+        <EllipsisIcon />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={place.inline}>
+          <PanelLeftCloseIcon aria-hidden />
+          Back in the conversation
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => host.close(app.id)}>
+          <XIcon aria-hidden />
+          Close the app
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
-/** While the App fills the workspace: shows or folds its docked chat, with a dot when it has unread replies. */
-function DockToggle({ app }: { readonly app: AppView }) {
-  const workspace = useWorkspace()
-  const { conversations } = useWorkspaceFeed()
-  const { open } = dockOf(workspace.state)
-  const view = conversations.find((each) => each.id === app.conversation)
+/** "Back to #channel": the way to the chat the App belongs to, named by its channel. */
+function BackToChannel({ app }: { readonly app: AppView | undefined }) {
+  const feed = useWorkspaceFeed()
+  const openChat = useOpenChat()
+  const chat = app?.conversation ?? '1'
+  const topic = topicOfChannel(channelOf(chat, feed.conversations, feed.topics), feed.topics)
   return (
-    <span className="dock-toggle" data-unread={!open && view !== undefined && isUnread(view)}>
-      <Button size="sm" variant="ghost" aria-pressed={open} onClick={() => workspace.setDock({ open: !open })}>
-        <MessageSquareIcon aria-hidden />
-        {open ? 'Hide chat' : 'Chat'}
-      </Button>
-    </span>
+    <Button variant="ghost" size="sm" onClick={() => openChat(chat)}>
+      <ChevronLeftIcon data-icon="inline-start" />
+      <span className="truncate">Back to #{topic?.name ?? 'Personal'}</span>
+    </Button>
   )
 }
 
 /**
- * The App's pill, with what can be done with the App, and the room its stage fills. Opening the page loads the App; one unloaded later, while its pane was
- * out of sight, waits behind a note rather than loading again on its own.
+ * `/a/<id>`: the App's bar (the way back to its channel, its name, its menu) and the room its stage fills. Opening the
+ * page loads the App; one unloaded later waits behind a note rather than loading again on its own.
  */
-export function AppPage({ item, id }: { readonly item: ItemKey; readonly id: string }) {
-  const workspace = useWorkspace()
-  const navigation = useNavigation()
+export function AppPage({ id }: { readonly id: string }) {
   const host = useAppHost()
   const { apps } = useWorkspaceFeed()
   const app = apps.find((candidate) => candidate.id === id)
-  const { first, only } = usePlace(item)
   const register = useSlot(`app-page:${id}`)
   const problem = host.problems.get(id)
   const asleep = !host.instances.has(id) && (host.dormant.has(id) || problem !== undefined)
@@ -103,23 +102,18 @@ export function AppPage({ item, id }: { readonly item: ItemKey; readonly id: str
   }, [app, show])
   const title = useMemo(() => appNames(apps).get(id), [apps, id]) ?? 'App'
   return (
-    <section className="app-pane" aria-label={title}>
-      <PaneHeader
-        item={item}
-        title={title}
-        first={first}
-        {...(app !== undefined && {
-          menu: <AppPageMenu app={app} />,
-          mark: <AppTile origin={appOrigin(app)} />,
-          status: (
-            <>
-              <span className="pane-state">{appOrigin(app)}</span>
-              {workspace.state.maximized === item && workspace.state.docked !== undefined && <DockToggle app={app} />}
-            </>
-          ),
-        })}
-        onClose={only ? undefined : () => navigation.closeAppPage(id)}
-      />
+    <section className="app-page" aria-label={title}>
+      <TopBar data-app-cover>
+        <NavigationButton />
+        <BackToChannel app={app} />
+        <TopBarTitle>
+          <span className="app-page-title">
+            {app !== undefined && <AppTile origin={appOrigin(app)} />}
+            <span className="truncate">{title}</span>
+          </span>
+        </TopBarTitle>
+        {app !== undefined && <AppPageMenu app={app} />}
+      </TopBar>
       {asleep && app !== undefined ? (
         <PageNote app={app} {...(problem === undefined ? {} : { problem })} onShow={() => show(app)} />
       ) : (

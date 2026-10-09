@@ -1,6 +1,5 @@
 import {
   Empty,
-  EmptyDescription,
   EmptyHeader,
   EmptyTitle,
   MessageScroller,
@@ -17,15 +16,18 @@ import { HistoryIcon } from 'lucide-react'
 import { isOwnTurn, type Part, partKey } from '../lib/parts.ts'
 import { turnLabel } from '../lib/turn-map.ts'
 import { PartView } from './parts/registry.tsx'
-import { type InlineThreads, InlineThreadsProvider, MessageThreads } from './inline-thread.tsx'
 import { OpenThread } from './parts/text-part.tsx'
+import { type ChatThreads, MessageFooter } from './shell/thread-summary.tsx'
 import { glide } from '../lib/motion.ts'
 import { type Turn, TurnMap } from './turn-map.tsx'
 
 type ConversationProps = {
   readonly parts: readonly Part[]
   readonly canSwitchModel: boolean
-  readonly threads?: InlineThreads
+  /** The chat's threads: under each message the ones it started, and Reply in thread. */
+  readonly threads?: ChatThreads
+  /** Opens a chat a transcript names (a thread a note came from, a subagent that reported) where it lives. */
+  readonly onOpen?: (chat: string) => void
   /** Loads the page of history before the oldest part shown, while there is one. */
   readonly onEarlier?: () => void
   /** What comes before the parts (a thread's root message); with it, no empty state is shown. */
@@ -57,7 +59,15 @@ function EndButton() {
  * the transcript itself and opens at its end. The turn map on its right edge (`TurnMap`) jumps between the owner's
  * turns.
  */
-export function Conversation({ parts, canSwitchModel, threads, onEarlier, lead, loading = false }: ConversationProps) {
+export function Conversation({
+  parts,
+  canSwitchModel,
+  threads,
+  onOpen,
+  onEarlier,
+  lead,
+  loading = false,
+}: ConversationProps) {
   const empty = !loading && parts.length === 0 && lead === undefined
   const viewport = useRef<HTMLDivElement>(null)
   const turns = useMemo(
@@ -71,44 +81,39 @@ export function Conversation({ parts, canSwitchModel, threads, onEarlier, lead, 
   )
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
-      <InlineThreadsProvider value={threads}>
-        <OpenThread value={threads?.open}>
-          <MessageScroller>
-            <MessageScrollerViewport aria-label="Conversation" ref={viewport}>
-              <MessageScrollerContent>
-                {onEarlier !== undefined && (
-                  <button type="button" className="history-action" onClick={onEarlier}>
-                    <HistoryIcon aria-hidden />
-                    Earlier messages
-                  </button>
-                )}
-                {lead}
-                {empty ? (
-                  <Empty className="m-auto">
-                    <EmptyHeader>
-                      <EmptyTitle>Your conversation starts here</EmptyTitle>
-                      <EmptyDescription>
-                        Ask anything. Your agent can use the tools you enable under Connections.
-                      </EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
-                ) : (
-                  parts.map((part) => (
-                    <MessageScrollerItem key={partKey(part)} messageId={part.id} scrollAnchor={isOwnTurn(part)}>
-                      <div className="message-item flex flex-col" tabIndex={-1}>
-                        <PartView part={part} canSwitchModel={canSwitchModel} />
-                        {threads !== undefined && <MessageThreads part={part} threads={threads} />}
-                      </div>
-                    </MessageScrollerItem>
-                  ))
-                )}
-              </MessageScrollerContent>
-            </MessageScrollerViewport>
-            <TurnMap viewport={viewport} turns={turns} onEarlier={onEarlier} />
-            <EndButton />
-          </MessageScroller>
-        </OpenThread>
-      </InlineThreadsProvider>
+      <OpenThread value={onOpen}>
+        <MessageScroller>
+          <MessageScrollerViewport aria-label="Conversation" ref={viewport}>
+            <MessageScrollerContent>
+              {onEarlier !== undefined && (
+                <button type="button" className="history-action" onClick={onEarlier}>
+                  <HistoryIcon aria-hidden />
+                  Earlier messages
+                </button>
+              )}
+              {lead}
+              {empty ? (
+                <Empty className="m-auto">
+                  <EmptyHeader>
+                    <EmptyTitle>No messages yet</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
+              ) : (
+                parts.map((part) => (
+                  <MessageScrollerItem key={partKey(part)} messageId={part.id} scrollAnchor={isOwnTurn(part)}>
+                    <div className="message-item flex flex-col" tabIndex={-1}>
+                      <PartView part={part} canSwitchModel={canSwitchModel} />
+                      {threads !== undefined && <MessageFooter part={part} threads={threads} />}
+                    </div>
+                  </MessageScrollerItem>
+                ))
+              )}
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+          <TurnMap viewport={viewport} turns={turns} onEarlier={onEarlier} />
+          <EndButton />
+        </MessageScroller>
+      </OpenThread>
     </MessageScrollerProvider>
   )
 }

@@ -99,20 +99,20 @@ shows the Topics as channels in the app's sidebar (`components/shell/sidebar.tsx
 Personal first, then by name, the archived folded at the end, each bold with a dot while it has unread replies and a
 pulse while its agent works; the open agent apps follow. A server without Topics implies Personal alone, holding Main.
 Unread is the server's: `read_at` on
-`app_conversations` is the owner's read mark, set when a pane has shown the conversation for a moment (half in view,
-the page in front). Each conversation shows in a pane of its own (below); `/c/:id` names the focused one. Threads open inline first, at any depth (`components/inline-thread.tsx`): under the message a thread branched from
-sits a chip with its reply count, name, last activity and state; it unfolds the live thread in place, set in under
-the message by a rule at its left, with its own messages (the message it branched from is right above), its own
-threads unfolding the same way, and a one-line composer, plus Open in pane to put it beside. While the thread is in a
-pane the fold shows a note with the way to it and back. A message with no thread offers Reply in thread and Copy, in a
-small pill over its lower edge where a pointer hovers, and on a touch screen once the message is tapped. Reply in
-thread opens an inline reply, with the focus in its composer, that branches the
-thread only when it is sent, because Pi cannot delete a conversation; the sidebar's "+" opens an empty draft pane the
-same way. Panes and inline threads follow conversations through one stream pool (`lib/stream-pool.ts`): one event
-stream per conversation however many show it, at most eight following beyond those on screen, and one off screen
-stops following after ten seconds, resuming from a fresh snapshot when it comes back. A thread started with "+" tells
-main its name once it has one (ADR 0010): main gets one `app.thread_started` note, `[thread started: "<title>"]`, and
-its transcript shows a row for that thread.
+`app_conversations` is the owner's read mark, set when a chat has been shown for a moment (half in view, the page in
+front). A channel is `/c/:id`; its threads open in the thread panel beside it (ADR 0036, `components/shell`):
+`/c/<channel>?thread=<id>` names the thread on top, `stack=` the threads under it where its parents would not derive
+them, and `reply=<chat>-<entry>` or `reply=new` a draft on top (`lib/panel.ts`); a thread's or subagent's own `/c/<id>`
+opens its channel with the panel showing it. Under the message a thread started from, a summary (reply count, when the
+last reply came, a dot while unread, a pulse while it works) opens it; threads opened inside a thread stack with a back
+crumb. A message offers Reply in thread and Copy in a small toolbar over its top edge where a pointer rests, and on a
+touch screen once the message is tapped. Reply in thread opens a draft in the panel, with the focus in its composer,
+that branches the thread only when it is sent, because Pi cannot delete a conversation; `/new-thread` moves the
+composer's draft into a new thread's draft the same way. The channel and the panel follow conversations through one
+stream pool (`lib/stream-pool.ts`): one event stream per conversation however many show it, at most eight following
+beyond those on screen, and one off screen stops following after ten seconds, resuming from a fresh snapshot when it
+comes back. A thread started with "+" tells its channel its name once it has one (ADR 0010): the channel gets one
+`app.thread_started` note, `[thread started: "<title>"]`, and its transcript shows that thread's summary.
 
 Queued inputs in Main and ordinary threads stay in Pi's native `InboxDoc`. The browser projects native inbox IDs
 and modes, then reads contents through `GET /api/conversations/:id/queue`; helper and routine queues are absent
@@ -189,7 +189,8 @@ short reports nothing. The relay registers the subagent in `app_conversations` u
 there. In the spawner's transcript a spawn or send shows the subagent itself, live from the workspace feed
 (`components/parts/subagent-block.tsx`, `lib/subagent-state.ts`): its state and clock, how many work under it, and
 Stop (which asks first), Keep open, Dismiss or Reopen, opening to its task and its own subagents at any depth. A
-report reads as "<name> reported back" with the report quoted, a subagent's pane opens with "Task from <spawner>", and
+report reads as "<name> reported back" with the report quoted, a subagent opens in the thread panel with "Task from
+<spawner>", and
 its composer steers it.
 
 The shared native-textarea composer (`components/composer.tsx`, ADR 0029) opens `/` for skills and local commands and
@@ -197,7 +198,8 @@ The shared native-textarea composer (`components/composer.tsx`, ADR 0029) opens 
 `composer.ts` resolves current labels, live scope and verified skill instructions before model work. A connection
 selection is a neutral hint; a helper selection adds its newest reported answer as bounded untrusted context here.
 Structured composer metadata keeps selected labels and prose readable in the transcript. Failed resolution rejects
-the complete send and marks its chip. `/new-thread` transfers the draft and portable attachment store to a fresh pane.
+the complete send and marks its chip. `/new-thread` transfers the draft and portable attachment store to a new
+thread's draft in the panel.
 
 **Chat admission** ([ADR 0030](adr/0030-logical-chats-over-pi-sessions.md)): owner, inbound MCP and Telegram operations
 first record `(chat_id, operation_id)` and the selected Pi session in `app_chat_operations`, then submit to that
@@ -260,12 +262,11 @@ whose states read in words (`lib/labels.ts`), never the raw value the runtime se
 released yet; `bun run check:patches` proves the patch is installed). Each of
 the owner's turns (typed in the app or sent from Telegram, `isOwnTurn` in `lib/parts.ts`) is a scroll anchor; a
 message from an MCP client, a subagent, a routine or a thread's share-back arrives without moving the view. Until its
-snapshot arrives a pane shows nothing. Conversations open at their end. A turn map in the transcript's right gutter
+snapshot arrives a chat shows nothing. Conversations open at their end. A turn map in the transcript's right gutter
 (`components/turn-map.tsx`) marks each of the owner's turns where it sits, with a band for what is on screen; hovering it
 lists the turns and a click jumps to one. Without a fine pointer, or in a narrow window, an edge tab opens the list as a
 bottom drawer that a swipe down closes. The view follows a streaming reply only while the reader is at the end, and
-otherwise offers a jump back. The pane's pill (where it came from, its name and menu, its state) and the composer
-float over the transcript as translucent chrome. Assistant Markdown is set by shadcn/typeset, whose append-stable rules keep earlier blocks still
+otherwise offers a jump back. The chat's bar and the composer float over the transcript as translucent chrome. Assistant Markdown is set by shadcn/typeset, whose append-stable rules keep earlier blocks still
 while a reply streams.
 
 Tool calls remain quiet expandable lines (`ToolCall` in `packages/ui`). Opening one shows labelled Input and Output
@@ -295,8 +296,8 @@ the Send button sends, with ⌘/Ctrl+Enter from a hardware keyboard (`lib/keys.t
 first. In order: offline, waiting for the owner, retrying, using a tool (named `server · tool`), writing, thinking,
 budget spent, no answer, and ready. A small orb of moving colour (a Paper Shaders `MeshGradient`, loaded lazily)
 shows it beside a text label, and its pace follows the work. While the agent waits on the owner, a pulsing border
-frames the composer. Under reduced motion, in a hidden tab, before the shader loads, outside the focused pane and in an
-inline thread, the orb is a still gradient (no WebGL context of its own), and
+frames the composer. Under reduced motion, in a hidden tab, before the shader loads, and in a channel while the thread
+panel is open over it, the orb is a still gradient (no WebGL context of its own), and
 the border is absent. Colours come from the theme's `--presence-*` tokens, resolved to RGB at runtime.
 
 ## Outbound MCP
@@ -401,51 +402,38 @@ An App is a tool's `ui://` resource, served by the server that answered the call
 sandboxed frames (`lib/app-sandbox.ts`). The outer proxy only relays protocol messages to and from the host's origin.
 Its calls go through the owner API to the originating server and need that server's grant.
 
-Every conversation, a thread's draft and every App's page is a pane of its own (ADR 0019). The pane store
-(`lib/workspace.ts`) holds a Trellis document of one-view panes keyed by item (`c:<id>`, `d:…`, `a:<id>`), the focused
-item and an optional filled pane; `components/workspace.tsx` provides it to the whole app so the sidebar and every
-transcript link can open things, and keeps the URL (`/c/<id>` or `/a/<id>`) on the focused item. At 75rem and wider
-`components/workspace-surface.tsx` mounts Trellis 0.3.0 after hydration as a controlled layout (no tabs, menus,
-floating, navigation or shortcuts) inside a sideways scroller about 400px a pane wide; narrower screens show one pane
-per screen in a snapping strip whose pane in view is the focused one. Each item renders once into a stable portal host
-that moves between panes, the strip and a parking lot, so streams and React state survive rearrangement. Each pane
-draws its own floating pill (`components/pane-header.tsx`): a mark of what it holds (main, a thread, a subagent's
-state, an App's tile), where it came from, its name and menu, and its state; the menu starts with its path and the
-conversations around it to show in that pane instead (`components/pane-nav.tsx`). `components/workspace-drag.tsx` drags a pill's grip onto a
-pane to split it at an edge or swap with it (`lib/pane-drop.ts`). The arrangement is a bounded device preference
-(`goblin:workspace:v2:<owner>`, 64 views, no stage, nothing floating); conversation and App panes come back from it,
-drafts do not. The sidebar footer credits Trellis and Dan Fessler; see
-[ADR 0016](adr/0016-workspace-layout-with-trellis.md) for the license arrangement.
+The app is a Slack-style shell (ADR 0036, `components/shell`): the rail and the sidebar, then the channel, with the
+thread panel beside it at 75rem and wider, over its right side narrower, and as a full view of its own on a phone. The
+channel and the panel are fixed to the viewport beside the navigation, so the composer's keyboard handling holds; each
+draws its own bar (the channel's `#name`, the panel's back crumb, title, menu and ×) as translucent chrome over its
+transcript. Apps and composers reach the shell only through `lib/navigation.ts`, which `components/shell/navigation.tsx`
+implements over the router.
 
 Apps are kept (ADR 0020). A call the owner's agent makes to a tool that declares an App keeps it in the agent's
 registry (`apps/registry.ts`, `app_registry`, one per Pi session and call); `chat_id` names its placement while the
 original Pi session and call id still own the arguments and results. *Show app* on an older or closed one keeps it
-through `POST /api/apps`. The workspace feed lists them, the sidebar shows each under its conversation (numbered when
-one title repeats, all but those open as pages and the newest three folded), and closing a conversation closes its
-Apps. `GET /api/apps/:id/launch` reads the call's arguments and redacted result back from the
+through `POST /api/apps`. The workspace feed lists them (an App's name is numbered when one title repeats in its
+conversation, `lib/app-names.ts`), and closing a conversation closes its Apps. `GET /api/apps/:id/launch` reads the call's arguments and redacted result back from the
 transcript; keeping and launching grant nothing.
 
 Several Apps run at once, in any conversation the owner views (`components/apps`). `AppHost` holds one instance per
-loaded App, and `AppLayer` draws one fixed stage per instance outside the panes, never moved in the DOM, so nothing
+loaded App, and `AppLayer` draws one fixed stage per instance outside the chats, never moved in the DOM, so nothing
 reparents an opaque frame or replaces its bridge. A stage follows its App's page, then its place
-under its tool row (`app-page:<id>`, `app-inline:<id>` slots), frame by frame, including while panes scroll, and
-springs between these places (`lib/spring.ts`). It clips itself to the containers that scroll its slot and to the band of
-the pane's pill and its composer (`data-app-cover`, `lib/app-occlusion.ts`), which also keeps pointer events off what is
-hidden; text fades out under the same chrome through a mask on the transcript. An App
+under its tool row (`app-page:<id>`, `app-inline:<id>` slots), frame by frame, including while chats scroll, and
+springs between these places (`lib/spring.ts`). It clips itself to the containers that scroll its slot, to its chat's
+bar and composer (`data-app-cover` inside the chat's `data-app-scope`) and to the thread panel lying over a channel
+(`data-app-overlay`, `lib/app-occlusion.ts`), which also keeps pointer events off what is hidden; text fades out under the same chrome through a mask on the transcript. An App
 loads when its place comes on screen; beyond six instances the least recently seen unloads to a stub
 (`lib/app-residency.ts`), while one on screen never does. The advertised modes are inline and fullscreen: fullscreen is
-the App's page filling the workspace with its conversation docked beside it (`WorkspaceState.docked`, the device's
-`dock` share and fold; `dockedDocument` in `lib/trellis-layout.ts`), and on a phone the page fills the screen with the
-conversation in a bottom drawer (`ChatSheet` in `workspace-surface.tsx`) that rests at half the screen or all of it and
-keeps the composer on screen at both; either way the conversation's own pane host
-moves there (ADR 0021). In its transcript the host's bar above an App opens its page or closes it; on its page the
-pane's pill menu brings it back, goes full screen with the chat or closes it. Agent apps are listed in the sidebar's
-Apps group and on the Apps page (`/apps`, `/apps/<name>`: `components/apps-page.tsx`, `components/app-manage.tsx`). Grant cards, link offers and context sharing remain
+the App's page, `/a/<id>`, the main column under a bar with "Back to #channel". In its transcript the host's bar above
+an App opens its page or closes it; on its page the bar's menu brings it back in the conversation or closes it. Agent apps are listed in the sidebar's
+Apps section and on the Apps page (`/apps`, `/apps/<name>`: `components/apps-page.tsx`, `components/app-manage.tsx`). Grant cards, link offers and context sharing remain
 host-drawn, per App.
 
 The App learns the host context (`lib/host-context.ts`): theme, our tokens as MCP Apps style variables, device,
 locale and time zone, its display mode, surface, the modes on offer, and its measured box. The host re-sends it when these change.
-On its page the App fills the pane; in its transcript its own height request is bounded (160px to 70% of the window).
+On its page the App fills the main column; in its transcript its own height request is bounded (160px to 70% of the
+window).
 
 Two more requests are drawn by the host, where the App cannot reach (`lib/app-context.ts`). A link the App asks to
 open (https only, no credentials) becomes an offer with a real anchor, so only the owner's click opens it. Context

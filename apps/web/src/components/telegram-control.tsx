@@ -64,7 +64,7 @@ export function TelegramControl({
           Telegram
         </span>
         <span className="grant-about">
-          Messages to your bot come into Main, and the answers go back to Telegram.
+          Messages to your bot come into #Personal, and the answers go back to Telegram.
           {here && (
             <>
               {' '}

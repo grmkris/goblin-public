@@ -41,8 +41,8 @@ export function Rail() {
         <GoblinMark />
       </Link>
       <Link
-        to="/c/$conversationId"
-        params={{ conversationId: PRIMARY_CHAT }}
+        to="/c/$chatId"
+        params={{ chatId: PRIMARY_CHAT }}
         className="rail-item"
         aria-current={current(atHome(path))}
       >

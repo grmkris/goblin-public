@@ -16,8 +16,8 @@ const decodeApp = Schema.decodeUnknownSync(AppView)
 
 type WorkspaceFeed = WorkspaceState & {
   readonly error: string
-  /** A thread branched `from` a message, or an empty one; undefined when that failed (see `error`). */
-  readonly create: (from?: CreateConversation['from']) => Promise<ConversationView | undefined>
+  /** A thread branched `from` a message, or an empty one of `topic`; undefined when that failed (see `error`). */
+  readonly create: (from?: CreateConversation['from'], topic?: number) => Promise<ConversationView | undefined>
   readonly update: (id: string, change: UpdateConversation) => Promise<void>
   /** The owner has seen the conversation's newest reply: it shows read at once, and the server keeps the mark. */
   readonly markRead: (id: string) => void
@@ -110,9 +110,13 @@ export function WorkspaceFeedProvider({
       },
       reopenApp: async (id) =>
         showApp(decodeApp(await request(`/api/apps/${id}`, { method: 'PATCH', body: { closed: false } }))),
-      create: async (from) => {
+      create: async (from, topic) => {
         try {
-          const view = decodeView(await request('/api/conversations', { body: from === undefined ? {} : { from } }))
+          const body = {
+            ...(from !== undefined && { from }),
+            ...(from === undefined && topic !== undefined && { topic }),
+          }
+          const view = decodeView(await request('/api/conversations', { body }))
           show(view)
           return view
         } catch (failure) {

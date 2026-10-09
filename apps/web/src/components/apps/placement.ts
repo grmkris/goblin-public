@@ -1,49 +1,26 @@
-// Where an App is shown and how it moves (ADR 0020): its page beside its transcript, back, filling the workspace from
-// its page with its conversation docked beside it (ADR 0021); and what an App asking for a display mode gets. Used by
-// its stage's bar and its page's pill.
+// Where an App is shown and how it moves (ADR 0020): in its transcript, or as its page (`/a/<id>`, the main column),
+// and back; and what an App asking for a display mode gets. Used by its stage's bar and its page's bar.
 import type { McpUiDisplayMode } from '@modelcontextprotocol/ext-apps/app-bridge'
 import type { AppView } from '@goblin/contracts'
 import { useNavigation } from '../../lib/navigation.ts'
-import { appKey, conversationKey } from '../../lib/workspace.ts'
-import { useWorkspace } from '../workspace.tsx'
-import { useAppHost } from './host.tsx'
 
-/** Where an App is shown and how it moves: to its page beside its transcript, back, filling the workspace, or not. */
+/** Where an App is shown and how it moves: to its page, or back in its transcript. */
 export function useAppPlacement(app: AppView) {
-  const workspace = useWorkspace()
   const navigation = useNavigation()
-  const host = useAppHost()
-  const { id, conversation } = app
-  const key = appKey(id)
+  const { id } = app
   const paged = navigation.isAppPage(id)
-  const filled = workspace.state.maximized === key
-  const page = () => {
-    const near = host.element(`app-inline:${id}`)?.closest<HTMLElement>('[data-workspace-item]')?.dataset.workspaceItem
-    navigation.openApp(id, near)
-  }
-  /** Back in its transcript: the page closes, or, as the last pane, shows the App's conversation in its place. */
+  const page = () => navigation.openApp(id)
+  /** Back in its transcript: the chat it belongs to opens in place of its page. */
   const inline = () => navigation.closeAppPage(id)
-  const docked = conversationKey(conversation)
-  /** Fills the workspace with the App and its conversation docked beside it, or gives the panes back. */
-  const fill = () => workspace.maximize(filled ? undefined : key, docked)
-  /** What the App asked for: fullscreen is its page filling the workspace; inline is back in its transcript. */
+  /** What the App asked for: fullscreen is its page; inline is back in its transcript. */
   const request = (mode: McpUiDisplayMode): McpUiDisplayMode => {
     if (mode === 'fullscreen') {
       if (!paged) page()
-      workspace.maximize(key, docked)
       return 'fullscreen'
     }
     if (mode !== 'inline') return paged ? 'fullscreen' : 'inline'
     if (paged) inline()
     return 'inline'
   }
-  return {
-    paged,
-    surface: paged ? ('page' as const) : ('inline' as const),
-    filled,
-    page,
-    inline,
-    fill,
-    request,
-  }
+  return { paged, surface: paged ? ('page' as const) : ('inline' as const), page, inline, request }
 }

@@ -1,0 +1,169 @@
+import { type ReactNode, useEffect, useMemo, useRef } from 'react'
+import type { ConversationView } from '@goblin/contracts'
+import { GitBranchIcon, MessageCircleIcon } from 'lucide-react'
+import { type Part, partKey } from '../../lib/parts.ts'
+import { closedBy, entryOfPart, repliesLabel, rootParts, threadTitle } from '../../lib/threads.ts'
+import { Conversation } from '../conversation.tsx'
+import { ConversationDock } from '../conversation-dock.tsx'
+import { useModelChoice } from '../model-picker.tsx'
+import { useMarkRead, useOnScreen } from '../on-screen.ts'
+import { AppsIn } from '../parts/mcp-tool-part.tsx'
+import { PartView } from '../parts/registry.tsx'
+import { Cause } from '../parts/text-part.tsx'
+import { useConversation, useDockInsets, useTranscript } from '../use-conversation.ts'
+import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { useOpenChat } from './panel.tsx'
+import { useChatThreads } from './thread-summary.tsx'
+
+/** Where a chat shows: the channel's column, or the thread panel beside it. */
+export type ChatPlace = 'channel' | 'panel'
+
+/** The message a thread started from, under where it came from, then a rule with the count of its replies. */
+export function ThreadRoot({
+  parts,
+  replies,
+  from,
+}: {
+  readonly parts: readonly Part[]
+  readonly replies: number
+  readonly from: string
+}) {
+  return (
+    <div className="thread-root">
+      <p className="cause-line">
+        <GitBranchIcon aria-hidden />
+        <span>
+          From <b>{from}</b>
+        </span>
+      </p>
+      {parts.map((part) => (
+        <PartView key={partKey(part)} part={part} canSwitchModel={false} />
+      ))}
+      <p className="thread-rule">{repliesLabel(replies)}</p>
+    </div>
+  )
+}
+
+/** What writing in a chat does where it is not obvious: a subagent is steered; a channel is messaged by name. */
+function composerOf(view: ConversationView, place: ChatPlace) {
+  if (view.kind === 'subagent') return { placeholder: `Steer ${threadTitle(view)}…`, sendLabel: 'Steer' }
+  if (place === 'panel') return { placeholder: 'Reply…' }
+  return { placeholder: `Message #${threadTitle(view)}` }
+}
+
+/**
+ * What comes before a chat's own messages: in the panel, a thread's first message (where it came from), or a
+ * subagent's task as its spawner gave it; a channel starts with its own history.
+ */
+function useLead(view: ConversationView, parts: readonly Part[], earlier: boolean, hideRoot: boolean) {
+  const feed = useWorkspaceFeed()
+  const parent = threadTitle(feed.conversations.find((candidate) => candidate.id === view.parent))
+  const fork = view.forkEntry
+  const first = parts[0]
+  const task =
+    view.kind === 'subagent' && !earlier && first?.kind === 'user' && first.author === undefined ? first : undefined
+  const root = fork === undefined || hideRoot ? [] : rootParts(parts, fork)
+  const shown = useMemo(
+    () => parts.filter((part) => part !== task && (fork === undefined || entryOfPart(part.id) !== fork)),
+    [parts, fork, task],
+  )
+  let lead: ReactNode
+  if (task !== undefined)
+    lead = (
+      <Cause
+        icon={<MessageCircleIcon aria-hidden />}
+        line={
+          <>
+            Task from <b>{parent}</b>
+          </>
+        }
+        text={task.text}
+      />
+    )
+  else if (root.length > 0)
+    lead = (
+      <AppsIn conversation={undefined}>
+        <ThreadRoot parts={root} replies={view.replies} from={parent} />
+      </AppsIn>
+    )
+  return { lead, shown }
+}
+
+/**
+ * One chat, a channel or a thread: its header, its transcript (each message with the threads it started, or Reply in
+ * thread) and its dock. A thread in the panel starts at the message it came from and reads none of the history before
+ * it. The chat follows its stream while it is on screen and marks itself read once the owner has seen it.
+ */
+export function ChatView({
+  view,
+  place,
+  active,
+  header,
+  hideRoot = false,
+  banner,
+  onHeads,
+}: {
+  readonly view: ConversationView
+  readonly place: ChatPlace
+  /** The owner is working here now: its presence may move. */
+  readonly active: boolean
+  readonly header: ReactNode
+  /** The thread started as a head in its channel, which shows that message: no root above its first message. */
+  readonly hideRoot?: boolean
+  /** In place of the composer (an archived Topic's channel). */
+  readonly banner?: ReactNode
+  /** Told which threads this chat shows a head for, as they come. */
+  readonly onHeads?: (heads: ReadonlySet<string>) => void
+}) {
+  const { id } = view
+  const feed = useWorkspaceFeed()
+  const openChat = useOpenChat()
+  const section = useRef<HTMLElement>(null)
+  const dock = useRef<HTMLDivElement>(null)
+  useDockInsets(section, dock)
+  const visible = useOnScreen(section)
+  const reading = useOnScreen(section, 0.5)
+  const conversation = useConversation(id, visible)
+  const { projection, report } = conversation
+  const model = useModelChoice(report)
+  const fork = place === 'panel' ? view.forkEntry : undefined
+  const { parts, branchable, earlier } = useTranscript(id, projection, report, fork)
+  useMarkRead(view, reading)
+  const threads = useChatThreads(id, branchable)
+  const { lead, shown } = useLead(view, parts, earlier !== undefined, hideRoot)
+  const heads = useMemo(
+    () => parts.flatMap((part) => (part.kind === 'thread-head' ? [part.thread] : [])).join(' '),
+    [parts],
+  )
+  useEffect(() => onHeads?.(new Set(heads === '' ? [] : heads.split(' '))), [heads, onHeads])
+  return (
+    <section className="chat-view" data-place={place} aria-label={threadTitle(view)} ref={section} data-app-scope>
+      {header}
+      <AppsIn conversation={id}>
+        <Conversation
+          parts={shown}
+          canSwitchModel={(model.choice?.options.length ?? 0) > 1}
+          threads={threads}
+          onOpen={openChat}
+          loading={projection === undefined}
+          {...(earlier && { onEarlier: earlier })}
+          {...(lead !== undefined && { lead })}
+        />
+      </AppsIn>
+      {banner ?? (
+        <ConversationDock
+          ref={dock}
+          id={id}
+          conversation={conversation}
+          model={model}
+          parts={parts}
+          closed={closedBy(view)}
+          onReopen={() => void feed.update(id, { closed: false })}
+          notices={feed.error === '' ? [] : [feed.error]}
+          active={active}
+          {...composerOf(view, place)}
+        />
+      )}
+    </section>
+  )
+}

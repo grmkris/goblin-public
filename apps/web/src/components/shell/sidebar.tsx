@@ -78,8 +78,8 @@ function ChannelRow({ topic, current }: { readonly topic: TopicView; readonly cu
   return (
     <li>
       <Link
-        to="/c/$conversationId"
-        params={{ conversationId: topic.conversation }}
+        to="/c/$chatId"
+        params={{ chatId: topic.conversation }}
         className="sidebar-row"
         aria-current={current ? 'page' : undefined}
         data-unread={unread || undefined}
@@ -173,9 +173,6 @@ export function Sidebar() {
             ))}
           </Section>
         )}
-        <a className="sidebar-credit" href="https://github.com/DanFessler/trellis" target="_blank" rel="noreferrer">
-          Workspace layout powered by Trellis by Dan Fessler
-        </a>
       </div>
     </nav>
   )

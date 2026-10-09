@@ -52,9 +52,9 @@ function advance(live: Live, target: Rect, seconds: number, reduced: boolean): b
   return moving
 }
 
-/** The slot the stage follows, while it is laid out: one in a parked pane is not on screen anywhere. */
+/** The slot the stage follows, while it is laid out: one hidden with its chat (a channel under a phone's thread) is not. */
 function slotOf(element: HTMLElement | undefined): HTMLElement | undefined {
-  return element === undefined || element.closest('.workspace-parking') !== null ? undefined : element
+  return element === undefined || element.checkVisibility({ visibilityProperty: true }) ? element : undefined
 }
 
 function rectOf(element: HTMLElement): Rect {

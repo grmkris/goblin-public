@@ -40,7 +40,6 @@ const buttonVariants = cva(
         icon: `size-8 ${TOUCH_TARGET}`,
         'icon-xs': `size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3 ${TOUCH_TARGET}`,
         'icon-sm': `size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg ${TOUCH_TARGET}`,
-        'pane-icon': `h-6 w-7 min-h-0 flex-none rounded-(--radius-pill) outline-offset-1 pointer-coarse:h-8.5 any-pointer-coarse:h-8.5 ${TOUCH_TARGET}`,
         'icon-lg': `size-9 ${TOUCH_TARGET}`,
       },
     },

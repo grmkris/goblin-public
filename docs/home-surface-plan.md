@@ -53,7 +53,7 @@ The following are decisions for this feature:
 The existing code already supplies most of the runtime pieces:
 
 - `Conversation` uses the patched MessageScroller, loads earlier history, starts at the end, and anchors owner turns so the latest turn is not flush with the bottom ([conversation.tsx](../apps/web/src/components/conversation.tsx#L24-L95)).
-- `ConversationPane` composes the transcript and the fixed `ConversationDock` ([conversation-pane.tsx](../apps/web/src/components/conversation-pane.tsx#L250-L320)). `useDockInsets` already reserves the dock's height in the pane, so Home's last row can clear it.
+- `ConversationPane` composes the transcript and the fixed `ConversationDock` (then `conversation-pane.tsx`; since ADR 0036 [chat-view.tsx](../apps/web/src/components/shell/chat-view.tsx)). `useDockInsets` already reserves the dock's height in the pane, so Home's last row can clear it.
 - `ConversationDock` owns the composer, interaction cards, App context chips, presence and usage state ([conversation-dock.tsx](../apps/web/src/components/conversation-dock.tsx#L100-L183)).
 - `TurnMap` on the transcript's right edge lists the owner's turns and jumps between them ([turn-map.tsx](../apps/web/src/components/turn-map.tsx)); Home becomes its last mark.
 - `AppHost` keeps one loaded instance per App, with a soft cap and lazy residency ([host.tsx](../apps/web/src/components/apps/host.tsx#L30-L72)).
@@ -63,7 +63,7 @@ The existing code already supplies most of the runtime pieces:
 - `AppView` identifies an App and its source; `HomeLayout` holds its separate placement metadata ([contracts](../packages/contracts/src/index.ts)).
 - App erase and rehome live in [agent-apps/erase.ts](../apps/runtime/src/agent-apps/erase.ts) and [manage.ts](../apps/runtime/src/agent-apps/manage.ts); deleting an App must drop its tile in the same operation.
 
-The root workspace route currently restores the device’s pane arrangement; it is not a dedicated dashboard ([`_workspace.tsx`](../apps/web/src/routes/_workspace.tsx#L1-L17)).
+The root workspace route currently restores the device’s pane arrangement; it is not a dedicated dashboard (then `_workspace.tsx`; since ADR 0036 `/` opens the last channel, [`index.tsx`](../apps/web/src/routes/index.tsx)).
 
 ## 4. Target interaction
 

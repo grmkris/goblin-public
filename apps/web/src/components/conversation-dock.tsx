@@ -47,7 +47,7 @@ export function useSendWithAppContext(
 /** Why a conversation takes no message: the owner closed it, or, for a subagent, its job was done. */
 function ClosedNotice({ by, onReopen }: { readonly by: 'owner' | 'done'; readonly onReopen: () => void }) {
   return (
-    <div className="pane-closed" role="status">
+    <div className="chat-closed" role="status">
       <span>
         {by === 'done'
           ? 'Its job is done, so it closed. Its spawner can send it more; reopen it to write to it yourself.'

@@ -12,10 +12,10 @@ const LIVE: readonly RoutineRunView['state'][] = ['admitted', 'running', 'waitin
 const FINISHED: readonly RoutineRunView['state'][] = ['completed', 'failed', 'stopped']
 const when = (at: number) => new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
-/** Whether a finished run's report reached Main, and Telegram when it was asked to. */
+/** Whether a finished run's report reached its channel, and Telegram when it was asked to. */
 function reportsOf(run: RoutineRunView): string | undefined {
   if (!FINISHED.includes(run.state)) return undefined
-  const main = run.reportAcceptedAt === null ? 'Report to Main pending' : 'Reported to Main'
+  const main = run.reportAcceptedAt === null ? 'Report pending' : 'Reported'
   const telegram = telegramReport(run.notificationState)
   return telegram === undefined ? main : `${main} · ${telegram}`
 }
@@ -39,7 +39,7 @@ function RunRow({
           {when(run.firedAt)}
         </time>
         {run.sessionId && (
-          <Link className="run-link" to="/c/$conversationId" params={{ conversationId: run.sessionId }}>
+          <Link className="run-link" to="/c/$chatId" params={{ chatId: run.sessionId }}>
             Open
           </Link>
         )}

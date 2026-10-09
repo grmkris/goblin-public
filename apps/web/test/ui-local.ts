@@ -45,53 +45,6 @@ async function fields(browser: Browser, origin: string, label: string, options: 
   await page.close()
 }
 
-async function keyboard(browser: Browser, origin: string) {
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
-  await page.addInitScript(() => {
-    const viewport = Object.assign(new EventTarget(), {
-      height: 844,
-      width: 390,
-      offsetTop: 0,
-      offsetLeft: 0,
-      scale: 1,
-    })
-    Object.defineProperty(window, 'visualViewport', { value: viewport })
-  })
-  page.on('pageerror', (error) => errors.push(`keyboard: ${error.message}`))
-  await page.goto(`${origin}?mode=keyboard`)
-  const pane = page.locator('.chat-pane')
-  await pane.waitFor()
-  await page.getByRole('textbox', { name: 'Message' }).focus()
-  await page.evaluate(() => {
-    if (!window.visualViewport) throw new Error('synthetic_viewport_missing')
-    Object.assign(window.visualViewport, { height: 524 })
-    window.visualViewport?.dispatchEvent(new Event('resize'))
-  })
-  await page.waitForFunction(() => document.querySelector('.chat-pane')?.getAttribute('data-snap') === '1')
-  const bounds = await page.locator('.chat-dock').evaluate((dock) => ({
-    bottom: dock.getBoundingClientRect().bottom,
-    fieldBottom: dock.querySelector('textarea')?.getBoundingClientRect().bottom ?? Infinity,
-    actionsBottom: dock.querySelector('[data-slot="composer-actions"]')?.getBoundingClientRect().bottom ?? Infinity,
-  }))
-  assert(bounds.bottom <= 525 && bounds.fieldBottom <= 525 && bounds.actionsBottom <= 525, JSON.stringify(bounds))
-  await page.evaluate(() => {
-    if (!window.visualViewport) throw new Error('synthetic_viewport_missing')
-    Object.assign(window.visualViewport, { height: 844 })
-    window.visualViewport?.dispatchEvent(new Event('resize'))
-  })
-  await page.waitForFunction(() => document.querySelector('.chat-pane')?.getAttribute('data-snap') === '0.55')
-  await page.evaluate(() => {
-    if (!window.visualViewport) throw new Error('synthetic_viewport_missing')
-    Object.assign(window.visualViewport, { height: 422, scale: 2 })
-    window.visualViewport?.dispatchEvent(new Event('resize'))
-  })
-  await page.waitForFunction(
-    () => getComputedStyle(document.querySelector('.chat-pane')!).getPropertyValue('--keyboard-inset') === '0px',
-  )
-  results.push({ name: 'keyboard.half-full-restore-zoom', detail: bounds })
-  await page.close()
-}
-
 async function attachments(browser: Browser, origin: string) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true })
   page.on('pageerror', (error) => errors.push(`attachments: ${error.message}`))
@@ -146,26 +99,24 @@ async function styles(browser: Browser, origin: string, label: string, options: 
   page.on('pageerror', (error) => errors.push(`styles/${label}: ${error.message}`))
   await page.goto(`${origin}?mode=styles`)
   await page.locator('[data-sample="tree"]').waitFor()
-  const samples = await page
-    .locator('[data-sample], .pane-pill button, .app-offer [data-slot="button"]')
-    .evaluateAll((items) =>
-      items.map((item) => {
-        const style = getComputedStyle(item)
-        return {
-          name: item.getAttribute('data-sample') ?? item.getAttribute('aria-label') ?? item.textContent,
-          font: style.fontSize,
-          height: style.height,
-          minHeight: style.minHeight,
-          width: style.width,
-          radius: style.borderRadius,
-          padding: style.padding,
-          color: style.color,
-          background: style.backgroundColor,
-          flex: style.flex,
-          transition: style.transitionProperty,
-        }
-      }),
-    )
+  const samples = await page.locator('[data-sample], .app-offer [data-slot="button"]').evaluateAll((items) =>
+    items.map((item) => {
+      const style = getComputedStyle(item)
+      return {
+        name: item.getAttribute('data-sample') ?? item.getAttribute('aria-label') ?? item.textContent,
+        font: style.fontSize,
+        height: style.height,
+        minHeight: style.minHeight,
+        width: style.width,
+        radius: style.borderRadius,
+        padding: style.padding,
+        color: style.color,
+        background: style.backgroundColor,
+        flex: style.flex,
+        transition: style.transitionProperty,
+      }
+    }),
+  )
   await page.screenshot({ path: path.join(out, `styles-${label}.png`) })
   const card = page.locator('[data-sample="interactive-card"]')
   await card.hover()
@@ -218,7 +169,6 @@ async function main() {
     await fields(browser, origin, 'tablet', { viewport: { width: 820, height: 1180 }, hasTouch: true }, true)
     await fields(browser, origin, 'desk', { viewport: { width: 1440, height: 900 } }, false)
     await fields(hybrid, origin, 'hybrid', { viewport: { width: 820, height: 1180 } }, true)
-    await keyboard(browser, origin)
     await attachments(browser, origin)
     await styles(browser, origin, 'desk', { viewport: { width: 1440, height: 900 } })
     await styles(browser, origin, 'phone', { viewport: { width: 390, height: 844 }, hasTouch: true })

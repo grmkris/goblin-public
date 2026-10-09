@@ -1,7 +1,8 @@
 # ADR 0019: Panes for everything
 
-Accepted 2026-10-05 with the owner. Supersedes ADR 0016's layout: the main stage, tabbed thread panes, thread and App
-sheets, `/t/:id`, `?thread=` and Reset layout. ADR 0016's Trellis license and credit terms carry over below.
+Accepted 2026-10-05 with the owner. Superseded 2026-10-09 by ADR 0036 (Slack-style shell): the panes, Trellis and its
+credit are gone. Kept for history. It superseded ADR 0016's layout: the main stage, tabbed thread panes, thread and
+App sheets, `/t/:id`, `?thread=` and Reset layout. ADR 0016's Trellis license and credit terms carried over below.
 
 **Every conversation is an item in a pane of its own.** Main, a thread, a subagent, a thread's unsent draft and the
 transcript's App are items (`c:<id>`, `d:<conversation>:<entry>` or `d:new`, `a:<id>`), and each is shown in exactly
