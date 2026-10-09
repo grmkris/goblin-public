@@ -35,7 +35,7 @@ const config = {
   gh: '/usr/bin/gh',
   port: 18983,
   origin: 'http://127.0.0.1:18983',
-  ownerOrigin: 'https://dev.goblin.surf',
+  ownerOrigins: ['https://dev.goblin.surf', 'https://goblin.surf'],
   runner: { kind: 'native' },
   adminKey: randomBytes(32).toString('hex'),
 }

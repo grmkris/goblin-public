@@ -17,7 +17,7 @@ const ConfigFile = Schema.Struct({
   gh: Schema.String,
   port: Schema.Number,
   origin: Schema.String,
-  ownerOrigin: Schema.String,
+  ownerOrigins: Schema.Array(Schema.String),
   adminKey: Schema.String,
   runner: Schema.optional(RunnerConfig),
   fallback: Schema.optional(RunnerConfig),
@@ -50,7 +50,7 @@ const coding = new Coding({
   state: path.join(config.state, 'sessions.json'),
   runner,
 })
-const oauth = new OAuth(config.origin, config.ownerOrigin, config.adminKey, path.join(config.state, 'oauth.json'))
+const oauth = new OAuth(config.origin, config.ownerOrigins, config.adminKey, path.join(config.state, 'oauth.json'))
 await oauth.restore()
 let inFlight = 0
 const server = Bun.serve({

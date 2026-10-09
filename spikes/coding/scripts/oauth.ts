@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
-import { chmod } from 'node:fs/promises'
+import { chmod, rename, writeFile } from 'node:fs/promises'
 import * as Schema from 'effect/Schema'
 import { digest } from './overlay.ts'
 
@@ -16,6 +16,7 @@ const Store = Schema.Struct({
   codes: Schema.Record(Schema.String, Code),
   tokens: Schema.Record(Schema.String, Schema.Number),
   refresh: Schema.Record(Schema.String, Refresh),
+  approvals: Schema.optional(Schema.Record(Schema.String, Schema.Number)),
 })
 const Registration = Schema.Struct({ redirect_uris: Schema.Array(Schema.String) })
 const opaque = (): string => randomBytes(32).toString('base64url')
@@ -28,7 +29,7 @@ export class OAuth {
   private queue: Promise<unknown> = Promise.resolve()
   constructor(
     readonly origin: string,
-    readonly ownerOrigin: string,
+    readonly ownerOrigins: readonly string[],
     readonly adminKey: string,
     readonly stateFile: string,
   ) {}
@@ -40,9 +41,8 @@ export class OAuth {
 
   private async save(): Promise<void> {
     const temporary = `${this.stateFile}.tmp`
-    await Bun.write(temporary, JSON.stringify(this.data))
+    await writeFile(temporary, JSON.stringify(this.data), { mode: 0o600 })
     await chmod(temporary, 0o600)
-    const { rename } = await import('node:fs/promises')
     await rename(temporary, this.stateFile)
   }
 
@@ -87,10 +87,7 @@ export class OAuth {
         code_challenge_methods_supported: ['S256'],
         scopes_supported: ['coding'],
       })
-    let work: (() => Promise<Response>) | undefined
-    if (url.pathname === '/register' && request.method === 'POST') work = () => this.register(request)
-    if (url.pathname === '/authorize' && request.method === 'GET') work = () => this.authorize(request, url)
-    if (url.pathname === '/token' && request.method === 'POST') work = () => this.token(request)
+    const work = this.dispatch(request, url)
     if (work) {
       const result = this.queue.then(work, work)
       this.queue = result.catch(() => undefined)
@@ -99,12 +96,21 @@ export class OAuth {
     return undefined
   }
 
+  private dispatch(request: Request, url: URL): (() => Promise<Response>) | undefined {
+    if (url.pathname === '/register' && request.method === 'POST') return () => this.register(request)
+    if (url.pathname === '/authorize' && ['GET', 'POST'].includes(request.method))
+      return () => this.authorize(request, url)
+    if (url.pathname === '/operator/approval-code' && request.method === 'POST') return () => this.mint(request)
+    if (url.pathname === '/token' && request.method === 'POST') return () => this.token(request)
+    return undefined
+  }
+
   private async register(request: Request): Promise<Response> {
     const input = Schema.decodeUnknownSync(Registration)(await request.json())
-    const redirect = `${this.ownerOrigin}/api/mcp/oauth/callback`
+    const redirect = input.redirect_uris[0] ?? ''
     if (
       input.redirect_uris.length !== 1 ||
-      input.redirect_uris[0] !== redirect ||
+      !this.ownerOrigins.some((origin) => redirect === `${origin}/api/mcp/oauth/callback`) ||
       Object.keys(this.data.clients).length >= 20
     )
       return response({ error: 'invalid_client_metadata' }, 400)
@@ -124,7 +130,6 @@ export class OAuth {
   }
 
   private async authorize(request: Request, url: URL): Promise<Response> {
-    if (!this.admin(request)) return response({ error: 'operator_authorization_required' }, 401)
     const params = url.searchParams
     const client = params.get('client_id') ?? ''
     const redirect = params.get('redirect_uri') ?? ''
@@ -137,6 +142,10 @@ export class OAuth {
       params.get('resource') !== `${this.origin}/mcp`
     )
       return response({ error: 'invalid_request' }, 400)
+    if (!this.admin(request)) {
+      const approval = await this.approve(request)
+      if (approval) return approval
+    }
     const code = opaque()
     this.data = {
       ...this.data,
@@ -148,6 +157,44 @@ export class OAuth {
     target.searchParams.set('state', params.get('state') ?? '')
     target.searchParams.set('iss', this.origin)
     return new Response(null, { status: 302, headers: { location: target.href, 'cache-control': 'no-store' } })
+  }
+
+  private async mint(request: Request): Promise<Response> {
+    if (!this.admin(request)) return response({ error: 'operator_authorization_required' }, 401)
+    const code = opaque()
+    const expires = Date.now() + 30 * 60_000
+    this.data = { ...this.data, approvals: { [digest(code)]: expires } }
+    await this.save()
+    return response({ code, expires })
+  }
+
+  private async approve(request: Request): Promise<Response | undefined> {
+    if (request.method === 'GET')
+      return new Response(
+        '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">' +
+          '<title>Approve coding connection</title><h1>Approve coding connection</h1>' +
+          '<form method="post"><label>One-time approval code <input name="approval_code" type="password" ' +
+          'required autocomplete="off" maxlength="100"></label><button>Connect</button></form></html>',
+        {
+          headers: {
+            'content-type': 'text/html; charset=utf-8',
+            'cache-control': 'no-store',
+            'referrer-policy': 'no-referrer',
+            'content-security-policy':
+              "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+          },
+        },
+      )
+    if (request.headers.get('origin') !== this.origin) return response({ error: 'invalid_origin' }, 403)
+    const form = new URLSearchParams(await request.text())
+    const key = digest(form.get('approval_code') ?? '')
+    const approvals = this.data.approvals ?? {}
+    if ((approvals[key] ?? 0) <= Date.now()) return response({ error: 'invalid_approval_code' }, 403)
+    this.data = {
+      ...this.data,
+      approvals: Object.fromEntries(Object.entries(approvals).filter(([entry]) => entry !== key)),
+    }
+    return undefined
   }
 
   private async token(request: Request): Promise<Response> {

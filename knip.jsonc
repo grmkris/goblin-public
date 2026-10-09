@@ -32,7 +32,7 @@
       "project": ["**/*.ts", "**/*.mts"],
     },
     "spikes/coding": {
-      "entry": ["scripts/server.ts!", "scripts/prepare.ts!"],
+      "entry": ["scripts/server.ts!", "scripts/prepare.ts!", "scripts/approval-code.ts!"],
       "project": ["scripts/**/*.ts", "test/**/*.ts"],
     },
     "spikes/coding-cf": {
