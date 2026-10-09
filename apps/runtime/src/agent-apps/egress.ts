@@ -69,12 +69,14 @@ async function bounded(response: Response, limit: number): Promise<string> {
   const chunks: Uint8Array[] = []
   let size = 0
   for (let read = await reader.read(); !read.done; read = await reader.read()) {
-    size += read.value.byteLength
+    const chunk: unknown = read.value
+    if (!(chunk instanceof Uint8Array)) throw new AppCodeError('fetch: the response body is not bytes')
+    size += chunk.byteLength
     if (size > limit) {
       await reader.cancel()
       throw new PayloadTooLarge({ limit })
     }
-    chunks.push(read.value)
+    chunks.push(chunk)
   }
   const whole = new Uint8Array(size)
   let at = 0

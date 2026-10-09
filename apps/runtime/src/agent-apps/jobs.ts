@@ -5,6 +5,7 @@ import { appAgentJobs } from '../storage/schema.ts'
 import { type Every, type Manifest, type Schedule, everyOf } from './manifest.ts'
 import { problemText } from './queue.ts'
 import type { AgentAppStore } from './store.ts'
+import { storedValue } from './stored.ts'
 
 const MINUTE = 60_000
 
@@ -31,6 +32,9 @@ export const JOB_LIMITS = {
   maxBackoff: 360 * MINUTE,
   busy: MINUTE,
 } as const
+
+/** A schedule's stored input for its action. */
+const readJobInput = storedValue('job input')
 
 /** The callback the agent object arms for a job. */
 export const JOB_CALLBACK = 'runAppJob'
@@ -178,7 +182,7 @@ export class AppJobs {
     if (!this.#deps.store.spend(app, 'job', 1, JOB_LIMITS.daily, now))
       throw new Conflict({ reason: `${app} ran ${String(JOB_LIMITS.daily)} jobs today already` })
     try {
-      await this.#deps.run(app, action, JSON.parse(row.input), `job:${app}:${action}:now:${String(now)}`)
+      await this.#deps.run(app, action, readJobInput(row.input), `job:${app}:${action}:now:${String(now)}`)
       this.#jobs.update(app, action, { lastAt: this.#deps.now(), lastStatus: 'ok', lastError: null })
     } catch (cause) {
       // expected: the run's failure is the schedule's last status, which the owner sees on the Apps page
@@ -244,7 +248,7 @@ export class AppJobs {
   async #run(row: JobRow, now: number): Promise<void> {
     this.#running += 1
     try {
-      const input: unknown = JSON.parse(row.input)
+      const input = readJobInput(row.input)
       await this.#deps.run(row.app, row.action, input, `job:${row.app}:${row.action}:${String(lastSlot(row, now))}`)
       const done = this.#deps.now()
       await this.#settle(row, { lastAt: done, lastStatus: 'ok', lastError: null, failures: 0 }, nextSlot(row, done))

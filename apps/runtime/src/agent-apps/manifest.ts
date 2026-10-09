@@ -2,7 +2,7 @@ import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { jsonBytes, mismatches, schemaProblems } from './json.ts'
 import { APP_NAME, MEMBER_NAME } from './names.ts'
-import { StoredDataInvalid } from './stored.ts'
+import { StoredDataInvalid, storedJson } from './stored.ts'
 
 /** The most actions and views one app declares, and the largest schema of one. */
 const MAX_MEMBERS = 12
@@ -74,14 +74,23 @@ export const Manifest = Schema.Struct({
 })
 export type Manifest = typeof Manifest.Type
 
+/** A manifest as `activate` stores it: one `readManifest` accepted, from before powers and schedules or after. */
+const readStoredManifest = storedJson(
+  Schema.Struct({
+    ...Manifest.fields,
+    egress: Schema.optionalKey(Manifest.fields.egress),
+    uses: Schema.optionalKey(Manifest.fields.uses),
+    schedules: Schema.optionalKey(Manifest.fields.schedules),
+  }),
+  'app manifest',
+)
+
 /** What a manifest stored before apps had powers and schedules reads as: none of either. */
 const EARLIER = { egress: [], uses: { tools: [], apps: [], llm: false, notify: false }, schedules: [] } as const
 
 /** A manifest as `activate` stored it; one kept before powers or schedules existed has none. */
 export function storedManifest(json: string): Manifest {
-  // SAFETY: only `activate` writes a manifest, and only one `readManifest` accepted (older ones lack later fields).
-  const stored = JSON.parse(json) as Omit<Manifest, keyof typeof EARLIER> & Partial<Manifest>
-  return { ...EARLIER, ...stored }
+  return { ...EARLIER, ...readStoredManifest(json) }
 }
 
 /** A power an app asks for (ADR 0021): a host to fetch from, an MCP tool, another app, model calls or notifications. */

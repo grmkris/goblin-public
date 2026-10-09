@@ -6,6 +6,7 @@ import { type Manifest, Power, readManifest, requestedPowers } from './manifest.
 import { APP_NAME } from './names.ts'
 import type { AppQueues } from './queue.ts'
 import type { AgentAppStore, AppViewCode } from './store.ts'
+import { readFiles, storedJson } from './stored.ts'
 
 /** The generated toolchain (`@goblin/app/toolchain`), loaded only while building. */
 export type Toolchain = {
@@ -36,6 +37,9 @@ export const Problem = Schema.Struct({
   message: Schema.String,
 })
 export type Problem = typeof Problem.Type
+
+/** A failed release's problems, as its build stored them. */
+export const readProblems = storedJson(Schema.Array(Problem), 'build problems')
 
 /** What `app_build` returns: the app made active, nothing changed, or the problems to fix (ADR 0021). */
 export const BuildResult = Schema.Union([
@@ -216,14 +220,14 @@ export class AppBuilder {
     const latest = store.releases(request.name, 1)[0]
     if (latest === undefined && request.files === undefined)
       throw new InvalidInput({ reason: 'a new app needs its files' })
-    const files = sources(latest === undefined ? {} : JSON.parse(latest.source), request)
+    const files = sources(latest === undefined ? {} : readFiles(latest.source), request)
     if (Array.isArray(files)) return { status: 'failed', app: request.name, problems: files }
     const toolchain = await this.#deps.toolchain()
     const release = await releaseId(files, toolchain.TOOLCHAIN_HASH)
     const prior = store.release(release)
     if (prior?.status === 'active') return { status: 'unchanged', app: request.name, release }
     if (prior?.status === 'failed')
-      return { status: 'failed', app: request.name, release, problems: JSON.parse(prior.diagnostics ?? '[]') }
+      return { status: 'failed', app: request.name, release, problems: readProblems(prior.diagnostics ?? '[]') }
     return { files, toolchain, release, home: app?.homeSession }
   }
 

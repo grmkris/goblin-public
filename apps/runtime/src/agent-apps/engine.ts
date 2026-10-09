@@ -7,7 +7,15 @@ import { nowMillis } from '../clock.ts'
 import type { RuntimeEnv } from '../env.ts'
 import { InvalidInput, NotFound } from '../http/errors.ts'
 import { runApplicationMigrations } from '../storage/migrations.ts'
-import { AppBuilder, type BuildCaller, type BuildRequest, type BuildResult, Problem, type Toolchain } from './build.ts'
+import {
+  AppBuilder,
+  type BuildCaller,
+  type BuildRequest,
+  type BuildResult,
+  Problem,
+  type Toolchain,
+  readProblems,
+} from './build.ts'
 import { AppDispatch, type CallRequest } from './dispatch.ts'
 import { AppFiles } from './files.ts'
 import { Isolates } from './isolates.ts'
@@ -20,6 +28,7 @@ import type { AppServices } from './ports.ts'
 import { AppPowers } from './powers.ts'
 import { AppCodeError, AppQueues, problemText } from './queue.ts'
 import { AgentAppStore, type UsageKind, isApproved } from './store.ts'
+import { readFiles } from './stored.ts'
 import { AppToolset } from './toolset.ts'
 
 export type AgentAppsDeps = {
@@ -385,7 +394,7 @@ export class AgentApps {
     const active = this.store.release(row.activeRelease)
     const releases = this.store.releases(app, 10)
     const latest = releases[0]
-    const source: Readonly<Record<string, string>> = JSON.parse(active?.source ?? '{}')
+    const source = readFiles(active?.source ?? '{}')
     const inspection: AppInspection = {
       app: {
         name: app,
@@ -397,7 +406,7 @@ export class AgentApps {
       },
       members: signatures(manifest),
       ...(latest?.status === 'failed' && {
-        lastBuildFailed: { release: latest.id, problems: JSON.parse(latest.diagnostics ?? '[]') },
+        lastBuildFailed: { release: latest.id, problems: readProblems(latest.diagnostics ?? '[]') },
       }),
       ...(include.includes('state') && { state: clip(JSON.stringify(state?.state ?? null), INSPECT_BYTES / 2) }),
       ...(include.includes('source') && { source }),

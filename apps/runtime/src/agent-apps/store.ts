@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, lt, notInArray } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
+import * as Schema from 'effect/Schema'
 import { Conflict, NotFound } from '../http/errors.ts'
 import {
   appAgentApps,
@@ -14,6 +15,12 @@ import {
   appAgentViews,
 } from '../storage/schema.ts'
 import { type Manifest, type Power, requestedPowers } from './manifest.ts'
+import { readFiles, storedJson, storedValue } from './stored.ts'
+
+const readLibs = storedJson(Schema.Array(Schema.String), 'view libraries')
+const readState = storedValue('app state')
+const readSnapshot = storedValue('app snapshot')
+const readReceipt = storedValue('app receipt')
 
 type Db = DrizzleSqliteDODatabase
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0]
@@ -102,20 +109,18 @@ export class AgentAppStore {
       .from(appAgentArtifacts)
       .where(and(eq(appAgentArtifacts.release, release), eq(appAgentArtifacts.kind, 'backend')))
       .get()
-    return row === undefined ? undefined : JSON.parse(row.content)
+    return row === undefined ? undefined : readFiles(row.content)
   }
 
   /** A release's view, when it has one. */
   view(release: string): AppViewCode | undefined {
     const row = this.#db.select().from(appAgentViews).where(eq(appAgentViews.release, release)).get()
-    return row === undefined ? undefined : { module: row.module, css: row.css, libs: JSON.parse(row.libs) }
+    return row === undefined ? undefined : { module: row.module, css: row.css, libs: readLibs(row.libs) }
   }
 
   state(app: string): StateRow | undefined {
     const row = this.#db.select().from(appAgentState).where(eq(appAgentState.app, app)).get()
-    return row === undefined
-      ? undefined
-      : { revision: row.revision, state: JSON.parse(row.state), release: row.release }
+    return row === undefined ? undefined : { revision: row.revision, state: readState(row.state), release: row.release }
   }
 
   /** The revision a committed operation wrote, when there is one. */
@@ -126,7 +131,7 @@ export class AgentAppStore {
       .where(eq(appAgentReceipts.op, op))
       .get()
     if (row === undefined) return undefined
-    const result: unknown = JSON.parse(row.result)
+    const result = readReceipt(row.result)
     const revision = typeof result === 'object' && result !== null && 'revision' in result ? result.revision : undefined
     return typeof revision === 'number' ? { revision } : undefined
   }
@@ -215,7 +220,7 @@ export class AgentAppStore {
       .where(eq(appAgentSnapshots.app, app))
       .orderBy(desc(appAgentSnapshots.id))
       .all()
-      .map((row) => ({ release: row.release, revision: row.revision, state: JSON.parse(row.state) }))
+      .map((row) => ({ release: row.release, revision: row.revision, state: readSnapshot(row.state) }))
   }
 
   event(app: string, kind: EventKind, detail: string, now: number): void {

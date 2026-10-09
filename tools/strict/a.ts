@@ -1,7 +1,10 @@
 /** Lane A's files that pass the strict rules (tools/strict/index.ts). Only lane A appends globs here. */
 export const paths: string[] = [
   'apps/runtime/src/agent-apps/api.ts',
+  'apps/runtime/src/agent-apps/build.ts',
   'apps/runtime/src/agent-apps/dispatch.ts',
+  'apps/runtime/src/agent-apps/egress.ts',
+  'apps/runtime/src/agent-apps/engine.ts',
   'apps/runtime/src/agent-apps/erase.ts',
   'apps/runtime/src/agent-apps/files.ts',
   'apps/runtime/src/agent-apps/isolates.ts',
@@ -14,6 +17,7 @@ export const paths: string[] = [
   'apps/runtime/src/agent-apps/powers.ts',
   'apps/runtime/src/agent-apps/script.ts',
   'apps/runtime/src/agent-apps/service.ts',
+  'apps/runtime/src/agent-apps/store.ts',
   'apps/runtime/src/agent-apps/stored.ts',
   'apps/runtime/src/agent-apps/toolset.ts',
   'apps/runtime/src/agent-apps/wake.ts',

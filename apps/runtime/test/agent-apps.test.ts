@@ -3,7 +3,7 @@ import { mismatches, plainJson, schemaProblems } from '../src/agent-apps/json.ts
 import { everyOf, readManifest, requestedPowers, storedManifest } from '../src/agent-apps/manifest.ts'
 import { backoff, lastSlot, nextSlot } from '../src/agent-apps/jobs.ts'
 import { AppQueues, problemText, refusalOf } from '../src/agent-apps/queue.ts'
-import { StoredDataInvalid } from '../src/agent-apps/stored.ts'
+import { StoredDataInvalid, readFiles, storedValue } from '../src/agent-apps/stored.ts'
 import { reconcileAppJobs } from '../src/agent-apps/wake.ts'
 import { InvalidInput } from '../src/http/errors.ts'
 
@@ -221,5 +221,16 @@ describe('the jobs reconcile on start (A1)', () => {
     const error = vi.spyOn(console, 'error')
     await reconcileAppJobs({ jobs: { reconcile: async () => undefined } })
     expect(error).not.toHaveBeenCalled()
+  })
+})
+
+describe('stored app data', () => {
+  it('reads back as written, and anything else is StoredDataInvalid naming the data, never its value', () => {
+    expect(readFiles('{"app.ts":"export default 1"}')).toEqual({ 'app.ts': 'export default 1' })
+    expect(storedValue('app state')('{"count":2}')).toEqual({ count: 2 })
+    for (const read of [() => readFiles('{"app.ts":1}'), () => readFiles('not json'), () => storedManifest('{}')]) {
+      expect(read).toThrow(StoredDataInvalid)
+    }
+    expect(() => readFiles('{"secret":7}')).toThrow(expect.objectContaining({ what: 'release files' }))
   })
 })
