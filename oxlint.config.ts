@@ -1,5 +1,10 @@
-import { defineConfig } from 'oxlint'
+import { defineConfig, type OxlintOverride } from 'oxlint'
+import { STRICT_PATHS, STRICT_REACT_PATHS, STRICT_REACT_RULES, STRICT_RULES } from './tools/strict/index.ts'
 import { agentIgnorePatterns } from './tools/vendored.ts'
+
+/** Where React runs, and the plugins its files are linted with. */
+const REACT_FILES = ['apps/web/**', 'packages/ui/**', 'packages/kit/**', 'packages/app/src/ui/**']
+const REACT_PLUGINS: OxlintOverride['plugins'] = ['typescript', 'unicorn', 'oxc', 'import', 'react']
 
 /**
  * Monorepo lint rules, all at error. Two repository plugins add what generic rules cannot know:
@@ -7,7 +12,9 @@ import { agentIgnorePatterns } from './tools/vendored.ts'
  *   modules (`bun`, `bun:*`, `@effect/platform-bun`, `cloudflare:*`, `node:*`, the `Bun` global) only where the file's
  *   runtime allows them. It replaces the per-directory Bun and `cloudflare:workers` bans.
  * - `goblin` (tools/oxlint/goblin.ts) enforces repository invariants from AGENTS.md.
- * Relaxations are targeted overrides, each with its reason (docs/agents/lint-quality.md).
+ * Relaxations are targeted overrides, each with its reason (docs/agents/lint-quality.md). The strict set
+ * (tools/strict/) applies to the files each lane has made pass it; a strict rule with no finding anywhere is on for
+ * every file.
  */
 export default defineConfig({
   ignorePatterns: [
@@ -87,6 +94,9 @@ export default defineConfig({
     'boundaries/no-runtime-global': 'error',
     'goblin/no-process-env': 'error',
     'goblin/require-disable-description': 'error',
+    // Strict rules (tools/strict/index.ts) that no file breaks any more.
+    'no-empty': 'error',
+    'prefer-promise-reject-errors': 'error',
   },
   overrides: [
     // Stack files declare the named Cloudflare resources; their physical names come from the stage (ADR 0002).
@@ -127,11 +137,12 @@ export default defineConfig({
         'shadcn/require-static-classes': 'off',
       },
     },
-    // The three TanStack apps and the myinbox UI are React: enable the react plugin (automatic JSX runtime).
+    // The web app, the shadcn components, the kit's drawn blocks and the agent app UI are React: enable the react
+    // plugin (automatic JSX runtime). Hooks follow their rules everywhere; exhaustive-deps is still strict-only.
     {
-      files: ['apps/web/**', 'packages/ui/**'],
-      plugins: ['typescript', 'unicorn', 'oxc', 'import', 'react'],
-      rules: { 'react/react-in-jsx-scope': 'off' },
+      files: REACT_FILES,
+      plugins: REACT_PLUGINS,
+      rules: { 'react/react-in-jsx-scope': 'off', 'react/rules-of-hooks': 'error' },
     },
     // `any` is banned in shipped code (src, app, entrypoints). Tests, fixtures and one-shot tooling (scripts, deploy)
     // poke at untyped JSON, provider responses and mocks, where `any` is the honest type.
@@ -156,5 +167,10 @@ export default defineConfig({
         'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
       },
     },
+    // The strict set, last so no relaxation above undoes it (docs/agents/lint-quality.md).
+    { files: [...STRICT_PATHS], rules: STRICT_RULES },
+    ...(STRICT_REACT_PATHS.length === 0
+      ? []
+      : [{ files: [...STRICT_REACT_PATHS], plugins: REACT_PLUGINS, rules: STRICT_REACT_RULES }]),
   ],
 })

@@ -9,4 +9,10 @@ import { reportFailure } from './report.ts'
 export const background =
   (where: string) =>
   <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<void, never, R> =>
-    self.pipe(reportFailure(where), Effect.ignoreCause, Effect.forkDetach, Effect.asVoid)
+    self.pipe(
+      reportFailure(where),
+      // expected: reportFailure just reported it, and nothing waits for this fiber's result
+      Effect.ignoreCause,
+      Effect.forkDetach,
+      Effect.asVoid,
+    )
