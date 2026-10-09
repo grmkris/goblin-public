@@ -19,7 +19,9 @@ describe('portable attachment draft', () => {
       return uploaded
     })
     await draft.add([source])
-    expect(draft.snapshot()).toMatchObject([{ id: 1, state: 'failed', reason: 'Connection lost. Try again.' }])
+    expect(draft.snapshot()).toMatchObject([
+      { id: 1, state: 'failed', reason: 'Could not upload example.txt. Try again.' },
+    ])
     await draft.retry(1)
     expect(draft.snapshot()).toEqual([{ id: 1, name: source.name, state: 'ready', file: uploaded }])
     expect(attempts).toBe(2)

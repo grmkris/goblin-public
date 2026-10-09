@@ -1,6 +1,6 @@
 import type { Attachment } from '@goblin/contracts'
-import { failureText } from './boundary.ts'
 import { uploadAttachment } from './files.ts'
+import { messageOf } from './query/app-error.ts'
 
 export type PendingAttachment =
   | { readonly id: number; readonly name: string; readonly state: 'uploading' }
@@ -67,7 +67,9 @@ export class AttachmentDraft {
     } catch (error) {
       this.#set(
         this.#pending.map((item) =>
-          item.id === id ? { id, name: file.name, state: 'failed', reason: failureText(error), source: file } : item,
+          item.id === id
+            ? { id, name: file.name, state: 'failed', reason: messageOf(error, `upload ${file.name}`), source: file }
+            : item,
         ),
       )
     }
