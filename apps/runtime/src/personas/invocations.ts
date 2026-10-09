@@ -126,14 +126,14 @@ export class PersonaInvocations<RunResult = unknown> {
     this.#emit(rows)
   }
 
-  /** Settles one invocation; a settled one stays as it is. */
+  /** Settles one invocation; a settled one stays as it is. Whether this call settled it. */
   settle(
     operationId: string,
     persona: number,
     state: 'answered' | 'failed' | 'stopped',
     now: number,
     answerEntry?: number,
-  ): void {
+  ): boolean {
     const rows = this.#db
       .update(appPersonaInvocations)
       .set({ state, settledAt: now, ...(answerEntry === undefined ? {} : { answerEntry }) })
@@ -147,6 +147,7 @@ export class PersonaInvocations<RunResult = unknown> {
       .returning()
       .all()
     this.#emit(rows)
+    return rows.length > 0
   }
 
   /** Stops every unsettled invocation in `chat`: the owner's Stop. */

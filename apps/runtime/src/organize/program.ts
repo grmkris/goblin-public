@@ -10,6 +10,7 @@ import { updatePersona } from '../personas/program.ts'
 import { Personas } from '../personas/service.ts'
 import { updateTopic } from '../topics/program.ts'
 import { Topics } from '../topics/service.ts'
+import { failedFlow, recordFlow } from './flows.ts'
 import { Receipts } from './service.ts'
 
 /** The recent receipts, newest first. */
@@ -35,8 +36,9 @@ type Plan =
  * anything changed the target since (its revision is no longer the one the change left), and an Undo is itself not
  * undone. Undoing a creation archives the Topic or Persona; undoing an archive restores it.
  */
-export const undoReceipt = (id: string) =>
-  Effect.gen(function* () {
+export const undoReceipt = (id: string) => {
+  const flow = { flow: 'organize_undo', via: 'app', actor: 'owner' } as const
+  return Effect.gen(function* () {
     const receipts = yield* Receipts
     const topics = yield* Topics
     const personas = yield* Personas
@@ -67,8 +69,10 @@ export const undoReceipt = (id: string) =>
     }
     const undone: OrganizeReceipt = yield* receipts.markUndone(id)
     if (undone.undoneAt === undefined) return yield* new InvalidInput({ reason: 'undo' })
+    yield* recordFlow({ ...flow, ...(isTopic ? { topic: target } : {}), status: 'ok' })
     return undone
-  })
+  }).pipe(Effect.tapError((error) => recordFlow({ ...flow, ...failedFlow(error) })))
+}
 
 /**
  * The change that restores a receipt's `before`. A snapshot that does not decode is refused as the synchronous decode

@@ -70,14 +70,14 @@ export class Invocations extends Context.Service<
     readonly of: (operationId: string) => Effect.Effect<readonly PersonaInvocationView[]>
     /** The Persona started working; only a pending invocation moves. */
     readonly running: (operationId: string, persona: number) => Effect.Effect<void>
-    /** Settles one invocation; a settled one stays as it is. */
+    /** Settles one invocation; a settled one stays as it is. Whether this call settled it. */
     readonly settle: (
       operationId: string,
       persona: number,
       state: 'answered' | 'failed' | 'stopped',
       now: number,
       answerEntry?: number,
-    ) => Effect.Effect<void>
+    ) => Effect.Effect<boolean>
     /** Stops every unsettled invocation in `chat` (the owner's Stop); answers how many it stopped. */
     readonly stopChat: (chat: string, now: number) => Effect.Effect<number>
   }

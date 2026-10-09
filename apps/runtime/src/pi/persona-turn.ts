@@ -21,6 +21,7 @@ import { Budget } from '../budget.ts'
 import { Capabilities } from '../capabilities/service.ts'
 import { Conversations } from '../chats/service.ts'
 import { Resident } from '../mcp/service.ts'
+import { recordFlow } from '../organize/flows.ts'
 import { Invocations } from '../personas/service.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { withContext } from './context-tail.ts'
@@ -80,6 +81,8 @@ type Input = {
   readonly previous: TaskId<null> | null
   readonly previousPersona: number | null
   readonly persona: FrozenPersona
+  /** How the owner asked: every Persona at once, or in sequence. Turns started before it was kept have none. */
+  readonly mode?: 'parallel' | 'sequence'
 }
 
 type State =
@@ -162,11 +165,31 @@ const failed = (message: string) => ({ status: 'terminal', outcome: { status: 'f
 /** The instance clock in epoch seconds, as the invocation rows and the budget keep time. */
 const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
 
-/** Settles an invocation row: answered (with its entry), failed or stopped. */
+/** How a Persona's answer flow ended: answered, failed, or stopped by the owner (a refusal of the work). */
+const ANSWER_STATUS = {
+  answered: { status: 'ok' },
+  failed: { status: 'error', errorType: 'failed' },
+  stopped: { status: 'refused', errorType: 'stopped' },
+} as const
+
+/**
+ * Settles an invocation row: answered (with its entry), failed or stopped. The call that settles it records the
+ * Persona's `persona_answer` flow, once; a settled row stays as it is and records nothing.
+ */
 const settle = (input: Input, state: 'answered' | 'failed' | 'stopped', entry?: number) =>
   Effect.gen(function* () {
     const now = yield* nowSeconds
-    yield* (yield* Invocations).settle(input.operationId, input.persona.id, state, now, entry)
+    const settled = yield* (yield* Invocations).settle(input.operationId, input.persona.id, state, now, entry)
+    if (!settled) return
+    yield* recordFlow({
+      flow: 'persona_answer',
+      via: 'system',
+      actor: 'persona',
+      chat: input.chat,
+      operationId: input.operationId,
+      ...(input.mode === undefined ? {} : { personaOrder: input.mode }),
+      ...ANSWER_STATUS[state],
+    })
   })
 
 /** What a Persona's fork starts with: the parent's switches, narrowed by the Persona's exclusions and no subagents. */
@@ -408,6 +431,7 @@ export function personaTurnExtension(run: RunProgram): PersonaTurnKit {
                 previous,
                 previousPersona: before,
                 persona,
+                mode: ask.order,
               },
               { ownership: { kind: 'conversation' }, background: true },
             ),

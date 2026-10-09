@@ -114,7 +114,7 @@ const InvocationsAdapter = Layer.effect(
         now: number,
         answerEntry?: number,
       ) {
-        yield* Effect.sync(() => invocations.settle(operationId, persona, state, now, answerEntry))
+        return yield* Effect.sync(() => invocations.settle(operationId, persona, state, now, answerEntry))
       }),
       stopChat: Effect.fn('Invocations.stopChat')(function* (chat: string, now: number) {
         return yield* Effect.sync(() => invocations.stopChat(chat, now))

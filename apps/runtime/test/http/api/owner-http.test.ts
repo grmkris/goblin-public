@@ -14,6 +14,7 @@ import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { DelegationLive } from '../../../src/layers/delegation.ts'
+import { FlowEvents } from '../../../src/observability/flows.ts'
 import { TopicsHandlers } from '../../../src/topics/api.ts'
 import { OrganizeReceipts } from '../../../src/organize/receipts.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
@@ -122,6 +123,7 @@ const fixture = (options: { readonly active?: boolean } = {}) => {
           Layer.succeed(ChatOperations, unread),
           Layer.succeed(Resident, resident),
           Layer.succeed(Entitlements, plans),
+          FlowEvents.noop,
         ),
       ),
     ),

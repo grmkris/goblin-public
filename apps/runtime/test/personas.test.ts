@@ -4,6 +4,7 @@ import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ChatOperations, Conversations } from '../src/chats/service.ts'
 import { DelegationLive } from '../src/layers/delegation.ts'
+import { FlowEvents } from '../src/observability/flows.ts'
 import { OrganizeReceipts } from '../src/organize/receipts.ts'
 import { undoReceipt } from '../src/organize/program.ts'
 import { addressedTo } from '../src/personas/ask.ts'
@@ -259,7 +260,7 @@ describe('what a Persona turn changes in its fork', () => {
 })
 
 /** The services the Undo programs read. */
-type Provided = Personas | Topics | Receipts | Conversations | ChatOperations
+type Provided = Personas | Topics | Receipts | Conversations | ChatOperations | FlowEvents
 const run = <A, E>(layer: Layer.Layer<Provided>, program: Effect.Effect<A, E, Provided>) =>
   Effect.runPromise(Effect.provide(program, layer))
 const fails = <A, E>(layer: Layer.Layer<Provided>, program: Effect.Effect<A, E, Provided>) =>
@@ -299,6 +300,7 @@ describe('organize receipts and Undo', () => {
       Layer.provide(DelegationLive, stores),
       Layer.succeed(Conversations, conversations),
       Layer.succeed(ChatOperations, unread),
+      FlowEvents.noop,
     )
     return { ...parts, layer }
   }

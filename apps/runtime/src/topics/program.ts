@@ -3,6 +3,7 @@ import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import { ChatOperations, Conversations } from '../chats/service.ts'
 import type { AppError } from '../http/errors.ts'
+import { failedFlow, recordFlow, viaOf } from '../organize/flows.ts'
 import type { NewReceipt } from '../organize/receipts.ts'
 import { Receipts } from '../organize/service.ts'
 import type { TopicActor } from './registry.ts'
@@ -20,6 +21,13 @@ export type Provenance = { readonly actor: TopicActor; readonly chat?: string; r
  */
 export const createTopic = (input: CreateTopic, provenance: Provenance | TopicActor, seed?: TopicSeedData) => {
   const { actor, chat } = typeof provenance === 'string' ? { actor: provenance, chat: undefined } : provenance
+  const flow = {
+    flow: 'topic_create',
+    via: viaOf(actor),
+    actor,
+    ...(chat === undefined ? {} : { chat }),
+    operationId: input.operationId,
+  } as const
   return Effect.gen(function* () {
     const topics = yield* Topics
     const receipts = yield* Receipts
@@ -36,8 +44,9 @@ export const createTopic = (input: CreateTopic, provenance: Provenance | TopicAc
         afterRevision: made.topic.revision,
         operationId: `topic.create:${input.operationId}`,
       })
+    yield* recordFlow({ ...flow, topic: made.topic.id, status: made.created ? 'ok' : 'replayed' })
     return made.topic
-  })
+  }).pipe(Effect.tapError((error) => recordFlow({ ...flow, ...failedFlow(error) })))
 }
 
 /**
@@ -46,8 +55,17 @@ export const createTopic = (input: CreateTopic, provenance: Provenance | TopicAc
  * a routine run in it. Every chat is stopped even when one fails, and an archive asked again stops them again, so a
  * failed request is retried by repeating it. Schedules are left as they are. Restoring starts nothing again.
  */
-export const updateTopic = (id: number, change: UpdateTopic, provenance: Provenance = { actor: 'owner' }) =>
-  Effect.gen(function* () {
+export const updateTopic = (id: number, change: UpdateTopic, provenance: Provenance = { actor: 'owner' }) => {
+  const { actor, chat, operationId } = provenance
+  const archive = {
+    flow: 'topic_archive',
+    via: viaOf(actor),
+    actor,
+    ...(chat === undefined ? {} : { chat }),
+    topic: id,
+    ...(operationId === undefined ? {} : { operationId }),
+  } as const
+  const program = Effect.gen(function* () {
     const topics = yield* Topics
     const receipts = yield* Receipts
     const { before, after } = yield* topics.update(id, change)
@@ -57,12 +75,22 @@ export const updateTopic = (id: number, change: UpdateTopic, provenance: Provena
     const operations = yield* ChatOperations
     const stops: Exit.Exit<boolean, AppError>[] = []
     // A run that archives its own Topic is not stopped from inside itself: it ends with its turn.
-    for (const thread of (yield* (yield* Conversations).openIn(id)).filter((open) => open !== provenance.chat))
+    for (const thread of (yield* (yield* Conversations).openIn(id)).filter((open) => open !== chat))
       stops.push(yield* Effect.exit(operations.stop(thread)))
     const failed = stops.find(Exit.isFailure)
     if (failed !== undefined) return yield* Effect.failCause(failed.cause)
+    // An archive asked again stops the chats again, as a replay of the first.
+    yield* recordFlow({
+      ...archive,
+      count: stops.length,
+      status: before.archivedAt === undefined ? 'ok' : 'replayed',
+    })
     return after
   })
+  return change.archived === true
+    ? program.pipe(Effect.tapError((error) => recordFlow({ ...archive, ...failedFlow(error) })))
+    : program
+}
 
 const snapshot = (topic: TopicView) => ({
   name: topic.name,

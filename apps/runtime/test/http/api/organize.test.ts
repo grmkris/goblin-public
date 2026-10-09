@@ -62,7 +62,7 @@ describe('the organize group', () => {
   })
 
   it("serves the probes' typed client: Undo of a Topic's creation archives it", async () => {
-    const { fetch, topics } = organizing()
+    const { fetch, topics, flows } = organizing()
     const agent = { fetch }
     const made = await callOwner(agent, (api) =>
       api.topics.create({ payload: { name: 'Errands', operationId: 'topic-1' } }),
@@ -74,5 +74,24 @@ describe('the organize group', () => {
     expect(topics.get(made.id).archivedAt).toBeTypeOf('number')
     const again = await callOwner(agent, (api) => Effect.flip(api.organize.undo({ params: { id: created?.id ?? '' } })))
     expect(again).toMatchObject({ _tag: 'Conflict', reason: 'undone' })
+    // Each step is one content-free flow event: the create, the archive the Undo made, the Undo, the refused repeat.
+    expect(flows).toEqual([
+      { flow: 'topic_create', via: 'app', actor: 'owner', operationId: 'topic-1', topic: made.id, status: 'ok' },
+      { flow: 'topic_archive', via: 'app', actor: 'owner', topic: made.id, count: 0, status: 'ok' },
+      { flow: 'organize_undo', via: 'app', actor: 'owner', topic: made.id, status: 'ok' },
+      { flow: 'organize_undo', via: 'app', actor: 'owner', status: 'refused', errorType: 'Conflict' },
+    ])
+  })
+
+  it('records a refused Topic create and a replayed one as flows', async () => {
+    const { fetch, flows } = organizing()
+    await fetch(json('POST', '/api/topics', { name: 'Garden', operationId: 'op-1' }))
+    await fetch(json('POST', '/api/topics', { name: 'Garden', operationId: 'op-1' }))
+    await fetch(json('POST', '/api/topics', { name: 'garden', operationId: 'op-2' }))
+    expect(flows.map(({ flow, operationId, status, errorType }) => [flow, operationId, status, errorType])).toEqual([
+      ['topic_create', 'op-1', 'ok', undefined],
+      ['topic_create', 'op-1', 'replayed', undefined],
+      ['topic_create', 'op-2', 'refused', 'Conflict'],
+    ])
   })
 })

@@ -13,12 +13,14 @@ import {
   section,
 } from '@earendil-works/pi-durable'
 import type { UserMessage } from '@earendil-works/pi-ai'
+import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { HelperExclusions, type HelperExclusion } from '@goblin/contracts'
 import { Capabilities } from '../capabilities/service.ts'
-import { Conversations } from '../chats/service.ts'
+import { Chats, Conversations } from '../chats/service.ts'
 import { Resident } from '../mcp/service.ts'
+import { recordFlow } from '../organize/flows.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { capabilityOffResult } from './capabilities.ts'
 import { BACKGROUND, conversationId } from './context.ts'
@@ -174,6 +176,20 @@ async function admit(run: RunProgram, agent: Subagent | undefined): Promise<'ope
   await run(Conversations.use((conversations) => conversations.update(session, { closed: false })))
   return 'reopened'
 }
+
+/** The `subagent_spawn` flow, in the spawner's chat: refused when the spawner already has a subagent of that name. */
+const spawned = (session: string, started: boolean, synthesize: boolean) =>
+  Effect.gen(function* () {
+    const chat = Option.getOrUndefined(yield* (yield* Chats).chatOf(session))
+    yield* recordFlow({
+      flow: 'subagent_spawn',
+      via: 'tool',
+      actor: 'agent',
+      ...(chat === undefined ? {} : { chat }),
+      synthesize,
+      ...(started ? { status: 'ok' } : { status: 'refused', errorType: 'exists' }),
+    })
+  })
 
 /**
  * Stop: its current work and everything its own subagents are doing, through every level. What was on its way to it
@@ -443,6 +459,9 @@ export function subagentsExtension(run: RunProgram, members: (self: Extension) =
       if (action === 'spawn') return 'started' as const
       return admitted === 'reopened' ? ('reopened' as const) : ('sent' as const)
     }, context)
+    if (action === 'spawn')
+      // expected: the subagent is started; a refusal (plan) only loses its flow line, and the bridge reports a fault.
+      await run(spawned(String(api.conversationId), outcome === 'started', synthesize)).catch(() => undefined)
     return done(name, outcome, (await api.snapshot(Subagents, api.conversationId, context))?.agents[name])
   }
 

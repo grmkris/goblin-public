@@ -22,6 +22,7 @@ import { type DelegateResultData, type HelperExclusion, HelperExclusions } from 
 import { Channel } from '../channel/service.ts'
 import { ChatOperations, Chats, Conversations } from '../chats/service.ts'
 import { Resident } from '../mcp/service.ts'
+import { recordFlow } from '../organize/flows.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 // The synthesized report needs the chat's admission lock around a Pi input: ChatOperations has no such call yet
 // (PATCH-REQUEST to lane C for `withChat`), so this one reads the legacy directory.
@@ -229,6 +230,71 @@ async function decide(tx: Tx, spawner: ConversationId, self: TaskId, input: Rela
 
 type ReportPhase = PhaseHandler<RelayInput, Extract<RelayState, { readonly phase: 'report' }>, RelayState, null, object>
 
+/** What a report phase is handed: the relay's record, its task runtime and the call context. */
+type ReportArgs = Parameters<ReportPhase>
+
+/** One report on its way to the spawner's chat: who reported what, and the request id that makes it once. */
+type Report = {
+  readonly relay: ReportArgs[0]
+  readonly chat: string
+  readonly requestId: string
+  readonly text: string
+  readonly failed: boolean
+}
+
+/**
+ * The report's flow: a passive Delegate result (`subagent_report`) or an input Goblin answers (`subagent_synthesize`).
+ * A phase replayed after a restart writes nothing twice (request ids) but may record its flow again.
+ */
+const reportFlow = ({ relay, chat, requestId, failed }: Report) =>
+  recordFlow({
+    flow: relay.input.synthesize === true ? 'subagent_synthesize' : 'subagent_report',
+    via: 'system',
+    actor: 'subagent',
+    chat,
+    operationId: requestId,
+    ...(relay.input.requestId === undefined ? {} : { parentOperation: relay.input.requestId }),
+    synthesize: relay.input.synthesize === true,
+    ...(failed ? { status: 'error', errorType: 'subagent_failed' } : { status: 'ok' }),
+  })
+
+/** The passive Delegate result: Goblin sees it at its next turn and does not answer it. */
+const writeResult = (report: Report) => {
+  const { relay, chat, requestId, text, failed } = report
+  const data = {
+    delegate: String(relay.input.conversationId),
+    name: relay.input.name,
+    status: failed ? 'failed' : 'done',
+    text: text.slice(0, RESULT_TEXT),
+  } satisfies DelegateResultData
+  const model = [
+    { role: 'user' as const, content: authoredContent(`subagent ${relay.input.name}`, text), timestamp: Date.now() },
+  ]
+  return Conversations.use((conversations) =>
+    conversations.writeEntry(chat, requestId, { kind: 'app.delegate_result', data, model }),
+  ).pipe(Effect.andThen(reportFlow(report)))
+}
+
+/** The synthesized report: an input to the spawner's current session, under its chat's admission lock. */
+async function submitInput(
+  run: RunProgram,
+  runtime: ReportArgs[1],
+  context: ReportArgs[2],
+  report: Report,
+): Promise<void> {
+  const { relay, chat, requestId, text } = report
+  const content = authoredContent(`subagent ${relay.input.name}`, text)
+  const primary = await run(Chats.use((chats) => Effect.succeed(chats.primary)))
+  const directory = await run(LegacyChats.useSync((legacy) => legacy))
+  await directory.passiveWrite(chat, async (session) => {
+    const spawner = await runtime.conversation(piConversationId(session), context)
+    if (chat === primary && relay.input.origin === 'spawner') await run(track(requestId))
+    await spawner?.submit({ type: 'input', content, whenBusy: 'followUp', requestId }, context)
+  })
+  // expected: the report is delivered; a refusal (plan) only loses its flow line, and the bridge reports a fault.
+  await run(reportFlow(report)).catch(() => undefined)
+}
+
 /**
  * The report reaches the spawner's chat as a passive Delegate result (spec section 5): Goblin sees it at its next turn
  * and does not answer it, unless the spawn asked for synthesis, when it is an input that starts or joins a turn.
@@ -237,39 +303,15 @@ const reportPhase =
   (run: RunProgram): ReportPhase =>
   async (relay, runtime, context) => {
     const { report, close, failed = false } = relay.state.checkpoint
-    const { name, conversationId, origin, synthesize = false } = relay.input
     if (report !== undefined) {
       await run(requireResident)
-      const parentChat = Option.getOrUndefined(
-        await run(Chats.use((chats) => chats.chatOf(String(runtime.conversationId)))),
-      )
-      if (parentChat === undefined) throw new ConversationMissing({ missing: 'spawner_chat' })
-      const requestId = `subagent-report:${relay.id}`
-      const content = authoredContent(`subagent ${name}`, report)
-      if (synthesize) {
-        const primary = await run(Chats.use((chats) => Effect.succeed(chats.primary)))
-        const directory = await run(LegacyChats.useSync((legacy) => legacy))
-        await directory.passiveWrite(parentChat, async (session) => {
-          const spawner = await runtime.conversation(piConversationId(session), context)
-          if (parentChat === primary && origin === 'spawner') await run(track(requestId))
-          await spawner?.submit({ type: 'input', content, whenBusy: 'followUp', requestId }, context)
-        })
-      } else {
-        const data = {
-          delegate: String(conversationId),
-          name,
-          status: failed ? 'failed' : 'done',
-          text: report.slice(0, RESULT_TEXT),
-        } satisfies DelegateResultData
-        const model = [{ role: 'user' as const, content, timestamp: Date.now() }]
-        await run(
-          Conversations.use((conversations) =>
-            conversations.writeEntry(parentChat, requestId, { kind: 'app.delegate_result', data, model }),
-          ),
-        )
-      }
+      const chat = Option.getOrUndefined(await run(Chats.use((chats) => chats.chatOf(String(runtime.conversationId)))))
+      if (chat === undefined) throw new ConversationMissing({ missing: 'spawner_chat' })
+      const delivery = { relay, chat, requestId: `subagent-report:${relay.id}`, text: report, failed }
+      if (relay.input.synthesize === true) await submitInput(run, runtime, context, delivery)
+      else await run(writeResult(delivery))
     }
-    if (close) await run(closeAsDone(String(conversationId)))
+    if (close) await run(closeAsDone(String(relay.input.conversationId)))
     await runtime.commit(() => ({ status: 'terminal', outcome: { status: 'completed', result: null } }), context)
   }
 

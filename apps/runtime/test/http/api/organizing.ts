@@ -6,6 +6,7 @@ import {
   TopicsGroup,
   ownerApiOf,
 } from '@goblin/contracts/api'
+import type { FlowEvent } from '@goblin/contracts/telemetry'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
@@ -25,6 +26,7 @@ import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { DelegationLive } from '../../../src/layers/delegation.ts'
 import { McpConnections, Resident } from '../../../src/mcp/service.ts'
+import { FlowEvents } from '../../../src/observability/flows.ts'
 import { OrganizeHandlers } from '../../../src/organize/api.ts'
 import { PersonasHandlers } from '../../../src/personas/api.ts'
 import { OrganizeReceipts } from '../../../src/organize/receipts.ts'
@@ -133,6 +135,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
     enable: unused,
     require: () => Effect.void,
   })
+  const flows: FlowEvent[] = []
   const stores = Layer.mergeAll(
     Layer.succeed(Legacy.Topics, topics),
     Layer.succeed(Legacy.Personas, personas),
@@ -153,6 +156,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
           Layer.succeed(Resident, authority),
           Layer.succeed(Legacy.Resident, resident),
           Layer.succeed(Entitlements, plans),
+          FlowEvents.layerWith((event) => Effect.sync(() => void flows.push(event))),
         ),
       ),
     ),
@@ -162,7 +166,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
   /** The agent's answer, or a failure if the server passed the request on. */
   const fetch = async (request: Request) =>
     Option.getOrThrowWith(await handle(request), () => new Error(`not an API route: ${request.url}`))
-  return { fetch, resident, topics, personas, receipts, home }
+  return { fetch, resident, topics, personas, receipts, home, flows }
 }
 
 /** A JSON request to the agent's owner API. */
