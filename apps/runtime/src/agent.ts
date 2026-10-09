@@ -12,14 +12,16 @@ import * as Exit from 'effect/Exit'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import type { AgentRpcMethods, RuntimeEnv } from './env.ts'
 import { type AppError, toAppError } from './http/errors.ts'
-import { type ChannelPorts, type TelegramChannel, logChannelFailure } from './channel/channel.ts'
-import { onChannel } from './channel/turns.ts'
+import { ChannelWakes } from './channel/wake.ts'
 import { type Doorbell } from './channel/doorbell.ts'
 import { type RpcResult, encodeExit } from './http/rpc.ts'
 import { FileStore } from './files/store.ts'
 import { filesExtension } from './pi/files.ts'
 import { type AgentApps, agentApps } from './agent-apps/engine.ts'
-import { JOB_CALLBACK, type JobSchedules, type JobSlot, logAppJobs } from './agent-apps/jobs.ts'
+import { JOB_CALLBACK, type JobSchedules, type JobSlot } from './agent-apps/jobs.ts'
+import { reconcileAppJobs, runAppJob } from './agent-apps/wake.ts'
+import { mcpEventsWake } from './mcp/wake.ts'
+import { routinesWake, runRoutine, runRoutineDeadline } from './routines/wake.ts'
 import { appsExtension, appExecutionExtension } from './pi/apps.ts'
 import { serversExtension } from './pi/servers.ts'
 import { agentRequest, chatSnapshot } from './agent-requests.ts'
@@ -106,9 +108,9 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
   readonly #telemetry: AgentTelemetry
   /** How the object runs its programs (runtime/bridge.ts). */
   readonly #bridge: Bridge
+  /** The Telegram channel alarms (channel/wake.ts). */
+  readonly #channel: ChannelWakes
   #runtime: Promise<Runtime> | undefined
-  /** The Telegram pull in progress: one at a time (channelPull). */
-  #pulling: Promise<void> = Promise.resolve()
   constructor(ctx: DurableObjectState, env: RuntimeEnv) {
     super(ctx, env)
     this.#bridge = makeBridge(() => this.#services(), { instrument })
@@ -145,6 +147,8 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
         wake: (at) => this.#scheduleWake('routinesWake', at),
       }),
     })
+    const again = (seconds: number) => this.schedule(seconds, 'channelReplies')
+    this.#channel = new ChannelWakes({ harness: this.harness, applied: this.#applied, run, again })
     this.lifecycle.use(this.harness)
   }
   /** The native schedules that run the agent's apps' jobs (ADR 0021). */
@@ -170,7 +174,7 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
     // Reconstruct lease and receipt recovery without opening Pi or waiting on outbound network calls.
     await this.#scheduleWake('mcpEventsWake', Date.now() + 1000)
     await this.#scheduleWake('routinesWake', Date.now() + 1000)
-    await this.#apps.jobs.reconcile().catch((error: unknown) => logAppJobs(error))
+    await reconcileAppJobs(this.#apps)
   }
 
   /** Tests inject account authority here; the deployed object always reads its own account in auth D1. */
@@ -234,23 +238,22 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
   mcpEventsWebhook(input: EventWebhook) {
     return this.#client(Events.use((events) => events.receive(input)))
   }
+  // The schedule callbacks: the Agents SDK calls them by name; each body lives in its area's wake.ts.
   async mcpEventsWake(): Promise<void> {
-    await this.#bridge
-      .run(Events.use((events) => events.maintain()))
-      .catch(() => this.#scheduleWake('mcpEventsWake', Date.now() + 60_000))
+    await mcpEventsWake(this.#bridge.run, (at) => this.#scheduleWake('mcpEventsWake', at))
   }
   async routinesWake(): Promise<void> {
-    await this.#routines.maintain().catch(() => this.#scheduleWake('routinesWake', Date.now() + 60_000))
+    await routinesWake(this.#routines, (at) => this.#scheduleWake('routinesWake', at))
   }
   async runRoutine(slot: RoutineSlot): Promise<void> {
-    await this.#routines.fire(slot)
+    await runRoutine(this.#routines, slot)
   }
   async runRoutineDeadline(input: { runId: string }): Promise<void> {
-    await this.#routines.deadline(input.runId)
+    await runRoutineDeadline(this.#routines, input)
   }
   /** An agent app's job is due (ADR 0021). */
   async runAppJob(slot: JobSlot): Promise<void> {
-    await this.#apps.jobs.fire(slot)
+    await runAppJob(this.#apps, slot)
   }
 
   /** An owner request: renew resident authority, then run the program. */
@@ -525,25 +528,11 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
     return this.#client(acceptDoorbell(doorbell, () => this.schedule(0, 'channelPull')))
   }
 
-  async #onChannel<T>(work: (channel: TelegramChannel, ports: ChannelPorts) => Promise<T>): Promise<T | undefined> {
-    return onChannel(this.harness, this.#applied, this.#bridge.run, work)
-  }
   async channelPull(): Promise<void> {
-    this.#pulling = this.#pulling
-      .then(() => this.#onChannel((channel, ports) => channel.pull(ports, nowSeconds())))
-      .then(() => undefined)
-      .catch((error: unknown) => logChannelFailure('pull', error))
-    await this.#pulling
+    await this.#channel.pull()
   }
-
   async channelReplies(): Promise<void> {
-    const again = await this.#onChannel(async (channel, ports) =>
-      (await channel.deliver(ports, nowSeconds())) ? 15 : undefined,
-    ).catch((error: unknown) => {
-      logChannelFailure('replies', error)
-      return 300
-    })
-    if (again !== undefined) await this.schedule(again, 'channelReplies')
+    await this.#channel.replies()
   }
   recentMessages(limit: number) {
     return this.#client(recentOwnerMessages(this.harness, limit))
