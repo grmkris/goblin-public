@@ -40,4 +40,7 @@ export const agentIgnorePatterns = (): string[] => [
   '.claude/skills/**',
   '.codex/**',
   '.grok/**',
+  // Vendored from grmkris/personal tools/agents-sync; generated from .mcp.json.
+  'scripts/agents-sync.ts',
+  '.cursor/mcp.json',
 ]

@@ -194,7 +194,16 @@ export const checkSkillLinks = (root: string): string[] => {
 // ---------------------------------------------------------------------------------------------------------------------
 // instruction files
 
-/** The root files: AGENTS.md stays short, and CLAUDE.md imports it. */
+/** CLAUDE.md is a symlink to its sibling AGENTS.md (infra/agents.md in grmkris/personal). */
+const linksToAgents = (root: string, file: string): boolean => {
+  try {
+    return lstatSync(path.join(root, file)).isSymbolicLink() && readlinkSync(path.join(root, file)) === 'AGENTS.md'
+  } catch {
+    return false
+  }
+}
+
+/** The root files: AGENTS.md stays short, and CLAUDE.md links to it. */
 const checkRootInstructions = (root: string, rootAgents: string): string[] => {
   const failures: string[] = []
   const lines = rootAgents.split('\n').length - 1
@@ -203,9 +212,9 @@ const checkRootInstructions = (root: string, rootAgents: string): string[] => {
       `AGENTS.md has ${lines} lines; keep it at ${MAX_ROOT_AGENTS_LINES} or fewer and move detail into docs/agents/.`,
     )
   }
-  if (!exists(root, 'CLAUDE.md') || read(root, 'CLAUDE.md').split('\n')[0] !== '@AGENTS.md') {
+  if (!linksToAgents(root, 'CLAUDE.md')) {
     failures.push(
-      'CLAUDE.md must start with the line `@AGENTS.md`: Claude Code reads AGENTS.md only through that import.',
+      'CLAUDE.md must be a symlink to AGENTS.md (Grok reads only CLAUDE.md and ignores `@AGENTS.md`). Run: bun scripts/agents-sync.ts',
     )
   }
   return failures
@@ -215,8 +224,10 @@ const checkRootInstructions = (root: string, rootAgents: string): string[] => {
 const checkNestedAgents = (root: string, file: string, rootLinks: ReadonlySet<string>): string[] => {
   const failures: string[] = []
   const dir = path.posix.dirname(file)
-  if (!exists(root, `${dir}/CLAUDE.md`) || read(root, `${dir}/CLAUDE.md`) !== '@AGENTS.md\n') {
-    failures.push(`${dir}/CLAUDE.md must contain exactly \`@AGENTS.md\` so Claude Code loads ${file}.`)
+  if (!linksToAgents(root, `${dir}/CLAUDE.md`)) {
+    failures.push(
+      `${dir}/CLAUDE.md must be a symlink to AGENTS.md so Claude Code and Grok load ${file}. Run: bun scripts/agents-sync.ts`,
+    )
   }
   if (!rootLinks.has(file)) {
     failures.push(
@@ -241,11 +252,11 @@ export const checkInstructions = (
       .filter((file) => file.endsWith('/CLAUDE.md') && !exists(root, `${path.posix.dirname(file)}/AGENTS.md`))
       .map(
         (file) =>
-          `${file} has no AGENTS.md next to it. Write the instructions in AGENTS.md; CLAUDE.md only imports it.`,
+          `${file} has no AGENTS.md next to it. Write the instructions in AGENTS.md; CLAUDE.md is only a symlink to it.`,
       ),
     ...workspaceDirs
       .filter((dir) => !exists(root, `${dir}/AGENTS.md`))
-      .map((dir) => `${dir} has no AGENTS.md. Add one (role, checks, test floor, landmines) and a CLAUDE.md shim.`),
+      .map((dir) => `${dir} has no AGENTS.md. Add one (role, checks, test floor, landmines) and a CLAUDE.md symlink.`),
   ]
 }
 

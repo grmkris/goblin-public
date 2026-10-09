@@ -13,7 +13,8 @@ coverage/
 *.swp
 *.swo
 .local/
-.codex/
+.codex/*
+!.codex/config.toml
 .aws/
 
 .tmp-bun/
