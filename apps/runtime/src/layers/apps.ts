@@ -5,7 +5,9 @@ import { AgentAppsLive } from '../agent-apps/live.ts'
 import type { AppEngine } from '../agent-apps/service.ts'
 import { type AppOrigin, AppRegistry, AppsInstance } from '../apps/registry.ts'
 import { Apps } from '../apps/service.ts'
+import { ChatsInstance } from '../chats/directory.ts'
 import { nowSeconds as clockSeconds } from '../clock.ts'
+import { ConversationsInstance } from '../conversations.ts'
 import { FilesLive } from '../files/live.ts'
 import type { Files } from '../files/service.ts'
 import { toAppError } from '../http/errors.ts'
@@ -13,7 +15,6 @@ import type { KeyedLock } from '../observability/lock.ts'
 import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
-import { Chats as ChatsInstance, Conversations as ConversationsInstance } from '../services.ts'
 
 /** A registry call in the service's error channel, mapped as the programs' `attempt` did. */
 const step = <A>(work: () => Promise<A>) => Effect.tryPromise({ try: work, catch: toAppError })

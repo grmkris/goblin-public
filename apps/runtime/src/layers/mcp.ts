@@ -10,6 +10,7 @@ import * as Option from 'effect/Option'
 import { CapabilityProfiles, type PiTools, ProfilesInstance } from '../capabilities/profiles.ts'
 import { Capabilities } from '../capabilities/service.ts'
 import { Channel } from '../channel/service.ts'
+import { ChatsInstance } from '../chats/directory.ts'
 import { nowMillis } from '../clock.ts'
 import { Forbidden, GrantDenied, ResidentInactive, toAppError } from '../http/errors.ts'
 import { type HeldCall, McpApprovalStore } from '../mcp/approvals.ts'
@@ -34,7 +35,6 @@ import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { enableResident, renewResident, residentStatus, revokeResident } from '../resident.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../runtime/input.ts'
-import { Chats } from '../services.ts'
 import { SqliteSkillState } from '../skills/store.ts'
 import { Skills } from '../skills/service.ts'
 import { mcpReporter } from '../telemetry/report.ts'
@@ -130,11 +130,11 @@ const retool = (harness: PiHarness) => async (session: string, tools: PiTools) =
 }
 
 /** Start step 6: each conversation's switches, the one profile store, over the chat directory. */
-export const ProfilesLive: Layer.Layer<ProfilesInstance, never, AgentInput | Db | Chats> = Layer.effect(
+export const ProfilesLive: Layer.Layer<ProfilesInstance, never, AgentInput | Db | ChatsInstance> = Layer.effect(
   ProfilesInstance,
   Effect.gen(function* () {
     const input = yield* AgentInput
-    return new CapabilityProfiles(yield* Db, input.subagentTools, retool(input.harness), yield* Chats)
+    return new CapabilityProfiles(yield* Db, input.subagentTools, retool(input.harness), yield* ChatsInstance)
   }),
 )
 

@@ -13,21 +13,88 @@ import type { EntryDraft, Submission } from '@earendil-works/pi-durable'
 import * as Clock from 'effect/Clock'
 import type { Budget } from '../budget.ts'
 import { makeChatOperations } from '../chats/operations.ts'
-import { type ChatDirectory, ChatReads, type ChatRow, registerChat } from '../chats/directory.ts'
+import { ChatDirectory, ChatReads, type ChatRow, ChatsInstance, registerChat } from '../chats/directory.ts'
+import { ChatMover, MovesInstance } from '../chats/mover.ts'
 import { epochSeconds, instanceCall } from '../chats/instance.ts'
 import { ChatOperations, Chats, Conversations, Moves, type RoutineReport, type ThreadAnchor } from '../chats/service.ts'
-import type { ConversationRegistry } from '../conversations.ts'
+import { ProfilesInstance } from '../capabilities/profiles.ts'
+import { nowSeconds } from '../clock.ts'
+import { ConversationRegistry, ConversationsInstance } from '../conversations.ts'
+import { MemoriesInstance } from '../memory/memory.ts'
+import { CheapModels } from '../memory/model.ts'
 import type { Models } from '../models.ts'
 import { type AppError, toAppError } from '../http/errors.ts'
 import { FlowEvents } from '../observability/flows.ts'
+import { writeLine } from '../observability/logger.ts'
 import { safeErrorType } from '../observability/report.ts'
 import { failedFlow } from '../organize/flows.ts'
 import { BACKGROUND } from '../pi/context.ts'
+import { TranscriptsInstance } from '../retrieval/index.ts'
 import { Db } from '../runtime/db.ts'
-import { Chats as LegacyChats, Conversations as LegacyConversations, Moves as LegacyMoves } from '../services.ts'
+import { AgentInput } from '../runtime/input.ts'
 import type { FoundationServices } from './core.ts'
 
-/** A synchronous call into the legacy instances or the stores, its throw a typed `AppError`. */
+/** Start step 4: the chat directory, every chat id and its current Pi session, made once. */
+export const ChatDirectoryLive: Layer.Layer<ChatsInstance, never, Db> = Layer.effect(
+  ChatsInstance,
+  Db.useSync((db) => new ChatDirectory(db)),
+)
+
+/** Start step 10: the conversation registry, made once; main is registered here. */
+export const ConversationRegistryLive: Layer.Layer<
+  ConversationsInstance,
+  never,
+  AgentInput | Db | ChatsInstance | MemoriesInstance | ProfilesInstance | CheapModels
+> = Layer.effect(
+  ConversationsInstance,
+  Effect.gen(function* () {
+    const input = yield* AgentInput
+    const cheap = yield* CheapModels
+    const kit = {
+      thread: input.thread,
+      recall: input.memory.recall,
+      memories: yield* MemoriesInstance,
+      namer: cheap('naming'),
+      capabilities: yield* ProfilesInstance,
+      chats: yield* ChatsInstance,
+    }
+    return new ConversationRegistry(yield* Db, input.harness, kit, nowSeconds())
+  }),
+)
+
+/**
+ * Start step 13: Move to thread, the one mover. A move a restart interrupted finishes once the services are up again
+ * (ADR 0034); it never holds up the start, so its reconcile runs on while the steps after this one are built.
+ */
+export const MoverLive: Layer.Layer<
+  MovesInstance,
+  never,
+  AgentInput | Db | ChatsInstance | ConversationsInstance | ProfilesInstance | MemoriesInstance | TranscriptsInstance
+> = Layer.effect(
+  MovesInstance,
+  Effect.gen(function* () {
+    const input = yield* AgentInput
+    const transcripts = yield* TranscriptsInstance
+    const moves = new ChatMover({
+      db: yield* Db,
+      harness: input.harness,
+      chats: yield* ChatsInstance,
+      conversations: yield* ConversationsInstance,
+      capabilities: yield* ProfilesInstance,
+      memories: yield* MemoriesInstance,
+      thread: input.thread,
+      recall: input.memory.recall,
+      reassign: (session, from, chat) => transcripts.reassign(session, from, chat),
+      ...input.moves,
+    })
+    moves.reconcile().catch((error: unknown) => {
+      writeLine('error', { event: 'failure', where: 'moves.reconcile', 'error.type': safeErrorType(error) })
+    })
+    return moves
+  }),
+)
+
+/** A synchronous call into the agent's instances or the stores, its throw a typed `AppError`. */
 const sync = <A>(run: () => A) => Effect.try({ try: run, catch: toAppError })
 
 /** The chat directory natively: reads over the agent's SQLite (`ChatReads` keeps no state) and the one row inserter. */
@@ -67,15 +134,15 @@ export const ChatsLive = Layer.effect(
 )
 
 /**
- * The chat operations natively (chats/operations.ts). The one legacy piece they read is the chat directory's lock,
+ * The chat operations natively (chats/operations.ts). The one other piece they read is the chat directory's lock,
  * which the mover, the registry's own writes and the Topic ports still take.
  */
 export const ChatOperationsLive = Layer.effect(
   ChatOperations,
-  LegacyChats.use((locks) => makeChatOperations({ locks })),
+  ChatsInstance.use((locks) => makeChatOperations({ locks })),
 )
 
-/** The registry's reads over the legacy `ConversationRegistry`. */
+/** The registry's reads over the agent's one `ConversationRegistry`. */
 const registryReads = (conversations: ConversationRegistry) => ({
   require: Effect.fn('Conversations.require')(function* (chat: string) {
     return yield* sync(() => conversations.require(chat))
@@ -116,7 +183,7 @@ const registryReads = (conversations: ConversationRegistry) => ({
   }),
 })
 
-/** The registry's new chats over the legacy `ConversationRegistry`: Threads, Topic Conversations and registrations. */
+/** The registry's new chats over the one `ConversationRegistry`: Threads, Topic Conversations and registrations. */
 const registryChats = (conversations: ConversationRegistry) => ({
   openConversation: Effect.withSpan(
     instanceCall(() => conversations.openConversation()),
@@ -154,7 +221,7 @@ const registryChats = (conversations: ConversationRegistry) => ({
 const threadFlow = (anchor: ThreadAnchor) => (anchor === 'latest' ? 'start' : anchor === 'empty' ? 'empty' : 'reply')
 
 /**
- * Thread operations (ADR 0034) over the legacy registry: the Thread made once per operation, its receipt in the chat it
+ * Thread operations (ADR 0034) over the one registry: the Thread made once per operation, its receipt in the chat it
  * came from (moved on to `settled` with the Thread it made), and its `start`, `reply` or `empty` flow. A create with an
  * operation id is that chat's thread operation (C4); one without stays the plain create it always was.
  */
@@ -201,7 +268,7 @@ const threadStarts = (
   return { startThread, create }
 }
 
-/** The registry's writes into existing chats over the legacy `ConversationRegistry`. */
+/** The registry's writes into existing chats over the one `ConversationRegistry`. */
 /**
  * A Close as its `close` flow (plan §4): the owner's from the app, or a subagent's own once its job is done; `count` is
  * how many chats it closed, and a Close that closed none (all were closed already) is a replay.
@@ -306,14 +373,14 @@ const placedOf = (submission: Submission) =>
   )
 
 /**
- * The registry over the legacy `ConversationRegistry`, reading the time from the Clock as the programs do. Its passive
+ * The registry over the one `ConversationRegistry` (start step 10), reading the time from the Clock as the programs do. Its passive
  * writes go through `ChatOperations.passiveWrite`: under the chat's lock, each with its receipt.
  */
 const ConversationsAdapter = Layer.effect(
   Conversations,
   Effect.gen(function* () {
-    const conversations = yield* LegacyConversations
-    const chats = yield* LegacyChats
+    const conversations = yield* ConversationsInstance
+    const chats = yield* ChatsInstance
     const operations = yield* ChatOperations
     const flows = yield* FlowEvents
     return Conversations.of({
@@ -335,13 +402,13 @@ const moveEnd = (receipt: MoveReceipt) =>
       } as const)
 
 /**
- * Move to thread over the legacy `ChatMover`: the move once per operation (`app_chat_moves`), with its `move` receipt
+ * Move to thread over the one `ChatMover` (start step 13): the move once per operation (`app_chat_moves`), with its `move` receipt
  * in the chat (settled with the Thread it made, or refused with the mover's reason) and its `move` flow.
  */
 const MovesAdapter = Layer.effect(
   Moves,
   Effect.gen(function* () {
-    const moves = yield* LegacyMoves
+    const moves = yield* MovesInstance
     const operations = yield* ChatOperations
     const flows = yield* FlowEvents
     return Moves.of({
@@ -369,12 +436,12 @@ const MovesAdapter = Layer.effect(
 )
 
 /**
- * Lane C's services (chats/service.ts). `Chats` and `ChatOperations` are native: SQLite reads and receipts, the chat
- * lock in `KeyedLock`, Pi through `PiSessions`, flows through `FlowEvents`; admission still holds the legacy
- * directory's lock inside its own while the mover, the registry's own writes and the Topic ports take it.
- * `Conversations` and `Moves` wrap the legacy start's registry and mover (layers/legacy.ts): stateful instances the
- * Topic ports, the Apps registry and the workspace feed share, built natively when the legacy start goes. Their
- * passive writes, receipts and flows already go through `ChatOperations` and `FlowEvents`.
+ * The conversation services after the start (chats/service.ts). `Chats` and `ChatOperations` are native: SQLite reads
+ * and receipts, the chat lock in `KeyedLock`, Pi through `PiSessions`, flows through `FlowEvents`; admission still
+ * holds the directory's own lock inside its own while the mover, the registry's own writes and the Topic ports take it.
+ * `Conversations` and `Moves` are served over the one registry and mover (start steps 10 and 13), which the Topic
+ * ports, the Apps registry and the workspace feed share; their passive writes, receipts and flows go through
+ * `ChatOperations` and `FlowEvents`.
  */
 export const ConversationLive: Layer.Layer<
   Chats | ChatOperations | Conversations | Moves,

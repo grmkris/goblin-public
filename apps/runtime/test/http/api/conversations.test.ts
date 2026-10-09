@@ -18,9 +18,9 @@ import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { scopeOf } from '../../../src/capabilities/profiles.ts'
 import { Capabilities } from '../../../src/capabilities/service.ts'
 import { ConversationsHandlers } from '../../../src/chats/api.ts'
-import { ChatDirectory } from '../../../src/chats/directory.ts'
-import type { ChatMover } from '../../../src/chats/mover.ts'
-import type { ConversationRegistry } from '../../../src/conversations.ts'
+import { ChatDirectory, ChatsInstance } from '../../../src/chats/directory.ts'
+import { type ChatMover, MovesInstance } from '../../../src/chats/mover.ts'
+import { type ConversationRegistry, ConversationsInstance } from '../../../src/conversations.ts'
 import { Files } from '../../../src/files/service.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
@@ -39,7 +39,6 @@ import { KeyedLock } from '../../../src/observability/lock.ts'
 import { PiSessions } from '../../../src/pi/sessions.ts'
 import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
-import * as Legacy from '../../../src/services.ts'
 import { Skills } from '../../../src/skills/service.ts'
 import type { ThreadAnchor } from '../../../src/chats/service.ts'
 import { appChatOperations, appConversations } from '../../../src/storage/schema.ts'
@@ -291,9 +290,9 @@ const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) =
     move: async (chat, input) => ({ ...input, chat, mode: 'settled', state: 'settled', thread: NEW }),
   })
   const legacy = Layer.mergeAll(
-    Layer.succeed(Legacy.Chats, new ChatDirectory(db)),
-    Layer.succeed(Legacy.Conversations, registry),
-    Layer.succeed(Legacy.Moves, mover),
+    Layer.succeed(ChatsInstance, new ChatDirectory(db)),
+    Layer.succeed(ConversationsInstance, registry),
+    Layer.succeed(MovesInstance, mover),
     Layer.succeed(Resident, resident.service),
     Layer.succeed(Entitlements, plans),
     Layer.succeed(AgentInput, instance(harness, calls)),

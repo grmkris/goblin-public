@@ -4,6 +4,7 @@ import { Entitlements, cachedPolicy } from '../billing/gates.ts'
 import { Budget, UsageStore, recordUse, utcDay } from '../budget.ts'
 import { creditRates } from '../budget-credits.ts'
 import { TelegramChannel } from '../channel/channel.ts'
+import { ChatsInstance } from '../chats/directory.ts'
 import { Channel } from '../channel/service.ts'
 import { BudgetExhausted, toAppError } from '../http/errors.ts'
 import { Cipher } from '../mcp/cipher.ts'
@@ -15,7 +16,6 @@ import { RoutineStore } from '../routines/store.ts'
 import { RoutineUsage as UsageProjection, installRoutineUsage } from '../routines/usage.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
-import { Chats as ChatsInstance } from '../services.ts'
 
 type Method<Args extends readonly unknown[], A> = (...args: Args) => A
 

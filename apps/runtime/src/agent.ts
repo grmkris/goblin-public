@@ -32,7 +32,7 @@ import { memoryExtensions } from './pi/memory.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { skillLearningExtension, skillsExtension } from './pi/skills.ts'
 import { AgentLive } from './layers/index.ts'
-import { type AgentServices } from './services.ts'
+import type { AgentServices } from './layers/index.ts'
 import { accountEntitlements, type EntitlementPolicy } from './billing/gates.ts'
 import { type Bridge, closeRuntime, makeBridge, openRuntime } from './runtime/bridge.ts'
 import type { AgentInputs } from './runtime/input.ts'
@@ -59,7 +59,7 @@ type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
 const instrument: Instrument = reported
 
 /**
- * The resident agent. Pi (through the native PiHarness) owns conversations; the services in `services.ts` own MCP
+ * The resident agent. Pi (through the native PiHarness) owns conversations; the services in `layers/` own MCP
  * connections, credentials, grants and resident authority. The owner reaches it through its typed API (`onRequest`);
  * the five RPC methods left are for the Worker's other callers (an inbound client, myagent, MCP Events, account
  * erasure), each one program.

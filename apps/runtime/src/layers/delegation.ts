@@ -3,6 +3,8 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { AppsInstance } from '../apps/registry.ts'
 import { ProfilesInstance } from '../capabilities/profiles.ts'
+import { ChatsInstance } from '../chats/directory.ts'
+import { ConversationsInstance } from '../conversations.ts'
 import { Home, HomeService } from '../home/service.ts'
 import { MemoriesInstance } from '../memory/memory.ts'
 import { modelOptions } from '../models.ts'
@@ -15,7 +17,6 @@ import { Invocations, Personas } from '../personas/service.ts'
 import { AgentInput } from '../runtime/input.ts'
 import type { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
-import * as Legacy from '../services.ts'
 import { topicPorts } from '../topics/ports.ts'
 import { TopicRegistry } from '../topics/registry.ts'
 import { Topics } from '../topics/service.ts'
@@ -66,12 +67,12 @@ export const delegationServices = (
 const stores: Effect.Effect<
   DelegationStores,
   never,
-  AgentInput | Db | Legacy.Conversations | Legacy.Chats | ProfilesInstance | MemoriesInstance | AppsInstance
+  AgentInput | Db | ConversationsInstance | ChatsInstance | ProfilesInstance | MemoriesInstance | AppsInstance
 > = Effect.gen(function* () {
   const input = yield* AgentInput
   const db = yield* Db
-  const conversations = yield* Legacy.Conversations
-  const chats = yield* Legacy.Chats
+  const conversations = yield* ConversationsInstance
+  const chats = yield* ChatsInstance
   const kit = { capabilities: yield* ProfilesInstance, chats, memories: yield* MemoriesInstance }
   const apps = yield* AppsInstance
   const invocations = new PersonaInvocations(db)
@@ -106,19 +107,19 @@ export const DelegationLive: Layer.Layer<
   | Db
   | KeyedLock
   | Changes
-  | Legacy.Conversations
-  | Legacy.Chats
+  | ConversationsInstance
+  | ChatsInstance
   | ProfilesInstance
   | MemoriesInstance
   | AppsInstance
 > = Layer.unwrap(Effect.map(stores, delegationServices))
 
 /** Start step 7: each helper conversation runs with the execution extensions the agent has now. */
-export const HelperExecutionLive: Layer.Layer<never, never, AgentInput | Db | Legacy.Chats> = Layer.effectDiscard(
+export const HelperExecutionLive: Layer.Layer<never, never, AgentInput | Db | ChatsInstance> = Layer.effectDiscard(
   Effect.gen(function* () {
     const { harness, helperExtensions } = yield* AgentInput
     const db = yield* Db
-    const chats = yield* Legacy.Chats
+    const chats = yield* ChatsInstance
     yield* Effect.promise(() => restoreHelperExecution(db, harness, helperExtensions, chats))
   }),
 )

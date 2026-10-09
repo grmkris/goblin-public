@@ -8,11 +8,11 @@ import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import * as TestClock from 'effect/testing/TestClock'
 import type { FlowEvent } from '@goblin/contracts/telemetry'
-import { ChatDirectory } from '../src/chats/directory.ts'
+import { ChatDirectory, ChatsInstance } from '../src/chats/directory.ts'
 import { settledWithin } from '../src/chats/instance.ts'
-import type { ChatMover } from '../src/chats/mover.ts'
+import { type ChatMover, MovesInstance } from '../src/chats/mover.ts'
 import { ChatOperations, Chats, Conversations, Moves } from '../src/chats/service.ts'
-import type { ConversationRegistry } from '../src/conversations.ts'
+import { type ConversationRegistry, ConversationsInstance } from '../src/conversations.ts'
 import type { FoundationServices } from '../src/layers/core.ts'
 import { ConversationLive } from '../src/layers/conversation.ts'
 import { Budget } from '../src/budget.ts'
@@ -23,7 +23,6 @@ import type { RoutineController } from '../src/routines/controller.ts'
 import { PiFailure, PiSessions } from '../src/pi/sessions.ts'
 import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
-import { Chats as LegacyChats, Conversations as LegacyConversations, Moves as LegacyMoves } from '../src/services.ts'
 import { appConversations } from '../src/storage/schema.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 
@@ -124,9 +123,9 @@ const services = (calls: Calls) => {
         Layer.succeed(Db, db as never),
         KeyedLock.layer,
         PiSessions.layer.pipe(Layer.provide(input)),
-        Layer.succeed(LegacyChats, directory),
-        Layer.succeed(LegacyConversations, registry),
-        Layer.succeed(LegacyMoves, moves),
+        Layer.succeed(ChatsInstance, directory),
+        Layer.succeed(ConversationsInstance, registry),
+        Layer.succeed(MovesInstance, moves),
         input,
         plans,
       ),

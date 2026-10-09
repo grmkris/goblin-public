@@ -3,6 +3,7 @@ import { PRIMARY_CHAT } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Brand from 'effect/Brand'
+import * as Context from 'effect/Context'
 import { InvalidInput, NotFound } from '../http/errors.ts'
 import { appConversations } from '../storage/schema.ts'
 import { appTopics } from '../storage/topics.ts'
@@ -179,3 +180,9 @@ export class ChatDirectory<RunResult = unknown> extends ChatReads<RunResult> {
     return this.withChat(chat, async () => run(this.session(chat)))
   }
 }
+
+/**
+ * The agent's one chat directory, made at the start (`layers/conversation.ts`): the conversations, Topics, Apps, the
+ * feed, memory and the channel read chats through it inside their own synchronous work. Programs use `Chats`.
+ */
+export class ChatsInstance extends Context.Service<ChatsInstance, ChatDirectory>()('goblin/chats/ChatsInstance') {}

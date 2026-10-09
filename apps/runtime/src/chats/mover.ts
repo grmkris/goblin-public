@@ -17,6 +17,7 @@ import { latestTurnStart, runInputEntries } from '../pi/turns.ts'
 import { writeLine } from '../observability/logger.ts'
 import { framesOf, safeErrorType } from '../observability/report.ts'
 import { Moves } from './service.ts'
+import * as Context from 'effect/Context'
 import { appMcpApprovals } from '../storage/mcp-approvals.ts'
 import type { ChatDirectory } from './directory.ts'
 import { type MoveRow, MoveStore, moveReceipt } from './moves.ts'
@@ -271,6 +272,9 @@ function reportMove(step: string, error: unknown): void {
     severity: 'Warn',
   })
 }
+
+/** The agent's one mover, made at the start (`layers/conversation.ts`). Programs use `Moves`. */
+export class MovesInstance extends Context.Service<MovesInstance, ChatMover>()('goblin/chats/MovesInstance') {}
 
 /** `POST /api/conversations/:id/move`: the owner's Move to thread, as its receipt (ADR 0034). */
 export const moveToThread = (chat: string, input: MoveToThread) => Moves.use((moves) => moves.move(chat, input))

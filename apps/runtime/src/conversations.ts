@@ -3,6 +3,7 @@ import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { Conversation, EntryDraft, EntryId, EntryRecord, Extension } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
+import * as Context from 'effect/Context'
 import type { CapabilityProfiles } from './capabilities/profiles.ts'
 import { writeHelperExclusions } from './capabilities/profiles.ts'
 import { type ChatDirectory, type ChatRow, registerChat, registerPrimary } from './chats/directory.ts'
@@ -651,3 +652,11 @@ export class ConversationRegistry {
     }
   }
 }
+
+/**
+ * The agent's one conversation registry, made at the start (`layers/conversation.ts`): Topics, the mover and the Apps
+ * registry reach it inside their own work. Programs use `Conversations`.
+ */
+export class ConversationsInstance extends Context.Service<ConversationsInstance, ConversationRegistry>()(
+  'goblin/conversations/ConversationsInstance',
+) {}

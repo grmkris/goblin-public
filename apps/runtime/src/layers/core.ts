@@ -15,6 +15,9 @@ import { flowRunEvent } from '../telemetry/events.ts'
 import type { AppsInstance } from '../apps/registry.ts'
 import type { ProfilesInstance } from '../capabilities/profiles.ts'
 import type { Channel } from '../channel/service.ts'
+import type { ChatsInstance } from '../chats/directory.ts'
+import type { MovesInstance } from '../chats/mover.ts'
+import type { ConversationsInstance } from '../conversations.ts'
 import type { Cipher } from '../mcp/cipher.ts'
 import type { McpHostInstance } from '../mcp/host.ts'
 import type { Events } from '../mcp/service.ts'
@@ -23,7 +26,6 @@ import type { CheapModels } from '../memory/model.ts'
 import type { TranscriptsInstance } from '../retrieval/index.ts'
 import type { RoutineUsage } from '../routines/service.ts'
 import type { Learner, Skills } from '../skills/service.ts'
-import type { LegacyServices } from './legacy.ts'
 
 /**
  * Conversation flows go to the agent's run ledger and its log line (ADR 0024), then, one point per operation with a
@@ -58,8 +60,11 @@ export const MigrationsLive: Layer.Layer<never, never, AgentInput> = Layer.effec
   AgentInput.useSync((input) => runApplicationMigrations(input.storage)),
 )
 
-/** What the start's steps outside the legacy start provide (layers/index.ts). */
+/** What the start's steps provide (layers/index.ts). */
 type StartServices =
+  | ChatsInstance
+  | ConversationsInstance
+  | MovesInstance
   | McpHostInstance
   | Cipher
   | ProfilesInstance
@@ -74,7 +79,7 @@ type StartServices =
   | AppsInstance
 
 /**
- * What a lane's layer may require: the core services and what the start made (the legacy steps' until each moves into
- * its lane). A lane layer also sees the lanes before it in `layers/index.ts`.
+ * What an area's layer after the start may require: the core services and what the start made. It also sees the
+ * area layers before it in `layers/index.ts`.
  */
-export type FoundationServices = Layer.Success<ReturnType<typeof CoreLive>> | StartServices | LegacyServices
+export type FoundationServices = Layer.Success<ReturnType<typeof CoreLive>> | StartServices

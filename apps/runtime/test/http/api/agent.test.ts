@@ -25,7 +25,6 @@ import { Events, McpConnections, McpGrants, McpServers, Resident } from '../../.
 import { RoutineController } from '../../../src/routines/controller.ts'
 import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
-import * as Legacy from '../../../src/services.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 import { currentResident } from '../../fixed-services.ts'
 import { callOwner } from '../../integration/owner-api.ts'
@@ -80,7 +79,6 @@ const fixture = () => {
   const plans: EntitlementPolicy = { state: () => Effect.succeed(PLAN), require: () => Effect.succeed(PLAN) }
   const legacy = Layer.mergeAll(
     Layer.succeed(Channel, channelOver(channel)),
-    Layer.succeed(Legacy.Chats, chats),
     // The channel's tools: the server offers none, so turning the channel on is refused before anything is granted.
     Layer.succeed(McpServers, Object.assign(Object.create(null), { tools: () => Effect.succeed([]) })),
     Layer.succeed(McpConnections, Object.assign(Object.create(null), { snapshot: () => Effect.succeedNone })),
