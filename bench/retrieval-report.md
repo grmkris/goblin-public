@@ -33,6 +33,8 @@ The cheap constrained JSON rerank was applied to Arm A's top 20. It returned val
 
 ## Arm B: Vectorize + Workers AI
 
+This section records the first run, where Arm B was blocked; the measured Arm B is in [the 2026-10-09 run](#arm-b-hybrid-and-clef-2026-10-09).
+
 Arm B was designed behind injected `EmbeddingApi` and `VectorizeApi` providers, including dimension validation, per-owner namespace, and `finally` deletion. The live account probe returned HTTP 403 for Vectorize index listing and Workers AI catalog/schema. No index was created, and cleanup confirmed there was no index to delete. The lane records this as a permission boundary; it does not infer recall, latency, dimensions, or cost for a blocked arm. Public model documentation identifies `@cf/baai/bge-m3` at $0.0118 per million input tokens; its dimensions could not be verified through the account API. The provider client is ready to use a scoped `CLOUDFLARE_AI_TOKEN` when the conductor supplies one.
 
 The planned operational shape is one `goblin-spike-retrieval` index, one namespace per synthetic owner, batched embeddings, top-20 queries, and deletion in a `finally` block. Vectorize pricing documentation gives first 50M queried dimensions and first 10M stored dimensions included on Workers Paid, then $0.01 per million queried and $0.05 per 100M stored dimensions. At the unverified planned dimension count of 1,024, 1,000 messages would occupy 1.024M stored dimensions: a $0.000512 monthly storage estimate beyond included allowances, plus $0.01024 for upsert dimensions. Embedding cost per 1,000 messages and live REST latency remain unmeasured. Multiplying the frozen excerpt bytes/4 by $0.0118/M gives only a token-heuristic estimate; actual Workers AI usage is needed before claiming an embedding cost. Shared-account included allowances cannot be assumed unused. No storage charge occurred in this trial.
@@ -52,3 +54,55 @@ A hybrid policy should be considered only after a permitted Arm B run: union FTS
 Public sources consulted on 2026-10-08: [DO SQLite](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/), [BGE-M3 catalog](https://developers.cloudflare.com/workers-ai/models/bge-m3/), [Clef schema](https://developers.cloudflare.com/workers-ai/models/clef/), [Vectorize pricing](https://developers.cloudflare.com/vectorize/platform/pricing/), [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing). Model-catalog examples and raw schemas differ for BGE-M3 (`text` versus `contexts`); the blocked client uses the current `contexts` schema but has no permitted embedding acceptance receipt.
 
 For a product integration, enumerate only the owner's active Topics at admission and recheck their active state before returning excerpts. This fixture treats all 120 chats as active; it does not prove archived-topic filtering. Keep per-session through-entry checkpoints, a revision covering source edits/deletions and redaction policy, and backfill in short batches. FTS candidate scores must record their direction (lower BM25 is better); vector similarity has the opposite direction and cannot be numerically mixed without calibration. A source receipt should additionally include the excerpt hash and redaction version. User erasure must remove the local rows (the FTS delete trigger removes postings), external vector IDs/namespaces and captured source-strip excerpts; content-free cost receipts can remain under the declared retention policy. Deletion confirmation and a tombstone fencing in-flight upserts are needed before erasure is complete. Those lifecycle cases are design requirements, not measured provider proof in this spike.
+
+## Arm B, hybrid and Clef (2026-10-09)
+
+A second, permission-enabled run (`retrieval-20261009-v2`, coordinator [`hybrid.py`](scripts/retrieval/hybrid.py))
+used the same frozen corpus (SHA-256 verified before every command), the same 80 labels, Arm A's recorded FTS
+candidates, and the same rerank prompt and model as the first run. Its immutable manifest, dry run, append-only ledger
+and every provider response are in the private `.local/bench/retrieval/20261009/`. The dry run reserved at most 574
+requests and $0.64 against a $1.00 ceiling; no call was retried. The scoring reproduces the first run's Arm A numbers
+exactly (82.86% / 0.756 raw, 85.71% / 0.857 / 92.06% after the cheap rerank), so the two runs compare.
+
+- **Arm B** embedded the 3,000 messages and 80 queries with `@cf/baai/bge-m3` (1,024 dimensions; the REST response
+  carries the vectors under `response`, with `data: null`) into the throwaway Vectorize index `goblin-spike-retrieval`
+  (cosine, one namespace), queried the top 20, and deleted the index in a `finally` block; a read after the delete
+  returned HTTP 410. All 3,000 vectors were visible about 208 s after the index was created.
+- **Hybrid (H)** fuses Arm A's and Arm B's top 20 by reciprocal rank (k = 60) and keeps the fused top 20.
+- **Reranks:** the cheap constrained-JSON rerank (CLIProxy `gemini-2.5-flash-lite`, temperature 0) on B and H (A's is
+  the first run's), and Clef (`@cf/cloudflare/clef`, one `noul` question per candidate plus `none_relevant`, threshold
+  0.5) on A, B and H. Every cheap answer was valid JSON citing offered ids.
+
+| arm              | recall@5 | exact | paraphrase | superseded |   MRR | precision | absent abstained |
+| ---------------- | -------: | ----: | ---------: | ---------: | ----: | --------: | ---------------: |
+| A (FTS) raw      |    82.9% |  100% |      68.0% |      80.0% | 0.756 |      8.6% |             0/10 |
+| B (vector) raw   |    84.3% |  100% |      68.0% |      85.0% | 0.786 |      8.9% |             0/10 |
+| H (fused) raw    |    87.1% |  100% |      76.0% |      85.0% | 0.813 |      9.4% |             0/10 |
+| A + cheap rerank |    85.7% |  100% |      72.0% |      85.0% | 0.857 |     92.1% |            10/10 |
+| A + Clef         |    84.3% |   96% |      72.0% |      85.0% | 0.781 |     74.3% |            10/10 |
+| B + cheap rerank |    90.0% |  100% |      76.0% |      95.0% | 0.890 |     89.1% |            10/10 |
+| B + Clef         |    87.1% |   92% |      76.0% |      95.0% | 0.805 |     81.8% |            10/10 |
+| H + cheap rerank |    94.3% |  100% |      84.0% |     100.0% | 0.943 |     92.2% |            10/10 |
+| H + Clef         |    92.9% |   96% |      84.0% |     100.0% | 0.843 |     76.8% |            10/10 |
+
+Recall is macro over labelled target ranges of the 70 positive queries (25 exact, 25 paraphrase, 20 superseded); raw
+arms are scored on their full top 20 and reranked arms on their selection in order; precision is over selected
+entries. Latency from this box over REST (not a Worker binding): query embedding median 113 ms (p95 170), Vectorize
+query 282 ms (p95 354), cheap rerank 541 ms (p95 645), Clef 680 ms (p95 1,030).
+
+Spend: the ledger charged $0.444, conservatively (Clef and embeddings at their byte-based reservations, the cheap rerank
+at its reported usage). Reported usage was 101,487 bge-m3 tokens (about 33,000 per 1,000 messages, $0.0004 per 1,000
+at $0.0118/M), 178,027 input and 2,771 output tokens for the cheap rerank ($0.019 at $0.10/$0.40 per M, about
+$0.00012 per query), and 749,545 Clef input tokens ($0.18 at $0.24/M, about $0.00075 per query): about $0.20 at public
+prices. 3,000 stored and 3,080 × 1,024 queried dimensions are inside Vectorize's Workers Paid allowances. None of
+these is a provider bill.
+
+**Decision: hybrid is worth it, as the next step.** Fused candidates with the same cheap rerank lift recall@5 from
+85.7% to 94.3% (paraphrase 72% to 84%, superseded 85% to 100%) at the same precision and abstention, and embeddings cost
+almost nothing. What hybrid adds is operational: an external index per owner (a namespace, upserts from the indexing
+catch-up, deletion and a tombstone on erasure), about 0.4 s more per automatic retrieval from this box, and
+re-embedding if the model changes. The shipped path stays Arm A (FTS5 in the Durable Object) with the cheap rerank
+(ADR 0035); hybrid is a follow-up through Worker bindings (Workers AI and Vectorize), with its latency measured there.
+Clef is not worth it here: below the cheap rerank on every arm (it missed exact-term targets and ranked less
+precisely), at about six times the per-query cost and with higher latency. These are synthetic, single-run results
+with labels written alongside the corpus; they rank the options, not production recall.

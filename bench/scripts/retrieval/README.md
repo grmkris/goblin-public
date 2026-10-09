@@ -8,3 +8,9 @@ root to generate the ignored fixture, or use `--stdout` for the verified JSON by
 with a sequential, append-only budget ledger and no automatic retries. Provider responses remain in `.local/bench/retrieval/`.
 The conductor's optional `CLOUDFLARE_AI_TOKEN` is preferred over `CLOUDFLARE_API_TOKEN`; CLIProxy reads `CLIPROXY_API_KEY`.
 All credentials come from environment variables. See the spike report for measured results and limits.
+
+`hybrid.py` is the 2026-10-09 follow-up (`plan`, `vector`, `rerank`, `clef`, `score`): Arm B with Workers AI `bge-m3`
+and a throwaway Vectorize index (`goblin-spike-retrieval`, created only if absent and deleted in a `finally` block),
+reciprocal-rank fusion of Arms A and B, the cheap rerank on B and the fusion, and Clef on all three. It reads
+`CLOUDFLARE_API_TOKEN` and `CLIPROXY_API_KEY` from the environment, seals its own manifest and $1.00 ledger under
+`.local/bench/retrieval/20261009/`, and never retries. `test_hybrid.py` covers its pure parts.
