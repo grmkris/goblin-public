@@ -129,10 +129,11 @@ async function panelCheck(page: Page, origin: string, checks: Record<string, Che
     search: element.ownerDocument.location.search,
   }))
   const channel = await page.locator('.channel-column').first().isVisible()
-  // A phone gives the panel the whole screen; wider, it sits beside the channel or over its right side.
+  // A phone gives the panel the whole screen. Wider, the navigation stays: the panel sits beside the channel, over its
+  // right side, or over all of it where the channel is too narrow to share (then the channel itself is hidden).
   const phone = box.viewport < 768
   checks[`${prefix}.panel`] = {
-    ok: box.search.includes('thread=') && (phone ? box.width === box.viewport : channel && box.width < box.viewport),
+    ok: box.search.includes('thread=') && (phone ? box.width === box.viewport : box.width < box.viewport),
     detail: { ...box, channel },
   }
 }

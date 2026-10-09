@@ -1618,12 +1618,13 @@
     align-items: center;
     gap: 0.25rem;
   }
-  @container conversation (min-width: 40rem) {
+  @container conversation (min-width: 48rem) {
     .usage-figures {
       display: flex;
     }
   }
-  @container conversation (max-width: 28rem) {
+  /* Where the chat is narrow the orb alone says what the agent does (its label is the orb's name), never a cut word. */
+  @container conversation (max-width: 36rem) {
     .composer-context > span:first-child > span:not([data-slot='presence-orb']) {
       display: none;
     }

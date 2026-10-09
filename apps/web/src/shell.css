@@ -388,13 +388,31 @@
     translate: 1.5rem 0;
   }
 }
-@media (max-width: 75rem) {
+/*
+ * The channel's own width, not the screen's, decides where the panel goes: beside it where the channel can spare the
+ * panel's width, over its right side where it cannot, and over all of it (with the way back in the panel's bar) where
+ * what would show beside the panel is too narrow to read.
+ */
+.channel-layout {
+  container: channel / inline-size;
+}
+@container channel (max-width: 54rem) {
   .thread-panel {
     position: absolute;
     inset-block: 0;
     inset-inline-end: 0;
     width: min(var(--panel-width), 100%);
     box-shadow: var(--shadow-3);
+  }
+}
+@container channel (max-width: 42rem) {
+  .thread-panel {
+    width: 100%;
+    border-inline-start: 0;
+    box-shadow: none;
+  }
+  .channel-layout[data-panel] > .channel-column {
+    visibility: hidden;
   }
 }
 @media (max-width: 47.99rem) {
@@ -507,6 +525,17 @@
   flex: 0 1 auto;
   max-width: 40%;
   min-width: 0;
+}
+/* The way back to the channel, where the panel covers it: on a phone, or in a channel too narrow to share. */
+@media (min-width: 48rem) {
+  .panel-crumb {
+    display: none;
+  }
+}
+@container channel (max-width: 42rem) {
+  .panel-crumb {
+    display: inline-flex;
+  }
 }
 .panel-title {
   display: flex;
@@ -1099,11 +1128,11 @@ a.list-row:focus-visible {
   min-height: 2.75rem;
 }
 
-/* The model button: its name where the chat has room, its icon alone where it has not (a phone). */
+/* The model button: its name where the chat has room, its icon alone where it has not (a phone, a narrow channel). */
 .model-icon {
   display: none;
 }
-@container conversation (max-width: 28rem) {
+@container conversation (max-width: 36rem) {
   .model-icon {
     display: inline;
   }

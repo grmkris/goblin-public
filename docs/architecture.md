@@ -444,7 +444,9 @@ sandboxed frames (`lib/app-sandbox.ts`). The outer proxy only relays protocol me
 Its calls go through the owner API to the originating server and need that server's grant.
 
 The app is a Slack-style shell (ADR 0036, `components/shell`): the rail and the sidebar, then the channel, with the
-thread panel beside it at 75rem and wider, over its right side narrower, and as a full view of its own on a phone. The
+thread panel placed by the channel's own width (a container query): beside it where the channel can spare the panel,
+over its right side where it cannot, over all of it (with a crumb back) where the rest would be too narrow to read, and
+as a full view of its own on a phone. The
 channel and the panel are fixed to the viewport beside the navigation, so the composer's keyboard handling holds; each
 draws its own bar (the channel's `#name`, the panel's back crumb, title, menu and ×) as translucent chrome over its
 transcript. Apps and composers reach the shell only through `lib/navigation.ts`, which `components/shell/navigation.tsx`

@@ -101,7 +101,7 @@ function ThreadMenu({
 }
 
 /**
- * The panel's bar: the way back (to the thread it sits in, or on a phone to the channel), what it shows and where that
+ * The panel's bar: the way back (to the thread it sits in, or where the panel covers it to the channel), what it shows and where that
  * lives, its menu, and × to close the panel. Closing the panel stops nothing.
  */
 function PanelHeader({
@@ -132,7 +132,7 @@ function PanelHeader({
           </Button>
         </span>
       ) : (
-        <span className="panel-back md:hidden">
+        <span className="panel-back panel-crumb">
           <Button variant="ghost" size="sm" onClick={panel.close}>
             <ChevronLeftIcon data-icon="inline-start" />
             <span className="truncate">#{channel}</span>

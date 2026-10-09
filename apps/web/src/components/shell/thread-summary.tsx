@@ -54,6 +54,15 @@ export function useChatThreads(chat: string, branchable: ReadonlySet<number>, mo
   )
 }
 
+/** What a thread's summary says to a screen reader: its name, its replies and its state. */
+function summaryLabel(view: ConversationView, working: boolean, unread: boolean): string {
+  const said = [`${threadTitle(view)}: ${repliesLabel(view.replies)}`]
+  if (isClosed(view)) said.push('closed')
+  if (working) said.push('working')
+  else if (unread) said.push('unread replies')
+  return said.join(', ')
+}
+
 /**
  * A thread under the message it started from, as Slack shows one: "3 replies", then "Last reply 5 minutes ago" (its
  * name in its place until anyone replied), a dot while it has unread replies and a pulse while it works. A click opens it
@@ -65,20 +74,20 @@ export function ThreadSummary({ view, lead }: { readonly view: ConversationView;
   const now = useMinute()
   const working = activityState(feed, view.id) !== 'idle'
   const unread = isUnread(view)
+  const closed = isClosed(view)
+  const last = view.lastReplyAt === undefined ? threadTitle(view) : `Last reply ${relativeTime(view.lastReplyAt, now)}`
   return (
     <button
       type="button"
       className="thread-summary"
       data-unread={unread || undefined}
       onClick={() => panel.open(view.id)}
-      aria-label={`${threadTitle(view)}: ${repliesLabel(view.replies)}`}
+      aria-label={summaryLabel(view, working, unread)}
     >
       {lead !== undefined && <span className="thread-summary-lead">{lead}</span>}
       <span className="thread-summary-count">{repliesLabel(view.replies)}</span>
-      <span className="thread-summary-meta">
-        {view.lastReplyAt === undefined ? threadTitle(view) : `Last reply ${relativeTime(view.lastReplyAt, now)}`}
-      </span>
-      {isClosed(view) && <span className="thread-summary-meta">· closed</span>}
+      {/* One piece, so on a narrow screen it moves to the second line whole rather than leaving "· closed" alone. */}
+      <span className="thread-summary-meta">{closed ? `${last} · closed` : last}</span>
       {working && <span className="thread-busy" aria-label="Working" />}
       {unread && !working && <span className="unread-dot" aria-label="Unread replies" />}
       <span className="thread-summary-open" aria-hidden>
