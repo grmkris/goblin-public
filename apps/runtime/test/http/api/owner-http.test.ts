@@ -9,7 +9,10 @@ import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
-import { ChatOperations, Conversations } from '../../../src/chats/service.ts'
+import { Conversations } from '../../../src/chats/service.ts'
+import { Invocations } from '../../../src/personas/service.ts'
+import { RoutineRuns } from '../../../src/routines/service.ts'
+import { AgentInput } from '../../../src/runtime/input.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
@@ -119,7 +122,9 @@ const fixture = (options: { readonly active?: boolean } = {}) => {
         Layer.mergeAll(
           lane,
           Layer.succeed(Conversations, unread),
-          Layer.succeed(ChatOperations, unread),
+          Layer.succeed(AgentInput, unread),
+          Layer.succeed(RoutineRuns, unread),
+          Layer.succeed(Invocations, unread),
           Layer.succeed(Resident, resident),
           Layer.succeed(Entitlements, plans),
           FlowEvents.noop,

@@ -386,7 +386,7 @@ const track = (requestId: string) =>
   Effect.gen(function* () {
     const chats = yield* Chats
     const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
-    yield* (yield* ChatOperations).admit(chats.primary, requestId)
+    yield* (yield* ChatOperations).record(chats.primary, requestId, { kind: 'subagent_report', origin: 'agent' })
     yield* (yield* Channel).track(requestId, now)
   })
 

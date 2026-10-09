@@ -2,7 +2,8 @@ import type { ApprovalView } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { Entitlements } from '../billing/gates.ts'
-import { ChatOperations, Chats } from '../chats/service.ts'
+import { type OwnerSubmitServices, sendOwnerMessage } from '../agent-program.ts'
+import { Chats } from '../chats/service.ts'
 import { type AppError, NotFound, toAppError } from '../http/errors.ts'
 import type { RoutineRunner } from '../routines/runner.ts'
 import { RoutineRuns } from '../routines/service.ts'
@@ -38,7 +39,7 @@ const continuation =
 type DecisionServices =
   | AgentInput
   | Approvals
-  | ChatOperations
+  | OwnerSubmitServices
   | Chats
   | Entitlements
   | McpConnections
@@ -65,10 +66,7 @@ export const decideOwnerApproval = (
       allowed,
       run,
       continue: continuation(routines, (chat, text, operationId) =>
-        Effect.andThen(
-          admit,
-          ChatOperations.use((operations) => operations.send(chat, { text, operationId })),
-        ),
+        Effect.andThen(admit, sendOwnerMessage(chat, { text, operationId })),
       ),
     })
   })

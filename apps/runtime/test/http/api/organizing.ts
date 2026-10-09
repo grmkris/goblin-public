@@ -18,7 +18,9 @@ import type { AgentApps } from '../../../src/agent-apps/engine.ts'
 import type { AppRegistry } from '../../../src/apps/registry.ts'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
-import { ChatOperations, Conversations } from '../../../src/chats/service.ts'
+import { Conversations } from '../../../src/chats/service.ts'
+import { RoutineRuns } from '../../../src/routines/service.ts'
+import { AgentInput } from '../../../src/runtime/input.ts'
 import { Apps } from '../../../src/apps/service.ts'
 import { HomeHandlers } from '../../../src/home/api.ts'
 import { HomeService } from '../../../src/home/service.ts'
@@ -154,7 +156,8 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
         Layer.mergeAll(
           lane,
           Layer.succeed(Conversations, conversations),
-          Layer.succeed(ChatOperations, unread),
+          Layer.succeed(AgentInput, unread),
+          Layer.succeed(RoutineRuns, unread),
           Layer.succeed(Apps, unread),
           Layer.succeed(McpConnections, unread),
           Layer.succeed(Resident, authority),

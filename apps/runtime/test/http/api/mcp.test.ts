@@ -18,7 +18,13 @@ import { Approvals, Events, Resident } from '../../../src/mcp/service.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import { Mcp, Resident as LegacyResident, Skills } from '../../../src/services.ts'
-import { ChatOperations, Chats } from '../../../src/chats/service.ts'
+import { Apps } from '../../../src/apps/service.ts'
+import { Budget } from '../../../src/budget.ts'
+import { Capabilities } from '../../../src/capabilities/service.ts'
+import { ChatOperations, Chats, Conversations } from '../../../src/chats/service.ts'
+import { Files } from '../../../src/files/service.ts'
+import { Invocations, Personas } from '../../../src/personas/service.ts'
+import { PiSessions } from '../../../src/pi/sessions.ts'
 import { RoutineRuns } from '../../../src/routines/service.ts'
 import { Skills as SkillLibraries } from '../../../src/skills/service.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
@@ -136,6 +142,17 @@ const fixture = async () => {
             Layer.succeed(SkillLibraries, unread),
             Layer.succeed(Chats, unread),
             Layer.succeed(RoutineRuns, unread),
+          ),
+          // The owner's message after a decision (agent-program.ts sendOwnerMessage) reads these; no test sends one.
+          Layer.mergeAll(
+            Layer.succeed(Apps, unread),
+            Layer.succeed(Budget, unread),
+            Layer.succeed(Capabilities, unread),
+            Layer.succeed(Conversations, unread),
+            Layer.succeed(Files, unread),
+            Layer.succeed(Invocations, unread),
+            Layer.succeed(Personas, unread),
+            Layer.succeed(PiSessions, unread),
           ),
         ),
       ),

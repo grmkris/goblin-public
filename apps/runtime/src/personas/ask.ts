@@ -3,9 +3,10 @@ import type { PersonaAskData } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
 import { epochSeconds, instanceCall } from '../chats/instance.ts'
-import { ChatOperations, Conversations } from '../chats/service.ts'
-import { InvalidInput } from '../http/errors.ts'
-import { BACKGROUND, conversationId } from '../pi/context.ts'
+import { ChatOperations } from '../chats/service.ts'
+import { InvalidInput, toAppError } from '../http/errors.ts'
+import { conversationId } from '../pi/context.ts'
+import { PiSessions } from '../pi/sessions.ts'
 import type { FrozenPersona, PersonaTurnKit } from '../pi/persona-turn.ts'
 import { Invocations, Personas } from './service.ts'
 
@@ -71,9 +72,10 @@ const askEntry = (
 }
 
 /**
- * The owner tagged Personas: each answers once, attributed, in this chat, and Goblin does not (ADR 0033). Under the
- * chat's admission lock, once per operation: admit it, record who was asked, write the ask into the chat as a passive
- * `app.persona_ask` entry (no run starts) and create one Persona turn per Persona. Nothing here waits for a model.
+ * The owner tagged Personas: each answers once, attributed, in this chat, and Goblin does not (ADR 0033). Admitted
+ * once per operation (`ChatOperations.admit`, under the chat's lock): record who was asked, write the ask into the
+ * chat as a passive `app.persona_ask` entry (no run starts) and create one Persona turn per Persona. Nothing here
+ * waits for a model.
  */
 export const askPersonas = (
   input: Ask,
@@ -83,16 +85,18 @@ export const askPersonas = (
 ) =>
   Effect.gen(function* () {
     const invocations = yield* Invocations
-    const conversations = yield* Conversations
-    const operations = yield* ChatOperations
+    const pi = yield* PiSessions
     const now = yield* epochSeconds
     const frozen = yield* freeze(ids)
     if (frozen.length > 8) return yield* new InvalidInput({ reason: 'persona_count' })
-    return yield* operations.withChat(
-      input.thread,
+    const admission = {
+      chat: input.thread,
+      operationId: input.operationId,
+      receipt: { kind: 'persona_ask', origin: 'owner' },
+      flow: { flow: 'persona_ask', via: 'app', actor: 'owner', count: frozen.length, personaOrder: order },
+    } as const
+    return yield* (yield* ChatOperations).admit(admission, (admitted) =>
       Effect.gen(function* () {
-        yield* conversations.requireOpen(input.thread)
-        const admitted = yield* operations.admit(input.thread, input.operationId)
         const asked = frozen.map((persona, index) => ({
           operationId: input.operationId,
           persona: persona.id,
@@ -101,23 +105,20 @@ export const askPersonas = (
           order: index,
         }))
         yield* invocations.insert(asked, now)
+        const write = { requestId: input.operationId, entry: askEntry(frozen, order, content, now) }
+        yield* pi
+          .write(admitted.session, write)
+          .pipe(Effect.catchTag('PiFailure', (failure) => Effect.fail(toAppError(failure.cause))))
         const parent = conversationId(admitted.session)
-        yield* instanceCall(async () => {
-          const pi = await input.harness.pi()
-          const chat = await pi.conversation(parent, BACKGROUND)
-          if (chat === undefined) throw new InvalidInput({ reason: 'chat' })
-          await chat.submit(
-            { type: 'write', requestId: input.operationId, entry: askEntry(frozen, order, content, now) },
-            BACKGROUND,
-          )
-          await input.personas.start(pi, {
+        yield* instanceCall(async () =>
+          input.personas.start(await input.harness.pi(), {
             operationId: input.operationId,
             chat: input.thread,
             parent,
             personas: frozen,
             order,
-          })
-        })
+          }),
+        )
         return { session: admitted.session, operationId: input.operationId, accepted: true }
       }),
     )

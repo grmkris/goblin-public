@@ -7,13 +7,19 @@ import * as Fiber from 'effect/Fiber'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import * as TestClock from 'effect/testing/TestClock'
+import type { FlowEvent } from '@goblin/contracts/telemetry'
 import { ChatDirectory } from '../src/chats/directory.ts'
 import type { ChatMover } from '../src/chats/mover.ts'
 import { ChatOperations, Chats, Conversations, Moves } from '../src/chats/service.ts'
 import type { ConversationRegistry } from '../src/conversations.ts'
 import type { FoundationServices } from '../src/layers/core.ts'
 import { ConversationLive } from '../src/layers/conversation.ts'
+import { Budget } from '../src/budget.ts'
+import { InvalidInput } from '../src/http/errors.ts'
+import { Models } from '../src/models.ts'
+import { FlowEvents } from '../src/observability/flows.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
+import type { RoutineController } from '../src/routines/controller.ts'
 import { PiSessions } from '../src/pi/sessions.ts'
 import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
@@ -31,9 +37,11 @@ type Calls = string[]
 
 /**
  * The conversation services over the one legacy instance of each: a real chat directory on SQLite, a registry and a
- * mover that record their calls, and Pi's harness for a passive write. Nothing else the layer captures is read.
+ * mover that record their calls, Pi's harness for a write, a model choice and a submit, a routine that takes `op-r` as
+ * its answer, and the flows recorded. Nothing else the layer captures is read.
  */
 const services = (calls: Calls) => {
+  const flows: FlowEvent[] = []
   const { db, close } = chatDatabase()
   db.insert(appConversations)
     .values([
@@ -42,6 +50,10 @@ const services = (calls: Calls) => {
     ])
     .run()
   const registry = fake<ConversationRegistry>({
+    requireOpen: (chat) => {
+      if (chat === '3') throw new InvalidInput({ reason: 'conversation_closed' })
+      return directory.session(chat)
+    },
     markRead: (chat, now) => void calls.push(`read:${chat}@${now}`),
     registerRoutine: (session, runId, _title, now, topic) =>
       void calls.push(`routine:${session}:${runId}@${now}:${topic}`),
@@ -60,12 +72,25 @@ const services = (calls: Calls) => {
       return { id: 1 }
     },
   })
-  // SAFETY: a passive write asks Pi's harness only for a conversation.
   const harness = fake<PiHarness>({
+    // SAFETY: a passive write asks Pi's harness only for a conversation.
     pi: async () => ({ conversation: async (id: number) => conversation(id) }) as never,
+    // SAFETY: a send asks a session only to change its model.
+    session: (session: string) =>
+      ({ setModel: async ({ id }: { id: string }) => void calls.push(`model:${session}:${id}`) }) as never,
+    submit: async (_content, options = {}) => {
+      calls.push(`submit:${options.session}:${options.operationId}`)
+      return { session: options.session ?? '', operationId: options.operationId ?? '', accepted: true }
+    },
   })
   const directory = new ChatDirectory(db)
-  const input = Layer.succeed(AgentInput, fake<AgentInputs>({ harness }))
+  const routines = fake<RoutineController>({ answer: async (_session, operationId) => operationId === 'op-r' })
+  const input = Layer.succeed(AgentInput, fake<AgentInputs>({ harness, applied: new Map(), routines }))
+  const plans = Layer.mergeAll(
+    Layer.succeed(Budget, fake<Budget['Service']>({ require: () => Effect.void })),
+    Layer.succeed(Models, fake<Models['Service']>({ current: Effect.succeed('model-a') })),
+    FlowEvents.layerWith((event) => Effect.sync(() => void flows.push(event))),
+  )
   const layer = ConversationLive.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -79,6 +104,7 @@ const services = (calls: Calls) => {
         Layer.succeed(LegacyConversations, registry),
         Layer.succeed(LegacyMoves, moves),
         input,
+        plans,
       ),
     ),
   )
@@ -86,6 +112,7 @@ const services = (calls: Calls) => {
     layer: Layer.merge(layer, Layer.effectDiscard(Effect.addFinalizer(() => Effect.sync(close)))),
     calls,
     directory,
+    flows,
   }
 }
 
@@ -110,8 +137,8 @@ describe('the conversation services', () => {
       const operations = yield* ChatOperations
       yield* TestClock.adjust('20 seconds')
       const send = { kind: 'send', origin: 'owner' } as const
-      expect(yield* operations.admit('2', 'op-1', send)).toEqual({ session: '42', existing: false })
-      expect(yield* operations.admit('2', 'op-1', send)).toEqual({ session: '42', existing: true })
+      expect(yield* operations.record('2', 'op-1', send)).toEqual({ session: '42', existing: false })
+      expect(yield* operations.record('2', 'op-1', send)).toEqual({ session: '42', existing: true })
       expect(yield* operations.operation('2', 'op-1')).toEqual(Option.some('42'))
       expect(yield* operations.operation('1', 'op-1')).toEqual(Option.none())
       yield* operations.advance('2', 'op-1', { state: 'submitted' })
@@ -124,7 +151,37 @@ describe('the conversation services', () => {
       expect(yield* operations.related('op-1')).toMatchObject([
         { chat: '2', operationId: 'note:1', kind: 'write:app.note', origin: 'system', state: 'written' },
       ])
-      expect(yield* Effect.flip(operations.admit('99', 'op-2'))).toMatchObject({ _tag: 'NotFound' })
+      expect(yield* Effect.flip(operations.record('99', 'op-2', send))).toMatchObject({ _tag: 'NotFound' })
+    }).pipe(Effect.provide(layer))
+  })
+
+  it.effect('send an input through the one admission sequence, a replay as replayed and a closed chat refused', () => {
+    const { layer, calls, flows } = services([])
+    return Effect.gen(function* () {
+      const operations = yield* ChatOperations
+      const input = {
+        chat: '2',
+        operationId: 'op-1',
+        receipt: { kind: 'send', origin: 'owner' },
+        flow: { flow: 'send', via: 'app', actor: 'owner' },
+        content: 'hello',
+        answers: 'hello',
+      } as const
+      expect(yield* operations.send(input)).toEqual({ session: '42', operationId: 'op-1', accepted: true })
+      yield* operations.send(input)
+      yield* operations.send({ ...input, operationId: 'op-r' })
+      expect(calls).toEqual(['model:42:model-a', 'submit:42:op-1', 'submit:42:op-1'])
+      expect(yield* operations.receipt('2', 'op-1')).toMatchObject(Option.some({ kind: 'send', state: 'submitted' }))
+      expect(yield* operations.receipt('2', 'op-r')).toMatchObject(Option.some({ state: 'submitted' }))
+      const refused = yield* Effect.flip(operations.send({ ...input, chat: '3', operationId: 'op-2' }))
+      expect(refused).toMatchObject({ _tag: 'InvalidInput', reason: 'conversation_closed' })
+      expect(yield* operations.receipt('3', 'op-2')).toEqual(Option.none())
+      expect(flows.map(({ flow, chat, operationId, status }) => [flow, chat, operationId, status])).toEqual([
+        ['send', '2', 'op-1', 'ok'],
+        ['send', '2', 'op-1', 'replayed'],
+        ['send', '2', 'op-r', 'ok'],
+        ['send', '3', 'op-2', 'refused'],
+      ])
     }).pipe(Effect.provide(layer))
   })
 

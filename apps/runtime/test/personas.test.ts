@@ -2,7 +2,9 @@ import type { PersonaDefinition } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ChatOperations, Conversations } from '../src/chats/service.ts'
+import { Conversations } from '../src/chats/service.ts'
+import { RoutineRuns } from '../src/routines/service.ts'
+import { AgentInput } from '../src/runtime/input.ts'
 import { FlowEvents } from '../src/observability/flows.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
 import { Changes, makeChanges } from '../src/runtime/changes.ts'
@@ -15,7 +17,7 @@ import { logMessage } from '../src/memory/log.ts'
 import { PersonaRegistry, defaultAvatar } from '../src/personas/registry.ts'
 import { PERSONA_DENIED_TOOLS, personaSelection, personaText } from '../src/pi/persona-turn.ts'
 import { Receipts } from '../src/organize/service.ts'
-import { Personas } from '../src/personas/service.ts'
+import { Invocations, Personas } from '../src/personas/service.ts'
 import { Topics } from '../src/topics/service.ts'
 import { appConversations } from '../src/storage/schema.ts'
 import { updateTopic } from '../src/topics/program.ts'
@@ -268,7 +270,7 @@ describe('what a Persona turn changes in its fork', () => {
 })
 
 /** The services the Undo programs read. */
-type Provided = Personas | Topics | Receipts | Conversations | ChatOperations | FlowEvents
+type Provided = Personas | Topics | Receipts | Conversations | AgentInput | RoutineRuns | Invocations | FlowEvents
 const run = <A, E>(layer: Layer.Layer<Provided>, program: Effect.Effect<A, E, Provided>) =>
   Effect.runPromise(Effect.provide(program, layer))
 const fails = <A, E>(layer: Layer.Layer<Provided>, program: Effect.Effect<A, E, Provided>) =>
@@ -301,7 +303,9 @@ describe('organize receipts and Undo', () => {
       Layer.effect(Personas, Personas.make(parts.personas)),
       Layer.effect(Receipts, Receipts.make(parts.receipts)),
       Layer.succeed(Conversations, conversations),
-      Layer.succeed(ChatOperations, unread),
+      Layer.succeed(AgentInput, unread),
+      Layer.succeed(RoutineRuns, unread),
+      Layer.succeed(Invocations, unread),
       FlowEvents.noop,
     ).pipe(Layer.provide(Layer.merge(KeyedLock.layer, Layer.succeed(Changes, makeChanges()))))
     return { ...parts, layer }

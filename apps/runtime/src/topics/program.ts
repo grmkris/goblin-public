@@ -1,7 +1,8 @@
 import type { CreateTopic, TopicSeedData, TopicView, UpdateTopic } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
-import { ChatOperations, Conversations } from '../chats/service.ts'
+import { stopChat } from '../agent-program.ts'
+import { Conversations } from '../chats/service.ts'
 import type { AppError } from '../http/errors.ts'
 import { failedFlow, recordFlow, viaOf } from '../organize/flows.ts'
 import type { NewReceipt } from '../organize/receipts.ts'
@@ -72,11 +73,10 @@ export const updateTopic = (id: number, change: UpdateTopic, provenance: Provena
     const organized = after.name !== before.name || after.archivedAt !== before.archivedAt
     if (after.revision !== before.revision && organized) yield* receipts.record(topicReceipt(before, after, provenance))
     if (change.archived !== true) return after
-    const operations = yield* ChatOperations
     const stops: Exit.Exit<boolean, AppError>[] = []
     // A run that archives its own Topic is not stopped from inside itself: it ends with its turn.
     for (const thread of (yield* (yield* Conversations).openIn(id)).filter((open) => open !== chat))
-      stops.push(yield* Effect.exit(operations.stop(thread)))
+      stops.push(yield* Effect.exit(stopChat(thread)))
     const failed = stops.find(Exit.isFailure)
     if (failed !== undefined) return yield* Effect.failCause(failed.cause)
     // An archive asked again stops the chats again, as a replay of the first.

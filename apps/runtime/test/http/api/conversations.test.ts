@@ -1,3 +1,4 @@
+import type { FlowEvent } from '@goblin/contracts/telemetry'
 import { ConversationView } from '@goblin/contracts'
 import { ConversationsGroup, InvalidInput, NotFound, ownerApiOf } from '@goblin/contracts/api'
 import type { PiHarness } from 'agents/harness/pi'
@@ -34,6 +35,7 @@ import { ResidentAuthority } from '../../../src/resident.ts'
 import { Retrieval } from '../../../src/retrieval/service.ts'
 import type { RoutineController } from '../../../src/routines/controller.ts'
 import { RoutineRuns } from '../../../src/routines/service.ts'
+import { FlowEvents } from '../../../src/observability/flows.ts'
 import { KeyedLock } from '../../../src/observability/lock.ts'
 import { PiSessions } from '../../../src/pi/sessions.ts'
 import { Db } from '../../../src/runtime/db.ts'
@@ -278,6 +280,7 @@ const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) =
   )
   db.insert(appConversations).values(chats).run()
   const calls: Calls = []
+  const flows: FlowEvent[] = []
   const record: PiRecord = { submitted: [], writes: [] }
   const harness = fakeHarness(record, calls)
   const resident = new CountingResident()
@@ -301,16 +304,23 @@ const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) =
     Layer.succeed(Db, db as never),
     KeyedLock.layer,
     PiSessions.layer.pipe(Layer.provide(legacy)),
+    FlowEvents.layerWith((event) => Effect.sync(() => void flows.push(event))),
   )
+  const others = services(calls, options.personas ?? [])
   const conversation = ConversationLive.pipe(
     // SAFETY: the layer reads only the core services, legacy instances and input given here; the rest stays unprovided.
     Layer.provide(
-      Layer.mergeAll(Layer.succeedContext(Context.empty() as Context.Context<FoundationServices>), core, legacy),
+      Layer.mergeAll(
+        Layer.succeedContext(Context.empty() as Context.Context<FoundationServices>),
+        core,
+        legacy,
+        others,
+      ),
     ),
   )
   const runtime = ManagedRuntime.make(
     OwnerHttp.serve(CONVERSATIONS_API, CONVERSATIONS).pipe(
-      Layer.provide(Layer.mergeAll(conversation, legacy, services(calls, options.personas ?? []))),
+      Layer.provide(Layer.mergeAll(conversation, core, legacy, others)),
     ),
   )
   runtimes.push(runtime)
@@ -318,7 +328,7 @@ const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) =
   const fetch = async (request: Request) =>
     Option.getOrThrowWith(await handle(request), () => new Error(`not an API route: ${request.url}`))
   const operations = () => db.select().from(appChatOperations).all()
-  return { fetch, calls, record, resident, operations }
+  return { fetch, calls, record, resident, operations, flows }
 }
 
 const json = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>

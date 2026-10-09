@@ -13,6 +13,7 @@ import { Apps } from './apps/service.ts'
 import { Entitlements } from './billing/gates.ts'
 import type { Budget } from './budget.ts'
 import type { Capabilities } from './capabilities/service.ts'
+import type { SessionId } from './chats/directory.ts'
 import { epochSeconds, instanceCall, withinBudget } from './chats/instance.ts'
 import { ChatOperations, Chats, Conversations } from './chats/service.ts'
 import { resolveSelections, type ResolvedSelections } from './composer.ts'
@@ -20,14 +21,15 @@ import { Files } from './files/service.ts'
 import { type AppError, InvalidInput } from './http/errors.ts'
 import { type McpServers, Resident } from './mcp/service.ts'
 import { Invocations, type Personas } from './personas/service.ts'
-import type { Models } from './models.ts'
 import { RoutineRuns } from './routines/service.ts'
 import type { RunProgram } from './runtime/bridge.ts'
+import { AgentInput, type AgentInputs } from './runtime/input.ts'
 import type { AgentServices } from './layers/index.ts'
 import type { RoutineRunner } from './routines/runner.ts'
 import type { Skills } from './skills/service.ts'
-import { useModel, type Applied } from './agent-model.ts'
+import type { Applied } from './agent-model.ts'
 import { BACKGROUND, conversationId } from './pi/context.ts'
+import type { PiSessions } from './pi/sessions.ts'
 import { recentMessages } from './pi/transcript.ts'
 import { type SharedContext, authoredContent, ownerContent } from './pi/content.ts'
 import type { SubagentKit } from './pi/subagents.ts'
@@ -102,6 +104,16 @@ export const stopOwner = (
     return yield* instanceCall(() => input.harness.abort({ session, ...operationId }))
   })
 
+/**
+ * Stop in `chat` as the owner's Stop does, with the instance's Pi, routines and Persona turns: the one stop path a
+ * Topic's archive takes too.
+ */
+export const stopChat = (
+  chat: string,
+  operationId?: string,
+): Effect.Effect<boolean, AppError, Conversations | RoutineRuns | Invocations | AgentInput> =>
+  AgentInput.use((input) => stopOwner({ ...input.stopping(), thread: chat, operationId }))
+
 /** An inbound request checks entitlement without renewing resident authority. */
 export const clientRequest = <A>(program: Effect.Effect<A, AppError, AgentServices>) =>
   Effect.andThen(
@@ -128,7 +140,19 @@ export type OwnerSubmit = {
   operationId: string
   context: OwnerMessageContext
   run: RunProgram
+  /** The operation this message is part of: a started thread's first message is its start's. */
+  parentOp?: string
 }
+
+/** What the owner's message paths run with, from the agent's instance. */
+export const ownerRuntime = ({ harness, applied, routines, subagents, personas, run }: AgentInputs) => ({
+  harness,
+  applied,
+  routines,
+  subagents,
+  personas,
+  run,
+})
 
 /** What the owner's open Apps shared, each with where it comes from, read from the App registry (never the browser). */
 const sharedContext = (context: readonly AppContext[], conversation: string) =>
@@ -186,7 +210,6 @@ const sendToSubagent = (
 /** What the owner's message path reads. Spelled out: `run`'s type names every agent service, the owner API's among them. */
 export type OwnerSubmitServices =
   | Budget
-  | Models
   | Conversations
   | ChatOperations
   | Files
@@ -197,6 +220,7 @@ export type OwnerSubmitServices =
   | Skills
   | Invocations
   | Personas
+  | PiSessions
 
 /**
  * The owner's message into a chat, or an ask of the Personas it tags. Admission (the chat open, the operation recorded,
@@ -226,27 +250,39 @@ export const submitOwner = (input: OwnerSubmit): Effect.Effect<PiReceipt, AppErr
       if (view?.kind === 'subagent') return yield* new InvalidInput({ reason: 'persona_subagent' })
       return yield* askPersonas(input, personaIds, personaOrder, content)
     }
-    const operations = yield* ChatOperations
-    return yield* operations.withChat(
-      input.thread,
-      Effect.gen(function* () {
-        yield* conversations.requireOpen(input.thread)
-        const admitted = yield* operations.admit(input.thread, input.operationId)
-        if (yield* instanceCall(() => input.routines.answer(admitted.session, input.operationId, input.text)))
-          return { session: admitted.session, operationId: input.operationId, accepted: true }
-        yield* useModel(input.harness, input.applied, admitted.session)
-        if (view?.kind === 'subagent' && view.parent !== undefined)
-          return yield* sendToSubagent(input, view, admitted.session, { attachments, shared, selections })
-        return yield* instanceCall(() =>
-          input.harness.submit(content, { session: admitted.session, operationId: input.operationId }),
-        )
-      }),
-    )
+    const relay =
+      view?.kind === 'subagent' && view.parent !== undefined
+        ? (admitted: SessionId) => sendToSubagent(input, view, admitted, { attachments, shared, selections })
+        : undefined
+    return yield* (yield* ChatOperations).send({
+      chat: input.thread,
+      operationId: input.operationId,
+      receipt: { kind: 'send', origin: 'owner', ...(input.parentOp === undefined ? {} : { parentOp: input.parentOp }) },
+      flow: { flow: 'send', via: 'app', actor: 'owner' },
+      content,
+      answers: input.text,
+      ...(relay === undefined ? {} : { relay }),
+    })
   })
+
+/** The owner's message into `chat` with what came with it, as the owner API and a decided approval send it. */
+export const sendOwnerMessage = (
+  chat: string,
+  message: { readonly text: string; readonly operationId: string; readonly context?: OwnerMessageContext },
+): Effect.Effect<PiReceipt, AppError, OwnerSubmitServices | AgentInput> =>
+  AgentInput.use((input) =>
+    submitOwner({
+      ...ownerRuntime(input),
+      thread: chat,
+      text: message.text,
+      operationId: message.operationId,
+      context: message.context ?? {},
+    }),
+  )
 
 /**
  * An inbound client's question in main, answered when it settles within `waitMs`. `_run` is no longer read: the
- * session goes on the owner's model inside the admission; agent.ts passes it until the switch drops the argument.
+ * session goes on the owner's model inside the admission (`ChatOperations.send`); agent.ts still passes it.
  */
 export const askClient = (
   input: {
@@ -261,23 +297,14 @@ export const askClient = (
 ) =>
   Effect.gen(function* () {
     yield* (yield* Resident).require()
-    yield* withinBudget
     const chats = yield* Chats
-    const operations = yield* ChatOperations
-    const session = yield* operations.withChat(
-      chats.primary,
-      Effect.gen(function* () {
-        const admitted = yield* operations.admit(chats.primary, input.operationId)
-        yield* useModel(input.harness, input.applied, admitted.session)
-        yield* instanceCall(() =>
-          input.harness.submit(authoredContent(input.author, input.text), {
-            session: admitted.session,
-            operationId: input.operationId,
-          }),
-        )
-        return Option.getOrElse(yield* operations.operation(chats.primary, input.operationId), () => admitted.session)
-      }),
-    )
+    const { session } = yield* (yield* ChatOperations).send({
+      chat: chats.primary,
+      operationId: input.operationId,
+      receipt: { kind: 'ask_client', origin: 'client' },
+      flow: { flow: 'ask_client', via: 'mcp', actor: 'client' },
+      content: authoredContent(input.author, input.text),
+    })
     const result = yield* instanceCall(() =>
       input.harness
         .wait(input.operationId, { session, signal: AbortSignal.timeout(input.waitMs) })

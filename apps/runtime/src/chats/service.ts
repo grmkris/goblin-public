@@ -1,4 +1,4 @@
-import type { EntryDraft, EntryRecord, Submission } from '@earendil-works/pi-durable'
+import type { EntryDraft, EntryRecord, Submission, UserInput } from '@earendil-works/pi-durable'
 import type {
   ConversationKind,
   ConversationView,
@@ -8,11 +8,11 @@ import type {
   MoveToThread,
   UpdateConversation,
 } from '@goblin/contracts'
+import type { FlowEvent } from '@goblin/contracts/telemetry'
 import type { PiReceipt } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
 import type * as Effect from 'effect/Effect'
 import type * as Option from 'effect/Option'
-import type { OwnerMessageContext } from '../agent-program.ts'
 import type { AppError } from '../http/errors.ts'
 import type { ChatId, SessionId } from './directory.ts'
 import type { Receipt, ReceiptChange, ReceiptInput, ReceiptOrigin } from './receipts.ts'
@@ -58,30 +58,47 @@ export type PassiveWrite = {
   readonly parentOp?: string
 }
 
-/** The owner's message: its words, its operation id, and what came with it (App context, files, composer tags). */
-export type OwnerMessage = {
-  readonly text: string
+/** An admitted operation: the session it went to, and whether it was admitted before (a replay). */
+export type Admitted = { readonly session: SessionId; readonly existing: boolean }
+
+/**
+ * The flow event an admission records once it ends (plan §4), besides its chat, operation, status and time: the flow,
+ * how it came in, who acted, and what else it says (a Persona ask's count and order).
+ */
+export type AdmissionFlow = Pick<FlowEvent, 'flow' | 'via' | 'actor'> &
+  Partial<Pick<FlowEvent, 'parentChat' | 'topic' | 'parentOperation' | 'count' | 'personaOrder' | 'synthesize'>>
+
+/** One operation into a chat: which, what its receipt says, and the flow it records. */
+export type Admission = {
+  readonly chat: string
   readonly operationId: string
-  readonly context?: OwnerMessageContext
+  readonly receipt: ReceiptInput
+  readonly flow: AdmissionFlow
+}
+
+/** One input into a chat through the one admission sequence (`ChatOperations.send`). */
+export type Submit<R> = Admission & {
+  /** What Pi takes as the input. */
+  readonly content: UserInput
+  /** The owner's words, which a routine's question waiting in the chat takes as its answer instead. */
+  readonly answers?: string
+  /** Where the input goes instead of Pi's submit (the owner's message to a subagent goes through its relay). */
+  readonly relay?: (session: SessionId) => Effect.Effect<PiReceipt, AppError, R>
 }
 
 /**
  * What happens in a chat by operation (plan §3): admission (an operation's receipt is recorded before Pi sees it, and a
- * replay keeps its first session) and passive writes, under the chat's admission lock (`KeyedLock`), and the owner's
- * send and Stop. The lock covers admission only, never a model call.
+ * replay keeps its first session), the one admission sequence of an input, and passive writes, each under the chat's
+ * admission lock (`KeyedLock`). The lock covers admission only, never a model call or a wait.
  */
 export class ChatOperations extends Context.Service<
   ChatOperations,
   {
     /**
-     * Records `operationId` for `chat` before it reaches Pi, with what `receipt` says it is (a `send` from the system
-     * when it says nothing); a replay finds the session it was first admitted to.
+     * Records `operationId`'s receipt in `chat` before it reaches Pi, with no lock and no check that the chat takes new
+     * work (`admit` does both); a replay finds the session it was first admitted to.
      */
-    readonly admit: (
-      chat: string,
-      operationId: string,
-      receipt?: ReceiptInput,
-    ) => Effect.Effect<{ readonly session: SessionId; readonly existing: boolean }, AppError>
+    readonly record: (chat: string, operationId: string, receipt: ReceiptInput) => Effect.Effect<Admitted, AppError>
     /** The session `operationId` was admitted to in `chat`, if it was. */
     readonly operation: (chat: string, operationId: string) => Effect.Effect<Option.Option<SessionId>, AppError>
     /** `operationId`'s receipt in `chat`, if it was admitted there. */
@@ -101,10 +118,20 @@ export class ChatOperations extends Context.Service<
     readonly withChat: <A, E, R>(chat: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
     /** Writes into `chat` under its admission lock: the receipt, then Pi's write into the session it names. */
     readonly passiveWrite: (chat: string, write: PassiveWrite) => Effect.Effect<Submission, AppError>
-    /** The owner's message into `chat`, or an ask of the Personas it tags; Pi's receipt once admitted. */
-    readonly send: (chat: string, message: OwnerMessage) => Effect.Effect<PiReceipt, AppError>
-    /** Stop in `chat`: its run (or `operationId` alone), its routine run, its subagents and the Personas asked in it. */
-    readonly stop: (chat: string, operationId?: string) => Effect.Effect<boolean, AppError>
+    /**
+     * Admits `admission` and runs `then` on it, under the chat's lock: the chat must take new work, the receipt is
+     * recorded (a replay finds its first session), then `then` hands the operation on. The receipt ends `submitted`, or
+     * `refused` with the failure's type, and the flow is recorded once, `replayed` for a replay.
+     */
+    readonly admit: <A, E, R>(
+      admission: Admission,
+      then: (admitted: Admitted) => Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E | AppError, R>
+    /**
+     * The one admission sequence of an input: within the budget, admitted (`admit`), a routine's waiting question
+     * answered when `answers` is one, the session put on the owner's model, then Pi's submit or the `relay`.
+     */
+    readonly send: <R = never>(input: Submit<R>) => Effect.Effect<PiReceipt, AppError, R>
   }
 >()('goblin/chats/ChatOperations') {}
 

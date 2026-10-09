@@ -4,8 +4,11 @@ import * as Layer from 'effect/Layer'
 import { Budget, type ModelBudget } from '../src/budget.ts'
 import type { ChatDirectory } from '../src/chats/directory.ts'
 import { toAppError } from '../src/http/errors.ts'
-import { ChatOperationsLive, ChatsAdapter } from '../src/layers/conversation.ts'
+import { makeChatOperations } from '../src/chats/operations.ts'
+import { ChatOperations } from '../src/chats/service.ts'
+import { ChatsAdapter } from '../src/layers/conversation.ts'
 import { Models, type ModelPicker } from '../src/models.ts'
+import { FlowEvents } from '../src/observability/flows.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
 import { PiSessions } from '../src/pi/sessions.ts'
 import { Db } from '../src/runtime/db.ts'
@@ -23,16 +26,13 @@ type PortInstances = {
 
 /**
  * The services the Telegram ports' programs read, over a probe's own instances: lane C's directory adapter and native
- * admission over its database and chat directory, and its budget and model picker as the routines lane's services wrap them.
+ * admission over its database and chat directory (main, the only chat Telegram reaches, is always open), and its budget
+ * and model picker as the routines lane's services wrap them. Flows are not recorded.
  */
 export const portServices = ({ db, chats, harness, budget, models }: PortInstances) => {
-  // SAFETY: admission reads only Pi's harness from the instance input.
-  const input = Layer.succeed(AgentInput, { harness } as AgentInputs)
-  const core = Layer.mergeAll(Layer.succeed(Db, db), KeyedLock.layer, PiSessions.layer.pipe(Layer.provide(input)))
-  return Layer.mergeAll(
-    Layer.mergeAll(ChatsAdapter, ChatOperationsLive).pipe(
-      Layer.provide(Layer.mergeAll(core, Layer.succeed(LegacyChats, chats), input)),
-    ),
+  // SAFETY: admission reads only Pi's harness and the models it applied from the instance input; no routine answers.
+  const input = Layer.succeed(AgentInput, { harness, applied: new Map() } as AgentInputs)
+  const plans = Layer.mergeAll(
     Layer.succeed(
       Budget,
       Budget.of({
@@ -49,5 +49,22 @@ export const portServices = ({ db, chats, harness, budget, models }: PortInstanc
         choose: (modelId, now) => Effect.try({ try: () => models.choose(modelId, now), catch: toAppError }),
       }),
     ),
+  )
+  const core = Layer.mergeAll(
+    Layer.succeed(Db, db),
+    KeyedLock.layer,
+    PiSessions.layer.pipe(Layer.provide(input)),
+    FlowEvents.noop,
+    plans,
+    input,
+  )
+  const operations = Layer.effect(
+    ChatOperations,
+    makeChatOperations({ chats, requireOpen: (chat) => chats.session(chat) }),
+  )
+  return Layer.mergeAll(
+    ChatsAdapter.pipe(Layer.provide(Layer.succeed(LegacyChats, chats))),
+    operations.pipe(Layer.provide(core)),
+    plans,
   )
 }

@@ -12,16 +12,17 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import {
   createOwnerConversation,
   markOwnerRead,
+  ownerRuntime,
   registeredConversation,
-  stopOwner,
-  submitOwner,
+  sendOwnerMessage,
+  stopChat,
   updateOwnerConversation,
 } from '../agent-program.ts'
 import { sessionSnapshot } from '../agent-requests.ts'
 import { capabilitiesOf, changeCapabilities } from '../capabilities/program.ts'
 import { composerOptions } from '../composer.ts'
 import { ownerQueue, removeOwnerQueuedInput } from '../conversation-queue.ts'
-import { type AgentInputs, AgentInput } from '../runtime/input.ts'
+import { AgentInput } from '../runtime/input.ts'
 import { Retrieval } from '../retrieval/service.ts'
 import { instanceCall } from './instance.ts'
 import { Conversations } from './service.ts'
@@ -31,16 +32,6 @@ import { startThread } from './thread-heads.ts'
 /** A request that names one chat (`/conversations/:id/…`), and one that also carries a body. */
 type ChatRequest = { readonly params: { readonly id: string } }
 type ChatWrite<Payload> = ChatRequest & { readonly payload: Payload }
-
-/** What the owner's message paths run with, from the agent's instance (agent.ts `#submitRuntime`). */
-const submitRuntime = ({ harness, applied, routines, subagents, personas, run }: AgentInputs) => ({
-  harness,
-  applied,
-  routines,
-  subagents,
-  personas,
-  run,
-})
 
 /** What came with the owner's message: App context, files and composer tags, and `personaOrder` when the body had one. */
 const contextOf = ({ appContext = [], attachments = [], selections = [], personaOrder }: SendMessage) => ({
@@ -52,15 +43,7 @@ const contextOf = ({ appContext = [], attachments = [], selections = [], persona
 
 /** The owner's message into a chat, or an ask of the Personas it tags. */
 const submit = ({ params, payload }: ChatWrite<SendMessage>) =>
-  AgentInput.use((input) =>
-    submitOwner({
-      ...submitRuntime(input),
-      thread: params.id,
-      text: payload.input,
-      operationId: payload.operationId,
-      context: contextOf(payload),
-    }),
-  )
+  sendOwnerMessage(params.id, { text: payload.input, operationId: payload.operationId, context: contextOf(payload) })
 
 /**
  * The owner's message as the head of a new Thread, its Personas answering there in the order it asks. The Worker's
@@ -69,7 +52,7 @@ const submit = ({ params, payload }: ChatWrite<SendMessage>) =>
 const threadStart = ({ params, payload }: ChatWrite<SendMessage>) =>
   AgentInput.use((input) =>
     startThread({
-      ...submitRuntime(input),
+      ...ownerRuntime(input),
       parent: params.id,
       text: payload.input,
       operationId: payload.operationId,
@@ -84,11 +67,7 @@ const update = ({ params, payload }: ChatWrite<UpdateConversation>) =>
   AgentInput.use(({ routines }) => updateOwnerConversation(routines, params.id, payload))
 const move = ({ params, payload }: ChatWrite<MoveToThread>) => moveToThread(params.id, payload)
 const stop = ({ params, payload }: ChatWrite<{ readonly operationId?: string | undefined }>) =>
-  AgentInput.use(({ stopping }) =>
-    Effect.map(stopOwner({ ...stopping(), thread: params.id, operationId: payload.operationId }), (stopped) => ({
-      stopped,
-    })),
-  )
+  Effect.map(stopChat(params.id, payload.operationId), (stopped) => ({ stopped }))
 const queue = ({ params }: ChatRequest) => AgentInput.use(({ harness }) => ownerQueue(harness, params.id))
 const removeQueued = ({ params, payload }: ChatWrite<QueueRemoval>) =>
   AgentInput.use(({ harness }) => removeOwnerQueuedInput(harness, params.id, payload))
