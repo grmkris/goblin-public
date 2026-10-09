@@ -3,7 +3,7 @@ import { estimateMessageTokens } from '@earendil-works/pi-ai/utils/estimate'
 import type { PiHarness } from 'agents/harness/pi'
 import { and, count, desc, eq, inArray, lte } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import { ChatDirectory } from '../chats/directory.ts'
+import type { ChatDirectory } from '../chats/directory.ts'
 import { BACKGROUND, conversationId, entryId } from '../pi/context.ts'
 import { appMemoryLog, appMemoryNodes, appMemoryState } from '../storage/schema.ts'
 import { type LogMessage, logMessage, messageLine } from './log.ts'
@@ -73,7 +73,7 @@ export class MainMemory {
     harness: PiHarness,
     model: TextCompletion,
     options: MemoryOptions = {},
-    chats = new ChatDirectory(db),
+    chats: ChatDirectory,
   ) {
     this.#db = db
     this.#harness = harness

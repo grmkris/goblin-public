@@ -102,6 +102,11 @@ export class ChatDirectory<RunResult = unknown> {
     }
   }
 
+  /** Resolve a chat and submit one passive write while admission for that chat is locked. */
+  async passiveWrite<A>(chat: string, run: (session: SessionId) => Promise<A>): Promise<A> {
+    return this.withChat(chat, async () => run(this.session(chat)))
+  }
+
   /** Fence stale movers and preserve the old operation receipts. No production caller yet. */
   rebind(chat: string, expected: { from: string; epoch: number }, to: string, now: number): void {
     this.#db.transaction(() => {

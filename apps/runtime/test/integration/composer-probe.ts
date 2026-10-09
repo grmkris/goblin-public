@@ -1,6 +1,7 @@
 import { PRIMARY_CHAT } from '@goblin/contracts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { CapabilityProfiles } from '../../src/capabilities/profiles.ts'
+import { ChatDirectory } from '../../src/chats/directory.ts'
 import { appConversations } from '../../src/storage/schema.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { exchange, threadsUntil, transcript } from './probe-reads.ts'
@@ -18,7 +19,7 @@ export async function helperExclusionsProbe(storage: DurableObjectStorage) {
       { chatId: '703', piSession: '703', kind: 'thread', parentSession: '702', createdAt: 1 },
     ])
     .run()
-  const profiles = new CapabilityProfiles(db, [], async () => undefined)
+  const profiles = new CapabilityProfiles(db, [], async () => undefined, new ChatDirectory(db))
   await profiles.configureHelper(
     '700',
     '701',

@@ -286,20 +286,15 @@ export class ConversationRegistry {
     readonly text: string
     readonly at: number
   }): Promise<void> {
-    await (
-      await this.#conversation(this.#kit.chats.primary())
-    ).submit(
-      {
-        type: 'write',
-        requestId: `routine-report:${input.runId}`,
-        entry: {
-          kind: 'app.routine',
-          data: { thread: input.sessionId, routineId: input.routineId, runId: input.runId, outcome: input.outcome },
-          model: [{ role: 'user', content: input.text, timestamp: input.at }],
-        },
+    await this.#passiveWrite(this.#kit.chats.primary(), {
+      type: 'write',
+      requestId: `routine-report:${input.runId}`,
+      entry: {
+        kind: 'app.routine',
+        data: { thread: input.sessionId, routineId: input.routineId, runId: input.runId, outcome: input.outcome },
+        model: [{ role: 'user', content: input.text, timestamp: input.at }],
       },
-      BACKGROUND,
-    )
+    })
   }
 
   /**
@@ -312,9 +307,11 @@ export class ConversationRegistry {
     if (row?.kind !== 'thread' || row.parentSession === null) throw new InvalidInput({ reason: 'share_back' })
     const parent = this.#registered(row.parentSession)
     const model = [{ role: 'user' as const, content: authoredContent(labelOf(row), note), timestamp: Date.now() }]
-    await (
-      await this.#conversation(parent.chatId)
-    ).submit({ type: 'write', requestId, entry: { kind: 'app.shared', data: { thread }, model } }, BACKGROUND)
+    await this.#passiveWrite(parent.chatId, {
+      type: 'write',
+      requestId,
+      entry: { kind: 'app.shared', data: { thread }, model },
+    })
     return parent.role === 'primary' ? 'main' : labelOf(parent)
   }
 
@@ -327,21 +324,27 @@ export class ConversationRegistry {
     const row = this.#row(thread)
     if (row?.kind !== 'thread' || row.mainNote !== 'owed' || row.title === null) return
     const model = [{ role: 'user' as const, content: threadStartedContent(row.title), timestamp: Date.now() }]
-    await (
-      await this.#conversation(this.#kit.chats.primary())
-    ).submit(
-      {
-        type: 'write',
-        requestId: `thread-started:${thread}`,
-        entry: { kind: 'app.thread_started', data: { thread }, model },
-      },
-      BACKGROUND,
-    )
+    await this.#passiveWrite(this.#kit.chats.primary(), {
+      type: 'write',
+      requestId: `thread-started:${thread}`,
+      entry: { kind: 'app.thread_started', data: { thread }, model },
+    })
     this.#db
       .update(appConversations)
       .set({ mainNote: 'written' })
       .where(and(eq(appConversations.chatId, thread), eq(appConversations.mainNote, 'owed')))
       .run()
+  }
+
+  async #passiveWrite(
+    chat: string,
+    submission: Extract<Parameters<Conversation['submit']>[0], { type: 'write' }>,
+  ): Promise<void> {
+    await this.#kit.chats.passiveWrite(chat, async (session) => {
+      const conversation = await (await this.#harness.pi()).conversation(conversationId(session), BACKGROUND)
+      if (conversation === undefined) throw new NotFound({ what: 'conversation' })
+      await conversation.submit(submission, BACKGROUND)
+    })
   }
 
   /** Names an untitled thread from its latest exchange with the cheap model; once at a time per thread. */

@@ -4,6 +4,7 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { agentApps } from '../../src/agent-apps/engine.ts'
 import { AppRegistry } from '../../src/apps/registry.ts'
+import { ChatDirectory } from '../../src/chats/directory.ts'
 import { HomeService } from '../../src/home/service.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
 import { memorySchedules } from './apps-jobs-probe.ts'
@@ -31,11 +32,17 @@ export async function inboxAppProbe(storage: DurableObjectStorage, env: RuntimeE
     notify: async () => undefined,
     blocked: async () => undefined,
   })
-  const registry = new AppRegistry(drizzle(storage), harness, {
-    info: (name) => apps.info(name),
-    launch: (name) => apps.launch(name),
-    rehome: () => undefined,
-  })
+  const db = drizzle(storage)
+  const registry = new AppRegistry(
+    db,
+    harness,
+    {
+      info: (name) => apps.info(name),
+      launch: (name) => apps.launch(name),
+      rehome: () => undefined,
+    },
+    new ChatDirectory(db),
+  )
   apps.onChange((name) => registry.agentChanged(name, 1))
   const built = await apps.build(
     { name: 'inbox-glance', files: { 'app.ts': INBOX_APP, 'view.tsx': INBOX_VIEW } },

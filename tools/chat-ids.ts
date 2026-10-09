@@ -16,7 +16,10 @@ const explicitSession = (node: Node | undefined): boolean =>
   node.properties.some((property) => property.type === 'Property' && propertyName(property.key) === 'session')
 
 /** Parse calls so comments, strings, nested commas and a neighbouring call cannot satisfy the guard. */
-export function chatIdViolations(source: string): readonly ChatIdViolation[] {
+export function chatIdViolations(
+  source: string,
+  allowed: { readonly root?: boolean; readonly directory?: boolean } = {},
+): readonly ChatIdViolation[] {
   const result = parseSync('runtime.ts', source)
   const violations: ChatIdViolation[] = []
   const fail = (start: number, reason: string) =>
@@ -24,7 +27,7 @@ export function chatIdViolations(source: string): readonly ChatIdViolation[] {
   for (const error of result.errors) fail(error.labels[0]?.start ?? 0, `parse failed: ${error.message}`)
   new Visitor({
     Identifier(node) {
-      if (rootNames.has(node.name)) fail(node.start, `forbidden ${node.name}`)
+      if (!allowed.root && rootNames.has(node.name)) fail(node.start, `forbidden ${node.name}`)
     },
     CallExpression(node) {
       const call = node.callee
@@ -34,6 +37,10 @@ export function chatIdViolations(source: string): readonly ChatIdViolation[] {
         fail(node.start, 'harness.session requires an explicit Pi session')
       if (name === 'submit' && !explicitSession(node.arguments[1]))
         fail(node.start, 'harness.submit requires an explicit Pi session')
+    },
+    NewExpression(node) {
+      if (!allowed.directory && node.callee.type === 'Identifier' && node.callee.name === 'ChatDirectory')
+        fail(node.start, 'ChatDirectory must be shared from compose.ts')
     },
   }).visit(result.program)
   return violations

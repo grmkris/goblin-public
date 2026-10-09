@@ -798,14 +798,16 @@ Application tables are declared in `storage/schema.ts` and migrated inline in `s
 Logical chat migration is additive: existing chat keys, capabilities, exclusions, titles, close/read marks and tree
 parents stay in place. Pi entries, tasks, submissions, request ids and documents remain Pi-keyed, as do
 `app_mcp_approvals`, MCP App call reads, `app_skill_activations` and `app_run_events`. `fork_entry`, `spawner_session`
-and memory entry ids keep their original Pi identities. Routine reports, share-backs and thread-start notes resolve
-the current target chat before a passive Pi write; acceptance starts no model turn and proves no external effect.
+and memory entry ids keep their original Pi identities. Routine reports, share-backs, thread-start notes and subagent
+reports resolve the current target chat while its shared directory lock is held, then submit to Pi; passive write
+acceptance starts no model turn and proves no external effect.
 
 The chat layer has unit proof for lookup, operation retries, retention, CAS ownership and admission locks, plus a
 local workerd profile that rebinds chat `1` to a fresh non-root Pi session in test subclasses before service
 composition. Owner, helper, routine, channel and memory cases run under that profile; explicit owner and inbound
-proofs assert the non-root session and an empty root transcript. The AST guard bans root constants and session-less
-harness submission/session calls outside the chat layer. These prove local behavior; deployed-stage, live-provider,
+proofs assert the non-root session and an empty root transcript. The AST guard bans root constants, session-less
+harness submission/session calls, and private `ChatDirectory` instances outside service composition and tests. These
+prove local behavior; deployed-stage, live-provider,
 Telegram-service and remote-eviction acceptance remain separate.
 
 Better Auth lives in D1 because the Durable SQLite adapter's async transactions and affected-row semantics do not

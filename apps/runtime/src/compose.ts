@@ -130,11 +130,16 @@ function conversationServices(db: DrizzleSqliteDODatabase, input: ComposeInput, 
   const { harness } = input
   const conversations = new ConversationRegistry(db, harness, kit, nowSeconds())
   const { agentApps } = input
-  const apps = new AppRegistry(db, harness, {
-    info: (name) => agentApps.info(name),
-    launch: (name) => agentApps.launch(name),
-    rehome: (closed, to) => agentApps.rehome(closed, to),
-  })
+  const apps = new AppRegistry(
+    db,
+    harness,
+    {
+      info: (name) => agentApps.info(name),
+      launch: (name) => agentApps.launch(name),
+      rehome: (closed, to) => agentApps.rehome(closed, to),
+    },
+    kit.chats,
+  )
   conversations.onChange((ids) => apps.closeWithConversations(ids, nowSeconds()))
   agentApps.onChange((name) => apps.agentChanged(name, nowSeconds()))
   const home = new HomeService(db, apps, agentApps)
@@ -223,7 +228,7 @@ export async function composeServices(
   const memory = new MainMemory(db, harness, cheap('memory'), Number.isFinite(fold) ? { foldTokens: fold } : {}, chats)
   const { recall } = input.memory
   const capabilities = new CapabilityProfiles(db, input.subagentTools, retool(harness), chats)
-  await restoreHelperExecution(db, harness, input.helperExtensions)
+  await restoreHelperExecution(db, harness, input.helperExtensions, chats)
   // Apply the current complete delegation tool set to retained Pi filters.
   await capabilities.retoolOnce('retool:subagent-config', nowSeconds())
   const routineServices = await makeRoutines(input)
@@ -241,7 +246,7 @@ export async function composeServices(
     allows: (serverId, name) => grants.allows({ serverId, capability: 'tool', name }),
     now: nowMillis,
   })
-  const channel = new TelegramChannel(db, cipher, input.scheduleReplies, input.telemetry)
+  const channel = new TelegramChannel(db, cipher, input.scheduleReplies, input.telemetry, chats)
   input.agentApps.connect(
     appServices({
       host,

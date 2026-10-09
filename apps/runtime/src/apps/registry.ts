@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
-import { ChatDirectory } from '../chats/directory.ts'
+import type { ChatDirectory } from '../chats/directory.ts'
 import { NotFound } from '../http/errors.ts'
 import { BACKGROUND, conversationId, entryId } from '../pi/context.ts'
 import type { AgentAppInfo } from '../agent-apps/engine.ts'
@@ -95,7 +95,7 @@ export class AppRegistry {
   readonly #listeners = new Set<(apps: readonly AppView[]) => void>()
   readonly #removals = new Set<(id: string) => void>()
 
-  constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, agents: AgentAppsPort, chats = new ChatDirectory(db)) {
+  constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, agents: AgentAppsPort, chats: ChatDirectory) {
     this.#db = db
     this.#chats = chats
     this.#harness = harness

@@ -4,7 +4,7 @@
 // turns, and to a subagent's report in main, goes back with `send_message`. The store keeps the connection, the cursor,
 // the doorbell secret (sealed) and the turns whose answers are still to send.
 import { type ChannelStatus } from '@goblin/contracts'
-import { ChatDirectory } from '../chats/directory.ts'
+import type { ChatDirectory } from '../chats/directory.ts'
 import { RunAttribute, type RunAttributes } from '@goblin/contracts/telemetry'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
@@ -112,8 +112,8 @@ export class TelegramChannel {
     db: DrizzleSqliteDODatabase,
     cipher: CredentialCipher,
     wake: () => void,
-    telemetry?: RunTelemetry,
-    chats = new ChatDirectory(db),
+    telemetry: RunTelemetry | undefined,
+    chats: ChatDirectory,
   ) {
     this.#db = db
     this.#chats = chats

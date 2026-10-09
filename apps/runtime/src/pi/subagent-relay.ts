@@ -19,7 +19,7 @@ import * as Schema from 'effect/Schema'
 import { type HelperExclusion } from '@goblin/contracts'
 import { Channel, Chats, Conversations, attempt, attemptSync, nowSecondsEffect, requireResident } from '../services.ts'
 import { authoredContent } from './content.ts'
-import { BACKGROUND, entryId } from './context.ts'
+import { BACKGROUND, entryId, conversationId as piConversationId } from './context.ts'
 import type { RunProgram } from './resident-mcp.ts'
 
 /**
@@ -225,21 +225,23 @@ export function relayTask(run: RunProgram): Relay {
         const { report, close } = relay.state.checkpoint
         const { name, conversationId, origin } = relay.input
         if (report !== undefined) {
-          const spawner = await runtime.conversation(runtime.conversationId, context)
           await run(requireResident)
-          await spawner?.submit(
-            {
-              type: 'input',
-              content: authoredContent(`subagent ${name}`, report),
-              whenBusy: 'followUp',
-              requestId: `subagent-report:${relay.id}`,
-            },
-            context,
-          )
-          const primary = await run(
-            Chats.useSync((chats) => chats.chatOf(String(runtime.conversationId)) === chats.primary()),
-          )
-          if (primary && origin === 'spawner') await run(track(`subagent-report:${relay.id}`))
+          const chats = await run(Chats.useSync((directory) => directory))
+          const parentChat = chats.chatOf(String(runtime.conversationId))
+          if (parentChat === undefined) throw new Error('Subagent spawner is not registered')
+          await chats.passiveWrite(parentChat, async (session) => {
+            if (parentChat === chats.primary() && origin === 'spawner') await run(track(`subagent-report:${relay.id}`))
+            const spawner = await runtime.conversation(piConversationId(session), context)
+            await spawner?.submit(
+              {
+                type: 'input',
+                content: authoredContent(`subagent ${name}`, report),
+                whenBusy: 'followUp',
+                requestId: `subagent-report:${relay.id}`,
+              },
+              context,
+            )
+          })
         }
         if (close) await run(closeAsDone(String(conversationId)))
         await runtime.commit(() => ({ status: 'terminal', outcome: { status: 'completed', result: null } }), context)

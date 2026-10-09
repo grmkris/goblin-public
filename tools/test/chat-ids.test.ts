@@ -11,6 +11,7 @@ describe('logical chat boundary guard', () => {
       'input.harness.submit(text, { operationId })',
       'harness.submit(text)',
       'harness.submit(text, { operationId }); harness.submit(text, { session, operationId })',
+      'new ChatDirectory(db)',
     ]
     for (const source of bad) expect(chatIdViolations(source), source).not.toEqual([])
   })
@@ -24,5 +25,11 @@ describe('logical chat boundary guard', () => {
       '// ROOT_SESSION\nconst note = "harness.session() and ROOT_CONVERSATION_ID"',
     ]
     for (const source of valid) expect(chatIdViolations(source), source).toEqual([])
+  })
+
+  it('allows the composed directory without exempting composition from other chat boundaries', () => {
+    expect(chatIdViolations('new ChatDirectory(db)', { directory: true })).toEqual([])
+    expect(chatIdViolations('new ChatDirectory(db); harness.session()', { directory: true })).toHaveLength(1)
+    expect(chatIdViolations('ROOT_CONVERSATION_ID; new ChatDirectory(db)', { root: true })).toHaveLength(1)
   })
 })

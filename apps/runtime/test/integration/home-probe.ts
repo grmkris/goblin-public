@@ -6,6 +6,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Schema from 'effect/Schema'
 import { agentApps } from '../../src/agent-apps/engine.ts'
 import { AppRegistry } from '../../src/apps/registry.ts'
+import { ChatDirectory } from '../../src/chats/directory.ts'
 import { appConversations } from '../../src/storage/schema.ts'
 import { InvalidInput } from '../../src/http/errors.ts'
 import { HomeService } from '../../src/home/service.ts'
@@ -104,11 +105,16 @@ export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, 
   const engine = agentApps(storage, env, () => owner, { schedules: memorySchedules() })
   engine.attach(createRegistry())
   engine.restore()
-  const apps = new AppRegistry(db, harness, {
-    info: (name) => engine.info(name),
-    launch: (name) => engine.launch(name),
-    rehome: () => undefined,
-  })
+  const apps = new AppRegistry(
+    db,
+    harness,
+    {
+      info: (name) => engine.info(name),
+      launch: (name) => engine.launch(name),
+      rehome: () => undefined,
+    },
+    new ChatDirectory(db),
+  )
   engine.onChange((name) => apps.agentChanged(name, 1))
   const home = new HomeService(db, apps, engine)
   const changes: HomeLayout[] = []

@@ -55,7 +55,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
     },
     report: mcpReporter(telemetry),
   })
-  const channel = new TelegramChannel(db, cipher, () => undefined, telemetry)
+  const channel = new TelegramChannel(db, cipher, () => undefined, telemetry, chats)
   const eventOptions = {
     store,
     cipher,

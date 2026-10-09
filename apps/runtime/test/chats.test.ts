@@ -100,4 +100,32 @@ describe('logical chat directory', () => {
     await expect(chats.withChat('1', async () => 3)).resolves.toBe(3)
     expect(events).toEqual(['first', 'independent', 'second'])
   })
+
+  it('resolves passive writes after an earlier rebind and holds admission only through submission', async () => {
+    const { chats } = fixture()
+    let releaseMove = noop
+    const moved = new Promise<void>((resolve) => {
+      releaseMove = resolve
+    })
+    const move = chats.withChat('1', async () => {
+      await moved
+      chats.rebind('1', { from: '41', epoch: 0 }, '43', 10)
+    })
+    const submitted: string[] = []
+    const write = chats.passiveWrite('1', async (session) => {
+      submitted.push(session)
+    })
+    await chats.passiveWrite('2', async (session) => {
+      submitted.push(session)
+    })
+    expect(submitted).toEqual(['42'])
+    releaseMove()
+    await move
+    await write
+    expect(submitted).toEqual(['42', '43'])
+    await expect(chats.withChat('1', async () => chats.admit('1', 'next', 11))).resolves.toEqual({
+      session: '43',
+      existing: false,
+    })
+  })
 })

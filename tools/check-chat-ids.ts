@@ -7,8 +7,8 @@ const sourceRoot = `${repoRoot}/apps/runtime/src/`
 const files = new Bun.Glob('**/*.ts').scanSync({ cwd: sourceRoot, absolute: true })
 const failures: string[] = []
 for (const file of files) {
-  if (file.includes('/chats/')) continue
-  for (const { line, reason } of chatIdViolations(readFileSync(file, 'utf8')))
+  const allowed = { root: file.includes('/chats/'), directory: file.endsWith('/compose.ts') }
+  for (const { line, reason } of chatIdViolations(readFileSync(file, 'utf8'), allowed))
     failures.push(`${file}:${line}: ${reason}`)
 }
 if (failures.length > 0) {

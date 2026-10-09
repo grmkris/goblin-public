@@ -15,8 +15,8 @@ export class FixedProfiles extends CapabilityProfiles {
   readonly #scopes: Readonly<Record<string, CapabilityScope>>
 
   constructor(scopes: Readonly<Record<string, CapabilityScope>>) {
-    // SAFETY: `scope` is overridden below and nothing else is called, so the database is never touched.
-    super(undefined as never, undefined as never, async () => undefined)
+    // SAFETY: `scope` is overridden below and nothing else is called, so the database and directory are never touched.
+    super(undefined as never, undefined as never, async () => undefined, undefined as never)
     this.#scopes = scopes
   }
 

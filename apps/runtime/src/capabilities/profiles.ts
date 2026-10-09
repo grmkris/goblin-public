@@ -17,7 +17,7 @@ import {
 } from '../storage/schema.ts'
 import { appRoutineRuns } from '../storage/routines.ts'
 import * as Schema from 'effect/Schema'
-import { ChatDirectory } from '../chats/directory.ts'
+import type { ChatDirectory } from '../chats/directory.ts'
 import { InvalidInput } from '../http/errors.ts'
 
 type Kind = CapabilityTarget['kind']
@@ -127,7 +127,7 @@ export class CapabilityProfiles {
     db: DrizzleSqliteDODatabase,
     subagentTools: readonly ToolRegistration[],
     retool: (session: string, tools: PiTools) => Promise<void>,
-    chats = new ChatDirectory(db),
+    chats: ChatDirectory,
   ) {
     this.#db = db
     this.#chats = chats

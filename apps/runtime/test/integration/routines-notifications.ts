@@ -10,6 +10,7 @@ import { RoutineRunStore } from '../../src/routines/runs.ts'
 import { notifyRoutine } from '../../src/routines/notifications.ts'
 import { ResidentAuthority } from '../../src/resident.ts'
 import { TelegramChannel } from '../../src/channel/channel.ts'
+import { ChatDirectory } from '../../src/chats/directory.ts'
 import { Entitlements } from '../../src/billing/gates.ts'
 import { Channel, Mcp, Resident, RoutineRuns } from '../../src/services.ts'
 import { MemoryCredentials, MemoryGrants } from '../mcp/memory.ts'
@@ -73,7 +74,13 @@ async function setupNotifications(storage: DurableObjectStorage, owner: string) 
   const runs = new RoutineRunStore(db, owner)
   const resident = new ResidentAuthority(db)
   resident.enable(Math.floor(Date.now() / 1000))
-  const channel = new TelegramChannel(db, await CredentialCipher.fromBase64(KEY), () => undefined)
+  const channel = new TelegramChannel(
+    db,
+    await CredentialCipher.fromBase64(KEY),
+    () => undefined,
+    undefined,
+    new ChatDirectory(db),
+  )
   channel.enableEvents('mygram', '', Math.floor(Date.now() / 1000))
   const credentials = new MemoryCredentials()
   await credentials.saveTokens('mygram', { access_token: 'keyless-fixture', token_type: 'bearer' }, 1)
