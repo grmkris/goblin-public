@@ -1,8 +1,9 @@
 import { defineExtension, section } from '@earendil-works/pi-durable'
 import { FileEntry, FileListing } from '@goblin/contracts'
+import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { Files, attempt } from '../services.ts'
-import type { RunProgram } from './resident-mcp.ts'
+import { Files } from '../files/service.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { typedTool } from './typed-tool.ts'
 
 /** How much of a file one `files_read` returns. */
@@ -42,7 +43,7 @@ export function filesExtension(run: RunProgram) {
         input: Schema.Struct({ dir: Path }),
         output: FileListing,
         replay: 'safe',
-        execute: async ({ dir }) => run(Files.use((files) => attempt(() => files.list(dir)))),
+        execute: async ({ dir }) => run(Files.use((files) => files.list(dir))),
       }),
       typedTool({
         name: 'files_read',
@@ -55,13 +56,12 @@ export function filesExtension(run: RunProgram) {
         replay: 'safe',
         execute: async ({ path, offset }) =>
           run(
-            Files.use((files) =>
-              attempt(async () => {
-                const entry = await files.stat(path)
-                if (!isText(entry)) return { entry, note: 'Not a text file: its bytes are not shown.' }
-                return files.text(path, offset ?? 0, READ_BYTES)
-              }),
-            ),
+            Effect.gen(function* () {
+              const files = yield* Files
+              const entry = yield* files.stat(path)
+              if (!isText(entry)) return { entry, note: 'Not a text file: its bytes are not shown.' }
+              return yield* files.text(path, offset ?? 0, READ_BYTES)
+            }),
           ),
       }),
       typedTool({
@@ -77,9 +77,7 @@ export function filesExtension(run: RunProgram) {
         execute: async ({ path, content, mimeType }) => {
           const size = new TextEncoder().encode(content).byteLength
           return run(
-            Files.use((files) =>
-              attempt(() => files.write('agent', path, content, mimeType ?? 'text/plain; charset=utf-8', size)),
-            ),
+            Files.use((files) => files.write('agent', path, content, mimeType ?? 'text/plain; charset=utf-8', size)),
           )
         },
       }),
@@ -90,7 +88,7 @@ export function filesExtension(run: RunProgram) {
         output: Schema.Struct({ deleted: Schema.String }),
         replay: 'safe',
         execute: async ({ path }) => {
-          await run(Files.use((files) => attempt(() => files.remove('agent', path))))
+          await run(Files.use((files) => files.remove('agent', path)))
           return { deleted: path }
         },
       }),

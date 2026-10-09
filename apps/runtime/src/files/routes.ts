@@ -1,13 +1,11 @@
 import * as Cause from 'effect/Cause'
-import type * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import * as Option from 'effect/Option'
 import { FILE_LIMITS } from '@goblin/contracts'
 import { InvalidInput, PayloadTooLarge, type AppError, toAppError } from '../http/errors.ts'
 import { errorBody, statusOf } from '../http/respond.ts'
-import { type AgentServices, Files, attempt } from '../services.ts'
-
-type Execute = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<Exit.Exit<A, AppError>>
+import type { ExitProgram } from '../runtime/bridge.ts'
+import { Files } from './service.ts'
 
 /** Images the browser may show in place; anything else downloads, so an uploaded page never runs on the app's origin. */
 const INLINE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
@@ -44,26 +42,26 @@ function download(name: string, mimeType: string, body: ReadableStream<Uint8Arra
 }
 
 /** Writes the request's body to `path`: it must say how long it is, and be within the per-file limit. */
-async function upload(request: Request, path: string, execute: Execute): Promise<Response> {
+async function upload(request: Request, path: string, execute: ExitProgram): Promise<Response> {
   const declared = request.headers.get('content-length')
   const size = declared === null ? Number.NaN : Number(declared)
   if (!Number.isSafeInteger(size) || request.body === null) throw new InvalidInput({ reason: 'file size' })
   if (size > FILE_LIMITS.fileBytes) throw new PayloadTooLarge({ limit: FILE_LIMITS.fileBytes })
   const mimeType = (request.headers.get('content-type') ?? 'application/octet-stream').slice(0, 128)
   const body = request.body
-  const exit = await execute(Files.use((files) => attempt(() => files.write('owner', path, body, mimeType, size))))
+  const exit = await execute(Files.use((files) => files.write('owner', path, body, mimeType, size)))
   return answer(exit, (entry) => Response.json(entry, { status: 201 }))
 }
 
 /** One file: `GET` downloads it, `PUT` writes it, `DELETE` deletes it. */
-async function content(request: Request, path: string, execute: Execute): Promise<Response> {
+async function content(request: Request, path: string, execute: ExitProgram): Promise<Response> {
   switch (request.method) {
     case 'GET': {
-      const exit = await execute(Files.use((files) => attempt(() => files.read(path))))
+      const exit = await execute(Files.use((files) => files.read(path)))
       return answer(exit, ({ entry, body }) => download(entry.name, entry.mimeType, body))
     }
     case 'DELETE': {
-      const exit = await execute(Files.use((files) => attempt(() => files.remove('owner', path))))
+      const exit = await execute(Files.use((files) => files.remove('owner', path)))
       return answer(exit, () => Response.json({ deleted: true }))
     }
     case 'PUT':
@@ -77,15 +75,13 @@ async function content(request: Request, path: string, execute: Execute): Promis
  * The owner's files, as the Worker forwards them after authenticating the owner: `GET /files?dir=` lists, and
  * `/files/content?path=` reads (`GET`), writes (`PUT`, the request's body, `content-length` required) or deletes.
  */
-export async function filesRequest(request: Request, url: URL, execute: Execute): Promise<Response> {
+export async function filesRequest(request: Request, url: URL, execute: ExitProgram): Promise<Response> {
   try {
     if (url.pathname === '/files/content') return await content(request, required(url, 'path'), execute)
     if (url.pathname !== '/files' || request.method !== 'GET')
       return Response.json({ error: 'NotFound' }, { status: 404 })
     const dir = url.searchParams.get('dir') ?? '/uploads'
-    return answer(await execute(Files.use((files) => attempt(() => files.list(dir)))), (listing) =>
-      Response.json(listing),
-    )
+    return answer(await execute(Files.use((files) => files.list(dir))), (listing) => Response.json(listing))
   } catch (cause) {
     // expected: a refused request (no path, no size, too large) is answered with its error body; toAppError logs any
     // other failure before it becomes Internal

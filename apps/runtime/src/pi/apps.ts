@@ -6,7 +6,7 @@ import { problemText } from '../agent-apps/queue.ts'
 import { ScriptResult, runScript } from '../agent-apps/script.ts'
 import { withContext } from './context-tail.ts'
 import { homeExtension } from './home.ts'
-import type { RunProgram } from './resident-mcp.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { typedTool } from './typed-tool.ts'
 
 const GUIDE = [
