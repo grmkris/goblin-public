@@ -46,8 +46,13 @@ const rowOf = (event: RunEvent): Row => ({
 })
 
 /** An attribute equals `value`: its JSON path quotes the key, whose dots are part of the name. */
-const attributeIs = (key: string, value: string) =>
+const attributeIs = (key: string, value: string | number) =>
   sql`json_extract(${appRunEvents.attributes}, ${`$."${key}"`}) = ${value}`
+
+/** `text` as a LIKE pattern that matches it literally, with `\` as the escape character. */
+const literal = (text: string): string => text.replaceAll(/[\\%_]/gu, (char) => `\\${char}`)
+/** Bound on the operations one read links to another. */
+const RELATED = 20
 
 /** Leave room for fixed query parameters below Workers SQLite's 100-parameter limit. */
 const PROBLEM_PAGE_SIZE = 64
@@ -153,6 +158,51 @@ export class RunLedger<RunResult = unknown> implements RunSink {
         .limit(limit)
         .all(),
     )
+  }
+
+  /**
+   * The operation whose model answer or tool result is entry `entry` of Pi session `session`: the events that recorded
+   * it name the entry (`goblin.entry`). A message no turn wrote (the owner's own, a passive write) has none here.
+   */
+  operationOfEntry(session: string, entry: number): string | undefined {
+    const row = this.#db
+      .select({ operationId: appRunEvents.operationId })
+      .from(appRunEvents)
+      .where(
+        and(
+          eq(appRunEvents.conversationId, session),
+          inArray(appRunEvents.kind, ['model.attempt', 'tool.call']),
+          attributeIs(RunAttribute.entry, entry),
+        ),
+      )
+      .orderBy(desc(appRunEvents.startedAt))
+      .limit(1)
+      .get()
+    return row?.operationId ?? undefined
+  }
+
+  /** Flow steps that name `operationId` as the operation that caused them (`goblin.operation.parent`). */
+  childFlows(operationId: string): readonly RunEvent[] {
+    return this.#events(
+      this.#db
+        .select()
+        .from(appRunEvents)
+        .where(and(eq(appRunEvents.kind, 'flow'), attributeIs(RunAttribute.parentOperation, operationId)))
+        .orderBy(asc(appRunEvents.startedAt))
+        .limit(RELATED)
+        .all(),
+    )
+  }
+
+  /** Recorded operation ids that start with `prefix`: the ids an operation's own steps derive from it. */
+  operationsStarting(prefix: string): readonly string[] {
+    return this.#db
+      .selectDistinct({ operationId: appRunEvents.operationId })
+      .from(appRunEvents)
+      .where(sql`${appRunEvents.operationId} LIKE ${`${literal(prefix)}%`} ESCAPE '\\'`)
+      .limit(RELATED)
+      .all()
+      .flatMap((row) => (row.operationId === null ? [] : [row.operationId]))
   }
 
   /** Events that failed, were blocked or were cut short since `since`, newest first. */

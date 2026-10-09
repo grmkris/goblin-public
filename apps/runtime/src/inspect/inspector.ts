@@ -1,43 +1,19 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import type { EntryRecord, SubmissionRecord } from '@earendil-works/pi-durable'
 import { authorOf } from '@goblin/contracts'
-import type {
-  InspectConversations,
-  InspectDetails,
-  InspectDetailsArguments,
-  InspectDetailsInput,
-  InspectEntries,
-  InspectEntry,
-  InspectFlows,
-  InspectFlowsInput,
-  InspectProblems,
-  InspectQuery,
-  InspectTurns,
-  TurnSummary,
-  TurnTimeline,
-} from '@goblin/contracts/inspect'
-import { RunAttribute, type RunEvent } from '@goblin/contracts/telemetry'
+import type { FlowRecord, InspectEntry, RelatedOperation, TurnSummary, TurnTimeline } from '@goblin/contracts/inspect'
+import { type FlowEvent, RunAttribute, type RunEvent } from '@goblin/contracts/telemetry'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { nowMillis } from '../clock.ts'
 import type { ConversationRegistry } from '../conversations.ts'
-import { InvalidInput, NotFound } from '../http/errors.ts'
-import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { textBlocks } from '../pi/transcript.ts'
 import { flowOf } from '../telemetry/events.ts'
 import type { RunLedger } from '../telemetry/ledger.ts'
-import { coverageGaps } from './coverage.ts'
 
 /** Longest text kept from one entry; the rest is cut and the entry marked `truncated`. */
 const MAX_TEXT = 4000
 /** Longest JSON kept for a tool call's arguments or an entry's data. */
 const MAX_JSON = 2000
-/** What `turns` and `problems` look back over by default. */
-const DAY_MS = 24 * 60 * 60 * 1000
-/** Newer than any entry: the newest page of a conversation. */
-const NEWEST = 2 ** 31
-/** How many flow steps `flows` answers by default. */
-const FLOWS = 50
 
 const Message = Schema.Struct({
   role: Schema.String,
@@ -193,128 +169,78 @@ export function summarize(turn: RunEvent, events: readonly RunEvent[]): TurnSumm
   }
 }
 
-/** A details query's reader input: an operation, or a chat with one of its entries. Anything else is invalid. */
-function detailsInput({ operation, chat, entry }: InspectDetailsArguments): InspectDetailsInput {
-  if (operation !== undefined) return { operation }
-  if (chat !== undefined && entry !== undefined) return { chat, entry }
-  throw new InvalidInput({ reason: 'details take an operation, or a chat and an entry' })
+/** The operations whose own ids derive from another's: a Persona's answer to it, and a Thread's first send. */
+const PERSONA_ANSWER = /^persona:(.+):\d+$/u
+const FIRST_SEND = /^(.+):first$/u
+/** At most this many related operations in one read. */
+const RELATED = 20
+
+type LinkReads = Pick<RunLedger, 'forOperations' | 'childFlows' | 'operationsStarting'>
+
+/**
+ * The operations linked to `operationId`, with the kind each is by its id alone: its parent and the operations it
+ * caused, by the flow graph (`goblin.operation.parent`) and, for rows older than flow events, by the ids derived from it
+ * (a Persona's answer `persona:<operation>:<persona>`, a Thread's first send `<operation>:first`).
+ */
+function linksOf(ledger: LinkReads, operationId: string, events: readonly RunEvent[]): Map<string, string> {
+  const links = new Map<string, string>()
+  const add = (operation: string | undefined, kind: string) => {
+    if (operation === undefined || operation === operationId || operation.length > 200 || links.has(operation)) return
+    links.set(operation, kind)
+  }
+  for (const event of events) add(flowOf(event)?.parentOperation, 'operation')
+  add(PERSONA_ANSWER.exec(operationId)?.[1], 'persona_ask')
+  add(FIRST_SEND.exec(operationId)?.[1], 'start')
+  for (const child of ledger.childFlows(operationId)) add(child.operationId, flowOf(child)?.flow ?? 'operation')
+  for (const answer of ledger.operationsStarting(`persona:${operationId}:`)) add(answer, 'persona_answer')
+  const first = `${operationId}:first`
+  if (ledger.operationsStarting(first).includes(first)) add(first, 'send')
+  return links
 }
 
-/** Read-only inspection of this agent (ADR 0024): Pi for content and settlement, the run ledger for how it ran. */
+/**
+ * The operations linked to `operationId` (`linksOf`), nearest first, each described by its newest flow step when it
+ * has one: which flow, its chat and how it ended. `events` are the operation's own.
+ */
+export function relatedOf(ledger: LinkReads, operationId: string, events: readonly RunEvent[]): RelatedOperation[] {
+  const linked = [...linksOf(ledger, operationId, events)].slice(0, RELATED)
+  const flows = new Map<string, FlowEvent>()
+  for (const event of ledger.forOperations(linked.map(([operation]) => operation))) {
+    const flow = flowOf(event)
+    if (flow?.operationId !== undefined) flows.set(flow.operationId, flow)
+  }
+  return linked.map(([operation, kind]) => {
+    const flow = flows.get(operation)
+    if (flow === undefined) return { operation, kind }
+    return { operation, kind: flow.flow, ...(flow.chat === undefined ? {} : { chat: flow.chat }), state: flow.status }
+  })
+}
+
+/** Pi's settlement of a submission, as a timeline shows it. */
+export function settlementOf(record: SubmissionRecord | undefined): TurnTimeline['submission'] {
+  if (record === undefined) return undefined
+  return {
+    status: record.status,
+    ...(record.entry === undefined ? {} : { entry: Number(record.entry) }),
+    ...(record.answer === undefined ? {} : { answer: Number(record.answer) }),
+    ...(record.reason === undefined ? {} : { reason: record.reason }),
+  }
+}
+
+/** A flow step as `inspect_flows` lists it, or nothing for an event that is no flow step. */
+export function flowRecord(event: RunEvent): FlowRecord | undefined {
+  const step = flowOf(event)
+  return step === undefined ? undefined : { ...step, at: event.endedAt ?? event.startedAt }
+}
+
+/**
+ * What the legacy start (layers/legacy.ts) still builds for the legacy `Inspect` tag, which nothing reads any more:
+ * inspection is the `Inspection` service (inspect/service.ts). It goes with the legacy start.
+ */
 export class Inspector {
-  readonly #ledger: RunLedger
-  readonly #registry: ConversationRegistry
-  readonly #harness: PiHarness
-  readonly #clock: () => number
+  readonly ledger: RunLedger
 
-  constructor(ledger: RunLedger, registry: ConversationRegistry, harness: PiHarness, clock: () => number = nowMillis) {
-    this.#ledger = ledger
-    this.#registry = registry
-    this.#harness = harness
-    this.#clock = clock
-  }
-
-  async run(query: InspectQuery) {
-    switch (query.kind) {
-      case 'conversations':
-        return this.conversations()
-      case 'conversation':
-        return this.conversation(query.conversation, query.before)
-      case 'turns':
-        return this.turns(query.since, query.limit, query.conversation)
-      case 'turn':
-        return this.turn(query.operationId)
-      case 'problems':
-        return this.problems(query.since, query.limit, query.all)
-      case 'flows':
-        return this.flows(query)
-      case 'details':
-        return this.details(detailsInput(query))
-    }
-  }
-
-  async conversations(): Promise<InspectConversations> {
-    return { conversations: await this.#registry.list() }
-  }
-
-  /** A page of a registered conversation's entries, oldest first, ending before `before`. */
-  async conversation(session: string, before = NEWEST): Promise<InspectEntries> {
-    const page = await this.#registry.history(session, before)
-    const first = page.entries[0]
-    return {
-      conversation: session,
-      entries: page.entries.map(inspectEntry),
-      ...(page.more && first !== undefined ? { before: Number(first.id) } : {}),
-    }
-  }
-
-  turns(since?: number, limit = 20, conversation?: string): InspectTurns {
-    const session = conversation === undefined ? undefined : this.#registry.require(conversation)
-    const turns = this.#ledger.turns(since ?? this.#clock() - DAY_MS, limit, session)
-    const events = this.#ledger.forOperations(turns.flatMap((turn) => turn.operationId ?? []))
-    return {
-      turns: turns.map((turn) =>
-        summarize(
-          turn,
-          events.filter((event) => event.operationId === turn.operationId),
-        ),
-      ),
-    }
-  }
-
-  async turn(operationId: string): Promise<TurnTimeline> {
-    const events = this.#ledger.forOperation(operationId)
-    const turn = events.find((event) => event.kind === 'turn.submitted')
-    if (turn === undefined) throw new NotFound({ what: 'turn' })
-    const submission = await this.#submission(turn.conversationId, operationId)
-    const gaps = coverageGaps(turn, events, submission)
-    return {
-      turn: summarize(turn, events),
-      ...(submission === undefined ? {} : { submission }),
-      events,
-      coverage: { complete: gaps.length === 0, gaps },
-    }
-  }
-
-  problems(since?: number, limit = 50, all = false): InspectProblems {
-    const from = since ?? this.#clock() - DAY_MS
-    return { since: from, problems: this.#ledger.problems(from, limit, all) }
-  }
-
-  /** Conversation flow steps since `since` (the last day by default), newest first, of one chat or flow if asked. */
-  flows(input: InspectFlowsInput): InspectFlows {
-    const since = input.since ?? this.#clock() - DAY_MS
-    const flows = this.#ledger.flows(since, input.limit ?? FLOWS, input).flatMap((event) => {
-      const step = flowOf(event)
-      return step === undefined ? [] : [{ ...step, at: event.endedAt ?? event.startedAt }]
-    })
-    return { since, flows }
-  }
-
-  /**
-   * The details behind a message. So far only an operation that ran a turn has them: its timeline, with no related
-   * operations. An entry's operation, a passive write and related operations need the operation receipts, which are
-   * not read yet.
-   */
-  async details(input: InspectDetailsInput): Promise<InspectDetails> {
-    if (!('operation' in input)) throw new NotFound({ what: 'operation' })
-    return { ...(await this.turn(input.operation)), related: [] }
-  }
-
-  /** Pi's own settlement of a turn: whether its submission was answered, and with which entry. */
-  async #submission(conversation: string | undefined, operationId: string) {
-    if (conversation === undefined) return undefined
-    const pi = await this.#harness.pi()
-    const record = await pi.commit(
-      (tx) => tx.submissionByRequest(conversationId(conversation), operationId),
-      BACKGROUND,
-    )
-    if (record === undefined) return undefined
-    return {
-      status: record.status,
-      ...(record.entry === undefined ? {} : { entry: Number(record.entry) }),
-      ...(record.answer === undefined ? {} : { answer: Number(record.answer) }),
-      ...(record.reason === undefined ? {} : { reason: record.reason }),
-    }
+  constructor(ledger: RunLedger, _registry: ConversationRegistry, _harness: PiHarness) {
+    this.ledger = ledger
   }
 }

@@ -1,15 +1,10 @@
 import { RunAttribute, type RunEvent } from '@goblin/contracts/telemetry'
 import * as Effect from 'effect/Effect'
-import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AppError } from '../src/http/errors.ts'
-import { Inspector } from '../src/inspect/inspector.ts'
 import type { AgentServices } from '../src/layers/index.ts'
-import { InspectionAdapter } from '../src/layers/observability.ts'
 import { diagnoseExtension } from '../src/pi/diagnose.ts'
-import { Inspect } from '../src/services.ts'
-import { RunLedger } from '../src/telemetry/ledger.ts'
-import { chatDatabase } from './chats-sqlite.ts'
+import { inspectionFixture } from './inspection-fixture.ts'
 
 const closes: (() => void)[] = []
 afterEach(() => {
@@ -18,12 +13,8 @@ afterEach(() => {
 
 /** `diagnose` over a real ledger, its programs run with only the `Inspection` service it reads. */
 const fixture = () => {
-  const { db, close } = chatDatabase()
+  const { ledger, layer, close } = inspectionFixture()
   closes.push(close)
-  const ledger = new RunLedger(db)
-  // SAFETY: these turns have no conversation, so the inspector never lists conversations or reads Pi.
-  const unread = undefined as never
-  const layer = InspectionAdapter.pipe(Layer.provide(Layer.succeed(Inspect, new Inspector(ledger, unread, unread))))
   const run = <A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<A> =>
     // SAFETY: diagnose's programs require only `Inspection`, which `layer` provides.
     Effect.runPromise(Effect.provide(program, layer) as Effect.Effect<A, AppError>)

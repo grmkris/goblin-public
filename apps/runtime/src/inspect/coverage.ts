@@ -30,3 +30,12 @@ export function coverageGaps(
     gaps.push("A compaction ran; its summary's model call is not recorded.")
   return gaps
 }
+
+/**
+ * What the timeline of an operation that ran no turn (a passive write, a move, a Topic created) cannot show. Its steps
+ * are all the ledger kept of it; only one that has not ended is a gap.
+ */
+export const operationGaps = (events: readonly RunEvent[]): string[] =>
+  events.some((event) => event.status === 'started')
+    ? ['Some events have not ended: still running, or lost if the agent stopped.']
+    : []

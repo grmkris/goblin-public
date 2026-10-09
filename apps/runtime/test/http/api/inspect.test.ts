@@ -13,7 +13,9 @@ import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { InspectHandlers } from '../../../src/inspect/api.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
 import { Resident } from '../../../src/services.ts'
+import { flowRunEvent } from '../../../src/telemetry/events.ts'
 import { callOwner } from '../../integration/owner-api.ts'
+import { inspectionFixture } from '../../inspection-fixture.ts'
 
 const PLAN: AccountPlan = {
   active: true,
@@ -46,18 +48,26 @@ const INSPECT = HttpApiBuilder.layer(INSPECT_API).pipe(
 )
 
 const runtimes: ManagedRuntime.ManagedRuntime<OwnerHttp, never>[] = []
+const closes: (() => void)[] = []
 afterEach(async () => {
   for (const runtime of runtimes.splice(0)) await runtime.dispose()
+  for (const close of closes.splice(0)) close()
 })
 
-/** The inspect group as the agent serves it. Its handlers read no service; the gate's plan and authority are fakes. */
+/**
+ * The inspect group as the agent serves it, over inspection of a real ledger (`inspectionFixture`: chat `12` is Pi
+ * session `40`). The gate's plan and resident authority are the only fakes.
+ */
 const fixture = (options: { readonly active?: boolean } = {}) => {
   const resident = new CountingResident()
   const plan = Effect.succeed({ ...PLAN, active: options.active ?? true })
+  const inspection = inspectionFixture()
+  closes.push(inspection.close)
   const runtime = ManagedRuntime.make(
     OwnerHttp.serve(INSPECT_API, INSPECT).pipe(
       Layer.provide(
         Layer.mergeAll(
+          inspection.layer,
           Layer.succeed(Resident, resident),
           Layer.succeed(Entitlements, {
             state: () => plan,
@@ -79,22 +89,49 @@ const fixture = (options: { readonly active?: boolean } = {}) => {
       await runtime.runPromise(OwnerHttp.use((http) => http.handle(request))),
       () => new Error(`not an API route: ${request.url}`),
     )
-  return { fetch, resident }
+  return { fetch, resident, ledger: inspection.ledger }
+}
+
+/** A move from chat 12 into a new thread, recorded as its one flow step, and the answer of a turn there. */
+const move = flowRunEvent(
+  { flow: 'move', via: 'app', actor: 'owner', chat: '12', operationId: 'owner:op-9', status: 'ok' },
+  'flow:1',
+  1_000,
+)
+const answer = {
+  id: 'model:t1:1:0',
+  kind: 'model.attempt' as const,
+  status: 'ok' as const,
+  conversationId: '40',
+  operationId: 'owner:op-8',
+  taskId: 't1',
+  startedAt: 900,
+  endedAt: 950,
+  attributes: { 'goblin.entry': 40 },
 }
 
 const get = (path: string) => new Request(`https://agent${path}`, { headers: { 'x-goblin-ref': 'ref-1' } })
 
 describe('the inspect group served by the agent', () => {
-  it("answers a message's details by operation or entry; none are found until the receipts are read", async () => {
-    const { fetch, resident } = fixture()
-    for (const query of ['operation=owner%3Aop-1', 'entry=40']) {
-      const response = await fetch(get(`/api/conversations/12/details?${query}`))
-      expect(response.status).toBe(404)
-      expect(await response.json()).toEqual({
-        error: { code: 'not_found', message: 'That does not exist.', what: 'details', ref: 'ref-1' },
-      })
-    }
-    expect(resident.renewals).toHaveLength(2)
+  it("answers a message's details by its operation or by its entry, and 404 for one it has none of", async () => {
+    const { fetch, resident, ledger } = fixture()
+    ledger.ended(move)
+    ledger.ended(answer)
+    const byOperation = await fetch(get('/api/conversations/12/details?operation=owner%3Aop-9'))
+    expect(byOperation.status).toBe(200)
+    expect(await byOperation.json()).toEqual({
+      events: [move],
+      coverage: { complete: true, gaps: [] },
+      related: [],
+    })
+    const byEntry = await fetch(get('/api/conversations/12/details?entry=40'))
+    expect(await byEntry.json()).toMatchObject({ events: [{ operationId: 'owner:op-8' }], related: [] })
+    const missing = await fetch(get('/api/conversations/12/details?entry=41'))
+    expect(missing.status).toBe(404)
+    expect(await missing.json()).toEqual({
+      error: { code: 'not_found', message: 'That does not exist.', what: 'entry operation', ref: 'ref-1' },
+    })
+    expect(resident.renewals).toHaveLength(3)
   })
 
   it('refuses a query naming neither an operation nor an entry (400), and a chat id that is not one (404)', async () => {
@@ -115,11 +152,16 @@ describe('the inspect group served by the agent', () => {
     expect(resident.renewals).toEqual([])
   })
 
-  it("serves the probes' typed client, which decodes the refusal as the NotFound class", async () => {
-    const { fetch } = fixture()
+  it("serves the probes' typed client: details decode, and a refusal decodes as the NotFound class", async () => {
+    const { fetch, ledger } = fixture()
+    ledger.ended(move)
+    const details = await callOwner({ fetch }, (api) =>
+      api.inspect.details({ params: { id: '12' }, query: { operation: 'owner:op-9' } }),
+    )
+    expect(details.events.map((event) => event.id)).toEqual(['flow:1'])
     const refused = await callOwner({ fetch }, (api) =>
       Effect.flip(api.inspect.details({ params: { id: '12' }, query: { entry: 40 } })),
     )
-    expect(refused).toMatchObject({ _tag: 'NotFound', what: 'details', ref: 'integration-probe' })
+    expect(refused).toMatchObject({ _tag: 'NotFound', what: 'entry operation', ref: 'integration-probe' })
   })
 })

@@ -9,6 +9,7 @@ export const paths: string[] = [
   'apps/cli/src/{args,commands,config,logs,oauth,render,store}.ts',
   'apps/cli/test/**',
   'apps/runtime/test/{diagnose,inspect,inspect-service,telemetry,telemetry-attention,telemetry-flows,telemetry-ledger,telemetry-recovery,trace}.test.ts',
+  'apps/runtime/test/inspection-fixture.ts',
   'apps/runtime/test/mcp/inspection.test.ts',
   'apps/runtime/test/http/api/inspect.test.ts',
   'apps/runtime/test/integration/telemetry-probe.ts',

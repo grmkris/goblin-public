@@ -1,13 +1,10 @@
 import type { AssistantMessage, Message } from '@earendil-works/pi-ai'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { authorTag, TELEGRAM_AUTHOR } from '@goblin/contracts'
-import { RunAttribute, type FlowEvent, type RunEvent } from '@goblin/contracts/telemetry'
-import { afterEach, describe, expect, it } from 'vitest'
-import { Inspector, inspectEntry, summarize } from '../src/inspect/inspector.ts'
+import { RunAttribute, type RunEvent } from '@goblin/contracts/telemetry'
+import { describe, expect, it } from 'vitest'
+import { inspectEntry, summarize } from '../src/inspect/inspector.ts'
 import { conversationId, entryId } from '../src/pi/context.ts'
-import { flowRunEvent } from '../src/telemetry/events.ts'
-import { RunLedger } from '../src/telemetry/ledger.ts'
-import { chatDatabase } from './chats-sqlite.ts'
 
 const usage = (input: number, output: number) => ({
   input,
@@ -166,89 +163,5 @@ describe('summarize', () => {
       outputTokens: 12,
       errors: 1,
     })
-  })
-})
-
-const closes: (() => void)[] = []
-afterEach(() => {
-  for (const close of closes.splice(0)) close()
-})
-
-const DAY_MS = 24 * 60 * 60 * 1000
-const NOW = 10 * DAY_MS
-
-/** The inspector over a real ledger. Flows, and turns outside a conversation, read neither Pi nor the registry. */
-const inspector = () => {
-  const { db, close } = chatDatabase()
-  closes.push(close)
-  const ledger = new RunLedger(db)
-  // SAFETY: nothing here lists conversations or reads Pi: flows are ledger rows, and the turns have no conversation.
-  const unread = undefined as never
-  return { ledger, inspect: new Inspector(ledger, unread, unread, () => NOW) }
-}
-
-const step = (flow: FlowEvent['flow'], chat: string, status: FlowEvent['status'] = 'ok'): FlowEvent => ({
-  flow,
-  via: 'app',
-  actor: 'owner',
-  chat,
-  operationId: `op-${flow}-${chat}`,
-  status,
-  ms: 5,
-})
-
-describe('inspection of flows', () => {
-  it('reads the last day of flow steps, newest first, with when each was recorded', () => {
-    const { ledger, inspect } = inspector()
-    ledger.ended(flowRunEvent(step('send', '1'), 'flow:old', NOW - 2 * DAY_MS))
-    ledger.ended(flowRunEvent(step('reply', '12'), 'flow:1', NOW - 300))
-    ledger.ended(flowRunEvent(step('move', '12', 'refused'), 'flow:2', NOW - 200))
-    ledger.ended(event('turn.submitted', 'ok'))
-
-    expect(inspect.flows({})).toEqual({
-      since: NOW - DAY_MS,
-      flows: [
-        { ...step('move', '12', 'refused'), at: NOW - 200 },
-        { ...step('reply', '12'), at: NOW - 300 },
-      ],
-    })
-    expect(inspect.flows({ since: 0, limit: 1 }).flows.map((flow) => flow.flow)).toEqual(['move'])
-  })
-
-  it("filters by a chat's exact id and by flow", () => {
-    const { ledger, inspect } = inspector()
-    ledger.ended(flowRunEvent(step('reply', '12'), 'flow:1', NOW - 300))
-    ledger.ended(flowRunEvent(step('reply', '123'), 'flow:2', NOW - 200))
-    ledger.ended(flowRunEvent(step('move', '12'), 'flow:3', NOW - 100))
-
-    expect(inspect.flows({ chat: '12' }).flows.map((flow) => flow.operationId)).toEqual(['op-move-12', 'op-reply-12'])
-    expect(inspect.flows({ flow: 'reply' }).flows.map((flow) => flow.chat)).toEqual(['123', '12'])
-    expect(inspect.flows({ chat: '12', flow: 'reply' }).flows).toHaveLength(1)
-    expect(inspect.flows({ chat: '7' }).flows).toEqual([])
-  })
-})
-
-describe('inspection of details', () => {
-  it("gives a turn operation's timeline with no related operations yet", async () => {
-    const { ledger, inspect } = inspector()
-    const turn: RunEvent = {
-      id: 'turn:op-1',
-      kind: 'turn.submitted',
-      status: 'ok',
-      operationId: 'op-1',
-      startedAt: 10,
-      endedAt: 20,
-      attributes: {},
-    }
-    ledger.ended(turn)
-    const details = await inspect.run({ kind: 'details', operation: 'op-1' })
-    expect(details).toMatchObject({ turn: { operationId: 'op-1', status: 'ok' }, events: [turn], related: [] })
-  })
-
-  it('refuses a query that names neither an operation nor a chat entry, and finds no entry operation yet', async () => {
-    const { inspect } = inspector()
-    await expect(inspect.run({ kind: 'details', chat: '12' })).rejects.toMatchObject({ _tag: 'InvalidInput' })
-    await expect(inspect.run({ kind: 'details', chat: '12', entry: 4 })).rejects.toMatchObject({ _tag: 'NotFound' })
-    await expect(inspect.run({ kind: 'details', operation: 'missing' })).rejects.toMatchObject({ _tag: 'NotFound' })
   })
 })
