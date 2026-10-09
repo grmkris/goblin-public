@@ -41,6 +41,10 @@ forget), and every search first runs a bounded catch-up over the chats that may 
 all; closed chats read since they closed are skipped), which also picks up passive writes that start no run. A long
 history is indexed over several catch-ups. Writes are one short synchronous transaction per window; nothing is held
 across a Pi read. `reassign(session, fromEntry, chat)` moves a stretch of a session to another chat for Move to thread.
+Every catch-up goes through the Retrieval service (`retrieval/service.ts`), which runs it under its session's turn of
+the agent's `KeyedLock` (key `retrieval:<session>`, first come first served), and a catch-up that started runs to its
+end: two catch-ups of one session never read the same windows at once (2026-10-09; it was a promise chain inside the
+index).
 
 ## `search_chats`
 

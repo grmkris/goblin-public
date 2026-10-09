@@ -82,7 +82,10 @@ Composition activates every Conversation without memory (a fresh agent's Persona
 cut short), and creating a Topic activates its Conversation, again on a retry with the same operation id.
 
 The builder (`pi/memory.ts`) resolves its chat with `chatOf(conversationId)` and works only for a Conversation; a
-thread or subagent remembers nothing of its own. `zoom` reads the memory of the Conversation above its caller
+thread or subagent remembers nothing of its own. Since 2026-10-09 the `Memories` service places a view as the chat's
+passive write (`ChatOperations.passiveWrite`), under the chat's admission lock, so it never lands beside a send's
+admission, and records how far it reaches only once the write was admitted; a failed write is placed again by the next
+step. `zoom` reads the memory of the Conversation above its caller
 (`conversationAbove`), bounded, in a thread, by its fork. `GET /api/agent/memory?chat=<id>` reports the memory of
 that chat's Conversation, Personal's by default.
 
