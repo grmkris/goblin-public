@@ -41,6 +41,7 @@
         "runner/server.ts!",
         "scripts/prepare.ts!",
         "scripts/stack.ts!",
+        "scripts/tunnel.ts!",
         "scripts/compare.ts!",
         "scripts/benchmark.ts!",
         "scripts/isolation.ts!",
