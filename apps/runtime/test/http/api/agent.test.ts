@@ -14,15 +14,15 @@ import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { ModelBudget, UsageStore } from '../../../src/budget.ts'
 import { TelegramChannel } from '../../../src/channel/channel.ts'
+import { Channel } from '../../../src/channel/service.ts'
 import { ChatDirectory, registerPrimary } from '../../../src/chats/directory.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { AgentHandlers } from '../../../src/routines/agent-api.ts'
 import { ChatsLive } from '../../../src/layers/conversation.ts'
-import { ModelBudgetLive, RoutinesLive } from '../../../src/layers/routines.ts'
+import { ModelBudgetLive, RoutinesLive, channelOver } from '../../../src/layers/routines.ts'
 import { Events, McpConnections, McpGrants, McpServers, Resident } from '../../../src/mcp/service.ts'
 import { RoutineController } from '../../../src/routines/controller.ts'
-import { RoutineUsage } from '../../../src/routines/usage.ts'
 import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
 import * as Legacy from '../../../src/services.ts'
@@ -79,16 +79,15 @@ const fixture = () => {
   const applied: Applied = new Map()
   const plans: EntitlementPolicy = { state: () => Effect.succeed(PLAN), require: () => Effect.succeed(PLAN) }
   const legacy = Layer.mergeAll(
-    Layer.succeed(Legacy.Channel, channel),
+    Layer.succeed(Channel, channelOver(channel)),
     Layer.succeed(Legacy.Chats, chats),
     // The channel's tools: the server offers none, so turning the channel on is refused before anything is granted.
     Layer.succeed(McpServers, Object.assign(Object.create(null), { tools: () => Effect.succeed([]) })),
     Layer.succeed(McpConnections, Object.assign(Object.create(null), { snapshot: () => Effect.succeedNone })),
     Layer.succeed(McpGrants, Object.create(null)),
     Layer.succeed(Events, Object.assign(Object.create(null), { activeConsumer: () => Effect.succeedNone })),
-    // The lane's other services: RoutinesLive builds their adapters, and nothing here calls them.
+    // The database the lane builds its stores over, and the gate's resident authority and plan.
     Layer.succeed(Db, sqlite),
-    Layer.succeed(Legacy.RoutineUsageProjection, Object.create(RoutineUsage.prototype)),
     Layer.succeed(Resident, currentResident().service),
     Layer.succeed(Entitlements, plans),
     // The agent handlers read only these from the instance input.

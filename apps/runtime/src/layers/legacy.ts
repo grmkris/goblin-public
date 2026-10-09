@@ -1,8 +1,5 @@
-import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Context from 'effect/Context'
-import { creditRates } from '../budget-credits.ts'
 import { ProfilesInstance } from '../capabilities/profiles.ts'
-import { TelegramChannel } from '../channel/channel.ts'
 import { nowSeconds } from '../clock.ts'
 import { ChatDirectory } from '../chats/directory.ts'
 import { ConversationRegistry } from '../conversations.ts'
@@ -14,24 +11,20 @@ import { PersonaInvocations } from '../personas/invocations.ts'
 import { OrganizeReceipts } from '../organize/receipts.ts'
 import { topicPorts } from '../topics/ports.ts'
 import { AppRegistry } from '../apps/registry.ts'
-import { Cipher } from '../mcp/cipher.ts'
 import * as Layer from 'effect/Layer'
 import { MemoriesInstance } from '../memory/memory.ts'
 import { CheapModels } from '../memory/model.ts'
 import { writeLine } from '../observability/logger.ts'
 import { safeErrorType } from '../observability/report.ts'
 import { modelOptions } from '../models.ts'
-import { AppEngine, Apps, Channel, Chats, Conversations, Files, Home, Invocations, Moves } from '../services.ts'
-import { Personas, Receipts, RoutineRuns, Routines, RoutineUsageProjection, Topics, Workspace } from '../services.ts'
+import { AppEngine, Apps, Chats, Conversations, Files, Home, Invocations, Moves } from '../services.ts'
+import { Personas, Receipts, Topics, Workspace } from '../services.ts'
 import { FileStore } from '../files/store.ts'
 import { runApplicationMigrations } from '../storage/migrations.ts'
 import { Entitlements } from '../billing/gates.ts'
-import { RoutineStore } from '../routines/store.ts'
-import { RoutineRunStore } from '../routines/runs.ts'
-import { RoutineUsage, installRoutineUsage } from '../routines/usage.ts'
 import * as Effect from 'effect/Effect'
 import { Db } from '../runtime/db.ts'
-import { AgentInput, type AgentInputs } from '../runtime/input.ts'
+import { AgentInput } from '../runtime/input.ts'
 import { HomeService } from '../home/service.ts'
 import { restoreHelperExecution } from '../pi/helper-execution.ts'
 import { TranscriptsInstance } from '../retrieval/index.ts'
@@ -41,15 +34,6 @@ import { TranscriptsInstance } from '../retrieval/index.ts'
 // that does not (the mover's reconcile) says so. A failed step rejects the build with its own error, so the runtime is
 // made again on the next call (agent.ts). The steps move into their owning lanes' layers one by one.
 
-/** What the agent's services are built from: its storage and env, and the Pi pieces its constructor made. */
-type ComposeInput = AgentInputs
-async function makeRoutines(input: ComposeInput, db: DrizzleSqliteDODatabase) {
-  const routines = new RoutineStore(db, input.userId)
-  const routineRuns = new RoutineRunStore(db, input.userId)
-  const routineUsage = new RoutineUsage(db, routineRuns, creditRates(input.env.MODEL_CREDIT_RATES), input.harness)
-  await installRoutineUsage(input.harness, routineUsage, routineRuns)
-  return { routines, routineRuns, routineUsage }
-}
 /** 1. The application tables' migrations, before anything reads them. */
 export const MigrationsStep: Layer.Layer<never, never, AgentInput> = Layer.effectDiscard(
   AgentInput.useSync((input) => runApplicationMigrations(input.storage)),
@@ -70,21 +54,6 @@ export const HelperExecutionStep: Layer.Layer<never, never, AgentInput | Db | Ch
     yield* Effect.promise(() => restoreHelperExecution(db, input.harness, input.helperExtensions, chats))
   }),
 )
-
-/** 9. The routine stores, and the usage projection subscribed to Pi's commits (a snapshot of each live run first). */
-export const RoutinesStep: Layer.Layer<Routines | RoutineRuns | RoutineUsageProjection, never, AgentInput | Db> =
-  Layer.effectContext(
-    Effect.gen(function* () {
-      const input = yield* AgentInput
-      const db = yield* Db
-      const { routines, routineRuns, routineUsage } = yield* Effect.promise(() => makeRoutines(input, db))
-      return Context.mergeAll(
-        Routines.context(routines),
-        RoutineRuns.context(routineRuns),
-        RoutineUsageProjection.context(routineUsage),
-      )
-    }),
-  )
 
 /** 10. The conversation registry (main is registered here, once). */
 export const ConversationsStep: Layer.Layer<
@@ -206,16 +175,6 @@ export const MovesStep: Layer.Layer<
   }),
 )
 
-/** 17. The Telegram channel. */
-export const ChannelStep: Layer.Layer<Channel, never, AgentInput | Db | Cipher | Chats> = Layer.effect(
-  Channel,
-  Effect.gen(function* () {
-    const input = yield* AgentInput
-    const cipher = yield* Cipher
-    return new TelegramChannel(yield* Db, cipher, input.scheduleReplies, input.telemetry, yield* Chats)
-  }),
-)
-
 /**
  * 19. Last, the files, the plan policy and the agent's apps. The agent apps are connected to the agent's services by
  * lane A's layer (agent-apps/live.ts), after this whole start.
@@ -233,10 +192,8 @@ export const RestStep: Layer.Layer<Files | Entitlements | AppEngine, never, Agen
 /** What the legacy steps provide: the services.ts tags and the start's own, until each lane's layer replaces one. */
 export type LegacyServices =
   | Layer.Success<typeof ChatsStep>
-  | Layer.Success<typeof RoutinesStep>
   | Layer.Success<typeof ConversationsStep>
   | Layer.Success<typeof AppsStep>
   | Layer.Success<typeof DelegationStep>
   | Layer.Success<typeof MovesStep>
-  | Layer.Success<typeof ChannelStep>
   | Layer.Success<typeof RestStep>

@@ -4,10 +4,6 @@ import * as Effect from 'effect/Effect'
 import { type AppError, toAppError } from './http/errors.ts'
 import type { ChatDirectory } from './chats/directory.ts'
 import type { ConversationRegistry } from './conversations.ts'
-import type { TelegramChannel } from './channel/channel.ts'
-import type { RoutineStore } from './routines/store.ts'
-import type { RoutineRunStore } from './routines/runs.ts'
-import type { RoutineUsage } from './routines/usage.ts'
 import type { WorkspaceFeed } from './workspace/feed.ts'
 import type { AppRegistry } from './apps/registry.ts'
 import type { FileStore } from './files/store.ts'
@@ -30,12 +26,6 @@ export class Invocations extends Context.Service<Invocations, PersonaInvocations
 export class Receipts extends Context.Service<Receipts, OrganizeReceipts>()('goblin/Receipts') {}
 /** Move to thread (ADR 0034): a chat's newest finished turn into a Thread. */
 export class Moves extends Context.Service<Moves, ChatMover>()('goblin/Moves') {}
-export class Channel extends Context.Service<Channel, TelegramChannel>()('goblin/Channel') {}
-export class Routines extends Context.Service<Routines, RoutineStore>()('goblin/Routines') {}
-export class RoutineRuns extends Context.Service<RoutineRuns, RoutineRunStore>()('goblin/RoutineRuns') {}
-export class RoutineUsageProjection extends Context.Service<RoutineUsageProjection, RoutineUsage>()(
-  'goblin/RoutineUsageProjection',
-) {}
 /** The owner's conversations and what each is doing, as one live feed. */
 export class Workspace extends Context.Service<Workspace, WorkspaceFeed>()('goblin/Workspace') {}
 /** The owner's Apps (ADRs 0020, 0021): MCP Apps kept per call and agent apps with a view. */

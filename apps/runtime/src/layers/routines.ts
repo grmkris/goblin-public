@@ -3,16 +3,19 @@ import * as Layer from 'effect/Layer'
 import { Entitlements, cachedPolicy } from '../billing/gates.ts'
 import { Budget, UsageStore, recordUse, utcDay } from '../budget.ts'
 import { creditRates } from '../budget-credits.ts'
+import { TelegramChannel } from '../channel/channel.ts'
 import { Channel } from '../channel/service.ts'
 import { BudgetExhausted, toAppError } from '../http/errors.ts'
+import { Cipher } from '../mcp/cipher.ts'
 import { ModelChoiceStore, ModelPicker, Models, modelOptions } from '../models.ts'
 import type { RoutineRunStore } from '../routines/runs.ts'
 import { RoutineRunStore as RunStore } from '../routines/runs.ts'
 import { RoutineControl, RoutineRuns, RoutineUsage, Routines } from '../routines/service.ts'
 import { RoutineStore } from '../routines/store.ts'
+import { RoutineUsage as UsageProjection, installRoutineUsage } from '../routines/usage.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
-import * as Legacy from '../services.ts'
+import { Chats as ChatsInstance } from '../services.ts'
 
 type Method<Args extends readonly unknown[], A> = (...args: Args) => A
 
@@ -102,11 +105,18 @@ const RoutineRunStoreLive: Layer.Layer<RoutineRuns, never, AgentInput | Db> = La
   }),
 )
 
-/** The usage projection the start installed on Pi's commits (services.ts `RoutineUsageProjection`). */
-const RoutineUsageAdapter = Layer.effect(
+/**
+ * Start step 9: the routine runs' usage projection, subscribed to Pi's commits once, after a snapshot of each live
+ * run, before anything after it in the start can commit to Pi.
+ */
+export const RoutineUsageLive: Layer.Layer<RoutineUsage, never, AgentInput | Db> = Layer.effect(
   RoutineUsage,
   Effect.gen(function* () {
-    const projection = yield* Legacy.RoutineUsageProjection
+    const { env, harness, userId } = yield* AgentInput
+    const db = yield* Db
+    const runs = new RunStore(db, userId)
+    const projection = new UsageProjection(db, runs, creditRates(env.MODEL_CREDIT_RATES), harness)
+    yield* Effect.promise(() => installRoutineUsage(harness, projection, runs))
     return RoutineUsage.of({
       project: trySync('RoutineUsage.project', projection.project.bind(projection)),
       snapshot: tryAsync('RoutineUsage.snapshot', projection.snapshot.bind(projection)),
@@ -179,22 +189,27 @@ const ModelsLive: Layer.Layer<Models, never, AgentInput | Db> = Layer.effect(
   }),
 )
 
-/** The Telegram channel over the started one (services.ts `Channel`). */
-export const ChannelAdapter = Layer.effect(
+/** The Telegram channel over `channel`, the agent's one (or a test's own). */
+export const channelOver = (channel: TelegramChannel): Channel['Service'] =>
+  Channel.of({
+    status: sync('Channel.status', channel.status.bind(channel))(),
+    startCursor: passThrough('Channel.startCursor', channel.startCursor.bind(channel)),
+    enableEvents: sync('Channel.enableEvents', channel.enableEvents.bind(channel)),
+    enable: passThrough('Channel.enable', channel.enable.bind(channel)),
+    disable: sync('Channel.disable', channel.disable.bind(channel))(),
+    secret: tryAsync('Channel.secret', channel.secret.bind(channel))(),
+    track: sync('Channel.track', channel.track.bind(channel)),
+    pull: tryAsync('Channel.pull', channel.pull.bind(channel)),
+    deliver: tryAsync('Channel.deliver', channel.deliver.bind(channel)),
+  })
+
+/** Start step 17: the Telegram channel, the one instance, over the chat directory and the credential cipher. */
+export const ChannelLive: Layer.Layer<Channel, never, AgentInput | Db | Cipher | ChatsInstance> = Layer.effect(
   Channel,
   Effect.gen(function* () {
-    const channel = yield* Legacy.Channel
-    return Channel.of({
-      status: sync('Channel.status', channel.status.bind(channel))(),
-      startCursor: passThrough('Channel.startCursor', channel.startCursor.bind(channel)),
-      enableEvents: sync('Channel.enableEvents', channel.enableEvents.bind(channel)),
-      enable: passThrough('Channel.enable', channel.enable.bind(channel)),
-      disable: sync('Channel.disable', channel.disable.bind(channel))(),
-      secret: tryAsync('Channel.secret', channel.secret.bind(channel))(),
-      track: sync('Channel.track', channel.track.bind(channel)),
-      pull: tryAsync('Channel.pull', channel.pull.bind(channel)),
-      deliver: tryAsync('Channel.deliver', channel.deliver.bind(channel)),
-    })
+    const { scheduleReplies, telemetry } = yield* AgentInput
+    const channel = new TelegramChannel(yield* Db, yield* Cipher, scheduleReplies, telemetry, yield* ChatsInstance)
+    return channelOver(channel)
   }),
 )
 
@@ -218,15 +233,9 @@ export const ModelBudgetLive: Layer.Layer<Entitlements | Budget | Models, never,
 )
 
 /**
- * Lane R's other services: routines and the Telegram channel. The stores are built here over the agent's SQLite; they
- * keep no state of their own. Three stay adapters over the one instance that has state: the usage projection the
- * legacy start subscribed to Pi's commits, the Telegram channel the legacy start gave the Events consumers and the
- * apps, and the routine controller the agent's constructor made (`AgentInput.routines`).
+ * Lane R's services after the start: the routine stores, built here over the agent's SQLite (they keep no state of
+ * their own), and the routine controller the agent's constructor made (`AgentInput.routines`). The usage projection
+ * (start step 9) and the Telegram channel (17) are start steps above.
  */
-export const RoutinesLive = Layer.mergeAll(
-  RoutineStoreLive,
-  RoutineRunStoreLive,
-  RoutineUsageAdapter,
-  RoutineControlAdapter,
-  ChannelAdapter,
-)
+export const RoutinesLive: Layer.Layer<Routines | RoutineRuns | RoutineControl, never, AgentInput | Db> =
+  Layer.mergeAll(RoutineStoreLive, RoutineRunStoreLive, RoutineControlAdapter)

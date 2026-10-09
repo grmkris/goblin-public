@@ -15,7 +15,6 @@ import {
 } from './knowledge.ts'
 import {
   AppsStep,
-  ChannelStep,
   ChatsStep,
   ConversationsStep,
   DelegationStep,
@@ -23,11 +22,10 @@ import {
   MigrationsStep,
   MovesStep,
   RestStep,
-  RoutinesStep,
 } from './legacy.ts'
 import { McpEventsLive, McpHostLive, McpLive, ProfilesLive, RetoolLive } from './mcp.ts'
 import { ObservabilityLive } from './observability.ts'
-import { ModelBudgetLive, RoutinesLive } from './routines.ts'
+import { ChannelLive, ModelBudgetLive, RoutineUsageLive, RoutinesLive } from './routines.ts'
 
 /** `step`, built after and over everything `built` provides; the result provides both. */
 const then =
@@ -49,7 +47,7 @@ const start = (input: AgentInputs) =>
     then(ProfilesLive),
     then(HelperExecutionStep),
     then(RetoolLive),
-    then(RoutinesStep),
+    then(RoutineUsageLive),
     then(ConversationsStep),
     then(AppsStep),
     then(DelegationStep),
@@ -57,7 +55,7 @@ const start = (input: AgentInputs) =>
     then(MovesStep),
     then(ActivateMemoriesLive),
     then(SkillsLive),
-    then(ChannelStep),
+    then(ChannelLive),
     then(McpEventsLive),
     then(RestStep),
   )

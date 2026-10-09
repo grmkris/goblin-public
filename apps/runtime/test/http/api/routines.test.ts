@@ -11,7 +11,6 @@ import * as Schema from 'effect/Schema'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
-import { TelegramChannel } from '../../../src/channel/channel.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { Resident } from '../../../src/mcp/service.ts'
@@ -20,10 +19,8 @@ import { ModelBudgetLive, RoutinesLive } from '../../../src/layers/routines.ts'
 import { RoutineController } from '../../../src/routines/controller.ts'
 import { RoutineRunStore } from '../../../src/routines/runs.ts'
 import { RoutineStore } from '../../../src/routines/store.ts'
-import { RoutineUsage } from '../../../src/routines/usage.ts'
 import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
-import * as Legacy from '../../../src/services.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 import { currentResident } from '../../fixed-services.ts'
 import { callOwner } from '../../integration/owner-api.ts'
@@ -95,9 +92,7 @@ const fixture = () => {
   const resident = currentResident()
   const legacy = Layer.mergeAll(
     Layer.succeed(Db, sqlite),
-    // The lane's other adapters: RoutinesLive builds them over these, and nothing here calls them.
-    Layer.succeed(Legacy.RoutineUsageProjection, Object.create(RoutineUsage.prototype)),
-    Layer.succeed(Legacy.Channel, Object.create(TelegramChannel.prototype)),
+    // The gate's resident authority and plan.
     Layer.succeed(Resident, resident.service),
     Layer.succeed(Entitlements, plans),
     // SAFETY: the routines handlers and the lane's layers read only these from the instance input.

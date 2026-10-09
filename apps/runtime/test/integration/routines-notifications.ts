@@ -13,13 +13,12 @@ import { ResidentAuthority } from '../../src/resident.ts'
 import { TelegramChannel } from '../../src/channel/channel.ts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { Entitlements } from '../../src/billing/gates.ts'
-import { Channel } from '../../src/services.ts'
-import { ChannelAdapter, routineRunsOf } from '../../src/layers/routines.ts'
+import { channelOver, routineRunsOf } from '../../src/layers/routines.ts'
 import { RoutineRuns as RoutineRunsService } from '../../src/routines/service.ts'
 import { McpConnectionsLive, ResidentLive } from '../../src/layers/mcp.ts'
 import { Db } from '../../src/runtime/db.ts'
 import type { AppError } from '../../src/http/errors.ts'
-import type { Channel as ChannelService } from '../../src/channel/service.ts'
+import { Channel as ChannelService } from '../../src/channel/service.ts'
 import type { Resident as ResidentService } from '../../src/mcp/service.ts'
 import { AgentInput, type AgentInputs } from '../../src/runtime/input.ts'
 
@@ -102,14 +101,10 @@ async function setupNotifications(storage: DurableObjectStorage, owner: string) 
   // The services notifyRoutine reads, over these instances as the agent's layers build them.
   const services = Layer.mergeAll(
     Layer.succeed(RoutineRunsService, routineRunsOf(runs)),
-    ChannelAdapter,
+    Layer.succeed(ChannelService, channelOver(channel)),
     McpConnectionsLive,
     ResidentLive,
-  ).pipe(
-    Layer.provide(
-      Layer.mergeAll(Layer.succeed(McpHostInstance, host), Layer.succeed(Channel, channel), Layer.succeed(Db, db)),
-    ),
-  )
+  ).pipe(Layer.provide(Layer.mergeAll(Layer.succeed(McpHostInstance, host), Layer.succeed(Db, db))))
   const plans = { state: fixturePlan, require: fixturePlan }
   // The bridge's `local`, which notifyRoutine runs its last-moment check through, over the same services.
   const input: AgentInputs = Object.assign(Object.create(null), {
