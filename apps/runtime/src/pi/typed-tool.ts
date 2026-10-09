@@ -6,6 +6,7 @@ import {
 } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
+import { Internal } from '../http/errors.ts'
 import { describeError, outcomeOf } from '../telemetry/attributes.ts'
 
 type Context = Parameters<ToolRegistration['execute']>[2]
@@ -97,7 +98,7 @@ export const objectOrJson = <S extends Schema.Top>(schema: S) => Schema.Union([s
 function parametersOf(name: string, schema: JsonSchema): JsonSchema {
   if (schema.type === 'object') return schema
   if (JSON.stringify(schema) === '{"not":{"type":"null"}}') return { type: 'object', properties: {} }
-  throw new Error(`${name}'s input must be a struct`)
+  throw new Internal({ reason: `${name}'s input must be a struct` })
 }
 
 const failed = (text: string, code: string): ToolExecutionResult => ({

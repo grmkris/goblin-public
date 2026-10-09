@@ -1,3 +1,5 @@
+import { Internal } from '../http/errors.ts'
+
 /** Names emitted by Agents and Pi Durable in the pinned native spike. */
 const VENDOR_TABLES = new Set([
   'cf_agent_tool_runs',
@@ -52,7 +54,8 @@ export function listTables(storage: DurableObjectStorage): readonly TableDefinit
     .map(({ name, sql }) => ({ name, definition: sql }))
 }
 
+/** A migration may touch only the application's own `app_` tables: anything else is our defect, `Internal`. */
 export function assertApplicationTable(name: string): void {
-  if (isVendorTable(name)) throw new Error(`application migration attempted vendor table: ${name}`)
-  if (!name.startsWith('app_')) throw new Error(`application table must use app_ prefix: ${name}`)
+  if (isVendorTable(name)) throw new Internal({ reason: `application migration attempted vendor table: ${name}` })
+  if (!name.startsWith('app_')) throw new Internal({ reason: `application table must use app_ prefix: ${name}` })
 }
