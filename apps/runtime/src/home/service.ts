@@ -8,15 +8,37 @@ import {
 } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
+import * as Context from 'effect/Context'
+import type * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import type { AppRegistry } from '../apps/registry.ts'
 import type { AgentApps } from '../agent-apps/engine.ts'
-import { Conflict, Forbidden, InvalidInput, NotFound } from '../http/errors.ts'
+import { type AppError, Conflict, Forbidden, InvalidInput, NotFound } from '../http/errors.ts'
 import { appHomeOperations } from '../storage/schema.ts'
 import { applyHomeOperations, ownerTargets, touchedTiles } from './operations.ts'
 import { readHome, writeHome } from './store.ts'
 
 type Actor = HomeTile['placedBy']
+
+/**
+ * The owner's Home surface: its saved layout and the edits that arrange it. Placement changes presentation and never
+ * touches grants or App state, and no network or Pi call happens inside a layout transaction.
+ */
+export class Home extends Context.Service<
+  Home,
+  {
+    /** The layout and the agent apps that can be placed on it. */
+    readonly read: Effect.Effect<HomeRead, AppError>
+    readonly layout: Effect.Effect<HomeLayout, AppError>
+    /** Whether an edit needs its MCP Apps checked against their servers first: not a replay, a stale edit or an Undo. */
+    readonly needsAppVerification: (input: HomeEdit, actor: Actor) => Effect.Effect<boolean, AppError>
+    /** One atomic ordered edit, or the owner's Undo of one: applied, stale, or waiting on the owner. */
+    readonly edit: (input: HomeEdit, actor: Actor) => Effect.Effect<HomeEditResult, AppError>
+    /** Announces the layout an App deletion already changed in its own transaction. */
+    readonly appRemoved: Effect.Effect<void, AppError>
+  }
+>()('goblin/home/Home') {}
+
 /** Owner-scoped application metadata. No network or Pi calls occur in a layout transaction. */
 export class HomeService<RunResult = unknown> {
   readonly #listeners = new Set<(layout: HomeLayout) => void>()

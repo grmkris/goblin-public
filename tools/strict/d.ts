@@ -10,6 +10,8 @@ export const paths: string[] = [
   'apps/runtime/src/personas/program.ts',
   'apps/runtime/src/personas/registry.ts',
   'apps/runtime/src/personas/routes.ts',
+  'apps/runtime/src/personas/service.ts',
+  'apps/runtime/src/layers/delegation.ts',
   'apps/runtime/src/pi/subagents.ts',
   'apps/runtime/src/pi/subagent-relay.ts',
   'apps/runtime/src/pi/persona-turn.ts',
