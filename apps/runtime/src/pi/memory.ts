@@ -1,8 +1,12 @@
-import { recallExtension } from '../memory/recall.ts'
 import { GenerationTask, type TaskId, defineDoc, defineExtension, defineTask, hook } from '@earendil-works/pi-durable'
+import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
-import { Chats, Conversations, Memories, Moves, attempt, requireBudget } from '../services.ts'
-import type { RunProgram } from './resident-mcp.ts'
+import * as Option from 'effect/Option'
+import { Budget } from '../budget.ts'
+import { Chats, Conversations, Moves } from '../chats/service.ts'
+import { recallExtension } from '../memory/recall.ts'
+import { Memories } from '../memory/service.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 
 /** A Conversation's newest builder task: a new one starts only once it has ended. A move stops it (ADR 0034). */
 export const MemoryBuilder = defineDoc<{ task: TaskId | null }>({
@@ -14,16 +18,21 @@ export const MemoryBuilder = defineDoc<{ task: TaskId | null }>({
   initial: () => ({ task: null }),
 })
 
+/** `BudgetExhausted` once the agent has spent today's model budget: the builder's summaries cost Credits. */
+const requireBudget = Effect.flatMap(Clock.currentTimeMillis, (millis) =>
+  Budget.use((budget) => budget.require(Math.floor(millis / 1000))),
+)
+
 /**
- * The memory of the Topic's Conversation whose session `session` is now, or none: a thread, a subagent or a session
- * that is no chat's any more remembers nothing of its own.
+ * The Topic's Conversation whose session `session` is now, or none: a thread, a subagent or a session that is no
+ * chat's any more remembers nothing of its own.
  */
-const conversationMemory = (session: string) =>
+const conversationOf = (session: string) =>
   Effect.gen(function* () {
     const chats = yield* Chats
-    const chat = chats.chatOf(session)
-    if (chat === undefined || !chats.isConversation(chat)) return undefined
-    return (yield* Memories).of(chat)
+    const chat = Option.getOrUndefined(yield* chats.chatOf(session))
+    if (chat === undefined || !(yield* chats.isConversation(chat))) return undefined
+    return chat
   })
 
 /**
@@ -41,9 +50,9 @@ function builderTask(run: RunProgram) {
         const result = await run(
           Effect.gen(function* () {
             yield* requireBudget
-            const memory = yield* conversationMemory(String(runtime.conversationId))
-            if (memory === undefined) return 'done' as const
-            return yield* attempt(() => memory.step(runtime.signal))
+            const chat = yield* conversationOf(String(runtime.conversationId))
+            if (chat === undefined) return 'done' as const
+            return yield* Memories.use((memories) => memories.step(chat, runtime.signal))
           }),
         ).catch((error: unknown) => {
           runtime.report(error)
@@ -81,13 +90,13 @@ export function memoryExtensions(run: RunProgram) {
         afterResponse: (_message, api) => {
           void run(
             Effect.gen(function* () {
+              const chats = yield* Chats
+              const chat = Option.getOrUndefined(yield* chats.chatOf(String(api.conversationId)))
               // A Conversation in the middle of a move (ADR 0034) builds nothing: its memory is cut to the moved turn.
-              const chat = (yield* Chats).chatOf(String(api.conversationId))
-              if (chat === undefined || (yield* Moves).moving(chat)) return
-              const remembered = yield* conversationMemory(String(api.conversationId))
-              if (remembered === undefined) return
-              yield* attempt(() =>
-                remembered.startBuilder(async (tx) => {
+              if (chat === undefined || (yield* Moves.use((moves) => moves.moving(chat)))) return
+              if (!(yield* chats.isConversation(chat))) return
+              yield* Memories.use((memories) =>
+                memories.startBuilder(chat, async (tx) => {
                   const state = await tx.doc(MemoryBuilder, api.conversationId)
                   const last = state.task === null ? undefined : await tx.task(state.task)
                   if (last !== undefined && last.state.status !== 'terminal') return
@@ -111,12 +120,14 @@ export function memoryExtensions(run: RunProgram) {
     recall: recallExtension((id, n, conversation) =>
       run(
         Effect.gen(function* () {
-          const conversations = yield* Conversations
           const chats = yield* Chats
-          const chat = chats.chatOf(conversation)
+          const memories = yield* Memories
+          const chat = Option.getOrUndefined(yield* chats.chatOf(conversation))
           if (chat === undefined) return `No line ${id}+${n}.`
-          const above = (yield* Memories).of(chats.conversationAbove(chat))
-          return yield* attempt(() => above.zoom(id, n, conversations.recallLimit(conversation, above.size())))
+          const above = yield* chats.conversationAbove(chat)
+          const size = yield* memories.size(above)
+          const limit = yield* Conversations.use((conversations) => conversations.recallLimit(conversation, size))
+          return yield* memories.zoom(above, { id, n }, limit)
         }),
       ),
     ),
