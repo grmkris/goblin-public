@@ -16,10 +16,17 @@ import { useNavigation } from '../lib/navigation.ts'
 import { openInteractions } from '../lib/interactions.ts'
 import { type Part, partKey } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
-import { entryOfPart, isClosed, relativeTime, repliesLabel, threadTitle, threadsByFork } from '../lib/threads.ts'
+import {
+  entryOfPart,
+  isClosed,
+  isUnread,
+  relativeTime,
+  repliesLabel,
+  threadTitle,
+  threadsByFork,
+} from '../lib/threads.ts'
 import { type ItemKey, conversationKey, isOpen, itemOf } from '../lib/workspace.ts'
 import { activityState } from '../lib/workspace-feed.ts'
-import { isUnread } from '../lib/workspace-tree.ts'
 import { MessageComposer } from './composer.tsx'
 import { SharedContextChips } from './apps/offers.tsx'
 import { useSendWithAppContext } from './conversation-dock.tsx'
@@ -145,7 +152,7 @@ function ThreadChip({
         {view.lastReplyAt !== undefined && ` · ${relativeTime(view.lastReplyAt, now)}`}
       </span>
       {working && <span className="thread-busy" aria-label="Working" />}
-      {isUnread(view) && !working && <span className="tree-row-unread" aria-label="Unread replies" />}
+      {isUnread(view) && !working && <span className="unread-dot" aria-label="Unread replies" />}
       <ChevronDownIcon className="thread-row-chevron" aria-hidden />
     </button>
   )

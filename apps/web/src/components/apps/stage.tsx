@@ -17,7 +17,7 @@ import { DownloadOffer, LinkOffer } from './offers.tsx'
 import { MessageOffer } from './message-offer.tsx'
 import { receiptText } from '../../lib/app-message.ts'
 import { useAppPlacement } from './placement.ts'
-import { appNames } from '../../lib/workspace-tree.ts'
+import { appNames } from '../../lib/app-names.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 
 type Axes = { x: Motion; y: Motion; width: Motion; height: Motion }

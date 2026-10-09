@@ -41,7 +41,7 @@ import {
   serializeWorkspace,
   workspaceStorageKey,
 } from '../lib/workspace.ts'
-import { appNames } from '../lib/workspace-tree.ts'
+import { appNames } from '../lib/app-names.ts'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
 /** A message to start a thread from: the conversation and its entry. */

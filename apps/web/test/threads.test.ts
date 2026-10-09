@@ -6,12 +6,15 @@ import {
   closedBy,
   entryOfPart,
   fromEntry,
+  isUnread,
+  pathOf,
   relativeTime,
   repliesLabel,
   reporterOf,
   rootParts,
   subagentAction,
   subagentOf,
+  threadTitle,
   threadsByFork,
 } from '../src/lib/threads.ts'
 
@@ -87,6 +90,27 @@ describe('threads in main', () => {
     expect(relativeTime(now - 14 * 86_400, now)).toBe('2 weeks ago')
     expect(relativeTime(now - 400 * 86_400, now)).toBe('last year')
     expect(relativeTime(now + 30, now)).toBe('just now')
+  })
+
+  it('counts replies after the read mark, and any replies without one, as unread', () => {
+    expect(isUnread(view('5', { lastReplyAt: 20 }))).toBe(true)
+    expect(isUnread(view('5', { lastReplyAt: 20, readAt: 20 }))).toBe(false)
+    expect(isUnread(view('5', { lastReplyAt: 21, readAt: 20 }))).toBe(true)
+    expect(isUnread(view('5'))).toBe(false)
+  })
+
+  it("calls a Topic's Conversation by its Topic, Main Personal, and a thread by its title or a placeholder", () => {
+    expect(threadTitle(MAIN)).toBe('Personal')
+    expect(threadTitle(view('20', { kind: 'main', title: 'Japan' }))).toBe('Japan')
+    expect(threadTitle(view('5', { title: 'Flights' }))).toBe('Flights')
+    expect(threadTitle(view('6'))).toBe('New thread')
+    expect(threadTitle(view('7', { kind: 'subagent' }))).toBe('Subagent')
+  })
+
+  it('names the path from the channel down, and ends on a loop in stored parents', () => {
+    const views = [MAIN, view('5'), view('6', { parent: '5' }), view('8', { parent: '9' }), view('9', { parent: '8' })]
+    expect(pathOf(views, '6', ({ id }) => `#${id}`)).toEqual(['#1', '#5', '#6'])
+    expect(pathOf(views, '8', ({ id }) => id)).toEqual(['9', '8'])
   })
 
   it('says who closed a conversation: the owner, or a subagent whose job was done', () => {

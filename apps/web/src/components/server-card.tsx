@@ -22,7 +22,7 @@ import { EllipsisIcon, RefreshCwIcon, Trash2Icon, UnplugIcon } from 'lucide-reac
 import { failureText, record, request } from '../lib/boundary.ts'
 import { serverStatus, serverTitle } from '../lib/labels.ts'
 import { EventsHealth } from './event-health.tsx'
-import { AppTile } from './sidebar-tree.tsx'
+import { AppTile } from './apps/app-tile.tsx'
 import { StatusLabel } from './status-label.tsx'
 import { type TelegramChannel, TelegramControl, hasTelegramTools } from './telegram-control.tsx'
 import { ToolGrants } from './tool-grants.tsx'

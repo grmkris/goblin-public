@@ -1,6 +1,6 @@
 import { type RefObject, useEffect, useState } from 'react'
 import type { ConversationView } from '@goblin/contracts'
-import { isUnread } from '../lib/workspace-tree.ts'
+import { isUnread } from '../lib/threads.ts'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
 /** Whether the page is in front: a background tab reads nothing. */

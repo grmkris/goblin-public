@@ -23,6 +23,15 @@ const view = (id: string, extra: Partial<ConversationView> = {}): ConversationVi
   ...extra,
 })
 const MAIN = view('1', { kind: 'main', createdAt: 0 })
+const TOPIC = {
+  id: 1,
+  name: 'Personal',
+  conversation: '1',
+  searchExcluded: false,
+  revision: 0,
+  createdBy: 'system' as const,
+  createdAt: 0,
+}
 
 class FixtureEvents implements PiEventSource {
   readonly listeners = new Map<string, (event: MessageEvent<string>) => void>()
@@ -49,6 +58,36 @@ const app = (id: string, extra: Partial<AppView> = {}): AppView => ({
   title: 'Board',
   createdAt: Number(id),
   ...extra,
+})
+
+const CRITIC = {
+  id: 4,
+  name: 'Critic',
+  avatar: { glyph: 'C', hue: 20 },
+  role: 'Finds the weak spot',
+  instructions: 'Be blunt.',
+  exclusions: [],
+  revision: 1,
+  createdAt: 1,
+  updatedAt: 1,
+}
+const asking = (order: number, state: 'pending' | 'running' | 'answered') => ({
+  operationId: 'op-1',
+  persona: order,
+  revision: 1,
+  chat: '1',
+  order,
+  state,
+  createdAt: 1,
+})
+const receipt = (id: string, at: number) => ({
+  id,
+  kind: 'topic.create' as const,
+  target: '2',
+  summary: 'Created Japan',
+  actor: 'agent' as const,
+  at,
+  undoable: true,
 })
 
 describe('the workspace feed state', () => {
@@ -107,6 +146,40 @@ describe('the workspace feed state', () => {
     }
     const next = applyChanges(start, [{ type: 'topic', topic }])
     expect(next.conversations).toEqual(start.conversations)
+  })
+
+  it('keeps Topics, Personas, Persona answers on their way and receipts from changes, in their orders', () => {
+    const start = fromSnapshot({ conversations: [MAIN], activity: [], apps: [] })
+    const japan = { ...TOPIC, id: 2, name: 'Japan', conversation: '7' }
+    const next = applyChanges(start, [
+      { type: 'topic', topic: japan },
+      { type: 'topic', topic: { ...TOPIC, personal: true } },
+      { type: 'topic', topic: { ...japan, name: 'Japan 2027' } },
+      { type: 'persona', persona: CRITIC },
+      { type: 'invocation', invocation: asking(2, 'pending') },
+      { type: 'invocation', invocation: asking(1, 'running') },
+      { type: 'invocation', invocation: asking(2, 'answered') },
+      { type: 'receipt', receipt: receipt('r1', 5) },
+      { type: 'receipt', receipt: receipt('r2', 9) },
+    ])
+    expect(next.topics?.map(({ id, name }) => [id, name])).toEqual([
+      [1, 'Personal'],
+      [2, 'Japan 2027'],
+    ])
+    expect(next.personas?.map(({ name }) => name)).toEqual(['Critic'])
+    expect(next.invocations?.map(({ persona, state }) => [persona, state])).toEqual([
+      [1, 'running'],
+      [2, 'answered'],
+    ])
+    expect(next.receipts?.map(({ id }) => id)).toEqual(['r2', 'r1'])
+    expect(start.topics).toBeUndefined()
+  })
+
+  it('reads the Topics a snapshot lists, and none from a server without them', () => {
+    const snapshot = decodeSnapshot({ conversations: [MAIN], activity: [], apps: [], topics: [TOPIC, { id: 'x' }] })
+    expect(snapshot.topics).toEqual([TOPIC])
+    expect(fromSnapshot(snapshot).topics).toEqual([TOPIC])
+    expect(decodeSnapshot({ conversations: [], activity: [], apps: [] })).not.toHaveProperty('topics')
   })
 
   it('drops an App the owner deleted', () => {

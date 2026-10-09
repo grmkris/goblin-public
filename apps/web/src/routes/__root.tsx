@@ -1,11 +1,9 @@
 import { HeadContent, Outlet, Scripts, createRootRoute, useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
-import { SidebarInset, SidebarProvider } from '@goblin/ui'
-import { AppSidebar } from '../components/app-sidebar.tsx'
+import { ShellFrame } from '../components/shell/shell.tsx'
 import { WorkspaceProvider } from '../components/workspace.tsx'
 import { WorkspaceFeedProvider } from '../components/workspace-feed.tsx'
 import { SessionProvider, useSession } from '../lib/session.tsx'
-import { readSidebarOpen } from '../lib/sidebar-state.ts'
 import { BillingProvider, useBilling } from '../lib/billing.tsx'
 import { startupImages } from '../lib/startup-images.ts'
 import css from '../styles.css?url'
@@ -36,7 +34,6 @@ export const Route = createRootRoute({
       ...startupImages().map(({ href, media }) => ({ rel: 'apple-touch-startup-image', href, media })),
     ],
   }),
-  loader: () => readSidebarOpen(),
   component: Root,
   shellComponent: Document,
 })
@@ -56,24 +53,20 @@ function Root() {
 }
 
 /**
- * The app around every page: the sidebar and the page beside it, once someone is (or may be) signed in. Signing in,
- * and a visitor who is signed out, get the bare page. While the session is still being checked the shell already
- * shows, so a signed-in owner's first paint does not jump.
+ * The app around every page: the rail and the sidebar beside the page (`components/shell`), once someone is (or may
+ * be) signed in. Signing in, and a visitor who is signed out, get the bare page. While the session is still being
+ * checked the shell already shows, so a signed-in owner's first paint does not jump.
  */
 function Shell({ children }: { readonly children: ReactNode }) {
   const [state] = useSession()
   const billing = useBilling()
   const path = useRouterState({ select: (router) => router.location.pathname })
-  const sidebarOpen = Route.useLoaderData()
   if (state === 'signed-out' || AUTH_PAGES.has(path)) return <main className="shell">{children}</main>
   const enabled = state === 'signed-in' && billing.state?.active === true
   return (
     <WorkspaceFeedProvider enabled={enabled}>
       <WorkspaceProvider enabled={enabled}>
-        <SidebarProvider defaultOpen={sidebarOpen}>
-          <AppSidebar />
-          <SidebarInset>{children}</SidebarInset>
-        </SidebarProvider>
+        <ShellFrame>{children}</ShellFrame>
       </WorkspaceProvider>
     </WorkspaceFeedProvider>
   )

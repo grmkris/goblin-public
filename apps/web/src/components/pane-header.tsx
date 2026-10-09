@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, SidebarTrigger } from '@goblin/ui'
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@goblin/ui'
 import { ChevronDownIcon, ChevronRightIcon, GripVerticalIcon, XIcon } from 'lucide-react'
 import type { ItemKey } from '../lib/workspace.ts'
+import { NavigationButton } from './shell/shell.tsx'
 
 /** Where an item came from: the conversation a thread branched from or a subagent's spawner, which it opens. */
 export type Crumb = { readonly title: string; readonly open: () => void }
@@ -39,7 +40,7 @@ export function PaneHeader({
   return (
     <header className="pane-header" data-pane-header data-app-cover>
       <div className="pane-pill material-chrome">
-        {first && <SidebarTrigger size="pane-icon" className="pointer-coarse:h-8.5" />}
+        {first && <NavigationButton />}
         <button type="button" className="pane-grip" data-drag-item={item} aria-label={`Move ${title}`}>
           <GripVerticalIcon aria-hidden />
         </button>

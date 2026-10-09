@@ -77,8 +77,15 @@ function DrawerContent({
   )
 }
 
-/** A panel from the left edge (the phone's sidebar); give the root `swipeDirection="left"` so a swipe left closes it. */
-function DrawerSide({ className, ...props }: DrawerPrimitive.Popup.Props) {
+/**
+ * A panel from the left edge (the phone's navigation); give the root `swipeDirection="left"` so a swipe left closes it.
+ * `tone="shell"` paints it in the shell's moss, as the rail and sidebar it holds are on a desktop.
+ */
+function DrawerSide({
+  className,
+  tone = 'popover',
+  ...props
+}: DrawerPrimitive.Popup.Props & { readonly tone?: 'popover' | 'shell' }) {
   return (
     <DrawerPrimitive.Portal>
       <DrawerBackdrop />
@@ -89,7 +96,8 @@ function DrawerSide({ className, ...props }: DrawerPrimitive.Popup.Props) {
         <DrawerPrimitive.Popup
           data-slot="drawer-side"
           className={cn(
-            'flex h-full flex-col bg-popover text-popover-foreground shadow-lg outline-none [transform:translateX(var(--drawer-swipe-movement-x,0px))] transition-transform duration-300 ease-drawer data-ending-style:[transform:translateX(-100%)] data-ending-style:duration-[calc(var(--drawer-swipe-strength,0.7)*300ms)] data-starting-style:[transform:translateX(-100%)] data-swiping:duration-0 data-swiping:select-none',
+            tone === 'shell' ? 'bg-(--shell-rail) text-(--shell-foreground)' : 'bg-popover text-popover-foreground',
+            'flex h-full flex-col shadow-lg outline-none [transform:translateX(var(--drawer-swipe-movement-x,0px))] transition-transform duration-300 ease-drawer data-ending-style:[transform:translateX(-100%)] data-ending-style:duration-[calc(var(--drawer-swipe-strength,0.7)*300ms)] data-starting-style:[transform:translateX(-100%)] data-swiping:duration-0 data-swiping:select-none',
             className,
           )}
           {...props}

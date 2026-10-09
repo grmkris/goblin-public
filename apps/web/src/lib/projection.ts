@@ -1,4 +1,14 @@
-import type { Attachment, ComposerOption, QueuedInput } from '@goblin/contracts'
+import {
+  type Attachment,
+  type ComposerOption,
+  DelegateResultData,
+  PersonaAnswerData,
+  PersonaAskData,
+  type QueuedInput,
+  ThreadHeadData,
+  TopicSeedData,
+} from '@goblin/contracts'
+import { Option, Schema } from 'effect'
 import type { SharedContext } from './app-context.ts'
 import { isString, isNumber, identifier, record, records, text } from './boundary.ts'
 import { sharedContext } from './app-context.ts'
@@ -31,6 +41,8 @@ export type ChatMessage =
       readonly author?: string
       /** The thread a note shared into main came from. */
       readonly thread?: string
+      /** The Personas the owner asked instead of Goblin (`app.persona_ask`), and in what order. */
+      readonly ask?: PersonaAskData
       readonly timestamp?: number
     }
   | {
@@ -57,6 +69,19 @@ export type ChatMessage =
     }
   /** A thread the owner started with "+": main's note naming it, shown as a row rather than a message. */
   | { readonly id: string; readonly role: 'thread-started'; readonly thread: string; readonly timestamp?: number }
+  /** A Thread that started here (`app.thread_head`): its head message, shown with the Thread's replies under it. */
+  | { readonly id: string; readonly role: 'thread-head'; readonly head: ThreadHeadData; readonly timestamp?: number }
+  /** A Persona's attributed answer (`app.persona`). */
+  | { readonly id: string; readonly role: 'persona'; readonly answer: PersonaAnswerData; readonly timestamp?: number }
+  /** The brief and frozen sources a Topic made from a discussion starts with (`app.topic_seed`). */
+  | { readonly id: string; readonly role: 'topic-seed'; readonly seed: TopicSeedData; readonly timestamp?: number }
+  /** A Delegate's attributed result, in the chat that assigned it (`app.delegate_result`). */
+  | {
+      readonly id: string
+      readonly role: 'delegate-result'
+      readonly result: DelegateResultData
+      readonly timestamp?: number
+    }
 /** A tool running in the current turn. `startedAt` is when this browser saw it start (Pi's slots carry no time). */
 export type LiveTool = {
   readonly callId: string
@@ -234,6 +259,50 @@ function threadStarted(entry: Record<string, unknown>): ChatMessage[] {
   return [{ id: `${identifier(entry.id)}:0`, role: 'thread-started', thread, ...stamped(note) }]
 }
 
+const decodeHead = Schema.decodeUnknownOption(ThreadHeadData)
+const decodeAnswer = Schema.decodeUnknownOption(PersonaAnswerData)
+const decodeSeed = Schema.decodeUnknownOption(TopicSeedData)
+const decodeResult = Schema.decodeUnknownOption(DelegateResultData)
+const decodeAsk = Schema.decodeUnknownOption(PersonaAskData)
+
+/** The one message a decoded entry makes, or none when its data did not decode. */
+const one = <A>(decoded: Option.Option<A>, message: (data: A) => ChatMessage): ChatMessage[] =>
+  Option.match(decoded, { onNone: () => [], onSome: (data) => [message(data)] })
+
+/** The data of an entry the shell draws itself, as its kind: its contract's shape, or nothing when it is not that. */
+function drawnEntry(entry: Record<string, unknown>): ChatMessage[] | undefined {
+  const id = `${identifier(entry.id)}:0`
+  const at = stamped(records(entry.model)[0] ?? {})
+  switch (entry.kind) {
+    case 'app.thread_head':
+      return one(decodeHead(entry.data), (head) => ({ id, role: 'thread-head', head, ...at }))
+    case 'app.persona':
+      return one(decodeAnswer(entry.data), (answer) => ({ id, role: 'persona', answer, ...at }))
+    case 'app.topic_seed':
+      return one(decodeSeed(entry.data), (seed) => ({ id, role: 'topic-seed', seed, ...at }))
+    case 'app.delegate_result':
+      return one(decodeResult(entry.data), (result) => ({ id, role: 'delegate-result', result, ...at }))
+    default:
+      return undefined
+  }
+}
+
+/** The "[to @A, @B]" line the model reads before the owner's words to Personas; the transcript shows chips instead. */
+const ASKED = /^\[to [^\]\n]*\]\s*/u
+
+/** The owner's message to Personas (`app.persona_ask`): their words, with whom they asked and in what order. */
+function personaAsk(entry: Record<string, unknown>): ChatMessage[] {
+  return Option.match(decodeAsk(entry.data), {
+    onNone: () => [],
+    onSome: (ask) =>
+      records(entry.model).flatMap((message, index) =>
+        entryMessage(message, `${identifier(entry.id)}:${index}`).map((item) =>
+          item.role === 'user' ? { ...item, text: item.text.replace(ASKED, ''), ask } : item,
+        ),
+      ),
+  })
+}
+
 /** Committed entries never change, so each one is projected once and reused while it stays in the transcript. */
 const projected = new WeakMap<Record<string, unknown>, readonly ChatMessage[]>()
 function messagesOf(entry: Record<string, unknown>): readonly ChatMessage[] {
@@ -243,20 +312,39 @@ function messagesOf(entry: Record<string, unknown>): readonly ChatMessage[] {
   // Passive shared and routine notes name their registered source thread.
   const shared = entry.kind === 'app.shared' || entry.kind === 'app.routine' ? record(entry.data)?.thread : undefined
   const thread = isString(shared) ? shared : undefined
-  const messages =
-    entry.kind === 'app.thread_started'
-      ? threadStarted(entry)
-      : records(entry.model).flatMap((message, index) =>
-          entryMessage(message, `${identifier(entry.id)}:${index}`, thread).map((item) =>
-            entry.kind === 'app.routine' && item.role === 'user' ? { ...item, author: 'Routine' } : item,
-          ),
-        )
+  let messages = drawnEntry(entry)
+  if (messages === undefined && entry.kind === 'app.thread_started') messages = threadStarted(entry)
+  if (messages === undefined && entry.kind === 'app.persona_ask') messages = personaAsk(entry)
+  messages ??= records(entry.model).flatMap((message, index) =>
+    entryMessage(message, `${identifier(entry.id)}:${index}`, thread).map((item) =>
+      entry.kind === 'app.routine' && item.role === 'user' ? { ...item, author: 'Routine' } : item,
+    ),
+  )
   projected.set(entry, messages)
   return messages
 }
-/** The messages of entries in transcript order: a snapshot's, or a page of history before it. */
-export function entryMessages(entries: readonly Record<string, unknown>[]): ChatMessage[] {
-  return entries.flatMap(messagesOf)
+
+/**
+ * The entries a later entry's edits omit from the chat's context (a turn moved to a thread leaves only its head here):
+ * the transcript leaves them out too.
+ */
+export function omittedEntries(entries: readonly Record<string, unknown>[]): ReadonlySet<number> {
+  const omitted = new Set<number>()
+  for (const entry of entries)
+    for (const edit of records(entry.edits))
+      if (edit.action === 'omit' && isNumber(edit.target)) omitted.add(edit.target)
+  return omitted
+}
+
+/**
+ * The messages of entries in transcript order: a snapshot's, or a page of history before it, without the entries
+ * `omitted` names (by default those these entries' own edits omit).
+ */
+export function entryMessages(
+  entries: readonly Record<string, unknown>[],
+  omitted: ReadonlySet<number> = omittedEntries(entries),
+): ChatMessage[] {
+  return entries.flatMap((entry) => (isNumber(entry.id) && omitted.has(entry.id) ? [] : messagesOf(entry)))
 }
 
 /**

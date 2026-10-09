@@ -1,4 +1,11 @@
-import { type Attachment, type ComposerOption, TELEGRAM_AUTHOR } from '@goblin/contracts'
+import {
+  type Attachment,
+  type ComposerOption,
+  type PersonaAnswerData,
+  type PersonaTag,
+  TELEGRAM_AUTHOR,
+  type TopicSeedData,
+} from '@goblin/contracts'
 import type { SharedContext } from './app-context.ts'
 import { isString, record } from './boundary.ts'
 import type { ChatMessage, ConversationProjection, LiveTool, ToolCallView, TurnFailure } from './projection.ts'
@@ -68,13 +75,57 @@ export type Part =
   | { readonly kind: 'failure'; readonly id: string; readonly failure: TurnFailure }
   /** A thread the owner started with "+", where main noted it. */
   | { readonly kind: 'thread-started'; readonly id: string; readonly thread: string }
+  /**
+   * The head of a Thread started here (from the composer, or a turn moved out to it): the message, who wrote it, and
+   * the Thread its replies are in. `moved`: the turn was moved out of this chat, which keeps only this head.
+   */
+  | {
+      readonly kind: 'thread-head'
+      readonly id: string
+      readonly thread: string
+      readonly text: string
+      readonly author?: string
+      readonly moved: boolean
+      readonly at?: number
+    }
+  /** The owner's message to Personas instead of Goblin: their words, and whom they asked, together or in order. */
+  | {
+      readonly kind: 'persona-ask'
+      readonly id: string
+      readonly text: string
+      readonly personas: readonly (typeof PersonaTag)['Type'][]
+      readonly order: 'parallel' | 'sequence'
+      readonly attachments?: readonly Attachment[]
+      readonly at?: number
+    }
+  /** One Persona's attributed answer. */
+  | ({ readonly kind: 'persona-answer'; readonly id: string; readonly at?: number } & Omit<
+      PersonaAnswerData,
+      'operationId'
+    >)
+  /** The brief and frozen sources a Topic made from a discussion starts with. */
+  | ({ readonly kind: 'topic-seed'; readonly id: string } & TopicSeedData)
+  /** A Delegate's result posted back here: who did it, how it ended, and its report. */
+  | {
+      readonly kind: 'delegate-result'
+      readonly id: string
+      readonly delegate: string
+      readonly name: string
+      readonly status: 'done' | 'failed' | 'stopped'
+      readonly text: string
+      readonly at?: number
+    }
+
+/** The parts drawn from an entry of the app's own (a thread head, a Persona's answer…), which never change once written. */
+const DRAWN = new Set<Part['kind']>(['thread-head', 'persona-ask', 'persona-answer', 'topic-seed', 'delegate-result'])
 
 /**
  * A turn the owner took: words typed in this app or sent from Telegram. Messages from an MCP client, a subagent's
  * report, a routine's note and a thread's share-back carry another author and are not turns. In a subagent's or a
  * routine's own conversation the message that starts each run has no author, so it is that conversation's turn.
  */
-export function isOwnTurn(part: Part): part is Extract<Part, { readonly kind: 'user' }> {
+export function isOwnTurn(part: Part): part is Extract<Part, { readonly kind: 'user' | 'persona-ask' }> {
+  if (part.kind === 'persona-ask') return true
   return part.kind === 'user' && (part.author === undefined || part.author === TELEGRAM_AUTHOR)
 }
 
@@ -172,6 +223,16 @@ function liveParts(projection: ConversationProjection, context: Context, seen: R
 
 /** A message in the user column, with who wrote it and when, where those are known. */
 function userPart(message: Extract<ChatMessage, { role: 'user' }>): Part {
+  if (message.ask !== undefined)
+    return {
+      kind: 'persona-ask',
+      id: message.id,
+      text: message.text,
+      personas: message.ask.personas,
+      order: message.ask.order,
+      ...(message.attachments && { attachments: message.attachments }),
+      ...(message.timestamp !== undefined && { at: message.timestamp }),
+    }
   return {
     kind: 'user',
     id: message.id,
@@ -234,15 +295,46 @@ export function conversationParts(projection: ConversationProjection): Part[] {
     else if (message.role === 'assistant') {
       for (const call of message.toolCalls) seen.add(call.id)
       parts.push(...assistantParts(message, context))
-    } else if (message.role === 'thread-started')
-      parts.push({ kind: 'thread-started', id: message.id, thread: message.thread })
-    else if (!seen.has(message.toolCallId))
+    } else if (message.role === 'tool') {
       // A result whose call is not in the transcript (compacted away) still shows on its own.
-      parts.push(
-        toolPart({ id: message.toolCallId, name: message.toolName, arguments: {} }, context, message.timestamp),
-      )
+      if (!seen.has(message.toolCallId))
+        parts.push(
+          toolPart({ id: message.toolCallId, name: message.toolName, arguments: {} }, context, message.timestamp),
+        )
+    } else parts.push(drawnPart(message))
   }
   return uniqueKeys(placeApps([...parts, ...liveParts(projection, context, seen)]))
+}
+
+type DrawnMessage = Exclude<ChatMessage, { readonly role: 'user' | 'assistant' | 'tool' }>
+
+/** The part of a message the app wrote itself: a thread started or its head, a Persona's answer, a seed, a result. */
+function drawnPart(message: DrawnMessage): Part {
+  const at = message.timestamp === undefined ? {} : { at: message.timestamp }
+  switch (message.role) {
+    case 'thread-started':
+      return { kind: 'thread-started', id: message.id, thread: message.thread }
+    case 'thread-head': {
+      const { thread, text, author, moved } = message.head
+      return {
+        kind: 'thread-head',
+        id: message.id,
+        thread,
+        text,
+        moved: moved === true,
+        ...(author && { author }),
+        ...at,
+      }
+    }
+    case 'persona': {
+      const { operationId: _operation, ...answer } = message.answer
+      return { kind: 'persona-answer', id: message.id, ...answer, ...at }
+    }
+    case 'topic-seed':
+      return { kind: 'topic-seed', id: message.id, ...message.seed }
+    case 'delegate-result':
+      return { kind: 'delegate-result', id: message.id, ...message.result, ...at }
+  }
 }
 
 /**
@@ -257,7 +349,10 @@ export function samePart(a: Part, b: Part): boolean {
   if (a.kind === 'user') return b.kind === 'user' && sameUser(a, b)
   if (a.kind === 'failure') return b.kind === 'failure' && a.failure === b.failure
   if (a.kind === 'thread-started') return b.kind === 'thread-started' && a.thread === b.thread
-  return (b.kind === 'text' || b.kind === 'reasoning') && a.text === b.text && a.live === b.live
+  if (a.kind === 'text' || a.kind === 'reasoning')
+    return (b.kind === 'text' || b.kind === 'reasoning') && a.text === b.text && a.live === b.live
+  // An entry the app wrote itself never changes: the same id draws the same thing.
+  return DRAWN.has(a.kind)
 }
 
 type UserPart = Extract<Part, { kind: 'user' }>

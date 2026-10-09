@@ -5,7 +5,7 @@ import { failureText, isNumber, record, records, request } from '../lib/boundary
 import { BrowserPiEvents, type StreamStatus } from '../lib/conversation-stream.ts'
 import { type Lease, type StreamState, StreamPool } from '../lib/stream-pool.ts'
 import { conversationParts } from '../lib/parts.ts'
-import { type ConversationProjection, entryMessages, historyStart } from '../lib/projection.ts'
+import { type ConversationProjection, entryMessages, historyStart, omittedEntries } from '../lib/projection.ts'
 import { branchPoints, fromEntry } from '../lib/threads.ts'
 import { SubmissionRetry } from '../lib/submission-retry.ts'
 import { useKeyboardInset } from './use-keyboard.ts'
@@ -192,7 +192,9 @@ export function useTranscript(
   const history = useHistory(thread, needed, report)
   const parts = useMemo(() => {
     if (projection === undefined) return []
-    const messages = [...entryMessages(history.entries), ...projection.messages]
+    // A later entry's edits may omit an older one from a page of history (a turn moved out of this chat).
+    const omitted = omittedEntries([...history.entries, ...projection.entries])
+    const messages = [...entryMessages(history.entries, omitted), ...projection.messages]
     return conversationParts({ ...projection, messages: floor === undefined ? messages : fromEntry(messages, floor) })
   }, [projection, history.entries, floor])
   // Which of the parts' entries a thread can branch from (a shared note in main cannot).

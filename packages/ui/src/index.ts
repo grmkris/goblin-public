@@ -97,31 +97,6 @@ export {
 } from './components/questionnaire.tsx'
 export { Reasoning, ReasoningContent, ReasoningTrigger } from './components/reasoning.tsx'
 export { Receipt } from './components/receipt.tsx'
-export {
-  SIDEBAR_COOKIE,
-  Sidebar,
-  SidebarInset,
-  SidebarProvider,
-  SidebarRail,
-  SidebarTrigger,
-  useSidebar,
-} from './components/sidebar.tsx'
-export {
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupAction,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuBadge,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
-  SidebarSeparator,
-} from './components/sidebar-menu.tsx'
 export { TopBar, TopBarTitle } from './components/top-bar.tsx'
 export { Textarea } from './components/textarea.tsx'
 export { ToolPayload, ToolPayloadText, type ToolPayloadView } from './components/tool-payload.tsx'

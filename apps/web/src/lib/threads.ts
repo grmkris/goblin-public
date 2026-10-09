@@ -12,10 +12,29 @@ export const isClosed = (view: ConversationView): boolean => view.closedAt !== u
 export const closedBy = (view: ConversationView): 'owner' | 'done' | undefined =>
   isClosed(view) ? (view.closedBy ?? 'owner') : undefined
 
-/** What to call a conversation: main is Main; a thread or subagent has its title, or a placeholder until it gets one. */
+/**
+ * What to call a conversation: a Topic's Conversation by its Topic's name (Main is Personal's); a thread or subagent
+ * by its title, or a placeholder until it gets one.
+ */
 export function threadTitle(view: ConversationView | undefined): string {
-  if (view === undefined || view.kind === 'main') return 'Main'
+  if (view === undefined || view.kind === 'main') return view?.title ?? 'Personal'
   return view.title ?? (view.kind === 'subagent' ? 'Subagent' : 'New thread')
+}
+
+/** Whether a conversation has replies the owner has not seen: any after its read mark, or any at all without one. */
+export const isUnread = (view: ConversationView): boolean =>
+  view.lastReplyAt !== undefined && view.lastReplyAt > (view.readAt ?? 0)
+
+/** The names from the channel down to a conversation: "Personal › Trip › Flights". */
+export function pathOf(views: readonly ConversationView[], id: string, name: (view: ConversationView) => string) {
+  const byId = new Map(views.map((view) => [view.id, view]))
+  const names: string[] = []
+  const seen = new Set<string>()
+  for (let view = byId.get(id); view !== undefined && !seen.has(view.id); view = byId.get(view.parent ?? '')) {
+    seen.add(view.id)
+    names.unshift(name(view))
+  }
+  return names
 }
 
 /** The open threads branched from each message of `parent` (by entry id), newest first: what the reply rows show. */

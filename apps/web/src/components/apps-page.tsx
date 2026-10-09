@@ -5,7 +5,7 @@ import { Alert, AlertDescription, Badge, Card, CardDescription, CardHeader, Card
 import { listAgentApps } from '../lib/agent-apps.ts'
 import { jobLine, jobTrouble } from '../lib/app-jobs.ts'
 import { failureText } from '../lib/boundary.ts'
-import { AppTile } from './sidebar-tree.tsx'
+import { AppTile } from './apps/app-tile.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
 /** What an app needs from the owner, if anything: powers to allow, a schedule in trouble, a failure. */

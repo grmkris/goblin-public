@@ -62,9 +62,11 @@ export function Conversation({ parts, canSwitchModel, threads, onEarlier, lead, 
   const viewport = useRef<HTMLDivElement>(null)
   const turns = useMemo(
     () =>
-      parts
-        .filter(isOwnTurn)
-        .map((part): Turn => ({ id: part.id, label: turnLabel(part.text), telegram: part.author === TELEGRAM_AUTHOR })),
+      parts.filter(isOwnTurn).map((part): Turn => ({
+        id: part.id,
+        label: turnLabel(part.text),
+        telegram: part.kind === 'user' && part.author === TELEGRAM_AUTHOR,
+      })),
     [parts],
   )
   return (

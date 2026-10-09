@@ -5,7 +5,7 @@ import { useId, useState } from 'react'
 import type { ToolView } from '@goblin/contracts'
 import { Badge, Button, Switch } from '@goblin/ui'
 import { failureText, request } from '../lib/boundary.ts'
-import { AppTile } from './sidebar-tree.tsx'
+import { AppTile } from './apps/app-tile.tsx'
 
 type Tools = readonly ToolView[]
 

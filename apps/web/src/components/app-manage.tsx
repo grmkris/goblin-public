@@ -18,7 +18,7 @@ import { jobLine } from '../lib/app-jobs.ts'
 import { failureText } from '../lib/boundary.ts'
 import { PageSection } from './page-section.tsx'
 import { powerText } from './parts/app-powers.tsx'
-import { AppTile } from './sidebar-tree.tsx'
+import { AppTile } from './apps/app-tile.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
 type Run = (change: AgentAppChange) => Promise<void>

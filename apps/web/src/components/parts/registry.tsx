@@ -14,6 +14,7 @@ import { type Part, type ToolPart, samePart } from '../../lib/parts.ts'
 import { subagentAction } from '../../lib/threads.ts'
 import { ThreadStartedRow } from '../inline-thread.tsx'
 import { AppBuildPart } from './app-build-part.tsx'
+import { DelegateResultPart, PersonaAnswerPart, PersonaAskPart, ThreadHeadPart, TopicSeedPart } from './drawn-parts.tsx'
 import { McpToolPart } from './mcp-tool-part.tsx'
 import { AssistantText, UserText } from './text-part.tsx'
 import { SubagentBlock } from './subagent-block.tsx'
@@ -129,6 +130,16 @@ function PartRow({ part, canSwitchModel }: { readonly part: Part; readonly canSw
       return <ToolView part={part} />
     case 'thread-started':
       return <ThreadStartedRow thread={part.thread} />
+    case 'thread-head':
+      return <ThreadHeadPart part={part} />
+    case 'persona-ask':
+      return <PersonaAskPart part={part} />
+    case 'persona-answer':
+      return <PersonaAnswerPart part={part} />
+    case 'topic-seed':
+      return <TopicSeedPart part={part} />
+    case 'delegate-result':
+      return <DelegateResultPart part={part} />
     case 'failure':
       return (
         <Aside>

@@ -21,8 +21,6 @@ import {
   Reasoning,
   ReasoningContent,
   ReasoningTrigger,
-  SidebarMenuButton,
-  SidebarProvider,
 } from '@goblin/ui'
 import { useDockInsets } from '../../src/components/use-conversation.ts'
 import { CHAT_SNAPS, HALF_CHAT, useChatSnap } from '../../src/components/use-chat-snap.ts'
@@ -118,48 +116,48 @@ function Attachments() {
 
 function Styles() {
   return (
-    <SidebarProvider>
-      <main className="p-6 w-full">
-        <div className="tree-row">
-          <SidebarMenuButton size="tree" data-sample="tree">
-            Main
-          </SidebarMenuButton>
-        </div>
-        <div data-slot="sidebar-menu-sub">
-          <div className="tree-row">
-            <SidebarMenuButton size="tree-nested" data-sample="nested">
-              Thread
-            </SidebarMenuButton>
-          </div>
-        </div>
-        <div className="tree-row" data-closed="true">
-          <SidebarMenuButton size="tree-closed" data-sample="closed">
-            Closed
-          </SidebarMenuButton>
-        </div>
-        <div className="workspace-pane" style={{ position: 'relative', height: 96 }} data-focused="true">
-          <PaneHeader item="c:1" title="Main" first onClose={() => undefined} />
-        </div>
-        <div className="app-stage" data-mode="inline" style={{ position: 'relative', height: 140 }}>
-          <LinkOffer link={new URL('https://example.com')} serverId="Example" onDone={() => undefined} />
-        </div>
-        <div className="composer-context">
-          <Button variant="ghost" size="model" aria-label="Model: Example" data-sample="model">
-            Model
-          </Button>
-        </div>
-        <Input variant="pill" className="pane-rename" data-sample="rename" aria-label="Rename" />
-        <a className="apps-card" href="#card">
-          <Card interactive data-sample="interactive-card">
-            <CardContent>App card</CardContent>
-          </Card>
-        </a>
-        <Reasoning>
-          <ReasoningTrigger>Thoughts</ReasoningTrigger>
-          <ReasoningContent>These thoughts should actually close.</ReasoningContent>
-        </Reasoning>
-      </main>
-    </SidebarProvider>
+    <main className="p-6 w-full">
+      <nav className="shell-sidebar" style={{ width: 264 }}>
+        <ul className="sidebar-rows">
+          <li>
+            <a className="sidebar-row" href="#personal" data-sample="tree">
+              <span className="sidebar-row-name">Personal</span>
+            </a>
+          </li>
+          <li>
+            <a className="sidebar-row" href="#japan" aria-current="page" data-sample="nested">
+              <span className="sidebar-row-name">Japan</span>
+            </a>
+          </li>
+          <li>
+            <a className="sidebar-row" href="#taxes" data-unread data-sample="closed">
+              <span className="sidebar-row-name">Taxes</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+      <div className="workspace-pane" style={{ position: 'relative', height: 96 }} data-focused="true">
+        <PaneHeader item="c:1" title="Main" first onClose={() => undefined} />
+      </div>
+      <div className="app-stage" data-mode="inline" style={{ position: 'relative', height: 140 }}>
+        <LinkOffer link={new URL('https://example.com')} serverId="Example" onDone={() => undefined} />
+      </div>
+      <div className="composer-context">
+        <Button variant="ghost" size="model" aria-label="Model: Example" data-sample="model">
+          Model
+        </Button>
+      </div>
+      <Input variant="pill" className="pane-rename" data-sample="rename" aria-label="Rename" />
+      <a className="apps-card" href="#card">
+        <Card interactive data-sample="interactive-card">
+          <CardContent>App card</CardContent>
+        </Card>
+      </a>
+      <Reasoning>
+        <ReasoningTrigger>Thoughts</ReasoningTrigger>
+        <ReasoningContent>These thoughts should actually close.</ReasoningContent>
+      </Reasoning>
+    </main>
   )
 }
 

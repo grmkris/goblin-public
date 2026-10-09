@@ -95,15 +95,10 @@ marks Main. A helper's immutable `spawner_session` keeps its anchor and relays o
 A chat id reaches Pi only after the directory resolves its registered session, so no request opens a conversation by
 guessing its number. Pi cannot delete a conversation, so Close stops a
 conversation and everything under it and keeps it readable until Reopen; main never closes. The web
-lists them in the app's sidebar as a tree at any depth (`components/sidebar-tree.tsx` over the pure
-`lib/workspace-tree.ts`): main with its subagents and theirs, then each thread with everything under it, closed ones
-folded into "n closed" and settled subagents (idle, nothing at work under them, everything read, not in a pane, not
-kept open; `settle`) into "n idle". Any row that started others has a chevron that folds them away, remembered per
-owner in the browser, and a folded row counts the work under it; a thread nobody wrote in (a first send that failed) has no row unless it is in a pane, and an
-App shows as a tile in its server's own hue. A row shows how long its agent has been working, a turning ring for work under it and a dot
-for unread replies; a click shows it in the focused pane, its side button opens it beside, and it drags onto a pane
-like a pane's grip. Folded on a desktop the sidebar is a 56px rail (`components/workspace-rail.tsx`) of main and the
-active conversations, never hidden altogether, each with a hover card. Unread is the server's: `read_at` on
+shows the Topics as channels in the app's sidebar (`components/shell/sidebar.tsx` over the pure `lib/topics.ts`):
+Personal first, then by name, the archived folded at the end, each bold with a dot while it has unread replies and a
+pulse while its agent works; the open agent apps follow. A server without Topics implies Personal alone, holding Main.
+Unread is the server's: `read_at` on
 `app_conversations` is the owner's read mark, set when a pane has shown the conversation for a moment (half in view,
 the page in front). Each conversation shows in a pane of its own (below); `/c/:id` names the focused one. Threads open inline first, at any depth (`components/inline-thread.tsx`): under the message a thread branched from
 sits a chip with its reply count, name, last activity and state; it unfolds the live thread in place, set in under
@@ -257,11 +252,11 @@ it starts again from a fresh snapshot. The workspace feed maps Pi task activity 
 `ConversationView.primary` is an optional boolean; `WorkspaceSnapshot.primary` is an optional chat id for compatible
 readers.
 
-Every signed-in page sits beside the app's sidebar (shadcn's sidebar, ported to `packages/ui`): the conversations,
-then Connections, Settings and Sign out. Connections and Settings are columns of titled sections (`PageSection`)
-whose states read in words (`lib/labels.ts`), never the raw value the runtime sends. On desktop the sidebar folds to an icon rail (the toggle in a page's top bar or the
-first pane's pill, its edge, or ⌘/Ctrl+B) and a cookie remembers it, which the server reads so the first paint has the right layout; on
-phones it is a drawer from the left edge (`DrawerSide` in `@goblin/ui`) that a swipe left closes. The workspace fills the page beside it. The transcript scrolls in a `MessageScroller` (from `@shadcn/react`, patched with upstream fixes that are not
+Every signed-in page sits beside the app's shell (`components/shell`, ADR 0036): a moss rail of places (Home, and at
+its foot Apps, Connections, Settings and Sign out) and the sidebar of channels, both always shown on a desktop; on a
+phone they share a drawer from the left edge (`DrawerSide` in `@goblin/ui`, `tone="shell"`) that the page's top bar
+opens and a swipe left closes. Connections and Settings are columns of titled sections (`PageSection`)
+whose states read in words (`lib/labels.ts`), never the raw value the runtime sends. The workspace fills the page beside it. The transcript scrolls in a `MessageScroller` (from `@shadcn/react`, patched with upstream fixes that are not
 released yet; `bun run check:patches` proves the patch is installed). Each of
 the owner's turns (typed in the app or sent from Telegram, `isOwnTurn` in `lib/parts.ts`) is a scroll anchor; a
 message from an MCP client, a subagent, a routine or a thread's share-back arrives without moving the view. Until its
