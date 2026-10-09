@@ -424,6 +424,24 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     ].join(BREAK),
   },
   {
+    // Cross-Topic retrieval (ADR 0035): an FTS5 external-content index over redacted excerpts (unicode61, bm25), its
+    // per-session progress, and the frozen sources each run used. FTS shadow tables are `app_transcript_fts_*`.
+    key: '20261026000300_transcript_index',
+    tables: ['app_transcript_excerpts', 'app_transcript_fts', 'app_transcript_index', 'app_retrieval_uses'],
+    sql: [
+      'CREATE TABLE app_transcript_excerpts (entry_id INTEGER PRIMARY KEY NOT NULL, session_id TEXT NOT NULL, chat_id TEXT NOT NULL, role TEXT NOT NULL, author TEXT, at INTEGER NOT NULL, text TEXT NOT NULL)',
+      'CREATE INDEX app_transcript_excerpts_chat ON app_transcript_excerpts (chat_id, entry_id)',
+      'CREATE INDEX app_transcript_excerpts_session ON app_transcript_excerpts (session_id, entry_id)',
+      "CREATE VIRTUAL TABLE app_transcript_fts USING fts5(text, content='app_transcript_excerpts', content_rowid='entry_id', tokenize='unicode61')",
+      'CREATE TRIGGER app_transcript_ai AFTER INSERT ON app_transcript_excerpts BEGIN INSERT INTO app_transcript_fts(rowid, text) VALUES (new.entry_id, new.text); END',
+      "CREATE TRIGGER app_transcript_ad AFTER DELETE ON app_transcript_excerpts BEGIN INSERT INTO app_transcript_fts(app_transcript_fts, rowid, text) VALUES ('delete', old.entry_id, old.text); END",
+      "CREATE TRIGGER app_transcript_au AFTER UPDATE OF text ON app_transcript_excerpts BEGIN INSERT INTO app_transcript_fts(app_transcript_fts, rowid, text) VALUES ('delete', old.entry_id, old.text); INSERT INTO app_transcript_fts(rowid, text) VALUES (new.entry_id, new.text); END",
+      'CREATE TABLE app_transcript_index (session_id TEXT PRIMARY KEY NOT NULL, through_entry INTEGER NOT NULL, checked_at INTEGER NOT NULL)',
+      "CREATE TABLE app_retrieval_uses (id TEXT PRIMARY KEY NOT NULL, chat_id TEXT NOT NULL, session_id TEXT NOT NULL, input_entry INTEGER, mode TEXT NOT NULL CHECK (mode IN ('tool', 'auto')), sources TEXT NOT NULL, retrieved_at INTEGER NOT NULL)",
+      'CREATE INDEX app_retrieval_uses_chat ON app_retrieval_uses (chat_id, retrieved_at)',
+    ].join(BREAK),
+  },
+  {
     // Start thread (ADR 0034): the owner's operation that started a Thread, so one operation makes one Thread.
     key: '20261026000350_thread_heads',
     tables: ['app_conversations'],

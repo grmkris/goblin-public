@@ -50,6 +50,14 @@ export class OwnerAgent extends PersonalAgent {
     }
     if (path === '/test/queue/held') return Response.json({ inputs: queueModel(this).held() })
     if (path === '/test/queue/seen') return Response.json({ requests: queueModel(this).requests() })
+    if (path === '/test/retrieval/excerpts')
+      return Response.json(
+        this.ctx.storage.sql
+          .exec(
+            'SELECT entry_id AS entry, session_id AS session, chat_id AS chat, text FROM app_transcript_excerpts ORDER BY entry_id',
+          )
+          .toArray(),
+      )
     if (path === '/test/queue/release') {
       const { input } = Schema.decodeUnknownSync(Schema.Struct({ input: Schema.String }))(await request.json())
       return Response.json({ released: queueModel(this).release(input) })
@@ -82,6 +90,10 @@ export default {
         return env.AGENTS.getByName(userId).fetch(
           new Request(`https://agent/test/topics/${url.pathname.split('/').at(-1)}`, input),
         )
+      }
+      if (url.pathname === '/__test/retrieval/excerpts') {
+        const { userId } = await requireUserSession(input, env)
+        return env.AGENTS.getByName(userId).fetch('https://agent/test/retrieval/excerpts')
       }
       if (url.pathname.startsWith('/__test/queue/')) {
         const { userId } = await requireUserSession(input, env)

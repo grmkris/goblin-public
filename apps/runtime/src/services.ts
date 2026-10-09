@@ -31,6 +31,7 @@ import type { TopicRegistry } from './topics/registry.ts'
 import type { PersonaRegistry } from './personas/registry.ts'
 import type { PersonaInvocations } from './personas/invocations.ts'
 import type { OrganizeReceipts } from './organize/receipts.ts'
+import type { ChatRetrieval } from './retrieval/service.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('goblin/Mcp') {}
@@ -68,6 +69,8 @@ export class AppEngine extends Context.Service<AppEngine, AgentApps>()('goblin/A
 /** Read-only inspection of the agent's conversations and runs (ADR 0024). */
 export class Inspect extends Context.Service<Inspect, Inspector>()('goblin/Inspect') {}
 export class Home extends Context.Service<Home, HomeService>()('goblin/Home') {}
+/** Cross-Topic retrieval (ADR 0035): the transcript index, `search_chats` and automatic sources. */
+export class Retrieval extends Context.Service<Retrieval, ChatRetrieval>()('goblin/Retrieval') {}
 export type AgentServices =
   | Entitlements
   | Events
@@ -97,6 +100,7 @@ export type AgentServices =
   | AppEngine
   | Inspect
   | Home
+  | Retrieval
 
 export const agentLayer = (services: {
   readonly host: McpHost
@@ -121,7 +125,9 @@ export const agentLayer = (services: {
   readonly workspace: WorkspaceFeed
   readonly apps: AppRegistry
   readonly home: HomeService
-}): Layer.Layer<Exclude<AgentServices, Entitlements | Events | EventStorage | Files | AppEngine | Inspect>> =>
+}): Layer.Layer<
+  Exclude<AgentServices, Entitlements | Events | EventStorage | Files | AppEngine | Inspect | Retrieval>
+> =>
   Layer.mergeAll(
     Layer.succeed(Mcp, services.host),
     Layer.succeed(Approvals, services.approvals),

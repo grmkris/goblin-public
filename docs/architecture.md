@@ -77,7 +77,7 @@ error tag, never bodies or credentials.
 `PersonalAgent extends Agent` and registers the native `PiHarness` with the Agent lifecycle. Pi owns transcripts,
 tasks, submissions, recovery and tool replay. The object builds one Effect `ManagedRuntime` lazily, providing its
 services: `Mcp` (the MCP host), `Resident` (resident authority), `Chats` (logical chat resolution), `Conversations` (the conversation registry), `Topics` (the owner's Topics),
-`Budget`, `Models`, `Memory`, `Skills`, `Learner`, `Channel` and `Files` (`services.ts`). DO methods are thin: each runs one Effect
+`Budget`, `Models`, `Memory`, `Skills`, `Learner`, `Channel`, `Files` and `Retrieval` (cross-Topic retrieval, ADR 0035) (`services.ts`). DO methods are thin: each runs one Effect
 program and encodes the exit. PiHarness and Pi Durable are experimental; Alchemy is a pinned beta and Drizzle an RC. `@shadcn/react` is pinned at
 0.3.1 and patched (`patches/shadcn-react/README.md`): its MessageScroller carries unreleased upstream fixes.
 
@@ -186,6 +186,7 @@ The owner API is conversation-scoped:
 | `POST /api/conversations/:id/stop` | Stop a conversation or one `operationId`, and the subagents it started (not its threads). |
 | `GET /api/conversations/:id/snapshot`, `GET /api/conversations/:id/events` | Pi snapshot or SSE snapshot followed by committed batches. |
 | `GET /api/conversations/:id/history?before=<entry>` | Earlier entries, oldest first, with a `more` flag. |
+| `GET /api/conversations/:id/sources` | What the chat's answers retrieved from other chats (`SourceUse[]`, newest first, empty results left out): the source strips (ADR 0035). |
 
 Every thread runs the `goblin.thread` extension (`pi/thread.ts`), added to that conversation alone when it is made;
 main never has it. It tells the model it is in a side thread and offers `share_back`: when the owner asks (the
@@ -625,6 +626,25 @@ before and after; the same change from the UI writes one with actor `owner`. The
 `node:sqlite`; the local workerd owner cases in `persona-case.ts` run in both native profiles. Neither is
 deployed-stage evidence.
 
+## Cross-Topic retrieval
+
+[ADR 0035](adr/0035-cross-topic-retrieval.md). `TranscriptIndex` (`retrieval/index.ts`, inside the `Retrieval`
+service) keeps an FTS5 index (`unicode61`, `bm25`) over one bounded, redacted excerpt per indexed Pi entry:
+`app_transcript_excerpts`, the external-content `app_transcript_fts` with its triggers, per-session progress in
+`app_transcript_index`, and the frozen sources of each use in `app_retrieval_uses` (migration
+`20261026000300_transcript_index`). It reads Pi through `Conversation.entries` in entry-id windows and keeps only
+entries the session owns (`entry.conversationId`), so forked history is indexed once under the chat that wrote it;
+persona forks are skipped. Inputs, answers, share-backs, Persona answers, Delegate results and Topic seeds are
+indexed; tool traffic is not. The `goblin.retrieval` extension (`pi/retrieval.ts`, in the default list, so in every
+Conversation and thread but not in subagents or routine runs) catches its conversation up after each response, and
+every search first catches up about 400 entries across chats.
+
+`search_chats { query, topic? }` turns the query into quoted literal terms joined with `OR`, ranks the top 20 hits,
+groups them into ±2-entry ranges per chat and returns at most five sources with excerpts of at most 1,200 characters,
+marked as quoted history. Without `topic` it searches active Topics that take part in search; a named Topic (name or
+id) is searched alone whatever its state. The asking chat is never searched. Each call records its sources under
+`tool:<session>:<call id>`, so a replay returns the same result; `details` is `SourcesDetails`.
+
 ## Topic memory
 
 Every Topic's Conversation (Personal's is Main) keeps its own memory (ADR 0032): `ChatMemory` (`memory/memory.ts`)
@@ -876,6 +896,7 @@ that is not in `app_conversations` (a routine's run) has no entries page; its tu
 | Agent DO SQLite | `app_conversation_capabilities`, `app_execution_exclusions` | Drizzle: conversation switches and helper app exclusions (ADRs 0010, 0029). |
 | Agent DO SQLite | `app_chat_memory_log`, `app_chat_memory_nodes`, `app_chat_memory_state` | Drizzle: each Topic Conversation's memory, keyed by chat id (ADR 0032). `app_memory_log`, `app_memory_nodes` and `app_memory_state`, Main's agent-wide predecessors, were copied into chat `1` and are no longer read. |
 | Agent DO SQLite | `app_topics` | Drizzle: the owner's Topics, each with its Conversation's chat id (ADR 0032). |
+| Agent DO SQLite | `app_transcript_excerpts`, `app_transcript_fts` (FTS5, shadow tables `app_transcript_fts_*`), `app_transcript_index`, `app_retrieval_uses` | Drizzle and raw FTS5 SQL: the cross-Topic transcript index and the frozen sources each run used (ADR 0035). |
 | Agent DO SQLite | `app_skill_sources`, `app_skill_activations`, `app_skill_files`, `app_skill_drafts` | Drizzle: skills and draft tracking. |
 | Agent DO SQLite | `app_channel`, `app_telegram_channel`, `app_channel_replies` | Drizzle: Telegram transport checkpoints and replies. |
 | Agent DO SQLite | `app_mcp_event_grants`, `app_mcp_event_subscriptions`, `app_event_deliveries`, `app_mcp_event_consumers`, `app_event_consumer_receipts` | Drizzle: exact Events grants, leases, encrypted receipts and independent acknowledgements. |

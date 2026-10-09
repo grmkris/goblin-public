@@ -63,6 +63,7 @@ import {
 import * as AppPrograms from './apps/program.ts'
 import { startThread } from './chats/thread-heads.ts'
 import { budgetExtension } from './pi/budget.ts'
+import { retrievalExtension } from './pi/retrieval.ts'
 import { chooseOwnerModel, type Applied } from './agent-model.ts'
 import { routinesExtension } from './pi/routines.ts'
 import { editRoutine, proposeRoutine, routinesList, setRoutineSettings } from './routines/program.ts'
@@ -118,7 +119,8 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
     const subagents = this.#subagents.extension
     const { personas, organize } = organizingKit(run, () => this.stopping())
     this.#personas = personas
-    const base = [...execution, skillLearningExtension(run), ...appsExtension(apps, run), organize]
+    const retrieval = retrievalExtension(run)
+    const base = [...execution, skillLearningExtension(run), ...appsExtension(apps, run), organize, retrieval]
     const own = [serversExtension(run, env.STAGE), subagents, routinesExtension(run), this.#telemetry.diagnose]
     const extras = [this.#thread, memory, recall, this.#personas.extension, ...routineKit.extra]
     this.harness = makePiHarness(this.#pi, [...base, ...own], extras, apps, this.#telemetry.recorder)

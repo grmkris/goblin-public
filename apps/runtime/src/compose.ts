@@ -45,7 +45,7 @@ import { BACKGROUND, conversationId } from './pi/context.ts'
 import type { PiModels } from './pi/harness.ts'
 import type { memoryExtensions } from './pi/memory.ts'
 import { ResidentAuthority } from './resident.ts'
-import { type AgentServices, AppEngine, Files, Inspect, agentLayer } from './services.ts'
+import { type AgentServices, AppEngine, Files, Inspect, Retrieval, agentLayer } from './services.ts'
 import { FileStore } from './files/store.ts'
 import { SkillLearner } from './skills/learner.ts'
 import { SkillLibrary } from './skills/library.ts'
@@ -59,6 +59,8 @@ import * as Effect from 'effect/Effect'
 import type { EventHandler } from './mcp/events/dispatcher.ts'
 import { HomeService } from './home/service.ts'
 import { restoreHelperExecution } from './pi/helper-execution.ts'
+import { TranscriptIndex, piTranscripts } from './retrieval/index.ts'
+import { ChatRetrieval } from './retrieval/service.ts'
 
 /** What the agent's services are built from: its storage and env, and the Pi pieces its constructor made. */
 export type ComposeInput = {
@@ -234,6 +236,10 @@ function makeMemories(input: ComposeInput, deps: MemoryDeps): ChatMemories {
   return new ChatMemories(deps, options, [input.memory.memory, input.memory.recall])
 }
 
+/** Cross-Topic retrieval (ADR 0035) over the agent's SQLite and Pi. */
+const chatRetrieval = (db: DrizzleSqliteDODatabase, harness: PiHarness) =>
+  new ChatRetrieval(new TranscriptIndex(db, piTranscripts(harness), nowSeconds), nowSeconds)
+
 /**
  * The agent's services over its SQLite, built once per isolate on first use: MCP host and grants, budget and models,
  * main's memory, conversations, resident authority, skills and the Telegram channel. Migrations run first, and every
@@ -316,6 +322,7 @@ export async function composeServices(
       Layer.succeed(Files, new FileStore(input.storage.sql, env.FILES, () => input.userId)),
       Layer.succeed(AppEngine, input.agentApps),
       Layer.succeed(Inspect, new Inspector(new RunLedger(db), conversations.conversations, harness)),
+      Layer.succeed(Retrieval, chatRetrieval(db, harness)),
     ),
   )
 }

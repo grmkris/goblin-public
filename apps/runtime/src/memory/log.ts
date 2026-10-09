@@ -11,7 +11,7 @@ export type LogMessage = { readonly kind: LogKind; readonly text: string }
 /** The longest text a message keeps for the memory: its head and tail, with a note of what was cut. */
 const CAP = 12_000
 
-function capped(text: string): string {
+export function capped(text: string): string {
   if (text.length <= CAP) return text
   const half = CAP / 2
   return `${text.slice(0, half)}\n[… ${text.length - CAP} characters cut …]\n${text.slice(-half)}`
