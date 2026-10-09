@@ -14,8 +14,10 @@
   take no messages, stay readable, and Reopen brings one back. Main never closes.
 - **Workspace feed**: `GET /api/workspace/events`, one SSE stream per tab with every conversation and what each is
   doing (`working`, or `waiting` on its subagents).
-- **Pane**: where the web shows one item (a conversation, a thread's unsent draft, the App), with a floating pill
-  instead of a tab (ADR 0019). An item is in at most one pane; closing the pane leaves the conversation going.
+- **Channel**: a Topic's one Conversation as the web shows it (`/c/<id>`, ADR 0036), `#` and the Topic's name in the
+  sidebar. Personal's channel is Main.
+- **Thread panel**: where the web shows a thread beside its channel (a full view on a phone), threads opened inside it
+  stacked with a back crumb. Closing the panel leaves the thread going; Close thread stops it.
 - **Read mark**: when the owner last saw a conversation's newest reply (`read_at`), kept by the server so every
   device agrees what is unread.
 - **Subagent**: a conversation main or a thread starts with the `subagent` tool to do a job in the background; its
@@ -51,7 +53,7 @@
 - **Kit**: `@goblin/kit`, the one implementation of the drawn blocks, for the chat now and agent apps later.
 - **Inbound client**: an MCP client (Claude Code, another agent) the owner authorized to call goblin's `/mcp`.
 - **MCP App**: a sandboxed `ui://` resource served through its originating MCP connection. One live App moves between
-  its desktop pane, fullscreen and the phone sheet while its iframe stays in place.
+  its place in the transcript and its page (`/a/<id>`) while its iframe stays in place.
 - **Skill**: a procedure (`SKILL.md` and its files) served by an MCP server through the MCP Skills extension. The agent
   lists and follows skills only from servers the owner turned skills on for; it activates them for a conversation, by
   handle `<server>:<name>`, and a skill never grants a permission (ADR 0008).
