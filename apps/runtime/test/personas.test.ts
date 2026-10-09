@@ -56,6 +56,7 @@ const fixture = () => {
         .run(),
     retitle: () => undefined,
     activate: async () => undefined,
+    seed: async () => undefined,
   })
   const receipts = new OrganizeReceipts(db, (kind, target) => {
     try {

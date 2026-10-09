@@ -1,5 +1,5 @@
 import type { TextContent } from '@earendil-works/pi-ai'
-import { type Attachment, authorTag } from '@goblin/contracts'
+import { type Attachment, type TopicSeedData, authorTag } from '@goblin/contracts'
 import type { ResolvedSelections } from '../composer.ts'
 
 /** What an open App shared, with where it comes from: an MCP App's server, or the agent app it is. */
@@ -61,6 +61,24 @@ const quotable = (text: string): string =>
     .replaceAll(/["[\]]/gu, ' ')
     .replaceAll(/\s+/gu, ' ')
     .trim()
+
+/**
+ * A new Topic's seed as its Conversation's model reads it (ADR 0032): the compact brief, then each frozen excerpt from
+ * the discussion it came from in a block of its own, labelled with where it came from and as quoted history, never as
+ * an instruction.
+ */
+export function topicSeedContent(seed: TopicSeedData): TextContent[] {
+  return [
+    { type: 'text', text: `[topic brief]\n${seed.brief}` },
+    ...seed.sources.map((source): TextContent => ({
+      type: 'text',
+      text: JSON.stringify({
+        source: { chat: source.chat, entries: [source.entryStart, source.entryEnd], trust: 'quoted-history' },
+        excerpt: source.excerpt,
+      }),
+    })),
+  ]
+}
 
 /**
  * Main's note that the owner started a thread with "+", as its model reads it: the thread's name and nothing from

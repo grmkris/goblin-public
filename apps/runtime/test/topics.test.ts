@@ -18,6 +18,7 @@ const fixture = () => {
   const opened: string[] = []
   const retitled: string[] = []
   const activated: string[] = []
+  const seeded: string[] = []
   let gate: Promise<void> = Promise.resolve()
   const topics = new TopicRegistry(db, {
     open: async () => {
@@ -40,6 +41,7 @@ const fixture = () => {
         })
         .run(),
     activate: async (chat) => void activated.push(chat),
+    seed: async (chat, operationId, seed) => void seeded.push(`${chat}:${operationId}:${seed.brief}`),
     retitle: (chat, name) => void retitled.push(`${chat}:${name}`),
   })
   const changes: TopicView[] = []
@@ -50,6 +52,7 @@ const fixture = () => {
     opened,
     retitled,
     activated,
+    seeded,
     changes,
     hold: () => {
       const { promise, resolve } = Promise.withResolvers<void>()
@@ -144,5 +147,17 @@ describe('Topics (ADR 0032)', () => {
     })
     expect(() => topics.get(9)).toThrow(expect.objectContaining({ _tag: 'NotFound' }))
     expect(() => topics.update(9, { name: 'x' }, 12)).toThrow(expect.objectContaining({ _tag: 'NotFound' }))
+  })
+
+  it('writes the seed a Topic made from a discussion starts with, again on a retry, never without one', async () => {
+    const { topics, seeded } = fixture()
+    const seed = { brief: 'Plan the garden beds', sources: [] }
+    const { topic } = await topics.create({ name: 'Garden', operationId: 'seeded' }, 'agent', 10, seed)
+    await topics.create({ name: 'Garden', operationId: 'seeded' }, 'agent', 11, seed)
+    await topics.create({ name: 'Plain', operationId: 'plain' }, 'owner', 12)
+    expect(seeded).toEqual([
+      `${topic.conversation}:seeded:Plan the garden beds`,
+      `${topic.conversation}:seeded:Plan the garden beds`,
+    ])
   })
 })

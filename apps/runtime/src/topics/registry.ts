@@ -1,4 +1,10 @@
-import { type CreateTopic, PERSONAL_TOPIC, type TopicView, type UpdateTopic } from '@goblin/contracts'
+import {
+  type CreateTopic,
+  PERSONAL_TOPIC,
+  type TopicSeedData,
+  type TopicView,
+  type UpdateTopic,
+} from '@goblin/contracts'
 import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import { Conflict, InvalidInput, NotFound } from '../http/errors.ts'
@@ -20,6 +26,8 @@ export type TopicPorts = {
   readonly register: (chat: string, topic: number, name: string, now: number) => void
   readonly activate: (chat: string) => Promise<void>
   readonly retitle: (chat: string, name: string) => void
+  /** Writes a Topic's seed into its Conversation once per operation (a passive write; it starts no run). */
+  readonly seed: (chat: string, operationId: string, seed: TopicSeedData) => Promise<void>
 }
 
 const view = (row: Row): TopicView => ({
@@ -108,19 +116,30 @@ export class TopicRegistry<RunResult = unknown> {
 
   /**
    * A new Topic named `name` with a new Conversation, or the Topic `operationId` already made (whatever its name now).
-   * The name is checked before the Pi session is made, so a clash leaves nothing behind.
+   * The name is checked before the Pi session is made, so a clash leaves nothing behind. A Topic made from a discussion
+   * (the organize tools) starts with `seed`, its brief and frozen excerpts, as an `app.topic_seed` entry.
    */
-  async create(input: CreateTopic, actor: TopicActor, now: number): Promise<{ topic: TopicView; created: boolean }> {
-    const run = this.#creating.then(async () => this.#create(input, actor, now))
+  async create(
+    input: CreateTopic,
+    actor: TopicActor,
+    now: number,
+    seed?: TopicSeedData,
+  ): Promise<{ topic: TopicView; created: boolean }> {
+    const run = this.#creating.then(async () => this.#create(input, actor, now, seed))
     this.#creating = run.catch(() => undefined)
     return run
   }
 
-  async #create(input: CreateTopic, actor: TopicActor, now: number): Promise<{ topic: TopicView; created: boolean }> {
+  async #create(
+    input: CreateTopic,
+    actor: TopicActor,
+    now: number,
+    seed: TopicSeedData | undefined,
+  ): Promise<{ topic: TopicView; created: boolean }> {
     const existing = this.#db.select().from(appTopics).where(eq(appTopics.operationId, input.operationId)).get()
     if (existing !== undefined) {
-      // A retry finishes what a failed first attempt began: the Conversation's memory.
-      await this.#ports.activate(existing.chatId)
+      // A retry finishes what a failed first attempt began: the Conversation's memory and its seed.
+      await this.#ready(existing.chatId, input.operationId, seed)
       return { topic: view(existing), created: false }
     }
     const name = cleanName(input.name)
@@ -145,8 +164,14 @@ export class TopicRegistry<RunResult = unknown> {
       return inserted
     })
     this.#changed([row])
-    await this.#ports.activate(chat)
+    await this.#ready(chat, input.operationId, seed)
     return { topic: view(row), created: true }
+  }
+
+  /** Turns the new Conversation's memory on, then writes the seed it was made with, if any; both are idempotent. */
+  async #ready(chat: string, operationId: string, seed: TopicSeedData | undefined): Promise<void> {
+    await this.#ports.activate(chat)
+    if (seed !== undefined) await this.#ports.seed(chat, operationId, seed)
   }
 
   /**

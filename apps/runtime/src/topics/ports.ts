@@ -5,6 +5,7 @@ import type { ChatDirectory } from '../chats/directory.ts'
 import type { ConversationRegistry } from '../conversations.ts'
 import type { ChatMemories } from '../memory/memory.ts'
 import { appConversations } from '../storage/schema.ts'
+import { topicSeedContent } from '../pi/content.ts'
 import type { TopicPorts } from './registry.ts'
 
 /** What a Topic's Conversation is made with besides the database and the conversation registry. */
@@ -42,6 +43,13 @@ export function topicPorts(
       conversations.touched([chat])
     },
     activate: (chat) => kit.memories.activate(chat),
+    seed: async (chat, operationId, seed) => {
+      await conversations.writeEntry(chat, `topic-seed:${operationId}`, {
+        kind: 'app.topic_seed',
+        data: { brief: seed.brief, sources: seed.sources.map((source) => ({ ...source })) },
+        model: [{ role: 'user', content: topicSeedContent(seed), timestamp: Date.now() }],
+      })
+    },
     retitle: (chat, name) => {
       db.update(appConversations)
         .set({ title: name })

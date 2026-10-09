@@ -37,6 +37,12 @@ repeat returns the same Topic, and only one Pi session is registered. The name i
 so a clash (409 `Conflict`) leaves nothing behind. A crash between making the session and registering it would leave
 one unregistered, unreachable Pi session; the retry registers a new one.
 
+A Topic made from a discussion (the agent's organize tools) is created with a `TopicSeedData`: its
+compact brief and at most eight frozen excerpts. The seed is a passive `app.topic_seed` write into the new
+Conversation (request id `topic-seed:<operation>`, so a retry writes it once, and it starts no run); its model text is
+the brief, then each excerpt in a block of its own labelled with its source chat and entries and as quoted history,
+never as an instruction (`pi/content.ts` `topicSeedContent`). A Topic created in the owner UI has no seed.
+
 Threads inherit their Topic: a branch from any chat, an empty thread (`CreateConversation.topic`, under that Topic's
 Conversation) and a subagent (its spawner's). A thread started empty announces its name to its own Topic's
 Conversation. Routine runs stay in Personal.
