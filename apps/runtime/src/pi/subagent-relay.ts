@@ -35,6 +35,14 @@ import { BACKGROUND, entryId, conversationId as piConversationId } from './conte
  */
 export const SUBAGENT_RELAY = 'goblin.subagent-relay'
 
+/**
+ * A conversation a delegation relies on is gone: the spawner's Pi conversation or its chat, the subagent's, a move's
+ * fork, or the chat Personas were asked in. Never expected; `missing` names which, and nothing else is carried.
+ */
+export class ConversationMissing extends Schema.TaggedError<ConversationMissing>()('ConversationMissing', {
+  missing: Schema.Literals(['spawner', 'spawner_chat', 'subagent', 'move_fork', 'persona_ask']),
+}) {}
+
 export type Subagent = {
   readonly conversationId: ConversationId
   /** Answers already reported: several messages can end in one answer, reported once. */
@@ -235,7 +243,7 @@ const reportPhase =
       const parentChat = Option.getOrUndefined(
         await run(Chats.use((chats) => chats.chatOf(String(runtime.conversationId)))),
       )
-      if (parentChat === undefined) throw new Error('Subagent spawner is not registered')
+      if (parentChat === undefined) throw new ConversationMissing({ missing: 'spawner_chat' })
       const requestId = `subagent-report:${relay.id}`
       const content = authoredContent(`subagent ${name}`, report)
       if (synthesize) {
@@ -284,7 +292,7 @@ export function relayTask(run: RunProgram): Relay {
         if (origin === 'spawner')
           await run(register(String(conversationId), parent, name, relay.input.exclusions ?? []))
         const subagent = await runtime.conversation(conversationId, context)
-        if (subagent === undefined) throw new Error(`Subagent ${name} has no conversation`)
+        if (subagent === undefined) throw new ConversationMissing({ missing: 'subagent' })
         await run(requireResident)
         const submission = await subagent.submit(
           { type: 'input', content, whenBusy, requestId: requestId ?? `subagent:${relay.id}` },

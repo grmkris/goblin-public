@@ -27,7 +27,7 @@ import { withContext } from './context-tail.ts'
 import { authoredContent } from './content.ts'
 import { BACKGROUND, entryId } from './context.ts'
 import { MODEL_PROVIDER } from './model.ts'
-import { answerText } from './subagent-relay.ts'
+import { ConversationMissing, answerText } from './subagent-relay.ts'
 
 /** The task kind of one Persona answering one owner message. */
 export const PERSONA_TURN = 'goblin.persona-turn'
@@ -389,7 +389,7 @@ export function personaTurnExtension(run: RunProgram): PersonaTurnKit {
     extension,
     start: async (pi, ask) => {
       const parent = await pi.conversation(ask.parent, BACKGROUND)
-      if (parent === undefined) throw new Error('Persona ask has no conversation')
+      if (parent === undefined) throw new ConversationMissing({ missing: 'persona_ask' })
       await parent.commit(async (tx) => {
         const asks = await tx.doc(PersonaAsks, ask.parent)
         if (asks.tasks[ask.operationId] !== undefined) return

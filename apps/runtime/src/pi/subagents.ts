@@ -23,6 +23,7 @@ import type { RunProgram } from '../runtime/bridge.ts'
 import { capabilityOffResult } from './capabilities.ts'
 import { BACKGROUND, conversationId } from './context.ts'
 import {
+  ConversationMissing,
   type Relay,
   SUBAGENT_RELAY,
   type Subagent,
@@ -320,7 +321,7 @@ export type OwnerSend = {
 /** A relay in the spawner for the owner's message, once per operation: false when it is already on its way. */
 async function ownerRelay(relay: Relay, pi: Harness, send: OwnerSend): Promise<boolean> {
   const spawner = await pi.conversation(conversationId(send.spawner), BACKGROUND)
-  if (spawner === undefined) throw new Error(`Subagent ${send.subagent} has no spawner`)
+  if (spawner === undefined) throw new ConversationMissing({ missing: 'spawner' })
   const subagent = conversationId(send.subagent)
   const created = await spawner.commit(async (tx) => {
     if ((await tx.submissionByRequest(subagent, send.operationId)) !== undefined) return false
@@ -356,7 +357,7 @@ async function handover(
   move: { readonly from: ConversationId; readonly to: ConversationId; readonly ids: readonly number[] },
 ): Promise<readonly string[]> {
   const target = await pi.conversation(move.to, BACKGROUND)
-  if (target === undefined) throw new Error('The move fork is missing')
+  if (target === undefined) throw new ConversationMissing({ missing: 'move_fork' })
   const helpers = new Set<string>()
   for (const id of move.ids) {
     // SAFETY: relay ids come from this agent's own task records; Pi ids are plain integers.
