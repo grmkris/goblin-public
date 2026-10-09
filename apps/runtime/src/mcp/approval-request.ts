@@ -9,7 +9,7 @@ import { requireRoutineSession } from '../routines/authority.ts'
 import { RoutineRuns } from '../routines/service.ts'
 import { Conflict, NotFound } from '../http/errors.ts'
 import { objectOrJson } from '../pi/typed-tool.ts'
-import { Approvals, McpConnections, McpGrants, Resident } from './service.ts'
+import { Approvals, McpConnections, McpGrants, requireResident } from './service.ts'
 
 export const McpCallInput = Schema.Struct({
   serverId: Schema.String,
@@ -24,7 +24,7 @@ export const holdModelCall = (session: string, callId: string, taskId: string, i
   Effect.gen(function* () {
     const policy = yield* (yield* McpGrants).policy(input.serverId, input.name)
     if (Option.isNone(policy) || !policy.value.askFirst) return undefined
-    yield* (yield* Resident).require()
+    yield* requireResident
     yield* requireRoutineSession(session)
     const chat = yield* (yield* Chats).chatOf(session)
     if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })

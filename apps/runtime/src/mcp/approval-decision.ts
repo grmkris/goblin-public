@@ -10,12 +10,12 @@ import { requireRoutineSession } from '../routines/authority.ts'
 import { RoutineRuns } from '../routines/service.ts'
 import type { ApprovalRow } from './approvals.ts'
 import { redactSecretFields } from './redaction.ts'
-import { Approvals, McpConnections, Resident } from './service.ts'
+import { Approvals, McpConnections, requireResident } from './service.ts'
 
 /** What a held call needs again just before it is dispatched: current authority, its open chat and its scope. */
 const authority = (row: ApprovalRow) =>
   Effect.gen(function* () {
-    yield* (yield* Resident).require()
+    yield* requireResident
     if (row.sessionId === null) return
     const session = row.sessionId
     const chat = yield* (yield* Chats).chatOf(session)

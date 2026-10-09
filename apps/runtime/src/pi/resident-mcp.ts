@@ -10,7 +10,7 @@ import { Capabilities } from '../capabilities/service.ts'
 import { type GrantDenied, NotFound, toAppError } from '../http/errors.ts'
 import { toolAppResource, toolOffered } from '../mcp/connection.ts'
 import { grantRequiredResult, mcpModelResult } from '../mcp/extension.ts'
-import { McpConnections, McpGrants, McpServers, Resident } from '../mcp/service.ts'
+import { McpConnections, McpGrants, McpServers, requireResident } from '../mcp/service.ts'
 import type { McpRequestOptions } from '../mcp/types.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { capabilityOffResult, mcpOff } from './capabilities.ts'
@@ -19,7 +19,7 @@ import { McpCallInput, holdModelCall, approvalResult } from '../mcp/approval-req
 
 const executionAuthority = (session: string, authorize?: (session: string) => Promise<void>) =>
   Effect.gen(function* () {
-    yield* (yield* Resident).require()
+    yield* requireResident
     if (authorize !== undefined) yield* Effect.tryPromise({ try: () => authorize(session), catch: toAppError })
   })
 

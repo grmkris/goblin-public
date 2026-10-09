@@ -1,7 +1,7 @@
 import { defineExtension } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { McpServers, Resident } from '../mcp/service.ts'
+import { McpServers, requireResident } from '../mcp/service.ts'
 import type { Stage } from '../mcp/suggested.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { typedTool } from './typed-tool.ts'
@@ -63,7 +63,7 @@ const suggestTool = (run: RunProgram, stage: Stage | undefined) =>
     execute: async ({ query }) =>
       run(
         Effect.gen(function* () {
-          yield* (yield* Resident).require()
+          yield* requireResident
           const servers = yield* McpServers
           const shelf = (yield* servers.suggested(stage)).filter((entry) =>
             matches(query, entry.title, entry.description),

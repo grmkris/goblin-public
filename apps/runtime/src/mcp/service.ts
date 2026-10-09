@@ -14,7 +14,7 @@ import type {
   ToolView,
 } from '@goblin/contracts'
 import * as Context from 'effect/Context'
-import type * as Effect from 'effect/Effect'
+import * as Effect from 'effect/Effect'
 import type * as Option from 'effect/Option'
 import type { AppError } from '../http/errors.ts'
 import type { ApprovalRow, HeldCall } from './approvals.ts'
@@ -53,6 +53,9 @@ export class Resident extends Context.Service<
     readonly require: () => Effect.Effect<void, AppError>
   }
 >()('goblin/mcp/Resident') {}
+
+/** Fails with `ResidentInactive` unless the owner's resident authority is current: the gate before any agent action. */
+export const requireResident: Effect.Effect<void, AppError, Resident> = Resident.use((resident) => resident.require())
 
 /**
  * The owner's servers (ADR 0006): the ones offered, adding and removing them, signing in, their tools, and the
