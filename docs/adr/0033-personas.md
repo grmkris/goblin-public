@@ -25,8 +25,9 @@ every revision in `app_persona_revisions` (migration `20261026000200_personas`; 
 - Exclusions are `HelperExclusions`, the same vocabulary as a helper's, and can only narrow. They are stored as given,
   de-duplicated, and applied on top of the chat's own switches; a Persona never gains a capability.
 
-`GET/POST /api/personas` and `GET/PATCH /api/personas/:id` (`personas/routes.ts`) are strict-CSRF browser writes. The
-workspace feed carries `personas`, `invocations` and `receipts` in its snapshot and `persona`, `invocation` and
+`GET/POST /api/personas` and `GET/PATCH /api/personas/:id` are the owner API's `personas` group
+(`packages/contracts/src/api/personas.ts`, served by the agent from `personas/api.ts`); like every owner write, the
+two writes need the CSRF header (ADR 0038). The workspace feed carries `personas`, `invocations` and `receipts` in its snapshot and `persona`, `invocation` and
 `receipt` changes.
 
 ## The ask: no Goblin run

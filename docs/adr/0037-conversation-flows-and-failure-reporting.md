@@ -3,7 +3,7 @@
 Accepted 2026-10-09 with the owner (the debuggability plan: an Effect-native runtime, one typed API and visible
 conversation flows). Builds on ADR 0024 (observing conversations: the run ledger, inspection and no content in
 telemetry), ADR 0030 (logical chats), ADRs 0032 to 0035 (Topics, Personas, Move to thread, retrieval) and the typed
-owner API that the agent serves.
+owner API that the agent serves (ADR 0038).
 
 The owner wants to hit an error or strange behaviour in the app and see what happened, and above all how people and
 agents move through conversations: replies, "+", start thread, move, Personas, Delegates. Until now the run ledger
@@ -52,8 +52,12 @@ Workers Analytics Engine dataset, `goblin-<stage>-flows`, bound as the optional 
 
 - **One point per operation**, its first step; a step without an operation id is written as it comes.
 - **Layout:** `indexes: [agentHash]`; `blobs: [flow, via, actor, origin, status, errorType, stage, build,
-  personaOrder]`; `doubles: [1, count, ms, depth]`, where `depth` is 1 for a step another operation caused. Origin and
-  build stay empty until steps and the Worker carry them.
+  personaOrder]`; `doubles: [1, count, ms, depth]`, where `depth` is 1 for a step another operation caused. Origin
+  stays empty until steps carry it, and an agent's points leave build empty.
+- **Browser crashes.** The Worker writes a crash report's `client_error` point (`crashPoint`, `http/api/account.ts`)
+  with the report's own build (the web build's `VITE_GOBLIN_BUILD`, `dev` when it names none). The point is indexed
+  by the agent's hash only when the report came with a session; a signed-out crash has no agent index, so
+  `goblin stats` cannot tell signed-out crashes apart by agent.
 - **No chat or operation ids**, and no content.
 - **Hashed agent id.** `agentHash` is HMAC-SHA-256 of the user id under a key derived with HKDF-SHA-256 from
   `CREDENTIAL_KEY` and the label `goblin/flows/agent-v1`, as 16 hex characters. It is stable for one key and label, the
