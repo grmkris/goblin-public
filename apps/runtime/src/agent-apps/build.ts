@@ -384,6 +384,7 @@ export class AppBuilder {
     try {
       return { ok: true, value: await this.#deps.isolates.call(ms, what, work) }
     } catch (cause) {
+      // expected: the isolate's failure is the app's (a module that does not load, a throw, a timeout), its problem
       return { ok: false, error: cause instanceof Error ? cause.message.slice(0, 2000) : String(cause) }
     }
   }

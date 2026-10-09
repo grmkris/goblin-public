@@ -91,6 +91,7 @@ export async function runScript(isolates: Isolates, files: FileStore, code: stri
     const value = plainJson(result.value ?? null, 256 * 1024, 'the result') as Schema.Json
     return { ok: result.ok, value, ...(result.error === undefined ? {} : { error: result.error }), logs: result.logs }
   } catch (cause) {
+    // expected: a script that fails or times out answers `code_run` with its error, for the agent to read
     return { ok: false, error: problemText(cause), logs: [] }
   }
 }

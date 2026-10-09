@@ -61,6 +61,7 @@ const outcome = async <A>(work: () => Promise<A>) => {
   try {
     return { ok: true as const, value: await work() }
   } catch (cause) {
+    // expected: a refused call is the probe's answer, as the agent would read it
     return { ok: false as const, error: problemText(cause) }
   }
 }

@@ -144,6 +144,7 @@ export type AgentPort = AgentFetch & { readonly fire: (slot: JobSlot) => Promise
 const settle = <A, E>(agent: AgentFetch, call: (api: OwnerClient) => Effect.Effect<A, E>): Promise<A | string> =>
   callOwner(agent, (api) =>
     call(api).pipe(
+      // expected: a typed failure is the probe's answer, read as its tag
       Effect.catch((error) =>
         Effect.succeed(Predicate.hasProperty(error, '_tag') && Predicate.isString(error._tag) ? error._tag : 'failed'),
       ),

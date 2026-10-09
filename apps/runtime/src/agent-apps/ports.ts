@@ -91,6 +91,7 @@ export function appServices(deps: Deps): AppServices {
         await authority()
         return undefined
       } catch (cause) {
+        // expected: a lapsed plan or authority is the answer; the job waits and its status says why
         return `waiting for the owner (${problemText(cause)})`
       }
     },

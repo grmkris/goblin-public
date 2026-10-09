@@ -87,6 +87,8 @@ export async function filesRequest(request: Request, url: URL, execute: Execute)
       Response.json(listing),
     )
   } catch (cause) {
+    // expected: a refused request (no path, no size, too large) is answered with its error body; toAppError logs any
+    // other failure before it becomes Internal
     return failed(cause)
   }
 }

@@ -519,6 +519,7 @@ export class AgentApps {
   /** Arms the schedules a new or earlier release declares; a failure is kept with the app's events, not thrown. */
   async #reconcile(app: string): Promise<void> {
     await this.jobs.reconcile().catch((cause: unknown) => {
+      // expected: kept as the app's own error event, which the agent and the owner's Apps page show
       this.store.event(app, 'error', `schedules: ${problemText(cause)}`, this.#deps.now())
     })
   }

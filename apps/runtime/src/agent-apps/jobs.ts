@@ -188,6 +188,7 @@ export class AppJobs {
       await this.#deps.run(app, action, JSON.parse(row.input), `job:${app}:${action}:now:${String(now)}`)
       this.#jobs.update(app, action, { lastAt: this.#deps.now(), lastStatus: 'ok', lastError: null })
     } catch (cause) {
+      // expected: the run's failure is the schedule's last status, which the owner sees on the Apps page
       const error = problemText(cause).slice(0, 1000)
       this.#jobs.update(app, action, { lastAt: this.#deps.now(), lastStatus: 'failed', lastError: error })
     }
@@ -255,6 +256,7 @@ export class AppJobs {
       const done = this.#deps.now()
       await this.#settle(row, { lastAt: done, lastStatus: 'ok', lastError: null, failures: 0 }, nextSlot(row, done))
     } catch (cause) {
+      // expected: the run's failure is kept with the app's events and backs the schedule off, pausing it after ten
       const done = this.#deps.now()
       const failures = row.failures + 1
       const error = problemText(cause).slice(0, 1000)
