@@ -27,7 +27,7 @@ export class Entitlements extends Context.Service<Entitlements, EntitlementPolic
     return Layer.succeed(Entitlements, accountEntitlements(env, userId))
   }
 }
-const requirePlan = <E>(state: Effect.Effect<AccountPlan, E>) =>
+const requirePlan = (state: Effect.Effect<AccountPlan, Internal>) =>
   state.pipe(
     Effect.flatMap((plan) =>
       plan.active ? Effect.succeed(plan) : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' })),
@@ -40,13 +40,15 @@ const PLAN_TTL = Duration.seconds(60)
 /**
  * `policy` as the agent checks it: an active plan is kept for a minute, so each tool call, routine dispatch and owner
  * request stops reading auth D1. A plan that is not active, or a read that failed, is not kept, so a subscription
- * counts at once and a failed read is tried again. The Worker edge never uses this: it reads the plan fresh.
+ * counts at once and a failed read is tried again. `require` and `state` keep the policy's own answers, each in its own
+ * cache. The Worker edge never uses this: it reads the plan fresh.
  */
 export const cachedPolicy = Effect.fn('Entitlements.cachedPolicy')(function* (policy: EntitlementPolicy) {
-  const [state] = yield* Effect.cachedInvalidateWithTTL(policy.state(), (exit) =>
-    Exit.isSuccess(exit) && exit.value.active ? PLAN_TTL : Duration.zero,
-  )
-  return Entitlements.of({ state: () => state, require: () => requirePlan(state) })
+  const keep = (exit: Exit.Exit<AccountPlan, unknown>) =>
+    Exit.isSuccess(exit) && exit.value.active ? PLAN_TTL : Duration.zero
+  const [state] = yield* Effect.cachedInvalidateWithTTL(policy.state(), keep)
+  const [require] = yield* Effect.cachedInvalidateWithTTL(policy.require(), keep)
+  return Entitlements.of({ state: () => state, require: () => require })
 })
 
 /**

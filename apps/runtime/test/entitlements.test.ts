@@ -3,7 +3,7 @@ import * as Effect from 'effect/Effect'
 import * as TestClock from 'effect/testing/TestClock'
 import { type EntitlementPolicy, cachedPolicy } from '../src/billing/gates.ts'
 import type { AccountPlan } from '../src/billing/reconcile.ts'
-import { Internal } from '../src/http/errors.ts'
+import { Internal, SubscriptionRequired } from '../src/http/errors.ts'
 
 const PLAN: AccountPlan = {
   active: true,
@@ -15,7 +15,10 @@ const PLAN: AccountPlan = {
   cancelAtPeriodEnd: false,
 }
 
-/** A policy whose plan reads auth D1: each read is counted, and answers the next of `answers` (the last one repeats). */
+/**
+ * A policy whose plan reads auth D1: each read is counted, and answers the next of `answers` (the last one repeats).
+ * `require` refuses a plan that is not active, as the account's policy does.
+ */
 const counted = (answers: readonly (AccountPlan | 'fail')[]) => {
   let reads = 0
   const state = Effect.suspend(() => {
@@ -25,7 +28,10 @@ const counted = (answers: readonly (AccountPlan | 'fail')[]) => {
       ? Effect.fail(new Internal({ reason: 'billing storage unavailable' }))
       : Effect.succeed(answer)
   })
-  const policy: EntitlementPolicy = { state: () => state, require: () => state }
+  const require = Effect.flatMap(state, (plan) =>
+    plan.active ? Effect.succeed(plan) : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' })),
+  )
+  const policy: EntitlementPolicy = { state: () => state, require: () => require }
   return { policy, reads: () => reads }
 }
 
@@ -36,12 +42,14 @@ describe('the plan as the agent checks it', () => {
       const plans = yield* cachedPolicy(policy)
       expect(yield* plans.require()).toEqual(PLAN)
       yield* TestClock.adjust('59 seconds')
-      expect(yield* plans.state()).toEqual(PLAN)
       expect(yield* plans.require('routines')).toEqual(PLAN)
       expect(reads()).toBe(1)
+      expect(yield* plans.state()).toEqual(PLAN)
+      expect(yield* plans.state()).toEqual(PLAN)
+      expect(reads()).toBe(2)
       yield* TestClock.adjust('2 seconds')
       yield* plans.require()
-      expect(reads()).toBe(2)
+      expect(reads()).toBe(3)
     }),
   )
 
