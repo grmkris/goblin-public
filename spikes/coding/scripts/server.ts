@@ -49,6 +49,7 @@ const coding = new Coding({
   github: new GitHub(config.repo, config.gh),
   state: path.join(config.state, 'sessions.json'),
   runner,
+  title: `Coding (${{ native: 'native', docker: 'Docker', cloudflare: 'Cloudflare' }[runnerConfig.kind]})`,
 })
 const oauth = new OAuth(config.origin, config.ownerOrigins, config.adminKey, path.join(config.state, 'oauth.json'))
 await oauth.restore()

@@ -24,6 +24,8 @@ export class Coding {
       github: GitHub
       state: string
       runner: CodingRunnerFactory
+      /** How the owner's connection list names this service, e.g. which backend checks its edits. */
+      title?: string
     },
   ) {
     this.state = new State(options.state)
@@ -56,7 +58,12 @@ export class Coding {
 
   // oxlint-disable-next-line max-lines-per-function -- Keeping the seven tool contracts together makes the exposed capability boundary auditable.
   server(): McpServer {
-    const server = new McpServer({ name: 'goblin-coding-spike', version: '0.1.0' })
+    const { title } = this.options
+    const server = new McpServer({
+      name: 'goblin-coding-spike',
+      version: '0.1.0',
+      ...(title === undefined ? {} : { title }),
+    })
     const register = <S extends Schema.Top & Schema.ConstraintDecoder<unknown>>(
       name: string,
       description: string,
