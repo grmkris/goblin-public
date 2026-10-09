@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { oxlintFailures } from '../findings.ts'
+import { knipFailures, oxlintFailures } from '../findings.ts'
 
 describe('oxlint collection', () => {
   test('a clean run, with or without findings, is complete', () => {
@@ -17,5 +17,22 @@ describe('oxlint collection', () => {
 
   test('a run that did not finish fails once, with its stderr', () => {
     expect(oxlintFailures({ exitCode: 2, stdout: '', stderr: 'panic' })).toEqual(['oxlint exited 2\npanic'])
+  })
+})
+
+describe('knip collection', () => {
+  test('issues alone are findings, not failures', () => {
+    expect(knipFailures({ exitCode: 0, stdout: '{"issues":[]}', stderr: '' }, 0)).toEqual([])
+    expect(knipFailures({ exitCode: 1, stdout: '{"issues":[]}', stderr: '' }, 3)).toEqual([])
+  })
+
+  test('exit 1 with no issue is configuration hints treated as errors, which the JSON report leaves out', () => {
+    expect(knipFailures({ exitCode: 1, stdout: '{"issues":[]}', stderr: '' }, 0)).toEqual([
+      'knip reported configuration hints, which knip.jsonc treats as errors; `bun run knip` lists them',
+    ])
+  })
+
+  test('a run that did not finish fails with its stderr', () => {
+    expect(knipFailures({ exitCode: 2, stdout: '', stderr: 'boom' }, 0)).toEqual(['knip exited 2\nboom'])
   })
 })

@@ -133,10 +133,25 @@ export const effectFindings = async (): Promise<Collected> => {
 // ---------------------------------------------------------------------------------------------------------------------
 // knip
 
+/**
+ * Why a knip run fails beyond its issues. knip exits 1 for issues and, with `treatConfigHintsAsErrors` in knip.jsonc,
+ * for configuration hints too, which its JSON report leaves out: a run that exits 1 with no issue had hints. Turning
+ * that flag on is the switch; until then hints are printed by `bun run knip` and do not fail.
+ */
+export const knipFailures = (result: RunResult, issues: number): readonly string[] => {
+  const failures = didNotRun('knip', result)
+  if (failures.length > 0) return failures
+  return result.exitCode === 1 && issues === 0
+    ? ['knip reported configuration hints, which knip.jsonc treats as errors; `bun run knip` lists them']
+    : []
+}
+
 export const knipFindings = async (): Promise<Collected> => {
   const result = await run([bin('knip'), '--reporter', 'json', '--no-progress'])
   const failures = didNotRun('knip', result)
-  return failures.length > 0 ? { findings: [], failures } : { findings: fromKnip(JSON.parse(result.stdout)), failures }
+  if (failures.length > 0) return { findings: [], failures }
+  const findings = fromKnip(JSON.parse(result.stdout))
+  return { findings, failures: knipFailures(result, findings.length) }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
