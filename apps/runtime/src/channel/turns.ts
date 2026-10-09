@@ -2,42 +2,41 @@
 import { TELEGRAM_AUTHOR } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
-import type { AppError } from '../http/errors.ts'
+import * as Option from 'effect/Option'
+import { useModel, type Applied } from '../agent-model.ts'
+import type { Budget } from '../budget.ts'
+import { instanceCall, withinBudget } from '../chats/instance.ts'
+import { ChatOperations, Chats } from '../chats/service.ts'
 import { authoredContent } from '../pi/content.ts'
 import { askedText, cutOff } from '../pi/transcript.ts'
-import {
-  type AgentServices,
-  Budget,
-  Channel,
-  Chats,
-  Mcp,
-  Models,
-  attempt,
-  nowSecondsEffect,
-  requireBudget,
-  requireResident,
-} from '../services.ts'
-import { useModel, type Applied } from '../agent-model.ts'
+import type { AppError } from '../http/errors.ts'
+import type { Models } from '../models.ts'
+import { type AgentServices, Channel, Mcp, requireResident } from '../services.ts'
 import { type ChannelPorts, type TelegramChannel, channelCall } from './channel.ts'
 
-type Run = <A>(program: Effect.Effect<A, AppError, Budget | Chats | Models>) => Promise<A>
+/** What the ports' programs read; whoever runs them provides these (the bridge provides every agent service). */
+type PortServices = Budget | Chats | ChatOperations | Models
+type PortRun = <A>(program: Effect.Effect<A, AppError, PortServices>) => Promise<A>
 
 /** What Telegram adds to an answer that reached the output limit, as the web transcript's receipt says. */
 const CUT_OFF = '(Cut off at the output limit. Ask it to continue.)'
+
+/** The session operation `operationId` went to in main, admitting it there when nothing did yet. */
+const mainSession = (operationId: string) =>
+  Effect.gen(function* () {
+    const chats = yield* Chats
+    const operations = yield* ChatOperations
+    const found = yield* operations.operation(chats.primary, operationId)
+    return Option.isSome(found) ? found.value : (yield* operations.admit(chats.primary, operationId)).session
+  })
 
 /**
  * How a turn of main ended, as Telegram should hear it: its final text, or what it asked the owner when it stopped on
  * a question, and whether it was cut off; undefined while it runs.
  */
-async function answerOf(harness: PiHarness, operationId: string, run: Run): Promise<string | undefined> {
+async function answerOf(harness: PiHarness, operationId: string, run: PortRun): Promise<string | undefined> {
   // Retained reply rows predate the ledger; their original session is still the current primary at migration.
-  const session = await run(
-    Effect.gen(function* () {
-      const chats = yield* Chats
-      const now = yield* nowSecondsEffect
-      return chats.operation(chats.primary(), operationId) ?? chats.admit(chats.primary(), operationId, now).session
-    }),
-  )
+  const session = await run(mainSession(operationId))
   const result = await harness
     .wait(operationId, { session, signal: AbortSignal.timeout(200) })
     // Wave 3 (C3) stops this also swallowing a wait that failed for another reason.
@@ -53,31 +52,37 @@ async function answerOf(harness: PiHarness, operationId: string, run: Run): Prom
 }
 
 /**
+ * The owner's Telegram message into main, within the budget: admitted under main's lock, the session put on the
+ * owner's model, then submitted. The same operation id is the same message.
+ */
+const telegramSubmit = (harness: PiHarness, applied: Applied, text: string, operationId: string) =>
+  Effect.gen(function* () {
+    yield* withinBudget
+    const chats = yield* Chats
+    const operations = yield* ChatOperations
+    yield* operations.withChat(
+      chats.primary,
+      Effect.gen(function* () {
+        const { session } = yield* operations.admit(chats.primary, operationId)
+        yield* useModel(harness, applied, session)
+        yield* instanceCall(() => harness.submit(authoredContent(TELEGRAM_AUTHOR, text), { session, operationId }))
+      }),
+    )
+  })
+
+/**
  * The ports of the channel: the channel server's tools (`call`), main, where an owner's Telegram message becomes a
- * turn within the budget on the owner's model (`useModel`), and the end of each turn.
+ * turn within the budget on the owner's model, and the end of each turn. Each port runs its program through the
+ * bridge, at the port's Promise boundary.
  */
 export const channelPorts = (
   harness: PiHarness,
   call: ChannelPorts['call'],
-  run: Run,
+  run: PortRun,
   applied: Applied,
 ): ChannelPorts => ({
   call,
-  submit: (text, operationId) =>
-    run(
-      Effect.gen(function* () {
-        yield* requireBudget
-        const chats = yield* Chats
-        const now = yield* nowSecondsEffect
-        yield* attempt(() =>
-          chats.withChat(chats.primary(), async () => {
-            const { session } = chats.admit(chats.primary(), operationId, now)
-            await run(useModel(harness, applied, session))
-            await harness.submit(authoredContent(TELEGRAM_AUTHOR, text), { session, operationId })
-          }),
-        )
-      }),
-    ),
+  submit: (text, operationId) => run(telegramSubmit(harness, applied, text, operationId)),
   answer: (operationId) => answerOf(harness, operationId, run),
 })
 

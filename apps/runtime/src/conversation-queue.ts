@@ -3,7 +3,9 @@ import type { PiHarness } from 'agents/harness/pi'
 import { ConversationQueue, type QueueRemoval, type QueueRemovalResult } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { Conversations, RoutineRuns, attempt, attemptSync } from './services.ts'
+import { instanceCall } from './chats/instance.ts'
+import { Conversations } from './chats/service.ts'
+import { RoutineRuns } from './routines/service.ts'
 import { BACKGROUND, conversationId, submissionId } from './pi/context.ts'
 
 /** Read Pi's supported inbox document; neither the transcript nor application storage owns these inputs. */
@@ -18,9 +20,9 @@ export async function queuedInputs(pi: Harness, session: string): Promise<Conver
 const ownerQueueSession = (thread: string) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
-    const session = yield* attemptSync(() => conversations.require(thread))
-    const kind = yield* attemptSync(() => conversations.kindOf(thread))
-    if (kind === 'subagent' || (yield* RoutineRuns).session(session) !== undefined) return undefined
+    const session = yield* conversations.require(thread)
+    const kind = yield* conversations.kindOf(thread)
+    if (kind === 'subagent' || (yield* (yield* RoutineRuns).session(session)) !== undefined) return undefined
     return session
   })
 
@@ -29,7 +31,7 @@ export const ownerQueue = (harness: PiHarness, thread: string) =>
   Effect.gen(function* () {
     const session = yield* ownerQueueSession(thread)
     if (session === undefined) return { inputs: [] }
-    return yield* attempt(async () => queuedInputs(await harness.pi(), session))
+    return yield* instanceCall(async () => queuedInputs(await harness.pi(), session))
   })
 
 const outcomes = {
@@ -52,5 +54,5 @@ export const removeOwnerQueuedInput = (harness: PiHarness, thread: string, input
   Effect.gen(function* () {
     const session = yield* ownerQueueSession(thread)
     if (session === undefined) return { status: 'not_found' as const }
-    return yield* attempt(async () => withdrawQueuedInput(await harness.pi(), session, input.submissionId))
+    return yield* instanceCall(async () => withdrawQueuedInput(await harness.pi(), session, input.submissionId))
   })

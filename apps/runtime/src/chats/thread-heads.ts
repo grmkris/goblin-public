@@ -1,29 +1,28 @@
 import type { TextContent } from '@earendil-works/pi-ai'
 import type { Conversation, EntryId } from '@earendil-works/pi-durable'
 import type { ThreadHeadData } from '@goblin/contracts'
-import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
 import { type OwnerSubmit, submitOwner } from '../agent-program.ts'
 import type { StartedThread } from '../env.ts'
-import { InvalidInput, NotFound } from '../http/errors.ts'
+import { InvalidInput } from '../http/errors.ts'
 import { threadHeadContent } from '../pi/content.ts'
-import { BACKGROUND, conversationId } from '../pi/context.ts'
-import { Chats, Conversations, attempt, nowSecondsEffect, requireBudget } from '../services.ts'
-import type { ChatDirectory } from './directory.ts'
+import { BACKGROUND } from '../pi/context.ts'
+import { withinBudget } from './instance.ts'
+import { ChatOperations, Conversations, type PassiveWrite } from './service.ts'
 
 /** The most of the owner's words a thread head shows (`ThreadHeadData.text`). */
 const HEAD_TEXT = 400
 
 /**
- * Submits `app.thread_head` into `conversation` as a passive write, request id `thread-head:<operation>`. A moved
+ * The passive write of `app.thread_head`, request id `thread-head:<operation>` so a retry is the same entry. A moved
  * turn's head also omits that turn from the model's context there (`omit`, Pi edits).
  */
-export async function submitThreadHead(
-  conversation: Conversation,
+const threadHeadWrite = (
   head: ThreadHeadData,
   content: readonly TextContent[],
   omit: readonly EntryId[] = [],
-): Promise<void> {
+): PassiveWrite => {
   const data = {
     thread: head.thread,
     text: head.text,
@@ -33,27 +32,20 @@ export async function submitThreadHead(
   }
   const model = [{ role: 'user' as const, content: [...content], timestamp: Date.now() }]
   const edits = omit.map((target) => ({ target, action: 'omit' as const }))
-  const entry = { kind: 'app.thread_head', data, model, ...(edits.length === 0 ? {} : { edits }) }
-  await conversation.submit({ type: 'write', requestId: `thread-head:${head.operationId}`, entry }, BACKGROUND)
+  return {
+    requestId: `thread-head:${head.operationId}`,
+    entry: { kind: 'app.thread_head', data, model, ...(edits.length === 0 ? {} : { edits }) },
+  }
 }
 
-/**
- * Writes `app.thread_head` into `chat`: the head of a Thread that started there, which the web draws with the
- * Thread's replies under it. A passive write (it starts no run) under the chat's admission lock, so a busy chat places
- * it at its next boundary; the request id `thread-head:<operation>` makes a retry the same entry.
- */
-async function writeThreadHead(
-  harness: PiHarness,
-  chats: ChatDirectory,
-  chat: string,
+/** Submits `app.thread_head` into `conversation` as a passive write (the mover, which holds the chat's lock). */
+export async function submitThreadHead(
+  conversation: Conversation,
   head: ThreadHeadData,
   content: readonly TextContent[],
+  omit: readonly EntryId[] = [],
 ): Promise<void> {
-  await chats.passiveWrite(chat, async (session) => {
-    const conversation = await (await harness.pi()).conversation(conversationId(session), BACKGROUND)
-    if (conversation === undefined) throw new NotFound({ what: 'conversation' })
-    await submitThreadHead(conversation, head, content)
-  })
+  await conversation.submit({ type: 'write', ...threadHeadWrite(head, content, omit) }, BACKGROUND)
 }
 
 /**
@@ -65,17 +57,15 @@ async function writeThreadHead(
  */
 export const startThread = (input: Omit<OwnerSubmit, 'thread'> & { readonly parent: string }) =>
   Effect.gen(function* () {
-    yield* requireBudget
+    yield* withinBudget
     const skill = (input.context.selections ?? []).some((selection) => selection.kind === 'skill')
     if (input.text.trim() === '' && !skill) return yield* new InvalidInput({ reason: 'empty_message' })
     const conversations = yield* Conversations
-    const chats = yield* Chats
-    const now = yield* nowSecondsEffect
-    const thread = yield* attempt(() => conversations.startThread(input.parent, input.operationId, now))
+    const thread = yield* conversations.startThread(input.parent, input.operationId)
     const head = { thread: thread.id, text: input.text.slice(0, HEAD_TEXT), operationId: input.operationId }
-    const content = threadHeadContent(input.text)
-    yield* attempt(() => writeThreadHead(input.harness, chats, input.parent, head, content))
+    // A passive write under the parent's admission lock: a busy parent places it at its next boundary.
+    yield* (yield* ChatOperations).passiveWrite(input.parent, threadHeadWrite(head, threadHeadContent(input.text)))
     const receipt = yield* submitOwner({ ...input, thread: thread.id })
-    const view = yield* attempt(() => conversations.view(thread.id))
-    return { thread: view ?? thread, receipt } satisfies StartedThread
+    const view = yield* conversations.view(thread.id)
+    return { thread: Option.getOrElse(view, () => thread), receipt } satisfies StartedThread
   })

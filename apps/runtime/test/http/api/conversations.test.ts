@@ -1,6 +1,7 @@
 import { ConversationView } from '@goblin/contracts'
 import { ConversationsGroup, InvalidInput, NotFound, ownerApiOf } from '@goblin/contracts/api'
 import type { PiHarness } from 'agents/harness/pi'
+import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as HttpServer from 'effect/http/HttpServer'
@@ -9,35 +10,33 @@ import * as ManagedRuntime from 'effect/ManagedRuntime'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { AppRegistry } from '../../../src/apps/registry.ts'
-import type { ModelBudget } from '../../../src/budget.ts'
+import { Apps } from '../../../src/apps/service.ts'
+import { Budget } from '../../../src/budget.ts'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
-import { type CapabilityProfiles, scopeOf } from '../../../src/capabilities/profiles.ts'
+import { scopeOf } from '../../../src/capabilities/profiles.ts'
+import { Capabilities } from '../../../src/capabilities/service.ts'
 import { ConversationsHandlers } from '../../../src/chats/api.ts'
 import { ChatDirectory } from '../../../src/chats/directory.ts'
 import type { ChatMover } from '../../../src/chats/mover.ts'
 import type { ConversationRegistry } from '../../../src/conversations.ts'
+import { Files } from '../../../src/files/service.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
-import type { FileStore } from '../../../src/files/store.ts'
-import type { McpHost } from '../../../src/mcp/host.ts'
-import type { PersonaInvocations } from '../../../src/personas/invocations.ts'
-import type { PersonaRegistry } from '../../../src/personas/registry.ts'
+import type { FoundationServices } from '../../../src/layers/core.ts'
+import { ConversationLive } from '../../../src/layers/conversation.ts'
+import { McpConnections, McpGrants, McpServers, Resident } from '../../../src/mcp/service.ts'
+import { Models } from '../../../src/models.ts'
+import type { PersonaTurnKit } from '../../../src/organize/kit.ts'
+import { Invocations, Personas } from '../../../src/personas/service.ts'
 import type { PersonaView } from '@goblin/contracts'
 import { ResidentAuthority } from '../../../src/resident.ts'
-import type { ChatRetrieval } from '../../../src/retrieval/service.ts'
-import type { PersonaTurnKit } from '../../../src/organize/kit.ts'
+import { Retrieval } from '../../../src/retrieval/service.ts'
 import type { RoutineController } from '../../../src/routines/controller.ts'
-import type { RoutineRunStore } from '../../../src/routines/runs.ts'
+import { RoutineRuns } from '../../../src/routines/service.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
-import { Apps, Budget, Capabilities, Chats, Conversations, Files, Invocations, Mcp } from '../../../src/services.ts'
-import { Moves, Personas, Resident, Retrieval, RoutineRuns, Skills } from '../../../src/services.ts'
-import type { SkillLibrary } from '../../../src/skills/library.ts'
-import { Capabilities as SwitchedOff } from '../../../src/capabilities/service.ts'
-import { Chats as ChatIds, Conversations as ChatRegistry } from '../../../src/chats/service.ts'
-import { McpConnections, McpGrants, McpServers } from '../../../src/mcp/service.ts'
-import { Skills as SkillSources } from '../../../src/skills/service.ts'
+import * as Legacy from '../../../src/services.ts'
+import { Skills } from '../../../src/skills/service.ts'
 import { appChatOperations, appConversations } from '../../../src/storage/schema.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 import { callOwner } from '../../integration/owner-api.ts'
@@ -170,11 +169,12 @@ const fakeHarness = (record: PiRecord, calls: Calls): PiHarness => {
     },
     // SAFETY: the programs under test read only `conversation` and `snapshot` from Pi's own harness.
     pi: async () => ({ conversation: async (id: number) => conversation(id), snapshot: async () => inbox }) as never,
-    // SAFETY: a session is asked only for its events (the snapshot) and whether it is busy.
+    // SAFETY: a session is asked only for its events (the snapshot), whether it is busy, and to change model.
     session: (session) =>
       ({
         events: async () => ({ snapshot: { session, entries: [{ id: 1, kind: 'pi.user' }] }, stop: async () => {} }),
         busy: async () => false,
+        setModel: async ({ id }: { readonly id: string }) => void calls.push(`model:${session}:${id}`),
       }) as never,
     abort: async ({ session = '' } = {}) => {
       calls.push(`abort:${session}`)
@@ -183,66 +183,56 @@ const fakeHarness = (record: PiRecord, calls: Calls): PiHarness => {
   })
 }
 
-/** The capability switches (lane M's programs) read the Effect-native services: no servers, grants or skills here. */
-const capabilityServices = () =>
+/** The other lanes' services the conversation programs read: everything allowed, nothing running, `personas` to tag. */
+const services = (calls: Calls, personas: readonly PersonaView[]) =>
   Layer.mergeAll(
+    // No message here carries files or App context, so neither is read.
+    Layer.succeed(Files, fake<Files['Service']>({})),
+    Layer.succeed(Apps, fake<Apps['Service']>({})),
+    Layer.succeed(Budget, fake<Budget['Service']>({ require: () => Effect.void })),
+    Layer.succeed(Models, fake<Models['Service']>({ current: Effect.succeed('fixture-model') })),
+    Layer.succeed(RoutineRuns, fake<RoutineRuns['Service']>({ session: () => Effect.undefined })),
+    Layer.succeed(
+      Invocations,
+      fake<Invocations['Service']>({
+        stopChat: (chat) => Effect.sync(() => calls.push(`invocations:${chat}`)),
+        insert: (asked) =>
+          Effect.sync(() => {
+            calls.push(`asked:${asked.map(({ persona }) => persona).join(',')}`)
+            return []
+          }),
+      }),
+    ),
+    Layer.succeed(
+      Personas,
+      fake<Personas['Service']>({ active: Effect.succeed(personas), offers: () => Effect.succeed(false) }),
+    ),
+    Layer.succeed(
+      Capabilities,
+      fake<Capabilities['Service']>({
+        scope: () => Effect.succeed(scopeOf([], true)),
+        own: () => Effect.succeed([]),
+        inherited: () => Effect.succeed([]),
+      }),
+    ),
+    // No servers, grants or connections: the switches show none.
     Layer.succeed(McpServers, fake<McpServers['Service']>({ list: () => Effect.succeed([]) })),
     Layer.succeed(McpGrants, fake<McpGrants['Service']>({ list: () => Effect.succeed([]) })),
     Layer.succeed(McpConnections, fake<McpConnections['Service']>({})),
-    Layer.succeed(
-      SwitchedOff,
-      fake<SwitchedOff['Service']>({ own: () => Effect.succeed([]), inherited: () => Effect.succeed([]) }),
-    ),
-    Layer.succeed(SkillSources, fake<SkillSources['Service']>({ sources: () => Effect.succeed([]) })),
-    Layer.succeed(ChatIds, fake<ChatIds['Service']>({})),
-    Layer.succeed(
-      ChatRegistry,
-      fake<ChatRegistry['Service']>({ kindOf: (id) => Effect.sync(() => CHATS[known(id)]?.kind ?? 'thread') }),
-    ),
-  )
-
-/** The other services the conversation programs read: everything allowed, nothing running, only `personas` to tag. */
-const services = (calls: Calls, personas: readonly PersonaView[]) =>
-  Layer.mergeAll(
-    // No message here carries files or App context, so neither store is read.
-    Layer.succeed(Files, fake<FileStore>({})),
-    Layer.succeed(Apps, fake<AppRegistry>({})),
-    Layer.succeed(Budget, fake<ModelBudget>({ require: async () => undefined })),
-    Layer.succeed(RoutineRuns, fake<RoutineRunStore>({ session: () => undefined })),
-    Layer.succeed(
-      Invocations,
-      fake<PersonaInvocations>({
-        stopChat: (chat) => calls.push(`invocations:${chat}`),
-        insert: (asked) => {
-          calls.push(`asked:${asked.map(({ persona }) => persona).join(',')}`)
-          return []
-        },
-      }),
-    ),
-    Layer.succeed(Personas, fake<PersonaRegistry>({ active: () => personas, offers: () => false })),
-    Layer.succeed(
-      Capabilities,
-      fake<CapabilityProfiles>({ scope: () => scopeOf([], true), own: () => [], inherited: () => [] }),
-    ),
-    Layer.succeed(Mcp, fake<McpHost>({ servers: () => [], grants: () => [] })),
+    Layer.succeed(Resident, fake<Resident['Service']>({ require: () => Effect.void })),
     Layer.succeed(
       Skills,
-      fake<SkillLibrary>({ catalog: async () => ({ skills: [], unavailable: [] }), sources: () => [] }),
-    ),
-    Layer.succeed(
-      Moves,
-      fake<ChatMover>({
-        move: async (chat, input) => ({ ...input, chat, mode: 'settled', state: 'settled', thread: NEW }),
+      fake<Skills['Service']>({
+        catalog: () => Effect.succeed({ skills: [], unavailable: [] }),
+        sources: () => Effect.succeed([]),
       }),
     ),
-    // SAFETY: the sources handler reads only the index's `uses`.
-    Layer.succeed(Retrieval, fake<ChatRetrieval>({ index: { uses: () => [] } as never })),
-    capabilityServices(),
+    Layer.succeed(Retrieval, fake<Retrieval['Service']>({ uses: () => Effect.succeed([]) })),
   )
 
-/** The bridge: here it only puts a session on the owner's model, and nothing reads what that returns. */
+/** The bridge: the composer's skill checks would run through it, and no request here reaches one. */
 const run = async () =>
-  // SAFETY: as above, no caller reads the value.
+  // SAFETY: as above, nothing calls it.
   undefined as never
 
 /** The instance's pieces the handlers read: Pi, the model choices, no routine answers, the Personas and the bridge. */
@@ -291,18 +281,25 @@ const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) =
   const plan = Effect.succeed(PLAN)
   const plans: EntitlementPolicy = { state: () => plan, require: () => plan }
   const registry = fake<ConversationRegistry>({ ...registryReads(), ...registryWrites(db, calls) })
+  const mover = fake<ChatMover>({
+    move: async (chat, input) => ({ ...input, chat, mode: 'settled', state: 'settled', thread: NEW }),
+  })
+  const legacy = Layer.mergeAll(
+    Layer.succeed(Legacy.Chats, new ChatDirectory(db)),
+    Layer.succeed(Legacy.Conversations, registry),
+    Layer.succeed(Legacy.Moves, mover),
+    Layer.succeed(Legacy.Resident, resident),
+    Layer.succeed(Entitlements, plans),
+    Layer.succeed(AgentInput, instance(harness, calls)),
+  )
+  // Lane C's own services are its adapters over the legacy instances above, as the agent builds them.
+  const conversation = ConversationLive.pipe(
+    // SAFETY: the adapters read only the legacy instances and the input given here; the rest stays unprovided.
+    Layer.provide(Layer.merge(Layer.succeedContext(Context.empty() as Context.Context<FoundationServices>), legacy)),
+  )
   const runtime = ManagedRuntime.make(
     OwnerHttp.serve(CONVERSATIONS_API, CONVERSATIONS).pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          Layer.succeed(Chats, new ChatDirectory(db)),
-          Layer.succeed(Conversations, registry),
-          services(calls, options.personas ?? []),
-          Layer.succeed(Resident, resident),
-          Layer.succeed(Entitlements, plans),
-          Layer.succeed(AgentInput, instance(harness, calls)),
-        ),
-      ),
+      Layer.provide(Layer.mergeAll(conversation, legacy, services(calls, options.personas ?? []))),
     ),
   )
   runtimes.push(runtime)

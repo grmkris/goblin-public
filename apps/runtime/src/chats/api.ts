@@ -17,12 +17,14 @@ import {
   submitOwner,
   updateOwnerConversation,
 } from '../agent-program.ts'
-import { chatSnapshot } from '../agent-requests.ts'
+import { sessionSnapshot } from '../agent-requests.ts'
 import { capabilitiesOf, changeCapabilities } from '../capabilities/program.ts'
 import { composerOptions } from '../composer.ts'
 import { ownerQueue, removeOwnerQueuedInput } from '../conversation-queue.ts'
 import { type AgentInputs, AgentInput } from '../runtime/input.ts'
-import { Conversations, Retrieval, attempt, attemptSync } from '../services.ts'
+import { Retrieval } from '../retrieval/service.ts'
+import { instanceCall } from './instance.ts'
+import { Conversations } from './service.ts'
 import { moveToThread } from './mover.ts'
 import { startThread } from './thread-heads.ts'
 
@@ -76,7 +78,7 @@ const threadStart = ({ params, payload }: ChatWrite<SendMessage>) =>
   )
 
 /** Every registered chat, closed ones included. */
-const list = () => Conversations.use((conversations) => attempt(() => conversations.list()))
+const list = () => Conversations.use((conversations) => conversations.list)
 const create = ({ payload }: { readonly payload: CreateConversation }) => createOwnerConversation(payload)
 const update = ({ params, payload }: ChatWrite<UpdateConversation>) =>
   AgentInput.use(({ routines }) => updateOwnerConversation(routines, params.id, payload))
@@ -97,21 +99,26 @@ const capabilities = ({ params }: ChatRequest) => capabilitiesOf(params.id)
 
 const setCapability = ({ params, payload }: ChatWrite<CapabilityChange>) => changeCapabilities(params.id, payload)
 
-/** The chat's Pi snapshot, as the raw route served it. */
-const snapshot = ({ params }: ChatRequest) => AgentInput.use(({ harness }) => chatSnapshot(harness, params.id))
+/**
+ * A registered chat's Pi snapshot, as the raw route served it. The instance is read with `AgentInput.use`: yielding
+ * the tag would type the handler through all of `AgentInputs`, whose kits are typed through the bridge.
+ */
+const snapshot = ({ params }: ChatRequest) =>
+  Effect.flatMap(registeredConversation(params.id), (session) =>
+    AgentInput.use(({ harness }) => instanceCall(() => sessionSnapshot(harness, session))),
+  )
 
 /** A page of a registered chat's history before entry `before`. */
 const history = ({ params, query }: ChatRequest & { readonly query: { readonly before: number } }) =>
-  Effect.andThen(
-    registeredConversation(params.id),
-    Conversations.use((registry) => attempt(() => registry.history(params.id, query.before))),
+  Conversations.use((conversations) =>
+    Effect.andThen(conversations.require(params.id), conversations.history(params.id, query.before)),
   )
 
 /** What retrieval gave a registered chat's answers (ADR 0035), newest first: its source strips. */
 const sources = ({ params }: ChatRequest) =>
   Effect.andThen(
     registeredConversation(params.id),
-    Retrieval.use((retrieval) => attemptSync(() => retrieval.index.uses(params.id))),
+    Retrieval.use((retrieval) => retrieval.uses(params.id)),
   )
 
 /**

@@ -8,30 +8,24 @@ import {
   type UpdateConversation,
 } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
-import { type AppError, InvalidInput } from './http/errors.ts'
-import { resolveSelections, type ResolvedSelections } from './composer.ts'
-import type { RunProgram } from './runtime/bridge.ts'
+import * as Option from 'effect/Option'
+import { Apps } from './apps/service.ts'
 import { Entitlements } from './billing/gates.ts'
-import {
-  Apps,
-  type Capabilities,
-  Chats,
-  Conversations,
-  Files,
-  Invocations,
-  type Mcp,
-  type Personas,
-  RoutineRuns,
-  Budget,
-  type Skills,
-  attempt,
-  attemptSync,
-  nowSecondsEffect,
-  requireBudget,
-  requireResident,
-  type AgentServices,
-} from './services.ts'
+import type { Budget } from './budget.ts'
+import type { Capabilities } from './capabilities/service.ts'
+import { epochSeconds, instanceCall, withinBudget } from './chats/instance.ts'
+import { ChatOperations, Chats, Conversations } from './chats/service.ts'
+import { resolveSelections, type ResolvedSelections } from './composer.ts'
+import { Files } from './files/service.ts'
+import { type AppError, InvalidInput } from './http/errors.ts'
+import { type McpServers, Resident } from './mcp/service.ts'
+import { Invocations, type Personas } from './personas/service.ts'
+import type { Models } from './models.ts'
+import { RoutineRuns } from './routines/service.ts'
+import type { RunProgram } from './runtime/bridge.ts'
+import type { AgentServices } from './layers/index.ts'
 import type { RoutineRunner } from './routines/runner.ts'
+import type { Skills } from './skills/service.ts'
 import { useModel, type Applied } from './agent-model.ts'
 import { BACKGROUND, conversationId } from './pi/context.ts'
 import { recentMessages } from './pi/transcript.ts'
@@ -41,21 +35,14 @@ import type { PersonaTurnKit } from './pi/persona-turn.ts'
 import { askPersonas } from './personas/ask.ts'
 
 /** The registration gate for every owner conversation request. */
-export const registeredConversation = (id: string) =>
-  Conversations.use((conversations) => attemptSync(() => conversations.require(id)))
+export const registeredConversation = (id: string) => Conversations.use((conversations) => conversations.require(id))
 
 /**
  * A thread from a message of an open conversation (in that conversation's Topic), or an empty one under a Topic's
  * Conversation: `topic`'s, else Personal's.
  */
-export const createOwnerConversation = ({ from, topic }: CreateConversation) =>
-  Effect.gen(function* () {
-    const conversations = yield* Conversations
-    const now = yield* nowSecondsEffect
-    return yield* attempt(() =>
-      from === undefined ? conversations.create(now, topic) : conversations.branch(from.conversation, from.entry, now),
-    )
-  })
+export const createOwnerConversation = (input: CreateConversation) =>
+  Conversations.use((conversations) => conversations.create(input))
 
 /**
  * Rename, close or reopen, or pin a subagent open. A Close settles the live routine runs among what it closes first, so
@@ -64,24 +51,22 @@ export const createOwnerConversation = ({ from, topic }: CreateConversation) =>
 export const updateOwnerConversation = (routines: RoutineRunner, id: string, change: UpdateConversation) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
-    const runs = yield* RoutineRuns
-    const now = yield* nowSecondsEffect
     if (change.closed === true) {
-      const closing = new Set(yield* attemptSync(() => conversations.subtree(id)))
-      const live = runs.live().filter((run) => run.sessionId !== null && closing.has(run.sessionId))
-      for (const run of live) yield* attempt(() => routines.stop(run.id, 'Closed by owner'))
+      const closing = new Set(yield* conversations.subtree(id))
+      const live = (yield* (yield* RoutineRuns).live).filter(
+        (run) => run.sessionId !== null && closing.has(run.sessionId),
+      )
+      for (const run of live) yield* instanceCall(() => routines.stop(run.id, 'Closed by owner'))
     }
-    return (yield* attempt(() => conversations.update(id, change, now))).view
+    return (yield* conversations.update(id, change)).view
   })
 
 /** The owner has seen a conversation's newest reply. */
 export const markOwnerRead = (id: string) =>
-  Effect.gen(function* () {
-    const conversations = yield* Conversations
-    const now = yield* nowSecondsEffect
-    yield* attemptSync(() => conversations.markRead(id, now))
-    return true
-  })
+  Effect.as(
+    Conversations.use((conversations) => conversations.markRead(id)),
+    true,
+  )
 
 /** What the owner's Stop reaches: Pi, a routine's runs and the Persona turns asked in the chat. */
 export type StopRuntime = {
@@ -102,21 +87,19 @@ export const stopOwner = (
 ) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
-    const session = yield* attemptSync(() => conversations.require(input.thread))
-    const run = (yield* RoutineRuns).session(session)
+    const session = yield* conversations.require(input.thread)
+    const run = yield* (yield* RoutineRuns).session(session)
     if (run !== undefined) {
-      yield* attempt(() => input.routines.stop(run.id))
+      yield* instanceCall(() => input.routines.stop(run.id))
       return true
     }
     const operationId = input.operationId === undefined ? {} : { operationId: input.operationId }
-    yield* attempt(() => conversations.stopSubagents(input.thread))
+    yield* conversations.stopSubagents(input.thread)
     const invocations = yield* Invocations
-    const now = yield* nowSecondsEffect
-    yield* attempt(async () => {
-      await input.personas.drop(await input.harness.pi(), conversationId(session))
-      invocations.stopChat(input.thread, now)
-    })
-    return yield* attempt(() => input.harness.abort({ session, ...operationId }))
+    const now = yield* epochSeconds
+    yield* instanceCall(async () => input.personas.drop(await input.harness.pi(), conversationId(session)))
+    yield* invocations.stopChat(input.thread, now)
+    return yield* instanceCall(() => input.harness.abort({ session, ...operationId }))
   })
 
 /** An inbound request checks entitlement without renewing resident authority. */
@@ -149,28 +132,24 @@ export type OwnerSubmit = {
 
 /** What the owner's open Apps shared, each with where it comes from, read from the App registry (never the browser). */
 const sharedContext = (context: readonly AppContext[], conversation: string) =>
-  context.length === 0
-    ? Effect.succeed<readonly SharedContext[]>([])
-    : Apps.use((apps) =>
-        attemptSync(() =>
-          context.map(({ app, text }): SharedContext => ({ origin: apps.originOf(app, conversation), text })),
-        ),
-      )
+  Effect.forEach(context, ({ app, text }) =>
+    Effect.map(
+      Apps.use((apps) => apps.originOf(app, conversation)),
+      (origin): SharedContext => ({ origin, text }),
+    ),
+  )
 
 /** The owner's attached files as they are now: each must exist, or the message is refused. */
 const attachedFiles = (paths: readonly string[]) =>
-  paths.length === 0
-    ? Effect.succeed<readonly Attachment[]>([])
-    : Files.use((files) =>
-        attempt(() =>
-          Promise.all(
-            paths.map(async (path): Promise<Attachment> => {
-              const { name, size, mimeType } = await files.stat(path)
-              return { path, name, size, mimeType }
-            }),
-          ),
-        ),
-      )
+  Effect.forEach(
+    paths,
+    (path) =>
+      Effect.map(
+        Files.use((files) => files.stat(path)),
+        ({ name, size, mimeType }): Attachment => ({ path, name, size, mimeType }),
+      ),
+    { concurrency: 'unbounded' },
+  )
 
 /**
  * The owner's message to a subagent: the subagent stays open after its job (the owner engaged with it), and the
@@ -189,37 +168,41 @@ const sendToSubagent = (
 ) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
-    const now = yield* nowSecondsEffect
-    yield* attempt(() => conversations.update(view.id, { keepOpen: true }, now))
-    const busy = yield* attempt(() => input.harness.session(session).busy())
-    const pi = yield* attempt(() => input.harness.pi())
+    yield* conversations.update(view.id, { keepOpen: true })
+    const busy = yield* instanceCall(() => input.harness.session(session).busy())
     const send = {
       subagent: session,
-      spawner: conversations.spawnerSession(view.id),
+      spawner: yield* conversations.spawnerSession(view.id),
       title: view.title ?? 'subagent',
       content: ownerContent(input.text, extra.shared, extra.attachments, extra.selections),
       text: input.text,
       operationId: input.operationId,
       busy,
     }
-    const accepted = yield* attempt(() => input.subagents.ownerSend(pi, send))
+    const accepted = yield* instanceCall(async () => input.subagents.ownerSend(await input.harness.pi(), send))
     return { session, operationId: input.operationId, accepted }
   })
 
 /** What the owner's message path reads. Spelled out: `run`'s type names every agent service, the owner API's among them. */
-type SubmitServices =
+export type OwnerSubmitServices =
   | Budget
+  | Models
   | Conversations
+  | ChatOperations
   | Files
   | Apps
   | Capabilities
-  | Mcp
+  | McpServers
+  | Resident
   | Skills
-  | Chats
   | Invocations
   | Personas
 
-export const submitOwner = (input: OwnerSubmit): Effect.Effect<PiReceipt, AppError, SubmitServices> =>
+/**
+ * The owner's message into a chat, or an ask of the Personas it tags. Admission (the chat open, the operation recorded,
+ * a routine's waiting question answered, the session on the owner's model, Pi's submit) runs under the chat's lock.
+ */
+export const submitOwner = (input: OwnerSubmit): Effect.Effect<PiReceipt, AppError, OwnerSubmitServices> =>
   Effect.gen(function* () {
     const {
       appContext = [],
@@ -229,36 +212,42 @@ export const submitOwner = (input: OwnerSubmit): Effect.Effect<PiReceipt, AppErr
     } = input.context
     const personaIds = tagged.flatMap((selection) => (selection.kind === 'persona' ? [selection.personaId] : []))
     const picks = tagged.filter((selection) => selection.kind !== 'persona')
-    yield* requireBudget
+    yield* withinBudget
     const conversations = yield* Conversations
-    const session = yield* attemptSync(() => conversations.requireOpen(input.thread))
+    const session = yield* conversations.requireOpen(input.thread)
     if (input.text.trim() === '' && !picks.some((selection) => selection.kind === 'skill'))
       return yield* new InvalidInput({ reason: 'empty_message' })
     const attachments = yield* attachedFiles(paths)
     const shared = yield* sharedContext(appContext, input.thread)
     const selections = yield* resolveSelections(session, picks, input.run)
-    const view = yield* attempt(() => conversations.view(input.thread))
-    const chats = yield* Chats
-    const now = yield* nowSecondsEffect
+    const view = Option.getOrUndefined(yield* conversations.view(input.thread))
     const content = ownerContent(input.text, shared, attachments, selections)
     if (personaIds.length > 0) {
       if (view?.kind === 'subagent') return yield* new InvalidInput({ reason: 'persona_subagent' })
       return yield* askPersonas(input, personaIds, personaOrder, content)
     }
-    return yield* attempt(() =>
-      chats.withChat(input.thread, async () => {
-        conversations.requireOpen(input.thread)
-        const admitted = chats.admit(input.thread, input.operationId, now)
-        if (await input.routines.answer(admitted.session, input.operationId, input.text))
+    const operations = yield* ChatOperations
+    return yield* operations.withChat(
+      input.thread,
+      Effect.gen(function* () {
+        yield* conversations.requireOpen(input.thread)
+        const admitted = yield* operations.admit(input.thread, input.operationId)
+        if (yield* instanceCall(() => input.routines.answer(admitted.session, input.operationId, input.text)))
           return { session: admitted.session, operationId: input.operationId, accepted: true }
-        await input.run(useModel(input.harness, input.applied, admitted.session))
+        yield* useModel(input.harness, input.applied, admitted.session)
         if (view?.kind === 'subagent' && view.parent !== undefined)
-          return input.run(sendToSubagent(input, view, admitted.session, { attachments, shared, selections }))
-        return input.harness.submit(content, { session: admitted.session, operationId: input.operationId })
+          return yield* sendToSubagent(input, view, admitted.session, { attachments, shared, selections })
+        return yield* instanceCall(() =>
+          input.harness.submit(content, { session: admitted.session, operationId: input.operationId }),
+        )
       }),
     )
   })
 
+/**
+ * An inbound client's question in main, answered when it settles within `waitMs`. `_run` is no longer read: the
+ * session goes on the owner's model inside the admission; agent.ts passes it until the switch drops the argument.
+ */
 export const askClient = (
   input: {
     harness: PiHarness
@@ -268,25 +257,28 @@ export const askClient = (
     operationId: string
     waitMs: number
   },
-  run: RunProgram,
+  _run?: RunProgram,
 ) =>
   Effect.gen(function* () {
-    yield* requireResident
-    yield* requireBudget
+    yield* (yield* Resident).require()
+    yield* withinBudget
     const chats = yield* Chats
-    const now = yield* nowSecondsEffect
-    const session = yield* attempt(() =>
-      chats.withChat(chats.primary(), async () => {
-        const admitted = chats.admit(chats.primary(), input.operationId, now)
-        await run(useModel(input.harness, input.applied, admitted.session))
-        await input.harness.submit(authoredContent(input.author, input.text), {
-          session: admitted.session,
-          operationId: input.operationId,
-        })
-        return chats.operation(chats.primary(), input.operationId) ?? admitted.session
+    const operations = yield* ChatOperations
+    const session = yield* operations.withChat(
+      chats.primary,
+      Effect.gen(function* () {
+        const admitted = yield* operations.admit(chats.primary, input.operationId)
+        yield* useModel(input.harness, input.applied, admitted.session)
+        yield* instanceCall(() =>
+          input.harness.submit(authoredContent(input.author, input.text), {
+            session: admitted.session,
+            operationId: input.operationId,
+          }),
+        )
+        return Option.getOrElse(yield* operations.operation(chats.primary, input.operationId), () => admitted.session)
       }),
     )
-    const result = yield* attempt(() =>
+    const result = yield* instanceCall(() =>
       input.harness
         .wait(input.operationId, { session, signal: AbortSignal.timeout(input.waitMs) })
         // Wave 3 (C2) stops this also swallowing a wait that failed for another reason.
@@ -302,8 +294,9 @@ export const askClient = (
 export const recentOwnerMessages = (harness: PiHarness, limit: number) =>
   Effect.gen(function* () {
     const chats = yield* Chats
-    return yield* attempt(async () => {
-      const main = await (await harness.pi()).conversation(conversationId(chats.session(chats.primary())), BACKGROUND)
+    const session = yield* chats.session(chats.primary)
+    return yield* instanceCall(async () => {
+      const main = await (await harness.pi()).conversation(conversationId(session), BACKGROUND)
       return main === undefined ? [] : recentMessages(main, limit)
     })
   })

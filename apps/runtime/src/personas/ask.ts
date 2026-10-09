@@ -2,11 +2,12 @@ import type { TextContent } from '@earendil-works/pi-ai'
 import type { PersonaAskData } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
+import { epochSeconds, instanceCall } from '../chats/instance.ts'
+import { ChatOperations, Conversations } from '../chats/service.ts'
 import { InvalidInput } from '../http/errors.ts'
 import { BACKGROUND, conversationId } from '../pi/context.ts'
 import type { FrozenPersona, PersonaTurnKit } from '../pi/persona-turn.ts'
-import type { PersonaRegistry } from './registry.ts'
-import { Chats, Conversations, Invocations, Personas, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
+import { Invocations, Personas } from './service.ts'
 
 /** The owner's content with the Personas it went to named in front, as the model of the chat reads it. */
 export function addressedTo(names: readonly string[], content: string | TextContent[]): string | TextContent[] {
@@ -19,24 +20,29 @@ export function addressedTo(names: readonly string[], content: string | TextCont
 }
 
 /** The tagged Personas as they are now, each at its current revision; one that is gone or archived refuses the send. */
-const freeze = (registry: PersonaRegistry, ids: readonly number[]): readonly FrozenPersona[] => {
-  const active = registry.active()
-  return [...new Set(ids)].map((id) => {
-    const persona = active.find((each) => each.id === id)
-    if (persona === undefined) throw new InvalidInput({ reason: `composer:persona:${String(id)}` })
-    const { name, revision, avatar, role, instructions, exclusions, model } = persona
-    return {
-      id,
-      name,
-      revision,
-      avatar,
-      role,
-      instructions,
-      ...(registry.offers(model) && model !== undefined ? { model } : {}),
-      exclusions,
-    }
+const freeze = (ids: readonly number[]) =>
+  Effect.gen(function* () {
+    const personas = yield* Personas
+    const active = yield* personas.active
+    return yield* Effect.forEach([...new Set(ids)], (id) =>
+      Effect.gen(function* () {
+        const persona = active.find((each) => each.id === id)
+        if (persona === undefined) return yield* new InvalidInput({ reason: `composer:persona:${String(id)}` })
+        const { name, revision, avatar, role, instructions, exclusions, model } = persona
+        const offered = (yield* personas.offers(model)) && model !== undefined
+        return {
+          id,
+          name,
+          revision,
+          avatar,
+          role,
+          instructions,
+          ...(offered ? { model } : {}),
+          exclusions,
+        } satisfies FrozenPersona
+      }),
+    )
   })
-}
 
 type Ask = {
   readonly harness: PiHarness
@@ -78,14 +84,15 @@ export const askPersonas = (
   Effect.gen(function* () {
     const invocations = yield* Invocations
     const conversations = yield* Conversations
-    const chats = yield* Chats
-    const now = yield* nowSecondsEffect
-    const frozen = yield* Personas.use((registry) => attemptSync(() => freeze(registry, ids)))
+    const operations = yield* ChatOperations
+    const now = yield* epochSeconds
+    const frozen = yield* freeze(ids)
     if (frozen.length > 8) return yield* new InvalidInput({ reason: 'persona_count' })
-    return yield* attempt(() =>
-      chats.withChat(input.thread, async () => {
-        conversations.requireOpen(input.thread)
-        const admitted = chats.admit(input.thread, input.operationId, now)
+    return yield* operations.withChat(
+      input.thread,
+      Effect.gen(function* () {
+        yield* conversations.requireOpen(input.thread)
+        const admitted = yield* operations.admit(input.thread, input.operationId)
         const asked = frozen.map((persona, index) => ({
           operationId: input.operationId,
           persona: persona.id,
@@ -93,21 +100,23 @@ export const askPersonas = (
           chat: input.thread,
           order: index,
         }))
-        invocations.insert(asked, now)
-        const pi = await input.harness.pi()
+        yield* invocations.insert(asked, now)
         const parent = conversationId(admitted.session)
-        const chat = await pi.conversation(parent, BACKGROUND)
-        if (chat === undefined) throw new InvalidInput({ reason: 'chat' })
-        await chat.submit(
-          { type: 'write', requestId: input.operationId, entry: askEntry(frozen, order, content, now) },
-          BACKGROUND,
-        )
-        await input.personas.start(pi, {
-          operationId: input.operationId,
-          chat: input.thread,
-          parent,
-          personas: frozen,
-          order,
+        yield* instanceCall(async () => {
+          const pi = await input.harness.pi()
+          const chat = await pi.conversation(parent, BACKGROUND)
+          if (chat === undefined) throw new InvalidInput({ reason: 'chat' })
+          await chat.submit(
+            { type: 'write', requestId: input.operationId, entry: askEntry(frozen, order, content, now) },
+            BACKGROUND,
+          )
+          await input.personas.start(pi, {
+            operationId: input.operationId,
+            chat: input.thread,
+            parent,
+            personas: frozen,
+            order,
+          })
         })
         return { session: admitted.session, operationId: input.operationId, accepted: true }
       }),

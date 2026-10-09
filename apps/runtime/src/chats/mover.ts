@@ -3,7 +3,6 @@ import { authorOf, type MoveReceipt, type MoveToThread } from '@goblin/contracts
 import type { PiHarness } from 'agents/harness/pi'
 import { and, eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import * as Effect from 'effect/Effect'
 import type { CapabilityProfiles } from '../capabilities/profiles.ts'
 import { nowSeconds } from '../clock.ts'
 import type { ConversationRegistry } from '../conversations.ts'
@@ -17,7 +16,7 @@ import { textBlocks } from '../pi/transcript.ts'
 import { latestTurnStart, runInputEntries } from '../pi/turns.ts'
 import { writeLine } from '../observability/logger.ts'
 import { framesOf, safeErrorType } from '../observability/report.ts'
-import { Moves, attempt, nowSecondsEffect } from '../services.ts'
+import { Moves } from './service.ts'
 import { appMcpApprovals } from '../storage/mcp-approvals.ts'
 import type { ChatDirectory } from './directory.ts'
 import { type MoveRow, MoveStore, moveReceipt } from './moves.ts'
@@ -274,9 +273,4 @@ function reportMove(step: string, error: unknown): void {
 }
 
 /** `POST /api/conversations/:id/move`: the owner's Move to thread, as its receipt (ADR 0034). */
-export const moveToThread = (chat: string, input: MoveToThread) =>
-  Effect.gen(function* () {
-    const moves = yield* Moves
-    const now = yield* nowSecondsEffect
-    return yield* attempt(() => moves.move(chat, input, now))
-  })
+export const moveToThread = (chat: string, input: MoveToThread) => Moves.use((moves) => moves.move(chat, input))
