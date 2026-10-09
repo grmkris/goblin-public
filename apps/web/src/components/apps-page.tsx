@@ -1,10 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import type { AgentAppSummary } from '@goblin/contracts'
-import { Alert, AlertDescription, Badge, Card, CardDescription, CardHeader, CardTitle, Skeleton } from '@goblin/ui'
+import { Badge, Card, CardDescription, CardHeader, CardTitle, Skeleton } from '@goblin/ui'
 import { agentAppsQuery, useFeedRefresh } from '../agent-apps/queries.ts'
 import { jobLine, jobTrouble } from '../lib/app-jobs.ts'
-import { messageOf } from '../lib/query/app-error.ts'
+import { QueryBoundary, QueryError } from '../lib/query/query-boundary.tsx'
+import { reportUnexpected } from '../lib/unexpected.ts'
 import { AppTile } from './apps/app-tile.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
@@ -47,37 +48,49 @@ function AppCard({ app }: { readonly app: AgentAppSummary }) {
   )
 }
 
-/**
- * The owner's agent apps (ADR 0021): every app their agent built, those without a view too, newest change first, each
- * opening its own page. The list reloads when the feed shows an app change.
- */
-export function AppsPage() {
+/** The list itself, read through the cache the route primed; it reads again when the feed shows an app change. */
+function AppsList() {
   const feed = useWorkspaceFeed()
-  const list = useQuery(agentAppsQuery)
-  const apps = list.data
-  const error = list.error === null ? '' : messageOf(list.error, 'load your apps')
+  const list = useSuspenseQuery(agentAppsQuery)
   const changed = feed.apps
     .filter((app) => app.source.kind === 'agent')
     .map((app) => `${app.id}:${app.source.kind === 'agent' ? app.source.revision : ''}`)
     .join(',')
   useFeedRefresh(agentAppsQuery.queryKey, changed)
   return (
+    <>
+      {list.isRefetchError && (
+        <QueryError
+          error={list.error}
+          action="load your apps"
+          onRetry={() => {
+            list.refetch().catch(reportUnexpected)
+          }}
+        />
+      )}
+      {list.data.length === 0 && <p className="text-sm text-muted-foreground">No apps yet.</p>}
+      <div className="apps-grid">
+        {list.data.map((app) => (
+          <AppCard key={app.name} app={app} />
+        ))}
+      </div>
+    </>
+  )
+}
+
+/**
+ * The owner's agent apps (ADR 0021): every app their agent built, those without a view too, newest change first, each
+ * opening its own page.
+ */
+export function AppsPage() {
+  return (
     <div className="apps-page">
       <p className="section-note">
         Apps your agent built for you. Ask for one in any conversation: “make me a tracker for …”.
       </p>
-      {error !== '' && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      {apps === undefined && error === '' && <Skeleton className="h-24 w-full" />}
-      {apps?.length === 0 && <p className="text-sm text-muted-foreground">No apps yet.</p>}
-      <div className="apps-grid">
-        {apps?.map((app) => (
-          <AppCard key={app.name} app={app} />
-        ))}
-      </div>
+      <QueryBoundary action="load your apps" pending={<Skeleton className="h-24 w-full" />}>
+        <AppsList />
+      </QueryBoundary>
     </div>
   )
 }

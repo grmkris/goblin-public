@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import type { AgentAppChange, AgentAppDetail, AgentAppJob, AppPower } from '@goblin/contracts'
 import {
@@ -17,6 +17,7 @@ import {
 import { agentAppQuery, changeAgentAppMutation, deleteAgentAppMutation, useFeedRefresh } from '../agent-apps/queries.ts'
 import { jobLine } from '../lib/app-jobs.ts'
 import { messageOf } from '../lib/query/app-error.ts'
+import { QueryBoundary } from '../lib/query/query-boundary.tsx'
 import { reportUnexpected } from '../lib/unexpected.ts'
 import { PageSection } from './page-section.tsx'
 import { powerText } from './parts/app-powers.tsx'
@@ -31,7 +32,7 @@ const kib = (bytes: number) => `${String(Math.max(0, Math.round(bytes / 1024)))}
 /** One agent app, read and changed: every change answers with the app as it is after it. */
 function useAgentApp(name: string) {
   const queryClient = useQueryClient()
-  const detail = useQuery(agentAppQuery(name))
+  const detail = useSuspenseQuery(agentAppQuery(name))
   const change = useMutation(changeAgentAppMutation(queryClient, name))
   const feed = useWorkspaceFeed()
   const shown = feed.apps.find((each) => each.source.kind === 'agent' && each.source.name === name)
@@ -40,9 +41,9 @@ function useAgentApp(name: string) {
   const error =
     change.error !== null
       ? messageOf(change.error, 'change the app')
-      : detail.error === null
-        ? ''
-        : messageOf(detail.error, 'load the app')
+      : detail.isRefetchError
+        ? messageOf(detail.error, 'load the app')
+        : ''
   return { app: detail.data, error, busy: change.isPending, run: change.mutate }
 }
 
@@ -228,15 +229,16 @@ function Activity({ app }: { readonly app: AgentAppDetail }) {
  * or revoke its powers, go back to an earlier version, see its use and activity, and delete it.
  */
 export function AppManage({ name }: { readonly name: string }) {
+  return (
+    <QueryBoundary key={name} action="load the app" pending={<Skeleton className="h-40 w-full" />}>
+      <AgentAppPage name={name} />
+    </QueryBoundary>
+  )
+}
+
+/** The app as the route primed it, and every change to it. */
+function AgentAppPage({ name }: { readonly name: string }) {
   const { app, error, busy, run } = useAgentApp(name)
-  if (app === undefined)
-    return error === '' ? (
-      <Skeleton className="h-40 w-full" />
-    ) : (
-      <Alert variant="destructive">
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
-    )
   return (
     <div className="apps-page">
       {error !== '' && (

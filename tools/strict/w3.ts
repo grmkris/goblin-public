@@ -18,6 +18,7 @@ export const paths: string[] = [
   'apps/web/src/lib/startup-images.ts',
   'apps/web/test/app-*.test.ts',
   'apps/web/test/agent-apps-queries.test.ts',
+  'apps/web/test/apps-page.test.tsx',
   'apps/web/test/apps-queries.test.ts',
   'apps/web/test/attachment-draft.test.ts',
   'apps/web/test/files.test.ts',

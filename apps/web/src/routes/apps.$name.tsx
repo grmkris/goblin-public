@@ -1,13 +1,16 @@
 import { Link, createFileRoute, redirect } from '@tanstack/react-router'
+import { agentAppQuery } from '../agent-apps/queries.ts'
 import { AppManage } from '../components/app-manage.tsx'
 import { OwnerGate } from '../components/owner-gate.tsx'
 import { PageBar } from '../components/page-bar.tsx'
+import { primeOwnerRead } from '../lib/prime.ts'
 
 /** One agent app's page (ADR 0021), by its name. */
 export const Route = createFileRoute('/apps/$name')({
   beforeLoad: ({ params }) => {
     if (!/^[a-z][a-z0-9-]{1,23}$/u.test(params.name)) throw redirect({ to: '/apps' })
   },
+  loader: ({ context, params }) => primeOwnerRead(context.queryClient, agentAppQuery(params.name)),
   component: AppRoute,
 })
 function AppRoute() {
