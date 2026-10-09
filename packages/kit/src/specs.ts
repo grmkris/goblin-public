@@ -66,6 +66,7 @@ function parser<A>(schema: Schema.Decoder<A>): (text: string) => A | undefined {
     try {
       value = JSON.parse(text)
     } catch {
+      // expected: a block that is not JSON is not a spec, and shows as code
       return undefined
     }
     return Option.getOrUndefined(decode(value))

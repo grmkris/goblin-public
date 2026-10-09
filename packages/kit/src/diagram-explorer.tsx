@@ -27,6 +27,7 @@ function useExplorer({ svg, scope, triggerRef }: ExplorerProps) {
     const canvas = canvasRef.current
     const drawing = canvas?.querySelector('svg')
     if (dialog === null || viewport === null || canvas === null || !(drawing instanceof SVGSVGElement)) return
+    const trigger = triggerRef.current
     dialog.showModal()
     dialog.querySelector<HTMLButtonElement>('[data-diagram-close]')?.focus()
     controls.current = diagramPan(viewport, canvas, setScale)
@@ -40,7 +41,7 @@ function useExplorer({ svg, scope, triggerRef }: ExplorerProps) {
       interaction.current?.destroy()
       interaction.current = undefined
       dialog.close()
-      triggerRef.current?.focus()
+      trigger?.focus()
     }
   }, [safeSvg, triggerRef])
 

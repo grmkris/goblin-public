@@ -44,6 +44,7 @@ export function diagramSvg(source: string, colors: Colors): string | undefined {
       '',
     )
   } catch {
+    // expected: model-written Mermaid that does not parse shows as code (the caller's fallback)
     return undefined
   }
 }
