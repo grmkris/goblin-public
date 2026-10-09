@@ -9,6 +9,7 @@ import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
+import * as Option from 'effect/Option'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import type { AgentRpcMethods, RuntimeEnv } from './env.ts'
 import { type AppError, toAppError } from './http/errors.ts'
@@ -42,7 +43,8 @@ import { attemptSync, Routines, RoutineRuns } from './services.ts'
 import { accountEntitlements, type EntitlementPolicy } from './billing/gates.ts'
 import { type Bridge, closeRuntime, makeBridge, openRuntime } from './runtime/bridge.ts'
 import type { AgentInputs } from './runtime/input.ts'
-import { type Instrument, uninstrumented } from './runtime/instrument.ts'
+import { type Instrument, reported } from './runtime/instrument.ts'
+import { OwnerHttp } from './http/api/server.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
 import { nowSeconds } from './clock.ts'
 import type { ServerSource } from './mcp/servers.ts'
@@ -89,7 +91,7 @@ import {
 type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
 
 /** How each program and change handler the agent runs is wrapped: the bridge and the Changes bus take this one. */
-const instrument: Instrument = uninstrumented
+const instrument: Instrument = reported
 
 /**
  * The resident agent. Pi (through the native PiHarness) owns conversations; the services in `services.ts` own MCP
@@ -558,7 +560,10 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
   async sessionSnapshot(session: string): Promise<JsonObject> {
     return this.#bridge.run(chatSnapshot(this.harness, session))
   }
+  /** The owner API first (http/api/server.ts); any other path is one of the agent's raw routes (agent-requests.ts). */
   override async onRequest(request: Request): Promise<Response> {
+    const served = await this.#bridge.exit(OwnerHttp.use((http) => http.handle(request)))
+    if (Exit.isSuccess(served) && Option.isSome(served.value)) return served.value.value
     return agentRequest(request, this.harness, this.#bridge.exit)
   }
 }

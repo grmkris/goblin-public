@@ -1,5 +1,4 @@
-import * as Layer from 'effect/Layer'
-import type { FoundationServices } from './core.ts'
+import { OwnerHttp } from '../http/api/server.ts'
 
-/** Lane H's services: the HTTP API served in the agent. Empty until the lane fills it; it may require any foundation service. */
-export const HttpLive: Layer.Layer<never, never, FoundationServices> = Layer.empty
+/** Lane H's services: the owner API served in the agent, its router built once in the agent's runtime. */
+export const HttpLive = OwnerHttp.layer

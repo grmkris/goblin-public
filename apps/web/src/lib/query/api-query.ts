@@ -132,9 +132,13 @@ export function makeApiQuery<Client>(options: ApiQueryOptions<Client>) {
   const ApiClient = Context.Service<Client>(options.id)
   const { headers = {} } = options
   const addHeaders = (request: HttpClientRequest.HttpClientRequest) =>
-    CurrentOperation.useSync((operation) =>
-      HttpClientRequest.setHeaders(request, typeof headers === 'function' ? headers(request, operation) : headers),
-    )
+    Effect.gen(function* () {
+      const operation = yield* CurrentOperation
+      return HttpClientRequest.setHeaders(
+        request,
+        typeof headers === 'function' ? headers(request, operation) : headers,
+      )
+    })
   const WithHeaders = Layer.effect(
     HttpClient.HttpClient,
     Effect.map(HttpClient.HttpClient, HttpClient.mapRequestEffect(addHeaders)),

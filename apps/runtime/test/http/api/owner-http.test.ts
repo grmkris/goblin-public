@@ -9,11 +9,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { StopRuntime } from '../../../src/agent-program.ts'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
-import { AgentInstance } from '../../../src/http/api/instance.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { OrganizeReceipts } from '../../../src/organize/receipts.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
 import { Conversations, Invocations, Receipts, Resident, RoutineRuns, Topics } from '../../../src/services.ts'
+import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import { appConversations } from '../../../src/storage/schema.ts'
 import { TopicRegistry } from '../../../src/topics/registry.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
@@ -101,7 +101,8 @@ const fixture = (options: { readonly active?: boolean } = {}) => {
           Layer.succeed(Invocations, unread),
           Layer.succeed(Resident, resident),
           Layer.succeed(Entitlements, plans),
-          Layer.succeed(AgentInstance, { stopping }),
+          // SAFETY: the Topics handlers read only `stopping` from the instance input; the rest stays unused here.
+          Layer.succeed(AgentInput, { stopping } as AgentInputs),
         ),
       ),
     ),

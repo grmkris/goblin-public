@@ -558,7 +558,7 @@ owns its canvas styling. External MCP Apps retain their framed host surface.
 
 Beyond its state and files, an app reaches only the powers it declares and the owner approves (ADR 0021):
 `ctx.fetch` to exact `egress` hosts (`agent-apps/egress.ts`: https on 443, never goblin's own domain, redirects checked
-again, no cookies, bounded), and through the agent (`agent-apps/ports.ts`, connected in `compose.ts`) the owner's MCP
+again, no cookies, bounded), and through the agent (`agent-apps/ports.ts`, connected in `layers/legacy.ts`) the owner's MCP
 tools under their exact grants, the cheap model within the owner's budget, Telegram through their channel, and other
 apps' actions and views (`agent-apps/engine.ts` composes each `prepare`'s `AppPowers`). Every use checks the approval
 (`app_agent_powers`), the app's daily cap (`app_agent_usage`) and, for what goes through the agent, the owner's plan

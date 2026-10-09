@@ -1,6 +1,6 @@
 import { OwnerApi } from '@goblin/contracts/api'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
-import { AgentInstance } from '../http/api/instance.ts'
+import { AgentInput } from '../runtime/input.ts'
 import { createTopic, topicList, updateTopic } from './program.ts'
 
 /**
@@ -13,6 +13,6 @@ export const TopicsHandlers = HttpApiBuilder.group(OwnerApi, 'topics', (handlers
     .handle('list', () => topicList)
     .handle('create', ({ payload }) => createTopic(payload, { actor: 'owner' }))
     .handle('update', ({ params, payload }) =>
-      AgentInstance.use(({ stopping }) => updateTopic(stopping(), params.id, payload)),
+      AgentInput.use(({ stopping }) => updateTopic(stopping(), params.id, payload)),
     ),
 )
