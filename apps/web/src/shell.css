@@ -641,8 +641,9 @@
 }
 .thread-summary {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0 0.5rem;
   max-width: 100%;
   min-height: 2rem;
   padding: 0.25rem 0.625rem;
@@ -686,19 +687,22 @@
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
+/* On a narrow screen the last reply's time goes to a second line rather than being cut off. */
 .thread-summary-meta {
   min-width: 0;
-  overflow: clip;
   color: var(--muted-foreground);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .thread-summary-open {
+  display: none;
   flex: none;
   color: var(--muted-foreground);
   opacity: 0;
 }
 @media (hover: hover) and (pointer: fine) {
+  .thread-summary-open {
+    display: inline;
+  }
   .thread-summary:hover > .thread-summary-open {
     opacity: 1;
   }
@@ -1093,4 +1097,24 @@ a.list-row:focus-visible {
   justify-content: space-between;
   gap: 1rem;
   min-height: 2.75rem;
+}
+
+/* The model button: its name where the chat has room, its icon alone where it has not (a phone). */
+.model-icon {
+  display: none;
+}
+@container conversation (max-width: 28rem) {
+  .model-icon {
+    display: inline;
+  }
+  .model-name {
+    display: none;
+  }
+}
+/* The panel's bar is not a TopBar: on a touch screen its buttons take the same 44px. */
+@media (any-pointer: coarse) {
+  .panel-header [data-slot='button'] {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
 }

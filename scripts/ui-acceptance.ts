@@ -1,10 +1,13 @@
 /**
- * `bun run ui:acceptance [session-file]`: read-only UI acceptance against a deployed stage, in headless Chromium.
- * It signs in with the owner session saved for smoke (`.local/dev-session.json` unless named), opens pages, taps and
- * clicks only things that change nothing (menus, disclosures, the sidebar), and checks what the UI does there: motion
- * that runs, touch-sized fields and targets, drawers that close on a tap or a swipe. It sends no message and edits nothing. Screenshots of
- * the page matrix (phone 390×844 with touch, desktop 1440×900, light and dark) and a receipt go to a private
- * `.local/goblin-acceptance/ui-<utc>/`. Chromium emulation is not device evidence: a real phone still has to check feel.
+ * `bun run ui:acceptance [session-file]`: read-only UI acceptance of the Slack-style shell, in headless Chromium,
+ * against a deployed stage (or the local stack). It signs in with the owner session saved for smoke
+ * (`.local/dev-session.json` unless named), opens pages, taps and clicks only things that change nothing (menus,
+ * disclosures, the navigation drawer, a thread's panel), and checks what the UI does there: motion that runs,
+ * touch-sized fields and targets, drawers that close on a tap or a swipe, a panel beside the channel on a desktop and a
+ * full view on a phone, and no page wider than the screen. It sends no message and edits nothing. Screenshots of the
+ * page matrix (a channel, a thread's panel, Threads, Activity, Tasks, Settings, Connections, Apps; phone 390×844 with
+ * touch, landscape, tablet, desktop 1440×900; light and dark) and a receipt go to a private
+ * `.local/goblin-acceptance/ui-<utc>/`. Chromium emulation is not device evidence: a real phone still checks feel.
  */
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -14,7 +17,7 @@ type Check = { readonly ok: boolean; readonly detail: unknown } | { readonly ski
 type Session = { readonly origin: string; readonly cookie: string }
 
 const ROOT = path.resolve(import.meta.dirname, '..')
-const PAGES = ['/', '/settings', '/connections', '/apps']
+const PAGES = ['/c/1', '/threads', '/activity', '/tasks', '/settings', '/connections', '/apps']
 const PHONE: BrowserContextOptions = {
   viewport: { width: 390, height: 844 },
   deviceScaleFactor: 2,
@@ -34,18 +37,20 @@ function readSession(file: string): Session {
   if (typeof origin !== 'string' || typeof cookie !== 'string' || !cookie.includes('session_token='))
     throw new Error('session_file_shape')
   const url = new URL(origin)
-  if (url.protocol !== 'https:' || url.origin !== origin) throw new Error('session_origin_must_be_https')
+  const local = url.protocol === 'http:' && url.hostname === 'localhost'
+  if ((url.protocol !== 'https:' && !local) || url.origin !== origin) throw new Error('session_origin_must_be_https')
   return { origin, cookie }
 }
 
 function cookiesOf({ origin, cookie }: Session) {
-  const domain = new URL(origin).hostname
+  const { hostname: domain, protocol } = new URL(origin)
+  const secure = protocol === 'https:'
   return cookie
     .split(/;\s*/u)
     .filter(Boolean)
     .map((pair) => {
       const at = pair.indexOf('=')
-      return { name: pair.slice(0, at), value: pair.slice(at + 1), domain, path: '/', secure: true, httpOnly: true }
+      return { name: pair.slice(0, at), value: pair.slice(at + 1), domain, path: '/', secure, httpOnly: true }
     })
 }
 
@@ -83,9 +88,58 @@ async function visit(page: Page, origin: string, route: string): Promise<void> {
   await page.waitForTimeout(SETTLE_MS)
 }
 
+/** A thread of the account, as a link to its own `/c/<id>` (which opens its channel with the panel), if it has one. */
+async function threadRoute(page: Page): Promise<string | undefined> {
+  const id = await page.evaluate(async () => {
+    const response = await fetch('/api/conversations', { credentials: 'same-origin' })
+    const views: unknown = response.ok ? await response.json() : []
+    const thread = Array.isArray(views)
+      ? views.find(
+          (view: { kind?: string; closedAt?: number }) => view.kind === 'thread' && view.closedAt === undefined,
+        )
+      : undefined
+    return typeof thread?.id === 'string' ? thread.id : undefined
+  })
+  return id === undefined ? undefined : `/c/${id}`
+}
+
+/**
+ * A thread's panel: beside the channel (or over its right side) wherever the navigation shows, a full view of its own
+ * on a phone.
+ */
+async function panelCheck(page: Page, origin: string, checks: Record<string, Check>, prefix: string): Promise<void> {
+  const route = await threadRoute(page)
+  if (route === undefined) {
+    checks[`${prefix}.panel`] = skipped('no thread in this account snapshot')
+    return
+  }
+  await visit(page, origin, route)
+  const panel = page.locator('.thread-panel').first()
+  const shown = await panel
+    .waitFor({ timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (!shown) {
+    checks[`${prefix}.panel`] = { ok: false, detail: 'the panel did not open' }
+    return
+  }
+  const box = await panel.evaluate((element) => ({
+    width: Math.round(element.getBoundingClientRect().width),
+    viewport: element.ownerDocument.defaultView?.innerWidth ?? 0,
+    search: element.ownerDocument.location.search,
+  }))
+  const channel = await page.locator('.channel-column').first().isVisible()
+  // A phone gives the panel the whole screen; wider, it sits beside the channel or over its right side.
+  const phone = box.viewport < 768
+  checks[`${prefix}.panel`] = {
+    ok: box.search.includes('thread=') && (phone ? box.width === box.viewport : channel && box.width < box.viewport),
+    detail: { ...box, channel },
+  }
+}
+
 /** Desktop: the theme's curves, a menu that scales, the composer's Return key, a Thoughts panel that opens to auto. */
 async function deskChecks(page: Page, origin: string, checks: Record<string, Check>): Promise<void> {
-  await visit(page, origin, '/')
+  await visit(page, origin, '/c/1')
   const field = page.locator('textarea[data-slot="composer-input"]').first()
   checks['desk.composer.enterkeyhint'] = {
     ok: (await field.getAttribute('enterkeyhint')) === 'send',
@@ -113,19 +167,20 @@ async function deskChecks(page: Page, origin: string, checks: Record<string, Che
   } else checks['desk.menu.scales'] = skipped('no model picker in this account snapshot')
   await transcriptChecks(page, checks)
   await thoughtsCheck(page, checks)
+  await panelCheck(page, origin, checks, 'desk')
 }
 
 /**
- * Main's transcript and dock: message actions reserve no room (so nothing jumps when a reply finishes), the dock has a
- * ceiling, Main's way back down is the shared jump button, and at most one presence orb draws with WebGL.
+ * The channel's transcript and dock: message actions float and reserve no room (so nothing jumps when a reply finishes),
+ * the dock has a ceiling, the way back down is the shared jump button, and at most one presence orb draws with WebGL.
  */
 async function transcriptChecks(page: Page, checks: Record<string, Check>): Promise<void> {
   const reserved = await page
-    .locator('.message-item:has(> .thread-rows > .message-actions:only-child)')
+    .locator('.message-item > .message-actions')
     .evaluateAll((items) =>
       items
-        .map((item) => item.ownerDocument.defaultView.getComputedStyle(item).paddingBottom)
-        .filter((pad) => pad !== '0px'),
+        .map((item) => item.ownerDocument.defaultView.getComputedStyle(item).position)
+        .filter((position) => position !== 'absolute'),
     )
   checks['desk.actions.no-room'] = { ok: reserved.length === 0, detail: { reserved } }
   const ceiling = await page
@@ -182,7 +237,7 @@ async function thoughtsCheck(page: Page, checks: Record<string, Check>): Promise
  * closes on a same-page link and on a swipe left; in a conversation, the turn map's drawer swipes down closed.
  */
 async function phoneChecks(page: Page, origin: string, checks: Record<string, Check>, prefix = 'phone'): Promise<void> {
-  await visit(page, origin, '/')
+  await visit(page, origin, '/c/1')
   const coarse = await page
     .locator('html')
     .evaluate((root) => root.ownerDocument.defaultView.matchMedia('(pointer: coarse), (any-pointer: coarse)').matches)
@@ -217,12 +272,15 @@ async function phoneChecks(page: Page, origin: string, checks: Record<string, Ch
     checks[`${prefix}.sidebar.swipe`] = skipped('this viewport uses the desktop sidebar')
   }
   await turnMapCheck(page, checks, prefix)
+  await panelCheck(page, origin, checks, prefix)
 }
 
 async function editableChecks(page: Page, checks: Record<string, Check>, prefix: string): Promise<void> {
   const editable = await page.locator('input, textarea, select').evaluateAll((items) =>
     items
+      // A checkbox, radio or range has no text whose size matters.
       .filter((element) => element.getBoundingClientRect().height > 0)
+      .filter((element) => !['checkbox', 'radio', 'range'].includes(element.getAttribute('type') ?? ''))
       .map((element) => ({
         tag: element.tagName.toLowerCase(),
         type: element.getAttribute('type'),
@@ -260,10 +318,13 @@ async function usageCheck(page: Page, checks: Record<string, Check>, prefix: str
   await page.waitForTimeout(300)
 }
 
+const DRAWER = '[data-slot="drawer-side"]'
+const OPEN_NAVIGATION = 'button[aria-label="Open navigation"]'
+
 async function sidebarCheck(page: Page, checks: Record<string, Check>, prefix: string): Promise<void> {
-  const sheet = '[data-slot="sidebar"][data-mobile="true"]'
-  const row = '[data-sidebar="content"] a[href^="/c/"]'
-  const trigger = page.locator('[data-sidebar="trigger"]').first()
+  const sheet = DRAWER
+  const row = `${DRAWER} .shell-sidebar a[href^="/c/"]`
+  const trigger = page.locator(OPEN_NAVIGATION).first()
   // The first tap moves to the row's page; the second, on the row already showing, changes no path.
   await trigger.tap()
   await page.waitForTimeout(600)
@@ -285,10 +346,10 @@ async function sidebarCheck(page: Page, checks: Record<string, Check>, prefix: s
   checks[`${prefix}.sidebar.closes`] = { ok: before > 0 && after === 0, detail: { before, after } }
 }
 
-/** A swipe left across the open sidebar drawer takes it back to the edge. */
+/** A swipe left across the open navigation drawer takes it back to the edge. */
 async function sidebarSwipeCheck(page: Page, checks: Record<string, Check>, prefix: string): Promise<void> {
-  const sheet = page.locator('[data-slot="sidebar"][data-mobile="true"]')
-  await page.locator('[data-sidebar="trigger"]').first().tap()
+  const sheet = page.locator(DRAWER)
+  await page.locator(OPEN_NAVIGATION).first().tap()
   await page.waitForTimeout(600)
   const box = await sheet.boundingBox()
   if (box === null) {
@@ -338,10 +399,16 @@ async function screenshots(
   ] as const)
     for (const colorScheme of ['light', 'dark'] as const) {
       const page = await open(browser, session, { ...options, colorScheme }, errors, `${device}/${colorScheme}`)
-      for (const route of PAGES) {
+      await visit(page, session.origin, '/c/1')
+      const thread = await threadRoute(page)
+      for (const route of thread === undefined ? PAGES : [...PAGES, thread]) {
         await visit(page, session.origin, route)
-        const slug = route === '/' ? 'home' : route.slice(1).replaceAll('/', '_')
+        const slug = route === thread ? 'thread' : route.slice(1).replaceAll('/', '_')
         await editableChecks(page, checks, `${device}.${colorScheme}.${slug}`)
+        const width = await page
+          .locator('html')
+          .evaluate((root) => ({ page: root.scrollWidth, screen: root.ownerDocument.defaultView?.innerWidth ?? 0 }))
+        checks[`${device}.${colorScheme}.${slug}.no-overflow`] = { ok: width.page <= width.screen, detail: width }
         await page.screenshot({ path: path.join(out, `${device}-${colorScheme}-${slug}.png`) })
         count += 1
       }

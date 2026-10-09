@@ -13,12 +13,12 @@ function Dock({ inline }: { readonly inline: boolean }) {
   const conversation = useConversation('1')
   return (
     <section
-      className={inline ? 'p-4' : 'chat-pane conversation-pane'}
+      className={inline ? 'p-4' : 'chat-view'}
       ref={pane}
       style={inline ? undefined : { height: '60vh', position: 'relative' }}
       aria-label={inline ? 'Inline thread' : 'Full conversation'}
     >
-      <div className={inline ? 'inline-dock' : 'chat-dock'} ref={dock}>
+      <div className={inline ? undefined : 'chat-dock'} ref={dock}>
         <div className={inline ? undefined : 'dock-cards'}>
           {conversation.notice !== '' && <p role="alert">{conversation.notice}</p>}
           {conversation.projection?.queueNotice !== '' && <p role="status">{conversation.projection?.queueNotice}</p>}

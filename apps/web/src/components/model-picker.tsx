@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react'
 import { Schema } from 'effect'
-import { ChevronsUpDownIcon } from 'lucide-react'
+import { ChevronsUpDownIcon, CpuIcon } from 'lucide-react'
 import { ModelChoice, type ModelOption } from '@goblin/contracts'
 import {
   Button,
@@ -69,7 +69,8 @@ export function ModelPicker({
       <DropdownMenuTrigger
         render={<Button type="button" variant="ghost" size="model" aria-label={`Model: ${label}. Change model`} />}
       >
-        <span className="truncate">{label}</span>
+        <CpuIcon className="model-icon" aria-hidden />
+        <span className="model-name truncate">{label}</span>
         <ChevronsUpDownIcon data-icon="inline-end" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-auto min-w-64">

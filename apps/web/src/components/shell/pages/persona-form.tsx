@@ -13,6 +13,7 @@ import {
   Textarea,
 } from '@goblin/ui'
 import { request } from '../../../lib/boundary.ts'
+import { serverTitle } from '../../../lib/labels.ts'
 import { PersonaAvatar } from '../../persona-avatar.tsx'
 
 const decodeModels = Schema.decodeUnknownSync(ModelChoice)
@@ -48,12 +49,7 @@ function useChoices() {
   return { models, servers }
 }
 
-const keyOf = (exclusion: HelperExclusion) =>
-  exclusion.kind === 'subagents'
-    ? 'subagents'
-    : exclusion.kind === 'server'
-      ? `server:${exclusion.serverId}`
-      : undefined
+const keyOf = (exclusion: HelperExclusion) => (exclusion.kind === 'server' ? `server:${exclusion.serverId}` : undefined)
 
 /** Whether the Persona may use something: on unless its exclusions keep it from it; a switch toggles that. */
 function Allowed({
@@ -182,8 +178,9 @@ function Behaviour({ draft, onChange, models }: Edit & { readonly models: ModelC
 }
 
 /**
- * A Persona's definition: its mark (a glyph on a hue), name, role, instructions, model, and what it may use of the
- * owner's grants (it only ever narrows them). Tool, skills and app exclusions it already has are kept as they are.
+ * A Persona's definition: its mark (a glyph on a hue), name, role, instructions, model, and which of the owner's
+ * connections it may use (it only ever narrows the owner's grants). A Persona never starts subagents, so it never
+ * delegates or loops (ADR 0033); tool, skills and app exclusions it already has are kept as they are.
  */
 export function PersonaForm({ draft, onChange }: Edit) {
   const { models, servers } = useChoices()
@@ -193,11 +190,11 @@ export function PersonaForm({ draft, onChange }: Edit) {
       <Behaviour draft={draft} onChange={onChange} models={models} />
       <fieldset className="persona-allows">
         <legend>May use</legend>
-        <Allowed label="Subagents" exclusion={{ kind: 'subagents' }} draft={draft} onChange={onChange} />
+        {servers.length === 0 && <p className="list-row-meta">No connections yet.</p>}
         {servers.map((server) => (
           <Allowed
             key={server.serverId}
-            label={server.title ?? server.serverId}
+            label={serverTitle(server)}
             exclusion={{ kind: 'server', serverId: server.serverId }}
             draft={draft}
             onChange={onChange}
