@@ -24,6 +24,7 @@ import { primaryBindingCase } from './native-chats.ts'
 import { topicsNativeCase } from './native-topics.ts'
 import { delegationChecks } from './native-delegation.ts'
 import { memoryPlacementCase, memoryViewCase } from './native-memory.ts'
+import { doubleCreateCase, flowRowsCase, startOrderCase } from './native-conversation-ops.ts'
 import {
   Listed,
   ModelRequest,
@@ -1035,3 +1036,18 @@ if (primaryProfile === 'permuted')
     'local workerd: the stable primary chat writes only to its non-root Pi session',
     stack.pipe(Effect.flatMap(({ url }) => primaryBindingCase(url))),
   )
+
+harness.test(
+  'local workerd: a create sent twice at once under one operation id makes one Thread (C4)',
+  stack.pipe(Effect.flatMap(({ url }) => doubleCreateCase(url))),
+)
+
+harness.test(
+  'local workerd: a Thread started with tagged Personas keeps the order the message asks for them',
+  stack.pipe(Effect.flatMap(({ url }) => startOrderCase(url))),
+)
+
+harness.test(
+  'local workerd: a send and a Telegram message each record their flow row, a repeat of either as replayed',
+  stack.pipe(Effect.flatMap(({ url }) => flowRowsCase(url))),
+)

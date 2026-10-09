@@ -21,14 +21,16 @@ type PortInstances = {
   readonly harness: PiHarness
   readonly budget: ModelBudget
   readonly models: ModelPicker
+  /** Where flows go: nowhere unless a probe records them. */
+  readonly flows?: Layer.Layer<FlowEvents>
 }
 
 /**
  * The services the Telegram ports' programs read, over a probe's own instances: lane C's chat directory and admission
  * over its database (admission also holding its chat directory's lock), its budget and model picker as the routines
- * lane's services wrap them, and Pi as its sessions. Flows are not recorded.
+ * lane's services wrap them, and Pi as its sessions. Flows go to `flows`, else nowhere.
  */
-export const portServices = ({ db, chats, harness, budget, models }: PortInstances) => {
+export const portServices = ({ db, chats, harness, budget, models, flows = FlowEvents.noop }: PortInstances) => {
   // SAFETY: admission reads only Pi's harness and the models it applied from the instance input; no routine answers.
   const input = Layer.succeed(AgentInput, { harness, applied: new Map() } as AgentInputs)
   const plans = Layer.mergeAll(
@@ -50,7 +52,7 @@ export const portServices = ({ db, chats, harness, budget, models }: PortInstanc
     ),
   )
   const pi = PiSessions.layer.pipe(Layer.provide(input))
-  const core = Layer.mergeAll(Layer.succeed(Db, db), KeyedLock.layer, pi, FlowEvents.noop, plans, input)
+  const core = Layer.mergeAll(Layer.succeed(Db, db), KeyedLock.layer, pi, flows, plans, input)
   const operations = Layer.effect(ChatOperations, makeChatOperations({ locks: chats }))
   return Layer.mergeAll(
     ChatsLive.pipe(Layer.provide(Layer.succeed(Db, db))),

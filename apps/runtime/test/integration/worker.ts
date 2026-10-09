@@ -3,6 +3,7 @@ import { canonicalRedirect } from '../../src/http/canonical.ts'
 import { inboundHostProbe } from './inbound-host.ts'
 import { type ConversationView, PRIMARY_CHAT } from '@goblin/contracts'
 import { eventsProbe } from './events-probe.ts'
+import { conversationOpsFetch, telegramFlowsProbe } from './native-conversation-ops.ts'
 import { routinesProbe } from './routines-probe.ts'
 import { routineExecutionProbe } from './routines-execution.ts'
 import { routineQuestionProbe, routineStopProbe, routineRecoveryWrite, routineRecoveryRead } from './routines-safety.ts'
@@ -161,6 +162,10 @@ export class PersonalAgentProbe extends PersonalAgent {
 
   eventsProbe() {
     return eventsProbe(this.ctx.storage, this.harness)
+  }
+
+  telegramFlowsProbe() {
+    return telegramFlowsProbe(this.ctx.storage, this.harness)
   }
 
   routinesProbe() {
@@ -1106,6 +1111,8 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return topicRoutineSequence(agent)
     case '/delegation-flows':
       return delegationFlowsSequence(agent)
+    case '/conversation-ops':
+      return conversationOpsFetch(agent, url)
     case '/binding':
       return agent.bindingProbe().then((result) => Response.json(result))
     case '/telemetry':

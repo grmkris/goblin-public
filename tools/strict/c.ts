@@ -10,5 +10,5 @@ export const paths: string[] = [
   'apps/runtime/test/http/api/conversations.test.ts',
   'apps/runtime/test/chat-fixtures.ts',
   'apps/runtime/test/{chats-service,chats,chat-receipts,moves,queue,content,context-tail,replies,attention,ask-user}.test.ts',
-  'apps/runtime/test/integration/{probe-reads,composer-probe,native-composer,thread-heads-case,move-case,move-probe,queue-case}.ts',
+  'apps/runtime/test/integration/{probe-reads,composer-probe,native-composer,native-conversation-ops,thread-heads-case,move-case,move-probe,queue-case}.ts',
 ]
