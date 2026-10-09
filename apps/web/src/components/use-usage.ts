@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { UsageToday } from '@goblin/contracts'
 import { usageQuery } from '../agent/queries.ts'
@@ -12,12 +12,16 @@ type UsageRead = { readonly usage: UsageToday | undefined; readonly error: unkno
  */
 export function useUsageRead(running = false): UsageRead {
   const read = useQuery(usageQuery)
-  const wasRunning = useRef(running)
-  const finished = wasRunning.current && !running
-  wasRunning.current = running
   const { refetch } = read
-  useEffect(() => (finished ? void refetch() : undefined), [finished, refetch])
-  return { usage: read.data, error: read.error, retry: () => void refetch() }
+  const reread = useCallback(() => void refetch(), [refetch])
+  // The run state as of the last effect: compared there, not during render, so render stays pure.
+  const wasRunning = useRef(running)
+  useEffect(() => {
+    const finished = wasRunning.current && !running
+    wasRunning.current = running
+    if (finished) reread()
+  }, [running, reread])
+  return { usage: read.data, error: read.error, retry: reread }
 }
 
 /** Today's usage for an indicator, which shows the last value it has and nothing before the first read succeeds. */
