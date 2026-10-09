@@ -2,12 +2,16 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import type { CreateConversation, HelperExclusion, MoveToThread, UpdateConversation } from '@goblin/contracts'
-import type { EntryDraft } from '@earendil-works/pi-durable'
+import type { EntryDraft, Submission } from '@earendil-works/pi-durable'
+import * as Clock from 'effect/Clock'
 import type { Budget } from '../budget.ts'
 import { makeChatOperations } from '../chats/operations.ts'
 import { ChatOperations, Chats, Conversations, Moves, type RoutineReport } from '../chats/service.ts'
 import type { ConversationRegistry } from '../conversations.ts'
 import type { Models } from '../models.ts'
+import { FlowEvents } from '../observability/flows.ts'
+import { failedFlow } from '../organize/flows.ts'
+import { BACKGROUND } from '../pi/context.ts'
 import { Chats as LegacyChats, Conversations as LegacyConversations, Moves as LegacyMoves } from '../services.ts'
 import { attempt, attemptSync, nowSecondsEffect } from '../services.ts'
 import type { FoundationServices } from './core.ts'
@@ -144,27 +148,47 @@ const registryChats = (conversations: ConversationRegistry) => ({
 })
 
 /** The registry's writes into existing chats over the legacy `ConversationRegistry`. */
-const registryWrites = (conversations: ConversationRegistry) => ({
+/** A thread's note into the chat it came from, as its own `share` flow (plan §4). */
+const shareBackWith = (
+  conversations: ConversationRegistry,
+  operations: ChatOperations['Service'],
+  flows: FlowEvents['Service'],
+) =>
+  Effect.fn('Conversations.shareBack')(function* (thread: string, note: string, requestId: string) {
+    const flow = { flow: 'share', via: 'tool', actor: 'agent', chat: thread, operationId: requestId } as const
+    const shared = Effect.gen(function* () {
+      const at = yield* Clock.currentTimeMillis
+      const { chat, write, sharedWith } = yield* attemptSync(() => conversations.shareBack(thread, note, requestId, at))
+      yield* operations.passiveWrite(chat, write)
+      yield* flows.record({ ...flow, parentChat: chat, status: 'ok' })
+      return sharedWith
+    })
+    return yield* shared.pipe(Effect.tapError((error) => flows.record({ ...flow, ...failedFlow(error) })))
+  })
+
+const registryWrites = (
+  conversations: ConversationRegistry,
+  operations: ChatOperations['Service'],
+  flows: FlowEvents['Service'],
+) => ({
   touched: Effect.fn('Conversations.touched')(function* (chats: readonly string[]) {
     return yield* attemptSync(() => conversations.touched(chats))
   }),
   reportRoutine: Effect.fn('Conversations.reportRoutine')(function* (report: RoutineReport) {
-    return yield* attempt(() => conversations.reportRoutine(report))
+    const { chat, write } = yield* attemptSync(() => conversations.routineReport(report))
+    yield* operations.passiveWrite(chat, write)
   }),
-  shareBack: Effect.fn('Conversations.shareBack')(function* (thread: string, note: string, requestId: string) {
-    return yield* attempt(() => conversations.shareBack(thread, note, requestId))
-  }),
+  shareBack: shareBackWith(conversations, operations, flows),
   announce: Effect.fn('Conversations.announce')(function* (thread: string) {
-    return yield* attempt(() => conversations.announce(thread))
+    const at = yield* Clock.currentTimeMillis
+    const owed = yield* attemptSync(() => conversations.announcement(thread, at))
+    if (owed === undefined) return false
+    yield* operations.passiveWrite(owed.chat, owed.write)
+    return yield* attemptSync(() => conversations.announced(thread))
   }),
   writeEntry: Effect.fn('Conversations.writeEntry')(function* (chat: string, requestId: string, entry: EntryDraft) {
-    const written = yield* attempt(() => conversations.writeEntry(chat, requestId, entry))
-    return {
-      placed: Effect.map(
-        attempt(() => written.placed()),
-        Option.fromNullishOr,
-      ),
-    }
+    const submission = yield* operations.passiveWrite(chat, { requestId, entry })
+    return { placed: placedOf(submission) }
   }),
   nameIfUntitled: Effect.fn('Conversations.nameIfUntitled')(function* (thread: string) {
     return yield* attempt(() => conversations.nameIfUntitled(thread))
@@ -186,16 +210,33 @@ const registryWrites = (conversations: ConversationRegistry) => ({
   }),
 })
 
-/** The registry over the legacy `ConversationRegistry`, reading the time from the Clock as the programs do. */
+/**
+ * Where a passive write landed: its entry id once it is in the transcript (at once when the chat is idle, else at its
+ * next boundary), none when Pi did not place it. It waits outside the chat's lock.
+ */
+const placedOf = (submission: Submission) =>
+  Effect.map(
+    attempt(() => submission.wait(BACKGROUND)),
+    (settled) =>
+      settled.status === 'done' && settled.entry !== undefined ? Option.some(Number(settled.entry)) : Option.none(),
+  )
+
+/**
+ * The registry over the legacy `ConversationRegistry`, reading the time from the Clock as the programs do. Its passive
+ * writes go through `ChatOperations.passiveWrite`: under the chat's lock, each with its receipt.
+ */
 const ConversationsAdapter = Layer.effect(
   Conversations,
-  LegacyConversations.useSync((conversations) =>
-    Conversations.of({
+  Effect.gen(function* () {
+    const conversations = yield* LegacyConversations
+    const operations = yield* ChatOperations
+    const flows = yield* FlowEvents
+    return Conversations.of({
       ...registryReads(conversations),
       ...registryChats(conversations),
-      ...registryWrites(conversations),
-    }),
-  ),
+      ...registryWrites(conversations, operations, flows),
+    })
+  }),
 )
 
 /** Move to thread over the legacy `ChatMover`. */
@@ -223,4 +264,4 @@ export const ConversationLive: Layer.Layer<
   Chats | ChatOperations | Conversations | Moves,
   never,
   FoundationServices | Budget | Models
-> = Layer.mergeAll(ChatsAdapter, ChatOperationsLive, ConversationsAdapter, MovesAdapter)
+> = Layer.mergeAll(ChatsAdapter, Layer.provideMerge(ConversationsAdapter, ChatOperationsLive), MovesAdapter)

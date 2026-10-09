@@ -35,6 +35,50 @@ const fake = <T>(members: Partial<T>): T =>
 /** What the legacy instances were asked, with the time each was given. */
 type Calls = string[]
 
+/** The registry: a gate that refuses chat `3` as closed, and writes that record what they were given. */
+const registryOf = (calls: Calls, directory: ChatDirectory) =>
+  fake<ConversationRegistry>({
+    requireOpen: (chat) => {
+      if (chat === '3') throw new InvalidInput({ reason: 'conversation_closed' })
+      return directory.session(chat)
+    },
+    markRead: (chat, now) => void calls.push(`read:${chat}@${now}`),
+    registerRoutine: (session, runId, _title, now, topic) =>
+      void calls.push(`routine:${session}:${runId}@${now}:${topic}`),
+    view: async () => undefined,
+    announcement: (thread) =>
+      thread === '2'
+        ? { chat: '1', write: { requestId: 'thread-started:2', entry: { kind: 'app.thread_started', data: {} } } }
+        : undefined,
+    announced: () => true,
+    shareBack: (thread, _note, requestId, at) => ({
+      chat: '1',
+      write: { requestId, origin: 'agent', entry: { kind: 'app.shared', data: { thread, at } } },
+      sharedWith: 'main',
+    }),
+  })
+
+/** Pi's harness: a conversation's writes, a session's model and a submit, each recorded. */
+const harnessOf = (calls: Calls) => {
+  const conversation = (id: number) => ({
+    submit: async (write: { readonly type: string; readonly requestId: string }) => {
+      calls.push(`${write.type}:${id}:${write.requestId}`)
+      return { id: 1 }
+    },
+  })
+  return fake<PiHarness>({
+    // SAFETY: a passive write asks Pi's harness only for a conversation.
+    pi: async () => ({ conversation: async (id: number) => conversation(id) }) as never,
+    // SAFETY: a send asks a session only to change its model.
+    session: (session: string) =>
+      ({ setModel: async ({ id }: { id: string }) => void calls.push(`model:${session}:${id}`) }) as never,
+    submit: async (_content, options = {}) => {
+      calls.push(`submit:${options.session}:${options.operationId}`)
+      return { session: options.session ?? '', operationId: options.operationId ?? '', accepted: true }
+    },
+  })
+}
+
 /**
  * The conversation services over the one legacy instance of each: a real chat directory on SQLite, a registry and a
  * mover that record their calls, Pi's harness for a write, a model choice and a submit, a routine that takes `op-r` as
@@ -49,41 +93,15 @@ const services = (calls: Calls) => {
       { chatId: '2', piSession: '42', kind: 'thread', parentSession: '1', createdAt: 1 },
     ])
     .run()
-  const registry = fake<ConversationRegistry>({
-    requireOpen: (chat) => {
-      if (chat === '3') throw new InvalidInput({ reason: 'conversation_closed' })
-      return directory.session(chat)
-    },
-    markRead: (chat, now) => void calls.push(`read:${chat}@${now}`),
-    registerRoutine: (session, runId, _title, now, topic) =>
-      void calls.push(`routine:${session}:${runId}@${now}:${topic}`),
-    view: async () => undefined,
-    announce: async (thread) => thread === '2',
-  })
   const moves = fake<ChatMover>({
     move: async (chat, input, now) => {
       calls.push(`move:${chat}@${now}`)
       return { ...input, chat, mode: 'settled', state: 'refused', reason: 'streaming' }
     },
   })
-  const conversation = (id: number) => ({
-    submit: async (write: { readonly type: string; readonly requestId: string }) => {
-      calls.push(`${write.type}:${id}:${write.requestId}`)
-      return { id: 1 }
-    },
-  })
-  const harness = fake<PiHarness>({
-    // SAFETY: a passive write asks Pi's harness only for a conversation.
-    pi: async () => ({ conversation: async (id: number) => conversation(id) }) as never,
-    // SAFETY: a send asks a session only to change its model.
-    session: (session: string) =>
-      ({ setModel: async ({ id }: { id: string }) => void calls.push(`model:${session}:${id}`) }) as never,
-    submit: async (_content, options = {}) => {
-      calls.push(`submit:${options.session}:${options.operationId}`)
-      return { session: options.session ?? '', operationId: options.operationId ?? '', accepted: true }
-    },
-  })
+  const harness = harnessOf(calls)
   const directory = new ChatDirectory(db)
+  const registry = registryOf(calls, directory)
   const routines = fake<RoutineController>({ answer: async (_session, operationId) => operationId === 'op-r' })
   const input = Layer.succeed(AgentInput, fake<AgentInputs>({ harness, applied: new Map(), routines }))
   const plans = Layer.mergeAll(
@@ -216,6 +234,29 @@ describe('the conversation services', () => {
     }).pipe(Effect.provide(layer))
   })
 
+  it.effect("write a thread's note into the chat it came from with its receipt, as a share flow", () => {
+    const { layer, calls, flows } = services([])
+    return Effect.gen(function* () {
+      const conversations = yield* Conversations
+      expect(yield* conversations.shareBack('2', 'note', 'share:call-1')).toBe('main')
+      expect(calls).toEqual(['write:41:share:call-1'])
+      expect(yield* (yield* ChatOperations).receipt('1', 'share:call-1')).toMatchObject(
+        Option.some({ kind: 'write:app.shared', origin: 'agent', state: 'written' }),
+      )
+      expect(flows).toEqual([
+        {
+          flow: 'share',
+          via: 'tool',
+          actor: 'agent',
+          chat: '2',
+          parentChat: '1',
+          operationId: 'share:call-1',
+          status: 'ok',
+        },
+      ])
+    }).pipe(Effect.provide(layer))
+  })
+
   it.effect("hand the registry and the mover the Clock's time in seconds", () => {
     const { layer, calls } = services([])
     return Effect.gen(function* () {
@@ -227,7 +268,7 @@ describe('the conversation services', () => {
       expect([yield* conversations.announce('2'), yield* conversations.announce('3')]).toEqual([true, false])
       const receipt = yield* (yield* Moves).move('1', { entry: 4, operationId: 'move-1' })
       expect(receipt).toMatchObject({ state: 'refused', reason: 'streaming' })
-      expect(calls).toEqual(['read:2@90', 'routine:77:run-1@90:3', 'move:1@90'])
+      expect(calls).toEqual(['read:2@90', 'routine:77:run-1@90:3', 'write:41:thread-started:2', 'move:1@90'])
     }).pipe(Effect.provide(layer))
   })
 })

@@ -19,12 +19,16 @@ import { type ChatActivity, ReplyLedger } from './replies.ts'
 import { storedAsks } from './attention.ts'
 import { appConversations } from './storage/schema.ts'
 import { movedFrom } from './chats/moves.ts'
+import type { PassiveWrite, RoutineReport } from './chats/service.ts'
 import { appTopics } from './storage/topics.ts'
 
 type Row = typeof appConversations.$inferSelect
 
 /** What an update did: the conversation as it is now, and every conversation a Close closed (it and those below). */
 export type Updated = { readonly view: ConversationView; readonly closed: readonly string[] }
+
+/** A passive write into a chat other than the one asking: where it goes, and the write (`ChatOperations.passiveWrite`). */
+export type ChatWrite = { readonly chat: string; readonly write: PassiveWrite }
 
 /** Entries in one page of a conversation's history. */
 const HISTORY_PAGE = 40
@@ -435,63 +439,60 @@ export class ConversationRegistry {
   }
 
   /**
-   * Frozen passive report into the routine's Topic's Conversation (Personal's by default, or while that Topic is
-   * archived); acceptance records a Pi write, not a new run or external notification.
+   * The frozen passive report of a routine's run, for its Topic's Conversation (Personal's by default, or while that
+   * Topic is archived); written, it records a Pi write, not a new run or an external notification.
    */
-  async reportRoutine(input: {
-    readonly runId: string
-    readonly routineId: string
-    readonly sessionId: string | null
-    readonly outcome: string
-    readonly text: string
-    readonly at: number
-    readonly topic?: number
-  }): Promise<void> {
-    await this.#passiveWrite(this.#routineHome(input.topic ?? PERSONAL_TOPIC).chat, {
-      type: 'write',
-      requestId: `routine-report:${input.runId}`,
-      entry: {
-        kind: 'app.routine',
-        data: { thread: input.sessionId, routineId: input.routineId, runId: input.runId, outcome: input.outcome },
-        model: [{ role: 'user', content: input.text, timestamp: input.at }],
+  routineReport(input: RoutineReport): ChatWrite {
+    return {
+      chat: this.#routineHome(input.topic ?? PERSONAL_TOPIC).chat,
+      write: {
+        requestId: `routine-report:${input.runId}`,
+        origin: 'routine',
+        entry: {
+          kind: 'app.routine',
+          data: { thread: input.sessionId, routineId: input.routineId, runId: input.runId, outcome: input.outcome },
+          model: [{ role: 'user', content: input.text, timestamp: input.at }],
+        },
       },
-    })
+    }
   }
 
   /**
-   * A note from a thread into the conversation it came from: that model sees it, labelled with the thread, and no run
+   * A note from a thread for the conversation it came from: that model sees it, labelled with the thread, and no run
    * starts. It goes in as a write submission (never a direct append), so a busy parent places it at its next boundary.
-   * Returns how the parent is named, for the tool's answer.
+   * `sharedWith` is how the parent is named, for the tool's answer.
    */
-  async shareBack(thread: string, note: string, requestId: string): Promise<string> {
+  shareBack(thread: string, note: string, requestId: string, at: number): ChatWrite & { readonly sharedWith: string } {
     const row = this.#row(thread)
     if (row?.kind !== 'thread' || row.parentSession === null) throw new InvalidInput({ reason: 'share_back' })
     const parent = this.#registered(row.parentSession)
-    const model = [{ role: 'user' as const, content: authoredContent(labelOf(row), note), timestamp: Date.now() }]
-    await this.#passiveWrite(parent.chatId, {
-      type: 'write',
-      requestId,
-      entry: { kind: 'app.shared', data: { thread }, model },
-    })
-    if (parent.role === 'primary') return 'main'
-    return parent.role === 'conversation' ? `#${parent.title ?? 'topic'}` : labelOf(parent)
+    const model = [{ role: 'user' as const, content: authoredContent(labelOf(row), note), timestamp: at }]
+    const sharedWith =
+      parent.role === 'primary'
+        ? 'main'
+        : parent.role === 'conversation'
+          ? `#${parent.title ?? 'topic'}`
+          : labelOf(parent)
+    const write = { requestId, origin: 'agent', entry: { kind: 'app.shared', data: { thread }, model } } as const
+    return { chat: parent.chatId, write, sharedWith }
   }
 
   /**
-   * Tells its Topic's Conversation, once, about a thread the owner started with "+": when it has a title (the cheap
-   * model's or the owner's), that Conversation gets a note naming it, which its model sees and which starts no run.
+   * The note that tells its Topic's Conversation, once, about a thread the owner started with "+": owed once it has a
+   * title (the cheap model's or the owner's), naming it, which that Conversation's model sees and which starts no run.
    * Nothing said in the thread goes with it, and a later rename does not rewrite it. The write's request id makes a
-   * retry after a crash the same note. True only for the call that marked the note written.
+   * retry after a crash the same note. None when nothing is owed.
    */
-  async announce(thread: string): Promise<boolean> {
+  announcement(thread: string, at: number): ChatWrite | undefined {
     const row = this.#row(thread)
-    if (row?.kind !== 'thread' || row.mainNote !== 'owed' || row.title === null) return false
-    const model = [{ role: 'user' as const, content: threadStartedContent(row.title), timestamp: Date.now() }]
-    await this.#passiveWrite(this.#kit.chats.conversationAbove(thread), {
-      type: 'write',
-      requestId: `thread-started:${thread}`,
-      entry: { kind: 'app.thread_started', data: { thread }, model },
-    })
+    if (row?.kind !== 'thread' || row.mainNote !== 'owed' || row.title === null) return undefined
+    const model = [{ role: 'user' as const, content: threadStartedContent(row.title), timestamp: at }]
+    const entry = { kind: 'app.thread_started', data: { thread }, model }
+    return { chat: this.#kit.chats.conversationAbove(thread), write: { requestId: `thread-started:${thread}`, entry } }
+  }
+
+  /** Marks a thread's announcement written: true only for the call that marked it. */
+  announced(thread: string): boolean {
     const written = this.#db
       .update(appConversations)
       .set({ mainNote: 'written' })
