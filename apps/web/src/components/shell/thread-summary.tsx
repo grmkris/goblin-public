@@ -14,6 +14,7 @@ import {
 import { activityState } from '../../lib/workspace-feed.ts'
 import { useMinute } from '../use-now.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { DetailsAction } from './message-details.tsx'
 import { MoveAction, type Mover } from './move-action.tsx'
 import { usePanel } from './panel.tsx'
 
@@ -146,7 +147,7 @@ function CopyMessage({ text }: { readonly text: string }) {
 
 /**
  * Under one message: the threads started from it, each a summary that opens it, and the message's actions (Reply in
- * thread and Copy) in a pill that floats over its top edge where a pointer rests, or once a touch focused it.
+ * thread, Copy and Details) in a pill that floats over its top edge where a pointer rests, or once a touch focused it.
  */
 export function MessageFooter({ part, threads }: { readonly part: Part; readonly threads: ChatThreads }) {
   const entry = messageEntry(part)
@@ -168,6 +169,7 @@ export function MessageFooter({ part, threads }: { readonly part: Part; readonly
         </button>
         {mover !== undefined && <MoveAction mover={mover} />}
         {text !== '' && <CopyMessage text={text} />}
+        <DetailsAction chat={threads.chat} entry={entry} />
       </span>
       {mover?.refusal !== undefined && (
         <p className="move-refusal" role="status">
