@@ -1,48 +1,29 @@
-import { useEffect, useState } from 'react'
-import { Schema } from 'effect'
-import { ApprovalView } from '@goblin/contracts'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AskCard, AskCardHeader, AskCardDescription, AskCardActions, Button, JsonView, Receipt } from '@goblin/ui'
 import { KeyRoundIcon } from 'lucide-react'
+import { approvalQuery, decideApprovalMutation } from '../approvals/queries.ts'
 import type { Interaction } from '../lib/interactions.ts'
-import { failureText, request } from '../lib/boundary.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 
-const decode = Schema.decodeUnknownSync(ApprovalView)
 type Approval = Extract<Interaction, { kind: 'approval' }>
 
-/** The owner reviews the durable call, not arguments supplied by remote content or the browser. */
+/**
+ * The owner reviews the durable call, not arguments supplied by remote content or the browser. It is read while it
+ * waits; what went wrong deciding it, or reading it, shows on the card.
+ */
 export function ApprovalCard({ interaction }: { readonly interaction: Approval }) {
-  const [view, setView] = useState<ApprovalView>()
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const path = `/api/mcp/approvals/${encodeURIComponent(interaction.approvalId)}`
-  const waiting = view === undefined || ['pending', 'approved', 'dispatching'].includes(view.state)
-  useEffect(() => {
-    if (!waiting) return undefined
-    const controller = new AbortController()
-    const load = () =>
-      void request(path, { signal: controller.signal })
-        .then((data) => setView(decode(data)))
-        .catch((cause: unknown) => {
-          if (!controller.signal.aborted) setError(failureText(cause))
-        })
-    load()
-    const timer = setInterval(load, 5000)
-    return () => {
-      controller.abort()
-      clearInterval(timer)
-    }
-  }, [path, waiting])
-  async function decide(allowed: boolean): Promise<void> {
-    setBusy(true)
-    setError('')
-    try {
-      setView(decode(await request(path, { method: 'POST', body: { allowed } })))
-    } catch (cause) {
-      setError(failureText(cause))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const queryClient = useQueryClient()
+  const read = useQuery(approvalQuery(interaction.approvalId))
+  const decision = useMutation(decideApprovalMutation(queryClient, interaction.approvalId))
+  const view = read.data
+  const busy = decision.isPending
+  const error =
+    decision.error !== null
+      ? messageOf(decision.error, 'record your decision')
+      : read.error !== null
+        ? messageOf(read.error, 'read the call')
+        : ''
+  const decide = (allowed: boolean) => decision.mutate(allowed)
   const pending = view?.state === 'pending'
   if (view?.state === 'completed' || view?.state === 'refused') return null
   return (
@@ -70,10 +51,10 @@ export function ApprovalCard({ interaction }: { readonly interaction: Approval }
       )}
       {error && <Receipt tone="error">{error}</Receipt>}
       <AskCardActions>
-        <Button variant="ghost" disabled={busy || !pending} onClick={() => void decide(false)}>
+        <Button variant="ghost" disabled={busy || !pending} onClick={() => decide(false)}>
           Refuse
         </Button>
-        <Button disabled={busy || !pending} onClick={() => void decide(true)}>
+        <Button disabled={busy || !pending} onClick={() => decide(true)}>
           Approve once
         </Button>
       </AskCardActions>
