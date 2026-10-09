@@ -139,7 +139,7 @@ export class McpEvents {
         await this.#client.unsubscribe(row)
         remoteCleanup = true
       } catch {
-        /* Finite remote TTL handles unavailable authority; never renew for cleanup. */
+        // expected: without authority the remote subscription lapses at its finite TTL; cleanup never renews it.
       }
       this.store.patch(row.id, {
         status: 'tombstone',
@@ -234,6 +234,7 @@ export class McpEvents {
       const result = await this.#client.poll(row)
       await this.#acceptPoll(row, result, now)
     } catch {
+      // expected: the row records the failure as catching_up and the next sweep, a minute on, tries again.
       this.store.patch(initial.id, {
         status: 'catching_up',
         lastError: 'reconnect_or_poll_required',

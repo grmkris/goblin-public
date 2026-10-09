@@ -10,7 +10,7 @@ import {
 } from '@modelcontextprotocol/client'
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/client/validators/cf-worker'
 import { Predicate } from 'effect'
-import { Forbidden, Conflict, GrantDenied, NotFound, UpstreamMcp } from '../http/errors.ts'
+import { Forbidden, Conflict, GrantDenied, Internal, NotFound, UpstreamMcp } from '../http/errors.ts'
 import {
   SKILLS_EXTENSION,
   type SkillEntry,
@@ -93,8 +93,8 @@ const optionalTemplates = async (
 function assertEndpoint(server: McpServerConfig): void {
   const url = new URL(server.endpoint)
   const localHttp = url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1')
-  if (url.protocol !== 'https:' && !localHttp) throw new Error('mcp_endpoint_not_https')
-  if (url.username || url.password || url.hash) throw new Error('mcp_endpoint_invalid')
+  if (url.protocol !== 'https:' && !localHttp) throw new Internal({ reason: 'mcp_endpoint_not_https' })
+  if (url.username || url.password || url.hash) throw new Internal({ reason: 'mcp_endpoint_invalid' })
 }
 
 /**
@@ -110,14 +110,14 @@ export class McpConnectionManager {
   constructor(options: McpManagerOptions) {
     this.#options = options
     this.#servers = new Map(options.servers.map((server) => [server.serverId, server]))
-    if (this.#servers.size !== options.servers.length) throw new Error('mcp_server_id_duplicate')
+    if (this.#servers.size !== options.servers.length) throw new Internal({ reason: 'mcp_server_id_duplicate' })
     for (const server of options.servers) assertEndpoint(server)
   }
 
   /** Start offering a server the owner added. */
   add(server: McpServerConfig): void {
     assertEndpoint(server)
-    if (this.#servers.has(server.serverId)) throw new Error('mcp_server_id_duplicate')
+    if (this.#servers.has(server.serverId)) throw new Internal({ reason: 'mcp_server_id_duplicate' })
     this.#servers.set(server.serverId, server)
   }
 
@@ -208,7 +208,7 @@ export class McpConnectionManager {
             events = Schema.decodeUnknownSync(RawDiscovery)(JSON.parse(new TextDecoder().decode(raw))).result
               .capabilities.events
           } catch {
-            /* Ordinary legacy discovery has no draft capability. */
+            // expected: ordinary legacy discovery has no draft capability to decode.
           }
         }
         return response
@@ -244,6 +244,7 @@ export class McpConnectionManager {
       this.#touch(connection)
       return connection
     } catch (error) {
+      // expected: the client failed to open; closing what it holds must not hide that failure.
       await client.close().catch(() => undefined)
       throw mapMcpError(error, server.serverId)
     }
@@ -286,6 +287,7 @@ export class McpConnectionManager {
     this.#connections.delete(serverId)
     if (connection === undefined) return
     clearTimeout(connection.idle)
+    // expected: the connection is forgotten either way; a transport that fails to close has nothing left to release.
     await connection.client.close().catch(() => undefined)
   }
 
@@ -373,7 +375,11 @@ export class McpConnectionManager {
                 throw new GrantDenied({ serverId, name })
             },
             { timeout: this.#options.timeoutMs ?? 30_000, ...request },
-            (guarded) => connection.client.callTool({ name, arguments: JSON.parse(argumentsJson) }, guarded),
+            (guarded) => {
+              // SAFETY: the arguments serialized once above, parsed again so the SDK sends exactly the frozen input.
+              const frozen = JSON.parse(argumentsJson) as Record<string, unknown>
+              return connection.client.callTool({ name, arguments: frozen }, guarded)
+            },
           ),
         )
       },

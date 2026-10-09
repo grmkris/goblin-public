@@ -69,6 +69,8 @@ const dispatch = (row: ApprovalRow, run: RunProgram) =>
     const now = yield* Clock.currentTimeMillis
     yield* attempt(() => store.finish(row.id, result, now))
   }).pipe(
+    // expected: a dispatch that did not complete is recorded as failed, or uncertain once it may have taken effect,
+    // which the owner's card and the conversation then show.
     Effect.catch(() =>
       Effect.gen(function* () {
         const store = yield* Approvals

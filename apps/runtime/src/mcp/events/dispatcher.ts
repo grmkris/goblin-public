@@ -56,6 +56,7 @@ export class EventDispatcher {
           await this.#handle(subscription, envelope, receipt, now)
         this.store.finish(row.subscriptionId, row.webhookId, now)
       } catch {
+        // expected: the delivery stays queued and is retried with backoff; the row counts its attempts.
         this.store.retry(row, now)
       }
     }

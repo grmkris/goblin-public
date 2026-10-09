@@ -1,21 +1,17 @@
 import type { CapabilityChange, ConversationCapabilities } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import { type AppError, InvalidInput } from '../http/errors.ts'
-import {
-  type AgentServices,
-  Capabilities,
-  Chats,
-  Conversations,
-  Mcp,
-  Skills,
-  attempt,
-  attemptSync,
-  nowSecondsEffect,
-} from '../services.ts'
+import { Capabilities, Chats, Conversations, Mcp, Skills, attempt, attemptSync, nowSecondsEffect } from '../services.ts'
 import { capabilityView, offers } from './view.ts'
 
+/**
+ * What reading a conversation's switches takes, written out: a handler of the owner API calls these programs, and its
+ * types must never depend on AgentServices.
+ */
+type ReadServices = Conversations | Capabilities | Mcp | Skills
+
 /** A registered conversation's switches over the agent's servers, grants and skills libraries, as they are now. */
-export const capabilitiesOf = (thread: string): Effect.Effect<ConversationCapabilities, AppError, AgentServices> =>
+export const capabilitiesOf = (thread: string): Effect.Effect<ConversationCapabilities, AppError, ReadServices> =>
   Effect.gen(function* () {
     const kind = yield* Conversations.use((conversations) => attemptSync(() => conversations.kindOf(thread)))
     const capabilities = yield* Capabilities
@@ -41,7 +37,7 @@ export const capabilitiesOf = (thread: string): Effect.Effect<ConversationCapabi
 export const changeCapabilities = (
   thread: string,
   change: CapabilityChange,
-): Effect.Effect<ConversationCapabilities, AppError, AgentServices> =>
+): Effect.Effect<ConversationCapabilities, AppError, ReadServices | Chats> =>
   Effect.gen(function* () {
     const view = yield* capabilitiesOf(thread)
     const capabilities = yield* Capabilities

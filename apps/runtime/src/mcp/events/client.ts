@@ -79,7 +79,6 @@ export class EventsClient {
     if (store.list().length >= EVENT_LIMITS.subscriptions && current === undefined)
       throw new InvalidInput({ reason: 'too many event subscriptions' })
     const now = this.now()
-    // @effect-diagnostics-next-line cryptoRandomUUID:off -- Local subscription identity; never a remote authority handle.
     const id = current?.id ?? crypto.randomUUID()
     const binding = { id, serverId }
     const secret = await cipher.encrypt(makeSecret(), secretAad(binding))

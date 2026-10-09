@@ -21,6 +21,7 @@ function endpointOf(raw: string): URL | undefined {
     const url = new URL(raw)
     return url.protocol === 'https:' && url.username === '' && url.password === '' && url.hash === '' ? url : undefined
   } catch {
+    // expected: text that is not a URL is not an endpoint.
     return undefined
   }
 }

@@ -31,7 +31,7 @@ export class EventIngress {
         await verifyWebhook(await cipher.decrypt(secret, secretAad(row)), input, input.body, now())
         return true
       } catch {
-        /* Try only bounded candidate secrets. */
+        // expected: a secret that does not verify falls through to the next of the bounded candidates.
       }
     }
     return false

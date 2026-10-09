@@ -18,7 +18,7 @@ export function redactSecretText(text: string): string {
   try {
     safe = JSON.stringify(redactSecretFields(JSON.parse(text)))
   } catch {
-    // Plain text stays text.
+    // expected: text that is not JSON stays text, scrubbed below.
   }
   return safe.replace(BEARER, 'Bearer [redacted]').replace(ASSIGNED, '$1=[redacted]')
 }

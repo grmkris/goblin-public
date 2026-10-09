@@ -80,7 +80,6 @@ export class McpHost {
     this.#added = options.added
     this.#catalog = new RegistryCatalog(options.fetch)
     this.#registries = options.registries
-    // @effect-diagnostics-next-line cryptoRandomUUID:off -- Unguessable suffixes for added server ids.
     this.#random = options.random ?? (() => crypto.randomUUID().replaceAll('-', ''))
     this.#configured = new Set(options.servers.map((server) => server.serverId))
     this.#skillsEnabled = (serverId) => options.skillsEnabled?.(serverId) === true

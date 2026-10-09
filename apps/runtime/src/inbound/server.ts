@@ -61,6 +61,7 @@ export const inboundServer = (agent: ClientAgentPort): McpServer => {
       try {
         return text(await agent.ask(input.input, input.operationId ?? crypto.randomUUID(), waitMs))
       } catch (cause) {
+        // expected: the failure is the tool's error result, its tag and safe fields only (tools.ts).
         return failed(cause)
       }
     },

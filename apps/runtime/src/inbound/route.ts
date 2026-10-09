@@ -20,6 +20,7 @@ export const handleInboundMcp = async (request: Request, env: RuntimeEnv): Promi
   try {
     principal = await verifyClientToken(token, env)
   } catch {
+    // expected: a token that does not verify is answered with the sign-in challenge, as a missing one is.
     return challengeOf(env.APP_URL)
   }
   // The token's subject is the user who consented; the client talks to that user's agent only. Asking runs the model,

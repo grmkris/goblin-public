@@ -11,13 +11,14 @@ const b64 = (bytes: ArrayBuffer) => btoa(String.fromCodePoint(...new Uint8Array(
 const unb64 = (value: string) => Uint8Array.from(atob(value), (c) => c.codePointAt(0) ?? 0)
 const rawSecret = (secret: string): Uint8Array<ArrayBuffer> => {
   if (!secret.startsWith('whsec_')) throw new InvalidInput({ reason: 'event secret prefix' })
+  let bytes: Uint8Array<ArrayBuffer>
   try {
-    const bytes = unb64(secret.slice(6))
-    if (bytes.byteLength < 24 || bytes.byteLength > 64) throw new Error('length')
-    return bytes
+    bytes = unb64(secret.slice(6))
   } catch {
     throw new InvalidInput({ reason: 'event secret encoding' })
   }
+  if (bytes.byteLength < 24 || bytes.byteLength > 64) throw new InvalidInput({ reason: 'event secret encoding' })
+  return bytes
 }
 
 export async function sign(secret: string, webhookId: string, timestamp: string, body: Uint8Array): Promise<string> {

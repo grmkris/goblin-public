@@ -89,6 +89,7 @@ export async function serverClaims(endpoint: URL, fetcher: typeof fetch): Promis
       ...(icon === undefined ? {} : { icon }),
     }
   } catch {
+    // expected: a missing, slow, oversized or malformed card only leaves the server unlabelled.
     return {}
   }
 }
