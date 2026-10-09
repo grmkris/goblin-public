@@ -55,14 +55,30 @@ export function authoredContent(author: string, text: string): TextContent[] {
   ]
 }
 
+/** A name or quote put inside `[… "…"]`: quotes, brackets and line breaks out, runs of space as one. */
+const quotable = (text: string): string =>
+  text
+    .replaceAll(/["[\]]/gu, ' ')
+    .replaceAll(/\s+/gu, ' ')
+    .trim()
+
 /**
  * Main's note that the owner started a thread with "+", as its model reads it: the thread's name and nothing from
  * inside it. The name is the cheap model's or the owner's, so quotes, brackets and line breaks are taken out of it.
  */
 export function threadStartedContent(title: string): TextContent[] {
-  const name = title
-    .replaceAll(/["[\]]/gu, ' ')
-    .replaceAll(/\s+/gu, ' ')
-    .trim()
-  return [{ type: 'text', text: `[thread started: "${name}"]` }]
+  return [{ type: 'text', text: `[thread started: "${quotable(title)}"]` }]
+}
+
+/** At most this many characters of the owner's words go into a thread head's note for the model. */
+const HEAD_QUOTE = 200
+
+/**
+ * The note a chat's model reads where the owner started a Thread from its composer (ADR 0034): what they wrote,
+ * bounded, so the chat knows the Thread exists without its conversation coming back.
+ */
+export function threadHeadContent(text: string): TextContent[] {
+  const words = quotable(text)
+  const quote = words.length > HEAD_QUOTE ? `${words.slice(0, HEAD_QUOTE)}…` : words
+  return [{ type: 'text', text: `[the owner started a thread: "${quote}"]` }]
 }

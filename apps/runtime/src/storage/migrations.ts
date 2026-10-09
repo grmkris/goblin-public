@@ -380,6 +380,15 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'CREATE INDEX app_conversation_topic ON app_conversations (topic_id)',
     ].join(BREAK),
   },
+  {
+    // Start thread (ADR 0034): the owner's operation that started a Thread, so one operation makes one Thread.
+    key: '20261026000350_thread_heads',
+    tables: ['app_conversations'],
+    sql: [
+      'ALTER TABLE app_conversations ADD COLUMN origin_op TEXT',
+      'CREATE UNIQUE INDEX app_conversation_origin_op ON app_conversations (origin_op)',
+    ].join(BREAK),
+  },
 ]
 
 /**

@@ -1,18 +1,20 @@
 import { type ConversationView, type HelperExclusion, PERSONAL_TOPIC, type UpdateConversation } from '@goblin/contracts'
 import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import type { Conversation, EntryRecord, Extension } from '@earendil-works/pi-durable'
+import type { Conversation, EntryId, EntryRecord, Extension } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import type { CapabilityProfiles } from './capabilities/profiles.ts'
 import { writeHelperExclusions } from './capabilities/profiles.ts'
 import { registerPrimary, type ChatDirectory } from './chats/directory.ts'
-import { InvalidInput, NotFound } from './http/errors.ts'
+import { ChatStops } from './chats/stops.ts'
+import { Conflict, InvalidInput, NotFound } from './http/errors.ts'
 import type { MainMemory } from './memory/memory.ts'
 import type { CheapModel } from './memory/model.ts'
 import { authoredContent, threadStartedContent } from './pi/content.ts'
 import { BACKGROUND, conversationId, entryId } from './pi/context.ts'
-import { answerText, dropRelaysTo, Subagents } from './pi/subagent-relay.ts'
+import { answerText, Subagents } from './pi/subagent-relay.ts'
 import { type ReplyStats, recentMessages } from './pi/transcript.ts'
+import { settledEnd } from './pi/turns.ts'
 import { ReplyLedger } from './replies.ts'
 import { appConversations } from './storage/schema.ts'
 import { appTopics } from './storage/topics.ts'
@@ -21,18 +23,6 @@ type Row = typeof appConversations.$inferSelect
 
 /** What an update did: the conversation as it is now, and every conversation a Close closed (it and those below). */
 export type Updated = { readonly view: ConversationView; readonly closed: readonly string[] }
-
-/**
- * `tree`: `id` and every conversation under it, as a recursive CTE. `UNION` drops repeats, so even a cycle in stored
- * parents would end.
- */
-const tree = (id: string) =>
-  sql`WITH RECURSIVE tree(id) AS (
-        SELECT ${id}
-        UNION
-        SELECT conversation.session_id FROM app_conversations AS conversation
-        JOIN tree ON conversation.parent_session = tree.id
-      )`
 
 /** Entries in one page of a conversation's history. */
 const HISTORY_PAGE = 40
@@ -85,13 +75,17 @@ export class ConversationRegistry {
   readonly #harness: PiHarness
   readonly #kit: ThreadKit
   readonly #naming = new Set<string>()
+  /** Thread starts in flight by operation id: a repeat waits for the first, then finds its Thread. */
+  readonly #starting = new Map<string, Promise<unknown>>()
   readonly #replies = new ReplyLedger()
   readonly #listeners = new Set<(ids: readonly string[]) => void>()
+  readonly #stops: ChatStops
 
   constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, kit: ThreadKit, now: number) {
     this.#db = db
     this.#harness = harness
     this.#kit = kit
+    this.#stops = new ChatStops(db, harness, kit.chats)
     registerPrimary(db, now)
     kit.chats.onRebind((chat) => this.#changed([chat]))
   }
@@ -200,25 +194,75 @@ export class ConversationRegistry {
     const id = entryId(entry)
     const [at] = (await source.entries({ minEntryId: id, maxEntryId: id }, 1, undefined, BACKGROUND)).items
     if (at === undefined || !BRANCHABLE.has(at.kind)) throw new InvalidInput({ reason: 'branch_entry' })
-    const recallThrough = this.#recallAt(from, at.id)
+    return this.#forkThread(from, source, at.id, now)
+  }
+
+  /**
+   * A thread forked from `from` at `at`, in its Topic. The fork starts from the parent's agent as it was at that entry,
+   * made a thread: the host's extensions and the thread's (a subagent's own selection and instructions go), its tool
+   * filter set to the parent's switches now.
+   */
+  async #forkThread(
+    from: Row,
+    source: Conversation,
+    at: EntryId,
+    now: number,
+    origin: { readonly originOp?: string } = {},
+  ): Promise<ConversationView> {
+    const recallThrough = this.#recallAt(from, at)
     const extensions = { add: recallThrough === null ? [this.#kit.thread] : [this.#kit.thread, this.#kit.recall] }
-    // The fork starts from the parent's agent as it was at that entry, made a thread: the host's extensions and the
-    // thread's (a subagent's own selection and instructions go), its tool filter set to the parent's switches now.
-    const agent = { extensions, instructions: null, tools: this.#kit.capabilities.piTools(parent) }
-    const fork = await source.fork(at.id, { ownership: { kind: 'ownerless' }, agent }, BACKGROUND)
+    const agent = { extensions, instructions: null, tools: this.#kit.capabilities.piTools(from.chatId) }
+    const fork = await source.fork(at, { ownership: { kind: 'ownerless' }, agent }, BACKGROUND)
     if (from.kind === 'subagent') {
-      this.#db.update(appConversations).set({ keepOpenAt: now }).where(eq(appConversations.chatId, parent)).run()
-      this.#changed([parent])
+      this.#db.update(appConversations).set({ keepOpenAt: now }).where(eq(appConversations.chatId, from.chatId)).run()
+      this.#changed([from.chatId])
     }
     return this.#insert(
       {
         chatId: String(fork.id),
         kind: 'thread',
-        parentSession: parent,
-        forkEntry: at.id,
+        parentSession: from.chatId,
+        forkEntry: at,
         recallThrough,
         topicId: from.topicId,
+        ...origin,
       },
+      now,
+    )
+  }
+
+  /**
+   * The Thread the owner's operation `op` starts from `parent`'s composer (ADR 0034): a fork at the parent's newest
+   * entry outside a running turn, or an empty Thread when there is none, in the parent's Topic. One operation makes
+   * one Thread, also when it is repeated concurrently: a repeat finds it by `origin_op`, and the same operation from
+   * another chat is a `Conflict`. A subagent's chat starts none (its composer writes to the subagent).
+   */
+  async startThread(parent: string, op: string, now: number): Promise<ConversationView> {
+    const previous = this.#starting.get(op) ?? Promise.resolve()
+    const next = previous.catch(() => undefined).then(async () => this.#startOnce(parent, op, now))
+    this.#starting.set(op, next)
+    try {
+      return await next
+    } finally {
+      if (this.#starting.get(op) === next) this.#starting.delete(op)
+    }
+  }
+
+  async #startOnce(parent: string, op: string, now: number): Promise<ConversationView> {
+    const existing = this.#db.select().from(appConversations).where(eq(appConversations.originOp, op)).get()
+    if (existing !== undefined) {
+      if (existing.parentSession !== parent) throw new Conflict({ reason: 'operation_used' })
+      return this.#describe(existing)
+    }
+    this.requireOpen(parent)
+    const from = this.#registered(parent)
+    if (from.kind === 'subagent') throw new InvalidInput({ reason: 'start_thread' })
+    const source = await this.#conversation(parent)
+    const at = await settledEnd(await this.#harness.pi(), this.#kit.chats.session(parent), source)
+    if (at !== undefined) return this.#forkThread(from, source, at, now, { originOp: op })
+    const session = await this.#session([this.#kit.thread], parent)
+    return this.#insert(
+      { chatId: session, kind: 'thread', parentSession: parent, topicId: from.topicId, originOp: op },
       now,
     )
   }
@@ -502,7 +546,7 @@ export class ConversationRegistry {
 
   /** `id` and every conversation under it, any depth, closed ones included. */
   subtree(id: string): readonly string[] {
-    return this.#db.all<{ id: string }>(sql`${tree(id)} SELECT id FROM tree`).map((row) => row.id)
+    return this.#stops.subtree(id)
   }
 
   /** The owner has seen `id` up to `now`, so replies until then are read. The mark only moves forward. */
@@ -523,18 +567,11 @@ export class ConversationRegistry {
   async close(id: string, by: 'owner' | 'done', now: number): Promise<readonly string[]> {
     const target = this.#registered(id)
     if (isChannel(target)) throw channelRefusal(target)
-    const closed = this.#db
-      .all<{ session_id: string }>(
-        sql`${tree(id)}
-            UPDATE app_conversations SET closed_at = ${now}, closed_by = ${by}
-            WHERE closed_at IS NULL AND session_id IN tree
-            RETURNING session_id`,
-      )
-      .map((row) => row.session_id)
+    const closed = this.#stops.closeTree(id, by, now)
     this.#changed(closed)
     // A job done closes from its own last relay, which has nothing left to drop.
-    if (by === 'owner') await this.#dropRelays(closed)
-    await this.#stop(closed)
+    if (by === 'owner') await this.#stops.dropRelays(closed)
+    await this.#stops.stop(closed)
     return closed
   }
 
@@ -544,42 +581,9 @@ export class ConversationRegistry {
    * reports: a stopped job reports nothing. Call it before stopping `id` itself.
    */
   async stopSubagents(id: string): Promise<void> {
-    const below = this.#db.all<{ session_id: string }>(
-      sql`WITH RECURSIVE tree(id) AS (
-            SELECT ${id}
-            UNION
-            SELECT conversation.session_id FROM app_conversations AS conversation
-            JOIN tree ON conversation.parent_session = tree.id
-            WHERE conversation.kind = 'subagent' AND conversation.closed_at IS NULL
-          )
-          SELECT id AS session_id FROM tree WHERE id <> ${id}`,
-    )
-    const stopping = below.map((row) => row.session_id)
-    await this.#dropRelays([id, ...stopping])
-    await this.#stop(stopping)
-  }
-
-  /** Stops the relays carrying messages to each subagent among `sessions` from its spawner. */
-  async #dropRelays(sessions: readonly string[]): Promise<void> {
-    const pi = await this.#harness.pi()
-    for (const chat of sessions) {
-      const row = this.#row(chat)
-      if (row?.kind === 'subagent' && row.parentSession !== null)
-        await dropRelaysTo(
-          pi,
-          conversationId(row.spawnerSession ?? this.require(row.parentSession)),
-          conversationId(this.require(chat)),
-        )
-    }
-  }
-
-  /** Aborts each conversation across background boundaries: its runs, its queued inputs and its background tasks. */
-  async #stop(sessions: readonly string[]): Promise<void> {
-    const pi = await this.#harness.pi()
-    for (const chat of sessions)
-      await (
-        await pi.conversation(conversationId(this.require(chat)), BACKGROUND)
-      )?.abort(BACKGROUND, { background: true })
+    const stopping = this.#stops.subagentsBelow(id)
+    await this.#stops.dropRelays([id, ...stopping])
+    await this.#stops.stop(stopping)
   }
 
   /** Registers a new thread with the switches its parent works under, copied in the same synchronous step. */

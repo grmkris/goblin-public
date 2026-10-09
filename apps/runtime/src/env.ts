@@ -44,6 +44,9 @@ import type { ServerSource } from './mcp/servers.ts'
 import type { EventWebhook, EventWebhookResult } from './mcp/events.ts'
 import type { Doorbell } from './channel/doorbell.ts'
 
+/** What starting a Thread returns (ADR 0034): the Thread as it is now and the receipt of the owner's message in it. */
+export type StartedThread = { readonly thread: ConversationView; readonly receipt: PiReceipt }
+
 /** Owner-facing RPC of the Agent DO. The Worker authenticates the owner before calling any of these. */
 export interface AgentRpcMethods {
   readonly submit: (
@@ -56,6 +59,17 @@ export interface AgentRpcMethods {
       readonly selections?: readonly ComposerSelection[]
     },
   ) => Promise<RpcResult<PiReceipt>>
+  /** Post the owner's message as the head of a new Thread of `thread`; the reply lands there (ADR 0034). */
+  readonly startThread: (
+    thread: string,
+    input: string,
+    operationId: string,
+    context?: {
+      readonly appContext?: readonly AppContext[]
+      readonly attachments?: readonly string[]
+      readonly selections?: readonly ComposerSelection[]
+    },
+  ) => Promise<RpcResult<StartedThread>>
   readonly conversationQueue: (thread: string) => Promise<RpcResult<ConversationQueue>>
   readonly removeQueuedInput: (thread: string, input: QueueRemoval) => Promise<RpcResult<QueueRemovalResult>>
   readonly composerOptions: (thread: string) => Promise<RpcResult<ComposerOptions>>

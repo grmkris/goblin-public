@@ -122,6 +122,8 @@ export const appConversations = sqliteTable('app_conversations', {
   routineRunId: text('routine_run_id'),
   /** The Topic it belongs to (ADR 0032): Personal unless it is, or descends from, another Topic's Conversation. */
   topicId: integer('topic_id').notNull().default(1),
+  /** The owner's operation that started this Thread from a composer or a Move (ADR 0034): one Thread per operation. */
+  originOp: text('origin_op').unique(),
 })
 
 /** Pi deduplicates per session; chat admission remembers the original session across future rebinds. */

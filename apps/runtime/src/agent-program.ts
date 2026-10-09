@@ -142,7 +142,7 @@ export type OwnerMessageContext = {
   readonly selections?: readonly ComposerSelection[]
 }
 
-type OwnerSubmit = {
+export type OwnerSubmit = {
   harness: PiHarness
   applied: Applied
   routines: RoutineRunner

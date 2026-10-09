@@ -18,10 +18,10 @@ function capped(text: string): string {
 }
 
 /**
- * Entries of main the memory keeps as `user`: the owner's words, a note shared from a thread, and the note naming a
- * thread the owner started with "+".
+ * Entries of main the memory keeps as `user`: the owner's words, a note shared from a thread, the note naming a
+ * thread the owner started with "+", and a thread head (a Thread started from the composer, or a turn moved out).
  */
-const USER_KINDS: ReadonlySet<string> = new Set(['pi.user', 'app.shared', 'app.thread_started'])
+const USER_KINDS: ReadonlySet<string> = new Set(['pi.user', 'app.shared', 'app.thread_started', 'app.thread_head'])
 
 /** The memory's message for a main entry, or none for entries it leaves out (system, compaction, its own views). */
 export function logMessage(entry: Pick<EntryRecord, 'kind' | 'model'>): LogMessage | undefined {

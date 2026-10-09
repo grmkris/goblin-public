@@ -156,6 +156,14 @@ const conversationRoutes: Readonly<
     const { input, operationId, appContext = [], attachments = [], selections = [] } = body
     return json(unwrap(await agent.submit(thread, input, operationId, { appContext, attachments, selections })), 202)
   },
+  'POST threads': async (request, agent, thread) => {
+    const body = await readJson(request, SendMessage)
+    const { input, operationId, appContext = [], attachments = [], selections = [] } = body
+    return json(
+      unwrap(await agent.startThread(thread, input, operationId, { appContext, attachments, selections })),
+      201,
+    )
+  },
   'POST stop': async (request, agent, thread) =>
     json({ stopped: unwrap(await agent.stop(thread, (await readJson(request, Stop)).operationId)) }),
   'GET queue': async (_request, agent, thread) => json(unwrap(await agent.conversationQueue(thread))),
@@ -338,7 +346,8 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
     ['/api/routines', '/api/topics', '/api/files', '/api/apps', '/api/agent-apps', '/api/home', '/api/mcp'].some(
       (prefix) => under(path, prefix),
     ) ||
-    (request.method === 'DELETE' && /^\/api\/conversations\/\d{1,12}\/queue$/u.test(path))
+    (request.method === 'DELETE' && /^\/api\/conversations\/\d{1,12}\/queue$/u.test(path)) ||
+    (request.method === 'POST' && /^\/api\/conversations\/\d{1,12}\/(?:threads|move)$/u.test(path))
   )
     browserWrite(request, env.APP_URL)
   if (path.startsWith('/api/billing/')) return Effect.runPromise(billingApi(request, env, userId))

@@ -136,6 +136,12 @@ have a slot after the entry they follow and a provider (`components/shell/epheme
 yet.
 A thread started with "+" tells its channel its name once it has one (ADR 0010): the channel gets one
 `app.thread_started` note, `[thread started: "<title>"]`, and its transcript shows that thread's summary.
+**Start thread** ([ADR 0034](adr/0034-move-to-thread.md), `chats/thread-heads.ts`) posts the owner's message as the
+head of a new Thread instead: `POST /api/conversations/:id/threads` forks the chat at its newest entry outside a
+running turn (an empty Thread when it has none) in the same Topic, writes an `app.thread_head` entry
+(`ThreadHeadData`, request id `thread-head:<op>`) into the chat as a passive write whose model text is a bounded `[the
+owner started a thread: "…"]`, then submits the message into the Thread through the ordinary owner path.
+`app_conversations.origin_op` (unique) makes one Thread per operation id, also for concurrent repeats.
 
 Queued inputs in Main and ordinary threads stay in Pi's native `InboxDoc`. The browser projects native inbox IDs
 and modes, then reads contents through `GET /api/conversations/:id/queue`; helper and routine queues are absent
@@ -173,6 +179,7 @@ The owner API is conversation-scoped:
 | `PATCH /api/conversations/:id/capabilities` | Switch one `CapabilityTarget` on or off there (only what is shown can be switched off), or `{ reset: 'parent' }` a thread back to its parent's switches. A subagent's are not editable. |
 | `GET /api/conversations/:id/queue` | Ordered queued input IDs, modes and contents for Main and ordinary threads, from Pi InboxDoc. Passive writes, helpers and routine inputs are excluded. |
 | `DELETE /api/conversations/:id/queue` | Remove a queued input by positive safe-integer `submissionId`, with the same-origin CSRF marker. Returns `removed`, `already_started`, `already_settled` or `not_found`; never stops a running input. |
+| `POST /api/conversations/:id/threads` | Start thread (ADR 0034): the `SendMessage` body is posted as the head of a new Thread of this chat and answered there. Returns 201 `{ thread, receipt }`; the same `operationId` returns the same Thread (another chat's is 409). Strict CSRF marker. |
 | `POST /api/conversations/:id/messages` | Submit `input`, a stable `operationId`, optional `appContext` (by App id), up to eight `attachments` (owner file paths that must exist) and up to sixteen stable composer `selections`; skill-only input is allowed. Returns 202 acceptance. |
 | `GET /api/files?dir=` | A directory of the owner's files (`FileListing`): `/uploads`, `/agent` or a folder under one, with the storage in use. |
 | `GET`, `PUT`, `DELETE /api/files/content?path=` | Download, write (the body, `content-length` required) or delete one of the owner's files. Downloads are attachments, except PNG, JPEG, GIF and WebP, which open in place; all are sandboxed by CSP. |

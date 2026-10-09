@@ -60,6 +60,7 @@ import {
 } from './agent-program.ts'
 import * as AppPrograms from './apps/program.ts'
 import * as TopicPrograms from './topics/program.ts'
+import { startThread } from './chats/thread-heads.ts'
 import { budgetExtension } from './pi/budget.ts'
 import { chooseOwnerModel, type Applied } from './agent-model.ts'
 import { routinesExtension } from './pi/routines.ts'
@@ -240,16 +241,23 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   async #owner<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
     return encodeExit(await this.#exit(ownerRequest(program)))
   }
-  /** The owner's message into a thread, with what an open App shared for the agent as separate untrusted blocks. */
-  submit(thread: string, input: string, operationId: string, context: OwnerMessageContext = {}) {
-    const runtime = {
+  /** What the owner's message paths run with. */
+  #submitRuntime() {
+    return {
       harness: this.harness,
       applied: this.#applied,
       routines: this.#routines,
       subagents: this.#subagents,
       run: <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program),
     }
-    return this.#owner(submitOwner({ ...runtime, thread, text: input, operationId, context }))
+  }
+  /** The owner's message into a thread, with what an open App shared for the agent as separate untrusted blocks. */
+  submit(thread: string, input: string, operationId: string, context: OwnerMessageContext = {}) {
+    return this.#owner(submitOwner({ ...this.#submitRuntime(), thread, text: input, operationId, context }))
+  }
+  /** The owner's message posted as the head of a new Thread of `thread`; the reply lands in the Thread (ADR 0034). */
+  startThread(thread: string, input: string, operationId: string, context: OwnerMessageContext = {}) {
+    return this.#owner(startThread({ ...this.#submitRuntime(), parent: thread, text: input, operationId, context }))
   }
   conversationQueue(thread: string) {
     return this.#owner(ownerQueue(this.harness, thread))
