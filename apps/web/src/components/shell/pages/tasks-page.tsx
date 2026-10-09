@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { type PersonaInvocationView, RoutinePage, type RoutineView } from '@goblin/contracts'
 import { Schema } from 'effect'
 import { RepeatIcon } from 'lucide-react'
-import { request } from '../../../lib/boundary.ts'
+import { failureText, request } from '../../../lib/boundary.ts'
 import { delegates, personaTasks } from '../../../lib/rail.ts'
 import { subagentState } from '../../../lib/subagent-state.ts'
 import { relativeTime, threadTitle } from '../../../lib/threads.ts'
@@ -18,17 +18,27 @@ const decodeRoutines = Schema.decodeUnknownSync(RoutinePage)
 const NEXT = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 const SCHEDULED: readonly RoutineView['state'][] = ['activating', 'active', 'paused']
 
-/** The routines that run on their own: their names, when each runs next or last ran. Read once the page opens. */
-function useRoutines(): readonly RoutineView[] {
-  const [routines, setRoutines] = useState<readonly RoutineView[]>([])
+type ScheduledRoutines = { readonly routines: readonly RoutineView[]; readonly error: string }
+
+/**
+ * The routines that run on their own: their names, when each runs next or last ran. Read once the page opens; a failed
+ * read says so (`error`), so it never passes for having none.
+ */
+function useRoutines(): ScheduledRoutines {
+  const [read, setRead] = useState<ScheduledRoutines>({ routines: [], error: '' })
   useEffect(() => {
     const controller = new AbortController()
     request('/api/routines', { signal: controller.signal })
-      .then((data) => setRoutines(decodeRoutines(data).routines.filter((each) => SCHEDULED.includes(each.state))))
-      .catch(() => setRoutines([]))
+      .then((data) => {
+        const routines = decodeRoutines(data).routines.filter((each) => SCHEDULED.includes(each.state))
+        setRead({ routines, error: '' })
+      })
+      .catch((failure: unknown) => {
+        if (!controller.signal.aborted) setRead({ routines: [], error: failureText(failure) })
+      })
     return () => controller.abort()
   }, [])
-  return routines
+  return read
 }
 
 const STATES: Readonly<Record<PersonaInvocationView['state'], string>> = {
@@ -91,11 +101,18 @@ function PersonaAnswers({ now }: { readonly now: number }) {
   )
 }
 
-/** The routines on a schedule: each by its title, when it runs next (or that it is paused); they open in Settings. */
-function Routines({ routines }: { readonly routines: readonly RoutineView[] }) {
-  if (routines.length === 0) return null
+/**
+ * The routines on a schedule: each by its title, when it runs next (or that it is paused); they open in Settings. A
+ * failed read shows in their place.
+ */
+function Routines({ routines, error }: ScheduledRoutines) {
+  if (routines.length === 0 && error === '') return null
   return (
-    <PageSection id="routines" title="Routines">
+    <PageSection
+      id="routines"
+      title="Routines"
+      {...(error !== '' && { note: <span role="alert">Routines could not be read. {error}</span> })}
+    >
       <ul className="list-rows">
         {routines.map((routine) => (
           <li key={routine.id}>
@@ -124,9 +141,9 @@ export function TasksPage() {
   const feed = useWorkspaceFeed()
   const now = useMinute()
   const work = delegates(feed.conversations, feed.activity)
-  const routines = useRoutines()
+  const scheduled = useRoutines()
   const listed = [...work.active, ...work.finished]
-  if (listed.length + feed.invocations.length + routines.length === 0)
+  if (listed.length + feed.invocations.length + scheduled.routines.length === 0 && scheduled.error === '')
     return <p className="page-empty">No delegated work.</p>
   return (
     <div className="page-stack">
@@ -140,7 +157,7 @@ export function TasksPage() {
         </PageSection>
       )}
       <PersonaAnswers now={now} />
-      <Routines routines={routines} />
+      <Routines {...scheduled} />
     </div>
   )
 }
