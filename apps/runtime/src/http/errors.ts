@@ -1,6 +1,7 @@
-import { AppError, Internal, InvalidInput } from '@goblin/contracts/api'
+import { AppError, Internal } from '@goblin/contracts/api'
 import * as Schema from 'effect/Schema'
-import { safeErrorType } from '../telemetry/safety.ts'
+import { writeLine } from '../observability/logger.ts'
+import { framesOf, safeErrorType } from '../observability/report.ts'
 
 /**
  * The runtime's failure vocabulary lives with the API contract (`@goblin/contracts/api`), which answers each one in its
@@ -27,14 +28,20 @@ export {
 const isAppError = Schema.is(AppError)
 
 /**
- * Known failures pass through; anything else becomes `Internal` without leaking its message to the caller. This is the
- * one place an unexpected failure loses its identity, so it is logged here first: its name and a bounded message,
- * never request data (ADR 0024). The log line belongs to the invocation, whose request id Workers Logs keep.
+ * Known failures pass through; anything else becomes `Internal` without leaking its message to the caller. That
+ * includes a `SchemaError`: a request that does not decode is refused as invalid input where it is decoded (`readJson`,
+ * HttpApi's own request decoding), so one that reaches here came from stored data or a value the agent built, which is
+ * our fault, not the caller's. This is the one place an unexpected failure loses its identity, so it is reported here
+ * first: its type and stack locations, never its message (ADR 0024).
  */
 export const toAppError = (cause: unknown): AppError => {
   if (isAppError(cause)) return cause
-  if (Schema.isSchemaError(cause)) return new InvalidInput({ reason: 'schema' })
-  const name = safeErrorType(cause)
-  console.warn(JSON.stringify({ level: 'warn', event: 'unexpected', name, error: safeErrorType(cause) }))
+  writeLine('error', {
+    event: 'failure',
+    where: 'http.toAppError',
+    'error.type': safeErrorType(cause),
+    frames: cause instanceof Error ? framesOf(cause) : [],
+    severity: 'Error',
+  })
   return new Internal({ reason: 'unexpected' })
 }

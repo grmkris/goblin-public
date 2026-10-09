@@ -1,6 +1,8 @@
+import { codeOf } from '@goblin/contracts/api'
 import * as Match from 'effect/Match'
 import * as Schema from 'effect/Schema'
 import { AppError, toAppError } from './errors.ts'
+import { writeLine } from '../observability/logger.ts'
 import { expectedFailure } from '../telemetry/safety.ts'
 
 export const statusOf = (error: AppError): number =>
@@ -35,20 +37,26 @@ export const secured = (response: Response): Response => {
   return result
 }
 
-/** One structured log line per failed request: route, tag and request id. Bodies and credentials are never logged. */
+/**
+ * The route a failure line names: the API area (`/api/conversations/{path}`), never the ids or names below it, which
+ * the owner chose.
+ */
+const routeTemplate = (path: string): string => {
+  const [, root = '', area, ...rest] = path.split('/')
+  return area === undefined ? path : `/${root}/${area}${rest.length === 0 ? '' : '/{path}'}`
+}
+
+/** One structured log line per failed request: route, status, code and reference. Bodies and credentials never. */
 export const failureResponse = (cause: unknown, route: string, requestId: string): Response => {
   const error = toAppError(cause)
   const status = statusOf(error)
-  const line = {
-    level: status >= 500 ? 'error' : expectedFailure(error._tag) ? 'info' : 'warn',
-    route,
-    requestId,
+  writeLine(status >= 500 ? 'error' : expectedFailure(error._tag) ? 'info' : 'warn', {
+    event: 'http.failure',
+    route: routeTemplate(route),
     status,
-    error: error._tag,
-  }
-  if (status >= 500) console.error(JSON.stringify(line))
-  else if (line.level === 'info') console.log(JSON.stringify(line))
-  else console.warn(JSON.stringify(line))
+    code: codeOf(error._tag),
+    ref: requestId,
+  })
   return secured(Response.json(errorBody(error), { status }))
 }
 

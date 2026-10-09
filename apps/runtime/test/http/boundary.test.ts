@@ -1,8 +1,30 @@
 import * as Schema from 'effect/Schema'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { readJson } from '../../src/http/body.ts'
-import { BudgetExhausted, GrantDenied, InvalidInput, PayloadTooLarge, UpstreamMcp } from '../../src/http/errors.ts'
+import {
+  BudgetExhausted,
+  GrantDenied,
+  Internal,
+  InvalidInput,
+  NotFound,
+  PayloadTooLarge,
+  UpstreamMcp,
+  toAppError,
+} from '../../src/http/errors.ts'
 import { failureResponse, statusOf } from '../../src/http/respond.ts'
+
+const SECRET = 'secret-value'
+
+/** The JSON lines `write` sent to `console[method]`, which prints nothing meanwhile. */
+const linesOf = (method: 'log' | 'warn' | 'error', write: () => void): unknown[] => {
+  const spy = vi.spyOn(console, method).mockImplementation(() => undefined)
+  try {
+    write()
+    return spy.mock.calls.map(([line]) => (typeof line === 'string' ? JSON.parse(line) : line))
+  } finally {
+    spy.mockRestore()
+  }
+}
 
 const chunked = (parts: readonly string[]): Request => {
   const encoder = new TextEncoder()
@@ -33,9 +55,46 @@ test('each failure maps to one status; unknown causes become a bodiless 500', as
   expect(statusOf(new GrantDenied({ serverId: 'myplan', name: 'x' }))).toBe(403)
   expect(statusOf(new UpstreamMcp({ serverId: 'myplan', reason: 'timeout' }))).toBe(504)
   expect(statusOf(new BudgetExhausted({ limit: 1000, resetsAt: 86_400 }))).toBe(429)
-  const response = failureResponse(new Error('token=secret-value'), '/api/x', 'req-1')
+  let response = new Response()
+  const lines = linesOf('error', () => {
+    response = failureResponse(new Error(`token=${SECRET}`), '/api/x', 'req-1')
+  })
+  expect(JSON.stringify(lines)).not.toContain(SECRET)
+  expect(lines.at(-1)).toEqual({
+    level: 'error',
+    event: 'http.failure',
+    route: '/api/x',
+    status: 500,
+    code: 'internal',
+    ref: 'req-1',
+  })
   expect(response.status).toBe(500)
   const body = JSON.stringify(await response.json())
   expect(body).toBe('{"error":"Internal","reason":"unexpected"}')
   expect(response.headers.get('cache-control')).toBe('no-store')
+})
+
+test("a failure line names the route's area, never the ids below it", () => {
+  const lines = linesOf('warn', () => failureResponse(new NotFound({ what: 'x' }), '/api/agent-apps/my-diary', 'r'))
+  expect(lines).toEqual([
+    { level: 'warn', event: 'http.failure', route: '/api/agent-apps/{path}', status: 404, code: 'not_found', ref: 'r' },
+  ])
+})
+
+test('a typed failure passes through; anything else, stored data that does not decode included, is ours (H2)', () => {
+  const known = new GrantDenied({ serverId: 'myplan', name: 'x' })
+  expect(toAppError(known)).toBe(known)
+  const Stored = Schema.Struct({ revision: Schema.Number })
+  let error: unknown
+  const lines = linesOf('error', () => {
+    try {
+      Schema.decodeUnknownSync(Stored)({ revision: SECRET })
+    } catch (cause) {
+      error = toAppError(cause)
+    }
+  })
+  expect(error).toBeInstanceOf(Internal)
+  expect(lines).toHaveLength(1)
+  expect(lines[0]).toMatchObject({ event: 'failure', where: 'http.toAppError', 'error.type': 'SchemaError' })
+  expect(JSON.stringify(lines)).not.toContain(SECRET)
 })
