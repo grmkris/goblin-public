@@ -3,7 +3,16 @@ import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import type { CreateConversation, HelperExclusion, MoveToThread, UpdateConversation } from '@goblin/contracts'
 import type { EntryDraft } from '@earendil-works/pi-durable'
-import { ChatOperations, Chats, Conversations, Moves, type PassiveWrite, type RoutineReport } from '../chats/service.ts'
+import { stopOwner, submitOwner } from '../agent-program.ts'
+import {
+  ChatOperations,
+  Chats,
+  Conversations,
+  Moves,
+  type OwnerMessage,
+  type PassiveWrite,
+  type RoutineReport,
+} from '../chats/service.ts'
 import type { ChatDirectory } from '../chats/directory.ts'
 import { NotFound } from '../http/errors.ts'
 import type { ConversationRegistry } from '../conversations.ts'
@@ -58,12 +67,17 @@ const legacyLock = (chats: ChatDirectory, chat: string) =>
       .catch(() => undefined)
   })
 
-/** Admission and passive writes over the legacy directory, the lock shared with its other callers. */
+/**
+ * Admission and passive writes over the legacy directory, the lock shared with its other callers, and the owner's send
+ * and Stop. Those two read services of lanes whose layers come after this one, so they run their programs through the
+ * bridge (a plan check and a fiber of their own) until wave 3 orders the layers for them.
+ */
 export const ChatOperationsAdapter = Layer.effect(
   ChatOperations,
   Effect.gen(function* () {
     const chats = yield* LegacyChats
-    const { harness } = yield* AgentInput
+    const input = yield* AgentInput
+    const { harness, applied, routines, subagents, personas, run } = input
     return ChatOperations.of({
       admit: Effect.fn('ChatOperations.admit')(function* (chat: string, operationId: string) {
         const now = yield* nowSecondsEffect
@@ -86,6 +100,14 @@ export const ChatOperationsAdapter = Layer.effect(
             return conversation.submit({ type: 'write', ...write }, BACKGROUND)
           }),
         )
+      }),
+      send: Effect.fn('ChatOperations.send')(function* (chat: string, message: OwnerMessage) {
+        const { text, operationId, context = {} } = message
+        const owner = { harness, applied, routines, subagents, personas, run }
+        return yield* attempt(() => run(submitOwner({ ...owner, thread: chat, text, operationId, context })))
+      }),
+      stop: Effect.fn('ChatOperations.stop')(function* (chat: string, operationId?: string) {
+        return yield* attempt(() => run(stopOwner({ ...input.stopping(), thread: chat, operationId })))
       }),
     })
   }),

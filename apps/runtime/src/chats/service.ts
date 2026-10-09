@@ -8,9 +8,11 @@ import type {
   MoveToThread,
   UpdateConversation,
 } from '@goblin/contracts'
+import type { PiReceipt } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
 import type * as Effect from 'effect/Effect'
 import type * as Option from 'effect/Option'
+import type { OwnerMessageContext } from '../agent-program.ts'
 import type { AppError } from '../http/errors.ts'
 import type { ChatId, SessionId } from './directory.ts'
 
@@ -46,11 +48,17 @@ export class Chats extends Context.Service<
 /** One write into a chat its model sees at its next turn; no run starts. The request id makes a repeat the same write. */
 export type PassiveWrite = { readonly requestId: string; readonly entry: EntryDraft }
 
+/** The owner's message: its words, its operation id, and what came with it (App context, files, composer tags). */
+export type OwnerMessage = {
+  readonly text: string
+  readonly operationId: string
+  readonly context?: OwnerMessageContext
+}
+
 /**
  * What happens in a chat by operation: admission (an operation's intent is recorded before Pi sees it, and a replay
- * keeps its first session) and passive writes, under the chat's admission lock. The lock covers admission only, never
- * a model call. The owner's sends, Thread starts and Stop are programs over these (agent-program.ts, thread-heads.ts):
- * they read services of lanes whose layers come after this one.
+ * keeps its first session) and passive writes, under the chat's admission lock, and the owner's send and Stop. The lock
+ * covers admission only, never a model call.
  */
 export class ChatOperations extends Context.Service<
   ChatOperations,
@@ -69,6 +77,10 @@ export class ChatOperations extends Context.Service<
     readonly withChat: <A, E, R>(chat: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
     /** Writes into `chat`'s current session under its admission lock. */
     readonly passiveWrite: (chat: string, write: PassiveWrite) => Effect.Effect<Submission, AppError>
+    /** The owner's message into `chat`, or an ask of the Personas it tags; Pi's receipt once admitted. */
+    readonly send: (chat: string, message: OwnerMessage) => Effect.Effect<PiReceipt, AppError>
+    /** Stop in `chat`: its run (or `operationId` alone), its routine run, its subagents and the Personas asked in it. */
+    readonly stop: (chat: string, operationId?: string) => Effect.Effect<boolean, AppError>
   }
 >()('goblin/chats/ChatOperations') {}
 
