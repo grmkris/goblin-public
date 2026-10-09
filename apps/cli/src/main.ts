@@ -5,7 +5,9 @@ import { type ToolInfo, argumentsFor, commandOf, usage } from './commands.ts'
 import { type Settings, settingsOf } from './config.ts'
 import { connect, logout } from './connect.ts'
 import { logs } from './logs.ts'
+import { lookup } from './lookup.ts'
 import { failureText, render } from './render.ts'
+import { stats } from './stats.ts'
 
 const HELP = `goblin: your goblin agent from the terminal, as an MCP client of /mcp (ADR 0024)
 
@@ -15,7 +17,11 @@ const HELP = `goblin: your goblin agent from the terminal, as an MCP client of /
   goblin turns                 recent turns, one line each
   goblin turn <operation id>   one turn end to end
   goblin conversation <id>     a conversation's entries, in full
+  goblin flows [--chat 12]     how conversations moved: sends, replies, threads, moves, Personas, Delegates
+  goblin details --operation <id>   what happened behind one message
   goblin logs <id> [--since 6h]  Workers Logs lines that mention an id
+  goblin lookup <ref|request|op>  those lines, then the details of the operation they name
+  goblin stats [--since 24h]   flow totals across every agent (Analytics Engine)
   goblin ask_agent <message>   ask your agent in its main conversation (needs a plan)
   goblin logout
 
@@ -104,6 +110,18 @@ async function main(argv: readonly string[]): Promise<number> {
     case 'logs':
       console.log(await logs(args, settings.origin, Date.now()))
       return 0
+    case 'stats':
+      console.log(await stats(args, settings.origin))
+      return 0
+    case 'lookup':
+      return withClient(settings, args, async (client) => {
+        const details = async (operation: string): Promise<string> => {
+          const result: CallResult = await client.callTool({ name: 'inspect_details', arguments: { operation } })
+          return result.isError === true ? failureText(errorText(result)) : render('details', result.structuredContent)
+        }
+        console.log(await lookup(args, settings.origin, Date.now(), details))
+        return 0
+      })
     default:
       return withClient(settings, args, (client) => runTool(client, args, settings))
   }

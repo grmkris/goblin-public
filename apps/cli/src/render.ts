@@ -1,9 +1,13 @@
 import {
+  type FlowRecord,
   InspectConversations,
+  InspectDetails,
   InspectEntries,
   type InspectEntry,
+  InspectFlows,
   InspectProblems,
   InspectTurns,
+  type RelatedOperation,
   type TurnSummary,
   TurnTimeline,
 } from '@goblin/contracts/inspect'
@@ -42,6 +46,7 @@ const turnLine = (turn: TurnSummary) =>
     turn.source.padEnd(15),
     `${turn.modelAttempts} calls${turn.failedAttempts > 0 ? ` (${turn.failedAttempts} failed)` : ''}`,
     `${turn.toolCalls} tools${turn.failedToolCalls > 0 ? ` (${turn.failedToolCalls} failed)` : ''}`,
+    ...((turn.errors ?? 0) > 0 ? [`${turn.errors} errors`] : []),
     `${turn.inputTokens}/${turn.outputTokens} tok`,
     turn.operationId,
     turn.reason ?? '',
@@ -74,6 +79,40 @@ function entryLines(entry: InspectEntry): string[] {
   ]
 }
 
+/** A flow step in a line: when, which flow and how it ended, how it came in and who acted, its chat and operation. */
+const flowLine = (flow: FlowRecord) =>
+  [
+    time(flow.at),
+    flow.flow.padEnd(19),
+    flow.status.padEnd(8),
+    `${flow.via}/${flow.actor}`.padEnd(16),
+    flow.chat === undefined ? '' : `chat ${flow.chat}`,
+    flow.operationId ?? '',
+    flow.errorType ?? '',
+    flow.ms === undefined ? '' : `${flow.ms}ms`,
+  ]
+    .filter((part) => part !== '')
+    .join('  ')
+
+const relatedLine = (related: RelatedOperation) =>
+  [
+    `  ${related.kind}`,
+    related.operation,
+    related.chat === undefined ? '' : `chat ${related.chat}`,
+    related.state ?? '',
+  ]
+    .filter((part) => part !== '')
+    .join('  ')
+
+/** Pi's settlement in a line, or that there is none. */
+const piLine = (submission: TurnTimeline['submission']) =>
+  submission === undefined
+    ? 'Pi: no submission found'
+    : `Pi: ${submission.status}${submission.reason === undefined ? '' : ` (${submission.reason})`}`
+
+const gapLines = (coverage: TurnTimeline['coverage']) =>
+  coverage.complete ? [] : ['', ...coverage.gaps.map((gap) => `! ${gap}`)]
+
 const RENDERERS: Readonly<Record<string, (value: unknown) => string | undefined>> = {
   conversations: (value) =>
     Option.getOrUndefined(
@@ -101,12 +140,29 @@ const RENDERERS: Readonly<Record<string, (value: unknown) => string | undefined>
       Option.map(Schema.decodeUnknownOption(TurnTimeline)(value), (timeline) =>
         [
           turnLine(timeline.turn),
-          timeline.submission === undefined
-            ? 'Pi: no submission found'
-            : `Pi: ${timeline.submission.status}${timeline.submission.reason === undefined ? '' : ` (${timeline.submission.reason})`}`,
+          piLine(timeline.submission),
           '',
           ...timeline.events.map(eventLine),
-          ...(timeline.coverage.complete ? [] : ['', ...timeline.coverage.gaps.map((gap) => `! ${gap}`)]),
+          ...gapLines(timeline.coverage),
+        ].join('\n'),
+      ),
+    ),
+  flows: (value) =>
+    Option.getOrUndefined(
+      Option.map(Schema.decodeUnknownOption(InspectFlows)(value), ({ flows }) =>
+        flows.length === 0 ? 'No flows in that window.' : flows.map(flowLine).join('\n'),
+      ),
+    ),
+  details: (value) =>
+    Option.getOrUndefined(
+      Option.map(Schema.decodeUnknownOption(InspectDetails)(value), (details) =>
+        [
+          ...(details.turn === undefined ? ['No turn: the steps of this operation'] : [turnLine(details.turn)]),
+          ...(details.turn === undefined ? [] : [piLine(details.submission)]),
+          '',
+          ...details.events.map((event) => `${eventLine(event)}  ${event.operationId ?? ''}`),
+          ...gapLines(details.coverage),
+          ...(details.related.length === 0 ? [] : ['', 'Related:', ...details.related.map(relatedLine)]),
         ].join('\n'),
       ),
     ),

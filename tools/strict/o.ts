@@ -6,7 +6,7 @@ export const paths: string[] = [
   'apps/runtime/src/pi/diagnose.ts',
   'apps/runtime/src/layers/observability.ts',
   // The CLI's main.ts and connect.ts write to the terminal with console, which it is for.
-  'apps/cli/src/{args,commands,config,logs,oauth,render,store}.ts',
+  'apps/cli/src/{args,commands,config,logs,lookup,oauth,render,stats,store}.ts',
   'apps/cli/test/**',
   'apps/runtime/test/{diagnose,inspect,inspect-service,telemetry,telemetry-attention,telemetry-flows,telemetry-ledger,telemetry-recovery,trace}.test.ts',
   'apps/runtime/test/inspection-fixture.ts',

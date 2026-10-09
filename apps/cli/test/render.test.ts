@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { logLine, logsQuery } from '../src/logs.ts'
+import { logLine, logsQuery, operationsOf } from '../src/logs.ts'
 import { failureText, render } from '../src/render.ts'
+import { statsLine, statsQuery } from '../src/stats.ts'
 
 const AT = Date.UTC(2026, 9, 6, 10, 0, 0)
 const turn = {
@@ -106,5 +107,57 @@ describe('goblin output (unit)', () => {
         source: { event: 'run', kind: 'tool.call' },
       }),
     ).toBe('2026-10-06T10:00:00.000Z  info  r1  {"event":"run","kind":"tool.call"}')
+  })
+
+  it("renders flow steps and a message's details with what they relate to", () => {
+    const step = { flow: 'move', via: 'app', actor: 'owner', chat: '12', operationId: 'owner:op-9', status: 'refused' }
+    expect(render('flows', { since: 0, flows: [{ ...step, ms: 40, at: AT }] })).toBe(
+      '2026-10-06 10:00:00  move                 refused   app/owner         chat 12  owner:op-9  40ms',
+    )
+    expect(render('flows', { since: 0, flows: [] })).toBe('No flows in that window.')
+    const details = render('details', {
+      events: [event('flow', 'blocked', {})],
+      coverage: { complete: true, gaps: [] },
+      related: [{ operation: 'owner:op-8', kind: 'send', chat: '1', state: 'ok' }],
+    })
+    expect(details.split('\n')).toEqual([
+      'No turn: the steps of this operation',
+      '',
+      `2026-10-06 10:00:00  flow             blocked        250ms    telegram-12`,
+      '',
+      'Related:',
+      '  send  owner:op-8  chat 1  ok',
+    ])
+    expect(
+      render('details', {
+        turn: { ...turn, errors: 2 },
+        events: [],
+        coverage: { complete: true, gaps: [] },
+        related: [],
+      }),
+    ).toContain('2 errors')
+  })
+
+  it('asks Analytics Engine for flow totals of a stage dataset, and refuses any other name', () => {
+    const query = statsQuery('goblin-dev-flows', 90)
+    expect(query).toContain('FROM "goblin-dev-flows"')
+    expect(query).toContain("INTERVAL '90' MINUTE")
+    expect(query).toContain('GROUP BY flow, status')
+    expect(() => statsQuery('flows"; DROP', 60)).toThrow('not a dataset name')
+    expect(statsLine({ flow: 'reply', status: 'ok', steps: 12.4, agents: 3, avg_ms: 41.6 })).toBe(
+      'reply                ok            12 steps     3 agents  42ms avg',
+    )
+  })
+
+  it("finds the operations goblin's own log lines name", () => {
+    const line = (source: unknown) => ({ timestamp: AT, source })
+    expect(
+      operationsOf([
+        line({ event: 'http.failure', operation: 'owner:op-3', ref: 'r1' }),
+        line({ event: 'failure', 'goblin.operation': 'owner:op-4' }),
+        line({ event: 'run', operation: 'owner:op-3' }),
+        line('plain text'),
+      ]),
+    ).toEqual(['owner:op-3', 'owner:op-4'])
   })
 })
