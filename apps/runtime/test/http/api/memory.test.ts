@@ -1,15 +1,19 @@
 import { MemoryStatus } from '@goblin/contracts'
-import * as Context from 'effect/Context'
+import { MemoryGroup, ownerApiOf } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import * as HttpServer from 'effect/http/HttpServer'
+import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import { ChatDirectory } from '../../../src/chats/directory.ts'
-import { OwnerHttp, type OwnerApiServices } from '../../../src/http/api/server.ts'
+import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
+import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { KnowledgeLive } from '../../../src/layers/knowledge.ts'
+import { MemoryHandlers } from '../../../src/memory/api.ts'
 import { ChatMemories } from '../../../src/memory/memory.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
 import { Chats, Learner, Memories, Resident, Retrieval, Skills } from '../../../src/services.ts'
@@ -41,6 +45,14 @@ const plans: EntitlementPolicy = {
       cancelAtPeriodEnd: false,
     }),
 }
+
+/** Only the memory group, behind the real gate, router and failure rendering (owner-http.test.ts's pattern). */
+const MEMORY_API = ownerApiOf(MemoryGroup)
+const MEMORY = HttpApiBuilder.layer(MEMORY_API).pipe(
+  Layer.provide(MemoryHandlers),
+  Layer.provide(OwnerGateLive),
+  Layer.provide(HttpServer.layerServices),
+)
 
 const runtimes: ManagedRuntime.ManagedRuntime<OwnerHttp, never>[] = []
 const closes: (() => void)[] = []
@@ -85,10 +97,8 @@ const fixture = () => {
   const memories = new ChatMemories({ db, harness: undefined as never, model: undefined as never, chats }, {}, [])
   // SAFETY: the memory group reads Memories alone; the other adapters only hold these and never call them.
   const unread = undefined as never
-  // SAFETY: only memory endpoints are requested here, and they read the services provided above.
-  const otherGroups = Layer.succeedContext(Context.empty() as Context.Context<OwnerApiServices>)
   const runtime = ManagedRuntime.make(
-    OwnerHttp.layer.pipe(
+    OwnerHttp.serve(MEMORY_API, MEMORY).pipe(
       Layer.provide(KnowledgeLive),
       Layer.provide(
         Layer.mergeAll(
@@ -101,7 +111,6 @@ const fixture = () => {
           Layer.succeed(Entitlements, plans),
         ),
       ),
-      Layer.provide(otherGroups),
     ),
   )
   runtimes.push(runtime)
