@@ -72,7 +72,6 @@ import { inboxAppProbe } from './inbox-app-probe.ts'
 import { FileStore } from '../../src/files/store.ts'
 import { composerSequence, helperExclusionsProbe } from './composer-probe.ts'
 import { topicMemorySequence, topicRoutineSequence } from './native-topics.ts'
-import { ResidentAuthority } from '../../src/resident.ts'
 
 const fixturePlan = () =>
   Effect.succeed({
@@ -179,8 +178,9 @@ export class PersonalAgentProbe extends PersonalAgent {
   }
 
   async appsTurnProbe(): Promise<string> {
-    // This probe submits directly to Pi; establish the resident authority an owner request normally renews.
-    new ResidentAuthority(drizzle(this.ctx.storage)).enable(Math.floor(Date.now() / 1000))
+    // This probe submits directly to Pi. Turning resident authority on through the owner API, as the residentSet RPC
+    // did, also starts the agent's services, which register the primary chat the directory reads next.
+    await callOwner(this.#ownerFetch, (api) => api.resident.set({ payload: { enabled: true } }))
     const session = new ChatDirectory(drizzle(this.ctx.storage)).session(PRIMARY_CHAT)
     return JSON.stringify(await appsTurnProbe(this.harness, () => this.seen, session))
   }
