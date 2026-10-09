@@ -1,6 +1,7 @@
 import { type QueryClient, mutationOptions } from '@tanstack/react-query'
 import type { ChatId } from '@goblin/contracts'
 import { owner } from '../api.ts'
+import { serversQuery } from '../mcp/queries.ts'
 
 /**
  * The agent itself, on the owner API: today's usage, its model, its Telegram channel, resident authority and memory.
@@ -34,14 +35,21 @@ export const chooseModelMutation = (queryClient: QueryClient) =>
 /** The connection carrying Telegram (ADR 0009), or null when it is off. */
 export const channelQuery = owner.apiQuery({ queryKey: ['agent', 'channel'], queryFn: (api) => api.agent.channel() })
 
-/** Moves Telegram to `serverId`, or turns it off with null; the channel is read again either way. */
+/**
+ * Moves Telegram to `serverId`, or turns it off with null. The channel is read again either way, and the servers,
+ * whose grants and Events the channel changes.
+ */
 export const changeChannelMutation = (queryClient: QueryClient) =>
   mutationOptions({
     ...owner.apiMutation({
       mutationFn: (api, serverId: string | null) =>
         serverId === null ? api.agent.disableChannel() : api.agent.enableChannel({ payload: { serverId } }),
     }),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: channelQuery.queryKey }),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: channelQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: serversQuery.queryKey }),
+      ]),
   })
 
 /** Resident authority (ADR 0003), renewed by the read itself. */

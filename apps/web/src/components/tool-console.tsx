@@ -1,4 +1,6 @@
 import { useCallback, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Option, Schema } from 'effect'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import type { ServerView } from '@goblin/contracts'
 import {
@@ -22,7 +24,8 @@ import {
   Textarea,
 } from '@goblin/ui'
 import { ChevronRightIcon } from 'lucide-react'
-import { failureText, isString, record, records, request } from '../lib/boundary.ts'
+import { callToolMutation, toolsQuery } from '../lib/mcp/queries.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 import { serverTitle } from '../lib/labels.ts'
 import { McpApp, type McpSelection } from './apps/frame.tsx'
 
@@ -75,6 +78,9 @@ function ConsoleForm({ servers, target, onServer, name, onName, args, onArgs, ca
   )
 }
 
+/** The arguments the owner typed, when they are a JSON object. */
+const parseArguments = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))
+
 /** Call an allowed tool by hand, to check a server works. Results are remote data and are shown as such. */
 export function ToolConsole({ servers }: { readonly servers: readonly ServerView[] }) {
   const [serverId, setServerId] = useState('')
@@ -83,21 +89,24 @@ export function ToolConsole({ servers }: { readonly servers: readonly ServerView
   const [result, setResult] = useState('')
   const [selection, setSelection] = useState<McpSelection>()
   const closeApp = useCallback(() => setSelection(undefined), [])
-  const [error, setError] = useState('')
-  const [calling, setCalling] = useState(false)
+  const queryClient = useQueryClient()
+  const calling = useMutation(callToolMutation)
+  const [failure, setFailure] = useState('')
   const target = serverId || servers[0]?.serverId || ''
   async function call(): Promise<void> {
-    setError('')
+    setFailure('')
     setSelection(undefined)
-    setCalling(true)
+    const parsed = Option.getOrUndefined(parseArguments(args))
+    if (parsed === undefined) {
+      setFailure('Arguments must be a JSON object.')
+      return
+    }
     try {
-      const parsed = record(JSON.parse(args))
-      if (parsed === undefined) throw new Error('Arguments must be a JSON object')
-      const base = `/api/mcp/${encodeURIComponent(target)}`
-      const data = await request(`${base}/tools/call`, { body: { name, arguments: parsed } })
+      const data = await calling.mutateAsync({ serverId: target, name, arguments: parsed })
       setResult(JSON.stringify(data, null, 2))
-      const uri = records(await request(`${base}/tools`)).find((tool) => tool.name === name)?.appResource
-      if (isString(uri))
+      const tools = await queryClient.query(toolsQuery(target))
+      const uri = tools.find((tool) => tool.name === name)?.appResource
+      if (uri !== undefined)
         setSelection({
           kind: 'mcp',
           serverId: target,
@@ -107,9 +116,7 @@ export function ToolConsole({ servers }: { readonly servers: readonly ServerView
           result: data as CallToolResult,
         })
     } catch (cause) {
-      setError(failureText(cause))
-    } finally {
-      setCalling(false)
+      setFailure(messageOf(cause, `call ${name}`))
     }
   }
   if (servers.length === 0) return null
@@ -137,12 +144,12 @@ export function ToolConsole({ servers }: { readonly servers: readonly ServerView
                   onName={setName}
                   args={args}
                   onArgs={setArgs}
-                  calling={calling}
+                  calling={calling.isPending}
                   onCall={() => void call()}
                 />
-                {error && (
+                {failure && (
                   <Alert variant="destructive">
-                    <AlertDescription>{error}</AlertDescription>
+                    <AlertDescription>{failure}</AlertDescription>
                   </Alert>
                 )}
                 {result && <pre className="tool-output">{result}</pre>}

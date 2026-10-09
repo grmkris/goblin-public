@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
-import { type HelperExclusion, ModelChoice, type PersonaDefinition, ServerView } from '@goblin/contracts'
-import { Schema } from 'effect'
+import { useQuery } from '@tanstack/react-query'
+import type { HelperExclusion, ModelChoice, PersonaDefinition } from '@goblin/contracts'
 import {
   Field,
   FieldDescription,
@@ -12,12 +11,11 @@ import {
   Switch,
   Textarea,
 } from '@goblin/ui'
-import { failureText, request } from '../../../lib/boundary.ts'
+import { modelQuery } from '../../../lib/agent/queries.ts'
+import { serversQuery } from '../../../lib/mcp/queries.ts'
+import { messageOf } from '../../../lib/query/app-error.ts'
 import { serverTitle } from '../../../lib/labels.ts'
 import { PersonaAvatar } from '../../persona-avatar.tsx'
-
-const decodeModels = Schema.decodeUnknownSync(ModelChoice)
-const decodeServers = Schema.decodeUnknownSync(Schema.Array(ServerView))
 
 /** A Persona's name as `@name` takes it: a letter, then up to 31 letters, digits, spaces, `_` or `-`. */
 export const NAME = /^[A-Za-z][\w -]{0,31}$/u
@@ -32,29 +30,20 @@ export const BLANK: PersonaDefinition = {
 }
 
 /**
- * The models and connected servers a Persona can be given or kept from, read once the editor opens. A list that could
+ * The models and connected servers a Persona can be given or kept from, from the Query cache. A list that could
  * not be read says why instead of reading as empty, so "No connections yet" is never shown for a failed read.
  */
 function useChoices() {
-  const [models, setModels] = useState<ModelChoice['options']>([])
-  const [servers, setServers] = useState<readonly ServerView[]>([])
-  const [failures, setFailures] = useState<{ readonly models?: string; readonly servers?: string }>({})
-  useEffect(() => {
-    const controller = new AbortController()
-    const signal = controller.signal
-    request('/api/agent/model', { signal })
-      .then((data) => setModels(decodeModels(data).options))
-      .catch((error: unknown) => {
-        if (!signal.aborted) setFailures((current) => ({ ...current, models: failureText(error) }))
-      })
-    request('/api/mcp/servers', { signal })
-      .then((data) => setServers(decodeServers(data).filter((server) => server.status === 'connected')))
-      .catch((error: unknown) => {
-        if (!signal.aborted) setFailures((current) => ({ ...current, servers: failureText(error) }))
-      })
-    return () => controller.abort()
-  }, [])
-  return { models, servers, failures }
+  const models = useQuery(modelQuery)
+  const servers = useQuery(serversQuery)
+  return {
+    models: models.data?.options ?? [],
+    servers: (servers.data ?? []).filter((server) => server.status === 'connected'),
+    failures: {
+      models: models.error === null ? undefined : messageOf(models.error, 'load the models'),
+      servers: servers.error === null ? undefined : messageOf(servers.error, 'load your connections'),
+    },
+  }
 }
 
 const keyOf = (exclusion: HelperExclusion) => (exclusion.kind === 'server' ? `server:${exclusion.serverId}` : undefined)
@@ -185,9 +174,7 @@ function Behaviour({
             </NativeSelectOption>
           ))}
         </NativeSelect>
-        {failure !== undefined && (
-          <FieldDescription role="alert">Could not load the models: {failure}</FieldDescription>
-        )}
+        {failure !== undefined && <FieldDescription role="alert">{failure}</FieldDescription>}
       </Field>
     </>
   )
@@ -208,7 +195,7 @@ export function PersonaForm({ draft, onChange }: Edit) {
         <legend>May use</legend>
         {failures.servers !== undefined ? (
           <p className="list-row-meta" role="alert">
-            Could not load your connections: {failures.servers}
+            {failures.servers}
           </p>
         ) : (
           servers.length === 0 && <p className="list-row-meta">No connections yet.</p>

@@ -1,14 +1,13 @@
 // Finding servers in MCP registries. Everything shown comes from the publisher and is labelled with the registry it
 // came from; "namespace verified" appears only where the registry checks it. Adding one works as adding by URL.
 import { type SubmitEvent, useEffect, useState } from 'react'
-import { Schema } from 'effect'
-import { CatalogEntry, RegistryView } from '@goblin/contracts'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { CatalogEntry } from '@goblin/contracts'
+import { InvalidInput } from '@goblin/contracts/api'
 import { Badge, Button, Input, Spinner } from '@goblin/ui'
-import { ApiFailure, failureText, request } from '../lib/boundary.ts'
-import { addAndConnect } from './server-add.tsx'
-
-const decodeEntries = Schema.decodeUnknownSync(Schema.Array(CatalogEntry))
-const decodeRegistries = Schema.decodeUnknownSync(Schema.Array(RegistryView))
+import { optionalCatalogQuery, registriesQuery, registryMutation } from '../lib/mcp/queries.ts'
+import { messageOf } from '../lib/query/app-error.ts'
+import { useAddAndConnect } from './server-add.tsx'
 
 const REGISTRY_REFUSED: Record<string, string> = {
   not_a_registry: 'That address does not answer the MCP registry API (/v0.1/servers).',
@@ -20,30 +19,28 @@ const REGISTRY_REFUSED: Record<string, string> = {
 
 /** The registries searched: the built-in two, then the owner's own, which they may add and remove. */
 function Registries({ onMessage }: { readonly onMessage: (message: string) => void }) {
-  const [registries, setRegistries] = useState<readonly RegistryView[]>([])
+  const queryClient = useQueryClient()
+  const read = useQuery(registriesQuery)
+  const change = useMutation(registryMutation(queryClient))
+  const registries = read.data ?? []
   const [url, setUrl] = useState('')
-  useEffect(() => {
-    void request('/api/mcp/registries')
-      .then((data) => setRegistries(decodeRegistries(data)))
-      .catch((error: unknown) => onMessage(failureText(error)))
-  }, [onMessage])
-  async function change(path: string, target: string): Promise<boolean> {
-    try {
-      setRegistries(decodeRegistries(await request(path, { body: { url: target } })))
-      return true
-    } catch (error) {
-      const refused = error instanceof ApiFailure && error.reason ? REGISTRY_REFUSED[error.reason] : undefined
-      onMessage(refused ?? failureText(error))
-      return false
-    }
-  }
-  async function add(event: SubmitEvent<HTMLFormElement>): Promise<void> {
+  const failed = (error: unknown) =>
+    onMessage(
+      (error instanceof InvalidInput ? REGISTRY_REFUSED[error.reason] : undefined) ??
+        messageOf(error, 'change the registries'),
+    )
+  function add(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault()
-    if (await change('/api/mcp/registries', url)) setUrl('')
+    change.mutate({ url, remove: false }, { onSuccess: () => setUrl(''), onError: failed })
   }
   return (
     <details className="registries">
       <summary>Registries searched ({registries.length})</summary>
+      {read.error !== null && (
+        <p className="server-note" role="alert">
+          {messageOf(read.error, 'list the registries')}
+        </p>
+      )}
       <ul className="pick-list">
         {registries.map((registry) => (
           <li key={registry.url} className="pick-row">
@@ -54,14 +51,18 @@ function Registries({ onMessage }: { readonly onMessage: (message: string) => vo
             {registry.builtIn ? (
               <span className="pick-meta">Built in</span>
             ) : (
-              <Button size="sm" variant="ghost" onClick={() => void change('/api/mcp/registries/remove', registry.url)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => change.mutate({ url: registry.url, remove: true }, { onError: failed })}
+              >
                 Remove
               </Button>
             )}
           </li>
         ))}
       </ul>
-      <form className="address-row" onSubmit={(event) => void add(event)}>
+      <form className="address-row" onSubmit={add}>
         <Input
           type="url"
           aria-label="Registry address"
@@ -69,7 +70,7 @@ function Registries({ onMessage }: { readonly onMessage: (message: string) => vo
           value={url}
           onChange={(event) => setUrl(event.target.value)}
         />
-        <Button type="submit" variant="outline" disabled={url.trim() === ''}>
+        <Button type="submit" variant="outline" pending={change.isPending} disabled={url.trim() === ''}>
           Add registry
         </Button>
       </form>
@@ -147,27 +148,25 @@ type Search =
   | { readonly kind: 'found'; readonly results: readonly CatalogEntry[] }
   | { readonly kind: 'failed'; readonly reason: string }
 
+/** `value` once it has stayed the same for `ms`. */
+function useSettled(value: string, ms: number): string {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), ms)
+    return () => clearTimeout(timer)
+  }, [value, ms])
+  return settled
+}
+
 /** The registries' answer for what the owner typed, a moment after they stop typing. */
 function useCatalog(query: string): Search {
-  const [search, setSearch] = useState<Search>({ kind: 'idle' })
-  useEffect(() => {
-    const text = query.trim()
-    if (text.length < 2) return setSearch({ kind: 'idle' })
-    setSearch({ kind: 'searching' })
-    const controller = new AbortController()
-    const timer = setTimeout(() => {
-      void request(`/api/mcp/catalog?q=${encodeURIComponent(text)}`, { signal: controller.signal })
-        .then((data) => setSearch({ kind: 'found', results: decodeEntries(data) }))
-        .catch((error: unknown) => {
-          if (!controller.signal.aborted) setSearch({ kind: 'failed', reason: failureText(error) })
-        })
-    }, 300)
-    return () => {
-      clearTimeout(timer)
-      controller.abort()
-    }
-  }, [query])
-  return search
+  const text = query.trim()
+  const settled = useSettled(text, 300)
+  const read = useQuery(optionalCatalogQuery(settled.length < 2 ? undefined : settled))
+  if (text.length < 2) return { kind: 'idle' }
+  if (text !== settled || read.isFetching) return { kind: 'searching' }
+  if (read.error !== null) return { kind: 'failed', reason: messageOf(read.error, 'search the registries') }
+  return read.data === undefined ? { kind: 'searching' } : { kind: 'found', results: read.data }
 }
 
 /** Search the MCP registries; results update as the owner types. */
@@ -180,6 +179,7 @@ export function ServerSearch({
 }) {
   const [query, setQuery] = useState('')
   const search = useCatalog(query)
+  const addAndConnect = useAddAndConnect()
   const [adding, setAdding] = useState('')
   async function add(entry: CatalogEntry, endpoint: string): Promise<void> {
     setAdding(entry.name)
@@ -187,7 +187,7 @@ export function ServerSearch({
       const source = { registry: entry.registry, name: entry.name, ...(entry.version && { version: entry.version }) }
       onChanged(await addAndConnect(endpoint, entry.title ?? entry.name, source))
     } catch (error) {
-      onMessage(failureText(error))
+      onMessage(messageOf(error, `add ${entry.title ?? entry.name}`))
     } finally {
       setAdding('')
     }

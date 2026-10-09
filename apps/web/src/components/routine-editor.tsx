@@ -1,6 +1,7 @@
 // Writing a routine: what it does, when it runs, and what it may use. Saving makes a proposal the owner then confirms
 // on its card; nothing here turns a routine on.
 import { type SubmitEvent, type ReactNode, useEffect, useId, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Schema } from 'effect'
 import { RoutineView, RoutineTrigger, type RoutineDefinition } from '@goblin/contracts'
 import {
@@ -24,9 +25,10 @@ import {
   Textarea,
 } from '@goblin/ui'
 import { failureText, request } from '../lib/boundary.ts'
+import { grantsQuery } from '../lib/mcp/queries.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 import { localInput, localInstant } from '../lib/local-time.ts'
 
-const Grants = Schema.Array(Schema.Struct({ serverId: Schema.String, capability: Schema.String, name: Schema.String }))
 const decodeView = Schema.decodeUnknownSync(RoutineView)
 type Kind = RoutineDefinition['trigger']['kind']
 type Tool = { readonly serverId: string; readonly name: string }
@@ -76,12 +78,11 @@ type EditorProps = {
 
 /** The tools the owner has allowed, plus any the routine already names, so editing never drops one silently. */
 function useAvailableTools(selected: readonly Tool[], onError: (message: string) => void) {
-  const [tools, setTools] = useState<readonly Tool[]>([])
+  const read = useQuery(grantsQuery)
   useEffect(() => {
-    void request('/api/mcp/grants')
-      .then((value) => setTools(Schema.decodeUnknownSync(Grants)(value).filter((grant) => grant.capability === 'tool')))
-      .catch((cause: unknown) => onError(failureText(cause)))
-  }, [onError])
+    if (read.error !== null) onError(messageOf(read.error, 'list the tools you allowed'))
+  }, [read.error, onError])
+  const tools = (read.data ?? []).filter((grant) => grant.capability === 'tool')
   return [...tools, ...selected.filter((tool) => !tools.some((item) => same(item, tool)))]
 }
 

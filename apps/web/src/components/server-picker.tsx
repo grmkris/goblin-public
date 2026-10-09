@@ -8,13 +8,10 @@ import { ServerSearch } from './server-search.tsx'
 type PickerTab = 'suggested' | 'search' | 'address'
 
 export function ServerPicker({
-  version,
   onChanged,
   onAdded,
   onMessage,
 }: {
-  /** Changes whenever the server list does. */
-  readonly version: number
   /** A server was added and connected from a list, with what to tell the owner. */
   readonly onChanged: (message: string) => void
   /** A server was added by its address and waits to be connected. */
@@ -33,7 +30,7 @@ export function ServerPicker({
           </TabsList>
           <TabsContent value="suggested">
             <p className="server-note">Servers we have checked work from here. You still choose every tool.</p>
-            <SuggestedServers version={version} onChanged={onChanged} onMessage={onMessage} />
+            <SuggestedServers onChanged={onChanged} onMessage={onMessage} />
           </TabsContent>
           <TabsContent value="search">
             <ServerSearch onChanged={onChanged} onMessage={onMessage} />

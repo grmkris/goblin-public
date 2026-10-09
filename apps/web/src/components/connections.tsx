@@ -1,8 +1,7 @@
 // The owner's MCP servers: theirs first, each with what the agent may use from it, then one place to add another and,
 // last, a way to try a tool by hand.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Schema } from 'effect'
-import { ServerView } from '@goblin/contracts'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert,
   AlertDescription,
@@ -16,7 +15,8 @@ import {
   Skeleton,
 } from '@goblin/ui'
 import { PlugIcon, PlusIcon } from 'lucide-react'
-import { failureText, request } from '../lib/boundary.ts'
+import { serversQuery } from '../lib/mcp/queries.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 import { serverTitle } from '../lib/labels.ts'
 import { PageSection } from './page-section.tsx'
 import { ServerCard } from './server-card.tsx'
@@ -24,8 +24,6 @@ import { ServerPicker } from './server-picker.tsx'
 import { useTelegramChannel } from './telegram-control.tsx'
 import { ToolConsole } from './tool-console.tsx'
 import { glide } from '../lib/motion.ts'
-
-const decodeServers = Schema.decodeUnknownSync(Schema.Array(ServerView))
 
 const callbackNotice = (): string => {
   const params = new URLSearchParams(window.location.search)
@@ -36,18 +34,18 @@ const callbackNotice = (): string => {
   return ''
 }
 
-/** The owner's servers, reloaded whenever one changes; `version` counts the loads so the suggestions keep up. */
+/** The owner's servers from the Query cache; `reload` reads them again after something changed them out of sight. */
 function useServers(onMessage: (message: string) => void) {
-  const [servers, setServers] = useState<readonly ServerView[]>()
-  const [version, setVersion] = useState(0)
-  const load = useCallback(() => {
-    setVersion((current) => current + 1)
-    void request('/api/mcp/servers')
-      .then((data) => setServers(decodeServers(data)))
-      .catch((error: unknown) => onMessage(failureText(error)))
-  }, [onMessage])
-  useEffect(load, [load])
-  return { servers, version, load }
+  const queryClient = useQueryClient()
+  const read = useQuery(serversQuery)
+  useEffect(() => {
+    if (read.error !== null) onMessage(messageOf(read.error, 'list your servers'))
+  }, [read.error, onMessage])
+  const reload = useCallback(
+    () => void queryClient.invalidateQueries({ queryKey: serversQuery.queryKey }),
+    [queryClient],
+  )
+  return { servers: read.data, reload }
 }
 
 function NoServers({ onAdd }: { readonly onAdd: () => void }) {
@@ -71,17 +69,10 @@ function NoServers({ onAdd }: { readonly onAdd: () => void }) {
 
 export function Connections() {
   const [message, setMessage] = useState(callbackNotice)
-  const { servers, version, load } = useServers(setMessage)
+  const { servers, reload } = useServers(setMessage)
   const channel = useTelegramChannel(setMessage)
   const picker = useRef<HTMLElement>(null)
-  useEffect(() => {
-    if (channel.status !== undefined) load()
-  }, [channel.status, load])
   const toPicker = () => picker.current?.scrollIntoView({ behavior: glide(), block: 'start' })
-  const changed = (text: string) => {
-    setMessage(text)
-    load()
-  }
   return (
     <div className="page-stack">
       {message && (
@@ -111,15 +102,20 @@ export function Connections() {
         )}
         {servers?.length === 0 && <NoServers onAdd={toPicker} />}
         {servers?.map((server) => (
-          <ServerCard key={server.serverId} server={server} onReload={load} onMessage={setMessage} channel={channel} />
+          <ServerCard
+            key={server.serverId}
+            server={server}
+            onReload={reload}
+            onMessage={setMessage}
+            channel={channel}
+          />
         ))}
       </PageSection>
       <PageSection id="add" title="Add a server" ref={picker}>
         <ServerPicker
-          version={version}
-          onChanged={changed}
+          onChanged={setMessage}
           onAdded={(server) =>
-            changed(`Added ${serverTitle(server)}. Connect it, then choose the tools your agent may use.`)
+            setMessage(`Added ${serverTitle(server)}. Connect it, then choose the tools your agent may use.`)
           }
           onMessage={setMessage}
         />

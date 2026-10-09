@@ -2,9 +2,11 @@
 // (or, for an App, the App's resource and its tools). Names, descriptions and hints come from the server: they are
 // shown as its claims and never grant anything.
 import { useId, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ToolView } from '@goblin/contracts'
 import { Badge, Button, Switch } from '@goblin/ui'
-import { failureText, request } from '../lib/boundary.ts'
+import { appGrantMutation, askFirstMutation, toolGrantMutation } from '../lib/mcp/queries.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 import { AppTile } from './apps/app-tile.tsx'
 
 type Tools = readonly ToolView[]
@@ -166,51 +168,39 @@ const appsOf = (tools: Tools): readonly string[] => [
   ...new Set(tools.flatMap((tool) => (tool.appResource === undefined ? [] : [tool.appResource]))),
 ]
 
-/** The grant calls behind the switches; each updates the list once the runtime has it. */
-function useGrants(
-  serverId: string,
-  tools: Tools,
-  setTools: (update: (tools: Tools) => Tools) => void,
-  onMessage: (message: string) => void,
-) {
+/** The grant calls behind the switches; each updates the list in the cache once the runtime has it. */
+function useGrants(serverId: string, tools: Tools, onMessage: (message: string) => void) {
+  const queryClient = useQueryClient()
   const { pending, during } = usePending()
-  const grant = (changed: (tool: ToolView) => boolean, allowed: boolean) =>
-    setTools((current) =>
-      current.map((tool) =>
-        changed(tool)
-          ? { ...tool, granted: allowed, askFirst: tool.granted === allowed ? tool.askFirst : false }
-          : tool,
+  const toolGrant = useMutation(toolGrantMutation(queryClient))
+  const appGrant = useMutation(appGrantMutation(queryClient))
+  const askFirst = useMutation(askFirstMutation(queryClient))
+  const tool = (name: string, allowed: boolean) => toolGrant.mutateAsync({ serverId, name, allowed })
+  const app = (uri: string, allowed: boolean) => appGrant.mutateAsync({ serverId, uri, allowed })
+  const attempt = (busy: readonly string[], action: string, work: () => Promise<unknown>) =>
+    void during(busy, () =>
+      work().then(
+        () => undefined,
+        (error: unknown) => onMessage(messageOf(error, action)),
       ),
     )
-  const tool = async (name: string, allowed: boolean) => {
-    await request('/api/mcp/grants', { method: 'PUT', body: { serverId, name, allowed } })
-    grant((other) => other.name === name, allowed)
-  }
-  const app = async (uri: string, allowed: boolean) => {
-    await request('/api/mcp/app-grants', { method: 'PUT', body: { serverId, uri, allowed } })
-    grant((other) => other.appResource === uri, allowed)
-  }
-  const attempt = (busy: readonly string[], work: () => Promise<void>) =>
-    void during(busy, () => work().catch((error: unknown) => onMessage(failureText(error))))
   return {
     pending,
     askFirst: (target: ToolView, enabled: boolean) =>
-      attempt([target.name], async () => {
-        await request('/api/mcp/ask-first', { method: 'PUT', body: { serverId, name: target.name, enabled } })
-        setTools((current) =>
-          current.map((item) => (item.name === target.name ? { ...item, askFirst: enabled } : item)),
-        )
-      }),
-    toggle: (target: ToolView, allowed: boolean) => attempt([target.name], () => tool(target.name, allowed)),
+      attempt([target.name], `change whether ${target.name} asks first`, () =>
+        askFirst.mutateAsync({ serverId, name: target.name, enabled }),
+      ),
+    toggle: (target: ToolView, allowed: boolean) =>
+      attempt([target.name], `change ${target.name}`, () => tool(target.name, allowed)),
     allowApp: (uri: string, allowed: boolean) =>
-      attempt(names(tools.filter((each) => each.appResource === uri)), () => app(uri, allowed)),
+      attempt(names(tools.filter((each) => each.appResource === uri)), 'change that App', () => app(uri, allowed)),
     /** Every App, then every other tool, one grant at a time; it stops at the first refusal. */
     all: (allowed: boolean) => {
       const loose = tools.filter((each) => each.appResource === undefined && each.granted !== allowed)
       const apps = appsOf(tools).filter((uri) =>
         tools.some((each) => each.appResource === uri && each.granted !== allowed),
       )
-      attempt(names(tools), async () => {
+      attempt(names(tools), allowed ? 'allow every tool' : 'turn every tool off', async () => {
         for (const uri of apps) await app(uri, allowed)
         for (const each of loose) await tool(each.name, allowed)
       })
@@ -222,15 +212,13 @@ function useGrants(
 export function ToolGrants({
   serverId,
   tools,
-  setTools,
   onMessage,
 }: {
   readonly serverId: string
   readonly tools: Tools
-  readonly setTools: (update: (tools: Tools) => Tools) => void
   readonly onMessage: (message: string) => void
 }) {
-  const grants = useGrants(serverId, tools, setTools, onMessage)
+  const grants = useGrants(serverId, tools, onMessage)
   if (tools.length === 0) return <p className="server-note">This server offers no tools.</p>
   return (
     <section className="server-part" aria-label="Tools">
