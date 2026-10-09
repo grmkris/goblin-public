@@ -1,6 +1,6 @@
 // Finding servers in MCP registries. Everything shown comes from the publisher and is labelled with the registry it
 // came from; "namespace verified" appears only where the registry checks it. Adding one works as adding by URL.
-import { useEffect, useState } from 'react'
+import { type SubmitEvent, useEffect, useState } from 'react'
 import { Schema } from 'effect'
 import { CatalogEntry, RegistryView } from '@goblin/contracts'
 import { Badge, Button, Input, Spinner } from '@goblin/ui'
@@ -37,6 +37,10 @@ function Registries({ onMessage }: { readonly onMessage: (message: string) => vo
       return false
     }
   }
+  async function add(event: SubmitEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (await change('/api/mcp/registries', url)) setUrl('')
+  }
   return (
     <details className="registries">
       <summary>Registries searched ({registries.length})</summary>
@@ -57,13 +61,7 @@ function Registries({ onMessage }: { readonly onMessage: (message: string) => vo
           </li>
         ))}
       </ul>
-      <form
-        className="address-row"
-        onSubmit={(event) => {
-          event.preventDefault()
-          void change('/api/mcp/registries', url).then((added) => added && setUrl(''))
-        }}
-      >
+      <form className="address-row" onSubmit={(event) => void add(event)}>
         <Input
           type="url"
           aria-label="Registry address"

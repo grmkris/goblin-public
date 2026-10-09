@@ -1,6 +1,6 @@
 // Writing a routine: what it does, when it runs, and what it may use. Saving makes a proposal the owner then confirms
 // on its card; nothing here turns a routine on.
-import { type ReactNode, useEffect, useId, useState } from 'react'
+import { type SubmitEvent, type ReactNode, useEffect, useId, useState } from 'react'
 import { Schema } from 'effect'
 import { RoutineView, RoutineTrigger, type RoutineDefinition } from '@goblin/contracts'
 import {
@@ -53,11 +53,13 @@ function triggerFrom(kind: Kind, field: (name: string) => string, cron: string):
   if (kind === 'cron') return { kind: 'cron', expression: cron }
   if (kind === 'event') {
     const filters = field('eventArguments').trim()
+    // The trigger's schema checks the parsed filters.
+    const parsed: unknown = filters === '' ? {} : JSON.parse(filters)
     return Schema.decodeUnknownSync(RoutineTrigger)({
       kind: 'event',
       serverId: field('eventServer'),
       name: field('eventName'),
-      arguments: filters === '' ? {} : JSON.parse(filters),
+      arguments: parsed,
     })
   }
   const at = localInstant(field('at'))
@@ -95,8 +97,9 @@ function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const available = useAvailableTools(selected, setError)
-  async function save(form: HTMLFormElement) {
-    const data = new FormData(form)
+  async function save(event: SubmitEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
     const field = (name: string) => {
       const value = data.get(name)
       return typeof value === 'string' ? value : ''
@@ -390,13 +393,7 @@ export function RoutineEditor(props: EditorProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form
-          className="editor"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void kit.save(event.currentTarget)
-          }}
-        >
+        <form className="editor" onSubmit={(event) => void kit.save(event)}>
           <WhatFields kit={kit} />
           <WhenFields kit={kit} />
           <ToolsAndLimits kit={kit} />

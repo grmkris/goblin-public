@@ -1,6 +1,6 @@
 // Adding the owner's own MCP servers, by URL or from the servers we suggest. A pasted URL is checked by the runtime (public https only) and
 // labelled from the server's card; it starts disconnected and is connected like any other.
-import { useEffect, useState } from 'react'
+import { type SubmitEvent, useEffect, useState } from 'react'
 import { Schema } from 'effect'
 import { ServerSuggestion, ServerView } from '@goblin/contracts'
 import { Button, Field, FieldDescription, FieldGroup, FieldLabel, Input } from '@goblin/ui'
@@ -28,7 +28,8 @@ export function AddByAddress({
 }) {
   const [endpoint, setEndpoint] = useState('')
   const [busy, setBusy] = useState(false)
-  async function add(): Promise<void> {
+  async function add(event: SubmitEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
     setBusy(true)
     try {
       const server = decodeServer(await request('/api/mcp/servers', { body: { endpoint } }))
@@ -42,12 +43,7 @@ export function AddByAddress({
     }
   }
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault()
-        void add()
-      }}
-    >
+    <form onSubmit={(event) => void add(event)}>
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="server-address">The server's address</FieldLabel>

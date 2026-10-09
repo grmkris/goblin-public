@@ -36,6 +36,7 @@ function shortEndpoint(endpoint: string): string {
     const url = new URL(endpoint)
     return `${url.host}${url.pathname === '/' ? '' : url.pathname}`
   } catch {
+    // expected: an endpoint the URL parser refuses is shown as it was stored
     return endpoint
   }
 }
@@ -53,9 +54,7 @@ function useServerTools(server: ServerView, onMessage: (message: string) => void
     },
     [server.serverId, onMessage],
   )
-  useEffect(() => {
-    if (server.status === 'connected') void loadTools(false)
-  }, [server.status, loadTools])
+  useEffect(() => (server.status === 'connected' ? void loadTools(false) : undefined), [server.status, loadTools])
   const update = (change: (current: readonly ToolView[]) => readonly ToolView[]) =>
     setTools((current) => (current === undefined ? current : change(current)))
   return { tools, loadTools, update }

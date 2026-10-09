@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { type SubmitEvent, useCallback, useEffect, useState } from 'react'
 import { Schema } from 'effect'
 import { type RoutineDefinition, RoutinePage, RoutineSettings, RoutineView } from '@goblin/contracts'
 import {
@@ -64,8 +64,9 @@ function RoutineTimezone({
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
   const suggested = browserZone()
-  async function save(form: HTMLFormElement) {
-    const value = new FormData(form).get('timezone')
+  async function save(event: SubmitEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    const value = new FormData(event.currentTarget).get('timezone')
     if (typeof value !== 'string') return
     setPending(true)
     try {
@@ -88,13 +89,7 @@ function RoutineTimezone({
       </p>
     )
   return (
-    <form
-      className="card-body"
-      onSubmit={(event) => {
-        event.preventDefault()
-        void save(event.currentTarget)
-      }}
-    >
+    <form className="card-body" onSubmit={(event) => void save(event)}>
       <Field>
         <FieldLabel htmlFor="account-routine-zone">Timezone for new routines</FieldLabel>
         <div className="address-row">

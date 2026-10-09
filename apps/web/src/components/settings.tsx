@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from 'react'
+import { type SubmitEvent, useCallback, useEffect, useId, useState } from 'react'
 import { Schema } from 'effect'
 import { InboundClient, MemoryStatus, ResidentStatus } from '@goblin/contracts'
 import {
@@ -220,7 +220,8 @@ function ClientsCard({ onError }: { readonly onError: (message: string) => void 
 function DeleteAccountCard({ onError }: { readonly onError: (message: string) => void }) {
   const [open, setOpen] = useState(false)
   const [pending, setPending] = useState(false)
-  async function remove(): Promise<void> {
+  async function remove(event: SubmitEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
     setPending(true)
     try {
       await request('/api/auth/delete-user', { body: {} })
@@ -246,12 +247,7 @@ function DeleteAccountCard({ onError }: { readonly onError: (message: string) =>
       </CardHeader>
       <CardContent>
         {open ? (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              void remove()
-            }}
-          >
+          <form onSubmit={(event) => void remove(event)}>
             <FieldGroup>
               <p className="text-sm text-muted-foreground">
                 Sign in again with an emailed code first. Deleting works for 10 minutes after signing in.

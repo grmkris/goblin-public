@@ -16,16 +16,22 @@ function PaymentReturn() {
   const { state, error, refresh } = useBilling()
   const [waiting, setWaiting] = useState(true)
   const [checking, setChecking] = useState(false)
+  async function checkAgain(): Promise<void> {
+    setChecking(true)
+    await refresh()
+    setChecking(false)
+  }
   useEffect(() => {
     if (state?.active) return
     let attempts = 0
-    const timer = setInterval(() => {
+    const poll = async (): Promise<void> => {
       if (++attempts >= 60) {
         clearInterval(timer)
         setWaiting(false)
       }
-      void refresh()
-    }, 5000)
+      await refresh()
+    }
+    const timer = setInterval(() => void poll(), 5000)
     return () => clearInterval(timer)
   }, [state?.active, refresh])
   if (state?.active)
@@ -52,16 +58,7 @@ function PaymentReturn() {
     >
       <div className="auth-body" role="status">
         {error && <p role="alert">{error}</p>}
-        <Button
-          size="lg"
-          variant="outline"
-          className="w-full"
-          pending={checking}
-          onClick={() => {
-            setChecking(true)
-            void refresh().finally(() => setChecking(false))
-          }}
-        >
+        <Button size="lg" variant="outline" className="w-full" pending={checking} onClick={() => void checkAgain()}>
           Check again
         </Button>
       </div>

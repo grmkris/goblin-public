@@ -29,8 +29,8 @@ export function BillingProvider({ children }: { readonly children: ReactNode }) 
       setError('')
       return
     }
-    void refresh()
     const onFocus = () => void refresh()
+    onFocus()
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [session, refresh])
