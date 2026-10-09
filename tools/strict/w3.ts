@@ -2,6 +2,7 @@
 export const paths: string[] = [
   'packages/kit/**',
   'packages/app/src/ui/**',
+  'apps/web/src/lib/agent-app-bridge.ts',
   'apps/web/src/lib/agent-apps.ts',
   'apps/web/src/lib/app-*.ts',
   'apps/web/src/lib/attachment-draft.ts',

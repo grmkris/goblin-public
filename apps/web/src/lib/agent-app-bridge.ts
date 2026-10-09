@@ -62,26 +62,30 @@ export class StatePush {
   /** The feed says the app's state is at `revision`; the frame gets it unless it has it. */
   want(revision: number): void {
     this.#wanted = Math.max(this.#wanted, revision)
-    void this.#pump()
+    this.#pump()
   }
 
-  async #pump(): Promise<void> {
+  #pump(): void {
     if (this.#busy || this.#shown < 0 || this.#wanted <= this.#shown) return
     this.#busy = true
-    let advanced = false
-    try {
-      const snapshot = await this.#read()
-      if (snapshot.revision > this.#shown) {
-        this.#shown = snapshot.revision
-        advanced = true
-        await this.#bridge.sendToolResult(stateResult(snapshot))
-      }
-    } catch {
-      // The next change in the feed tries again.
-    } finally {
-      this.#busy = false
-    }
-    if (advanced) void this.#pump()
+    const before = this.#shown
+    this.#push()
+      .catch(() => {
+        // expected: the frame keeps the state it shows, and the next change in the feed tries again
+      })
+      .finally(() => {
+        this.#busy = false
+        // A newer state may have been wanted while this one went in.
+        if (this.#shown > before) this.#pump()
+      })
+  }
+
+  /** Reads the app's state and puts it into the frame when it is newer than the one shown. */
+  async #push(): Promise<void> {
+    const snapshot = await this.#read()
+    if (snapshot.revision <= this.#shown) return
+    this.#shown = snapshot.revision
+    await this.#bridge.sendToolResult(stateResult(snapshot))
   }
 }
 
@@ -112,13 +116,13 @@ export function agentBridge(
     if (level !== 'error' && level !== 'critical' && level !== 'alert' && level !== 'emergency') return
     // The view shows its own failure in the frame; the agent hears of it here.
     const message = (isString(data) ? data : JSON.stringify(data)).slice(0, 4000)
-    void calls.report(id, message).catch((cause: unknown) => {
-      // Telling the agent failed; leave a trace here rather than nothing.
-      console.warn(`goblin: an app view's error did not reach the agent: ${failureText(cause)}`)
+    calls.report(id, message).catch((cause: unknown) => {
+      // The frame says the agent was told; the owner learns it was not.
+      report(`Your agent could not be told that this view failed: ${failureText(cause)}`)
     })
   })
   bridge.addEventListener('initialized', () => {
-    void bridge
+    bridge
       .sendToolInput({ arguments: {} })
       .then(() => bridge.sendToolResult(stateResult(first)))
       .then(() => push.shown(first.revision))

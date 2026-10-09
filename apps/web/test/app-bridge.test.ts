@@ -207,6 +207,53 @@ describe('an agent app bridge', () => {
       await bridge.close()
     }
   })
+
+  it('reads a state that failed again on the next change, and tells the owner a failure the agent missed', async () => {
+    let reads = 0
+    const shown: string[] = []
+    const agent: AgentAppCalls = {
+      call: async () => ({ ok: false, error: 'no actions here' }),
+      state: async () => {
+        reads += 1
+        if (reads === 1) throw new Error('offline')
+        return { revision: 5, release: 'r_1', state: { n: 5 } }
+      },
+      report: async () => {
+        throw new Error('offline')
+      },
+    }
+    const launch = { kind: 'agent' as const, name: 'tapper', release: 'r_1', revision: 2, state: { n: 2 } }
+    const { bridge, push } = createAppBridge(
+      { kind: 'agent', id: '7', launch: { ...launch, ui: { module: '', css: '', libs: [] } } },
+      '',
+      { displayMode: 'inline' },
+      { agent, tool: notMcp, resource: notMcp },
+      { ...events, report: (message) => shown.push(message) },
+    )
+    const app = new App({ name: 'Fixture', version: '1' }, {}, { autoResize: false })
+    const states: unknown[] = []
+    app.addEventListener('toolresult', (result) => states.push(result._meta?.['goblin/state']))
+    const [host, client] = InMemoryTransport.createLinkedPair()
+    await bridge.connect(host)
+    await app.connect(client)
+    try {
+      await until(() => states.length === 1)
+      push?.want(4)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(reads).toBe(1)
+      expect(states).toHaveLength(1)
+      push?.want(5)
+      await until(() => states.length === 2)
+      expect(states[1]).toEqual({ revision: 5, release: 'r_1', state: { n: 5 } })
+      expect(reads).toBe(2)
+      await app.sendLog({ level: 'error', data: 'TypeError: boom' })
+      await until(() => shown.length === 1)
+      expect(shown[0]).toMatch(/^Your agent could not be told that this view failed: /u)
+    } finally {
+      await app.close()
+      await bridge.close()
+    }
+  })
 })
 
 describe('MCP question App message mediation', () => {
