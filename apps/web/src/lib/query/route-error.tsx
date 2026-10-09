@@ -2,6 +2,7 @@ import { Button, Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle 
 import { useQueryErrorResetBoundary } from '@tanstack/react-query'
 import { type ErrorComponentProps, useRouter, useRouterState } from '@tanstack/react-router'
 import { useCallback, useEffect } from 'react'
+import { reportCrash } from '../api.ts'
 import { messageOf } from './app-error.ts'
 
 /** Resets Query's error boundary, then reloads the route's data. */
@@ -43,4 +44,14 @@ export function RouteError({ error, onCrash }: ErrorComponentProps & { readonly 
       </EmptyContent>
     </Empty>
   )
+}
+
+const reportRouteCrash = ({ routeId, error }: CrashReport) => reportCrash(error, routeId)
+
+/**
+ * The app's view of a route that failed: `RouteError`, its crash reported to `/api/client-errors` (defects only,
+ * `crash-report.ts`). The router's default error component, so a route needs none of its own.
+ */
+export function ReportedRouteError(props: ErrorComponentProps) {
+  return <RouteError {...props} onCrash={reportRouteCrash} />
 }

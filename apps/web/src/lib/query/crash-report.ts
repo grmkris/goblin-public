@@ -71,12 +71,14 @@ export function crashReport(error: unknown, route: string): ClientErrorReport | 
 }
 
 /**
- * A reporter that sends each distinct crash once (by type and top frame), at most `MAX_REPORTS` per page load. `send`
- * must not throw: a report that cannot be sent is dropped, never another crash.
+ * A reporter that sends each distinct crash once (by type and top frame), at most `MAX_REPORTS` per page load. Only a
+ * defect is a crash (`describeError`'s kind `defect`): an answer the API gave (not found, a conflict, no plan) or a
+ * cancelled request is not. `send` must not throw: a report that cannot be sent is dropped, never another crash.
  */
 export function crashReporter(send: (report: ClientErrorReport) => void): (error: unknown, route: string) => void {
   const seen = new Set<string>()
   return (error, route) => {
+    if (describeError(error).kind !== 'defect') return
     const report = crashReport(error, route)
     if (report === undefined || seen.size >= MAX_REPORTS) return
     const key = `${report.name} ${report.frames[0] ?? ''}`

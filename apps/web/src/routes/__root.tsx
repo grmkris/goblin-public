@@ -1,6 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query'
 import {
-  type ErrorComponentProps,
   HeadContent,
   Outlet,
   Scripts,
@@ -20,7 +19,7 @@ import { BillingProvider, useBilling } from '../lib/billing.tsx'
 import { startupImages } from '../lib/startup-images.ts'
 import { reportCrash } from '../lib/api.ts'
 import { reportUncaught } from '../lib/query/crash-report.ts'
-import { type CrashReport, RouteError } from '../lib/query/route-error.tsx'
+import { ReportedRouteError } from '../lib/query/route-error.tsx'
 import css from '../styles.css?url'
 
 /** Follows the system's light or dark preference, before first paint and when it changes (as the myapps apps do). */
@@ -55,18 +54,12 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     ],
   }),
   component: Root,
-  // A failure the app did not catch: calm copy with the reference to quote, and a retry; the crash is reported.
-  errorComponent: RootError,
+  // A failure the app did not catch: calm copy with the reference to quote, and a retry; a defect is reported.
+  errorComponent: ReportedRouteError,
   shellComponent: Document,
 })
 /** Pages that are part of signing in: no app navigation there. */
 const AUTH_PAGES = new Set(['/login', '/consent', '/subscribe', '/subscribe/success', '/terms', '/privacy', '/refunds'])
-
-const reportRouteCrash = ({ routeId, error }: CrashReport) => reportCrash(error, routeId)
-
-function RootError(props: ErrorComponentProps) {
-  return <RouteError {...props} onCrash={reportRouteCrash} />
-}
 
 function Root() {
   const router = useRouter()

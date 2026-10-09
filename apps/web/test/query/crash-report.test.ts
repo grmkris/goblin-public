@@ -58,6 +58,17 @@ describe('a crash report', () => {
     expect(new TextEncoder().encode(JSON.stringify(report)).length).toBeLessThanOrEqual(2048)
   })
 
+  it('reports a defect only, never an answer the API gave', () => {
+    const sent: unknown[] = []
+    const report = crashReporter((value) => sent.push(value))
+    report(new Conflict({ reason: 'x', ref: 'ray-409' }), '/')
+    report(new ApiFailure('NotFound', 404, undefined, { ref: 'ray-404' }), '/')
+    report(new BillingRefused({ code: 'checkout_limit' }), '/subscribe')
+    expect(sent).toHaveLength(0)
+    report(thrown('x', ['    at f (https://goblin.test/a.js:1:1)']), '/')
+    expect(sent).toHaveLength(1)
+  })
+
   it('goes once per distinct crash, five at most per page load', () => {
     const sent: unknown[] = []
     const report = crashReporter((value) => sent.push(value))
