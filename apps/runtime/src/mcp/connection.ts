@@ -43,6 +43,24 @@ type Connection = {
   idle: ReturnType<typeof setTimeout> | undefined
 }
 
+/**
+ * The UTF-8 size of `value` as JSON, or undefined when it cannot be written as JSON at all (a cycle, a BigInt). That is
+ * a result the host cannot carry, which is not the same as one over its size limit.
+ */
+export function encodedSize(value: unknown): number | undefined {
+  let encoded: string
+  try {
+    encoded = JSON.stringify(value) ?? ''
+  } catch {
+    // expected: JSON.stringify throws only for what JSON cannot hold; the caller answers that as unsupported.
+    return undefined
+  }
+  return new TextEncoder().encode(encoded).byteLength
+}
+
+/** Failures the server answered over a working connection, which is kept: a JSON-RPC error, or a result refused here. */
+const ANSWERED: ReadonlySet<UpstreamMcp['reason']> = new Set(['remote-rpc', 'content-limit', 'unsupported'])
+
 /** MCP Apps visibility (`_meta.ui.visibility`): absent means visible to model and app; the owner sees everything. */
 export const toolOffered = (tool: Tool, caller: McpCaller): boolean => {
   const ui = tool._meta?.['ui']
@@ -138,13 +156,9 @@ export class McpConnectionManager {
   }
 
   #bounded<T>(serverId: string, value: T, max = this.#options.maxResultBytes ?? 1_048_576): T {
-    let encoded: string
-    try {
-      encoded = JSON.stringify(value) ?? ''
-    } catch {
-      throw new UpstreamMcp({ serverId, reason: 'content-limit' })
-    }
-    if (new TextEncoder().encode(encoded).byteLength > max) throw new UpstreamMcp({ serverId, reason: 'content-limit' })
+    const size = encodedSize(value)
+    if (size === undefined) throw new UpstreamMcp({ serverId, reason: 'unsupported' })
+    if (size > max) throw new UpstreamMcp({ serverId, reason: 'content-limit' })
     return value
   }
 
@@ -319,8 +333,7 @@ export class McpConnectionManager {
       return this.#bounded(serverId, await request(), max)
     } catch (error) {
       const mapped = mapMcpError(error, serverId)
-      if (mapped instanceof UpstreamMcp && mapped.reason !== 'remote-rpc' && mapped.reason !== 'content-limit')
-        await this.close(serverId)
+      if (mapped instanceof UpstreamMcp && !ANSWERED.has(mapped.reason)) await this.close(serverId)
       throw mapped
     }
   }

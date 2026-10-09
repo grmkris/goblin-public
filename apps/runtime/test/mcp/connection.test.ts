@@ -1,6 +1,6 @@
 import { createMcpHandler, Server } from '@modelcontextprotocol/server'
 import { describe, expect, it } from 'vitest'
-import { McpConnectionManager } from '../../src/mcp/connection.ts'
+import { McpConnectionManager, encodedSize } from '../../src/mcp/connection.ts'
 import { MemoryGrants } from './memory.ts'
 import { Forbidden } from '../../src/http/errors.ts'
 import type { McpStep } from '../../src/telemetry/report.ts'
@@ -265,5 +265,16 @@ describe('official MCP SDK host interoperability (unit)', () => {
     } finally {
       await manager.closeAll()
     }
+  })
+})
+
+describe('the size of a result as the host carries it (unit)', () => {
+  it('counts UTF-8 bytes of the JSON, and tells a value JSON cannot hold from one that is merely large', () => {
+    expect(encodedSize({ text: 'é' })).toBe(new TextEncoder().encode('{"text":"é"}').byteLength)
+    expect(encodedSize(undefined)).toBe(0)
+    const cycle: Record<string, unknown> = {}
+    cycle['self'] = cycle
+    expect(encodedSize(cycle)).toBeUndefined()
+    expect(encodedSize({ amount: 1n })).toBeUndefined()
   })
 })
