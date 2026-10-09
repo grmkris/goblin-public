@@ -4,11 +4,11 @@ import { randomBytes } from 'node:crypto'
 import { SpikeError } from './overlay.ts'
 
 const root = path.resolve(import.meta.dirname, '../../..')
-const destination = path.join(root, '.local/coding-spike')
+const destination = path.resolve(root, Bun.argv[3] ?? '.local/coding-spike')
 await mkdir(destination, { recursive: true, mode: 0o700 })
 const snapshot = path.join(destination, 'repo')
 if (await Bun.file(path.join(destination, 'config.json')).exists()) throw new SpikeError('already_prepared')
-const sha = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: root }).stdout.toString().trim()
+const sha = Bun.argv[2] ?? Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: root }).stdout.toString().trim()
 if (!/^[a-f0-9]{40}$/u.test(sha)) throw new SpikeError('invalid_base')
 const archive = Bun.spawn(['git', 'archive', sha], { cwd: root, stdout: 'pipe', stderr: 'pipe' })
 await Bun.write(path.join(destination, 'repo.tar'), archive.stdout)

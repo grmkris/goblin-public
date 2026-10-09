@@ -10,7 +10,7 @@ const runners = await backends(
   Bun.argv[2],
   Bun.argv[3] ?? 'https://goblin-coding-cf-dev.kristjan-grm11775.workers.dev',
 )
-const id = digest('goblin-runner-parity-20261009')
+const id = digest(`goblin-runner-parity-20261009:${data.base}`)
 const overlay = new Overlay(data.base, data.files, id)
 const leases: CodingRunnerLease[] = []
 const rows: unknown[] = []

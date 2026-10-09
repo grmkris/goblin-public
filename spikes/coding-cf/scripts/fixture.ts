@@ -10,10 +10,9 @@ import { limits } from '../../coding/scripts/runner/contract.ts'
 export const root = path.resolve(import.meta.dirname, '../../..')
 export const state = path.join(root, '.local/coding-cf-spike')
 export async function fixture() {
-  const config: { root: string; base: string } = await Bun.file(
-    path.join(root, '.local/coding-spike/config.json'),
-  ).json()
-  const names: string[] = await Bun.file(path.join(root, '.local/coding-spike/files.json')).json()
+  const snapshotState = path.resolve(root, Bun.argv[4] ?? '.local/coding-spike')
+  const config: { root: string; base: string } = await Bun.file(path.join(snapshotState, 'config.json')).json()
+  const names: string[] = await Bun.file(path.join(snapshotState, 'files.json')).json()
   const files = new Map<string, string>()
   for (const name of names)
     if (/^apps\/cli\/(?:src|test)\/.*\.ts$/u.test(name))

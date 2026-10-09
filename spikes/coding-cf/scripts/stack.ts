@@ -10,7 +10,9 @@ export default Alchemy.Stack(
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage
     if (stage !== 'dev') return yield* Effect.die(new Error('coding_spike_dev_only'))
-    const image = path.resolve(import.meta.dirname, '../../../.local/coding-cf-spike/image')
+    const image = yield* Config.String('GOBLIN_CODING_IMAGE_CONTEXT').pipe(
+      Config.withDefault(path.resolve(import.meta.dirname, '../../../.local/coding-cf-spike/image')),
+    )
     const worker = yield* Cloudflare.Worker('VerifierWorker', {
       name: `goblin-coding-cf-${stage}`,
       main: path.resolve(import.meta.dirname, '../src/index.ts'),
