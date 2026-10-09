@@ -8,6 +8,7 @@ import { requireBudget } from '../budget.ts'
 import { Conversations } from '../chats/service.ts'
 import { Resident } from '../mcp/service.ts'
 import { Models } from '../models.ts'
+import { reportFailure } from '../observability/report.ts'
 import { RoutineRuns, RoutineUsage, Routines } from './service.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { BACKGROUND, conversationId } from '../pi/context.ts'
@@ -21,6 +22,22 @@ export type StartRun = (
   answer?: { operationId: string; text: string },
 ) => Promise<string>
 export type RoutineWake = (at: number) => Promise<void>
+
+const skipAs = (error: { readonly _tag: string }) => Effect.succeed(error._tag)
+
+/**
+ * Why a firing is recorded as skipped rather than run: no plan, resident authority off, or today's budget spent. Any
+ * other failure (auth D1, storage) fails the admission and is reported, so an outage never skips a firing (R3).
+ */
+export const admissionSkip = Effect.gen(function* () {
+  yield* Entitlements.use((plans) => plans.require('routines'))
+  yield* Resident.use((resident) => resident.require())
+  yield* requireBudget
+}).pipe(
+  Effect.as(undefined),
+  Effect.catchTags({ SubscriptionRequired: skipAs, ResidentInactive: skipAs, BudgetExhausted: skipAs }),
+  reportFailure('routines.admit'),
+)
 
 /** Pi owns execution; this coordinator only repairs the app-to-Pi handoffs and frozen passive reports. */
 export class RoutineRunner {
@@ -41,16 +58,7 @@ export class RoutineRunner {
         const store = yield* RoutineRuns
         const at = yield* Clock.currentTimeMillis
         const suffix = yield* nextInt
-        const skip =
-          forcedSkip ??
-          (yield* Effect.gen(function* () {
-            yield* Entitlements.use((plans) => plans.require('routines'))
-            yield* Resident.use((resident) => resident.require())
-            yield* requireBudget
-          }).pipe(
-            Effect.as(undefined),
-            Effect.catch((error) => Effect.succeed(error._tag)),
-          ))
+        const skip = forcedSkip ?? (yield* admissionSkip)
         return yield* store.claim(firing, `rr_${at}_${Math.abs(suffix)}`, skip, at)
       }),
     )
