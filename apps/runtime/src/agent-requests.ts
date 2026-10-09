@@ -55,9 +55,7 @@ export async function agentRequest(
   if (url.pathname === '/api/files' || url.pathname.startsWith('/api/files/'))
     return filesRequest(request, url, execute)
   if (request.method === 'GET' && url.pathname === '/api/mcp/oauth/callback') {
-    const target = await execute(connectCallback(url.searchParams, appUrl))
-    const fallback = new URL('/connections?error=Internal', appUrl)
-    return Response.redirect((Exit.isSuccess(target) ? target.value : fallback).href, 302)
+    return signInRedirect(await execute(connectCallback(url.searchParams, appUrl)), appUrl, ref)
   }
   const chat = request.method === 'GET' ? EVENTS.exec(url.pathname)?.[1] : undefined
   if (chat !== undefined) return eventsResponse(chat, harness, execute)
@@ -75,4 +73,11 @@ async function eventsResponse(chat: string, harness: PiHarness, execute: Execute
       if (rebound === chat) close()
     }),
   )
+}
+
+/** Where an outbound sign-in returns the owner: Connections, quoting the request's reference when it failed. */
+function signInRedirect(target: Exit.Exit<URL, unknown>, appUrl: string, ref: string | undefined): Response {
+  const location = Exit.isSuccess(target) ? target.value : new URL('/connections?error=Internal', appUrl)
+  if (location.searchParams.has('error') && ref !== undefined) location.searchParams.set('ref', ref)
+  return Response.redirect(location.href, 302)
 }
