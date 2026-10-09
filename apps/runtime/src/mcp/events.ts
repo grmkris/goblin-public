@@ -19,7 +19,8 @@ import { challengeResponse, isOccurrence, type WebhookHeaders } from './events/w
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/client/validators/cf-worker'
 import type { JsonSchemaType } from '@modelcontextprotocol/client'
 
-const attempt = <A>(run: () => Promise<A>): Effect.Effect<A, AppError> =>
+/** The engine's async work as an Effect: a failure is the `AppError` it threw, anything else `Internal`. */
+const effectOf = <A>(run: () => Promise<A>): Effect.Effect<A, AppError> =>
   Effect.tryPromise({ try: run, catch: toAppError })
 export type SubscribeConsumer = {
   readonly consumerId: string
@@ -74,12 +75,12 @@ export class McpEvents {
       }))
   }
   list(serverId: string, name: string, args: Record<string, unknown>) {
-    return attempt(() => this.#client.list(serverId, name, args))
+    return effectOf(() => this.#client.list(serverId, name, args))
   }
   subscribe(
     input: SubscribeConsumer,
   ): Effect.Effect<{ readonly subscriptionId: string; readonly status: string }, AppError> {
-    return attempt(async () => {
+    return effectOf(async () => {
       await this.#authorize()
       const existing = this.store.consumer(input.consumerId, input.revision)
       const args = canonicalArguments(input.arguments)
@@ -126,36 +127,40 @@ export class McpEvents {
     readonly consumerId: string
     readonly revision: number
   }): Effect.Effect<{ retired: boolean; remoteCleanup: boolean }, AppError> {
-    return attempt(async () => {
-      const binding = this.store.consumer(input.consumerId, input.revision)
-      if (binding === undefined) return { retired: true, remoteCleanup: true }
-      const row = this.store.get(binding.subscriptionId)
-      this.store.retire(input.consumerId, input.revision, this.#now())
-      if (row === undefined || this.store.bindings(binding.subscriptionId).length > 0)
-        return { retired: true, remoteCleanup: true }
-      let remoteCleanup = false
-      try {
-        await this.#authorize()
-        await this.#client.unsubscribe(row)
-        remoteCleanup = true
-      } catch {
-        // expected: without authority the remote subscription lapses at its finite TTL; cleanup never renews it.
-      }
-      this.store.patch(row.id, {
-        status: 'tombstone',
-        nextRefreshAt: Number.MAX_SAFE_INTEGER,
-        updatedAt: this.#now(),
-        lastError: remoteCleanup ? null : 'cleanup_pending',
-      })
-      await this.#wake(this.#now() + 1000)
-      return { retired: true, remoteCleanup }
+    return effectOf(() => this.#unsubscribe(input))
+  }
+  async #unsubscribe(input: {
+    readonly consumerId: string
+    readonly revision: number
+  }): Promise<{ retired: boolean; remoteCleanup: boolean }> {
+    const binding = this.store.consumer(input.consumerId, input.revision)
+    if (binding === undefined) return { retired: true, remoteCleanup: true }
+    const row = this.store.get(binding.subscriptionId)
+    this.store.retire(input.consumerId, input.revision, this.#now())
+    if (row === undefined || this.store.bindings(binding.subscriptionId).length > 0)
+      return { retired: true, remoteCleanup: true }
+    let remoteCleanup = false
+    try {
+      await this.#authorize()
+      await this.#client.unsubscribe(row)
+      remoteCleanup = true
+    } catch {
+      // expected: without authority the remote subscription lapses at its finite TTL; cleanup never renews it.
+    }
+    this.store.patch(row.id, {
+      status: 'tombstone',
+      nextRefreshAt: Number.MAX_SAFE_INTEGER,
+      updatedAt: this.#now(),
+      lastError: remoteCleanup ? null : 'cleanup_pending',
     })
+    await this.#wake(this.#now() + 1000)
+    return { retired: true, remoteCleanup }
   }
   /** Disconnect/revoke cleanup runs while the originating authorization is still available. */
   disableServer(serverId?: string): Effect.Effect<void, AppError> {
-    return attempt(async () => {
+    return effectOf(async () => {
       for (const row of this.store.list().filter((r) => serverId === undefined || r.serverId === serverId))
-        for (const binding of this.store.bindings(row.id)) await Effect.runPromise(this.unsubscribe(binding))
+        for (const binding of this.store.bindings(row.id)) await this.#unsubscribe(binding)
     })
   }
   /** A subscription stays only while its server is still offered at the same endpoint and its selector is granted. */
@@ -203,20 +208,23 @@ export class McpEvents {
       authorized: this.#authorize,
       persist: (row, id, body, envelope) => this.#persist(row, id, body, envelope),
     })
-    return attempt(() => ingress.receive(input))
+    return effectOf(() => ingress.receive(input))
   }
   /** One sweep per isolate; unfinished rows retain their independent receipts across reconstruction. */
   dispatch(): Effect.Effect<void, AppError> {
-    return attempt(async () => {
-      await this.#authorize()
-      this.#dispatching ??= this.#dispatcher.dispatch(this.#now()).finally(() => {
-        this.#dispatching = undefined
-      })
-      await this.#dispatching
-    })
+    return effectOf(() => this.#dispatch())
   }
+  /** One dispatch at a time: a caller while one runs joins it. */
+  async #dispatch(): Promise<void> {
+    await this.#authorize()
+    this.#dispatching ??= this.#dispatcher.dispatch(this.#now()).finally(() => {
+      this.#dispatching = undefined
+    })
+    await this.#dispatching
+  }
+  /** One maintenance sweep at a time: a caller while one runs joins it. */
   maintain(): Effect.Effect<void, AppError> {
-    return attempt(async () => {
+    return effectOf(async () => {
       this.#maintaining ??= this.#maintenance().finally(() => {
         this.#maintaining = undefined
       })
@@ -268,10 +276,10 @@ export class McpEvents {
   }
   async #maintenance(): Promise<void> {
     const now = this.#now()
-    await Effect.runPromise(this.dispatch())
+    await this.#dispatch()
     for (const row of this.store.list()) await this.#reconcile(row, now)
     this.store.prune(now)
-    await Effect.runPromise(this.dispatch())
+    await this.#dispatch()
     await this.#wake(now + 60_000)
   }
 }
