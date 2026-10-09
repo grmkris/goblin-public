@@ -230,11 +230,18 @@ export async function moveRefusedCase(url: string): Promise<void> {
   })
   const before = (await state(url, owner)).sessions
   const operationId = crypto.randomUUID()
-  const [first, second, third] = await Promise.all([
-    move(url, owner, '1', runningEntry, operationId),
-    move(url, owner, '1', runningEntry, operationId),
-    move(url, owner, '1', runningEntry, crypto.randomUUID()),
-  ])
+  // The same operation twice at once; the other one is sent only while that move holds after its fork, so it always
+  // comes second (409 while the move works, else the turn is already moved).
+  expect((await call(url, owner, '/__test/move/pause', { phase: 'fork' })).status).toBe(200)
+  const pair = [move(url, owner, '1', runningEntry, operationId), move(url, owner, '1', runningEntry, operationId)]
+  await until(
+    async () => (await (await call(url, owner, '/__test/move/paused')).text()).includes('fork'),
+    Boolean,
+    'the move paused after its fork',
+  )
+  const other = move(url, owner, '1', runningEntry, crypto.randomUUID())
+  expect((await call(url, owner, '/__test/move/resume', {})).status).toBe(200)
+  const [first, second, third] = await Promise.all([...pair, other])
   const [a, b] = [decodeReceipt(await first?.json()), decodeReceipt(await second?.json())]
   expect(a).toEqual(b)
   expect(a).toMatchObject({ state: 'settled' })
