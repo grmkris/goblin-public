@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
-import { Option, Schema } from 'effect'
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { KeyRoundIcon, MessageCircleQuestionIcon, PlugIcon, PowerIcon } from 'lucide-react'
-import { PRIMARY_CHAT, ToolView } from '@goblin/contracts'
+import { PRIMARY_CHAT, type ToolView } from '@goblin/contracts'
 import {
   AskCard,
   AskCardActions,
@@ -23,7 +23,8 @@ import {
   QuestionnaireTitle,
   Receipt,
 } from '@goblin/ui'
-import { ApiFailure, failureText, request } from '../lib/boundary.ts'
+import { setCapabilityMutation } from '../capabilities/queries.ts'
+import { toolGrantMutation, toolsQuery } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { targetLabel } from '../lib/capabilities.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
@@ -38,20 +39,9 @@ type Question = Extract<Interaction, { kind: 'question' }>
 type Grant = Extract<Interaction, { kind: 'grant' }>
 type Capability = Extract<Interaction, { kind: 'capability' }>
 
-const decodeTools = Schema.decodeUnknownOption(Schema.Array(ToolView))
-
-/** The server's own description and hints for a tool, shown as its claims; nothing when they cannot be read. */
+/** The server's own description and hints for a tool, shown as its claims; nothing while they cannot be read. */
 function useToolClaims(serverId: string, name: string): ToolView | undefined {
-  const [tool, setTool] = useState<ToolView>()
-  useEffect(() => {
-    const controller = new AbortController()
-    void request(`/api/mcp/${encodeURIComponent(serverId)}/tools`, { signal: controller.signal })
-      .then((data) => setTool(Option.getOrUndefined(decodeTools(data))?.find((item) => item.name === name)))
-      // expected: the claims are the server's own words beside the grant; the card asks without them
-      .catch(() => undefined)
-    return () => controller.abort()
-  }, [serverId, name])
-  return tool
+  return useQuery(toolsQuery(serverId)).data?.find((item) => item.name === name)
 }
 
 /** A card's reply in flight: its buttons wait while it is sent, and a failure is shown on the card. */
@@ -64,8 +54,7 @@ function useReplying() {
     try {
       await send()
     } catch (cause) {
-      // The grant and the switch still answer through request() (ApiFailure); a reply through the typed client.
-      setError(cause instanceof ApiFailure ? failureText(cause) : messageOf(cause, 'send your answer'))
+      setError(messageOf(cause, 'send your answer'))
     } finally {
       setBusy(false)
     }
@@ -143,9 +132,11 @@ function GrantCard({ interaction, onAnswer }: { readonly interaction: Grant; rea
   const { serverId, name } = interaction
   const tool = useToolClaims(serverId, name)
   const { busy, error, replying } = useReplying()
+  const queryClient = useQueryClient()
+  const grant = useMutation(toolGrantMutation(queryClient)).mutateAsync
   const reply = (allowed: boolean) =>
     void replying(async () => {
-      if (allowed) await request('/api/mcp/grants', { method: 'PUT', body: { serverId, name, allowed } })
+      if (allowed) await grant({ serverId, name, allowed })
       await onAnswer(
         allowed ? `Allowed ${serverId} · ${name}. Continue.` : 'Not allowed.',
         interactionOperation(interaction),
@@ -197,9 +188,11 @@ function CapabilityCard({
   const label = targetLabel(target, view)
   const where = thread === PRIMARY_CHAT ? 'in main' : 'in this thread'
   const { busy, error, replying } = useReplying()
+  const queryClient = useQueryClient()
+  const turnOn = useMutation(setCapabilityMutation(queryClient, thread)).mutateAsync
   const reply = (on: boolean) =>
     void replying(async () => {
-      if (on) await request(`/api/conversations/${thread}/capabilities`, { method: 'PATCH', body: { target, on } })
+      if (on) await turnOn({ target, on })
       await onAnswer(on ? `Turned on ${label} here. Continue.` : 'Not now.', interactionOperation(interaction))
     })
   return (
