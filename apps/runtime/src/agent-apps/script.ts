@@ -3,7 +3,7 @@ import * as Schema from 'effect/Schema'
 import type { FileStore } from '../files/store.ts'
 import type { Isolates } from './isolates.ts'
 import { plainJson } from './json.ts'
-import { problemText } from './queue.ts'
+import { problemText, refusalOf } from './queue.ts'
 
 /** How much of a file a script reads at once, and how long a script may take. */
 const READ_BYTES = 1024 * 1024
@@ -22,7 +22,7 @@ class ScriptFiles extends RpcTarget {
     try {
       return (await this.#files.text(path, 0, READ_BYTES)).text
     } catch (cause) {
-      throw new Error(problemText(cause), { cause })
+      throw refusalOf(cause)
     }
   }
 
@@ -30,7 +30,7 @@ class ScriptFiles extends RpcTarget {
     try {
       return (await this.#files.list(dir)).entries.map(({ path, size, kind }) => ({ path, size, kind }))
     } catch (cause) {
-      throw new Error(problemText(cause), { cause })
+      throw refusalOf(cause)
     }
   }
 
@@ -39,7 +39,7 @@ class ScriptFiles extends RpcTarget {
       const size = new TextEncoder().encode(text).byteLength
       return (await this.#files.write('agent', path, text, 'text/plain; charset=utf-8', size)).path
     } catch (cause) {
-      throw new Error(problemText(cause), { cause })
+      throw refusalOf(cause)
     }
   }
 }

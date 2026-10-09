@@ -2,7 +2,7 @@ import { RpcTarget } from 'cloudflare:workers'
 import { EGRESS_LIMITS, type EgressRequest, type EgressResponse } from './egress.ts'
 import type { AppFiles } from './files.ts'
 import type { AppPowersApi } from './isolates.ts'
-import { AppCodeError, problemText } from './queue.ts'
+import { AppCodeError, refusalOf } from './queue.ts'
 
 /** What one `prepare` may reach, each checked when it is used (ADR 0021). */
 export type PowerPorts = {
@@ -29,8 +29,8 @@ const record = (json: string): Record<string, unknown> => {
 
 /**
  * What an app's `prepare` may do, lent to its isolate as an RPC target for that one call: its own files, a line in its
- * events, and the powers the owner approved for it. Values cross as JSON text; every failure crosses back as a plain
- * Error with its reason.
+ * events, and the powers the owner approved for it. Values cross as JSON text; every failure crosses back as an
+ * `IsolateRefusal`, which the isolate reads as an Error with its reason.
  */
 export class AppPowers extends RpcTarget implements AppPowersApi {
   readonly #ports: PowerPorts
@@ -91,6 +91,6 @@ async function plain<T>(work: () => Promise<T>): Promise<T> {
   try {
     return await work()
   } catch (cause) {
-    throw new Error(problemText(cause), { cause })
+    throw refusalOf(cause)
   }
 }

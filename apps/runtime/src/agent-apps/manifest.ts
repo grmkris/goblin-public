@@ -2,6 +2,7 @@ import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { jsonBytes, mismatches, schemaProblems } from './json.ts'
 import { APP_NAME, MEMBER_NAME } from './names.ts'
+import { StoredDataInvalid } from './stored.ts'
 
 /** The most actions and views one app declares, and the largest schema of one. */
 const MAX_MEMBERS = 12
@@ -21,9 +22,9 @@ export const EVERY = ['15m', '30m', '1h', '3h', '6h', '12h', '1d'] as const
 export type Every = (typeof EVERY)[number]
 const isEvery = (value: string): value is Every => EVERY.some((each) => each === value)
 
-/** A checked schedule's period (`readManifest` refused any other). */
+/** A checked schedule's period: `readManifest` refused any other, so another one is stored data gone wrong. */
 export function everyOf(value: string): Every {
-  if (!isEvery(value)) throw new Error(`not a schedule period: ${value}`)
+  if (!isEvery(value)) throw new StoredDataInvalid({ what: 'schedule period' })
   return value
 }
 

@@ -1,3 +1,5 @@
+import * as Schema from 'effect/Schema'
+
 /**
  * One queue per app: its state changes (actions, activations, rollbacks) run one at a time in arrival order, so each
  * reads the revision the previous one wrote. Reads and `prepare` effects do not wait in it.
@@ -32,3 +34,15 @@ export function problemText(cause: unknown): string {
   }
   return cause instanceof Error && cause.message !== '' ? cause.message : 'The call failed.'
 }
+
+/**
+ * A goblin failure handed to code in an isolate: an app's power or a script's file call refused. Workers RPC carries
+ * only an error's message across, so the message is the failure as one readable line; the failure stays its cause.
+ */
+export class IsolateRefusal extends Schema.TaggedError<IsolateRefusal>()('IsolateRefusal', {
+  message: Schema.String,
+  cause: Schema.Defect(),
+}) {}
+
+/** `cause` as the refusal the isolate's code reads. */
+export const refusalOf = (cause: unknown): IsolateRefusal => new IsolateRefusal({ message: problemText(cause), cause })

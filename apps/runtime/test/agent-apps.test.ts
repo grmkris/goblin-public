@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mismatches, plainJson, schemaProblems } from '../src/agent-apps/json.ts'
-import { readManifest, requestedPowers, storedManifest } from '../src/agent-apps/manifest.ts'
+import { everyOf, readManifest, requestedPowers, storedManifest } from '../src/agent-apps/manifest.ts'
 import { backoff, lastSlot, nextSlot } from '../src/agent-apps/jobs.ts'
-import { AppQueues, problemText } from '../src/agent-apps/queue.ts'
+import { AppQueues, problemText, refusalOf } from '../src/agent-apps/queue.ts'
+import { StoredDataInvalid } from '../src/agent-apps/stored.ts'
 import { reconcileAppJobs } from '../src/agent-apps/wake.ts'
 import { InvalidInput } from '../src/http/errors.ts'
 
@@ -139,6 +140,10 @@ describe('manifests', () => {
 const at = (time: string) => Date.parse(`2026-10-06T${time}:00Z`)
 
 describe('app schedules', () => {
+  it('read a stored period, and refuse one readManifest never accepted as stored data gone wrong', () => {
+    expect(everyOf('1h')).toBe('1h')
+    expect(() => everyOf('2m')).toThrow(StoredDataInvalid)
+  })
   it('fall on the period from midnight UTC, a daily one at its time', () => {
     expect(nextSlot({ every: '15m', at: null }, at('10:07'))).toBe(at('10:15'))
     expect(nextSlot({ every: '15m', at: null }, at('10:15'))).toBe(at('10:30'))
@@ -170,6 +175,14 @@ describe('app queues', () => {
     await expect(slow).rejects.toThrow('boom')
     await next
     expect(order).toEqual(['first', 'second'])
+  })
+  it("hand an isolate a refusal it reads as an Error with the failure's line, across a structured clone", () => {
+    const refusal = refusalOf(new InvalidInput({ reason: 'the agent writes only /agent' }))
+    expect(refusal._tag).toBe('IsolateRefusal')
+    expect(refusal).toBeInstanceOf(Error)
+    const crossed: unknown = structuredClone(refusal)
+    expect(crossed).toBeInstanceOf(Error)
+    expect(crossed).toHaveProperty('message', 'InvalidInput — reason: the agent writes only /agent')
   })
   it('turn tagged errors into one readable line', () => {
     expect(problemText(new InvalidInput({ reason: 'input: /by must be >= 1' }))).toBe(

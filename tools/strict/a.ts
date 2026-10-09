@@ -14,6 +14,7 @@ export const paths: string[] = [
   'apps/runtime/src/agent-apps/powers.ts',
   'apps/runtime/src/agent-apps/script.ts',
   'apps/runtime/src/agent-apps/service.ts',
+  'apps/runtime/src/agent-apps/stored.ts',
   'apps/runtime/src/agent-apps/toolset.ts',
   'apps/runtime/src/agent-apps/wake.ts',
   'apps/runtime/src/apps/**',
