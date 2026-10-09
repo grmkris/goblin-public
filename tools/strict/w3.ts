@@ -20,4 +20,7 @@ export const paths: string[] = [
   'apps/web/test/files.test.ts',
   'apps/web/test/host-context.test.ts',
   'apps/web/test/startup-images.test.ts',
+  'apps/web/test/browser/question-app.ts',
+  'apps/web/test/browser/diagram.tsx',
+  'apps/web/test/browser/diagram-safety.ts',
 ]

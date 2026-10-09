@@ -21,14 +21,21 @@ async function stage(result: unknown): Promise<void> {
 }
 
 button?.addEventListener('click', () => {
-  void app.callServerTool({ name: 'question_answer', arguments: { answer: input?.value ?? '' } }).then(stage)
+  app
+    .callServerTool({ name: 'question_answer', arguments: { answer: input?.value ?? '' } })
+    .then(stage)
+    .catch(() => {
+      // expected: the fixture shows a failed save in its status line, which the browser test reads
+      if (status) status.textContent = 'Save failed'
+    })
 })
-void app
+app
   .connect()
   .then(async () => {
     if (status) status.textContent = 'Ready'
     await stage(await app.callServerTool({ name: 'question_read', arguments: {} }))
   })
   .catch(() => {
+    // expected: the fixture shows a lost host in its status line, which the browser test reads
     if (status) status.textContent = 'Disconnected'
   })
