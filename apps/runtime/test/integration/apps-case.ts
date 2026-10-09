@@ -19,6 +19,12 @@ const send = (base: string, who: Person, path: string, method: string, body?: un
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
 
+/**
+ * A refusal's tag as the Worker's routes write it (`"error":"GrantDenied"`) or as the owner API's envelope does
+ * (`"code":"grant_denied"`), so the case holds on either side of the switch to the typed API.
+ */
+const REFUSED = { notFound: /NotFound|"not_found"/u, grantDenied: /GrantDenied|"grant_denied"/u }
+
 const grant = async (base: string, owner: Person, allowed: boolean) =>
   expect(
     (await send(base, owner, '/api/mcp/grants', 'PUT', { serverId: 'apps-fixture', name: 'board', allowed })).status,
@@ -78,7 +84,7 @@ export async function appsCase(base: string): Promise<void> {
     appContext: [{ app: app.id, text: 'receipt from another conversation' }],
   })
   expect(crossed.status).toBe(404)
-  expect(await crossed.text()).toContain('NotFound')
+  expect(await crossed.text()).toMatch(REFUSED.notFound)
   const initialHome = Schema.decodeUnknownSync(HomeRead)(await (await call(base, owner, '/api/home')).json())
   const pinInput = {
     operationId: crypto.randomUUID(),
@@ -103,13 +109,13 @@ export async function appsCase(base: string): Promise<void> {
   await grant(base, owner, false)
   const denied = await send(base, owner, '/api/mcp/apps-fixture/resources/read', 'POST', { uri: BOARD })
   expect(denied.status).toBeGreaterThanOrEqual(400)
-  expect(await denied.text()).toContain('GrantDenied')
+  expect(await denied.text()).toMatch(REFUSED.grantDenied)
   const deniedCall = await send(base, owner, '/api/mcp/apps-fixture/tools/call', 'POST', {
     name: 'board',
     arguments: {},
   })
   expect(deniedCall.status).toBeGreaterThanOrEqual(400)
-  expect(await deniedCall.text()).toContain('GrantDenied')
+  expect(await deniedCall.text()).toMatch(REFUSED.grantDenied)
   expect(Schema.decodeUnknownSync(HomeRead)(await (await call(base, owner, '/api/home')).json()).layout).toEqual(
     home.kind === 'applied' ? home.layout : undefined,
   )
