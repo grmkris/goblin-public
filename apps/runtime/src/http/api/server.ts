@@ -13,9 +13,6 @@ import { RequestContext, requestFacts, routeNames } from './context.ts'
 import { OwnerApiLayer } from './groups.ts'
 import { answer } from './render.ts'
 
-/** What the owner handlers take from the agent's runtime on each request: the services their programs use. */
-export type OwnerApiServices = HttpRouter.Request.Only<'Requires', Layer.Services<typeof OwnerApiLayer>>
-
 /**
  * The owner API served inside the agent (ADR 0038 to come): the router is built once, in the agent's own runtime and
  * the layer's scope, never at module level. `handle` answers a request that names an owner endpoint and is `None` for
