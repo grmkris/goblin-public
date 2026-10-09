@@ -23,6 +23,7 @@ import {
   moveTopicCase,
 } from './move-case.ts'
 import { person, call, ownerFetch } from './owner-requests.ts'
+import { clientErrorsCase, csrfCase } from './edge-case.ts'
 
 const harness = Test.make({
   providers: Cloudflare.providers(),
@@ -105,6 +106,14 @@ harness.test(
 harness.test(
   "native: a Topic's Conversation moves too, and 20 chained moves keep its reads within twice their cost",
   stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => moveTopicCase(url)))),
+)
+harness.test(
+  'native: /api/client-errors takes a content-free report without a session and refuses one that could carry a message',
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => clientErrorsCase(url)))),
+)
+harness.test(
+  'native: an owner write without the CSRF header, or from another origin, is refused at the edge and never applied',
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => csrfCase(url)))),
 )
 harness.test(
   'native: only the session user reaches their own Agent; request selectors cannot redirect it',
