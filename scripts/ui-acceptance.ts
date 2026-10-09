@@ -118,6 +118,7 @@ async function panelCheck(page: Page, origin: string, checks: Record<string, Che
   const shown = await panel
     .waitFor({ timeout: 10_000 })
     .then(() => true)
+    // expected: a timeout means it did not show, which the check records
     .catch(() => false)
   if (!shown) {
     checks[`${prefix}.panel`] = { ok: false, detail: 'the panel did not open' }
@@ -155,6 +156,7 @@ async function deskChecks(page: Page, origin: string, checks: Record<string, Che
   const found = await picker
     .waitFor({ timeout: 10_000 })
     .then(() => true)
+    // expected: a timeout means it did not show, which the check records
     .catch(() => false)
   if (found) {
     await picker.click()
@@ -313,6 +315,7 @@ async function usageCheck(page: Page, checks: Record<string, Check>, prefix: str
     .first()
     .waitFor({ timeout: 3000 })
     .then(() => true)
+    // expected: a timeout means it did not show, which the check records
     .catch(() => false)
   checks[`${prefix}.usage.tap`] = { ok: shown, detail: null }
   await page.keyboard.press('Escape')

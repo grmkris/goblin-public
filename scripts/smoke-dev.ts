@@ -459,6 +459,7 @@ async function fileChecks(dev: DevClient): Promise<FileCheck> {
   const csrf = { 'x-goblin-csrf': '1' }
   const put = await dev.send(target, { method: 'PUT', headers: { ...csrf, 'content-type': 'text/plain' }, body })
   if (put.status !== 201) throw new Error('file_upload_failed')
+  // expected: a failed read is thrown below as file_read_failed, once the file is deleted
   const failure = await fileReadBack(dev, path, target, body).catch(() => 'file_read_failed')
   // Delete it whatever the read found, then report.
   const deleted = await dev.send(target, { method: 'DELETE', headers: csrf })
@@ -553,6 +554,7 @@ try {
   await chmod(receiptPath, 0o600)
   console.info(output)
 } catch (error) {
+  // expected: the smoke's last resort prints the failed step list and exits non-zero
   const reason = error instanceof Error ? error.message : 'unknown'
   console.error(JSON.stringify({ status: 'failed', reason, steps }, null, 2))
   process.exitCode = 1

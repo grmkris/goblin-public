@@ -85,6 +85,7 @@ export async function appChecks<D extends Owner>(dev: D, steps: ThreadSteps<D>):
     if ((await smokeRevision(dev)) !== undefined) throw new Error('app_still_listed')
     return { app: 'ok' }
   } finally {
+    // expected: cleanup never hides the smoke's own failure; an app it cannot see is left alone
     if ((await smokeRevision(dev).catch(() => undefined)) !== undefined) await deleteSmokeApp(dev)
     await steps.close(dev, thread)
   }
