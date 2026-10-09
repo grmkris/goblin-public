@@ -8,6 +8,7 @@ export const paths: string[] = [
   'apps/runtime/test/http/boundary.test.ts',
   'apps/runtime/test/http/canonical.test.ts',
   'apps/runtime/test/http/api/edge.test.ts',
+  'apps/runtime/test/http/api/owner-gate.test.ts',
   'packages/contracts/src/api/account.ts',
   'packages/contracts/src/api/billing.ts',
   'packages/contracts/src/api/billing.test.ts',

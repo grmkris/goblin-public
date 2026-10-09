@@ -1,4 +1,5 @@
-import { AppError, OwnerGate, withRef } from '@goblin/contracts/api'
+import { AppError, OwnerGate, RenewsResident, withRef } from '@goblin/contracts/api'
+import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
@@ -11,22 +12,24 @@ const isAppError = Schema.is(AppError)
 
 /**
  * The owner gate (`OwnerGate` in the contract) as `ownerRequest` ran it for each owner RPC method: the account's plan,
- * then a renewal of resident authority, then the handler. Its logs carry the endpoint, the operation and the request's
- * reference, and every typed failure it answers quotes that reference.
+ * then a renewal of resident authority unless the endpoint says otherwise (`RenewsResident`: changing it must not renew
+ * first), then the handler. Its logs carry the endpoint, the operation and the request's reference, and every typed
+ * failure it answers quotes that reference.
  */
 export const OwnerGateLive = Layer.effect(
   OwnerGate,
   Effect.gen(function* () {
     const plans = yield* Entitlements
     const resident = yield* Resident
-    const admit = Effect.gen(function* () {
-      yield* plans.require()
-      resident.renew(yield* nowSecondsEffect)
-    })
+    const admit = (renews: boolean) =>
+      Effect.gen(function* () {
+        yield* plans.require()
+        if (renews) resident.renew(yield* nowSecondsEffect)
+      })
     return OwnerGate.of((handler, { group, endpoint }) =>
       Effect.flatMap(Effect.serviceOption(RequestContext), (context) => {
         const { ref, operation } = Option.getOrUndefined(context) ?? {}
-        return Effect.andThen(admit, handler).pipe(
+        return Effect.andThen(admit(Context.get(endpoint.annotations, RenewsResident)), handler).pipe(
           Effect.catchIf(isAppError, (error) =>
             ref === undefined ? Effect.fail(error) : Effect.flatMap(withRef(ref)(error), Effect.fail),
           ),
