@@ -49,6 +49,7 @@ export class OwnerAgent extends PersonalAgent {
       return Response.json(unwrap(await this.askAsClient('topics-client', input, operationId, 5000)))
     }
     if (path === '/test/queue/held') return Response.json({ inputs: queueModel(this).held() })
+    if (path === '/test/queue/seen') return Response.json({ requests: queueModel(this).requests() })
     if (path === '/test/queue/release') {
       const { input } = Schema.decodeUnknownSync(Schema.Struct({ input: Schema.String }))(await request.json())
       return Response.json({ released: queueModel(this).release(input) })

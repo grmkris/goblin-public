@@ -57,6 +57,7 @@ export interface AgentRpcMethods {
       readonly appContext?: readonly AppContext[]
       readonly attachments?: readonly string[]
       readonly selections?: readonly ComposerSelection[]
+      readonly personaOrder?: 'parallel' | 'sequence'
     },
   ) => Promise<RpcResult<PiReceipt>>
   /** Post the owner's message as the head of a new Thread of `thread`; the reply lands there (ADR 0034). */
@@ -86,6 +87,18 @@ export interface AgentRpcMethods {
     id: number,
     change: import('@goblin/contracts').UpdateTopic,
   ) => Promise<RpcResult<import('@goblin/contracts').TopicView>>
+  /** The owner's Personas (ADR 0033), what organizing changed, and Undo. */
+  readonly personas: () => Promise<RpcResult<readonly import('@goblin/contracts').PersonaView[]>>
+  readonly createPersona: (
+    input: import('@goblin/contracts').CreatePersona,
+  ) => Promise<RpcResult<import('@goblin/contracts').PersonaView>>
+  readonly personaDetail: (id: number) => Promise<RpcResult<import('@goblin/contracts').PersonaDetail>>
+  readonly updatePersona: (
+    id: number,
+    change: import('@goblin/contracts').UpdatePersona,
+  ) => Promise<RpcResult<import('@goblin/contracts').PersonaView>>
+  readonly organizeReceipts: () => Promise<RpcResult<readonly import('@goblin/contracts').OrganizeReceipt[]>>
+  readonly undoOrganize: (id: string) => Promise<RpcResult<import('@goblin/contracts').OrganizeReceipt>>
   readonly markRead: (id: string) => Promise<RpcResult<boolean>>
   readonly createApp: (input: CreateApp) => Promise<RpcResult<AppView>>
   readonly updateApp: (id: string, change: UpdateApp) => Promise<RpcResult<AppView>>

@@ -49,7 +49,7 @@ function offeredTools(messages: readonly Message[]): string[] {
  * What the scripted model answers, from the newest turn: after a tool round, `done`; to `call <tool> <json>`, that
  * tool call; to anything else, `echo: <text>`. Deterministic, keyless, no network.
  */
-function reply(messages: readonly Message[]): AssistantMessage['content'] {
+export function reply(messages: readonly Message[]): AssistantMessage['content'] {
   // Pi appends a changed system prompt after the newest turn, so the turn to answer is the last non-system message.
   const last = messages.findLast((message) => message.role !== 'system')
   if (last?.role === 'toolResult') return [{ type: 'text', text: `done: ${textOf(last)}` }]

@@ -6,6 +6,9 @@ import type { HomeService } from '../home/service.ts'
 import type { ChatDirectory } from '../chats/directory.ts'
 import type { ConversationRegistry } from '../conversations.ts'
 import type { TopicRegistry } from '../topics/registry.ts'
+import type { PersonaRegistry } from '../personas/registry.ts'
+import type { PersonaInvocations } from '../personas/invocations.ts'
+import type { OrganizeReceipts } from '../organize/receipts.ts'
 import { sseResponse } from '../http/sse.ts'
 import { BACKGROUND } from '../pi/context.ts'
 import { SUBAGENT_RELAY } from '../pi/subagent-relay.ts'
@@ -29,12 +32,15 @@ export function activityOf(graph: TaskGraph): ReadonlyMap<string, Busy> {
 
 type Listener = (changes: readonly WorkspaceChange[]) => void
 
-/** What the feed shows: the conversations, Apps, Home and Topics, each telling it what changed. */
+/** What the feed shows: the conversations, Apps, Home, Topics, Personas and receipts, each telling it what changed. */
 export type FeedSources = {
   readonly conversations: ConversationRegistry
   readonly apps: AppRegistry
   readonly home: HomeService
   readonly topics: TopicRegistry
+  readonly personas: PersonaRegistry
+  readonly invocations: PersonaInvocations
+  readonly receipts: OrganizeReceipts
 }
 
 /**
@@ -49,18 +55,33 @@ export class WorkspaceFeed {
   readonly #apps: AppRegistry
   readonly #home: HomeService
   readonly #topics: TopicRegistry
+  readonly #personas: PersonaRegistry
+  readonly #invocations: PersonaInvocations
+  readonly #receipts: OrganizeReceipts
   readonly #listeners = new Set<Listener>()
   #activity = new Map<string, ConversationActivity>()
   #watch: Promise<TaskGraphWatch> | undefined
 
-  constructor(harness: PiHarness, { conversations, apps, home, topics }: FeedSources, chats: ChatDirectory) {
+  constructor(
+    harness: PiHarness,
+    { conversations, apps, home, topics, personas, invocations, receipts }: FeedSources,
+    chats: ChatDirectory,
+  ) {
     this.#harness = harness
     this.#chats = chats
     this.#conversations = conversations
     this.#apps = apps
     this.#home = home
     this.#topics = topics
+    this.#personas = personas
+    this.#invocations = invocations
+    this.#receipts = receipts
     topics.onChange((changed) => this.#emit(changed.map((topic) => ({ type: 'topic' as const, topic }))))
+    personas.onChange((changed) => this.#emit(changed.map((persona) => ({ type: 'persona' as const, persona }))))
+    invocations.onChange((changed) =>
+      this.#emit(changed.map((invocation) => ({ type: 'invocation' as const, invocation }))),
+    )
+    receipts.onChange((changed) => this.#emit(changed.map((receipt) => ({ type: 'receipt' as const, receipt }))))
     conversations.onChange((ids) => {
       if (this.#listeners.size > 0) void this.#describe(ids)
     })
@@ -95,6 +116,9 @@ export class WorkspaceFeed {
         apps: this.#apps.list(),
         home: this.#home.layout(),
         topics: this.#topics.list(),
+        personas: this.#personas.list(),
+        invocations: this.#invocations.live(),
+        receipts: this.#receipts.list(),
       })
     } catch (error) {
       await close()
@@ -110,7 +134,10 @@ export class WorkspaceFeed {
   }
 
   async #describe(ids: readonly string[]): Promise<void> {
-    const views = await Promise.all(ids.map(async (id) => this.#conversations.view(id)))
+    // A Persona's fork is hidden: it is never reported as a conversation of its own.
+    const views = await Promise.all(
+      ids.filter((id) => !this.#chats.isHidden(id)).map(async (id) => this.#conversations.view(id)),
+    )
     this.#emit(
       views.flatMap((view) => (view === undefined ? [] : [{ type: 'conversation' as const, conversation: view }])),
     )
@@ -147,7 +174,7 @@ export class WorkspaceFeed {
     const next = new Map<string, Busy>(
       [...activityOf(graph)].flatMap(([session, state]) => {
         const chat = this.#chats.chatOf(session)
-        return chat === undefined ? [] : [[chat, state] as const]
+        return chat === undefined || this.#chats.isHidden(chat) ? [] : [[chat, state] as const]
       }),
     )
     const now = Date.now()

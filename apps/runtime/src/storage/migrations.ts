@@ -403,6 +403,27 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
     ].join(BREAK),
   },
   {
+    // Organize receipts (ADR 0033): what the owner or the agent organized, with the target before and after, for Undo.
+    key: '20261026000150_organize_receipts',
+    tables: ['app_organize_receipts'],
+    sql: [
+      `CREATE TABLE app_organize_receipts (id TEXT PRIMARY KEY NOT NULL, operation_id TEXT UNIQUE, kind TEXT NOT NULL, target TEXT NOT NULL, summary TEXT NOT NULL, actor TEXT NOT NULL CHECK (actor IN ('owner', 'agent')), chat_id TEXT, before TEXT NOT NULL, after TEXT NOT NULL, after_revision INTEGER NOT NULL, created_at INTEGER NOT NULL, undone_at INTEGER)`,
+      'CREATE INDEX app_organize_receipts_created ON app_organize_receipts (created_at)',
+    ].join(BREAK),
+  },
+  {
+    // Personas (ADR 0033): versioned definitions, and which Persona answered which owner message.
+    key: '20261026000200_personas',
+    tables: ['app_personas', 'app_persona_revisions', 'app_persona_invocations'],
+    sql: [
+      'CREATE TABLE app_personas (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, glyph TEXT NOT NULL, hue INTEGER NOT NULL, role TEXT NOT NULL, instructions TEXT NOT NULL, model TEXT, exclusions TEXT NOT NULL, revision INTEGER NOT NULL, operation_id TEXT UNIQUE, archived_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
+      'CREATE UNIQUE INDEX app_personas_active_name ON app_personas (name COLLATE NOCASE) WHERE archived_at IS NULL',
+      `CREATE TABLE app_persona_revisions (persona_id INTEGER NOT NULL, revision INTEGER NOT NULL, name TEXT NOT NULL, glyph TEXT NOT NULL, hue INTEGER NOT NULL, role TEXT NOT NULL, instructions TEXT NOT NULL, model TEXT, exclusions TEXT NOT NULL, actor TEXT NOT NULL CHECK (actor IN ('owner', 'agent')), created_at INTEGER NOT NULL, PRIMARY KEY (persona_id, revision))`,
+      `CREATE TABLE app_persona_invocations (operation_id TEXT NOT NULL, persona_id INTEGER NOT NULL, revision INTEGER NOT NULL, chat_id TEXT NOT NULL, ord INTEGER NOT NULL, state TEXT NOT NULL CHECK (state IN ('pending', 'running', 'answered', 'failed', 'stopped')), answer_entry INTEGER, created_at INTEGER NOT NULL, settled_at INTEGER, PRIMARY KEY (operation_id, persona_id))`,
+      'CREATE INDEX app_persona_invocation_chat ON app_persona_invocations (chat_id, state)',
+    ].join(BREAK),
+  },
+  {
     // Start thread (ADR 0034): the owner's operation that started a Thread, so one operation makes one Thread.
     key: '20261026000350_thread_heads',
     tables: ['app_conversations'],

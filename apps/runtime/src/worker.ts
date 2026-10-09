@@ -38,6 +38,8 @@ import { runBillingCron } from './billing/cron.ts'
 import { billingMode, requireAccountPlan } from './billing/gates.ts'
 import { routineRoute } from './routines/routes.ts'
 import { topicRoute } from './topics/routes.ts'
+import { personaRoute } from './personas/routes.ts'
+import { organizeRoute } from './organize/routes.ts'
 import { browserWrite } from './http/csrf.ts'
 
 export { PersonalAgent } from './agent.ts'
@@ -160,8 +162,18 @@ const conversationRoutes: Readonly<
 > = {
   'POST messages': async (request, agent, thread) => {
     const body = await readJson(request, SendMessage)
-    const { input, operationId, appContext = [], attachments = [], selections = [] } = body
-    return json(unwrap(await agent.submit(thread, input, operationId, { appContext, attachments, selections })), 202)
+    const { input, operationId, appContext = [], attachments = [], selections = [], personaOrder } = body
+    return json(
+      unwrap(
+        await agent.submit(thread, input, operationId, {
+          appContext,
+          attachments,
+          selections,
+          ...(personaOrder === undefined ? {} : { personaOrder }),
+        }),
+      ),
+      202,
+    )
   },
   'POST threads': async (request, agent, thread) => {
     const body = await readJson(request, SendMessage)
@@ -350,9 +362,17 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   const { userId } = session
   const path = new URL(request.url).pathname
   if (
-    ['/api/routines', '/api/topics', '/api/files', '/api/apps', '/api/agent-apps', '/api/home', '/api/mcp'].some(
-      (prefix) => under(path, prefix),
-    ) ||
+    [
+      '/api/routines',
+      '/api/topics',
+      '/api/personas',
+      '/api/organize',
+      '/api/files',
+      '/api/apps',
+      '/api/agent-apps',
+      '/api/home',
+      '/api/mcp',
+    ].some((prefix) => under(path, prefix)) ||
     (request.method === 'DELETE' && /^\/api\/conversations\/\d{1,12}\/queue$/u.test(path)) ||
     (request.method === 'POST' && /^\/api\/conversations\/\d{1,12}\/(?:threads|move)$/u.test(path))
   )
@@ -365,6 +385,17 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
 /** `path` is `prefix` or a path below it. */
 const under = (path: string, prefix: string): boolean => path === prefix || path.startsWith(`${prefix}/`)
 
+/** Routes whose own module reads the path below the prefix: routines, then the workspace's Topics, Personas, receipts. */
+const ownedRoutes: readonly (readonly [
+  string,
+  (request: Request, agent: DurableObjectStub<AgentRpc>, path: string) => Promise<Response>,
+])[] = [
+  ['/api/routines', routineRoute],
+  ['/api/topics', topicRoute],
+  ['/api/personas', personaRoute],
+  ['/api/organize', organizeRoute],
+]
+
 async function ownerApiRequest(
   request: Request,
   env: RuntimeEnv,
@@ -374,8 +405,8 @@ async function ownerApiRequest(
 ): Promise<Response> {
   if (path.startsWith('/api/agent/')) return agentRoute(request, agent, path)
   if (path === '/api/home') return agent.fetch(new Request('https://agent/home', request))
-  if (under(path, '/api/routines')) return routineRoute(request, agent, path)
-  if (under(path, '/api/topics')) return topicRoute(request, agent, path)
+  const owned = ownedRoutes.find(([prefix]) => under(path, prefix))
+  if (owned !== undefined) return owned[1](request, agent, path)
   if (path === '/api/workspace/events' && request.method === 'GET') return agent.fetch('https://agent/workspace/events')
   if (under(path, '/api/files'))
     return agent.fetch(new Request(`https://agent${path.slice('/api'.length)}${new URL(request.url).search}`, request))

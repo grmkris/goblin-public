@@ -1,21 +1,58 @@
-import type { Message, ProviderStreams } from '@earendil-works/pi-ai'
+import type { AssistantMessage, Message, ProviderStreams } from '@earendil-works/pi-ai'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
 import { isContextBlock } from '../../src/pi/context-tail.ts'
-import { scriptedStreams } from './model.ts'
+import { type SeenRequest, reply as scripted, scriptedStreams } from './model.ts'
 
 const textOf = (message: Message): string =>
   typeof message.content === 'string'
     ? message.content
     : message.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
 
+/** The prompt a Persona's fork is asked with (`pi/persona-turn.ts`): its name is who is answering. */
+const PERSONA_PROMPT = /^Answer the owner's message above as @(.+)\.$/u
+
+/**
+ * A Persona's fork scripted to call the tool its owner message asks for: `persona-call <tool> <json>` anywhere above
+ * the prompt, once; the tool's result is then its answer. Anything else is the echo every other request gets.
+ */
+function personaCall(messages: readonly Message[]): AssistantMessage['content'] | undefined {
+  const last = messages.findLast((message) => message.role !== 'system')
+  if (last === undefined) return undefined
+  if (last.role === 'toolResult') return undefined
+  if (!PERSONA_PROMPT.test(textOf(last).split('\n').at(-1) ?? '')) return undefined
+  for (const message of messages) {
+    const call = /persona-call (\w+) (\{.*\})/u.exec(message.role === 'user' ? textOf(message) : '')
+    if (call !== null)
+      return [
+        {
+          type: 'toolCall',
+          id: `persona-call-${messages.length}`,
+          name: call[1] ?? '',
+          arguments: JSON.parse(call[2] ?? '{}'),
+        },
+      ]
+  }
+  return undefined
+}
+
 /** Controlled native model gates: release or cancellation ends them, without network or model spend. */
 class QueueModel {
   readonly #held = new Map<string, () => void>()
-  readonly #base = scriptedStreams()
+  readonly #requests: SeenRequest[] = []
+  readonly #base = scriptedStreams(
+    (request) => void this.#requests.push(request),
+    (messages) => personaCall(messages) ?? scripted(messages),
+  )
   readonly streams: ProviderStreams = {
     stream: (target, context, options) => {
       const last = context.messages.findLast((message) => message.role === 'user' && !isContextBlock(message))
-      const input = last === undefined ? '' : textOf(last)
+      const text = last === undefined ? '' : textOf(last)
+      // A Persona's fork is held by the `queue-hold:` token in the owner message it answers, keyed with its name.
+      const answering = PERSONA_PROMPT.exec(text.split('\n').at(-1) ?? '')?.[1]
+      // The token is read from the newest ask only: older asks stay in the chat the fork reads.
+      const ask = context.messages.findLast((message) => textOf(message).startsWith('[to @'))
+      const token = answering === undefined || ask === undefined ? undefined : /queue-hold:\S+/u.exec(textOf(ask))?.[0]
+      const input = token === undefined ? text : `${token}@${answering ?? ''}`
       if (!input.startsWith('queue-hold:')) return this.#base.stream(target, context, options)
       const key = input
       const gate = Promise.withResolvers<void>()
@@ -42,6 +79,10 @@ class QueueModel {
       return output
     },
     streamSimple: (target, context, options) => this.streams.stream(target, context, options),
+  }
+  /** Every request the scripted model received, oldest first. */
+  requests(): readonly SeenRequest[] {
+    return this.#requests
   }
   held(): readonly string[] {
     return [...this.#held.keys()]

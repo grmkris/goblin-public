@@ -209,8 +209,9 @@ Home, routine and app management, memory and skill learning remain absent. Spawn
 narrow servers, tools, skill libraries, apps and delegation against every live ancestor. Retained helpers get the
 current extension selection through Pi configuration on reconstruction (ADRs 0018 and 0029). Each message goes through a relay task in the
 spawner (`pi/subagent-relay.ts`): it delivers the message, waits until the subagent is done (idle, with none of its
-own relays live; it parks on those), then posts the newest answer once into the spawner as an input labelled `[from
-subagent <name>]`, which the spawner answers. Request ids keep a restart from delivering or reporting twice; of
+own relays live; it parks on those), then posts the newest answer once into the spawner's chat as a passive `app.delegate_result` (`[from
+subagent <name>]` to the spawner's model, which sees it at its next turn and does not answer it), or as an input the
+spawner answers once when the spawn set `synthesize: true` ([ADR 0033](adr/0033-personas.md)). Request ids keep a restart from delivering or reporting twice; of
 several messages on their way to one subagent only the last relay reports, quoting what the owner wrote. The subagent
 then closes as done unless the owner wrote to it, branched from it or pinned it; a later message from its spawner
 opens it again, while one the owner closed refuses its spawner. The owner's message to a subagent pins it open and
@@ -597,6 +598,32 @@ All three are strict-CSRF browser writes and owner requests. The workspace feed'
 `{ type: 'topic', topic }`, and each `ConversationView` carries `topic` and, for a Conversation, `conversation: true`.
 Unit tests run the real migrations in `node:sqlite`; the local workerd owner case `topics-case.ts` runs in both
 native profiles. Neither is deployed-stage evidence.
+
+## Personas, organize receipts
+
+A Persona ([ADR 0033](adr/0033-personas.md)) is a named, versioned agent definition the owner tags with `@name`. The
+registry (`personas/registry.ts`, `Personas`) keeps `app_personas` and every revision in `app_persona_revisions`;
+updates are compare-and-set on `expectedRevision`. A send with Persona selections (`submitOwner`, `personas/ask.ts`)
+admits the operation, records one `app_persona_invocations` row per Persona, writes a passive `app.persona_ask` entry
+(no Goblin run starts) and creates one background `goblin.persona-turn` task per Persona, guarded by an
+`app.persona-asks` document. A turn (`pi/persona-turn.ts`) forks the chat at the ask entry (in a sequence, at the
+previous Persona's answer), prompts the fork with the frozen revision text in the context tail, and passive-writes the
+answer back as an attributed `app.persona` entry holding the revision. The fork is a hidden `persona`-role thread of
+the chat's Topic with main's memory and the delegating, organizing and asking tools removed and a `subagents`
+exclusion added. Stop aborts the chat's turns and marks their invocations `stopped`.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/personas`, `POST /api/personas` | Every Persona (archived too), or create one (`CreatePersona`, idempotent by operation id; 201). |
+| `GET /api/personas/:id`, `PATCH /api/personas/:id` | One with its revisions, or a new revision (`UpdatePersona`; 409 unless `expectedRevision` is current). |
+| `GET /api/organize`, `POST /api/organize/:id/undo` | Organize receipts, newest first; Undo one (409 `touched` after a later edit, `undone` after an Undo). |
+
+The organize tools (`pi/organize.ts`: `topic_create`, `topic_rename`, `topic_archive`, `persona_create`,
+`persona_update`) act only on the owner's direct request and write a receipt (`app_organize_receipts`) with the target
+before and after; the same change from the UI writes one with actor `owner`. The workspace feed carries `personas`,
+`invocations` and `receipts` and the matching changes. Unit tests (`personas.test.ts`) run the real migrations in
+`node:sqlite`; the local workerd owner cases in `persona-case.ts` run in both native profiles. Neither is
+deployed-stage evidence.
 
 ## Topic memory
 

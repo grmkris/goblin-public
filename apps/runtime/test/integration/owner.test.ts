@@ -11,6 +11,7 @@ import { agentAppViewCase } from './agent-app-view-case.ts'
 import { queueCase } from './queue-case.ts'
 import { topicsCase } from './topics-case.ts'
 import { threadHeadsCase } from './thread-heads-case.ts'
+import { organizeCase, personasCase } from './persona-case.ts'
 import { person, call, ownerFetch } from './owner-requests.ts'
 
 const harness = Test.make({
@@ -44,6 +45,16 @@ harness.test(
     const { url } = yield* stack
     yield* Effect.promise(() => agentAppViewCase(url))
   }),
+)
+harness.test(
+  'native: tagged Personas answer attributed in the chat without Goblin, in order, at their revision, and Stop drops them',
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => personasCase(url)))),
+  { timeout: 240_000 },
+)
+harness.test(
+  'native: organize tools leave receipts and Undo applies only while nothing touched the target',
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => organizeCase(url)))),
+  { timeout: 240_000 },
 )
 harness.test(
   'native: Topics create once, talk in their own Conversation, inherit threads, archive, restore and keep inbound in Personal',

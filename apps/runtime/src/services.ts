@@ -28,6 +28,9 @@ import type { Inspector } from './inspect/inspector.ts'
 import type { HomeService } from './home/service.ts'
 import type { McpApprovalStore } from './mcp/approvals.ts'
 import type { TopicRegistry } from './topics/registry.ts'
+import type { PersonaRegistry } from './personas/registry.ts'
+import type { PersonaInvocations } from './personas/invocations.ts'
+import type { OrganizeReceipts } from './organize/receipts.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('goblin/Mcp') {}
@@ -37,6 +40,10 @@ export class Chats extends Context.Service<Chats, ChatDirectory>()('goblin/Chats
 export class Conversations extends Context.Service<Conversations, ConversationRegistry>()('goblin/Conversations') {}
 /** The owner's Topics (ADR 0032): each with one Conversation; Personal holds Main. */
 export class Topics extends Context.Service<Topics, TopicRegistry>()('goblin/Topics') {}
+/** The owner's Personas (ADR 0033), which Persona answered which message, and what organizing changed. */
+export class Personas extends Context.Service<Personas, PersonaRegistry>()('goblin/Personas') {}
+export class Invocations extends Context.Service<Invocations, PersonaInvocations>()('goblin/Invocations') {}
+export class Receipts extends Context.Service<Receipts, OrganizeReceipts>()('goblin/Receipts') {}
 export class Budget extends Context.Service<Budget, ModelBudget>()('goblin/Budget') {}
 export class Models extends Context.Service<Models, ModelPicker>()('goblin/Models') {}
 /** Each Topic Conversation's memory (ADR 0032). */
@@ -71,6 +78,9 @@ export type AgentServices =
   | Chats
   | Conversations
   | Topics
+  | Personas
+  | Invocations
+  | Receipts
   | Budget
   | Models
   | Memories
@@ -94,6 +104,9 @@ export const agentLayer = (services: {
   readonly resident: ResidentAuthority
   readonly conversations: ConversationRegistry
   readonly topics: TopicRegistry
+  readonly personas: PersonaRegistry
+  readonly invocations: PersonaInvocations
+  readonly receipts: OrganizeReceipts
   readonly chats: ChatDirectory
   readonly budget: ModelBudget
   readonly models: ModelPicker
@@ -115,6 +128,9 @@ export const agentLayer = (services: {
     Layer.succeed(Resident, services.resident),
     Layer.succeed(Conversations, services.conversations),
     Layer.succeed(Topics, services.topics),
+    Layer.succeed(Personas, services.personas),
+    Layer.succeed(Invocations, services.invocations),
+    Layer.succeed(Receipts, services.receipts),
     Layer.succeed(Chats, services.chats),
     Layer.succeed(Budget, services.budget),
     Layer.succeed(Models, services.models),

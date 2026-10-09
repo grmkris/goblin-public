@@ -18,6 +18,7 @@ import {
   Conversations,
   Files,
   Memories,
+  Invocations,
   RoutineRuns,
   Budget,
   Resident,
@@ -35,6 +36,8 @@ import { BACKGROUND, conversationId } from './pi/context.ts'
 import { recentMessages } from './pi/transcript.ts'
 import { type SharedContext, authoredContent, ownerContent } from './pi/content.ts'
 import type { SubagentKit } from './pi/subagents.ts'
+import type { PersonaTurnKit } from './pi/persona-turn.ts'
+import { askPersonas } from './personas/ask.ts'
 
 /** The registration gate for every owner conversation request. */
 export const registeredConversation = (id: string) =>
@@ -97,13 +100,23 @@ export const markOwnerRead = (id: string) =>
     return true
   })
 
-/** Stop in a conversation: its current work, a routine's run when it is one, and the subagents it started. */
-export const stopOwner = (input: {
-  harness: PiHarness
-  routines: RoutineRunner
-  thread: string
-  operationId: string | undefined
-}) =>
+/** What the owner's Stop reaches: Pi, a routine's runs and the Persona turns asked in the chat. */
+export type StopRuntime = {
+  readonly harness: PiHarness
+  readonly routines: RoutineRunner
+  readonly personas: PersonaTurnKit
+}
+
+/**
+ * Stop in a conversation: its current work, a routine's run when it is one, the subagents it started and the Personas
+ * asked in it (their unsettled answers are dropped).
+ */
+export const stopOwner = (
+  input: StopRuntime & {
+    thread: string
+    operationId: string | undefined
+  },
+) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
     const session = yield* attemptSync(() => conversations.require(input.thread))
@@ -114,6 +127,12 @@ export const stopOwner = (input: {
     }
     const operationId = input.operationId === undefined ? {} : { operationId: input.operationId }
     yield* attempt(() => conversations.stopSubagents(input.thread))
+    const invocations = yield* Invocations
+    const now = yield* nowSecondsEffect
+    yield* attempt(async () => {
+      await input.personas.drop(await input.harness.pi(), conversationId(session))
+      invocations.stopChat(input.thread, now)
+    })
     return yield* attempt(() => input.harness.abort({ session, ...operationId }))
   })
 
@@ -153,6 +172,8 @@ export type OwnerMessageContext = {
   readonly appContext?: readonly AppContext[]
   readonly attachments?: readonly string[]
   readonly selections?: readonly ComposerSelection[]
+  /** With Persona selections: answer in parallel (the default) or one after the other ("then"). */
+  readonly personaOrder?: 'parallel' | 'sequence'
 }
 
 export type OwnerSubmit = {
@@ -160,6 +181,7 @@ export type OwnerSubmit = {
   applied: Applied
   routines: RoutineRunner
   subagents: SubagentKit
+  personas: PersonaTurnKit
   thread: string
   text: string
   operationId: string
@@ -228,7 +250,14 @@ const sendToSubagent = (
 
 export const submitOwner = (input: OwnerSubmit) =>
   Effect.gen(function* () {
-    const { appContext = [], attachments: paths = [], selections: picks = [] } = input.context
+    const {
+      appContext = [],
+      attachments: paths = [],
+      selections: tagged = [],
+      personaOrder = 'parallel',
+    } = input.context
+    const personaIds = tagged.flatMap((selection) => (selection.kind === 'persona' ? [selection.personaId] : []))
+    const picks = tagged.filter((selection) => selection.kind !== 'persona')
     yield* requireBudget
     const conversations = yield* Conversations
     const session = yield* attemptSync(() => conversations.requireOpen(input.thread))
@@ -241,6 +270,10 @@ export const submitOwner = (input: OwnerSubmit) =>
     const chats = yield* Chats
     const now = yield* nowSecondsEffect
     const content = ownerContent(input.text, shared, attachments, selections)
+    if (personaIds.length > 0) {
+      if (view?.kind === 'subagent') return yield* new InvalidInput({ reason: 'persona_subagent' })
+      return yield* askPersonas(input, personaIds, personaOrder, content)
+    }
     return yield* attempt(() =>
       chats.withChat(input.thread, async () => {
         conversations.requireOpen(input.thread)

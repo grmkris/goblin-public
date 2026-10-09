@@ -1,7 +1,16 @@
 import { type ComposerOption, type ComposerOptions, type ComposerSelection, selectionKey } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import { InvalidInput, NotFound } from './http/errors.ts'
-import { Capabilities, Conversations, Mcp, Skills, attempt, attemptSync, requireResident } from './services.ts'
+import {
+  Capabilities,
+  Conversations,
+  Mcp,
+  Personas,
+  Skills,
+  attempt,
+  attemptSync,
+  requireResident,
+} from './services.ts'
 import type { RunProgram } from './pi/resident-mcp.ts'
 
 const authorize = (run: RunProgram, session: string) => (serverId: string) =>
@@ -49,8 +58,17 @@ export const composerOptions = (chat: string, run: RunProgram) =>
         label: view.title ?? 'Untitled helper',
         description: `${view.closedBy === 'done' ? 'Done' : view.closedAt === undefined ? 'Open' : 'Closed'} · Reference here`,
       }))
+    // Personas answer in a Conversation or a Thread, never in a subagent's chat.
+    const asking = (yield* attemptSync(() => conversations.kindOf(chat))) !== 'subagent'
+    const answering: ComposerOption[] = asking
+      ? (yield* Personas.useSync((personas) => personas.active())).map((persona) => ({
+          selection: { kind: 'persona', personaId: persona.id },
+          label: persona.name,
+          description: persona.role,
+        }))
+      : []
     return {
-      options: [...connections, ...procedures, ...helpers].slice(0, 500),
+      options: [...answering, ...connections, ...procedures, ...helpers].slice(0, 500),
       unavailable: catalog.unavailable,
     } satisfies ComposerOptions
   })

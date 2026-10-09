@@ -1,7 +1,7 @@
 import { type ConversationView, type HelperExclusion, PERSONAL_TOPIC, type UpdateConversation } from '@goblin/contracts'
 import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import type { Conversation, EntryId, EntryRecord, Extension } from '@earendil-works/pi-durable'
+import type { Conversation, EntryDraft, EntryId, EntryRecord, Extension } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import type { CapabilityProfiles } from './capabilities/profiles.ts'
 import { writeHelperExclusions } from './capabilities/profiles.ts'
@@ -120,6 +120,7 @@ export class ConversationRegistry {
   /** The Pi session of a registered conversation that is open: a closed one is read, never written to. */
   requireOpen(id: string): string {
     const row = this.#registered(id)
+    if (row.role === 'persona') throw new InvalidInput({ reason: 'persona_turn' })
     if (row.closedAt !== null) throw new InvalidInput({ reason: 'conversation_closed' })
     if (this.#archived(row.topicId)) throw new InvalidInput({ reason: 'topic_archived' })
     return this.#kit.chats.session(id)
@@ -152,7 +153,12 @@ export class ConversationRegistry {
 
   /** Every registered conversation, oldest first (main is the oldest), closed ones included. */
   async list(): Promise<readonly ConversationView[]> {
-    const rows = this.#db.select().from(appConversations).orderBy(asc(appConversations.createdAt)).all()
+    const rows = this.#db
+      .select()
+      .from(appConversations)
+      .where(sql`${appConversations.role} IS NOT 'persona'`)
+      .orderBy(asc(appConversations.createdAt))
+      .all()
     return Promise.all(rows.map(async (row) => this.#describe(row)))
   }
 
@@ -348,6 +354,7 @@ export class ConversationRegistry {
           eq(appConversations.topicId, topic),
           isNull(appConversations.closedAt),
           ne(appConversations.kind, 'subagent'),
+          sql`${appConversations.role} IS NOT 'persona'`,
         ),
       )
       .all()
@@ -393,6 +400,19 @@ export class ConversationRegistry {
       writeHelperExclusions(this.#db, session, exclusions, now)
     })
     this.#changed([session])
+  }
+
+  /**
+   * Lists the fork a Persona answers in (ADR 0033): a hidden thread of its parent's Topic, never listed and never open
+   * to the owner. Its switches are the parent's now; the caller narrows them with the Persona's exclusions.
+   */
+  async registerPersona(session: string, parentChat: string, name: string, now: number): Promise<void> {
+    if (this.#row(session) !== undefined) return
+    const topicId = this.#kit.chats.topicOf(parentChat)
+    await this.#insert(
+      { chatId: session, role: 'persona', kind: 'thread', title: name, parentSession: parentChat, topicId },
+      now,
+    )
   }
 
   /** A task-created routine conversation starts empty and copies no main exclusions or announcement. */
@@ -475,15 +495,27 @@ export class ConversationRegistry {
       .run()
   }
 
-  async #passiveWrite(
-    chat: string,
-    submission: Extract<Parameters<Conversation['submit']>[0], { type: 'write' }>,
-  ): Promise<void> {
-    await this.#kit.chats.passiveWrite(chat, async (session) => {
+  async #passiveWrite(chat: string, submission: Extract<Parameters<Conversation['submit']>[0], { type: 'write' }>) {
+    return this.#kit.chats.passiveWrite(chat, async (session) => {
       const conversation = await (await this.#harness.pi()).conversation(conversationId(session), BACKGROUND)
       if (conversation === undefined) throw new NotFound({ what: 'conversation' })
-      await conversation.submit(submission, BACKGROUND)
+      return conversation.submit(submission, BACKGROUND)
     })
+  }
+
+  /**
+   * Writes `entry` into `chat` as a passive entry: its model sees it at its next turn and no run starts. The request
+   * id makes a repeat the same write. `placed` waits, outside the chat's lock, until the write is in the transcript
+   * (at once when idle, else at the chat's next boundary) and gives its entry id.
+   */
+  async writeEntry(chat: string, requestId: string, entry: EntryDraft) {
+    const submission = await this.#passiveWrite(chat, { type: 'write', requestId, entry })
+    return {
+      placed: async () => {
+        const settled = await submission.wait(BACKGROUND)
+        return settled.status === 'done' && settled.entry !== undefined ? Number(settled.entry) : undefined
+      },
+    }
   }
 
   /** Names an untitled thread from its latest exchange with the cheap model; once at a time per thread. */

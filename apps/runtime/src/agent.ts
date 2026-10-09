@@ -1,4 +1,4 @@
-import { Agent } from 'agents'
+import { OrganizingAgent } from './organize/rpc.ts'
 import { type Extension } from '@earendil-works/pi-durable'
 import { type CapabilityChange, type JsonObject, type QueueRemoval } from '@goblin/contracts'
 import { ownerQueue, removeOwnerQueuedInput } from './conversation-queue.ts'
@@ -29,6 +29,8 @@ import { LITELLM_STREAMS, makePiModels } from './pi/model.ts'
 import { personaExtension } from './pi/persona.ts'
 import { type SubagentKit, subagentsExtension } from './pi/subagents.ts'
 import { threadExtension } from './pi/thread.ts'
+import { type PersonaTurnKit, personaTurnExtension } from './pi/persona-turn.ts'
+import { organizeExtension } from './pi/organize.ts'
 import { memoryExtensions } from './pi/memory.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { skillLearningExtension, skillsExtension } from './pi/skills.ts'
@@ -60,15 +62,13 @@ import {
   updateOwnerConversation,
 } from './agent-program.ts'
 import * as AppPrograms from './apps/program.ts'
-import * as TopicPrograms from './topics/program.ts'
 import { startThread } from './chats/thread-heads.ts'
 import { budgetExtension } from './pi/budget.ts'
 import { chooseOwnerModel, type Applied } from './agent-model.ts'
 import { routinesExtension } from './pi/routines.ts'
 import { editRoutine, proposeRoutine, routinesList, setRoutineSettings } from './routines/program.ts'
-import type { CreateConversation, CreateTopic, RoutineEdit, RoutineProposal } from '@goblin/contracts'
-import type { RoutineRevision, RoutineSettings, RoutineManualRun, UpdateConversation } from '@goblin/contracts'
-import type { UpdateTopic } from '@goblin/contracts'
+import type { CreateConversation, RoutineEdit, RoutineProposal, RoutineRevision } from '@goblin/contracts'
+import type { RoutineSettings, RoutineManualRun, UpdateConversation } from '@goblin/contracts'
 import { requireRoutine, requireRoutineSession } from './routines/authority.ts'
 import { approvalView, ownerApprovalDecision, ownerResource, setAskFirst } from './mcp/approval-owner.ts'
 import { runView } from './routines/runs.ts'
@@ -86,12 +86,13 @@ type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
  * The resident agent. Pi (through the native PiHarness) owns conversations; the services in `services.ts` own MCP
  * connections, credentials, grants and resident authority. RPC methods are thin: they run one program each.
  */
-export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods {
+export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
   readonly harness: PiHarness
   readonly #pi: PiModels
   readonly #thread: Extension
   readonly #memory: ReturnType<typeof memoryExtensions>
   readonly #subagents: SubagentKit
+  readonly #personas: PersonaTurnKit
   readonly #applied: Applied = new Map()
   readonly #routines: RoutineController
   readonly #apps: AgentApps
@@ -116,9 +117,21 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     const execution = [...tools, skillsExtension(run), filesExtension(run), appExecutionExtension(apps)]
     this.#subagents = subagentsExtension(run, (self) => [personaExtension, ...execution, ...apps.extensions(), self])
     const subagents = this.#subagents.extension
+    this.#personas = personaTurnExtension(run)
+    const organize = organizeExtension(run, () => ({
+      harness: this.harness,
+      routines: this.#routines,
+      personas: this.#personas,
+    }))
     const base = [...execution, skillLearningExtension(run), ...appsExtension(apps, run)]
-    const own = [serversExtension(run, env.STAGE), subagents, routinesExtension(run), this.#telemetry.diagnose]
-    const extras = [this.#thread, memory, recall, ...routineKit.extra]
+    const own = [
+      serversExtension(run, env.STAGE),
+      subagents,
+      routinesExtension(run),
+      organize,
+      this.#telemetry.diagnose,
+    ]
+    const extras = [this.#thread, memory, recall, this.#personas.extension, ...routineKit.extra]
     this.harness = makePiHarness(this.#pi, [...base, ...own], extras, apps, this.#telemetry.recorder)
     this.#routines = new RoutineController(routineRun, this.harness, routineKit.start, {
       storage: this.ctx.storage,
@@ -249,6 +262,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       applied: this.#applied,
       routines: this.#routines,
       subagents: this.#subagents,
+      personas: this.#personas,
       run: <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program),
     }
   }
@@ -305,15 +319,10 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return this.#owner(updateOwnerConversation(this.#routines, id, change))
   }
 
-  /** The owner's Topics (ADR 0032): each a channel with one Conversation. Archiving one stops its chats' work. */
-  topics() {
-    return this.#owner(TopicPrograms.topicList)
-  }
-  createTopic(input: CreateTopic) {
-    return this.#owner(TopicPrograms.createTopic(input, 'owner'))
-  }
-  updateTopic(id: number, change: UpdateTopic) {
-    return this.#owner(TopicPrograms.updateTopic({ harness: this.harness, routines: this.#routines }, id, change))
+  protected override readonly owner = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#owner(program)
+  /** What an archive or a Stop reaches: Pi, a routine's runs and the Persona turns asked in a chat. */
+  protected override stopping() {
+    return { harness: this.harness, routines: this.#routines, personas: this.#personas }
   }
 
   /** The owner has seen the conversation's newest reply. */
@@ -382,7 +391,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
 
   stop(thread: string, operationId?: string) {
-    return this.#owner(stopOwner({ harness: this.harness, routines: this.#routines, thread, operationId }))
+    return this.#owner(stopOwner({ ...this.stopping(), thread, operationId }))
   }
 
   mcpServers() {

@@ -81,6 +81,11 @@ export class ChatDirectory<RunResult = unknown> {
     return channelRoles.has(this.#row(chat).role ?? '')
   }
 
+  /** Whether `chat` is a Persona's hidden fork (ADR 0033): never listed, never reported on its own. */
+  isHidden(chat: string): boolean {
+    return this.#find(chat)?.role === 'persona'
+  }
+
   /** The Topic a registered chat belongs to. */
   topicOf(chat: string): number {
     return this.#row(chat).topicId

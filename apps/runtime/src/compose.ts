@@ -11,6 +11,9 @@ import { ChatDirectory } from './chats/directory.ts'
 import { ConversationRegistry, type ThreadKit } from './conversations.ts'
 import { WorkspaceFeed } from './workspace/feed.ts'
 import { TopicRegistry } from './topics/registry.ts'
+import { PersonaRegistry } from './personas/registry.ts'
+import { PersonaInvocations } from './personas/invocations.ts'
+import { OrganizeReceipts } from './organize/receipts.ts'
 import { AppRegistry } from './apps/registry.ts'
 import type { AgentApps } from './agent-apps/engine.ts'
 import { appServices } from './agent-apps/ports.ts'
@@ -150,8 +153,24 @@ function conversationServices(db: DrizzleSqliteDODatabase, input: ComposeInput, 
     activate: (chat) => kit.memories.activate(chat),
     retitle: (chat, name) => conversations.retitle(chat, name),
   })
-  const workspace = new WorkspaceFeed(harness, { conversations, apps, home, topics }, kit.chats)
-  return { conversations, apps, home, topics, workspace }
+  const personas = new PersonaRegistry(
+    db,
+    modelOptions(input.env.MODELS, input.env.MODEL_ID).map((option) => option.id),
+  )
+  const invocations = new PersonaInvocations(db)
+  const receipts = new OrganizeReceipts(db, (kind, target) => {
+    try {
+      return (kind.startsWith('topic.') ? topics : personas).get(Number(target)).revision
+    } catch {
+      return undefined
+    }
+  })
+  const workspace = new WorkspaceFeed(
+    harness,
+    { conversations, apps, home, topics, personas, invocations, receipts },
+    kit.chats,
+  )
+  return { conversations, apps, home, topics, personas, invocations, receipts, workspace }
 }
 async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {
   const env = input.env

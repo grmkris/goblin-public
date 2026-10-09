@@ -234,6 +234,24 @@ export class CapabilityProfiles {
     await this.syncPi(chat)
   }
 
+  /**
+   * Switches more things off in `session`, never anything on: a Persona's fork starts with its parent's switches, then
+   * gains its own exclusions and no subagents. Pi's tool filter for the fork was set when it was forked.
+   */
+  narrow(session: string, exclusions: readonly HelperExclusion[], now: number): void {
+    this.#db.transaction(() => {
+      for (const target of exclusions) {
+        if (target.kind === 'app')
+          this.#db
+            .insert(appExecutionExclusions)
+            .values({ sessionId: session, app: target.app, offAt: now })
+            .onConflictDoNothing()
+            .run()
+        else this.set(session, target, false, now)
+      }
+    })
+  }
+
   /** A routine's thread may use only the tools its definition allows, within the scope it would have anyway. */
   #routine(scope: CapabilityScope, runId: string): CapabilityScope {
     const run = this.#db.select().from(appRoutineRuns).where(eq(appRoutineRuns.id, runId)).get()
