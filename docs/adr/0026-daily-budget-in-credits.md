@@ -1,6 +1,6 @@
 # ADR 0026: The daily budget is estimated Token Plan Credits
 
-Accepted 2026-10-06 with the owner.
+Accepted 2026-10-06 with the owner; amended 2026-10-10 (see Amendments).
 
 **The budget counts what the model plan charges.** goblin's users share one model key on Alibaba's Token Plan
 (Standard: 45,000 Credits a month, shared with the owner's coding agents and Hermes). The plan bills Credits, and
@@ -29,3 +29,11 @@ Consequences:
 - Today's spend restarts at zero Credits on the day this ships; earlier tokens stay recorded.
 - Compaction summaries in main and threads still go uncounted (Pi records them in `pi.usage` without the hook).
 - The public terms still say "2 million weighted tokens"; the owner updates the legal text.
+
+## Amendments
+
+- **2026-10-10: the allowance comes from the plan the agent keeps.** The daily allowance is the plan's
+  `dailyCredits`, read through the Agent's `Entitlements`, which keeps an active plan for 60 seconds (ADR 0015,
+  amended). An operator's change to `daily_credits` reaches a running Agent within a minute. A budget check that cannot
+  read the plan or the ledger is not "budget exhausted": the tool is blocked with its own message (the budget could
+  not be checked) and the failure is reported; an account without a plan is told to subscribe.

@@ -23,9 +23,8 @@ import { Events, McpConnections, McpGrants, McpServers } from '../../../src/mcp/
 import { ModelChoiceStore, ModelPicker, modelOptions } from '../../../src/models.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
 import { RoutineController } from '../../../src/routines/controller.ts'
-import { RoutineRunStore } from '../../../src/routines/runs.ts'
-import { RoutineStore } from '../../../src/routines/store.ts'
 import { RoutineUsage } from '../../../src/routines/usage.ts'
+import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
 import * as Legacy from '../../../src/services.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
@@ -100,8 +99,7 @@ const fixture = () => {
     Layer.succeed(McpGrants, Object.create(null)),
     Layer.succeed(Events, Object.assign(Object.create(null), { activeConsumer: () => Effect.succeedNone })),
     // The lane's other services: RoutinesLive builds their adapters, and nothing here calls them.
-    Layer.succeed(Legacy.Routines, Object.create(RoutineStore.prototype)),
-    Layer.succeed(Legacy.RoutineRuns, Object.create(RoutineRunStore.prototype)),
+    Layer.succeed(Db, sqlite),
     Layer.succeed(Legacy.RoutineUsageProjection, Object.create(RoutineUsage.prototype)),
     Layer.succeed(Legacy.Resident, new RenewingResident()),
     Layer.succeed(Entitlements, plans),
@@ -113,7 +111,7 @@ const fixture = () => {
         applied,
         routines: Object.create(RoutineController.prototype),
         entitlements: plans,
-        env: { APP_URL: 'https://goblin.test', CREDENTIAL_KEY: 'unused' },
+        env: { APP_URL: 'https://goblin.test', CREDENTIAL_KEY: 'unused', MODELS: 'model-b', MODEL_ID: 'model-a' },
         userId: 'owner',
         schedulePull: async () => undefined,
       }),

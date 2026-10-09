@@ -11,18 +11,17 @@ import * as Schema from 'effect/Schema'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
-import { ModelBudget } from '../../../src/budget.ts'
 import { TelegramChannel } from '../../../src/channel/channel.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { RoutinesHandlers } from '../../../src/routines/api.ts'
 import { RoutinesLive } from '../../../src/layers/routines.ts'
-import { ModelPicker } from '../../../src/models.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
 import { RoutineController } from '../../../src/routines/controller.ts'
 import { RoutineRunStore } from '../../../src/routines/runs.ts'
 import { RoutineStore } from '../../../src/routines/store.ts'
 import { RoutineUsage } from '../../../src/routines/usage.ts'
+import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import * as Legacy from '../../../src/services.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
@@ -106,17 +105,19 @@ const fixture = () => {
   const plans: EntitlementPolicy = { state: () => Effect.succeed(PLAN), require: () => Effect.succeed(PLAN) }
   const resident = new CountingResident()
   const legacy = Layer.mergeAll(
-    Layer.succeed(Legacy.Routines, routines),
-    Layer.succeed(Legacy.RoutineRuns, runs),
-    // The lane's other services: RoutinesLive builds their adapters, and nothing here calls them.
+    Layer.succeed(Db, sqlite),
+    // The lane's other adapters: RoutinesLive builds them over these, and nothing here calls them.
     Layer.succeed(Legacy.RoutineUsageProjection, Object.create(RoutineUsage.prototype)),
-    Layer.succeed(Legacy.Budget, Object.create(ModelBudget.prototype)),
-    Layer.succeed(Legacy.Models, Object.create(ModelPicker.prototype)),
     Layer.succeed(Legacy.Channel, Object.create(TelegramChannel.prototype)),
     Layer.succeed(Legacy.Resident, resident),
     Layer.succeed(Entitlements, plans),
-    // SAFETY: the routines handlers and the lane's layers read only the routine controller and the plan policy.
-    Layer.succeed(AgentInput, { routines: controller, entitlements: plans } as AgentInputs),
+    // SAFETY: the routines handlers and the lane's layers read only these from the instance input.
+    Layer.succeed(AgentInput, {
+      routines: controller,
+      entitlements: plans,
+      userId: 'owner',
+      env: { MODEL_ID: 'model-a' },
+    } as AgentInputs),
   )
   const runtime = ManagedRuntime.make(
     OwnerHttp.serve(API, SERVED).pipe(Layer.provide(Layer.provideMerge(RoutinesLive, legacy))),

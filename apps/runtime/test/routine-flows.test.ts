@@ -9,16 +9,15 @@ import type { AccountPlan } from '../src/billing/reconcile.ts'
 import { Budget } from '../src/budget.ts'
 import { Conversations } from '../src/chats/service.ts'
 import { type AppError, BudgetExhausted, Internal } from '../src/http/errors.ts'
-import { RoutineRunsAdapter, RoutinesAdapter } from '../src/layers/routines.ts'
+import { routineRunsOf, routinesOf } from '../src/layers/routines.ts'
 import { Resident } from '../src/mcp/service.ts'
 import { Models } from '../src/models.ts'
 import { FlowEvents } from '../src/observability/flows.ts'
 import { RoutineRunner } from '../src/routines/runner.ts'
 import { RoutineRunStore } from '../src/routines/runs.ts'
-import { RoutineUsage } from '../src/routines/service.ts'
+import { RoutineRuns, RoutineUsage, Routines } from '../src/routines/service.ts'
 import { RoutineStore } from '../src/routines/store.ts'
 import type { RunProgram } from '../src/runtime/bridge.ts'
-import * as Legacy from '../src/services.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 
 const PLAN: AccountPlan = {
@@ -68,9 +67,8 @@ const fixture = (
   routines.markActive(routine.id, 1, null, Date.now())
   const flows: FlowEvent[] = []
   const layer = Layer.mergeAll(
-    Layer.mergeAll(RoutinesAdapter, RoutineRunsAdapter).pipe(
-      Layer.provide(Layer.mergeAll(Layer.succeed(Legacy.Routines, routines), Layer.succeed(Legacy.RoutineRuns, runs))),
-    ),
+    Layer.succeed(Routines, routinesOf(routines)),
+    Layer.succeed(RoutineRuns, routineRunsOf(runs)),
     FlowEvents.layerWith((event) => Effect.sync(() => void flows.push(event))),
     Layer.succeed(Entitlements, {
       state: () => Effect.succeed(PLAN),
