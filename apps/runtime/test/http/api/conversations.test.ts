@@ -508,11 +508,12 @@ describe('the conversations API served by the agent', () => {
   })
 
   it('stops a chat, marks it read and renames it', async () => {
-    const { fetch, calls } = fixture()
+    const { fetch, calls, flows } = fixture()
     const stop = await fetch(json('POST', '/api/conversations/2/stop', {}))
     expect(stop.status).toBe(200)
     expect(await stop.json()).toEqual({ stopped: true })
     expect(calls).toEqual(['subagents:2', 'personas:drop', 'invocations:2', 'abort:2'])
+    expect(flows).toEqual([{ flow: 'stop', via: 'app', actor: 'owner', chat: '2', count: 1, status: 'ok' }])
     const read = await fetch(json('PUT', '/api/conversations/2/read', {}))
     expect(await read.json()).toEqual({ read: true })
     expect(calls).toContain('read:2')
@@ -536,7 +537,7 @@ describe('the conversations API served by the agent', () => {
   })
 
   it("lists the owner's queued inputs, answers a move's receipt, and reads the composer and switches", async () => {
-    const { fetch } = fixture()
+    const { fetch, flows, operations } = fixture()
     const queue = await fetch(json('GET', '/api/conversations/2/queue'))
     expect(await queue.json()).toEqual({ inputs: [{ id: 7, mode: 'followUp', content: 'later' }] })
     const subagent = await fetch(json('GET', '/api/conversations/4/queue'))
@@ -549,6 +550,12 @@ describe('the conversations API served by the agent', () => {
       state: 'settled',
       thread: NEW,
     })
+    expect(flows).toEqual([
+      { flow: 'move', via: 'app', actor: 'owner', chat: '1', operationId: 'move-1', status: 'ok' },
+    ])
+    expect(operations()).toEqual([
+      expect.objectContaining({ chatId: '1', operationId: 'move-1', kind: 'move', state: 'settled', targetChat: NEW }),
+    ])
     const composer = await fetch(json('GET', '/api/conversations/2/composer'))
     expect(await composer.json()).toEqual({
       options: [

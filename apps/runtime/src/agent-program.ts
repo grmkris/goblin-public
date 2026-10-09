@@ -18,6 +18,8 @@ import { epochSeconds, instanceCall, settledWithin, withinBudget } from './chats
 import { ChatOperations, Chats, Conversations } from './chats/service.ts'
 import { resolveSelections, type ResolvedSelections } from './composer.ts'
 import { Files } from './files/service.ts'
+import type { FlowEvents } from './observability/flows.ts'
+import { failedFlow, recordFlow } from './organize/flows.ts'
 import { type AppError, InvalidInput } from './http/errors.ts'
 import { type McpServers, Resident } from './mcp/service.ts'
 import { Invocations, type Personas } from './personas/service.ts'
@@ -105,14 +107,26 @@ export const stopOwner = (
   })
 
 /**
- * Stop in `chat` as the owner's Stop does, with the instance's Pi, routines and Persona turns: the one stop path a
- * Topic's archive takes too.
+ * Stop in `chat` as the owner's Stop does, with the instance's Pi, routines and Persona turns: the one stop path, which
+ * a Topic's archive takes too. Records the `stop` flow: who stopped it, and whether anything was running (`count`).
  */
 export const stopChat = (
   chat: string,
   operationId?: string,
-): Effect.Effect<boolean, AppError, Conversations | RoutineRuns | Invocations | AgentInput> =>
-  AgentInput.use((input) => stopOwner({ ...input.stopping(), thread: chat, operationId }))
+  actor: 'owner' | 'agent' = 'owner',
+): Effect.Effect<boolean, AppError, Conversations | RoutineRuns | Invocations | AgentInput | FlowEvents> => {
+  const flow = {
+    flow: 'stop',
+    via: actor === 'owner' ? 'app' : 'tool',
+    actor,
+    chat,
+    ...(operationId === undefined ? {} : { operationId }),
+  } as const
+  return AgentInput.use((input) => stopOwner({ ...input.stopping(), thread: chat, operationId })).pipe(
+    Effect.tap((stopped) => recordFlow({ ...flow, count: stopped ? 1 : 0, status: 'ok' })),
+    Effect.tapError((error) => recordFlow({ ...flow, ...failedFlow(error) })),
+  )
+}
 
 /** An inbound request checks entitlement without renewing resident authority. */
 export const clientRequest = <A>(program: Effect.Effect<A, AppError, AgentServices>) =>

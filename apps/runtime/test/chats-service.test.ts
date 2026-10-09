@@ -52,6 +52,7 @@ const registryOf = (calls: Calls, directory: ChatDirectory) =>
         ? { chat: '1', write: { requestId: 'thread-started:2', entry: { kind: 'app.thread_started', data: {} } } }
         : undefined,
     announced: () => true,
+    close: async (chat) => (chat === '2' ? [chat, '5'] : []),
     shareBack: (thread, _note, requestId, at) => ({
       chat: '1',
       write: { requestId, origin: 'agent', entry: { kind: 'app.shared', data: { thread, at } } },
@@ -254,6 +255,19 @@ describe('the conversation services', () => {
           operationId: 'share:call-1',
           status: 'ok',
         },
+      ])
+    }).pipe(Effect.provide(layer))
+  })
+
+  it.effect('record a Close as its close flow, one that closed nothing as a replay', () => {
+    const { layer, flows } = services([])
+    return Effect.gen(function* () {
+      const conversations = yield* Conversations
+      expect(yield* conversations.close('2', 'done')).toEqual(['2', '5'])
+      expect(yield* conversations.close('1', 'owner')).toEqual([])
+      expect(flows).toEqual([
+        { flow: 'close', chat: '2', via: 'system', actor: 'subagent', count: 2, status: 'ok' },
+        { flow: 'close', chat: '1', via: 'app', actor: 'owner', count: 0, status: 'replayed' },
       ])
     }).pipe(Effect.provide(layer))
   })

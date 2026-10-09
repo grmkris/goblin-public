@@ -4,6 +4,7 @@ import * as Option from 'effect/Option'
 import {
   type CreateConversation,
   type HelperExclusion,
+  type MoveReceipt,
   type MoveToThread,
   PERSONAL_TOPIC,
   type UpdateConversation,
@@ -197,6 +198,28 @@ const threadStarts = (
 }
 
 /** The registry's writes into existing chats over the legacy `ConversationRegistry`. */
+/**
+ * A Close as its `close` flow (plan §4): the owner's from the app, or a subagent's own once its job is done; `count` is
+ * how many chats it closed, and a Close that closed none (all were closed already) is a replay.
+ */
+const closing = <A, E, R>(
+  flows: FlowEvents['Service'],
+  chat: string,
+  by: 'owner' | 'done',
+  close: Effect.Effect<A, E, R>,
+  count: (closed: A) => number,
+) => {
+  const who =
+    by === 'owner' ? ({ via: 'app', actor: 'owner' } as const) : ({ via: 'system', actor: 'subagent' } as const)
+  const flow = { flow: 'close', chat, ...who } as const
+  return close.pipe(
+    Effect.tap((closed) =>
+      flows.record({ ...flow, count: count(closed), status: count(closed) === 0 ? 'replayed' : 'ok' }),
+    ),
+    Effect.tapError((error) => flows.record({ ...flow, ...failedFlow(error) })),
+  )
+}
+
 /** A thread's note into the chat it came from, as its own `share` flow (plan §4). */
 const shareBackWith = (
   conversations: ConversationRegistry,
@@ -244,7 +267,9 @@ const registryWrites = (
   }),
   update: Effect.fn('Conversations.update')(function* (chat: string, change: UpdateConversation) {
     const now = yield* nowSecondsEffect
-    return yield* attempt(() => conversations.update(chat, change, now))
+    const updating = attempt(() => conversations.update(chat, change, now))
+    if (change.closed !== true) return yield* updating
+    return yield* closing(flows, chat, 'owner', updating, (updated) => updated.closed.length)
   }),
   markRead: Effect.fn('Conversations.markRead')(function* (chat: string) {
     const now = yield* nowSecondsEffect
@@ -252,7 +277,13 @@ const registryWrites = (
   }),
   close: Effect.fn('Conversations.close')(function* (chat: string, by: 'owner' | 'done') {
     const now = yield* nowSecondsEffect
-    return yield* attempt(() => conversations.close(chat, by, now))
+    return yield* closing(
+      flows,
+      chat,
+      by,
+      attempt(() => conversations.close(chat, by, now)),
+      (closed) => closed.length,
+    )
   }),
   stopSubagents: Effect.fn('Conversations.stopSubagents')(function* (chat: string) {
     return yield* attempt(() => conversations.stopSubagents(chat))
@@ -290,15 +321,41 @@ const ConversationsAdapter = Layer.effect(
   }),
 )
 
-/** Move to thread over the legacy `ChatMover`. */
+/** How a move's receipt goes on from what the mover answered: refused with its reason, or settled with its Thread. */
+const moveEnd = (receipt: MoveReceipt) =>
+  receipt.state === 'refused'
+    ? ({ state: 'refused', reason: receipt.reason ?? 'refused' } as const)
+    : ({
+        state: receipt.state === 'settled' ? 'settled' : 'submitted',
+        ...(receipt.thread === undefined ? {} : { targetChat: receipt.thread }),
+      } as const)
+
+/**
+ * Move to thread over the legacy `ChatMover`: the move once per operation (`app_chat_moves`), with its `move` receipt
+ * in the chat (settled with the Thread it made, or refused with the mover's reason) and its `move` flow.
+ */
 const MovesAdapter = Layer.effect(
   Moves,
   Effect.gen(function* () {
     const moves = yield* LegacyMoves
+    const operations = yield* ChatOperations
+    const flows = yield* FlowEvents
     return Moves.of({
       move: Effect.fn('Moves.move')(function* (chat: string, input: MoveToThread) {
-        const now = yield* nowSecondsEffect
-        return yield* attempt(() => moves.move(chat, input, now))
+        const flow = { flow: 'move', via: 'app', actor: 'owner', chat, operationId: input.operationId } as const
+        const moved = Effect.gen(function* () {
+          const { existing } = yield* operations.record(chat, input.operationId, { kind: 'move', origin: 'owner' })
+          const now = yield* nowSecondsEffect
+          const receipt = yield* attempt(() => moves.move(chat, input, now))
+          yield* operations.advance(chat, input.operationId, moveEnd(receipt))
+          const status =
+            receipt.state === 'refused'
+              ? ({ status: 'refused', errorType: receipt.reason ?? 'refused' } as const)
+              : ({ status: existing ? 'replayed' : 'ok' } as const)
+          yield* flows.record({ ...flow, ...status })
+          return receipt
+        })
+        return yield* moved.pipe(Effect.tapError((error) => flows.record({ ...flow, ...failedFlow(error) })))
       }),
       moving: Effect.fn('Moves.moving')(function* (chat: string) {
         return yield* attemptSync(() => moves.moving(chat))
@@ -315,4 +372,4 @@ export const ConversationLive: Layer.Layer<
   Chats | ChatOperations | Conversations | Moves,
   never,
   FoundationServices | Budget | Models
-> = Layer.mergeAll(ChatsAdapter, Layer.provideMerge(ConversationsAdapter, ChatOperationsLive), MovesAdapter)
+> = Layer.mergeAll(ChatsAdapter, ConversationsAdapter, MovesAdapter).pipe(Layer.provideMerge(ChatOperationsLive))
