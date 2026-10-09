@@ -63,6 +63,15 @@ export interface AgentRpcMethods {
   readonly conversations: () => Promise<RpcResult<readonly ConversationView[]>>
   readonly createConversation: (input: CreateConversation) => Promise<RpcResult<ConversationView>>
   readonly updateConversation: (id: string, change: UpdateConversation) => Promise<RpcResult<ConversationView>>
+  /** The owner's Topics (ADR 0032): list, create (idempotent by operation id), rename/archive/restore/search opt-out. */
+  readonly topics: () => Promise<RpcResult<readonly import('@goblin/contracts').TopicView[]>>
+  readonly createTopic: (
+    input: import('@goblin/contracts').CreateTopic,
+  ) => Promise<RpcResult<import('@goblin/contracts').TopicView>>
+  readonly updateTopic: (
+    id: number,
+    change: import('@goblin/contracts').UpdateTopic,
+  ) => Promise<RpcResult<import('@goblin/contracts').TopicView>>
   readonly markRead: (id: string) => Promise<RpcResult<boolean>>
   readonly createApp: (input: CreateApp) => Promise<RpcResult<AppView>>
   readonly updateApp: (id: string, change: UpdateApp) => Promise<RpcResult<AppView>>

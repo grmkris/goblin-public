@@ -15,6 +15,7 @@ import { AppsMcpFixture } from './apps-mcp.ts'
 import { permutePrimary, profileEnabled } from './primary-profile.ts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
+import { unwrap } from '../../src/http/rpc.ts'
 
 export class OwnerAgent extends PersonalAgent {
   readonly #mcp = new AppsMcpFixture()
@@ -38,6 +39,14 @@ export class OwnerAgent extends PersonalAgent {
         messages: messages.length,
         rootMessages: (await this.harness.messages({ session: '1' })).length,
       })
+    }
+    if (path === '/test/topics/sessions')
+      return Response.json({ sessions: (await this.harness.sessions.list()).length })
+    if (path === '/test/topics/inbound') {
+      const { input, operationId } = Schema.decodeUnknownSync(
+        Schema.Struct({ input: Schema.String, operationId: Schema.String }),
+      )(await request.json())
+      return Response.json(unwrap(await this.askAsClient('topics-client', input, operationId, 5000)))
     }
     if (path === '/test/queue/held') return Response.json({ inputs: queueModel(this).held() })
     if (path === '/test/queue/release') {
@@ -66,6 +75,12 @@ export default {
       if (url.pathname === '/__test/primary-profile') {
         const { userId } = await requireUserSession(input, env)
         return env.AGENTS.getByName(userId).fetch('https://agent/test/primary-profile')
+      }
+      if (url.pathname.startsWith('/__test/topics/')) {
+        const { userId } = await requireUserSession(input, env)
+        return env.AGENTS.getByName(userId).fetch(
+          new Request(`https://agent/test/topics/${url.pathname.split('/').at(-1)}`, input),
+        )
       }
       if (url.pathname.startsWith('/__test/queue/')) {
         const { userId } = await requireUserSession(input, env)

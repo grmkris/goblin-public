@@ -368,7 +368,32 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'UPDATE app_registry SET chat_id = session_id',
     ].join(BREAK),
   },
+  {
+    // Topics (ADR 0032): Personal is Topic 1 with today's Main as its Conversation; every existing chat joins it.
+    key: '20261026000000_topics',
+    tables: ['app_topics', 'app_conversations'],
+    sql: [
+      `CREATE TABLE app_topics (id INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, chat_id TEXT NOT NULL UNIQUE, archived_at INTEGER, search_excluded INTEGER NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 1, operation_id TEXT UNIQUE, created_by TEXT NOT NULL CHECK (created_by IN ('owner', 'agent', 'system')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
+      'CREATE UNIQUE INDEX app_topics_active_name ON app_topics (name COLLATE NOCASE) WHERE archived_at IS NULL',
+      "INSERT INTO app_topics (id, name, chat_id, created_by, created_at, updated_at) VALUES (1, 'Personal', '1', 'system', CAST(strftime('%s', 'now') AS INTEGER), CAST(strftime('%s', 'now') AS INTEGER))",
+      'ALTER TABLE app_conversations ADD COLUMN topic_id INTEGER NOT NULL DEFAULT 1',
+      'CREATE INDEX app_conversation_topic ON app_conversations (topic_id)',
+    ].join(BREAK),
+  },
 ]
+
+/**
+ * The statements of the migrations in order, from the one after `after` (or the first) through `through` (or the
+ * last): unit tests build the real schema in `node:sqlite` with them, and check a copy step on data seeded between two.
+ */
+export function migrationStatements(range: { readonly after?: string; readonly through?: string } = {}): string[] {
+  const keys = MIGRATIONS.map((migration) => migration.key)
+  const start = range.after === undefined ? 0 : keys.indexOf(range.after) + 1
+  const end = range.through === undefined ? keys.length : keys.indexOf(range.through) + 1
+  if (start === 0 && range.after !== undefined) throw new Error(`Unknown migration ${range.after}`)
+  if (end === 0) throw new Error(`Unknown migration ${String(range.through)}`)
+  return MIGRATIONS.slice(start, end).flatMap((migration) => migration.sql.split(BREAK))
+}
 
 export function runApplicationMigrations(storage: DurableObjectStorage): void {
   for (const migration of MIGRATIONS) for (const table of migration.tables) assertApplicationTable(table)

@@ -100,7 +100,8 @@ export const appConversations = sqliteTable('app_conversations', {
   chatId: text('session_id').primaryKey().notNull(),
   piSession: text('pi_session').unique(),
   epoch: integer('epoch').notNull().default(0),
-  role: text('role', { enum: ['primary'] }),
+  /** `primary`: Personal's Conversation (inbound lands here); `conversation`: another Topic's; null: a thread. */
+  role: text('role', { enum: ['primary', 'conversation', 'persona'] }),
   spawnerSession: text('spawner_session'),
   kind: text('kind', { enum: ['main', 'thread', 'subagent'] }).notNull(),
   title: text('title'),
@@ -119,6 +120,8 @@ export const appConversations = sqliteTable('app_conversations', {
   /** A thread the owner started with "+" owes main a note naming it (`owed`) until that note is in (`written`). */
   mainNote: text('main_note', { enum: ['owed', 'written'] }),
   routineRunId: text('routine_run_id'),
+  /** The Topic it belongs to (ADR 0032): Personal unless it is, or descends from, another Topic's Conversation. */
+  topicId: integer('topic_id').notNull().default(1),
 })
 
 /** Pi deduplicates per session; chat admission remembers the original session across future rebinds. */

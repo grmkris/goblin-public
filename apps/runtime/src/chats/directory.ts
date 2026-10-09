@@ -5,6 +5,7 @@ import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Brand from 'effect/Brand'
 import { Conflict, NotFound } from '../http/errors.ts'
 import { appChatOperations, appConversations } from '../storage/schema.ts'
+import { appTopics } from '../storage/topics.ts'
 
 export type ChatId = string & Brand.Brand<'ChatId'>
 export const ChatId = Brand.nominal<ChatId>()
@@ -22,6 +23,9 @@ const deferred = (): { readonly promise: Promise<void>; readonly release: () => 
 }
 
 const RETENTION = 30 * 24 * 60 * 60
+
+/** The roles of a Topic's one Conversation: Personal's (`primary`, the inbound target) and every other Topic's. */
+const channelRoles: ReadonlySet<string> = new Set(['primary', 'conversation'])
 
 /** Register a fresh agent's stable primary; a retained or rebound binding is never overwritten. */
 export function registerPrimary<RunResult>(db: SQLiteAsyncDatabase<'sync', RunResult>, now: number): void {
@@ -60,6 +64,49 @@ export class ChatDirectory<RunResult = unknown> {
   chatOf(session: string): ChatId | undefined {
     const row = this.#db.select().from(appConversations).where(eq(appConversations.piSession, session)).get()
     return row === undefined ? undefined : ChatId(row.chatId)
+  }
+
+  #find(chat: string) {
+    return this.#db.select().from(appConversations).where(eq(appConversations.chatId, chat)).get()
+  }
+
+  #row(chat: string) {
+    const row = this.#find(chat)
+    if (row === undefined) throw new NotFound({ what: 'chat' })
+    return row
+  }
+
+  /** Whether `chat` is a Topic's one Conversation (a channel): Personal's (`primary`) or another Topic's. */
+  isConversation(chat: string): boolean {
+    return channelRoles.has(this.#row(chat).role ?? '')
+  }
+
+  /** The Topic a registered chat belongs to. */
+  topicOf(chat: string): number {
+    return this.#row(chat).topicId
+  }
+
+  /** A Topic's one Conversation. */
+  conversationOf(topic: number): ChatId {
+    const row = this.#db.select({ chat: appTopics.chatId }).from(appTopics).where(eq(appTopics.id, topic)).get()
+    if (row === undefined) throw new NotFound({ what: 'topic' })
+    return ChatId(row.chat)
+  }
+
+  /**
+   * The Conversation `chat` sits under: itself when it is one, else the nearest one up its parents, else its Topic's.
+   * Stored parents that loop end the walk.
+   */
+  conversationAbove(chat: string): ChatId {
+    const seen = new Set<string>()
+    const start = this.#row(chat)
+    let row: typeof start | undefined = start
+    while (row !== undefined && !seen.has(row.chatId)) {
+      if (channelRoles.has(row.role ?? '')) return ChatId(row.chatId)
+      seen.add(row.chatId)
+      row = row.parentSession === null ? undefined : this.#find(row.parentSession)
+    }
+    return this.conversationOf(start.topicId)
   }
 
   operation(chat: string, op: string): SessionId | undefined {

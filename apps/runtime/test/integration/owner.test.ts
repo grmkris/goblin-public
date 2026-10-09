@@ -9,6 +9,7 @@ import { approvalsCase } from './approvals-case.ts'
 import { appsCase } from './apps-case.ts'
 import { agentAppViewCase } from './agent-app-view-case.ts'
 import { queueCase } from './queue-case.ts'
+import { topicsCase } from './topics-case.ts'
 import { person, call, ownerFetch } from './owner-requests.ts'
 
 const harness = Test.make({
@@ -42,6 +43,10 @@ harness.test(
     const { url } = yield* stack
     yield* Effect.promise(() => agentAppViewCase(url))
   }),
+)
+harness.test(
+  'native: Topics create once, talk in their own Conversation, inherit threads, archive, restore and keep inbound in Personal',
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => topicsCase(url)))),
 )
 harness.test(
   'native: only the session user reaches their own Agent; request selectors cannot redirect it',

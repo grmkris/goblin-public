@@ -5,6 +5,7 @@ import type { AppRegistry } from '../apps/registry.ts'
 import type { HomeService } from '../home/service.ts'
 import type { ChatDirectory } from '../chats/directory.ts'
 import type { ConversationRegistry } from '../conversations.ts'
+import type { TopicRegistry } from '../topics/registry.ts'
 import { sseResponse } from '../http/sse.ts'
 import { BACKGROUND } from '../pi/context.ts'
 import { SUBAGENT_RELAY } from '../pi/subagent-relay.ts'
@@ -28,6 +29,14 @@ export function activityOf(graph: TaskGraph): ReadonlyMap<string, Busy> {
 
 type Listener = (changes: readonly WorkspaceChange[]) => void
 
+/** What the feed shows: the conversations, Apps, Home and Topics, each telling it what changed. */
+export type FeedSources = {
+  readonly conversations: ConversationRegistry
+  readonly apps: AppRegistry
+  readonly home: HomeService
+  readonly topics: TopicRegistry
+}
+
 /**
  * The owner's workspace as one live feed: every conversation and what each is doing, so a client needs no polling and
  * no stream per conversation to draw the tree. It watches Pi's task graph while anyone listens, and the registry's
@@ -39,22 +48,19 @@ export class WorkspaceFeed {
   readonly #conversations: ConversationRegistry
   readonly #apps: AppRegistry
   readonly #home: HomeService
+  readonly #topics: TopicRegistry
   readonly #listeners = new Set<Listener>()
   #activity = new Map<string, ConversationActivity>()
   #watch: Promise<TaskGraphWatch> | undefined
 
-  constructor(
-    harness: PiHarness,
-    conversations: ConversationRegistry,
-    apps: AppRegistry,
-    home: HomeService,
-    chats: ChatDirectory,
-  ) {
+  constructor(harness: PiHarness, { conversations, apps, home, topics }: FeedSources, chats: ChatDirectory) {
     this.#harness = harness
     this.#chats = chats
     this.#conversations = conversations
     this.#apps = apps
     this.#home = home
+    this.#topics = topics
+    topics.onChange((changed) => this.#emit(changed.map((topic) => ({ type: 'topic' as const, topic }))))
     conversations.onChange((ids) => {
       if (this.#listeners.size > 0) void this.#describe(ids)
     })
@@ -88,6 +94,7 @@ export class WorkspaceFeed {
         activity: [...this.#activity.values()],
         apps: this.#apps.list(),
         home: this.#home.layout(),
+        topics: this.#topics.list(),
       })
     } catch (error) {
       await close()

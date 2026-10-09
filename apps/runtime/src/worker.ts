@@ -37,6 +37,7 @@ import { billingWebhook } from './billing/webhook.ts'
 import { runBillingCron } from './billing/cron.ts'
 import { billingMode, requireAccountPlan } from './billing/gates.ts'
 import { routineRoute } from './routines/routes.ts'
+import { topicRoute } from './topics/routes.ts'
 import { browserWrite } from './http/csrf.ts'
 
 export { PersonalAgent } from './agent.ts'
@@ -334,8 +335,8 @@ async function apiRequest(request: Request, env: RuntimeEnv): Promise<Response> 
   const { userId } = session
   const path = new URL(request.url).pathname
   if (
-    ['/api/routines', '/api/files', '/api/apps', '/api/agent-apps', '/api/home', '/api/mcp'].some((prefix) =>
-      under(path, prefix),
+    ['/api/routines', '/api/topics', '/api/files', '/api/apps', '/api/agent-apps', '/api/home', '/api/mcp'].some(
+      (prefix) => under(path, prefix),
     ) ||
     (request.method === 'DELETE' && /^\/api\/conversations\/\d{1,12}\/queue$/u.test(path))
   )
@@ -358,6 +359,7 @@ async function ownerApiRequest(
   if (path.startsWith('/api/agent/')) return agentRoute(request, agent, path)
   if (path === '/api/home') return agent.fetch(new Request('https://agent/home', request))
   if (under(path, '/api/routines')) return routineRoute(request, agent, path)
+  if (under(path, '/api/topics')) return topicRoute(request, agent, path)
   if (path === '/api/workspace/events' && request.method === 'GET') return agent.fetch('https://agent/workspace/events')
   if (under(path, '/api/files'))
     return agent.fetch(new Request(`https://agent${path.slice('/api'.length)}${new URL(request.url).search}`, request))

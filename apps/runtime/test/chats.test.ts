@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { ChatDirectory } from '../src/chats/directory.ts'
 import { appConversations } from '../src/storage/schema.ts'
+import { appTopics } from '../src/storage/topics.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 
 const noop = (): void => undefined
@@ -127,5 +128,37 @@ describe('logical chat directory', () => {
       session: '43',
       existing: false,
     })
+  })
+
+  it("tells a Topic's Conversation from its threads and finds the Conversation above any chat", () => {
+    const { chats, db } = fixture()
+    db.insert(appTopics)
+      .values({ id: 7, name: 'Work', chatId: '70', createdBy: 'owner', createdAt: 1, updatedAt: 1 })
+      .run()
+    db.insert(appConversations)
+      .values([
+        { chatId: '70', piSession: '70', kind: 'main', role: 'conversation', topicId: 7, createdAt: 2 },
+        { chatId: '71', piSession: '71', kind: 'thread', parentSession: '70', topicId: 7, createdAt: 2 },
+        { chatId: '72', piSession: '72', kind: 'subagent', parentSession: '71', topicId: 7, createdAt: 2 },
+        { chatId: '73', piSession: '73', kind: 'thread', parentSession: '74', topicId: 7, createdAt: 2 },
+        { chatId: '74', piSession: '74', kind: 'thread', parentSession: '73', topicId: 7, createdAt: 2 },
+      ])
+      .run()
+    expect(['1', '2', '70', '71', '72'].map((chat) => chats.isConversation(chat))).toEqual([
+      true,
+      false,
+      true,
+      false,
+      false,
+    ])
+    expect(chats.topicOf('2')).toBe(1)
+    expect(chats.topicOf('72')).toBe(7)
+    expect(chats.conversationOf(1)).toBe('1')
+    expect(chats.conversationOf(7)).toBe('70')
+    expect(['1', '2', '70', '72'].map((chat) => chats.conversationAbove(chat))).toEqual(['1', '1', '70', '70'])
+    // Stored parents that loop end at the Topic's Conversation instead of looping.
+    expect(chats.conversationAbove('73')).toBe('70')
+    expect(() => chats.conversationOf(9)).toThrow(expect.objectContaining({ _tag: 'NotFound' }))
+    expect(() => chats.isConversation('99')).toThrow(expect.objectContaining({ _tag: 'NotFound' }))
   })
 })

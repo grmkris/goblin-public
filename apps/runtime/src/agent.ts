@@ -34,19 +34,8 @@ import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { skillLearningExtension, skillsExtension } from './pi/skills.ts'
 import { composeServices } from './compose.ts'
 import { capabilitiesOf, changeCapabilities } from './capabilities/program.ts'
-import {
-  type AgentServices,
-  Channel,
-  Conversations,
-  Mcp,
-  Memory,
-  Models,
-  attempt,
-  attemptSync,
-  requireResident,
-  Routines,
-  RoutineRuns,
-} from './services.ts'
+import { type AgentServices, Channel, Conversations, Mcp, Memory, Models, attempt } from './services.ts'
+import { attemptSync, requireResident, Routines, RoutineRuns } from './services.ts'
 import { accountEntitlements, Entitlements, type EntitlementPolicy } from './billing/gates.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
 import { nowSeconds } from './clock.ts'
@@ -70,19 +59,14 @@ import {
   updateOwnerConversation,
 } from './agent-program.ts'
 import * as AppPrograms from './apps/program.ts'
+import * as TopicPrograms from './topics/program.ts'
 import { budgetExtension } from './pi/budget.ts'
 import { chooseOwnerModel, type Applied } from './agent-model.ts'
 import { routinesExtension } from './pi/routines.ts'
 import { editRoutine, proposeRoutine, routinesList, setRoutineSettings } from './routines/program.ts'
-import type {
-  CreateConversation,
-  RoutineEdit,
-  RoutineProposal,
-  RoutineRevision,
-  RoutineSettings,
-  RoutineManualRun,
-  UpdateConversation,
-} from '@goblin/contracts'
+import type { CreateConversation, CreateTopic, RoutineEdit, RoutineProposal } from '@goblin/contracts'
+import type { RoutineRevision, RoutineSettings, RoutineManualRun, UpdateConversation } from '@goblin/contracts'
+import type { UpdateTopic } from '@goblin/contracts'
 import { requireRoutine, requireRoutineSession } from './routines/authority.ts'
 import { approvalView, ownerApprovalDecision, ownerResource, setAskFirst } from './mcp/approval-owner.ts'
 import { runView } from './routines/runs.ts'
@@ -310,6 +294,17 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
   updateConversation(id: string, change: UpdateConversation) {
     return this.#owner(updateOwnerConversation(this.#routines, id, change))
+  }
+
+  /** The owner's Topics (ADR 0032): each a channel with one Conversation. Archiving one stops its chats' work. */
+  topics() {
+    return this.#owner(TopicPrograms.topicList)
+  }
+  createTopic(input: CreateTopic) {
+    return this.#owner(TopicPrograms.createTopic(input, 'owner'))
+  }
+  updateTopic(id: number, change: UpdateTopic) {
+    return this.#owner(TopicPrograms.updateTopic({ harness: this.harness, routines: this.#routines }, id, change))
   }
 
   /** The owner has seen the conversation's newest reply. */

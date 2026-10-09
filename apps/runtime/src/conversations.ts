@@ -1,5 +1,5 @@
-import { type ConversationView, type HelperExclusion, type UpdateConversation } from '@goblin/contracts'
-import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { type ConversationView, type HelperExclusion, PERSONAL_TOPIC, type UpdateConversation } from '@goblin/contracts'
+import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { Conversation, EntryRecord, Extension } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
@@ -15,6 +15,7 @@ import { answerText, dropRelaysTo, Subagents } from './pi/subagent-relay.ts'
 import { type ReplyStats, recentMessages } from './pi/transcript.ts'
 import { ReplyLedger } from './replies.ts'
 import { appConversations } from './storage/schema.ts'
+import { appTopics } from './storage/topics.ts'
 
 type Row = typeof appConversations.$inferSelect
 
@@ -48,6 +49,13 @@ const cleanTitle = (raw: string): string =>
     .replaceAll(/["'`*]/gu, '')
     .trim()
     .slice(0, 60)
+
+/** A Topic's one Conversation (ADR 0032): Personal's (`primary`) or another Topic's. */
+const isChannel = (row: Row): boolean => row.role === 'primary' || row.role === 'conversation'
+
+/** Why a Topic's Conversation refuses a rename or Close: Personal's is Main; another's follows its Topic. */
+const channelRefusal = (row: Row) =>
+  new InvalidInput({ reason: row.role === 'primary' ? 'main_thread' : 'topic_conversation' })
 
 /** How a conversation is named in a note it leaves elsewhere: an untitled one says so, never a made-up name. */
 const labelOf = (row: Row): string => (row.title === null ? `${row.kind} (untitled)` : `${row.kind} "${row.title}"`)
@@ -119,7 +127,15 @@ export class ConversationRegistry {
   requireOpen(id: string): string {
     const row = this.#registered(id)
     if (row.closedAt !== null) throw new InvalidInput({ reason: 'conversation_closed' })
+    if (this.#archived(row.topicId)) throw new InvalidInput({ reason: 'topic_archived' })
     return this.#kit.chats.session(id)
+  }
+
+  /** Whether Topic `topic` is archived: none of its chats takes new work until it is restored. */
+  #archived(topic: number): boolean {
+    const row = this.#db.select({ at: appTopics.archivedAt }).from(appTopics).where(eq(appTopics.id, topic)).get()
+    if (row === undefined) throw new NotFound({ what: 'topic' })
+    return row.at !== null
   }
 
   /** Whether a registered conversation is main, a thread or a subagent; anything else is `NotFound`. */
@@ -195,7 +211,14 @@ export class ConversationRegistry {
       this.#changed([parent])
     }
     return this.#insert(
-      { chatId: String(fork.id), kind: 'thread', parentSession: parent, forkEntry: at.id, recallThrough },
+      {
+        chatId: String(fork.id),
+        kind: 'thread',
+        parentSession: parent,
+        forkEntry: at.id,
+        recallThrough,
+        topicId: from.topicId,
+      },
       now,
     )
   }
@@ -209,18 +232,80 @@ export class ConversationRegistry {
     return from.recallThrough === null ? null : Math.min(from.recallThrough, this.#kit.memory.sizeAt(entry))
   }
 
-  /** An empty thread the owner started; main learns its name once it has one (`announce`). */
-  async create(now: number): Promise<ConversationView> {
-    const session = await this.#harness.sessions.create()
-    const primary = this.#kit.chats.primary()
-    const tools = this.#kit.capabilities.piTools(primary)
-    const pi = await (await this.#harness.pi()).conversation(conversationId(session.id), BACKGROUND)
-    if (pi === undefined) throw new NotFound({ what: 'conversation' })
-    await pi.configure({ extensions: { add: [this.#kit.thread] }, tools }, BACKGROUND)
+  /**
+   * An empty thread the owner started under `topic`'s Conversation (Personal's by default); that Conversation learns
+   * its name once it has one (`announce`).
+   */
+  async create(now: number, topic: number = PERSONAL_TOPIC): Promise<ConversationView> {
+    const channel = this.#kit.chats.conversationOf(topic)
+    this.requireOpen(channel)
+    const session = await this.#session([this.#kit.thread], channel)
     return this.#insert(
-      { chatId: session.id, kind: 'thread', parentSession: this.#kit.chats.primary(), mainNote: 'owed' },
+      { chatId: session, kind: 'thread', parentSession: channel, mainNote: 'owed', topicId: topic },
       now,
     )
+  }
+
+  /** A new top-level Pi session (not a fork) with `extensions` added and `like`'s tool filter. */
+  async #session(extensions: readonly Extension[], like: string): Promise<string> {
+    const session = await this.#harness.sessions.create()
+    const tools = this.#kit.capabilities.piTools(like)
+    const pi = await (await this.#harness.pi()).conversation(conversationId(session.id), BACKGROUND)
+    if (pi === undefined) throw new NotFound({ what: 'conversation' })
+    await pi.configure({ extensions: { add: [...extensions] }, tools }, BACKGROUND)
+    return session.id
+  }
+
+  /**
+   * A new Topic's Conversation (ADR 0032): a new Pi session configured like Personal's, with its tool filter, not a
+   * fork, so it starts with none of Personal's transcript. `registerConversation` lists it once its Topic exists.
+   */
+  async openConversation(): Promise<string> {
+    return this.#session([], this.#kit.chats.primary())
+  }
+
+  /** Lists `chat` as `topic`'s Conversation, with Personal's switches, titled as the Topic is named. */
+  registerConversation(chat: string, topic: number, name: string, now: number): void {
+    this.#db
+      .insert(appConversations)
+      .values({
+        chatId: chat,
+        piSession: chat,
+        role: 'conversation',
+        kind: 'main',
+        title: name,
+        topicId: topic,
+        createdAt: now,
+      })
+      .run()
+    this.#kit.capabilities.copy(this.#kit.chats.primary(), chat, now)
+    this.#changed([chat])
+  }
+
+  /** A Topic's Conversation takes its Topic's new name. */
+  retitle(chat: string, name: string): void {
+    this.#db
+      .update(appConversations)
+      .set({ title: name })
+      .where(and(eq(appConversations.chatId, chat), eq(appConversations.role, 'conversation')))
+      .run()
+    this.#changed([chat])
+  }
+
+  /** The open chats of `topic` other than subagents: its Conversation and threads, whose work an archive stops. */
+  openIn(topic: number): readonly string[] {
+    return this.#db
+      .select({ id: appConversations.chatId })
+      .from(appConversations)
+      .where(
+        and(
+          eq(appConversations.topicId, topic),
+          isNull(appConversations.closedAt),
+          ne(appConversations.kind, 'subagent'),
+        ),
+      )
+      .all()
+      .map((row) => row.id)
   }
 
   /** How far `zoom` reaches into main's memory from `session`: all of it from main, up to its fork from a thread. */
@@ -240,6 +325,7 @@ export class ConversationRegistry {
     if (this.#row(session) !== undefined) return
     const parentChat = this.#kit.chats.chatOf(parent)
     if (parentChat === undefined) throw new NotFound({ what: 'spawner chat' })
+    const topicId = this.#kit.chats.topicOf(parentChat)
     this.#db.transaction(() => {
       this.#db
         .insert(appConversations)
@@ -250,6 +336,7 @@ export class ConversationRegistry {
           kind: 'subagent',
           title: name,
           parentSession: parentChat,
+          topicId,
           createdAt: now,
         })
         .run()
@@ -312,19 +399,21 @@ export class ConversationRegistry {
       requestId,
       entry: { kind: 'app.shared', data: { thread }, model },
     })
-    return parent.role === 'primary' ? 'main' : labelOf(parent)
+    if (parent.role === 'primary') return 'main'
+    return parent.role === 'conversation' ? `#${parent.title ?? 'topic'}` : labelOf(parent)
   }
 
   /**
-   * Tells main, once, about a thread the owner started with "+": when it has a title (the cheap model's or the
-   * owner's), main gets a note naming it, which its model sees and which starts no run. Nothing said in the thread goes
-   * with it, and a later rename does not rewrite it. The write's request id makes a retry after a crash the same note.
+   * Tells its Topic's Conversation, once, about a thread the owner started with "+": when it has a title (the cheap
+   * model's or the owner's), that Conversation gets a note naming it, which its model sees and which starts no run.
+   * Nothing said in the thread goes with it, and a later rename does not rewrite it. The write's request id makes a
+   * retry after a crash the same note.
    */
   async announce(thread: string): Promise<void> {
     const row = this.#row(thread)
     if (row?.kind !== 'thread' || row.mainNote !== 'owed' || row.title === null) return
     const model = [{ role: 'user' as const, content: threadStartedContent(row.title), timestamp: Date.now() }]
-    await this.#passiveWrite(this.#kit.chats.primary(), {
+    await this.#passiveWrite(this.#kit.chats.conversationAbove(thread), {
       type: 'write',
       requestId: `thread-started:${thread}`,
       entry: { kind: 'app.thread_started', data: { thread }, model },
@@ -396,7 +485,7 @@ export class ConversationRegistry {
    */
   async update(id: string, change: UpdateConversation, now: number): Promise<Updated> {
     const row = this.#registered(id)
-    if (row.role === 'primary') throw new InvalidInput({ reason: 'main_thread' })
+    if (isChannel(row)) throw channelRefusal(row)
     if (change.keepOpen !== undefined && row.kind !== 'subagent') throw new InvalidInput({ reason: 'keep_open' })
     const set = {
       ...(change.title === undefined ? {} : { title: change.title }),
@@ -432,7 +521,8 @@ export class ConversationRegistry {
    * relay waiting on a subagent, a thread's subagents): a closed conversation runs nothing. Returns what it closed.
    */
   async close(id: string, by: 'owner' | 'done', now: number): Promise<readonly string[]> {
-    if (this.#registered(id).role === 'primary') throw new InvalidInput({ reason: 'main_thread' })
+    const target = this.#registered(id)
+    if (isChannel(target)) throw channelRefusal(target)
     const closed = this.#db
       .all<{ session_id: string }>(
         sql`${tree(id)}
@@ -518,6 +608,8 @@ export class ConversationRegistry {
     return {
       id: row.chatId,
       ...(row.role === 'primary' ? { primary: true } : {}),
+      topic: row.topicId,
+      ...(isChannel(row) ? { conversation: true } : {}),
       kind: row.kind,
       ...(row.title === null ? {} : { title: row.title }),
       ...(row.parentSession === null ? {} : { parent: row.parentSession }),

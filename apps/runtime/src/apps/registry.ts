@@ -263,7 +263,8 @@ export class AppRegistry {
 
   /**
    * Closes the open MCP Apps of those of `sessions` that are closed now (Close reaches a conversation's Apps), and
-   * moves the home of each agent app that lived in one to main: an agent app outlives its conversation.
+   * moves the home of each agent app that lived in one to its Topic's Conversation: an agent app outlives its
+   * conversation.
    */
   closeWithConversations(sessions: readonly string[], now: number): void {
     if (sessions.length === 0) return
@@ -281,10 +282,12 @@ export class AppRegistry {
       .returning()
       .all()
     this.#changed(rows)
-    this.#agents.rehome(
-      [...new Set([...closed, ...closed.map((chat) => this.#chats.session(chat))])],
-      this.#chats.primary(),
-    )
+    const homes = new Map<string, string[]>()
+    for (const chat of closed) {
+      const to = this.#chats.conversationAbove(chat)
+      homes.set(to, [...(homes.get(to) ?? []), chat, this.#chats.session(chat)])
+    }
+    for (const [to, moved] of homes) this.#agents.rehome([...new Set(moved)], to)
   }
 
   /** What the browser needs to load an App: an MCP App's call, read from its conversation, or an agent app's view. */

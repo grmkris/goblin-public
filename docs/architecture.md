@@ -76,7 +76,7 @@ error tag, never bodies or credentials.
 
 `PersonalAgent extends Agent` and registers the native `PiHarness` with the Agent lifecycle. Pi owns transcripts,
 tasks, submissions, recovery and tool replay. The object builds one Effect `ManagedRuntime` lazily, providing its
-services: `Mcp` (the MCP host), `Resident` (resident authority), `Chats` (logical chat resolution), `Conversations` (the conversation registry),
+services: `Mcp` (the MCP host), `Resident` (resident authority), `Chats` (logical chat resolution), `Conversations` (the conversation registry), `Topics` (the owner's Topics),
 `Budget`, `Models`, `Memory`, `Skills`, `Learner`, `Channel` and `Files` (`services.ts`). DO methods are thin: each runs one Effect
 program and encodes the exit. PiHarness and Pi Durable are experimental; Alchemy is a pinned beta and Drizzle an RC. `@shadcn/react` is pinned at
 0.3.1 and patched (`patches/shadcn-react/README.md`): its MessageScroller carries unreleased upstream fixes.
@@ -213,7 +213,7 @@ retry still submits the same operation for Pi to deduplicate. Rows older than 30
 The in-isolate per-chat lock covers admission only, and releases before model execution or waiting for an answer.
 `rebind` compare-and-sets the expected session and epoch, rejects a session owned by another chat, and increments the
 epoch. It notifies listeners to close that chat's SSE streams and emit a workspace change. There is no production
-mover yet: Move to thread, Topics and per-primary memory remain future work.
+mover yet: Move to thread and per-Topic memory remain future work; Topics are below.
 
 **Capabilities** (ADR 0010, `capabilities/`): each conversation can switch off, for its own agent, a connected server,
 one granted tool of it, a skills library, or subagents. `app_conversation_capabilities` stores only what is off, so a
@@ -534,6 +534,35 @@ each write; a body longer than it declared stores nothing. The composer's paperc
 gets the owner's words, then one block listing each file's path, name, size and type, then any App context
 (`pi/content.ts`). The web reads that block back into chips under the message (`lib/app-context.ts`), only when every
 block after the words is one it knows. Deleting the account deletes the R2 prefix before the object's storage.
+
+## Topics
+
+A Topic ([ADR 0032](adr/0032-topics-and-per-topic-memory.md)) is a channel with exactly one Conversation and any
+number of threads. `app_topics` holds them (`storage/topics.ts`); Personal is Topic 1, seeded by the additive
+`20261026000000_topics` migration with Main (chat `1`) as its Conversation, and `app_conversations.topic_id` (default
+1) puts every chat in one. `role` is `primary` for Personal's Conversation, `conversation` for another Topic's; both
+keep `kind = 'main'`. `ChatDirectory` answers `isConversation`, `topicOf`, `conversationOf(topic)` and
+`conversationAbove(chat)`; `primary()` stays Personal's Conversation, where Telegram and inbound MCP clients land.
+
+`TopicRegistry` (`topics/registry.ts`, the `Topics` service) creates a Topic with a new Pi session as its
+Conversation, configured like Personal's (its tool filter and copied switches) but not forked from it. Create is
+idempotent by operation id and serialized, so a retry or concurrent repeat finds one Topic and one Pi session; active
+names are unique ignoring case (409). A Topic's Conversation is never renamed or closed directly and takes its Topic's
+name. Branches, "+" threads (`CreateConversation.topic`) and subagents inherit their parent's Topic, and a "+" thread
+announces itself in its Topic's Conversation. Archiving (`topics/program.ts`) marks the Topic and then stops each open
+chat's work through the owner's Stop (runs, queued inputs, subagents and routine runs); its chats refuse new work
+(`topic_archived`) until Restore, which restarts nothing. Personal is never archived. Schedules are untouched.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/topics` | Every Topic (`TopicView`), archived ones included. |
+| `POST /api/topics` | `CreateTopic` (`{ name, operationId }`): a new Topic and Conversation, or the one that operation made; 201. |
+| `PATCH /api/topics/:id` | `UpdateTopic`: rename, archive or restore, and the automatic-search opt-out; one new revision per change. |
+
+All three are strict-CSRF browser writes and owner requests. The workspace feed's snapshot lists `topics`, a change is
+`{ type: 'topic', topic }`, and each `ConversationView` carries `topic` and, for a Conversation, `conversation: true`.
+Unit tests run the real migrations in `node:sqlite`; the local workerd owner case `topics-case.ts` runs in both
+native profiles. Neither is deployed-stage evidence.
 
 ## Main's memory
 

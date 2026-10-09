@@ -45,13 +45,16 @@ export const ownerUsage = Effect.gen(function* () {
   return yield* attempt(() => budget.today(now))
 })
 
-/** A thread from a message of an open conversation, or an empty one under main. */
-export const createOwnerConversation = ({ from }: CreateConversation) =>
+/**
+ * A thread from a message of an open conversation (in that conversation's Topic), or an empty one under a Topic's
+ * Conversation: `topic`'s, else Personal's.
+ */
+export const createOwnerConversation = ({ from, topic }: CreateConversation) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
     const now = yield* nowSecondsEffect
     return yield* attempt(() =>
-      from === undefined ? conversations.create(now) : conversations.branch(from.conversation, from.entry, now),
+      from === undefined ? conversations.create(now, topic) : conversations.branch(from.conversation, from.entry, now),
     )
   })
 

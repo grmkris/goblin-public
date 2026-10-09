@@ -27,6 +27,7 @@ import type { AgentApps } from './agent-apps/engine.ts'
 import type { Inspector } from './inspect/inspector.ts'
 import type { HomeService } from './home/service.ts'
 import type { McpApprovalStore } from './mcp/approvals.ts'
+import type { TopicRegistry } from './topics/registry.ts'
 
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('goblin/Mcp') {}
@@ -34,6 +35,8 @@ export class Approvals extends Context.Service<Approvals, McpApprovalStore>()('g
 export class Resident extends Context.Service<Resident, ResidentAuthority>()('goblin/Resident') {}
 export class Chats extends Context.Service<Chats, ChatDirectory>()('goblin/Chats') {}
 export class Conversations extends Context.Service<Conversations, ConversationRegistry>()('goblin/Conversations') {}
+/** The owner's Topics (ADR 0032): each with one Conversation; Personal holds Main. */
+export class Topics extends Context.Service<Topics, TopicRegistry>()('goblin/Topics') {}
 export class Budget extends Context.Service<Budget, ModelBudget>()('goblin/Budget') {}
 export class Models extends Context.Service<Models, ModelPicker>()('goblin/Models') {}
 export class Memory extends Context.Service<Memory, MainMemory>()('goblin/Memory') {}
@@ -66,6 +69,7 @@ export type AgentServices =
   | Resident
   | Chats
   | Conversations
+  | Topics
   | Budget
   | Models
   | Memory
@@ -88,6 +92,7 @@ export const agentLayer = (services: {
   readonly approvals: McpApprovalStore
   readonly resident: ResidentAuthority
   readonly conversations: ConversationRegistry
+  readonly topics: TopicRegistry
   readonly chats: ChatDirectory
   readonly budget: ModelBudget
   readonly models: ModelPicker
@@ -108,6 +113,7 @@ export const agentLayer = (services: {
     Layer.succeed(Approvals, services.approvals),
     Layer.succeed(Resident, services.resident),
     Layer.succeed(Conversations, services.conversations),
+    Layer.succeed(Topics, services.topics),
     Layer.succeed(Chats, services.chats),
     Layer.succeed(Budget, services.budget),
     Layer.succeed(Models, services.models),

@@ -10,6 +10,7 @@ import { nowMillis, nowSeconds } from './clock.ts'
 import { ChatDirectory } from './chats/directory.ts'
 import { ConversationRegistry, type ThreadKit } from './conversations.ts'
 import { WorkspaceFeed } from './workspace/feed.ts'
+import { TopicRegistry } from './topics/registry.ts'
 import { AppRegistry } from './apps/registry.ts'
 import type { AgentApps } from './agent-apps/engine.ts'
 import { appServices } from './agent-apps/ports.ts'
@@ -143,7 +144,13 @@ function conversationServices(db: DrizzleSqliteDODatabase, input: ComposeInput, 
   conversations.onChange((ids) => apps.closeWithConversations(ids, nowSeconds()))
   agentApps.onChange((name) => apps.agentChanged(name, nowSeconds()))
   const home = new HomeService(db, apps, agentApps)
-  return { conversations, apps, home, workspace: new WorkspaceFeed(harness, conversations, apps, home, kit.chats) }
+  const topics = new TopicRegistry(db, {
+    open: () => conversations.openConversation(),
+    register: (chat, topic, name, now) => conversations.registerConversation(chat, topic, name, now),
+    retitle: (chat, name) => conversations.retitle(chat, name),
+  })
+  const workspace = new WorkspaceFeed(harness, { conversations, apps, home, topics }, kit.chats)
+  return { conversations, apps, home, topics, workspace }
 }
 async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {
   const env = input.env
