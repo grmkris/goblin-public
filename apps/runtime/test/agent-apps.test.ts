@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mismatches, plainJson, schemaProblems } from '../src/agent-apps/json.ts'
 import { readManifest, requestedPowers, storedManifest } from '../src/agent-apps/manifest.ts'
 import { backoff, lastSlot, nextSlot } from '../src/agent-apps/jobs.ts'
 import { AppQueues, problemText } from '../src/agent-apps/queue.ts'
+import { reconcileAppJobs } from '../src/agent-apps/wake.ts'
 import { InvalidInput } from '../src/http/errors.ts'
 
 const object = (properties: Record<string, unknown>, required = Object.keys(properties)) => ({
@@ -174,5 +175,38 @@ describe('app queues', () => {
     expect(problemText(new InvalidInput({ reason: 'input: /by must be >= 1' }))).toBe(
       'InvalidInput — reason: input: /by must be >= 1',
     )
+  })
+})
+
+describe('the jobs reconcile on start (A1)', () => {
+  afterEach(() => void vi.restoreAllMocks())
+
+  it('reports a failure with its type and stack locations, never its message, and does not fail the start', async () => {
+    const lines: string[] = []
+    vi.spyOn(console, 'error').mockImplementation((line: string) => void lines.push(line))
+    const secret = 'schedules of reading-list: token sk-123'
+    await expect(
+      reconcileAppJobs({ jobs: { reconcile: async () => Promise.reject(new TypeError(secret)) } }),
+    ).resolves.toBe(undefined)
+    expect(lines).toHaveLength(1)
+    const line: unknown = JSON.parse(lines[0] ?? '')
+    expect(line).toMatchObject({
+      level: 'error',
+      event: 'failure',
+      where: 'agent-apps.reconcile',
+      'error.type': 'TypeError',
+      severity: 'Error',
+    })
+    expect(line).toHaveProperty(
+      'frames',
+      expect.arrayContaining([expect.stringMatching(/agent-apps\.test\.ts:\d+:\d+/u)]),
+    )
+    expect(lines[0]).not.toContain('sk-123')
+  })
+
+  it('writes nothing when the schedules match', async () => {
+    const error = vi.spyOn(console, 'error')
+    await reconcileAppJobs({ jobs: { reconcile: async () => undefined } })
+    expect(error).not.toHaveBeenCalled()
   })
 })
