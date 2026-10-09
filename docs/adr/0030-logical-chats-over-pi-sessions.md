@@ -41,6 +41,24 @@ now)` performs a compare-and-set, increments the epoch and refuses a session own
 change, so clients reconnect with a fresh snapshot. There is no production rebind caller yet; a future mover must
 coordinate in-flight work and admission rather than treat the fence as a way to move a Pi task.
 
+### Receipts, one admission sequence, no rebind (2026-10-09)
+
+- **Receipts.** The additive migration `20261027000000_chat_operation_receipts` gives each `app_chat_operations` row
+  what the operation was (`kind`), who started it (`origin`), the chat it made (`target_chat`), the operation that led
+  to it (`parent_op`) and how it ended (`state`, `reason`, `settled_at`), indexed by operation and parent. A row from
+  before reads as `legacy`. The key, the retention and "a replay keeps its first session" are unchanged.
+  `receiptOf(db, op)` is the synchronous read for Pi's commit listener (`chats/receipts.ts`).
+- **One admission sequence.** `ChatOperations.send` (`chats/operations.ts`) is the only path an input takes into a
+  chat: within the budget, under the chat's lock, the chat open, the receipt, a routine's answer, the owner's model,
+  Pi's submit or the subagent relay, then `submitted` and one flow event. The owner's message, an inbound client's
+  ask and the owner's Telegram message take it; a Persona ask takes its admission (`ChatOperations.admit`).
+  `ChatOperations.passiveWrite` writes a `write:<entry kind>` receipt and Pi's write under the same lock.
+- **The lock.** Admission's lock is `KeyedLock`'s (`chat:<id>`). While the mover, the registry's own writes and the
+  Topic ports still take `ChatDirectory.withChat`, admission holds that lock inside its own.
+- **No rebind.** `rebind` never had a production caller and was deleted, with its listeners. Move to thread (ADR 0034)
+  forks a new Thread instead. The permuted-primary test profile binds chat `1` itself before services compose.
+- **One inserter.** Every chat row goes in through `registerChat` (`Chats.register` for programs).
+
 ## Callers
 
 Browser routes, snapshots, history, queue operations, model selection and the workspace feed use chat ids. SSE resolves

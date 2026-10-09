@@ -67,7 +67,7 @@ archived (`personal_topic`).
 `GET/POST /api/topics` and `PATCH /api/topics/:id` are the `topics` group of the owner API
 (`packages/contracts/src/api/topics.ts`), served by the agent (`topics/api.ts`) behind the Worker's session, origin,
 CSRF and plan checks; refusals answer in the API's error envelope. Archiving stops each open chat through
-`ChatOperations.stop`, the owner's Stop. The workspace feed's snapshot carries `topics`, each change is a
+`stopChat`, the owner's Stop. The workspace feed's snapshot carries `topics`, each change is a
 `{ type: 'topic' }` item, and every `ConversationView` carries its `topic` and, for a Topic's Conversation,
 `conversation: true`. An older client ignores all of these. A Topic write tells the agent's change bus
 (`topics.changed`, ids only), and the feed reads each Topic as it is then.

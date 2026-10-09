@@ -30,6 +30,17 @@ does three idempotent steps:
 The route returns 201 `{ thread: ConversationView, receipt }`. A crash between the Pi fork and the row would leave one
 unregistered, unreachable Pi conversation; the retry forks again.
 
+### One thread operation (2026-10-09)
+
+Reply in thread, "+" and Start thread became one idempotent operation. `POST /api/conversations/:id/threads` takes
+`ThreadStart` (`{ operationId, anchor, message, personaOrder? }`): `anchor` is `{ entry }` (Reply: a fork at that
+entry, as a branch), `empty` (an empty Thread under the Conversation the chat sits under, announced once titled) or
+`latest` (Start thread, as above, with its head). The message then goes into the Thread as `<operationId>:first`, its
+receipt naming the operation as its parent, with the message's Persona order. The chat records the operation's receipt
+(`start`, `reply` or `empty`, settled with the Thread it made) and its flow. `POST /api/conversations` with an
+`operationId` takes the same path, so a double create makes one Thread (C4). The web keeps a Reply or "+" draft in the
+browser until its first send, which is this one call.
+
 ## Move to thread
 
 `POST /api/conversations/:id/move` takes `MoveToThread` (`entry`, `operationId`) and returns a `MoveReceipt`. The same
@@ -91,6 +102,9 @@ entries would change their identities. The implementation and its tests are kept
 **Upstream ask (Pi Durable).** A way to flatten or copy a fork chain, or to cap its ancestor depth, would make the
 swap's cost constant and unblock moving a running turn; so would a supported way to move a running turn between
 conversations. Until then a running turn is refused with `streaming` and the web says why.
+
+A move also records a `move` receipt in the chat (2026-10-09): settled with its Thread, or refused with the mover's
+reason, and its `move` flow. `app_chat_moves` stays the authority; the receipt indexes it.
 
 ## Verification
 

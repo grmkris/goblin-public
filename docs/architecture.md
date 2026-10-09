@@ -200,8 +200,9 @@ calls them from inside an Effect, it composes instead.
 
 - `KeyedLock` (`observability/lock.ts`): mutual exclusion per key, strictly first come, first served (Effect's
   `Semaphore` wakes waiters in no fixed order). It is held for admission only, never across a model call or another
-  wait. Topic creates, retrieval catch-up, an agent app's state changes and the Telegram pull take it; chat admission
-  still takes the chat directory's own per-chat lock.
+  wait. Topic creates, retrieval catch-up, an agent app's state changes, the Telegram pull and chat admission
+  (`chat:<id>`) take it; admission holds the chat directory's own per-chat lock inside it while the mover, the
+  registry's own writes and the Topic ports still take that one.
 - `Changes` (`runtime/changes.ts`): a synchronous topic bus with no fibers or timers. An area declares its topics
   where it publishes them, with ids as payloads (`topics.changed`, `personas.changed`, `receipts.changed`,
   `home.changed`), and the workspace feed reads each item as it is then. Handlers run inline in order; a failing one
@@ -211,15 +212,17 @@ calls them from inside an Effect, it composes instead.
 
 Conversations (`conversations.ts`): every agent has one **main** conversation, stable chat id `1` (`PRIMARY_CHAT`),
 where the owner's browser and every inbound MCP client talk. `ChatDirectory` resolves that chat to its current Pi
-session. A fresh agent starts with Pi's root session `1`; a future rebind can change the session while `/c/1` stays
-the same. A message from anyone but the owner's browser starts with an author tag
-block (`[from Claude Code]`, the `authorTag` contract), so the model and the web both know who wrote it. Side
+session. A fresh agent starts with Pi's root session `1`; `/c/1` stays the same whatever session it names. A message
+from anyone but the owner's browser starts with an author tag block (`[from Claude Code]`, the `authorTag` contract),
+so the model and the web both know who wrote it. Side
 **threads** are Pi conversations of their own: branched from a message of any open conversation (a Pi fork at that
 entry, so the thread sees its parent up to there and the parent never sees the thread), at any depth, or empty under
 main (ADR 0017). `app_conversations` registers each one as a chat tree (`parent_session`: its parent chat), with its
 kind, title, origin and close time. Its existing `session_id` primary key is the stable chat id (`chatId` in Drizzle);
-`pi_session` names the current Pi session, uniquely owned by that chat, `epoch` fences rebinds and `role = 'primary'`
-marks Main. A helper's immutable `spawner_session` keeps its anchor and relays on the Pi session that started them.
+`pi_session` names the current Pi session, uniquely owned by that chat, and `role = 'primary'` marks Main (`epoch`
+is kept, unused: nothing rebinds a chat). Every chat row goes in through one inserter, `registerChat`
+(`chats/directory.ts`; `Chats.register` for programs). A helper's immutable `spawner_session` keeps its anchor and
+relays on the Pi session that started them.
 A chat id reaches Pi only after the directory resolves its registered session, so no request opens a conversation by
 guessing its number. Pi cannot delete a conversation, so Close stops a
 conversation and everything under it and keeps it readable until Reopen; main never closes. The web
@@ -241,16 +244,17 @@ last reply came, a dot while unread, a pulse while it works) opens it; threads o
 crumb. A message offers Reply in thread, Copy and Details in a small toolbar over its top edge where a pointer rests,
 and on a touch screen once the message is tapped. Reply in thread opens a draft in the panel, with the focus in its
 composer, that branches the thread only when it is sent, because Pi cannot delete a conversation; `/new-thread` moves the
-composer's draft into a new thread's draft the same way. A draft's (Reply's or "+"'s) first send makes the thread under
-the draft's one operation id, which every send meanwhile waits for and a retry asks for again (`lib/draft-thread.ts`), in
-the shape of the unified `StartThread` operation. Details opens a sheet of what ran behind the message
+composer's draft into a new thread's draft the same way. A draft's (Reply's or "+"'s) first send is one call of the
+thread operation under the draft's one operation id: it makes the thread and sends that message as its first. A send
+meanwhile waits for the same thread and goes into it as a message of its own, and a retry asks for the same thread
+again (`lib/draft-thread.ts`, `components/shell/thread-start.ts`). Details opens a sheet of what ran behind the message
 (`GET /api/conversations/:id/details?entry=`, the inspect group): its operation in a few lines, its steps in order with
 their status and duration, the operations it led to, and what was not recorded; a message with nothing recorded says
 so. The channel and the panel follow conversations through one
 stream pool (`lib/stream-pool.ts`): one event stream per conversation however many show it, at most eight following
 beyond those on screen, and one off screen stops following after ten seconds, resuming from a fresh snapshot when it
 comes back. Start thread, a toggle in the composer (and `/new-thread`), posts the message as the head of a new thread whose
-reply lands there (`POST /api/conversations/:id/threads`, one operation id per draft; the runtime writes the
+reply lands there (`POST /api/conversations/:id/threads` anchored at `latest`; the runtime writes the
 `app.thread_head` into the chat it started from), and the panel opens on it; turning it off keeps the draft, its
 files and references. Move to thread, in the toolbar of a channel's newest owner message (`POST …/move`,
 `movableEntry` in `lib/threads.ts`), waits while that turn's reply streams, then leaves the message as the thread's
@@ -268,12 +272,16 @@ have a slot after the entry they follow and a provider (`components/shell/epheme
 yet.
 A thread started with "+" tells its channel its name once it has one (ADR 0010): the channel gets one
 `app.thread_started` note, `[thread started: "<title>"]`, and its transcript shows that thread's summary.
-**Start thread** ([ADR 0034](adr/0034-move-to-thread.md), `chats/thread-heads.ts`) posts the owner's message as the
-head of a new Thread instead: `POST /api/conversations/:id/threads` forks the chat at its newest entry outside a
-running turn (an empty Thread when it has none) in the same Topic, writes an `app.thread_head` entry
-(`ThreadHeadData`, request id `thread-head:<op>`) into the chat as a passive write whose model text is a bounded `[the
-owner started a thread: "…"]`, then submits the message into the Thread through the ordinary owner path.
-`app_conversations.origin_op` (unique) makes one Thread per operation id, also for concurrent repeats.
+**The thread operation** ([ADR 0034](adr/0034-move-to-thread.md), `chats/thread-heads.ts`) is one idempotent call for
+Reply, "+" and Start thread: `POST /api/conversations/:id/threads` with `ThreadStart` (`{ operationId, anchor, message,
+personaOrder? }`) makes the Thread at `anchor` (`{ entry }` forks there, `empty` starts one under the Conversation the
+chat sits under, `latest` forks at the chat's newest entry outside a running turn, or starts empty when it has none),
+in the same Topic, then submits `message` into the Thread through the ordinary owner path as `<operationId>:first`,
+with its Persona order. For `latest` (Start thread) it first writes an `app.thread_head` entry (`ThreadHeadData`,
+request id `thread-head:<op>`) into the chat as a passive write whose model text is a bounded `[the owner started a
+thread: "…"]`. `app_conversations.origin_op` (unique) makes one Thread per operation id, also for concurrent repeats,
+and `POST /api/conversations` with an `operationId` goes through the same path. The web keeps a Reply or "+" draft in
+the browser until its first send, which is this one call.
 **Move to thread** (ADR 0034, `chats/mover.ts`) moves a channel's newest finished turn into a new Thread:
 `POST /api/conversations/:id/move` with `MoveToThread` returns a `MoveReceipt` (the same operation id, the same
 receipt). The Thread is a Pi fork of the chat at the turn's last entry, made a thread with the chat's switches, in its
@@ -324,7 +332,7 @@ agent's raw routes (marked raw). Like every owner write, each write needs the CS
 | `PATCH /api/conversations/:id/capabilities` | Switch one `CapabilityTarget` on or off there (only what is shown can be switched off), or `{ reset: 'parent' }` a thread back to its parent's switches. A subagent's are not editable. |
 | `GET /api/conversations/:id/queue` | Ordered queued input IDs, modes and contents for Main and ordinary threads, from Pi InboxDoc. Passive writes, helpers and routine inputs are excluded. |
 | `DELETE /api/conversations/:id/queue` | Remove a queued input by positive safe-integer `submissionId`. Returns `removed`, `already_started`, `already_settled` or `not_found`; never stops a running input. |
-| `POST /api/conversations/:id/threads` | Start thread (ADR 0034): the `SendMessage` body is posted as the head of a new Thread of this chat and answered there. Returns 201 `{ thread, receipt }`; the same `operationId` returns the same Thread (another chat's is 409). |
+| `POST /api/conversations/:id/threads` | The thread operation (ADR 0034): `ThreadStart` makes a Thread of this chat at `anchor` (`{ entry }`, `empty` or `latest`, which also posts the message as its head here) and sends `message` there as `<operationId>:first`. Returns 201 `{ thread, receipt }`; the same `operationId` returns the same Thread (another chat's is 409). |
 | `POST /api/conversations/:id/move` | Move to thread (ADR 0034): `{ entry, operationId }` moves the newest finished turn the owner's message `entry` started into a new Thread. Returns the `MoveReceipt` (`mode: 'settled'`; `state` `settled` with `thread`, or `refused` with `reason`); the same `operationId` returns the same receipt (another chat's is 409, a move already in flight in the chat is 409). |
 | `POST /api/conversations/:id/messages` | Submit `input`, a stable `operationId`, optional `appContext` (by App id), up to eight `attachments` (owner file paths that must exist) and up to sixteen stable composer `selections`; skill-only input is allowed. Returns 202 acceptance. |
 | `GET /api/files?dir=` | Raw. A directory of the owner's files (`FileListing`): `/uploads`, `/agent` or a folder under one, with the storage in use. |
@@ -381,15 +389,22 @@ Structured composer metadata keeps selected labels and prose readable in the tra
 the complete send and marks its chip. `/new-thread` transfers the draft and portable attachment store to a new
 thread's draft in the panel.
 
-**Chat admission** ([ADR 0030](adr/0030-logical-chats-over-pi-sessions.md)): owner, inbound MCP and Telegram operations
-first record `(chat_id, operation_id)` and the selected Pi session in `app_chat_operations`, then submit to that
-session. A retry uses the recorded session, even after a rebind; the intent row alone proves no Pi acceptance, so
-retry still submits the same operation for Pi to deduplicate. Rows older than 30 days are pruned opportunistically.
-The in-isolate per-chat lock covers admission only, and releases before model execution or waiting for an answer.
-`rebind` compare-and-sets the expected session and epoch, rejects a session owned by another chat, and increments the
-epoch. It notifies listeners to close that chat's SSE streams and emit a workspace change. There is no production
-mover: Move to thread (ADR 0034) forks the moved turn's Thread and never rebinds a chat; Topics and their memory
-are below.
+**Chat admission** ([ADR 0030](adr/0030-logical-chats-over-pi-sessions.md), `chats/operations.ts`): every input into a
+chat (the owner's message, an inbound client's ask, the owner's Telegram message) takes one admission sequence,
+`ChatOperations.send`: within the budget, under the chat's lock (`KeyedLock`), the chat open, its **receipt** recorded
+in `app_chat_operations` with the selected Pi session, a routine's waiting question answered, the session on the
+owner's model, then Pi's submit (or the subagent relay), the receipt moved on to `submitted` (or `refused` with the
+failure's type), and one flow event. A Persona ask takes the same admission (`ChatOperations.admit`). A retry uses the
+recorded session; the receipt alone proves no Pi acceptance, so a retry still submits the same operation for Pi to
+deduplicate. A receipt (`chats/receipts.ts`) says what the operation was (`kind`: send, ask_client, telegram,
+persona_ask, start, reply, empty, move, `write:<entry kind>` for a passive write…), who started it (`origin`), the
+chat it made (`target_chat`), the operation that led to it (`parent_op`), how it ended (`state`, `reason`,
+`settled_at`); one admitted before receipts had kinds reads as `legacy`, and `receiptOf` reads one synchronously by
+operation id. Passive writes (`ChatOperations.passiveWrite`: thread heads, shares, announcements, routine reports,
+Persona answers, memory views) write their receipt and Pi's write under the same lock. Rows older than 30 days are
+pruned opportunistically. The lock covers admission only, and releases before model execution or waiting for an
+answer. Nothing rebinds a chat: Move to thread (ADR 0034) forks the moved turn's Thread and records a `move` receipt;
+Topics and their memory are below.
 
 **Capabilities** (ADR 0010, `capabilities/`): each conversation can switch off, for its own agent, a connected server,
 one granted tool of it, a skills library, or subagents. `app_conversation_capabilities` stores only what is off, so a
@@ -828,8 +843,8 @@ Every Topic's Conversation (Personal's is Main) keeps its own memory (ADR 0032):
 keys every row by chat id, and `ChatMemories` (the `Memories` service) gives each chat's (`of`), turns one on with
 the `goblin.memory` and `goblin.recall` extensions (`activate`, once; composition activates every Conversation that
 has none yet, and creating a Topic activates its Conversation) and forgets a moved turn (`truncate(chat, size)`).
-Activation, entry reads and builder writes resolve the chat's current Pi session on each use, so a rebind moves no
-memory row. The Builder document uses the generation API's `conversationId`; the builder works only for a
+Activation, entry reads and builder writes resolve the chat's current Pi session on each use, so no memory row
+names a session. The Builder document uses the generation API's `conversationId`; the builder works only for a
 Conversation (`chatOf`, then `isConversation`). The additive migration `20261026000100_chat_memory` copied Main's
 agent-wide memory into chat `1` with every idx, entry id and node unchanged; the old tables stay, no longer read.
 Memory log entry ids remain Pi's globally unique ids.
@@ -1137,7 +1152,7 @@ that is not in `app_conversations` (a routine's run) has no entries page; its tu
 | Agent DO SQLite | `pi_*`, `cf_agents_*` and the other vendor tables | Pi, Agents SDK. Never touched. |
 | Agent DO SQLite | `app_mcp_servers`, `app_mcp_registries`, `app_mcp_endpoints`, `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants` | Drizzle: MCP metadata and authorization. |
 | Agent DO SQLite | `app_resident`, `app_conversations`, `app_model_choice`, `app_usage_daily`, `app_metadata` | Drizzle: agent metadata and logical chat bindings (ADR 0030). |
-| Agent DO SQLite | `app_chat_operations` | Drizzle: chat/operation admission intents pinned to their original Pi session, pruned opportunistically after 30 days (ADR 0030). |
+| Agent DO SQLite | `app_chat_operations` | Drizzle: operation receipts per chat, pinned to their original Pi session, with kind, origin, target chat, parent operation, state and reason (`20261027000000_chat_operation_receipts`), pruned opportunistically after 30 days (ADR 0030). |
 | Agent DO SQLite | `app_conversation_capabilities`, `app_execution_exclusions` | Drizzle: conversation switches and helper app exclusions (ADRs 0010, 0029). |
 | Agent DO SQLite | `app_chat_memory_log`, `app_chat_memory_nodes`, `app_chat_memory_state` | Drizzle: each Topic Conversation's memory, keyed by chat id (ADR 0032). `app_memory_log`, `app_memory_nodes` and `app_memory_state`, Main's agent-wide predecessors, were copied into chat `1` and are no longer read. |
 | Agent DO SQLite | `app_topics` | Drizzle: the owner's Topics, each with its Conversation's chat id (ADR 0032). |
