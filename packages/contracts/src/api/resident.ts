@@ -1,6 +1,28 @@
+import * as Context from 'effect/Context'
+import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
+import { ResidentStatus } from '../index.ts'
+import { ResidentChange } from '../mcp.ts'
 
 /**
- * Resident authority: its status, and revoking or re-enabling it. Endpoints are added the way `topics.ts` adds them.
+ * Whether the owner gate renews resident authority before the endpoint runs (`OwnerGate` in `owner.ts`). Every owner
+ * request renews it except changing it: a revocation must not renew first, and re-enabling renews on its own. An
+ * endpoint that must not renew is annotated `false`; the gate still checks the plan.
  */
-export class ResidentGroup extends HttpApiGroup.make('resident') {}
+export const RenewsResident = Context.Reference<boolean>('goblin/api/RenewsResident', { defaultValue: () => true })
+
+/**
+ * Resident authority (ADR 0003): what lets the agent act without a live browser session. Paths are relative to the
+ * API's `/api` prefix.
+ *
+ * - `status`: `GET /api/agent/resident`, as it is now, after the gate renewed it.
+ * - `set`: `POST /api/agent/resident` revokes it (Events subscriptions first) or enables it again; the gate does not
+ *   renew it first.
+ */
+export class ResidentGroup extends HttpApiGroup.make('resident').add(
+  HttpApiEndpoint.get('status', '/agent/resident', { success: ResidentStatus }),
+  HttpApiEndpoint.post('set', '/agent/resident', { payload: ResidentChange, success: ResidentStatus }).annotate(
+    RenewsResident,
+    false,
+  ),
+) {}

@@ -1,6 +1,6 @@
 import type { ResidentStatus } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
-import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
+import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import { ResidentInactive } from './http/errors.ts'
 import { appResident } from './storage/schema.ts'
 
@@ -14,8 +14,8 @@ export type { ResidentStatus }
  * and channels). Every owner request renews it; a revocation is sticky until the owner re-enables it.
  */
 export class ResidentAuthority {
-  readonly #db: DrizzleSqliteDODatabase
-  constructor(db: DrizzleSqliteDODatabase) {
+  readonly #db: SQLiteAsyncDatabase<'sync', unknown>
+  constructor(db: SQLiteAsyncDatabase<'sync', unknown>) {
     this.#db = db
   }
 
