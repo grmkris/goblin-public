@@ -9,14 +9,14 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { afterEach, describe, expect, it } from 'vitest'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
-import { ResidentAdapter } from '../../../src/layers/mcp.ts'
+import { ResidentLive } from '../../../src/layers/mcp.ts'
 import { ResidentHandlers } from '../../../src/mcp/resident-api.ts'
 import { Events } from '../../../src/mcp/service.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
 import { Resident as LegacyResident } from '../../../src/services.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 import { callOwner } from '../../integration/owner-api.ts'
-import { json, partial, plans, serve } from './mcp-serve.ts'
+import { json, partial, plans, serve, sqliteDb } from './mcp-serve.ts'
 
 /** Only the resident group, behind the real gate, router and failure rendering (`owner-http.test.ts`). */
 const API = ownerApiOf(ResidentGroup)
@@ -47,7 +47,7 @@ const fixture = () => {
   const { fetch } = serve(
     OwnerHttp.serve(API, RESIDENT).pipe(
       Layer.provide(
-        Layer.mergeAll(ResidentAdapter.pipe(Layer.provideMerge(legacy)), Layer.succeed(Events, events), plans()),
+        Layer.mergeAll(ResidentLive.pipe(Layer.provide(sqliteDb(db))), legacy, Layer.succeed(Events, events), plans()),
       ),
     ),
   )

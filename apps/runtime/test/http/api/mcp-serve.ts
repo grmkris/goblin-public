@@ -7,6 +7,8 @@ import { afterEach } from 'vitest'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
+import { Db } from '../../../src/runtime/db.ts'
+import type { chatDatabase } from '../../chats-sqlite.ts'
 
 const PLAN: AccountPlan = {
   active: true,
@@ -68,6 +70,11 @@ export const partial = <S extends object>(parts: Partial<S>): S =>
       return () => Effect.die(new Error(`not in this fixture: ${key}`))
     },
   }) as S
+
+/** The agent's database (`Db`) over a node:sqlite one with the application migrations applied (chats-sqlite.ts). */
+export const sqliteDb = (db: ReturnType<typeof chatDatabase>['db']): Layer.Layer<Db> =>
+  // SAFETY: the services under test use only Drizzle's synchronous query builder, which both drivers share.
+  Layer.succeed(Db, db as never)
 
 /** A JSON request to the agent, as the Worker edge forwards one. */
 export const json = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>

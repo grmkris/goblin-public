@@ -49,6 +49,8 @@ const Found = Schema.Struct({
       added: Schema.Boolean,
     }),
   ),
+  /** Some registry could not be searched just now: the registry results are incomplete. */
+  partial: Schema.optionalKey(Schema.Literal(true)),
 })
 
 /** `mcp_suggest`: goblin's suggested servers and the owner's registries, searched by topic. */
@@ -68,7 +70,7 @@ const suggestTool = (run: RunProgram, stage: Stage | undefined) =>
           const shelf = (yield* servers.suggested(stage)).filter((entry) =>
             matches(query, entry.title, entry.description),
           )
-          const found = yield* servers.catalog(query)
+          const { entries: found, partial } = yield* servers.catalog(query)
           return {
             trusted: false as const,
             suggested: shelf.map(({ title, description, endpoint, signIn, added }) => ({
@@ -87,6 +89,7 @@ const suggestTool = (run: RunProgram, stage: Stage | undefined) =>
               needsKey: entry.needsKey,
               added: entry.added,
             })),
+            ...(partial ? { partial: true as const } : {}),
           }
         }),
       ),

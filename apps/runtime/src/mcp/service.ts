@@ -80,8 +80,13 @@ export class McpServers extends Context.Service<
     readonly disconnect: (serverId: string) => Effect.Effect<void, AppError>
     /** The server's tools as the owner sees them, from the live connection or a fresh one. */
     readonly tools: (serverId: string, refresh: boolean) => Effect.Effect<readonly ToolView[], AppError>
-    /** Registry entries matching `query`, marking the ones already offered. */
-    readonly catalog: (query: string) => Effect.Effect<readonly CatalogEntry[], AppError>
+    /**
+     * Registry entries matching `query`, marking the ones already offered; `partial` when a registry could not be
+     * searched (it is logged, and the answer is not cached).
+     */
+    readonly catalog: (
+      query: string,
+    ) => Effect.Effect<{ readonly entries: readonly CatalogEntry[]; readonly partial: boolean }, AppError>
     /** The registries searched: the built-in ones first, then the owner's. */
     readonly registries: () => Effect.Effect<readonly RegistryView[]>
     readonly addRegistry: (url: string) => Effect.Effect<readonly RegistryView[], AppError>

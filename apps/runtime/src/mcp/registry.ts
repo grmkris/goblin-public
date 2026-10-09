@@ -2,11 +2,17 @@
 // the Official MCP Registry, GitHub's, and any the owner adds. Entries are publishers' claims, bounded and decoded;
 // they label servers for the owner, never reach the model and grant nothing. Only remotes a Worker can use are kept.
 // Redirects are not followed (`manual`; workerd has no `error` mode): a 3xx is not `ok`, so it reads as nothing.
-import type { CatalogEntry } from '@goblin/contracts'
+import type { CatalogEntry, RegistryView } from '@goblin/contracts'
+import type { FetchLike } from '@modelcontextprotocol/client'
+import * as Clock from 'effect/Clock'
+import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { InvalidInput } from '../http/errors.ts'
+import { type AppError, InvalidInput, UpstreamMcp, toAppError } from '../http/errors.ts'
+import { logEvent } from '../observability/logger.ts'
+import { safeErrorType } from '../observability/report.ts'
 import { userEndpoint } from './endpoint.ts'
+import { type AddedRegistries, MAX_ADDED_REGISTRIES } from './registries.ts'
 
 export type Registry = { readonly url: string; readonly title: string; readonly official?: boolean }
 
@@ -53,6 +59,8 @@ const decodePage = Schema.decodeUnknownOption(Page)
 const MAX_PAGE_BYTES = 4 * 1024 * 1024
 const PAGE_LIMIT = 20
 const CACHE_MS = 10 * 60 * 1000
+/** How long one registry may take to answer a search or a probe. */
+const REGISTRY_TIMEOUT = '8 seconds'
 
 /** The template variables in a remote URL (`https://x/mcp/{workspaceId}`). */
 const variablesOf = (url: string): string[] => [...url.matchAll(/\{([\w-]{1,64})\}/gu)].map((match) => match[1] ?? '')
@@ -81,56 +89,119 @@ export function catalogEntry(raw: unknown, registry: Registry): Omit<CatalogEntr
   }
 }
 
-/** One page of one registry's search results; nothing when it is down, slow, too large or not a registry. */
-async function searchOne(registry: Registry, query: string, fetcher: typeof fetch) {
+/** A registry's page that is not one: an error status, too large, not JSON or not the registry API's shape. */
+const notARegistry = () => new InvalidInput({ reason: 'not_a_registry' })
+
+/**
+ * One page from a registry, read within its time limit. A request that gets no answer (the network, the limit) is
+ * `UpstreamMcp` transport, named by the registry's host; an answer that is not a page of the registry API is
+ * `not_a_registry`. Redirects are not followed, so a 3xx is not a page either.
+ */
+const readPage = (url: URL, fetcher: FetchLike) =>
+  Effect.tryPromise({
+    try: async (signal) => {
+      const response = await fetcher(url, { redirect: 'manual', signal })
+      return response.ok ? await response.text() : undefined
+    },
+    catch: () => new UpstreamMcp({ serverId: url.host, reason: 'transport' }),
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: REGISTRY_TIMEOUT,
+      orElse: () => Effect.fail(new UpstreamMcp({ serverId: url.host, reason: 'transport' })),
+    }),
+    Effect.flatMap((body) => {
+      if (body === undefined || body.length > MAX_PAGE_BYTES) return Effect.fail(notARegistry())
+      return Effect.try({ try: (): unknown => JSON.parse(body), catch: notARegistry }).pipe(
+        Effect.flatMap((json) =>
+          Option.match(decodePage(json), { onNone: () => Effect.fail(notARegistry()), onSome: Effect.succeed }),
+        ),
+      )
+    }),
+  )
+
+/** One registry's servers matching `query` that a Worker can use. */
+export const searchRegistry = (registry: Registry, query: string, fetcher: FetchLike) => {
   const url = new URL('/v0.1/servers', registry.url)
   url.searchParams.set('limit', String(PAGE_LIMIT))
   if (query !== '') url.searchParams.set('search', query)
-  try {
-    const response = await fetcher(url, { redirect: 'manual', signal: AbortSignal.timeout(8000) })
-    if (!response.ok) return []
-    const body = await response.text()
-    if (body.length > MAX_PAGE_BYTES) return []
-    const page = Option.getOrUndefined(decodePage(JSON.parse(body)))
-    return (page?.servers ?? []).flatMap((raw) => catalogEntry(raw, registry) ?? [])
-  } catch {
-    return []
-  }
+  return Effect.map(readPage(url, fetcher), (page) => page.servers.flatMap((raw) => catalogEntry(raw, registry) ?? []))
 }
 
-/** Search registries, newest results cached for ten minutes per query in this agent's memory. */
-export class RegistryCatalog {
-  readonly #fetch: typeof fetch
-  readonly #cache = new Map<string, { readonly at: number; readonly entries: readonly Omit<CatalogEntry, 'added'>[] }>()
-  constructor(fetcher: typeof fetch) {
-    this.#fetch = fetcher
-  }
+/** Check that `raw` is a registry speaking the generic API, and name it by its host. */
+export const probeRegistry = (raw: string, fetcher: FetchLike): Effect.Effect<Registry, AppError> =>
+  Effect.gen(function* () {
+    const base = yield* Effect.try({ try: () => userEndpoint(raw), catch: toAppError })
+    yield* readPage(new URL('/v0.1/servers?limit=1', base.origin), fetcher)
+    return { url: base.origin, title: base.hostname }
+  })
 
-  /** Every registry's matches, each server once: earlier registries (the official one first) win on name. */
-  async search(query: string, registries: readonly Registry[]): Promise<readonly Omit<CatalogEntry, 'added'>[]> {
-    const key = JSON.stringify([query, registries.map((registry) => registry.url)])
-    const cached = this.#cache.get(key)
-    if (cached !== undefined && Date.now() - cached.at < CACHE_MS) return cached.entries
-    const pages = await Promise.all(registries.map((registry) => searchOne(registry, query, this.#fetch)))
+/** A catalog search: every registry's matches, and whether any registry could not be searched (`partial`). */
+export type CatalogSearch = { readonly entries: readonly Omit<CatalogEntry, 'added'>[]; readonly partial: boolean }
+
+/** What the catalog reads: the owner's registries and how to reach them. */
+export type CatalogPorts = { readonly added: AddedRegistries; readonly fetch: FetchLike }
+
+/**
+ * The registries the owner searches for servers (the built-in ones first, then the owner's) and the search over them,
+ * the newest answers cached for ten minutes per query. One catalog per agent: the cache is its only state.
+ */
+export const makeCatalog = ({ added, fetch: fetcher }: CatalogPorts) => {
+  const cache = new Map<string, { readonly at: number; readonly entries: CatalogSearch['entries'] }>()
+  const registries = Effect.sync((): readonly RegistryView[] => [
+    ...DEFAULT_REGISTRIES.map(({ url, title }) => ({ url, title, builtIn: true })),
+    ...added.list().map(({ url, title }) => ({ url, title, builtIn: false })),
+  ])
+  /**
+   * Every registry's matches, each server once: earlier registries (the official one first) win on name. A registry
+   * that cannot be searched is logged and leaves the answer partial, which is not cached.
+   */
+  const search = Effect.fn('McpCatalog.search')(function* (query: string) {
+    const searched = [...DEFAULT_REGISTRIES, ...added.list()]
+    const key = JSON.stringify([query, searched.map((registry) => registry.url)])
+    const now = yield* Clock.currentTimeMillis
+    const cached = cache.get(key)
+    if (cached !== undefined && now - cached.at < CACHE_MS) return { entries: cached.entries, partial: false }
+    const pages = yield* Effect.forEach(
+      searched,
+      (registry) =>
+        searchRegistry(registry, query, fetcher).pipe(
+          Effect.tapError((error) =>
+            logEvent('warn', 'failure', {
+              where: 'mcp.catalog.search',
+              'error.type': safeErrorType(error),
+              code: error.reason,
+            }),
+          ),
+          Effect.option,
+        ),
+      { concurrency: 'unbounded' },
+    )
     const seen = new Set<string>()
-    const entries = pages.flat().filter((entry) => !seen.has(entry.name) && seen.add(entry.name))
-    if (this.#cache.size > 50) this.#cache.clear()
-    this.#cache.set(key, { at: Date.now(), entries })
-    return entries
-  }
-
-  /** Check that `url` is a registry speaking the generic API, and name it; InvalidInput otherwise. */
-  async probe(url: string): Promise<Registry> {
-    const base = userEndpoint(url)
-    const probeUrl = new URL('/v0.1/servers?limit=1', base.origin)
-    try {
-      const response = await this.#fetch(probeUrl, { redirect: 'manual', signal: AbortSignal.timeout(8000) })
-      const body = response.ok ? await response.text() : ''
-      if (body.length <= MAX_PAGE_BYTES && Option.isSome(decodePage(JSON.parse(body))))
-        return { url: base.origin, title: base.hostname }
-    } catch {
-      // Falls through to the refusal below.
+    const entries = pages
+      .flatMap((page) => Option.getOrElse(page, () => []))
+      .filter((entry) => !seen.has(entry.name) && seen.add(entry.name))
+    const partial = pages.some(Option.isNone)
+    if (!partial) {
+      if (cache.size > 50) cache.clear()
+      cache.set(key, { at: now, entries })
     }
-    throw new InvalidInput({ reason: 'not_a_registry' })
-  }
+    return { entries, partial }
+  })
+  /** Adds a registry to search, once it answers the generic registry API. */
+  const add = Effect.fn('McpCatalog.add')(function* (raw: string) {
+    if (added.list().length >= MAX_ADDED_REGISTRIES) return yield* new InvalidInput({ reason: 'too_many_registries' })
+    const registry = yield* probeRegistry(raw, fetcher)
+    if ((yield* registries).some((item) => item.url === registry.url))
+      return yield* new InvalidInput({ reason: 'already_added' })
+    const now = yield* Clock.currentTimeMillis
+    yield* Effect.try({ try: () => added.add(registry, Math.floor(now / 1000)), catch: toAppError })
+    return yield* registries
+  })
+  /** Stops searching a registry the owner added; the built-in ones stay, as do servers added from it. */
+  const remove = Effect.fn('McpCatalog.remove')(function* (url: string) {
+    if (!added.list().some((item) => item.url === url)) return yield* new InvalidInput({ reason: 'unknown_registry' })
+    yield* Effect.try({ try: () => added.remove(url), catch: toAppError })
+    return yield* registries
+  })
+  return { registries, search, add, remove }
 }

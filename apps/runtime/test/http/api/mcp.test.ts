@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { NotFound } from '../../../src/http/errors.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
-import { McpConnectionsAdapter, McpGrantsAdapter, McpServersAdapter } from '../../../src/layers/mcp.ts'
+import { McpConnectionsLive, McpGrantsLive, McpServersLive } from '../../../src/layers/mcp.ts'
 import { McpHandlers } from '../../../src/mcp/api.ts'
 import { Events as LegacyEvents } from '../../../src/mcp/events.ts'
 import { McpHost } from '../../../src/mcp/host.ts'
@@ -23,8 +23,8 @@ import { RoutineRuns } from '../../../src/routines/service.ts'
 import { Skills as SkillLibraries } from '../../../src/skills/service.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 import { callOwner } from '../../integration/owner-api.ts'
-import { MemoryAddedServers, MemoryCredentials, MemoryGrants, MemoryRegistries } from '../../mcp/memory.ts'
-import { json, partial, plans, serve } from './mcp-serve.ts'
+import { MemoryAddedServers, MemoryCredentials, MemoryGrants } from '../../mcp/memory.ts'
+import { json, partial, plans, serve, sqliteDb } from './mcp-serve.ts'
 
 const BOARD = 'ui://notes/board.html'
 
@@ -89,17 +89,18 @@ const fixture = async () => {
   const credentials = new MemoryCredentials()
   await credentials.saveTokens('notes', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
   const grants = new MemoryGrants()
+  /** The notes server at `/mcp`; every other request (a server card, a registry) finds nothing. */
+  const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = new Request(input, init)
+    return new URL(request.url).pathname === '/mcp' ? notes.fetch(request) : new Response(null, { status: 404 })
+  }
   const host = new McpHost({
     servers: [{ serverId: 'notes', endpoint: 'https://notes.test/mcp' }],
     credentials,
     grants,
     added: new MemoryAddedServers(credentials, grants),
-    registries: new MemoryRegistries(),
     appUrl: 'https://goblin.test',
-    fetch: async (input, init) => {
-      const request = new Request(input, init)
-      return new URL(request.url).pathname === '/mcp' ? notes.fetch(request) : new Response(null, { status: 404 })
-    },
+    fetch: fetcher,
   })
   hosts.push(host)
   const disabled: (string | undefined)[] = []
@@ -112,19 +113,20 @@ const fixture = async () => {
   })
   // SAFETY: the requests here reach none of these: settling a held call, skills and an owner message are not tested.
   const unread = undefined as never
-  // SAFETY: the mcp handlers read only `env.STAGE` from the instance input here (suggested servers).
-  const input = { env: { STAGE: 'test' } } as AgentInputs
+  // SAFETY: the mcp handlers and services read only `env.STAGE` (suggested servers) and `mcpFetch` (the catalog) here.
+  const input = { env: { STAGE: 'test' }, mcpFetch: fetcher } as AgentInputs
   const { fetch } = serve(
     OwnerHttp.serve(API, MCP).pipe(
       Layer.provide(
         Layer.mergeAll(
-          Layer.mergeAll(McpServersAdapter, McpGrantsAdapter, McpConnectionsAdapter).pipe(
-            Layer.provideMerge(Layer.succeed(Mcp, host)),
+          Layer.mergeAll(McpServersLive, McpGrantsLive, McpConnectionsLive).pipe(
+            Layer.provideMerge(
+              Layer.mergeAll(Layer.succeed(Mcp, host), Layer.succeed(AgentInput, input), sqliteDb(db)),
+            ),
           ),
           Layer.succeed(Events, events),
           Layer.succeed(Approvals, approvals),
           Layer.succeed(LegacyResident, new ResidentAuthority(db)),
-          Layer.succeed(AgentInput, input),
           plans(),
           Layer.mergeAll(
             Layer.succeed(Resident, unread),

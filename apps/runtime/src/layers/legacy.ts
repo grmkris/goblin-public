@@ -31,7 +31,6 @@ import { GrantDenied, Forbidden } from '../http/errors.ts'
 import * as Layer from 'effect/Layer'
 import { McpHost } from '../mcp/host.ts'
 import { logEndpointsReset } from '../mcp/log.ts'
-import { RegistryStore } from '../mcp/registries.ts'
 import { AddedServerStore } from '../mcp/servers.ts'
 import { ChatMemories, type MemoryDeps } from '../memory/memory.ts'
 import { CheapModel } from '../memory/model.ts'
@@ -188,7 +187,6 @@ async function makeHost(input: ComposeInput, db: DrizzleSqliteDODatabase) {
   const host = new McpHost({
     servers,
     added,
-    registries: new RegistryStore(db),
     credentials,
     authorizeEvents: authorizeEvents(resident, credentials, eventStore, input.entitlements),
     grants,

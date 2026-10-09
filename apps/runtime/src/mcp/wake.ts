@@ -10,8 +10,9 @@ const RETRY_MS = 60_000
  * revoked authority, is expected and is not) and tried again in a minute.
  */
 export async function mcpEventsWake(run: RunProgram, wake: (at: number) => Promise<void>): Promise<void> {
-  await run(Events.use((events) => events.maintain()).pipe(reportFailure('mcp.events.wake'))).catch(() =>
+  const sweep = Events.use((events) => events.maintain()).pipe(reportFailure('mcp.events.wake'))
+  await run(sweep).catch(
     // expected: the failure was reported inside the program; the alarm only reschedules the sweep.
-    wake(Date.now() + RETRY_MS),
+    () => wake(Date.now() + RETRY_MS),
   )
 }

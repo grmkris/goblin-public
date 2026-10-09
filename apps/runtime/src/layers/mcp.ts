@@ -5,114 +5,132 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import { Capabilities } from '../capabilities/service.ts'
-import type { HeldCall } from '../mcp/approvals.ts'
-import { Events as LegacyEvents, type EventWebhook, type SubscribeConsumer } from '../mcp/events.ts'
+import { ResidentInactive, toAppError } from '../http/errors.ts'
+import { type HeldCall, McpApprovalStore } from '../mcp/approvals.ts'
+import { CredentialCipher } from '../mcp/cipher.ts'
+import { Events as EventsInstance, type EventWebhook, type SubscribeConsumer } from '../mcp/events.ts'
 import type { Receipt } from '../mcp/events/store.ts'
+import { RegistryStore } from '../mcp/registries.ts'
+import { makeCatalog } from '../mcp/registry.ts'
 import { Approvals, Events, McpConnections, McpGrants, McpServers, Resident } from '../mcp/service.ts'
 import { type Stage, suggestions } from '../mcp/suggested.ts'
 import type { McpCallOptions, McpRequestOptions } from '../mcp/types.ts'
-import {
-  Approvals as LegacyApprovals,
-  Capabilities as LegacyCapabilities,
-  Mcp,
-  Resident as LegacyResident,
-  attempt,
-  attemptSync,
-  nowSecondsEffect,
-} from '../services.ts'
+import { enableResident, renewResident, residentStatus, revokeResident } from '../resident.ts'
+import { Db } from '../runtime/db.ts'
+import { AgentInput } from '../runtime/input.ts'
+import { Capabilities as CapabilitiesInstance, Mcp as McpInstance } from '../services.ts'
 import type { FoundationServices } from './core.ts'
 
-// Wave 1 adapters: each service over the one legacy instance its `services.ts` tag already provides, never a second
-// one. Every call is wrapped as the programs wrap it today: a call that may throw goes through `attempt`/`attemptSync`
-// (its failure becomes an `AppError`), a plain read through `Effect.sync` (a throw is a defect, as in a program that
-// called it inline). The native layers replace these in wave 3.
+// Lane M's native layers (wave 3). Resident authority, held calls and the registry catalog are built here over the
+// agent's database. The MCP host (its connections, refreshes and credentials), the Events engine and the capability
+// switches are stateful objects the legacy start still makes and shares with services outside lane M (skills, the
+// channel, agent apps, conversations): until the conductor moves that start into this layer at integration, these
+// layers read that one instance by its tag and never make a second one.
 
-export const ResidentAdapter = Layer.effect(
+/** Wall-clock seconds, the unit resident authority and grants are kept in. */
+const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
+
+/** A call into a stateful instance's async code: a failure is the `AppError` it threw, anything else `Internal`. */
+const fromPromise = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: toAppError })
+/** The same for its synchronous code. */
+const fromSync = <A>(run: () => A) => Effect.try({ try: run, catch: toAppError })
+
+/** Resident authority over its row in the agent's database: no state of its own. */
+export const ResidentLive = Layer.effect(
   Resident,
   Effect.gen(function* () {
-    const legacy = yield* LegacyResident
+    const db = yield* Db
+    const status = Effect.fn('Resident.status')(function* () {
+      const now = yield* nowSeconds
+      return yield* Effect.sync(() => residentStatus(db, now))
+    })
     return Resident.of({
-      status: Effect.fn('Resident.status')(function* () {
-        const now = yield* nowSecondsEffect
-        return yield* Effect.sync(() => legacy.status(now))
-      }),
+      status,
       renew: Effect.fn('Resident.renew')(function* () {
-        const now = yield* nowSecondsEffect
-        yield* Effect.sync(() => legacy.renew(now))
+        const now = yield* nowSeconds
+        yield* Effect.sync(() => renewResident(db, now))
       }),
       revoke: Effect.fn('Resident.revoke')(function* () {
-        const now = yield* nowSecondsEffect
+        const now = yield* nowSeconds
         return yield* Effect.sync(() => {
-          legacy.revoke(now)
-          return legacy.status(now)
+          revokeResident(db, now)
+          return residentStatus(db, now)
         })
       }),
       enable: Effect.fn('Resident.enable')(function* () {
-        const now = yield* nowSecondsEffect
+        const now = yield* nowSeconds
         return yield* Effect.sync(() => {
-          legacy.enable(now)
-          return legacy.status(now)
+          enableResident(db, now)
+          return residentStatus(db, now)
         })
       }),
       require: Effect.fn('Resident.require')(function* () {
-        const now = yield* nowSecondsEffect
-        yield* attemptSync(() => legacy.require(now))
+        const { state } = yield* status()
+        if (state !== 'active') return yield* new ResidentInactive({ state })
       }),
     })
   }),
 )
 
-export const McpServersAdapter = Layer.effect(
+/**
+ * The owner's servers. The registry catalog (its search cache is the catalog's one piece of state) is built here over
+ * the owner's registries in the database; the servers themselves are the host's.
+ */
+export const McpServersLive = Layer.effect(
   McpServers,
   Effect.gen(function* () {
-    const host = yield* Mcp
+    const host = yield* McpInstance
+    const { mcpFetch } = yield* AgentInput
+    const catalog = makeCatalog({ added: new RegistryStore(yield* Db), fetch: mcpFetch })
+    const offered = () => new Set(host.manager.servers.map((server) => server.endpoint))
     return McpServers.of({
       list: Effect.fn('McpServers.list')(function* () {
         return yield* Effect.sync(() => host.servers())
       }),
       suggested: Effect.fn('McpServers.suggested')(function* (stage: Stage | undefined) {
-        return yield* Effect.sync(() =>
-          suggestions(stage, new Set(host.manager.servers.map((server) => server.endpoint))),
-        )
+        return yield* Effect.sync(() => suggestions(stage, offered()))
       }),
       add: Effect.fn('McpServers.add')(function* (endpoint: string, source?: ServerSource) {
-        return yield* attempt(() => host.addServer(endpoint, source))
+        return yield* fromPromise(() => host.addServer(endpoint, source))
       }),
       remove: Effect.fn('McpServers.remove')(function* (serverId: string) {
-        yield* attempt(() => host.removeServer(serverId))
+        yield* fromPromise(() => host.removeServer(serverId))
       }),
       beginConnect: Effect.fn('McpServers.beginConnect')(function* (serverId: string) {
-        return yield* attempt(() => host.beginConnect(serverId))
+        return yield* fromPromise(() => host.beginConnect(serverId))
       }),
       finishConnect: Effect.fn('McpServers.finishConnect')(function* (state: string, code: string, issuer?: string) {
-        return yield* attempt(() => host.finishConnect(state, code, issuer))
+        return yield* fromPromise(() => host.finishConnect(state, code, issuer))
       }),
       disconnect: Effect.fn('McpServers.disconnect')(function* (serverId: string) {
-        yield* attempt(() => host.disconnect(serverId))
+        yield* fromPromise(() => host.disconnect(serverId))
       }),
       tools: Effect.fn('McpServers.tools')(function* (serverId: string, refresh: boolean) {
-        return yield* attempt(() => host.tools(serverId, refresh))
+        return yield* fromPromise(() => host.tools(serverId, refresh))
       }),
       catalog: Effect.fn('McpServers.catalog')(function* (query: string) {
-        return yield* attempt(() => host.searchCatalog(query))
+        const { entries, partial } = yield* catalog.search(query.trim())
+        const endpoints = offered()
+        return { entries: entries.map((entry) => ({ ...entry, added: endpoints.has(entry.endpoint) })), partial }
       }),
       registries: Effect.fn('McpServers.registries')(function* () {
-        return yield* Effect.sync(() => host.registries())
+        return yield* catalog.registries
       }),
       addRegistry: Effect.fn('McpServers.addRegistry')(function* (url: string) {
-        return yield* attempt(() => host.addRegistry(url))
+        return yield* catalog.add(url)
       }),
       removeRegistry: Effect.fn('McpServers.removeRegistry')(function* (url: string) {
-        return yield* attemptSync(() => host.removeRegistry(url))
+        return yield* catalog.remove(url)
       }),
     })
   }),
 )
 
-export const McpGrantsAdapter = Layer.effect(
+/** The owner's grants, kept by the host. */
+export const McpGrantsLive = Layer.effect(
   McpGrants,
   Effect.gen(function* () {
-    const host = yield* Mcp
+    const host = yield* McpInstance
     return McpGrants.of({
       list: Effect.fn('McpGrants.list')(function* () {
         return yield* Effect.sync(() => host.grants())
@@ -121,37 +139,38 @@ export const McpGrantsAdapter = Layer.effect(
         return yield* Effect.sync(() => Option.fromNullishOr(host.grantPolicy(serverId, name)))
       }),
       setTool: Effect.fn('McpGrants.setTool')(function* (serverId: string, name: string, allowed: boolean) {
-        return yield* attempt(() => host.setToolGrant(serverId, name, allowed))
+        return yield* fromPromise(() => host.setToolGrant(serverId, name, allowed))
       }),
       setAskFirst: Effect.fn('McpGrants.setAskFirst')(function* (serverId: string, name: string, enabled: boolean) {
-        return yield* attemptSync(() => {
+        return yield* fromSync(() => {
           host.setAskFirst(serverId, name, enabled)
           return host.grants()
         })
       }),
       setApp: Effect.fn('McpGrants.setApp')(function* (serverId: string, uri: string, allowed: boolean) {
-        return yield* attempt(() => host.setAppGrant(serverId, uri, allowed))
+        return yield* fromPromise(() => host.setAppGrant(serverId, uri, allowed))
       }),
     })
   }),
 )
 
-export const McpConnectionsAdapter = Layer.effect(
+/** The connections, the host's manager: one cached client per server. */
+export const McpConnectionsLive = Layer.effect(
   McpConnections,
   Effect.gen(function* () {
-    const { manager } = yield* Mcp
+    const { manager } = yield* McpInstance
     return McpConnections.of({
       servers: Effect.fn('McpConnections.servers')(function* () {
         return yield* Effect.sync(() => manager.servers)
       }),
       server: Effect.fn('McpConnections.server')(function* (serverId: string) {
-        return yield* attemptSync(() => manager.server(serverId))
+        return yield* fromSync(() => manager.server(serverId))
       }),
       snapshot: Effect.fn('McpConnections.snapshot')(function* (serverId: string) {
         return yield* Effect.sync(() => Option.fromNullishOr(manager.snapshot(serverId)))
       }),
       connect: Effect.fn('McpConnections.connect')(function* (serverId: string, options?: McpRequestOptions) {
-        return yield* attempt(() => manager.connect(serverId, options))
+        return yield* fromPromise(() => manager.connect(serverId, options))
       }),
       callTool: Effect.fn('McpConnections.callTool')(function* (
         serverId: string,
@@ -159,14 +178,14 @@ export const McpConnectionsAdapter = Layer.effect(
         args: Record<string, unknown>,
         options?: McpCallOptions,
       ) {
-        return yield* attempt(() => manager.callTool(serverId, name, args, options))
+        return yield* fromPromise(() => manager.callTool(serverId, name, args, options))
       }),
       readResource: Effect.fn('McpConnections.readResource')(function* (
         serverId: string,
         uri: string,
         caller: 'human' | 'app',
       ) {
-        return yield* attempt(() =>
+        return yield* fromPromise(() =>
           caller === 'app' ? manager.readAppResource(serverId, uri) : manager.readResource(serverId, uri),
         )
       }),
@@ -175,61 +194,65 @@ export const McpConnectionsAdapter = Layer.effect(
         name: string,
         args: Record<string, string>,
       ) {
-        return yield* attempt(() => manager.getPrompt(serverId, name, args))
+        return yield* fromPromise(() => manager.getPrompt(serverId, name, args))
       }),
       closeAll: Effect.fn('McpConnections.closeAll')(function* () {
-        yield* attempt(() => manager.closeAll())
+        yield* fromPromise(() => manager.closeAll())
       }),
     })
   }),
 )
 
-export const ApprovalsAdapter = Layer.effect(
+/** Held calls over their table in the agent's database, sealed with the credential key: no state of their own. */
+export const ApprovalsLive = Layer.effect(
   Approvals,
   Effect.gen(function* () {
-    const store = yield* LegacyApprovals
+    const { env } = yield* AgentInput
+    const cipher = yield* fromPromise(() => CredentialCipher.fromBase64(env.CREDENTIAL_KEY)).pipe(Effect.orDie)
+    const store = new McpApprovalStore(yield* Db, cipher)
     return Approvals.of({
-      cipher: store.cipher,
+      cipher,
       hold: Effect.fn('Approvals.hold')(function* (call: HeldCall) {
         const now = yield* Clock.currentTimeMillis
-        return yield* attempt(() => store.hold(call, now))
+        return yield* fromPromise(() => store.hold(call, now))
       }),
       find: Effect.fn('Approvals.find')(function* (id: string) {
         return yield* Effect.sync(() => Option.fromNullishOr(store.find(id)))
       }),
       get: Effect.fn('Approvals.get')(function* (id: string) {
-        return yield* attemptSync(() => store.get(id))
+        return yield* fromSync(() => store.get(id))
       }),
       decide: Effect.fn('Approvals.decide')(function* (id: string, allowed: boolean) {
         const now = yield* Clock.currentTimeMillis
-        return yield* attemptSync(() => store.decide(id, allowed, now))
+        return yield* fromSync(() => store.decide(id, allowed, now))
       }),
       arguments: Effect.fn('Approvals.arguments')(function* (id: string) {
-        return yield* attempt(() => store.arguments(id))
+        return yield* fromPromise(() => store.arguments(id))
       }),
       finish: Effect.fn('Approvals.finish')(function* (id: string, result: CallToolResult) {
         const now = yield* Clock.currentTimeMillis
-        yield* attempt(() => store.finish(id, result, now))
+        yield* fromPromise(() => store.finish(id, result, now))
       }),
       fail: Effect.fn('Approvals.fail')(function* (id: string, state: 'failed' | 'uncertain') {
         const now = yield* Clock.currentTimeMillis
         yield* Effect.sync(() => store.fail(id, state, now))
       }),
       result: Effect.fn('Approvals.result')(function* (id: string) {
-        return Option.fromNullishOr(yield* attempt(() => store.result(id)))
+        return Option.fromNullishOr(yield* fromPromise(() => store.result(id)))
       }),
       view: Effect.fn('Approvals.view')(function* (id: string) {
         const now = yield* Clock.currentTimeMillis
-        return yield* attempt(() => store.view(id, now))
+        return yield* fromPromise(() => store.view(id, now))
       }),
     })
   }),
 )
 
-export const EventsAdapter = Layer.effect(
+/** Events, the one engine the legacy start made: its methods are Effects already. */
+export const EventsLive = Layer.effect(
   Events,
   Effect.gen(function* () {
-    const legacy = yield* LegacyEvents
+    const legacy = yield* EventsInstance
     return Events.of({
       health: Effect.fn('Events.health')(function* (serverId: string) {
         return yield* Effect.sync(() => legacy.health(serverId))
@@ -275,10 +298,11 @@ export const EventsAdapter = Layer.effect(
   }),
 )
 
-export const CapabilitiesAdapter = Layer.effect(
+/** Each conversation's switches, the one profile store the legacy start made and the conversations share. */
+export const CapabilitiesLive = Layer.effect(
   Capabilities,
   Effect.gen(function* () {
-    const legacy = yield* LegacyCapabilities
+    const legacy = yield* CapabilitiesInstance
     return Capabilities.of({
       scope: Effect.fn('Capabilities.scope')(function* (session: string) {
         return yield* Effect.sync(() => legacy.scope(session))
@@ -293,34 +317,34 @@ export const CapabilitiesAdapter = Layer.effect(
         return yield* Effect.sync(() => legacy.inherited(thread))
       }),
       set: Effect.fn('Capabilities.set')(function* (session: string, target: CapabilityTarget, on: boolean) {
-        const now = yield* nowSecondsEffect
+        const now = yield* nowSeconds
         yield* Effect.sync(() => legacy.set(session, target, on, now))
       }),
       narrow: Effect.fn('Capabilities.narrow')(function* (session: string, exclusions: readonly HelperExclusion[]) {
-        const now = yield* nowSecondsEffect
+        const now = yield* nowSeconds
         yield* Effect.sync(() => legacy.narrow(session, exclusions, now))
       }),
       copy: Effect.fn('Capabilities.copy')(function* (from: string, to: string) {
-        const now = yield* nowSecondsEffect
+        const now = yield* nowSeconds
         yield* Effect.sync(() => legacy.copy(from, to, now))
       }),
       reset: Effect.fn('Capabilities.reset')(function* (thread: string) {
-        const now = yield* nowSecondsEffect
-        yield* attempt(() => legacy.reset(thread, now))
+        const now = yield* nowSeconds
+        yield* fromPromise(() => legacy.reset(thread, now))
       }),
       configureHelper: Effect.fn('Capabilities.configureHelper')(function* (
         parent: string,
         session: string,
         exclusions: readonly HelperExclusion[],
       ) {
-        const now = yield* nowSecondsEffect
-        yield* attempt(() => legacy.configureHelper(parent, session, exclusions, now))
+        const now = yield* nowSeconds
+        yield* fromPromise(() => legacy.configureHelper(parent, session, exclusions, now))
       }),
       piTools: Effect.fn('Capabilities.piTools')(function* (session: string) {
         return yield* Effect.sync(() => legacy.piTools(session))
       }),
       syncPi: Effect.fn('Capabilities.syncPi')(function* (session: string) {
-        yield* attempt(() => legacy.syncPi(session))
+        yield* fromPromise(() => legacy.syncPi(session))
       }),
     })
   }),
@@ -328,18 +352,18 @@ export const CapabilitiesAdapter = Layer.effect(
 
 /**
  * Lane M's services: resident authority, the MCP servers, grants, connections, held calls and Events, and each
- * conversation's capabilities. Wave 1 builds them over the legacy instances (see above).
+ * conversation's capabilities.
  */
 export const McpLive: Layer.Layer<
   Resident | McpServers | McpGrants | McpConnections | Approvals | Events | Capabilities,
   never,
   FoundationServices
 > = Layer.mergeAll(
-  ResidentAdapter,
-  McpServersAdapter,
-  McpGrantsAdapter,
-  McpConnectionsAdapter,
-  ApprovalsAdapter,
-  EventsAdapter,
-  CapabilitiesAdapter,
+  ResidentLive,
+  McpServersLive,
+  McpGrantsLive,
+  McpConnectionsLive,
+  ApprovalsLive,
+  EventsLive,
+  CapabilitiesLive,
 )

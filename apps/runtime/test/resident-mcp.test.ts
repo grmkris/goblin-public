@@ -6,15 +6,13 @@ import type { AppError } from '../src/http/errors.ts'
 import { McpHost } from '../src/mcp/host.ts'
 import { type CapabilityScope, type Exclusion, scopeOf } from '../src/capabilities/profiles.ts'
 import { residentMcpExtension } from '../src/pi/resident-mcp.ts'
-import {
-  CapabilitiesAdapter,
-  McpConnectionsAdapter,
-  McpGrantsAdapter,
-  McpServersAdapter,
-  ResidentAdapter,
-} from '../src/layers/mcp.ts'
-import { type AgentServices, Capabilities, Mcp, Resident } from '../src/services.ts'
-import { ActiveResident, FixedProfiles } from './fixed-services.ts'
+import { CapabilitiesLive, McpConnectionsLive, McpGrantsLive, McpServersLive } from '../src/layers/mcp.ts'
+import { Resident } from '../src/mcp/service.ts'
+import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
+import { type AgentServices, Capabilities, Mcp } from '../src/services.ts'
+import { chatDatabase } from './chats-sqlite.ts'
+import { FixedProfiles } from './fixed-services.ts'
+import { partial, sqliteDb } from './http/api/mcp-serve.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
 
 /** The tools the notes server ran, in order. */
@@ -40,14 +38,18 @@ const notes = createMcpHandler(() => {
 
 const credentials = new MemoryCredentials()
 await credentials.saveTokens('notes', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
+const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => notes.fetch(new Request(input, init))
 const host = new McpHost({
   servers: [{ serverId: 'notes', endpoint: 'https://notes.test/mcp' }],
   credentials,
   grants: new MemoryGrants([{ serverId: 'notes', capability: 'tool', name: 'read' }]),
   appUrl: 'https://goblin.test',
-  fetch: async (input, init) => notes.fetch(new Request(input, init)),
+  fetch: fetcher,
 })
-const resident = new ActiveResident()
+/** Resident authority that is always current. */
+const resident = partial<Resident['Service']>({ require: () => Effect.void })
+// SAFETY: the MCP services read only the catalog's fetch from the instance input; neither tool searches the catalog.
+const instance = { mcpFetch: fetcher } as AgentInputs
 const off = (kind: Exclusion['kind'], serverId = '', name = ''): Exclusion => ({ kind, serverId, name })
 /**
  * Each conversation's switches: 7 has everything on, 8 switched the notes server off, 9 only its `read` tool, and 10
@@ -59,21 +61,17 @@ const scopes: Readonly<Record<string, CapabilityScope>> = {
   '9': scopeOf([off('tool', 'notes', 'read')], true),
   '10': scopeOf([off('server', 'notes')], false),
 }
-/** The tools' services, built by the wave 1 adapters over the host, the authority and the fixed switches above. */
-const layer = Layer.mergeAll(
-  McpServersAdapter,
-  McpGrantsAdapter,
-  McpConnectionsAdapter,
-  ResidentAdapter,
-  CapabilitiesAdapter,
-).pipe(
+/** The tools' services, built by lane M's layers over the host and the fixed switches above, always resident. */
+const layer = Layer.mergeAll(McpServersLive, McpGrantsLive, McpConnectionsLive, CapabilitiesLive).pipe(
   Layer.provideMerge(
     Layer.mergeAll(
       Layer.succeed(Mcp, host),
-      Layer.succeed(Resident, resident),
       Layer.succeed(Capabilities, new FixedProfiles(scopes)),
+      Layer.succeed(AgentInput, instance),
+      sqliteDb(chatDatabase().db),
     ),
   ),
+  Layer.merge(Layer.succeed(Resident, resident)),
 )
 const run = <A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<A> =>
   // SAFETY: mcp_call and mcp_list need only the MCP, resident authority and capability services provided here.

@@ -1,7 +1,16 @@
-import { describe, expect, it } from 'vitest'
-import { McpHost } from '../../src/mcp/host.ts'
-import { catalogEntry, DEFAULT_REGISTRIES, RegistryCatalog } from '../../src/mcp/registry.ts'
-import { MemoryCredentials, MemoryGrants, MemoryRegistries } from './memory.ts'
+import type { FetchLike } from '@modelcontextprotocol/client'
+import * as Effect from 'effect/Effect'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { catalogEntry, DEFAULT_REGISTRIES, makeCatalog, probeRegistry } from '../../src/mcp/registry.ts'
+import { MemoryRegistries } from './memory.ts'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+/** A catalog over the owner's registries in memory, whose requests go to `fetcher`. */
+const catalogOver = (fetcher: FetchLike, added = new MemoryRegistries()) => makeCatalog({ added, fetch: fetcher })
+const search = (catalog: ReturnType<typeof catalogOver>, query: string) => Effect.runPromise(catalog.search(query))
 
 const official = DEFAULT_REGISTRIES[0] ?? { url: '', title: '' }
 const github = DEFAULT_REGISTRIES[1] ?? { url: '', title: '' }
@@ -67,73 +76,101 @@ describe('registry entries', () => {
   })
 })
 
+/** A registry that answers the registry API with nothing. */
+const good: FetchLike = async () => Response.json({ servers: [], metadata: {} })
+/** Why a probe of `raw` failed. */
+const probe = (raw: string, fetcher: FetchLike) => Effect.runPromise(Effect.flip(probeRegistry(raw, fetcher)))
+
 describe('searching registries', () => {
   it('asks each registry once, de-duplicates by name with the first registry winning, and caches the answer', async () => {
     const asked: string[] = []
-    const fetcher: typeof fetch = async (input) => {
-      const url = new URL(input instanceof Request ? input.url : input)
+    const fetcher: FetchLike = async (input) => {
+      const url = new URL(input)
       asked.push(`${url.host}?${url.searchParams.get('search')}`)
       const servers = url.host === 'registry.modelcontextprotocol.io' ? [myplan, walk] : [walk, { junk: true }]
       return Response.json({ servers, metadata: { count: servers.length } })
     }
-    const catalog = new RegistryCatalog(fetcher)
-    const found = await catalog.search('plan', DEFAULT_REGISTRIES)
-    expect(found.map((item) => [item.name, item.registryTitle])).toEqual([
+    const catalog = catalogOver(fetcher)
+    const found = await search(catalog, 'plan')
+    expect(found.partial).toBe(false)
+    expect(found.entries.map((item) => [item.name, item.registryTitle])).toEqual([
       ['lol.myplan/myplan', 'MCP Registry'],
       ['com.walkmyplan/walkmyplan', 'MCP Registry'],
     ])
-    await catalog.search('plan', DEFAULT_REGISTRIES)
+    await search(catalog, 'plan')
     expect(asked).toEqual(['registry.modelcontextprotocol.io?plan', 'api.mcp.github.com?plan'])
   })
-  it('treats a registry that is down or answers garbage as having nothing', async () => {
-    const catalog = new RegistryCatalog(async () => new Response('<html>', { status: 200 }))
-    expect(await catalog.search('x', DEFAULT_REGISTRIES)).toEqual([])
+
+  it('reports a registry that is down or answers garbage, and flags the answer partial without caching it', async () => {
+    const lines: string[] = []
+    vi.spyOn(console, 'warn').mockImplementation((line: string) => void lines.push(line))
+    let calls = 0
+    const fetcher: FetchLike = async (input) => {
+      calls++
+      if (new URL(input).host === 'api.mcp.github.com') throw new TypeError('network down')
+      return new Response('<html>', { status: 200 })
+    }
+    const catalog = catalogOver(fetcher)
+    expect(await search(catalog, 'x')).toEqual({ entries: [], partial: true })
+    const reported = lines.map((line): unknown => JSON.parse(line))
+    expect(reported).toHaveLength(2)
+    expect(reported).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ where: 'mcp.catalog.search', 'error.type': 'InvalidInput', code: 'not_a_registry' }),
+        expect.objectContaining({ where: 'mcp.catalog.search', 'error.type': 'UpstreamMcp', code: 'transport' }),
+      ]),
+    )
+    await search(catalog, 'x')
+    expect(calls).toBe(4)
   })
-  it('accepts a custom registry only if it speaks the registry API', async () => {
-    const good = new RegistryCatalog(async () => Response.json({ servers: [], metadata: {} }))
-    expect(await good.probe('https://registry.example.com/anything')).toEqual({
+
+  it('accepts a custom registry only if it speaks the registry API, and tells a dead one from a non-registry', async () => {
+    expect(await Effect.runPromise(probeRegistry('https://registry.example.com/anything', good))).toEqual({
       url: 'https://registry.example.com',
       title: 'registry.example.com',
     })
-    const bad = new RegistryCatalog(async () => Response.json({ hello: 'world' }))
-    await expect(bad.probe('https://example.com')).rejects.toMatchObject({ reason: 'not_a_registry' })
-    await expect(good.probe('http://example.com')).rejects.toMatchObject({ reason: 'endpoint_not_https' })
+    expect(await probe('https://example.com', async () => Response.json({ hello: 'world' }))).toMatchObject({
+      _tag: 'InvalidInput',
+      reason: 'not_a_registry',
+    })
+    expect(await probe('https://example.com', async () => new Response('', { status: 503 }))).toMatchObject({
+      reason: 'not_a_registry',
+    })
+    expect(
+      await probe('https://example.com', async () => {
+        throw new TypeError('network down')
+      }),
+    ).toMatchObject({ _tag: 'UpstreamMcp', reason: 'transport', serverId: 'example.com' })
+    expect(await probe('http://example.com', good)).toMatchObject({ reason: 'endpoint_not_https' })
   })
 })
-
-/** A host with no servers whose registry fetches go to `fetcher`. */
-const registryHost = (fetcher: typeof fetch) =>
-  new McpHost({
-    servers: [],
-    credentials: new MemoryCredentials(),
-    grants: new MemoryGrants(),
-    appUrl: 'https://goblin.test',
-    fetch: fetcher,
-    registries: new MemoryRegistries(),
-  })
 
 describe('registries the owner adds', () => {
   it('adds a registry that answers the registry API, searches it after the built-in ones, and removes it', async () => {
     const asked: string[] = []
-    const mcp = registryHost(async (input) => {
-      const url = new URL(input instanceof Request ? input.url : input)
+    const catalog = catalogOver(async (input) => {
+      const url = new URL(input)
       asked.push(url.host)
       return Response.json({ servers: url.host === 'registry.example.com' ? [myplan] : [], metadata: {} })
     })
-    const after = await mcp.addRegistry('https://registry.example.com/v0.1')
+    const after = await Effect.runPromise(catalog.add('https://registry.example.com/v0.1'))
     expect(after.map((item) => [item.url, item.builtIn])).toEqual([
       ['https://registry.modelcontextprotocol.io', true],
       ['https://api.mcp.github.com', true],
       ['https://registry.example.com', false],
     ])
     asked.length = 0
-    const found = await mcp.searchCatalog('plan')
+    const found = await search(catalog, 'plan')
     expect(asked).toEqual(['registry.modelcontextprotocol.io', 'api.mcp.github.com', 'registry.example.com'])
-    expect(found.map((item) => [item.name, item.registryTitle, item.verified])).toEqual([
+    expect(found.entries.map((item) => [item.name, item.registryTitle, item.verified])).toEqual([
       ['lol.myplan/myplan', 'registry.example.com', false],
     ])
-    await expect(mcp.addRegistry('https://registry.example.com')).rejects.toMatchObject({ reason: 'already_added' })
-    expect(mcp.removeRegistry('https://registry.example.com')).toHaveLength(2)
-    expect(() => mcp.removeRegistry('https://registry.modelcontextprotocol.io')).toThrow()
+    expect(await Effect.runPromise(Effect.flip(catalog.add('https://registry.example.com')))).toMatchObject({
+      reason: 'already_added',
+    })
+    expect(await Effect.runPromise(catalog.remove('https://registry.example.com'))).toHaveLength(2)
+    expect(
+      await Effect.runPromise(Effect.flip(catalog.remove('https://registry.modelcontextprotocol.io'))),
+    ).toMatchObject({ reason: 'unknown_registry' })
   })
 })
