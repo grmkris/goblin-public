@@ -23,6 +23,12 @@ const tryAsync = <Args extends readonly unknown[], A>(name: string, method: Meth
     return yield* attempt(() => method(...args))
   })
 
+/** A method that is an Effect already: only named for its traces. */
+const passThrough =
+  <Args extends readonly unknown[], A, E>(name: string, method: Method<Args, Effect.Effect<A, E>>) =>
+  (...args: Args) =>
+    method(...args).pipe(Effect.withSpan(name))
+
 /** A method with no typed failure: a read or a write callers run with `useSync`, where a throw is a defect. */
 const sync = <Args extends readonly unknown[], A>(name: string, method: Method<Args, A>) =>
   Effect.fn(name)(function* (...args: Args) {
@@ -148,9 +154,9 @@ export const ChannelAdapter = Layer.effect(
     const channel = yield* Legacy.Channel
     return Channel.of({
       status: sync('Channel.status', channel.status.bind(channel))(),
-      startCursor: tryAsync('Channel.startCursor', channel.startCursor.bind(channel)),
+      startCursor: passThrough('Channel.startCursor', channel.startCursor.bind(channel)),
       enableEvents: sync('Channel.enableEvents', channel.enableEvents.bind(channel)),
-      enable: tryAsync('Channel.enable', channel.enable.bind(channel)),
+      enable: passThrough('Channel.enable', channel.enable.bind(channel)),
       disable: sync('Channel.disable', channel.disable.bind(channel))(),
       secret: tryAsync('Channel.secret', channel.secret.bind(channel))(),
       track: sync('Channel.track', channel.track.bind(channel)),

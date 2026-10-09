@@ -2,7 +2,7 @@ import type { ChannelStatus } from '@goblin/contracts'
 import * as Context from 'effect/Context'
 import type * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
-import type { ChannelPorts } from './channel.ts'
+import type { ChannelCall, ChannelPorts } from './channel.ts'
 
 /**
  * The Telegram channel (ADR 0009): the one connection the owner chose to carry Telegram, its inbox cursor, the doorbell
@@ -14,14 +14,14 @@ export class Channel extends Context.Service<
     /** The connection that carries the channel, or null when it is off. */
     readonly status: Effect.Effect<ChannelStatus>
     /** Where to start reading `serverId`'s inbox: the stored cursor when it already carries the channel, else its end. */
-    readonly startCursor: (serverId: string, call: ChannelPorts['call']) => Effect.Effect<string, AppError>
+    readonly startCursor: (serverId: string, call: ChannelCall) => Effect.Effect<string, AppError>
     /** Carries the channel through `serverId`'s Events, from `inboxCursor`. Only after both leases are confirmed. */
     readonly enableEvents: (serverId: string, inboxCursor: string, now: number) => Effect.Effect<ChannelStatus>
     /** Carries the channel through `serverId`'s doorbell at `url`, subscribed with a fresh secret. */
     readonly enable: (
       serverId: string,
       url: string,
-      call: ChannelPorts['call'],
+      call: ChannelCall,
       now: number,
     ) => Effect.Effect<ChannelStatus, AppError>
     /** Turns the channel off; answers still to send are dropped. */

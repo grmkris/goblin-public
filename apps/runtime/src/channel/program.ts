@@ -1,7 +1,7 @@
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
-import { CHANNEL_TOOLS, DOORBELL_TOOLS, channelTool, channelToolPort } from './channel.ts'
+import { CHANNEL_TOOLS, DOORBELL_TOOLS, channelTool } from './channel.ts'
 import { type Doorbell, doorbellValid, hookToken, hookUrl } from './doorbell.ts'
 import { Channel } from './service.ts'
 import { Forbidden, InvalidInput, toAppError } from '../http/errors.ts'
@@ -41,9 +41,9 @@ export const enableTelegram = Effect.fn('channel.enable')(function* (
   if (!modern) {
     const url = hookUrl(appUrl, userId, yield* promised(() => hookToken(key, userId)))
     const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
-    return yield* channel.enable(serverId, url, channelToolPort(connections, serverId), now)
+    return yield* channel.enable(serverId, url, channelTool(connections, serverId), now)
   }
-  const cursor = yield* channel.startCursor(serverId, channelToolPort(connections, serverId))
+  const cursor = yield* channel.startCursor(serverId, channelTool(connections, serverId))
   const revision = yield* Clock.currentTimeMillis
   const previous: Option.Option<Consumer>[] = []
   for (const name of TELEGRAM_EVENTS) {

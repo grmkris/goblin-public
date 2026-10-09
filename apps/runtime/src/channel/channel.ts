@@ -10,7 +10,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { InvalidInput, UpstreamMcp } from '../http/errors.ts'
+import { type AppError, InvalidInput, UpstreamMcp, toAppError } from '../http/errors.ts'
 import type { CredentialCipher } from '../mcp/cipher.ts'
 import type { McpConnectionManager } from '../mcp/connection.ts'
 import type { McpConnections } from '../mcp/service.ts'
@@ -43,7 +43,6 @@ const Message = Schema.Struct({
 const Inbox = Schema.Struct({ messages: Schema.Array(Message), nextCursor: Schema.String })
 const Subscribed = Schema.Struct({ status: Schema.String, reason: Schema.optional(Schema.String) })
 const decodeInbox = Schema.decodeUnknownSync(Inbox)
-const decodeSubscribed = Schema.decodeUnknownSync(Subscribed)
 
 /** What the channel needs from the agent: the channel server's tools, main, and the end of a turn. */
 export interface ChannelPorts {
@@ -110,11 +109,25 @@ export const channelTool = (connections: typeof McpConnections.Service, serverId
     return result.structuredContent
   })
 
-/** `channelTool` as the Promise port the channel's pull and delivery take, until they are Effects themselves. */
-export const channelToolPort =
-  (connections: typeof McpConnections.Service, serverId: string): ChannelPorts['call'] =>
-  (name, args) =>
-    Effect.runPromise(channelTool(connections, serverId)(name, args))
+/** A tool of the channel server as an Effect (`channelTool`): its structured result; an error result fails. */
+export type ChannelCall = (name: string, args: Record<string, unknown>) => Effect.Effect<unknown, AppError>
+
+const decodeInboxEffect = (value: unknown) => Schema.decodeUnknownEffect(Inbox)(value).pipe(Effect.mapError(toAppError))
+const decodeSubscribedEffect = (value: unknown) =>
+  Schema.decodeUnknownEffect(Subscribed)(value).pipe(Effect.mapError(toAppError))
+
+/** Reads the inbox from its start to its end, a page of 100 at a time: the cursor after the last message. */
+const readToEnd = Effect.fn('Channel.readToEnd')(function* (call: ChannelCall) {
+  let cursor: string | undefined
+  for (let page = 0; page < MAX_HISTORY_PAGES; page++) {
+    const inbox = yield* decodeInboxEffect(
+      yield* call('inbox', { ...(cursor === undefined ? {} : { cursor }), limit: 100 }),
+    )
+    cursor = inbox.nextCursor
+    if (inbox.messages.length === 0) return cursor
+  }
+  return yield* new InvalidInput({ reason: 'the inbox is too long to start from its end' })
+})
 
 export class TelegramChannel {
   readonly #chats: ChatDirectory
@@ -162,22 +175,18 @@ export class TelegramChannel {
     return row === undefined ? null : { ...row, transport: 'doorbell' }
   }
 
-  async startCursor(serverId: string, call: ChannelPorts['call']): Promise<string> {
-    const active = this.status()
-    if (active?.serverId === serverId) {
-      return (
-        this.#db.select().from(appTelegramChannel).get()?.inboxCursor ??
-        this.#db.select().from(appChannel).get()?.cursor ??
-        ''
-      )
-    }
-    let cursor: string | undefined
-    for (let page = 0; page < MAX_HISTORY_PAGES; page++) {
-      const inbox = decodeInbox(await call('inbox', { ...(cursor === undefined ? {} : { cursor }), limit: 100 }))
-      cursor = inbox.nextCursor
-      if (inbox.messages.length === 0) return cursor
-    }
-    throw new InvalidInput({ reason: 'the inbox is too long to start from its end' })
+  /** Where to start reading `serverId`'s inbox: the stored cursor when it already carries the channel, else its end. */
+  startCursor(serverId: string, call: ChannelCall): Effect.Effect<string, AppError> {
+    return Effect.suspend(() =>
+      this.status()?.serverId === serverId ? Effect.sync(() => this.#storedCursor()) : readToEnd(call),
+    )
+  }
+  #storedCursor(): string {
+    return (
+      this.#db.select().from(appTelegramChannel).get()?.inboxCursor ??
+      this.#db.select().from(appChannel).get()?.cursor ??
+      ''
+    )
   }
 
   /** Called only after both Events leases are confirmed. Historical cursor writers are fenced by this row. */
@@ -195,22 +204,23 @@ export class TelegramChannel {
    * Turn the channel on for `serverId`: read to the end of its inbox (older messages are history, not new turns),
    * subscribe the doorbell at `url` with a fresh secret, then store all three.
    */
-  async enable(serverId: string, url: string, call: ChannelPorts['call'], now: number): Promise<ChannelStatus> {
-    const cursor = await this.startCursor(serverId, call)
-    const secret = btoa(String.fromCodePoint(...crypto.getRandomValues(new Uint8Array(32))))
-    const subscribed = decodeSubscribed(await call('subscribe', { url, secret }))
-    if (subscribed.status !== 'subscribed')
-      throw new InvalidInput({ reason: `the doorbell was refused: ${subscribed.reason ?? subscribed.status}` })
-    const row = {
-      id: 1,
-      serverId,
-      cursor: cursor ?? '',
-      secret: await this.#cipher.encrypt(secret, AAD),
-      enabledAt: now,
-    }
-    this.#db.insert(appChannel).values(row).onConflictDoUpdate({ target: appChannel.id, set: row }).run()
-    this.#db.delete(appTelegramChannel).run()
-    return this.status()
+  enable(serverId: string, url: string, call: ChannelCall, now: number): Effect.Effect<ChannelStatus, AppError> {
+    return Effect.gen({ self: this }, function* () {
+      const cursor = yield* this.startCursor(serverId, call)
+      const secret = btoa(String.fromCodePoint(...crypto.getRandomValues(new Uint8Array(32))))
+      const subscribed = yield* decodeSubscribedEffect(yield* call('subscribe', { url, secret }))
+      if (subscribed.status !== 'subscribed')
+        return yield* new InvalidInput({
+          reason: `the doorbell was refused: ${subscribed.reason ?? subscribed.status}`,
+        })
+      const sealed = yield* Effect.tryPromise({ try: () => this.#cipher.encrypt(secret, AAD), catch: toAppError })
+      const row = { id: 1, serverId, cursor, secret: sealed, enabledAt: now }
+      yield* Effect.sync(() => {
+        this.#db.insert(appChannel).values(row).onConflictDoUpdate({ target: appChannel.id, set: row }).run()
+        this.#db.delete(appTelegramChannel).run()
+      })
+      return this.status()
+    })
   }
 
   /** Turn the channel off; answers still to send are dropped. */
