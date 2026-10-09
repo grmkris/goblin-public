@@ -22,6 +22,7 @@ function useFolded(section: string): readonly [boolean, () => void] {
     try {
       setFolded(localStorage.getItem(key) === 'folded')
     } catch {
+      // expected: storage is off in this browser, so every section starts open
       setFolded(false)
     }
   }, [key])
@@ -30,7 +31,7 @@ function useFolded(section: string): readonly [boolean, () => void] {
     try {
       localStorage.setItem(key, folded ? 'open' : 'folded')
     } catch {
-      /* A device preference only. */
+      // expected: storage is off or full; folding is a device preference only, kept for this visit
     }
   }
   return [folded, toggle]

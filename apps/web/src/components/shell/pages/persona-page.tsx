@@ -5,6 +5,7 @@ import { Schema } from 'effect'
 import { Alert, AlertDescription, Button, Skeleton } from '@goblin/ui'
 import { ApiFailure, failureText, request } from '../../../lib/boundary.ts'
 import { relativeTime } from '../../../lib/threads.ts'
+import { reportUnexpected } from '../../../lib/unexpected.ts'
 import { PageSection } from '../../page-section.tsx'
 import { PersonaAvatar } from '../../persona-avatar.tsx'
 import { useMinute } from '../../use-now.ts'
@@ -108,6 +109,7 @@ function Profile({ id }: { readonly id: number }) {
         setDraft(definitionOf(loaded.persona))
       })
       .catch((failure: unknown) => {
+        // expected: the page shows the refusal (no such Persona) in place of the editor
         if (!controller.signal.aborted) setError(refusal(failure))
       })
     return () => controller.abort()
@@ -122,6 +124,7 @@ function Profile({ id }: { readonly id: number }) {
       feed.apply([{ type: 'persona', persona }])
       setDetail(decodeDetail(await request(`/api/personas/${id}`)))
     } catch (failure) {
+      // expected: the editor keeps the draft and shows the refusal (changed since it opened) under the form
       setError(refusal(failure))
     } finally {
       setPending(false)
@@ -166,8 +169,9 @@ function Create() {
       const body = { ...draft, operationId: operation }
       const persona = decodePersona(await request('/api/personas', { body }))
       feed.apply([{ type: 'persona', persona }])
-      void navigate({ to: '/p/$id', params: { id: String(persona.id) }, replace: true })
+      navigate({ to: '/p/$id', params: { id: String(persona.id) }, replace: true }).catch(reportUnexpected)
     } catch (failure) {
+      // expected: the form keeps the draft and shows the refusal under it; a retry reuses the visit operation id
       setError(refusal(failure))
     } finally {
       setPending(false)

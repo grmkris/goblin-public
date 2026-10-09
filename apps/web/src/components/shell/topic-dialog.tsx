@@ -13,6 +13,7 @@ import {
   Input,
 } from '@goblin/ui'
 import { ApiFailure, failureText } from '../../lib/boundary.ts'
+import { reportUnexpected } from '../../lib/unexpected.ts'
 import { useOrganize } from './organize.ts'
 
 /** What the owner reads when a Topic could not be named so. */
@@ -51,12 +52,13 @@ export function TopicDialog({
       if (topic === undefined) {
         const created = await organize.createTopic(trimmed, operation)
         onOpenChange(false)
-        void navigate({ to: '/c/$chatId', params: { chatId: created.conversation } })
+        navigate({ to: '/c/$chatId', params: { chatId: created.conversation } }).catch(reportUnexpected)
       } else {
         await organize.updateTopic(topic.id, { name: trimmed })
         onOpenChange(false)
       }
     } catch (failure) {
+      // expected: the dialog stays open and shows the refusal (a name in use) under the name
       setError(refusal(failure))
     } finally {
       setPending(false)
@@ -70,7 +72,7 @@ export function TopicDialog({
           className="mt-4 flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault()
-            void submit()
+            submit().catch(reportUnexpected)
           }}
         >
           <Field data-invalid={error !== '' || undefined}>

@@ -14,6 +14,7 @@ import { failureText } from '../../lib/boundary.ts'
 import { type PanelItem, draftFrom } from '../../lib/panel.ts'
 import { rememberThread } from '../../lib/recent-threads.ts'
 import { isClosed, rootParts, threadTitle } from '../../lib/threads.ts'
+import { reportUnexpected } from '../../lib/unexpected.ts'
 import { activityState } from '../../lib/workspace-feed.ts'
 import { MessageComposer } from '../composer.tsx'
 import { Notice } from '../conversation-dock.tsx'
@@ -38,7 +39,7 @@ function RenameForm({ view, onDone }: { readonly view: ConversationView; readonl
         event.preventDefault()
         const value = new FormData(event.currentTarget).get('title')
         const title = typeof value === 'string' ? value.trim() : ''
-        if (title !== '') void update(view.id, { title }).then(onDone)
+        if (title !== '') update(view.id, { title }).then(onDone).catch(reportUnexpected)
         else onDone()
       }}
     >

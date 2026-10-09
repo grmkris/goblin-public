@@ -28,6 +28,7 @@ function useSourceUses(chat: string, running: boolean): readonly SourceUse[] {
     const controller = new AbortController()
     request(`/api/conversations/${chat}/sources`, { signal: controller.signal })
       .then((data) => setUses(decodeUses(data)))
+      // expected: sources are a note under answers; a failed read keeps what was shown, and the next run's end reads again
       .catch(() => undefined)
     return () => controller.abort()
   }, [chat, round])

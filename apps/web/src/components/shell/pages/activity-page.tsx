@@ -81,6 +81,7 @@ function ReceiptRow({ receipt, now }: { readonly receipt: OrganizeReceipt; reado
                   setError('')
                   organize
                     .undo(receipt.id)
+                    // expected: the receipt's row shows why it cannot be undone in place of its time
                     .catch((failure: unknown) => setError(undoRefusal(failure)))
                     .finally(() => setPending(false))
                 }}

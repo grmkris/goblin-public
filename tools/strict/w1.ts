@@ -4,7 +4,9 @@ export const paths: string[] = [
   'apps/web/src/components/workspace-feed.tsx',
   'apps/web/src/components/{conversation,composer,queued-messages,interaction-cards,approval-card,persona-avatar,on-screen}*',
   'apps/web/src/components/parts/**',
-  'apps/web/src/components/shell/pages/tasks-page.tsx',
-  'apps/web/test/{drawn-parts,text-blocks,tool-markdown}.test.ts',
+  'apps/web/src/components/shell/*',
+  // persona-form.tsx is lane W2's.
+  'apps/web/src/components/shell/pages/{activity-page,chat-link,persona-page,tasks-page,threads-page}.tsx',
+  'apps/web/test/{drawn-parts,shell-extras,text-blocks,tool-markdown}.test.ts',
   'apps/web/test/{composer,conversation-stream,fences,interactions,keyboard,keys,labels,local-time,markdown,panel,parts,presence,projection,rail,spring,stream-pool,subagent-state,submission-retry,threads,tool-payload,topics,turn-map,workspace-feed}.test.ts',
 ]
