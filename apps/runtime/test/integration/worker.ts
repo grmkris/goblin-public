@@ -37,6 +37,7 @@ import { permutePrimary, profileEnabled } from './primary-profile.ts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { unwrap } from '../../src/http/rpc.ts'
 import { skillsCacheProbe, skillsLearnerRejectionProbe, skillsPersistedRead } from './skills-probe.ts'
+import { callOwner } from './owner-api.ts'
 import { exchange, historyOf, linesOf, snapshotOf, threadsUntil, transcript, until } from './probe-reads.ts'
 import {
   subagentChainSequence,
@@ -902,10 +903,14 @@ async function memorySequence(agent: DurableObjectStub<PersonalAgentProbe>): Pro
     await agent.settle(PRIMARY_CHAT, operation)
   }
   const summarized = await until(
-    async () => {
-      const status = await agent.memoryStatus()
-      return status.ok ? status.value.summarized : 0
-    },
+    async () =>
+      callOwner(agent, (api) =>
+        api.memory.status({ query: {} }).pipe(
+          Effect.map((status) => status.summarized),
+          // expected: until polls again; a failed read counts as nothing summarized yet, as it did before
+          Effect.orElseSucceed(() => 0),
+        ),
+      ),
     (count) => count >= 2,
   )
   await agent.submit(PRIMARY_CHAT, 'what do you remember?', 'memory-3')
