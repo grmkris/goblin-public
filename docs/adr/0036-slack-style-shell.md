@@ -10,7 +10,10 @@ places, and at its foot Apps, Connections, Settings and Sign out. Beside it a si
 Personal is the first Topic, and its Conversation is Main, still `/c/1`. The message area is the warm off-white page;
 the rail and sidebar are chrome, coloured by the `--shell-*` tokens of `@goblin/ui`, light and dark.
 
-**Clicking a Topic opens its channel.** There is no Overview page and no Canvas tonight.
+**Clicking a Topic opens its channel.** There is no Overview page and no Canvas tonight. Under each channel the
+sidebar lists one flat level of its threads: at work, unread, recently opened or showing now. Add topic opens a dialog;
+a new Topic opens its channel. The channel's `#name` is its menu (Rename, Exclude from search, Archive or Restore), and
+an archived channel shows a banner with Restore where its composer was.
 
 **Threads open in a panel beside the channel.** A message's Reply in thread opens a draft in the panel; the thread
 exists once the draft is sent, because Pi cannot delete a conversation. Under the message a thread started from, a

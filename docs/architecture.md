@@ -97,7 +97,12 @@ guessing its number. Pi cannot delete a conversation, so Close stops a
 conversation and everything under it and keeps it readable until Reopen; main never closes. The web
 shows the Topics as channels in the app's sidebar (`components/shell/sidebar.tsx` over the pure `lib/topics.ts`):
 Personal first, then by name, the archived folded at the end, each bold with a dot while it has unread replies and a
-pulse while its agent works; the open agent apps follow. A server without Topics implies Personal alone, holding Main.
+pulse while its agent works, with one flat level under it of its threads at work, unread, recently opened in this
+browser or showing now (`topicThreads`); the open agent apps follow. A server without Topics implies Personal alone,
+holding Main, and shows no Topic controls. With Topics, Add topic names a new one (`POST /api/topics`, one operation id
+per opening of the dialog) and opens its channel; the channel's `#name` opens its menu: Rename, Exclude from search or
+Include in search, and Archive or Restore (never Personal), all `PATCH /api/topics/:id`. An archived Topic's channel
+shows a banner with Restore in place of its composer.
 Unread is the server's: `read_at` on
 `app_conversations` is the owner's read mark, set when a chat has been shown for a moment (half in view, the page in
 front). A channel is `/c/:id`; its threads open in the thread panel beside it (ADR 0036, `components/shell`):

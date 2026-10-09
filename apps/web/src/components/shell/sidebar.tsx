@@ -1,14 +1,16 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import type { AppView, TopicView } from '@goblin/contracts'
-import { ChevronRightIcon, HashIcon, LayoutGridIcon } from 'lucide-react'
+import type { AppView, ConversationView, TopicView } from '@goblin/contracts'
+import { ChevronRightIcon, HashIcon, LayoutGridIcon, MessagesSquareIcon, PlusIcon } from 'lucide-react'
 import { jobTrouble } from '../../lib/app-jobs.ts'
 import { agentApps, appOrigin } from '../../lib/app-names.ts'
-import { isUnread } from '../../lib/threads.ts'
-import { channelOf, channels } from '../../lib/topics.ts'
+import { recentThreads } from '../../lib/recent-threads.ts'
+import { isUnread, threadTitle } from '../../lib/threads.ts'
+import { channelOf, channels, topicThreads } from '../../lib/topics.ts'
 import { activityState } from '../../lib/workspace-feed.ts'
 import { AppTile } from '../apps/app-tile.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { TopicDialog } from './topic-dialog.tsx'
 
 /** The sections the owner folded, remembered in this browser (a convenience: without storage they open on reload). */
 function useFolded(section: string): readonly [boolean, () => void] {
@@ -59,14 +61,26 @@ function Section({
   )
 }
 
-/** The channel the page shows: a channel's own page, or the channel a thread or App there belongs to. */
-function useCurrentChannel(): string | undefined {
+/** Where the page is: the channel it shows (a channel's own page, or the channel of a thread or App there) and its thread. */
+function useCurrent(): { readonly channel: string | undefined; readonly thread: string | undefined } {
   const feed = useWorkspaceFeed()
-  const path = useRouterState({ select: (router) => router.location.pathname })
-  const [, kind, id] = /^\/([ca])\/(\d{1,12})$/u.exec(path) ?? []
-  if (id === undefined) return undefined
+  const location = useRouterState({ select: (router) => router.location })
+  const [, kind, id] = /^\/([ca])\/(\d{1,12})$/u.exec(location.pathname) ?? []
+  if (id === undefined) return { channel: undefined, thread: undefined }
   const chat = kind === 'a' ? feed.apps.find((app) => app.id === id)?.conversation : id
-  return chat === undefined ? undefined : channelOf(chat, feed.conversations, feed.topics)
+  const thread = kind === 'c' ? location.search.thread : undefined
+  return {
+    channel: chat === undefined ? undefined : channelOf(chat, feed.conversations, feed.topics),
+    thread: thread === undefined ? undefined : String(thread),
+  }
+}
+
+/** The threads this browser opened recently, read again as the page changes (a device convenience). */
+function useRecentThreads(): ReadonlySet<string> {
+  const href = useRouterState({ select: (router) => router.location.href })
+  const [recent, setRecent] = useState<ReadonlySet<string>>(() => new Set())
+  useEffect(() => setRecent(new Set(recentThreads())), [href])
+  return recent
 }
 
 /** A Topic's channel: `#` and its name, bold with a dot while it has replies the owner has not read. */
@@ -90,6 +104,61 @@ function ChannelRow({ topic, current }: { readonly topic: TopicView; readonly cu
         {unread && !working && <span className="sidebar-row-unread" aria-label="Unread replies" />}
       </Link>
     </li>
+  )
+}
+
+/** A thread under its channel: its name, bold with a dot while unread, a pulse while it works; it opens in the panel. */
+function ThreadRow({
+  view,
+  channel,
+  current,
+}: {
+  readonly view: ConversationView
+  readonly channel: string
+  readonly current: boolean
+}) {
+  const feed = useWorkspaceFeed()
+  const unread = isUnread(view)
+  const working = activityState(feed, view.id) !== 'idle'
+  return (
+    <li>
+      <Link
+        to="/c/$chatId"
+        params={{ chatId: channel }}
+        search={{ thread: Number(view.id) }}
+        className="sidebar-row sidebar-thread"
+        aria-current={current ? 'page' : undefined}
+        data-unread={unread || undefined}
+      >
+        <MessagesSquareIcon className="sidebar-row-mark" aria-hidden />
+        <span className="sidebar-row-name">{threadTitle(view)}</span>
+        {working && <span className="sidebar-row-busy" aria-label="Working" />}
+        {unread && !working && <span className="sidebar-row-unread" aria-label="Unread replies" />}
+      </Link>
+    </li>
+  )
+}
+
+/** A channel with, one flat level under it, its threads at work, unread, recently opened or showing now. */
+function ChannelWithThreads({
+  topic,
+  current,
+  recent,
+}: {
+  readonly topic: TopicView
+  readonly current: ReturnType<typeof useCurrent>
+  readonly recent: ReadonlySet<string>
+}) {
+  const feed = useWorkspaceFeed()
+  const shown = current.thread === undefined ? recent : new Set([...recent, current.thread])
+  const threads = topicThreads(topic.conversation, feed.conversations, feed.topics, feed.activity, shown)
+  return (
+    <>
+      <ChannelRow topic={topic} current={topic.conversation === current.channel && current.thread === undefined} />
+      {threads.map((view) => (
+        <ThreadRow key={view.id} view={view} channel={topic.conversation} current={view.id === current.thread} />
+      ))}
+    </>
   )
 }
 
@@ -136,13 +205,28 @@ function AppRow({ app, current }: { readonly app: AppView; readonly current: boo
   )
 }
 
+/** "+ Add topic" at the end of the Topics, on a server that has them: it opens the new Topic's dialog. */
+function AddTopic() {
+  const [open, setOpen] = useState(false)
+  return (
+    <li>
+      <button type="button" className="sidebar-row" onClick={() => setOpen(true)}>
+        <PlusIcon className="sidebar-row-mark" aria-hidden />
+        <span className="sidebar-row-name">Add topic</span>
+      </button>
+      {open && <TopicDialog open onOpenChange={setOpen} />}
+    </li>
+  )
+}
+
 /**
- * The sidebar: the Topics as channels (Personal first, the archived folded at the end), then the agent apps. A click
- * on a channel opens it.
+ * The sidebar: the Topics as channels (Personal first, each with its live threads under it, the archived folded at the
+ * end, then Add topic), then the agent apps. A click on a channel opens it; on a thread, opens it in the panel.
  */
 export function Sidebar() {
   const feed = useWorkspaceFeed()
-  const current = useCurrentChannel()
+  const current = useCurrent()
+  const recent = useRecentThreads()
   const path = useRouterState({ select: (router) => router.location.pathname })
   const { active, archived } = channels(feed.topics)
   const apps = agentApps(feed.apps)
@@ -154,9 +238,10 @@ export function Sidebar() {
       <div className="sidebar-scroll">
         <Section id="topics" label="Topics">
           {active.map((topic) => (
-            <ChannelRow key={topic.id} topic={topic} current={topic.conversation === current} />
+            <ChannelWithThreads key={topic.id} topic={topic} current={current} recent={recent} />
           ))}
-          <Archived topics={archived} current={current} />
+          <Archived topics={archived} current={current.channel} />
+          {feed.topics !== undefined && <AddTopic />}
         </Section>
         {apps.length > 0 && (
           <Section

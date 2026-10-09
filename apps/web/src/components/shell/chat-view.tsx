@@ -102,6 +102,7 @@ export function ChatView({
   hideRoot = false,
   banner,
   onHeads,
+  notices = [],
 }: {
   readonly view: ConversationView
   readonly place: ChatPlace
@@ -114,6 +115,8 @@ export function ChatView({
   readonly banner?: ReactNode
   /** Told which threads this chat shows a head for, as they come. */
   readonly onHeads?: (heads: ReadonlySet<string>) => void
+  /** What went wrong around the chat (organizing its Topic), shown above the composer. */
+  readonly notices?: readonly string[]
 }) {
   const { id } = view
   const feed = useWorkspaceFeed()
@@ -159,7 +162,7 @@ export function ChatView({
           parts={parts}
           closed={closedBy(view)}
           onReopen={() => void feed.update(id, { closed: false })}
-          notices={feed.error === '' ? [] : [feed.error]}
+          notices={[...notices, ...(feed.error === '' ? [] : [feed.error])]}
           active={active}
           {...composerOf(view, place)}
         />

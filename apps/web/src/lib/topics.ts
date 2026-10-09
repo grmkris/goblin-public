@@ -1,4 +1,11 @@
-import { type ConversationView, PERSONAL_TOPIC, PRIMARY_CHAT, type TopicView } from '@goblin/contracts'
+import {
+  type ConversationActivity,
+  type ConversationView,
+  PERSONAL_TOPIC,
+  PRIMARY_CHAT,
+  type TopicView,
+} from '@goblin/contracts'
+import { isClosed, isUnread } from './threads.ts'
 
 /** Personal as a server without Topics implies it: the one Topic, whose Conversation is Main (`/c/1`). */
 export const PERSONAL: TopicView = {
@@ -58,3 +65,30 @@ export function channelOf(
 /** The Topic whose Conversation `channel` is; Personal for Main on a server without Topics. */
 export const topicOfChannel = (channel: string, topics: readonly TopicView[] | undefined): TopicView | undefined =>
   topicsOf(topics).find((topic) => topic.conversation === channel)
+
+/** How many of a Topic's threads the sidebar lists under it. */
+const LISTED = 5
+const latest = (view: ConversationView) => view.lastReplyAt ?? view.createdAt
+
+/**
+ * The threads the sidebar lists under a Topic's channel, one flat level: those at work, with unread replies, recently
+ * opened here, or showing now, newest first. A closed one is not listed; the Threads page has every one.
+ */
+export function topicThreads(
+  channel: string,
+  views: readonly ConversationView[],
+  topics: readonly TopicView[] | undefined,
+  activity: ReadonlyMap<string, ConversationActivity>,
+  recent: ReadonlySet<string>,
+): ConversationView[] {
+  return views
+    .filter(
+      (view) =>
+        !isChannel(view) &&
+        !isClosed(view) &&
+        (activity.has(view.id) || isUnread(view) || recent.has(view.id)) &&
+        channelOf(view.id, views, topics) === channel,
+    )
+    .toSorted((a, b) => latest(b) - latest(a) || Number(b.id) - Number(a.id))
+    .slice(0, LISTED)
+}

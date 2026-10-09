@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ConversationView, TopicView } from '@goblin/contracts'
-import { PERSONAL, channelOf, channels, isChannel, topicOfChannel, topicsOf } from '../src/lib/topics.ts'
+import { PERSONAL, channelOf, channels, isChannel, topicOfChannel, topicThreads, topicsOf } from '../src/lib/topics.ts'
 
 const topic = (id: number, name: string, conversation: string, extra: Partial<TopicView> = {}): TopicView => ({
   id,
@@ -74,5 +74,39 @@ describe('the channel a chat belongs to', () => {
   it("ends a loop in stored parents at Personal's channel, and an unknown chat there too", () => {
     expect(channelOf('10', views, TOPICS)).toBe('1')
     expect(channelOf('404', views, TOPICS)).toBe('1')
+  })
+})
+
+describe("a Topic's threads in the sidebar", () => {
+  const views = [
+    view('1', { kind: 'main', parent: undefined }),
+    view('20', { kind: 'main', conversation: true, parent: undefined, topic: 2 }),
+    view('5', { lastReplyAt: 50, readAt: 10 }),
+    view('6', { parent: '5', lastReplyAt: 60, readAt: 60 }),
+    view('7', { kind: 'subagent', parent: '1' }),
+    view('8', { parent: '20', topic: 2, lastReplyAt: 80 }),
+    view('9', { closedAt: 3, lastReplyAt: 99 }),
+    view('10'),
+  ]
+  it('lists the threads at work, unread or recently opened, newest first, under their own channel', () => {
+    const working = new Map([['7', { id: '7', state: 'working' as const, since: 1 }]])
+    const listed = topicThreads('1', views, TOPICS, working, new Set(['6']))
+    expect(listed.map(({ id }) => id)).toEqual(['6', '5', '7'])
+    expect(topicThreads('20', views, TOPICS, new Map(), new Set()).map(({ id }) => id)).toEqual(['8'])
+  })
+
+  it('never lists a closed thread, and lists at most five', () => {
+    expect(topicThreads('1', views, TOPICS, new Map(), new Set(['9'])).map(({ id }) => id)).toEqual(['5'])
+    const many = [
+      views[0] ?? view('1'),
+      ...Array.from({ length: 8 }, (_, n) => view(String(30 + n), { lastReplyAt: n + 1 })),
+    ]
+    expect(topicThreads('1', many, undefined, new Map(), new Set()).map(({ id }) => id)).toEqual([
+      '37',
+      '36',
+      '35',
+      '34',
+      '33',
+    ])
   })
 })

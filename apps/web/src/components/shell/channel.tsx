@@ -2,30 +2,39 @@ import { useEffect, useMemo, useState } from 'react'
 import { Navigate } from '@tanstack/react-router'
 import type { ConversationView, TopicView } from '@goblin/contracts'
 import { TopBar, TopBarTitle } from '@goblin/ui'
-import { HashIcon } from 'lucide-react'
 import { rememberChannel } from '../../lib/last-channel.ts'
 import { type PanelSearch, panelItems } from '../../lib/panel.ts'
-import { channelOf, isChannel, topicOfChannel } from '../../lib/topics.ts'
+import { channelOf, isArchived, isChannel, topicOfChannel } from '../../lib/topics.ts'
 import { activityState } from '../../lib/workspace-feed.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { ArchivedBanner, ChannelMenu } from './channel-menu.tsx'
 import { ChatView } from './chat-view.tsx'
 import { PanelProvider } from './panel.tsx'
 import { NavigationButton } from './shell.tsx'
 import { ThreadPanel } from './thread-panel.tsx'
 
-/** A channel's bar: on a phone the navigation's button, then `#` and the Topic's name, and whether its agent works. */
-function ChannelHeader({ view, topic }: { readonly view: ConversationView; readonly topic: TopicView | undefined }) {
+/** A channel's bar: on a phone the navigation's button, then `#` and the Topic's name with its menu. */
+function ChannelHeader({
+  view,
+  topic,
+  onFailure,
+}: {
+  readonly view: ConversationView
+  readonly topic: TopicView | undefined
+  readonly onFailure: (text: string) => void
+}) {
   const feed = useWorkspaceFeed()
   const working = activityState(feed, view.id) === 'working'
   return (
     <TopBar floating data-app-cover>
       <NavigationButton />
       <TopBarTitle>
-        <span className="channel-title">
-          <HashIcon aria-hidden />
-          <span className="truncate">{topic?.name ?? view.title ?? 'Personal'}</span>
-          {working && <span className="thread-busy" aria-label="Working" />}
-        </span>
+        <ChannelMenu
+          topic={topic}
+          name={topic?.name ?? view.title ?? 'Personal'}
+          working={working}
+          onFailure={onFailure}
+        />
       </TopBarTitle>
     </TopBar>
   )
@@ -37,8 +46,10 @@ function ChannelLayout({ view, search }: { readonly view: ConversationView; read
   const topic = topicOfChannel(view.id, feed.topics)
   const items = useMemo(() => panelItems(search, view.id, feed.conversations), [search, view.id, feed.conversations])
   const [heads, setHeads] = useState<ReadonlySet<string>>(new Set())
+  const [failure, setFailure] = useState('')
   useEffect(() => rememberChannel(view.id), [view.id])
   const open = items.length > 0
+  const archived = topic !== undefined && isArchived(topic)
   return (
     <PanelProvider channel={view.id} items={items}>
       <div className="channel-layout" data-panel={open || undefined}>
@@ -48,7 +59,9 @@ function ChannelLayout({ view, search }: { readonly view: ConversationView; read
             view={view}
             place="channel"
             active={!open}
-            header={<ChannelHeader view={view} topic={topic} />}
+            header={<ChannelHeader view={view} topic={topic} onFailure={setFailure} />}
+            notices={failure === '' ? [] : [failure]}
+            {...(archived && { banner: <ArchivedBanner topic={topic} onFailure={setFailure} /> })}
             onHeads={setHeads}
           />
         </div>

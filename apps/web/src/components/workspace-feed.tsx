@@ -1,6 +1,12 @@
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Schema } from 'effect'
-import { AppView, ConversationView, type CreateConversation, type UpdateConversation } from '@goblin/contracts'
+import {
+  AppView,
+  ConversationView,
+  type CreateConversation,
+  type UpdateConversation,
+  type WorkspaceChange,
+} from '@goblin/contracts'
 import { failureText, request } from '../lib/boundary.ts'
 import { BrowserPiEvents } from '../lib/conversation-stream.ts'
 import {
@@ -27,6 +33,8 @@ type WorkspaceFeed = WorkspaceState & {
   readonly closeApp: (id: string) => Promise<void>
   /** Opens a closed App again (an agent app, whose view the owner closed). */
   readonly reopenApp: (id: string) => Promise<AppView>
+  /** Shows what the server just answered a change with (a Topic, a Persona, a receipt) before the feed repeats it. */
+  readonly apply: (changes: readonly WorkspaceChange[]) => void
 }
 
 const WorkspaceFeedContext = createContext<WorkspaceFeed | undefined>(undefined)
@@ -94,6 +102,7 @@ export function WorkspaceFeedProvider({
       ...state,
       error,
       markRead,
+      apply: (changes) => setState((current) => applyChanges(current, changes)),
       keepApp: async (conversation, callId) =>
         showApp(decodeApp(await request('/api/apps', { body: { conversation, callId } }))),
       closeApp: async (id) => {

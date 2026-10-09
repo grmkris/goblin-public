@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ComposerSelection, ConversationView } from '@goblin/contracts'
 import {
   Button,
@@ -12,6 +12,7 @@ import {
 import { ChevronLeftIcon, EllipsisIcon, PencilIcon, RotateCcwIcon, ShareIcon, XIcon } from 'lucide-react'
 import { failureText } from '../../lib/boundary.ts'
 import { type PanelItem, draftFrom } from '../../lib/panel.ts'
+import { rememberThread } from '../../lib/recent-threads.ts'
 import { isClosed, rootParts, threadTitle } from '../../lib/threads.ts'
 import { activityState } from '../../lib/workspace-feed.ts'
 import { MessageComposer } from '../composer.tsx'
@@ -261,6 +262,10 @@ export function ThreadPanel({
   const panel = usePanel()
   const feed = useWorkspaceFeed()
   const top = panel.items.at(-1)
+  const shown = top?.kind === 'thread' ? top.id : undefined
+  useEffect(() => {
+    if (shown !== undefined) rememberThread(shown)
+  }, [shown])
   if (top === undefined) return null
   let body = null
   if (top.kind === 'thread') {

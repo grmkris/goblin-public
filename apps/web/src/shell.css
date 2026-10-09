@@ -721,3 +721,12 @@
   width: 1.25rem;
   height: 1.25rem;
 }
+/* A thread under its channel: set in past the channel's mark, a size smaller. */
+.sidebar-thread {
+  padding-inline-start: 1.5rem;
+  font-size: var(--text-13);
+}
+.sidebar-thread > .sidebar-row-mark {
+  width: 0.875rem;
+  height: 0.875rem;
+}
