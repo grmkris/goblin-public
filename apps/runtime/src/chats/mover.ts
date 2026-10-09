@@ -31,6 +31,8 @@ export type MoverPorts = {
   readonly db: DrizzleSqliteDODatabase
   readonly harness: PiHarness
   readonly chats: ChatDirectory
+  /** Runs `run` while `chat`'s admission lock is held: `ChatOperations.withChat`, the one lock per chat. */
+  readonly withChat: <A>(chat: string, run: () => Promise<A>) => Promise<A>
   readonly conversations: ConversationRegistry
   readonly capabilities: CapabilityProfiles
   /** Each Topic Conversation's memory: a move forgets the turn there. */
@@ -87,7 +89,7 @@ export class ChatMover {
     const existing = this.#store.get(input.operationId)
     if (existing !== undefined && (existing.chatId !== chat || existing.messageEntry !== input.entry))
       throw new Conflict({ reason: 'operation_used' })
-    const row = existing ?? (await this.#ports.chats.withChat(chat, async () => this.#begin(chat, input, now)))
+    const row = existing ?? (await this.#ports.withChat(chat, async () => this.#begin(chat, input, now)))
     if (row.state !== 'refused') await this.#finish(row.operationId)
     return moveReceipt(this.#store.require(row.operationId))
   }
@@ -165,7 +167,7 @@ export class ChatMover {
   async #advance(operation: string): Promise<void> {
     const first = this.#store.require(operation)
     if (first.state === 'requested' || first.state === 'forked')
-      await this.#ports.chats.withChat(first.chatId, async () => this.#thread(this.#store.require(operation)))
+      await this.#ports.withChat(first.chatId, async () => this.#thread(this.#store.require(operation)))
     const row = this.#store.require(operation)
     if (row.state !== 'forked') return
     const { source, fork } = required(row)

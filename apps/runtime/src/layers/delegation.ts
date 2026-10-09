@@ -1,9 +1,11 @@
+import type { EntryDraft } from '@earendil-works/pi-durable'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { AppsInstance } from '../apps/registry.ts'
 import { ProfilesInstance } from '../capabilities/profiles.ts'
 import { ChatsInstance } from '../chats/directory.ts'
+import { Conversations } from '../chats/service.ts'
 import { ConversationsInstance } from '../conversations.ts'
 import { Home, HomeService } from '../home/service.ts'
 import { MemoriesInstance } from '../memory/memory.ts'
@@ -73,7 +75,15 @@ const stores: Effect.Effect<
   const db = yield* Db
   const conversations = yield* ConversationsInstance
   const chats = yield* ChatsInstance
-  const kit = { capabilities: yield* ProfilesInstance, chats, memories: yield* MemoriesInstance }
+  const kit = {
+    capabilities: yield* ProfilesInstance,
+    chats,
+    memories: yield* MemoriesInstance,
+    // A Topic's seed is Promise code inside its create: it writes through the bridge (no second plan check), under the
+    // chat's lock and with its receipt.
+    write: (chat: string, requestId: string, entry: EntryDraft) =>
+      input.local(Conversations.use((registry) => registry.writeEntry(chat, requestId, entry))),
+  }
   const apps = yield* AppsInstance
   const invocations = new PersonaInvocations(db)
   const topics = new TopicRegistry(db, topicPorts(db, conversations, kit))

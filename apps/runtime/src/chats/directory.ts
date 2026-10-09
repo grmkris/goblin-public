@@ -14,16 +14,6 @@ export const ChatId = Brand.nominal<ChatId>()
 export type SessionId = string & Brand.Brand<'SessionId'>
 export const SessionId = Brand.nominal<SessionId>()
 
-const noop = (): void => undefined
-
-const deferred = (): { readonly promise: Promise<void>; readonly release: () => void } => {
-  let resolvePromise = noop
-  const promise = new Promise<void>((resolve) => {
-    resolvePromise = resolve
-  })
-  return { promise, release: resolvePromise }
-}
-
 /** The roles of a Topic's one Conversation: Personal's (`primary`, the inbound target) and every other Topic's. */
 const channelRoles: ReadonlySet<string> = new Set(['primary', 'conversation'])
 
@@ -56,9 +46,10 @@ export function registerPrimary<RunResult>(db: SQLiteAsyncDatabase<'sync', RunRe
 
 /**
  * Stable application identities over Pi sessions (ADR 0030), read from the agent's SQLite. It keeps no state of its
- * own, so any number of readers over one database agree.
+ * own, so any number of readers over one database agree; the agent's start shares one (`ChatsInstance`). A chat's
+ * admission lock is `ChatOperations.withChat` (`KeyedLock`).
  */
-export class ChatReads<RunResult = unknown> {
+export class ChatDirectory<RunResult = unknown> {
   readonly #db: SQLiteAsyncDatabase<'sync', RunResult>
 
   constructor(db: SQLiteAsyncDatabase<'sync', RunResult>) {
@@ -155,34 +146,7 @@ export class ChatReads<RunResult = unknown> {
 }
 
 /**
- * The chat reads, with each chat's admission lock for the Promise callers that still take it (the mover, the
- * registry's own writes, the Topic ports): `ChatOperations` holds it inside its own (`KeyedLock`), so both kinds of
- * caller stay one at a time per chat. Locks cover admission only, never model execution or waits. One per agent.
- */
-export class ChatDirectory<RunResult = unknown> extends ChatReads<RunResult> {
-  readonly #locks = new Map<string, Promise<void>>()
-
-  async withChat<A>(chat: string, run: () => Promise<A>): Promise<A> {
-    const previous = this.#locks.get(chat)
-    const { promise: lock, release } = deferred()
-    this.#locks.set(chat, lock)
-    await previous
-    try {
-      return await run()
-    } finally {
-      release()
-      if (this.#locks.get(chat) === lock) this.#locks.delete(chat)
-    }
-  }
-
-  /** Resolve a chat and submit one passive write while admission for that chat is locked. */
-  async passiveWrite<A>(chat: string, run: (session: SessionId) => Promise<A>): Promise<A> {
-    return this.withChat(chat, async () => run(this.session(chat)))
-  }
-}
-
-/**
- * The agent's one chat directory, made at the start (`layers/conversation.ts`): the conversations, Topics, Apps, the
- * feed, memory and the channel read chats through it inside their own synchronous work. Programs use `Chats`.
+ * The agent's chat directory, made at the start (`layers/conversation.ts`): the conversations, Topics, Apps, the feed,
+ * memory and the channel read chats through it inside their own synchronous work. Programs use `Chats`.
  */
 export class ChatsInstance extends Context.Service<ChatsInstance, ChatDirectory>()('goblin/chats/ChatsInstance') {}

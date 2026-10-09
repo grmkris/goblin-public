@@ -6,7 +6,6 @@ import { appConversations } from '../src/storage/schema.ts'
 import { appTopics } from '../src/storage/topics.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 
-const noop = (): void => undefined
 const cleanups: (() => void)[] = []
 afterEach(() => {
   for (const close of cleanups.splice(0)) close()
@@ -52,58 +51,6 @@ describe('logical chat directory', () => {
     db.update(appConversations).set({ piSession: '43' }).where(eq(appConversations.chatId, '1')).run()
     expect(chats.operation('1', 'owner:1')).toBe('41')
     expect(chats.operation('2', 'owner:1')).toBeUndefined()
-  })
-
-  it('serializes one chat, allows independent chats, and releases after a failed admission', async () => {
-    const { chats } = fixture()
-    const events: string[] = []
-    let release = noop
-    const held = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const first = chats.withChat('1', async () => {
-      events.push('first')
-      await held
-      throw new Error('fixture')
-    })
-    const second = chats.withChat('1', async () => {
-      events.push('second')
-      return 2
-    })
-    await chats.withChat('2', async () => {
-      events.push('independent')
-    })
-    expect(events).toEqual(['first', 'independent'])
-    release()
-    await expect(first).rejects.toThrow('fixture')
-    await expect(second).resolves.toBe(2)
-    await expect(chats.withChat('1', async () => 3)).resolves.toBe(3)
-    expect(events).toEqual(['first', 'independent', 'second'])
-  })
-
-  it('resolves a passive write to the session current when its turn comes, and holds admission only through it', async () => {
-    const { chats, db } = fixture()
-    let releaseMove = noop
-    const moved = new Promise<void>((resolve) => {
-      releaseMove = resolve
-    })
-    const move = chats.withChat('1', async () => {
-      await moved
-      db.update(appConversations).set({ piSession: '43' }).where(eq(appConversations.chatId, '1')).run()
-    })
-    const submitted: string[] = []
-    const write = chats.passiveWrite('1', async (session) => {
-      submitted.push(session)
-    })
-    await chats.passiveWrite('2', async (session) => {
-      submitted.push(session)
-    })
-    expect(submitted).toEqual(['42'])
-    releaseMove()
-    await move
-    await write
-    expect(submitted).toEqual(['42', '43'])
-    await expect(chats.withChat('1', async () => chats.session('1'))).resolves.toBe('43')
   })
 
   it("tells a Topic's Conversation from its threads and finds the Conversation above any chat", () => {

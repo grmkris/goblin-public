@@ -208,8 +208,8 @@ describe('the conversation services', () => {
     }).pipe(Effect.provide(layer))
   })
 
-  it.effect("hold a chat's one admission lock, which the legacy directory's callers share, in arrival order", () => {
-    const { layer, directory } = services([])
+  it.effect("hold a chat's one admission lock in arrival order, apart from other chats", () => {
+    const { layer } = services([])
     return Effect.gen(function* () {
       const operations = yield* ChatOperations
       const order: string[] = []
@@ -227,15 +227,20 @@ describe('the conversation services', () => {
         ),
       )
       yield* Deferred.await(started)
-      const legacy = directory.withChat('2', async () => void order.push('legacy'))
+      const second = yield* Effect.forkChild(
+        operations.withChat(
+          '2',
+          Effect.sync(() => order.push('second')),
+        ),
+      )
       yield* operations.withChat(
         '1',
         Effect.sync(() => order.push('other chat')),
       )
       yield* Deferred.succeed(gate, undefined)
       yield* Fiber.join(first)
-      yield* Effect.promise(() => legacy)
-      expect(order).toEqual(['first:start', 'other chat', 'first:end', 'legacy'])
+      yield* Fiber.join(second)
+      expect(order).toEqual(['first:start', 'other chat', 'first:end', 'second'])
     }).pipe(Effect.provide(layer))
   })
 

@@ -1,7 +1,7 @@
 import { type ConversationView, type HelperExclusion, PERSONAL_TOPIC, type UpdateConversation } from '@goblin/contracts'
 import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import type { Conversation, EntryDraft, EntryId, EntryRecord, Extension } from '@earendil-works/pi-durable'
+import type { Conversation, EntryId, EntryRecord, Extension } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
 import type { CapabilityProfiles } from './capabilities/profiles.ts'
@@ -479,29 +479,6 @@ export class ConversationRegistry {
       .returning({ chat: appConversations.chatId })
       .all()
     return written.length > 0
-  }
-
-  async #passiveWrite(chat: string, submission: Extract<Parameters<Conversation['submit']>[0], { type: 'write' }>) {
-    return this.#kit.chats.passiveWrite(chat, async (session) => {
-      const conversation = await (await this.#harness.pi()).conversation(conversationId(session), BACKGROUND)
-      if (conversation === undefined) throw new NotFound({ what: 'conversation' })
-      return conversation.submit(submission, BACKGROUND)
-    })
-  }
-
-  /**
-   * Writes `entry` into `chat` as a passive entry: its model sees it at its next turn and no run starts. The request
-   * id makes a repeat the same write. `placed` waits, outside the chat's lock, until the write is in the transcript
-   * (at once when idle, else at the chat's next boundary) and gives its entry id.
-   */
-  async writeEntry(chat: string, requestId: string, entry: EntryDraft) {
-    const submission = await this.#passiveWrite(chat, { type: 'write', requestId, entry })
-    return {
-      placed: async () => {
-        const settled = await submission.wait(BACKGROUND)
-        return settled.status === 'done' && settled.entry !== undefined ? Number(settled.entry) : undefined
-      },
-    }
   }
 
   /** Names an untitled thread from its latest exchange with the cheap model; once at a time per thread. */

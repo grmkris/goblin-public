@@ -27,7 +27,7 @@ type PortInstances = {
 
 /**
  * The services the Telegram ports' programs read, over a probe's own instances: lane C's chat directory and admission
- * over its database (admission also holding its chat directory's lock), its budget and model picker as the routines
+ * over its database (each chat's lock in `KeyedLock`), its budget and model picker as the routines
  * lane's services wrap them, and Pi as its sessions. Flows go to `flows`, else nowhere.
  */
 export const portServices = ({ db, chats, harness, budget, models, flows = FlowEvents.noop }: PortInstances) => {
@@ -53,7 +53,7 @@ export const portServices = ({ db, chats, harness, budget, models, flows = FlowE
   )
   const pi = PiSessions.layer.pipe(Layer.provide(input))
   const core = Layer.mergeAll(Layer.succeed(Db, db), KeyedLock.layer, pi, flows, plans, input)
-  const operations = Layer.effect(ChatOperations, makeChatOperations({ locks: chats }))
+  const operations = Layer.effect(ChatOperations, makeChatOperations(chats))
   return Layer.mergeAll(
     ChatsLive.pipe(Layer.provide(Layer.succeed(Db, db))),
     operations.pipe(Layer.provide(core)),

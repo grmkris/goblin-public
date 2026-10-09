@@ -17,7 +17,7 @@ import { type PiFailure, PiSessions } from '../pi/sessions.ts'
 import type { RoutineController } from '../routines/controller.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
-import { type ChatDirectory, ChatReads, SessionId } from './directory.ts'
+import { type ChatDirectory, SessionId } from './directory.ts'
 import { epochSeconds, instanceCall } from './instance.ts'
 import {
   type ReceiptChange,
@@ -29,47 +29,20 @@ import {
 } from './receipts.ts'
 import { type Admission, type Admitted, ChatOperations, type PassiveWrite, type Submit } from './service.ts'
 
-/**
- * The one chat directory of the agent, whose per-chat lock its Promise callers (the mover, the registry's own writes,
- * the Topic ports) still take: admission holds it inside `KeyedLock`'s until they move onto `ChatOperations`.
- */
-export type AdmissionLocks = { readonly locks: ChatDirectory }
-
 /** A synchronous read or write of the receipts, its throw a typed `AppError` (`NotFound` for an unknown chat). */
 const sql = <A>(run: () => A) => Effect.try({ try: run, catch: toAppError })
 
 /** A Pi call's failure as the programs take one: Pi's own error through `toAppError`. */
 const piFailure = (failure: PiFailure) => Effect.fail(toAppError(failure.cause))
 
-/**
- * Holds `chat`'s lock on the legacy directory, which its Promise callers (the mover, the registry's own passive writes)
- * still take: admission holds it inside `KeyedLock`'s, so they and the Effect callers stay one at a time per chat. It
- * is held from when its turn comes until the returned release runs. It goes once those callers take `ChatOperations`.
- */
-const legacyLock = (chats: ChatDirectory, chat: string) =>
-  Effect.callback<() => void>((resume) => {
-    chats
-      .withChat(chat, () => new Promise<void>((release) => resume(Effect.succeed(() => release()))))
-      // expected: the lock's own run never rejects, so neither does its promise.
-      .catch(() => undefined)
-  })
-
-/** Each chat's admission lock: `KeyedLock`'s, with the legacy directory's inside it. */
+/** Each chat's admission lock: `KeyedLock`'s, first come first served. */
 const chatLock =
-  (locks: KeyedLock['Service'], chats: ChatDirectory) =>
+  (locks: KeyedLock['Service']) =>
   <A, E, R>(chat: string, effect: Effect.Effect<A, E, R>) =>
-    locks
-      .withLock(`chat:${chat}`)(
-        Effect.acquireUseRelease(
-          legacyLock(chats, chat),
-          () => effect,
-          (release) => Effect.sync(release),
-        ),
-      )
-      .pipe(Effect.withSpan('ChatOperations.withChat'))
+    locks.withLock(`chat:${chat}`)(effect).pipe(Effect.withSpan('ChatOperations.withChat'))
 
 /** The receipts in the agent's SQLite (chats/receipts.ts), each read or write with the Clock's time. */
-const receiptsOf = (db: Db['Service'], chats: ChatReads) => ({
+const receiptsOf = (db: Db['Service'], chats: ChatDirectory) => ({
   record: Effect.fn('ChatOperations.record')(function* (chat: string, operationId: string, receipt: ReceiptInput) {
     const now = yield* epochSeconds
     const admitted = yield* sql(() =>
@@ -185,17 +158,16 @@ const sendWith =
     }).pipe(Effect.withSpan('ChatOperations.send'))
 
 /**
- * The chat operations natively: chats and receipts read from the agent's SQLite, the chat's lock in `KeyedLock` (with
- * the legacy directory's inside it), Pi through `PiSessions`, flows through `FlowEvents`.
+ * The chat operations natively over `chats`, the agent's directory: receipts in the agent's SQLite, the chat's lock in
+ * `KeyedLock`, Pi through `PiSessions`, flows through `FlowEvents`.
  */
-export const makeChatOperations = ({ locks }: AdmissionLocks) =>
+export const makeChatOperations = (chats: ChatDirectory) =>
   Effect.gen(function* () {
     const db = yield* Db
     const pi = yield* PiSessions
     const flows = yield* FlowEvents
     const { harness, applied, routines } = yield* AgentInput
-    const chats = new ChatReads(db)
-    const withChat = chatLock(yield* KeyedLock, locks)
+    const withChat = chatLock(yield* KeyedLock)
     const receipts = receiptsOf(db, chats)
     const written = writeHeld(receipts, pi)
     const admit = admitWith({ withChat, receipts, flows, requireOpen: (chat) => chats.requireOpen(chat) })

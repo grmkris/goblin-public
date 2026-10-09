@@ -13,7 +13,7 @@ import type { EntryDraft, Submission } from '@earendil-works/pi-durable'
 import * as Clock from 'effect/Clock'
 import type { Budget } from '../budget.ts'
 import { makeChatOperations } from '../chats/operations.ts'
-import { ChatDirectory, ChatReads, type ChatRow, ChatsInstance, registerChat } from '../chats/directory.ts'
+import { ChatDirectory, type ChatRow, ChatsInstance, registerChat } from '../chats/directory.ts'
 import { ChatMover, MovesInstance } from '../chats/mover.ts'
 import { epochSeconds, instanceCall } from '../chats/instance.ts'
 import { ChatOperations, Chats, Conversations, Moves, type RoutineReport, type ThreadAnchor } from '../chats/service.ts'
@@ -79,6 +79,9 @@ export const MoverLive: Layer.Layer<
       db: yield* Db,
       harness: input.harness,
       chats: yield* ChatsInstance,
+      // The mover is Promise code: it takes the chat's one lock through the bridge (no plan check).
+      withChat: (chat, run) =>
+        input.local(ChatOperations.use((operations) => operations.withChat(chat, instanceCall(run)))),
       conversations: yield* ConversationsInstance,
       capabilities: yield* ProfilesInstance,
       memories: yield* MemoriesInstance,
@@ -97,12 +100,12 @@ export const MoverLive: Layer.Layer<
 /** A synchronous call into the agent's instances or the stores, its throw a typed `AppError`. */
 const sync = <A>(run: () => A) => Effect.try({ try: run, catch: toAppError })
 
-/** The chat directory natively: reads over the agent's SQLite (`ChatReads` keeps no state) and the one row inserter. */
+/** The chat directory natively: reads over the agent's SQLite (it keeps no state) and the one row inserter. */
 export const ChatsLive = Layer.effect(
   Chats,
   Effect.gen(function* () {
     const db = yield* Db
-    const chats = new ChatReads(db)
+    const chats = new ChatDirectory(db)
     return Chats.of({
       primary: chats.primary(),
       session: Effect.fn('Chats.session')(function* (chat: string) {
@@ -133,13 +136,10 @@ export const ChatsLive = Layer.effect(
   }),
 )
 
-/**
- * The chat operations natively (chats/operations.ts). The one other piece they read is the chat directory's lock,
- * which the mover, the registry's own writes and the Topic ports still take.
- */
+/** The chat operations natively (chats/operations.ts), over the agent's directory. */
 export const ChatOperationsLive = Layer.effect(
   ChatOperations,
-  ChatsInstance.use((locks) => makeChatOperations({ locks })),
+  ChatsInstance.use((chats) => makeChatOperations(chats)),
 )
 
 /** The registry's reads over the agent's one `ConversationRegistry`. */
@@ -437,11 +437,10 @@ const MovesAdapter = Layer.effect(
 
 /**
  * The conversation services after the start (chats/service.ts). `Chats` and `ChatOperations` are native: SQLite reads
- * and receipts, the chat lock in `KeyedLock`, Pi through `PiSessions`, flows through `FlowEvents`; admission still
- * holds the directory's own lock inside its own while the mover, the registry's own writes and the Topic ports take it.
- * `Conversations` and `Moves` are served over the one registry and mover (start steps 10 and 13), which the Topic
- * ports, the Apps registry and the workspace feed share; their passive writes, receipts and flows go through
- * `ChatOperations` and `FlowEvents`.
+ * and receipts, each chat's one lock in `KeyedLock` (the mover and the Topic seed take it through the bridge), Pi
+ * through `PiSessions`, flows through `FlowEvents`. `Conversations` and `Moves` are served over the one registry and
+ * mover (start steps 10 and 13), which the Topic ports, the Apps registry and the workspace feed share; their passive
+ * writes, receipts and flows go through `ChatOperations` and `FlowEvents`.
  */
 export const ConversationLive: Layer.Layer<
   Chats | ChatOperations | Conversations | Moves,

@@ -1,3 +1,4 @@
+import type { EntryDraft } from '@earendil-works/pi-durable'
 import { and, eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { CapabilityProfiles } from '../capabilities/profiles.ts'
@@ -13,6 +14,8 @@ type TopicKit = {
   readonly capabilities: CapabilityProfiles
   readonly chats: ChatDirectory
   readonly memories: ChatMemories
+  /** A passive write into a chat, under its admission lock and with its receipt (`Conversations.writeEntry`). */
+  readonly write: (chat: string, requestId: string, entry: EntryDraft) => Promise<unknown>
 }
 
 /**
@@ -44,7 +47,7 @@ export function topicPorts(
     },
     activate: (chat) => kit.memories.activate(chat),
     seed: async (chat, operationId, seed) => {
-      await conversations.writeEntry(chat, `topic-seed:${operationId}`, {
+      await kit.write(chat, `topic-seed:${operationId}`, {
         kind: 'app.topic_seed',
         data: { brief: seed.brief, sources: seed.sources.map((source) => ({ ...source })) },
         model: [{ role: 'user', content: topicSeedContent(seed), timestamp: Date.now() }],
