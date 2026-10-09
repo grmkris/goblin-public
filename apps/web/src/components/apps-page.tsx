@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import type { AgentAppSummary } from '@goblin/contracts'
 import { Alert, AlertDescription, Badge, Card, CardDescription, CardHeader, CardTitle, Skeleton } from '@goblin/ui'
-import { listAgentApps } from '../lib/agent-apps.ts'
+import { agentAppsQuery, useFeedRefresh } from '../agent-apps/queries.ts'
 import { jobLine, jobTrouble } from '../lib/app-jobs.ts'
-import { failureText } from '../lib/boundary.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 import { AppTile } from './apps/app-tile.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
@@ -53,25 +53,14 @@ function AppCard({ app }: { readonly app: AgentAppSummary }) {
  */
 export function AppsPage() {
   const feed = useWorkspaceFeed()
-  const [apps, setApps] = useState<readonly AgentAppSummary[]>()
-  const [error, setError] = useState('')
+  const list = useQuery(agentAppsQuery)
+  const apps = list.data
+  const error = list.error === null ? '' : messageOf(list.error, 'load your apps')
   const changed = feed.apps
     .filter((app) => app.source.kind === 'agent')
     .map((app) => `${app.id}:${app.source.kind === 'agent' ? app.source.revision : ''}`)
     .join(',')
-  useEffect(() => {
-    let live = true
-    listAgentApps()
-      .then((list) => {
-        if (live) setApps(list)
-      })
-      .catch((cause: unknown) => {
-        if (live) setError(failureText(cause))
-      })
-    return () => {
-      live = false
-    }
-  }, [changed])
+  useFeedRefresh(agentAppsQuery.queryKey, changed)
   return (
     <div className="apps-page">
       <p className="section-note">

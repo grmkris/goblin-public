@@ -2,6 +2,8 @@
 export const paths: string[] = [
   'packages/kit/**',
   'packages/app/src/ui/**',
+  'apps/web/src/agent-apps/**',
+  'apps/web/src/apps/**',
   'apps/web/src/components/apps/**',
   'apps/web/src/components/apps-page.tsx',
   'apps/web/src/components/app-manage.tsx',
@@ -16,6 +18,7 @@ export const paths: string[] = [
   'apps/web/src/lib/host-context.ts',
   'apps/web/src/lib/startup-images.ts',
   'apps/web/test/app-*.test.ts',
+  'apps/web/test/agent-apps-queries.test.ts',
   'apps/web/test/attachment-draft.test.ts',
   'apps/web/test/files.test.ts',
   'apps/web/test/host-context.test.ts',

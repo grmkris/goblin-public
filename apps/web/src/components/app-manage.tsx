@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import type { AgentAppChange, AgentAppDetail, AgentAppJob, AppPower } from '@goblin/contracts'
 import {
@@ -13,55 +14,36 @@ import {
   NativeSelectOption,
   Skeleton,
 } from '@goblin/ui'
-import { changeAgentApp, deleteAgentApp, readAgentApp } from '../lib/agent-apps.ts'
+import { agentAppQuery, changeAgentAppMutation, deleteAgentAppMutation, useFeedRefresh } from '../agent-apps/queries.ts'
 import { jobLine } from '../lib/app-jobs.ts'
-import { failureText } from '../lib/boundary.ts'
+import { messageOf } from '../lib/query/app-error.ts'
+import { reportUnexpected } from '../lib/unexpected.ts'
 import { PageSection } from './page-section.tsx'
 import { powerText } from './parts/app-powers.tsx'
 import { AppTile } from './apps/app-tile.tsx'
 import { useWorkspaceFeed } from './workspace-feed.tsx'
 
-type Run = (change: AgentAppChange) => Promise<void>
+type Run = (change: AgentAppChange) => void
 
 const when = (at: number) => new Date(at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
 const kib = (bytes: number) => `${String(Math.max(0, Math.round(bytes / 1024)))} KB`
 
 /** One agent app, read and changed: every change answers with the app as it is after it. */
 function useAgentApp(name: string) {
-  const [app, setApp] = useState<AgentAppDetail>()
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
+  const queryClient = useQueryClient()
+  const detail = useQuery(agentAppQuery(name))
+  const change = useMutation(changeAgentAppMutation(queryClient, name))
   const feed = useWorkspaceFeed()
   const shown = feed.apps.find((each) => each.source.kind === 'agent' && each.source.name === name)
   const revision = shown?.source.kind === 'agent' ? `${shown.source.revision}:${JSON.stringify(shown.source.jobs)}` : ''
-  useEffect(() => {
-    let live = true
-    readAgentApp(name)
-      .then((detail) => {
-        if (live) setApp(detail)
-      })
-      .catch((cause: unknown) => {
-        if (live) setError(failureText(cause))
-      })
-    return () => {
-      live = false
-    }
-  }, [name, revision])
-  const run = useCallback<Run>(
-    async (change) => {
-      setBusy(true)
-      setError('')
-      try {
-        setApp(await changeAgentApp(name, change))
-      } catch (cause) {
-        setError(failureText(cause))
-      } finally {
-        setBusy(false)
-      }
-    },
-    [name],
-  )
-  return { app, error, busy, run }
+  useFeedRefresh(agentAppQuery(name).queryKey, revision)
+  const error =
+    change.error !== null
+      ? messageOf(change.error, 'change the app')
+      : detail.error === null
+        ? ''
+        : messageOf(detail.error, 'load the app')
+  return { app: detail.data, error, busy: change.isPending, run: change.mutate }
 }
 
 /** The app's words, its version, where it lives (which the owner may change) and the way to open it. */
@@ -89,7 +71,7 @@ function Overview({ app, busy, run }: { readonly app: AgentAppDetail; readonly b
             <NativeSelect
               value={app.home}
               disabled={busy}
-              onChange={(event) => void run({ kind: 'home', conversation: event.target.value })}
+              onChange={(event) => run({ kind: 'home', conversation: event.target.value })}
             >
               {homes.map((conversation) => (
                 <NativeSelectOption key={conversation.id} value={conversation.id}>
@@ -126,11 +108,11 @@ function JobRow({ job, busy, run }: { readonly job: AgentAppJob; readonly busy: 
         size="sm"
         variant="outline"
         disabled={busy}
-        onClick={() => void run({ kind: 'pause', action: job.action, paused: !paused })}
+        onClick={() => run({ kind: 'pause', action: job.action, paused: !paused })}
       >
         {paused ? 'Resume' : 'Pause'}
       </Button>
-      <Button size="sm" variant="outline" disabled={busy} onClick={() => void run({ kind: 'run', action: job.action })}>
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => run({ kind: 'run', action: job.action })}>
         Run now
       </Button>
     </li>
@@ -147,7 +129,7 @@ function PowerRow({ power, busy, run }: { readonly power: AppPower; readonly bus
         size="sm"
         variant={allowed ? 'outline' : 'default'}
         disabled={busy}
-        onClick={() => void run({ kind: 'power', power: power.kind, target: power.target, allowed: !allowed })}
+        onClick={() => run({ kind: 'power', power: power.kind, target: power.target, allowed: !allowed })}
       >
         {allowed ? 'Revoke' : 'Allow'}
       </Button>
@@ -171,7 +153,7 @@ function Versions({ app, busy, run }: { readonly app: AgentAppDetail; readonly b
               size="sm"
               variant="outline"
               disabled={busy}
-              onClick={() => void run({ kind: 'rollback', release: release.release })}
+              onClick={() => run({ kind: 'rollback', release: release.release })}
             >
               Go back
             </Button>
@@ -185,16 +167,10 @@ function Versions({ app, busy, run }: { readonly app: AgentAppDetail; readonly b
 /** Deleting erases the app for good; the owner types its name first. */
 function DeleteApp({ app }: { readonly app: AgentAppDetail }) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const remove = useMutation(deleteAgentAppMutation(queryClient, app.name))
   const [typed, setTyped] = useState('')
-  const [error, setError] = useState('')
-  async function remove(): Promise<void> {
-    try {
-      await deleteAgentApp(app.name, typed)
-      await navigate({ to: '/apps' })
-    } catch (cause) {
-      setError(failureText(cause))
-    }
-  }
+  const error = remove.error === null ? '' : messageOf(remove.error, 'delete the app')
   return (
     <Card>
       <CardContent>
@@ -205,7 +181,17 @@ function DeleteApp({ app }: { readonly app: AgentAppDetail }) {
           </p>
           <div className="flex gap-2">
             <Input value={typed} onChange={(event) => setTyped(event.target.value)} aria-label="App name" />
-            <Button variant="destructive" disabled={typed !== app.name} onClick={() => void remove()}>
+            <Button
+              variant="destructive"
+              disabled={typed !== app.name || remove.isPending}
+              onClick={() =>
+                remove.mutate(typed, {
+                  onSuccess: () => {
+                    navigate({ to: '/apps' }).catch(reportUnexpected)
+                  },
+                })
+              }
+            >
               Delete
             </Button>
           </div>
