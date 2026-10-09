@@ -2,8 +2,8 @@ import { type CommitPublication, type Harness, type Session } from '@earendil-wo
 import { RunAttribute, type RunAttributes, type RunEvent, type RunEventKind } from '@goblin/contracts/telemetry'
 import { nowMillis } from '../clock.ts'
 import { BACKGROUND, type PiContext } from '../pi/context.ts'
-import { answerAttributes, statusOfStop } from './attributes.ts'
-import { expectedFailure, failureSummary, safeErrorType, safeFailureCode } from './safety.ts'
+import { answerAttributes, failureAttributes, statusOfStop } from './attributes.ts'
+import { expectedFailure, failureSummary, safeFailureCode } from './safety.ts'
 import { MAX_FAILURE_LINES, type RunTelemetry, reportTelemetryFailure } from './events.ts'
 import { rehydrateTelemetry } from './rehydrate.ts'
 import {
@@ -122,12 +122,7 @@ const outcomeStatus = (outcome: Outcome) => {
 }
 const outcomeAttributes = (outcome: Outcome): RunAttributes => ({
   [RunAttribute.reason]: outcome.status,
-  ...(outcome.error === undefined
-    ? {}
-    : {
-        [RunAttribute.errorType]: safeErrorType(outcome.error),
-        [RunAttribute.error]: failureSummary(safeErrorType(outcome.error)),
-      }),
+  ...(outcome.error === undefined ? {} : failureAttributes(outcome.error)),
   ...(outcome.reason === undefined
     ? {}
     : {

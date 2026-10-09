@@ -8,7 +8,6 @@ import {
   RunAttribute,
   type RunAttributes,
 } from '@goblin/contracts/telemetry'
-import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 
 /** Only host-owned classifications may describe a failure in telemetry. Text lives in Pi, never here. */
@@ -51,19 +50,8 @@ const UPSTREAM = new Set([
   'unsupported',
   'content-limit',
 ])
-const Tagged = Schema.Struct({ _tag: Schema.String, reason: Schema.optional(Schema.String) })
 
-/** Unknown classes, reasons and remote text collapse to a stable code. Never use message, stack or cause. */
-export function safeErrorType(error: unknown): string {
-  const tagged = Schema.decodeUnknownOption(Tagged)(error)
-  if (Option.isSome(tagged)) {
-    const { _tag: tag, reason } = tagged.value
-    if (tag === 'UpstreamMcp' && reason !== undefined && UPSTREAM.has(reason)) return `${tag}:${reason}`
-    return Object.hasOwn(FAILURES, tag) ? tag : 'error'
-  }
-  return error instanceof Error && Object.hasOwn(FAILURES, error.name) ? error.name : 'error'
-}
-
+/** A stored failure code: a known one stays, anything else is `error`. `outcomeOf` (attributes.ts) classifies a failure. */
 export const safeFailureCode = (code: unknown): string => {
   if (typeof code !== 'string') return 'error'
   if (Object.hasOwn(FAILURES, code)) return code

@@ -17,9 +17,9 @@ import type { McpConnections } from '../mcp/service.ts'
 import { appChannel, appChannelReplies, appTelegramChannel } from '../storage/schema.ts'
 import { nowMillis } from '../clock.ts'
 import { writeLine } from '../observability/logger.ts'
-import { failureAttributes } from '../telemetry/attributes.ts'
+import { failureAttributes, outcomeOf } from '../telemetry/attributes.ts'
 import type { RunTelemetry } from '../telemetry/events.ts'
-import { expectedFailure, safeErrorType } from '../telemetry/safety.ts'
+import { expectedFailure } from '../telemetry/safety.ts'
 
 /** The tools a server must offer to carry the channel, all granted when the owner turns it on. */
 export const CHANNEL_TOOLS = ['inbox', 'send_message'] as const
@@ -85,7 +85,7 @@ const messageText = (message: typeof Message.Type) =>
 
 /** One line when a pull or a delivery fails: the alarm's step and the error's type, never message content. */
 export function reportChannelFailure(step: 'pull' | 'replies', error: unknown): void {
-  const tag = safeErrorType(error)
+  const tag = outcomeOf(error)
   writeLine(expectedFailure(tag) ? 'info' : 'warn', { event: 'wake', task: `channel.${step}`, 'error.type': tag })
 }
 
@@ -332,7 +332,7 @@ export class TelegramChannel {
       }
       await sent().catch(async (error: unknown) => {
         this.#record('channel.reply', operationId, createdAt * 1000, { ...reply, ...failureAttributes(error) })
-        await delivered({ operationId, pieces: pieces.length, errorType: safeErrorType(error) })
+        await delivered({ operationId, pieces: pieces.length, errorType: outcomeOf(error) })
         throw error
       })
       this.#record('channel.reply', operationId, createdAt * 1000, reply)

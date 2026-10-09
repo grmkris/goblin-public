@@ -6,8 +6,7 @@ import {
 } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
-import { describeError } from '../telemetry/attributes.ts'
-import { safeErrorType } from '../telemetry/safety.ts'
+import { describeError, outcomeOf } from '../telemetry/attributes.ts'
 
 type Context = Parameters<ToolRegistration['execute']>[2]
 
@@ -133,7 +132,7 @@ export function typedTool<I, O>(tool: TypedTool<I, O>): ToolRegistration {
       try {
         output = await tool.execute(input, api, context)
       } catch (cause) {
-        return failed(tool.failure?.(cause) ?? describeError(cause), safeErrorType(cause))
+        return failed(tool.failure?.(cause) ?? describeError(cause), outcomeOf(cause))
       }
       if (output instanceof ReadyResult) return output.result
       // SAFETY: the JSON codec's encoded side is JSON.

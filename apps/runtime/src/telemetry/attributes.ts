@@ -1,6 +1,7 @@
 import { RunAttribute, type RunAttributes } from '@goblin/contracts/telemetry'
 import { Predicate } from 'effect'
-import { failureSummary, safeErrorType } from './safety.ts'
+import { safeErrorType } from '../observability/report.ts'
+import { failureSummary, safeFailureCode } from './safety.ts'
 
 /** The parts of a model response telemetry reads; pi-ai's `AssistantMessage` has them. */
 export type Answer = {
@@ -84,11 +85,19 @@ export function describeError(error: unknown): string {
   return parts.join(', caused by ').slice(0, MAX_ERROR)
 }
 
-/** A safe failure classification, including the finite MCP transport reasons. */
-export const outcomeOf = safeErrorType
+/**
+ * A failure's telemetry code: its type (`safeErrorType`) when telemetry has a summary for it, an `UpstreamMcp` failure
+ * with its finite reason, anything else `error`. Never its message, stack or cause.
+ */
+export function outcomeOf(error: unknown): string {
+  const type = safeErrorType(error)
+  const reason = type === 'UpstreamMcp' && Predicate.isObject(error) && 'reason' in error ? error.reason : undefined
+  const upstream = Predicate.isString(reason) ? safeFailureCode(`${type}:${reason}`) : 'error'
+  return upstream === 'error' ? safeFailureCode(type) : upstream
+}
 
 /** Full private error descriptions above are for tool results; these fixed summaries alone enter telemetry. */
 export const failureAttributes = (error: unknown): RunAttributes => ({
-  [RunAttribute.errorType]: safeErrorType(error),
-  [RunAttribute.error]: failureSummary(safeErrorType(error)),
+  [RunAttribute.errorType]: outcomeOf(error),
+  [RunAttribute.error]: failureSummary(outcomeOf(error)),
 })

@@ -2,7 +2,8 @@ import { RunAttribute, type RunEvent } from '@goblin/contracts/telemetry'
 import { describe, expect, it } from 'vitest'
 import { needsAttention } from '../src/telemetry/attention.ts'
 import { coverageGaps } from '../src/inspect/coverage.ts'
-import { safeErrorType, safeFailureCode, sanitizeAttributes } from '../src/telemetry/safety.ts'
+import { outcomeOf } from '../src/telemetry/attributes.ts'
+import { safeFailureCode, sanitizeAttributes } from '../src/telemetry/safety.ts'
 
 const event = (overrides: Partial<RunEvent> = {}): RunEvent => ({
   id: 'failed',
@@ -20,9 +21,9 @@ const event = (overrides: Partial<RunEvent> = {}): RunEvent => ({
 describe('safe telemetry and attention', () => {
   it('keeps arbitrary error text and unknown classes out, including legacy attributes', () => {
     const text = 'PRIVATE_APP_SOURCE_7fd8'
-    expect(safeErrorType(new Error(text))).toBe('Error')
-    expect(safeErrorType({ _tag: text, reason: text, message: text })).toBe('error')
-    expect(safeErrorType({ _tag: 'UpstreamMcp', reason: text })).toBe('UpstreamMcp')
+    expect(outcomeOf(new Error(text))).toBe('Error')
+    expect(outcomeOf({ _tag: text, reason: text, message: text })).toBe('error')
+    expect(outcomeOf({ _tag: 'UpstreamMcp', reason: text })).toBe('UpstreamMcp')
     expect(safeFailureCode(`UpstreamMcp:${text}`)).toBe('error')
     const safe = sanitizeAttributes({ 'error.type': text, 'goblin.error': text, 'goblin.reason': text, payload: text })
     expect(JSON.stringify(safe)).not.toContain(text)
