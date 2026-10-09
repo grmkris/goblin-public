@@ -17,7 +17,7 @@ import {
   PencilIcon,
   SearchIcon,
 } from 'lucide-react'
-import { failureText } from '../../lib/boundary.ts'
+import { messageOf } from '../../lib/query/app-error.ts'
 import { isArchived } from '../../lib/topics.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { useOrganize } from './organize.ts'
@@ -54,7 +54,9 @@ export function ChannelMenu({
   const [renaming, setRenaming] = useState(false)
   if (topic === undefined || feed.topics.length === 0) return <ChannelName name={name} working={working} />
   const change = (patch: Parameters<typeof organize.updateTopic>[1]) =>
-    void organize.updateTopic(topic.id, patch).catch((failure: unknown) => onFailure(failureText(failure)))
+    void organize
+      .updateTopic(topic.id, patch)
+      .catch((failure: unknown) => onFailure(messageOf(failure, 'change the topic')))
   const archived = isArchived(topic)
   return (
     <>
@@ -113,7 +115,7 @@ export function ArchivedBanner({
             setPending(true)
             organize
               .updateTopic(topic.id, { archived: false })
-              .catch((failure: unknown) => onFailure(failureText(failure)))
+              .catch((failure: unknown) => onFailure(messageOf(failure, 'restore the topic')))
               .finally(() => setPending(false))
           }}
         >

@@ -1,17 +1,17 @@
 import { useMemo } from 'react'
-import { OrganizeReceipt, TopicView, type UpdateTopic } from '@goblin/contracts'
-import { Schema } from 'effect'
-import { ApiFailure, failureText, request } from '../../lib/boundary.ts'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import type { TopicView, UpdateTopic } from '@goblin/contracts'
+import { Conflict } from '@goblin/contracts/api'
+import { messageOf } from '../../lib/query/app-error.ts'
+import { undoMutation } from '../../organize/queries.ts'
+import { createTopicMutation, updateTopicMutation } from '../../topics/queries.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
-
-const decodeTopic = Schema.decodeUnknownSync(TopicView)
-const decodeReceipt = Schema.decodeUnknownSync(OrganizeReceipt)
 
 /** Why an Undo was refused, in words: something changed the target since, or it was already undone. */
 export function undoRefusal(failure: unknown): string {
-  if (failure instanceof ApiFailure && failure.reason === 'touched') return 'Changed since, so it cannot be undone.'
-  if (failure instanceof ApiFailure && failure.reason === 'undone') return 'Already undone.'
-  return failureText(failure)
+  if (failure instanceof Conflict && failure.reason === 'touched') return 'Changed since, so it cannot be undone.'
+  if (failure instanceof Conflict && failure.reason === 'undone') return 'Already undone.'
+  return messageOf(failure, 'undo it')
 }
 
 /**
@@ -20,24 +20,27 @@ export function undoRefusal(failure: unknown): string {
  * throw what the server refused (a name in use, a Personal that cannot be archived).
  */
 export function useOrganize() {
+  const queryClient = useQueryClient()
   const { apply } = useWorkspaceFeed()
+  const create = useMutation(createTopicMutation(queryClient)).mutateAsync
+  const update = useMutation(updateTopicMutation(queryClient)).mutateAsync
+  const undo = useMutation(undoMutation(queryClient)).mutateAsync
   return useMemo(
     () => ({
       createTopic: async (name: string, operationId: string): Promise<TopicView> => {
-        const topic = decodeTopic(await request('/api/topics', { body: { name, operationId } }))
+        const topic = await create({ name, operationId })
         apply([{ type: 'topic', topic }])
         return topic
       },
       updateTopic: async (id: number, change: UpdateTopic): Promise<TopicView> => {
-        const topic = decodeTopic(await request(`/api/topics/${id}`, { method: 'PATCH', body: change }))
+        const topic = await update({ id, change })
         apply([{ type: 'topic', topic }])
         return topic
       },
       undo: async (receipt: string): Promise<void> => {
-        const undone = decodeReceipt(await request(`/api/organize/${receipt}/undo`, { body: {} }))
-        apply([{ type: 'receipt', receipt: undone }])
+        apply([{ type: 'receipt', receipt: await undo(receipt) }])
       },
     }),
-    [apply],
+    [apply, create, update, undo],
   )
 }

@@ -12,15 +12,16 @@ import {
   FieldLabel,
   Input,
 } from '@goblin/ui'
-import { ApiFailure, failureText } from '../../lib/boundary.ts'
+import { Conflict, NotFound } from '@goblin/contracts/api'
+import { messageOf } from '../../lib/query/app-error.ts'
 import { reportUnexpected } from '../../lib/unexpected.ts'
 import { useOrganize } from './organize.ts'
 
 /** What the owner reads when a Topic could not be named so. */
-function refusal(failure: unknown): string {
-  if (failure instanceof ApiFailure && failure.status === 409) return 'A topic already has that name.'
-  if (failure instanceof ApiFailure && failure.status === 404) return 'There is no such Topic.'
-  return failureText(failure)
+function refusal(failure: unknown, action: string): string {
+  if (failure instanceof Conflict && failure.reason === 'topic_name_taken') return 'A topic already has that name.'
+  if (failure instanceof NotFound) return 'There is no such Topic.'
+  return messageOf(failure, action)
 }
 
 /**
@@ -59,7 +60,7 @@ export function TopicDialog({
       }
     } catch (failure) {
       // expected: the dialog stays open and shows the refusal (a name in use) under the name
-      setError(refusal(failure))
+      setError(refusal(failure, topic === undefined ? 'create the topic' : 'rename the topic'))
     } finally {
       setPending(false)
     }
