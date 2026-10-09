@@ -1,26 +1,73 @@
 import { mutationOptions, queryOptions } from '@tanstack/react-query'
 import { Data, Option, Schema } from 'effect'
 import { authClient, redirectOf } from '../lib/auth-client.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 
 /**
  * Signing in and what is public about the deployment: Better Auth's own routes (through `authClient`) and the Worker's
- * `/health`, which keep their protocols outside the owner API. Keys are `[feature, kind, input]`.
+ * `/health`, which keep their protocols outside the owner API. Keys are `[feature, kind, input]`. Signing out stays in
+ * `session.tsx`, which leaves the page either way. Every call sends its own `x-goblin-request` id, so a failure quotes
+ * the reference its answer carried, or that id when nothing answered.
  */
 
-/** Better Auth answered with a refusal; `status` is the HTTP status, which `describeError` classifies. */
-export class AuthRefused extends Data.TaggedError('AuthRefused')<{ readonly status: number }> {}
+/**
+ * Better Auth or `/health` refused (`status`, which `describeError` classifies), or nothing answered (503). `ref` is
+ * what the owner quotes: the answer's `x-goblin-ref` or Cloudflare's `cf-ray`, else the request's own id.
+ */
+export class AuthRefused extends Data.TaggedError('AuthRefused')<{ readonly status: number; readonly ref: string }> {}
 
-/** A Better Auth answer's data, or its refusal thrown. */
-const settled = <A>({ data, error }: { readonly data: A; readonly error: { readonly status: number } | null }): A => {
-  if (error !== null) throw new AuthRefused({ status: error.status })
-  return data
+/** `text` ending with the reference to quote, when `error` is a sign-in or consent failure that has one. */
+export const quoting = (text: string, error: unknown): string =>
+  error instanceof AuthRefused ? `${text} · ref ${error.ref.slice(0, 8)}` : text
+
+/** `messageOf` for a sign-in or consent failure, with its reference. */
+export const authMessageOf = (error: unknown, action: string): string => quoting(messageOf(error, action), error)
+
+/** A short id for one request: what a failure quotes when no answer came back. */
+const requestId = (): string => crypto.randomUUID().replaceAll('-', '').slice(0, 8)
+const answerRef = (headers: Headers): string | undefined =>
+  headers.get('x-goblin-ref') ?? headers.get('cf-ray') ?? undefined
+
+/** The fetch options every Better Auth call here carries: its request id, and a hook that keeps its answer's ref. */
+type AuthFetch = {
+  readonly headers: Readonly<Record<string, string>>
+  readonly onResponse: (context: { readonly response: Response }) => void
+  readonly signal?: AbortSignal
+}
+type AuthAnswer<A> = { readonly data: A; readonly error: { readonly status: number } | null }
+
+/**
+ * Runs one Better Auth call: its data with the reference its answer quotes, or its refusal (or silence) as an
+ * AuthRefused with that reference.
+ */
+async function authCall<A>(
+  call: (fetchOptions: AuthFetch) => Promise<AuthAnswer<A>>,
+  options: { readonly signal?: AbortSignal; readonly headers?: Readonly<Record<string, string>> } = {},
+): Promise<{ readonly data: A; readonly ref: string }> {
+  const sent = requestId()
+  let ref: string | undefined
+  const fetchOptions: AuthFetch = {
+    headers: { ...options.headers, 'x-goblin-request': sent },
+    onResponse: ({ response }) => {
+      ref = answerRef(response.headers)
+    },
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  }
+  let answer: AuthAnswer<A>
+  try {
+    answer = await call(fetchOptions)
+  } catch {
+    throw new AuthRefused({ status: 503, ref: sent })
+  }
+  if (answer.error !== null) throw new AuthRefused({ status: answer.error.status, ref: ref ?? sent })
+  return { data: answer.data, ref: ref ?? sent }
 }
 
 /** Whether someone is signed in. Better Auth answers a visitor without a session with null, which is not a failure. */
 export const sessionQuery = queryOptions({
   queryKey: ['auth', 'session'],
   queryFn: async ({ signal }): Promise<'signed-in' | 'signed-out'> => {
-    const session = settled(await authClient.getSession({ fetchOptions: { signal } }))
+    const { data: session } = await authCall((fetchOptions) => authClient.getSession({ fetchOptions }), { signal })
     return session === null ? 'signed-out' : 'signed-in'
   },
   meta: { auth: 'optional' },
@@ -36,8 +83,14 @@ const decodeHealth = Schema.decodeUnknownOption(Health)
 export const healthQuery = queryOptions({
   queryKey: ['auth', 'health'],
   queryFn: async ({ signal }) => {
-    const response = await fetch('/health', { signal })
-    if (!response.ok) throw new AuthRefused({ status: response.status })
+    const sent = requestId()
+    let response: Response
+    try {
+      response = await fetch('/health', { headers: { 'x-goblin-request': sent }, signal })
+    } catch {
+      throw new AuthRefused({ status: 503, ref: sent })
+    }
+    if (!response.ok) throw new AuthRefused({ status: response.status, ref: answerRef(response.headers) ?? sent })
     const health = Option.getOrElse(decodeHealth(await response.json()), (): typeof Health.Type => ({}))
     return { signup: health.signup ?? 'closed', mail: health.mail === true }
   },
@@ -55,15 +108,17 @@ export const consentClientQuery = (clientId: string) =>
   queryOptions({
     queryKey: ['auth', 'client', clientId],
     queryFn: async ({ signal }) => {
-      const data = settled(
-        await authClient.$fetch('/oauth2/public-client', {
-          method: 'GET',
-          query: { client_id: clientId },
-          signal,
-        }),
+      const { data, ref } = await authCall(
+        (fetchOptions) =>
+          authClient.$fetch('/oauth2/public-client', {
+            method: 'GET',
+            query: { client_id: clientId },
+            ...fetchOptions,
+          }),
+        { signal },
       )
       const claims = decodeClient(data)
-      if (Option.isNone(claims)) throw new AuthRefused({ status: 502 })
+      if (Option.isNone(claims)) throw new AuthRefused({ status: 502, ref })
       const { client_name: name, client_uri: uri } = claims.value
       return { name: name ?? 'Unnamed client', ...(uri === undefined ? {} : { uri }) }
     },
@@ -72,22 +127,35 @@ export const consentClientQuery = (clientId: string) =>
 /** The owner's answer to a client's request; where Better Auth sends the browser next. */
 export const consentMutation = mutationOptions({
   mutationFn: async (body: Record<string, unknown>) => {
-    const next = redirectOf(settled(await authClient.$fetch('/oauth2/consent', { method: 'POST', body })))
-    if (next === undefined) throw new AuthRefused({ status: 502 })
+    const { data, ref } = await authCall((fetchOptions) =>
+      authClient.$fetch('/oauth2/consent', { method: 'POST', body, ...fetchOptions }),
+    )
+    const next = redirectOf(data)
+    if (next === undefined) throw new AuthRefused({ status: 502, ref })
     return next
-  },
-})
-
-/** Ends the session; a refusal leaves the session as it is. */
-export const signOutMutation = mutationOptions({
-  mutationFn: async (_: void) => {
-    settled(await authClient.signOut())
   },
 })
 
 /** Deletes the account; Better Auth asks for a sign-in within the last few minutes first. */
 export const deleteAccountMutation = mutationOptions({
   mutationFn: async (_: void) => {
-    settled(await authClient.deleteUser())
+    await authCall((fetchOptions) => authClient.deleteUser({ fetchOptions }))
   },
 })
+
+/** Emails a sign-in code; with an invite code, a new account may be made with it. */
+export const requestSignInCode = async (email: string, inviteCode: string): Promise<void> => {
+  await authCall(
+    (fetchOptions) => authClient.emailOtp.sendVerificationOtp({ email, type: 'sign-in', fetchOptions }),
+    inviteCode === '' ? {} : { headers: { 'x-invite-code': inviteCode } },
+  )
+}
+
+/** Signs in with an emailed code; the answer may name where an OAuth authorization continues. */
+export const verifySignInCode = async (email: string, otp: string, inviteCode: string): Promise<unknown> => {
+  const { data } = await authCall(
+    (fetchOptions) => authClient.signIn.emailOtp({ email, otp, fetchOptions }),
+    inviteCode === '' ? {} : { headers: { 'x-invite-code': inviteCode } },
+  )
+  return data
+}

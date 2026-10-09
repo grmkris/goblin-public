@@ -1,18 +1,19 @@
 import type { ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Alert, AlertDescription, Button } from '@goblin/ui'
 import { useSession } from '../lib/session.tsx'
 import { useBilling } from '../lib/billing.tsx'
 import { Navigate } from '@tanstack/react-router'
 import { Authentication } from './authentication.tsx'
+import { authMessageOf, sessionQuery } from '../auth/queries.ts'
 
-/** The session could not be checked: say so, and offer to check again rather than asking to sign in. */
+/** The session could not be checked: say so, with the reference to quote, and offer to check again. */
 function SessionUnavailable({ onRetry }: { readonly onRetry: () => void }) {
+  const { error } = useQuery(sessionQuery)
   return (
     <div className="gate-status">
       <Alert variant="destructive">
-        <AlertDescription>
-          Could not check whether you are signed in. Check your connection and try again.
-        </AlertDescription>
+        <AlertDescription>{authMessageOf(error, 'check whether you are signed in')}</AlertDescription>
       </Alert>
       <div className="card-actions">
         <Button variant="outline" onClick={onRetry}>

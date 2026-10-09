@@ -1,0 +1,51 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { AuthRefused, authMessageOf, healthQuery, requestSignInCode } from '../src/auth/queries.ts'
+import { testQueryClient } from '../src/lib/query/testing.ts'
+
+/** Answers every request with `response` and keeps what was sent. */
+const answering = (response: () => Response) => {
+  const sent: Request[] = []
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+    sent.push(new Request(input instanceof Request ? input : new URL(String(input), 'http://app.test'), init))
+    return response()
+  })
+  return sent
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('a sign-in failure', () => {
+  it("quotes the reference of the answer that refused it, Cloudflare's ray when the Worker stamped none", async () => {
+    vi.stubGlobal('location', new URL('http://app.test/'))
+    const sent = answering(() =>
+      Response.json({ error: 'busy' }, { status: 503, headers: { 'cf-ray': '8f1e2d3c4b5a6978-AMS' } }),
+    )
+    const failure = await testQueryClient()
+      .query(healthQuery)
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+    expect(failure).toBeInstanceOf(AuthRefused)
+    expect(failure).toMatchObject({ status: 503, ref: '8f1e2d3c4b5a6978-AMS' })
+    expect(authMessageOf(failure, 'reach goblin')).toMatch(/^Could not reach goblin\. .+ · ref 8f1e2d3c$/u)
+    expect(sent[0]?.headers.get('x-goblin-request')).toMatch(/^[0-9a-f]{8}$/u)
+  })
+
+  it('quotes the id it was sent with when nothing answered', async () => {
+    vi.stubGlobal('location', new URL('http://app.test/'))
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('Failed to fetch')
+    })
+    const failure = await requestSignInCode('owner@example.com', '').then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(AuthRefused)
+    expect(failure).toMatchObject({ status: 503 })
+    expect(failure instanceof AuthRefused ? failure.ref : '').toMatch(/^[0-9a-f]{8}$/u)
+    expect(authMessageOf(failure, 'send a code')).toMatch(/ · ref [0-9a-f]{8}$/u)
+  })
+})

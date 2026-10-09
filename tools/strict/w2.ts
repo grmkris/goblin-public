@@ -52,4 +52,5 @@ export const paths: string[] = [
   'apps/web/src/capabilities/queries.ts',
   'apps/web/src/auth/queries.ts',
   'apps/web/test/account-ui-queries.test.ts',
+  'apps/web/test/auth-queries.test.ts',
 ]

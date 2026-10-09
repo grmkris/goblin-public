@@ -14,8 +14,15 @@ import {
   failed,
   succeeded,
 } from '@goblin/ui'
-import { authClient, redirectOf } from '../lib/auth-client.ts'
-import { healthQuery } from '../auth/queries.ts'
+import { redirectOf } from '../lib/auth-client.ts'
+import {
+  AuthRefused,
+  authMessageOf,
+  healthQuery,
+  quoting,
+  requestSignInCode,
+  verifySignInCode,
+} from '../auth/queries.ts'
 import { AuthShell } from './auth-shell.tsx'
 
 type SignupMode = 'open' | 'invite' | 'closed'
@@ -24,14 +31,23 @@ type AuthConfig = {
   readonly signup: SignupMode
   readonly mail: boolean
   readonly status: 'loading' | 'loaded' | 'failed'
+  /** Why `/health` could not be read, with the reference to quote. */
+  readonly failure: string
   readonly retry: () => void
 }
 function useAuthConfig(): AuthConfig {
   const read = useQuery(healthQuery)
   const { refetch } = read
   const retry = useCallback(() => void refetch(), [refetch])
-  if (read.data !== undefined) return { ...read.data, status: 'loaded', retry }
-  return { signup: 'closed', mail: false, status: read.isError && !read.isFetching ? 'failed' : 'loading', retry }
+  if (read.data !== undefined) return { ...read.data, status: 'loaded', failure: '', retry }
+  const unread = read.isError && !read.isFetching
+  return {
+    signup: 'closed',
+    mail: false,
+    status: unread ? 'failed' : 'loading',
+    failure: unread ? authMessageOf(read.error, 'reach goblin') : '',
+    retry,
+  }
 }
 /** What the form shows once the settings are read: the email form, or why there is none. */
 function SignInBody({ config, form }: { readonly config: AuthConfig; readonly form: ReactNode }) {
@@ -46,7 +62,7 @@ function SignInBody({ config, form }: { readonly config: AuthConfig; readonly fo
     return (
       <div className="auth-body">
         <Alert variant="destructive">
-          <AlertDescription>Could not reach goblin. Check your connection and try again.</AlertDescription>
+          <AlertDescription>{config.failure}</AlertDescription>
         </Alert>
         <Button variant="outline" onClick={config.retry}>
           Try again
@@ -60,10 +76,20 @@ function SignInBody({ config, form }: { readonly config: AuthConfig; readonly fo
     </p>
   )
 }
-const refusal = (status: number | undefined, fallback: string): AuthActionResult => {
-  if (status === 403) return failed('New accounts need a valid invite. Existing users can sign in.')
-  if (status === 429) return failed('Too many tries. Wait a minute and try again.')
-  return failed(fallback)
+/** The refusals the form explains in its own words; anything else reads through messageOf. Each quotes its ref. */
+const OWN_WORDS: Readonly<Record<number, string>> = {
+  403: 'New accounts need a valid invite. Existing users can sign in.',
+  429: 'Too many tries. Wait a minute and try again.',
+}
+/** Reports a refused step to the owner in the form, with the reference to quote. */
+const reportRefusal = (error: unknown, action: string, words: Readonly<Record<number, string>> = {}) => {
+  const status = error instanceof AuthRefused ? error.status : undefined
+  const own = status === undefined ? undefined : (words[status] ?? OWN_WORDS[status])
+  return failed(own === undefined ? authMessageOf(error, action) : quoting(own, error))
+}
+const CODE_REFUSED = {
+  400: 'That code did not work. Check it or get a new one.',
+  401: 'That code did not work. Check it or get a new one.',
 }
 function continueAfter(data: unknown, onAuthenticated: () => void): AuthActionResult {
   const next = redirectOf(data)
@@ -73,17 +99,21 @@ function continueAfter(data: unknown, onAuthenticated: () => void): AuthActionRe
   return succeeded
 }
 function codeActions(inviteCode: string, onAuthenticated: () => void) {
-  const fetchOptions = { headers: inviteCode ? { 'x-invite-code': inviteCode } : {} }
   return {
     onRequestCode: async (email: string): Promise<AuthActionResult> => {
-      const { error } = await authClient.emailOtp.sendVerificationOtp({ email, type: 'sign-in', fetchOptions })
-      return error ? refusal(error.status, 'Could not send a code. Try again.') : succeeded
+      try {
+        await requestSignInCode(email, inviteCode)
+        return succeeded
+      } catch (error) {
+        return reportRefusal(error, 'send a code')
+      }
     },
     onVerifyCode: async (email: string, otp: string): Promise<AuthActionResult> => {
-      const { data, error } = await authClient.signIn.emailOtp({ email, otp, fetchOptions })
-      return error
-        ? refusal(error.status, 'That code did not work. Check it or get a new one.')
-        : continueAfter(data, onAuthenticated)
+      try {
+        return continueAfter(await verifySignInCode(email, otp, inviteCode), onAuthenticated)
+      } catch (error) {
+        return reportRefusal(error, 'sign in with that code', CODE_REFUSED)
+      }
     },
   }
 }

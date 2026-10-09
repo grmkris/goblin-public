@@ -17,7 +17,7 @@ import {
   Skeleton,
   Switch,
 } from '@goblin/ui'
-import { AuthRefused, deleteAccountMutation } from '../auth/queries.ts'
+import { AuthRefused, authMessageOf, deleteAccountMutation, quoting } from '../auth/queries.ts'
 import { residentStatus } from '../lib/labels.ts'
 import { budgetFraction } from '../lib/usage.ts'
 import { BillingCard } from './billing.tsx'
@@ -225,8 +225,8 @@ function DeleteAccountCard() {
     deleting.error === null
       ? ''
       : deleting.error instanceof AuthRefused && (deleting.error.status === 400 || deleting.error.status === 401)
-        ? 'Sign in again with an emailed code, then delete within 10 minutes.'
-        : messageOf(deleting.error, 'delete your account')
+        ? quoting('Sign in again with an emailed code, then delete within 10 minutes.', deleting.error)
+        : authMessageOf(deleting.error, 'delete your account')
   function remove(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault()
     deleting.mutate(undefined, { onSuccess: () => window.location.assign('/') })
