@@ -28,8 +28,11 @@ import { personaKeys } from '../personas/queries.ts'
 
 type WorkspaceFeed = WorkspaceState & {
   readonly error: string
-  /** A thread branched `from` a message, or an empty one of `topic`; undefined when that failed (see `error`). */
-  readonly create: (from?: CreateConversation['from'], topic?: number) => Promise<ConversationView | undefined>
+  /**
+   * A thread branched from a message, or an empty one of a topic, made once per `operationId`; undefined when that
+   * failed (see `error`).
+   */
+  readonly create: (create: CreateConversation) => Promise<ConversationView | undefined>
   readonly update: (id: string, change: UpdateConversation) => Promise<void>
   /** The owner has seen the conversation's newest reply: it shows read at once, and the server keeps the mark. */
   readonly markRead: (id: string) => void
@@ -138,13 +141,9 @@ export function WorkspaceFeedProvider({
         }
       },
       reopenApp: async (id) => showApp(await closing({ id, closed: false })),
-      create: async (from, topic) => {
+      create: async (create) => {
         try {
-          const body = {
-            ...(from !== undefined && { from }),
-            ...(from === undefined && topic !== undefined && { topic }),
-          }
-          const view = await created(body)
+          const view = await created(create)
           show(view)
           return view
         } catch (failure) {

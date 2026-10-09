@@ -17,14 +17,16 @@ import { isClosed, rootParts, threadTitle } from '../../lib/threads.ts'
 import { reportUnexpected } from '../../lib/unexpected.ts'
 import { activityState } from '../../lib/workspace-feed.ts'
 import { MessageComposer } from '../composer.tsx'
+import type { SendExtras } from '../composer-state.ts'
 import { Notice } from '../conversation-dock.tsx'
 import { Conversation } from '../conversation.tsx'
-import { postMessage, useConversation, useDockInsets, useTranscript } from '../use-conversation.ts'
+import { useConversation, useDockInsets, useTranscript } from '../use-conversation.ts'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { KindMark, SubagentMenuItems, SubagentState } from './chat-marks.tsx'
 import { ChatView, ThreadRoot } from './chat-view.tsx'
 import { takeDraft } from './drafts.ts'
 import { usePanel } from './panel.tsx'
+import { useDraftStart } from './thread-start.ts'
 
 /** What "Share back" asks a thread's agent: it answers with `share_back`, into the chat it came from. */
 const SHARE_REQUEST = 'Share what we concluded here with the conversation this thread came from.'
@@ -201,24 +203,30 @@ function DraftView({ item, topic }: { readonly item: PanelItem; readonly topic: 
   const root = from === undefined ? [] : rootParts(parts, from.entry)
   const [notice, setNotice] = useState('')
   const [draft] = useState(takeDraft)
-  const started = useRef<string | undefined>(undefined)
+  const startDraft = useDraftStart(from?.conversation ?? panel.channel, topic)
   const section = useRef<HTMLElement>(null)
   const dock = useRef<HTMLDivElement>(null)
   useDockInsets(section, dock)
-  async function start(input: string, attachments: readonly string[], selections: readonly ComposerSelection[]) {
-    // A retry after a failed send reuses the thread the first attempt started.
-    started.current ??= (await feed.create(from, topic))?.id
-    const thread = started.current
-    if (thread === undefined) return false
+  async function start(
+    input: string,
+    attachments: readonly string[],
+    selections: readonly ComposerSelection[],
+    { personaOrder }: SendExtras,
+  ) {
     try {
-      await postMessage(thread, input, undefined, { attachments, selections })
+      const thread = await startDraft({
+        anchor: from === undefined ? 'empty' : { entry: from.entry },
+        message: { input, attachments, selections },
+        ...(personaOrder !== undefined && { personaOrder }),
+      })
+      if (thread === undefined) return false
+      panel.started(thread)
+      return true
     } catch (failure) {
       setNotice(messageOf(failure, 'send the message'))
       if (selections.length > 0) throw failure
       return false
     }
-    panel.started(thread)
-    return true
   }
   const parent = threadTitle(feed.conversations.find((view) => view.id === (from?.conversation ?? panel.channel)))
   return (
