@@ -9,6 +9,7 @@ import { Config, Effect, Option, Redacted, Schema } from 'effect'
 import { createHash, randomBytes } from 'node:crypto'
 import { chmod, readFile, stat, writeFile } from 'node:fs/promises'
 import { appChecks } from './smoke-apps.ts'
+import { delegateReported } from './smoke-entries.ts'
 import { publicSmoke } from './smoke-public.ts'
 
 const ObjectSchema = Schema.Record(Schema.String, Schema.MutableJson)
@@ -299,18 +300,6 @@ async function submitMessage(dev: DevClient, thread: string, input: string, step
   if (response.status !== 202) throw new Error(`${step}_submit_failed`)
 }
 
-/** Text from Pi's model messages, whether the provider returned a string or text content blocks. */
-function entryText(entry: JsonObject): string {
-  return objects(entry['model'] ?? [])
-    .flatMap((message) => {
-      const content = message['content']
-      return Array.isArray(content)
-        ? objects(content).flatMap((block) => (block['text'] === undefined ? [] : [string(block['text'])]))
-        : [string(content)]
-    })
-    .join(' ')
-}
-
 type ThreadCheck = { readonly thread: 'ok'; readonly shared: true }
 
 async function closeThread(dev: DevClient, thread: string): Promise<void> {
@@ -371,15 +360,7 @@ async function subagentChecks(dev: DevClient): Promise<SubagentCheck> {
     MAIN_HISTORY,
     (history) => {
       const entries = objects(history['entries']).filter((entry) => !seen.has(entry['id']))
-      const reportIndex = entries.findIndex(
-        (entry) => entry['kind'] === 'pi.user' && entryText(entry).includes('[from subagent smokecount]'),
-      )
-      return (
-        reportIndex >= 0 &&
-        entries
-          .slice(reportIndex + 1)
-          .some((entry) => entry['kind'] === 'pi.assistant' && entryText(entry).trim() !== '')
-      )
+      return delegateReported(entries, 'smokecount')
     },
     120_000,
     'subagent_report_missing',
