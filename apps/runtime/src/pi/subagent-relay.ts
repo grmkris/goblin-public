@@ -74,6 +74,8 @@ export type RelayInput = {
   readonly quote?: string
   /** The owner's operation id: the submission carries it, so their browser waits on it like on any message. */
   readonly requestId?: string
+  /** The operation whose turn called the tool that sent it (`subagent_spawn`, `subagent_send`): what its report answers. */
+  readonly parentOperation?: string
   readonly exclusions?: readonly HelperExclusion[]
   /** Whether its report is an input the spawner answers (`synthesize`), else a passive Delegate result. */
   readonly synthesize?: boolean
@@ -150,6 +152,7 @@ const StoredInput = Schema.Struct({
   whenBusy: Schema.Literals(['followUp', 'steer']),
   quote: Schema.optionalKey(Schema.String),
   requestId: Schema.optionalKey(Schema.String),
+  parentOperation: Schema.optionalKey(Schema.String),
   exclusions: Schema.optionalKey(HelperExclusions),
   synthesize: Schema.optionalKey(Schema.Boolean),
 })
@@ -240,9 +243,13 @@ type Report = {
   readonly failed: boolean
 }
 
+/** The operation a report answers: the turn that sent the job, or the owner's own message to the subagent. */
+const answers = (relay: Report['relay']): string | undefined => relay.input.parentOperation ?? relay.input.requestId
+
 /**
- * The report's flow: a passive Delegate result (`subagent_report`) or an input Goblin answers (`subagent_synthesize`).
- * A phase replayed after a restart writes nothing twice (request ids) but may record its flow again.
+ * The report's flow: a passive Delegate result (`subagent_report`) or an input Goblin answers (`subagent_synthesize`),
+ * caused by the operation it answers. A phase replayed after a restart writes nothing twice (request ids) but may
+ * record its flow again.
  */
 const reportFlow = ({ relay, chat, requestId, failed }: Report) =>
   recordFlow({
@@ -251,7 +258,7 @@ const reportFlow = ({ relay, chat, requestId, failed }: Report) =>
     actor: 'subagent',
     chat,
     operationId: requestId,
-    ...(relay.input.requestId === undefined ? {} : { parentOperation: relay.input.requestId }),
+    ...(answers(relay) === undefined ? {} : { parentOperation: answers(relay) }),
     synthesize: relay.input.synthesize === true,
     ...(failed ? { status: 'error', errorType: 'subagent_failed' } : { status: 'ok' }),
   })
@@ -268,9 +275,11 @@ const writeResult = (report: Report) =>
     } satisfies DelegateResultData
     const content = authoredContent(`subagent ${relay.input.name}`, text)
     const model = [{ role: 'user' as const, content, timestamp: yield* Clock.currentTimeMillis }]
+    const parentOp = answers(relay)
     yield* (yield* ChatOperations).passiveWrite(chat, {
       requestId,
       entry: { kind: 'app.delegate_result', data, model },
+      ...(parentOp === undefined ? {} : { parentOp }),
     })
     yield* reportFlow(report)
   })
@@ -292,7 +301,7 @@ const submitInput = (runtime: ReportArgs[1], context: ReportArgs[2], report: Rep
       Effect.gen(function* () {
         const session = yield* chats.session(chat)
         const spawner = yield* piCall(() => runtime.conversation(piConversationId(session), context))
-        if (chat === chats.primary && relay.input.origin === 'spawner') yield* track(requestId)
+        if (chat === chats.primary && relay.input.origin === 'spawner') yield* track(requestId, answers(relay))
         if (spawner !== undefined)
           yield* piCall(() => spawner.submit({ type: 'input', content, whenBusy: 'followUp', requestId }, context))
       }),
@@ -382,11 +391,15 @@ const register = (session: string, parent: string, name: string, exclusions: rea
   Conversations.use((conversations) => conversations.registerSubagent(session, parent, name, exclusions))
 
 /** Main's answer to its own subagent's report goes to Telegram too when the channel is on (channel/channel.ts). */
-const track = (requestId: string) =>
+const track = (requestId: string, parentOp: string | undefined) =>
   Effect.gen(function* () {
     const chats = yield* Chats
     const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
-    yield* (yield* ChatOperations).record(chats.primary, requestId, { kind: 'subagent_report', origin: 'agent' })
+    yield* (yield* ChatOperations).record(chats.primary, requestId, {
+      kind: 'subagent_report',
+      origin: 'agent',
+      ...(parentOp === undefined ? {} : { parentOp }),
+    })
     yield* (yield* Channel).track(requestId, now)
   })
 

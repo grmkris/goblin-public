@@ -74,7 +74,8 @@ const run = async (base: string, name: string) =>
 
 /**
  * A Persona's answer and a Delegate's spawn and report are each one content-free flow row in main: the answer with the
- * ask's order, the spawn by the agent's tool, the report by the subagent with the operation it answers.
+ * ask's order, the spawn by the agent's tool, the report by the subagent. Both name the turn that called the tool as
+ * the operation that caused them.
  */
 function flowChecks(result: typeof DelegationFlowsRun.Type): void {
   const flows = result.flows.value.flows
@@ -94,6 +95,7 @@ function flowChecks(result: typeof DelegationFlowsRun.Type): void {
         via: 'tool',
         actor: 'agent',
         chat: PRIMARY_CHAT,
+        parentOperation: SPAWN,
         synthesize: false,
         status: 'ok',
       }),
@@ -103,6 +105,7 @@ function flowChecks(result: typeof DelegationFlowsRun.Type): void {
         actor: 'subagent',
         chat: PRIMARY_CHAT,
         operationId: expect.stringMatching(/^subagent-report:/u),
+        parentOperation: SPAWN,
         synthesize: false,
         status: 'ok',
       }),

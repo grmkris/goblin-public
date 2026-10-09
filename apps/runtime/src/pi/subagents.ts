@@ -22,6 +22,7 @@ import { Chats, Conversations } from '../chats/service.ts'
 import { Resident } from '../mcp/service.ts'
 import { recordFlow } from '../organize/flows.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
+import { AgentInput } from '../runtime/input.ts'
 import { capabilityOffResult } from './capabilities.ts'
 import { BACKGROUND, conversationId } from './context.ts'
 import {
@@ -177,8 +178,21 @@ async function admit(run: RunProgram, agent: Subagent | undefined): Promise<'ope
   return 'reopened'
 }
 
-/** The `subagent_spawn` flow, in the spawner's chat: refused when the spawner already has a subagent of that name. */
-const spawned = (session: string, started: boolean, synthesize: boolean) =>
+/**
+ * The operation of the turn that made this tool call: run telemetry correlates each tool task with its turn
+ * (`tool:<task>`), so a spawn, and the report that answers it, name the turn that asked for them.
+ */
+const callingOperation = (api: Api): Effect.Effect<string | undefined, never, AgentInput> =>
+  AgentInput.useSync(({ telemetry }) => {
+    const scope = telemetry.scopeOf({ conversationId: String(api.conversationId), taskId: String(api.taskId) })
+    return 'operationId' in scope ? scope.operationId : undefined
+  })
+
+/**
+ * The `subagent_spawn` flow, in the spawner's chat, caused by the turn that called the tool: refused when the spawner
+ * already has a subagent of that name.
+ */
+const spawned = (session: string, started: boolean, synthesize: boolean, parentOperation: string | undefined) =>
   Effect.gen(function* () {
     const chat = Option.getOrUndefined(yield* (yield* Chats).chatOf(session))
     yield* recordFlow({
@@ -186,6 +200,7 @@ const spawned = (session: string, started: boolean, synthesize: boolean) =>
       via: 'tool',
       actor: 'agent',
       ...(chat === undefined ? {} : { chat }),
+      ...(parentOperation === undefined ? {} : { parentOperation }),
       synthesize,
       ...(started ? { status: 'ok' } : { status: 'refused', errorType: 'exists' }),
     })
@@ -440,6 +455,7 @@ export function subagentsExtension(run: RunProgram, members: (self: Extension) =
     const before = roster === undefined ? undefined : known(roster.agents, name)
     const admitted = await admit(run, before)
     if (admitted === 'closed-by-owner') return done(name, admitted, before)
+    const parentOperation = await run(callingOperation(api))
     const outcome = await api.commit(async (tx) => {
       const state = await tx.doc(Subagents, api.conversationId)
       const existing = known(state.agents, name)
@@ -454,14 +470,16 @@ export function subagentsExtension(run: RunProgram, members: (self: Extension) =
         whenBusy: 'followUp',
         exclusions,
         synthesize: state.agents[name]?.synthesize === true,
+        ...(parentOperation === undefined ? {} : { parentOperation }),
       } as const
       await tx.createTask(Relay, input, background)
       if (action === 'spawn') return 'started' as const
       return admitted === 'reopened' ? ('reopened' as const) : ('sent' as const)
     }, context)
+    const flow = spawned(String(api.conversationId), outcome === 'started', synthesize, parentOperation)
     if (action === 'spawn')
       // expected: the subagent is started; a refusal (plan) only loses its flow line, and the bridge reports a fault.
-      await run(spawned(String(api.conversationId), outcome === 'started', synthesize)).catch(() => undefined)
+      await run(flow).catch(() => undefined)
     return done(name, outcome, (await api.snapshot(Subagents, api.conversationId, context))?.agents[name])
   }
 
