@@ -391,7 +391,10 @@ describe('run telemetry outside Pi (unit)', () => {
       auxReporter(telemetry, 'naming'),
     )
     await expect(namer.complete('Name this thread.', 'we talked about trips', 20)).resolves.toBe('Trip plans')
-    await expect(namer.complete('Name this thread.', 'again', 20)).rejects.toThrow('HTTP 429 rate limited')
+    await expect(namer.complete('Name this thread.', 'again', 20)).rejects.toMatchObject({
+      _tag: 'ModelFailed',
+      detail: 'HTTP 429 rate limited',
+    })
     expect(spent).toBe(34)
     expect(collected.events()).toMatchObject([
       {

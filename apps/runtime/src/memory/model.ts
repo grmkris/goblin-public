@@ -1,4 +1,5 @@
 import type { Models } from '@earendil-works/pi-ai'
+import * as Schema from 'effect/Schema'
 import type { TokenUse } from '../budget-credits.ts'
 import { nowMillis } from '../clock.ts'
 import { MODEL_PROVIDER } from '../pi/model.ts'
@@ -6,6 +7,22 @@ import type { AuxCall } from '../telemetry/report.ts'
 
 /** Room for the thinking a model does before answering by default: it counts against `maxTokens`. */
 const THINKING_HEADROOM = 2048
+
+/**
+ * The cheap model gave no answer: `model` is not one of the offered models, or its call ended in an error or was cut
+ * short. `detail` is the provider's own error text, kept only for `modelFailureText`; the reporter never logs a field.
+ */
+export class ModelFailed extends Schema.TaggedError<ModelFailed>()('ModelFailed', {
+  model: Schema.String,
+  reason: Schema.Literals(['not_offered', 'error', 'aborted']),
+  detail: Schema.optional(Schema.String),
+}) {}
+
+/** A model failure as its text read before it was tagged: what an agent app's `llm()` shows (agent-apps/ports.ts). */
+export const modelFailureText = (failure: ModelFailed): string =>
+  failure.reason === 'not_offered'
+    ? `Memory model ${failure.model} is not offered`
+    : (failure.detail ?? `Memory model ${failure.reason}`)
 
 /** Narrow completion seam shared by resident memory and isolated benchmark writers. */
 export interface TextCompletion {
@@ -31,10 +48,10 @@ export class CheapModel {
     this.#report = report
   }
 
-  /** One completion without tools, its answer at most `maxTokens`; its text, or a throw when the model failed. */
+  /** One completion without tools, its answer at most `maxTokens`; its text, or `ModelFailed` when the model failed. */
   async complete(system: string, user: string, maxTokens: number, signal?: AbortSignal): Promise<string> {
     const model = this.#models.getModel(MODEL_PROVIDER, this.#id)
-    if (model === undefined) throw new Error(`Memory model ${this.#id} is not offered`)
+    if (model === undefined) throw new ModelFailed({ model: this.#id, reason: 'not_offered' })
     const startedAt = nowMillis()
     const message = await this.#models
       .completeSimple(
@@ -49,7 +66,11 @@ export class CheapModel {
     this.#report({ startedAt, message })
     this.#spent(message.usage)
     if (message.stopReason === 'error' || message.stopReason === 'aborted')
-      throw new Error(message.errorMessage ?? `Memory model ${message.stopReason}`)
+      throw new ModelFailed({
+        model: this.#id,
+        reason: message.stopReason,
+        ...(message.errorMessage === undefined ? {} : { detail: message.errorMessage }),
+      })
     return message.content
       .flatMap((block) => (block.type === 'text' ? [block.text] : []))
       .join('')

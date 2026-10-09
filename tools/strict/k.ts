@@ -5,6 +5,7 @@ export const paths: string[] = [
   'apps/runtime/src/memory/benchmark.ts',
   'apps/runtime/src/memory/log.ts',
   'apps/runtime/src/memory/memory.ts',
+  'apps/runtime/src/memory/model.ts',
   'apps/runtime/src/memory/recall.ts',
   'apps/runtime/src/memory/service.ts',
   'apps/runtime/src/memory/summarize.ts',
