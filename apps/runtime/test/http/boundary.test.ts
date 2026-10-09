@@ -98,3 +98,24 @@ test('a typed failure passes through; anything else, stored data that does not d
   expect(lines[0]).toMatchObject({ event: 'failure', where: 'http.toAppError', 'error.type': 'SchemaError' })
   expect(JSON.stringify(lines)).not.toContain(SECRET)
 })
+
+test('the failure line keeps the frames that name a location, even beside one that does not', () => {
+  const cause = new TypeError(SECRET)
+  cause.stack = [
+    `TypeError: ${SECRET}`,
+    '    at read (file:///worker.js:10:5)',
+    '    at async Promise.all (index 0)',
+    '    at serve (file:///worker.js:20:7)',
+  ].join('\n')
+  const lines = linesOf('error', () => toAppError(cause))
+  expect(lines).toEqual([
+    {
+      level: 'error',
+      event: 'failure',
+      where: 'http.toAppError',
+      'error.type': 'TypeError',
+      frames: ['at read (file:///worker.js:10:5)', 'at serve (file:///worker.js:20:7)'],
+      severity: 'Error',
+    },
+  ])
+})

@@ -28,6 +28,14 @@ export {
 const isAppError = Schema.is(AppError)
 
 /**
+ * The frames a failure line keeps: only those that end in a location (`file:line:col`). The logger drops a frames list
+ * whole when one entry is not a location (`at async Promise.all (index 0)`), so those are left out first.
+ */
+const LOCATION = /:\d{1,7}:\d{1,7}\)?$/u
+const locatedFrames = (cause: unknown): string[] =>
+  cause instanceof Error ? framesOf(cause).filter((frame) => LOCATION.test(frame)) : []
+
+/**
  * Known failures pass through; anything else becomes `Internal` without leaking its message to the caller. That
  * includes a `SchemaError`: a request that does not decode is refused as invalid input where it is decoded (`readJson`,
  * HttpApi's own request decoding), so one that reaches here came from stored data or a value the agent built, which is
@@ -40,7 +48,7 @@ export const toAppError = (cause: unknown): AppError => {
     event: 'failure',
     where: 'http.toAppError',
     'error.type': safeErrorType(cause),
-    frames: cause instanceof Error ? framesOf(cause) : [],
+    frames: locatedFrames(cause),
     severity: 'Error',
   })
   return new Internal({ reason: 'unexpected' })
