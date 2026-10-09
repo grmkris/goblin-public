@@ -5,12 +5,11 @@ import type { Severity } from 'effect/LogLevel'
 import * as Predicate from 'effect/Predicate'
 import * as References from 'effect/References'
 import { expectedFailure as expectedCode } from '../telemetry/safety.ts'
-import { type LineLevel, writeFiberLine } from './logger.ts'
+import { FRAME, type LineLevel, writeFiberLine } from './logger.ts'
 
 /** The log annotation that names where a failure was reported: `conversations.send`, `mcp.refresh`. */
 const WHERE = 'goblin.where'
 const MAX_FRAMES = 12
-const MAX_FRAME = 300
 const TAG = /^[A-Za-z][A-Za-z0-9_]{0,39}$/u
 const CLASS = /^[A-Za-z]{1,40}$/u
 
@@ -34,8 +33,10 @@ const classNameOf = (error: object): unknown => {
 }
 
 /**
- * The `at …` lines of a pretty error's stack. The first part of a stack is `name: message`, and a message can span
- * lines that look like frames, so that whole header is cut off first; a stack that does not start with it yields none.
+ * The `at …` lines of a pretty error's stack that name a code location (`file:line:col`); one without, such as
+ * `at new Promise (<anonymous>)`, is skipped, not the whole stack. The first part of a stack is `name: message`, and a
+ * message can span lines that look like frames, so that whole header is cut off first; a stack that does not start with
+ * it yields none.
  */
 export function framesOf(error: Error): string[] {
   const stack = error.stack ?? ''
@@ -47,9 +48,8 @@ export function framesOf(error: Error): string[] {
     .slice(header.length)
     .split('\n')
     .map((line) => line.trim())
-    .filter((line) => line.startsWith('at '))
+    .filter((line) => line.startsWith('at ') && FRAME.test(line))
     .slice(0, MAX_FRAMES)
-    .map((line) => line.slice(0, MAX_FRAME))
 }
 
 const LEVELS: Readonly<Record<Severity, LineLevel>> = {

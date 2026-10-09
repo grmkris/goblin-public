@@ -7,6 +7,7 @@ import {
   ReporterLive,
   expectedFailure,
   reportAndRecover,
+  framesOf,
   reportFailure,
   safeErrorType,
 } from '../../src/observability/report.ts'
@@ -122,5 +123,20 @@ describe('failure reporter', () => {
     expect(safeErrorType({ _tag: SECRET })).toBe('Object')
     expect(safeErrorType(Object.create(null))).toBe('Error')
     expect(safeErrorType(SECRET)).toBe('Error')
+  })
+
+  it('skips a frame without a code location instead of the whole stack', () => {
+    const error = new TypeError(SECRET)
+    error.stack = [
+      `TypeError: ${SECRET}`,
+      '    at load (file:///app/src/chats/directory.ts:144:9)',
+      '    at new Promise (<anonymous>)',
+      '    at async Promise.all (index 0)',
+      '    at run (file:///app/src/runtime/bridge.ts:40:20)',
+    ].join('\n')
+    expect(framesOf(error)).toEqual([
+      'at load (file:///app/src/chats/directory.ts:144:9)',
+      'at run (file:///app/src/runtime/bridge.ts:40:20)',
+    ])
   })
 })
