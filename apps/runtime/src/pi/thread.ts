@@ -7,6 +7,7 @@ import { Entitlements } from '../billing/gates.ts'
 import { Budget } from '../budget.ts'
 import { Chats, Conversations } from '../chats/service.ts'
 import { NotFound } from '../http/errors.ts'
+import { recordFlow } from '../organize/flows.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { typedTool } from './typed-tool.ts'
 
@@ -70,7 +71,9 @@ export function threadExtension(run: RunProgram) {
             const chat = found.value
             // expected: a spent budget or a failed name leaves the thread untitled, retried on its next response.
             yield* Effect.ignore(requireBudget.pipe(Effect.andThen(conversations.nameIfUntitled(chat))))
-            yield* conversations.announce(chat)
+            // Only a note actually written is the thread_announce flow; one owed nothing (or announced) records none.
+            if (yield* conversations.announce(chat))
+              yield* recordFlow({ flow: 'thread_announce', via: 'system', actor: 'agent', chat, status: 'ok' })
           })
           // expected: the bridge reports an unexpected failure; a refusal (plan, authority) only means no announce.
           void run(announce).catch(() => undefined)
