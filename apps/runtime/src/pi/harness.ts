@@ -2,7 +2,8 @@ import { PiHarness } from 'agents/harness/pi'
 import { createRegistry, Harness } from '@earendil-works/pi-durable'
 import type { Extension, Registry } from '@earendil-works/pi-durable'
 import type { PiRunRecorder } from '../telemetry/pi.ts'
-import { safeErrorType } from '../telemetry/safety.ts'
+import { writeLine } from '../observability/logger.ts'
+import { framesOf, safeErrorType } from '../observability/report.ts'
 import { askUserExtension } from './ask-user.ts'
 import { MAX_OUTPUT_TOKENS, type makePiModels } from './model.ts'
 import { personaExtension } from './persona.ts'
@@ -10,11 +11,16 @@ import { personaExtension } from './persona.ts'
 export type PiModels = ReturnType<typeof makePiModels>
 
 /**
- * One log line per failure Pi reports and carries on from (a hook that threw, a background task's failed step): what
- * failed and why, bounded, never the request or its content.
+ * One failure line per failure Pi reports and carries on from (a hook that threw, a background task's failed step): its
+ * type and code location, through the content-free logger, never the request, its content or the error's message.
  */
 const onReport = (error: unknown) =>
-  console.warn(JSON.stringify({ level: 'warn', event: 'pi', error: safeErrorType(error) }))
+  writeLine('warn', {
+    event: 'failure',
+    where: 'pi.report',
+    'error.type': safeErrorType(error),
+    ...(error instanceof Error ? { frames: framesOf(error) } : {}),
+  })
 
 /** The agent's apps as Pi sees them: extensions installed into its registry and selected by default (ADR 0021). */
 export interface AppTools {
