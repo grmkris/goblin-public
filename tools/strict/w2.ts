@@ -46,4 +46,5 @@ export const paths: string[] = [
   'apps/web/test/server-search.test.ts',
   'apps/web/test/usage.test.ts',
   'apps/web/src/lib/account/queries.ts',
+  'apps/web/src/lib/agent/queries.ts',
 ]

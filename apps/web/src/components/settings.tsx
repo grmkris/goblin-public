@@ -1,7 +1,5 @@
-import { type SubmitEvent, useEffect, useId, useState } from 'react'
+import { type SubmitEvent, useId, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Schema } from 'effect'
-import { MemoryStatus, ResidentStatus } from '@goblin/contracts'
 import {
   Alert,
   AlertDescription,
@@ -29,10 +27,9 @@ import { RoutinesSection } from './routines.tsx'
 import { StatusLabel } from './status-label.tsx'
 import { useUsageRead } from './use-usage.ts'
 import { clientsQuery, revokeClientMutation } from '../lib/account/queries.ts'
+import { memoryQuery, residentQuery, setResidentMutation } from '../lib/agent/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 
-const decodeResident = Schema.decodeUnknownSync(ResidentStatus)
-const decodeMemory = Schema.decodeUnknownSync(MemoryStatus)
 const day = (seconds: number): string =>
   new Date(seconds * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })
 
@@ -75,13 +72,9 @@ function UsageCard() {
 }
 
 /** Main's memory: what the agent remembers of the main conversation, and how much of it it reads as summaries. */
-function MemoryCard({ onError }: { readonly onError: (message: string) => void }) {
-  const [status, setStatus] = useState<MemoryStatus>()
-  useEffect(() => {
-    void request('/api/agent/memory')
-      .then((data) => setStatus(decodeMemory(data)))
-      .catch((failure: unknown) => onError(failureText(failure)))
-  }, [onError])
+function MemoryCard() {
+  const read = useQuery(memoryQuery())
+  const status = read.data
   return (
     <Card>
       <CardHeader>
@@ -92,7 +85,11 @@ function MemoryCard({ onError }: { readonly onError: (message: string) => void }
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {status === undefined ? (
+        {read.error !== null ? (
+          <Alert variant="destructive">
+            <AlertDescription>{messageOf(read.error, 'read what your agent remembers')}</AlertDescription>
+          </Alert>
+        ) : status === undefined ? (
           <Skeleton className="h-8 w-64" />
         ) : (
           <p className="flex items-baseline gap-1.5 text-sm text-muted-foreground">
@@ -111,25 +108,17 @@ function MemoryCard({ onError }: { readonly onError: (message: string) => void }
  * Resident authority, as the owner meets it: whether the agent may use the tools they allowed while they are away. It
  * lasts 30 days from their last visit; turning it off stops all outbound use until they turn it on again.
  */
-function ResidentCard({ onError }: { readonly onError: (message: string) => void }) {
+function ResidentCard() {
   const id = useId()
-  const [status, setStatus] = useState<ResidentStatus>()
-  const [pending, setPending] = useState(false)
-  useEffect(() => {
-    void request('/api/agent/resident')
-      .then((data) => setStatus(decodeResident(data)))
-      .catch((error: unknown) => onError(failureText(error)))
-  }, [onError])
-  async function set(enabled: boolean): Promise<void> {
-    setPending(true)
-    try {
-      setStatus(decodeResident(await request('/api/agent/resident', { body: { enabled } })))
-    } catch (error) {
-      onError(failureText(error))
-    } finally {
-      setPending(false)
-    }
-  }
+  const queryClient = useQueryClient()
+  const read = useQuery(residentQuery)
+  const change = useMutation(setResidentMutation(queryClient))
+  const status = read.data
+  const pending = change.isPending
+  const failure =
+    (read.error !== null && messageOf(read.error, 'read whether your agent may work while you are away')) ||
+    (change.error !== null && messageOf(change.error, 'change whether your agent may work while you are away')) ||
+    ''
   return (
     <Card>
       <CardHeader>
@@ -147,11 +136,18 @@ function ResidentCard({ onError }: { readonly onError: (message: string) => void
               disabled={pending}
               aria-busy={pending}
               aria-labelledby={id}
-              onCheckedChange={(checked) => void set(checked)}
+              onCheckedChange={(checked) => change.mutate(checked)}
             />
           )}
         </CardAction>
       </CardHeader>
+      {failure && (
+        <CardContent>
+          <Alert variant="destructive">
+            <AlertDescription>{failure}</AlertDescription>
+          </Alert>
+        </CardContent>
+      )}
       {status !== undefined && (
         <CardContent>
           <div className="card-line">
@@ -289,8 +285,8 @@ export function Settings() {
       </PageSection>
       {active && (
         <PageSection id="agent" title="Your agent">
-          <ResidentCard onError={setError} />
-          <MemoryCard onError={setError} />
+          <ResidentCard />
+          <MemoryCard />
         </PageSection>
       )}
       {active && <RoutinesSection />}

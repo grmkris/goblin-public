@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
-import { Option, Schema } from 'effect'
-import { UsageToday } from '@goblin/contracts'
-import { failureText, request } from '../lib/boundary.ts'
-
-const decodeUsage = Schema.decodeUnknownOption(UsageToday)
+import { useEffect, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import type { UsageToday } from '@goblin/contracts'
+import { usageQuery } from '../lib/agent/queries.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 
 /** Today's usage as last read, and why the latest read failed, if it did. */
 type UsageRead = { readonly usage: UsageToday | undefined; readonly failure: string }
@@ -13,26 +12,13 @@ type UsageRead = { readonly usage: UsageToday | undefined; readonly failure: str
  * recorded; `running` is the conversation's run state. A failed read keeps the last value and says why it failed.
  */
 export function useUsageRead(running = false): UsageRead {
-  const [read, setRead] = useState<UsageRead>({ usage: undefined, failure: '' })
+  const read = useQuery(usageQuery)
   const wasRunning = useRef(running)
   const finished = wasRunning.current && !running
   wasRunning.current = running
-  const [reads, setReads] = useState(0)
-  useEffect(() => {
-    if (finished) setReads((count) => count + 1)
-  }, [finished])
-  useEffect(() => {
-    const controller = new AbortController()
-    void request('/api/agent/usage', { signal: controller.signal })
-      .then((data) =>
-        setRead((previous) => ({ usage: Option.getOrElse(decodeUsage(data), () => previous.usage), failure: '' })),
-      )
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) setRead((previous) => ({ ...previous, failure: failureText(error) }))
-      })
-    return () => controller.abort()
-  }, [reads])
-  return read
+  const { refetch } = read
+  useEffect(() => (finished ? void refetch() : undefined), [finished, refetch])
+  return { usage: read.data, failure: read.error === null ? '' : messageOf(read.error, "read today's usage") }
 }
 
 /** Today's usage for an indicator, which shows the last value it has and nothing before the first read succeeds. */

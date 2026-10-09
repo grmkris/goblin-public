@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useState } from 'react'
-import { Schema } from 'effect'
+import { Fragment, useEffect } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronsUpDownIcon, CpuIcon } from 'lucide-react'
-import { ModelChoice, type ModelOption } from '@goblin/contracts'
+import type { ModelChoice, ModelOption } from '@goblin/contracts'
 import {
   Button,
   DropdownMenu,
@@ -13,31 +13,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@goblin/ui'
-import { failureText, request } from '../lib/boundary.ts'
-
-const decodeChoice = Schema.decodeUnknownSync(ModelChoice)
+import { chooseModelMutation, modelQuery } from '../lib/agent/queries.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 
 /** The user's model and what the deployment offers. A pick shows at once and is undone if the server refuses it. */
 export function useModelChoice(onError: (message: string) => void) {
-  const [choice, setChoice] = useState<ModelChoice>()
+  const queryClient = useQueryClient()
+  const read = useQuery(modelQuery)
+  const pick = useMutation(chooseModelMutation(queryClient))
   useEffect(() => {
-    const controller = new AbortController()
-    void request('/api/agent/model', { signal: controller.signal })
-      .then((data) => setChoice(decodeChoice(data)))
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) onError(failureText(error))
-      })
-    return () => controller.abort()
-  }, [onError])
+    if (read.error !== null) onError(messageOf(read.error, 'load the models'))
+  }, [read.error, onError])
+  const choice = read.data
   async function choose(model: string): Promise<void> {
     if (choice === undefined || model === choice.current) return
-    const previous = choice
-    setChoice({ ...choice, current: model })
     try {
-      setChoice(decodeChoice(await request('/api/agent/model', { method: 'PUT', body: { model } })))
+      await pick.mutateAsync(model)
     } catch (error) {
-      setChoice(previous)
-      onError(failureText(error))
+      onError(messageOf(error, 'change the model'))
     }
   }
   return { choice, choose }

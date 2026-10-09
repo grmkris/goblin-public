@@ -1,11 +1,11 @@
 // The owner's one Telegram channel: a server with Telegram's tools can carry it, and only one does at a time.
-import { useCallback, useEffect, useId, useState } from 'react'
-import { Schema } from 'effect'
-import { ChannelStatus, type ToolView } from '@goblin/contracts'
+import { useEffect, useId } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { ToolView } from '@goblin/contracts'
 import { Switch } from '@goblin/ui'
-import { failureText, request } from '../lib/boundary.ts'
+import { changeChannelMutation, channelQuery } from '../lib/agent/queries.ts'
+import { messageOf } from '../lib/query/app-error.ts'
 
-const decodeChannel = Schema.decodeUnknownSync(ChannelStatus)
 const TELEGRAM_TOOLS = ['inbox', 'send_message']
 
 export const hasTelegramTools = (tools: readonly ToolView[]): boolean =>
@@ -15,32 +15,15 @@ const channelDate = (seconds: number): string => new Date(seconds * 1000).toLoca
 
 /** One Telegram channel for the owner, shared by every server card. */
 export function useTelegramChannel(onMessage: (message: string) => void) {
-  const [status, setStatus] = useState<ChannelStatus>()
-  const [pending, setPending] = useState(false)
-  const load = useCallback(async (): Promise<void> => {
-    try {
-      setStatus(decodeChannel(await request('/api/agent/channel')))
-    } catch (error) {
-      onMessage(failureText(error))
-    }
-  }, [onMessage])
-  useEffect(() => void load(), [load])
-  async function change(serverId: string | null): Promise<void> {
-    setPending(true)
-    try {
-      const data =
-        serverId === null
-          ? await request('/api/agent/channel', { method: 'DELETE' })
-          : await request('/api/agent/channel', { method: 'PUT', body: { serverId } })
-      setStatus(decodeChannel(data))
-    } catch (error) {
-      onMessage(failureText(error))
-    } finally {
-      await load()
-      setPending(false)
-    }
-  }
-  return { status, pending, change }
+  const queryClient = useQueryClient()
+  const read = useQuery(channelQuery)
+  const move = useMutation(changeChannelMutation(queryClient))
+  useEffect(() => {
+    if (read.error !== null) onMessage(messageOf(read.error, 'read the Telegram channel'))
+  }, [read.error, onMessage])
+  const change = (serverId: string | null): void =>
+    move.mutate(serverId, { onError: (error) => onMessage(messageOf(error, 'change the Telegram channel')) })
+  return { status: read.data, pending: move.isPending, change }
 }
 
 export type TelegramChannel = ReturnType<typeof useTelegramChannel>
@@ -79,7 +62,7 @@ export function TelegramControl({
         checked={here}
         disabled={pending}
         aria-labelledby={id}
-        onCheckedChange={(checked) => void change(checked ? serverId : null)}
+        onCheckedChange={(checked) => change(checked ? serverId : null)}
       />
     </div>
   )
