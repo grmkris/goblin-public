@@ -1,7 +1,9 @@
 import type { ModelChoice, ModelOption } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import { InvalidInput } from './http/errors.ts'
+import * as Context from 'effect/Context'
+import type * as Effect from 'effect/Effect'
+import { type AppError, InvalidInput } from './http/errors.ts'
 import { appModelChoice } from './storage/schema.ts'
 
 type Known = Omit<ModelOption, 'id' | 'contextWindow'>
@@ -103,3 +105,15 @@ export class ModelPicker {
     return this.choice()
   }
 }
+
+/** The model the owner's agent answers with, and the owner's pick among those the deployment offers. */
+export class Models extends Context.Service<
+  Models,
+  {
+    /** The pick when the deployment still offers it, else the default. */
+    readonly current: Effect.Effect<string>
+    readonly choice: Effect.Effect<ModelChoice>
+    /** Stores the pick (epoch seconds); `InvalidInput` for a model the deployment does not offer. */
+    readonly choose: (modelId: string, now: number) => Effect.Effect<ModelChoice, AppError>
+  }
+>()('goblin/models/Models') {}

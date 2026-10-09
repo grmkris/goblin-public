@@ -1,8 +1,10 @@
 import type { UsageToday } from '@goblin/contracts'
 import { eq, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
+import * as Context from 'effect/Context'
+import type * as Effect from 'effect/Effect'
 import { type CreditRates, DEFAULT_RATES, type TokenUse, milliCredits, totalTokens } from './budget-credits.ts'
-import { BudgetExhausted } from './http/errors.ts'
+import { type AppError, BudgetExhausted } from './http/errors.ts'
 import { appUsageDaily } from './storage/schema.ts'
 
 const DAY_SECONDS = 86_400
@@ -84,3 +86,16 @@ export class ModelBudget {
     if (today.used >= today.limit) throw new BudgetExhausted({ limit: today.limit, resetsAt: today.resetsAt })
   }
 }
+
+/** The agent's daily model budget in Credits (ADR 0026), as the programs use it. Instants are epoch seconds. */
+export class Budget extends Context.Service<
+  Budget,
+  {
+    /** Today's spend and allowance; the allowance is the account plan's. */
+    readonly today: (now: number) => Effect.Effect<UsageToday, AppError>
+    /** One model response's tokens, priced at `model`'s rate. */
+    readonly record: (use: TokenUse, now: number, model?: string) => Effect.Effect<void>
+    /** `BudgetExhausted` once today's spend has reached the allowance. */
+    readonly require: (now: number) => Effect.Effect<void, AppError>
+  }
+>()('goblin/budget/Budget') {}
