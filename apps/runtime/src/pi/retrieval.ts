@@ -119,9 +119,12 @@ export function retrievalExtension(run: RunProgram) {
         afterResponse: (_message, api) => {
           void run(
             Retrieval.use((retrieval) => attempt(() => retrieval.index.catchUp(String(api.conversationId)))),
-          ).catch(() => undefined)
+          ).catch(() => {
+            // expected: the next response or search catches up again; run reported anything unexpected
+          })
         },
         beforeRequest: async ({ messages }, api, context) => {
+          // expected: a request without sources is the turn as it was; run reported anything unexpected
           const sources = await automatic(run, api, context).catch(() => undefined)
           return sources === undefined || sources.length === 0
             ? undefined

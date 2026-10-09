@@ -148,6 +148,35 @@ describe('transcript index', () => {
     expect(excerpts(database.sqlite).map((row) => row.entry)).toEqual([2, 1_400])
   })
 
+  it('catches up one session at a time, and a catch-up that failed lets the next one run', async () => {
+    const database = chatDatabase()
+    open.push(database.close)
+    database.sqlite.exec(
+      "INSERT INTO app_conversations (session_id, pi_session, role, kind, created_at, topic_id) VALUES ('1', '1', 'primary', 'main', 1, 1)",
+    )
+    const pi = piSource({ '1': [entry(2, 1, 'pi.user', 'first'), entry(3, 1, 'pi.assistant', 'second')] })
+    let inside = 0
+    let overlapped = false
+    let failures = 1
+    const source: TranscriptSource = {
+      ...pi,
+      newest: async (session) => {
+        inside += 1
+        overlapped ||= inside > 1
+        await Promise.resolve()
+        inside -= 1
+        if (failures-- > 0) throw new Error('Pi is not answering')
+        return pi.newest(session)
+      },
+    }
+    const index = new TranscriptIndex(database.db, source, () => 1)
+    const [first, second] = await Promise.allSettled([index.catchUp('1'), index.catchUp('1')])
+    expect(first.status).toBe('rejected')
+    expect(second).toEqual({ status: 'fulfilled', value: 'done' })
+    expect(overlapped).toBe(false)
+    expect(excerpts(database.sqlite).map((row) => row.entry)).toEqual([2, 3])
+  })
+
   it('scrubs credential-shaped values before they are stored or shown', async () => {
     const { sqlite, index } = fixture()
     await index.catchUpAll()

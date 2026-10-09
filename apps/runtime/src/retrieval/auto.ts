@@ -78,6 +78,7 @@ export async function chooseSources(
 ): Promise<readonly RetrievalSource[]> {
   const offered = candidates.slice(0, AUTO_CANDIDATES)
   if (!offered.some((source) => source.score <= gate)) return []
+  // expected: a failed rerank abstains (fails closed); the model reports each call's error to the run ledger
   const raw = await model.complete(RERANK_SYSTEM, rerankPrompt(query, offered), RERANK_TOKENS, signal).catch(() => '')
   const ids = parseSelection(raw, new Set(offered.map((_source, index) => index + 1)))
   return (ids ?? []).slice(0, AUTO_SOURCES).flatMap((id) => offered[id - 1] ?? [])

@@ -64,6 +64,9 @@ export type SearchScope = { readonly exclude?: string; readonly topic?: number; 
 /** A use as recorded: its stable id, where it happened and what it found. */
 export type UseRecord = Omit<SourceUse, 'chat'> & { readonly chat: string; readonly session: string }
 
+/** A use the index has just written is not there to read back: the record table is not what the index made it. */
+class UseNotRecorded extends Schema.TaggedError<UseNotRecorded>()('UseNotRecorded', {}) {}
+
 const decodeSources = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(RetrievalSource)))
 const encodeSources = Schema.encodeSync(Schema.fromJsonString(Schema.Array(RetrievalSource)))
 
@@ -88,11 +91,13 @@ export class TranscriptIndex<RunResult = unknown> {
   /** Runs `work` after any catch-up of `session` in progress, so two never read the same windows at once. */
   async #serial<A>(session: string, work: () => Promise<A>): Promise<A> {
     const run = (this.#locks.get(session) ?? Promise.resolve()).then(work, work)
-    const settled = run.catch(() => undefined)
+    const settled: Promise<void> = run
+      // expected: the next catch-up only waits for this one to end; its own caller gets the failure through `run`
+      .catch(() => undefined)
+      .then(() => {
+        if (this.#locks.get(session) === settled) this.#locks.delete(session)
+      })
     this.#locks.set(session, settled)
-    void settled.then(() => {
-      if (this.#locks.get(session) === settled) this.#locks.delete(session)
-    })
     return run
   }
 
@@ -269,7 +274,7 @@ export class TranscriptIndex<RunResult = unknown> {
       .onConflictDoNothing()
       .run()
     const stored = this.recorded(use.id)
-    if (stored === undefined) throw new Error('retrieval use was not recorded')
+    if (stored === undefined) throw new UseNotRecorded()
     return stored
   }
 
