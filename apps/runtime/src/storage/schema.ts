@@ -1,4 +1,5 @@
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+export { appChatOperations } from './chat-operations.ts'
 export { appHome, appHomeOperations } from './home-schema.ts'
 
 /** Pi owns conversations; these tables hold application state only. Every name keeps the `app_` prefix. */
@@ -146,18 +147,6 @@ export const appChatMoves = sqliteTable('app_chat_moves', {
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 })
-
-/** Pi deduplicates per session; chat admission remembers the original session across future rebinds. */
-export const appChatOperations = sqliteTable(
-  'app_chat_operations',
-  {
-    chatId: text('chat_id').notNull(),
-    operationId: text('operation_id').notNull(),
-    sessionId: text('session_id').notNull(),
-    admittedAt: integer('admitted_at').notNull(),
-  },
-  (table) => [primaryKey({ columns: [table.chatId, table.operationId] })],
-)
 
 /**
  * What each conversation switched off for its agent (ADR 0010): one row per thing off there, so anything granted later
