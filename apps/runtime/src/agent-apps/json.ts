@@ -22,19 +22,13 @@ export function plainJson(value: unknown, limit: number, what: string): unknown 
   return JSON.parse(text)
 }
 
-type Validator = ReturnType<typeof Compile>
-const compiled = new Map<string, Validator>()
-
-/** Why `value` does not match `schema` (at most five reasons), or nothing when it does. */
+/**
+ * Why `value` does not match `schema` (at most five reasons), or nothing when it does. Each check compiles its schema:
+ * the agent keeps no compiled validators between requests (no module state in the Durable Object).
+ */
 export function mismatches(schema: unknown, value: unknown): readonly string[] {
-  const key = JSON.stringify(schema)
-  let validator = compiled.get(key)
-  if (validator === undefined) {
-    // SAFETY: the schema passed `schemaProblems`, so it is a JSON Schema of the keywords TypeBox compiles.
-    validator = Compile(schema as Parameters<typeof Compile>[0])
-    if (compiled.size > 500) compiled.clear()
-    compiled.set(key, validator)
-  }
+  // SAFETY: the schema passed `schemaProblems`, so it is a JSON Schema of the keywords TypeBox compiles.
+  const validator = Compile(schema as Parameters<typeof Compile>[0])
   if (validator.Check(value)) return []
   return [...validator.Errors(value)]
     .slice(0, 5)

@@ -79,11 +79,13 @@ export class ReadyResult {
   }
 }
 
-/** The signatures of the typed tools defined so far, by name: what `/mcp` and codemode will list. */
-const signatures = new Map<string, ToolSignature>()
-
-/** Every typed tool's signature, by name. */
-export const toolSignatures = (): readonly ToolSignature[] => [...signatures.values()]
+/** A typed tool's signature, what `/mcp` and codemode will list: computed from its definition, never kept. */
+export const toolSignature = <I, O>(tool: TypedTool<I, O>): ToolSignature => ({
+  name: tool.name,
+  description: tool.description,
+  inputSchema: parametersOf(tool.name, jsonSchemaOf(tool.input)),
+  outputSchema: jsonSchemaOf(tool.output),
+})
 
 /**
  * A free-form object field (an app member's input, an MCP tool's arguments): the object, or the JSON string of one,
@@ -109,8 +111,6 @@ const failed = (text: string, code: string): ToolExecutionResult => ({
 
 export function typedTool<I, O>(tool: TypedTool<I, O>): ToolRegistration {
   const inputSchema = parametersOf(tool.name, jsonSchemaOf(tool.input))
-  const outputSchema = jsonSchemaOf(tool.output)
-  signatures.set(tool.name, { name: tool.name, description: tool.description, inputSchema, outputSchema })
   // The model is offered the input's JSON form (an optional field may be null), so arguments decode through it.
   const decode = Schema.decodeUnknownSync(Schema.toCodecJson(tool.input))
   const encode = Schema.encodeSync(Schema.toCodecJson(tool.output))

@@ -1,7 +1,7 @@
 import type { ToolRegistration } from '@earendil-works/pi-durable'
 import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
-import { jsonSchemaOf, toolSignatures, typedTool } from '../src/pi/typed-tool.ts'
+import { type TypedTool, jsonSchemaOf, toolSignature, typedTool } from '../src/pi/typed-tool.ts'
 
 const Place = Schema.Struct({ name: Schema.String, lat: Schema.Number }).annotate({ identifier: 'Place' })
 const Trip = Schema.Struct({ from: Place, to: Place, days: Schema.optional(Schema.Int) })
@@ -10,7 +10,7 @@ const Plan = Schema.Struct({ legs: Schema.Number, note: Schema.String })
 // SAFETY: these tools read nothing of the API or context.
 const call = (tool: ToolRegistration, args: unknown) => tool.execute(args, {} as never, {} as never)
 
-const trips = typedTool({
+const trip: TypedTool<typeof Trip.Type, typeof Plan.Type> = {
   name: 'trip_plan',
   description: 'Plan a trip.',
   input: Trip,
@@ -22,7 +22,8 @@ const trips = typedTool({
   },
   details: (plan) => ({ kind: 'trip', legs: plan.legs }),
   terminate: (plan) => plan.legs > 5,
-})
+}
+const trips = typedTool(trip)
 
 describe('typed tools (unit, ADR 0027)', () => {
   it('offer the input as one JSON Schema without references, and list their signatures', () => {
@@ -34,7 +35,7 @@ describe('typed tools (unit, ADR 0027)', () => {
       properties: { from: { type: 'object', properties: { name: { type: 'string' } } } },
     })
     expect(trips.parameters).toEqual(schema)
-    expect(toolSignatures().find((tool) => tool.name === 'trip_plan')).toMatchObject({
+    expect(toolSignature(trip)).toMatchObject({
       description: 'Plan a trip.',
       outputSchema: { type: 'object', required: ['legs', 'note'] },
     })
