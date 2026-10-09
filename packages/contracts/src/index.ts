@@ -9,6 +9,7 @@ import { OrganizeReceipt, TopicView } from './topics.ts'
 import { HomeLayout } from './home.ts'
 export * from './home.ts'
 export * from './queue.ts'
+export * from './mcp.ts'
 
 export type JsonObject = { readonly [key: string]: JsonValue }
 export type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject

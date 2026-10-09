@@ -1,0 +1,215 @@
+import type { CallToolResult, ReadResourceResult } from '@modelcontextprotocol/client'
+import type {
+  ApprovalView,
+  CatalogEntry,
+  ConnectStart,
+  EventHealth,
+  Grant,
+  JsonObject,
+  RegistryView,
+  ResidentStatus,
+  ServerSource,
+  ServerSuggestion,
+  ServerView,
+  ToolView,
+} from '@goblin/contracts'
+import * as Context from 'effect/Context'
+import type * as Effect from 'effect/Effect'
+import type * as Option from 'effect/Option'
+import type { AppError } from '../http/errors.ts'
+import type { ApprovalRow, HeldCall } from './approvals.ts'
+import type { EventWebhook, EventWebhookResult, SubscribeConsumer } from './events.ts'
+import type { Consumer, Receipt, Subscription } from './events/store.ts'
+import type { Stage } from './suggested.ts'
+import type {
+  McpCallOptions,
+  McpConnectionSnapshot,
+  McpPromptResult,
+  McpRequestOptions,
+  McpServerConfig,
+  McpToolResult,
+} from './types.ts'
+
+// The MCP area's services (ADRs 0003, 0006, 0011, 0028). Each method is one Effect with the area's typed failures;
+// the instance clocks (seconds for authority and grants, milliseconds for approvals and Events) are read inside, so no
+// caller passes a time. Until each native layer lands (wave 3), `layers/mcp.ts` builds these over the legacy instances.
+
+/**
+ * Resident authority (ADR 0003): what lets tools run without a live browser session. Every owner request renews it; a
+ * revocation is sticky until the owner enables it again.
+ */
+export class Resident extends Context.Service<
+  Resident,
+  {
+    readonly status: () => Effect.Effect<ResidentStatus>
+    /** Owner activity: extends the window, unless the owner revoked authority. */
+    readonly renew: () => Effect.Effect<void>
+    /** Revokes it (renewing the row first, so the times are current) and answers the status after. */
+    readonly revoke: () => Effect.Effect<ResidentStatus>
+    /** Clears a revocation and renews; answers the status after. */
+    readonly enable: () => Effect.Effect<ResidentStatus>
+    /** Fails with `ResidentInactive` unless authority is current. */
+    readonly require: () => Effect.Effect<void, AppError>
+  }
+>()('goblin/mcp/Resident') {}
+
+/**
+ * The owner's servers (ADR 0006): the ones offered, adding and removing them, signing in, their tools, and the
+ * registries searched for more.
+ */
+export class McpServers extends Context.Service<
+  McpServers,
+  {
+    /** Every server offered, configured first, with its connection status. */
+    readonly list: () => Effect.Effect<readonly ServerView[]>
+    /** goblin's suggested servers for `stage`, each marked added when the owner already has its endpoint. */
+    readonly suggested: (stage: Stage | undefined) => Effect.Effect<readonly ServerSuggestion[]>
+    /** Adds a public https endpoint, labelled from its server card; it starts disconnected. */
+    readonly add: (endpoint: string, source?: ServerSource) => Effect.Effect<ServerView, AppError>
+    /** Removes an added server with its credentials, grants and pending sign-ins. Configured ones stay. */
+    readonly remove: (serverId: string) => Effect.Effect<void, AppError>
+    /** Starts (or silently renews) sign-in: the URL to send the owner's browser to, when one is needed. */
+    readonly beginConnect: (serverId: string) => Effect.Effect<ConnectStart, AppError>
+    /** Completes the sign-in the browser came back from; answers the server's id. The `state` is single-use. */
+    readonly finishConnect: (state: string, code: string, issuer?: string) => Effect.Effect<string, AppError>
+    /** Forgets the server's credentials and closes its connection; grants stay. */
+    readonly disconnect: (serverId: string) => Effect.Effect<void, AppError>
+    /** The server's tools as the owner sees them, from the live connection or a fresh one. */
+    readonly tools: (serverId: string, refresh: boolean) => Effect.Effect<readonly ToolView[], AppError>
+    /** Registry entries matching `query`, marking the ones already offered. */
+    readonly catalog: (query: string) => Effect.Effect<readonly CatalogEntry[], AppError>
+    /** The registries searched: the built-in ones first, then the owner's. */
+    readonly registries: () => Effect.Effect<readonly RegistryView[]>
+    readonly addRegistry: (url: string) => Effect.Effect<readonly RegistryView[], AppError>
+    readonly removeRegistry: (url: string) => Effect.Effect<readonly RegistryView[], AppError>
+  }
+>()('goblin/mcp/McpServers') {}
+
+/** The owner's exact grants: absence is denial, there are no wildcards, and remote metadata never grants anything. */
+export class McpGrants extends Context.Service<
+  McpGrants,
+  {
+    readonly list: () => Effect.Effect<readonly Grant[]>
+    /** A granted tool's ask-first switch and version, which a held call is checked against. */
+    readonly policy: (
+      serverId: string,
+      name: string,
+    ) => Effect.Effect<Option.Option<{ readonly askFirst: boolean; readonly version: string }>>
+    /** Grants or revokes one discovered tool; its App resource follows the tools that use it. */
+    readonly setTool: (serverId: string, name: string, allowed: boolean) => Effect.Effect<readonly Grant[], AppError>
+    /** A granted tool's calls wait for the owner's decision, or no longer do. */
+    readonly setAskFirst: (
+      serverId: string,
+      name: string,
+      enabled: boolean,
+    ) => Effect.Effect<readonly Grant[], AppError>
+    /** Grants or revokes an App as a whole: exactly the tools declaring `uri` and the resource itself. */
+    readonly setApp: (serverId: string, uri: string, allowed: boolean) => Effect.Effect<readonly Grant[], AppError>
+  }
+>()('goblin/mcp/McpGrants') {}
+
+/**
+ * The connections to remote servers: one cached client per server, every call behind the owner's exact grant, every
+ * result size-bounded. Remote data is untrusted; it never grants anything.
+ */
+export class McpConnections extends Context.Service<
+  McpConnections,
+  {
+    /** Every server the manager offers (configured and added), by id and endpoint. */
+    readonly servers: () => Effect.Effect<readonly McpServerConfig[]>
+    /** The live connection's discovered snapshot; none without a connection. */
+    readonly snapshot: (serverId: string) => Effect.Effect<Option.Option<McpConnectionSnapshot>>
+    /** Connects (or reuses the live connection) and answers what it discovered. */
+    readonly connect: (serverId: string, options?: McpRequestOptions) => Effect.Effect<McpConnectionSnapshot, AppError>
+    readonly callTool: (
+      serverId: string,
+      name: string,
+      args: Record<string, unknown>,
+      options?: McpCallOptions,
+    ) => Effect.Effect<McpToolResult, AppError>
+    /** A granted resource; `app` reads an App's `ui://` HTML bundle, under its larger bound. */
+    readonly readResource: (
+      serverId: string,
+      uri: string,
+      caller: 'human' | 'app',
+    ) => Effect.Effect<ReadResourceResult, AppError>
+    readonly getPrompt: (
+      serverId: string,
+      name: string,
+      args: Record<string, string>,
+    ) => Effect.Effect<McpPromptResult, AppError>
+    /** Closes every connection, when the agent's runtime goes. */
+    readonly closeAll: () => Effect.Effect<void, AppError>
+  }
+>()('goblin/mcp/McpConnections') {}
+
+/**
+ * Held calls (ADR 0028): the exact arguments of an ask-first call, frozen and encrypted until the owner decides, and
+ * dispatched at most once.
+ */
+export class Approvals extends Context.Service<
+  Approvals,
+  {
+    /** Holds `call` (or finds the same call held before); a different call under the same id is a conflict. */
+    readonly hold: (call: HeldCall) => Effect.Effect<ApprovalRow, AppError>
+    readonly find: (id: string) => Effect.Effect<Option.Option<ApprovalRow>>
+    /** The held call, or `NotFound`. */
+    readonly get: (id: string) => Effect.Effect<ApprovalRow, AppError>
+    /** Claims the owner's decision once, before any I/O; `changed` is false when it was already decided. */
+    readonly decide: (
+      id: string,
+      allowed: boolean,
+    ) => Effect.Effect<{ readonly row: ApprovalRow; readonly changed: boolean }, AppError>
+    /** The frozen arguments, decrypted. */
+    readonly arguments: (id: string) => Effect.Effect<JsonObject, AppError>
+    /** Records a dispatched call's result. */
+    readonly finish: (id: string, result: CallToolResult) => Effect.Effect<void, AppError>
+    /** An approved or dispatching call that did not complete: `uncertain` once it may have taken effect. */
+    readonly fail: (id: string, state: 'failed' | 'uncertain') => Effect.Effect<void>
+    /** A completed call's result, decrypted. */
+    readonly result: (id: string) => Effect.Effect<Option.Option<CallToolResult>, AppError>
+    /** The owner's view of the held call, its secret-looking fields redacted. */
+    readonly view: (id: string) => Effect.Effect<ApprovalView, AppError>
+  }
+>()('goblin/mcp/Approvals') {}
+
+/**
+ * MCP Events (ADR 0011): exact owner grants per event selector, durable subscriptions shared by their consumers, the
+ * signed webhook ingress and the alarm-driven sweep that polls and dispatches.
+ */
+export class Events extends Context.Service<
+  Events,
+  {
+    /** The server's subscriptions as the owner sees them; no callback URL, secret or event body. */
+    readonly health: (serverId: string) => Effect.Effect<readonly EventHealth[]>
+    /** Grants or revokes one exact selector (server, event name and canonical arguments). */
+    readonly grant: (
+      serverId: string,
+      name: string,
+      args: Record<string, unknown>,
+      allowed: boolean,
+    ) => Effect.Effect<void>
+    /** Binds a consumer revision to a (shared) subscription, subscribing remotely when none is active. */
+    readonly subscribe: (
+      input: SubscribeConsumer,
+    ) => Effect.Effect<{ readonly subscriptionId: string; readonly status: string }, AppError>
+    /** Retires a consumer revision; the last one tombstones the subscription and cleans up remotely when it can. */
+    readonly unsubscribe: (input: {
+      readonly consumerId: string
+      readonly revision: number
+    }) => Effect.Effect<{ readonly retired: boolean; readonly remoteCleanup: boolean }, AppError>
+    /** The consumer's active binding, if any. */
+    readonly activeConsumer: (consumerId: string) => Effect.Effect<Option.Option<Consumer>>
+    readonly subscription: (id: string) => Effect.Effect<Option.Option<Subscription>>
+    /** A consumer's durable acknowledgement of one delivery. */
+    readonly ack: (
+      input: Pick<Receipt, 'subscriptionId' | 'webhookId' | 'consumerId' | 'revision' | 'operationId'>,
+    ) => Effect.Effect<void, AppError>
+    /** Unsubscribes every consumer of one server (or of all), while the authorization that made them still holds. */
+    readonly disableServer: (serverId?: string) => Effect.Effect<void, AppError>
+    /** One signed webhook delivery, verified and stored before it is answered. */
+    readonly receive: (input: EventWebhook) => Effect.Effect<EventWebhookResult, AppError>
+    /** One maintenance sweep: dispatch, refresh or poll each subscription, prune, dispatch again. */
+    readonly maintain: () => Effect.Effect<void, AppError>
+  }
+>()('goblin/mcp/Events') {}
