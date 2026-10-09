@@ -17,7 +17,17 @@ import { sanitizeAttributes } from '../telemetry/safety.ts'
  */
 
 /** What a line is about. Closed: an area that writes a new kind of line adds it here, in alphabetical order. */
-const LOG_EVENTS = ['client_error', 'failure', 'flow', 'http.failure', 'job', 'rpc', 'skill-learner', 'wake'] as const
+const LOG_EVENTS = [
+  'client_error',
+  'failure',
+  'flow',
+  'http.failure',
+  'job',
+  'mcp',
+  'rpc',
+  'skill-learner',
+  'wake',
+] as const
 export type LogEvent = (typeof LOG_EVENTS)[number]
 
 /** A line's level; the console method follows it (`info` is `console.log`). */
