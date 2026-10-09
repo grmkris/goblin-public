@@ -1,4 +1,5 @@
 import * as Layer from 'effect/Layer'
+import { ChatOperations } from '../src/chats/service.ts'
 import type { ChatDirectory } from '../src/chats/directory.ts'
 import { KnowledgeLive } from '../src/layers/knowledge.ts'
 import type { ChatMemories } from '../src/memory/memory.ts'
@@ -14,6 +15,8 @@ type Given = {
   readonly retrieval?: ChatRetrieval
   readonly skills?: SkillLibrary
   readonly learner?: SkillLearner
+  /** Lane C's chat operations, where a memory's view is placed; none of its operations by default. */
+  readonly operations?: Layer.Layer<ChatOperations>
 }
 
 /** Lane K's services (layers/knowledge.ts: Memories, Retrieval, Skills, Learner) over the instances `given`. */
@@ -28,6 +31,7 @@ export const knowledgeOver = (given: Given) => {
         Layer.succeed(Retrieval, given.retrieval ?? unread),
         Layer.succeed(Skills, given.skills ?? unread),
         Layer.succeed(Learner, given.learner ?? unread),
+        given.operations ?? Layer.mock(ChatOperations)({}),
       ),
     ),
   )

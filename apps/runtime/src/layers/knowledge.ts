@@ -1,6 +1,7 @@
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import { ChatOperations } from '../chats/service.ts'
 import { Memories, type MemoryLine } from '../memory/service.ts'
 import type { SkillRequestOptions } from '../mcp/types.ts'
 import {
@@ -31,6 +32,7 @@ const MemoriesAdapter = Layer.effect(
   Effect.gen(function* () {
     const memories = yield* LegacyMemories
     const chats = yield* Chats
+    const operations = yield* ChatOperations
     return Memories.of({
       status: Effect.fn('Memories.status')(function* (chat?: string) {
         const target = chat === undefined ? chats.primary() : yield* attemptSync(() => chats.conversationAbove(chat))
@@ -52,8 +54,14 @@ const MemoriesAdapter = Layer.effect(
       truncate: Effect.fn('Memories.truncate')(function* (chat: string, size: number) {
         yield* Effect.sync(() => memories.truncate(chat, size))
       }),
+      // A view is placed as a passive write under the chat's admission lock, never beside a send (K1).
       step: Effect.fn('Memories.step')(function* (chat: string, signal: AbortSignal) {
-        return yield* attempt(() => memories.of(chat).step(signal))
+        const memory = memories.of(chat)
+        const next = yield* attempt(() => memory.advance(signal))
+        if (next === 'more' || next === 'done') return next
+        yield* operations.passiveWrite(chat, next.write)
+        yield* Effect.sync(() => memory.placed(next.through))
+        return 'done' as const
       }),
       startBuilder: Effect.fn('Memories.startBuilder')(function* (chat: string, start: (tx: Tx) => Promise<void>) {
         yield* attempt(() => memories.of(chat).startBuilder(start))

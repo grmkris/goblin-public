@@ -1,4 +1,10 @@
-import { type Conversation, type EntryRecord, type Extension, type Tx } from '@earendil-works/pi-durable'
+import {
+  type Conversation,
+  type EntryDraft,
+  type EntryRecord,
+  type Extension,
+  type Tx,
+} from '@earendil-works/pi-durable'
 import { estimateMessageTokens } from '@earendil-works/pi-ai/utils/estimate'
 import type { PiHarness } from 'agents/harness/pi'
 import { and, count, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
@@ -64,6 +70,15 @@ class MemoryMissing extends Schema.TaggedError<MemoryMissing>()('MemoryMissing',
 
 /** What one builder step did: there is more to build, or the memory has caught up. */
 export type StepResult = 'more' | 'done'
+
+/**
+ * A view ready to be placed in the Conversation: the passive write that places it (its request id makes a repeat the
+ * same write) and how far it reaches. Whoever writes it records it with `placed`.
+ */
+export type Placement = {
+  readonly through: number
+  readonly write: { readonly requestId: string; readonly entry: EntryDraft }
+}
 
 /** What a chat's memory works with: its tables, Pi, the cheap model that summarizes, and the chat directory. */
 export type MemoryDeps = {
@@ -182,11 +197,25 @@ export class ChatMemory {
   }
 
   /**
-   * One unit of work: log the Conversation's new entries, then summarize the first message not summarized yet, else
-   * build the merge the view waits for, else place a view that reaches further than the last one, once the
-   * Conversation has run far enough past the last one ({@link FOLD_TOKENS}).
+   * One unit of work, writing the view itself: `advance`, then any view it made is written into the Conversation
+   * directly and recorded. The agent places views through its chat operations instead (Memories.step), under the
+   * chat's admission lock; this is the benchmark's path.
    */
   async step(signal: AbortSignal): Promise<StepResult> {
+    const next = await this.advance(signal)
+    if (next === 'more' || next === 'done') return next
+    await (await this.#main()).submit({ type: 'write', ...next.write }, BACKGROUND)
+    this.placed(next.through)
+    return 'done'
+  }
+
+  /**
+   * One unit of work: log the Conversation's new entries, then summarize the first message not summarized yet, else
+   * build the merge the view waits for, else make a view that reaches further than the last one, once the
+   * Conversation has run far enough past the last one ({@link FOLD_TOKENS}). A view is returned to be placed, not
+   * written: after placing it, the caller records it with `placed`, and the memory has caught up.
+   */
+  async advance(signal: AbortSignal): Promise<StepResult | Placement> {
     await this.#collect()
     const total = this.size()
     const sizes = this.#sizes()
@@ -202,8 +231,18 @@ export class ChatMemory {
       await this.#build(view.wanted, sizes, signal)
       return 'more'
     }
-    if (through > this.viewThrough() && (await this.#pastFold())) await this.#place(view.parts, view.bytes, through)
+    if (through > this.viewThrough() && (await this.#pastFold()))
+      return this.#placement(view.parts, view.bytes, through) ?? 'done'
     return 'done'
+  }
+
+  /** The view through message `through` is in the Conversation: the next one must reach further. */
+  placed(through: number): void {
+    this.#db
+      .update(appChatMemoryState)
+      .set({ viewThrough: through })
+      .where(eq(appChatMemoryState.chatId, this.#chat))
+      .run()
   }
 
   /**
@@ -365,11 +404,11 @@ export class ChatMemory {
   }
 
   /**
-   * Writes the view into main, its head at the newest input so the model sees the view and then everything from that
-   * input on. A write submission, never a direct append: a busy Conversation places it at its next boundary. The request id
-   * makes a repeated step write it once.
+   * The write that places the view in main, its head at the newest input so the model sees the view and then
+   * everything from that input on. A write submission, never a direct append: a busy Conversation places it at its
+   * next boundary. The request id makes a repeated step write it once. None when the head message is gone.
    */
-  async #place(parts: readonly Node[], bytes: number, through: number): Promise<void> {
+  #placement(parts: readonly Node[], bytes: number, through: number): Placement | undefined {
     const texts = this.#texts(parts)
     const lines = parts.flatMap((part) => {
       const text = texts.get(nodeKey(part))
@@ -380,13 +419,11 @@ export class ChatMemory {
       .from(appChatMemoryLog)
       .where(this.#log(eq(appChatMemoryLog.idx, through)))
       .get()
-    if (head === undefined) return
+    if (head === undefined) return undefined
     const text = `<memory>\n${lines.join('\n')}\n</memory>`
-    await (
-      await this.#main()
-    ).submit(
-      {
-        type: 'write',
+    return {
+      through,
+      write: {
         requestId: `memory:${through}`,
         entry: {
           kind: 'app.memory',
@@ -395,13 +432,7 @@ export class ChatMemory {
           model: [{ role: 'user', content: [{ type: 'text', text }], timestamp: Date.now() }],
         },
       },
-      BACKGROUND,
-    )
-    this.#db
-      .update(appChatMemoryState)
-      .set({ viewThrough: through })
-      .where(eq(appChatMemoryState.chatId, this.#chat))
-      .run()
+    }
   }
 }
 

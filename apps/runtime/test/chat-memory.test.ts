@@ -1,8 +1,16 @@
+import type { Submission } from '@earendil-works/pi-durable'
+import * as Effect from 'effect/Effect'
+import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ChatDirectory } from '../src/chats/directory.ts'
+import { ChatOperations, type PassiveWrite } from '../src/chats/service.ts'
+import { Internal } from '../src/http/errors.ts'
 import { ChatMemories } from '../src/memory/memory.ts'
+import { Memories } from '../src/memory/service.ts'
 import { appChatMemoryLog, appChatMemoryNodes, appChatMemoryState } from '../src/storage/chat-memory.ts'
+import { appConversations } from '../src/storage/schema.ts'
 import { chatDatabase } from './chats-sqlite.ts'
+import { knowledgeOver } from './knowledge-layer.ts'
 
 const cleanups: (() => void)[] = []
 afterEach(() => {
@@ -106,5 +114,73 @@ describe('per-Topic memory (ADR 0032)', () => {
     )
     await expect(memories.of('1').zoom(5, 1, 10)).rejects.toMatchObject({ _tag: 'MemoryMissing', what: 'message' })
     expect(await memories.of('1').zoom(5, 1, 4)).toBe('No line 5+1.')
+  })
+
+  describe('placing a view (K1)', () => {
+    /**
+     * Personal (`1`) with three remembered messages, each summarized, and no view yet: the next step places a view
+     * through message 2, its newest input. Pi has nothing newer, and a fold threshold of 0 places it at once.
+     */
+    const placing = (write: (chat: string, write: PassiveWrite) => Effect.Effect<Submission, Internal>) => {
+      const { db, close } = chatDatabase()
+      cleanups.push(close)
+      db.insert(appConversations)
+        .values({ chatId: '1', piSession: '1', kind: 'main', role: 'primary', createdAt: 1 })
+        .run()
+      db.insert(appChatMemoryLog)
+        .values(log('1', [11, 12, 13]))
+        .run()
+      db.insert(appChatMemoryNodes)
+        .values([node('1', 0, 0), node('1', 0, 1), node('1', 0, 2)])
+        .run()
+      db.insert(appChatMemoryState).values({ chatId: '1', originEntry: 10, viewThrough: 0 }).run()
+      const pi = { conversation: async () => ({ entries: async () => ({ items: [], next: undefined }) }) }
+      // SAFETY: a step reads only `pi().conversation().entries()`, answered empty here.
+      const harness = { pi: async () => pi } as never
+      // SAFETY: every remembered message is summarized already, so no step asks the model.
+      const memories = new ChatMemories(
+        { db, harness, model: undefined as never, chats: new ChatDirectory(db) },
+        { foldTokens: 0 },
+        [],
+      )
+      const operations = Layer.mock(ChatOperations)({ passiveWrite: write })
+      const step = Memories.use((service) => service.step('1', new AbortController().signal)).pipe(
+        Effect.provide(knowledgeOver({ memories, chats: new ChatDirectory(db), operations })),
+      )
+      return { memories, step }
+    }
+
+    it("goes through the chat's passive write and is recorded once it is in", async () => {
+      const writes: { chat: string; write: PassiveWrite }[] = []
+      // SAFETY: the step only awaits the write; it never reads the submission back.
+      const submitted = {} as Submission
+      const { memories, step } = placing((chat, write) =>
+        Effect.sync(() => {
+          writes.push({ chat, write })
+          return submitted
+        }),
+      )
+      expect(await Effect.runPromise(step)).toBe('done')
+      expect(writes).toEqual([
+        {
+          chat: '1',
+          write: {
+            requestId: 'memory:2',
+            entry: expect.objectContaining({
+              kind: 'app.memory',
+              head: 13,
+              data: expect.objectContaining({ through: 2 }),
+            }),
+          },
+        },
+      ])
+      expect(memories.of('1').viewThrough()).toBe(2)
+    })
+
+    it('records nothing when the write fails, so the next step places the view again', async () => {
+      const { memories, step } = placing(() => Effect.fail(new Internal({ reason: 'unexpected' })))
+      expect(await Effect.runPromise(Effect.flip(step))).toMatchObject({ _tag: 'Internal' })
+      expect(memories.of('1').viewThrough()).toBe(0)
+    })
   })
 })
