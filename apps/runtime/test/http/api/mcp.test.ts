@@ -10,14 +10,13 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { NotFound } from '../../../src/http/errors.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
-import { McpConnectionsLive, McpGrantsLive, McpServersLive } from '../../../src/layers/mcp.ts'
+import { McpConnectionsLive, McpGrantsLive, McpServersLive, ResidentLive } from '../../../src/layers/mcp.ts'
 import { McpHandlers } from '../../../src/mcp/api.ts'
 import { Events as LegacyEvents } from '../../../src/mcp/events.ts'
 import { McpHost } from '../../../src/mcp/host.ts'
-import { Approvals, Events, Resident } from '../../../src/mcp/service.ts'
-import { ResidentAuthority } from '../../../src/resident.ts'
+import { Approvals, Events } from '../../../src/mcp/service.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
-import { Mcp, Resident as LegacyResident, Skills } from '../../../src/services.ts'
+import { Mcp, Skills } from '../../../src/services.ts'
 import { Apps } from '../../../src/apps/service.ts'
 import { Budget } from '../../../src/budget.ts'
 import { Capabilities } from '../../../src/capabilities/service.ts'
@@ -132,10 +131,9 @@ const fixture = async () => {
           ),
           Layer.succeed(Events, events),
           Layer.succeed(Approvals, approvals),
-          Layer.succeed(LegacyResident, new ResidentAuthority(db)),
+          ResidentLive.pipe(Layer.provide(sqliteDb(db))),
           plans(),
           Layer.mergeAll(
-            Layer.succeed(Resident, unread),
             Layer.succeed(LegacyEvents, unread),
             Layer.succeed(Skills, unread),
             Layer.succeed(ChatOperations, unread),

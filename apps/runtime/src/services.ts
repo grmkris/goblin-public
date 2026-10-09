@@ -5,7 +5,6 @@ import { type AppError, toAppError } from './http/errors.ts'
 import type { ModelBudget } from './budget.ts'
 import type { ModelPicker } from './models.ts'
 import type { McpHost } from './mcp/host.ts'
-import type { ResidentAuthority } from './resident.ts'
 import type { ChatDirectory } from './chats/directory.ts'
 import type { ConversationRegistry } from './conversations.ts'
 import type { ChatMemories } from './memory/memory.ts'
@@ -32,7 +31,6 @@ import type { ChatMover } from './chats/mover.ts'
 /** The Agent DO's application services, provided once per object through a ManagedRuntime (agent.ts). */
 export class Mcp extends Context.Service<Mcp, McpHost>()('goblin/Mcp') {}
 export class Approvals extends Context.Service<Approvals, McpApprovalStore>()('goblin/Approvals') {}
-export class Resident extends Context.Service<Resident, ResidentAuthority>()('goblin/Resident') {}
 export class Chats extends Context.Service<Chats, ChatDirectory>()('goblin/Chats') {}
 export class Conversations extends Context.Service<Conversations, ConversationRegistry>()('goblin/Conversations') {}
 /** The owner's Topics (ADR 0032): each with one Conversation; Personal holds Main. */

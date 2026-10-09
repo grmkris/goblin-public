@@ -31,7 +31,6 @@ import { Models } from '../../../src/models.ts'
 import type { PersonaTurnKit } from '../../../src/organize/kit.ts'
 import { Invocations, Personas } from '../../../src/personas/service.ts'
 import type { PersonaView } from '@goblin/contracts'
-import { ResidentAuthority } from '../../../src/resident.ts'
 import { Retrieval } from '../../../src/retrieval/service.ts'
 import type { RoutineController } from '../../../src/routines/controller.ts'
 import { RoutineRuns } from '../../../src/routines/service.ts'
@@ -45,6 +44,7 @@ import { Skills } from '../../../src/skills/service.ts'
 import type { ThreadAnchor } from '../../../src/chats/service.ts'
 import { appChatOperations, appConversations } from '../../../src/storage/schema.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
+import { currentResident } from '../../fixed-services.ts'
 import { callOwner } from '../../integration/owner-api.ts'
 
 const PLAN: AccountPlan = {
@@ -61,19 +61,6 @@ const PLAN: AccountPlan = {
 const fake = <T>(members: Partial<T>): T =>
   // SAFETY: every fake below is built through this one cast, and each is given every member its programs call.
   members as T
-
-/** Resident authority that is always current and counts the gate's renewals. */
-class CountingResident extends ResidentAuthority {
-  readonly renewals: number[] = []
-  constructor() {
-    // SAFETY: `renew` and `require` are overridden below and nothing else is called, so the database is never touched.
-    super(undefined as never)
-  }
-  override renew(now: number): void {
-    this.renewals.push(now)
-  }
-  override require(): void {}
-}
 
 const view = (id: string, extra: Partial<ConversationView> = {}): ConversationView => ({
   id,
@@ -233,7 +220,6 @@ const services = (calls: Calls, personas: readonly PersonaView[]) =>
     Layer.succeed(McpServers, fake<McpServers['Service']>({ list: () => Effect.succeed([]) })),
     Layer.succeed(McpGrants, fake<McpGrants['Service']>({ list: () => Effect.succeed([]) })),
     Layer.succeed(McpConnections, fake<McpConnections['Service']>({})),
-    Layer.succeed(Resident, fake<Resident['Service']>({ require: () => Effect.void })),
     Layer.succeed(
       Skills,
       fake<Skills['Service']>({
@@ -297,7 +283,7 @@ const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) =
   const flows: FlowEvent[] = []
   const record: PiRecord = { submitted: [], writes: [] }
   const harness = fakeHarness(record, calls)
-  const resident = new CountingResident()
+  const resident = currentResident()
   const plan = Effect.succeed(PLAN)
   const plans: EntitlementPolicy = { state: () => plan, require: () => plan }
   const registry = fake<ConversationRegistry>({ ...registryReads(), ...registryWrites(db, calls) })
@@ -308,7 +294,7 @@ const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) =
     Layer.succeed(Legacy.Chats, new ChatDirectory(db)),
     Layer.succeed(Legacy.Conversations, registry),
     Layer.succeed(Legacy.Moves, mover),
-    Layer.succeed(Legacy.Resident, resident),
+    Layer.succeed(Resident, resident.service),
     Layer.succeed(Entitlements, plans),
     Layer.succeed(AgentInput, instance(harness, calls)),
   )

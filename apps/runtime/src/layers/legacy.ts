@@ -41,16 +41,7 @@ import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { ResidentAuthority } from '../resident.ts'
 import { AppEngine, Approvals, Apps, Budget, Capabilities, Channel, Chats, Conversations, Files } from '../services.ts'
 import { Home, Invocations, Learner, Mcp, Memories, Models, Moves, Personas, Receipts } from '../services.ts'
-import {
-  Resident,
-  Retrieval,
-  RoutineRuns,
-  Routines,
-  RoutineUsageProjection,
-  Skills,
-  Topics,
-  Workspace,
-} from '../services.ts'
+import { Retrieval, RoutineRuns, Routines, RoutineUsageProjection, Skills, Topics, Workspace } from '../services.ts'
 import { FileStore } from '../files/store.ts'
 import { SkillLearner } from '../skills/learner.ts'
 import { SkillLibrary } from '../skills/library.ts'
@@ -273,7 +264,7 @@ const startConversations = Effect.gen(function* () {
     db,
     cheap,
     mcp: { host, cipher, resident, eventStore, skillState, grants, approvals },
-    services: { host, approvals, chats, resident, ...conversations, budget, models, memories, capabilities },
+    services: { host, approvals, chats, ...conversations, budget, models, memories, capabilities },
     routineServices,
   }
 })
@@ -322,7 +313,6 @@ const startChannels = Effect.fn('LegacyLive.startChannels')(function* (
 type LegacyServices =
   | Mcp
   | Approvals
-  | Resident
   | Conversations
   | Topics
   | Personas
@@ -355,7 +345,6 @@ const legacyContext = (started: Effect.Success<ReturnType<typeof startChannels>>
   Context.mergeAll(
     Mcp.context(started.host),
     Approvals.context(started.approvals),
-    Resident.context(started.resident),
     Conversations.context(started.conversations),
     Topics.context(started.topics),
     Personas.context(started.personas),

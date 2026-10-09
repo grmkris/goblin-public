@@ -36,12 +36,11 @@ import { OrganizeHandlers } from '../../../src/organize/api.ts'
 import { PersonasHandlers } from '../../../src/personas/api.ts'
 import { OrganizeReceipts } from '../../../src/organize/receipts.ts'
 import { PersonaRegistry } from '../../../src/personas/registry.ts'
-import * as Legacy from '../../../src/services.ts'
 import { appConversations } from '../../../src/storage/schema.ts'
 import { TopicsHandlers } from '../../../src/topics/api.ts'
 import { TopicRegistry } from '../../../src/topics/registry.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
-import { ActiveResident } from '../../fixed-services.ts'
+import { currentResident } from '../../fixed-services.ts'
 
 const PLAN: AccountPlan = {
   active: true,
@@ -53,14 +52,6 @@ const PLAN: AccountPlan = {
   cancelAtPeriodEnd: false,
 }
 
-/** Resident authority that is current and counts the gate's renewals. */
-class OwnerResident extends ActiveResident {
-  readonly renewals: number[] = []
-  override renew(now: number): void {
-    this.renewals.push(now)
-  }
-}
-
 /** Lane D's groups only, behind the real gate, router and failure rendering (the pattern of owner-http.test.ts). */
 const API = ownerApiOf(TopicsGroup, PersonasGroup, OrganizeGroup, HomeGroup)
 const LAYER = HttpApiBuilder.layer(API).pipe(
@@ -68,9 +59,6 @@ const LAYER = HttpApiBuilder.layer(API).pipe(
   Layer.provide(OwnerGateLive),
   Layer.provide(HttpServer.layerServices),
 )
-
-/** A service method no request here calls. */
-const unused = () => Effect.die('not used')
 
 const runtimes: ManagedRuntime.ManagedRuntime<OwnerHttp, never>[] = []
 const closes: (() => void)[] = []
@@ -117,7 +105,8 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
   const engine = Object.assign(Object.create(null) as AgentApps, { store: { apps: () => [] } })
   // SAFETY: as above, nothing here places an App, so the App registry is never read.
   const home = new HomeService(db, Object.create(null) as AppRegistry, engine)
-  const resident = new OwnerResident()
+  // Current, counting the gate's renewals; the organizing programs ask it only to `require` itself.
+  const resident = currentResident()
   const plan = Effect.succeed({ ...PLAN, active: options.active ?? true })
   const plans: EntitlementPolicy = {
     state: () => plan,
@@ -131,14 +120,6 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
   // SAFETY: a Topic created here has no open chat, so an archive (an Undo of its creation) reads only `openIn`.
   const conversations = Object.assign(Object.create(null) as Conversations['Service'], {
     openIn: () => Effect.succeed([]),
-  })
-  // The organizing programs ask resident authority only to `require` itself; the gate renews the legacy one.
-  const authority = Resident.of({
-    status: unused,
-    renew: unused,
-    revoke: unused,
-    enable: unused,
-    require: () => Effect.void,
   })
   const flows: FlowEvent[] = []
   // The feed reads its sources only for a listener, and none listens here.
@@ -160,8 +141,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
           Layer.succeed(RoutineRuns, unread),
           Layer.succeed(Apps, unread),
           Layer.succeed(McpConnections, unread),
-          Layer.succeed(Resident, authority),
-          Layer.succeed(Legacy.Resident, resident),
+          Layer.succeed(Resident, resident.service),
           Layer.succeed(Entitlements, plans),
           FlowEvents.layerWith((event) => Effect.sync(() => void flows.push(event))),
         ),

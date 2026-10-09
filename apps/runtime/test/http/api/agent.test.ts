@@ -20,15 +20,15 @@ import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { AgentHandlers } from '../../../src/routines/agent-api.ts'
 import { ChatsLive } from '../../../src/layers/conversation.ts'
 import { ModelBudgetLive, RoutinesLive } from '../../../src/layers/routines.ts'
-import { Events, McpConnections, McpGrants, McpServers } from '../../../src/mcp/service.ts'
+import { Events, McpConnections, McpGrants, McpServers, Resident } from '../../../src/mcp/service.ts'
 import { ModelChoiceStore, ModelPicker, modelOptions } from '../../../src/models.ts'
-import { ResidentAuthority } from '../../../src/resident.ts'
 import { RoutineController } from '../../../src/routines/controller.ts'
 import { RoutineUsage } from '../../../src/routines/usage.ts'
 import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
 import * as Legacy from '../../../src/services.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
+import { currentResident } from '../../fixed-services.ts'
 import { callOwner } from '../../integration/owner-api.ts'
 
 const PLAN: AccountPlan = {
@@ -39,15 +39,6 @@ const PLAN: AccountPlan = {
   status: 'active',
   hasCustomer: false,
   cancelAtPeriodEnd: false,
-}
-
-/** Resident authority that only renews: the gate renews it on every admitted request. */
-class RenewingResident extends ResidentAuthority {
-  constructor() {
-    // SAFETY: `renew` is overridden below and nothing else is called, so the database is never touched.
-    super(undefined as never)
-  }
-  override renew(): void {}
 }
 
 /** Only this group, behind the real gate, router and failure rendering. */
@@ -102,7 +93,7 @@ const fixture = () => {
     // The lane's other services: RoutinesLive builds their adapters, and nothing here calls them.
     Layer.succeed(Db, sqlite),
     Layer.succeed(Legacy.RoutineUsageProjection, Object.create(RoutineUsage.prototype)),
-    Layer.succeed(Legacy.Resident, new RenewingResident()),
+    Layer.succeed(Resident, currentResident().service),
     Layer.succeed(Entitlements, plans),
     // The agent handlers read only these from the instance input.
     Layer.succeed(

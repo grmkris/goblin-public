@@ -12,8 +12,6 @@ import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { ResidentLive } from '../../../src/layers/mcp.ts'
 import { ResidentHandlers } from '../../../src/mcp/resident-api.ts'
 import { Events } from '../../../src/mcp/service.ts'
-import { ResidentAuthority } from '../../../src/resident.ts'
-import { Resident as LegacyResident } from '../../../src/services.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 import { callOwner } from '../../integration/owner-api.ts'
 import { json, partial, plans, serve, sqliteDb } from './mcp-serve.ts'
@@ -32,22 +30,20 @@ afterEach(() => {
 })
 
 /**
- * The resident group over real resident authority on SQLite, built by the wave 1 adapter over the legacy instance the
- * owner gate also renews. Events are a fake that records the cleanup a revocation runs first.
+ * The resident group over real resident authority on SQLite (lane M's layer), which the owner gate also renews. Events
+ * are a fake that records the cleanup a revocation runs first.
  */
 const fixture = () => {
   const { db, close } = chatDatabase()
   closes.push(close)
-  const authority = new ResidentAuthority(db)
   const disabled: (string | undefined)[] = []
   const events = partial<Events['Service']>({
     disableServer: (serverId?: string) => Effect.sync(() => void disabled.push(serverId)),
   })
-  const legacy = Layer.succeed(LegacyResident, authority)
   const { fetch } = serve(
     OwnerHttp.serve(API, RESIDENT).pipe(
       Layer.provide(
-        Layer.mergeAll(ResidentLive.pipe(Layer.provide(sqliteDb(db))), legacy, Layer.succeed(Events, events), plans()),
+        Layer.mergeAll(ResidentLive.pipe(Layer.provide(sqliteDb(db))), Layer.succeed(Events, events), plans()),
       ),
     ),
   )

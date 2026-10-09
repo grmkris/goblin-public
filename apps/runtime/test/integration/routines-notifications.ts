@@ -13,7 +13,7 @@ import { ResidentAuthority } from '../../src/resident.ts'
 import { TelegramChannel } from '../../src/channel/channel.ts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { Entitlements } from '../../src/billing/gates.ts'
-import { Channel, Mcp, Resident } from '../../src/services.ts'
+import { Channel, Mcp } from '../../src/services.ts'
 import { ChannelAdapter, routineRunsOf } from '../../src/layers/routines.ts'
 import { RoutineRuns as RoutineRunsService } from '../../src/routines/service.ts'
 import { McpConnectionsLive, ResidentLive } from '../../src/layers/mcp.ts'
@@ -106,14 +106,7 @@ async function setupNotifications(storage: DurableObjectStorage, owner: string) 
     McpConnectionsLive,
     ResidentLive,
   ).pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        Layer.succeed(Mcp, host),
-        Layer.succeed(Channel, channel),
-        Layer.succeed(Resident, resident),
-        Layer.succeed(Db, db),
-      ),
-    ),
+    Layer.provide(Layer.mergeAll(Layer.succeed(Mcp, host), Layer.succeed(Channel, channel), Layer.succeed(Db, db))),
   )
   const plans = { state: fixturePlan, require: fixturePlan }
   // The bridge's `local`, which notifyRoutine runs its last-moment check through, over the same services.

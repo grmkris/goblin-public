@@ -14,23 +14,14 @@ import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { MemoryHandlers } from '../../../src/memory/api.ts'
 import { ChatMemories } from '../../../src/memory/memory.ts'
-import { ResidentAuthority } from '../../../src/resident.ts'
-import { Resident } from '../../../src/services.ts'
+import { Resident } from '../../../src/mcp/service.ts'
 import { appChatMemoryLog, appChatMemoryState } from '../../../src/storage/chat-memory.ts'
 import { appConversations } from '../../../src/storage/schema.ts'
 import { appTopics } from '../../../src/storage/topics.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
+import { currentResident } from '../../fixed-services.ts'
 import { callOwner } from '../../integration/owner-api.ts'
 import { knowledgeOver } from '../../knowledge-layer.ts'
-
-/** Resident authority the gate renews on every admitted request; nothing here reads it back. */
-class RenewedResident extends ResidentAuthority {
-  constructor() {
-    // SAFETY: `renew` is overridden below and nothing else is called, so the database is never touched.
-    super(undefined as never)
-  }
-  override renew(): void {}
-}
 
 const plans: EntitlementPolicy = {
   state: () => Effect.die('the gate only requires the plan'),
@@ -100,7 +91,7 @@ const fixture = () => {
       Layer.provide(
         Layer.mergeAll(
           knowledgeOver({ db, memories, chats }),
-          Layer.succeed(Resident, new RenewedResident()),
+          Layer.succeed(Resident, currentResident().service),
           Layer.succeed(Entitlements, plans),
         ),
       ),

@@ -20,10 +20,10 @@ import { FlowEvents } from '../../../src/observability/flows.ts'
 import { KeyedLock } from '../../../src/observability/lock.ts'
 import { TopicsHandlers } from '../../../src/topics/api.ts'
 import { OrganizeReceipts } from '../../../src/organize/receipts.ts'
-import { ResidentAuthority } from '../../../src/resident.ts'
 import { Receipts } from '../../../src/organize/service.ts'
 import { Changes, makeChanges } from '../../../src/runtime/changes.ts'
-import { Resident } from '../../../src/services.ts'
+import { Resident } from '../../../src/mcp/service.ts'
+import { currentResident } from '../../fixed-services.ts'
 import { Topics } from '../../../src/topics/service.ts'
 import { appConversations } from '../../../src/storage/schema.ts'
 import { TopicRegistry } from '../../../src/topics/registry.ts'
@@ -38,18 +38,6 @@ const PLAN: AccountPlan = {
   status: 'active',
   hasCustomer: false,
   cancelAtPeriodEnd: false,
-}
-
-/** Resident authority that only counts renewals: the gate renews it on every admitted request. */
-class CountingResident extends ResidentAuthority {
-  readonly renewals: number[] = []
-  constructor() {
-    // SAFETY: `renew` is overridden below and nothing else is called, so the database is never touched.
-    super(undefined as never)
-  }
-  override renew(now: number): void {
-    this.renewals.push(now)
-  }
 }
 
 /**
@@ -100,7 +88,7 @@ const fixture = (options: { readonly active?: boolean } = {}) => {
     retitle: () => undefined,
   })
   const receipts = new OrganizeReceipts(db, (_kind, target) => topics.get(Number(target)).revision)
-  const resident = new CountingResident()
+  const resident = currentResident()
   const plan = Effect.succeed({ ...PLAN, active: options.active ?? true })
   const plans: EntitlementPolicy = {
     state: () => plan,
@@ -125,7 +113,7 @@ const fixture = (options: { readonly active?: boolean } = {}) => {
           Layer.succeed(AgentInput, unread),
           Layer.succeed(RoutineRuns, unread),
           Layer.succeed(Invocations, unread),
-          Layer.succeed(Resident, resident),
+          Layer.succeed(Resident, resident.service),
           Layer.succeed(Entitlements, plans),
           FlowEvents.noop,
         ),

@@ -11,9 +11,9 @@ import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { InspectHandlers } from '../../../src/inspect/api.ts'
-import { ResidentAuthority } from '../../../src/resident.ts'
-import { Resident } from '../../../src/services.ts'
+import { Resident } from '../../../src/mcp/service.ts'
 import { flowRunEvent } from '../../../src/telemetry/events.ts'
+import { currentResident } from '../../fixed-services.ts'
 import { callOwner } from '../../integration/owner-api.ts'
 import { inspectionFixture } from '../../inspection-fixture.ts'
 
@@ -25,18 +25,6 @@ const PLAN: AccountPlan = {
   status: 'active',
   hasCustomer: false,
   cancelAtPeriodEnd: false,
-}
-
-/** Resident authority that only counts renewals: the gate renews it on every admitted request. */
-class CountingResident extends ResidentAuthority {
-  readonly renewals: number[] = []
-  constructor() {
-    // SAFETY: `renew` is overridden below and nothing else is called, so the database is never touched.
-    super(undefined as never)
-  }
-  override renew(now: number): void {
-    this.renewals.push(now)
-  }
 }
 
 /** Only the inspect group, behind the real gate, router and failure rendering. */
@@ -59,7 +47,7 @@ afterEach(async () => {
  * session `40`). The gate's plan and resident authority are the only fakes.
  */
 const fixture = (options: { readonly active?: boolean } = {}) => {
-  const resident = new CountingResident()
+  const resident = currentResident()
   const plan = Effect.succeed({ ...PLAN, active: options.active ?? true })
   const inspection = inspectionFixture()
   closes.push(inspection.close)
@@ -68,7 +56,7 @@ const fixture = (options: { readonly active?: boolean } = {}) => {
       Layer.provide(
         Layer.mergeAll(
           inspection.layer,
-          Layer.succeed(Resident, resident),
+          Layer.succeed(Resident, resident.service),
           Layer.succeed(Entitlements, {
             state: () => plan,
             require: () =>

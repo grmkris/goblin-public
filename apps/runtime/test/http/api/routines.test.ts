@@ -14,9 +14,9 @@ import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { TelegramChannel } from '../../../src/channel/channel.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
+import { Resident } from '../../../src/mcp/service.ts'
 import { RoutinesHandlers } from '../../../src/routines/api.ts'
 import { ModelBudgetLive, RoutinesLive } from '../../../src/layers/routines.ts'
-import { ResidentAuthority } from '../../../src/resident.ts'
 import { RoutineController } from '../../../src/routines/controller.ts'
 import { RoutineRunStore } from '../../../src/routines/runs.ts'
 import { RoutineStore } from '../../../src/routines/store.ts'
@@ -25,6 +25,7 @@ import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import * as Legacy from '../../../src/services.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
+import { currentResident } from '../../fixed-services.ts'
 import { callOwner } from '../../integration/owner-api.ts'
 
 const PLAN: AccountPlan = {
@@ -45,18 +46,6 @@ const DEFINITION: RoutineDefinition = {
   notifyTelegram: false,
   allowedTools: [],
   budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
-}
-
-/** Resident authority that only counts renewals: the gate renews it on every admitted request. */
-class CountingResident extends ResidentAuthority {
-  readonly renewals: number[] = []
-  constructor() {
-    // SAFETY: `renew` is overridden below and nothing else is called, so the database is never touched.
-    super(undefined as never)
-  }
-  override renew(now: number): void {
-    this.renewals.push(now)
-  }
 }
 
 /** Only this group, behind the real gate, router and failure rendering. */
@@ -103,13 +92,13 @@ const fixture = () => {
     },
   })
   const plans: EntitlementPolicy = { state: () => Effect.succeed(PLAN), require: () => Effect.succeed(PLAN) }
-  const resident = new CountingResident()
+  const resident = currentResident()
   const legacy = Layer.mergeAll(
     Layer.succeed(Db, sqlite),
     // The lane's other adapters: RoutinesLive builds them over these, and nothing here calls them.
     Layer.succeed(Legacy.RoutineUsageProjection, Object.create(RoutineUsage.prototype)),
     Layer.succeed(Legacy.Channel, Object.create(TelegramChannel.prototype)),
-    Layer.succeed(Legacy.Resident, resident),
+    Layer.succeed(Resident, resident.service),
     Layer.succeed(Entitlements, plans),
     // SAFETY: the routines handlers and the lane's layers read only these from the instance input.
     Layer.succeed(AgentInput, {

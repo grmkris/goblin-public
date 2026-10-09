@@ -8,9 +8,7 @@ import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { ResidentLive } from '../../../src/layers/mcp.ts'
 import { ResidentHandlers } from '../../../src/mcp/resident-api.ts'
-import { Events } from '../../../src/mcp/service.ts'
-import { ResidentAuthority } from '../../../src/resident.ts'
-import { Resident as LegacyResident } from '../../../src/services.ts'
+import { Events, Resident } from '../../../src/mcp/service.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 import { json, partial, plans, serve, sqliteDb } from './mcp-serve.ts'
 
@@ -21,23 +19,22 @@ const RESIDENT = HttpApiBuilder.layer(API).pipe(
   Layer.provide(HttpServer.layerServices),
 )
 
-/** Resident authority on SQLite that counts the renewals asked for from outside (revoking renews on its own). */
-class CountingResident extends ResidentAuthority {
-  readonly renewals: number[] = []
-  #revoking = false
-  override renew(now: number): void {
-    if (!this.#revoking) this.renewals.push(now)
-    super.renew(now)
-  }
-  override revoke(now: number): void {
-    this.#revoking = true
-    try {
-      super.revoke(now)
-    } finally {
-      this.#revoking = false
-    }
-  }
-}
+/** Resident authority on SQLite (lane M's layer), counting the renewals asked of it from outside. */
+const countingResident = (db: ReturnType<typeof chatDatabase>['db'], renewals: number[]) =>
+  Layer.effect(
+    Resident,
+    Effect.gen(function* () {
+      const resident = yield* Resident
+      return Resident.of({
+        ...resident,
+        renew: () =>
+          Effect.andThen(
+            Effect.sync(() => renewals.push(1)),
+            resident.renew(),
+          ),
+      })
+    }),
+  ).pipe(Layer.provide(ResidentLive.pipe(Layer.provide(sqliteDb(db)))))
 
 const closes: (() => void)[] = []
 afterEach(() => {
@@ -48,26 +45,19 @@ describe('the owner gate', () => {
   it('renews resident authority before an owner endpoint, but not before changing it (RenewsResident)', async () => {
     const { db, close } = chatDatabase()
     closes.push(close)
-    const authority = new CountingResident(db)
+    const renewals: number[] = []
     const events = partial<Events['Service']>({ disableServer: () => Effect.void })
     const { fetch } = serve(
       OwnerHttp.serve(API, RESIDENT).pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            ResidentLive.pipe(Layer.provide(sqliteDb(db))),
-            Layer.succeed(LegacyResident, authority),
-            Layer.succeed(Events, events),
-            plans(),
-          ),
-        ),
+        Layer.provide(Layer.mergeAll(countingResident(db, renewals), Layer.succeed(Events, events), plans())),
       ),
     )
     expect((await fetch(new Request('https://agent/api/agent/resident'))).status).toBe(200)
-    const renewed = authority.renewals.length
+    const renewed = renewals.length
     expect(renewed).toBeGreaterThan(0)
     const revoked = await fetch(json('POST', '/api/agent/resident', { enabled: false }))
     expect(revoked.status).toBe(200)
     expect(await revoked.json()).toMatchObject({ state: 'revoked' })
-    expect(authority.renewals).toHaveLength(renewed)
+    expect(renewals).toHaveLength(renewed)
   })
 })

@@ -5,7 +5,7 @@ import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { Entitlements } from '../../billing/gates.ts'
-import { Resident, nowSecondsEffect } from '../../services.ts'
+import { Resident } from '../../mcp/service.ts'
 import { RequestContext } from './context.ts'
 
 const isAppError = Schema.is(AppError)
@@ -24,7 +24,7 @@ export const OwnerGateLive = Layer.effect(
     const admit = (renews: boolean) =>
       Effect.gen(function* () {
         yield* plans.require()
-        if (renews) resident.renew(yield* nowSecondsEffect)
+        if (renews) yield* resident.renew()
       })
     return OwnerGate.of((handler, { group, endpoint }) =>
       Effect.flatMap(Effect.serviceOption(RequestContext), (context) => {

@@ -1,13 +1,28 @@
+import * as Clock from 'effect/Clock'
+import * as Effect from 'effect/Effect'
 import { CapabilityProfiles, type CapabilityScope, scopeOf } from '../src/capabilities/profiles.ts'
-import { ResidentAuthority } from '../src/resident.ts'
+import { Resident } from '../src/mcp/service.ts'
 
-/** Resident authority that is always active: the tools only ask it to `require` the current time. */
-export class ActiveResident extends ResidentAuthority {
-  constructor() {
-    // SAFETY: `require` is overridden below and nothing else is called, so the database is never touched.
-    super(undefined as never)
-  }
-  override require(): void {}
+/** A resident authority method no fake caller reaches. */
+const unused = () => Effect.die('resident authority: not used here')
+
+/**
+ * Resident authority as the owner gate and the programs use it (`Resident`), always current: `renewals` holds the time
+ * (epoch seconds) of each renewal the gate asked for. Nothing that stands it in asks for its status or changes it.
+ */
+export const currentResident = () => {
+  const renewals: number[] = []
+  const service = Resident.of({
+    status: unused,
+    renew: () =>
+      Effect.map(Clock.currentTimeMillis, (millis) => {
+        renewals.push(Math.floor(millis / 1000))
+      }),
+    revoke: unused,
+    enable: unused,
+    require: () => Effect.void,
+  })
+  return { service, renewals }
 }
 
 /** Fixed switches per conversation (everything on for any other): the tools only ask for a `scope`. */
