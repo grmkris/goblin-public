@@ -17,6 +17,7 @@ import { composerCase } from './native-composer.ts'
 import { telemetryCase } from './native-telemetry.ts'
 import { primaryBindingCase } from './native-chats.ts'
 import { topicsNativeCase } from './native-topics.ts'
+import { memoryPlacementCase, memoryViewCase } from './native-memory.ts'
 import {
   Listed,
   ModelRequest,
@@ -814,40 +815,14 @@ harness.test(
   }),
 )
 
-const MemoryRun = Schema.Struct({
-  summarized: Schema.Number,
-  request: ModelRequest,
-  zoomed: Schema.Struct({ status: Schema.Literal('done'), text: Schema.String }),
-  view: Schema.String,
-  earlier: Schema.Array(Schema.String),
-})
-
-harness.test(
-  'local workerd: main reads its earlier turns as a memory view, the newest verbatim, and zooms into it',
-  Effect.gen(function* () {
-    const { url } = yield* stack
-    const name = `memory-${yield* nextInt}`
-    const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/memory?name=${name}`))
-    const result = yield* Schema.decodeUnknownEffect(MemoryRun)(yield* Effect.promise(() => response.json()))
-    expect(result.summarized).toBeGreaterThanOrEqual(2)
-    // Messages are short here, so each is its own summary line, word for word (no model call).
-    expect(requestTurns(result.request)).toEqual([
-      '<memory>\n0+1|user: remember alpha\n1+1|talk: echo: remember alpha\n</memory>',
-      'remember beta',
-      'echo: remember beta',
-      'what do you remember?',
-    ])
-    expect(result.request.tools).toContain('zoom')
-    expect(result.zoomed.text).toBe('done: 0+1|user: remember alpha')
-    expect(result.view).toBe('app.memory')
-    expect(result.earlier).toContain('pi.user: "remember alpha"')
-  }),
-)
+harness.test('local workerd: main reads its earlier turns as a memory view and zooms into it', memoryViewCase(stack))
 
 harness.test(
   'local workerd: each Topic Conversation remembers apart, with its view only there, and its routines report there',
   stack.pipe(Effect.flatMap(({ url }) => topicsNativeCase(url))),
 )
+
+harness.test('local workerd: memory views placed during sends land between turns (K1)', memoryPlacementCase(stack))
 
 const SubagentRun = Schema.Struct({
   spawned: Schema.Struct({ status: Schema.Literal('done'), text: Schema.String }),

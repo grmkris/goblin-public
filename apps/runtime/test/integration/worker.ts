@@ -74,6 +74,7 @@ import { composerSequence, helperExclusionsProbe } from './composer-probe.ts'
 import { topicMemorySequence, topicRoutineSequence } from './native-topics.ts'
 import { eventsIngressCase } from './events-ingress-case.ts'
 import { Internal } from '../../src/http/errors.ts'
+import { memoryPlacementSequence } from './native-memory.ts'
 import { ResidentAuthority } from '../../src/resident.ts'
 
 const fixturePlan = () =>
@@ -1080,6 +1081,8 @@ function nativeFetch(request: Request, env: Env): Promise<Response> {
       return memorySequence(agent)
     case '/topic-memory':
       return topicMemorySequence(agent)
+    case '/memory-placement':
+      return memoryPlacementSequence(agent)
     case '/topic-routine':
       return topicRoutineSequence(agent)
     case '/binding':
