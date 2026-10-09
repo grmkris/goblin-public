@@ -3,9 +3,10 @@ import * as Effect from 'effect/Effect'
 import type { Applied } from '../agent-model.ts'
 import { nowSeconds } from '../clock.ts'
 import { toAppError } from '../http/errors.ts'
+import { FlowEvents } from '../observability/flows.ts'
 import { KeyedLock } from '../observability/lock.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
-import { type ChannelPorts, type TelegramChannel, reportChannelFailure } from './channel.ts'
+import { type ChannelPorts, type DeliveredReply, type TelegramChannel, reportChannelFailure } from './channel.ts'
 import { onChannel } from './turns.ts'
 
 type Ports = {
@@ -15,6 +16,20 @@ type Ports = {
   /** Schedules `channelReplies` again in `seconds`. */
   readonly again: (seconds: number) => Promise<unknown>
 }
+
+/** One answer's delivery to Telegram as a flow (ADR 0024): its turn, how many messages it took, and its failure. */
+const deliveryFlow = (reply: DeliveredReply) =>
+  FlowEvents.use((flows) =>
+    flows.record({
+      flow: 'telegram_delivery',
+      via: 'telegram',
+      actor: 'agent',
+      operationId: reply.operationId,
+      count: reply.pieces,
+      status: reply.errorType === undefined ? 'ok' : 'error',
+      ...(reply.errorType === undefined ? {} : { errorType: reply.errorType }),
+    }),
+  )
 
 /** The agent's one Telegram pull at a time, in arrival order (`KeyedLock` is FIFO). */
 const PULL_LOCK = 'channel.pull'
@@ -38,8 +53,11 @@ export class ChannelWakes {
       .catch((error: unknown) => reportChannelFailure('pull', error))
   }
   async replies(): Promise<void> {
+    // A flow that cannot be recorded never holds up, or repeats, a delivery.
+    const delivered = (reply: DeliveredReply) =>
+      this.#ports.run(deliveryFlow(reply)).catch((error: unknown) => reportChannelFailure('replies', error))
     const again = await this.#onChannel(async (channel, ports) =>
-      (await channel.deliver(ports, nowSeconds())) ? 15 : undefined,
+      (await channel.deliver(ports, nowSeconds(), delivered)) ? 15 : undefined,
     ).catch((error: unknown) => {
       reportChannelFailure('replies', error)
       return 300

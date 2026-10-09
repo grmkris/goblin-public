@@ -1,5 +1,6 @@
 import type { PiHarness } from 'agents/harness/pi'
 import type { RoutineManualRun } from '@goblin/contracts'
+import type { FlowStatus, FlowVia } from '@goblin/contracts/telemetry'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import { nextInt } from 'effect/Random'
@@ -8,7 +9,9 @@ import { requireBudget } from '../budget.ts'
 import { Conversations } from '../chats/service.ts'
 import { Resident } from '../mcp/service.ts'
 import { Models } from '../models.ts'
-import { reportFailure } from '../observability/report.ts'
+import { FlowEvents } from '../observability/flows.ts'
+import { reportFailure, safeErrorType } from '../observability/report.ts'
+import { Conflict } from '../http/errors.ts'
 import { RoutineRuns, RoutineUsage, Routines } from './service.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { BACKGROUND, conversationId } from '../pi/context.ts'
@@ -24,6 +27,45 @@ export type StartRun = (
 export type RoutineWake = (at: number) => Promise<void>
 
 const skipAs = (error: { readonly _tag: string }) => Effect.succeed(error._tag)
+
+const VIA: Readonly<Record<Firing['source'], FlowVia>> = {
+  manual: 'app',
+  once: 'schedule',
+  cron: 'schedule',
+  event: 'mcp',
+}
+const failure = (errorType: string | undefined) => (errorType === undefined ? {} : { errorType })
+
+/**
+ * A firing as a flow (ADR 0024): admitted (`ok`), recorded as skipped or turned away busy (`refused`), the same
+ * operation admitted before (`replayed`), or an admission that failed (`error`).
+ */
+const fireFlow = (firing: Firing, status: FlowStatus, errorType?: string) =>
+  FlowEvents.use((flows) =>
+    flows.record({
+      flow: 'routine_fire',
+      via: VIA[firing.source],
+      actor: firing.source === 'manual' ? 'owner' : 'routine',
+      operationId: firing.operationId,
+      status,
+      ...failure(errorType),
+    }),
+  )
+
+/** A run's frozen report into its Topic's Conversation as a flow, under the run's operation. */
+const reportFlow = (record: RoutineRun, topic: number | undefined, status: FlowStatus, errorType?: string) =>
+  FlowEvents.use((flows) =>
+    flows.record({
+      flow: 'routine_report',
+      via: 'system',
+      actor: 'routine',
+      operationId: record.reportRequestId,
+      parentOperation: record.operationId,
+      ...(topic === undefined ? {} : { topic }),
+      status,
+      ...failure(errorType),
+    }),
+  )
 
 /**
  * Why a firing is recorded as skipped rather than run: no plan, resident authority off, or today's budget spent. Any
@@ -59,8 +101,14 @@ export class RoutineRunner {
         const at = yield* Clock.currentTimeMillis
         const suffix = yield* nextInt
         const skip = forcedSkip ?? (yield* admissionSkip)
-        return yield* store.claim(firing, `rr_${at}_${Math.abs(suffix)}`, skip, at)
-      }),
+        const claim = yield* store.claim(firing, `rr_${at}_${Math.abs(suffix)}`, skip, at)
+        yield* fireFlow(firing, claim.created ? (claim.run.state === 'skipped' ? 'refused' : 'ok') : 'replayed')
+        return claim
+      }).pipe(
+        Effect.tapError((error) =>
+          fireFlow(firing, error instanceof Conflict ? 'refused' : 'error', safeErrorType(error)),
+        ),
+      ),
     )
     if (claimed.run.state === 'admitted' || claimed.run.state === 'running') await this.start(claimed.run)
     await this.#wake(Date.now() + 1000)
@@ -161,7 +209,8 @@ export class RoutineRunner {
         })
         const at = yield* Clock.currentTimeMillis
         yield* store.reported(record.id, at)
-      }),
+        yield* reportFlow(record, topic, 'ok')
+      }).pipe(Effect.tapError((error) => reportFlow(record, undefined, 'error', safeErrorType(error)))),
     )
   }
 }

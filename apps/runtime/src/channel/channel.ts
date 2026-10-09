@@ -109,6 +109,9 @@ export const channelTool = (connections: typeof McpConnections.Service, serverId
     return result.structuredContent
   })
 
+/** One answer's delivery to Telegram: the turn's operation id, how many messages it took, and why it failed if it did. */
+export type DeliveredReply = { readonly operationId: string; readonly pieces: number; readonly errorType?: string }
+
 /** A tool of the channel server as an Effect (`channelTool`): its structured result; an error result fails. */
 export type ChannelCall = (name: string, args: Record<string, unknown>) => Effect.Effect<unknown, AppError>
 
@@ -293,8 +296,15 @@ export class TelegramChannel {
     this.track(operationId, now)
   }
 
-  /** Send every answer that is ready; true while some are still running. */
-  async deliver(ports: ChannelPorts, now: number): Promise<boolean> {
+  /**
+   * Send every answer that is ready; true while some are still running. `delivered` hears each reply's outcome, sent or
+   * failed, before the next one is tried.
+   */
+  async deliver(
+    ports: ChannelPorts,
+    now: number,
+    delivered: (reply: DeliveredReply) => Promise<void> = async () => undefined,
+  ): Promise<boolean> {
     const pending = this.#db
       .select()
       .from(appChannelReplies)
@@ -320,8 +330,9 @@ export class TelegramChannel {
             text: escapeHtml(piece),
           })
       }
-      await sent().catch((error: unknown) => {
+      await sent().catch(async (error: unknown) => {
         this.#record('channel.reply', operationId, createdAt * 1000, { ...reply, ...failureAttributes(error) })
+        await delivered({ operationId, pieces: pieces.length, errorType: safeErrorType(error) })
         throw error
       })
       this.#record('channel.reply', operationId, createdAt * 1000, reply)
@@ -330,6 +341,7 @@ export class TelegramChannel {
         .set({ deliveredAt: now })
         .where(and(eq(appChannelReplies.operationId, operationId), isNull(appChannelReplies.deliveredAt)))
         .run()
+      await delivered({ operationId, pieces: pieces.length })
     }
     return waiting
   }
