@@ -28,6 +28,7 @@ export const paths: string[] = [
   'apps/runtime/src/routines/api.ts',
   'apps/runtime/src/routines/authority.ts',
   'apps/runtime/src/routines/controller.ts',
+  'apps/runtime/src/routines/events.ts',
   'apps/runtime/src/routines/notifications.ts',
   'apps/runtime/src/routines/program.ts',
   'apps/runtime/src/routines/runner.ts',

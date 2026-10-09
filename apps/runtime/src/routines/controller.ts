@@ -86,6 +86,7 @@ export class RoutineController extends RoutineRunner {
       Events.useSync(
         (events) =>
           new RoutineEventBindings({
+            run: this.#run,
             storage: this.#input.storage,
             owner: this.#input.owner(),
             events,

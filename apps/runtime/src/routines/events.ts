@@ -1,8 +1,11 @@
 import { RoutineDefinition } from '@goblin/contracts'
+import * as Match from 'effect/Match'
 import * as Schema from 'effect/Schema'
-import * as Effect from 'effect/Effect'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
-import { Conflict, NotFound } from '../http/errors.ts'
+import { AppError, Conflict, NotFound } from '../http/errors.ts'
+import { writeLine } from '../observability/logger.ts'
+import { safeErrorType } from '../observability/report.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { CredentialCipher } from '../mcp/cipher.ts'
 import { redactSecretFields } from '../mcp/redaction.ts'
 import type { McpEvents } from '../mcp/events.ts'
@@ -15,18 +18,40 @@ import { routineSummary } from './summary.ts'
 
 const decode = (json: string) => Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(json))
 const consumerId = (id: string) => `routine:${id}`
+const isAppError = Schema.is(AppError)
+
+/**
+ * Whether subscribing a confirmed event routine failed for a reason the owner has to act on: the server needs signing
+ * in again, the selector is not granted or does not exist, or the server refused (anything but a transport failure).
+ * Anything else is transient: the routine stays activating and the next sweep tries again (R4).
+ */
+export const activationRefused = (error: unknown): boolean =>
+  isAppError(error) &&
+  Match.value(error).pipe(
+    Match.tags({
+      NeedsAuthorization: () => true,
+      GrantDenied: () => true,
+      NotFound: () => true,
+      UpstreamMcp: (upstream) => upstream.reason !== 'transport',
+    }),
+    Match.orElse(() => false),
+  )
+
 const busy = (error: unknown) =>
   error instanceof Conflict &&
   ['routine already running', 'running routine limit', 'event run spacing limit'].includes(error.reason)
 
 /** The shared dispatcher owns delivery; these are only confirmed routine admission and sealed pending metadata. */
 export class RoutineEventBindings {
+  readonly #run: RunProgram
   readonly #store: RoutineStore
   readonly #events: McpEvents
   readonly #runner: RoutineRunner
   readonly #cipher: Promise<CredentialCipher>
   readonly #wake: RoutineWake
   constructor(input: {
+    /** Runs the Events subscription programs (the bridge's `local`). */
+    run: RunProgram
     storage: DurableObjectStorage
     owner: string
     events: McpEvents
@@ -34,6 +59,7 @@ export class RoutineEventBindings {
     key: string
     wake: RoutineWake
   }) {
+    this.#run = input.run
     this.#store = new RoutineStore(drizzle(input.storage), input.owner)
     this.#events = input.events
     this.#runner = input.runner
@@ -48,7 +74,7 @@ export class RoutineEventBindings {
     const trigger = decode(row.definitionJson).trigger
     if (trigger.kind !== 'event') return
     this.#events.grant(trigger.serverId, trigger.name, trigger.arguments, true)
-    await Effect.runPromise(
+    await this.#run(
       this.#events.subscribe({
         consumerId: consumerId(id),
         revision,
@@ -68,7 +94,7 @@ export class RoutineEventBindings {
     const binding = this.#events.store.activeConsumer(consumerId(row.id))
     const definition = decode(row.definitionJson)
     if (binding !== undefined && (binding.revision !== row.revision || !['active', 'activating'].includes(row.state)))
-      await Effect.runPromise(this.#events.unsubscribe(binding))
+      await this.#run(this.#events.unsubscribe(binding))
     if (
       definition.trigger.kind !== 'event' ||
       !['active', 'activating'].includes(row.state) ||
@@ -85,13 +111,13 @@ export class RoutineEventBindings {
           'Event subscription ended; review and confirm to reconnect.',
           Date.now(),
         )
-        await Effect.runPromise(this.#events.unsubscribe(binding))
+        await this.#run(this.#events.unsubscribe(binding))
       } else if (lease?.status === 'active') this.#store.markActive(row.id, row.revision, null, Date.now())
       return
     }
     const trigger = definition.trigger
     try {
-      await Effect.runPromise(
+      await this.#run(
         this.#events.subscribe({
           consumerId: consumerId(row.id),
           revision: row.revision,
@@ -103,11 +129,15 @@ export class RoutineEventBindings {
       )
       const current = this.#store.get(row.id)
       if (current.revision !== row.revision || !['active', 'activating'].includes(current.state)) {
-        await Effect.runPromise(this.#events.unsubscribe({ consumerId: consumerId(row.id), revision: row.revision }))
+        await this.#run(this.#events.unsubscribe({ consumerId: consumerId(row.id), revision: row.revision }))
         return
       }
       this.#store.markActive(row.id, row.revision, null, Date.now())
-    } catch {
+    } catch (error) {
+      if (!activationRefused(error)) {
+        writeLine('warn', { event: 'failure', where: 'routines.events.activate', 'error.type': safeErrorType(error) })
+        return
+      }
       this.#store.eventHealth(
         row.id,
         row.revision,
