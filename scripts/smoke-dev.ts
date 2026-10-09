@@ -237,7 +237,12 @@ async function serverReport(dev: DevClient, server: JsonObject): Promise<ServerR
   const serverId = string(server['serverId'])
   const report: ServerReport = { serverId, status: string(server['status']) }
   if (report.status !== 'connected') return report
-  const tools = await dev.list(`/api/mcp/${encodeURIComponent(serverId)}/tools?refresh`)
+  const listed = await dev.send(`/api/mcp/${encodeURIComponent(serverId)}/tools?refresh`)
+  // A connected server whose host no longer answers (a stopped tunnel) is the server's outage, not goblin's: the
+  // agent answers it as UpstreamMcp (502, or 504 on a timeout), which the report records instead of failing.
+  if (listed.status === 502 || listed.status === 504) return { ...report, probe: 'unreachable' }
+  if (!listed.ok) throw new Error(`request_failed: /api/mcp/${serverId}/tools`)
+  const tools = objects(await listed.json())
   report.tools = tools.length
   report.granted = tools.filter((tool) => tool['granted'] === true).length
   const probe = PROBES[serverId]
