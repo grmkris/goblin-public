@@ -539,6 +539,10 @@ export type AgentAppChange = typeof AgentAppChange.Type
 export const DeleteAgentApp = Schema.Struct({ confirm: Schema.String.check(Schema.isMaxLength(40)) })
 export type DeleteAgentApp = typeof DeleteAgentApp.Type
 
+/** The agent app the owner deleted, by name. */
+export const AgentAppDeleted = Schema.Struct({ deleted: Schema.String })
+export type AgentAppDeleted = typeof AgentAppDeleted.Type
+
 /** A failure an agent app's view reported (an uncaught error, a render that threw). */
 export const AppDiagnostic = Schema.Struct({ message: Schema.String.check(Schema.isMaxLength(4000)) })
 export type AppDiagnostic = typeof AppDiagnostic.Type
