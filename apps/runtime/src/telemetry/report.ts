@@ -17,7 +17,7 @@ export const auxReporter =
     try {
       recordAux(telemetry, purpose, call)
     } catch {
-      // A malformed response is the model's problem, not the caller's: the call goes on unrecorded.
+      // expected: a malformed response is the model's problem, not the caller's; the call goes on unrecorded.
     }
   }
 

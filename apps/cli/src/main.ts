@@ -112,6 +112,7 @@ async function main(argv: readonly string[]): Promise<number> {
 try {
   process.exitCode = await main(process.argv.slice(2))
 } catch (error) {
+  // expected: the CLI's last resort prints what failed and exits non-zero (2 for a usage error).
   console.error(error instanceof Error ? error.message : String(error))
   process.exitCode = error instanceof UsageError ? 2 : 1
 }

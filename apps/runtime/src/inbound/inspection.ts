@@ -76,6 +76,7 @@ function register(server: McpServer, kind: InspectKind, read: InspectReader): vo
         const query = decodeQuery({ ...fieldsOf(args), kind })
         return structured(decodeOutput(await read(query)))
       } catch (cause) {
+        // expected: the failure is the tool's answer, its tag and safe fields; toAppError logs an unexpected one.
         return failed(cause)
       }
     },

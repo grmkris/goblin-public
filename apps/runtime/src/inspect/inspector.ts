@@ -52,7 +52,12 @@ const Message = Schema.Struct({
   toolName: Schema.optional(Schema.String),
   isError: Schema.optional(Schema.Boolean),
 })
-const Call = Schema.Struct({ type: Schema.Literal('toolCall'), id: Schema.String, name: Schema.String })
+const Call = Schema.Struct({
+  type: Schema.Literal('toolCall'),
+  id: Schema.String,
+  name: Schema.String,
+  arguments: Schema.optional(Schema.Unknown),
+})
 const Thought = Schema.Struct({
   type: Schema.Literal('thinking'),
   thinking: Schema.String,
@@ -67,24 +72,26 @@ const cut = (text: string, max: number): Cut =>
   text.length > max ? { text: `${text.slice(0, max)}…`, cut: true } : { text, cut: false }
 const json = (value: unknown, max: number): Cut => cut(JSON.stringify(value ?? null), max)
 
+/** A message's content blocks; content that is a plain string has none. */
+const blocksOf = (content: unknown): readonly unknown[] => (Array.isArray(content) ? content : [])
+
 /** The calls an answer made, each with its arguments as bounded JSON. */
 function callsOf(content: unknown) {
-  if (!Array.isArray(content)) return []
-  return content.filter(isCall).map((call) => {
-    const args = json('arguments' in call ? call.arguments : undefined, MAX_JSON)
-    return { call: { id: call.id, name: call.name, arguments: args.text }, cut: args.cut }
-  })
+  return blocksOf(content)
+    .filter(isCall)
+    .map((call) => {
+      const args = json(call.arguments, MAX_JSON)
+      return { call: { id: call.id, name: call.name, arguments: args.text }, cut: args.cut }
+    })
 }
 
 /** An answer's visible thinking; redacted thinking is an opaque payload, not words. */
 const thinkingOf = (content: unknown): string =>
-  Array.isArray(content)
-    ? content
-        .filter(isThought)
-        .filter((block) => block.redacted !== true && block.thinking.trim() !== '')
-        .map((block) => block.thinking.trim())
-        .join('\n\n')
-    : ''
+  blocksOf(content)
+    .filter(isThought)
+    .filter((block) => block.redacted !== true && block.thinking.trim() !== '')
+    .map((block) => block.thinking.trim())
+    .join('\n\n')
 
 type Message = typeof Message.Type
 type MessageFields = Pick<InspectEntry, 'role' | 'author' | 'text' | 'thinking' | 'toolCalls' | 'tool' | 'model' | 'at'>

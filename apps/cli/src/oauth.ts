@@ -149,6 +149,7 @@ export async function listenForCallback(
       .then((line) => {
         if (URL.canParse(line.trim())) resolve(new URL(line.trim()).searchParams)
       })
+      // expected: the prompt is aborted once the browser's redirect arrives first; either one completes the sign-in.
       .catch(() => undefined)
       .finally(() => prompt.close())
   }

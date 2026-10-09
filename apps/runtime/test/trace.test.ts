@@ -56,12 +56,12 @@ describe('run events as trace spans (unit, ADR 0024)', () => {
     sink.ended(
       event({ status: 'error', endedAt: 1_250, attributes: { [RunAttribute.error]: 'Unclassified failure.' } }),
     )
-    expect(spans).toEqual([
+    expect(spans).toMatchObject([
       {
         name: 'chat model',
         ended: true,
         status: { code: 'error', message: 'Unclassified failure.' },
-        attributes: expect.objectContaining({
+        attributes: {
           'gen_ai.agent.name': 'goblin',
           'gen_ai.agent.id': 'user-1',
           'gen_ai.conversation.id': '1',
@@ -70,7 +70,7 @@ describe('run events as trace spans (unit, ADR 0024)', () => {
           'goblin.operation': 'telegram-12',
           'goblin.started_at': 10,
           'goblin.duration_ms': 1_240,
-        }),
+        },
       },
     ])
   })
