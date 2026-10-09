@@ -4,7 +4,7 @@ import { CapabilityProfiles } from '../../src/capabilities/profiles.ts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { appConversations } from '../../src/storage/schema.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
-import { exchange, threadsUntil, transcript } from './probe-reads.ts'
+import { exchange, ownerCreate, ownerSend, threadsUntil, transcript } from './probe-reads.ts'
 import type { PersonalAgentProbe } from './worker.ts'
 
 /** Live ancestry, direct-parent control and copied app exclusions on the native SQLite adapter. */
@@ -53,7 +53,7 @@ export async function helperExclusionsProbe(storage: DurableObjectStorage) {
 /** Real owner submission rejects stale chips before model work and references helpers without routing to them. */
 export async function composerSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promise<Response> {
   const before = await agent.modelRequestCount()
-  const invalid = await agent.submit(PRIMARY_CHAT, 'Keep this draft', 'invalid-selection', {
+  const invalid = await ownerSend(agent, PRIMARY_CHAT, 'Keep this draft', 'invalid-selection', {
     selections: [{ kind: 'skill', serverId: 'missing', uri: 'skill://missing/SKILL.md' }],
   })
   const noInvalidModelWork = before === (await agent.modelRequestCount())
@@ -71,10 +71,10 @@ export async function composerSequence(agent: DurableObjectStub<PersonalAgentPro
     )
   ).find((view) => view.title === 'scout')
   if (helper === undefined) throw new Error('fixture helper missing')
-  const thread = await agent.createConversation({})
+  const thread = await ownerCreate(agent, {})
   if (!thread.ok) throw new Error('fixture thread missing')
   const helperBefore = await transcript(agent, helper.id)
-  const referenced = await agent.submit(thread.value.id, 'Answer here', 'helper-reference', {
+  const referenced = await ownerSend(agent, thread.value.id, 'Answer here', 'helper-reference', {
     selections: [{ kind: 'subagent', conversationId: helper.id }],
   })
   await agent.settle(thread.value.id, 'helper-reference')
