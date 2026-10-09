@@ -199,6 +199,7 @@ const linksToAgents = (root: string, file: string): boolean => {
   try {
     return lstatSync(path.join(root, file)).isSymbolicLink() && readlinkSync(path.join(root, file)) === 'AGENTS.md'
   } catch {
+    // expected: a missing CLAUDE.md is not a link to AGENTS.md
     return false
   }
 }
