@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ServerSuggestion, ServerView } from '@goblin/contracts'
 import { InvalidInput } from '@goblin/contracts/api'
 import { Button, Field, FieldDescription, FieldGroup, FieldLabel, Input } from '@goblin/ui'
-import { addAndStartConnecting, addServerMutation, serversChanged, suggestedQuery } from '../lib/mcp/queries.ts'
+import { addAndStartConnecting, addServerMutation, serversChanged, suggestedQuery } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 
 /** Why the runtime refused an endpoint, in words the owner can act on. */

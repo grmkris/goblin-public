@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { UsageToday } from '@goblin/contracts'
-import { usageQuery } from '../lib/agent/queries.ts'
+import { usageQuery } from '../agent/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 
 /** Today's usage as last read, and why the latest read failed, if it did. */

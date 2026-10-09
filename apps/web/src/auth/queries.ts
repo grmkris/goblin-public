@@ -1,6 +1,6 @@
 import { mutationOptions, queryOptions } from '@tanstack/react-query'
 import { Data, Option, Schema } from 'effect'
-import { authClient, redirectOf } from '../auth-client.ts'
+import { authClient, redirectOf } from '../lib/auth-client.ts'
 
 /**
  * Signing in and what is public about the deployment: Better Auth's own routes (through `authClient`) and the Worker's

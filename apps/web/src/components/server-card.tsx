@@ -26,7 +26,7 @@ import {
   refreshToolsMutation,
   removeServerMutation,
   setSkillsMutation,
-} from '../lib/mcp/queries.ts'
+} from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { serverStatus, serverTitle } from '../lib/labels.ts'
 import { EventsHealth } from './event-health.tsx'

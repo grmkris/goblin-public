@@ -1,7 +1,7 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { BillingState } from '@goblin/contracts'
-import { signedInBillingQuery } from './account/queries.ts'
+import { signedInBillingQuery } from '../account/queries.ts'
 import { messageOf } from './query/app-error.ts'
 import { useSession } from './session.tsx'
 

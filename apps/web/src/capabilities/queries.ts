@@ -1,7 +1,7 @@
 import { type QueryClient, mutationOptions } from '@tanstack/react-query'
 import type { CapabilityChange } from '@goblin/contracts'
-import { owner } from '../api.ts'
-import { applyChange } from '../capabilities.ts'
+import { owner } from '../lib/api.ts'
+import { applyChange } from '../lib/capabilities.ts'
 
 /**
  * A conversation's switches (ADR 0033) on the owner API. The key sits under `conversations`, so whatever refreshes a

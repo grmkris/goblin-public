@@ -24,7 +24,7 @@ import {
   Textarea,
 } from '@goblin/ui'
 import { ChevronRightIcon } from 'lucide-react'
-import { callToolMutation, toolsQuery } from '../lib/mcp/queries.ts'
+import { callToolMutation, toolsQuery } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { serverTitle } from '../lib/labels.ts'
 import { McpApp, type McpSelection } from './apps/frame.tsx'

@@ -10,7 +10,7 @@ import type {
   ServerSource,
   ToolView,
 } from '@goblin/contracts'
-import { owner } from '../api.ts'
+import { owner } from '../lib/api.ts'
 
 /**
  * The owner's MCP servers on the owner API (ADRs 0003, 0005, 0006, 0008, 0028): the servers and what to add more from,

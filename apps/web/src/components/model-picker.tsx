@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@goblin/ui'
-import { chooseModelMutation, modelQuery } from '../lib/agent/queries.ts'
+import { chooseModelMutation, modelQuery } from '../agent/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 
 /** The user's model and what the deployment offers. A pick shows at once and is undone if the server refuses it. */

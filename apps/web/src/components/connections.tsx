@@ -15,7 +15,7 @@ import {
   Skeleton,
 } from '@goblin/ui'
 import { PlugIcon, PlusIcon } from 'lucide-react'
-import { serversQuery } from '../lib/mcp/queries.ts'
+import { serversQuery } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { serverTitle } from '../lib/labels.ts'
 import { PageSection } from './page-section.tsx'

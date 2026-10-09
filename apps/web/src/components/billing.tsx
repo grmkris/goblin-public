@@ -13,7 +13,7 @@ import {
   CardTitle,
   Skeleton,
 } from '@goblin/ui'
-import { checkoutMutation, portalMutation } from '../lib/account/queries.ts'
+import { checkoutMutation, portalMutation } from '../account/queries.ts'
 import { useBilling } from '../lib/billing.tsx'
 import { messageOf } from '../lib/query/app-error.ts'
 import { planStatus } from '../lib/labels.ts'

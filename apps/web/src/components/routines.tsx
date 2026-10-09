@@ -30,7 +30,7 @@ import {
   routineSettingsMutation,
   routineSettingsQuery,
   routinesQuery,
-} from '../lib/routines/queries.ts'
+} from '../routines/queries.ts'
 import { routineStatus } from '../lib/labels.ts'
 import { PageSection } from './page-section.tsx'
 import { RoutineEditor } from './routine-editor.tsx'

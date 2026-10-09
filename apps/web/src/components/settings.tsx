@@ -17,7 +17,7 @@ import {
   Skeleton,
   Switch,
 } from '@goblin/ui'
-import { AuthRefused, deleteAccountMutation } from '../lib/auth/queries.ts'
+import { AuthRefused, deleteAccountMutation } from '../auth/queries.ts'
 import { residentStatus } from '../lib/labels.ts'
 import { budgetFraction } from '../lib/usage.ts'
 import { BillingCard } from './billing.tsx'
@@ -26,8 +26,8 @@ import { PageSection } from './page-section.tsx'
 import { RoutinesSection } from './routines.tsx'
 import { StatusLabel } from './status-label.tsx'
 import { useUsageRead } from './use-usage.ts'
-import { clientsQuery, revokeClientMutation } from '../lib/account/queries.ts'
-import { memoryQuery, residentQuery, setResidentMutation } from '../lib/agent/queries.ts'
+import { clientsQuery, revokeClientMutation } from '../account/queries.ts'
+import { memoryQuery, residentQuery, setResidentMutation } from '../agent/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 
 const day = (seconds: number): string =>

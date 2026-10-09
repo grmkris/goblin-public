@@ -1,5 +1,5 @@
 import { type QueryClient, mutationOptions, queryOptions, skipToken } from '@tanstack/react-query'
-import { account } from '../api.ts'
+import { account } from '../lib/api.ts'
 
 /**
  * The account's plan and its inbound clients, answered by the Worker (`AccountApi`): keys are `[feature, kind,

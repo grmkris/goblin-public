@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Alert, AlertDescription, Button, Switch } from '@goblin/ui'
-import { AuthRefused, consentClientQuery, consentMutation } from '../lib/auth/queries.ts'
+import { AuthRefused, consentClientQuery, consentMutation } from '../auth/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { INSPECT_SCOPE, consentBody, requestedScopes } from '../lib/consent-scope.ts'
 import { AuthShell } from './auth-shell.tsx'

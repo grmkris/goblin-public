@@ -15,7 +15,7 @@ import {
   succeeded,
 } from '@goblin/ui'
 import { authClient, redirectOf } from '../lib/auth-client.ts'
-import { healthQuery } from '../lib/auth/queries.ts'
+import { healthQuery } from '../auth/queries.ts'
 import { AuthShell } from './auth-shell.tsx'
 
 type SignupMode = 'open' | 'invite' | 'closed'

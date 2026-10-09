@@ -1,6 +1,6 @@
 import { type QueryClient, mutationOptions } from '@tanstack/react-query'
 import type { ChatId } from '@goblin/contracts'
-import { owner } from '../api.ts'
+import { owner } from '../lib/api.ts'
 import { serversQuery } from '../mcp/queries.ts'
 
 /**

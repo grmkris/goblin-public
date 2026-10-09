@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CatalogEntry } from '@goblin/contracts'
 import { InvalidInput } from '@goblin/contracts/api'
 import { Badge, Button, Input, Spinner } from '@goblin/ui'
-import { optionalCatalogQuery, registriesQuery, registryMutation } from '../lib/mcp/queries.ts'
+import { optionalCatalogQuery, registriesQuery, registryMutation } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { useAddAndConnect } from './server-add.tsx'
 

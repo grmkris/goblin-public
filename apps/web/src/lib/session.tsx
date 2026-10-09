@@ -1,7 +1,7 @@
 import { type ReactNode, createContext, useCallback, useContext } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { authClient } from './auth-client.ts'
-import { sessionQuery } from './auth/queries.ts'
+import { sessionQuery } from '../auth/queries.ts'
 
 /** `unavailable`: the session could not be checked (offline, a server failure), which says nothing about signing in. */
 export type SessionState = 'checking' | 'signed-in' | 'signed-out' | 'unavailable'

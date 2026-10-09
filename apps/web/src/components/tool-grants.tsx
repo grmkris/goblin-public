@@ -5,7 +5,7 @@ import { useId, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ToolView } from '@goblin/contracts'
 import { Badge, Button, Switch } from '@goblin/ui'
-import { appGrantMutation, askFirstMutation, toolGrantMutation } from '../lib/mcp/queries.ts'
+import { appGrantMutation, askFirstMutation, toolGrantMutation } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { AppTile } from './apps/app-tile.tsx'
 

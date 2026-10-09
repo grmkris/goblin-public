@@ -17,7 +17,7 @@ import {
 } from '@goblin/ui'
 import { ChevronRightIcon, SlidersHorizontalIcon } from 'lucide-react'
 import { capabilityCount, serverState } from '../lib/capabilities.ts'
-import { capabilitiesQuery, setCapabilityMutation } from '../lib/capabilities/queries.ts'
+import { capabilitiesQuery, setCapabilityMutation } from '../capabilities/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 
 type View = ConversationCapabilities

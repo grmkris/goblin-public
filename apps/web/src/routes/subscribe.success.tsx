@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Button } from '@goblin/ui'
 import { AuthShell } from '../components/auth-shell.tsx'
 import { OwnerGate } from '../components/owner-gate.tsx'
-import { billingStateQuery } from '../lib/account/queries.ts'
+import { billingStateQuery } from '../account/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 
 /** How often the payment return asks whether the plan is active, and for how long before it asks the owner to check. */

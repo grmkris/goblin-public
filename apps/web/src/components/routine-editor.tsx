@@ -24,9 +24,9 @@ import {
   TabsTrigger,
   Textarea,
 } from '@goblin/ui'
-import { grantsQuery } from '../lib/mcp/queries.ts'
+import { grantsQuery } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
-import { saveRoutineMutation } from '../lib/routines/queries.ts'
+import { saveRoutineMutation } from '../routines/queries.ts'
 import { localInput, localInstant } from '../lib/local-time.ts'
 
 type Kind = RoutineDefinition['trigger']['kind']

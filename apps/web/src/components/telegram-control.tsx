@@ -3,7 +3,7 @@ import { useEffect, useId } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ToolView } from '@goblin/contracts'
 import { Switch } from '@goblin/ui'
-import { changeChannelMutation, channelQuery } from '../lib/agent/queries.ts'
+import { changeChannelMutation, channelQuery } from '../agent/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 
 const TELEGRAM_TOOLS = ['inbox', 'send_message']

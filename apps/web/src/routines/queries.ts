@@ -1,7 +1,7 @@
 import { type QueryClient, mutationOptions } from '@tanstack/react-query'
 import type { RoutineDefinition, RoutineSettings } from '@goblin/contracts'
-import { owner } from '../api.ts'
-import { withOperation } from '../query/api-query.ts'
+import { owner } from '../lib/api.ts'
+import { withOperation } from '../lib/query/api-query.ts'
 
 /**
  * The owner's routines on the owner API (ADR 0012). Keys are `[feature, kind, input]`. Every change carries the

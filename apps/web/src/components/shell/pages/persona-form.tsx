@@ -11,8 +11,8 @@ import {
   Switch,
   Textarea,
 } from '@goblin/ui'
-import { modelQuery } from '../../../lib/agent/queries.ts'
-import { serversQuery } from '../../../lib/mcp/queries.ts'
+import { modelQuery } from '../../../agent/queries.ts'
+import { serversQuery } from '../../../mcp/queries.ts'
 import { messageOf } from '../../../lib/query/app-error.ts'
 import { serverTitle } from '../../../lib/labels.ts'
 import { PersonaAvatar } from '../../persona-avatar.tsx'

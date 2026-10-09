@@ -4,7 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { Alert, AlertDescription, Button, Skeleton } from '@goblin/ui'
 import { RefreshCwIcon } from 'lucide-react'
 import { messageOf } from '../lib/query/app-error.ts'
-import { routineRunsQuery, runRoutineMutation, stopRunMutation } from '../lib/routines/queries.ts'
+import { routineRunsQuery, runRoutineMutation, stopRunMutation } from '../routines/queries.ts'
 import { runStatus, telegramReport } from '../lib/labels.ts'
 import { StatusLabel } from './status-label.tsx'
 
