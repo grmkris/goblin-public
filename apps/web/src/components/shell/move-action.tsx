@@ -50,7 +50,6 @@ export function useMover(chat: string, offered: boolean, running: boolean, entry
       waiting: running,
       refusal: reason === undefined ? undefined : (REASONS[reason] ?? reason),
       move: () => {
-        // @effect-diagnostics-next-line cryptoRandomUUID:off -- A fresh move; the runtime keeps one per turn.
         moveToThread(chat, entry, crypto.randomUUID()).then(
           (receipt) => {
             if (receipt.state === 'refused') setRefused({ entry, reason: receipt.reason ?? 'refused' })

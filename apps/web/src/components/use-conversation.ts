@@ -44,7 +44,6 @@ export async function postMessage(
   operationId?: string,
   context: MessageContext = {},
 ): Promise<void> {
-  // @effect-diagnostics-next-line cryptoRandomUUID:off -- A fresh idempotency key for this browser submission.
   const body = messageBody(input, operationId ?? crypto.randomUUID(), context)
   await request(`/api/conversations/${thread}/messages`, { body })
 }
@@ -80,7 +79,6 @@ export function useConversation(thread: string, visible = true) {
   const [failure, setFailure] = useState('')
   const retry = useRef(
     new SubmissionRetry(() => {
-      // @effect-diagnostics-next-line cryptoRandomUUID:off -- Browser submissions need a stable idempotency key across retries.
       return crypto.randomUUID()
     }),
   )

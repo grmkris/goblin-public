@@ -158,7 +158,6 @@ function Create() {
   const [draft, setDraft] = useState<PersonaDefinition>(BLANK)
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
-  // @effect-diagnostics-next-line cryptoRandomUUID:off -- One idempotency key per visit, so a retry finds the same Persona.
   const [operation] = useState(() => crypto.randomUUID())
   async function create(): Promise<void> {
     setPending(true)

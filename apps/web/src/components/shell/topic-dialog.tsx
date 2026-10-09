@@ -41,7 +41,6 @@ export function TopicDialog({
   const [name, setName] = useState(topic?.name ?? '')
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
-  // @effect-diagnostics-next-line cryptoRandomUUID:off -- One idempotency key for each opening of the dialog.
   const [operation] = useState(() => crypto.randomUUID())
   async function submit(): Promise<void> {
     const trimmed = name.trim()

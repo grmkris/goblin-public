@@ -20,7 +20,6 @@ export function useThreadStart(chat: string): StartThread {
   const { apply } = useWorkspaceFeed()
   const retry = useRef(
     new SubmissionRetry(() => {
-      // @effect-diagnostics-next-line cryptoRandomUUID:off -- One idempotency key per draft, reused while it is retried.
       return crypto.randomUUID()
     }),
   )
