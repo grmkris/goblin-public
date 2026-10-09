@@ -94,6 +94,7 @@ const recoveryLink = (value: string | undefined): string | undefined => {
     const url = new URL(value)
     return url.protocol === 'https:' || url.protocol === 'http:' ? value : undefined
   } catch {
+    // expected: a recovery that is not a URL is not offered as a link.
     return undefined
   }
 }

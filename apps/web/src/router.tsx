@@ -1,6 +1,7 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { createRouter } from '@tanstack/react-router'
 import { makeQueryClient } from './lib/query/api-query.ts'
+import { reportUnexpected } from './lib/unexpected.ts'
 import { routeTree } from './routeTree.gen'
 
 /**
@@ -11,7 +12,7 @@ export function getRouter() {
   const queryClient = makeQueryClient({
     onUnauthenticated: () => {
       queryClient.clear()
-      void router.navigate({ to: '/login' })
+      router.navigate({ to: '/login' }).catch(reportUnexpected)
     },
   })
   const router = createRouter({

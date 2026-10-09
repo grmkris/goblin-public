@@ -1,2 +1,27 @@
 /** Lane H's files that pass the strict rules (tools/strict/index.ts). Only lane H appends globs here. */
-export const paths: string[] = []
+export const paths: string[] = [
+  'apps/runtime/src/worker.ts',
+  'apps/runtime/src/http/**',
+  'apps/runtime/src/auth/**',
+  'apps/runtime/src/billing/routes.ts',
+  'apps/runtime/src/billing/webhook.ts',
+  'apps/runtime/test/http/boundary.test.ts',
+  'apps/runtime/test/http/canonical.test.ts',
+  'apps/runtime/test/http/api/edge.test.ts',
+  'packages/contracts/src/api/account.ts',
+  'packages/contracts/src/api/billing.ts',
+  'packages/contracts/src/api/billing.test.ts',
+  'packages/contracts/src/api/clients.ts',
+  'packages/contracts/src/api/client-errors.ts',
+  'apps/web/src/lib/boundary.ts',
+  'apps/web/src/lib/api.ts',
+  'apps/web/src/lib/query/**',
+  'apps/web/src/router.tsx',
+  'apps/web/src/routes/__root.tsx',
+  'apps/web/src/start.ts',
+  'apps/web/src/client.tsx',
+  'apps/web/src/server.tsx',
+  'apps/web/src/worker.ts',
+  'apps/web/test/boundary.test.ts',
+  'apps/web/test/query/crash-report.test.ts',
+]

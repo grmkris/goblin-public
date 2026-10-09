@@ -62,15 +62,19 @@ export interface QueryClientOptions {
 /** Transient failures retry twice; data stays fresh for thirty seconds. */
 export const makeQueryClient = (options: QueryClientOptions = {}) => {
   let signingIn = false
-  const signIn = async () => {
-    await Promise.resolve()
-    try {
-      await options.onUnauthenticated?.()
-    } catch {
-      /* A navigation adapter owns its failure; do not replace the original query error. */
-    } finally {
-      signingIn = false
-    }
+  /** Sends the owner to sign in once the failing query has settled, never inside it. */
+  const signIn = () => {
+    queueMicrotask(() => {
+      new Promise<void>((resolve) => resolve(options.onUnauthenticated?.())).then(
+        () => {
+          signingIn = false
+        },
+        () => {
+          // A navigation adapter owns its failure; the query's own error is what the page shows.
+          signingIn = false
+        },
+      )
+    })
   }
   const onError = (error: unknown, meta: QueryMeta | undefined) => {
     options.onError?.(error)
@@ -84,7 +88,7 @@ export const makeQueryClient = (options: QueryClientOptions = {}) => {
     )
       return
     signingIn = true
-    void signIn()
+    signIn()
   }
   return new QueryClient({
     queryCache: new QueryCache({ onError: (error, query) => onError(error, query.meta) }),
