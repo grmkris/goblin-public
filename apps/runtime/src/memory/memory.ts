@@ -88,6 +88,54 @@ export type MemoryDeps = {
   readonly chats: ChatDirectory
 }
 
+/** The memory tables' database: the agent's SQLite (or a test's). */
+type MemoryDb = SQLiteAsyncDatabase<'sync', unknown>
+
+/** Messages `chat`'s memory holds. */
+export const rememberedCount = (db: MemoryDb, chat: string): number =>
+  db.select({ n: count() }).from(appChatMemoryLog).where(eq(appChatMemoryLog.chatId, chat)).get()?.n ?? 0
+
+/** Messages `chat`'s memory holds up to and including its entry `entry`: what a thread branched there may zoom into. */
+export const rememberedThrough = (db: MemoryDb, chat: string, entry: number): number =>
+  db
+    .select({ n: count() })
+    .from(appChatMemoryLog)
+    .where(and(eq(appChatMemoryLog.chatId, chat), lte(appChatMemoryLog.entryId, entry)))
+    .get()?.n ?? 0
+
+/** How far `chat`'s newest view reaches, in messages (0 before its first). */
+export const viewReach = (db: MemoryDb, chat: string): number =>
+  db.select().from(appChatMemoryState).where(eq(appChatMemoryState.chatId, chat)).get()?.viewThrough ?? 0
+
+/** The view of `chat` through message `through` is in its Conversation: the next one must reach further. */
+export const recordView = (db: MemoryDb, chat: string, through: number): void => {
+  db.update(appChatMemoryState).set({ viewThrough: through }).where(eq(appChatMemoryState.chatId, chat)).run()
+}
+
+/**
+ * Forgets `chat`'s messages from `size` on, with every summary that covers one, and pulls its view back to `size` at
+ * most, in one transaction: a moved turn (Move to thread) leaves the memory of the chat it left.
+ */
+export const forgetFrom = (db: MemoryDb, chat: string, size: number): void => {
+  db.transaction((tx) => {
+    tx.delete(appChatMemoryLog)
+      .where(and(eq(appChatMemoryLog.chatId, chat), gte(appChatMemoryLog.idx, size)))
+      .run()
+    tx.delete(appChatMemoryNodes)
+      .where(
+        and(
+          eq(appChatMemoryNodes.chatId, chat),
+          sql`(${appChatMemoryNodes.idx} + 1) * (1 << ${appChatMemoryNodes.level}) > ${size}`,
+        ),
+      )
+      .run()
+    tx.update(appChatMemoryState)
+      .set({ viewThrough: sql`min(${appChatMemoryState.viewThrough}, ${size})` })
+      .where(eq(appChatMemoryState.chatId, chat))
+      .run()
+  })
+}
+
 /**
  * One Conversation's memory (ADR 0032), after OptChat: every message of a Topic's Conversation from activation on is
  * logged, summarized into a binary tree of one-line summaries by the cheap model, and folded into a view of
@@ -158,18 +206,12 @@ export class ChatMemory {
 
   /** Messages remembered so far. */
   size(): number {
-    return this.#db.select({ n: count() }).from(appChatMemoryLog).where(this.#log()).get()?.n ?? 0
+    return rememberedCount(this.#db, this.#chat)
   }
 
   /** Messages remembered up to and including its entry `entry`: what a thread branched there may zoom into. */
   sizeAt(entry: number): number {
-    return (
-      this.#db
-        .select({ n: count() })
-        .from(appChatMemoryLog)
-        .where(this.#log(lte(appChatMemoryLog.entryId, entry)))
-        .get()?.n ?? 0
-    )
+    return rememberedThrough(this.#db, this.#chat, entry)
   }
 
   /**
@@ -177,23 +219,12 @@ export class ChatMemory {
    * a moved turn (Move to thread) leaves the memory of the chat it left. The view entry already in Pi is the mover's.
    */
   truncate(size: number): void {
-    this.#db.transaction((tx) => {
-      tx.delete(appChatMemoryLog)
-        .where(this.#log(gte(appChatMemoryLog.idx, size)))
-        .run()
-      tx.delete(appChatMemoryNodes)
-        .where(this.#nodes(sql`(${appChatMemoryNodes.idx} + 1) * (1 << ${appChatMemoryNodes.level}) > ${size}`))
-        .run()
-      tx.update(appChatMemoryState)
-        .set({ viewThrough: sql`min(${appChatMemoryState.viewThrough}, ${size})` })
-        .where(eq(appChatMemoryState.chatId, this.#chat))
-        .run()
-    })
+    forgetFrom(this.#db, this.#chat, size)
   }
 
   /** How far the newest view reaches, in messages. */
   viewThrough(): number {
-    return this.#state()?.viewThrough ?? 0
+    return viewReach(this.#db, this.#chat)
   }
 
   /**
@@ -238,11 +269,7 @@ export class ChatMemory {
 
   /** The view through message `through` is in the Conversation: the next one must reach further. */
   placed(through: number): void {
-    this.#db
-      .update(appChatMemoryState)
-      .set({ viewThrough: through })
-      .where(eq(appChatMemoryState.chatId, this.#chat))
-      .run()
+    recordView(this.#db, this.#chat, through)
   }
 
   /**

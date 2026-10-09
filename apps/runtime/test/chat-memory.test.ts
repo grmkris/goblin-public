@@ -145,7 +145,7 @@ describe('per-Topic memory (ADR 0032)', () => {
       )
       const operations = Layer.mock(ChatOperations)({ passiveWrite: write })
       const step = Memories.use((service) => service.step('1', new AbortController().signal)).pipe(
-        Effect.provide(knowledgeOver({ memories, chats: new ChatDirectory(db), operations })),
+        Effect.provide(knowledgeOver({ db, memories, chats: new ChatDirectory(db), operations })),
       )
       return { memories, step }
     }

@@ -1,18 +1,25 @@
+import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import { ChatOperations } from '../src/chats/service.ts'
 import type { ChatDirectory } from '../src/chats/directory.ts'
+import { ChatOperations, Chats } from '../src/chats/service.ts'
+import { toAppError } from '../src/http/errors.ts'
 import { KnowledgeLive } from '../src/layers/knowledge.ts'
 import type { ChatMemories } from '../src/memory/memory.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
 import type { ChatRetrieval } from '../src/retrieval/service.ts'
-import { Chats, Learner, Memories, Retrieval, Skills } from '../src/services.ts'
+import { Db } from '../src/runtime/db.ts'
+import { Learner, Memories, Retrieval, Skills } from '../src/services.ts'
 import type { SkillLearner } from '../src/skills/learner.ts'
 import type { SkillLibrary } from '../src/skills/library.ts'
+import type { chatDatabase } from './chats-sqlite.ts'
 
-/** The legacy instances lane K's layer adapts; a test gives the ones its programs reach. */
+/** The database and started instances lane K's layer reads; a test gives the ones its programs reach. */
 type Given = {
-  readonly memories?: ChatMemories
+  /** The memory tables (chats-sqlite.ts). */
+  readonly db?: ReturnType<typeof chatDatabase>['db']
+  /** Lane C's chats, as the memory's status reads them: Personal, and the Conversation a chat sits under. */
   readonly chats?: ChatDirectory
+  readonly memories?: ChatMemories
   readonly retrieval?: ChatRetrieval
   readonly skills?: SkillLibrary
   readonly learner?: SkillLearner
@@ -21,17 +28,26 @@ type Given = {
 }
 
 /**
- * Lane K's services (layers/knowledge.ts: Memories, Retrieval, Skills, Learner) over the instances `given`, with a
+ * Lane K's services (layers/knowledge.ts: Memories, Retrieval, Skills, Learner) over what `given` holds, with a
  * KeyedLock of their own.
  */
 export const knowledgeOver = (given: Given) => {
-  // SAFETY: an adapter only holds its instance until one of its methods runs; a test reaches only the ones it gave.
+  // SAFETY: a layer only holds what it is given until one of its methods runs; a test reaches only the ones it gave.
   const unread = undefined as never
+  const { chats } = given
   return KnowledgeLive.pipe(
     Layer.provide(
       Layer.mergeAll(
+        // SAFETY: the memory's queries use only Drizzle's query builder, which node:sqlite's driver serves alike.
+        Layer.succeed(Db, (given.db ?? unread) as never),
+        chats === undefined
+          ? Layer.succeed(Chats, unread)
+          : Layer.mock(Chats)({
+              primary: chats.primary(),
+              conversationAbove: (chat: string) =>
+                Effect.try({ try: () => chats.conversationAbove(chat), catch: toAppError }),
+            }),
         Layer.succeed(Memories, given.memories ?? unread),
-        Layer.succeed(Chats, given.chats ?? unread),
         Layer.succeed(Retrieval, given.retrieval ?? unread),
         Layer.succeed(Skills, given.skills ?? unread),
         Layer.succeed(Learner, given.learner ?? unread),

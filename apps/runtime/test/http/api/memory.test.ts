@@ -99,7 +99,7 @@ const fixture = () => {
     OwnerHttp.serve(MEMORY_API, MEMORY).pipe(
       Layer.provide(
         Layer.mergeAll(
-          knowledgeOver({ memories, chats }),
+          knowledgeOver({ db, memories, chats }),
           Layer.succeed(Resident, new RenewedResident()),
           Layer.succeed(Entitlements, plans),
         ),
