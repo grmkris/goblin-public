@@ -26,6 +26,7 @@ const rejected = (call: () => unknown) => {
     call()
     return false
   } catch {
+    // expected: the probe answers whether the call was refused
     return true
   }
 }

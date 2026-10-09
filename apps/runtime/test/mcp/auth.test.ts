@@ -20,6 +20,7 @@ describe('inbound client claims (unit)', () => {
         clientFromClaims(claims, expected)
         return 'accepted'
       } catch (error) {
+        // expected: the test asserts on the reason the claims were refused
         return error instanceof Error && 'reason' in error ? error.reason : 'unknown'
       }
     }

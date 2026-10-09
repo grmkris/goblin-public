@@ -6,6 +6,7 @@ const reason = (raw: string): string => {
     userEndpoint(raw)
     return 'ok'
   } catch (error) {
+    // expected: the test asserts on the reason the endpoint was refused
     return error instanceof Error && 'reason' in error ? String(error.reason) : 'thrown'
   }
 }

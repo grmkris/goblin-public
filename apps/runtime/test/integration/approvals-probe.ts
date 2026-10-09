@@ -51,6 +51,7 @@ export async function approvalsProbe(storage: DurableObjectStorage, key: string)
     try {
       await store.assert({ id: held.id, call: changed, version, now: 3, dispatch: false })
     } catch {
+      // expected: a changed call is refused; the probe answers with which ones were
       refused.push(label)
     }
   }
@@ -62,6 +63,7 @@ export async function approvalsProbe(storage: DurableObjectStorage, key: string)
   try {
     await reconstructed.assert({ id: held.id, call, version, now: 5, dispatch: true })
   } catch {
+    // expected: a replayed dispatch is refused; the probe answers whether it was
     replayRefused = true
   }
   const exact = await reconstructed.arguments(held.id)
