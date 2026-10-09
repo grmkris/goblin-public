@@ -26,7 +26,7 @@ import { useBilling } from '../lib/billing.tsx'
 import { PageSection } from './page-section.tsx'
 import { RoutinesSection } from './routines.tsx'
 import { StatusLabel } from './status-label.tsx'
-import { useUsageToday } from './use-usage.ts'
+import { useUsageRead } from './use-usage.ts'
 
 const decodeResident = Schema.decodeUnknownSync(ResidentStatus)
 const decodeClients = Schema.decodeUnknownSync(Schema.Array(InboundClient))
@@ -36,7 +36,7 @@ const day = (seconds: number): string =>
 
 /** Today's model budget: Credits spent against the daily limit (ADR 0026), rolling as they change. */
 function UsageCard() {
-  const usage = useUsageToday()
+  const { usage, failure } = useUsageRead()
   return (
     <Card>
       <CardHeader>
@@ -47,19 +47,26 @@ function UsageCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {usage === undefined ? (
-          <Skeleton className="h-10 w-full" />
-        ) : (
-          <Meter value={budgetFraction(usage) * 100} aria-label="Model budget used today">
-            <p className="flex items-baseline gap-1.5 text-sm text-muted-foreground">
-              <Count value={usage.used} size="display" />
-              <span>
-                of <Count value={usage.limit} /> Credits
-              </span>
-              <Count value={budgetFraction(usage)} percent className="ml-auto" />
-            </p>
-          </Meter>
-        )}
+        <div className="card-body">
+          {failure && (
+            <Alert variant="destructive">
+              <AlertDescription>{failure}</AlertDescription>
+            </Alert>
+          )}
+          {usage === undefined ? (
+            !failure && <Skeleton className="h-10 w-full" />
+          ) : (
+            <Meter value={budgetFraction(usage) * 100} aria-label="Model budget used today">
+              <p className="flex items-baseline gap-1.5 text-sm text-muted-foreground">
+                <Count value={usage.used} size="display" />
+                <span>
+                  of <Count value={usage.limit} /> Credits
+                </span>
+                <Count value={budgetFraction(usage)} percent className="ml-auto" />
+              </p>
+            </Meter>
+          )}
+        </div>
       </CardContent>
     </Card>
   )
