@@ -22,7 +22,6 @@ export {
   SubscriptionRequired,
   Unauthenticated,
   UpstreamMcp,
-  UpstreamReason,
 } from '@goblin/contracts/api'
 
 const isAppError = Schema.is(AppError)

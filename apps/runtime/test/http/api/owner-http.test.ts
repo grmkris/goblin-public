@@ -1,14 +1,10 @@
-import { OwnerApi, SubscriptionRequired } from '@goblin/contracts/api'
+import { SubscriptionRequired } from '@goblin/contracts/api'
 import { TopicView } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import * as FetchHttpClient from 'effect/http/FetchHttpClient'
-import * as HttpClient from 'effect/http/HttpClient'
-import * as HttpClientRequest from 'effect/http/HttpClientRequest'
-import * as HttpApiClient from 'effect/http-api/HttpApiClient'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { StopRuntime } from '../../../src/agent-program.ts'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
@@ -21,6 +17,7 @@ import { Conversations, Invocations, Receipts, Resident, RoutineRuns, Topics } f
 import { appConversations } from '../../../src/storage/schema.ts'
 import { TopicRegistry } from '../../../src/topics/registry.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
+import { callOwner } from '../../integration/owner-api.ts'
 
 const PLAN: AccountPlan = {
   active: true,
@@ -211,27 +208,17 @@ describe('the owner API served by the agent', () => {
       expect(Option.isNone(await handle(request))).toBe(true)
   })
 
-  it('serves the typed client: a clash decodes as the Conflict class with its reference', async () => {
+  it("serves the probes' typed client: a clash decodes as the Conflict class with its reference", async () => {
     const { fetch } = fixture()
-    const client = HttpApiClient.make(OwnerApi, {
-      baseUrl: 'https://agent',
-      transformClient: HttpClient.mapRequest(HttpClientRequest.setHeader('x-goblin-ref', 'ref-client')),
-    }).pipe(
-      Effect.provide(FetchHttpClient.layer),
-      Effect.provideService(FetchHttpClient.Fetch, (input, init) => fetch(new Request(input, init))),
-    )
-    const made = await Effect.runPromise(
-      Effect.flatMap(client, (api) => api.topics.create({ payload: { name: 'Work', operationId: 'op-1' } })),
-    )
+    const agent = { fetch }
+    const made = await callOwner(agent, (api) => api.topics.create({ payload: { name: 'Work', operationId: 'op-1' } }))
     expect(made).toMatchObject({ name: 'Work' })
-    const clash = await Effect.runPromise(
-      Effect.flip(
-        Effect.flatMap(client, (api) => api.topics.create({ payload: { name: 'work', operationId: 'op-2' } })),
-      ),
+    const clash = await callOwner(agent, (api) =>
+      Effect.flip(api.topics.create({ payload: { name: 'work', operationId: 'op-2' } })),
     )
-    expect(clash).toMatchObject({ _tag: 'Conflict', reason: 'topic_name_taken', ref: 'ref-client' })
-    const renamed = await Effect.runPromise(
-      Effect.flatMap(client, (api) => api.topics.update({ params: { id: made.id }, payload: { name: 'Work 2' } })),
+    expect(clash).toMatchObject({ _tag: 'Conflict', reason: 'topic_name_taken', ref: 'integration-probe' })
+    const renamed = await callOwner(agent, (api) =>
+      api.topics.update({ params: { id: made.id }, payload: { name: 'Work 2' } }),
     )
     expect(renamed).toMatchObject({ id: made.id, name: 'Work 2', revision: 2 })
   })
