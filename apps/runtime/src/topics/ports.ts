@@ -2,7 +2,7 @@ import type { EntryDraft } from '@earendil-works/pi-durable'
 import { and, eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import type { CapabilityProfiles } from '../capabilities/profiles.ts'
-import type { ChatDirectory } from '../chats/directory.ts'
+import { type ChatDirectory, registerChat } from '../chats/directory.ts'
 import type { ConversationRegistry } from '../conversations.ts'
 import type { ChatMemories } from '../memory/memory.ts'
 import { appConversations } from '../storage/schema.ts'
@@ -31,17 +31,14 @@ export function topicPorts(
   return {
     open: () => conversations.openConversation(),
     register: (chat, topic, name, now) => {
-      db.insert(appConversations)
-        .values({
-          chatId: chat,
-          piSession: chat,
-          role: 'conversation',
-          kind: 'main',
-          title: name,
-          topicId: topic,
-          createdAt: now,
-        })
-        .run()
+      registerChat(db, {
+        chatId: chat,
+        role: 'conversation',
+        kind: 'main',
+        title: name,
+        topicId: topic,
+        createdAt: now,
+      })
       kit.capabilities.copy(kit.chats.primary(), chat, now)
       conversations.touched([chat])
     },
