@@ -21,5 +21,8 @@ export function storedJson<S extends Schema.Constraint & Schema.ConstraintDecode
 /** Any JSON value this agent stored: an app's state, a snapshot, a job's input, a receipt. */
 export const storedValue = (what: string) => storedJson(Schema.Unknown, what)
 
+/** A schedule's stored input for its action. */
+export const readJobInput = storedValue('job input')
+
 /** A release's files, or its built modules: name to text. */
 export const readFiles = storedJson(Schema.Record(Schema.String, Schema.String), 'release files')

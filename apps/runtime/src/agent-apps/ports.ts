@@ -1,14 +1,13 @@
 import * as Effect from 'effect/Effect'
-import type { EntitlementPolicy } from '../billing/gates.ts'
-import type { ModelBudget } from '../budget.ts'
-import type { TelegramChannel } from '../channel/channel.ts'
-import { nowSeconds } from '../clock.ts'
-import type { McpHost } from '../mcp/host.ts'
-import type { CheapModel } from '../memory/model.ts'
-import type { ResidentAuthority } from '../resident.ts'
-import type { CapabilityProfiles } from '../capabilities/profiles.ts'
+import * as Exit from 'effect/Exit'
+import { requireBudget } from '../budget.ts'
+import { Capabilities } from '../capabilities/service.ts'
+import { Channel } from '../channel/service.ts'
 import { Forbidden } from '../http/errors.ts'
-import { AppCodeError, problemText } from './queue.ts'
+import type { AgentServices } from '../layers/index.ts'
+import { McpConnections, requireResident } from '../mcp/service.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
+import { AppCodeError, problemText, thrownOf } from './queue.ts'
 
 /** What agent apps reach through their agent (ADR 0021): the owner's MCP tools, the cheap model and Telegram. */
 export type AppServices = {
@@ -28,72 +27,83 @@ export type AppServices = {
   readonly blocked: () => Promise<string | undefined>
 }
 
-type Deps = {
-  readonly capabilities: CapabilityProfiles
-  readonly host: McpHost
-  readonly resident: ResidentAuthority
-  readonly entitlements: EntitlementPolicy
-  readonly budget: ModelBudget
-  readonly model: CheapModel
-  readonly channel: TelegramChannel
-}
+/** One completion on the cheap model, its tokens recorded against today's budget. */
+export type AppCompletion = (
+  system: string,
+  prompt: string,
+  maxTokens: number,
+) => Effect.Effect<string, unknown, AgentServices>
 
 /** Telegram's HTML mode reads `<`, `>` and `&`; an app's text is shown as written. */
 const escaped = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 
 /**
- * The services an agent app's powers use. Each first checks what every outside act of the agent needs: the owner's
- * plan and current resident authority; a lapsed one stops the app's power, never the owner.
+ * The services an agent app's powers use, over the agent's own services. Each is a call from the app's isolate, so it
+ * enters the runtime through `run`, which checks the owner's plan; then resident authority (and, where a conversation
+ * asked, its switches). A lapsed one stops the app's power, never the owner. A power's failure reaches the app as it
+ * was thrown, as before.
  */
-export function appServices(deps: Deps): AppServices {
-  const authority = async () => {
-    await Effect.runPromise(deps.entitlements.require())
-    deps.resident.require(nowSeconds())
+export function appServices(run: RunProgram, complete: AppCompletion): AppServices {
+  const settled = async <A, E>(program: Effect.Effect<A, E, AgentServices>): Promise<A> => {
+    const exit = await run(Effect.exit(program))
+    if (Exit.isSuccess(exit)) return exit.value
+    throw thrownOf(exit.cause)
   }
   return {
-    authorizeCall: async (session, app) => {
-      await authority()
-      if (session !== undefined && !deps.capabilities.app(session, app))
-        throw new Forbidden({ reason: 'app execution excluded here' })
-    },
-    tool: async ({ serverId, name, args, session }) => {
-      const authorize = async () => {
-        await authority()
-        if (session !== undefined && !deps.capabilities.scope(session).tool(serverId, name))
-          throw new Forbidden({ reason: 'app MCP tool excluded here' })
-      }
-      await authorize()
-      return deps.host.manager.callTool(serverId, name, args, {
-        caller: 'model',
-        timeout: 15_000,
-        authorize,
+    authorizeCall: (session, app) =>
+      settled(
+        Effect.gen(function* () {
+          yield* requireResident
+          if (session !== undefined && !(yield* Capabilities.use((capabilities) => capabilities.app(session, app))))
+            return yield* new Forbidden({ reason: 'app execution excluded here' })
+        }),
+      ),
+    tool: ({ serverId, name, args, session }) => {
+      const authorize = Effect.gen(function* () {
+        yield* requireResident
+        if (session === undefined) return
+        const scope = yield* Capabilities.use((capabilities) => capabilities.scope(session))
+        if (!scope.tool(serverId, name)) return yield* new Forbidden({ reason: 'app MCP tool excluded here' })
       })
-    },
-    complete: async (system, prompt, maxTokens) => {
-      await authority()
-      await deps.budget.require(nowSeconds())
-      return deps.model.complete(system, prompt, maxTokens)
-    },
-    notify: async (op, text) => {
-      await authority()
-      const serverId = deps.channel.status()?.serverId
-      if (serverId === undefined) throw new AppCodeError('notify: the owner has no Telegram channel connected')
-      const result = await deps.host.manager.callTool(
-        serverId,
-        'send_message',
-        { operationId: op, text: escaped(text) },
-        { caller: 'model', timeout: 5000, authorize: authority },
+      return settled(
+        Effect.andThen(
+          authorize,
+          McpConnections.use((connections) =>
+            connections.callTool(serverId, name, args, {
+              caller: 'model',
+              timeout: 15_000,
+              authorize: () => run(authorize),
+            }),
+          ),
+        ),
       )
-      if (result.isError === true) throw new AppCodeError('notify: the channel refused the message')
     },
-    blocked: async () => {
-      try {
-        await authority()
-        return undefined
-      } catch (cause) {
+    complete: (system, prompt, maxTokens) =>
+      settled(requireResident.pipe(Effect.andThen(requireBudget), Effect.andThen(complete(system, prompt, maxTokens)))),
+    notify: (op, text) =>
+      settled(
+        Effect.gen(function* () {
+          yield* requireResident
+          const serverId = (yield* Channel.use((channel) => channel.status))?.serverId
+          if (serverId === undefined)
+            return yield* Effect.fail(new AppCodeError('notify: the owner has no Telegram channel connected'))
+          const result = yield* McpConnections.use((connections) =>
+            connections.callTool(
+              serverId,
+              'send_message',
+              { operationId: op, text: escaped(text) },
+              { caller: 'model', timeout: 5000, authorize: () => run(requireResident) },
+            ),
+          )
+          if (result.isError === true)
+            return yield* Effect.fail(new AppCodeError('notify: the channel refused the message'))
+        }),
+      ),
+    blocked: () =>
+      run(requireResident).then(
+        () => undefined,
         // expected: a lapsed plan or authority is the answer; the job waits and its status says why
-        return `waiting for the owner (${problemText(cause)})`
-      }
-    },
+        (cause: unknown) => `waiting for the owner (${problemText(cause)})`,
+      ),
   }
 }

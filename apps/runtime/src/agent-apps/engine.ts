@@ -1,5 +1,5 @@
 import type { Extension, Registry } from '@earendil-works/pi-durable'
-import { type AgentAppLaunch, AgentAppLib, type AppCallResult, type AppSnapshot } from '@goblin/contracts'
+import { type AgentAppLaunch, AgentAppLib, type AppSnapshot } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { FileStore } from '../files/store.ts'
@@ -274,22 +274,6 @@ export class AgentApps {
     }
   }
 
-  /**
-   * An action the app's view called, as the owner: the state after it, or the app's own error (its code failed or
-   * broke a rule). Views call actions only; `op` is the frame's operation id, kept apart per app.
-   */
-  async viewCall(app: string, member: string, input: unknown, op: string): Promise<AppCallResult> {
-    if (this.dispatch.manifest(this.dispatch.active(app)).actions[member] === undefined)
-      throw new InvalidInput({ reason: `${app} has no action ${member}; a view calls actions and reads the state` })
-    try {
-      await this.dispatch.call({ app, member, input, op: `ui:${app}:${op}` })
-    } catch (cause) {
-      if (cause instanceof AppCodeError) return { ok: false, error: cause.message }
-      throw cause
-    }
-    return { ok: true, ...this.snapshot(app) }
-  }
-
   /** A failure the app's view reported: kept with its events (at most one every ten seconds), where the agent sees it. */
   viewError(app: string, message: string): { readonly kept: boolean } {
     this.dispatch.active(app)
@@ -391,27 +375,29 @@ export class AgentApps {
    * newest snapshot taken while that release was active comes back.
    */
   rollback(app: string, release: string): Promise<RolledBack> {
-    return this.#lock(app, async () => {
-      const row = this.store.release(release)
-      if (row?.app !== app || row.status !== 'retired')
-        throw new InvalidInput({
-          reason: `${release} is not an earlier version of ${app} (see app_inspect with releases)`,
-        })
-      const manifest = this.dispatch.manifest(release)
-      const current = this.store.state(app)
-      const fits = current !== undefined && mismatches(manifest.state.schema, current.state).length === 0
-      const snapshot = fits
-        ? undefined
-        : this.store
-            .snapshots(app)
-            .find((entry) => entry.release === release && mismatches(manifest.state.schema, entry.state).length === 0)
-      if (!fits && snapshot === undefined)
-        throw new InvalidInput({ reason: 'the current state does not fit that version, and no snapshot from it does' })
-      this.store.rollback({ app, release, state: snapshot?.state, now: this.#deps.now() })
-      this.#changed(app)
-      await this.#reconcile(app)
-      return { release, version: row.seq, restored: snapshot === undefined ? 'kept' : 'snapshot' }
-    })
+    return this.#lock(app, () => this.#rollback(app, release))
+  }
+
+  async #rollback(app: string, release: string): Promise<RolledBack> {
+    const row = this.store.release(release)
+    if (row?.app !== app || row.status !== 'retired')
+      throw new InvalidInput({
+        reason: `${release} is not an earlier version of ${app} (see app_inspect with releases)`,
+      })
+    const manifest = this.dispatch.manifest(release)
+    const current = this.store.state(app)
+    const fits = current !== undefined && mismatches(manifest.state.schema, current.state).length === 0
+    const snapshot = fits
+      ? undefined
+      : this.store
+          .snapshots(app)
+          .find((entry) => entry.release === release && mismatches(manifest.state.schema, entry.state).length === 0)
+    if (!fits && snapshot === undefined)
+      throw new InvalidInput({ reason: 'the current state does not fit that version, and no snapshot from it does' })
+    this.store.rollback({ app, release, state: snapshot?.state, now: this.#deps.now() })
+    this.#changed(app)
+    await this.#reconcile(app)
+    return { release, version: row.seq, restored: snapshot === undefined ? 'kept' : 'snapshot' }
   }
 
   /** What one `prepare` of `app` may reach (ADR 0021): its files and log, and each power the owner approved. */
@@ -504,12 +490,23 @@ export class AgentApps {
    */
   async remove(app: string): Promise<void> {
     this.dispatch.active(app)
-    await this.#lock(app, async () => {
-      await this.jobs.removeApp(app)
-      await this.files(app).purge()
-      eraseApp(drizzle(this.#deps.storage), app)
-      this.#files.delete(app)
-    })
+    await this.#lock(app, () => this.#remove(app))
+  }
+
+  async #remove(app: string): Promise<void> {
+    await this.jobs.removeApp(app)
+    await this.files(app).purge()
+    eraseApp(drizzle(this.#deps.storage), app)
+    this.#files.delete(app)
+  }
+
+  /**
+   * `rollback` and `remove` for a program in the runtime that already holds the app's lock (`withAppLock`), so it never
+   * reaches the runtime again through the engine's own lock.
+   */
+  readonly held = {
+    rollback: (app: string, release: string): Promise<RolledBack> => this.#rollback(app, release),
+    remove: (app: string): Promise<void> => this.#remove(app),
   }
 
   /** An app's own files. */

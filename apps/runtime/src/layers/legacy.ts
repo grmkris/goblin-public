@@ -16,7 +16,6 @@ import { PersonaInvocations } from '../personas/invocations.ts'
 import { OrganizeReceipts } from '../organize/receipts.ts'
 import { topicPorts } from '../topics/ports.ts'
 import { AppRegistry } from '../apps/registry.ts'
-import { appServices } from '../agent-apps/ports.ts'
 import { CredentialCipher } from '../mcp/cipher.ts'
 import { configuredServers } from '../mcp/config.ts'
 import { CredentialStore } from '../mcp/credentials.ts'
@@ -277,15 +276,16 @@ const startConversations = Effect.gen(function* () {
 })
 
 /**
- * The second half: skills and the learner, the Telegram channel, the agent apps' services, then Events and their
- * consumers. The Files, Inspect and Retrieval services are made last.
+ * The second half: skills and the learner, the Telegram channel, then Events and their consumers. The Files, Inspect
+ * and Retrieval services are made last. The agent apps are connected to the agent's services by lane A's layer
+ * (agent-apps/live.ts), after this whole start.
  */
 const startChannels = Effect.fn('LegacyLive.startChannels')(function* (
   started: Effect.Success<typeof startConversations>,
 ) {
   const { input, db, cheap, routineServices } = started
   const { host, cipher, resident, eventStore, skillState, grants } = started.mcp
-  const { budget, capabilities, chats, conversations, transcripts } = started.services
+  const { chats, conversations, transcripts } = started.services
   const skills = new SkillLibrary(host.manager, skillState, nowMillis)
   const learner = new SkillLearner({
     drafts: new SqliteDraftLog(db),
@@ -298,17 +298,6 @@ const startChannels = Effect.fn('LegacyLive.startChannels')(function* (
     now: nowMillis,
   })
   const channel = new TelegramChannel(db, cipher, input.scheduleReplies, input.telemetry, chats)
-  input.agentApps.connect(
-    appServices({
-      host,
-      resident,
-      entitlements: input.entitlements,
-      budget,
-      model: cheap('app_llm'),
-      channel,
-      capabilities,
-    }),
-  )
   const events = yield* Effect.promise(() => makeEvents(input, host, resident, eventStore, cipher))
   installEventConsumers(events, channel, skills, input.pullTelegram)
   return {

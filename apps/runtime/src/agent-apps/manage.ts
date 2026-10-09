@@ -1,4 +1,4 @@
-import type { AgentAppChange, AgentAppDetail, AgentAppSummary } from '@goblin/contracts'
+import type { AgentAppDetail, AgentAppSummary } from '@goblin/contracts'
 import { NotFound } from '../http/errors.ts'
 import type { AgentApps } from './engine.ts'
 
@@ -55,27 +55,5 @@ export async function appDetail(apps: AgentApps, name: string, now: number): Pro
     events: apps.store
       .events(name, EVENTS_SHOWN)
       .map((event) => ({ kind: event.kind, detail: event.detail.slice(0, 1000), at: event.createdAt })),
-  }
-}
-
-/** One change the owner makes to an agent app, other than moving its home (the program checks the conversation). */
-export async function changeApp(
-  apps: AgentApps,
-  name: string,
-  change: Exclude<AgentAppChange, { readonly kind: 'home' }>,
-): Promise<void> {
-  if (apps.store.app(name) === undefined) throw new NotFound({ what: `app ${name}` })
-  switch (change.kind) {
-    case 'rollback':
-      await apps.rollback(name, change.release)
-      return
-    case 'pause':
-      await apps.jobs.pause(name, change.action, change.paused)
-      return
-    case 'run':
-      await apps.jobs.runNow(name, change.action)
-      return
-    case 'power':
-      apps.answer(name, { kind: change.power, target: change.target }, change.allowed)
   }
 }

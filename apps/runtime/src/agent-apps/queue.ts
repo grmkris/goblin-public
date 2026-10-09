@@ -18,7 +18,7 @@ export type AppRunner = <A>(program: Effect.Effect<A, never, KeyedLock>) => Prom
 export type AppLock = <T>(app: string, work: () => Promise<T>) => Promise<T>
 
 /** The KeyedLock key of an app's state changes, the same inside the runtime and through `AppRunner`. */
-const appKey = (app: string): string => `agent-app:${app}`
+export const appKey = (app: string): string => `agent-app:${app}`
 
 /** `effect` holding `app`'s lock, for a program already in the runtime. */
 export const withAppLock =
@@ -26,17 +26,25 @@ export const withAppLock =
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R | KeyedLock> =>
     KeyedLock.use((locks) => locks.withLock(appKey(app))(effect))
 
-/** Carries what locked work threw out through the runtime, so the caller gets it back as it was thrown. */
-class LockedWorkFailed extends Schema.TaggedError<LockedWorkFailed>()('LockedWorkFailed', { cause: Schema.Defect() }) {}
+/** Carries what Promise work threw through an Effect, so its caller gets it back as it was thrown. */
+class Thrown extends Schema.TaggedError<Thrown>()('Thrown', { cause: Schema.Defect() }) {}
+
+/** Promise work as an Effect whose failure is `Thrown`, carrying what the work threw. */
+export const promised = <A>(work: () => Promise<A>): Effect.Effect<A, Thrown> =>
+  Effect.tryPromise({ try: work, catch: (cause) => new Thrown({ cause }) })
+
+/** What an exit failed with, as it was first thrown: for code that answers a Promise. */
+export const thrownOf = (cause: Cause.Cause<unknown>): unknown => {
+  const failure = Cause.squash(cause)
+  return failure instanceof Thrown ? failure.cause : failure
+}
 
 /** The app lock for the engine's Promise callers, taken in the runtime through `run`; `work`'s failure comes back as thrown. */
 export function appLock(run: AppRunner): AppLock {
   return async (app, work) => {
-    const locked = Effect.tryPromise({ try: work, catch: (cause) => new LockedWorkFailed({ cause }) })
-    const exit = await run(Effect.exit(withAppLock(app)(locked)))
+    const exit = await run(Effect.exit(withAppLock(app)(promised(work))))
     if (Exit.isSuccess(exit)) return exit.value
-    const failure = Cause.squash(exit.cause)
-    throw failure instanceof LockedWorkFailed ? failure.cause : failure
+    throw thrownOf(exit.cause)
   }
 }
 

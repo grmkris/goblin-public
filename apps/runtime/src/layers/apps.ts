@@ -1,19 +1,20 @@
-import type { AgentAppChange } from '@goblin/contracts'
+import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import { appDetail, appSummaries, changeApp } from '../agent-apps/manage.ts'
-import { AppEngine } from '../agent-apps/service.ts'
+import { AgentAppsLive } from '../agent-apps/live.ts'
+import type { AppEngine } from '../agent-apps/service.ts'
 import type { AppOrigin } from '../apps/registry.ts'
 import { Apps } from '../apps/service.ts'
-import { nowMillis } from '../clock.ts'
-import type { FileCaller } from '../files/store.ts'
-import { Files } from '../files/service.ts'
-import { AppEngine as LegacyEngine, Apps as LegacyApps, Files as LegacyFiles } from '../services.ts'
-import { attempt, attemptSync, nowSecondsEffect } from '../services.ts'
+import { FilesLive } from '../files/live.ts'
+import type { Files } from '../files/service.ts'
+import { toAppError } from '../http/errors.ts'
+import { Apps as LegacyApps } from '../services.ts'
 import type { FoundationServices } from './core.ts'
 
-/** A change to an agent app other than moving its home, which the program checks first. */
-type OwnerChange = Exclude<AgentAppChange, { readonly kind: 'home' }>
+/** A registry call in the service's error channel, mapped as the programs' `attempt` did. */
+const step = <A>(work: () => Promise<A>) => Effect.tryPromise({ try: work, catch: toAppError })
+const stepSync = <A>(work: () => A) => Effect.try({ try: work, catch: toAppError })
+const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
 
 /**
  * `Apps` over the App registry the legacy start made: the same instance, each call wrapped as the programs wrapped it,
@@ -24,118 +25,48 @@ const AppsAdapter = Layer.effect(
   Effect.gen(function* () {
     const registry = yield* LegacyApps
     return Apps.of({
-      list: attemptSync(() => registry.list()).pipe(Effect.withSpan('Apps.list')),
+      list: stepSync(() => registry.list()).pipe(Effect.withSpan('Apps.list')),
       placement: Effect.fn('Apps.placement')(function* (id: string) {
-        return yield* attemptSync(() => registry.placement(id))
+        return yield* stepSync(() => registry.placement(id))
       }),
       register: Effect.fn('Apps.register')(function* (session: string, callId: string, origin: AppOrigin) {
-        const now = yield* nowSecondsEffect
-        return yield* attemptSync(() => registry.register(session, callId, origin, now))
+        const now = yield* nowSeconds
+        return yield* stepSync(() => registry.register(session, callId, origin, now))
       }),
       update: Effect.fn('Apps.update')(function* (id: string, closed: boolean) {
-        const now = yield* nowSecondsEffect
-        return yield* attemptSync(() => registry.update(id, closed, now))
+        const now = yield* nowSeconds
+        return yield* stepSync(() => registry.update(id, closed, now))
       }),
       launch: Effect.fn('Apps.launch')(function* (id: string) {
-        return yield* attempt(() => registry.launch(id))
+        return yield* step(() => registry.launch(id))
       }),
       call: Effect.fn('Apps.call')(function* (session: string, callId: string) {
-        return yield* attempt(() => registry.call(session, callId))
+        return yield* step(() => registry.call(session, callId))
       }),
       agentApp: Effect.fn('Apps.agentApp')(function* (id: string) {
-        return yield* attemptSync(() => registry.agentApp(id))
+        return yield* stepSync(() => registry.agentApp(id))
       }),
       agentId: Effect.fn('Apps.agentId')(function* (name: string) {
-        return yield* attemptSync(() => registry.agentId(name))
+        return yield* stepSync(() => registry.agentId(name))
       }),
       removeAgent: Effect.fn('Apps.removeAgent')(function* (name: string) {
-        return yield* attemptSync(() => registry.removeAgent(name))
+        return yield* stepSync(() => registry.removeAgent(name))
       }),
       originOf: Effect.fn('Apps.originOf')(function* (id: string, conversation: string) {
-        return yield* attemptSync(() => registry.originOf(id, conversation))
-      }),
-    })
-  }),
-)
-
-/** `AppEngine` over the agent object's own apps engine (one instance, made before Pi opened), wrapped the same way. */
-const AppEngineAdapter = Layer.effect(
-  AppEngine,
-  Effect.gen(function* () {
-    const engine = yield* LegacyEngine
-    return AppEngine.of({
-      info: Effect.fn('AppEngine.info')(function* (name: string) {
-        return yield* attemptSync(() => engine.info(name))
-      }),
-      summaries: attemptSync(() => appSummaries(engine)).pipe(Effect.withSpan('AppEngine.summaries')),
-      detail: Effect.fn('AppEngine.detail')(function* (name: string) {
-        return yield* attempt(() => appDetail(engine, name, nowMillis()))
-      }),
-      change: Effect.fn('AppEngine.change')(function* (name: string, change: OwnerChange) {
-        return yield* attempt(() => changeApp(engine, name, change))
-      }),
-      moveHome: Effect.fn('AppEngine.moveHome')(function* (name: string, session: string) {
-        return yield* attemptSync(() => engine.moveHome(name, session))
-      }),
-      remove: Effect.fn('AppEngine.remove')(function* (name: string) {
-        return yield* attempt(() => engine.remove(name))
-      }),
-      snapshot: Effect.fn('AppEngine.snapshot')(function* (name: string) {
-        return yield* attemptSync(() => engine.snapshot(name))
-      }),
-      launch: Effect.fn('AppEngine.launch')(function* (name: string) {
-        return yield* attemptSync(() => engine.launch(name))
-      }),
-      viewCall: Effect.fn('AppEngine.viewCall')(function* (name: string, member: string, input: unknown, op: string) {
-        return yield* attempt(() => engine.viewCall(name, member, input, op))
-      }),
-      viewError: Effect.fn('AppEngine.viewError')(function* (name: string, message: string) {
-        return yield* attemptSync(() => engine.viewError(name, message))
-      }),
-    })
-  }),
-)
-
-/** `Files` over the owner's file store, wrapped the same way. */
-const FilesAdapter = Layer.effect(
-  Files,
-  Effect.gen(function* () {
-    const store = yield* LegacyFiles
-    return Files.of({
-      list: Effect.fn('Files.list')(function* (dir: string) {
-        return yield* attempt(() => store.list(dir))
-      }),
-      stat: Effect.fn('Files.stat')(function* (path: string) {
-        return yield* attempt(() => store.stat(path))
-      }),
-      read: Effect.fn('Files.read')(function* (path: string) {
-        return yield* attempt(() => store.read(path))
-      }),
-      text: Effect.fn('Files.text')(function* (path: string, offset: number, maxBytes: number) {
-        return yield* attempt(() => store.text(path, offset, maxBytes))
-      }),
-      write: Effect.fn('Files.write')(function* (
-        caller: FileCaller,
-        path: string,
-        body: string | Uint8Array | ReadableStream<Uint8Array>,
-        mimeType: string,
-        size: number,
-      ) {
-        return yield* attempt(() => store.write(caller, path, body, mimeType, size))
-      }),
-      remove: Effect.fn('Files.remove')(function* (caller: FileCaller, path: string) {
-        return yield* attempt(() => store.remove(caller, path))
+        return yield* stepSync(() => registry.originOf(id, conversation))
       }),
     })
   }),
 )
 
 /**
- * Lane A's services: the owner's Apps, the agent's apps and the owner's files. Until wave 3 each adapts the instance
- * the legacy start made (layers/legacy.ts), so there is still one of each.
+ * Lane A's services: the owner's Apps, the agent's apps and the owner's files. `AppEngine` and `Files` are native over
+ * the one engine the agent object made (the engine is connected to the agent's services while this layer is built);
+ * `Apps` still adapts the registry the legacy start made, whose listeners the workspace feed and Home hold, until
+ * those listeners move to `Changes`.
  */
 export const AppsLive: Layer.Layer<Apps | AppEngine | Files, never, FoundationServices> = Layer.mergeAll(
   AppsAdapter,
-  AppEngineAdapter,
-  FilesAdapter,
+  AgentAppsLive,
+  FilesLive,
 )

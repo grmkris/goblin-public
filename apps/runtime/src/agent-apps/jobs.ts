@@ -5,7 +5,7 @@ import { appAgentJobs } from '../storage/schema.ts'
 import { type Every, type Manifest, type Schedule, everyOf } from './manifest.ts'
 import { problemText } from './queue.ts'
 import type { AgentAppStore } from './store.ts'
-import { storedValue } from './stored.ts'
+import { readJobInput } from './stored.ts'
 
 const MINUTE = 60_000
 
@@ -32,9 +32,6 @@ export const JOB_LIMITS = {
   maxBackoff: 360 * MINUTE,
   busy: MINUTE,
 } as const
-
-/** A schedule's stored input for its action. */
-const readJobInput = storedValue('job input')
 
 /** The callback the agent object arms for a job. */
 export const JOB_CALLBACK = 'runAppJob'
@@ -173,21 +170,29 @@ export class AppJobs {
   }
 
   /**
-   * The owner runs a schedule's action now, outside its slots: it counts toward the day's runs and moves no slot. How
-   * it went is the schedule's last run.
+   * The owner runs a schedule's action now, outside its slots: it counts toward the day's runs and moves no slot. This
+   * is its start: the stored input and the operation id, once today's runs allow one more. `finishNow` keeps how it
+   * went as the schedule's last run.
    */
-  async runNow(app: string, action: string): Promise<void> {
+  startNow(app: string, action: string): { readonly input: string; readonly op: string } {
     const row = this.#required(app, action)
     const now = this.#deps.now()
     if (!this.#deps.store.spend(app, 'job', 1, JOB_LIMITS.daily, now))
       throw new Conflict({ reason: `${app} ran ${String(JOB_LIMITS.daily)} jobs today already` })
-    try {
-      await this.#deps.run(app, action, readJobInput(row.input), `job:${app}:${action}:now:${String(now)}`)
-      this.#jobs.update(app, action, { lastAt: this.#deps.now(), lastStatus: 'ok', lastError: null })
-    } catch (cause) {
-      // expected: the run's failure is the schedule's last status, which the owner sees on the Apps page
-      const error = problemText(cause).slice(0, 1000)
-      this.#jobs.update(app, action, { lastAt: this.#deps.now(), lastStatus: 'failed', lastError: error })
+    return { input: row.input, op: `job:${app}:${action}:now:${String(now)}` }
+  }
+
+  /** How the owner's run now went, kept as the schedule's last run; a failure is that status, not thrown. */
+  finishNow(
+    app: string,
+    action: string,
+    outcome: { readonly ok: true } | { readonly ok: false; readonly error: unknown },
+  ) {
+    const lastAt = this.#deps.now()
+    if (outcome.ok) this.#jobs.update(app, action, { lastAt, lastStatus: 'ok', lastError: null })
+    else {
+      const lastError = problemText(outcome.error).slice(0, 1000)
+      this.#jobs.update(app, action, { lastAt, lastStatus: 'failed', lastError })
     }
     this.#deps.changed(app)
   }
