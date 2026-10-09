@@ -160,8 +160,8 @@ export class Conversations extends Context.Service<
     readonly reportRoutine: (report: RoutineReport) => Effect.Effect<void, AppError>
     /** A thread's note into the chat it came from; returns how that chat is named. */
     readonly shareBack: (thread: string, note: string, requestId: string) => Effect.Effect<string, AppError>
-    /** Tells a "+" thread's Conversation about it once it has a title. */
-    readonly announce: (thread: string) => Effect.Effect<void, AppError>
+    /** Tells a "+" thread's Conversation about it once it has a title; true only when this call wrote the note. */
+    readonly announce: (thread: string) => Effect.Effect<boolean, AppError>
     /**
      * Writes `entry` into `chat` passively; `placed` waits, outside the chat's lock, until it is in the transcript and
      * gives its entry id.

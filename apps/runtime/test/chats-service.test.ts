@@ -43,6 +43,7 @@ const services = (calls: Calls) => {
     registerRoutine: (session, runId, _title, now, topic) =>
       void calls.push(`routine:${session}:${runId}@${now}:${topic}`),
     view: async () => undefined,
+    announce: async (thread) => thread === '2',
   })
   const moves = fake<ChatMover>({
     move: async (chat, input, now) => {
@@ -148,6 +149,7 @@ describe('the conversation services over the legacy instances', () => {
       yield* conversations.markRead('2')
       yield* conversations.registerRoutine('77', 'run-1', 'Daily', 3)
       expect(yield* conversations.view('5')).toEqual(Option.none())
+      expect([yield* conversations.announce('2'), yield* conversations.announce('3')]).toEqual([true, false])
       const receipt = yield* (yield* Moves).move('1', { entry: 4, operationId: 'move-1' })
       expect(receipt).toMatchObject({ state: 'refused', reason: 'streaming' })
       expect(calls).toEqual(['read:2@90', 'routine:77:run-1@90:3', 'move:1@90'])

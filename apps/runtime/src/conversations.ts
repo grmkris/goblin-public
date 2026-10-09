@@ -482,22 +482,24 @@ export class ConversationRegistry {
    * Tells its Topic's Conversation, once, about a thread the owner started with "+": when it has a title (the cheap
    * model's or the owner's), that Conversation gets a note naming it, which its model sees and which starts no run.
    * Nothing said in the thread goes with it, and a later rename does not rewrite it. The write's request id makes a
-   * retry after a crash the same note.
+   * retry after a crash the same note. True only for the call that marked the note written.
    */
-  async announce(thread: string): Promise<void> {
+  async announce(thread: string): Promise<boolean> {
     const row = this.#row(thread)
-    if (row?.kind !== 'thread' || row.mainNote !== 'owed' || row.title === null) return
+    if (row?.kind !== 'thread' || row.mainNote !== 'owed' || row.title === null) return false
     const model = [{ role: 'user' as const, content: threadStartedContent(row.title), timestamp: Date.now() }]
     await this.#passiveWrite(this.#kit.chats.conversationAbove(thread), {
       type: 'write',
       requestId: `thread-started:${thread}`,
       entry: { kind: 'app.thread_started', data: { thread }, model },
     })
-    this.#db
+    const written = this.#db
       .update(appConversations)
       .set({ mainNote: 'written' })
       .where(and(eq(appConversations.chatId, thread), eq(appConversations.mainNote, 'owed')))
-      .run()
+      .returning({ chat: appConversations.chatId })
+      .all()
+    return written.length > 0
   }
 
   async #passiveWrite(chat: string, submission: Extract<Parameters<Conversation['submit']>[0], { type: 'write' }>) {
