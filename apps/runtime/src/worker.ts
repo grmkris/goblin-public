@@ -18,7 +18,7 @@ import { canonicalRedirect } from './http/canonical.ts'
 import { billingDeps } from './billing/routes.ts'
 import { billingWebhook } from './billing/webhook.ts'
 import { runBillingCron } from './billing/cron.ts'
-import { billingMode, requireAccountPlan } from './billing/gates.ts'
+import { billingMode, accountPlan } from './billing/gates.ts'
 
 export { PersonalAgent } from './agent.ts'
 
@@ -33,7 +33,7 @@ const edgeOf = (env: RuntimeEnv): Edge => ({
       Effect.tryPromise({ try: () => requireUserSession(request, env), catch: toAppError }),
       (session) => session.userId,
     ),
-  plan: (userId) => Effect.asVoid(Effect.tryPromise({ try: () => requireAccountPlan(env, userId), catch: toAppError })),
+  plan: (userId) => Effect.asVoid(accountPlan(env, userId)),
   agent: (userId) => agentOf(env, userId),
   records: accountRecords(env),
 })
@@ -53,7 +53,7 @@ async function doorbellRoute(request: Request, env: RuntimeEnv, path: string): P
   const [, userId = '', token = ''] = /^\/hooks\/myagent\/([\w-]{1,200})\/([\w-]{43})$/u.exec(path) ?? []
   if (request.method !== 'POST' || userId === '' || !(await hookTokenValid(env.CREDENTIAL_KEY, userId, token)))
     throw new NotFound({ what: path })
-  await requireAccountPlan(env, userId)
+  await Effect.runPromise(accountPlan(env, userId))
   const body = await request.text()
   if (body.length > DOORBELL_BYTES) throw new InvalidInput({ reason: 'doorbell too large' })
   unwrap(
@@ -71,7 +71,7 @@ async function mcpEventsRoute(request: Request, env: RuntimeEnv, path: string): 
   const [, userId = '', token = ''] = /^\/hooks\/mcp-events\/([\w-]{1,200})\/([\w-]{43})$/u.exec(path) ?? []
   if (request.method !== 'POST' || userId === '' || !(await eventsHookTokenValid(env.CREDENTIAL_KEY, userId, token)))
     throw new NotFound({ what: path })
-  await requireAccountPlan(env, userId)
+  await Effect.runPromise(accountPlan(env, userId))
   const body = await readBytes(request, EVENT_BODY_BYTES)
   const result = unwrap(
     await agentOf(env, userId).mcpEventsWebhook({

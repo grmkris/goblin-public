@@ -49,13 +49,8 @@ export const cachedPolicy = Effect.fn('Entitlements.cachedPolicy')(function* (po
   return Entitlements.of({ state: () => state, require: () => requirePlan(state) })
 })
 
-/** Before resolving an Agent stub. Missing provider keys never disable this gate. */
-export async function requireAccountPlan(env: RuntimeEnv, userId: string) {
-  const plan = await Effect.runPromise(
-    Entitlements.use((entitlements) => entitlements.state()).pipe(
-      Effect.provide(Entitlements.layer(env, () => userId)),
-    ),
-  )
-  if (!plan.active) throw new SubscriptionRequired({ subscribe: '/subscribe' })
-  return plan
-}
+/**
+ * The account's plan read fresh from auth D1, as the Worker edge checks it before it resolves an Agent stub:
+ * `SubscriptionRequired` unless it is active. Missing provider keys never disable this gate.
+ */
+export const accountPlan = (env: RuntimeEnv, userId: string) => accountEntitlements(env, () => userId).require()
