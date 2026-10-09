@@ -15,7 +15,7 @@ import { TelegramChannel } from '../../../src/channel/channel.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { RoutinesHandlers } from '../../../src/routines/api.ts'
-import { RoutinesLive } from '../../../src/layers/routines.ts'
+import { ModelBudgetLive, RoutinesLive } from '../../../src/layers/routines.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
 import { RoutineController } from '../../../src/routines/controller.ts'
 import { RoutineRunStore } from '../../../src/routines/runs.ts'
@@ -120,7 +120,9 @@ const fixture = () => {
     } as AgentInputs),
   )
   const runtime = ManagedRuntime.make(
-    OwnerHttp.serve(API, SERVED).pipe(Layer.provide(Layer.provideMerge(RoutinesLive, legacy))),
+    OwnerHttp.serve(API, SERVED).pipe(
+      Layer.provide(Layer.provideMerge(Layer.merge(ModelBudgetLive, RoutinesLive), legacy)),
+    ),
   )
   runtimes.push(runtime)
   const fetch = async (request: Request) =>

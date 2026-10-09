@@ -5,13 +5,9 @@ import { afterEach } from 'vitest'
 import type { EntitlementPolicy } from '../src/billing/gates.ts'
 import type { AccountPlan } from '../src/billing/reconcile.ts'
 import { Budget } from '../src/budget.ts'
-import { TelegramChannel } from '../src/channel/channel.ts'
-import { RoutinesLive } from '../src/layers/routines.ts'
-import { RoutineController } from '../src/routines/controller.ts'
-import { RoutineUsage } from '../src/routines/usage.ts'
+import { ModelBudgetLive } from '../src/layers/routines.ts'
 import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
-import * as Legacy from '../src/services.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 
 const PLAN: AccountPlan = {
@@ -39,21 +35,13 @@ const lane = () => {
     return PLAN
   })
   const plans: EntitlementPolicy = { state: () => state, require: () => state }
-  const layer = RoutinesLive.pipe(
+  const layer = ModelBudgetLive.pipe(
     Layer.provide(
       Layer.mergeAll(
         // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
         Layer.succeed(Db, db as never),
-        // The adapters over the legacy start's instances: built, never called here.
-        Layer.succeed(Legacy.RoutineUsageProjection, Object.create(RoutineUsage.prototype)),
-        Layer.succeed(Legacy.Channel, Object.create(TelegramChannel.prototype)),
-        // SAFETY: the lane's layers read only these from the instance input.
-        Layer.succeed(AgentInput, {
-          entitlements: plans,
-          env: { MODEL_ID: 'model-a' },
-          userId: 'owner',
-          routines: Object.create(RoutineController.prototype),
-        } as AgentInputs),
+        // SAFETY: the budget, the kept plan and the picker read only these from the instance input.
+        Layer.succeed(AgentInput, { entitlements: plans, env: { MODEL_ID: 'model-a' } } as AgentInputs),
       ),
     ),
   )

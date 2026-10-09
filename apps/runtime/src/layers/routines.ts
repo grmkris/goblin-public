@@ -210,18 +210,25 @@ export const EntitlementsLive = Layer.effect(
 )
 
 /**
- * Lane R's services: the plan the agent keeps, routines, the Telegram channel, the model budget and the model picker.
- * The stores, the budget and the picker are built here over the agent's SQLite; they keep no state of their own. Three
- * stay adapters over the one instance that has state: the usage projection the legacy start subscribed to Pi's
- * commits, the Telegram channel the legacy start gave the Events consumers and the apps, and the routine controller
- * the agent's constructor made (`AgentInput.routines`).
+ * The plan the agent keeps, its daily model budget and the model picker, over the agent's SQLite (they keep no state of
+ * their own but the kept plan). A send's admission reads them, so `layers/index.ts` builds them before the conversation
+ * layer; they need only the instance input and the database.
+ */
+export const ModelBudgetLive: Layer.Layer<Entitlements | Budget | Models, never, AgentInput | Db> = Layer.mergeAll(
+  Layer.provideMerge(BudgetLive, EntitlementsLive),
+  ModelsLive,
+)
+
+/**
+ * Lane R's other services: routines and the Telegram channel. The stores are built here over the agent's SQLite; they
+ * keep no state of their own. Three stay adapters over the one instance that has state: the usage projection the
+ * legacy start subscribed to Pi's commits, the Telegram channel the legacy start gave the Events consumers and the
+ * apps, and the routine controller the agent's constructor made (`AgentInput.routines`).
  */
 export const RoutinesLive = Layer.mergeAll(
-  Layer.provideMerge(BudgetLive, EntitlementsLive),
   RoutineStoreLive,
   RoutineRunStoreLive,
   RoutineUsageAdapter,
   RoutineControlAdapter,
-  ModelsLive,
   ChannelAdapter,
 )

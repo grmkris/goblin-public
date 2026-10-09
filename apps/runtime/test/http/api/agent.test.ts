@@ -19,7 +19,7 @@ import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { AgentHandlers } from '../../../src/routines/agent-api.ts'
 import { ChatsAdapter } from '../../../src/layers/conversation.ts'
-import { RoutinesLive } from '../../../src/layers/routines.ts'
+import { ModelBudgetLive, RoutinesLive } from '../../../src/layers/routines.ts'
 import { Events, McpConnections, McpGrants, McpServers } from '../../../src/mcp/service.ts'
 import { ModelChoiceStore, ModelPicker, modelOptions } from '../../../src/models.ts'
 import { ResidentAuthority } from '../../../src/resident.ts'
@@ -120,7 +120,7 @@ const fixture = () => {
   )
   const runtime = ManagedRuntime.make(
     OwnerHttp.serve(API, SERVED).pipe(
-      Layer.provide(Layer.provideMerge(Layer.merge(RoutinesLive, ChatsAdapter), legacy)),
+      Layer.provide(Layer.provideMerge(Layer.mergeAll(ModelBudgetLive, RoutinesLive, ChatsAdapter), legacy)),
     ),
   )
   runtimes.push(runtime)
