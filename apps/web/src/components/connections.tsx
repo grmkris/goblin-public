@@ -14,7 +14,7 @@ import {
   EmptyTitle,
   Skeleton,
 } from '@goblin/ui'
-import { PlugIcon, PlusIcon } from 'lucide-react'
+import { CircleAlertIcon, CircleCheckIcon, PlugIcon, PlusIcon } from 'lucide-react'
 import { serversQuery } from '../mcp/queries.ts'
 import { QueryError } from '../lib/query/query-boundary.tsx'
 import { serverTitle } from '../lib/labels.ts'
@@ -25,13 +25,31 @@ import { useTelegramChannel } from './telegram-control.tsx'
 import { ToolConsole } from './tool-console.tsx'
 import { glide } from '../lib/motion.ts'
 
-const callbackNotice = (): string => {
+/** What the page tells the owner: something done, or a failure, which reads as one. */
+type Notice = { readonly tone: 'done' | 'failed'; readonly text: string }
+
+/** Where a server's sign-in came back to: connected, or why not, with the reference the callback quotes. */
+const callbackNotice = (): Notice | undefined => {
   const params = new URLSearchParams(window.location.search)
   const connected = params.get('connected')
   const error = params.get('error')
-  if (connected !== null) return `Connected ${connected}. Choose which tools your agent may use.`
-  if (error !== null) return `Connection failed (${error}).`
-  return ''
+  const ref = params.get('ref')
+  if (connected !== null)
+    return { tone: 'done', text: `Connected ${connected}. Choose which tools your agent may use.` }
+  if (error !== null)
+    return { tone: 'failed', text: `Connection failed (${error}).${ref === null ? '' : ` · ref ${ref.slice(0, 8)}`}` }
+  return undefined
+}
+
+/** The notice, set apart by tone: a failure is an alert in the destructive style, an outcome a quiet status. */
+function NoticeAlert({ notice }: { readonly notice: Notice }) {
+  const failed = notice.tone === 'failed'
+  return (
+    <Alert variant={failed ? 'destructive' : 'default'} role={failed ? 'alert' : 'status'}>
+      {failed ? <CircleAlertIcon aria-hidden /> : <CircleCheckIcon aria-hidden />}
+      <AlertDescription>{notice.text}</AlertDescription>
+    </Alert>
+  )
 }
 
 /** The owner's servers from the Query cache; `reload` reads them again after something changed them out of sight. */
@@ -65,18 +83,16 @@ function NoServers({ onAdd }: { readonly onAdd: () => void }) {
 }
 
 export function Connections() {
-  const [message, setMessage] = useState(callbackNotice)
+  const [notice, setNotice] = useState(callbackNotice)
+  const done = useCallback((text: string) => setNotice({ tone: 'done', text }), [])
+  const failed = useCallback((text: string) => setNotice({ tone: 'failed', text }), [])
   const { servers, error, retry, reload } = useServers()
-  const channel = useTelegramChannel(setMessage)
+  const channel = useTelegramChannel(failed)
   const picker = useRef<HTMLElement>(null)
   const toPicker = () => picker.current?.scrollIntoView({ behavior: glide(), block: 'start' })
   return (
     <div className="page-stack">
-      {message && (
-        <Alert>
-          <AlertDescription>{message}</AlertDescription>
-        </Alert>
-      )}
+      {notice !== undefined && <NoticeAlert notice={notice} />}
       <PageSection
         id="servers"
         title="Your servers"
@@ -100,22 +116,16 @@ export function Connections() {
         )}
         {servers?.length === 0 && <NoServers onAdd={toPicker} />}
         {servers?.map((server) => (
-          <ServerCard
-            key={server.serverId}
-            server={server}
-            onReload={reload}
-            onMessage={setMessage}
-            channel={channel}
-          />
+          <ServerCard key={server.serverId} server={server} onReload={reload} onMessage={failed} channel={channel} />
         ))}
       </PageSection>
       <PageSection id="add" title="Add a server" ref={picker}>
         <ServerPicker
-          onChanged={setMessage}
+          onChanged={done}
           onAdded={(server) =>
-            setMessage(`Added ${serverTitle(server)}. Connect it, then choose the tools your agent may use.`)
+            done(`Added ${serverTitle(server)}. Connect it, then choose the tools your agent may use.`)
           }
-          onMessage={setMessage}
+          onMessage={failed}
         />
       </PageSection>
       <ToolConsole servers={(servers ?? []).filter((server) => server.status === 'connected')} />
