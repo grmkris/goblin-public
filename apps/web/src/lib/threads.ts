@@ -1,6 +1,6 @@
 import type { ConversationView } from '@goblin/contracts'
 import { isString, record } from './boundary.ts'
-import type { Part, ToolPart } from './parts.ts'
+import { type Part, type ToolPart, isOwnTurn } from './parts.ts'
 
 const newestFirst = (a: ConversationView, b: ConversationView) =>
   b.createdAt - a.createdAt || Number(b.id) - Number(a.id)
@@ -88,6 +88,15 @@ export function repliesLabel(count: number): string {
 export function entryOfPart(id: string): number | undefined {
   const entry = Number(id.split(':')[0])
   return Number.isSafeInteger(entry) && entry > 0 ? entry : undefined
+}
+
+/**
+ * The message Move to thread is offered on (ADR 0034): the newest one the owner wrote in the chat, as the runtime's
+ * newest turn is. Persona asks and thread heads are not turns the chat ran, so they do not count.
+ */
+export function movableEntry(parts: readonly Part[]): number | undefined {
+  const newest = parts.findLast((part) => part.kind === 'user' && isOwnTurn(part))
+  return newest === undefined ? undefined : entryOfPart(newest.id)
 }
 
 /**

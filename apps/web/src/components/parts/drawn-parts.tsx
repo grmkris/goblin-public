@@ -6,6 +6,7 @@ import { BotIcon, SparklesIcon } from 'lucide-react'
 import type { Part } from '../../lib/parts.ts'
 import { MessageFiles } from '../attachments.tsx'
 import { PersonaAvatar } from '../persona-avatar.tsx'
+import { usePanel } from '../shell/panel.tsx'
 import { ThreadSummary } from '../shell/thread-summary.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { Cause, MessageText, OpenThread } from './text-part.tsx'
@@ -14,10 +15,12 @@ type Of<K extends Part['kind']> = Extract<Part, { readonly kind: K }>
 
 /**
  * The head of a Thread that started here: the owner's message, and under it the thread's summary, which opens it. A
- * turn moved out of this chat leaves only this head: its summary says so.
+ * turn moved out of this chat leaves only this head (the chat hides the turn's entries): its summary says so, and opens
+ * the thread even before the feed lists it.
  */
 export function ThreadHeadPart({ part }: { readonly part: Of<'thread-head'> }) {
   const { conversations } = useWorkspaceFeed()
+  const panel = usePanel()
   const view = conversations.find((candidate) => candidate.id === part.thread)
   return (
     <>
@@ -27,7 +30,9 @@ export function ThreadHeadPart({ part }: { readonly part: Of<'thread-head'> }) {
       </article>
       <div className="thread-summaries" data-side="end">
         {view === undefined ? (
-          <p className="thread-summary-meta">{part.moved ? 'Moved to a thread' : 'Started a thread'}</p>
+          <button type="button" className="thread-summary" onClick={() => panel.open(part.thread)}>
+            <span className="thread-summary-lead">{part.moved ? 'Moved to a thread' : 'Started a thread'}</span>
+          </button>
         ) : (
           <ThreadSummary view={view} {...(part.moved && { lead: 'Moved to a thread' })} />
         )}

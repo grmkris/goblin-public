@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { ConversationView } from '@goblin/contracts'
-import type { ToolPart } from '../src/lib/parts.ts'
+import type { Part, ToolPart } from '../src/lib/parts.ts'
 import {
   branchPoints,
   closedBy,
   entryOfPart,
   fromEntry,
+  movableEntry,
   isUnread,
   pathOf,
   relativeTime,
@@ -154,5 +155,27 @@ describe('subagent calls', () => {
       name: 'scout',
       thread: '12',
     })
+  })
+})
+
+const said = (id: string, author?: string): Part => ({
+  kind: 'user',
+  id,
+  text: 'hi',
+  ...(author !== undefined && { author }),
+})
+const answer = (id: string): Part => ({ kind: 'text', id, text: 'ok', live: false })
+
+describe('Move to thread', () => {
+  it('is offered on the newest message the owner wrote, past Persona asks, notes and answers', () => {
+    const ask: Part = { kind: 'persona-ask', id: '9:0', text: 'and you?', personas: [], order: 'parallel' }
+    expect(movableEntry([said('3:0'), answer('4:0:text'), said('7:0'), answer('8:0:text'), ask])).toBe(7)
+    expect(movableEntry([said('3:0'), said('5:0', 'Routine')])).toBe(3)
+    expect(movableEntry([said('3:0'), said('6:0', 'Telegram')])).toBe(6)
+  })
+
+  it('is offered on nothing before the owner wrote, or on a message not yet written to the chat', () => {
+    expect(movableEntry([answer('1:0:text')])).toBeUndefined()
+    expect(movableEntry([said('pending-1')])).toBeUndefined()
   })
 })

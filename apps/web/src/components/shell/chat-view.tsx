@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useMemo, useRef } from 'react'
 import type { ConversationView } from '@goblin/contracts'
 import { GitBranchIcon, MessageCircleIcon } from 'lucide-react'
 import { type Part, partKey } from '../../lib/parts.ts'
-import { closedBy, entryOfPart, repliesLabel, rootParts, threadTitle } from '../../lib/threads.ts'
+import { closedBy, entryOfPart, movableEntry, repliesLabel, rootParts, threadTitle } from '../../lib/threads.ts'
 import { Conversation } from '../conversation.tsx'
 import { ConversationDock } from '../conversation-dock.tsx'
 import { useModelChoice } from '../model-picker.tsx'
@@ -136,7 +136,8 @@ export function ChatView({
   const { parts, branchable, earlier } = useTranscript(id, projection, report, fork)
   useMarkRead(view, reading)
   const running = projection?.running ?? false
-  const mover = useMover(id, place === 'channel', running)
+  const movable = useMemo(() => movableEntry(parts), [parts])
+  const mover = useMover(id, place === 'channel', running, movable)
   const threads = useChatThreads(id, branchable, mover)
   const startThread = useThreadStart(id)
   const { lead, shown } = useLead(view, parts, earlier !== undefined, hideRoot)

@@ -119,11 +119,10 @@ beyond those on screen, and one off screen stops following after ten seconds, re
 comes back. Start thread, a toggle in the composer (and `/new-thread`), posts the message as the head of a new thread whose
 reply lands there (`POST /api/conversations/:id/threads`, one operation id per draft; the runtime writes the
 `app.thread_head` into the chat it started from), and the panel opens on it; turning it off keeps the draft, its
-files and references. Move to thread, in the toolbar of the owner's messages in a channel (`POST …/move`), leaves the
-message as the thread's head and opens the thread; a refused receipt (such as `streaming`) disables it for that
-message, with the reason, until the run ends. The shell asks once a page load whether the move route exists
-(`lib/features.ts`: an empty body is refused as invalid where it does, not found where it does not) and does not
-offer Move where it does not. The transcript draws what those runtimes write
+files and references. Move to thread, in the toolbar of a channel's newest owner message (`POST …/move`,
+`movableEntry` in `lib/threads.ts`), waits while that turn's reply streams, then leaves the message as the thread's
+head and opens the thread; a refused receipt's reason (`not_latest`, `awaiting_approval`, …) shows as one short line
+under the message until the turn changes. The transcript draws what those runtimes write
 (`components/parts/drawn-parts.tsx`): a thread's head with the thread's summary ("Moved to a thread" for a moved
 turn, whose own entries a later entry's edits omit), the owner's message to Personas with whom it went to, a Persona's
 answer and a Delegate's result as attributed messages (a mark, a name, Persona or Delegate), and a Topic's brief.

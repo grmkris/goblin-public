@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ConversationView } from '@goblin/contracts'
 import { CheckIcon, CopyIcon, MessageSquareReplyIcon } from 'lucide-react'
-import { type Part, isOwnTurn } from '../../lib/parts.ts'
+import type { Part } from '../../lib/parts.ts'
 import {
   entryOfPart,
   isClosed,
@@ -28,7 +28,7 @@ export type ChatThreads = {
   /** Opens the thread already started from `entry`, or a draft reply that becomes one when it is sent. */
   readonly reply: (entry: number) => void
   readonly open: (thread: string) => void
-  /** Move to thread, on the owner's messages of a channel whose server can move them. */
+  /** Move to thread, on a channel's newest owner message. */
   readonly mover?: Mover | undefined
 }
 
@@ -54,9 +54,15 @@ export function useChatThreads(chat: string, branchable: ReadonlySet<number>, mo
   )
 }
 
-/** What a thread's summary says to a screen reader: its name, its replies and its state. */
+/**
+ * A turn moved to the thread and nothing said there since: its summary is the move alone, since the turn's own answer
+ * is in the thread but is not a reply, and the head above already shows its words.
+ */
+const justMoved = (view: ConversationView): boolean => view.movedFrom !== undefined && view.replies === 0
+
+/** What a thread's summary says to a screen reader: its name, its replies (or that it was moved) and its state. */
 function summaryLabel(view: ConversationView, working: boolean, unread: boolean): string {
-  const said = [`${threadTitle(view)}: ${repliesLabel(view.replies)}`]
+  const said = [`${threadTitle(view)}: ${justMoved(view) ? 'moved to a thread' : repliesLabel(view.replies)}`]
   if (isClosed(view)) said.push('closed')
   if (working) said.push('working')
   else if (unread) said.push('unread replies')
@@ -85,14 +91,22 @@ export function ThreadSummary({ view, lead }: { readonly view: ConversationView;
       aria-label={summaryLabel(view, working, unread)}
     >
       {lead !== undefined && <span className="thread-summary-lead">{lead}</span>}
-      <span className="thread-summary-count">{repliesLabel(view.replies)}</span>
-      {/* One piece, so on a narrow screen it moves to the second line whole rather than leaving "· closed" alone. */}
-      <span className="thread-summary-meta">{closed ? `${last} · closed` : last}</span>
+      {justMoved(view) ? (
+        <span className="thread-summary-count">View thread</span>
+      ) : (
+        <>
+          <span className="thread-summary-count">{repliesLabel(view.replies)}</span>
+          {/* One piece, so on a narrow screen it moves to the second line whole rather than leaving "· closed" alone. */}
+          <span className="thread-summary-meta">{closed ? `${last} · closed` : last}</span>
+        </>
+      )}
       {working && <span className="thread-busy" aria-label="Working" />}
       {unread && !working && <span className="unread-dot" aria-label="Unread replies" />}
-      <span className="thread-summary-open" aria-hidden>
-        View thread
-      </span>
+      {!justMoved(view) && (
+        <span className="thread-summary-open" aria-hidden>
+          View thread
+        </span>
+      )}
     </button>
   )
 }
@@ -139,6 +153,7 @@ export function MessageFooter({ part, threads }: { readonly part: Part; readonly
   if (entry === undefined || !threads.branchable.has(entry)) return null
   const started = (threads.at.get(entry) ?? []).filter((view) => !isClosed(view) || view.replies > 0)
   const text = 'text' in part ? part.text : ''
+  const mover = threads.mover?.entry === entry && started.length === 0 ? threads.mover : undefined
   return (
     <>
       <span className="message-actions" role="toolbar" aria-label="Message actions">
@@ -151,11 +166,14 @@ export function MessageFooter({ part, threads }: { readonly part: Part; readonly
         >
           <MessageSquareReplyIcon aria-hidden />
         </button>
-        {threads.mover !== undefined && isOwnTurn(part) && started.length === 0 && (
-          <MoveAction mover={threads.mover} entry={entry} />
-        )}
+        {mover !== undefined && <MoveAction mover={mover} />}
         {text !== '' && <CopyMessage text={text} />}
       </span>
+      {mover?.refusal !== undefined && (
+        <p className="move-refusal" role="status">
+          {mover.refusal}
+        </p>
+      )}
       {started.length > 0 && (
         <div className="thread-summaries">
           {started.map((view) => (
