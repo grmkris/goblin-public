@@ -15,6 +15,8 @@ import { forkThread, stopBuilder, turnEntries, turnRelays } from '../pi/moves.ts
 import type { SubagentKit } from '../pi/subagents.ts'
 import { textBlocks } from '../pi/transcript.ts'
 import { latestTurnStart, runInputEntries } from '../pi/turns.ts'
+import { writeLine } from '../observability/logger.ts'
+import { framesOf, safeErrorType } from '../observability/report.ts'
 import { Moves, attempt, nowSecondsEffect } from '../services.ts'
 import { appMcpApprovals } from '../storage/mcp-approvals.ts'
 import type { ChatDirectory } from './directory.ts'
@@ -93,7 +95,7 @@ export class ChatMover {
   /** Finishes every move a restart interrupted. */
   async reconcile(): Promise<void> {
     for (const row of this.#store.unfinished())
-      await this.#finish(row.operationId).catch((error: unknown) => logMove('reconcile', error))
+      await this.#finish(row.operationId).catch((error: unknown) => reportMove('reconcile', error))
   }
 
   /** Whether `chat` is in the middle of a move: its memory builder waits until the move settles. */
@@ -257,10 +259,18 @@ function required(row: MoveRow): { readonly source: string; readonly fork: strin
   return { source: row.sourceSession, fork: row.forkSession ?? '', end: row.cutEntry }
 }
 
-/** One log line for a move step that failed outside a request; never its content. */
-function logMove(step: string, error: unknown): void {
-  const type = error instanceof Error ? error.name : typeof error
-  console.warn(JSON.stringify({ level: 'warn', event: 'move', step, 'error.type': type }))
+/**
+ * Reports a move step that failed outside a request as the failure reporter does (observability/report.ts): where,
+ * the error's type and its stack locations, never its message.
+ */
+function reportMove(step: string, error: unknown): void {
+  writeLine('warn', {
+    event: 'failure',
+    where: `move.${step}`,
+    'error.type': safeErrorType(error),
+    ...(error instanceof Error ? { frames: framesOf(error) } : {}),
+    severity: 'Warn',
+  })
 }
 
 /** `POST /api/conversations/:id/move`: the owner's Move to thread, as its receipt (ADR 0034). */

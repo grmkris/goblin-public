@@ -3,6 +3,7 @@ import { and, between, eq, inArray, sql } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
+import { Internal } from '../http/errors.ts'
 import { appChatMoves, appConversations, appRegistry } from '../storage/schema.ts'
 
 export type MoveRow = typeof appChatMoves.$inferSelect
@@ -63,7 +64,7 @@ export class MoveStore<RunResult = unknown> {
 
   require(operation: string): MoveRow {
     const row = this.get(operation)
-    if (row === undefined) throw new Error(`move ${operation} is missing`)
+    if (row === undefined) throw new Internal({ reason: 'move_missing' })
     return row
   }
 
@@ -157,7 +158,7 @@ export class MoveStore<RunResult = unknown> {
     const source = row.sourceSession
     const fork = row.forkSession
     const end = row.cutEntry
-    if (source === null || fork === null || end === null) throw new Error(`move ${row.operationId} has no fork`)
+    if (source === null || fork === null || end === null) throw new Internal({ reason: 'move_unforked' })
     const chat = row.chatId
     const turn = between(appConversations.forkEntry, row.messageEntry, end)
     this.#db.transaction(() => {
