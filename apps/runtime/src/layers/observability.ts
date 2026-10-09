@@ -9,7 +9,7 @@ import type { FoundationServices } from './core.ts'
  * `Inspection` over the one inspector the legacy start built (layers/legacy.ts), each read wrapped the way its callers
  * wrap it today: a failure becomes its `AppError`. A native layer replaces it once the inspector is Effect-native.
  */
-export const InspectionFromLegacy: Layer.Layer<Inspection, never, Inspect> = Layer.effect(
+export const InspectionAdapter: Layer.Layer<Inspection, never, Inspect> = Layer.effect(
   Inspection,
   Effect.gen(function* () {
     const inspector = yield* Inspect
@@ -40,5 +40,8 @@ export const InspectionFromLegacy: Layer.Layer<Inspection, never, Inspect> = Lay
   }),
 )
 
-/** Lane O's services: telemetry, inspection and flows. It may require any foundation service. */
-export const ObservabilityLive: Layer.Layer<Inspection, never, FoundationServices> = InspectionFromLegacy
+/**
+ * Lane O's services: telemetry, inspection and flows. Until each gets its own implementation it adapts the one
+ * instance the legacy start made (layers/legacy.ts), never a second one.
+ */
+export const ObservabilityLive: Layer.Layer<Inspection, never, FoundationServices> = Layer.mergeAll(InspectionAdapter)

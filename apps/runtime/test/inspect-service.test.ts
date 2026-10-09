@@ -4,7 +4,7 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { Inspector } from '../src/inspect/inspector.ts'
 import { Inspection } from '../src/inspect/service.ts'
-import { InspectionFromLegacy } from '../src/layers/observability.ts'
+import { InspectionAdapter } from '../src/layers/observability.ts'
 import { Inspect } from '../src/services.ts'
 import { flowRunEvent } from '../src/telemetry/events.ts'
 import { RunLedger } from '../src/telemetry/ledger.ts'
@@ -21,7 +21,7 @@ const fixture = () => {
   // SAFETY: nothing here lists conversations or reads Pi: flows are ledger rows, and no turn is ever found.
   const unread = undefined as never
   const inspector = new Inspector(ledger, unread, unread, () => NOW)
-  const layer = InspectionFromLegacy.pipe(Layer.provide(Layer.succeed(Inspect, inspector)))
+  const layer = InspectionAdapter.pipe(Layer.provide(Layer.succeed(Inspect, inspector)))
   return { ledger, layer, close }
 }
 
