@@ -52,6 +52,12 @@ export function makeBridge(
   return { run: settle(true), local: settle(false), exit }
 }
 
+/** Builds the runtime's layers before handing it out, so a failed start rejects (and the next caller starts again). */
+export async function openRuntime(runtime: Runtime): Promise<Runtime> {
+  await runtime.context()
+  return runtime
+}
+
 /** Closes a built runtime's MCP connections, then disposes it. One that never finished building has nothing to close. */
 export async function closeRuntime(runtime: Promise<Runtime>): Promise<void> {
   const services = await runtime.catch(() => undefined)

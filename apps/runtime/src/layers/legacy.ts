@@ -1,95 +1,76 @@
-import type { Extension, ToolRegistration } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import { type DrizzleSqliteDODatabase, drizzle } from 'drizzle-orm/durable-sqlite'
-import * as ManagedRuntime from 'effect/ManagedRuntime'
-import { ModelBudget, UsageStore } from './budget.ts'
-import { creditRates } from './budget-credits.ts'
-import { CapabilityProfiles, type PiTools } from './capabilities/profiles.ts'
-import { TelegramChannel } from './channel/channel.ts'
-import { nowMillis, nowSeconds } from './clock.ts'
-import { ChatDirectory } from './chats/directory.ts'
-import { ConversationRegistry, type ThreadKit } from './conversations.ts'
-import { ChatMover, type MoverPorts } from './chats/mover.ts'
-import { WorkspaceFeed } from './workspace/feed.ts'
-import { TopicRegistry } from './topics/registry.ts'
-import { PersonaRegistry } from './personas/registry.ts'
-import { PersonaInvocations } from './personas/invocations.ts'
-import { OrganizeReceipts } from './organize/receipts.ts'
-import { topicPorts } from './topics/ports.ts'
-import { AppRegistry } from './apps/registry.ts'
-import type { AgentApps } from './agent-apps/engine.ts'
-import { appServices } from './agent-apps/ports.ts'
-import type { RuntimeEnv } from './env.ts'
-import { CredentialCipher } from './mcp/cipher.ts'
-import { configuredServers } from './mcp/config.ts'
-import { CredentialStore } from './mcp/credentials.ts'
-import { bindEndpoints } from './mcp/endpoints.ts'
-import { GrantStore } from './mcp/grants.ts'
-import { McpApprovalStore } from './mcp/approvals.ts'
-import { installEventConsumers } from './mcp/events/consumers.ts'
-import { Events, McpEvents } from './mcp/events.ts'
-import { EventStorage, SqliteEventStore } from './mcp/events/store.ts'
-import { eventsHookToken, eventsHookUrl } from './mcp/events/route-token.ts'
-import { GrantDenied, Forbidden } from './http/errors.ts'
+import * as Context from 'effect/Context'
+import { ModelBudget, UsageStore } from '../budget.ts'
+import { creditRates } from '../budget-credits.ts'
+import { CapabilityProfiles, type PiTools } from '../capabilities/profiles.ts'
+import { TelegramChannel } from '../channel/channel.ts'
+import { nowMillis, nowSeconds } from '../clock.ts'
+import { ChatDirectory } from '../chats/directory.ts'
+import { ConversationRegistry, type ThreadKit } from '../conversations.ts'
+import { ChatMover } from '../chats/mover.ts'
+import { WorkspaceFeed } from '../workspace/feed.ts'
+import { TopicRegistry } from '../topics/registry.ts'
+import { PersonaRegistry } from '../personas/registry.ts'
+import { PersonaInvocations } from '../personas/invocations.ts'
+import { OrganizeReceipts } from '../organize/receipts.ts'
+import { topicPorts } from '../topics/ports.ts'
+import { AppRegistry } from '../apps/registry.ts'
+import { appServices } from '../agent-apps/ports.ts'
+import { CredentialCipher } from '../mcp/cipher.ts'
+import { configuredServers } from '../mcp/config.ts'
+import { CredentialStore } from '../mcp/credentials.ts'
+import { bindEndpoints } from '../mcp/endpoints.ts'
+import { GrantStore } from '../mcp/grants.ts'
+import { McpApprovalStore } from '../mcp/approvals.ts'
+import { installEventConsumers } from '../mcp/events/consumers.ts'
+import { Events, McpEvents } from '../mcp/events.ts'
+import { EventStorage, SqliteEventStore } from '../mcp/events/store.ts'
+import { eventsHookToken, eventsHookUrl } from '../mcp/events/route-token.ts'
+import { GrantDenied, Forbidden } from '../http/errors.ts'
 import * as Layer from 'effect/Layer'
-import { McpHost } from './mcp/host.ts'
-import { logEndpointsReset } from './mcp/log.ts'
-import { RegistryStore } from './mcp/registries.ts'
-import { AddedServerStore } from './mcp/servers.ts'
-import { ChatMemories, type MemoryDeps } from './memory/memory.ts'
-import { CheapModel } from './memory/model.ts'
-import type { RunTelemetry } from './telemetry/events.ts'
-import { RunLedger } from './telemetry/ledger.ts'
-import { Inspector } from './inspect/inspector.ts'
-import { type AuxPurpose, auxReporter, mcpReporter } from './telemetry/report.ts'
-import { ModelChoiceStore, ModelPicker, memoryModelId, modelOptions } from './models.ts'
-import { BACKGROUND, conversationId } from './pi/context.ts'
-import type { PiModels } from './pi/harness.ts'
-import type { memoryExtensions } from './pi/memory.ts'
-import { ResidentAuthority } from './resident.ts'
-import { type AgentServices, AppEngine, Files, Inspect, Retrieval, agentLayer } from './services.ts'
-import { FileStore } from './files/store.ts'
-import { SkillLearner } from './skills/learner.ts'
-import { SkillLibrary } from './skills/library.ts'
-import { SqliteDraftLog, SqliteSkillState } from './skills/store.ts'
-import { runApplicationMigrations } from './storage/migrations.ts'
-import { Entitlements, type EntitlementPolicy } from './billing/gates.ts'
-import { RoutineStore } from './routines/store.ts'
-import { RoutineRunStore } from './routines/runs.ts'
-import { RoutineUsage, installRoutineUsage } from './routines/usage.ts'
+import { McpHost } from '../mcp/host.ts'
+import { logEndpointsReset } from '../mcp/log.ts'
+import { RegistryStore } from '../mcp/registries.ts'
+import { AddedServerStore } from '../mcp/servers.ts'
+import { ChatMemories, type MemoryDeps } from '../memory/memory.ts'
+import { CheapModel } from '../memory/model.ts'
+import { RunLedger } from '../telemetry/ledger.ts'
+import { Inspector } from '../inspect/inspector.ts'
+import { type AuxPurpose, auxReporter, mcpReporter } from '../telemetry/report.ts'
+import { ModelChoiceStore, ModelPicker, memoryModelId, modelOptions } from '../models.ts'
+import { BACKGROUND, conversationId } from '../pi/context.ts'
+import { ResidentAuthority } from '../resident.ts'
+import { AppEngine, Approvals, Apps, Budget, Capabilities, Channel, Chats, Conversations, Files } from '../services.ts'
+import { Home, Inspect, Invocations, Learner, Mcp, Memories, Models, Moves, Personas, Receipts } from '../services.ts'
+import {
+  Resident,
+  Retrieval,
+  RoutineRuns,
+  Routines,
+  RoutineUsageProjection,
+  Skills,
+  Topics,
+  Workspace,
+} from '../services.ts'
+import { FileStore } from '../files/store.ts'
+import { SkillLearner } from '../skills/learner.ts'
+import { SkillLibrary } from '../skills/library.ts'
+import { SqliteDraftLog, SqliteSkillState } from '../skills/store.ts'
+import { runApplicationMigrations } from '../storage/migrations.ts'
+import { Entitlements, type EntitlementPolicy } from '../billing/gates.ts'
+import { RoutineStore } from '../routines/store.ts'
+import { RoutineRunStore } from '../routines/runs.ts'
+import { RoutineUsage, installRoutineUsage } from '../routines/usage.ts'
 import * as Effect from 'effect/Effect'
-import type { EventHandler } from './mcp/events/dispatcher.ts'
-import { HomeService } from './home/service.ts'
-import { restoreHelperExecution } from './pi/helper-execution.ts'
-import { TranscriptIndex, piTranscripts } from './retrieval/index.ts'
-import { ChatRetrieval } from './retrieval/service.ts'
+import { AgentInput, type AgentInputs } from '../runtime/input.ts'
+import { HomeService } from '../home/service.ts'
+import { restoreHelperExecution } from '../pi/helper-execution.ts'
+import { TranscriptIndex, piTranscripts } from '../retrieval/index.ts'
+import { ChatRetrieval } from '../retrieval/service.ts'
 
 /** What the agent's services are built from: its storage and env, and the Pi pieces its constructor made. */
-export type ComposeInput = {
-  readonly storage: DurableObjectStorage
-  readonly env: RuntimeEnv
-  readonly harness: PiHarness
-  readonly pi: PiModels
-  readonly thread: Extension
-  readonly memory: ReturnType<typeof memoryExtensions>
-  /** The subagent tools, which Pi's tool filter removes where subagents are switched off. */
-  readonly subagentTools: readonly ToolRegistration[]
-  readonly helperExtensions: readonly Extension[]
-  /** Schedules the Telegram replies alarm. */
-  readonly scheduleReplies: () => void
-  readonly userId: string
-  readonly entitlements: EntitlementPolicy
-  readonly scheduleEvents: (at: number) => Promise<void>
-  readonly pullTelegram: () => Promise<void>
-  readonly routineEvent: EventHandler
-  readonly mcpFetch: typeof fetch
-  /** The agent's apps, made before Pi opened (their tools are Pi's). */
-  readonly agentApps: AgentApps
-  /** The run ledger and log lines the agent's services report to (ADR 0024). */
-  readonly telemetry: RunTelemetry
-  /** Move to thread (ADR 0034): hands the moved turn's relays to the Thread, and the boundaries tests stop at. */
-  readonly moves: Pick<MoverPorts, 'handover' | 'after'>
-}
+type ComposeInput = AgentInputs
 /** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
 const retool = (harness: PiHarness) => async (session: string, tools: PiTools) => {
   const conversation = await (await harness.pi()).conversation(conversationId(session), BACKGROUND)
@@ -253,17 +234,18 @@ function makeMemories(input: ComposeInput, deps: MemoryDeps): ChatMemories {
 }
 
 /**
- * The agent's services over its SQLite, built once per isolate on first use: MCP host and grants, budget and models,
- * main's memory, conversations, resident authority, skills and the Telegram channel. Migrations run first, and every
- * server's endpoint binding is checked (a re-pointed server loses what it had).
+ * The first half of the start (compose.ts until the layer tree): migrations first, then every server's endpoint
+ * binding is checked (a re-pointed server loses what it had), the MCP host and grants, budget and models, chats,
+ * memory, capabilities and helper execution, routines, and the conversations, Topics and Apps over them.
  */
-export async function composeServices(
-  input: ComposeInput,
-): Promise<ManagedRuntime.ManagedRuntime<AgentServices, never>> {
+const startConversations = Effect.gen(function* () {
+  const input = yield* AgentInput
   const { env, harness } = input
   runApplicationMigrations(input.storage)
   const db = drizzle(input.storage)
-  const { host, cipher, resident, eventStore, skillState, grants, approvals } = await makeHost(input, db)
+  const { host, cipher, resident, eventStore, skillState, grants, approvals } = yield* Effect.promise(() =>
+    makeHost(input, db),
+  )
   const budget = makeBudgets(input, db)
   const options = modelOptions(env.MODELS, env.MODEL_ID)
   const models = new ModelPicker(new ModelChoiceStore(db), options)
@@ -279,17 +261,37 @@ export async function composeServices(
   const { recall } = input.memory
   const memories = makeMemories(input, { db, harness, model: cheap('memory'), chats })
   const capabilities = new CapabilityProfiles(db, input.subagentTools, retool(harness), chats)
-  await restoreHelperExecution(db, harness, input.helperExtensions, chats)
+  yield* Effect.promise(() => restoreHelperExecution(db, harness, input.helperExtensions, chats))
   // Apply the current complete delegation tool set to retained Pi filters.
-  await capabilities.retoolOnce('retool:subagent-config', nowSeconds())
-  const routineServices = await makeRoutines(input)
+  yield* Effect.promise(() => capabilities.retoolOnce('retool:subagent-config', nowSeconds()))
+  const routineServices = yield* Effect.promise(() => makeRoutines(input))
   const kit = { thread: input.thread, recall, memories, namer: cheap('naming'), capabilities, chats }
   const conversations = conversationServices(db, input, kit)
-  await memories.activateConversations()
+  yield* Effect.promise(() => memories.activateConversations())
+  return {
+    input,
+    db,
+    cheap,
+    mcp: { host, cipher, resident, eventStore, skillState, grants, approvals },
+    services: { host, approvals, chats, resident, ...conversations, budget, models, memories, capabilities },
+    routineServices,
+  }
+})
+
+/**
+ * The second half: skills and the learner, the Telegram channel, the agent apps' services, then Events and their
+ * consumers. The Files, Inspect and Retrieval services are made last, as compose.ts made them.
+ */
+const startChannels = Effect.fn('LegacyLive.startChannels')(function* (
+  started: Effect.Success<typeof startConversations>,
+) {
+  const { input, db, cheap, routineServices } = started
+  const { host, cipher, resident, eventStore, skillState, grants } = started.mcp
+  const { budget, capabilities, chats, conversations, transcripts } = started.services
   const skills = new SkillLibrary(host.manager, skillState, nowMillis)
   const learner = new SkillLearner({
     drafts: new SqliteDraftLog(db),
-    harness,
+    harness: input.harness,
     manager: host.manager,
     library: skills,
     state: skillState,
@@ -309,32 +311,97 @@ export async function composeServices(
       capabilities,
     }),
   )
-  const events = await makeEvents(input, host, resident, eventStore, cipher)
+  const events = yield* Effect.promise(() => makeEvents(input, host, resident, eventStore, cipher))
   installEventConsumers(events, channel, skills, input.pullTelegram)
-  return ManagedRuntime.make(
-    Layer.mergeAll(
-      agentLayer({
-        host,
-        approvals,
-        chats,
-        resident,
-        ...conversations,
-        budget,
-        models,
-        memories,
-        skills,
-        learner,
-        channel,
-        capabilities,
-        ...routineServices,
-      }),
-      Layer.succeed(Entitlements, input.entitlements),
-      Layer.succeed(Events, events),
-      Layer.succeed(EventStorage, eventStore),
-      Layer.succeed(Files, new FileStore(input.storage.sql, env.FILES, () => input.userId)),
-      Layer.succeed(AppEngine, input.agentApps),
-      Layer.succeed(Inspect, new Inspector(new RunLedger(db), conversations.conversations, harness)),
-      Layer.succeed(Retrieval, new ChatRetrieval(conversations.transcripts, cheap('retrieval'), nowSeconds)),
-    ),
+  return {
+    ...started.services,
+    skills,
+    learner,
+    channel,
+    ...routineServices,
+    entitlements: input.entitlements,
+    events,
+    eventStore,
+    files: new FileStore(input.storage.sql, input.env.FILES, () => input.userId),
+    appEngine: input.agentApps,
+    inspect: new Inspector(new RunLedger(db), conversations, input.harness),
+    retrieval: new ChatRetrieval(transcripts, cheap('retrieval'), nowSeconds),
+  }
+})
+
+/** The services.ts tags, which the layer tree provides from this layer until each lane's own layer replaces one. */
+type LegacyServices =
+  | Mcp
+  | Approvals
+  | Resident
+  | Conversations
+  | Topics
+  | Personas
+  | Invocations
+  | Receipts
+  | Moves
+  | Chats
+  | Budget
+  | Models
+  | Memories
+  | Skills
+  | Learner
+  | Channel
+  | Capabilities
+  | Routines
+  | RoutineRuns
+  | RoutineUsageProjection
+  | Workspace
+  | Apps
+  | Home
+  | Entitlements
+  | Events
+  | EventStorage
+  | Files
+  | AppEngine
+  | Inspect
+  | Retrieval
+
+/** The legacy service tags over the started instances; one instance each, as compose.ts provided them. */
+const legacyContext = (started: Effect.Success<ReturnType<typeof startChannels>>) =>
+  Context.mergeAll(
+    Mcp.context(started.host),
+    Approvals.context(started.approvals),
+    Resident.context(started.resident),
+    Conversations.context(started.conversations),
+    Topics.context(started.topics),
+    Personas.context(started.personas),
+    Invocations.context(started.invocations),
+    Receipts.context(started.receipts),
+    Moves.context(started.moves),
+    Chats.context(started.chats),
+    Budget.context(started.budget),
+    Models.context(started.models),
+    Memories.context(started.memories),
+    Skills.context(started.skills),
+    Learner.context(started.learner),
+    Channel.context(started.channel),
+    Capabilities.context(started.capabilities),
+    Routines.context(started.routines),
+    RoutineRuns.context(started.routineRuns),
+    RoutineUsageProjection.context(started.routineUsage),
+    Workspace.context(started.workspace),
+    Apps.context(started.apps),
+    Home.context(started.home),
+    Entitlements.context(started.entitlements),
+    Events.context(started.events),
+    EventStorage.context(started.eventStore),
+    Files.context(started.files),
+    AppEngine.context(started.appEngine),
+    Inspect.context(started.inspect),
+    Retrieval.context(started.retrieval),
   )
-}
+
+/**
+ * The agent's legacy services (services.ts tags) over its SQLite, built once per runtime: compose.ts's start as one
+ * layer, step for step in its order, until each step moves into its owning lane's layer. A step that failed rejects the
+ * build with its own error, as compose.ts's promise did.
+ */
+export const LegacyLive: Layer.Layer<LegacyServices, never, AgentInput> = Layer.effectContext(
+  startConversations.pipe(Effect.flatMap(startChannels), Effect.map(legacyContext)),
+)

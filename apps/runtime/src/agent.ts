@@ -33,12 +33,14 @@ import { type PersonaTurnKit, organizingKit } from './organize/kit.ts'
 import { memoryExtensions } from './pi/memory.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { skillLearningExtension, skillsExtension } from './pi/skills.ts'
-import { composeServices } from './compose.ts'
+import { AgentLive } from './layers/index.ts'
 import { capabilitiesOf, changeCapabilities } from './capabilities/program.ts'
 import { type AgentServices, Channel, Conversations, Mcp, Models, attempt } from './services.ts'
 import { attemptSync, Routines, RoutineRuns } from './services.ts'
 import { accountEntitlements, type EntitlementPolicy } from './billing/gates.ts'
-import { type Bridge, closeRuntime, makeBridge } from './runtime/bridge.ts'
+import { type Bridge, closeRuntime, makeBridge, openRuntime } from './runtime/bridge.ts'
+import type { AgentInputs } from './runtime/input.ts'
+import { type Instrument, uninstrumented } from './runtime/instrument.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
 import { nowSeconds } from './clock.ts'
 import type { ServerSource } from './mcp/servers.ts'
@@ -84,6 +86,9 @@ import {
 
 type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
 
+/** How each program and change handler the agent runs is wrapped: the bridge and the Changes bus take this one. */
+const instrument: Instrument = uninstrumented
+
 /**
  * The resident agent. Pi (through the native PiHarness) owns conversations; the services in `services.ts` own MCP
  * connections, credentials, grants and resident authority. RPC methods are thin: they run one program each.
@@ -106,7 +111,7 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
   #pulling: Promise<void> = Promise.resolve()
   constructor(ctx: DurableObjectState, env: RuntimeEnv) {
     super(ctx, env)
-    this.#bridge = makeBridge(() => this.#services())
+    this.#bridge = makeBridge(() => this.#services(), { instrument })
     const { run, local: routineRun } = this.#bridge
     this.#pi = makePiModels(env, this.modelStreams(), undefined, (id) => routineRun(requireRoutine(id)))
     const residentTools = residentMcpExtension(run, (session) => routineRun(requireRoutineSession(session)))
@@ -173,7 +178,15 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
     return accountEntitlements(this.env, () => this.name)
   }
   #services(): Promise<Runtime> {
-    this.#runtime ??= composeServices({
+    this.#runtime ??= openRuntime(ManagedRuntime.make(AgentLive(this.#input())))
+    this.#runtime.catch(() => {
+      this.#runtime = undefined
+    })
+    return this.#runtime
+  }
+  /** What the agent's services are built from, read when the runtime is built (AgentInput). */
+  #input(): AgentInputs {
+    return {
       storage: this.ctx.storage,
       env: this.env,
       harness: this.harness,
@@ -195,11 +208,15 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
         handover: this.#subagents.handover,
         after: async (phase, operation) => this.moveBoundary(phase, operation),
       },
-    })
-    this.#runtime.catch(() => {
-      this.#runtime = undefined
-    })
-    return this.#runtime
+      subagents: this.#subagents,
+      personas: this.#personas,
+      applied: this.#applied,
+      routines: this.#routines,
+      run: this.#bridge.run,
+      local: this.#bridge.local,
+      stopping: this.stopping,
+      instrument,
+    }
   }
   /** A move committed `phase`; the integration harness stops the object here to prove a restart finishes it. */
   protected async moveBoundary(_phase: MovePhase, _operation: string): Promise<void> {}

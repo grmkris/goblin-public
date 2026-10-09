@@ -40,7 +40,7 @@ export function chatIdViolations(
     },
     NewExpression(node) {
       if (!allowed.directory && node.callee.type === 'Identifier' && node.callee.name === 'ChatDirectory')
-        fail(node.start, 'ChatDirectory must be shared from compose.ts')
+        fail(node.start, 'ChatDirectory must be shared from layers/legacy.ts')
     },
   }).visit(result.program)
   return violations

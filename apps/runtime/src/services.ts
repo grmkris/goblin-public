@@ -1,7 +1,6 @@
 import * as Clock from 'effect/Clock'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
-import * as Layer from 'effect/Layer'
 import { type AppError, toAppError } from './http/errors.ts'
 import type { ModelBudget } from './budget.ts'
 import type { ModelPicker } from './models.ts'
@@ -13,9 +12,6 @@ import type { ChatMemories } from './memory/memory.ts'
 import type { SkillLearner } from './skills/learner.ts'
 import type { SkillLibrary } from './skills/library.ts'
 import type { TelegramChannel } from './channel/channel.ts'
-import type { Entitlements } from './billing/gates.ts'
-import type { Events } from './mcp/events.ts'
-import type { EventStorage } from './mcp/events/store.ts'
 import type { CapabilityProfiles } from './capabilities/profiles.ts'
 import type { RoutineStore } from './routines/store.ts'
 import type { RoutineRunStore } from './routines/runs.ts'
@@ -74,90 +70,7 @@ export class Inspect extends Context.Service<Inspect, Inspector>()('goblin/Inspe
 export class Home extends Context.Service<Home, HomeService>()('goblin/Home') {}
 /** Cross-Topic retrieval (ADR 0035): the transcript index, `search_chats` and automatic sources. */
 export class Retrieval extends Context.Service<Retrieval, ChatRetrieval>()('goblin/Retrieval') {}
-export type AgentServices =
-  | Entitlements
-  | Events
-  | EventStorage
-  | Mcp
-  | Approvals
-  | Resident
-  | Chats
-  | Conversations
-  | Topics
-  | Personas
-  | Invocations
-  | Receipts
-  | Moves
-  | Budget
-  | Models
-  | Memories
-  | Skills
-  | Learner
-  | Channel
-  | Capabilities
-  | Routines
-  | RoutineRuns
-  | RoutineUsageProjection
-  | Workspace
-  | Apps
-  | Files
-  | AppEngine
-  | Inspect
-  | Home
-  | Retrieval
-
-export const agentLayer = (services: {
-  readonly host: McpHost
-  readonly approvals: McpApprovalStore
-  readonly resident: ResidentAuthority
-  readonly conversations: ConversationRegistry
-  readonly topics: TopicRegistry
-  readonly personas: PersonaRegistry
-  readonly invocations: PersonaInvocations
-  readonly receipts: OrganizeReceipts
-  readonly moves: ChatMover
-  readonly chats: ChatDirectory
-  readonly budget: ModelBudget
-  readonly models: ModelPicker
-  readonly memories: ChatMemories
-  readonly skills: SkillLibrary
-  readonly learner: SkillLearner
-  readonly channel: TelegramChannel
-  readonly capabilities: CapabilityProfiles
-  readonly routines: RoutineStore
-  readonly routineRuns: RoutineRunStore
-  readonly routineUsage: RoutineUsage
-  readonly workspace: WorkspaceFeed
-  readonly apps: AppRegistry
-  readonly home: HomeService
-}): Layer.Layer<
-  Exclude<AgentServices, Entitlements | Events | EventStorage | Files | AppEngine | Inspect | Retrieval>
-> =>
-  Layer.mergeAll(
-    Layer.succeed(Mcp, services.host),
-    Layer.succeed(Approvals, services.approvals),
-    Layer.succeed(Resident, services.resident),
-    Layer.succeed(Conversations, services.conversations),
-    Layer.succeed(Topics, services.topics),
-    Layer.succeed(Personas, services.personas),
-    Layer.succeed(Invocations, services.invocations),
-    Layer.succeed(Receipts, services.receipts),
-    Layer.succeed(Moves, services.moves),
-    Layer.succeed(Chats, services.chats),
-    Layer.succeed(Budget, services.budget),
-    Layer.succeed(Models, services.models),
-    Layer.succeed(Memories, services.memories),
-    Layer.succeed(Skills, services.skills),
-    Layer.succeed(Learner, services.learner),
-    Layer.succeed(Channel, services.channel),
-    Layer.succeed(Capabilities, services.capabilities),
-    Layer.succeed(Routines, services.routines),
-    Layer.succeed(RoutineRuns, services.routineRuns),
-    Layer.succeed(RoutineUsageProjection, services.routineUsage),
-    Layer.succeed(Workspace, services.workspace),
-    Layer.succeed(Apps, services.apps),
-    Layer.succeed(Home, services.home),
-  )
+export type { AgentServices } from './layers/index.ts'
 
 /** Wrap a plain async step so its failure lands in the typed `AppError` channel. */
 export const attempt = <A>(run: () => Promise<A>): Effect.Effect<A, AppError> =>
