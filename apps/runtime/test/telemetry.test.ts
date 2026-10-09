@@ -288,6 +288,9 @@ describe('run telemetry (unit)', () => {
     expect(sourceOf('routine-input:rr_1:op')).toBe('routine')
     expect(sourceOf('subagent-report:7')).toBe('subagent_report')
     expect(sourceOf('subagent:7')).toBe('subagent')
+    expect(sourceOf('persona:owner:op-3:2')).toBe('persona')
+    // A thread start writes `thread-started:<chat>` passively; it never submits a turn, so it names no source.
+    expect(sourceOf('thread-started:12')).toBe('direct')
     expect(sourceOf('5f0c2b9e-1d1e-4a7a-9f0e-1c1c1c1c1c1c')).toBe('direct')
   })
 

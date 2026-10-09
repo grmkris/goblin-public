@@ -36,14 +36,17 @@ export type RecorderLedger = {
   readonly forOperation?: (operationId: string) => readonly RunEvent[]
 }
 
-/** Where a turn came from, by the operation id each source gives its submissions. */
+/**
+ * Where a turn came from, by the operation id each source gives its submissions: a Persona's answer is
+ * `persona:<operation>:<persona>` (pi/persona-turn.ts). Everything else, the owner's app and MCP clients, is `direct`.
+ */
 const SOURCES: readonly (readonly [string, string])[] = [
   ['telegram-', 'telegram'],
   ['routine-input:', 'routine'],
   ['routine-report:', 'routine_report'],
   ['subagent-report:', 'subagent_report'],
   ['subagent:', 'subagent'],
-  ['thread-started:', 'thread'],
+  ['persona:', 'persona'],
 ]
 export const sourceOf = (operationId: string): string =>
   SOURCES.find(([prefix]) => operationId.startsWith(prefix))?.[1] ?? 'direct'
