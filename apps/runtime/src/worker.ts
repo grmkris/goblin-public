@@ -7,7 +7,7 @@ import { readBytes } from './http/body.ts'
 import { InvalidInput, NotFound, toAppError } from './http/errors.ts'
 import { failureResponse } from './http/respond.ts'
 import { accountRecords } from './http/api/account.ts'
-import { type Edge, type EdgeHttp, isAccountPath, makeEdgeHttp, refOf } from './http/api/edge.ts'
+import { type Edge, type EdgeHttp, isAccountPath, makeEdgeHttp, refOf, runAtEdge } from './http/api/edge.ts'
 import { secured } from './http/api/render.ts'
 import { unwrap } from './http/rpc.ts'
 import { handleInboundMcp } from './inbound/route.ts'
@@ -40,7 +40,7 @@ const edgeOf = (env: RuntimeEnv): Edge => ({
 
 /** The edge, built once per isolate on its first request. */
 let edgeHttp: Promise<EdgeHttp> | undefined
-const edge = (): Promise<EdgeHttp> => (edgeHttp ??= Effect.runPromise(makeEdgeHttp))
+const edge = (): Promise<EdgeHttp> => (edgeHttp ??= runAtEdge(makeEdgeHttp))
 
 /** The largest doorbell body accepted (myagent sends `{ botId, cursor }`). */
 const DOORBELL_BYTES = 1024
@@ -53,7 +53,7 @@ async function doorbellRoute(request: Request, env: RuntimeEnv, path: string): P
   const [, userId = '', token = ''] = /^\/hooks\/myagent\/([\w-]{1,200})\/([\w-]{43})$/u.exec(path) ?? []
   if (request.method !== 'POST' || userId === '' || !(await hookTokenValid(env.CREDENTIAL_KEY, userId, token)))
     throw new NotFound({ what: path })
-  await Effect.runPromise(accountPlan(env, userId))
+  await runAtEdge(accountPlan(env, userId))
   const body = await request.text()
   if (body.length > DOORBELL_BYTES) throw new InvalidInput({ reason: 'doorbell too large' })
   unwrap(
@@ -71,7 +71,7 @@ async function mcpEventsRoute(request: Request, env: RuntimeEnv, path: string): 
   const [, userId = '', token = ''] = /^\/hooks\/mcp-events\/([\w-]{1,200})\/([\w-]{43})$/u.exec(path) ?? []
   if (request.method !== 'POST' || userId === '' || !(await eventsHookTokenValid(env.CREDENTIAL_KEY, userId, token)))
     throw new NotFound({ what: path })
-  await Effect.runPromise(accountPlan(env, userId))
+  await runAtEdge(accountPlan(env, userId))
   const body = await readBytes(request, EVENT_BODY_BYTES)
   const result = unwrap(
     await agentOf(env, userId).mcpEventsWebhook({
@@ -95,7 +95,7 @@ async function admittedRoute(
 ): Promise<Response> {
   const path = new URL(request.url).pathname
   if (path === '/mcp') return handleInboundMcp(request, env)
-  if (path === '/hooks/dodo') return Effect.runPromise(billingWebhook(billingDeps(env), request, ctx))
+  if (path === '/hooks/dodo') return runAtEdge(billingWebhook(billingDeps(env), request, ctx))
   if (path.startsWith('/hooks/mcp-events/')) return mcpEventsRoute(request, env, path)
   if (path.startsWith('/hooks/')) return doorbellRoute(request, env, path)
   throw new NotFound({ what: path })
@@ -103,7 +103,7 @@ async function admittedRoute(
 
 export default {
   async scheduled(_event: ScheduledController, env: RuntimeEnv): Promise<void> {
-    await Effect.runPromise(runBillingCron(billingDeps(env)))
+    await runAtEdge(runBillingCron(billingDeps(env)))
   },
   async fetch(request: Request, env: RuntimeEnv, ctx: Pick<ExecutionContext, 'waitUntil'>): Promise<Response> {
     const redirect = canonicalRedirect(request, env.APP_URL)
@@ -127,8 +127,8 @@ export default {
       return handleAuth(request, env)
     // The typed API: the account's own endpoints answered here, every other `/api/*` request admitted and forwarded
     // to the owner's own agent (http/api/edge.ts).
-    if (isAccountPath(url.pathname)) return Effect.runPromise((await edge()).account(request, edgeOf(env)))
-    if (url.pathname.startsWith('/api/')) return Effect.runPromise((await edge()).owner(request, edgeOf(env)))
+    if (isAccountPath(url.pathname)) return runAtEdge((await edge()).account(request, edgeOf(env)))
+    if (url.pathname.startsWith('/api/')) return runAtEdge((await edge()).owner(request, edgeOf(env)))
 
     // Every answer quotes the request's reference (its cf-ray), which its failure line carries too.
     const ref = refOf(request)

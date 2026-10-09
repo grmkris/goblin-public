@@ -1,4 +1,3 @@
-import * as Effect from 'effect/Effect'
 import type { InspectQuery } from '@goblin/contracts/inspect'
 import { createMcpHandler } from 'agents/mcp/server'
 import { INSPECT_SCOPE, challengeOf, clientName, verifyClientToken } from '../auth/index.ts'
@@ -6,6 +5,7 @@ import type { RuntimeEnv } from '../env.ts'
 import { unwrap, unwrapJson } from '../http/rpc.ts'
 import { inboundServer } from './server.ts'
 import { accountPlan } from '../billing/gates.ts'
+import { runAtEdge } from '../http/api/edge.ts'
 
 export const inboundHosts = (appUrl: string) => ({
   allowedHostnames: [new URL(appUrl).hostname],
@@ -36,7 +36,7 @@ export const handleInboundMcp = async (request: Request, env: RuntimeEnv): Promi
     () =>
       inboundServer({
         ask: async (input, operationId, waitMs) => {
-          await Effect.runPromise(accountPlan(env, principal.subject))
+          await runAtEdge(accountPlan(env, principal.subject))
           return unwrap(await agent.askAsClient(name ?? 'an MCP client', input, operationId, waitMs))
         },
         recent: async (limit) => unwrap(await agent.recentMessages(limit)),

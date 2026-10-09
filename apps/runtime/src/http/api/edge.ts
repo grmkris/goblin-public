@@ -20,6 +20,13 @@ import { answer, refusal, secured } from './render.ts'
  * switch, `worker.ts` serves only the account API through here; the owner routes still go through its own tables.
  */
 
+/**
+ * Runs one of the Worker's own programs to its value (the fresh plan reads, the billing webhook and cron, the edge's own
+ * build): with the agent's bridge (runtime/bridge.ts), the only place Effects are run. It rejects with the program's
+ * failure.
+ */
+export const runAtEdge = <A, E>(program: Effect.Effect<A, E>): Promise<A> => Effect.runPromise(program)
+
 /** The part of an agent's Durable Object stub the edge calls. */
 type AgentFetch = { readonly fetch: (request: Request) => Promise<Response> }
 

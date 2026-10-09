@@ -1,5 +1,6 @@
 /** Fast 2xx after a verified event is durable; processing continues through waitUntil and the cron recovers misses. */
 import { Clock, Effect, Exit, Layer } from 'effect'
+import { runAtEdge } from '../http/api/edge.ts'
 import { readBytes } from '../http/body.ts'
 import { toAppError } from '../http/errors.ts'
 import { LoggerLive } from '../observability/logger.ts'
@@ -15,7 +16,7 @@ const processLater = (deps: BillingDeps, id: string, ctx: Pick<ExecutionContext,
     reportAndRecover('billing.webhook', undefined),
     Effect.provide(Layer.mergeAll(LoggerLive, ReporterLive)),
   )
-  ctx.waitUntil(Effect.runPromise(reported))
+  ctx.waitUntil(runAtEdge(reported))
 }
 
 export const billingWebhook = Effect.fn('billing.webhook')(function* (
