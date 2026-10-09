@@ -25,4 +25,5 @@ export const paths: string[] = [
   'apps/web/src/worker.ts',
   'apps/web/test/boundary.test.ts',
   'apps/web/test/query/crash-report.test.ts',
+  'apps/web/test/query/query-boundary.test.tsx',
 ]
