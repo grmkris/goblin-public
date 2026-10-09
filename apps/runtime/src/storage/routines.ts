@@ -17,6 +17,8 @@ export const appRoutines = sqliteTable('app_routines', {
   health: text('health'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
+  /** The Topic that owns it (ADR 0032): the one whose chat proposed it, else Personal. It reports there. */
+  topicId: integer('topic_id').notNull().default(1),
 })
 export const appRoutineOperations = sqliteTable('app_routine_operations', {
   operationId: text('operation_id').primaryKey().notNull(),

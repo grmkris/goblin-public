@@ -450,6 +450,12 @@ const MIGRATIONS: readonly { readonly key: string; readonly tables: readonly str
       'CREATE UNIQUE INDEX app_conversation_origin_op ON app_conversations (origin_op)',
     ].join(BREAK),
   },
+  {
+    // A routine belongs to the Topic whose chat proposed it (ADR 0032); every earlier one to Personal.
+    key: '20261026000500_routine_topics',
+    tables: ['app_routines'],
+    sql: 'ALTER TABLE app_routines ADD COLUMN topic_id INTEGER NOT NULL DEFAULT 1',
+  },
 ]
 
 /**

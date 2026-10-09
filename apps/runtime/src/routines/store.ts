@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { Conflict, InvalidInput, NotFound } from '../http/errors.ts'
-import { RoutineDefinition, RoutineView } from '@goblin/contracts'
+import { PERSONAL_TOPIC, RoutineDefinition, RoutineView } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { canonicalArguments } from '../mcp/events/store.ts'
 import { appRoutineOperations, appRoutines, appRoutineSettings } from '../storage/routines.ts'
@@ -92,7 +92,20 @@ export class RoutineStore {
       .onConflictDoNothing()
       .run()
   }
-  propose(definition: RoutineDefinition, operationId: string, routineId: string, at: number): RoutineOperationResult {
+  /** The Topic that owns routine `id` (ADR 0032); Personal for one this agent does not have. */
+  topicOf(id: string): number {
+    return (
+      this.#db.select({ topic: appRoutines.topicId }).from(appRoutines).where(eq(appRoutines.id, id)).get()?.topic ?? 1
+    )
+  }
+
+  propose(
+    definition: RoutineDefinition,
+    operationId: string,
+    routineId: string,
+    at: number,
+    topic = PERSONAL_TOPIC,
+  ): RoutineOperationResult {
     return this.#db.transaction(() => {
       const existing = this.#operation(operationId, { kind: 'propose', definition })
       if (existing !== undefined) return existing
@@ -116,6 +129,7 @@ export class RoutineStore {
         health: null,
         createdAt: at,
         updatedAt: at,
+        topicId: topic,
       }
       this.#db.insert(appRoutines).values(routine).run()
       const response = { routine: this.#view(routine), operationId }

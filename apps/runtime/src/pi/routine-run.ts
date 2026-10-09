@@ -12,7 +12,15 @@ import {
 import type { PiHarness } from 'agents/harness/pi'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
-import { Chats, Conversations, RoutineRuns, RoutineUsageProjection, attempt, attemptSync } from '../services.ts'
+import {
+  Chats,
+  Conversations,
+  Routines,
+  RoutineRuns,
+  RoutineUsageProjection,
+  attempt,
+  attemptSync,
+} from '../services.ts'
 import { definitionOf, type RoutineRun } from '../routines/runs.ts'
 import type { RunProgram } from './resident-mcp.ts'
 import { BACKGROUND, conversationId } from './context.ts'
@@ -79,9 +87,11 @@ function reporterTask(run: RunProgram) {
             const store = yield* RoutineRuns
             const conversations = yield* Conversations
             const record = store.get(runId)
+            const topic = (yield* Routines).topicOf(record.routineId)
             const at = yield* Clock.currentTimeMillis
             yield* attemptSync(() => {
-              conversations.registerRoutine(String(sessionId), runId, definitionOf(record).title, Math.floor(at / 1000))
+              const title = definitionOf(record).title
+              conversations.registerRoutine(String(sessionId), runId, title, Math.floor(at / 1000), topic)
               store.bind(runId, String(sessionId), at)
             })
             return store.get(runId).state === 'running'

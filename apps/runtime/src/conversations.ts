@@ -392,8 +392,23 @@ export class ConversationRegistry {
     )
   }
 
-  /** A task-created routine conversation starts empty and copies no main exclusions or announcement. */
-  registerRoutine(session: string, runId: string, title: string, now: number): void {
+  /**
+   * Where a routine of `topic` lives and reports: that Topic's Conversation, or Personal's while the Topic is archived
+   * or gone, so a routine left running (archive leaves schedules alone) is never reported out of sight.
+   */
+  #routineHome(topic: number): { readonly chat: string; readonly topic: number } {
+    const row = this.#db.select().from(appTopics).where(eq(appTopics.id, topic)).get()
+    return row === undefined || row.archivedAt !== null
+      ? { chat: this.#kit.chats.primary(), topic: PERSONAL_TOPIC }
+      : { chat: row.chatId, topic }
+  }
+
+  /**
+   * A task-created routine conversation starts empty and copies no exclusions or announcement; it sits under its
+   * routine's Topic's Conversation.
+   */
+  registerRoutine(session: string, runId: string, title: string, now: number, topic: number = PERSONAL_TOPIC): void {
+    const home = this.#routineHome(topic)
     this.#db
       .insert(appConversations)
       .values({
@@ -401,7 +416,8 @@ export class ConversationRegistry {
         piSession: session,
         kind: 'thread',
         title,
-        parentSession: this.#kit.chats.primary(),
+        parentSession: home.chat,
+        topicId: home.topic,
         routineRunId: runId,
         createdAt: now,
         mainNote: null,
@@ -411,7 +427,10 @@ export class ConversationRegistry {
     this.#changed([session])
   }
 
-  /** Frozen passive report; acceptance records a Pi write, not a new main run or external notification. */
+  /**
+   * Frozen passive report into the routine's Topic's Conversation (Personal's by default, or while that Topic is
+   * archived); acceptance records a Pi write, not a new run or external notification.
+   */
   async reportRoutine(input: {
     readonly runId: string
     readonly routineId: string
@@ -419,8 +438,9 @@ export class ConversationRegistry {
     readonly outcome: string
     readonly text: string
     readonly at: number
+    readonly topic?: number
   }): Promise<void> {
-    await this.#passiveWrite(this.#kit.chats.primary(), {
+    await this.#passiveWrite(this.#routineHome(input.topic ?? PERSONAL_TOPIC).chat, {
       type: 'write',
       requestId: `routine-report:${input.runId}`,
       entry: {

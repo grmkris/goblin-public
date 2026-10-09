@@ -76,6 +76,16 @@ thread or subagent remembers nothing of its own. `zoom` reads the memory of the 
 (`conversationAbove`), bounded, in a thread, by its fork. `GET /api/agent/memory?chat=<id>` reports the memory of
 that chat's Conversation, Personal's by default.
 
+## Routines report to their Topic
+
+The additive migration `20261026000500_routine_topics` adds `app_routines.topic_id INTEGER NOT NULL DEFAULT 1`. A
+routine the agent drafts with `routine_propose` belongs to the Topic of the chat that called it (its Conversation or a
+thread under it); one proposed through the owner API, and every earlier one, belongs to Personal. Its run
+conversation is registered under that Topic's Conversation, in that Topic, and its `app.routine` report is a passive
+write there. While the Topic is archived, archive v1 leaves its schedules running, so runs and reports go to Personal,
+never out of sight; restoring the Topic brings them back. Stopping an archived Topic's chats stops a run already in
+one of them.
+
 ## Inbound stays in Personal
 
 `askClient`, Telegram turns and `recentOwnerMessages` resolve `primary()`, unchanged: every inbound channel lands in
@@ -92,4 +102,5 @@ archive that aborts a held run and refuses sends, a restore that restarts nothin
 ask landing in chat `1` and account isolation. Memory unit tests (`test/chat-memory.test.ts`) apply the copy migration
 to seeded rows and check per-chat sizes and truncation; the local workerd case `native-topics.ts` (both profiles)
 proves two Topics remember apart: the new Conversation's builder places its view only there, and Personal's memory
-holds only Personal's messages. None of this is deployed-stage or live-provider evidence.
+holds only Personal's messages, and that a routine proposed in a Topic runs under that Topic's Conversation and
+reports there, never in Personal. None of this is deployed-stage or live-provider evidence.

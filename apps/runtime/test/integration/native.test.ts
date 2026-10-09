@@ -16,7 +16,7 @@ import { scopesCase } from './native-scopes.ts'
 import { composerCase } from './native-composer.ts'
 import { telemetryCase } from './native-telemetry.ts'
 import { primaryBindingCase } from './native-chats.ts'
-import { topicMemoryCase } from './native-topics.ts'
+import { topicsNativeCase } from './native-topics.ts'
 import {
   Listed,
   ModelRequest,
@@ -845,8 +845,8 @@ harness.test(
 )
 
 harness.test(
-  'local workerd: each Topic Conversation remembers apart, with its view only there',
-  stack.pipe(Effect.flatMap(({ url }) => topicMemoryCase(url))),
+  'local workerd: each Topic Conversation remembers apart, with its view only there, and its routines report there',
+  stack.pipe(Effect.flatMap(({ url }) => topicsNativeCase(url))),
 )
 
 const SubagentRun = Schema.Struct({

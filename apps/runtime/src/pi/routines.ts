@@ -1,7 +1,7 @@
 import { defineExtension, section } from '@earendil-works/pi-durable'
 import * as Schema from 'effect/Schema'
 import { RoutineDefinition, RoutinePage, RoutineView } from '@goblin/contracts'
-import { changeRoutine, proposeRoutine, routinesList } from '../routines/program.ts'
+import { changeRoutine, proposeRoutineFrom, routinesList } from '../routines/program.ts'
 import type { RunProgram } from './resident-mcp.ts'
 import { typedTool } from './typed-tool.ts'
 
@@ -20,7 +20,7 @@ const proposeTool = (run: RunProgram) =>
     output: Proposed,
     replay: 'safe',
     execute: async (definition, api) => {
-      const draft = await run(proposeRoutine(definition, operationOf(api)))
+      const draft = await run(proposeRoutineFrom(definition, operationOf(api), String(api.conversationId)))
       return { routineId: draft.id, revision: draft.revision, title: draft.definition.title }
     },
     text: ({ title, revision }) =>

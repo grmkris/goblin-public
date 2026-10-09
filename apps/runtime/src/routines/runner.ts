@@ -7,6 +7,7 @@ import { Entitlements } from '../billing/gates.ts'
 import {
   Conversations,
   Models,
+  Routines,
   RoutineRuns,
   RoutineUsageProjection,
   attempt,
@@ -142,6 +143,7 @@ export class RoutineRunner {
       Effect.gen(function* () {
         const conversations = yield* Conversations
         const store = yield* RoutineRuns
+        const topic = (yield* Routines).topicOf(record.routineId)
         const session = record.sessionId
         if (session !== null)
           yield* RoutineUsageProjection.use((projection) => attempt(() => projection.snapshot(session)))
@@ -153,6 +155,7 @@ export class RoutineRunner {
             outcome: record.outcome ?? record.state,
             text: record.notificationText ?? 'Routine ended.',
             at: record.updatedAt,
+            topic,
           }),
         )
         const at = yield* Clock.currentTimeMillis

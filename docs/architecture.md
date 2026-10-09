@@ -1035,7 +1035,11 @@ and abort owned conversations. Questions use sealed shared interaction receipts 
 
 Committed `pi.usage` counters, including compaction, project into app-only cumulative watermarks and UTC-day
 receipts: tokens for the routine's own caps, Credits for the owner's daily budget. Replay does not charge twice; a model response already in flight may overshoot a cap. Settlement freezes a
-scrubbed summary and one `app.routine` parent write with a stable request ID. Telegram reporting is separate authorized
+scrubbed summary and one `app.routine` parent write with a stable request ID. A routine belongs to a Topic
+(`app_routines.topic_id`, migration `20261026000500_routine_topics`, ADR 0032): the Topic of the chat whose
+`routine_propose` drafted it, Personal for one proposed through the owner API or before Topics. Its run conversation
+sits under that Topic's Conversation and its report is written there; while the Topic is archived (archive leaves
+schedules running in v1), runs and reports go to Personal instead. Telegram reporting is separate authorized
 plumbing with frozen bytes/server, stable operation ID, five bounded attempts over at most 15 minutes, and a separate
 remote acceptance receipt. Pi acceptance does not establish external delivery. Additive migrations …210/…211/…212 modify
 only application tables.
