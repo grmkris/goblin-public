@@ -95,6 +95,16 @@ export function useAppState<S = unknown>(): [S, { readonly revision: number; rea
   return [current?.state as S, { revision: current?.revision ?? 0, release: current?.release ?? '' }]
 }
 
+/** An action that failed: its message is the app's own error, or the host's words for the failure. */
+class ActionFailed extends Error {
+  override readonly name = 'ActionFailed'
+}
+
+/** A file the host would not offer the owner. */
+class DownloadRefused extends Error {
+  override readonly name = 'DownloadRefused'
+}
+
 /** Calls the app's actions: `act(name, input)` resolves with the new state; `pending` and `error` follow the last. */
 export function useActions() {
   const [pending, setPending] = useState(false)
@@ -109,7 +119,7 @@ export function useActions() {
         _meta: { 'goblin/op': `ui:${crypto.randomUUID()}` },
       })
       const text = result.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
-      if (result.isError === true) throw new Error(text === '' ? `${name} failed` : text)
+      if (result.isError === true) throw new ActionFailed(text === '' ? `${name} failed` : text)
       accept(result._meta)
       return snapshot?.state
     } catch (cause) {
@@ -127,7 +137,7 @@ export function useActions() {
 export async function download(name: string, text: string, type = 'text/plain'): Promise<void> {
   const resource = { uri: `file:///${encodeURIComponent(name)}`, mimeType: type, text }
   const result = await connect().downloadFile({ contents: [{ type: 'resource', resource }] })
-  if (result.isError === true) throw new Error(`${name} could not be offered`)
+  if (result.isError === true) throw new DownloadRefused(`${name} could not be offered`)
 }
 
 /**

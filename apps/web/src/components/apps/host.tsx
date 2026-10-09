@@ -81,9 +81,14 @@ type Host = {
 
 const HostContext = createContext<Host | undefined>(undefined)
 
+/** A component asked for the App host outside `AppHost`: a wiring mistake in the page, not a failure to show. */
+class NoAppHost extends Error {
+  override readonly name = 'NoAppHost'
+}
+
 export function useAppHost(): Host {
   const host = use(HostContext)
-  if (host === undefined) throw new Error('useAppHost must be used inside AppHost')
+  if (host === undefined) throw new NoAppHost('useAppHost must be used inside AppHost')
   return host
 }
 

@@ -9,6 +9,11 @@ import { messageOf } from './query/app-error.ts'
 
 const OP = /^ui:([0-9a-f-]{36})$/u
 
+/** A call an App made that failed, in the owner's copy of the failure: the App never sees the raw error. */
+export class AppCallFailure extends Error {
+  override readonly name = 'AppCallFailure'
+}
+
 /** The routes an agent app's frame reaches, by App id (the frame builds them over `apps/queries.ts`). */
 export type AgentAppCalls = {
   readonly call: (id: string, call: AppCall) => Promise<AppCallResult>
@@ -99,7 +104,7 @@ export function agentBridge(
     }
   }
   bridge.onreadresource = async () => {
-    throw new Error('An agent app has no resources to read')
+    throw new AppCallFailure('An agent app has no resources to read')
   }
   bridge.addEventListener('loggingmessage', ({ level, data }) => {
     if (level !== 'error' && level !== 'critical' && level !== 'alert' && level !== 'emergency') return

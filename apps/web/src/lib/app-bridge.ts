@@ -6,7 +6,7 @@ import { downloadOf } from './app-download.ts'
 import { appSandbox } from './app-sandbox.ts'
 import { questionAnswerReceipt } from './app-message.ts'
 import { grantDenied } from '../components/apps/grant-ask.tsx'
-import { type AgentAppCalls, type StatePush, agentBridge } from './agent-app-bridge.ts'
+import { type AgentAppCalls, AppCallFailure, type StatePush, agentBridge } from './agent-app-bridge.ts'
 import { messageOf } from './query/app-error.ts'
 
 export type AppCalls = {
@@ -19,10 +19,6 @@ export type AppCalls = {
   readonly resource: (serverId: string, params: { uri: string }) => Promise<ReadResourceResult>
 }
 
-/** A call an App made that failed, in the owner's copy of the failure: the App never sees the raw error. */
-class AppCallFailure extends Error {
-  override readonly name = 'AppCallFailure'
-}
 const refusal = (cause: unknown, action: string): AppCallFailure => new AppCallFailure(messageOf(cause, action))
 
 /** An MCP App's handlers: its calls and reads go to its own server under the owner's grants, live. */
