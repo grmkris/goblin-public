@@ -28,21 +28,19 @@
       "entry": ["scripts/**/*.ts!"],
     },
     "scripts/fixtures/mcp-app": {
-      "entry": ["server.ts!", "client.mts!"],
+      "entry": ["client.mts!"],
       "project": ["**/*.ts", "**/*.mts"],
     },
     "spikes/coding": {
-      "entry": ["scripts/server.ts!", "scripts/prepare.ts!", "scripts/approval-code.ts!"],
+      "entry": ["scripts/approval-code.ts!"],
       "project": ["scripts/**/*.ts", "test/**/*.ts"],
     },
     "spikes/coding-cf": {
       "entry": [
         "src/index.ts!",
         "runner/server.ts!",
-        "scripts/prepare.ts!",
         "scripts/stack.ts!",
         "scripts/tunnel.ts!",
-        "scripts/compare.ts!",
         "scripts/benchmark.ts!",
         "scripts/isolation.ts!",
         "scripts/image-receipt.ts!",
@@ -54,7 +52,7 @@
       "ignoreDependencies": ["@effect/tsgo"],
     },
     "bench": {
-      "entry": ["scripts/cli.ts!", "scripts/stack.ts!", "scripts/decisions.ts!", "worker/worker.ts!"],
+      "entry": ["scripts/stack.ts!", "worker/worker.ts!"],
     },
     "apps/runtime": {
       "entry": ["test/provider-probe.ts!"],
