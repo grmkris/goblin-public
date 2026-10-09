@@ -1,69 +1,29 @@
+import { AppError, Internal, InvalidInput } from '@goblin/contracts/api'
 import * as Schema from 'effect/Schema'
 import { safeErrorType } from '../telemetry/safety.ts'
 
 /**
- * The runtime's failure vocabulary. Every boundary maps one of these to an HTTP status in `respond.ts`; Durable Object
- * RPC carries them as an encoded `ErrorBody` because Workers RPC does not preserve error classes.
+ * The runtime's failure vocabulary lives with the API contract (`@goblin/contracts/api`), which answers each one in its
+ * error envelope. Every boundary maps one to an HTTP status (`respond.ts`); Durable Object RPC carries them as an
+ * encoded `ErrorBody` because Workers RPC does not preserve error classes. Re-exported here so runtime imports stay.
  */
-export class Unauthenticated extends Schema.TaggedError<Unauthenticated>()('Unauthenticated', {
-  reason: Schema.String,
-}) {}
-export class Forbidden extends Schema.TaggedError<Forbidden>()('Forbidden', { reason: Schema.String }) {}
-export class GrantDenied extends Schema.TaggedError<GrantDenied>()('GrantDenied', {
-  serverId: Schema.String,
-  name: Schema.String,
-}) {}
-export class NotFound extends Schema.TaggedError<NotFound>()('NotFound', { what: Schema.String }) {}
-export class Conflict extends Schema.TaggedError<Conflict>()('Conflict', { reason: Schema.String }) {}
-export class InvalidInput extends Schema.TaggedError<InvalidInput>()('InvalidInput', { reason: Schema.String }) {}
-export class PayloadTooLarge extends Schema.TaggedError<PayloadTooLarge>()('PayloadTooLarge', {
-  limit: Schema.Number,
-}) {}
-export class ResidentInactive extends Schema.TaggedError<ResidentInactive>()('ResidentInactive', {
-  state: Schema.String,
-}) {}
-export class BudgetExhausted extends Schema.TaggedError<BudgetExhausted>()('BudgetExhausted', {
-  limit: Schema.Number,
-  resetsAt: Schema.Number,
-}) {}
-export class SubscriptionRequired extends Schema.TaggedError<SubscriptionRequired>()('SubscriptionRequired', {
-  subscribe: Schema.String,
-}) {}
-export class NeedsAuthorization extends Schema.TaggedError<NeedsAuthorization>()('NeedsAuthorization', {
-  serverId: Schema.String,
-}) {}
-export const UpstreamReason = Schema.Literals([
-  'unauthorized',
-  'remote-rpc',
-  'transport',
-  'timeout',
-  'cancelled',
-  'unsupported',
-  'content-limit',
-])
-export class UpstreamMcp extends Schema.TaggedError<UpstreamMcp>()('UpstreamMcp', {
-  serverId: Schema.String,
-  reason: UpstreamReason,
-  code: Schema.optional(Schema.Number),
-}) {}
-export class Internal extends Schema.TaggedError<Internal>()('Internal', { reason: Schema.String }) {}
-
-export const AppError = Schema.Union([
-  Unauthenticated,
+export {
+  AppError,
+  BudgetExhausted,
+  Conflict,
   Forbidden,
   GrantDenied,
-  NotFound,
-  Conflict,
+  Internal,
   InvalidInput,
+  NeedsAuthorization,
+  NotFound,
   PayloadTooLarge,
   ResidentInactive,
-  BudgetExhausted,
   SubscriptionRequired,
-  NeedsAuthorization,
+  Unauthenticated,
   UpstreamMcp,
-  Internal,
-])
-export type AppError = typeof AppError.Type
+  UpstreamReason,
+} from '@goblin/contracts/api'
 
 const isAppError = Schema.is(AppError)
 
