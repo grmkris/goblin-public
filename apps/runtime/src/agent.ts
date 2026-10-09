@@ -206,6 +206,7 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
       entitlements: this.entitlementPolicy(),
       scheduleEvents: (at) => this.#scheduleWake('mcpEventsWake', at),
       pullTelegram: () => this.channelPull(),
+      schedulePull: () => this.schedule(0, 'channelPull'),
       routineEvent: (context) => this.#routines.consumeEvent(context),
       mcpFetch: this.mcpFetch(),
       agentApps: this.#apps,
