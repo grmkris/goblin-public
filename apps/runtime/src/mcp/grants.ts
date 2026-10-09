@@ -1,15 +1,11 @@
+import type { Grant } from '@goblin/contracts'
 import { and, eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { appMcpGrants } from '../storage/schema.ts'
 import { GrantDenied } from '../http/errors.ts'
 
-export type GrantCapability = 'tool' | 'resource' | 'prompt'
-export type Grant = {
-  readonly serverId: string
-  readonly capability: GrantCapability
-  readonly name: string
-  readonly askFirst?: boolean
-}
+/** The owner's grants are the contract's (`@goblin/contracts`), which the web reads too. */
+export type { Grant, GrantCapability } from '@goblin/contracts'
 
 export interface Grants {
   allows(grant: Grant): boolean
