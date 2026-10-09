@@ -17,6 +17,13 @@ import { Channel, Mcp, Resident, RoutineRuns } from '../../src/services.ts'
 import { ChannelAdapter, RoutineRunsAdapter } from '../../src/layers/routines.ts'
 import { McpConnectionsLive, ResidentLive } from '../../src/layers/mcp.ts'
 import { Db } from '../../src/runtime/db.ts'
+import type { AppError } from '../../src/http/errors.ts'
+import type { Channel as ChannelService } from '../../src/channel/service.ts'
+import type { Resident as ResidentService } from '../../src/mcp/service.ts'
+import { AgentInput, type AgentInputs } from '../../src/runtime/input.ts'
+
+/** What the dispatch check reads. */
+type LaneServices = Entitlements | ResidentService | ChannelService
 import { MemoryCredentials, MemoryGrants } from '../mcp/memory.ts'
 import { appRoutineRuns } from '../../src/storage/routines.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
@@ -103,11 +110,18 @@ async function setupNotifications(storage: DurableObjectStorage, owner: string) 
       ),
     ),
   )
+  const plans = { state: fixturePlan, require: fixturePlan }
+  // The bridge's `local`, which notifyRoutine runs its last-moment check through, over the same services.
+  const input: AgentInputs = Object.assign(Object.create(null), {
+    local: (program: Effect.Effect<void, AppError, LaneServices>) =>
+      Effect.runPromise(program.pipe(Effect.provide(services), Effect.provideService(Entitlements, plans))),
+  })
   const notify = (id: string) =>
     Effect.runPromise(
       notifyRoutine(runs.get(id)).pipe(
         Effect.provide(services),
-        Effect.provideService(Entitlements, { state: fixturePlan, require: fixturePlan }),
+        Effect.provideService(Entitlements, plans),
+        Effect.provideService(AgentInput, input),
       ),
     )
   return { db, routines, runs, resident, channel, host, attempts, accepted, notify }

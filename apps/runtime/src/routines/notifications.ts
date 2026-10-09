@@ -1,13 +1,14 @@
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { Entitlements, type EntitlementPolicy } from '../billing/gates.ts'
+import { Entitlements } from '../billing/gates.ts'
 import { Channel } from '../channel/service.ts'
 import { Forbidden, toAppError } from '../http/errors.ts'
 import { McpConnections, Resident } from '../mcp/service.ts'
 import { reportFailure } from '../observability/report.ts'
 import { definitionOf, type RoutineRun } from './runs.ts'
 import { RoutineRuns } from './service.ts'
+import { AgentInput } from '../runtime/input.ts'
 
 const Receipt = Schema.Struct({
   id: Schema.optional(Schema.String.check(Schema.isMaxLength(200))),
@@ -18,18 +19,12 @@ const authority = Effect.gen(function* () {
   yield* Resident.use((resident) => resident.require())
 })
 /** Checked again right before the call leaves: the plan, resident authority, and that the channel is still `serverId`. */
-const dispatchAuthority =
-  (plans: EntitlementPolicy, resident: typeof Resident.Service, channels: typeof Channel.Service, serverId: string) =>
-  async () => {
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        yield* plans.require('routines')
-        yield* resident.require()
-        if ((yield* channels.status)?.serverId !== serverId)
-          return yield* new Forbidden({ reason: 'routine notification channel changed' })
-      }),
-    )
-  }
+const stillAuthorized = (serverId: string) =>
+  Effect.gen(function* () {
+    yield* authority
+    if ((yield* Channel.use((channel) => channel.status))?.serverId !== serverId)
+      return yield* new Forbidden({ reason: 'routine notification channel changed' })
+  })
 type Delivery = { state: 'accepted' | 'suppressed' | 'pending'; receipt: string | null }
 const suppress = () => Effect.succeed<Delivery>({ state: 'suppressed', receipt: null })
 
@@ -37,8 +32,7 @@ const suppress = () => Effect.succeed<Delivery>({ state: 'suppressed', receipt: 
 export const notifyRoutine = (record: RoutineRun) =>
   Effect.gen(function* () {
     const store = yield* RoutineRuns
-    const plans = yield* Entitlements
-    const resident = yield* Resident
+    const local = yield* AgentInput.use((input) => Effect.succeed(input.local))
     const at = yield* Clock.currentTimeMillis
     if (!definitionOf(record).notifyTelegram || record.notificationText === null) return
     const text = record.notificationText.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -66,7 +60,7 @@ export const notifyRoutine = (record: RoutineRun) =>
           serverId,
           'send_message',
           { operationId: `routine-${record.id}-0`, text },
-          { caller: 'model', timeout: 5000, authorize: dispatchAuthority(plans, resident, channels, serverId) },
+          { caller: 'model', timeout: 5000, authorize: () => local(stillAuthorized(serverId)) },
         ),
       )
       if (result.isError === true) return yield* new Forbidden({ reason: 'routine notification refused' })
