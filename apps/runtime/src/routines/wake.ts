@@ -1,9 +1,14 @@
+import { writeLine } from '../observability/logger.ts'
+import { safeErrorType } from '../observability/report.ts'
 import type { RoutineController } from './controller.ts'
 import type { RoutineSlot } from './scheduler.ts'
 
-/** The routines' alarm (`routinesWake`): one maintenance sweep; a failed one is tried again in a minute. */
+/** The routines' alarm (`routinesWake`): one maintenance sweep; a failed one is logged and tried again in a minute. */
 export async function routinesWake(routines: RoutineController, wake: (at: number) => Promise<void>): Promise<void> {
-  await routines.maintain().catch(() => wake(Date.now() + 60_000))
+  await routines.maintain().catch((error: unknown) => {
+    writeLine('warn', { event: 'wake', task: 'routines.maintain', 'error.type': safeErrorType(error) })
+    return wake(Date.now() + 60_000)
+  })
 }
 
 /** A routine's scheduled slot is due (`runRoutine`). */

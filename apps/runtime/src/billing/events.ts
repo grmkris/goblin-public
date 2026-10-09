@@ -1,6 +1,7 @@
 /** Adapted from myapps@8a69ec64: durable webhook-id ledger, lease ownership, stale provider guards and refunds. */
 import { Clock, Effect, Option, Predicate, Random, Schema } from 'effect'
 import { Internal } from '../http/errors.ts'
+import { reportAndRecover } from '../observability/report.ts'
 import type { DodoApi, VerifiedEvent } from './dodo.ts'
 import type { Subscription } from './schema.ts'
 import type { BillingStore } from './store.ts'
@@ -107,7 +108,7 @@ export const processStored = Effect.fn('billing.processStored')(function* (deps:
     return 'ignored' as const
   }
   const event = { id, type: row.type, timestamp: row.occurredAt, data: decoded.value.data, body: row.payload ?? '' }
-  const outcome = yield* applyEvent(deps, event).pipe(Effect.catchCause(() => Effect.succeed('failed' as const)))
+  const outcome = yield* applyEvent(deps, event).pipe(reportAndRecover('billing.processStored', 'failed' as const))
   yield* deps.store.finish(id, token, outcome)
   return outcome
 })

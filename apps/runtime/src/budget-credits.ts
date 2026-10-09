@@ -48,6 +48,7 @@ export function creditRates(value: string | undefined): CreditRates {
   try {
     parsed = JSON.parse(value)
   } catch {
+    // expected: rates that are not JSON keep the defaults, as documented above.
     return DEFAULT_RATES
   }
   if (!isRecord(parsed)) return DEFAULT_RATES

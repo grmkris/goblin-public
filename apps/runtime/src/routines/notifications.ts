@@ -5,6 +5,7 @@ import { Entitlements, type EntitlementPolicy } from '../billing/gates.ts'
 import type { ResidentAuthority } from '../resident.ts'
 import { nowSeconds } from '../clock.ts'
 import { Forbidden } from '../http/errors.ts'
+import { reportFailure } from '../observability/report.ts'
 import { Channel, Mcp, Resident, RoutineRuns, attempt, attemptSync, requireResident } from '../services.ts'
 import { definitionOf, type RoutineRun } from './runs.ts'
 
@@ -79,6 +80,8 @@ export const notifyRoutine = (record: RoutineRun) =>
     }).pipe(
       Effect.map((value): Delivery => ({ state: 'accepted', receipt: value })),
       Effect.catchTags({ ResidentInactive: suppress, SubscriptionRequired: suppress, Forbidden: suppress }),
+      reportFailure('routines.notify'),
+      // expected: reported above; a failed delivery is tried again with backoff and is failed after five attempts.
       Effect.catch(() => Effect.succeed<Delivery>({ state: 'pending', receipt: null })),
     )
     const attempts = record.notificationAttempts + 1

@@ -14,6 +14,7 @@ import type { CredentialCipher } from '../mcp/cipher.ts'
 import type { McpConnectionManager } from '../mcp/connection.ts'
 import { appChannel, appChannelReplies, appTelegramChannel } from '../storage/schema.ts'
 import { nowMillis } from '../clock.ts'
+import { writeLine } from '../observability/logger.ts'
 import { failureAttributes } from '../telemetry/attributes.ts'
 import type { RunTelemetry } from '../telemetry/events.ts'
 import { expectedFailure, safeErrorType } from '../telemetry/safety.ts'
@@ -81,12 +82,10 @@ const messageText = (message: typeof Message.Type) =>
     .filter((part) => part !== '')
     .join('\n')
 
-/** One line when a pull or a delivery fails: the step and the error's tag, never message content. */
-export function logChannelFailure(step: 'pull' | 'replies', error: unknown): void {
+/** One line when a pull or a delivery fails: the alarm's step and the error's type, never message content. */
+export function reportChannelFailure(step: 'pull' | 'replies', error: unknown): void {
   const tag = safeErrorType(error)
-  const line = JSON.stringify({ level: expectedFailure(tag) ? 'info' : 'warn', event: 'channel', step, error: tag })
-  if (expectedFailure(tag)) console.log(line)
-  else console.warn(line)
+  writeLine(expectedFailure(tag) ? 'info' : 'warn', { event: 'wake', task: `channel.${step}`, 'error.type': tag })
 }
 
 /**

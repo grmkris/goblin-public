@@ -15,6 +15,7 @@ export function routineSummary(text: string): string {
           url.hash = ''
           return url.toString()
         } catch {
+          // expected: text that only looks like a link is replaced, never kept.
           return '[link]'
         }
       })

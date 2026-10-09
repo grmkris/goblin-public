@@ -71,6 +71,7 @@ export const disableTelegram = Effect.gen(function* () {
     if (binding !== undefined) yield* events.unsubscribe(binding)
   }
   if (status !== null && status.transport === 'doorbell')
+    // expected: the doorbell is off on this side whatever myagent answers; a later ring finds no secret.
     yield* Effect.ignore(attempt(() => channelCall(mcp.manager, status.serverId)('unsubscribe', {})))
   channel.disable()
   return null

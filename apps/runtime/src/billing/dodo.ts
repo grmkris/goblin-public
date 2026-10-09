@@ -68,6 +68,7 @@ const parseEvent = (headers: WebhookHeaders, body: string): VerifiedEvent | null
   try {
     parsed = JSON.parse(body)
   } catch {
+    // expected: a body that is not JSON is no event; the verifier refuses it as such.
     return null
   }
   if (!isRecord(parsed) || !Predicate.isString(parsed['type']) || !isRecord(parsed['data'])) return null
@@ -99,7 +100,7 @@ const BASE_URL: Readonly<Record<DodoMode, string>> = {
 
 const text = (value: unknown, field: string): string => {
   const found = isRecord(value) ? value[field] : undefined
-  if (!Predicate.isString(found) || found === '') throw new Error(`Dodo's answer has no ${field}`)
+  if (!Predicate.isString(found) || found === '') throw new DodoError({ message: `Dodo's answer has no ${field}` })
   return found
 }
 

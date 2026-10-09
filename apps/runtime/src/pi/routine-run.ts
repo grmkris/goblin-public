@@ -25,6 +25,7 @@ import { definitionOf, type RoutineRun } from '../routines/runs.ts'
 import type { RunProgram } from './resident-mcp.ts'
 import { BACKGROUND, conversationId } from './context.ts'
 import { CredentialCipher } from '../mcp/cipher.ts'
+import { Internal } from '../http/errors.ts'
 
 const Bindings = defineDoc<{ sessions: Record<string, ConversationId>; tasks: Record<string, TaskId<null>> }>({
   kind: 'app.routine-bindings',
@@ -102,7 +103,7 @@ function reporterTask(run: RunProgram) {
           return
         }
         const conversation = await runtime.conversation(sessionId, context)
-        if (conversation === undefined) throw new Error('Routine conversation is missing')
+        if (conversation === undefined) throw new Internal({ reason: 'routine conversation missing' })
         const submitted = await conversation.submit(
           { type: 'input', content, whenBusy: 'followUp', requestId: `routine-input:${runId}:${operationId}` },
           context,
@@ -155,7 +156,7 @@ export function routineRunExtension(run: RunProgram, members: readonly Extension
   ): Promise<string> => {
     const primary = await run(Chats.useSync((chats) => chats.session(chats.primary())))
     const main = await (await harness.pi()).conversation(conversationId(primary), BACKGROUND)
-    if (main === undefined) throw new Error('Routine main conversation is missing')
+    if (main === undefined) throw new Internal({ reason: 'routine main conversation missing' })
     const eventContext =
       record.eventDataSealed === null
         ? ''

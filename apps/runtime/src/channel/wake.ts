@@ -2,7 +2,7 @@ import type { PiHarness } from 'agents/harness/pi'
 import type { Applied } from '../agent-model.ts'
 import { nowSeconds } from '../clock.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
-import { type ChannelPorts, type TelegramChannel, logChannelFailure } from './channel.ts'
+import { type ChannelPorts, type TelegramChannel, reportChannelFailure } from './channel.ts'
 import { onChannel } from './turns.ts'
 
 type Ports = {
@@ -28,14 +28,14 @@ export class ChannelWakes {
     this.#pulling = this.#pulling
       .then(() => this.#onChannel((channel, ports) => channel.pull(ports, nowSeconds())))
       .then(() => undefined)
-      .catch((error: unknown) => logChannelFailure('pull', error))
+      .catch((error: unknown) => reportChannelFailure('pull', error))
     await this.#pulling
   }
   async replies(): Promise<void> {
     const again = await this.#onChannel(async (channel, ports) =>
       (await channel.deliver(ports, nowSeconds())) ? 15 : undefined,
     ).catch((error: unknown) => {
-      logChannelFailure('replies', error)
+      reportChannelFailure('replies', error)
       return 300
     })
     if (again !== undefined) await this.#ports.again(again)

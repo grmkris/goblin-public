@@ -29,11 +29,12 @@ export async function verifyStandardWebhook(
       try {
         if (await crypto.subtle.verify('HMAC', key, bytes(signature), message)) valid = true
       } catch {
-        /* Malformed signature entries do not match. */
+        // expected: a malformed signature entry does not match; the others are still tried.
       }
     }
     return valid
   } catch {
+    // expected: a secret or signature that does not decode cannot verify, which refuses the webhook.
     return false
   }
 }
