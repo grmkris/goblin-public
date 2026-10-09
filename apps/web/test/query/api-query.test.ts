@@ -1,4 +1,4 @@
-import { type ApiCode, Conflict, ERROR_COPY, OwnerApi, OwnerGate } from '@goblin/contracts/api'
+import { type ApiCode, Conflict, ERROR_COPY, OwnerApi, OwnerGate, TopicsGroup, ownerApiOf } from '@goblin/contracts/api'
 import type { CreateTopic, TopicView } from '@goblin/contracts'
 import { MutationObserver } from '@tanstack/react-query'
 import * as Effect from 'effect/Effect'
@@ -23,7 +23,10 @@ const PERSONAL: TopicView = {
   createdAt: 1,
 }
 
-/** The real owner contract served in memory: Topics answer from a list, every other group is empty. */
+/**
+ * The real owner contract's Topics group served in memory, answering from a list. Only Topics is served, so another
+ * group gaining an endpoint never needs a handler here.
+ */
 const fakeOwner = () => {
   const topics: TopicView[] = []
   const Topics = HttpApiBuilder.group(OwnerApi, 'topics', (handlers) =>
@@ -38,22 +41,8 @@ const fakeOwner = () => {
       })
       .handle('update', () => Effect.die('not used')),
   )
-  const empty = Layer.mergeAll(
-    HttpApiBuilder.group(OwnerApi, 'conversations', (handlers) => handlers),
-    HttpApiBuilder.group(OwnerApi, 'personas', (handlers) => handlers),
-    HttpApiBuilder.group(OwnerApi, 'organize', (handlers) => handlers),
-    HttpApiBuilder.group(OwnerApi, 'home', (handlers) => handlers),
-    HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) => handlers),
-    HttpApiBuilder.group(OwnerApi, 'resident', (handlers) => handlers),
-    HttpApiBuilder.group(OwnerApi, 'agent', (handlers) => handlers),
-    HttpApiBuilder.group(OwnerApi, 'memory', (handlers) => handlers),
-    HttpApiBuilder.group(OwnerApi, 'routines', (handlers) => handlers),
-    HttpApiBuilder.group(OwnerApi, 'apps', (handlers) => handlers),
-    HttpApiBuilder.group(OwnerApi, 'agentApps', (handlers) => handlers),
-    HttpApiBuilder.group(OwnerApi, 'inspect', (handlers) => handlers),
-  )
   const gate = Layer.succeed(OwnerGate, (handler) => handler)
-  const server = fakeHttpApi(OwnerApi, Layer.mergeAll(Topics, empty).pipe(Layer.provide(gate)))
+  const server = fakeHttpApi(ownerApiOf(TopicsGroup), Topics.pipe(Layer.provide(gate)))
   return { ...server, reset: () => void topics.splice(0, topics.length, PERSONAL) }
 }
 
