@@ -6,17 +6,11 @@ import type {
   HelperExclusion,
   MoveReceipt,
   MoveToThread,
-  QueueRemoval,
-  QueueRemovalResult,
-  ConversationQueue,
   UpdateConversation,
 } from '@goblin/contracts'
-import type { PiReceipt } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
 import type * as Effect from 'effect/Effect'
 import type * as Option from 'effect/Option'
-import type { OwnerMessageContext } from '../agent-program.ts'
-import type { StartedThread } from '../env.ts'
 import type { AppError } from '../http/errors.ts'
 import type { ChatId, SessionId } from './directory.ts'
 
@@ -52,17 +46,11 @@ export class Chats extends Context.Service<
 /** One write into a chat its model sees at its next turn; no run starts. The request id makes a repeat the same write. */
 export type PassiveWrite = { readonly requestId: string; readonly entry: EntryDraft }
 
-/** The owner's message: its words, its operation id, and what came with it (App context, files, composer tags). */
-export type OwnerMessage = {
-  readonly text: string
-  readonly operationId: string
-  readonly context?: OwnerMessageContext
-}
-
 /**
  * What happens in a chat by operation: admission (an operation's intent is recorded before Pi sees it, and a replay
- * keeps its first session), passive writes under the chat's admission lock, and the owner's sends, Thread starts and
- * Stop. The lock covers admission only, never a model call.
+ * keeps its first session) and passive writes, under the chat's admission lock. The lock covers admission only, never
+ * a model call. The owner's sends, Thread starts and Stop are programs over these (agent-program.ts, thread-heads.ts):
+ * they read services of lanes whose layers come after this one.
  */
 export class ChatOperations extends Context.Service<
   ChatOperations,
@@ -74,18 +62,13 @@ export class ChatOperations extends Context.Service<
     ) => Effect.Effect<{ readonly session: SessionId; readonly existing: boolean }, AppError>
     /** The session `operationId` was admitted to in `chat`, if it was. */
     readonly operation: (chat: string, operationId: string) => Effect.Effect<Option.Option<SessionId>, AppError>
+    /**
+     * Runs `effect` holding `chat`'s admission lock: one at a time per chat, in arrival order. An interruption while
+     * waiting for the lock waits for it, then lets it go.
+     */
+    readonly withChat: <A, E, R>(chat: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
     /** Writes into `chat`'s current session under its admission lock. */
     readonly passiveWrite: (chat: string, write: PassiveWrite) => Effect.Effect<Submission, AppError>
-    /** The owner's message into `chat`, or an ask of the Personas it tags; Pi's receipt once admitted. */
-    readonly send: (chat: string, message: OwnerMessage) => Effect.Effect<PiReceipt, AppError>
-    /** The owner's message as the head of a new Thread of `chat`, answered in that Thread (ADR 0034). */
-    readonly startThread: (chat: string, message: OwnerMessage) => Effect.Effect<StartedThread, AppError>
-    /** Stop in `chat`: its run (or `operationId` alone), its routine run, its subagents and the Personas asked in it. */
-    readonly stop: (chat: string, operationId?: string) => Effect.Effect<boolean, AppError>
-    /** The owner's queued inputs in `chat`; helpers and routines have none here. */
-    readonly queue: (chat: string) => Effect.Effect<ConversationQueue, AppError>
-    /** Withdraws one queued input of `chat`; an input already placed stays. */
-    readonly removeQueued: (chat: string, removal: QueueRemoval) => Effect.Effect<QueueRemovalResult, AppError>
   }
 >()('goblin/chats/ChatOperations') {}
 

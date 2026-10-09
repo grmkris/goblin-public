@@ -1,7 +1,9 @@
 import { describe, expect, it } from '@effect/vitest'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
+import * as Deferred from 'effect/Deferred'
 import * as Effect from 'effect/Effect'
+import * as Fiber from 'effect/Fiber'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import * as TestClock from 'effect/testing/TestClock'
@@ -58,19 +60,24 @@ const services = (calls: Calls) => {
   const harness = fake<PiHarness>({
     pi: async () => ({ conversation: async (id: number) => conversation(id) }) as never,
   })
+  const directory = new ChatDirectory(db)
   const layer = ConversationLive.pipe(
     Layer.provide(
       Layer.mergeAll(
         // SAFETY: the adapters read only the legacy instances and the input given below; the rest stays unprovided.
         Layer.succeedContext(Context.empty() as Context.Context<FoundationServices>),
-        Layer.succeed(LegacyChats, new ChatDirectory(db)),
+        Layer.succeed(LegacyChats, directory),
         Layer.succeed(LegacyConversations, registry),
         Layer.succeed(LegacyMoves, moves),
         Layer.succeed(AgentInput, fake<AgentInputs>({ harness })),
       ),
     ),
   )
-  return { layer: Layer.merge(layer, Layer.effectDiscard(Effect.addFinalizer(() => Effect.sync(close)))), calls }
+  return {
+    layer: Layer.merge(layer, Layer.effectDiscard(Effect.addFinalizer(() => Effect.sync(close)))),
+    calls,
+    directory,
+  }
 }
 
 describe('the conversation services over the legacy instances', () => {
@@ -99,6 +106,37 @@ describe('the conversation services over the legacy instances', () => {
       expect(yield* operations.operation('1', 'op-1')).toEqual(Option.none())
       yield* operations.passiveWrite('2', { requestId: 'note:1', entry: { kind: 'app.note', data: {} } })
       expect(calls).toEqual(['write:42:note:1'])
+    }).pipe(Effect.provide(layer))
+  })
+
+  it.effect("hold a chat's one admission lock, which the legacy directory's callers share, in arrival order", () => {
+    const { layer, directory } = services([])
+    return Effect.gen(function* () {
+      const operations = yield* ChatOperations
+      const order: string[] = []
+      const started = yield* Deferred.make<void>()
+      const gate = yield* Deferred.make<void>()
+      const first = yield* Effect.forkChild(
+        operations.withChat(
+          '2',
+          Effect.gen(function* () {
+            order.push('first:start')
+            yield* Deferred.succeed(started, undefined)
+            yield* Deferred.await(gate)
+            order.push('first:end')
+          }),
+        ),
+      )
+      yield* Deferred.await(started)
+      const legacy = directory.withChat('2', async () => void order.push('legacy'))
+      yield* operations.withChat(
+        '1',
+        Effect.sync(() => order.push('other chat')),
+      )
+      yield* Deferred.succeed(gate, undefined)
+      yield* Fiber.join(first)
+      yield* Effect.promise(() => legacy)
+      expect(order).toEqual(['first:start', 'other chat', 'first:end', 'legacy'])
     }).pipe(Effect.provide(layer))
   })
 
