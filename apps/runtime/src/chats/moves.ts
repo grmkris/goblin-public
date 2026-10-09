@@ -45,7 +45,7 @@ export function movedFrom<RunResult>(
   return move === undefined ? {} : { movedFrom: { chat: move.chat, operationId: originOp } }
 }
 
-const decodeRelays = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Schema.Number)))
+const decodeRelays = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Schema.Finite)))
 
 /**
  * The application rows of moves to thread (ADR 0034): one per owner operation, through `requested → forked →

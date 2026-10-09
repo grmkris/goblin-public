@@ -14,7 +14,7 @@ const Snapshot = Schema.Struct({
   entries: Schema.optional(
     Schema.Array(
       Schema.Struct({
-        id: Schema.Number,
+        id: Schema.Finite,
         kind: Schema.String,
         data: Schema.optional(Schema.Unknown),
         model: Schema.optional(Schema.Unknown),

@@ -77,9 +77,9 @@ export const ownerSetCapability = (agent: AgentFetch, chat: string, change: Capa
 
 /** A Pi entry as these probes read it. */
 const EntrySchema = Schema.Struct({
-  id: Schema.Number,
+  id: Schema.Finite,
   kind: Schema.String,
-  head: Schema.optional(Schema.Number),
+  head: Schema.optional(Schema.Finite),
   data: Schema.optional(Schema.Unknown),
   model: Schema.optional(
     Schema.Array(Schema.Struct({ content: Schema.optional(Schema.Unknown), details: Schema.optional(Schema.Unknown) })),

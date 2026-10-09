@@ -9,7 +9,7 @@ import { BACKGROUND, conversationId, submissionId } from './pi/context.ts'
 /** Read Pi's supported inbox document; neither the transcript nor application storage owns these inputs. */
 export async function queuedInputs(pi: Harness, session: string): Promise<ConversationQueue> {
   const inbox = await pi.snapshot(InboxDoc, conversationId(session), BACKGROUND)
-  return Schema.decodeUnknownSync(ConversationQueue)({
+  return Schema.decodeSync(ConversationQueue)({
     inputs: inbox?.items.filter((item) => item.mode !== 'write') ?? [],
   })
 }

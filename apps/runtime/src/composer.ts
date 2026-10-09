@@ -149,8 +149,9 @@ export const resolveSelections = (session: string, selections: readonly Composer
     const options: ComposerOption[] = []
     const context: Record<string, unknown>[] = []
     for (const selection of unique) {
-      const resolved = yield* Effect.catch(resolveOne(session, selection, run), () =>
-        Effect.fail(new InvalidInput({ reason: `composer:${selectionKey(selection)}` })),
+      const resolved = yield* Effect.mapError(
+        resolveOne(session, selection, run),
+        () => new InvalidInput({ reason: `composer:${selectionKey(selection)}` }),
       )
       options.push(resolved.option)
       context.push(resolved.context)

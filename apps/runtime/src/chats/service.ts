@@ -132,7 +132,7 @@ export class Conversations extends Context.Service<
     /** One registered chat as the owner sees it. */
     readonly view: (chat: string) => Effect.Effect<Option.Option<ConversationView>, AppError>
     /** Every registered chat but Persona forks, oldest first, closed ones included. */
-    readonly list: () => Effect.Effect<readonly ConversationView[], AppError>
+    readonly list: Effect.Effect<readonly ConversationView[], AppError>
     /** A subagent's latest report, for the composer's reference. */
     readonly helperReference: (chat: string) => Effect.Effect<HelperReference, AppError>
     /** The owner's create: a Thread branched from an entry of an open chat, or an empty one under a Topic's. */
@@ -140,7 +140,7 @@ export class Conversations extends Context.Service<
     /** The Thread operation `operationId` starts from `parent`'s composer: one per operation, also when repeated. */
     readonly startThread: (parent: string, operationId: string) => Effect.Effect<ConversationView, AppError>
     /** A new Topic's Conversation: a new Pi session configured like Personal's. Returns its session. */
-    readonly openConversation: () => Effect.Effect<string, AppError>
+    readonly openConversation: Effect.Effect<string, AppError>
     /** Tells the change listeners about chats another registry wrote. */
     readonly touched: (chats: readonly string[]) => Effect.Effect<void, AppError>
     /** The open chats of `topic` other than subagents. */

@@ -11,7 +11,7 @@ const decodeViews = Schema.decodeUnknownSync(Schema.Array(ConversationView))
 const decodeHead = Schema.decodeUnknownSync(ThreadHeadData)
 const decodeTopic = Schema.decodeUnknownSync(TopicView)
 const Entry = Schema.Struct({
-  id: Schema.Number,
+  id: Schema.Finite,
   kind: Schema.String,
   data: Schema.optional(Schema.Unknown),
   model: Schema.optional(Schema.Unknown),
@@ -31,14 +31,14 @@ const ChatShape = Schema.Struct({
   session: Schema.NullOr(Schema.String),
   parent: Schema.NullOr(Schema.String),
   spawner: Schema.NullOr(Schema.String),
-  recallThrough: Schema.NullOr(Schema.Number),
+  recallThrough: Schema.NullOr(Schema.Finite),
 })
 const decodeState = Schema.decodeUnknownSync(
   Schema.Struct({
     moves: Schema.Array(MoveRowShape),
     chats: Schema.Array(ChatShape),
-    memory: Schema.Array(Schema.Number),
-    sessions: Schema.Number,
+    memory: Schema.Array(Schema.Finite),
+    sessions: Schema.Finite,
   }),
 )
 
@@ -135,7 +135,7 @@ async function turn(url: string, owner: Person, chat: string, said: string): Pro
 /** The entries a head omits from its chat's model context. */
 const omitted = (entry: Entry | undefined): readonly number[] =>
   Schema.decodeUnknownSync(
-    Schema.Struct({ edits: Schema.optional(Schema.Array(Schema.Struct({ target: Schema.Number }))) }),
+    Schema.Struct({ edits: Schema.optional(Schema.Array(Schema.Struct({ target: Schema.Finite }))) }),
   )(entry).edits?.map((edit) => edit.target) ?? []
 
 /**

@@ -134,9 +134,10 @@ const registryReads = (conversations: ConversationRegistry) => ({
   view: Effect.fn('Conversations.view')(function* (chat: string) {
     return Option.fromNullishOr(yield* attempt(() => conversations.view(chat)))
   }),
-  list: Effect.fn('Conversations.list')(function* () {
-    return yield* attempt(() => conversations.list())
-  }),
+  list: Effect.withSpan(
+    attempt(() => conversations.list()),
+    'Conversations.list',
+  ),
   helperReference: Effect.fn('Conversations.helperReference')(function* (chat: string) {
     return yield* attempt(() => conversations.helperReference(chat))
   }),
@@ -166,9 +167,10 @@ const registryChats = (conversations: ConversationRegistry) => ({
     const now = yield* nowSecondsEffect
     return yield* attempt(() => conversations.startThread(parent, operationId, now))
   }),
-  openConversation: Effect.fn('Conversations.openConversation')(function* () {
-    return yield* attempt(() => conversations.openConversation())
-  }),
+  openConversation: Effect.withSpan(
+    attempt(() => conversations.openConversation()),
+    'Conversations.openConversation',
+  ),
   registerSubagent: Effect.fn('Conversations.registerSubagent')(function* (
     session: string,
     parent: string,
