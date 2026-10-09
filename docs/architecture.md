@@ -186,10 +186,12 @@ record, `AgentInput` (`runtime/input.ts`). The layers build in a fixed order, ea
   transcript index; the mover (a move a restart interrupted finishes in the background, never holding up the start);
   every Topic Conversation given memory; skills and the learner; the Telegram channel; and Events, with the routine
   trigger and then the Telegram and skills consumers registered. A stateful object is made once, by its step, and
-  shared with the layers that wire it by an instance tag in its own module (`McpHostInstance`, `Cipher`,
-  `ProfilesInstance`, `MemoriesInstance`, `TranscriptsInstance`, `AppsInstance`); programs use the area's services.
-  The chat directory, conversation registry and mover are still made by `layers/legacy.ts`, behind the `services.ts`
-  tags, until the conversation layer makes them.
+  shared with the layers that wire it by an instance tag in its own module (`ChatsInstance`, `ConversationsInstance`,
+  `MovesInstance`, `McpHostInstance`, `Cipher`, `ProfilesInstance`, `MemoriesInstance`, `TranscriptsInstance`,
+  `AppsInstance`); programs use the area's services.
+  The conversation registry tells `conversations.changed` what each write changed, inline (`runNow` in
+  `runtime/bridge.ts`, because it writes from synchronous code inside Promise work); the App registry and the
+  workspace feed follow that topic.
 - **One layer per area** after the start, in order: the plan, model budget and picker (`Entitlements`, `Budget`,
   `Models`, which a send's admission reads), conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`),
   delegation (`Topics`, `Personas`, `Invocations`, `Receipts`, `Home`, `Workspace`), MCP (`Resident`, `McpServers`,
@@ -1201,7 +1203,7 @@ The chat layer has unit proof for lookup, operation retries, retention, CAS owne
 local workerd profile that rebinds chat `1` to a fresh non-root Pi session in test subclasses before service
 composition. Owner, helper, routine, channel and memory cases run under that profile; explicit owner and inbound
 proofs assert the non-root session and an empty root transcript. The AST guard bans root constants, session-less
-harness submission/session calls, and private `ChatDirectory` instances outside the legacy start (`layers/legacy.ts`)
+harness submission/session calls, and `ChatDirectory` instances outside the conversation layer (`layers/conversation.ts`)
 and tests. These
 prove local behavior; deployed-stage, live-provider,
 Telegram-service and remote-eviction acceptance remain separate.
