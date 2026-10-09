@@ -13,10 +13,21 @@ import {
   type PassiveWrite,
   type RoutineReport,
 } from '../chats/service.ts'
-import type { ChatDirectory } from '../chats/directory.ts'
-import { NotFound } from '../http/errors.ts'
+import { type ChatDirectory, SessionId } from '../chats/directory.ts'
+import { epochSeconds, instanceCall } from '../chats/instance.ts'
+import {
+  type ReceiptChange,
+  type ReceiptInput,
+  admitReceipt,
+  advanceReceipt,
+  receiptIn,
+  relatedReceipts,
+} from '../chats/receipts.ts'
+import { toAppError } from '../http/errors.ts'
 import type { ConversationRegistry } from '../conversations.ts'
-import { BACKGROUND, conversationId } from '../pi/context.ts'
+import { KeyedLock } from '../observability/lock.ts'
+import { type PiFailure, PiSessions } from '../pi/sessions.ts'
+import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { Chats as LegacyChats, Conversations as LegacyConversations, Moves as LegacyMoves } from '../services.ts'
 import { attempt, attemptSync, nowSecondsEffect } from '../services.ts'
@@ -55,9 +66,9 @@ export const ChatsAdapter = Layer.effect(
 )
 
 /**
- * Holds `chat`'s admission lock on the legacy directory, which the mover, the registry's passive writes and the
- * subagent relays still take: one lock per chat for old and new callers alike. The lock is held from when its turn
- * comes until the returned release runs. Wave 3 moves every caller onto `KeyedLock`.
+ * Holds `chat`'s lock on the legacy directory, which its Promise callers (the mover, the registry's own passive writes)
+ * still take: admission holds it inside `KeyedLock`'s, so they and the Effect callers stay one at a time per chat. It
+ * is held from when its turn comes until the returned release runs. It goes once those callers take `ChatOperations`.
  */
 const legacyLock = (chats: ChatDirectory, chat: string) =>
   Effect.callback<() => void>((resume) => {
@@ -67,47 +78,90 @@ const legacyLock = (chats: ChatDirectory, chat: string) =>
       .catch(() => undefined)
   })
 
+/** What an admission that does not say what it is records. */
+const UNDESCRIBED: ReceiptInput = { kind: 'send', origin: 'system' }
+
+/** A synchronous read or write of the receipts, its throw a typed `AppError` (`NotFound` for an unknown chat). */
+const sql = <A>(run: () => A) => Effect.try({ try: run, catch: toAppError })
+
+/** A Pi call's failure as the programs take one: Pi's own error through `toAppError`. */
+const piFailure = (failure: PiFailure) => Effect.fail(toAppError(failure.cause))
+
 /**
- * Admission and passive writes over the legacy directory, the lock shared with its other callers, and the owner's send
- * and Stop. Those two read services of lanes whose layers come after this one, so they run their programs through the
- * bridge (a plan check and a fiber of their own) until wave 3 orders the layers for them.
+ * Admission natively: receipts in the agent's SQLite (chats/receipts.ts), the chat's lock in `KeyedLock`, Pi's writes
+ * through `PiSessions`. The chat's current session comes from the one chat directory, whose lock admission also holds
+ * (`legacyLock`). The owner's send and Stop read services of lanes whose layers come after this one, so they run their
+ * programs through the bridge until the layers are ordered for them (status.md, wave 3).
  */
-export const ChatOperationsAdapter = Layer.effect(
+export const ChatOperationsLive = Layer.effect(
   ChatOperations,
   Effect.gen(function* () {
+    const db = yield* Db
+    const locks = yield* KeyedLock
+    const pi = yield* PiSessions
     const chats = yield* LegacyChats
     const input = yield* AgentInput
     const { harness, applied, routines, subagents, personas, run } = input
+    const withChat = <A, E, R>(chat: string, effect: Effect.Effect<A, E, R>) =>
+      locks
+        .withLock(`chat:${chat}`)(
+          Effect.acquireUseRelease(
+            legacyLock(chats, chat),
+            () => effect,
+            (release) => Effect.sync(release),
+          ),
+        )
+        .pipe(Effect.withSpan('ChatOperations.withChat'))
+    const admit = Effect.fn('ChatOperations.admit')(function* (
+      chat: string,
+      operationId: string,
+      receipt: ReceiptInput = UNDESCRIBED,
+    ) {
+      const now = yield* epochSeconds
+      const admitted = yield* sql(() =>
+        admitReceipt(db, { chat, operationId, receipt, session: () => chats.session(chat), now }),
+      )
+      return { session: SessionId(admitted.session), existing: admitted.existing }
+    })
+    const written = Effect.fn('ChatOperations.written')(function* (chat: string, write: PassiveWrite) {
+      const { requestId, entry, origin = 'system', parentOp } = write
+      const receipt = { kind: `write:${entry.kind}`, origin, ...(parentOp === undefined ? {} : { parentOp }) } as const
+      const { session } = yield* admit(chat, requestId, receipt)
+      const submission = yield* pi.write(session, { requestId, entry }).pipe(Effect.catchTag('PiFailure', piFailure))
+      const now = yield* epochSeconds
+      yield* sql(() => advanceReceipt(db, chat, requestId, { state: 'written', now }))
+      return submission
+    })
     return ChatOperations.of({
-      admit: Effect.fn('ChatOperations.admit')(function* (chat: string, operationId: string) {
-        const now = yield* nowSecondsEffect
-        return yield* attemptSync(() => chats.admit(chat, operationId, now))
-      }),
+      admit,
       operation: Effect.fn('ChatOperations.operation')(function* (chat: string, operationId: string) {
-        return Option.fromNullishOr(yield* attemptSync(() => chats.operation(chat, operationId)))
-      }),
-      withChat: (chat, effect) =>
-        Effect.acquireUseRelease(
-          legacyLock(chats, chat),
-          () => effect,
-          (release) => Effect.sync(release),
-        ).pipe(Effect.withSpan('ChatOperations.withChat')),
-      passiveWrite: Effect.fn('ChatOperations.passiveWrite')(function* (chat: string, write: PassiveWrite) {
-        return yield* attempt(() =>
-          chats.passiveWrite(chat, async (session) => {
-            const conversation = await (await harness.pi()).conversation(conversationId(session), BACKGROUND)
-            if (conversation === undefined) throw new NotFound({ what: 'conversation' })
-            return conversation.submit({ type: 'write', ...write }, BACKGROUND)
-          }),
+        return Option.map(Option.fromNullishOr(yield* sql(() => receiptIn(db, chat, operationId))), (found) =>
+          SessionId(found.session),
         )
       }),
+      receipt: Effect.fn('ChatOperations.receipt')(function* (chat: string, operationId: string) {
+        return Option.fromNullishOr(yield* sql(() => receiptIn(db, chat, operationId)))
+      }),
+      related: Effect.fn('ChatOperations.related')(function* (operationId: string) {
+        return yield* sql(() => relatedReceipts(db, operationId))
+      }),
+      advance: Effect.fn('ChatOperations.advance')(function* (
+        chat: string,
+        operationId: string,
+        change: Omit<ReceiptChange, 'now'>,
+      ) {
+        const now = yield* epochSeconds
+        yield* sql(() => advanceReceipt(db, chat, operationId, { ...change, now }))
+      }),
+      withChat,
+      passiveWrite: (chat, write) => withChat(chat, written(chat, write)),
       send: Effect.fn('ChatOperations.send')(function* (chat: string, message: OwnerMessage) {
         const { text, operationId, context = {} } = message
         const owner = { harness, applied, routines, subagents, personas, run }
-        return yield* attempt(() => run(submitOwner({ ...owner, thread: chat, text, operationId, context })))
+        return yield* instanceCall(() => run(submitOwner({ ...owner, thread: chat, text, operationId, context })))
       }),
       stop: Effect.fn('ChatOperations.stop')(function* (chat: string, operationId?: string) {
-        return yield* attempt(() => run(stopOwner({ ...input.stopping(), thread: chat, operationId })))
+        return yield* instanceCall(() => run(stopOwner({ ...input.stopping(), thread: chat, operationId })))
       }),
     })
   }),
@@ -276,4 +330,4 @@ const MovesAdapter = Layer.effect(
  * of each (layers/legacy.ts). They construct nothing of their own.
  */
 export const ConversationLive: Layer.Layer<Chats | ChatOperations | Conversations | Moves, never, FoundationServices> =
-  Layer.mergeAll(ChatsAdapter, ChatOperationsAdapter, ConversationsAdapter, MovesAdapter)
+  Layer.mergeAll(ChatsAdapter, ChatOperationsLive, ConversationsAdapter, MovesAdapter)

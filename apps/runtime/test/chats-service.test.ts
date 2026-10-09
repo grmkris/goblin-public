@@ -13,6 +13,9 @@ import { ChatOperations, Chats, Conversations, Moves } from '../src/chats/servic
 import type { ConversationRegistry } from '../src/conversations.ts'
 import type { FoundationServices } from '../src/layers/core.ts'
 import { ConversationLive } from '../src/layers/conversation.ts'
+import { KeyedLock } from '../src/observability/lock.ts'
+import { PiSessions } from '../src/pi/sessions.ts'
+import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 import { Chats as LegacyChats, Conversations as LegacyConversations, Moves as LegacyMoves } from '../src/services.ts'
 import { appConversations } from '../src/storage/schema.ts'
@@ -62,15 +65,20 @@ const services = (calls: Calls) => {
     pi: async () => ({ conversation: async (id: number) => conversation(id) }) as never,
   })
   const directory = new ChatDirectory(db)
+  const input = Layer.succeed(AgentInput, fake<AgentInputs>({ harness }))
   const layer = ConversationLive.pipe(
     Layer.provide(
       Layer.mergeAll(
-        // SAFETY: the adapters read only the legacy instances and the input given below; the rest stays unprovided.
+        // SAFETY: the layer reads only the core services, legacy instances and input given below; the rest stays unprovided.
         Layer.succeedContext(Context.empty() as Context.Context<FoundationServices>),
+        // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
+        Layer.succeed(Db, db as never),
+        KeyedLock.layer,
+        PiSessions.layer.pipe(Layer.provide(input)),
         Layer.succeed(LegacyChats, directory),
         Layer.succeed(LegacyConversations, registry),
         Layer.succeed(LegacyMoves, moves),
-        Layer.succeed(AgentInput, fake<AgentInputs>({ harness })),
+        input,
       ),
     ),
   )
@@ -81,7 +89,7 @@ const services = (calls: Calls) => {
   }
 }
 
-describe('the conversation services over the legacy instances', () => {
+describe('the conversation services', () => {
   it.effect('resolve chats as the directory does, absence as None and an unknown chat as NotFound', () => {
     const { layer } = services([])
     return Effect.gen(function* () {
@@ -96,17 +104,27 @@ describe('the conversation services over the legacy instances', () => {
     }).pipe(Effect.provide(layer))
   })
 
-  it.effect('admit an operation once and write passively into the chat it names', () => {
+  it.effect('admit an operation once with its receipt, and write passively into the chat it names', () => {
     const { layer, calls } = services([])
     return Effect.gen(function* () {
       const operations = yield* ChatOperations
       yield* TestClock.adjust('20 seconds')
-      expect(yield* operations.admit('2', 'op-1')).toEqual({ session: '42', existing: false })
-      expect(yield* operations.admit('2', 'op-1')).toEqual({ session: '42', existing: true })
+      const send = { kind: 'send', origin: 'owner' } as const
+      expect(yield* operations.admit('2', 'op-1', send)).toEqual({ session: '42', existing: false })
+      expect(yield* operations.admit('2', 'op-1', send)).toEqual({ session: '42', existing: true })
       expect(yield* operations.operation('2', 'op-1')).toEqual(Option.some('42'))
       expect(yield* operations.operation('1', 'op-1')).toEqual(Option.none())
-      yield* operations.passiveWrite('2', { requestId: 'note:1', entry: { kind: 'app.note', data: {} } })
+      yield* operations.advance('2', 'op-1', { state: 'submitted' })
+      expect(yield* operations.receipt('2', 'op-1')).toEqual(
+        Option.some({ chat: '2', operationId: 'op-1', session: '42', admittedAt: 20, ...send, state: 'submitted' }),
+      )
+      const write = { requestId: 'note:1', entry: { kind: 'app.note', data: {} }, parentOp: 'op-1' }
+      yield* operations.passiveWrite('2', write)
       expect(calls).toEqual(['write:42:note:1'])
+      expect(yield* operations.related('op-1')).toMatchObject([
+        { chat: '2', operationId: 'note:1', kind: 'write:app.note', origin: 'system', state: 'written' },
+      ])
+      expect(yield* Effect.flip(operations.admit('99', 'op-2'))).toMatchObject({ _tag: 'NotFound' })
     }).pipe(Effect.provide(layer))
   })
 

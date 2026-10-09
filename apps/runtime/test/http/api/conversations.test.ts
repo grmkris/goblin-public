@@ -34,6 +34,9 @@ import { ResidentAuthority } from '../../../src/resident.ts'
 import { Retrieval } from '../../../src/retrieval/service.ts'
 import type { RoutineController } from '../../../src/routines/controller.ts'
 import { RoutineRuns } from '../../../src/routines/service.ts'
+import { KeyedLock } from '../../../src/observability/lock.ts'
+import { PiSessions } from '../../../src/pi/sessions.ts'
+import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import * as Legacy from '../../../src/services.ts'
 import { Skills } from '../../../src/skills/service.ts'
@@ -292,10 +295,18 @@ const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) =
     Layer.succeed(Entitlements, plans),
     Layer.succeed(AgentInput, instance(harness, calls)),
   )
-  // Lane C's own services are its adapters over the legacy instances above, as the agent builds them.
+  // Lane C's own services as the agent builds them, over the core services and the legacy instances above.
+  const core = Layer.mergeAll(
+    // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
+    Layer.succeed(Db, db as never),
+    KeyedLock.layer,
+    PiSessions.layer.pipe(Layer.provide(legacy)),
+  )
   const conversation = ConversationLive.pipe(
-    // SAFETY: the adapters read only the legacy instances and the input given here; the rest stays unprovided.
-    Layer.provide(Layer.merge(Layer.succeedContext(Context.empty() as Context.Context<FoundationServices>), legacy)),
+    // SAFETY: the layer reads only the core services, legacy instances and input given here; the rest stays unprovided.
+    Layer.provide(
+      Layer.mergeAll(Layer.succeedContext(Context.empty() as Context.Context<FoundationServices>), core, legacy),
+    ),
   )
   const runtime = ManagedRuntime.make(
     OwnerHttp.serve(CONVERSATIONS_API, CONVERSATIONS).pipe(

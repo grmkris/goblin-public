@@ -15,6 +15,7 @@ import type * as Option from 'effect/Option'
 import type { OwnerMessageContext } from '../agent-program.ts'
 import type { AppError } from '../http/errors.ts'
 import type { ChatId, SessionId } from './directory.ts'
+import type { Receipt, ReceiptChange, ReceiptInput, ReceiptOrigin } from './receipts.ts'
 
 /**
  * The conversation services (ADRs 0030, 0032, 0034) as Effects. Each reads the current time from the Clock and fails
@@ -45,8 +46,17 @@ export class Chats extends Context.Service<
   }
 >()('goblin/chats/Chats') {}
 
-/** One write into a chat its model sees at its next turn; no run starts. The request id makes a repeat the same write. */
-export type PassiveWrite = { readonly requestId: string; readonly entry: EntryDraft }
+/**
+ * One write into a chat its model sees at its next turn; no run starts. The request id makes a repeat the same write
+ * and is its receipt's operation id: kind `write:<entry kind>`, from `origin` (`system` unless said), made by
+ * `parentOp` when another operation led to it.
+ */
+export type PassiveWrite = {
+  readonly requestId: string
+  readonly entry: EntryDraft
+  readonly origin?: ReceiptOrigin
+  readonly parentOp?: string
+}
 
 /** The owner's message: its words, its operation id, and what came with it (App context, files, composer tags). */
 export type OwnerMessage = {
@@ -56,26 +66,40 @@ export type OwnerMessage = {
 }
 
 /**
- * What happens in a chat by operation: admission (an operation's intent is recorded before Pi sees it, and a replay
- * keeps its first session) and passive writes, under the chat's admission lock, and the owner's send and Stop. The lock
- * covers admission only, never a model call.
+ * What happens in a chat by operation (plan §3): admission (an operation's receipt is recorded before Pi sees it, and a
+ * replay keeps its first session) and passive writes, under the chat's admission lock (`KeyedLock`), and the owner's
+ * send and Stop. The lock covers admission only, never a model call.
  */
 export class ChatOperations extends Context.Service<
   ChatOperations,
   {
-    /** Records `operationId` for `chat` before it reaches Pi; a replay finds the session it was first admitted to. */
+    /**
+     * Records `operationId` for `chat` before it reaches Pi, with what `receipt` says it is (a `send` from the system
+     * when it says nothing); a replay finds the session it was first admitted to.
+     */
     readonly admit: (
       chat: string,
       operationId: string,
+      receipt?: ReceiptInput,
     ) => Effect.Effect<{ readonly session: SessionId; readonly existing: boolean }, AppError>
     /** The session `operationId` was admitted to in `chat`, if it was. */
     readonly operation: (chat: string, operationId: string) => Effect.Effect<Option.Option<SessionId>, AppError>
+    /** `operationId`'s receipt in `chat`, if it was admitted there. */
+    readonly receipt: (chat: string, operationId: string) => Effect.Effect<Option.Option<Receipt>, AppError>
+    /** Every receipt `operationId` led to, in any chat, oldest first. */
+    readonly related: (operationId: string) => Effect.Effect<readonly Receipt[], AppError>
+    /** Moves `operationId`'s receipt in `chat` on: submitted, written, refused (with a reason) or settled. */
+    readonly advance: (
+      chat: string,
+      operationId: string,
+      change: Omit<ReceiptChange, 'now'>,
+    ) => Effect.Effect<void, AppError>
     /**
      * Runs `effect` holding `chat`'s admission lock: one at a time per chat, in arrival order. An interruption while
-     * waiting for the lock waits for it, then lets it go.
+     * waiting for the lock waits for it, then lets it go. Not re-entrant: nothing inside takes `chat`'s lock again.
      */
     readonly withChat: <A, E, R>(chat: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
-    /** Writes into `chat`'s current session under its admission lock. */
+    /** Writes into `chat` under its admission lock: the receipt, then Pi's write into the session it names. */
     readonly passiveWrite: (chat: string, write: PassiveWrite) => Effect.Effect<Submission, AppError>
     /** The owner's message into `chat`, or an ask of the Personas it tags; Pi's receipt once admitted. */
     readonly send: (chat: string, message: OwnerMessage) => Effect.Effect<PiReceipt, AppError>

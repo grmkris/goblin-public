@@ -92,7 +92,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
         Effect.provideService(Chats, chats),
         Effect.provideService(Budget, budget),
         Effect.provideService(Models, models),
-        Effect.provide(portServices({ chats, harness, budget, models })),
+        Effect.provide(portServices({ db, chats, harness, budget, models })),
       ),
     )
   const ports = channelPorts(harness, channelCall(manager, 'mygram'), run, new Map())
