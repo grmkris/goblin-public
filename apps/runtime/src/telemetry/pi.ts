@@ -4,7 +4,7 @@ import { nowMillis } from '../clock.ts'
 import { BACKGROUND, type PiContext } from '../pi/context.ts'
 import { answerAttributes, statusOfStop } from './attributes.ts'
 import { expectedFailure, failureSummary, safeErrorType, safeFailureCode } from './safety.ts'
-import type { RunTelemetry } from './events.ts'
+import { MAX_FAILURE_LINES, type RunTelemetry, reportTelemetryFailure } from './events.ts'
 import { rehydrateTelemetry } from './rehydrate.ts'
 import {
   decodeEntry,
@@ -185,7 +185,7 @@ export class PiRunRecorder {
       for (const [id, operation] of state.operations) remember(this.#operations, id, operation)
       for (const [conversation, run] of state.runs) this.#runs.set(conversation, run)
     } catch (error) {
-      console.warn(JSON.stringify({ level: 'warn', event: 'telemetry', where: 'restore', error: safeErrorType(error) }))
+      reportTelemetryFailure('restore', error)
     }
   }
 
@@ -194,9 +194,7 @@ export class PiRunRecorder {
       this.#observe(publication)
     } catch (error) {
       this.#failures += 1
-      if (this.#failures > 5) return
-      const message = safeErrorType(error)
-      console.warn(JSON.stringify({ level: 'warn', event: 'telemetry', where: 'pi', error: message }))
+      if (this.#failures <= MAX_FAILURE_LINES) reportTelemetryFailure('pi', error)
     }
   }
 

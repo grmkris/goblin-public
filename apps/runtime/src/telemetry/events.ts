@@ -8,7 +8,23 @@ import {
 } from '@goblin/contracts/telemetry'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { safeErrorType, sanitizeAttributes } from './safety.ts'
+import { writeLine } from '../observability/logger.ts'
+import { framesOf, safeErrorType } from '../observability/report.ts'
+import { sanitizeAttributes } from './safety.ts'
+
+/**
+ * A telemetry step that failed outside any fiber (a sink, a Pi commit listener, the restart sweep), as one `failure`
+ * line: `telemetry.<where>`, the error's type and its stack locations, never its message. Recording carries on.
+ */
+export function reportTelemetryFailure(where: string, error: unknown): void {
+  writeLine('warn', {
+    event: 'failure',
+    where: `telemetry.${where}`,
+    'error.type': safeErrorType(error),
+    ...(error instanceof Error ? { frames: framesOf(error) } : {}),
+    severity: 'Warn',
+  })
+}
 
 /** Where run events go (ADR 0024): the ledger, a log line, a test's list. */
 export interface RunSink {
@@ -32,7 +48,7 @@ const MAX_VALUE = 500
 /** All of an event's attributes at most this many characters, as JSON. */
 const MAX_ATTRIBUTES = 2048
 /** Sink failures logged per object, then dropped quietly: telemetry never floods its own log. */
-const MAX_FAILURE_LINES = 5
+export const MAX_FAILURE_LINES = 5
 /** Started events held in memory; past this the oldest is forgotten and is ended from the ledger instead. */
 const MAX_OPEN = 1000
 
@@ -210,7 +226,7 @@ export class RunTelemetry {
     try {
       return this.#recall(id)
     } catch (error) {
-      this.#failed('recall', error)
+      if (this.#reportable()) reportTelemetryFailure('recall', error)
       return undefined
     }
   }
@@ -220,16 +236,15 @@ export class RunTelemetry {
       try {
         write(sink)
       } catch (error) {
-        this.#failed(sink.name, error)
+        if (this.#reportable()) reportTelemetryFailure(sink.name, error)
       }
     }
   }
 
-  #failed(where: string, error: unknown): void {
+  /** Counts a failure: true for the first `MAX_FAILURE_LINES` of this object, which are logged. */
+  #reportable(): boolean {
     this.#failures += 1
-    if (this.#failures > MAX_FAILURE_LINES) return
-    const message = safeErrorType(error)
-    console.warn(JSON.stringify({ level: 'warn', event: 'telemetry', where, error: message }))
+    return this.#failures <= MAX_FAILURE_LINES
   }
 }
 
