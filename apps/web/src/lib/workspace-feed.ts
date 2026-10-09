@@ -11,6 +11,7 @@ import {
 } from '@goblin/contracts'
 import { Option, Schema } from 'effect'
 import { type PiEventSource, type ReconnectScheduler, browserScheduler, reconnectDelay } from './conversation-stream.ts'
+import { reportUnexpected } from './unexpected.ts'
 
 /**
  * The owner's conversations, oldest first, what each one that is not idle is doing, their kept Apps, oldest first, the
@@ -239,18 +240,25 @@ export class WorkspaceFeedConnection {
     this.#source = undefined
   }
 
+  /**
+   * A frame of the open stream. One this tab cannot read starts again from a fresh snapshot and is reported: the server
+   * sent it, so it is a bug or a frame shape this tab does not know, never the network.
+   */
   #receive(source: PiEventSource, next: () => WorkspaceState | undefined): void {
     if (this.#source !== source) return
+    let state: WorkspaceState | undefined
     try {
-      const state = next()
-      if (state === undefined) return
-      this.#state = state
-      this.#attempt = 0
-      this.publish(state)
-      this.report(undefined)
-    } catch {
+      state = next()
+    } catch (error) {
       this.#retry('Workspace data could not be read')
+      reportUnexpected(error)
+      return
     }
+    if (state === undefined) return
+    this.#state = state
+    this.#attempt = 0
+    this.publish(state)
+    this.report(undefined)
   }
 
   #retry(problem: string): void {

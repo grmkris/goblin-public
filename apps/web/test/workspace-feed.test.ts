@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { AppView, ConversationView } from '@goblin/contracts'
 import type { PiEventSource, ReconnectScheduler } from '../src/lib/conversation-stream.ts'
 import {
@@ -259,8 +259,11 @@ describe('the workspace feed connection', () => {
     expect(sources[1]?.closed).toBe(true)
   })
 
-  it('reconnects when a frame cannot be read, and stops for good once disposed', () => {
+  it('reports a frame it cannot read, reconnects, and stops for good once disposed', () => {
+    const reported: unknown[] = []
+    vi.stubGlobal('reportError', (error: unknown) => reported.push(error))
     const sources: FixtureEvents[] = []
+    const problems: (string | undefined)[] = []
     const { queued, scheduler } = manual()
     const connection = new WorkspaceFeedConnection(
       () => {
@@ -269,16 +272,22 @@ describe('the workspace feed connection', () => {
         return source
       },
       () => undefined,
-      () => undefined,
+      (problem) => problems.push(problem),
       scheduler,
     )
-    connection.connect()
-    sources[0]?.emit('snapshot', '{"conversations":"nope"}')
-    expect(sources[0]?.closed).toBe(true)
-    expect(queued).toHaveLength(1)
-    connection.dispose()
-    expect(queued).toHaveLength(0)
-    expect(EMPTY_WORKSPACE.conversations).toEqual([])
+    try {
+      connection.connect()
+      sources[0]?.emit('snapshot', '{"conversations":"nope"}')
+      expect(reported).toHaveLength(1)
+      expect(problems).toEqual(['Workspace data could not be read'])
+      expect(sources[0]?.closed).toBe(true)
+      expect(queued).toHaveLength(1)
+      connection.dispose()
+      expect(queued).toHaveLength(0)
+      expect(EMPTY_WORKSPACE.conversations).toEqual([])
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
 

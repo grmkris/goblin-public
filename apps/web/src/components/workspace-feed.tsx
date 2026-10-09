@@ -78,18 +78,21 @@ export function WorkspaceFeedProvider({
   readonly children: ReactNode
 }) {
   const { state, setState, error, setError, pending } = useLiveFeed(enabled)
-  const markRead = useCallback((id: string) => {
-    const at = Math.floor(Date.now() / 1000)
-    setState((current) => {
-      const view = current.conversations.find((candidate) => candidate.id === id)
-      if (view === undefined) return current
-      const readAt = Math.max(at, view.lastReplyAt ?? 0, view.readAt ?? 0)
-      return applyChanges(current, [{ type: 'conversation', conversation: { ...view, readAt } }])
-    })
-    request(`/api/conversations/${id}/read`, { method: 'PUT', body: {} }).catch((failure: unknown) =>
-      setError(failureText(failure)),
-    )
-  }, [])
+  const markRead = useCallback(
+    (id: string) => {
+      const at = Math.floor(Date.now() / 1000)
+      setState((current) => {
+        const view = current.conversations.find((candidate) => candidate.id === id)
+        if (view === undefined) return current
+        const readAt = Math.max(at, view.lastReplyAt ?? 0, view.readAt ?? 0)
+        return applyChanges(current, [{ type: 'conversation', conversation: { ...view, readAt } }])
+      })
+      request(`/api/conversations/${id}/read`, { method: 'PUT', body: {} }).catch((failure: unknown) =>
+        setError(failureText(failure)),
+      )
+    },
+    [setState, setError],
+  )
   const value = useMemo<WorkspaceFeed>(() => {
     const show = (view: ConversationView) =>
       setState((current) => applyChanges(current, [{ type: 'conversation', conversation: view }]))
@@ -141,7 +144,7 @@ export function WorkspaceFeedProvider({
         }
       },
     }
-  }, [state, error, markRead])
+  }, [state, error, markRead, setState, setError, pending])
   return <WorkspaceFeedContext.Provider value={value}>{children}</WorkspaceFeedContext.Provider>
 }
 
