@@ -15,7 +15,7 @@ import { type AppError, toAppError } from './http/errors.ts'
 import { type ChannelPorts, type TelegramChannel, logChannelFailure } from './channel/channel.ts'
 import { onChannel } from './channel/turns.ts'
 import { type Doorbell } from './channel/doorbell.ts'
-import { type RpcResult, encodeExit, unwrap } from './http/rpc.ts'
+import { type RpcResult, encodeExit } from './http/rpc.ts'
 import { FileStore } from './files/store.ts'
 import { filesExtension } from './pi/files.ts'
 import { type AgentApps, agentApps } from './agent-apps/engine.ts'
@@ -37,7 +37,8 @@ import { composeServices } from './compose.ts'
 import { capabilitiesOf, changeCapabilities } from './capabilities/program.ts'
 import { type AgentServices, Channel, Conversations, Mcp, Models, attempt } from './services.ts'
 import { attemptSync, Routines, RoutineRuns } from './services.ts'
-import { accountEntitlements, Entitlements, type EntitlementPolicy } from './billing/gates.ts'
+import { accountEntitlements, type EntitlementPolicy } from './billing/gates.ts'
+import { type Bridge, closeRuntime, makeBridge } from './runtime/bridge.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
 import { nowSeconds } from './clock.ts'
 import type { ServerSource } from './mcp/servers.ts'
@@ -98,13 +99,15 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
   readonly #routines: RoutineController
   readonly #apps: AgentApps
   readonly #telemetry: AgentTelemetry
+  /** How the object runs its programs (runtime/bridge.ts). */
+  readonly #bridge: Bridge
   #runtime: Promise<Runtime> | undefined
   /** The Telegram pull in progress: one at a time (channelPull). */
   #pulling: Promise<void> = Promise.resolve()
   constructor(ctx: DurableObjectState, env: RuntimeEnv) {
     super(ctx, env)
-    const run = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program)
-    const routineRun = <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program, false)
+    this.#bridge = makeBridge(() => this.#services())
+    const { run, local: routineRun } = this.#bridge
     this.#pi = makePiModels(env, this.modelStreams(), undefined, (id) => routineRun(requireRoutine(id)))
     const residentTools = residentMcpExtension(run, (session) => routineRun(requireRoutineSession(session)))
     const tools = [residentTools, budgetExtension(run)]
@@ -215,9 +218,9 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
     return this.#client(Events.use((events) => events.receive(input)))
   }
   async mcpEventsWake(): Promise<void> {
-    await this.#runOrThrow(Events.use((events) => events.maintain())).catch(() =>
-      this.#scheduleWake('mcpEventsWake', Date.now() + 60_000),
-    )
+    await this.#bridge
+      .run(Events.use((events) => events.maintain()))
+      .catch(() => this.#scheduleWake('mcpEventsWake', Date.now() + 60_000))
   }
   async routinesWake(): Promise<void> {
     await this.#routines.maintain().catch(() => this.#scheduleWake('routinesWake', Date.now() + 60_000))
@@ -233,25 +236,9 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
     await this.#apps.jobs.fire(slot)
   }
 
-  async #exit<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<Exit.Exit<A, AppError>> {
-    try {
-      return await (await this.#services()).runPromiseExit(program)
-    } catch (cause) {
-      return Exit.fail(toAppError(cause))
-    }
-  }
-
-  async #runOrThrow<A>(program: Effect.Effect<A, AppError, AgentServices>, checkPlan = true): Promise<A> {
-    const exit = await this.#exit(
-      Effect.andThen(checkPlan ? Entitlements.use((plans) => plans.require()) : Effect.void, program),
-    )
-    if (Exit.isSuccess(exit)) return exit.value
-    return unwrap(encodeExit(exit))
-  }
-
   /** An owner request: renew resident authority, then run the program. */
   async #owner<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
-    return encodeExit(await this.#exit(ownerRequest(program)))
+    return encodeExit(await this.#bridge.exit(ownerRequest(program)))
   }
   /** What the owner's message paths run with. */
   #submitRuntime() {
@@ -261,7 +248,7 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
       routines: this.#routines,
       subagents: this.#subagents,
       personas: this.#personas,
-      run: <A>(program: Effect.Effect<A, AppError, AgentServices>) => this.#runOrThrow(program),
+      run: this.#bridge.run,
     }
   }
   /** The owner's message into a thread, with what an open App shared for the agent as separate untrusted blocks. */
@@ -283,7 +270,7 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
     return this.#owner(removeOwnerQueuedInput(this.harness, thread, input))
   }
   composerOptions(thread: string) {
-    return this.#owner(composerOptionsProgram(thread, (program) => this.#runOrThrow(program)))
+    return this.#owner(composerOptionsProgram(thread, this.#bridge.run))
   }
   conversations() {
     return this.#owner(Conversations.use((conversations) => attempt(() => conversations.list())))
@@ -448,7 +435,7 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
   mcpDecideApproval(id: string, allowed: boolean) {
     return this.#owner(
       ownerApprovalDecision(id, allowed, {
-        run: (program) => this.#runOrThrow(program),
+        run: this.#bridge.run,
         routines: this.#routines,
         submit: (session, text, operationId) => this.submit(session, text, operationId),
       }),
@@ -480,7 +467,7 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
   }
   /** Revoke or re-enable resident authority. Not an ordinary owner request: revoking must not renew first. */
   async residentSet(enabled: boolean) {
-    return encodeExit(await this.#exit(setResident(enabled)))
+    return encodeExit(await this.#bridge.exit(setResident(enabled)))
   }
 
   /**
@@ -490,9 +477,7 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
    */
   askAsClient(author: string, input: string, operationId: string, waitMs: number) {
     const runtime = { harness: this.harness, applied: this.#applied }
-    return this.#client(
-      askClient({ ...runtime, author, text: input, operationId, waitMs }, (program) => this.#runOrThrow(program)),
-    )
+    return this.#client(askClient({ ...runtime, author, text: input, operationId, waitMs }, this.#bridge.run))
   }
   /** The Telegram channel's connection, or null when it is off. */
   channelStatus() {
@@ -524,7 +509,7 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
   }
 
   async #onChannel<T>(work: (channel: TelegramChannel, ports: ChannelPorts) => Promise<T>): Promise<T | undefined> {
-    return onChannel(this.harness, this.#applied, (program) => this.#runOrThrow(program), work)
+    return onChannel(this.harness, this.#applied, this.#bridge.run, work)
   }
   async channelPull(): Promise<void> {
     this.#pulling = this.#pulling
@@ -550,25 +535,24 @@ export class PersonalAgent extends OrganizingAgent implements AgentRpcMethods {
   /** Erases the agent: its files in R2 first (a failure leaves everything to retry), then services and storage. */
   async deleteAgentData(): Promise<RpcResult<true>> {
     const files = new FileStore(this.ctx.storage.sql, this.env.FILES, () => this.name)
-    const purged = await Effect.runPromiseExit(attempt(() => files.purge()))
-    if (Exit.isFailure(purged)) return encodeExit(Exit.map(purged, (): true => true))
+    try {
+      await files.purge()
+    } catch (cause) {
+      return encodeExit(Exit.fail(toAppError(cause)))
+    }
     const runtime = this.#runtime
     this.#runtime = undefined
-    if (runtime !== undefined) {
-      const services = await runtime.catch(() => undefined)
-      await services?.runPromise(Mcp.use((mcp) => attempt(() => mcp.manager.closeAll()))).catch(() => undefined)
-      await services?.dispose()
-    }
+    if (runtime !== undefined) await closeRuntime(runtime)
     await this.destroy()
     return { ok: true, value: true }
   }
   async #client<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
-    return encodeExit(await this.#exit(clientRequest(program)))
+    return encodeExit(await this.#bridge.exit(clientRequest(program)))
   }
   async sessionSnapshot(session: string): Promise<JsonObject> {
-    return this.#runOrThrow(chatSnapshot(this.harness, session))
+    return this.#bridge.run(chatSnapshot(this.harness, session))
   }
   override async onRequest(request: Request): Promise<Response> {
-    return agentRequest(request, this.harness, (program) => this.#exit(program))
+    return agentRequest(request, this.harness, this.#bridge.exit)
   }
 }
