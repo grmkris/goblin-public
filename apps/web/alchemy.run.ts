@@ -88,6 +88,8 @@ export default Alchemy.Stack(
         FILES: files,
         FLOWS: flows,
         LOADER: Cloudflare.WorkerLoader(),
+        // Workers AI for typed decisions through Clef (ADR 0031), on dev only: elsewhere decisions judge nothing.
+        ...(stage.name === 'dev' ? { AI: Cloudflare.Workers.AI() } : {}),
         APP_URL: appUrl,
         BETTER_AUTH_SECRET: Config.Redacted('GOBLIN_BETTER_AUTH_SECRET'),
         SIGNUP_MODE: signupMode,
