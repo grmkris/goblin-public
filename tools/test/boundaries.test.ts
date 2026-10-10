@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { RuleTester } from 'oxlint/plugins-dev'
 import { describe, it } from 'vitest'
-import { noCrossBoundaryImport, noRuntimeGlobal } from '../oxlint/boundaries.ts'
+import { noClosedImport, noCrossBoundaryImport, noRuntimeGlobal } from '../oxlint/boundaries.ts'
 import { repoRoot } from '../run.ts'
 
 RuleTester.describe = describe
@@ -63,6 +63,59 @@ tester.run('no-cross-boundary-import', noCrossBoundaryImport, {
       code: "const api = import('@goblin/contracts/internal')",
       filename: at('apps/web/test/a.test.ts'),
       errors: [{ messageId: 'forbidden' }],
+    },
+  ],
+})
+
+tester.run('no-closed-import', noClosedImport, {
+  valid: [
+    { code: "import { makeBridge } from './runtime/bridge.ts'", filename: at('apps/runtime/src/agent.ts') },
+    { code: "import type { RunProgram } from '../runtime/bridge.ts'", filename: at('apps/runtime/src/pi/thread.ts') },
+    { code: "import type { RunProgram } from '../src/runtime/bridge.ts'", filename: at('apps/runtime/test/a.test.ts') },
+    { code: "import { promiseWith } from '../runtime/boundary.ts'", filename: at('apps/runtime/src/mcp/auth.ts') },
+    // Only promiseWith is closed in boundary.ts.
+    {
+      code: "import { bound } from '../runtime/boundary.ts'",
+      filename: at('apps/runtime/src/mcp/approval-decision.ts'),
+    },
+    // Another module of the same name elsewhere is not the bridge.
+    { code: "import { x } from './bridge.ts'", filename: at('apps/runtime/src/chats/a.ts') },
+  ],
+  invalid: [
+    {
+      code: "import type { RunProgram } from '../runtime/bridge.ts'",
+      filename: at('apps/runtime/src/chats/operations.ts'),
+      errors: [{ messageId: 'closed' }],
+    },
+    {
+      code: "import { makeBridge } from './bridge.ts'",
+      filename: at('apps/runtime/src/runtime/changes.ts'),
+      errors: [{ messageId: 'closed' }],
+    },
+    {
+      code: "export { makeBridge } from '../../runtime/bridge.ts'",
+      filename: at('apps/runtime/src/chats/conversations/core.ts'),
+      errors: [{ messageId: 'closed' }],
+    },
+    {
+      code: "const bridge = import('../runtime/bridge.ts')",
+      filename: at('apps/runtime/src/layers/core.ts'),
+      errors: [{ messageId: 'closed' }],
+    },
+    {
+      code: "import { bound, promiseWith } from '../runtime/boundary.ts'",
+      filename: at('apps/runtime/src/chats/operations.ts'),
+      errors: [{ messageId: 'closed' }],
+    },
+    {
+      code: "import * as boundary from '../runtime/boundary.ts'",
+      filename: at('apps/runtime/src/layers/mcp.ts'),
+      errors: [{ messageId: 'closed' }],
+    },
+    {
+      code: "export * from '../../apps/runtime/src/runtime/boundary.ts'",
+      filename: at('bench/src/a.ts'),
+      errors: [{ messageId: 'closed' }],
     },
   ],
 })

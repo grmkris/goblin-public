@@ -3,7 +3,7 @@ import { HomeEdit, HomeEditResult, HomeRead, type JsonValue } from '@goblin/cont
 import * as Schema from 'effect/Schema'
 import { readHomeLayout, editHomeLayout } from '../home/program.ts'
 import { problemText } from '../agent-apps/queue.ts'
-import type { RunProgram } from './resident-mcp.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 import { typedTool } from './typed-tool.ts'
 
 /** An edit the agent may make: the owner's Undo (`undoOf`) is not one. */

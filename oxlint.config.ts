@@ -29,7 +29,8 @@ const TRANSPORT = {
  * Monorepo lint rules, all at error. Two repository plugins add what generic rules cannot know:
  * - `boundaries` (tools/oxlint/boundaries.ts) enforces tools/graph.ts: declared workspace imports, and runtime-bound
  *   modules (`bun`, `bun:*`, `@effect/platform-bun`, `cloudflare:*`, `node:*`, the `Bun` global) only where the file's
- *   runtime allows them. It replaces the per-directory Bun and `cloudflare:workers` bans.
+ *   runtime allows them. It replaces the per-directory Bun and `cloudflare:workers` bans. A module a workspace closes
+ *   (the runtime's bridge, `promiseWith`) is imported only by the files tools/graph.ts lists for it.
  * - `goblin` (tools/oxlint/goblin.ts) enforces repository invariants from AGENTS.md.
  * Relaxations are targeted overrides, each with its reason (docs/agents/lint-quality.md).
  */
@@ -111,6 +112,7 @@ export default defineConfig({
     'max-params': ['error', 5],
     'complexity/complexity': ['error', { cyclomatic: 1000, cognitive: 15 }],
     'boundaries/no-cross-boundary-import': 'error',
+    'boundaries/no-closed-import': 'error',
     'boundaries/no-runtime-global': 'error',
     'goblin/no-process-env': 'error',
     'goblin/require-disable-description': 'error',

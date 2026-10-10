@@ -23,9 +23,6 @@ import { McpCallInput, holdModelCall, approvalResult } from '../mcp/approval-req
 /** What a model's MCP tool checks before it runs: resident authority, then a routine run's own, when it is one. */
 const executionAuthority = (session: string) => Effect.andThen(requireResident, requireRoutineSession(session))
 
-/** Runs a program on the Agent DO's services; failures reject with the typed `AppError` (the bridge's `run`). */
-export type { RunProgram }
-
 /** What the manager checks again right before a model's call leaves: the plan, then the call's execution scope. */
 const dispatchAuthority = (session: string, input: { serverId: string; name: string }) =>
   Effect.gen(function* () {

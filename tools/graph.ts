@@ -1,5 +1,13 @@
 /** Runtime and workspace ownership, adapted from the pinned MyApps graph. */
 export type Runtime = 'cloud' | 'shared' | 'browser' | 'daemon' | 'test' | 'tooling'
+/** A module of a workspace that only the files listed may import (paths relative to the workspace). */
+export interface Closed {
+  /** The files that may import it; a path ending in `/` is every file under that directory. */
+  readonly importers: readonly string[]
+  /** Only these of its exports are closed; without it, the whole module is. */
+  readonly names?: readonly string[]
+  readonly reason: string
+}
 export interface Node {
   readonly dir: string
   readonly name: string
@@ -9,6 +17,8 @@ export interface Node {
   readonly zones?: Readonly<Record<string, Runtime>>
   /** Entries of an importable workspace that this one must still never import, each with the reason. */
   readonly forbids?: Readonly<Record<string, string>>
+  /** Modules of this workspace closed to all but the files they list (`boundaries/no-closed-import`). */
+  readonly closed?: Readonly<Record<string, Closed>>
   readonly seam?: { readonly consumer: string; readonly reason: string }
 }
 export const zones: Readonly<Record<string, Runtime>> = {
@@ -55,6 +65,47 @@ export const nodes: readonly Node[] = [
     role: 'resident Cloudflare Agent and authorized MCP host',
     runtime: 'cloud',
     mayImport: ['@goblin/app', '@goblin/contracts'],
+    closed: {
+      // The ways into Effect (docs/agents/effect.md): a program composes and never runs one.
+      'src/runtime/bridge.ts': {
+        importers: [
+          'src/agent.ts',
+          'src/agent-apps/ports.ts',
+          'src/channel/wake.ts',
+          'src/organize/kit.ts',
+          'src/pi/apps.ts',
+          'src/pi/budget.ts',
+          'src/pi/diagnose.ts',
+          'src/pi/files.ts',
+          'src/pi/home.ts',
+          'src/pi/memory.ts',
+          'src/pi/organize.ts',
+          'src/pi/persona-turn.ts',
+          'src/pi/resident-mcp.ts',
+          'src/pi/retrieval.ts',
+          'src/pi/routine-budget.ts',
+          'src/pi/routine-run.ts',
+          'src/pi/routines.ts',
+          'src/pi/servers.ts',
+          'src/pi/skills.ts',
+          'src/pi/subagent-relay.ts',
+          'src/pi/subagents.ts',
+          'src/pi/thread.ts',
+          'src/routines/kit.ts',
+          'src/routines/wake.ts',
+          'src/telemetry/agent.ts',
+          'test/',
+        ],
+        reason:
+          'the bridge runs programs for code outside the runtime: agent.ts, and the kits, alarms and apps engine it hands the bridge to',
+      },
+      'src/runtime/boundary.ts': {
+        names: ['promiseWith'],
+        importers: ['src/mcp/auth.ts', 'src/mcp/dispatch.ts', 'src/workspace/live.ts', 'test/'],
+        reason:
+          "promiseWith answers a foreign Promise callback wired inside a layer: the MCP SDK's auth provider and dispatch guards, and Pi's task graph watch",
+      },
+    },
   },
   {
     dir: 'apps/web',

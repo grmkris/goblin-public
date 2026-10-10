@@ -5,7 +5,8 @@
  * 2. A node's `mayImport` equals the `@goblin/*` entries of its manifest (dependencies and devDependencies), so a new
  *    edge is always a two-file change a reviewer sees.
  * 3. A workspace that no app reaches declares a `seam` saying why it exists, and a reachable one does not.
- * 4. Every path a node's own `zones` names exists, so a moved file cannot leave a stale exception behind.
+ * 4. Every path a node's own `zones` names exists, so a moved file cannot leave a stale exception behind; so does every
+ *    module a node closes and every importer it lists for one.
  */
 import { Schema } from 'effect'
 import { stat } from 'node:fs/promises'
@@ -31,6 +32,11 @@ for (const pattern of root.workspaces.packages) {
 }
 
 const failures: string[] = []
+const exists = (file: string): Promise<boolean> =>
+  stat(file).then(
+    () => true,
+    () => false,
+  )
 const edit = 'Edit tools/graph.ts (and the manifest) and say why in the commit.'
 
 const declared = new Set(nodes.map((node) => node.dir))
@@ -52,14 +58,18 @@ for (const node of nodes) {
     )
   }
   for (const zone of Object.keys(node.zones ?? {})) {
-    const exists = await stat(`${node.dir}/${zone}`).then(
-      () => true,
-      () => false,
-    )
-    if (!exists)
+    if (!(await exists(`${node.dir}/${zone}`)))
       failures.push(
         `tools/graph.ts gives ${node.dir}/${zone} its own zone, but that path does not exist. Update or remove the entry.`,
       )
+  }
+  for (const [module, { importers }] of Object.entries(node.closed ?? {})) {
+    for (const file of [module, ...importers]) {
+      if (!(await exists(`${node.dir}/${file}`)))
+        failures.push(
+          `tools/graph.ts closes ${node.dir}/${module}${file === module ? '' : ` to importers including ${file}`}, but ${node.dir}/${file} does not exist. Update or remove the entry.`,
+        )
+    }
   }
   const deps = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies })
   const workspaceDeps = deps.filter((dep) => dep.startsWith('@goblin/'))

@@ -9,6 +9,8 @@
  *   importing file (its workspace's runtime, or the zone's: `scripts/` is tooling, `test/` is test, root files are
  *   tooling, and a node's own `zones` override both). An entry a node `forbids` stays closed even where its workspace is
  *   a declared edge.
+ * - `no-closed-import`: a module a node declares `closed` (or its closed exports) is imported only by the files it
+ *   lists, so the ways into the runtime's Effect stay where they are meant to be.
  * - `no-runtime-global`: the `Bun` global, under the same runtime rule.
  */
 import { definePlugin, defineRule } from '@oxlint/plugins'
@@ -141,6 +143,84 @@ export const noCrossBoundaryImport = defineRule({
   },
 })
 
+/** The repo-relative file a relative specifier names, from the importing file; undefined for a package specifier. */
+const resolvedFrom = (filename: string, specifier: string): string | undefined => {
+  if (!specifier.startsWith('.')) return undefined
+  const target = path.resolve(path.dirname(filename), specifier)
+  return path.relative(repoRoot, target).split(path.sep).join('/')
+}
+
+/** Is `file` (relative to its workspace) one of `importers`, a listed file or under a listed directory? */
+const listed = (importers: readonly string[], file: string): boolean =>
+  importers.some((entry) => (entry.endsWith('/') ? file.startsWith(entry) : file === entry))
+
+/** The names an import or re-export takes from its module; undefined when it takes all of them. */
+const namesTaken = (node: Sourced): readonly string[] | undefined => {
+  if (node.type === 'ImportDeclaration') {
+    const names: string[] = []
+    for (const specifier of node.specifiers) {
+      if (specifier.type === 'ImportNamespaceSpecifier') return undefined
+      if (specifier.type === 'ImportDefaultSpecifier') names.push('default')
+      else names.push(specifier.imported.type === 'Identifier' ? specifier.imported.name : specifier.imported.value)
+    }
+    return names
+  }
+  if (node.type === 'ExportNamedDeclaration')
+    return node.specifiers.map((specifier) =>
+      specifier.local.type === 'Identifier' ? specifier.local.name : specifier.local.value,
+    )
+  return undefined
+}
+
+export const noClosedImport = defineRule({
+  meta: {
+    type: 'problem',
+    docs: { description: 'A module a workspace closes in tools/graph.ts is imported only by the files it lists.' },
+    messages: {
+      closed:
+        '{{file}} may not import {{what}}`{{module}}`: {{reason}}. Only these may: {{importers}} (`closed` in tools/graph.ts). Compose the program instead, or list this file there and say why in the commit.',
+    },
+    schema: [],
+  },
+  create(context: Context) {
+    const importer = path.relative(repoRoot, context.physicalFilename).split(path.sep).join('/')
+    const check = (specifier: string, node: Sourced): void => {
+      const target = resolvedFrom(context.physicalFilename, specifier)
+      const owner = target === undefined ? undefined : placementOf(path.join(repoRoot, target))?.node
+      if (target === undefined || owner?.closed === undefined) return
+      const module = target.slice(owner.dir.length + 1)
+      const closed = owner.closed[module] ?? owner.closed[`${module}.ts`]
+      if (closed === undefined) return
+      if (importer.startsWith(`${owner.dir}/`) && listed(closed.importers, importer.slice(owner.dir.length + 1))) return
+      const taken = namesTaken(node)
+      const names = closed.names
+      if (names !== undefined && taken !== undefined && !taken.some((name) => names.includes(name))) return
+      context.report({
+        messageId: 'closed',
+        data: {
+          file: importer,
+          what: names === undefined ? 'the module ' : `${names.join(', ')} from `,
+          module: `${owner.dir}/${module}`,
+          reason: closed.reason,
+          importers: closed.importers.join(', '),
+        },
+        node,
+      })
+    }
+    const fromSource = (node: Exclude<Sourced, ESTree.ImportExpression>): void => {
+      if (node.source !== null && node.source !== undefined) check(node.source.value, node)
+    }
+    return {
+      ImportDeclaration: fromSource,
+      ExportAllDeclaration: fromSource,
+      ExportNamedDeclaration: fromSource,
+      ImportExpression: (node: ESTree.ImportExpression): void => {
+        if (isStringLiteral(node.source)) check(node.source.value, node)
+      },
+    }
+  },
+})
+
 export const noRuntimeGlobal = defineRule({
   meta: {
     type: 'problem',
@@ -168,5 +248,9 @@ export const noRuntimeGlobal = defineRule({
 
 export default definePlugin({
   meta: { name: 'boundaries' },
-  rules: { 'no-cross-boundary-import': noCrossBoundaryImport, 'no-runtime-global': noRuntimeGlobal },
+  rules: {
+    'no-cross-boundary-import': noCrossBoundaryImport,
+    'no-closed-import': noClosedImport,
+    'no-runtime-global': noRuntimeGlobal,
+  },
 })

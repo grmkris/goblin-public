@@ -2,7 +2,7 @@ import { validateToolArguments } from '@earendil-works/pi-ai/utils/validation'
 import type { ToolRegistration } from '@earendil-works/pi-durable'
 import { describe, expect, it } from 'vitest'
 import { routinesExtension } from '../src/pi/routines.ts'
-import type { RunProgram } from '../src/pi/resident-mcp.ts'
+import type { RunProgram } from '../src/runtime/bridge.ts'
 
 const DRAFT = {
   id: 'rt_1',

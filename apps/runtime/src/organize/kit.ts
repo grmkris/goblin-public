@@ -1,6 +1,6 @@
 import { organizeExtension } from '../pi/organize.ts'
 import { type PersonaTurnKit, personaTurnExtension } from '../pi/persona-turn.ts'
-import type { RunProgram } from '../pi/resident-mcp.ts'
+import type { RunProgram } from '../runtime/bridge.ts'
 
 export type { PersonaTurnKit }
 
