@@ -6,7 +6,7 @@ import {
   type QueryObserverOptions,
 } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AppView, ConversationView, WorkspaceSnapshot } from '@goblin/contracts'
+import { type AppView, type ConversationView, EVERYTHING, type WorkspaceSnapshot } from '@goblin/contracts'
 import { usageQuery } from '../src/agent/queries.ts'
 import { agentAppQuery, agentAppsQuery } from '../src/agent-apps/queries.ts'
 import { capabilitiesQuery } from '../src/capabilities/queries.ts'
@@ -41,6 +41,7 @@ const TOPIC = {
   conversation: '1',
   searchExcluded: false,
   revision: 0,
+  setup: EVERYTHING,
   createdBy: 'system' as const,
   createdAt: 0,
 }

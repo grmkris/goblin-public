@@ -1,5 +1,6 @@
 import {
   type CreateTopic,
+  EVERYTHING,
   PERSONAL_TOPIC,
   type TopicSeedData,
   type TopicView,
@@ -10,6 +11,7 @@ import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Effect from 'effect/Effect'
 import { type AppError, Conflict, InvalidInput, NotFound, attemptSync } from '../http/errors.ts'
 import { appTopics } from '../storage/topics.ts'
+import { storedSetup, topicSetupOf } from './setup.ts'
 
 type Row = typeof appTopics.$inferSelect
 
@@ -41,6 +43,7 @@ const view = (row: Row): TopicView => ({
   ...(row.archivedAt === null ? {} : { archivedAt: row.archivedAt }),
   searchExcluded: row.searchExcluded,
   revision: row.revision,
+  setup: topicSetupOf(row.setup),
   createdBy: row.createdBy,
   createdAt: row.createdAt,
 })
@@ -105,7 +108,8 @@ export class TopicRegistry<RunResult = unknown> {
   }
 
   /**
-   * A new Topic named `name` with a new Conversation, or the Topic `operationId` already made (whatever its name now).
+   * A new Topic named `name` with a new Conversation and `setup` (everything when none is given), or the Topic
+   * `operationId` already made (whatever its name and setup now).
    * The name is checked before the Pi session is made, so a clash leaves nothing behind. A Topic made from a discussion
    * (the organize tools) starts with `seed`, its brief and frozen excerpts, as an `app.topic_seed` entry. Two creates
    * at once are the caller's to serialize: each would make a Pi session before the other's row exists.
@@ -144,6 +148,7 @@ export class TopicRegistry<RunResult = unknown> {
               name,
               chatId: chat,
               operationId: input.operationId,
+              setup: storedSetup(input.setup ?? EVERYTHING),
               createdBy: actor,
               createdAt: now,
               updatedAt: now,

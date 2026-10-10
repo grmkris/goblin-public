@@ -821,6 +821,12 @@ keep `kind = 'main'`. `Chats` answers `isConversation`, `topicOf`, `conversation
 `conversationAbove(chat)` (functions of the database in `chats/directory.ts`); `primary` stays Personal's
 Conversation, where Telegram and inbound MCP clients land.
 
+Each Topic has a **setup** ([ADR 0040](adr/0040-topic-and-persona-setup.md)): its MCP servers, skills and agent apps,
+each `all` or a list, and whether its chats may start subagents (`TopicSetup`, `packages/contracts/src/setup.ts`).
+`app_topics.setup` stores it as JSON; the additive `20261028000000_topic_setup` migration gave every existing Topic,
+Personal included, everything. A row that cannot be decoded reads as nothing chosen (`topics/setup.ts`), never as
+everything.
+
 `TopicRegistry` (`topics/registry.ts`, a store behind the `Topics` service in `topics/service.ts`) creates a Topic
 with a new Pi session as its Conversation, configured like Personal's (its tool filter and copied switches) but not
 forked from it. Create is idempotent by operation id and serialized by the service's `KeyedLock` (key
@@ -833,7 +839,7 @@ chat's work through the owner's Stop (runs, queued inputs, subagents and routine
 
 | Route | Purpose |
 | --- | --- |
-| `POST /api/topics` | `CreateTopic` (`{ name, operationId }`): a new Topic and Conversation, or the one that operation made; 201. |
+| `POST /api/topics` | `CreateTopic` (`{ name, operationId, setup? }`): a new Topic and Conversation, with that setup or everything, or the one that operation made; 201. |
 | `PATCH /api/topics/:id` | `UpdateTopic`: rename, archive or restore, and the automatic-search opt-out; one new revision per change. |
 
 They are the owner API's `topics` group (`topics/api.ts`); the web reads the Topics, archived ones included, from the
@@ -1282,7 +1288,7 @@ that is not in `app_conversations` (a routine's run) has no entries page; its tu
 | Agent DO SQLite | `app_chat_operations` | Drizzle: operation receipts per chat, pinned to their original Pi session, with kind, origin, target chat, parent operation, state and reason (`20261027000000_chat_operation_receipts`), pruned opportunistically after 30 days (ADR 0030). |
 | Agent DO SQLite | `app_conversation_capabilities`, `app_execution_exclusions` | Drizzle: conversation switches and helper app exclusions (ADRs 0010, 0029). |
 | Agent DO SQLite | `app_chat_memory_log`, `app_chat_memory_nodes`, `app_chat_memory_state` | Drizzle: each Topic Conversation's memory, keyed by chat id (ADR 0032). `app_memory_log`, `app_memory_nodes` and `app_memory_state`, Main's agent-wide predecessors, were copied into chat `1` and are no longer read. |
-| Agent DO SQLite | `app_topics` | Drizzle: the owner's Topics, each with its Conversation's chat id (ADR 0032). |
+| Agent DO SQLite | `app_topics` | Drizzle: the owner's Topics, each with its Conversation's chat id (ADR 0032) and its setup (ADR 0040). |
 | Agent DO SQLite | `app_transcript_excerpts`, `app_transcript_fts` (FTS5, shadow tables `app_transcript_fts_*`), `app_transcript_index`, `app_retrieval_uses` | Drizzle and raw FTS5 SQL: the cross-Topic transcript index and the frozen sources each run used (ADR 0035). |
 | Agent DO SQLite | `app_skill_sources`, `app_skill_activations`, `app_skill_files`, `app_skill_drafts` | Drizzle: skills and draft tracking. |
 | Agent DO SQLite | `app_channel`, `app_telegram_channel`, `app_channel_replies` | Drizzle: Telegram transport checkpoints and replies. |
@@ -1303,7 +1309,7 @@ remain intact to preserve real data and migration history; the runtime no longer
 See [ADR 0014](adr/0014-members-and-workspace-authority.md) for the withdrawal.
 
 Application tables are declared in `storage/schema.ts` and migrated inline by `storage/migrations.ts`, which applies
-the area lists in `storage/migrations/` (`base.ts`, `conversation.ts`) in key order.
+the area lists in `storage/migrations/` (`base.ts`, `conversation.ts`, `decisions.ts`, `setup.ts`) in key order.
 `app_client_sessions` was dropped when inbound clients moved to main; it is not a current table.
 
 Logical chat migration is additive: existing chat keys, capabilities, exclusions, titles, close/read marks and tree

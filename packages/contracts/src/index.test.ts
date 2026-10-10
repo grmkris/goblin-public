@@ -38,6 +38,7 @@ describe('topics, personas and threads', () => {
     conversation: '17',
     searchExcluded: false,
     revision: 1,
+    setup: { mcpServers: [{ serverId: 'notes', tools: ['read'] }], skills: 'all', apps: [], subagents: false },
     createdBy: 'agent',
     createdAt: 1,
   }

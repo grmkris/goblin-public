@@ -1,4 +1,4 @@
-import type { OrganizeReceipt, TopicView } from '@goblin/contracts'
+import { EVERYTHING, type OrganizeReceipt, type TopicView } from '@goblin/contracts'
 import { Conflict, OrganizeGroup, OwnerApi, OwnerAdmission, TopicsGroup, ownerApiOf } from '@goblin/contracts/api'
 import { MutationObserver } from '@tanstack/react-query'
 import * as Effect from 'effect/Effect'
@@ -18,6 +18,7 @@ const PERSONAL: TopicView = {
   personal: true,
   searchExcluded: false,
   revision: 1,
+  setup: EVERYTHING,
   createdBy: 'system',
   createdAt: 1,
 }

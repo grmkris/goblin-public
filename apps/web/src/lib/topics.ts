@@ -1,4 +1,4 @@
-import { type ConversationView, PERSONAL_TOPIC, PRIMARY_CHAT, type TopicView } from '@goblin/contracts'
+import { type ConversationView, EVERYTHING, PERSONAL_TOPIC, PRIMARY_CHAT, type TopicView } from '@goblin/contracts'
 import { isClosed, isUnread } from './threads.ts'
 import { type Activity, activityOf } from './workspace/slices.ts'
 
@@ -10,6 +10,7 @@ export const PERSONAL: TopicView = {
   personal: true,
   searchExcluded: false,
   revision: 0,
+  setup: EVERYTHING,
   createdBy: 'system',
   createdAt: 0,
 }

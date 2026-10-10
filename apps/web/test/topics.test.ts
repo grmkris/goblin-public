@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ConversationView, TopicView } from '@goblin/contracts'
+import { type ConversationView, EVERYTHING, type TopicView } from '@goblin/contracts'
 import { PERSONAL, channelOf, channels, isChannel, topicOfChannel, topicThreads, topicsOf } from '../src/lib/topics.ts'
 
 const topic = (id: number, name: string, conversation: string, extra: Partial<TopicView> = {}): TopicView => ({
@@ -8,6 +8,7 @@ const topic = (id: number, name: string, conversation: string, extra: Partial<To
   conversation,
   searchExcluded: false,
   revision: 1,
+  setup: EVERYTHING,
   createdBy: 'owner',
   createdAt: id,
   ...extra,

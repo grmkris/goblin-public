@@ -8,7 +8,7 @@ import {
   TopicsGroup,
   ownerApiOf,
 } from '@goblin/contracts/api'
-import type { CreateTopic, MemoryStatus, TopicView } from '@goblin/contracts'
+import { type CreateTopic, EVERYTHING, type MemoryStatus, type TopicView } from '@goblin/contracts'
 import { MutationObserver } from '@tanstack/react-query'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -29,6 +29,7 @@ const PERSONAL: TopicView = {
   personal: true,
   searchExcluded: false,
   revision: 1,
+  setup: EVERYTHING,
   createdBy: 'system',
   createdAt: 1,
 }

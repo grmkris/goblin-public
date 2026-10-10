@@ -1,5 +1,6 @@
 import * as Schema from 'effect/Schema'
 import { ChatId, EntryId, NonEmptyString, OperationId, TopicId } from './ids.ts'
+import { TopicSetup } from './setup.ts'
 
 export const TopicName = NonEmptyString(80)
 
@@ -7,7 +8,8 @@ export const TopicName = NonEmptyString(80)
  * A Topic: a durable container with exactly one Conversation (`conversation`) and any number of Threads under it.
  * Personal (`personal`, id 1) holds today's Main as its Conversation and receives every inbound channel. An archived
  * Topic (`archivedAt`) is out of navigation and default search; `searchExcluded` keeps it out of automatic search while
- * active. `revision` counts changes, so an undo can tell whether something touched it since. Times are in seconds.
+ * active. `revision` counts changes, so an undo can tell whether something touched it since. `setup` is what its chats
+ * work with (ADR 0040). Times are in seconds.
  */
 export const TopicView = Schema.Struct({
   id: TopicId,
@@ -17,13 +19,21 @@ export const TopicView = Schema.Struct({
   archivedAt: Schema.optional(Schema.Number),
   searchExcluded: Schema.Boolean,
   revision: Schema.Int,
+  setup: TopicSetup,
   createdBy: Schema.Literals(['owner', 'agent', 'system']),
   createdAt: Schema.Number,
 })
 export type TopicView = typeof TopicView.Type
 
-/** `POST /api/topics`: the same operation id finds the same Topic. A new Topic opens its Conversation. */
-export const CreateTopic = Schema.Struct({ name: TopicName, operationId: OperationId })
+/**
+ * `POST /api/topics`: the same operation id finds the same Topic. A new Topic opens its Conversation, with `setup` or
+ * everything the owner allows.
+ */
+export const CreateTopic = Schema.Struct({
+  name: TopicName,
+  operationId: OperationId,
+  setup: Schema.optional(TopicSetup),
+})
 export type CreateTopic = typeof CreateTopic.Type
 
 /** `PATCH /api/topics/:id`. Personal cannot be archived. */

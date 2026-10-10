@@ -1,3 +1,4 @@
+import { EVERYTHING } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -5,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { KeyedLock } from '../src/observability/lock.ts'
 import { Changes, makeChanges } from '../src/runtime/changes.ts'
 import { appConversations } from '../src/storage/schema.ts'
+import { appTopics } from '../src/storage/topics.ts'
 import { TopicRegistry } from '../src/topics/registry.ts'
 import { Topics } from '../src/topics/service.ts'
 import { chatDatabase } from './chats-sqlite.ts'
@@ -89,6 +91,23 @@ describe('Topics (ADR 0032)', () => {
       expect.objectContaining({ id: 1, name: 'Personal', conversation: '1', personal: true, searchExcluded: false }),
     ])
     expect(topics.archived(1)).toBe(false)
+  })
+
+  it('gives Personal and a new Topic everything, unless the new Topic is made with a setup (ADR 0040)', async () => {
+    const { topics, create } = fixture()
+    expect(topics.get(1).setup).toEqual(EVERYTHING)
+    const open = await create({ name: 'Open', operationId: 'op-open' }, 'owner', 10)
+    expect(open.topic.setup).toEqual(EVERYTHING)
+    const setup = { ...EVERYTHING, mcpServers: [{ serverId: 'notes', tools: ['read'] }], subagents: false }
+    const chosen = await create({ name: 'Chosen', operationId: 'op-chosen', setup }, 'agent', 11)
+    expect(chosen.topic.setup).toEqual(setup)
+    expect(topics.get(chosen.topic.id).setup).toEqual(setup)
+  })
+
+  it('reads a setup it cannot decode as nothing chosen, never as everything', () => {
+    const { topics, db } = fixture()
+    db.update(appTopics).set({ setup: '{"mcpServers":"some"}' }).where(eq(appTopics.id, 1)).run()
+    expect(topics.get(1).setup).toEqual({ mcpServers: [], skills: [], apps: [], subagents: false })
   })
 
   it('creates one Topic and one Pi session per operation id, on retry and concurrently', async () => {
