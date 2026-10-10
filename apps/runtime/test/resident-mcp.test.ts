@@ -1,10 +1,11 @@
+import { EVERYTHING, type TopicSetup } from '@goblin/contracts'
 import { createMcpHandler } from '@modelcontextprotocol/server'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { describe, expect, it } from 'vitest'
 import type { AppError } from '../src/http/errors.ts'
 import { mcpHost } from '../src/mcp/host.ts'
-import { type CapabilityScope, type Exclusion, scopeOf } from '../src/capabilities/profiles.ts'
+import { type CapabilityScope, type Exclusion, scopeOf, topicScope } from '../src/capabilities/profiles.ts'
 import { Capabilities } from '../src/capabilities/service.ts'
 import { residentMcpExtension } from '../src/pi/resident-mcp.ts'
 import { Resident } from '../src/mcp/service.ts'
@@ -57,13 +58,14 @@ const resident = stub(Resident, { require: () => Effect.void })
 const instance = { mcpFetch: fetcher } as AgentInputs
 const off = (kind: Exclusion['kind'], serverId = '', name = ''): Exclusion => ({ kind, serverId, name })
 /**
- * Each conversation's switches: 7 has everything on, 8 switched the notes server off, 9 only its `read` tool, and 10
- * is a subagent below a conversation with notes off.
+ * What each conversation works with (ADR 0040): 7 everything, 8 a Topic whose setup holds no server, 9 one that holds
+ * only notes' `write`, and 10 a subagent whose spawner switched notes off for it.
  */
+const work = (setup: Partial<TopicSetup>) => topicScope({ id: 2, name: 'Work', setup: { ...EVERYTHING, ...setup } })
 const scopes: Readonly<Record<string, CapabilityScope>> = {
   '7': scopeOf([], true),
-  '8': scopeOf([off('server', 'notes')], true),
-  '9': scopeOf([off('tool', 'notes', 'read')], true),
+  '8': work({ mcpServers: [] }),
+  '9': work({ mcpServers: [{ serverId: 'notes', tools: ['write'] }] }),
   '10': scopeOf([off('server', 'notes')], false),
 }
 /** The tools' services over the host and the fixed switches above, always resident, on an active plan. */
@@ -127,7 +129,7 @@ describe('mcp_call and the owner grant (unit)', () => {
   })
 })
 
-describe('what a conversation switched off (unit)', () => {
+describe("what a Topic's setup leaves out (unit)", () => {
   it('leaves a server or tool switched off out of mcp_list', async () => {
     expect(await listed({}, 8)).toEqual({ servers: [] })
     const hidden = await execute('mcp_list', { serverId: 'notes' }, 8)
@@ -136,15 +138,19 @@ describe('what a conversation switched off (unit)', () => {
     const notesTools = await listed({ serverId: 'notes' }, 9)
     expect(notesTools).toMatchObject({ tools: [{ name: 'write', granted: false }] })
   })
-  it('runs nothing for a server or tool switched off, and offers the owner to turn it on here', async () => {
+  it("runs nothing for a server or tool outside the Topic's setup, and offers the owner to add it", async () => {
     ran.length = 0
     expect(await call('read', 8)).toMatchObject({
       isError: true,
-      details: { kind: 'capability-off', target: { kind: 'server', serverId: 'notes' } },
+      details: { kind: 'not-in-topic', target: { kind: 'server', serverId: 'notes' }, topic: { id: 2, name: 'Work' } },
     })
     const tool = await call('read', 9)
-    expect(tool.details).toEqual({ kind: 'capability-off', target: { kind: 'tool', serverId: 'notes', name: 'read' } })
-    expect(JSON.stringify(tool.content)).toContain('turn it on here')
+    expect(tool.details).toEqual({
+      kind: 'not-in-topic',
+      target: { kind: 'tool', serverId: 'notes', name: 'read' },
+      topic: { id: 2, name: 'Work' },
+    })
+    expect(JSON.stringify(tool.content)).toContain('add it to #Work')
     expect(ran).toEqual([])
   })
   it('tells a subagent it cannot, with no card for the owner to answer', async () => {

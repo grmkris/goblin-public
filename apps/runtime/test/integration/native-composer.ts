@@ -27,7 +27,7 @@ async function composerChecks(base: string): Promise<void> {
   expect(result.exclusions).toEqual({
     narrowed: { app: false, skills: false, tool: false, delegation: false },
     restored: { app: true, skills: true, tool: true, delegation: true },
-    copied: { app: false, skills: false, tool: false, delegation: false },
+    branched: { app: true, skills: true, tool: true, delegation: true },
     foreignRefused: true,
   })
   const content = result.reference.join('\n')

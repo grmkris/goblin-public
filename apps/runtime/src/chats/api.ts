@@ -1,5 +1,4 @@
 import type {
-  CapabilityChange,
   CreateConversation,
   MoveToThread,
   QueueRemoval,
@@ -20,7 +19,6 @@ import {
   stopChat,
   updateOwnerConversation,
 } from '../agent-program.ts'
-import { capabilitiesOf, changeCapabilities } from '../capabilities/program.ts'
 import { composerOptions } from '../composer.ts'
 import { ownerQueue, removeOwnerQueuedInput } from '../conversation-queue.ts'
 import { AgentInput } from '../runtime/input.ts'
@@ -76,10 +74,6 @@ const removeQueued = ({ params, payload }: ChatWrite<QueueRemoval>) => removeOwn
 const markRead = ({ params }: ChatRequest) => Effect.map(markOwnerRead(params.id), (read) => ({ read }))
 const composer = ({ params }: ChatRequest) => composerOptions(params.id)
 
-const capabilities = ({ params }: ChatRequest) => capabilitiesOf(params.id)
-
-const setCapability = ({ params, payload }: ChatWrite<CapabilityChange>) => changeCapabilities(params.id, payload)
-
 /** A registered chat's Pi snapshot. */
 const snapshot = ({ params }: ChatRequest) =>
   Effect.flatMap(registeredConversation(params.id), (session) =>
@@ -127,8 +121,6 @@ export const ConversationsHandlers = HttpApiBuilder.group(OwnerApi, 'conversatio
     .handle('queue', queue)
     .handle('removeQueued', removeQueued)
     .handle('markRead', markRead)
-    .handle('capabilities', capabilities)
-    .handle('setCapability', setCapability)
     .handle('composer', composer)
     .handle('snapshot', snapshot)
     .handle('history', history)

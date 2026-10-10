@@ -1,29 +1,54 @@
 import { defineTool } from '@earendil-works/pi-durable'
 import { Type } from '@earendil-works/pi-ai'
 import { PRIMARY_CHAT } from '@goblin/contracts'
+import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Schema from 'effect/Schema'
 import { expect } from 'vitest'
 import { CapabilityProfiles } from '../../src/capabilities/profiles.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
-import { appConversations } from '../../src/storage/schema.ts'
+import { appConversationCapabilities, appConversations } from '../../src/storage/schema.ts'
+import { appTopics } from '../../src/storage/topics.ts'
 import { type NativeCase, probeOf } from './native-case.ts'
 import { type Probes, inAgent } from './probe.ts'
 
+/** Work's setup: the notes server's `read` only, the whole `myskills` library, every app, subagents. */
+const WORK = {
+  mcpServers: [{ serverId: 'notes', tools: ['read'] }],
+  skills: [{ serverId: 'myskills' }],
+  apps: 'all',
+  subagents: true,
+} as const
+
 /**
- * Conversation switches on the real SQLite store: a thread copies main's, a subagent two levels down is bounded by
- * every conversation above it, one whose spawner is unknown (or an unknown session) may use nothing.
+ * Topic setups on the real SQLite store (ADR 0040): Personal holds everything; a thread of "Work" holds Work's setup,
+ * read live; a subagent two levels down is bounded by it and by its spawner's exclusions; one whose spawner is
+ * unknown (or an unknown session, or a cycle) may use nothing. Then the owner's old switches are dropped once.
  */
 async function scopeProbe(storage: DurableObjectStorage) {
   runApplicationMigrations(storage)
   const db = drizzle(storage)
+  db.insert(appTopics)
+    .values({
+      id: 2,
+      name: 'Work',
+      chatId: '800',
+      setup: JSON.stringify(WORK),
+      createdBy: 'owner',
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    .onConflictDoNothing()
+    .run()
+  const work = { topicId: 2, createdAt: 1 }
   db.insert(appConversations)
     .values([
       { chatId: PRIMARY_CHAT, piSession: PRIMARY_CHAT, kind: 'main', createdAt: 1 },
-      { chatId: '900', piSession: '900', kind: 'thread', parentSession: PRIMARY_CHAT, createdAt: 1 },
-      { chatId: '901', piSession: '901', kind: 'subagent', parentSession: '900', createdAt: 1 },
-      { chatId: '902', piSession: '902', kind: 'subagent', parentSession: '901', createdAt: 1 },
-      { chatId: '903', piSession: '903', kind: 'subagent', parentSession: '999', createdAt: 1 },
+      { chatId: '800', piSession: '800', kind: 'main', role: 'conversation', ...work },
+      { chatId: '900', piSession: '900', kind: 'thread', parentSession: '800', ...work },
+      { chatId: '901', piSession: '901', kind: 'subagent', parentSession: '900', ...work },
+      { chatId: '902', piSession: '902', kind: 'subagent', parentSession: '901', ...work },
+      { chatId: '903', piSession: '903', kind: 'subagent', parentSession: '999', ...work },
     ])
     .onConflictDoNothing()
     .run()
@@ -35,11 +60,7 @@ async function scopeProbe(storage: DurableObjectStorage) {
   })
   const retooled: string[] = []
   const profiles = new CapabilityProfiles(db, [tool], async (session) => void retooled.push(session))
-  profiles.set(PRIMARY_CHAT, { kind: 'tool', serverId: 'notes', name: 'write' }, false, 1)
-  profiles.copy(PRIMARY_CHAT, '900', 2)
-  profiles.set('900', { kind: 'server', serverId: 'mail' }, false, 2)
-  profiles.set('900', { kind: 'tool', serverId: 'mail', name: 'send' }, false, 2)
-  profiles.set('901', { kind: 'skills', serverId: 'myskills' }, false, 2)
+  await profiles.configureHelper('900', '901', [{ kind: 'skills', serverId: 'myskills' }], 2)
   const view = (session: string) => {
     const scope = profiles.scope(session)
     return {
@@ -58,20 +79,19 @@ async function scopeProbe(storage: DurableObjectStorage) {
     piSession: String(910 + index),
     kind: 'subagent' as const,
     parentSession: index === 0 ? '900' : String(909 + index),
-    createdAt: 1,
+    ...work,
   }))
   // Keep each fixture insert below workerd SQLite's 100 bound-parameter limit.
   for (const row of chain) db.insert(appConversations).values(row).run()
   db.insert(appConversations)
     .values([
-      { chatId: '950', piSession: '950', kind: 'subagent', parentSession: '951', createdAt: 1 },
-      { chatId: '951', piSession: '951', kind: 'subagent', parentSession: '950', createdAt: 1 },
-      { chatId: '960', piSession: '960', kind: 'thread', parentSession: '902', createdAt: 1 },
+      { chatId: '950', piSession: '950', kind: 'subagent', parentSession: '951', ...work },
+      { chatId: '951', piSession: '951', kind: 'subagent', parentSession: '950', ...work },
+      { chatId: '960', piSession: '960', kind: 'thread', parentSession: '902', ...work },
     ])
     .run()
-  // A thread branched from a subagent copies what the subagent works under: every spawner's switches.
-  profiles.copy('902', '960', 2)
   const before = {
+    main: view(PRIMARY_CHAT),
     thread: view('900'),
     deep: view('902'),
     orphan: view('903'),
@@ -80,18 +100,30 @@ async function scopeProbe(storage: DurableObjectStorage) {
     cycle: view('950'),
     fromSubagent: view('960'),
   }
-  profiles.set('900', { kind: 'server', serverId: 'mail' }, true, 3)
-  const serverBackOn = view('900')
-  await profiles.reset('900', 4)
-  const afterReset = view('900')
-  const reset = [...retooled]
-  // Once per marker: every conversation that filters the subagent tools (subagents off, or a broken chain) again.
-  profiles.set('960', { kind: 'subagents' }, false, 5)
+  // The setup is read live: Work takes every server, then stops allowing subagents.
+  const setup = (next: object) =>
+    db
+      .update(appTopics)
+      .set({ setup: JSON.stringify(next) })
+      .where(eq(appTopics.id, 2))
+      .run()
+  setup({ ...WORK, mcpServers: 'all' })
+  const allServers = view('900')
+  setup({ ...WORK, subagents: false })
+  // Once per marker: every owner chat whose filter removes the subagent tools now, Persona forks and routines aside.
+  const configured = [...retooled]
   await profiles.retoolOnce('retool:probe', 5)
-  const once = retooled.slice(reset.length).toSorted()
+  const once = retooled.slice(configured.length).toSorted()
   await profiles.retoolOnce('retool:probe', 6)
-  const again = retooled.length - reset.length - once.length
-  return { ...before, serverBackOn, afterReset, own: profiles.own('900'), retooled: reset, once, again }
+  const again = retooled.length - configured.length - once.length
+  // An owner switch left from before setups goes; the helper's exclusions stay.
+  db.insert(appConversationCapabilities)
+    .values({ sessionId: '900', kind: 'subagents', serverId: '', name: '', offAt: 1 })
+    .run()
+  const dropped = await profiles.dropSwitchesOnce('drop:probe', 7)
+  const droppedAgain = await profiles.dropSwitchesOnce('drop:probe', 8)
+  const helperKept = view('902').skills
+  return { ...before, allServers, configured, once, again, dropped, droppedAgain: droppedAgain ?? null, helperKept }
 }
 
 export const probes: Probes = { scopes: inAgent(({ storage }) => scopeProbe(storage)) }
@@ -106,6 +138,7 @@ const Scope = Schema.Struct({
   subagents: Schema.Boolean,
 })
 const Scopes = Schema.Struct({
+  main: Scope,
   thread: Scope,
   deep: Scope,
   orphan: Scope,
@@ -113,41 +146,45 @@ const Scopes = Schema.Struct({
   deepest: Scope,
   cycle: Scope,
   fromSubagent: Scope,
-  serverBackOn: Scope,
-  afterReset: Scope,
-  own: Schema.Array(Schema.Unknown),
-  retooled: Schema.Array(Schema.String),
+  allServers: Scope,
+  configured: Schema.Array(Schema.String),
   once: Schema.Array(Schema.String),
   again: Schema.Number,
+  dropped: Schema.Struct({ switches: Schema.Number, apps: Schema.Number }),
+  droppedAgain: Schema.Null,
+  helperKept: Schema.Boolean,
 })
 const closed = { editable: false, mail: false, send: false, read: false, write: false, skills: false, subagents: false }
 
 /**
- * A thread copies its parent's switches, a subagent is bounded by every conversation above it, and stored tool filters
- * are applied again once (`CapabilityProfiles.retoolOnce`).
+ * Every chat works with its Topic's setup, read live; a subagent is bounded by every chat above it and its spawner's
+ * exclusions; stored tool filters are applied again once (`CapabilityProfiles.retoolOnce`), and the owner's old
+ * switches are dropped once (`dropSwitchesOnce`).
  */
 async function scopeChecks(base: string): Promise<void> {
   const result = await probeOf(base, 'scopes', Scopes)
   const thread = { editable: true, mail: false, send: false, read: true, write: false, skills: true, subagents: true }
+  expect(result.main).toEqual({ ...thread, mail: true, send: true, write: true })
   expect(result.thread).toEqual(thread)
   expect(result.deep).toEqual({ ...thread, editable: false, skills: false })
   expect(result.orphan).toEqual(closed)
   expect(result.unknown).toEqual(closed)
   expect(result.deepest).toEqual({ ...thread, editable: false })
   expect(result.cycle).toEqual(closed)
-  expect(result.fromSubagent).toEqual({ ...thread, skills: false })
-  // A server switched back on keeps the tool switched off under it.
-  expect(result.serverBackOn).toEqual({ ...thread, mail: true })
-  expect(result.afterReset).toEqual({ ...thread, mail: true, send: true })
-  expect(result.own).toEqual([{ kind: 'tool', serverId: 'notes', name: 'write' }])
-  expect(result.retooled).toEqual(['900'])
-  expect(result.once).toEqual(['903', '950', '951', '960'])
+  expect(result.fromSubagent).toEqual(thread)
+  expect(result.allServers).toEqual({ ...thread, mail: true, send: true, write: true })
+  expect(result.configured).toEqual(['901'])
+  expect(result.once).toContain('900')
+  expect(result.once).not.toContain(PRIMARY_CHAT)
   expect(result.again).toBe(0)
+  expect(result.dropped).toEqual({ switches: 1, apps: 0 })
+  expect(result.droppedAgain).toBeNull()
+  expect(result.helperKept).toBe(false)
 }
 
 export const cases: readonly NativeCase[] = [
   {
-    title: "a thread copies its parent's switches and a subagent is bounded by every conversation above it",
+    title: "every chat works with its Topic's setup and a subagent is bounded by every chat above it",
     run: scopeChecks,
   },
 ]

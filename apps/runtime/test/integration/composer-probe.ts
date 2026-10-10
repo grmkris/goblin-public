@@ -6,7 +6,10 @@ import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { type Probes, type ProbeStub, agentProbe, inAgent, inWorker } from './probe.ts'
 import { exchange, ownerCreate, ownerSend, threadsUntil, transcript } from './probe-reads.ts'
 
-/** Live ancestry, direct-parent control and copied app exclusions on the native SQLite adapter. */
+/**
+ * Live ancestry and direct-parent control on the native SQLite adapter; a thread branched from a subagent works with
+ * its Topic's setup, not the subagent's exclusions (ADR 0040).
+ */
 async function helperExclusionsProbe(storage: DurableObjectStorage) {
   runApplicationMigrations(storage)
   const db = drizzle(storage)
@@ -38,7 +41,6 @@ async function helperExclusionsProbe(storage: DurableObjectStorage) {
     delegation: profiles.scope(id).subagents(),
   })
   const narrowed = state('702')
-  profiles.copy('702', '703', 3)
   let foreignRefused = false
   try {
     await profiles.configureHelper('700', '702', [], 3)
@@ -47,7 +49,7 @@ async function helperExclusionsProbe(storage: DurableObjectStorage) {
     foreignRefused = true
   }
   await profiles.configureHelper('700', '701', [], 4)
-  return { narrowed, restored: state('702'), copied: state('703'), foreignRefused }
+  return { narrowed, restored: state('702'), branched: state('703'), foreignRefused }
 }
 
 /** Real owner submission rejects stale chips before model work and references helpers without routing to them. */

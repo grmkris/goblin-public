@@ -9,7 +9,7 @@ import type {
 import { authorOf, type MoveReceipt, type MoveToThread } from '@goblin/contracts'
 import { and, eq } from 'drizzle-orm'
 import * as Effect from 'effect/Effect'
-import { copyExclusions, piToolsFor } from '../capabilities/profiles.ts'
+import { piToolsFor } from '../capabilities/profiles.ts'
 import { epochSeconds } from '../clock.ts'
 import { Conflict, NotFound, attempt, attemptSync } from '../http/errors.ts'
 import { forgetFrom, rememberedThrough } from '../memory/store.ts'
@@ -230,7 +230,6 @@ const register = Effect.fn('Moves.register')(function* (
       recallThrough: recallAt(db, row),
     }
     registerMovedThread(db, row, thread, now)
-    copyExclusions(db, row.chatId, forked, now)
     // The cross-Topic index (ADR 0035): the session's entries from the moved message on now belong to the Thread.
     reassignExcerpts(db, source, row.messageEntry, forked)
   })

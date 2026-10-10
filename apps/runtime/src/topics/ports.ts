@@ -1,7 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import * as Effect from 'effect/Effect'
-import { copyExclusions } from '../capabilities/profiles.ts'
-import { primaryChat, registerChat } from '../chats/directory.ts'
+import { registerChat } from '../chats/directory.ts'
 import type { Conversations } from '../chats/service.ts'
 import type { Memories } from '../memory/service.ts'
 import type { Db } from '../runtime/db.ts'
@@ -17,8 +16,8 @@ type TopicKit = {
 
 /**
  * A Topic's Conversation in Pi and the chat registry (ADR 0032): a new top-level Pi session whose tool filter follows its
- * setup's subagents (`Conversations.openConversation`, ADR 0040), listed with role `conversation`, Personal's switches
- * and its Topic's name, its
+ * setup's subagents (`Conversations.openConversation`, ADR 0040), listed with role `conversation` and its Topic's
+ * name, its
  * memory turned on, and its title following the Topic's renames. A seed is a passive write into it
  * (`Conversations.writeEntry`), under its admission lock and with its receipt.
  */
@@ -34,7 +33,6 @@ export function topicPorts(db: Db['Service'], kit: TopicKit): TopicPorts {
         topicId: topic,
         createdAt: now,
       })
-      copyExclusions(db, primaryChat, chat, now)
     },
     retitle: (chat, name) => {
       db.update(appConversations)

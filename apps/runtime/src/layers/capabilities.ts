@@ -1,4 +1,4 @@
-import type { CapabilityTarget, HelperExclusion } from '@goblin/contracts'
+import type { HelperExclusion } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -8,25 +8,21 @@ import {
   appAllowed,
   capabilityScope,
   configureHelper,
-  copyExclusions,
-  inheritedExclusions,
-  narrowExclusions,
-  ownExclusions,
+  dropSwitchesOnce,
   piToolsFor,
-  resetSwitches,
   retoolOnce,
-  setExclusion,
   syncPi,
 } from '../capabilities/profiles.ts'
 import { Capabilities } from '../capabilities/service.ts'
 import { epochSeconds } from '../clock.ts'
 import { attempt } from '../http/errors.ts'
+import { logEvent } from '../observability/logger.ts'
 import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 
-// Each conversation's switches, as functions of the agent's database (capabilities/profiles.ts). The one retool is a
-// step of the agent's start (8, layers/index.ts); `CapabilitiesLive` serves the switches after the start.
+// What each chat may use, as functions of the agent's database (capabilities/profiles.ts). The retools are a step of
+// the agent's start (layers/index.ts); `CapabilitiesLive` serves the scope after the start.
 
 /** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
 const retool = (harness: PiHarness) => async (session: string, tools: PiTools) => {
@@ -40,16 +36,22 @@ const retooling: Effect.Effect<Retooling, never, AgentInput | Db> = Effect.gen(f
   return { db: yield* Db, subagentTools, retool: retool(harness) }
 })
 
-/** Start step 5: the current complete delegation tool set is applied to the retained Pi filters, once. */
+/**
+ * Start step 5: the current complete delegation tool set is applied to the retained Pi filters, once; then the owner's
+ * per-conversation switches are deleted, once (ADR 0040), with how many in one `job` line.
+ */
 export const RetoolLive: Layer.Layer<never, never, AgentInput | Db> = Layer.effectDiscard(
   Effect.gen(function* () {
     const pi = yield* retooling
     const now = yield* epochSeconds
     yield* Effect.promise(() => retoolOnce(pi, 'retool:subagent-config', now))
+    const dropped = yield* Effect.promise(() => dropSwitchesOnce(pi, 'drop:conversation-switches', now))
+    if (dropped !== undefined)
+      yield* logEvent('info', 'job', { kind: 'conversation-switches-dropped', count: dropped.switches + dropped.apps })
   }),
 )
 
-/** Each conversation's switches over the agent's database, applied to Pi through its harness. */
+/** What each chat may use, over the agent's database, applied to Pi through its harness. */
 export const CapabilitiesLive: Layer.Layer<Capabilities, never, AgentInput | Db> = Layer.effect(
   Capabilities,
   Effect.gen(function* () {
@@ -61,28 +63,6 @@ export const CapabilitiesLive: Layer.Layer<Capabilities, never, AgentInput | Db>
       }),
       app: Effect.fn('Capabilities.app')(function* (session: string, app: string) {
         return yield* Effect.sync(() => appAllowed(db, session, app))
-      }),
-      own: Effect.fn('Capabilities.own')(function* (session: string) {
-        return yield* Effect.sync(() => ownExclusions(db, session))
-      }),
-      inherited: Effect.fn('Capabilities.inherited')(function* (thread: string) {
-        return yield* Effect.sync(() => inheritedExclusions(db, thread))
-      }),
-      set: Effect.fn('Capabilities.set')(function* (session: string, target: CapabilityTarget, on: boolean) {
-        const now = yield* epochSeconds
-        yield* Effect.sync(() => setExclusion(db, session, target, on, now))
-      }),
-      narrow: Effect.fn('Capabilities.narrow')(function* (session: string, exclusions: readonly HelperExclusion[]) {
-        const now = yield* epochSeconds
-        yield* Effect.sync(() => narrowExclusions(db, session, exclusions, now))
-      }),
-      copy: Effect.fn('Capabilities.copy')(function* (from: string, to: string) {
-        const now = yield* epochSeconds
-        yield* Effect.sync(() => copyExclusions(db, from, to, now))
-      }),
-      reset: Effect.fn('Capabilities.reset')(function* (thread: string) {
-        const now = yield* epochSeconds
-        yield* attempt(() => resetSwitches(pi, thread, now))
       }),
       configureHelper: Effect.fn('Capabilities.configureHelper')(function* (
         parent: string,

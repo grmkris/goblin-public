@@ -49,33 +49,21 @@ function notInTopicResult(item: SetupItem, topic: ScopeTopic, editable: boolean)
 
 /**
  * What the model gets for something it may not use here: when its Topic's setup does not hold it, a refusal that names
- * the Topic (above); otherwise something switched off in this conversation or one above it: nothing ran, and it says so.
+ * the Topic (above); otherwise something the conversation that started a subagent switched off for it, or a routine's
+ * allowed tools leave out: nothing ran, and it says so in its answer.
  */
 export function capabilityOffResult(target: CapabilityTarget, scope: CapabilityScope): ToolExecutionResult {
   const item = itemOf(target)
   if (scope.topic !== undefined && !scope.topic.holds(item)) return notInTopicResult(item, scope.topic, scope.editable)
-  const what = named(target)
-  if (!scope.editable)
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Off for the conversation that started you: ${what}. Nothing ran. Say in your answer that you could not use it.`,
-        },
-      ],
-      isError: true,
-      diagnostics: [{ severity: 'info', code: 'capability_off', message: 'Capability disabled in this conversation.' }],
-    }
   return {
     content: [
       {
         type: 'text',
-        text: `Off in this conversation: ${what}. Nothing ran. The owner has been shown a button to turn it on here. Stop here and wait for their reply.`,
+        text: `Off for the conversation that started you: ${named(target)}. Nothing ran. Say in your answer that you could not use it.`,
       },
     ],
     isError: true,
     diagnostics: [{ severity: 'info', code: 'capability_off', message: 'Capability disabled in this conversation.' }],
-    details: { kind: 'capability-off', target },
   }
 }
 

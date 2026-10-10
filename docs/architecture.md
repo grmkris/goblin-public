@@ -331,8 +331,8 @@ and `POST /api/conversations` with an `operationId` goes through the same path. 
 the browser until its first send, which is this one call.
 **Move to thread** (ADR 0034, `chats/mover.ts`) moves a channel's newest finished turn into a new Thread:
 `POST /api/conversations/:id/move` with `MoveToThread` returns a `MoveReceipt` (the same operation id, the same
-receipt). The Thread is a Pi fork of the chat at the turn's last entry, made a thread with the chat's switches, in its
-Topic; the chat keeps its session and gets an `app.thread_head` (`moved: true`, request id `thread-head:<op>`) whose
+receipt). The Thread is a Pi fork of the chat at the turn's last entry, made a thread in its Topic, whose setup it
+works with; the chat keeps its session and gets an `app.thread_head` (`moved: true`, request id `thread-head:<op>`) whose
 model text is only `[moved to thread "<title>"]` and whose Pi `edits` omit the turn's own entries from the chat's
 model context. Helpers the turn started report to the Thread from then on (their relays are handed over), the threads
 branched from the turn and its App placements move under it, the chat's memory forgets the turn
@@ -373,9 +373,7 @@ The conversation-scoped routes of the owner API: the `conversations`, `inspect`,
 | `POST /api/conversations` | The thread operation without a message (`CreateConversation`): an empty thread (`{}`, under `topic`'s Conversation when given) or a branch of an open conversation at an entry (`{ from: { conversation, entry } }`); 201 with its `ConversationView`. With an `operationId` the same id finds the same thread; without one each call makes a new one. |
 | `PATCH /api/conversations/:id` | Rename, close or reopen (`closed`) a thread or subagent, or pin a subagent open (`keepOpen`). Closing stops it and everything under it; main cannot be changed this way. |
 | `PUT /api/conversations/:id/read` | The owner has seen its newest reply: `read_at` moves forward to now, and the feed carries it as `readAt` (a later `lastReplyAt` is unread). |
-| `GET /api/conversations/:id/capabilities` | What the conversation lets its agent use (`ConversationCapabilities`): each server with a granted tool and those tools, each skills library, subagents, and for a thread whether it has its parent's switches (`sameAsParent`). |
 | `GET /api/conversations/:id/composer` | Conversation-scoped connected servers, enabled skills by stable URI, existing helpers and unavailable libraries. |
-| `PATCH /api/conversations/:id/capabilities` | Switch one `CapabilityTarget` on or off there (only what is shown can be switched off), or `{ reset: 'parent' }` a thread back to its parent's switches. A subagent's are not editable. |
 | `GET /api/conversations/:id/queue` | Ordered queued input IDs, modes and contents for Main and ordinary threads, from Pi InboxDoc. Passive writes, helpers and routine inputs are excluded. |
 | `DELETE /api/conversations/:id/queue` | Remove a queued input by positive safe-integer `submissionId`. Returns `removed`, `already_started`, `already_settled` or `not_found`; never stops a running input. |
 | `POST /api/conversations/:id/threads` | The thread operation (ADR 0034): `StartThread` makes a Thread of this chat at `anchor` (`{ entry }`, `empty` or `latest`, which also posts the message as its head here) and sends `message` there as `<operationId>:first`. Returns 201 `{ thread, receipt }`; the same `operationId` returns the same Thread (another chat's is 409). |
@@ -452,27 +450,29 @@ pruned opportunistically. The lock covers admission only, and releases before mo
 answer. Nothing rebinds a chat: Move to thread (ADR 0034) forks the moved turn's Thread and records a `move` receipt;
 Topics and their memory are below.
 
-**Capabilities** (ADR 0010, `capabilities/`): each chat works with its Topic's setup (ADR 0040), and each conversation
-can switch off, for its own agent, a connected server, one granted tool of it, a skills library, or subagents.
-`app_conversation_capabilities` stores only what is off. `capabilityScope(db, session)` maps the calling Pi session
-through `chatOf` to its current chat; `chatScope(db, chat)` reads, live, the setup of the Topic at the top of its chain
-(a chat's `topic_id`) and narrows it by that chat's switches and, for a subagent, those of every chat above it, at any
-depth, then by a routine run's allowed tools (an unknown or no-longer-owned session, a chat whose Topic is gone,
-or a broken or cyclic chain of spawners, may use nothing). The scope also answers for agent apps (`app`, from the
-setup and a helper's app exclusions) and names its Topic, so a refusal can say what held it back. A thread copies the switches its parent works under as it
-is registered; "Reset to where it came from" copies them again. What is off is hidden from the model there: `mcp_list`
-leaves it out, the `skills` section does not list or fetch that library, and Pi's per-conversation tool filter
-(`configure({ tools: { remove } })`) drops the subagent tools, whose section then hides too; Pi stores the filter as
-tool names, so when those names changed every filtering conversation's filter was applied again once
-(`retoolOnce`). A call that still arrives runs nothing: `mcp_call`, `skill_activate`, `skill_read`,
-`subagent_spawn` and `subagent_send` check the scope before anything else (before the grant check or any connection)
-and return an error result (`pi/capabilities.ts`): when the Topic's setup does not hold the target, details
-`{ kind: 'not-in-topic', target, topic }` (`NotInTopic`) that ask the owner to add it to the Topic, and Goblin waits;
-otherwise `{ kind: 'capability-off', target }`, which the web turns into an owner-only "Turn on here" card. In a
-subagent or a routine the result has words only. Both show in a chat's `attention`. The owner's console and an
-App view and job calls carry no conversation. Agent-initiated app calls carry their conversation through nested apps
-and MCP powers, so its exclusions are checked live at dispatch; Telegram and inbound clients talk in main, so main's
-switches cover them.
+**Capabilities** (`capabilities/`): each chat works with its Topic's setup ([ADR 0040](adr/0040-topic-and-persona-setup.md)).
+`capabilityScope(db, session)` maps the calling Pi session through `chatOf` to its current chat; `chatScope(db, chat)`
+reads, live, the setup of the Topic at the top of its chain (a chat's `topic_id`), joined in a Persona's fork with the
+Persona's, and narrows it for a subagent by the exclusions of every spawner above it (`subagent_config`, ADR 0018;
+`app_conversation_capabilities` and `app_execution_exclusions` hold them), at any depth, then by a routine run's
+allowed tools (an unknown or no-longer-owned session, a chat whose Topic is gone, or a broken or cyclic chain of
+spawners, may use nothing). The scope also answers for agent apps (`app`) and names its Topic, so a refusal can say
+what held it back. What the scope leaves out is hidden from the model: `mcp_list` leaves it out, the `skills` section
+does not list or fetch that library, and Pi's per-conversation tool filter (`configure({ tools: { remove } })`) drops
+the subagent tools, whose section then hides too; Pi stores the filter as tool names, so when those names changed
+every filtering conversation's filter was applied again once (`retoolOnce`, which skips Persona forks and routine
+runs, whose filters are set when they are made). A call that still arrives runs nothing: `mcp_call`, `skill_activate`,
+`skill_read`, `subagent_spawn` and `subagent_send` check the scope before anything else (before the grant check or any
+connection) and return an error result (`pi/capabilities.ts`): when the Topic's setup does not hold the target,
+details `{ kind: 'not-in-topic', target, topic }` (`NotInTopic`) that ask the owner to add it to the Topic, and Goblin
+waits; in a subagent, a Persona or a routine the result has words only. The ask shows in the chat's `attention`. The
+owner's console and an App view and job calls carry no conversation. Agent-initiated app calls carry their
+conversation through nested apps and MCP powers, so its scope is checked live at dispatch; Telegram and inbound clients
+talk in Personal's Conversation, so Personal's setup covers them.
+
+The per-conversation switches of ADR 0010 are gone. The agent's start (`RetoolLive`) deleted the owner's rows once
+(`dropSwitchesOnce`, marker `drop:conversation-switches`), keeping every subagent's, applied the Pi filter again to each
+chat that had subagents switched off, and logged the count as a `job` line (`conversation-switches-dropped`).
 
 The persona contributes two static system-prompt sections (`pi/persona.ts`): who the agent is, and that remote content
 is untrusted data. The system prompt holds only text that does not change between requests: pi-ai folds every change
@@ -629,8 +629,8 @@ all and None, which send the same exact grants one at a time. Tool annotations f
 not granted, nothing runs. `mcp_call` returns an error result whose details are
 `{ kind: 'grant-required', serverId, name }`, and the model is told to wait.
 `mcpModelResult` details never carry a top-level `kind`, so remote content cannot forge one. The web turns that
-result into an owner-only Allow card. A conversation can switch servers and tools off for its agent (Capabilities,
-above); that check comes first, and switches are forgotten with the server's grants.
+result into an owner-only Allow card. A Topic's setup chooses servers and tools for its chats (Capabilities, above);
+that check comes first, and a helper's exclusions are forgotten with the server's grants.
 
 ## Skills
 
@@ -840,7 +840,7 @@ everything.
 
 `TopicRegistry` (`topics/registry.ts`, a store behind the `Topics` service in `topics/service.ts`) creates a Topic
 with a new Pi session as its Conversation, not forked from Personal's: its tool filter follows its setup's subagents,
-and it copies Personal's switches. Create is idempotent by operation id and serialized by the service's `KeyedLock` (key
+and nothing is copied from Personal. Create is idempotent by operation id and serialized by the service's `KeyedLock` (key
 `topics.create`), so a retry or concurrent repeat finds one Topic and one Pi session; active
 names are unique ignoring case (409). A Topic's Conversation is never renamed or closed directly and takes its Topic's
 name. Branches, "+" threads (`CreateConversation.topic`) and subagents inherit their parent's Topic, and a "+" thread
@@ -857,7 +857,8 @@ They are the owner API's `topics` group (`topics/api.ts`); the web reads the Top
 workspace feed. Its snapshot lists `topics`, a change is
 `{ type: 'topic', topic }`, and each `ConversationView` carries `topic` and, for a Conversation, `conversation: true`.
 Its `attention` (`attention.ts`) lists what in that chat waits on the owner for the Activity rail: the asks since its
-newest user message from goblin's own tool-result markers (`ask_user`, a grant request, something switched off), its
+newest user message from goblin's own tool-result markers (`ask_user`, a grant request, something outside the Topic's
+setup), its
 pending held MCP calls, and the unanswered powers of agent apps living there.
 Unit tests run the real migrations in `node:sqlite`; the local workerd owner case `topics-case.ts` runs in both
 native profiles. Neither is deployed-stage evidence.
@@ -1301,7 +1302,7 @@ that is not in `app_conversations` (a routine's run) has no entries page; its tu
 | Agent DO SQLite | `app_mcp_servers`, `app_mcp_registries`, `app_mcp_endpoints`, `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants` | Drizzle: MCP metadata and authorization. |
 | Agent DO SQLite | `app_resident`, `app_conversations`, `app_model_choice`, `app_usage_daily`, `app_metadata` | Drizzle: agent metadata and logical chat bindings (ADR 0030). |
 | Agent DO SQLite | `app_chat_operations` | Drizzle: operation receipts per chat, pinned to their original Pi session, with kind, origin, target chat, parent operation, state and reason (`20261027000000_chat_operation_receipts`), pruned opportunistically after 30 days (ADR 0030). |
-| Agent DO SQLite | `app_conversation_capabilities`, `app_execution_exclusions` | Drizzle: conversation switches and helper app exclusions (ADRs 0010, 0029). |
+| Agent DO SQLite | `app_conversation_capabilities`, `app_execution_exclusions` | Drizzle: a helper's exclusions, set by its spawner (ADRs 0018, 0029); the owner's per-conversation switches were deleted (ADR 0040). |
 | Agent DO SQLite | `app_persona_forks` | Drizzle: the setup each Persona fork answers with, frozen at the ask (ADR 0040). |
 | Agent DO SQLite | `app_chat_memory_log`, `app_chat_memory_nodes`, `app_chat_memory_state` | Drizzle: each Topic Conversation's memory, keyed by chat id (ADR 0032). `app_memory_log`, `app_memory_nodes` and `app_memory_state`, Main's agent-wide predecessors, were copied into chat `1` and are no longer read. |
 | Agent DO SQLite | `app_topics` | Drizzle: the owner's Topics, each with its Conversation's chat id (ADR 0032) and its setup (ADR 0040). |

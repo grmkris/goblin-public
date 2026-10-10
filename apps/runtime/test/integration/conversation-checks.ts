@@ -247,80 +247,39 @@ async function announceChecks(base: string): Promise<void> {
   expect(requestTurns(result.request)).toContain(note)
 }
 
-const View = Schema.Struct({
-  thread: Schema.String,
-  kind: Schema.String,
-  servers: Schema.Array(
-    Schema.Struct({
-      serverId: Schema.String,
-      label: Schema.String,
-      on: Schema.Boolean,
-      tools: Schema.Array(Schema.Struct({ name: Schema.String, on: Schema.Boolean })),
-    }),
-  ),
-  skills: Schema.Array(Schema.Unknown),
-  subagents: Schema.Boolean,
-  sameAsParent: Schema.optional(Schema.Boolean),
-})
 const Tools = Schema.optional(Schema.Array(Schema.String))
-/** The seeded `notes` server as a conversation shows it, `write` switched as given. */
-const notes = (write: boolean) => [
-  {
-    serverId: 'notes',
-    label: 'Notes',
-    on: true,
-    tools: [
-      { name: 'read', on: true },
-      { name: 'write', on: write },
-    ],
-  },
-]
-const CapabilityRun = Schema.Struct({
-  mainBefore: Ok(View),
-  mainAfter: Ok(View),
-  freshView: Ok(View),
-  branchedView: Ok(View),
-  freshOn: Ok(View),
-  reset: Ok(View),
-  unknown: Refused,
-  mainReset: Refused,
-  tools: Schema.Struct({ main: Tools, thread: Tools, branch: Tools, reset: Tools }),
+const SetupRun = Schema.Struct({
+  narrow: Ok(Schema.Struct({ id: Schema.Number, name: Schema.String })),
+  thread: Ok(Schema.Struct({ id: Schema.String })),
+  tools: Schema.Struct({ main: Tools, narrow: Tools, thread: Tools }),
   off: Settled,
   offDetails: Schema.Unknown,
   listed: Settled,
 })
 
-/** The owner switches a tool and subagents off in main, a new thread copies that, and Reset restores it. */
-async function capabilityChecks(base: string): Promise<void> {
-  const result = await probeOf(base, 'capabilities', CapabilityRun)
-  expect(result.mainBefore.value).toMatchObject({ kind: 'main', servers: notes(true), skills: [], subagents: true })
-  expect(result.mainBefore.value.sameAsParent).toBeUndefined()
-  expect(result.mainAfter.value).toMatchObject({ servers: notes(false), subagents: false })
-  for (const copied of [result.freshView.value, result.branchedView.value])
-    expect(copied).toMatchObject({ kind: 'thread', servers: notes(false), subagents: false, sameAsParent: true })
-  expect(result.freshOn.value).toMatchObject({ subagents: true, sameAsParent: false })
-  expect(result.reset.value).toMatchObject({ servers: notes(false), subagents: false, sameAsParent: true })
-  expect(result.unknown.error._tag).toBe('InvalidInput')
-  expect(result.mainReset.error._tag).toBe('InvalidInput')
-  // Pi's tool filter follows the switch: no subagent tool where subagents are off.
+/** A Topic's setup bounds its Conversation and threads: subagents off, one tool of one server (ADR 0040). */
+async function setupChecks(base: string): Promise<void> {
+  const result = await probeOf(base, 'setups', SetupRun)
+  // Pi's tool filter follows the setup: no subagent tool where the Topic does not allow subagents.
   expect(result.tools.main).toContain('mcp_call')
-  expect(offered(result.tools.main)).toEqual([])
-  expect(offered(result.tools.thread)).toEqual([
+  expect(offered(result.tools.main)).toEqual([
     'subagent_spawn',
     'subagent_send',
     'subagent_stop',
     'subagent_config',
     'subagent_status',
   ])
-  expect(offered(result.tools.branch)).toEqual([])
-  expect(offered(result.tools.reset)).toEqual([])
-  // The switched-off tool ran nothing: the gate answered before the grant check or any connection to notes.test.
-  expect(result.off.text).toContain('Off in this conversation: notes · write. Nothing ran.')
+  expect(result.tools.narrow).toContain('mcp_call')
+  expect(offered(result.tools.narrow)).toEqual([])
+  expect(offered(result.tools.thread)).toEqual([])
+  // The tool outside the setup ran nothing: the gate answered before the grant check or any connection to notes.test.
+  expect(result.off.text).toContain("Not in #Narrow's setup: notes · write. Nothing ran.")
   expect(result.offDetails).toEqual({
-    kind: 'capability-off',
+    kind: 'not-in-topic',
     target: { kind: 'tool', serverId: 'notes', name: 'write' },
+    topic: { id: result.narrow.value.id, name: 'Narrow' },
   })
-  expect(result.listed.text).toBe('done: {"servers":[]}')
+  expect(result.listed.text).toContain('"serverId":"notes"')
 }
 
 const SubagentRun = Schema.Struct({
@@ -367,8 +326,8 @@ export const cases: readonly NativeCase[] = [
     run: announceChecks,
   },
   {
-    title: 'the owner switches a tool and subagents off in main, a new thread copies that, and Reset restores it',
-    run: capabilityChecks,
+    title: "a Topic's setup bounds its Conversation and threads: no subagents, one tool of one server",
+    run: setupChecks,
   },
   {
     title:

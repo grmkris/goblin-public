@@ -5,7 +5,7 @@ import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { storedAsks } from '../../attention.ts'
-import { type PiTools, copyExclusions, piToolsFor } from '../../capabilities/profiles.ts'
+import { type PiTools, piToolsFor } from '../../capabilities/profiles.ts'
 import { type AppError, InvalidInput, NotFound, attempt, attemptSync } from '../../http/errors.ts'
 import { BACKGROUND } from '../../pi/context.ts'
 import { PiSessions, fromPi } from '../../pi/sessions.ts'
@@ -128,7 +128,7 @@ export const newSession = Effect.fn('Conversations.newSession')(function* (
   return session.id
 })
 
-/** Registers a new thread with the switches its parent works under, copied in the same synchronous step. */
+/** Registers a new thread; it works with its Topic's setup (ADR 0040), so nothing is copied from its parent. */
 export const insertThread = Effect.fn('Conversations.insertThread')(function* (
   core: RegistryCore,
   values: Omit<ChatRow, 'createdAt'> & { readonly parentSession: string },
@@ -136,7 +136,6 @@ export const insertThread = Effect.fn('Conversations.insertThread')(function* (
 ) {
   yield* attemptSync(() => {
     registerChat(core.db, { ...values, createdAt: now })
-    copyExclusions(core.db, values.parentSession, values.chatId, now)
   })
   yield* changed(core, [values.chatId])
   return yield* describe(core, yield* registered(core, values.chatId))

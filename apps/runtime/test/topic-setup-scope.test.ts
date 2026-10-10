@@ -252,17 +252,17 @@ describe('a call outside the setup', () => {
     ])
   })
 
-  it('still says when a switch turned something off that the Topic holds', () => {
+  it("tells a subagent in words what its spawner switched off, though the Topic's setup holds it", () => {
     const { db, raw } = fixture()
     raw
       .insert(appConversationCapabilities)
-      .values({ sessionId: '21', kind: 'tool', serverId: 'notes', name: 'read', offAt: 1 })
+      .values({ sessionId: '22', kind: 'tool', serverId: 'notes', name: 'read', offAt: 1 })
       .run()
-    const result = capabilityOffResult({ kind: 'tool', serverId: 'notes', name: 'read' }, chatScope(db, '21'))
-    expect(result.details).toEqual({
-      kind: 'capability-off',
-      target: { kind: 'tool', serverId: 'notes', name: 'read' },
-    })
+    const result = capabilityOffResult({ kind: 'tool', serverId: 'notes', name: 'read' }, chatScope(db, '22'))
+    expect(result.details).toBeUndefined()
+    expect(result.content).toEqual([
+      expect.objectContaining({ text: expect.stringContaining('Off for the conversation') }),
+    ])
   })
 
   it('shows the owner what to add, and where, among what waits on them', () => {

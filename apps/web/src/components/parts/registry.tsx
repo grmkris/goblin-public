@@ -1,12 +1,5 @@
 import { type ReactNode, memo, useMemo } from 'react'
-import {
-  CircleAlertIcon,
-  CircleStopIcon,
-  KeyRoundIcon,
-  MessageCircleQuestionIcon,
-  PlugIcon,
-  PowerIcon,
-} from 'lucide-react'
+import { CircleAlertIcon, CircleStopIcon, KeyRoundIcon, MessageCircleQuestionIcon, PlugIcon } from 'lucide-react'
 import {
   Duration,
   Reasoning,
@@ -20,7 +13,6 @@ import {
   ToolCallTitle,
   ToolCallTrigger,
 } from '@goblin/ui'
-import { targetLabel } from '../../lib/capabilities.ts'
 import { type Interaction, interactionOf } from '../../lib/interactions.ts'
 import { type Part, type ToolPart, partKey, samePart } from '../../lib/parts.ts'
 import { subagentAction } from '../../lib/threads.ts'
@@ -60,13 +52,6 @@ function InteractionLine({ interaction }: { readonly interaction: Interaction })
         <span>
           Asked to use {interaction.serverId} · {interaction.name}
         </span>
-      </Receipt>
-    )
-  if (interaction.kind === 'capability')
-    return (
-      <Receipt>
-        <PowerIcon aria-hidden />
-        <span>Asked to turn on {targetLabel(interaction.target)} here</span>
       </Receipt>
     )
   if (interaction.kind === 'server')

@@ -1,5 +1,4 @@
 import {
-  type CapabilityChange,
   type ConversationView,
   type CreateConversation,
   PRIMARY_CHAT,
@@ -71,19 +70,6 @@ export const ownerUpdate = (agent: AgentFetch, chat: string, change: UpdateConve
 /** The owner has seen a chat's newest reply: `PUT /api/conversations/:id/read`. */
 export const ownerMarkRead = (agent: AgentFetch, chat: string) =>
   ownerResult(agent, (api) => api.conversations.markRead({ params: { id: chat } }))
-
-/** A chat's switches: `GET /api/conversations/:id/capabilities`. */
-export const ownerCapabilities = (agent: AgentFetch, chat: string) =>
-  ownerResult(agent, (api) => api.conversations.capabilities({ params: { id: chat } }))
-
-/** A change to a chat's switches: `PATCH /api/conversations/:id/capabilities`. */
-export const ownerSetCapability = (agent: AgentFetch, chat: string, change: CapabilityChange) =>
-  ownerResult(agent, (api) =>
-    // The client takes each variant of the change on its own.
-    'reset' in change
-      ? api.conversations.setCapability({ params: { id: chat }, payload: change })
-      : api.conversations.setCapability({ params: { id: chat }, payload: change }),
-  )
 
 /** A Pi entry as these probes read it. */
 const EntrySchema = Schema.Struct({

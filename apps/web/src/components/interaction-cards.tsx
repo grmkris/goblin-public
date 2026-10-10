@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { KeyRoundIcon, MessageCircleQuestionIcon, PlugIcon, PowerIcon } from 'lucide-react'
-import { PRIMARY_CHAT, type ToolView } from '@goblin/contracts'
+import { KeyRoundIcon, MessageCircleQuestionIcon, PlugIcon } from 'lucide-react'
+import type { ToolView } from '@goblin/contracts'
 import {
   AskCard,
   AskCardActions,
@@ -23,11 +23,9 @@ import {
   QuestionnaireTitle,
   Receipt,
 } from '@goblin/ui'
-import { capabilitiesQuery, setCapabilityMutation } from '../capabilities/queries.ts'
 import { toolGrantMutation, toolsQuery } from '../mcp/queries.ts'
 import { useAddAndConnect } from '../mcp/hooks.ts'
 import { messageOf } from '../lib/query/app-error.ts'
-import { targetLabel } from '../lib/capabilities.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
 import { ApprovalCard } from './approval-card.tsx'
 
@@ -35,7 +33,6 @@ import { ApprovalCard } from './approval-card.tsx'
 type Answer = (input: string, operationId: string) => Promise<boolean>
 type Question = Extract<Interaction, { kind: 'question' }>
 type Grant = Extract<Interaction, { kind: 'grant' }>
-type Capability = Extract<Interaction, { kind: 'capability' }>
 
 /** The server's own description and hints for a tool, shown as its claims; nothing while they cannot be read. */
 function useToolClaims(serverId: string, name: string): ToolView | undefined {
@@ -169,46 +166,6 @@ function GrantCard({ interaction, onAnswer }: { readonly interaction: Grant; rea
 }
 
 /**
- * Something switched off in this conversation that the agent tried to use. Turning it on changes this conversation
- * only (never a grant), then tells the agent to continue.
- */
-function CapabilityCard({
-  interaction,
-  thread,
-  onAnswer,
-}: {
-  readonly interaction: Capability
-  readonly thread: string
-  readonly onAnswer: Answer
-}) {
-  const { target } = interaction
-  const view = useQuery(capabilitiesQuery(thread)).data
-  const label = targetLabel(target, view)
-  const where = thread === PRIMARY_CHAT ? 'in main' : 'in this thread'
-  const { busy, error, replying } = useReplying()
-  const turnOn = useMutation(setCapabilityMutation(thread)).mutateAsync
-  const reply = (on: boolean) =>
-    void replying(async () => {
-      if (on) await turnOn({ target, on })
-      await onAnswer(on ? `Turned on ${label} here. Continue.` : 'Not now.', interactionOperation(interaction))
-    })
-  return (
-    <AskCard aria-label="Switched off here">
-      <AskCardHeader>
-        <PowerIcon aria-hidden />
-        <p>
-          Your agent wants to use <strong className="font-medium">{label}</strong>
-        </p>
-      </AskCardHeader>
-      <AskCardDescription>
-        It is switched off {where}. Turning it on here changes only this conversation.
-      </AskCardDescription>
-      <CardReplies busy={busy} error={error} yes="Turn on here" onReply={reply} />
-    </AskCard>
-  )
-}
-
-/**
  * The agent's questions, one at a time with number shortcuts; the answers go back as one message, once: Send turns
  * busy until they are on their way, like every other card's replies.
  */
@@ -283,8 +240,6 @@ export function InteractionCards({
     if (interaction.kind === 'approval') return <ApprovalCard key={interaction.callId} interaction={interaction} />
     if (interaction.kind === 'grant')
       return <GrantCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
-    if (interaction.kind === 'capability')
-      return <CapabilityCard key={interaction.callId} interaction={interaction} thread={thread} onAnswer={onAnswer} />
     if (interaction.kind === 'server')
       return <ServerRequestCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
     return <QuestionCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />

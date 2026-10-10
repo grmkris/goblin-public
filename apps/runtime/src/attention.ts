@@ -15,15 +15,6 @@ type Fields = { readonly [x: PropertyKey]: unknown }
 const record = (value: unknown): Fields | undefined => (Predicate.isReadonlyObject(value) ? value : undefined)
 const text = (value: unknown): string | undefined => (Predicate.isString(value) ? value : undefined)
 
-/** How a switched-off target reads: its server, the server's tool, its skills, or subagents. */
-function targetLabel(target: Fields | undefined): string {
-  const kind = text(target?.kind)
-  const server = text(target?.serverId) ?? ''
-  if (kind === 'subagents') return 'subagents'
-  if (kind === 'skills') return `skills from ${server}`
-  return kind === 'tool' ? `${server} · ${text(target?.name) ?? ''}` : server
-}
-
 const notInTopic = Schema.decodeUnknownOption(NotInTopic)
 
 /** How a refusal outside the Topic's setup reads: what to add, and where. */
@@ -41,8 +32,7 @@ const questionLabel = (details: Fields): string =>
 
 /**
  * goblin's own markers that ask the owner, by the `kind` of a tool result's details: `ask_user`'s questions,
- * `mcp_call`'s grant request, something switched off here, and something the Topic's setup does not hold
- * (`pi/capabilities.ts`).
+ * `mcp_call`'s grant request, and something the Topic's setup does not hold (`pi/capabilities.ts`).
  */
 const MARKERS: Readonly<Record<string, (details: Fields, result: ToolResult) => Ask | undefined>> = {
   question: (details, result) =>
@@ -51,8 +41,6 @@ const MARKERS: Readonly<Record<string, (details: Fields, result: ToolResult) => 
     result.isError
       ? { kind: 'grant', label: `${text(details.serverId) ?? ''} · ${text(details.name) ?? ''}` }
       : undefined,
-  'capability-off': (details, result) =>
-    result.isError ? { kind: 'capability', label: targetLabel(record(details.target)) } : undefined,
   'not-in-topic': (details, result) => {
     const add = result.isError ? addLabel(details) : undefined
     return add === undefined ? undefined : { kind: 'capability', label: add }

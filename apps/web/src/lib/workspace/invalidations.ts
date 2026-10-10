@@ -2,7 +2,6 @@ import type { QueryKey } from '@tanstack/react-query'
 import type { AppView } from '@goblin/contracts'
 import { usageQuery } from '../../agent/queries.ts'
 import { agentAppQuery, agentAppsQuery } from '../../agent-apps/queries.ts'
-import { capabilitiesQuery } from '../../capabilities/queries.ts'
 import { conversationKeys } from '../../conversations/queries.ts'
 import { personaKeys } from '../../personas/queries.ts'
 import { type Activity, type Slice, type Slices, activityOf } from './slices.ts'
@@ -12,22 +11,15 @@ export type Cached = { readonly [K in Slice]: Slices[K] | undefined }
 
 const working = (activity: Activity, id: string) => activityOf(activity, id)?.state === 'working'
 
-/**
- * A run that started or ended in a conversation. Its end is when the turn's spend is recorded and retrieval's sources
- * are kept; either edge may change what the conversation lets its agent use.
- */
+/** A run that ended in a conversation: its end is when the turn's spend is recorded and retrieval's sources are kept. */
 function runEdges(before: Activity, after: Activity): QueryKey[] {
   const keys: QueryKey[] = []
-  let ended = false
   for (const id of new Set([...Object.keys(before), ...Object.keys(after)])) {
     const was = working(before, id)
-    if (was === working(after, id)) continue
-    keys.push(capabilitiesQuery(id).queryKey)
-    if (!was) continue
-    ended = true
+    if (was === working(after, id) || !was) continue
     keys.push(conversationKeys.sources(id))
   }
-  return ended ? [...keys, usageQuery.queryKey] : keys
+  return keys.length > 0 ? [...keys, usageQuery.queryKey] : keys
 }
 
 const agentName = (app: AppView | undefined) => (app?.source.kind === 'agent' ? app.source.name : undefined)

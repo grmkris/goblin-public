@@ -13,7 +13,7 @@ import {
   holds,
   NOTHING,
 } from '@goblin/contracts'
-import { and, eq, inArray } from 'drizzle-orm'
+import { eq, inArray, notInArray } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import {
   appConversationCapabilities,
@@ -28,7 +28,7 @@ import { appPersonaForks } from '../storage/personas.ts'
 import { appTopics } from '../storage/topics.ts'
 import { personaSetupOf } from '../personas/registry.ts'
 import { topicSetupOf } from '../topics/setup.ts'
-import { chatOfSession, chatSession, primaryChat } from '../chats/directory.ts'
+import { chatOfSession, chatSession } from '../chats/directory.ts'
 import { InvalidInput } from '../http/errors.ts'
 import { definitionOf } from '../routines/store.ts'
 
@@ -90,6 +90,16 @@ const setupAllows = (setup: TopicSetup | PersonaSetup): Allow => ({
   app: (name) => hasApp(setup, name),
 })
 
+/** The scope of an owner chat of a Topic with nothing else narrowing it: for fixtures and probes. */
+export const topicScope = (
+  topic: { readonly id: number; readonly name: string; readonly setup: TopicSetup },
+  editable = true,
+): CapabilityScope => ({
+  ...setupAllows(topic.setup),
+  editable,
+  topic: { id: topic.id, name: topic.name, holds: (item) => holds(topic.setup, item) },
+})
+
 /** Everything either bound allows. */
 const either = (one: Allow, other: Allow): Allow => ({
   server: (serverId) => one.server(serverId) || other.server(serverId),
@@ -129,16 +139,10 @@ export function scopeOf(
   }
 }
 
-/** Whether two conversations switched off exactly the same things. */
-export const sameExclusions = (one: readonly Exclusion[], other: readonly Exclusion[]): boolean => {
-  const keys = new Set(one.map(key))
-  return keys.size === new Set(other.map(key)).size && other.every((exclusion) => keys.has(key(exclusion)))
-}
-
-// Each conversation's switches (`app_conversation_capabilities`) as functions of the agent's database: only what is off
-// is stored, so a tool granted later is on everywhere until switched off. A thread copies the switches of the
-// conversation it came from when it is created. A subagent may store its parent's exclusions too: it is bounded by
-// every conversation above it, read live, so it can never do more than the one that started it.
+// A helper's exclusions (`app_conversation_capabilities`, `app_execution_exclusions`) as functions of the agent's
+// database: what its spawner switched off for it (`subagent_config`). A subagent is bounded by every chat above it, read
+// live, so it can never do more than the one that started it. Owner chats have no rows: their Topic's setup is what
+// they work with (ADR 0040).
 
 /** One conversation in a chain of spawners. */
 type Link = {
@@ -148,9 +152,6 @@ type Link = {
   readonly routineRunId: string | null
   readonly topicId: number
 }
-
-/** Rows per insert: five bound values each, under SQLite's limit of 100 per statement on Cloudflare. */
-const INSERT_ROWS = 20
 
 /** Called inside a short application transaction, including the first registration of a helper. */
 export function writeHelperExclusions(
@@ -176,7 +177,7 @@ export function writeHelperExclusions(
   }
 }
 
-/** What `session` switched off itself. */
+/** What a helper's spawner switched off for it. */
 export const ownExclusions = (db: Db, session: string): readonly Exclusion[] =>
   db
     .select({
@@ -219,10 +220,6 @@ const chainOf = (db: Db, session: string): readonly Link[] | undefined => {
   }
   return undefined
 }
-
-/** What `session` works without: its own switches and, for a subagent, those of every spawner above it. */
-const effectiveExclusions = (db: Db, session: string): readonly Exclusion[] | undefined =>
-  chainOf(db, session)?.flatMap((link) => ownExclusions(db, link.session))
 
 /**
  * A routine's thread may use only the tools its definition allows, within the scope it would have anyway (its Topic's
@@ -327,85 +324,6 @@ export const capabilityScope = (db: Db, session: string): CapabilityScope => {
 /** App calls follow the same live chain and Topic setup as MCP and skills; routine scopes do not acquire app powers. */
 export const appAllowed = (db: Db, session: string, app: string): boolean => capabilityScope(db, session).app(app)
 
-/** Switch one thing on or off in `session`. A server switched back on keeps the tools switched off under it. */
-export const setExclusion = (db: Db, session: string, target: CapabilityTarget, on: boolean, now: number): void => {
-  const { kind, serverId, name } = exclusionOf(target)
-  const table = appConversationCapabilities
-  if (on)
-    db.delete(table)
-      .where(
-        and(eq(table.sessionId, session), eq(table.kind, kind), eq(table.serverId, serverId), eq(table.name, name)),
-      )
-      .run()
-  else db.insert(table).values({ sessionId: session, kind, serverId, name, offAt: now }).onConflictDoNothing().run()
-}
-
-/**
- * Switches more things off in `session`, never anything on: a Persona's fork starts with its parent's switches, then
- * gains its own exclusions and no subagents. Pi's tool filter for the fork was set when it was forked.
- */
-export const narrowExclusions = (
-  db: Db,
-  session: string,
-  exclusions: readonly HelperExclusion[],
-  now: number,
-): void => {
-  db.transaction(() => {
-    for (const target of exclusions) {
-      if (target.kind === 'app')
-        db.insert(appExecutionExclusions)
-          .values({ sessionId: session, app: target.app, offAt: now })
-          .onConflictDoNothing()
-          .run()
-      else setExclusion(db, session, target, false, now)
-    }
-  })
-}
-
-/**
- * Give `to` exactly the switches `from` works under (a new thread copies its parent's; Reset copies them again). From
- * a subagent that is its spawners' switches, since it stores none of its own.
- */
-export const copyExclusions = (db: Db, from: string, to: string, now: number): void => {
-  const rows = (effectiveExclusions(db, from) ?? ownExclusions(db, from)).map((exclusion) => ({
-    ...exclusion,
-    sessionId: to,
-    offAt: now,
-  }))
-  db.transaction((tx) => {
-    tx.delete(appConversationCapabilities).where(eq(appConversationCapabilities.sessionId, to)).run()
-    const chain = chainOf(db, from)
-    const apps =
-      chain === undefined
-        ? []
-        : tx
-            .select()
-            .from(appExecutionExclusions)
-            .where(
-              inArray(
-                appExecutionExclusions.sessionId,
-                chain.map((link) => link.session),
-              ),
-            )
-            .all()
-    tx.delete(appExecutionExclusions).where(eq(appExecutionExclusions.sessionId, to)).run()
-    for (const row of apps)
-      tx.insert(appExecutionExclusions).values({ sessionId: to, app: row.app, offAt: now }).onConflictDoNothing().run()
-    for (let start = 0; start < rows.length; start += INSERT_ROWS)
-      tx.insert(appConversationCapabilities)
-        .values(rows.slice(start, start + INSERT_ROWS))
-        .onConflictDoNothing()
-        .run()
-  })
-}
-
-/** The conversation a thread's switches come back from on Reset: the one it came from (main for one started empty). */
-const resetSource = (db: Db, thread: string): string => switchRow(db, thread)?.parent ?? primaryChat
-
-/** What Reset gives `thread`: the switches of the conversation it came from. */
-export const inheritedExclusions = (db: Db, thread: string): readonly Exclusion[] =>
-  effectiveExclusions(db, resetSource(db, thread)) ?? []
-
 /** Pi's tool filter for `chat`: without `subagentTools` when subagents are off where it works, else none. */
 export const piToolsFor = (db: Db, subagentTools: readonly ToolRegistration[], chat: string): PiTools =>
   chatScope(db, chat).subagents() ? null : { remove: subagentTools }
@@ -425,12 +343,6 @@ export const syncPi = async ({ db, subagentTools, retool }: Retooling, session: 
   await retool(chatSession(db, session), piToolsFor(db, subagentTools, session))
 }
 
-/** A thread's switches back to those of the conversation it came from, applied to Pi too. */
-export const resetSwitches = async (retooling: Retooling, thread: string, now: number): Promise<void> => {
-  copyExclusions(retooling.db, resetSource(retooling.db, thread), thread, now)
-  await syncPi(retooling, thread)
-}
-
 /** Only the direct parent can configure a registered helper. Exclusions cannot widen any ancestor's ceiling. */
 export const configureHelper = async (
   retooling: Retooling,
@@ -448,17 +360,32 @@ export const configureHelper = async (
 }
 
 /**
+ * The registered chats whose Pi tool filter follows their scope: all but Persona forks and routine runs, whose filters
+ * are set when they are made (a Persona's leaves out the tools it never has). A chat not registered yet (a new agent's
+ * main) has nothing to apply.
+ */
+const filteredChats = (db: Db): readonly string[] =>
+  db
+    .select({ chat: appConversations.chatId, role: appConversations.role, run: appConversations.routineRunId })
+    .from(appConversations)
+    .all()
+    .filter((row) => row.role !== 'persona' && row.run === null)
+    .map((row) => row.chat)
+
+const marked = (db: Db, marker: string): boolean =>
+  db.select().from(appMetadata).where(eq(appMetadata.id, marker)).get() !== undefined
+
+/**
  * Applies every filtering conversation's tool filter to Pi again, once per `marker`. Pi keeps a filter as tool
  * names, so one stored before the tools it names changed (`subagent` became the `subagent_*` tools) removes nothing
  * until it is applied again. The marker is written after every conversation is done, so a failure retries them all.
  */
 export const retoolOnce = async (retooling: Retooling, marker: string, now: number): Promise<void> => {
   const { db, subagentTools, retool } = retooling
-  if (db.select().from(appMetadata).where(eq(appMetadata.id, marker)).get() !== undefined) return
-  // Registered conversations only: one not registered yet (a new agent's main) has no switches to apply.
-  for (const { session } of db.select({ session: appConversations.chatId }).from(appConversations).all()) {
-    const tools = piToolsFor(db, subagentTools, session)
-    if (tools !== null) await retool(chatSession(db, session), tools)
+  if (marked(db, marker)) return
+  for (const chat of filteredChats(db)) {
+    const tools = piToolsFor(db, subagentTools, chat)
+    if (tools !== null) await retool(chatSession(db, chat), tools)
   }
   db.insert(appMetadata)
     .values({ id: marker, value: String(now) })
@@ -466,7 +393,48 @@ export const retoolOnce = async (retooling: Retooling, marker: string, now: numb
     .run()
 }
 
-/** The switches as one object over a database, for the probes and test fixtures. Programs use `Capabilities`. */
+/** How many switch rows `dropSwitchesOnce` deleted: servers, tools, libraries and subagents, and apps. */
+export type DroppedSwitches = { readonly switches: number; readonly apps: number }
+
+/**
+ * Deletes the owner's per-conversation switches once (ADR 0040): every row of a chat that is not a subagent, whose
+ * rows are its spawner's exclusions and stay. A chat that had subagents switched off gets its Pi filter applied again
+ * after the rows are gone, so it follows its Topic's setup. Answers what was deleted, or nothing when it already ran.
+ * A filter that fails to apply is left narrower, never wider; a change of the Topic's subagents applies it again.
+ */
+export const dropSwitchesOnce = async (
+  retooling: Retooling,
+  marker: string,
+  now: number,
+): Promise<DroppedSwitches | undefined> => {
+  const { db, subagentTools, retool } = retooling
+  if (marked(db, marker)) return undefined
+  const helpers = db
+    .select({ chat: appConversations.chatId })
+    .from(appConversations)
+    .where(eq(appConversations.kind, 'subagent'))
+  const switches = appConversationCapabilities
+  const apps = appExecutionExclusions
+  const dropped = db.transaction((tx) => {
+    const owned = tx.select().from(switches).where(notInArray(switches.sessionId, helpers)).all()
+    const ownedApps = tx.select().from(apps).where(notInArray(apps.sessionId, helpers)).all()
+    tx.delete(switches).where(notInArray(switches.sessionId, helpers)).run()
+    tx.delete(apps).where(notInArray(apps.sessionId, helpers)).run()
+    const subagentsOff = owned.filter((row) => row.kind === 'subagents').map((row) => row.sessionId)
+    return { counts: { switches: owned.length, apps: ownedApps.length }, subagentsOff }
+  })
+  const filtered = new Set(filteredChats(db))
+  for (const chat of new Set(dropped.subagentsOff))
+    if (filtered.has(chat)) await retool(chatSession(db, chat), piToolsFor(db, subagentTools, chat))
+  db.insert(appMetadata)
+    .values({ id: marker, value: JSON.stringify({ at: now, ...dropped.counts }) })
+    .onConflictDoNothing()
+    .run()
+  return dropped.counts
+}
+
+/** The scope and a helper's exclusions as one object over a database, for the probes and test fixtures. Programs use
+ * `Capabilities`. */
 export class CapabilityProfiles {
   readonly #retooling: Retooling
 
@@ -476,10 +444,6 @@ export class CapabilityProfiles {
     retool: (session: string, tools: PiTools) => Promise<void>,
   ) {
     this.#retooling = { db, subagentTools, retool }
-  }
-
-  own(session: string): readonly Exclusion[] {
-    return ownExclusions(this.#retooling.db, session)
   }
 
   scope(session: string): CapabilityScope {
@@ -499,26 +463,6 @@ export class CapabilityProfiles {
     await configureHelper(this.#retooling, { parent, session, exclusions }, now)
   }
 
-  narrow(session: string, exclusions: readonly HelperExclusion[], now: number): void {
-    narrowExclusions(this.#retooling.db, session, exclusions, now)
-  }
-
-  set(session: string, target: CapabilityTarget, on: boolean, now: number): void {
-    setExclusion(this.#retooling.db, session, target, on, now)
-  }
-
-  copy(from: string, to: string, now: number): void {
-    copyExclusions(this.#retooling.db, from, to, now)
-  }
-
-  inherited(thread: string): readonly Exclusion[] {
-    return inheritedExclusions(this.#retooling.db, thread)
-  }
-
-  async reset(thread: string, now: number): Promise<void> {
-    await resetSwitches(this.#retooling, thread, now)
-  }
-
   piTools(session: string): PiTools {
     return piToolsFor(this.#retooling.db, this.#retooling.subagentTools, session)
   }
@@ -529,5 +473,9 @@ export class CapabilityProfiles {
 
   async retoolOnce(marker: string, now: number): Promise<void> {
     await retoolOnce(this.#retooling, marker, now)
+  }
+
+  async dropSwitchesOnce(marker: string, now: number): Promise<DroppedSwitches | undefined> {
+    return dropSwitchesOnce(this.#retooling, marker, now)
   }
 }

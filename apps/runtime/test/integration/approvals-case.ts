@@ -100,16 +100,6 @@ export async function approvalsCase(base: string): Promise<void> {
   expect((await decide(me, revoked.id, true)).state).toBe('failed')
   expect(await calls(base, owner)).toHaveLength(1)
 
-  const scoped = await hold(me, { operationKey: 'op-scoped' })
-  await callOwner(me, (api) =>
-    api.conversations.setCapability({
-      params: { id: scoped.thread },
-      payload: { target: { kind: 'tool', serverId: SERVER, name: TOOL }, on: false },
-    }),
-  )
-  expect((await decide(me, scoped.id, true)).state).toBe('failed')
-  expect(await calls(base, owner)).toHaveLength(1)
-
   // App and alternate model dispatches must stop at the central seam even without the Pi hook.
   const app = await answerOf(me, (api) =>
     api.mcp.callTool({

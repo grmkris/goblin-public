@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type AppView, type ConversationView, EVERYTHING, type WorkspaceSnapshot } from '@goblin/contracts'
 import { usageQuery } from '../src/agent/queries.ts'
 import { agentAppQuery, agentAppsQuery } from '../src/agent-apps/queries.ts'
-import { capabilitiesQuery } from '../src/capabilities/queries.ts'
 import { conversationKeys } from '../src/conversations/queries.ts'
 import type { PiEventSource, ReconnectScheduler } from '../src/lib/conversation-stream.ts'
 import { testQueryClient } from '../src/lib/query/testing.ts'
@@ -527,15 +526,11 @@ describe('what goes stale with a feed change', () => {
     expect(staleAfter(none, before)).toEqual([])
   })
 
-  it("is a run's end: the conversation's sources and switches, and today's usage", () => {
+  it("is a run's end: the conversation's sources and today's usage; a start changes nothing read", () => {
     const after = applyChanges(before, [{ type: 'activity', activity: { id: '5', state: 'idle', since: 2 } }])
-    expect(staleAfter(present(before), after)).toEqual([
-      capabilitiesQuery('5').queryKey,
-      conversationKeys.sources('5'),
-      usageQuery.queryKey,
-    ])
+    expect(staleAfter(present(before), after)).toEqual([conversationKeys.sources('5'), usageQuery.queryKey])
     const started = applyChanges(before, [{ type: 'activity', activity: working('6', 2) }])
-    expect(staleAfter(present(before), started)).toEqual([capabilitiesQuery('6').queryKey])
+    expect(staleAfter(present(before), started)).toEqual([])
   })
 
   it('is an agent app that changed or went: the list and its page; an MCP App changes nothing read', () => {

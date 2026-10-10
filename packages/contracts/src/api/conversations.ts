@@ -3,7 +3,6 @@ import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import * as HttpApiSchema from 'effect/http-api/HttpApiSchema'
 import { ChatId } from '../ids.ts'
-import { CapabilityChange, ConversationCapabilities } from '../capabilities.ts'
 import { ComposerOptions } from '../composer.ts'
 import {
   ConversationView,
@@ -55,7 +54,6 @@ const HistoryQuery = {
  * - `stop`: `POST …/:id/stop`: Stop in the chat; `stopped` says whether anything was running.
  * - `queue` / `removeQueued`: `GET` and `DELETE …/:id/queue`: the owner's queued inputs, and withdrawing one.
  * - `markRead`: `PUT …/:id/read`: the owner has seen the newest reply.
- * - `capabilities` / `setCapability`: `GET` and `PATCH …/:id/capabilities`: what the chat lets its agent use.
  * - `composer`: `GET …/:id/composer`: what the composer can tag in the chat.
  * - `snapshot`: `GET …/:id/snapshot`: the chat's Pi snapshot, as JSON.
  * - `history`: `GET …/:id/history?before=`: a page of older entries.
@@ -114,17 +112,6 @@ export class ConversationsGroup extends HttpApiGroup.make('conversations').add(
     params,
     success: Schema.Struct({ read: Schema.Boolean }),
     error: [ApiErrors.notFound],
-  }),
-  HttpApiEndpoint.get('capabilities', '/conversations/:id/capabilities', {
-    params,
-    success: ConversationCapabilities,
-    error: [ApiErrors.notFound],
-  }),
-  HttpApiEndpoint.patch('setCapability', '/conversations/:id/capabilities', {
-    params,
-    payload: CapabilityChange,
-    success: ConversationCapabilities,
-    error: [ApiErrors.notFound, ApiErrors.invalidInput],
   }),
   HttpApiEndpoint.get('composer', '/conversations/:id/composer', {
     params,

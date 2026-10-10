@@ -1,9 +1,10 @@
+import { EVERYTHING } from '@goblin/contracts'
 import { ProtocolError, createMcpHandler } from '@modelcontextprotocol/server'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Schema from 'effect/Schema'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { scopeOf } from '../src/capabilities/profiles.ts'
+import { topicScope } from '../src/capabilities/profiles.ts'
 import * as TestClock from 'effect/testing/TestClock'
 import type { AppError } from '../src/http/errors.ts'
 import { mcpHost } from '../src/mcp/host.ts'
@@ -224,14 +225,15 @@ describe('skills over MCP (unit)', () => {
   })
 })
 
-describe('a skills library switched off in one conversation (unit)', () => {
+describe("a skills library outside the Topic's setup (unit)", () => {
   it('is left out of the catalog without being fetched', async () => {
     served.down = true
     expect(await services.run(library.catalog({}, () => false))).toEqual({ skills: [], unavailable: [] })
   })
 
-  it('loads nothing when the model still asks for one of its skills, and offers to turn it on there', async () => {
-    const profiles = new FixedProfiles({ '4': scopeOf([{ kind: 'skills', serverId: 'lib', name: '' }], true) })
+  it("loads nothing when the model still asks for one of its skills, and offers to add it to the Topic's setup", async () => {
+    const setup = { ...EVERYTHING, skills: [] }
+    const profiles = new FixedProfiles({ '4': topicScope({ id: 2, name: 'Work', setup }) })
     const layer = Layer.mergeAll(
       knowledgeOver({ skills: library }),
       Layer.mock(Resident)({ require: () => Effect.void }),
@@ -245,7 +247,7 @@ describe('a skills library switched off in one conversation (unit)', () => {
     const result = await executeTool(activate, { skill: 'lib:code-review' }, inConversation(4))
     expect(result).toMatchObject({
       isError: true,
-      details: { kind: 'capability-off', target: { kind: 'skills', serverId: 'lib' } },
+      details: { kind: 'not-in-topic', target: { kind: 'library', serverId: 'lib' }, topic: { id: 2, name: 'Work' } },
     })
   })
 })

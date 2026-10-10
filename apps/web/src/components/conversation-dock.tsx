@@ -11,7 +11,6 @@ import { budgetFraction, contextTokens } from '../lib/usage.ts'
 import { useNavigation } from '../lib/navigation.ts'
 import { usePersonas } from '../lib/workspace/hooks.ts'
 import { SharedContextChips, useSharedContext } from './apps/offers.tsx'
-import { CapabilitiesButton } from './capabilities.tsx'
 import { MessageComposer } from './composer.tsx'
 import type { SendExtras } from './composer-state.ts'
 import { QueuedMessages } from './queued-messages.tsx'
@@ -108,7 +107,6 @@ function ComposerContext({
         <span className="truncate">{presence.label}</span>
       </span>
       <ModelPicker onError={onError} />
-      <CapabilitiesButton thread={id} />
       <UsageIndicator
         usage={usage}
         context={context}

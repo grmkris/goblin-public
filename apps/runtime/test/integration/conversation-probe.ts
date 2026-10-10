@@ -6,11 +6,10 @@ import {
   exchange,
   historyOf,
   linesOf,
-  ownerCapabilities,
   ownerCreate,
   ownerMarkRead,
+  ownerResult,
   ownerSend,
-  ownerSetCapability,
   ownerUpdate,
   snapshotOf,
   threadsUntil,
@@ -126,55 +125,44 @@ async function announceSequence(agent: ProbeStub) {
 }
 
 /**
- * The owner's switches per conversation: main switches a tool and subagents off, a new thread (empty or branched)
- * copies that, the `subagent` tool leaves the request where subagents are off and comes back where they are turned on,
- * and Reset gives a thread main's switches again. Only what is shown can be switched off; main has no reset.
+ * A Topic's setup (ADR 0040): "Narrow" holds only the notes server's `read` and no subagents. The `subagent` tools leave
+ * the requests of its Conversation and of a "+" thread in it but stay in main (Personal holds everything); a call to a
+ * tool the setup does not hold runs nothing and asks the owner to add it; `mcp_list` lists only the setup's servers.
  */
-async function capabilitySequence(agent: ProbeStub) {
+async function setupSequence(agent: ProbeStub) {
   await agentProbe(agent, 'seed-notes')
-  const mainBefore = await ownerCapabilities(agent, PRIMARY_CHAT)
-  await ownerSetCapability(agent, PRIMARY_CHAT, {
-    target: { kind: 'tool', serverId: 'notes', name: 'write' },
-    on: false,
-  })
-  const mainAfter = await ownerSetCapability(agent, PRIMARY_CHAT, { target: { kind: 'subagents' }, on: false })
-  await exchange(agent, PRIMARY_CHAT, 'which tools do you have?', 'capabilities-main')
-  const fresh = await ownerCreate(agent, {})
-  const branched = await branchMain(agent, await answerIn(agent, PRIMARY_CHAT))
-  if (!fresh.ok || !branched.ok) return { fresh, branched }
-  const freshView = await ownerCapabilities(agent, fresh.value.id)
-  const branchedView = await ownerCapabilities(agent, branched.value.id)
-  const freshOn = await ownerSetCapability(agent, fresh.value.id, { target: { kind: 'subagents' }, on: true })
-  await exchange(agent, fresh.value.id, 'and in the thread?', 'capabilities-thread')
-  await exchange(agent, branched.value.id, 'and in the branch?', 'capabilities-branch')
-  const reset = await ownerSetCapability(agent, fresh.value.id, { reset: 'parent' })
-  await exchange(agent, fresh.value.id, 'and after the reset?', 'capabilities-reset')
-  // A tool switched off runs nothing (the unreachable server is never asked) and the result offers it to the owner.
-  const offCall = 'call mcp_call {"serverId":"notes","name":"write","arguments":{}}'
-  const off = await exchange(agent, PRIMARY_CHAT, offCall, 'capabilities-off-call')
-  const offResult = ((await historyOf(agent, PRIMARY_CHAT)).entries ?? []).findLast(
-    ({ kind }) => kind === 'pi.tool-result',
+  const narrow = await ownerResult(agent, (api) =>
+    api.topics.create({
+      payload: {
+        name: 'Narrow',
+        operationId: 'setup-narrow',
+        setup: { mcpServers: [{ serverId: 'notes', tools: ['read'] }], skills: [], apps: [], subagents: false },
+      },
+    }),
   )
-  await ownerSetCapability(agent, branched.value.id, { target: { kind: 'server', serverId: 'notes' }, on: false })
-  const listed = await exchange(agent, branched.value.id, 'call mcp_list {}', 'capabilities-list')
+  if (!narrow.ok) return { narrow }
+  const chat = narrow.value.conversation
+  await exchange(agent, PRIMARY_CHAT, 'which tools do you have?', 'setup-main')
+  await exchange(agent, chat, 'and in Narrow?', 'setup-narrow')
+  const thread = await ownerCreate(agent, { topic: narrow.value.id })
+  if (!thread.ok) return { narrow, thread }
+  await exchange(agent, thread.value.id, 'and in its thread?', 'setup-thread')
+  // A tool outside the setup runs nothing (the unreachable server is never asked) and the result offers it to the owner.
+  const offCall = 'call mcp_call {"serverId":"notes","name":"write","arguments":{}}'
+  const off = await exchange(agent, chat, offCall, 'setup-off-call')
+  const offResult = ((await historyOf(agent, chat)).entries ?? []).findLast(({ kind }) => kind === 'pi.tool-result')
+  const listed = await exchange(agent, chat, 'call mcp_list {}', 'setup-list')
   const tools = async (turn: string) => (await agent.requestFor(turn))?.tools
   return {
+    narrow,
+    thread,
     off,
     offDetails: offResult?.model?.[0]?.details,
     listed,
-    mainBefore,
-    mainAfter,
-    freshView,
-    branchedView,
-    freshOn,
-    reset,
-    unknown: await ownerSetCapability(agent, PRIMARY_CHAT, { target: { kind: 'server', serverId: 'nope' }, on: false }),
-    mainReset: await ownerSetCapability(agent, PRIMARY_CHAT, { reset: 'parent' }),
     tools: {
       main: await tools('which tools do you have?'),
-      thread: await tools('and in the thread?'),
-      branch: await tools('and in the branch?'),
-      reset: await tools('and after the reset?'),
+      narrow: await tools('and in Narrow?'),
+      thread: await tools('and in its thread?'),
     },
   }
 }
@@ -352,7 +340,7 @@ export const probes: Probes = {
   branch: inWorker(({ agent }) => branchSequence(agent)),
   share: inWorker(({ agent }) => shareSequence(agent)),
   announce: inWorker(({ agent }) => announceSequence(agent)),
-  capabilities: inWorker(({ agent }) => capabilitySequence(agent)),
+  setups: inWorker(({ agent }) => setupSequence(agent)),
   subagent: inWorker(({ agent }) => subagentSequence(agent)),
   tree: inWorker(({ agent }) => treeSequence(agent)),
   'subagent-branch': inWorker(({ agent }) => subagentBranchSequence(agent)),

@@ -88,36 +88,11 @@ describe('what the agent waits on the owner for', () => {
     expect(openInteractions(parts).map((item) => item.kind)).toEqual(['grant', 'question'])
     expect(openInteractions([...parts, user('u2')])).toEqual([])
   })
-  it('offers to turn on here only what the call asked for, and only from goblin’s own result', () => {
-    const server = { kind: 'server', serverId: 'myplan' }
-    expect(interactionOf(mcpCall(off(server)))).toEqual({ kind: 'capability', callId: 'g1', target: server })
-    const tool = { kind: 'tool', serverId: 'myplan', name: 'document_edit' }
-    expect(interactionOf(mcpCall(off(tool)))).toEqual({ kind: 'capability', callId: 'g1', target: tool })
-    expect(interactionOf(mcpCall(off({ kind: 'server', serverId: 'mybrowser' })))).toBeUndefined()
-    expect(interactionOf(mcpCall(off({ ...tool, name: 'delete_everything' })))).toBeUndefined()
-    expect(
-      interactionOf(mcpCall({ ...off(server), origin: { serverId: 'myplan', trust: 'untrusted' } })),
-    ).toBeUndefined()
-    expect(interactionOf(mcpCall(off(server), false))).toBeUndefined()
-    const skills = { kind: 'skills', serverId: 'myskills' }
-    expect(interactionOf(switchedOff('skill_activate', { skill: 'myskills:review' }, off(skills)))).toMatchObject({
-      kind: 'capability',
-      target: skills,
-    })
-    expect(interactionOf(switchedOff('skill_read', { skill: 'other:review' }, off(skills)))).toBeUndefined()
-    // The subagent tools, and the single `subagent` tool stored transcripts still hold.
-    for (const [name, args] of [
-      ['subagent_spawn', {}],
-      ['subagent', { action: 'spawn' }],
-    ] as const) {
-      expect(interactionOf(switchedOff(name, args, off({ kind: 'subagents' })))).toMatchObject({ kind: 'capability' })
-      expect(interactionOf(switchedOff(name, args, off(server)))).toBeUndefined()
-    }
+  it('offers nothing for a switch result a chat kept from before setups (ADR 0040)', () => {
+    expect(interactionOf(mcpCall(off({ kind: 'server', serverId: 'myplan' })))).toBeUndefined()
+    expect(interactionOf(switchedOff('subagent_spawn', {}, off({ kind: 'subagents' })))).toBeUndefined()
   })
   it('gives each reply a stable submission id', () => {
-    expect(interactionOperation({ kind: 'capability', callId: 'c1', target: { kind: 'subagents' } })).toBe(
-      'capability:c1',
-    )
     expect(interactionOperation({ kind: 'question', callId: 'q1', questions: [] })).toBe('answer:q1')
     expect(interactionOperation({ kind: 'grant', callId: 'g1', serverId: 's', name: 'n' })).toBe('grant:g1')
   })

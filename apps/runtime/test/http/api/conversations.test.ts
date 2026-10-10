@@ -199,12 +199,8 @@ const services = (calls: Calls, personas: readonly PersonaView[]) =>
         }),
     }),
     stub(Personas, { active: Effect.succeed(personas), offers: () => Effect.succeed(false) }),
-    stub(Capabilities, {
-      scope: () => Effect.succeed(scopeOf([], true)),
-      own: () => Effect.succeed([]),
-      inherited: () => Effect.succeed([]),
-    }),
-    // No servers, grants or connections: the switches show none.
+    stub(Capabilities, { scope: () => Effect.succeed(scopeOf([], true)) }),
+    // No servers, grants or connections: the composer offers none.
     stub(McpServers, { list: () => Effect.succeed([]) }),
     stub(McpGrants, { list: () => Effect.succeed([]) }),
     stub(McpConnections),
@@ -444,7 +440,7 @@ describe('the conversations API served by the agent', () => {
     expect(await (await fetch(json('GET', '/api/conversations/2/sources'))).json()).toEqual([])
   })
 
-  it("lists the owner's queued inputs, answers a move's receipt, and reads the composer and switches", async () => {
+  it("lists the owner's queued inputs, answers a move's receipt and reads the composer; switches are gone", async () => {
     const { fetch } = fixture()
     const queue = await fetch(json('GET', '/api/conversations/2/queue'))
     expect(await queue.json()).toEqual({ inputs: [{ id: 7, mode: 'followUp', content: 'later' }] })
@@ -469,7 +465,7 @@ describe('the conversations API served by the agent', () => {
       unavailable: [],
     })
     const switches = await fetch(json('GET', '/api/conversations/2/capabilities'))
-    expect(await switches.json()).toMatchObject({ thread: '2', kind: 'thread', servers: [], subagents: true })
+    expect(switches.status).toBe(404)
   })
 
   it("serves the probes' typed client: a refusal decodes as the InvalidInput class with its reference", async () => {
