@@ -1,14 +1,12 @@
-import { AppError, OwnerAdmission, RenewsResident, withRef } from '@goblin/contracts/api'
+import { OwnerAdmission, RenewsResident, withRef } from '@goblin/contracts/api'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
-import * as Schema from 'effect/Schema'
 import { Entitlements } from '../../billing/gates.ts'
+import { isAppError } from '../errors.ts'
 import { Resident } from '../../mcp/service.ts'
 import { RequestContext } from './context.ts'
-
-const isAppError = Schema.is(AppError)
 
 /**
  * Owner admission (`OwnerAdmission` in the contract) as `ownerRequest` ran it for each owner RPC method: the account's plan,

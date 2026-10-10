@@ -9,16 +9,13 @@ import { ChatsInstance } from '../chats/directory.ts'
 import { nowSeconds as clockSeconds } from '../clock.ts'
 import { FilesLive } from '../files/live.ts'
 import type { Files } from '../files/service.ts'
-import { toAppError } from '../http/errors.ts'
+import { attempt, attemptSync } from '../http/errors.ts'
 import type { KeyedLock } from '../observability/lock.ts'
 import { syncWith } from '../runtime/boundary.ts'
 import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 
-/** A registry call in the service's error channel, mapped as the programs' `attempt` did. */
-const step = <A>(work: () => Promise<A>) => Effect.tryPromise({ try: work, catch: toAppError })
-const stepSync = <A>(work: () => A) => Effect.try({ try: work, catch: toAppError })
 const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
 
 /**
@@ -58,40 +55,40 @@ export const AppRegistryLive: Layer.Layer<AppsInstance, never, AgentInput | Db |
 export const appsOver = (registry: AppRegistry, changes: Changes['Service']) => {
   const changed = (id: string) => changes.publish('apps.changed', { ids: [id] })
   return Apps.of({
-    list: stepSync(() => registry.list()).pipe(Effect.withSpan('Apps.list')),
+    list: attemptSync(() => registry.list()).pipe(Effect.withSpan('Apps.list')),
     placement: Effect.fn('Apps.placement')(function* (id: string) {
-      return yield* stepSync(() => registry.placement(id))
+      return yield* attemptSync(() => registry.placement(id))
     }),
     register: Effect.fn('Apps.register')(function* (session: string, callId: string, origin: AppOrigin) {
       const now = yield* nowSeconds
-      const app = yield* stepSync(() => registry.register(session, callId, origin, now))
+      const app = yield* attemptSync(() => registry.register(session, callId, origin, now))
       yield* changed(app.id)
       return app
     }),
     update: Effect.fn('Apps.update')(function* (id: string, closed: boolean) {
       const now = yield* nowSeconds
-      const app = yield* stepSync(() => registry.update(id, closed, now))
+      const app = yield* attemptSync(() => registry.update(id, closed, now))
       yield* changed(app.id)
       return app
     }),
     launch: Effect.fn('Apps.launch')(function* (id: string) {
-      return yield* step(() => registry.launch(id))
+      return yield* attempt(() => registry.launch(id))
     }),
     call: Effect.fn('Apps.call')(function* (session: string, callId: string) {
-      return yield* step(() => registry.call(session, callId))
+      return yield* attempt(() => registry.call(session, callId))
     }),
     agentApp: Effect.fn('Apps.agentApp')(function* (id: string) {
-      return yield* stepSync(() => registry.agentApp(id))
+      return yield* attemptSync(() => registry.agentApp(id))
     }),
     agentId: Effect.fn('Apps.agentId')(function* (name: string) {
-      return yield* stepSync(() => registry.agentId(name))
+      return yield* attemptSync(() => registry.agentId(name))
     }),
     removeAgent: Effect.fn('Apps.removeAgent')(function* (name: string) {
-      const removed = yield* stepSync(() => registry.removeAgent(name))
+      const removed = yield* attemptSync(() => registry.removeAgent(name))
       if (removed !== undefined) yield* changes.publish('apps.removed', { id: removed })
     }),
     originOf: Effect.fn('Apps.originOf')(function* (id: string, conversation: string) {
-      return yield* stepSync(() => registry.originOf(id, conversation))
+      return yield* attemptSync(() => registry.originOf(id, conversation))
     }),
   })
 }

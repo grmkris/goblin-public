@@ -6,7 +6,7 @@ import { creditRates } from '../budget-credits.ts'
 import { ChatsInstance } from '../chats/directory.ts'
 import { ChatOperations, Chats } from '../chats/service.ts'
 import { nowSeconds } from '../clock.ts'
-import { toAppError } from '../http/errors.ts'
+import { attempt } from '../http/errors.ts'
 import {
   ChatMemories,
   MemoriesInstance,
@@ -32,9 +32,6 @@ import { auxReporter } from '../telemetry/report.ts'
 // (`MemoriesInstance`, `TranscriptsInstance`). After the start, `KnowledgeLive` serves memory and retrieval: what a
 // memory remembers, how far its view reaches and what a Move forgets over the agent's database, a view placed through
 // the chat's passive write (lane C), and every transcript catch-up on its session's turn of the agent's KeyedLock.
-
-/** A call into a shared instance's async code: a failure is the `AppError` it threw, anything else `Internal`. */
-const fromPromise = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: toAppError })
 
 /**
  * Start step 3: the deployment's cheap model (`GOBLIN_MEMORY_MODEL`), one per housekeeping purpose. Its tokens count in
@@ -110,10 +107,10 @@ const MemoriesLive = Layer.effect(
         return yield* Effect.sync(() => rememberedThrough(db, chat, entry))
       }),
       activate: Effect.fn('Memories.activate')(function* (chat: string) {
-        yield* fromPromise(() => engine.activate(chat))
+        yield* attempt(() => engine.activate(chat))
       }),
       activateConversations: Effect.fn('Memories.activateConversations')(function* () {
-        yield* fromPromise(() => engine.activateConversations())
+        yield* attempt(() => engine.activateConversations())
       }),
       truncate: Effect.fn('Memories.truncate')(function* (chat: string, size: number) {
         yield* Effect.sync(() => forgetFrom(db, chat, size))
@@ -121,17 +118,17 @@ const MemoriesLive = Layer.effect(
       // A view is placed as a passive write under the chat's admission lock, never beside a send (K1), and recorded
       // only once the write was admitted: a failed write is placed again by the next step.
       step: Effect.fn('Memories.step')(function* (chat: string, signal: AbortSignal) {
-        const next = yield* fromPromise(() => engine.of(chat).advance(signal))
+        const next = yield* attempt(() => engine.of(chat).advance(signal))
         if (next === 'more' || next === 'done') return next
         yield* operations.passiveWrite(chat, next.write)
         yield* Effect.sync(() => recordView(db, chat, next.through))
         return 'done' as const
       }),
       startBuilder: Effect.fn('Memories.startBuilder')(function* (chat: string, start: (tx: Tx) => Promise<void>) {
-        yield* fromPromise(() => engine.of(chat).startBuilder(start))
+        yield* attempt(() => engine.of(chat).startBuilder(start))
       }),
       zoom: Effect.fn('Memories.zoom')(function* (chat: string, line: MemoryLine, limit: number) {
-        return yield* fromPromise(() => engine.of(chat).zoom(line.id, line.n, limit))
+        return yield* attempt(() => engine.of(chat).zoom(line.id, line.n, limit))
       }),
     })
   }),

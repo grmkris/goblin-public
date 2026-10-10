@@ -4,7 +4,7 @@ import { handleAuth, resourceMetadata, requireUserSession } from './auth/index.t
 import { mailerOf } from './auth/mail.ts'
 import { signupMode } from './auth/signup.ts'
 import { readBytes } from './http/body.ts'
-import { InvalidInput, NotFound, toAppError } from './http/errors.ts'
+import { InvalidInput, NotFound, attempt } from './http/errors.ts'
 import { failureResponse } from './http/respond.ts'
 import { accountRecords } from './http/api/account.ts'
 import { type Edge, type EdgeHttp, isAccountPath, makeEdgeHttp, refOf, runAtEdge } from './http/api/edge.ts'
@@ -30,7 +30,7 @@ const edgeOf = (env: RuntimeEnv): Edge => ({
   origin: new URL(env.APP_URL).origin,
   session: (request) =>
     Effect.map(
-      Effect.tryPromise({ try: () => requireUserSession(request, env), catch: toAppError }),
+      attempt(() => requireUserSession(request, env)),
       (session) => session.userId,
     ),
   plan: (userId) => Effect.asVoid(accountPlan(env, userId)),

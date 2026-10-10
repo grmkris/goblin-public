@@ -3,9 +3,9 @@ import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import type { Applied } from '../agent-model.ts'
 import { Entitlements } from '../billing/gates.ts'
-import { instanceCall, settledWithin } from '../chats/instance.ts'
+import { settledWithin } from '../chats/instance.ts'
 import { ChatOperations, Chats } from '../chats/service.ts'
-import type { AppError } from '../http/errors.ts'
+import { type AppError, attempt } from '../http/errors.ts'
 import type { AgentServices } from '../layers/index.ts'
 import { Resident } from '../mcp/service.ts'
 import { authoredContent } from '../pi/content.ts'
@@ -57,7 +57,7 @@ export const recentOwnerMessages = (harness: PiHarness, limit: number) =>
   Effect.gen(function* () {
     const chats = yield* Chats
     const session = yield* chats.session(chats.primary)
-    return yield* instanceCall(async () => {
+    return yield* attempt(async () => {
       const main = await (await harness.pi()).conversation(conversationId(session), BACKGROUND)
       return main === undefined ? [] : recentMessages(main, limit)
     })

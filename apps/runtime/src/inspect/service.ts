@@ -21,7 +21,7 @@ import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { Conversations } from '../chats/service.ts'
-import { type AppError, InvalidInput, NotFound, toAppError } from '../http/errors.ts'
+import { type AppError, InvalidInput, NotFound, attempt, attemptSync } from '../http/errors.ts'
 import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { Db } from '../runtime/db.ts'
@@ -83,14 +83,12 @@ export class Inspection extends Context.Service<
         ledger: new RunLedger(db),
         chats,
         settlement: (session, operationId) =>
-          Effect.tryPromise({
-            try: async () =>
-              (await harness.pi()).commit(
-                (tx) => tx.submissionByRequest(conversationId(session), operationId),
-                BACKGROUND,
-              ),
-            catch: toAppError,
-          }),
+          attempt(async () =>
+            (await harness.pi()).commit(
+              (tx) => tx.submissionByRequest(conversationId(session), operationId),
+              BACKGROUND,
+            ),
+          ),
       })
     }),
   )
@@ -115,7 +113,6 @@ export interface InspectionSources {
 }
 
 /** A ledger read; stored data that no longer decodes is our fault, reported and answered as `Internal`. */
-const read = <A>(ledgerRead: () => A): Effect.Effect<A, AppError> => Effect.try({ try: ledgerRead, catch: toAppError })
 
 /** `since` as given, or a day before now. */
 const sinceOr = (since: number | undefined): Effect.Effect<number> =>
@@ -157,14 +154,14 @@ const detailsWith = ({ ledger, chats, settlement }: InspectionSources): Reads['d
   const timeline = timelineWith(settlement)
   const operationOfEntry = Effect.fn('Inspection.operationOfEntry')(function* (chat: string, entry: number) {
     const session = yield* chats.require(chat)
-    const operation = yield* read(() => ledger.operationOfEntry(session, entry))
+    const operation = yield* attemptSync(() => ledger.operationOfEntry(session, entry))
     if (operation === undefined) return yield* new NotFound({ what: 'entry operation' })
     return operation
   })
   return Effect.fn('Inspection.details')(function* (input: InspectDetailsInput) {
     const operationId = 'operation' in input ? input.operation : yield* operationOfEntry(input.chat, input.entry)
-    const events = yield* read(() => ledger.forOperation(operationId))
-    const related = yield* read(() => relatedOf(ledger, operationId, events))
+    const events = yield* attemptSync(() => ledger.forOperation(operationId))
+    const related = yield* attemptSync(() => relatedOf(ledger, operationId, events))
     const submitted = events.find((event) => event.kind === 'turn.submitted')
     if (submitted !== undefined) return { ...(yield* timeline(submitted, events)), related }
     if (events.length === 0 && related.length === 0) return yield* new NotFound({ what: 'operation' })
@@ -215,7 +212,7 @@ export function makeInspection(sources: InspectionSources): Reads {
     turns: Effect.fn('Inspection.turns')(function* (input: Input<'turns'>) {
       const session = input.conversation === undefined ? undefined : yield* chats.require(input.conversation)
       const since = yield* sinceOr(input.since)
-      return yield* read(() => {
+      return yield* attemptSync(() => {
         const found = ledger.turns(since, input.limit ?? TURNS, session)
         const events = ledger.forOperations(found.flatMap((turn) => turn.operationId ?? []))
         const own = (turn: RunEvent) => events.filter((event) => event.operationId === turn.operationId)
@@ -223,18 +220,21 @@ export function makeInspection(sources: InspectionSources): Reads {
       })
     }),
     turn: Effect.fn('Inspection.turn')(function* (operationId: string) {
-      const events = yield* read(() => ledger.forOperation(operationId))
+      const events = yield* attemptSync(() => ledger.forOperation(operationId))
       const submitted = events.find((event) => event.kind === 'turn.submitted')
       if (submitted === undefined) return yield* new NotFound({ what: 'turn' })
       return yield* timeline(submitted, events)
     }),
     problems: Effect.fn('Inspection.problems')(function* (input: Input<'problems'>) {
       const since = yield* sinceOr(input.since)
-      return { since, problems: yield* read(() => ledger.problems(since, input.limit ?? PROBLEMS, input.all === true)) }
+      return {
+        since,
+        problems: yield* attemptSync(() => ledger.problems(since, input.limit ?? PROBLEMS, input.all === true)),
+      }
     }),
     flows: Effect.fn('Inspection.flows')(function* (input: InspectFlowsInput) {
       const since = yield* sinceOr(input.since)
-      const steps = yield* read(() => ledger.flows(since, input.limit ?? FLOWS, input))
+      const steps = yield* attemptSync(() => ledger.flows(since, input.limit ?? FLOWS, input))
       return { since, flows: steps.flatMap((event) => flowRecord(event) ?? []) }
     }),
     details: detailsWith(sources),

@@ -10,7 +10,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { type AppError, InvalidInput, UpstreamMcp, toAppError } from '../http/errors.ts'
+import { type AppError, InvalidInput, UpstreamMcp, attempt, toAppError } from '../http/errors.ts'
 import type { CredentialCipher } from '../mcp/cipher.ts'
 import type { McpConnectionManager } from '../mcp/connection.ts'
 import type { McpConnections } from '../mcp/service.ts'
@@ -216,7 +216,7 @@ export class TelegramChannel {
         return yield* new InvalidInput({
           reason: `the doorbell was refused: ${subscribed.reason ?? subscribed.status}`,
         })
-      const sealed = yield* Effect.tryPromise({ try: () => this.#cipher.encrypt(secret, AAD), catch: toAppError })
+      const sealed = yield* attempt(() => this.#cipher.encrypt(secret, AAD))
       const row = { id: 1, serverId, cursor, secret: sealed, enabledAt: now }
       yield* Effect.sync(() => {
         this.#db.insert(appChannel).values(row).onConflictDoUpdate({ target: appChannel.id, set: row }).run()

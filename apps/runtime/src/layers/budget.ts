@@ -3,7 +3,7 @@ import * as Layer from 'effect/Layer'
 import { Entitlements } from '../billing/gates.ts'
 import { Budget, UsageStore, recordUse, utcDay } from '../budget.ts'
 import { creditRates } from '../budget-credits.ts'
-import { BudgetExhausted, toAppError } from '../http/errors.ts'
+import { BudgetExhausted, attemptSync } from '../http/errors.ts'
 import { ModelChoiceStore, ModelPicker, Models, modelOptions } from '../models.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
@@ -13,7 +13,7 @@ type Method<Args extends readonly unknown[], A> = (...args: Args) => A
 /** A store method that throws its typed failures: an `AppError` (anything else `Internal`), never a defect. */
 const trySync = <Args extends readonly unknown[], A>(name: string, method: Method<Args, A>) =>
   Effect.fn(name)(function* (...args: Args) {
-    return yield* Effect.try({ try: () => method(...args), catch: toAppError })
+    return yield* attemptSync(() => method(...args))
   })
 
 /** A method with no typed failure: a read callers run with `useSync`, where a throw is a defect. */
@@ -36,7 +36,7 @@ const BudgetLive: Layer.Layer<Budget, never, AgentInput | Db | Entitlements> = L
     const today = Effect.fn('Budget.today')(function* (now: number) {
       const { day, resetsAt } = utcDay(now)
       const { dailyCredits } = yield* plans.require()
-      const milli = yield* Effect.try({ try: () => ledger.milliCredits(day), catch: toAppError })
+      const milli = yield* attemptSync(() => ledger.milliCredits(day))
       return { used: milli / 1000, limit: dailyCredits, resetsAt }
     })
     return Budget.of({

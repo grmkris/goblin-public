@@ -9,8 +9,8 @@ import type {
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
-import type { AppError } from '../http/errors.ts'
-import { fromStore, nowSeconds } from '../organize/effects.ts'
+import { type AppError, attemptSync } from '../http/errors.ts'
+import { nowSeconds } from '../organize/effects.ts'
 import { Changes } from '../runtime/changes.ts'
 import type { NewInvocation, PersonaInvocations } from './invocations.ts'
 import type { PersonaActor, PersonaRegistry } from './registry.ts'
@@ -68,29 +68,29 @@ export class Personas extends Context.Service<
         list: Effect.sync(() => store.list()).pipe(Effect.withSpan('Personas.list')),
         active: Effect.sync(() => store.active()).pipe(Effect.withSpan('Personas.active')),
         get: Effect.fn('Personas.get')(function* (id: number) {
-          return yield* fromStore(() => store.get(id))
+          return yield* attemptSync(() => store.get(id))
         }),
         byName: Effect.fn('Personas.byName')(function* (name: string) {
           return yield* Effect.sync(() => Option.fromUndefinedOr(store.byName(name)))
         }),
         detail: Effect.fn('Personas.detail')(function* (id: number) {
-          return yield* fromStore(() => store.detail(id))
+          return yield* attemptSync(() => store.detail(id))
         }),
         revision: Effect.fn('Personas.revision')(function* (id: number, revision: number) {
-          return yield* fromStore(() => store.revision(id, revision))
+          return yield* attemptSync(() => store.revision(id, revision))
         }),
         offers: Effect.fn('Personas.offers')(function* (model: string | undefined) {
           return yield* Effect.sync(() => store.offers(model))
         }),
         create: Effect.fn('Personas.create')(function* (input: CreatePersona, actor: PersonaActor) {
           const now = yield* nowSeconds
-          const made = yield* fromStore(() => store.create(input, actor, now))
+          const made = yield* attemptSync(() => store.create(input, actor, now))
           if (made.created) yield* changed(made.persona.id)
           return made
         }),
         update: Effect.fn('Personas.update')(function* (id: number, change: UpdatePersona, actor: PersonaActor) {
           const now = yield* nowSeconds
-          const result = yield* fromStore(() => {
+          const result = yield* attemptSync(() => {
             const before = store.get(id)
             return { before, after: store.update(id, change, actor, now) }
           })

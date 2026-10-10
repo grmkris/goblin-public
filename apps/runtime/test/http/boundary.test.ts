@@ -1,4 +1,5 @@
 import * as Cause from 'effect/Cause'
+import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import * as Schema from 'effect/Schema'
 import { expect, test, vi } from 'vitest'
@@ -11,6 +12,9 @@ import {
   NotFound,
   PayloadTooLarge,
   UpstreamMcp,
+  attempt,
+  attemptSync,
+  isAppError,
   toAppError,
 } from '../../src/http/errors.ts'
 import { failureResponse, statusOf } from '../../src/http/respond.ts'
@@ -118,4 +122,32 @@ test('the failure line keeps the frames that name a location, even beside one th
       severity: 'Error',
     },
   ])
+})
+
+test('attempt and attemptSync keep a typed failure, and report anything else under `where` as Internal', async () => {
+  const known = new GrantDenied({ serverId: 'myplan', name: 'x' })
+  expect(isAppError(known)).toBe(true)
+  expect(isAppError(new TypeError(SECRET))).toBe(false)
+  expect(await Effect.runPromise(attempt(async () => 'value'))).toBe('value')
+  expect(Effect.runSync(attemptSync(() => 'value'))).toBe('value')
+  const rejected = await Effect.runPromiseExit(attempt(() => Promise.reject(known)))
+  expect(rejected).toStrictEqual(Exit.fail(known))
+  const thrown = Effect.runSyncExit(
+    attemptSync(() => {
+      throw known
+    }),
+  )
+  expect(thrown).toStrictEqual(Exit.fail(known))
+  let failure: Exit.Exit<never, unknown> | undefined
+  const lines = linesOf('error', () => {
+    failure = Effect.runSyncExit(
+      attemptSync(() => {
+        throw new TypeError(SECRET)
+      }, 'files.read'),
+    )
+  })
+  expect(failure !== undefined && Exit.isFailure(failure) && Cause.squash(failure.cause)).toBeInstanceOf(Internal)
+  expect(lines).toHaveLength(1)
+  expect(lines[0]).toMatchObject({ event: 'failure', where: 'files.read', 'error.type': 'TypeError' })
+  expect(JSON.stringify(lines)).not.toContain(SECRET)
 })

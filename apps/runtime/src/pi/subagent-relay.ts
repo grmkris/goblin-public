@@ -21,7 +21,7 @@ import * as Schema from 'effect/Schema'
 import { type DelegateResultData, type HelperExclusion, HelperExclusions } from '@goblin/contracts'
 import { Channel } from '../channel/service.ts'
 import { ChatOperations, Chats, Conversations } from '../chats/service.ts'
-import { toAppError } from '../http/errors.ts'
+import { attempt } from '../http/errors.ts'
 import { Resident } from '../mcp/service.ts'
 import { recordFlow } from '../organize/flows.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
@@ -284,9 +284,6 @@ const writeResult = (report: Report) =>
     yield* reportFlow(report)
   })
 
-/** A Pi call from the relay, its failure taken as the programs take one (`toAppError`). */
-const piCall = <A>(call: () => Promise<A>) => Effect.tryPromise({ try: call, catch: toAppError })
-
 /**
  * The synthesized report: an input to the spawner's current session, under its chat's admission lock, so it never
  * lands in a session a Move is taking the chat away from.
@@ -300,10 +297,10 @@ const submitInput = (runtime: ReportArgs[1], context: ReportArgs[2], report: Rep
       chat,
       Effect.gen(function* () {
         const session = yield* chats.session(chat)
-        const spawner = yield* piCall(() => runtime.conversation(piConversationId(session), context))
+        const spawner = yield* attempt(() => runtime.conversation(piConversationId(session), context))
         if (chat === chats.primary && relay.input.origin === 'spawner') yield* track(requestId, answers(relay))
         if (spawner !== undefined)
-          yield* piCall(() => spawner.submit({ type: 'input', content, whenBusy: 'followUp', requestId }, context))
+          yield* attempt(() => spawner.submit({ type: 'input', content, whenBusy: 'followUp', requestId }, context))
       }),
     )
     yield* reportFlow(report)

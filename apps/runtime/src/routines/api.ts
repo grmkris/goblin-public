@@ -1,7 +1,7 @@
 import { OwnerApi } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
-import { toAppError } from '../http/errors.ts'
+import { attemptSync } from '../http/errors.ts'
 import { routineChange } from './controller.ts'
 import { editRoutine, proposeRoutine, routinesList, setRoutineSettings } from './program.ts'
 import { runView } from './runs.ts'
@@ -25,9 +25,7 @@ export const RoutinesHandlers = HttpApiBuilder.group(OwnerApi, 'routines', (hand
     .handle('pause', ({ params, payload }) => routineChange(params.id, payload, 'pause'))
     .handle('run', ({ params, payload }) =>
       RoutineControl.use((control) =>
-        Effect.flatMap(control.manual(params.id, payload), (run) =>
-          Effect.try({ try: () => runView(run), catch: toAppError }),
-        ),
+        Effect.flatMap(control.manual(params.id, payload), (run) => attemptSync(() => runView(run))),
       ),
     )
     .handle('runs', ({ params }) =>

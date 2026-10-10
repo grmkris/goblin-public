@@ -6,7 +6,7 @@ import * as Layer from 'effect/Layer'
 import { CapabilityProfiles, type PiTools, ProfilesInstance } from '../capabilities/profiles.ts'
 import { Capabilities } from '../capabilities/service.ts'
 import { ChatsInstance } from '../chats/directory.ts'
-import { toAppError } from '../http/errors.ts'
+import { attempt } from '../http/errors.ts'
 import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
@@ -17,9 +17,6 @@ import { AgentInput } from '../runtime/input.ts'
 
 /** Wall-clock seconds, the unit profiles are kept in. */
 const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
-
-/** A call into the profile store's async code: a failure is the `AppError` it threw, anything else `Internal`. */
-const fromPromise = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: toAppError })
 
 /** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
 const retool = (harness: PiHarness) => async (session: string, tools: PiTools) => {
@@ -77,7 +74,7 @@ export const CapabilitiesLive: Layer.Layer<Capabilities, never, ProfilesInstance
       }),
       reset: Effect.fn('Capabilities.reset')(function* (thread: string) {
         const now = yield* nowSeconds
-        yield* fromPromise(() => profiles.reset(thread, now))
+        yield* attempt(() => profiles.reset(thread, now))
       }),
       configureHelper: Effect.fn('Capabilities.configureHelper')(function* (
         parent: string,
@@ -85,13 +82,13 @@ export const CapabilitiesLive: Layer.Layer<Capabilities, never, ProfilesInstance
         exclusions: readonly HelperExclusion[],
       ) {
         const now = yield* nowSeconds
-        yield* fromPromise(() => profiles.configureHelper(parent, session, exclusions, now))
+        yield* attempt(() => profiles.configureHelper(parent, session, exclusions, now))
       }),
       piTools: Effect.fn('Capabilities.piTools')(function* (session: string) {
         return yield* Effect.sync(() => profiles.piTools(session))
       }),
       syncPi: Effect.fn('Capabilities.syncPi')(function* (session: string) {
-        yield* fromPromise(() => profiles.syncPi(session))
+        yield* attempt(() => profiles.syncPi(session))
       }),
     })
   }),

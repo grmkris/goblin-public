@@ -2,9 +2,9 @@ import type { TextContent } from '@earendil-works/pi-ai'
 import type { PersonaAskData } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
-import { epochSeconds, instanceCall } from '../chats/instance.ts'
+import { epochSeconds } from '../chats/instance.ts'
 import { ChatOperations } from '../chats/service.ts'
-import { InvalidInput, toAppError } from '../http/errors.ts'
+import { InvalidInput, attempt, toAppError } from '../http/errors.ts'
 import { conversationId } from '../pi/context.ts'
 import { PiSessions } from '../pi/sessions.ts'
 import type { FrozenPersona, PersonaTurnKit } from '../pi/persona-turn.ts'
@@ -110,7 +110,7 @@ export const askPersonas = (
           .write(admitted.session, write)
           .pipe(Effect.catchTag('PiFailure', (failure) => Effect.fail(toAppError(failure.cause))))
         const parent = conversationId(admitted.session)
-        yield* instanceCall(async () =>
+        yield* attempt(async () =>
           input.personas.start(await input.harness.pi(), {
             operationId: input.operationId,
             chat: input.thread,

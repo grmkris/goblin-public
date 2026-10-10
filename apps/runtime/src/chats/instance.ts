@@ -31,11 +31,3 @@ export const settledWithin = (
     Effect.timeoutOption(Duration.millis(ms)),
     Effect.catchTag('PiFailure', (failure) => Effect.fail(toAppError(failure.cause))),
   )
-
-/**
- * One call into a Promise API of the agent's instance (Pi's harness, the Persona and subagent kits, the routine
- * controller it made), failing with the `AppError` the call threw, else `Internal`. Wave 3 puts these behind Effect
- * services (`PiSessions` and lane D's).
- */
-export const instanceCall = <A>(call: () => PromiseLike<A>): Effect.Effect<A, AppError> =>
-  Effect.tryPromise({ try: call, catch: toAppError })

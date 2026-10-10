@@ -15,7 +15,7 @@ import type { Budget } from '../budget.ts'
 import { makeChatOperations } from '../chats/operations.ts'
 import { ChatDirectory, type ChatRow, ChatsInstance, registerChat } from '../chats/directory.ts'
 import { ChatMover, MovesInstance } from '../chats/mover.ts'
-import { epochSeconds, instanceCall } from '../chats/instance.ts'
+import { epochSeconds } from '../chats/instance.ts'
 import { ChatOperations, Chats, Conversations, Moves, type RoutineReport, type ThreadAnchor } from '../chats/service.ts'
 import { ProfilesInstance } from '../capabilities/profiles.ts'
 import { nowSeconds } from '../clock.ts'
@@ -23,7 +23,7 @@ import { ConversationRegistry, ConversationsInstance } from '../conversations.ts
 import { MemoriesInstance } from '../memory/memory.ts'
 import { CheapModels } from '../memory/model.ts'
 import type { Models } from '../models.ts'
-import { type AppError, toAppError } from '../http/errors.ts'
+import { type AppError, attempt, attemptSync } from '../http/errors.ts'
 import { FlowEvents } from '../observability/flows.ts'
 import { writeLine } from '../observability/logger.ts'
 import { safeErrorType } from '../observability/report.ts'
@@ -89,8 +89,7 @@ export const MoverLive: Layer.Layer<
       harness: input.harness,
       chats: yield* ChatsInstance,
       // The mover is Promise code: it takes the chat's one lock through the bridge (no plan check).
-      withChat: (chat, run) =>
-        input.local(ChatOperations.use((operations) => operations.withChat(chat, instanceCall(run)))),
+      withChat: (chat, run) => input.local(ChatOperations.use((operations) => operations.withChat(chat, attempt(run)))),
       conversations: yield* ConversationsInstance,
       capabilities: yield* ProfilesInstance,
       memories: yield* MemoriesInstance,
@@ -106,9 +105,6 @@ export const MoverLive: Layer.Layer<
   }),
 )
 
-/** A synchronous call into the agent's instances or the stores, its throw a typed `AppError`. */
-const sync = <A>(run: () => A) => Effect.try({ try: run, catch: toAppError })
-
 /** The chat directory natively: reads over the agent's SQLite (it keeps no state) and the one row inserter. */
 export const ChatsLive = Layer.effect(
   Chats,
@@ -118,28 +114,28 @@ export const ChatsLive = Layer.effect(
     return Chats.of({
       primary: chats.primary(),
       session: Effect.fn('Chats.session')(function* (chat: string) {
-        return yield* sync(() => chats.session(chat))
+        return yield* attemptSync(() => chats.session(chat))
       }),
       chatOf: Effect.fn('Chats.chatOf')(function* (session: string) {
-        return Option.fromNullishOr(yield* sync(() => chats.chatOf(session)))
+        return Option.fromNullishOr(yield* attemptSync(() => chats.chatOf(session)))
       }),
       topicOf: Effect.fn('Chats.topicOf')(function* (chat: string) {
-        return yield* sync(() => chats.topicOf(chat))
+        return yield* attemptSync(() => chats.topicOf(chat))
       }),
       conversationOf: Effect.fn('Chats.conversationOf')(function* (topic: number) {
-        return yield* sync(() => chats.conversationOf(topic))
+        return yield* attemptSync(() => chats.conversationOf(topic))
       }),
       conversationAbove: Effect.fn('Chats.conversationAbove')(function* (chat: string) {
-        return yield* sync(() => chats.conversationAbove(chat))
+        return yield* attemptSync(() => chats.conversationAbove(chat))
       }),
       isConversation: Effect.fn('Chats.isConversation')(function* (chat: string) {
-        return yield* sync(() => chats.isConversation(chat))
+        return yield* attemptSync(() => chats.isConversation(chat))
       }),
       isHidden: Effect.fn('Chats.isHidden')(function* (chat: string) {
-        return yield* sync(() => chats.isHidden(chat))
+        return yield* attemptSync(() => chats.isHidden(chat))
       }),
       register: Effect.fn('Chats.register')(function* (row: ChatRow, again: 'fail' | 'keep' = 'fail') {
-        return yield* sync(() => registerChat(db, row, again))
+        return yield* attemptSync(() => registerChat(db, row, again))
       }),
     })
   }),
@@ -154,48 +150,48 @@ export const ChatOperationsLive = Layer.effect(
 /** The registry's reads over the agent's one `ConversationRegistry`. */
 const registryReads = (conversations: ConversationRegistry) => ({
   require: Effect.fn('Conversations.require')(function* (chat: string) {
-    return yield* sync(() => conversations.require(chat))
+    return yield* attemptSync(() => conversations.require(chat))
   }),
   requireOpen: Effect.fn('Conversations.requireOpen')(function* (chat: string) {
-    return yield* sync(() => conversations.requireOpen(chat))
+    return yield* attemptSync(() => conversations.requireOpen(chat))
   }),
   kindOf: Effect.fn('Conversations.kindOf')(function* (chat: string) {
-    return yield* sync(() => conversations.kindOf(chat))
+    return yield* attemptSync(() => conversations.kindOf(chat))
   }),
   spawnerSession: Effect.fn('Conversations.spawnerSession')(function* (chat: string) {
-    return yield* sync(() => conversations.spawnerSession(chat))
+    return yield* attemptSync(() => conversations.spawnerSession(chat))
   }),
   view: Effect.fn('Conversations.view')(function* (chat: string) {
-    return Option.fromNullishOr(yield* instanceCall(() => conversations.view(chat)))
+    return Option.fromNullishOr(yield* attempt(() => conversations.view(chat)))
   }),
   list: Effect.withSpan(
-    instanceCall(() => conversations.list()),
+    attempt(() => conversations.list()),
     'Conversations.list',
   ),
   helperReference: Effect.fn('Conversations.helperReference')(function* (chat: string) {
-    return yield* instanceCall(() => conversations.helperReference(chat))
+    return yield* attempt(() => conversations.helperReference(chat))
   }),
   openIn: Effect.fn('Conversations.openIn')(function* (topic: number) {
-    return yield* sync(() => conversations.openIn(topic))
+    return yield* attemptSync(() => conversations.openIn(topic))
   }),
   recallAt: Effect.fn('Conversations.recallAt')(function* (chat: string, entry: number) {
-    return yield* sync(() => conversations.recallAt(chat, entry))
+    return yield* attemptSync(() => conversations.recallAt(chat, entry))
   }),
   recallLimit: Effect.fn('Conversations.recallLimit')(function* (session: string, size: number) {
-    return yield* sync(() => conversations.recallLimit(session, size))
+    return yield* attemptSync(() => conversations.recallLimit(session, size))
   }),
   history: Effect.fn('Conversations.history')(function* (chat: string, before: number) {
-    return yield* instanceCall(() => conversations.history(chat, before))
+    return yield* attempt(() => conversations.history(chat, before))
   }),
   subtree: Effect.fn('Conversations.subtree')(function* (chat: string) {
-    return yield* sync(() => conversations.subtree(chat))
+    return yield* attemptSync(() => conversations.subtree(chat))
   }),
 })
 
 /** The registry's new chats over the one `ConversationRegistry`: Threads, Topic Conversations and registrations. */
 const registryChats = (conversations: ConversationRegistry) => ({
   openConversation: Effect.withSpan(
-    instanceCall(() => conversations.openConversation()),
+    attempt(() => conversations.openConversation()),
     'Conversations.openConversation',
   ),
   registerSubagent: Effect.fn('Conversations.registerSubagent')(function* (
@@ -205,7 +201,7 @@ const registryChats = (conversations: ConversationRegistry) => ({
     exclusions: readonly HelperExclusion[] = [],
   ) {
     const now = yield* epochSeconds
-    return yield* sync(() => conversations.registerSubagent(session, parent, name, now, exclusions))
+    return yield* attemptSync(() => conversations.registerSubagent(session, parent, name, now, exclusions))
   }),
   registerPersona: Effect.fn('Conversations.registerPersona')(function* (
     session: string,
@@ -213,7 +209,7 @@ const registryChats = (conversations: ConversationRegistry) => ({
     name: string,
   ) {
     const now = yield* epochSeconds
-    return yield* instanceCall(() => conversations.registerPersona(session, parentChat, name, now))
+    return yield* attempt(() => conversations.registerPersona(session, parentChat, name, now))
   }),
   registerRoutine: Effect.fn('Conversations.registerRoutine')(function* (
     session: string,
@@ -222,7 +218,7 @@ const registryChats = (conversations: ConversationRegistry) => ({
     topic?: number,
   ) {
     const now = yield* epochSeconds
-    return yield* sync(() => conversations.registerRoutine(session, runId, title, now, topic))
+    return yield* attemptSync(() => conversations.registerRoutine(session, runId, title, now, topic))
   }),
 })
 
@@ -250,7 +246,7 @@ const threadStarts = (
     const started = Effect.gen(function* () {
       yield* operations.record(parent, operationId, { kind, origin: 'owner' })
       const now = yield* epochSeconds
-      const { view, existing } = yield* instanceCall(() => conversations.startThread(parent, operationId, anchor, now))
+      const { view, existing } = yield* attempt(() => conversations.startThread(parent, operationId, anchor, now))
       yield* operations.advance(parent, operationId, { state: 'settled', targetChat: view.id })
       yield* flows.record({ ...flow, chat: view.id, status: existing ? 'replayed' : 'ok' })
       return view
@@ -266,13 +262,13 @@ const threadStarts = (
     const { from, topic, operationId } = input
     if (operationId !== undefined) {
       if (from !== undefined) return yield* startThread(from.conversation, operationId, { entry: from.entry })
-      const channel = yield* sync(() => chats.conversationOf(topic ?? PERSONAL_TOPIC))
+      const channel = yield* attemptSync(() => chats.conversationOf(topic ?? PERSONAL_TOPIC))
       return yield* startThread(channel, operationId, 'empty')
     }
     const now = yield* epochSeconds
-    if (from !== undefined) return yield* instanceCall(() => conversations.branch(from.conversation, from.entry, now))
-    const channel = yield* sync(() => chats.conversationOf(topic ?? PERSONAL_TOPIC))
-    return yield* instanceCall(() => conversations.createIn(channel, now))
+    if (from !== undefined) return yield* attempt(() => conversations.branch(from.conversation, from.entry, now))
+    const channel = yield* attemptSync(() => chats.conversationOf(topic ?? PERSONAL_TOPIC))
+    return yield* attempt(() => conversations.createIn(channel, now))
   })
   return { startThread, create }
 }
@@ -310,7 +306,7 @@ const shareBackWith = (
     const flow = { flow: 'share', via: 'tool', actor: 'agent', chat: thread, operationId: requestId } as const
     const shared = Effect.gen(function* () {
       const at = yield* Clock.currentTimeMillis
-      const { chat, write, sharedWith } = yield* sync(() => conversations.shareBack(thread, note, requestId, at))
+      const { chat, write, sharedWith } = yield* attemptSync(() => conversations.shareBack(thread, note, requestId, at))
       yield* operations.passiveWrite(chat, write)
       yield* flows.record({ ...flow, parentChat: chat, status: 'ok' })
       return sharedWith
@@ -324,36 +320,36 @@ const registryWrites = (
   flows: FlowEvents['Service'],
 ) => ({
   touched: Effect.fn('Conversations.touched')(function* (chats: readonly string[]) {
-    return yield* sync(() => conversations.touched(chats))
+    return yield* attemptSync(() => conversations.touched(chats))
   }),
   reportRoutine: Effect.fn('Conversations.reportRoutine')(function* (report: RoutineReport) {
-    const { chat, write } = yield* sync(() => conversations.routineReport(report))
+    const { chat, write } = yield* attemptSync(() => conversations.routineReport(report))
     yield* operations.passiveWrite(chat, write)
   }),
   shareBack: shareBackWith(conversations, operations, flows),
   announce: Effect.fn('Conversations.announce')(function* (thread: string) {
     const at = yield* Clock.currentTimeMillis
-    const owed = yield* sync(() => conversations.announcement(thread, at))
+    const owed = yield* attemptSync(() => conversations.announcement(thread, at))
     if (owed === undefined) return false
     yield* operations.passiveWrite(owed.chat, owed.write)
-    return yield* sync(() => conversations.announced(thread))
+    return yield* attemptSync(() => conversations.announced(thread))
   }),
   writeEntry: Effect.fn('Conversations.writeEntry')(function* (chat: string, requestId: string, entry: EntryDraft) {
     const submission = yield* operations.passiveWrite(chat, { requestId, entry })
     return { placed: placedOf(submission) }
   }),
   nameIfUntitled: Effect.fn('Conversations.nameIfUntitled')(function* (thread: string) {
-    return yield* instanceCall(() => conversations.nameIfUntitled(thread))
+    return yield* attempt(() => conversations.nameIfUntitled(thread))
   }),
   update: Effect.fn('Conversations.update')(function* (chat: string, change: UpdateConversation) {
     const now = yield* epochSeconds
-    const updating = instanceCall(() => conversations.update(chat, change, now))
+    const updating = attempt(() => conversations.update(chat, change, now))
     if (change.closed !== true) return yield* updating
     return yield* closing(flows, chat, 'owner', updating, (updated) => updated.closed.length)
   }),
   markRead: Effect.fn('Conversations.markRead')(function* (chat: string) {
     const now = yield* epochSeconds
-    return yield* sync(() => conversations.markRead(chat, now))
+    return yield* attemptSync(() => conversations.markRead(chat, now))
   }),
   close: Effect.fn('Conversations.close')(function* (chat: string, by: 'owner' | 'done') {
     const now = yield* epochSeconds
@@ -361,12 +357,12 @@ const registryWrites = (
       flows,
       chat,
       by,
-      instanceCall(() => conversations.close(chat, by, now)),
+      attempt(() => conversations.close(chat, by, now)),
       (closed) => closed.length,
     )
   }),
   stopSubagents: Effect.fn('Conversations.stopSubagents')(function* (chat: string) {
-    return yield* instanceCall(() => conversations.stopSubagents(chat))
+    return yield* attempt(() => conversations.stopSubagents(chat))
   }),
 })
 
@@ -376,7 +372,7 @@ const registryWrites = (
  */
 const placedOf = (submission: Submission) =>
   Effect.map(
-    instanceCall(() => submission.wait(BACKGROUND)),
+    attempt(() => submission.wait(BACKGROUND)),
     (settled) =>
       settled.status === 'done' && settled.entry !== undefined ? Option.some(Number(settled.entry)) : Option.none(),
   )
@@ -426,7 +422,7 @@ const MovesAdapter = Layer.effect(
         const moved = Effect.gen(function* () {
           const { existing } = yield* operations.record(chat, input.operationId, { kind: 'move', origin: 'owner' })
           const now = yield* epochSeconds
-          const receipt = yield* instanceCall(() => moves.move(chat, input, now))
+          const receipt = yield* attempt(() => moves.move(chat, input, now))
           yield* operations.advance(chat, input.operationId, moveEnd(receipt))
           const status =
             receipt.state === 'refused'
@@ -438,7 +434,7 @@ const MovesAdapter = Layer.effect(
         return yield* moved.pipe(Effect.tapError((error) => flows.record({ ...flow, ...failedFlow(error) })))
       }),
       moving: Effect.fn('Moves.moving')(function* (chat: string) {
-        return yield* sync(() => moves.moving(chat))
+        return yield* attemptSync(() => moves.moving(chat))
       }),
     })
   }),

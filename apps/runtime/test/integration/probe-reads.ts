@@ -8,13 +8,12 @@ import type {
 import { AppError } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
+import { isAppError } from '../../src/http/errors.ts'
 import type { RpcResult } from '../../src/http/rpc.ts'
 import { type AgentFetch, type OwnerClient, ownerApi, workspaceSnapshot } from '../owner-client.ts'
 import type { PersonalAgentProbe } from './worker.ts'
 
 type Probe = DurableObjectStub<PersonalAgentProbe>
-
-const isAppError = Schema.is(AppError)
 
 /**
  * One owner API call against `agent`, answered in the shape of the owner RPC method it replaces: `{ ok: true, value }`,

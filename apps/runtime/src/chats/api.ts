@@ -26,7 +26,7 @@ import { composerOptions } from '../composer.ts'
 import { ownerQueue, removeOwnerQueuedInput } from '../conversation-queue.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { Retrieval } from '../retrieval/service.ts'
-import { instanceCall } from './instance.ts'
+import { attempt } from '../http/errors.ts'
 import { Conversations } from './service.ts'
 import { moveToThread } from './mover.ts'
 import { startThread } from './thread-heads.ts'
@@ -91,7 +91,7 @@ const setCapability = ({ params, payload }: ChatWrite<CapabilityChange>) => chan
  */
 const snapshot = ({ params }: ChatRequest) =>
   Effect.flatMap(registeredConversation(params.id), (session) =>
-    AgentInput.use(({ harness }) => instanceCall(() => sessionSnapshot(harness, session))),
+    AgentInput.use(({ harness }) => attempt(() => sessionSnapshot(harness, session))),
   )
 
 /** A page of a registered chat's history before entry `before`. */

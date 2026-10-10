@@ -16,7 +16,7 @@ import type { RuntimeEnv } from '../../env.ts'
 import { logEvent } from '../../observability/logger.ts'
 import { expectedFailure, reportAndRecover } from '../../observability/report.ts'
 import { FlowPointFailure, agentHash, flowPoint } from '../../observability/ae.ts'
-import { Unauthenticated, toAppError } from '../errors.ts'
+import { Unauthenticated, attempt, toAppError } from '../errors.ts'
 import { RequestContext } from './context.ts'
 
 /** The account's own records the Worker answers from: D1 and the payment provider, never the agent. */
@@ -64,10 +64,6 @@ export const crashPoint = (
 const refused = (code: BillingRefused['code']) =>
   Effect.fail(expectedFailure(new BillingRefused({ code }), code === 'billing_unavailable' ? 'lower' : 'skip'))
 
-/** A promise of the auth store, its failure an `AppError` (an unexpected one reported by `toAppError`). */
-const stored = <A>(read: () => Promise<A>): Effect.Effect<A, AppError> =>
-  Effect.tryPromise({ try: read, catch: toAppError })
-
 /** The records as the deployment keeps them: the auth D1 and, when it is configured, the payment provider. */
 export const accountRecords = (env: RuntimeEnv): AccountRecords => {
   const store = makeBillingStore(env.AUTH_DB)
@@ -85,8 +81,8 @@ export const accountRecords = (env: RuntimeEnv): AccountRecords => {
               catch: (cause) => new FlowPointFailure({ step: 'write', cause }),
             })
           }),
-    clients: (userId) => stored(() => listInboundClients(env, userId)),
-    revokeClient: (userId, clientId) => stored(() => revokeInboundClient(env, userId, clientId)),
+    clients: (userId) => attempt(() => listInboundClients(env, userId)),
+    revokeClient: (userId, clientId) => attempt(() => revokeInboundClient(env, userId, clientId)),
     billingState: (userId) =>
       Effect.map(planOf(store, userId, stage, billingMode(env)), (plan) => ({
         ...plan,

@@ -1,6 +1,7 @@
 import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
-import { epochSeconds, instanceCall } from './chats/instance.ts'
+import { epochSeconds } from './chats/instance.ts'
+import { attempt } from './http/errors.ts'
 import { Chats } from './chats/service.ts'
 import { Models } from './models.ts'
 import { MODEL_PROVIDER } from './pi/model.ts'
@@ -13,7 +14,7 @@ export const useModel = (harness: PiHarness, applied: Applied, session: string) 
   Effect.gen(function* () {
     const id = yield* (yield* Models).current
     if (applied.get(session) === id) return
-    yield* instanceCall(() => harness.session(session).setModel({ provider: MODEL_PROVIDER, id }))
+    yield* attempt(() => harness.session(session).setModel({ provider: MODEL_PROVIDER, id }))
     applied.set(session, id)
   })
 

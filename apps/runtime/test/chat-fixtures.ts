@@ -3,7 +3,7 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { Budget, type ModelBudget } from '../src/budget.ts'
 import type { ChatDirectory } from '../src/chats/directory.ts'
-import { toAppError } from '../src/http/errors.ts'
+import { attempt, attemptSync } from '../src/http/errors.ts'
 import { makeChatOperations } from '../src/chats/operations.ts'
 import { ChatOperations } from '../src/chats/service.ts'
 import { ChatsLive } from '../src/layers/conversation.ts'
@@ -37,9 +37,9 @@ export const portServices = ({ db, chats, harness, budget, models, flows = FlowE
     Layer.succeed(
       Budget,
       Budget.of({
-        today: (now) => Effect.tryPromise({ try: () => budget.today(now), catch: toAppError }),
+        today: (now) => attempt(() => budget.today(now)),
         record: (use, now, model) => Effect.sync(() => budget.record(use, now, model)),
-        require: (now) => Effect.tryPromise({ try: () => budget.require(now), catch: toAppError }),
+        require: (now) => attempt(() => budget.require(now)),
       }),
     ),
     Layer.succeed(
@@ -47,7 +47,7 @@ export const portServices = ({ db, chats, harness, budget, models, flows = FlowE
       Models.of({
         current: Effect.sync(() => models.current()),
         choice: Effect.sync(() => models.choice()),
-        choose: (modelId, now) => Effect.try({ try: () => models.choose(modelId, now), catch: toAppError }),
+        choose: (modelId, now) => attemptSync(() => models.choose(modelId, now)),
       }),
     ),
   )

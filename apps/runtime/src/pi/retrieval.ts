@@ -3,7 +3,7 @@ import { type JsonObject, type RetrievalSource, SourcesDetails } from '@goblin/c
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { requireBudget } from '../budget.ts'
-import { NotFound, toAppError } from '../http/errors.ts'
+import { NotFound, attempt } from '../http/errors.ts'
 import { Retrieval, autoUseId } from '../retrieval/service.ts'
 import { sourcesText } from '../retrieval/text.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
@@ -20,7 +20,6 @@ const GUIDE = [
 ].join(' ')
 
 /** A call into Pi's hook API (the task's memo), its failure as an `AppError`. */
-const piCall = <A>(call: () => Promise<A>) => Effect.tryPromise({ try: call, catch: toAppError })
 
 const Input = Schema.Struct({
   query: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500)),
@@ -91,13 +90,13 @@ function automatic(run: RunProgram, api: HookApi, context: PiContext): Promise<r
       const input = yield* retrieval.latestInput(session)
       if (input === undefined) return undefined
       const key = `goblin.retrieval:${input.entry}`
-      const memo = yield* piCall(() => api.memo<string | null>(key, context))
+      const memo = yield* attempt(() => api.memo<string | null>(key, context))
       if (memo !== undefined) return memo === null ? undefined : (yield* retrieval.recorded(memo))?.sources
       const affordable = yield* requireBudget.pipe(Effect.match({ onFailure: () => false, onSuccess: () => true }))
       const use = affordable
         ? yield* retrieval.automatic({ session, chat: place.chat }, input, context.abortSignal)
         : undefined
-      yield* piCall(() =>
+      yield* attempt(() =>
         api.memo<string | null>(key, use === undefined ? null : autoUseId(session, input.entry), context),
       )
       return use?.sources

@@ -8,7 +8,7 @@ import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { type AppError, InvalidInput, UpstreamMcp, toAppError } from '../http/errors.ts'
+import { type AppError, InvalidInput, UpstreamMcp, attemptSync } from '../http/errors.ts'
 import { logEvent } from '../observability/logger.ts'
 import { safeErrorType } from '../observability/report.ts'
 import { userEndpoint } from './endpoint.ts'
@@ -130,7 +130,7 @@ export const searchRegistry = (registry: Registry, query: string, fetcher: Fetch
 /** Check that `raw` is a registry speaking the generic API, and name it by its host. */
 export const probeRegistry = (raw: string, fetcher: FetchLike): Effect.Effect<Registry, AppError> =>
   Effect.gen(function* () {
-    const base = yield* Effect.try({ try: () => userEndpoint(raw), catch: toAppError })
+    const base = yield* attemptSync(() => userEndpoint(raw))
     yield* readPage(new URL('/v0.1/servers?limit=1', base.origin), fetcher)
     return { url: base.origin, title: base.hostname }
   })
@@ -194,13 +194,13 @@ export const makeCatalog = ({ added, fetch: fetcher }: CatalogPorts) => {
     if ((yield* registries).some((item) => item.url === registry.url))
       return yield* new InvalidInput({ reason: 'already_added' })
     const now = yield* Clock.currentTimeMillis
-    yield* Effect.try({ try: () => added.add(registry, Math.floor(now / 1000)), catch: toAppError })
+    yield* attemptSync(() => added.add(registry, Math.floor(now / 1000)))
     return yield* registries
   })
   /** Stops searching a registry the owner added; the built-in ones stay, as do servers added from it. */
   const remove = Effect.fn('McpCatalog.remove')(function* (url: string) {
     if (!added.list().some((item) => item.url === url)) return yield* new InvalidInput({ reason: 'unknown_registry' })
-    yield* Effect.try({ try: () => added.remove(url), catch: toAppError })
+    yield* attemptSync(() => added.remove(url))
     return yield* registries
   })
   return { registries, search, add, remove }

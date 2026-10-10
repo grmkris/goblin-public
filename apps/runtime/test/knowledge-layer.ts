@@ -1,8 +1,7 @@
-import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import type { ChatDirectory } from '../src/chats/directory.ts'
 import { ChatOperations, Chats } from '../src/chats/service.ts'
-import { toAppError } from '../src/http/errors.ts'
+import { attemptSync } from '../src/http/errors.ts'
 import { KnowledgeLive } from '../src/layers/knowledge.ts'
 import { learnerOver, skillsOver } from '../src/layers/skills.ts'
 import { type ChatMemories, MemoriesInstance } from '../src/memory/memory.ts'
@@ -45,8 +44,7 @@ export const knowledgeOver = (given: Given) => {
           ? Layer.succeed(Chats, unread)
           : Layer.mock(Chats)({
               primary: chats.primary(),
-              conversationAbove: (chat: string) =>
-                Effect.try({ try: () => chats.conversationAbove(chat), catch: toAppError }),
+              conversationAbove: (chat: string) => attemptSync(() => chats.conversationAbove(chat)),
             }),
         Layer.succeed(MemoriesInstance, given.memories ?? unread),
         Layer.succeed(TranscriptsInstance, unread),

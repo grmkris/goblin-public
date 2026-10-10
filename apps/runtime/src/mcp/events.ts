@@ -1,6 +1,6 @@
 import * as Effect from 'effect/Effect'
 import type { EventHealth } from '@goblin/contracts'
-import { type AppError, InvalidInput, NotFound, toAppError } from '../http/errors.ts'
+import { type AppError, InvalidInput, NotFound, attempt, attemptSync } from '../http/errors.ts'
 import type { CredentialCipher } from './cipher.ts'
 import type { McpConnectionManager } from './connection.ts'
 import { EventsClient, envelopeAad, type EventClientOptions } from './events/client.ts'
@@ -18,9 +18,6 @@ import { challengeResponse, isOccurrence, type WebhookHeaders } from './events/w
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/client/validators/cf-worker'
 import type { JsonSchemaType } from '@modelcontextprotocol/client'
 
-/** The engine's async work as an Effect: a failure is the `AppError` it threw, anything else `Internal`. */
-const effectOf = <A>(run: () => Promise<A>): Effect.Effect<A, AppError> =>
-  Effect.tryPromise({ try: run, catch: toAppError })
 export type SubscribeConsumer = {
   readonly consumerId: string
   readonly revision: number
@@ -74,12 +71,12 @@ export class McpEvents {
       }))
   }
   list(serverId: string, name: string, args: Record<string, unknown>) {
-    return effectOf(() => this.#client.list(serverId, name, args))
+    return attempt(() => this.#client.list(serverId, name, args))
   }
   subscribe(
     input: SubscribeConsumer,
   ): Effect.Effect<{ readonly subscriptionId: string; readonly status: string }, AppError> {
-    return effectOf(async () => {
+    return attempt(async () => {
       await this.#authorize()
       const existing = this.store.consumer(input.consumerId, input.revision)
       const args = canonicalArguments(input.arguments)
@@ -120,27 +117,25 @@ export class McpEvents {
   ack(
     input: Pick<Receipt, 'subscriptionId' | 'webhookId' | 'consumerId' | 'revision' | 'operationId'>,
   ): Effect.Effect<void, AppError> {
-    return Effect.try({ try: () => this.store.ack(input, this.#now()), catch: toAppError })
+    return attemptSync(() => this.store.ack(input, this.#now()))
   }
   /** `write`, a synchronous write to the same database, and the acknowledgement, in one short transaction. */
   ackWith(
     input: Pick<Receipt, 'subscriptionId' | 'webhookId' | 'consumerId' | 'revision' | 'operationId'>,
     write: () => void,
   ): Effect.Effect<void, AppError> {
-    return Effect.try({
-      try: () =>
-        this.store.db.transaction(() => {
-          write()
-          this.store.ack(input, this.#now())
-        }),
-      catch: toAppError,
-    })
+    return attemptSync(() =>
+      this.store.db.transaction(() => {
+        write()
+        this.store.ack(input, this.#now())
+      }),
+    )
   }
   unsubscribe(input: {
     readonly consumerId: string
     readonly revision: number
   }): Effect.Effect<{ retired: boolean; remoteCleanup: boolean }, AppError> {
-    return effectOf(() => this.#unsubscribe(input))
+    return attempt(() => this.#unsubscribe(input))
   }
   async #unsubscribe(input: {
     readonly consumerId: string
@@ -171,7 +166,7 @@ export class McpEvents {
   }
   /** Disconnect/revoke cleanup runs while the originating authorization is still available. */
   disableServer(serverId?: string): Effect.Effect<void, AppError> {
-    return effectOf(async () => {
+    return attempt(async () => {
       for (const row of this.store.list().filter((r) => serverId === undefined || r.serverId === serverId))
         for (const binding of this.store.bindings(row.id)) await this.#unsubscribe(binding)
     })
@@ -221,11 +216,11 @@ export class McpEvents {
       authorized: this.#authorize,
       persist: (row, id, body, envelope) => this.#persist(row, id, body, envelope),
     })
-    return effectOf(() => ingress.receive(input))
+    return attempt(() => ingress.receive(input))
   }
   /** One sweep per isolate; unfinished rows retain their independent receipts across reconstruction. */
   dispatch(): Effect.Effect<void, AppError> {
-    return effectOf(() => this.#dispatch())
+    return attempt(() => this.#dispatch())
   }
   /** One dispatch at a time: a caller while one runs joins it. */
   async #dispatch(): Promise<void> {
@@ -237,7 +232,7 @@ export class McpEvents {
   }
   /** One maintenance sweep at a time: a caller while one runs joins it. */
   maintain(): Effect.Effect<void, AppError> {
-    return effectOf(async () => {
+    return attempt(async () => {
       this.#maintaining ??= this.#maintenance().finally(() => {
         this.#maintaining = undefined
       })

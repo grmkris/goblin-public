@@ -13,8 +13,7 @@ import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import type { AppRegistry } from '../apps/registry.ts'
 import type { AgentApps } from '../agent-apps/engine.ts'
-import { type AppError, Conflict, Forbidden, InvalidInput, NotFound } from '../http/errors.ts'
-import { fromStore } from '../organize/effects.ts'
+import { type AppError, Conflict, Forbidden, InvalidInput, NotFound, attemptSync } from '../http/errors.ts'
 import { Changes } from '../runtime/changes.ts'
 import { appHomeOperations } from '../storage/schema.ts'
 import { applyHomeOperations, ownerTargets, touchedTiles } from './operations.ts'
@@ -52,17 +51,17 @@ export class Home extends Context.Service<
     Effect.gen(function* () {
       const changes = yield* Changes
       const changed = Effect.flatMap(
-        fromStore(() => store.layout()),
+        attemptSync(() => store.layout()),
         (layout) => changes.publish('home.changed', { revision: layout.revision }),
       )
       return Home.of({
-        read: fromStore(() => store.read()).pipe(Effect.withSpan('Home.read')),
-        layout: fromStore(() => store.layout()).pipe(Effect.withSpan('Home.layout')),
+        read: attemptSync(() => store.read()).pipe(Effect.withSpan('Home.read')),
+        layout: attemptSync(() => store.layout()).pipe(Effect.withSpan('Home.layout')),
         needsAppVerification: Effect.fn('Home.needsAppVerification')(function* (input: HomeEdit, actor: Actor) {
-          return yield* fromStore(() => store.needsAppVerification(input, actor))
+          return yield* attemptSync(() => store.needsAppVerification(input, actor))
         }),
         edit: Effect.fn('Home.edit')(function* (input: HomeEdit, actor: Actor) {
-          const result = yield* fromStore(() => store.edit(input, actor))
+          const result = yield* attemptSync(() => store.edit(input, actor))
           if (result.kind === 'applied') yield* changed
           return result
         }),

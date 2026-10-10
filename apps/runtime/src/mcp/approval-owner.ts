@@ -4,7 +4,7 @@ import * as Option from 'effect/Option'
 import { Entitlements } from '../billing/gates.ts'
 import { type OwnerSubmitServices, sendOwnerMessage } from '../agent-program.ts'
 import { Chats } from '../chats/service.ts'
-import { type AppError, NotFound, toAppError } from '../http/errors.ts'
+import { type AppError, NotFound, attempt } from '../http/errors.ts'
 import type { RoutineRunner } from '../routines/runner.ts'
 import { RoutineRuns } from '../routines/service.ts'
 import { AgentInput } from '../runtime/input.ts'
@@ -28,8 +28,7 @@ const continuation =
   (session: string, text: string, operationId: string) =>
     Effect.gen(function* () {
       const record = yield* (yield* RoutineRuns).session(session)
-      if (record?.state === 'running')
-        return yield* Effect.tryPromise({ try: () => routines.start(record, { text, operationId }), catch: toAppError })
+      if (record?.state === 'running') return yield* attempt(() => routines.start(record, { text, operationId }))
       const chat = yield* (yield* Chats).chatOf(session)
       if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })
       return yield* submit(chat.value, text, operationId)

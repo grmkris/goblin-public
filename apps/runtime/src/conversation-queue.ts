@@ -3,7 +3,7 @@ import type { PiHarness } from 'agents/harness/pi'
 import { ConversationQueue, type QueueRemoval, type QueueRemovalResult } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { instanceCall } from './chats/instance.ts'
+import { attempt } from './http/errors.ts'
 import { Conversations } from './chats/service.ts'
 import { RoutineRuns } from './routines/service.ts'
 import { BACKGROUND, conversationId, submissionId } from './pi/context.ts'
@@ -31,7 +31,7 @@ export const ownerQueue = (harness: PiHarness, thread: string) =>
   Effect.gen(function* () {
     const session = yield* ownerQueueSession(thread)
     if (session === undefined) return { inputs: [] }
-    return yield* instanceCall(async () => queuedInputs(await harness.pi(), session))
+    return yield* attempt(async () => queuedInputs(await harness.pi(), session))
   })
 
 const outcomes = {
@@ -54,5 +54,5 @@ export const removeOwnerQueuedInput = (harness: PiHarness, thread: string, input
   Effect.gen(function* () {
     const session = yield* ownerQueueSession(thread)
     if (session === undefined) return { status: 'not_found' as const }
-    return yield* instanceCall(async () => withdrawQueuedInput(await harness.pi(), session, input.submissionId))
+    return yield* attempt(async () => withdrawQueuedInput(await harness.pi(), session, input.submissionId))
   })

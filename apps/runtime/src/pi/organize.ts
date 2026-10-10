@@ -5,7 +5,7 @@ import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import type { StopRuntime } from '../agent-program.ts'
 import { Chats } from '../chats/service.ts'
-import { NotFound, toAppError } from '../http/errors.ts'
+import { NotFound, attempt } from '../http/errors.ts'
 import { Resident } from '../mcp/service.ts'
 import { createPersona, updatePersona } from '../personas/program.ts'
 import { defaultAvatar } from '../personas/registry.ts'
@@ -103,7 +103,7 @@ const topicTools = (run: RunProgram, runtime: OrganizeRuntime) => [
           const seed =
             chat === undefined || conversation === undefined
               ? undefined
-              : yield* Effect.tryPromise({ try: () => discussionSeed(conversation, chat, brief), catch: toAppError })
+              : yield* attempt(() => discussionSeed(conversation, chat, brief))
           return yield* createTopic({ name, operationId }, by, seed)
         }),
       )

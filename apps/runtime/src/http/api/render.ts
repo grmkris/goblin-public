@@ -2,14 +2,12 @@ import { AppError, Internal, InvalidInput, NotFound, envelopeOf, statusOf } from
 import * as Cause from 'effect/Cause'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
-import * as Schema from 'effect/Schema'
 import type * as Scope from 'effect/Scope'
 import * as HttpServerRequest from 'effect/http/HttpServerRequest'
 import * as HttpServerResponse from 'effect/http/HttpServerResponse'
 import * as HttpApiError from 'effect/http-api/HttpApiError'
+import { isAppError } from '../errors.ts'
 import type { RequestFacts } from './context.ts'
-
-const isAppError = Schema.is(AppError)
 
 /** Every API answer: never cached, never sniffed, and quoting the request's reference when there is one. */
 export const secured = (response: Response, ref: string | undefined): Response => {

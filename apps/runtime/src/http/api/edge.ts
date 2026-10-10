@@ -9,7 +9,7 @@ import { type LineLevel, LoggerLive, logEvent } from '../../observability/logger
 import { ReporterLive } from '../../observability/report.ts'
 import { readBytes } from '../body.ts'
 import { crossOrigin, forgedWrite } from '../csrf.ts'
-import { toAppError } from '../errors.ts'
+import { attempt, isAppError } from '../errors.ts'
 import { AccountApiLayer, AccountRequest, type AccountRecords } from './account.ts'
 import { RequestContext, type RequestFacts, requestFacts, routeNames, routeTemplate } from './context.ts'
 import { answer, refusal, secured } from './render.ts'
@@ -86,11 +86,8 @@ const admitUser = (request: Request, edge: Edge, plan: boolean): Effect.Effect<s
 
 /** A body read up to `limit` bytes; past it, `PayloadTooLarge`, as `readJson` refused it. */
 const bounded = (request: Request, limit: number): Effect.Effect<Uint8Array<ArrayBuffer> | null, AppError> =>
-  request.body === null
-    ? Effect.succeed(null)
-    : Effect.tryPromise({ try: () => readBytes(request, limit), catch: toAppError })
+  request.body === null ? Effect.succeed(null) : attempt(() => readBytes(request, limit))
 
-const isAppError = Schema.is(AppError)
 const decodeEnvelope = Schema.decodeUnknownOption(ErrorEnvelope)
 
 /** A failure's code, read from its envelope body; none for any other body. */
@@ -227,7 +224,7 @@ export const makeEdgeHttp: Effect.Effect<EdgeHttp> = Effect.gen(function* () {
         // A streamed body needs `duplex` outside workerd (Node, the unit tests); workerd ignores it and its types omit it.
         const init = { method: request.method, headers, body, duplex: 'half' }
         const forwarded = new Request(`https://agent${url.pathname}${url.search}`, init)
-        const response = yield* Effect.tryPromise({ try: () => edge.agent(userId).fetch(forwarded), catch: toAppError })
+        const response = yield* attempt(() => edge.agent(userId).fetch(forwarded))
         return secured(response, facts.ref)
       }),
     )

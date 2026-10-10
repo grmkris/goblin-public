@@ -3,7 +3,7 @@ import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { nowMillis } from '../clock.ts'
-import { toAppError } from '../http/errors.ts'
+import { attempt, attemptSync } from '../http/errors.ts'
 import { GrantStore } from '../mcp/grants.ts'
 import { McpHostInstance } from '../mcp/host.ts'
 import type { SkillRequestOptions } from '../mcp/types.ts'
@@ -15,11 +15,6 @@ import { SkillLibrary } from '../skills/library.ts'
 import { Learner, Skills } from '../skills/service.ts'
 import { SqliteDraftLog, SqliteSkillState } from '../skills/store.ts'
 
-/** A call into a shared instance's async code: a failure is the `AppError` it threw, anything else `Internal`. */
-const fromPromise = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: toAppError })
-/** The same for its synchronous code. */
-const fromSync = <A>(run: () => A) => Effect.try({ try: run, catch: toAppError })
-
 /** Skills from the owner's MCP libraries, through `library` (its listing cache is the one the agent keeps). */
 export const skillsOver = (library: SkillLibrary): Skills['Service'] =>
   Skills.of({
@@ -30,7 +25,7 @@ export const skillsOver = (library: SkillLibrary): Skills['Service'] =>
       return yield* Effect.sync(() => library.enabled(serverId))
     }),
     setEnabled: Effect.fn('Skills.setEnabled')(function* (serverId: string, enabled: boolean) {
-      yield* fromSync(() => library.setEnabled(serverId, enabled))
+      yield* attemptSync(() => library.setEnabled(serverId, enabled))
     }),
     invalidate: Effect.fn('Skills.invalidate')(function* (serverId: string, unavailable?: boolean) {
       yield* Effect.sync(() => library.invalidate(serverId, unavailable))
@@ -39,10 +34,10 @@ export const skillsOver = (library: SkillLibrary): Skills['Service'] =>
       options?: SkillRequestOptions,
       include?: (serverId: string) => boolean,
     ) {
-      return yield* fromPromise(() => library.catalog(options, include))
+      return yield* attempt(() => library.catalog(options, include))
     }),
     activate: Effect.fn('Skills.activate')(function* (session: string, handle: string, options?: SkillRequestOptions) {
-      return yield* fromPromise(() => library.activate(session, handle, options))
+      return yield* attempt(() => library.activate(session, handle, options))
     }),
     activateSelection: Effect.fn('Skills.activateSelection')(function* (
       session: string,
@@ -50,7 +45,7 @@ export const skillsOver = (library: SkillLibrary): Skills['Service'] =>
       uri: string,
       options: SkillRequestOptions,
     ) {
-      return yield* fromPromise(() => library.activateSelection(session, serverId, uri, options))
+      return yield* attempt(() => library.activateSelection(session, serverId, uri, options))
     }),
     read: Effect.fn('Skills.read')(function* (
       session: string,
@@ -58,7 +53,7 @@ export const skillsOver = (library: SkillLibrary): Skills['Service'] =>
       path: string,
       options?: SkillRequestOptions,
     ) {
-      return yield* fromPromise(() => library.read(session, handle, path, options))
+      return yield* attempt(() => library.read(session, handle, path, options))
     }),
   })
 
@@ -66,7 +61,7 @@ export const skillsOver = (library: SkillLibrary): Skills['Service'] =>
 export const learnerOver = (learner: SkillLearner): Learner['Service'] =>
   Learner.of({
     consider: Effect.fn('Learner.consider')(function* (conversation: ConversationId, signal?: AbortSignal) {
-      return yield* fromPromise(() => learner.consider(conversation, signal))
+      return yield* attempt(() => learner.consider(conversation, signal))
     }),
   })
 

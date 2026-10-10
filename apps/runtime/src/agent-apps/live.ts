@@ -5,7 +5,7 @@ import * as Exit from 'effect/Exit'
 import * as Layer from 'effect/Layer'
 import type { TokenUse } from '../budget-credits.ts'
 import { Budget } from '../budget.ts'
-import { InvalidInput, NotFound, toAppError } from '../http/errors.ts'
+import { InvalidInput, NotFound, attempt, attemptSync, toAppError } from '../http/errors.ts'
 import { CheapModel, ModelFailed, modelFailureText } from '../memory/model.ts'
 import { memoryModelId, modelOptions } from '../models.ts'
 import { KeyedLock } from '../observability/lock.ts'
@@ -20,8 +20,6 @@ import { AppEngine } from './service.ts'
 import { readJobInput } from './stored.ts'
 
 /** A step of the engine in the service's error channel, mapped as the programs' `attempt` did. */
-const step = <A>(work: () => Promise<A>) => Effect.tryPromise({ try: work, catch: toAppError })
-const stepSync = <A>(work: () => A) => Effect.try({ try: work, catch: toAppError })
 
 /** Holds an app's lock around a program: the runtime's KeyedLock, under the key the engine's own lock takes. */
 type Hold = (app: string) => <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
@@ -38,7 +36,7 @@ const dispatched = (hold: Hold, dispatch: AppDispatch, request: CallRequest) =>
 /** The owner runs a schedule's action now: its run, then how it went as the schedule's last run (never a failure). */
 const runJobNow = (hold: Hold, engine: AgentApps, app: string, action: string) =>
   Effect.gen(function* () {
-    const { input, op } = yield* stepSync(() => engine.jobs.startNow(app, action))
+    const { input, op } = yield* attemptSync(() => engine.jobs.startNow(app, action))
     const ran = yield* Effect.exit(
       Effect.flatMap(
         promised(async () => readJobInput(input)),
@@ -46,7 +44,7 @@ const runJobNow = (hold: Hold, engine: AgentApps, app: string, action: string) =
       ),
     )
     const outcome = Exit.isSuccess(ran) ? { ok: true as const } : { ok: false as const, error: thrownOf(ran.cause) }
-    yield* stepSync(() => engine.jobs.finishNow(app, action, outcome))
+    yield* attemptSync(() => engine.jobs.finishNow(app, action, outcome))
   })
 
 /** One change the owner makes to an agent app other than moving its home; the steps that change state hold its lock. */
@@ -60,16 +58,16 @@ const changeApp = (
     if (engine.store.app(app) === undefined) return yield* new NotFound({ what: `app ${app}` })
     switch (change.kind) {
       case 'rollback':
-        yield* hold(app)(step(() => engine.held.rollback(app, change.release)))
+        yield* hold(app)(attempt(() => engine.held.rollback(app, change.release)))
         return
       case 'pause':
-        yield* step(() => engine.jobs.pause(app, change.action, change.paused))
+        yield* attempt(() => engine.jobs.pause(app, change.action, change.paused))
         return
       case 'run':
         yield* runJobNow(hold, engine, app, change.action)
         return
       case 'power':
-        yield* stepSync(() => engine.answer(app, { kind: change.power, target: change.target }, change.allowed))
+        yield* attemptSync(() => engine.answer(app, { kind: change.power, target: change.target }, change.allowed))
     }
   })
 
@@ -86,12 +84,12 @@ const AppEngineLive = Layer.effect(
     const hold: Hold = (app) => locks.withLock(appKey(app))
     return AppEngine.of({
       info: Effect.fn('AppEngine.info')(function* (name: string) {
-        return yield* stepSync(() => engine.info(name))
+        return yield* attemptSync(() => engine.info(name))
       }),
-      summaries: stepSync(() => appSummaries(engine)).pipe(Effect.withSpan('AppEngine.summaries')),
+      summaries: attemptSync(() => appSummaries(engine)).pipe(Effect.withSpan('AppEngine.summaries')),
       detail: Effect.fn('AppEngine.detail')(function* (name: string) {
         const now = yield* Clock.currentTimeMillis
-        return yield* step(() => appDetail(engine, name, now))
+        return yield* attempt(() => appDetail(engine, name, now))
       }),
       change: Effect.fn('AppEngine.change')(function* (
         name: string,
@@ -100,20 +98,20 @@ const AppEngineLive = Layer.effect(
         yield* changeApp(hold, engine, name, change)
       }),
       moveHome: Effect.fn('AppEngine.moveHome')(function* (name: string, session: string) {
-        yield* stepSync(() => engine.moveHome(name, session))
+        yield* attemptSync(() => engine.moveHome(name, session))
       }),
       remove: Effect.fn('AppEngine.remove')(function* (name: string) {
-        yield* stepSync(() => engine.dispatch.active(name))
-        yield* hold(name)(step(() => engine.held.remove(name)))
+        yield* attemptSync(() => engine.dispatch.active(name))
+        yield* hold(name)(attempt(() => engine.held.remove(name)))
       }),
       snapshot: Effect.fn('AppEngine.snapshot')(function* (name: string) {
-        return yield* stepSync(() => engine.snapshot(name))
+        return yield* attemptSync(() => engine.snapshot(name))
       }),
       launch: Effect.fn('AppEngine.launch')(function* (name: string) {
-        return yield* stepSync(() => engine.launch(name))
+        return yield* attemptSync(() => engine.launch(name))
       }),
       viewCall: Effect.fn('AppEngine.viewCall')(function* (name: string, member: string, input: unknown, op: string) {
-        const actions = yield* stepSync(() => engine.dispatch.manifest(engine.dispatch.active(name)).actions)
+        const actions = yield* attemptSync(() => engine.dispatch.manifest(engine.dispatch.active(name)).actions)
         if (actions[member] === undefined)
           return yield* new InvalidInput({
             reason: `${name} has no action ${member}; a view calls actions and reads the state`,
@@ -127,10 +125,10 @@ const AppEngineLive = Layer.effect(
           ),
         )
         if (refused !== undefined) return { ok: false as const, error: refused }
-        return { ok: true as const, ...(yield* stepSync(() => engine.snapshot(name))) }
+        return { ok: true as const, ...(yield* attemptSync(() => engine.snapshot(name))) }
       }),
       viewError: Effect.fn('AppEngine.viewError')(function* (name: string, message: string) {
-        return yield* stepSync(() => engine.viewError(name, message))
+        return yield* attemptSync(() => engine.viewError(name, message))
       }),
     })
   }),

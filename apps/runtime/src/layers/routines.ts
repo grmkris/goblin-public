@@ -4,7 +4,7 @@ import { creditRates } from '../budget-credits.ts'
 import { TelegramChannel } from '../channel/channel.ts'
 import { ChatsInstance } from '../chats/directory.ts'
 import { Channel } from '../channel/service.ts'
-import { toAppError } from '../http/errors.ts'
+import { attempt, attemptSync } from '../http/errors.ts'
 import { Cipher } from '../mcp/cipher.ts'
 import type { RoutineRunStore } from '../routines/runs.ts'
 import { RoutineRunStore as RunStore } from '../routines/runs.ts'
@@ -19,13 +19,13 @@ type Method<Args extends readonly unknown[], A> = (...args: Args) => A
 /** A store method that throws its typed failures: an `AppError` (anything else `Internal`), never a defect. */
 const trySync = <Args extends readonly unknown[], A>(name: string, method: Method<Args, A>) =>
   Effect.fn(name)(function* (...args: Args) {
-    return yield* Effect.try({ try: () => method(...args), catch: toAppError })
+    return yield* attemptSync(() => method(...args))
   })
 
 /** An async method, its rejection an `AppError` the same way. */
 const tryAsync = <Args extends readonly unknown[], A>(name: string, method: Method<Args, Promise<A>>) =>
   Effect.fn(name)(function* (...args: Args) {
-    return yield* Effect.tryPromise({ try: () => method(...args), catch: toAppError })
+    return yield* attempt(() => method(...args))
   })
 
 /** A method that is an Effect already: only named for its traces. */

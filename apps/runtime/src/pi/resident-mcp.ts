@@ -7,7 +7,7 @@ import * as Option from 'effect/Option'
 import { Apps } from '../apps/service.ts'
 import type { CapabilityScope } from '../capabilities/profiles.ts'
 import { Capabilities } from '../capabilities/service.ts'
-import { type GrantDenied, NotFound, toAppError } from '../http/errors.ts'
+import { type GrantDenied, NotFound, attempt } from '../http/errors.ts'
 import { toolAppResource, toolOffered } from '../mcp/connection.ts'
 import { grantRequiredResult, mcpModelResult } from '../mcp/extension.ts'
 import { McpConnections, McpGrants, McpServers, requireResident } from '../mcp/service.ts'
@@ -20,7 +20,7 @@ import { McpCallInput, holdModelCall, approvalResult } from '../mcp/approval-req
 const executionAuthority = (session: string, authorize?: (session: string) => Promise<void>) =>
   Effect.gen(function* () {
     yield* requireResident
-    if (authorize !== undefined) yield* Effect.tryPromise({ try: () => authorize(session), catch: toAppError })
+    if (authorize !== undefined) yield* attempt(() => authorize(session))
   })
 
 /** Runs a program on the Agent DO's services; failures reject with the typed `AppError` (the bridge's `run`). */

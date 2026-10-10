@@ -7,7 +7,7 @@ import * as Exit from 'effect/Exit'
 import * as Option from 'effect/Option'
 import { type Applied, useModel } from '../agent-model.ts'
 import { Budget } from '../budget.ts'
-import { type AppError, toAppError } from '../http/errors.ts'
+import { type AppError, attempt, attemptSync, toAppError } from '../http/errors.ts'
 import { Models } from '../models.ts'
 import { FlowEvents } from '../observability/flows.ts'
 import { KeyedLock } from '../observability/lock.ts'
@@ -18,7 +18,7 @@ import type { RoutineController } from '../routines/controller.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { type ChatDirectory, SessionId } from './directory.ts'
-import { epochSeconds, instanceCall } from './instance.ts'
+import { epochSeconds } from './instance.ts'
 import {
   type ReceiptChange,
   type ReceiptInput,
@@ -28,9 +28,6 @@ import {
   relatedReceipts,
 } from './receipts.ts'
 import { type Admission, type Admitted, ChatOperations, type PassiveWrite, type Submit } from './service.ts'
-
-/** A synchronous read or write of the receipts, its throw a typed `AppError` (`NotFound` for an unknown chat). */
-const sql = <A>(run: () => A) => Effect.try({ try: run, catch: toAppError })
 
 /** A Pi call's failure as the programs take one: Pi's own error through `toAppError`. */
 const piFailure = (failure: PiFailure) => Effect.fail(toAppError(failure.cause))
@@ -45,20 +42,20 @@ const chatLock =
 const receiptsOf = (db: Db['Service'], chats: ChatDirectory) => ({
   record: Effect.fn('ChatOperations.record')(function* (chat: string, operationId: string, receipt: ReceiptInput) {
     const now = yield* epochSeconds
-    const admitted = yield* sql(() =>
+    const admitted = yield* attemptSync(() =>
       admitReceipt(db, { chat, operationId, receipt, session: () => chats.session(chat), now }),
     )
     return { session: SessionId(admitted.session), existing: admitted.existing } satisfies Admitted
   }),
   operation: Effect.fn('ChatOperations.operation')(function* (chat: string, operationId: string) {
-    const found = Option.fromNullishOr(yield* sql(() => receiptIn(db, chat, operationId)))
+    const found = Option.fromNullishOr(yield* attemptSync(() => receiptIn(db, chat, operationId)))
     return Option.map(found, (receipt) => SessionId(receipt.session))
   }),
   receipt: Effect.fn('ChatOperations.receipt')(function* (chat: string, operationId: string) {
-    return Option.fromNullishOr(yield* sql(() => receiptIn(db, chat, operationId)))
+    return Option.fromNullishOr(yield* attemptSync(() => receiptIn(db, chat, operationId)))
   }),
   related: Effect.fn('ChatOperations.related')(function* (operationId: string) {
-    return yield* sql(() => relatedReceipts(db, operationId))
+    return yield* attemptSync(() => relatedReceipts(db, operationId))
   }),
   advance: Effect.fn('ChatOperations.advance')(function* (
     chat: string,
@@ -66,7 +63,7 @@ const receiptsOf = (db: Db['Service'], chats: ChatDirectory) => ({
     change: Omit<ReceiptChange, 'now'>,
   ) {
     const now = yield* epochSeconds
-    yield* sql(() => advanceReceipt(db, chat, operationId, { ...change, now }))
+    yield* attemptSync(() => advanceReceipt(db, chat, operationId, { ...change, now }))
   }),
 })
 
@@ -119,7 +116,7 @@ const admitWith =
     const refuse = (error: unknown) =>
       receipts.advance(chat, operationId, { state: 'refused', reason: safeErrorType(error) })
     const admitted = Effect.gen(function* () {
-      yield* sql(() => requireOpen(chat))
+      yield* attemptSync(() => requireOpen(chat))
       const found = yield* receipts.record(chat, operationId, receipt)
       const value = yield* then(found).pipe(Effect.tapError(refuse))
       yield* receipts.advance(chat, operationId, { state: 'submitted' })
@@ -148,7 +145,7 @@ const sendWith =
       const { operationId, content, answers, relay } = input
       return yield* admit(input, ({ session }) =>
         Effect.gen(function* () {
-          if (answers !== undefined && (yield* instanceCall(() => routines.answer(session, operationId, answers))))
+          if (answers !== undefined && (yield* attempt(() => routines.answer(session, operationId, answers))))
             return { session, operationId, accepted: true } satisfies PiReceipt
           yield* useModel(harness, applied, session).pipe(Effect.provideService(Models, models))
           if (relay !== undefined) return yield* relay(session)

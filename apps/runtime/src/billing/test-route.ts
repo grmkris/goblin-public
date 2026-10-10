@@ -2,13 +2,12 @@
 import { Clock, Effect, Schema } from 'effect'
 import type { RuntimeEnv } from '../env.ts'
 import { readJson } from '../http/body.ts'
-import { toAppError } from '../http/errors.ts'
+import { attempt } from '../http/errors.ts'
 import { processStored, type BillingDeps } from './events.ts'
 import { planOf } from './reconcile.ts'
 import { runBillingCron } from './cron.ts'
 
 /** A promise step as `attempt` ran it: its typed failure, anything else `Internal`. */
-const promised = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: toAppError })
 
 const Command = Schema.Struct({
   userId: Schema.String,
@@ -22,7 +21,7 @@ export const billingTestRoute = Effect.fn('billing.fixture')(function* (
   env: RuntimeEnv,
   deps: BillingDeps,
 ) {
-  const { userId, eventId, at, dailyCredits, body } = yield* promised(() => readJson(request, Command))
+  const { userId, eventId, at, dailyCredits, body } = yield* attempt(() => readJson(request, Command))
   const action = new URL(request.url).pathname.split('/').at(-1)
   if (action === 'pending' && eventId !== undefined && body !== undefined) {
     const timestamp = String(Math.floor((yield* Clock.currentTimeMillis) / 1000))
@@ -41,7 +40,7 @@ export const billingTestRoute = Effect.fn('billing.fixture')(function* (
     return Response.json({ ok: true })
   }
   if (action === 'override') {
-    yield* promised(() =>
+    yield* attempt(() =>
       env.AUTH_DB.prepare(
         "INSERT INTO app_billing_accounts (user_id, plan_override, override_stage, daily_credits, created_at, updated_at) VALUES (?, 'pro', 'test', ?, 0, 0) ON CONFLICT(user_id) DO UPDATE SET plan_override = 'pro', override_stage = 'test', daily_credits = excluded.daily_credits",
       )

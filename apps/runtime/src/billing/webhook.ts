@@ -2,7 +2,7 @@
 import { Clock, Effect, Exit, Layer } from 'effect'
 import { runAtEdge } from '../http/api/edge.ts'
 import { readBytes } from '../http/body.ts'
-import { toAppError } from '../http/errors.ts'
+import { attempt } from '../http/errors.ts'
 import { LoggerLive } from '../observability/logger.ts'
 import { ReporterLive, reportAndRecover } from '../observability/report.ts'
 import { processStored, type BillingDeps } from './events.ts'
@@ -26,7 +26,7 @@ export const billingWebhook = Effect.fn('billing.webhook')(function* (
 ) {
   if (deps === undefined) return Response.json({ error: 'billing_unavailable' }, { status: 503 })
   if (request.method !== 'POST') return new Response(null, { status: 405, headers: { allow: 'POST' } })
-  const bytes = yield* Effect.tryPromise({ try: () => readBytes(request, 262_144), catch: toAppError })
+  const bytes = yield* attempt(() => readBytes(request, 262_144))
   const body = new TextDecoder().decode(bytes)
   const headers = {
     id: request.headers.get('webhook-id') ?? '',

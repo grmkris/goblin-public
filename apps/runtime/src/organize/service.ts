@@ -1,9 +1,9 @@
 import type { OrganizeReceipt } from '@goblin/contracts'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
-import type { AppError } from '../http/errors.ts'
+import { type AppError, attemptSync } from '../http/errors.ts'
 import { Changes } from '../runtime/changes.ts'
-import { fromStore, nowSeconds } from './effects.ts'
+import { nowSeconds } from './effects.ts'
 import type { NewReceipt, OrganizeReceipts, StoredReceipt } from './receipts.ts'
 
 declare module '../runtime/changes.ts' {
@@ -41,7 +41,7 @@ export class Receipts extends Context.Service<
       return Receipts.of({
         record: Effect.fn('Receipts.record')(function* (input: NewReceipt) {
           const now = yield* nowSeconds
-          const receipt = yield* fromStore(() => store.record(input, now))
+          const receipt = yield* attemptSync(() => store.record(input, now))
           yield* changed(receipt.id)
           return receipt
         }),
@@ -49,11 +49,11 @@ export class Receipts extends Context.Service<
           return yield* Effect.sync(() => store.list(limit))
         }),
         get: Effect.fn('Receipts.get')(function* (id: string) {
-          return yield* fromStore(() => store.get(id))
+          return yield* attemptSync(() => store.get(id))
         }),
         markUndone: Effect.fn('Receipts.markUndone')(function* (id: string) {
           const now = yield* nowSeconds
-          const receipt = yield* fromStore(() => store.markUndone(id, now))
+          const receipt = yield* attemptSync(() => store.markUndone(id, now))
           yield* changed(receipt.id)
           return receipt
         }),

@@ -3,7 +3,7 @@ import * as Match from 'effect/Match'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
-import { AppError, Conflict, NotFound } from '../http/errors.ts'
+import { Conflict, NotFound, isAppError } from '../http/errors.ts'
 import { writeLine } from '../observability/logger.ts'
 import { safeErrorType } from '../observability/report.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
@@ -19,7 +19,6 @@ import { routineSummary } from './summary.ts'
 
 const decode = (json: string) => Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(json))
 const consumerId = (id: string) => `routine:${id}`
-const isAppError = Schema.is(AppError)
 
 /**
  * Whether subscribing a confirmed event routine failed for a reason the owner has to act on: the server needs signing

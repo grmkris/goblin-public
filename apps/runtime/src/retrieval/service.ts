@@ -1,7 +1,7 @@
 import type { RetrievalSource, SourceUse } from '@goblin/contracts'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
-import { type AppError, toAppError } from '../http/errors.ts'
+import { type AppError, attempt, attemptSync } from '../http/errors.ts'
 import type { TextCompletion } from '../memory/model.ts'
 import type { KeyedLock } from '../observability/lock.ts'
 import { AUTO_CANDIDATES, chooseSources, gateFor } from './auto.ts'
@@ -131,9 +131,7 @@ export const catchUpSession = (
   session: string,
   maxEntries = CATCH_UP_ENTRIES,
 ): Effect.Effect<{ readonly more: boolean; readonly read: number }, AppError> =>
-  lock.withLock(`retrieval:${session}`)(
-    Effect.uninterruptible(Effect.tryPromise({ try: () => index.catchUp(session, maxEntries), catch: toAppError })),
-  )
+  lock.withLock(`retrieval:${session}`)(Effect.uninterruptible(attempt(() => index.catchUp(session, maxEntries))))
 
 /**
  * A bounded catch-up of every chat that may have new entries, stalest first, before a search: about `budget` entries
@@ -145,7 +143,7 @@ export const catchUpChats = Effect.fn('Retrieval.catchUpChats')(function* (
   budget: number = CATCH_UP_ENTRIES,
 ) {
   let left = budget
-  for (const session of yield* Effect.try({ try: () => index.toIndex(), catch: toAppError })) {
+  for (const session of yield* attemptSync(() => index.toIndex())) {
     if (left <= 0) return
     const { read } = yield* catchUpSession(index, lock, session, left)
     left -= Math.max(1, read)
@@ -159,10 +157,10 @@ export const catchUpChats = Effect.fn('Retrieval.catchUpChats')(function* (
 export const retrievalOver = (retrieval: ChatRetrieval, lock: KeyedLock['Service']): Retrieval['Service'] =>
   Retrieval.of({
     search: Effect.fn('Retrieval.search')(function* (input: SearchInput, where: SearchPlace) {
-      const prior = yield* Effect.try({ try: () => retrieval.index.recorded(where.useId), catch: toAppError })
+      const prior = yield* attemptSync(() => retrieval.index.recorded(where.useId))
       if (prior !== undefined) return prior.sources
       yield* catchUpChats(retrieval.index, lock)
-      return yield* Effect.try({ try: () => retrieval.search(input, where), catch: toAppError })
+      return yield* attemptSync(() => retrieval.search(input, where))
     }),
     automatic: Effect.fn('Retrieval.automatic')(function* (
       where: AutoPlace,
@@ -170,7 +168,7 @@ export const retrievalOver = (retrieval: ChatRetrieval, lock: KeyedLock['Service
       signal?: AbortSignal,
     ) {
       yield* catchUpChats(retrieval.index, lock)
-      return yield* Effect.tryPromise({ try: () => retrieval.automatic(where, input, signal), catch: toAppError })
+      return yield* attempt(() => retrieval.automatic(where, input, signal))
     }),
     catchUp: Effect.fn('Retrieval.catchUp')(function* (session: string) {
       return (yield* catchUpSession(retrieval.index, lock, session)).more ? ('more' as const) : ('done' as const)
@@ -182,7 +180,7 @@ export const retrievalOver = (retrieval: ChatRetrieval, lock: KeyedLock['Service
       return yield* Effect.sync(() => retrieval.index.topicNamed(name))
     }),
     latestInput: Effect.fn('Retrieval.latestInput')(function* (session: string) {
-      return yield* Effect.tryPromise({ try: () => retrieval.index.latestInput(session), catch: toAppError })
+      return yield* attempt(() => retrieval.index.latestInput(session))
     }),
     recorded: Effect.fn('Retrieval.recorded')(function* (id: string) {
       return yield* Effect.sync(() => retrieval.index.recorded(id))

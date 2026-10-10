@@ -8,7 +8,7 @@ import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import { Channel } from '../channel/service.ts'
 import { nowMillis } from '../clock.ts'
-import { Forbidden, GrantDenied, toAppError } from '../http/errors.ts'
+import { Forbidden, GrantDenied, attempt, attemptSync } from '../http/errors.ts'
 import { type HeldCall, McpApprovalStore } from '../mcp/approvals.ts'
 import { Cipher, CredentialCipher } from '../mcp/cipher.ts'
 import { configuredServers } from '../mcp/config.ts'
@@ -37,11 +37,6 @@ import { mcpReporter } from '../telemetry/report.ts'
 // with their consumers (17). The host is made once and shared by its instance tags (`McpHostInstance`, `Cipher`) with
 // the steps and layers that wire it; `Events` is the service itself. The services after the start (`McpLive`) read
 // those instances, and held calls and the registry catalog are built over the agent's database.
-
-/** A call into a stateful instance's async code: a failure is the `AppError` it threw, anything else `Internal`. */
-const fromPromise = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: toAppError })
-/** The same for its synchronous code. */
-const fromSync = <A>(run: () => A) => Effect.try({ try: run, catch: toAppError })
 
 /**
  * The plan, then current resident authority: what the MCP host and Events check before an Events call goes out. It
@@ -224,22 +219,22 @@ export const McpServersLive = Layer.effect(
         return yield* Effect.sync(() => suggestions(stage, offered()))
       }),
       add: Effect.fn('McpServers.add')(function* (endpoint: string, source?: ServerSource) {
-        return yield* fromPromise(() => host.addServer(endpoint, source))
+        return yield* attempt(() => host.addServer(endpoint, source))
       }),
       remove: Effect.fn('McpServers.remove')(function* (serverId: string) {
-        yield* fromPromise(() => host.removeServer(serverId))
+        yield* attempt(() => host.removeServer(serverId))
       }),
       beginConnect: Effect.fn('McpServers.beginConnect')(function* (serverId: string) {
-        return yield* fromPromise(() => host.beginConnect(serverId))
+        return yield* attempt(() => host.beginConnect(serverId))
       }),
       finishConnect: Effect.fn('McpServers.finishConnect')(function* (state: string, code: string, issuer?: string) {
-        return yield* fromPromise(() => host.finishConnect(state, code, issuer))
+        return yield* attempt(() => host.finishConnect(state, code, issuer))
       }),
       disconnect: Effect.fn('McpServers.disconnect')(function* (serverId: string) {
-        yield* fromPromise(() => host.disconnect(serverId))
+        yield* attempt(() => host.disconnect(serverId))
       }),
       tools: Effect.fn('McpServers.tools')(function* (serverId: string, refresh: boolean) {
-        return yield* fromPromise(() => host.tools(serverId, refresh))
+        return yield* attempt(() => host.tools(serverId, refresh))
       }),
       catalog: Effect.fn('McpServers.catalog')(function* (query: string) {
         const { entries, partial } = yield* catalog.search(query.trim())
@@ -272,16 +267,16 @@ export const McpGrantsLive = Layer.effect(
         return yield* Effect.sync(() => Option.fromNullishOr(host.grantPolicy(serverId, name)))
       }),
       setTool: Effect.fn('McpGrants.setTool')(function* (serverId: string, name: string, allowed: boolean) {
-        return yield* fromPromise(() => host.setToolGrant(serverId, name, allowed))
+        return yield* attempt(() => host.setToolGrant(serverId, name, allowed))
       }),
       setAskFirst: Effect.fn('McpGrants.setAskFirst')(function* (serverId: string, name: string, enabled: boolean) {
-        return yield* fromSync(() => {
+        return yield* attemptSync(() => {
           host.setAskFirst(serverId, name, enabled)
           return host.grants()
         })
       }),
       setApp: Effect.fn('McpGrants.setApp')(function* (serverId: string, uri: string, allowed: boolean) {
-        return yield* fromPromise(() => host.setAppGrant(serverId, uri, allowed))
+        return yield* attempt(() => host.setAppGrant(serverId, uri, allowed))
       }),
     })
   }),
@@ -297,13 +292,13 @@ export const McpConnectionsLive = Layer.effect(
         return yield* Effect.sync(() => manager.servers)
       }),
       server: Effect.fn('McpConnections.server')(function* (serverId: string) {
-        return yield* fromSync(() => manager.server(serverId))
+        return yield* attemptSync(() => manager.server(serverId))
       }),
       snapshot: Effect.fn('McpConnections.snapshot')(function* (serverId: string) {
         return yield* Effect.sync(() => Option.fromNullishOr(manager.snapshot(serverId)))
       }),
       connect: Effect.fn('McpConnections.connect')(function* (serverId: string, options?: McpRequestOptions) {
-        return yield* fromPromise(() => manager.connect(serverId, options))
+        return yield* attempt(() => manager.connect(serverId, options))
       }),
       callTool: Effect.fn('McpConnections.callTool')(function* (
         serverId: string,
@@ -311,14 +306,14 @@ export const McpConnectionsLive = Layer.effect(
         args: Record<string, unknown>,
         options?: McpCallOptions,
       ) {
-        return yield* fromPromise(() => manager.callTool(serverId, name, args, options))
+        return yield* attempt(() => manager.callTool(serverId, name, args, options))
       }),
       readResource: Effect.fn('McpConnections.readResource')(function* (
         serverId: string,
         uri: string,
         caller: 'human' | 'app',
       ) {
-        return yield* fromPromise(() =>
+        return yield* attempt(() =>
           caller === 'app' ? manager.readAppResource(serverId, uri) : manager.readResource(serverId, uri),
         )
       }),
@@ -327,10 +322,10 @@ export const McpConnectionsLive = Layer.effect(
         name: string,
         args: Record<string, string>,
       ) {
-        return yield* fromPromise(() => manager.getPrompt(serverId, name, args))
+        return yield* attempt(() => manager.getPrompt(serverId, name, args))
       }),
       closeAll: Effect.fn('McpConnections.closeAll')(function* () {
-        yield* fromPromise(() => manager.closeAll())
+        yield* attempt(() => manager.closeAll())
       }),
     })
   }),
@@ -346,35 +341,35 @@ export const ApprovalsLive = Layer.effect(
       cipher,
       hold: Effect.fn('Approvals.hold')(function* (call: HeldCall) {
         const now = yield* Clock.currentTimeMillis
-        return yield* fromPromise(() => store.hold(call, now))
+        return yield* attempt(() => store.hold(call, now))
       }),
       find: Effect.fn('Approvals.find')(function* (id: string) {
         return yield* Effect.sync(() => Option.fromNullishOr(store.find(id)))
       }),
       get: Effect.fn('Approvals.get')(function* (id: string) {
-        return yield* fromSync(() => store.get(id))
+        return yield* attemptSync(() => store.get(id))
       }),
       decide: Effect.fn('Approvals.decide')(function* (id: string, allowed: boolean) {
         const now = yield* Clock.currentTimeMillis
-        return yield* fromSync(() => store.decide(id, allowed, now))
+        return yield* attemptSync(() => store.decide(id, allowed, now))
       }),
       arguments: Effect.fn('Approvals.arguments')(function* (id: string) {
-        return yield* fromPromise(() => store.arguments(id))
+        return yield* attempt(() => store.arguments(id))
       }),
       finish: Effect.fn('Approvals.finish')(function* (id: string, result: CallToolResult) {
         const now = yield* Clock.currentTimeMillis
-        yield* fromPromise(() => store.finish(id, result, now))
+        yield* attempt(() => store.finish(id, result, now))
       }),
       fail: Effect.fn('Approvals.fail')(function* (id: string, state: 'failed' | 'uncertain') {
         const now = yield* Clock.currentTimeMillis
         yield* Effect.sync(() => store.fail(id, state, now))
       }),
       result: Effect.fn('Approvals.result')(function* (id: string) {
-        return Option.fromNullishOr(yield* fromPromise(() => store.result(id)))
+        return Option.fromNullishOr(yield* attempt(() => store.result(id)))
       }),
       view: Effect.fn('Approvals.view')(function* (id: string) {
         const now = yield* Clock.currentTimeMillis
-        return yield* fromPromise(() => store.view(id, now))
+        return yield* attempt(() => store.view(id, now))
       }),
     })
   }),

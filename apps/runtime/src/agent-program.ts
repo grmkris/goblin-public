@@ -13,13 +13,13 @@ import { Apps } from './apps/service.ts'
 import type { Budget } from './budget.ts'
 import type { Capabilities } from './capabilities/service.ts'
 import type { SessionId } from './chats/directory.ts'
-import { epochSeconds, instanceCall, withinBudget } from './chats/instance.ts'
+import { epochSeconds, withinBudget } from './chats/instance.ts'
 import { ChatOperations, Conversations } from './chats/service.ts'
 import { resolveSelections, type ResolvedSelections } from './composer.ts'
 import { Files } from './files/service.ts'
 import type { FlowEvents } from './observability/flows.ts'
 import { failedFlow, recordFlow } from './organize/flows.ts'
-import { type AppError, InvalidInput } from './http/errors.ts'
+import { type AppError, InvalidInput, attempt } from './http/errors.ts'
 import type { McpServers, Resident } from './mcp/service.ts'
 import { Invocations, type Personas } from './personas/service.ts'
 import { RoutineRuns } from './routines/service.ts'
@@ -57,7 +57,7 @@ export const updateOwnerConversation = (routines: RoutineRunner, id: string, cha
       const live = (yield* (yield* RoutineRuns).live).filter(
         (run) => run.sessionId !== null && closing.has(run.sessionId),
       )
-      for (const run of live) yield* instanceCall(() => routines.stop(run.id, 'Closed by owner'))
+      for (const run of live) yield* attempt(() => routines.stop(run.id, 'Closed by owner'))
     }
     return (yield* conversations.update(id, change)).view
   })
@@ -91,16 +91,16 @@ export const stopOwner = (
     const session = yield* conversations.require(input.thread)
     const run = yield* (yield* RoutineRuns).session(session)
     if (run !== undefined) {
-      yield* instanceCall(() => input.routines.stop(run.id))
+      yield* attempt(() => input.routines.stop(run.id))
       return true
     }
     const operationId = input.operationId === undefined ? {} : { operationId: input.operationId }
     yield* conversations.stopSubagents(input.thread)
     const invocations = yield* Invocations
     const now = yield* epochSeconds
-    yield* instanceCall(async () => input.personas.drop(await input.harness.pi(), conversationId(session)))
+    yield* attempt(async () => input.personas.drop(await input.harness.pi(), conversationId(session)))
     yield* invocations.stopChat(input.thread, now)
-    return yield* instanceCall(() => input.harness.abort({ session, ...operationId }))
+    return yield* attempt(() => input.harness.abort({ session, ...operationId }))
   })
 
 /**
@@ -197,7 +197,7 @@ const sendToSubagent = (
   Effect.gen(function* () {
     const conversations = yield* Conversations
     yield* conversations.update(view.id, { keepOpen: true })
-    const busy = yield* instanceCall(() => input.harness.session(session).busy())
+    const busy = yield* attempt(() => input.harness.session(session).busy())
     const send = {
       subagent: session,
       spawner: yield* conversations.spawnerSession(view.id),
@@ -207,7 +207,7 @@ const sendToSubagent = (
       operationId: input.operationId,
       busy,
     }
-    const accepted = yield* instanceCall(async () => input.subagents.ownerSend(await input.harness.pi(), send))
+    const accepted = yield* attempt(async () => input.subagents.ownerSend(await input.harness.pi(), send))
     return { session, operationId: input.operationId, accepted }
   })
 

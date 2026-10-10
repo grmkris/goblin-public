@@ -4,7 +4,7 @@ import * as Option from 'effect/Option'
 import { CHANNEL_TOOLS, DOORBELL_TOOLS, channelTool } from './channel.ts'
 import { type Doorbell, doorbellValid, hookToken, hookUrl } from './doorbell.ts'
 import { Channel } from './service.ts'
-import { Forbidden, InvalidInput, toAppError } from '../http/errors.ts'
+import { Forbidden, InvalidInput, attempt } from '../http/errors.ts'
 import { offersEvents } from '../mcp/connection.ts'
 import type { Consumer } from '../mcp/events/store.ts'
 import { Events, McpConnections, McpGrants, McpServers } from '../mcp/service.ts'
@@ -12,7 +12,6 @@ import { Events, McpConnections, McpGrants, McpServers } from '../mcp/service.ts
 const TELEGRAM_EVENTS = ['message.received', 'question.answered']
 
 /** A promise step as `attempt` ran it: its typed failure, anything else `Internal`. */
-const promised = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: toAppError })
 
 const retirePrevious = (events: typeof Events.Service, bindings: readonly Option.Option<Consumer>[]) =>
   Effect.gen(function* () {
@@ -39,7 +38,7 @@ export const enableTelegram = Effect.fn('channel.enable')(function* (
   const grants = yield* McpGrants
   for (const name of required) yield* grants.setTool(serverId, name, true)
   if (!modern) {
-    const url = hookUrl(appUrl, userId, yield* promised(() => hookToken(key, userId)))
+    const url = hookUrl(appUrl, userId, yield* attempt(() => hookToken(key, userId)))
     const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
     return yield* channel.enable(serverId, url, channelTool(connections, serverId), now)
   }
@@ -63,7 +62,7 @@ export const enableTelegram = Effect.fn('channel.enable')(function* (
   }
   const status = yield* channel.enableEvents(serverId, cursor, Math.floor((yield* Clock.currentTimeMillis) / 1000))
   yield* retirePrevious(events, previous)
-  yield* promised(wake)
+  yield* attempt(wake)
   return status
 })
 
@@ -92,8 +91,8 @@ export const acceptDoorbell = Effect.fn('channel.acceptDoorbell')(function* (
   const channel = yield* Channel
   const secret = yield* channel.secret
   const now = yield* Clock.currentTimeMillis
-  const valid = secret !== undefined && (yield* promised(() => doorbellValid(secret, doorbell, now)))
+  const valid = secret !== undefined && (yield* attempt(() => doorbellValid(secret, doorbell, now)))
   if (!valid) return yield* new Forbidden({ reason: 'doorbell' })
-  yield* promised(pull)
+  yield* attempt(pull)
   return true as const
 })
