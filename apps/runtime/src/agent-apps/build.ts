@@ -7,6 +7,7 @@ import { APP_NAME } from './names.ts'
 import type { AppLock } from './queue.ts'
 import type { AgentAppStore, AppViewCode } from './store.ts'
 import { readFiles, storedJson } from './stored.ts'
+import { sha256Hex } from '../runtime/digest.ts'
 
 /** The generated toolchain (`@goblin/app/toolchain`), loaded only while building. */
 export type Toolchain = {
@@ -126,13 +127,7 @@ function sources(base: Readonly<Record<string, string>>, request: BuildRequest):
 }
 
 /** The first 16 hex digits of the SHA-256 of `text`. */
-async function sha256(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
-    .slice(0, 16)
-}
+const sha256 = async (text: string): Promise<string> => (await sha256Hex(text)).slice(0, 16)
 
 async function releaseId(files: Readonly<Record<string, string>>, toolchain: string): Promise<string> {
   const ordered = Object.fromEntries(Object.entries(files).toSorted(([a], [b]) => a.localeCompare(b)))

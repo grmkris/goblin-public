@@ -5,6 +5,7 @@
 import * as Data from 'effect/Data'
 import { parse as parseYaml } from 'yaml'
 import { MAX_SKILL_BYTES, MAX_SKILL_FILES, type ManifestFile, type SkillEntry } from './protocol.ts'
+import { sha256Hex } from '../runtime/digest.ts'
 
 export type VerifyFailure =
   | 'dynamic'
@@ -26,10 +27,7 @@ export class SkillVerifyError extends Data.TaggedError('SkillVerifyError')<{ rea
 const SKILL_FILE = 'SKILL.md'
 
 /** `sha256:<hex>` of the bytes. */
-export const digestOf = async (bytes: Uint8Array): Promise<string> => {
-  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(bytes)))
-  return `sha256:${Array.from(hash, (byte) => byte.toString(16).padStart(2, '0')).join('')}`
-}
+export const digestOf = async (bytes: Uint8Array): Promise<string> => `sha256:${await sha256Hex(new Uint8Array(bytes))}`
 
 /** The directory URI of a skill: its `SKILL.md` URI without the file name. */
 export const skillRoot = (entry: Pick<SkillEntry, 'uri'>): string => {

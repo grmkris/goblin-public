@@ -16,6 +16,7 @@ import type { QuestionSpec } from '@goblin/contracts'
 import { appUsageDaily } from '../storage/schema.ts'
 import { RoutineStore } from './store.ts'
 import { routineSummary } from './summary.ts'
+import { sha256Hex } from '../runtime/digest.ts'
 
 export type RoutineRun = typeof appRoutineRuns.$inferSelect
 export type Firing = {
@@ -107,10 +108,7 @@ export class RoutineRunStore {
     if (run === undefined) throw new NotFound({ what: 'routine run' })
     const id = `routine-question:${run.id}:${callId}`
     const intent = await cipher.encrypt(JSON.stringify(questions), id)
-    const digest = new Uint8Array(
-      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(questions))),
-    )
-    const requestHash = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('')
+    const requestHash = await sha256Hex(JSON.stringify(questions))
     this.db.transaction(() => {
       const current = this.get(run.id)
       if (current.deadlineAt <= at || !LIVE.some((state) => state === current.state))

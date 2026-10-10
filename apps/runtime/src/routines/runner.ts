@@ -17,6 +17,7 @@ import type { RunProgram } from '../runtime/bridge.ts'
 import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { type Firing, type RoutineRun } from './runs.ts'
 import { notifyRoutine } from './notifications.ts'
+import { sha256Hex } from '../runtime/digest.ts'
 
 export type StartRun = (
   harness: PiHarness,
@@ -133,8 +134,7 @@ export class RoutineRunner {
   }
 
   async answer(session: string, operationId: string, text: string): Promise<boolean> {
-    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))
-    const answerHash = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('')
+    const answerHash = await sha256Hex(text)
     const record = await this.#run(
       Effect.gen(function* () {
         const store = yield* RoutineRuns

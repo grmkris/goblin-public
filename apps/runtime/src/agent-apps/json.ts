@@ -1,5 +1,6 @@
 import { Compile } from 'typebox/compile'
 import { InvalidInput, PayloadTooLarge } from '../http/errors.ts'
+import { isRecord } from '../runtime/digest.ts'
 
 const encoder = new TextEncoder()
 
@@ -53,8 +54,6 @@ const KEYWORDS = new Set([
   'title',
 ])
 const TYPES = new Set(['object', 'array', 'string', 'number', 'integer', 'boolean', 'null'])
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /** The problems of the schema's own keywords: only the `s.*` subset, known types, string enums. */
 function ownProblems(schema: Readonly<Record<string, unknown>>, where: string): string[] {

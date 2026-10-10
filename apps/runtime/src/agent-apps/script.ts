@@ -4,6 +4,7 @@ import type { FileStore } from '../files/store.ts'
 import type { Isolates } from './isolates.ts'
 import { plainJson } from './json.ts'
 import { problemText, refusalOf } from './queue.ts'
+import { sha256Hex } from '../runtime/digest.ts'
 
 /** How much of a file a script reads at once, and how long a script may take. */
 const READ_BYTES = 1024 * 1024
@@ -79,11 +80,7 @@ export type ScriptResult = typeof ScriptResult.Type
  * `log(...)` for notes, and its return value back as JSON.
  */
 export async function runScript(isolates: Isolates, files: FileStore, code: string): Promise<ScriptResult> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code))
-  const id = [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
-    .slice(0, 24)
+  const id = (await sha256Hex(code)).slice(0, 24)
   const script = isolates.script(id, moduleOf(code))
   try {
     const result = await isolates.call(SCRIPT_MS, 'the script', () => script.run(new ScriptFiles(files)))

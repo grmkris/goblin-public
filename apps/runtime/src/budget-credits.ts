@@ -1,3 +1,5 @@
+import { isRecord } from './runtime/digest.ts'
+
 // What a model call costs in estimated Alibaba Token Plan Credits (ADR 0026): the unit the plan bills goblin's shared
 // model key in, so the daily allowance spends the way the plan does.
 
@@ -29,8 +31,6 @@ export const DEFAULT_RATES: CreditRates = {
   aliases: { 'gemini-3.8-flash': 'qwen3.8-flash' },
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 const positive = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0
 
 const rateOf = (value: unknown): CreditRate | undefined =>

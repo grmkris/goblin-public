@@ -8,6 +8,7 @@ import { Conflict, NotFound, PayloadTooLarge } from '../http/errors.ts'
 import { CredentialCipher } from './cipher.ts'
 import type { ApprovedDispatch, McpCaller } from './types.ts'
 import { redactSecretFields } from './redaction.ts'
+import { sha256Hex } from '../runtime/digest.ts'
 
 export type ApprovalRow = typeof approvals.$inferSelect
 export type HeldCall = {
@@ -23,10 +24,6 @@ export type HeldCall = {
   readonly arguments: Record<string, unknown>
 }
 const decodeArguments = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Json))
-const digestOf = async (value: string): Promise<string> => {
-  const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)))
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
-}
 const matches = (row: ApprovalRow, input: HeldCall, hash: string) =>
   row.argumentsHash === hash &&
   row.serverId === input.serverId &&
@@ -64,7 +61,7 @@ export class McpApprovalStore {
   async hold(input: HeldCall, now: number, expiresAt = now + 600_000): Promise<ApprovalRow> {
     const json = JSON.stringify(decodeArguments(input.arguments))
     if (new TextEncoder().encode(json).byteLength > 65_536) throw new PayloadTooLarge({ limit: 65_536 })
-    const hash = await digestOf(json)
+    const hash = await sha256Hex(json)
     const sealed = await this.cipher.encrypt(json, `mcp-approval:${input.id}:arguments`)
     const previous = this.find(input.id)
     if (previous !== undefined) {
@@ -148,7 +145,7 @@ export class McpApprovalStore {
     readonly authorize?: () => Promise<void>
   }): Promise<void> {
     const { id, call, version, now, dispatch, authorize } = input
-    const hash = await digestOf(JSON.stringify(decodeArguments(call.arguments)))
+    const hash = await sha256Hex(JSON.stringify(decodeArguments(call.arguments)))
     await authorize?.()
     const row = this.get(id)
     const context = call.approvalContext

@@ -9,6 +9,7 @@ import { NotFound } from '../http/errors.ts'
 import { BACKGROUND, conversationId, entryId } from '../pi/context.ts'
 import type { AgentAppInfo } from '../agent-apps/engine.ts'
 import { appConversations, appRegistry } from '../storage/schema.ts'
+import { isRecord } from '../runtime/digest.ts'
 
 type Row = typeof appRegistry.$inferSelect
 
@@ -57,9 +58,6 @@ const sourceOf = (row: Row, agents: AgentAppsPort): AppView['source'] => {
   if (info === undefined) throw new NotFound({ what: `agent app ${name}` })
   return { kind: 'agent', name, release: info.release, version: info.version, revision: info.revision, jobs: info.jobs }
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /** The `mcp_call` with id `callId` among an assistant entry's tool calls, as server, tool and arguments. */
 function mcpCallIn(entry: EntryRecord, callId: string) {

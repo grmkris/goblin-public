@@ -3,13 +3,12 @@
 // so the Worker checks it before it wakes any agent. The agent then checks myagent's signature, made with the secret
 // the agent gave it when it subscribed. A doorbell says only where to read from; the agent pulls the messages itself.
 import { constantTimeEqual } from 'better-auth/crypto'
+import { hex } from '../runtime/digest.ts'
 
 const encoder = new TextEncoder()
 /** How far a doorbell's timestamp may be from the agent's clock. */
 const SKEW_MS = 5 * 60 * 1000
 
-const hex = (bytes: ArrayBuffer) =>
-  [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 const base64url = (bytes: ArrayBuffer) =>
   btoa(String.fromCodePoint(...new Uint8Array(bytes)))
     .replaceAll('+', '-')

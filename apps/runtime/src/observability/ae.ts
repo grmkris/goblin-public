@@ -2,6 +2,7 @@ import type { FlowEvent } from '@goblin/contracts/telemetry'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import type { RuntimeEnv } from '../env.ts'
+import { hex } from '../runtime/digest.ts'
 
 /**
  * Conversation flows across every agent, for the operator (ADR 0037): one Workers Analytics Engine point per operation,
@@ -24,7 +25,6 @@ export class FlowPointFailure extends Schema.TaggedError<FlowPointFailure>()('Fl
 
 const bytesOfBase64 = (text: string): Uint8Array<ArrayBuffer> =>
   Uint8Array.from(atob(text.trim()), (char) => char.charCodeAt(0))
-const hex = (bytes: Uint8Array): string => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
 
 /**
  * The agent's id in Analytics Engine: HMAC-SHA-256 of its user id under a key derived with HKDF-SHA-256 from

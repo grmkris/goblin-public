@@ -9,6 +9,7 @@ import * as FetchHttpClient from 'effect/http/FetchHttpClient'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 import { verifyStandardWebhook, type WebhookHeaders } from './standard-webhooks.ts'
+import { isRecord } from '../runtime/digest.ts'
 
 /** Dodo did not answer, or answered an error: the caller's request may be retried. */
 export class DodoError extends Schema.TaggedError<DodoError>()('DodoError', { message: Schema.String }) {}
@@ -58,9 +59,6 @@ export interface DodoApi {
 }
 
 export class Dodo extends Context.Service<Dodo, DodoApi>()('goblin/Dodo') {}
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Predicate.isObject(value) && !Array.isArray(value)
 
 /** The event inside a verified body, or null when it is not one. */
 const parseEvent = (headers: WebhookHeaders, body: string): VerifiedEvent | null => {
