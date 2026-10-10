@@ -191,7 +191,7 @@ each over everything before it:
   every Topic Conversation given memory; skills and the learner; the Telegram channel; and Events, with the routine
   trigger and then the Telegram and skills consumers registered. A stateful object is made once, by its step, and
   shared with the layers that wire it by an instance tag in its own module (`ChatsInstance`, `ConversationsInstance`,
-  `MovesInstance`, `McpHostInstance`, `Cipher`, `ProfilesInstance`, `MemoriesInstance`, `AppsInstance`); programs use
+  `MovesInstance`, `McpHostInstance`, `Cipher`, `ProfilesInstance`, `MemoriesInstance`); programs use
   the area's services.
   The conversation registry tells `conversations.changed` what each write changed, inline (`syncWith` in
   `runtime/boundary.ts`, because it writes from synchronous code inside Promise work); the App registry and the
@@ -330,7 +330,7 @@ agent's raw routes (marked raw). Like every owner write, each write needs the CS
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/workspace/events` | Raw. The workspace feed (SSE): a `WorkspaceSnapshot` of every conversation and kept App and what each conversation that is not idle is doing (`working`, `waiting` on subagents), then batches of `WorkspaceChange` (`workspace/feed.ts`, from Pi's task graph and the registries' writes). A tab skips any item or change it cannot read, so a newer server never stops it. |
+| `GET /api/workspace/events` | Raw. The workspace feed (SSE): a `WorkspaceSnapshot` of every conversation and kept App and what each conversation that is not idle is doing (`working`, `waiting` on subagents), then batches of `WorkspaceChange` (`workspace/live.ts`, from Pi's task graph and the registries' writes). A tab skips any item or change it cannot read, so a newer server never stops it. |
 | `POST /api/apps` | Keep the App of a call in a conversation (`{ conversation, callId }`): one made before Apps were kept, or one closed. The call must be an `mcp_call` whose tool still renders that App; the same call keeps the same App. |
 | `GET /api/apps/:id/launch` | What loads an App (`AppLaunch`): an MCP App's server and `ui://` resource, and the call's arguments and redacted result read back from Pi; an agent app's view module, stylesheet, frame bundles and state. It grants nothing. |
 | `PATCH /api/apps/:id` | Close or reopen an App (`{ closed }`). Closing a conversation closes its MCP Apps. |
@@ -754,10 +754,10 @@ owns its canvas styling. External MCP Apps retain their framed host surface.
 
 Beyond its state and files, an app reaches only the powers it declares and the owner approves (ADR 0021):
 `ctx.fetch` to exact `egress` hosts (`agent-apps/egress.ts`: https on 443, never goblin's own domain, redirects checked
-again, no cookies, bounded), and through the agent (`agent-apps/ports.ts`, connected once by `agent-apps/live.ts` while the runtime is built, each call entering it
+again, no cookies, bounded), and through the agent (`agent-apps/ports.ts`, lent by `agent.ts` with the engine, each call entering it
 through the bridge's `run`) the owner's MCP
 tools under their exact grants, the cheap model within the owner's budget, Telegram through their channel, and other
-apps' actions and views (`agent-apps/engine.ts` composes each `prepare`'s `AppPowers`). Every use checks the approval
+apps' actions and views (`agent-apps/reach.ts` composes each `prepare`'s `AppPowers`). Every use checks the approval
 (`app_agent_powers`), the app's daily cap (`app_agent_usage`) and, for what goes through the agent, the owner's plan
 and resident authority. A build lists the powers still waiting; the web draws them as a card under it
 (`components/parts/app-powers.tsx`). A view offers files to save through the host's download offer. The agent looks
