@@ -135,7 +135,7 @@ export function ChatView({
   const { projection, report } = conversation
   const models = useQuery(modelQuery).data?.options.length ?? 0
   const fork = place === 'panel' ? view.forkEntry : undefined
-  const { parts, branchable, earlier } = useTranscript(id, projection, report, fork)
+  const { parts, branchable, earlier } = useTranscript(id, projection, report, fork, conversation.echo)
   useMarkRead(view, reading)
   const running = projection?.running ?? false
   const movable = useMemo(() => movableEntry(parts), [parts])

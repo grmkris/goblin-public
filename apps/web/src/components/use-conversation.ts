@@ -14,6 +14,7 @@ import { messageOf } from '../lib/query/app-error.ts'
 import { reportUnexpected } from '../lib/unexpected.ts'
 import { type Lease, type StreamState, StreamPool } from '../lib/stream-pool.ts'
 import { conversationParts } from '../lib/conversation-parts.ts'
+import { type Echo, newestEntry, startsTurn } from '../lib/echo.ts'
 import { entryMessages, omittedEntries } from '../lib/entry-messages.ts'
 import { type ConversationProjection, historyStart } from '../lib/projection.ts'
 import { branchPoints, fromEntry } from '../lib/threads.ts'
@@ -72,6 +73,7 @@ const FOLLOWING: StreamState = { projection: undefined, status: 'connecting', no
 export function useConversation(thread: string, visible = true) {
   const [state, setState] = useState<StreamState>(FOLLOWING)
   const [failure, setFailure] = useState('')
+  const [echo, setEcho] = useState<Echo | undefined>(undefined)
   const retry = useRef(
     new SubmissionRetry(() => {
       return crypto.randomUUID()
@@ -96,6 +98,9 @@ export function useConversation(thread: string, visible = true) {
   /** Replies retain their supplied operation; an unchanged failed draft reuses its browser operation. */
   async function send(input: string, operationId?: string, context: MessageContext = {}): Promise<boolean> {
     const id = operationId ?? retry.current.operation({ thread, input, context })
+    // Shown at once when it starts a turn; a message that queues behind a running one shows in the queue instead.
+    if (state.projection !== undefined && startsTurn(state.projection))
+      setEcho({ id: `echo:${id}`, text: input, after: newestEntry(state.projection) })
     try {
       await submit({ id: thread, message: messageBody(input, id, context) })
       retry.current.accepted(id)
@@ -103,6 +108,7 @@ export function useConversation(thread: string, visible = true) {
       setFailure('')
       return true
     } catch (error) {
+      setEcho(undefined)
       setFailure(messageOf(error, 'send the message'))
       if ((context.selections?.length ?? 0) > 0) throw error
       return false
@@ -139,6 +145,8 @@ export function useConversation(thread: string, visible = true) {
     status,
     notice: failure === '' ? state.notice : failure,
     report: setFailure,
+    /** The message just sent, until the stream delivers it (`lib/echo.ts`). */
+    echo,
     send,
     stop,
     removeQueued,
@@ -168,13 +176,15 @@ function useHistory(thread: string, start: number | undefined, report: (text: st
 /**
  * The transcript's parts: the history pages loaded so far, then the snapshot and what streamed since. With `floor` (a
  * branched thread in its panel) it starts at that entry, the message the thread branched from, and reads no history
- * from before it. `branchable` holds the entries a thread may start from.
+ * from before it. `branchable` holds the entries a thread may start from. `echo` is a message just sent, shown until
+ * the stream delivers it.
  */
 export function useTranscript(
   thread: string,
   projection: ConversationProjection | undefined,
   report: (text: string) => void,
   floor?: number,
+  echo?: Echo,
 ) {
   const start = projection === undefined ? undefined : historyStart(projection)
   const needed = floor === undefined || (start !== undefined && start > floor) ? start : undefined
@@ -184,8 +194,11 @@ export function useTranscript(
     // A later entry's edits may omit an older one from a page of history (a turn moved out of this chat).
     const omitted = omittedEntries([...history.entries, ...projection.entries])
     const messages = [...entryMessages(history.entries, omitted), ...projection.messages]
-    return conversationParts({ ...projection, messages: floor === undefined ? messages : fromEntry(messages, floor) })
-  }, [projection, history.entries, floor])
+    return conversationParts(
+      { ...projection, messages: floor === undefined ? messages : fromEntry(messages, floor) },
+      echo,
+    )
+  }, [projection, history.entries, floor, echo])
   // Which of the parts' entries a thread can branch from (a shared note in main cannot). Keyed on the entries, which
   // keep their identity across a streamed batch, so the transcript's footers do not render again with every batch.
   const entries = projection?.entries

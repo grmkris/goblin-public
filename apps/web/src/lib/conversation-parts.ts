@@ -1,6 +1,7 @@
 // A conversation's transcript as render parts (`parts.ts`): the projection's messages in order, each tool result folded
 // into the call that asked for it, the turn in flight after them, and each App build marked where its view shows.
 import type { ChatMessage, ToolCallView } from './chat-messages.ts'
+import { type Echo, delivered } from './echo.ts'
 import { type AppBuilt, type McpTarget, type Part, type ToolPart, type ToolState, partKey } from './parts.ts'
 import type { ConversationProjection, LiveTool } from './projection.ts'
 import { isString, record } from './values.ts'
@@ -101,6 +102,22 @@ function liveParts(projection: ConversationProjection, context: Context, seen: R
   return parts
 }
 
+/**
+ * The row that says the turn is under way while nothing of it shows: after the owner's message (or its echo) and after
+ * a tool's result, until the model's thinking, answer or next tool arrives. Not after an answer, which a turn that is
+ * about to end also leaves last.
+ */
+function workingParts(projection: ConversationProjection, parts: readonly Part[], sending: boolean): Part[] {
+  if (!projection.running && !sending) return []
+  const last = parts.at(-1)
+  const waiting =
+    last === undefined ||
+    last.kind === 'user' ||
+    last.kind === 'persona-ask' ||
+    (last.kind === 'tool' && (last.state === 'done' || last.state === 'error'))
+  return waiting ? [{ kind: 'working', id: 'working' }] : []
+}
+
 /** A message in the user column, with who wrote it and when, where those are known. */
 function userPart(message: Extract<ChatMessage, { role: 'user' }>): Part {
   if (message.ask !== undefined)
@@ -157,8 +174,11 @@ function placeApps(parts: readonly Part[]): Part[] {
     .toReversed()
 }
 
-/** The transcript as render parts: each tool result folds into the call that asked for it. */
-export function conversationParts(projection: ConversationProjection): Part[] {
+/**
+ * The transcript as render parts: each tool result folds into the call that asked for it. `echo` is a message just
+ * sent that the stream has not delivered yet; it shows until it has, and the server's entry then takes its key.
+ */
+export function conversationParts(projection: ConversationProjection, echo?: Echo): Part[] {
   const results = new Map<string, ToolResultMessage>()
   for (const message of projection.messages) if (message.role === 'tool') results.set(message.toolCallId, message)
   const context: Context = {
@@ -168,9 +188,12 @@ export function conversationParts(projection: ConversationProjection): Part[] {
   }
   const seen = new Set<string>()
   const parts: Part[] = []
+  const landed = echo === undefined ? undefined : delivered(echo, projection.messages)
   for (const message of projection.messages) {
-    if (message.role === 'user') parts.push(userPart(message))
-    else if (message.role === 'assistant') {
+    if (message.role === 'user') {
+      const part = userPart(message)
+      parts.push(echo !== undefined && message === landed && part.kind === 'user' ? { ...part, key: echo.id } : part)
+    } else if (message.role === 'assistant') {
       for (const call of message.toolCalls) seen.add(call.id)
       parts.push(...assistantParts(message, context))
     } else if (message.role === 'tool') {
@@ -181,7 +204,12 @@ export function conversationParts(projection: ConversationProjection): Part[] {
         )
     } else parts.push(drawnPart(message))
   }
-  return uniqueKeys(placeApps([...parts, ...liveParts(projection, context, seen)]))
+  if (echo !== undefined && landed === undefined)
+    parts.push({ kind: 'user', id: echo.id, key: echo.id, text: echo.text })
+  const shown = [...parts, ...liveParts(projection, context, seen)]
+  return uniqueKeys(
+    placeApps([...shown, ...workingParts(projection, shown, echo !== undefined && landed === undefined)]),
+  )
 }
 
 type DrawnMessage = Exclude<ChatMessage, { readonly role: 'user' | 'assistant' | 'tool' }>

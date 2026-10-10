@@ -53,7 +53,8 @@ export function presenceOf({ status, projection, parts, waiting, exhausted }: Pr
   if (projection === undefined) return { state: 'offline', label: 'Connecting…' }
   if (waiting > 0) return { state: 'waiting', label: 'Waiting for you' }
   if (projection.progress === 'Waiting for model retry') return { state: 'retrying', label: 'Retrying the model…' }
-  if (projection.running) return runningPresence(projection, parts)
+  // A message just sent shows its working row before the run has started.
+  if (projection.running || parts.at(-1)?.kind === 'working') return runningPresence(projection, parts)
   if (exhausted) return { state: 'exhausted', label: "Today's budget is spent" }
   const last = parts.at(-1)
   if (last?.kind === 'failure' && last.failure.cutOff === true) return { state: 'error', label: 'Cut off' }

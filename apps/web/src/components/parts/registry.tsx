@@ -136,6 +136,15 @@ function PartRow({ part, canSwitchModel }: { readonly part: Part; readonly canSw
           </Reasoning>
         </Aside>
       )
+    case 'working':
+      // The live Thoughts row's own size and pulse, so the thinking that follows replaces it without a shift.
+      return (
+        <Aside>
+          <div className="inline-flex min-h-8 w-fit animate-pulse items-center px-1 text-sm text-muted-foreground pointer-coarse:min-h-11">
+            Thinking…
+          </div>
+        </Aside>
+      )
     case 'tool':
       return <ToolView part={part} />
     case 'thread-started':

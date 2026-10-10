@@ -52,6 +52,8 @@ export type Part =
   | {
       readonly kind: 'user'
       readonly id: string
+      /** Set on the message just sent, so the row keeps one React key from the echo to the server's entry (`echo.ts`). */
+      readonly key?: string
       readonly text: string
       readonly context?: readonly SharedContext[]
       readonly attachments?: readonly Attachment[]
@@ -70,6 +72,11 @@ export type Part =
       readonly live: boolean
     }
   | { readonly kind: 'text'; readonly id: string; readonly key?: string; readonly text: string; readonly live: boolean }
+  /**
+   * The turn is under way and nothing of it shows: the message was just sent, or a tool finished and the model has not
+   * answered yet. It is a model's slow start (seconds, sometimes tens of them), not an error, so the row says so.
+   */
+  | { readonly kind: 'working'; readonly id: string }
   | ToolPart
   | { readonly kind: 'failure'; readonly id: string; readonly failure: TurnFailure }
   /** A thread the owner started with "+", where main noted it. */
@@ -140,6 +147,7 @@ export function samePart(a: Part, b: Part): boolean {
   if (a.kind === 'user') return b.kind === 'user' && sameUser(a, b)
   if (a.kind === 'failure') return b.kind === 'failure' && a.failure === b.failure
   if (a.kind === 'thread-started') return b.kind === 'thread-started' && a.thread === b.thread
+  if (a.kind === 'working') return true
   if (a.kind === 'text' || a.kind === 'reasoning')
     return (b.kind === 'text' || b.kind === 'reasoning') && a.text === b.text && a.live === b.live
   // An entry the app wrote itself never changes: the same id draws the same thing.

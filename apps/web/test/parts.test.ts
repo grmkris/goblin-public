@@ -266,3 +266,54 @@ describe('app builds in the transcript', () => {
     ])
   })
 })
+
+describe('the working row and the echo of a sent message', () => {
+  const owner = { id: 1, model: [{ role: 'user', content: 'hello' }] }
+  const answered = (id: number, text: string) => ({
+    id,
+    model: [{ role: 'assistant', content: [{ type: 'text', text }], stopReason: 'stop', timestamp: 2_000 }],
+  })
+  it('says the turn is under way after the owner’s message and after a tool result, until something streams', () => {
+    const afterMessage = conversationParts(snapshot([owner], { run: {} }))
+    expect(afterMessage.map((part) => part.kind)).toEqual(['user', 'working'])
+    const afterTool = conversationParts(snapshot([owner, asking(2, [call('c1')]), result(3, 'c1')], { run: {} }))
+    expect(afterTool.map((part) => part.kind)).toEqual(['user', 'tool', 'working'])
+  })
+  it('does not say it while idle, while something shows, or after an answer a finishing turn leaves last', () => {
+    expect(conversationParts(snapshot([owner])).some((part) => part.kind === 'working')).toBe(false)
+    const streaming = projectBatch(snapshot([owner], { run: {} }), [
+      { type: 'message_start', message: { role: 'assistant', timestamp: 7_000, content: [] } },
+      {
+        type: 'message_update',
+        changes: [{ type: 'text_start', contentIndex: 0, block: { type: 'text', text: 'Hi' } }],
+      },
+    ])
+    expect(conversationParts(streaming).some((part) => part.kind === 'working')).toBe(false)
+    const running = projectBatch(snapshot([owner], { run: {} }), [
+      { type: 'tool_execution_start', toolCallId: 'c1', toolName: 'mcp_call', args: {} },
+    ])
+    expect(conversationParts(running).some((part) => part.kind === 'working')).toBe(false)
+    const ending = snapshot([owner, answered(2, 'Done.')], { run: {} })
+    expect(conversationParts(ending).some((part) => part.kind === 'working')).toBe(false)
+  })
+  it('shows a message just sent before the stream delivers it, and keeps its key for the server’s entry', () => {
+    const echo = { id: 'echo:op-1', text: 'hello', after: 0 }
+    const sending = conversationParts(snapshot([]), echo)
+    expect(sending).toEqual([
+      { kind: 'user', id: 'echo:op-1', key: 'echo:op-1', text: 'hello' },
+      { kind: 'working', id: 'working' },
+    ])
+    const delivered = conversationParts(snapshot([owner], { run: {} }), echo)
+    expect(delivered.map((part) => [part.kind, part.id, partKey(part)])).toEqual([
+      ['user', '1:0', 'echo:op-1'],
+      ['working', 'working', 'working'],
+    ])
+    // The same row throughout: the echo's key is the server's entry's key.
+    expect(partKey(sending[0] as Part)).toBe(partKey(delivered[0] as Part))
+  })
+  it('leaves an older message alone when the echo’s own has not arrived', () => {
+    const echo = { id: 'echo:op-2', text: 'again', after: 1 }
+    const parts = conversationParts(snapshot([owner, answered(2, 'Hi')]), echo)
+    expect(parts.map((part) => part.id)).toEqual(['1:0', '2:0:text', 'echo:op-2', 'working'])
+  })
+})

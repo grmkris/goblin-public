@@ -56,6 +56,13 @@ describe('the agent’s presence', () => {
     expect(presenceOf({ ...base, projection: { ...live, partial: 'Hel' } }).state).toBe('responding')
     expect(presenceOf({ ...base, projection: live }).state).toBe('thinking')
   })
+  it('is thinking from the moment a message is sent, before the run has started', () => {
+    const working: Part = { kind: 'working', id: 'working' }
+    expect(presenceOf({ ...base, projection: projection(), parts: [working] })).toEqual({
+      state: 'thinking',
+      label: 'Thinking…',
+    })
+  })
   it('keeps pending work visible while idle, including after a failed run', () => {
     const pending = projection({ inbox: [{ id: 8, mode: 'followUp' }] })
     expect(presenceOf({ ...base, projection: pending })).toEqual({ state: 'waiting', label: '1 queued message' })
