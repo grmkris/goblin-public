@@ -1,5 +1,5 @@
 import { createMcpHandler } from '@modelcontextprotocol/server'
-import type { ConversationId, GenerationHooks } from '@earendil-works/pi-durable'
+import type { ConversationId, GenerationHooks, HookApi } from '@earendil-works/pi-durable'
 import * as Schema from 'effect/Schema'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -23,6 +23,9 @@ import { MemoryCredentials, MemoryGrants, MemoryRegistries } from './mcp/memory.
 import { MemoryDraftLog, MemorySkillState } from './skills-memory.ts'
 import { lowLevelServer } from './mcp/low-level-server.ts'
 import { servicesOf } from './mcp/runtime.ts'
+import { fake, unread } from './fake.ts'
+import { BACKGROUND } from '../src/pi/context.ts'
+import type { CheapModel } from '../src/memory/model.ts'
 
 /** What the library fixture received and answers: drafts in order, and the status it reports for each. */
 const library: { drafts: Record<string, unknown>[]; status: 'open' | 'accepted' | 'rejected' } = {
@@ -97,13 +100,13 @@ const learnerAt = () => {
           drafts,
           state,
           skills: skillsService,
-          // SAFETY: the learner only calls `complete`, which this fixture answers.
-          model: {
+          // The learner only calls `complete`, which this fixture answers.
+          model: fake<CheapModel>({
             complete: async () => {
               model.calls += 1
               return model.answer
             },
-          } as never,
+          }),
         })
       }),
     ).pipe(
@@ -181,8 +184,8 @@ describe('the skill learner (unit)', () => {
     const extension = skillLearningExtension(run, (_conversation, outcome) => outcomes.push(outcome))
     const hooks = extension.hooks?.[0]?.handlers
     if (!hasYieldHook(hooks)) throw new Error('skills onYield hook missing')
-    // SAFETY: the hook only reads conversationId; unused native answer, readers and context are omitted.
-    expect(hooks.onYield(undefined as never, { conversationId: MAIN } as never, {} as never)).toBeUndefined()
+    // The hook only reads conversationId; the answer is never read.
+    expect(hooks.onYield(unread, fake<HookApi>({ conversationId: MAIN }), BACKGROUND)).toBeUndefined()
     await vi.waitFor(() => expect(outcomes).toEqual(['failed']))
     expect(model.calls).toBe(1)
   })
@@ -194,8 +197,8 @@ describe('the skill learner (unit)', () => {
     )
     const hooks = extension.hooks?.[0]?.handlers
     if (!hasYieldHook(hooks)) throw new Error('skills onYield hook missing')
-    // SAFETY: the hook only reads conversationId; unused native answer, readers and context are omitted.
-    const result = hooks.onYield(undefined as never, { conversationId: MAIN } as never, {} as never)
+    // The hook only reads conversationId; the answer is never read.
+    const result = hooks.onYield(unread, fake<HookApi>({ conversationId: MAIN }), BACKGROUND)
     expect(result).toBeUndefined()
     await vi.waitFor(() => expect(outcomes).toEqual([{ conversation: MAIN, outcome: 'failed' }]))
     expect(JSON.stringify(outcomes)).not.toContain('private')

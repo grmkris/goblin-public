@@ -41,11 +41,7 @@ import {
   sqliteDb,
   stub,
 } from './fixture.ts'
-
-/** A stand-in implementing only the members a request here reaches; reaching any other fails the test loudly. */
-const fake = <T>(members: Partial<T>): T =>
-  // SAFETY: every fake below is built through this one cast, and each is given every member its programs call.
-  members as T
+import { fake } from '../../fake.ts'
 
 const view = (id: string, extra: Partial<ConversationView> = {}): ConversationView => ({
   id,

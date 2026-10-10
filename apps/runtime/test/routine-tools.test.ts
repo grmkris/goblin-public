@@ -3,6 +3,7 @@ import type { ToolRegistration } from '@earendil-works/pi-durable'
 import { describe, expect, it } from 'vitest'
 import { routinesExtension } from '../src/pi/routines.ts'
 import type { RunProgram } from '../src/runtime/bridge.ts'
+import { executeTool, inConversation } from './pi-tool.ts'
 
 const DRAFT = {
   id: 'rt_1',
@@ -49,11 +50,8 @@ describe('routine tools (unit, ADR 0027)', () => {
   })
 
   it('propose a typed definition, end the turn and leave the receipt the web reviews', async () => {
-    // SAFETY: the tool reads only the conversation and call ids of its API, and nothing of the context.
-    const api = { conversationId: '1', callId: 'c1' } as never
-    // SAFETY: as above.
-    const context = {} as never
-    const result = await tool('routine_propose').execute(definition, api, context)
+    // The tool reads only the conversation and call ids of its API.
+    const result = await executeTool(tool('routine_propose'), definition, inConversation(1, { callId: 'c1' }))
     expect(result).toMatchObject({
       details: {
         kind: 'routine-proposal',

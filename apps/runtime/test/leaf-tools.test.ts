@@ -9,6 +9,7 @@ import { serversExtension } from '../src/pi/servers.ts'
 import { skillsExtension } from '../src/pi/skills.ts'
 import { threadExtension } from '../src/pi/thread.ts'
 import { ReadyResult } from '../src/pi/typed-tool.ts'
+import { executeTool, inConversation } from './pi-tool.ts'
 
 type Arguments = Parameters<typeof validateToolArguments>[1]['arguments']
 
@@ -31,8 +32,8 @@ const call = (registration: ToolRegistration, args: Arguments) => {
     name: registration.name,
     arguments: args,
   })
-  // SAFETY: these tools read only the conversation and call ids of the API, and none of the context.
-  return registration.execute(checked, { conversationId: 3, callId: 'tc_1' } as never, {} as never)
+  // These tools read only the conversation and call ids of the API.
+  return executeTool(registration, checked, inConversation(3, { callId: 'tc_1' }))
 }
 
 const layout = {
