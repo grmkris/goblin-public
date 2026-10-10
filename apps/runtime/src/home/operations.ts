@@ -1,6 +1,6 @@
-import { HomeLayout, type HomeOperation, type HomeTile } from '@goblin/contracts'
-import * as Schema from 'effect/Schema'
+import type { HomeLayout, HomeOperation, HomeTile } from '@goblin/contracts'
 import { InvalidInput, NotFound } from '../http/errors.ts'
+import { homeLayout } from './store.ts'
 
 /** Pure ordered edits. Placement changes presentation and never touches grants or App state. */
 export function applyHomeOperations(
@@ -10,7 +10,7 @@ export function applyHomeOperations(
 ): HomeLayout {
   const tiles = [...layout.tiles]
   for (const op of ops) apply(tiles, op, actor)
-  return Schema.decodeSync(HomeLayout)({ revision: layout.revision + 1, tiles })
+  return homeLayout({ revision: layout.revision + 1, tiles })
 }
 
 function apply(tiles: HomeTile[], op: HomeOperation, actor: HomeTile['placedBy']): void {

@@ -6,12 +6,16 @@ import { appHome } from '../storage/schema.ts'
 
 /** The agent's synchronous SQLite, or a transaction on it. */
 type HomeDb<RunResult> = Pick<SQLiteAsyncDatabase<'sync', RunResult>, 'select' | 'insert'>
+
+/** A layout checked against its bounds (tile count, sizes, note length): what is stored, read back or made by edits. */
+export const homeLayout: (layout: unknown) => HomeLayout = Schema.decodeUnknownSync(HomeLayout)
+
 export const readHome = <RunResult>(db: HomeDb<RunResult>): HomeLayout => {
   const row = db.select().from(appHome).where(eq(appHome.id, 1)).get()
-  return row === undefined ? EMPTY_HOME : Schema.decodeUnknownSync(HomeLayout)(JSON.parse(row.layout))
+  return row === undefined ? EMPTY_HOME : homeLayout(JSON.parse(row.layout))
 }
 export function writeHome<RunResult>(db: HomeDb<RunResult>, layout: HomeLayout): void {
-  const valid = Schema.decodeSync(HomeLayout)(layout)
+  const valid = homeLayout(layout)
   const values = { id: 1, revision: valid.revision, layout: JSON.stringify(valid) }
   db.insert(appHome).values(values).onConflictDoUpdate({ target: appHome.id, set: values }).run()
 }

@@ -1,7 +1,7 @@
 import {
   HomeEdit,
   HomeEditResult,
-  HomeLayout,
+  type HomeLayout,
   type HomeRead,
   type HomeTile,
   type HomeOperation,
@@ -17,9 +17,12 @@ import { type AppError, Conflict, Forbidden, InvalidInput, NotFound, attemptSync
 import { Changes } from '../runtime/changes.ts'
 import { appHomeOperations } from '../storage/schema.ts'
 import { applyHomeOperations, ownerTargets, touchedTiles } from './operations.ts'
-import { readHome, writeHome } from './store.ts'
+import { homeLayout, readHome, writeHome } from './store.ts'
 
 type Actor = HomeTile['placedBy']
+
+/** An edit's stored receipt, as its replay and its Undo read it back. */
+const storedResult = Schema.decodeUnknownSync(Schema.fromJsonString(HomeEditResult))
 
 declare module '../runtime/changes.ts' {
   interface ChangeTopics {
@@ -115,7 +118,7 @@ export class HomeService<RunResult = unknown> {
         .get()
       if (replay !== undefined) {
         if (replay.actor !== actor) throw new Conflict({ reason: 'operation belongs to another actor' })
-        return Schema.decodeUnknownSync(HomeEditResult)(JSON.parse(replay.result))
+        return storedResult(replay.result)
       }
       const before = readHome(tx)
       if (before.revision !== valid.expectedRevision) return { kind: 'stale' as const, layout: before }
@@ -152,10 +155,10 @@ export class HomeService<RunResult = unknown> {
       .where(eq(appHomeOperations.operationId, input.undoOf ?? ''))
       .get()
     if (row === undefined) throw new NotFound({ what: 'home receipt' })
-    const result = Schema.decodeUnknownSync(HomeEditResult)(JSON.parse(row.result))
+    const result = storedResult(row.result)
     if (result.kind !== 'applied' || result.layout.revision !== current.revision)
       throw new Conflict({ reason: 'Home changed after this edit; Undo cannot overwrite a later edit' })
-    return { revision: current.revision + 1, tiles: Schema.decodeUnknownSync(HomeLayout)(JSON.parse(row.before)).tiles }
+    return { revision: current.revision + 1, tiles: homeLayout(JSON.parse(row.before)).tiles }
   }
   #validateAdd(op: HomeOperation, actor: Actor): void {
     if (op.kind !== 'add' || op.tile.kind !== 'app') return
