@@ -2,7 +2,6 @@ import type { StepReport } from './log.ts'
 import type {
   AuthProvider,
   CallToolResult,
-  GetPromptResult,
   ListPromptsResult,
   ListResourcesResult,
   ListResourceTemplatesResult,
@@ -85,7 +84,6 @@ export type McpCallOptions = McpRequestOptions & {
   readonly approvalContext?: ApprovalContext
 }
 export type McpToolResult = CallToolResult
-export type McpPromptResult = GetPromptResult
 
 /**
  * Skills transport authority is checked again for every HTTP dispatch, including refresh retries: per server, an Effect

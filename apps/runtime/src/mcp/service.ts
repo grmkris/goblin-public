@@ -26,7 +26,6 @@ import type { Stage } from './suggested.ts'
 import type {
   McpCallOptions,
   McpConnectionSnapshot,
-  McpPromptResult,
   McpRequestOptions,
   McpServerConfig,
   McpToolResult,
@@ -145,11 +144,6 @@ export class McpConnections extends Context.Service<
       uri: string,
       caller: 'human' | 'app',
     ) => Effect.Effect<ReadResourceResult, AppError>
-    readonly getPrompt: (
-      serverId: string,
-      name: string,
-      args: Record<string, string>,
-    ) => Effect.Effect<McpPromptResult, AppError>
     /** Closes every connection, when the agent's runtime goes. */
     readonly closeAll: () => Effect.Effect<void, AppError>
   }

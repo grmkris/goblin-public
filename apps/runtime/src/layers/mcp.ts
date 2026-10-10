@@ -353,13 +353,6 @@ export const McpConnectionsLive = Layer.effect(
           caller === 'app' ? manager.readAppResource(serverId, uri) : manager.readResource(serverId, uri),
         )
       }),
-      getPrompt: Effect.fn('McpConnections.getPrompt')(function* (
-        serverId: string,
-        name: string,
-        args: Record<string, string>,
-      ) {
-        return yield* attempt(() => manager.getPrompt(serverId, name, args))
-      }),
       closeAll: Effect.fn('McpConnections.closeAll')(function* () {
         yield* attempt(() => manager.closeAll())
       }),

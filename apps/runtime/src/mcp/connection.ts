@@ -34,7 +34,6 @@ import type {
   McpConnectionSnapshot,
   McpManagerOptions,
   McpToolResult,
-  McpPromptResult,
   McpServerConfig,
 } from './types.ts'
 
@@ -555,23 +554,6 @@ export class McpConnectionManager {
           send,
         ),
       max,
-    )
-  }
-
-  async getPrompt(
-    serverId: string,
-    name: string,
-    args: Record<string, string> = {},
-    options: RequestOptions = {},
-  ): Promise<McpPromptResult> {
-    const connection = await this.#authorized(serverId, 'prompt', name, options)
-    if (connection.snapshot.capabilities.prompts === undefined)
-      throw new UpstreamMcp({ serverId, reason: 'unsupported' })
-    return this.#remote(connection, () =>
-      connection.client.getPrompt(
-        { name, arguments: args },
-        { timeout: this.#options.timeoutMs ?? 30_000, ...options },
-      ),
     )
   }
 }
