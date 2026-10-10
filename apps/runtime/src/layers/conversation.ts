@@ -22,7 +22,7 @@ import { ConversationRegistry, ConversationsInstance } from '../conversations.ts
 import { MemoriesInstance } from '../memory/memory.ts'
 import { CheapModels } from '../memory/model.ts'
 import type { Models } from '../models.ts'
-import { type AppError, attempt, attemptSync } from '../http/errors.ts'
+import { attempt, attemptSync } from '../http/errors.ts'
 import { FlowEvents, withFlow } from '../observability/flows.ts'
 import { writeLine } from '../observability/logger.ts'
 import { safeErrorType } from '../observability/report.ts'
@@ -241,19 +241,19 @@ const threadStarts = (
   ) {
     const kind = threadFlow(anchor)
     const flow = { flow: kind, via: 'app', actor: 'owner', parentChat: parent, operationId } as const
-    const started = Effect.gen(function* () {
-      yield* operations.record(parent, operationId, { kind, origin: 'owner' })
-      const now = yield* epochSeconds
-      const thread = yield* attempt(() => conversations.startThread(parent, operationId, anchor, now))
-      yield* operations.advance(parent, operationId, { state: 'settled', targetChat: thread.view.id })
-      return thread
-    })
-    const refused = (error: AppError) =>
-      operations.advance(parent, operationId, { state: 'refused', reason: safeErrorType(error) })
+    const started = operations.tracked(
+      parent,
+      operationId,
+      { kind, origin: 'owner' },
+      () =>
+        Effect.flatMap(epochSeconds, (now) =>
+          attempt(() => conversations.startThread(parent, operationId, anchor, now)),
+        ),
+      (thread) => ({ state: 'settled', targetChat: thread.view.id }),
+    )
     const thread = yield* started.pipe(
       withFlow(flow, ({ view, existing }) => ({ chat: view.id, status: existing ? 'replayed' : 'ok' })),
       Effect.provideService(FlowEvents, flows),
-      Effect.tapError(refused),
     )
     return thread.view
   })
@@ -419,13 +419,19 @@ const MovesAdapter = Layer.effect(
     return Moves.of({
       move: Effect.fn('Moves.move')(function* (chat: string, input: MoveToThread) {
         const flow = { flow: 'move', via: 'app', actor: 'owner', chat, operationId: input.operationId } as const
-        const moved = Effect.gen(function* () {
-          const { existing } = yield* operations.record(chat, input.operationId, { kind: 'move', origin: 'owner' })
-          const now = yield* epochSeconds
-          const receipt = yield* attempt(() => moves.move(chat, input, now))
-          yield* operations.advance(chat, input.operationId, moveEnd(receipt))
-          return { receipt, existing }
-        })
+        const moved = operations.tracked(
+          chat,
+          input.operationId,
+          { kind: 'move', origin: 'owner' },
+          ({ existing }) =>
+            Effect.flatMap(epochSeconds, (now) =>
+              Effect.map(
+                attempt(() => moves.move(chat, input, now)),
+                (receipt) => ({ receipt, existing }),
+              ),
+            ),
+          ({ receipt }) => moveEnd(receipt),
+        )
         const settled = yield* moved.pipe(
           withFlow(flow, ({ receipt, existing }) =>
             receipt.state === 'refused'

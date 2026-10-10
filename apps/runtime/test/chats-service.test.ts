@@ -12,6 +12,7 @@ import { ChatDirectory, ChatsInstance } from '../src/chats/directory.ts'
 import { settledWithin } from '../src/chats/instance.ts'
 import { type ChatMover, MovesInstance } from '../src/chats/mover.ts'
 import { ChatOperations, Chats, Conversations, Moves } from '../src/chats/service.ts'
+import { Conflict } from '../src/http/errors.ts'
 import { type ConversationRegistry, ConversationsInstance } from '../src/conversations.ts'
 import type { FoundationServices } from '../src/layers/core.ts'
 import { ConversationLive } from '../src/layers/conversation.ts'
@@ -175,6 +176,40 @@ describe('the conversation services', () => {
         { chat: '2', operationId: 'note:1', kind: 'write:app.note', origin: 'system', state: 'written' },
       ])
       expect(yield* Effect.flip(operations.record('99', 'op-2', send))).toMatchObject({ _tag: 'NotFound' })
+    }).pipe(Effect.provide(layer))
+  })
+
+  it.effect('track an operation: its receipt first, then the work, then its end, or refused if the work failed', () => {
+    const { layer } = services([])
+    return Effect.gen(function* () {
+      const operations = yield* ChatOperations
+      const start = { kind: 'start', origin: 'owner' } as const
+      const made = yield* operations.tracked(
+        '2',
+        'op-t',
+        start,
+        (admitted) => Effect.succeed({ chat: '7', existing: admitted.existing }),
+        ({ chat }) => ({ state: 'settled', targetChat: chat }),
+      )
+      expect(made).toEqual({ chat: '7', existing: false })
+      expect(yield* operations.receipt('2', 'op-t')).toMatchObject(
+        Option.some({ state: 'settled', targetChat: '7', session: '42' }),
+      )
+      const refused = yield* Effect.flip(
+        operations.tracked(
+          '2',
+          'op-f',
+          start,
+          () => Effect.fail(new Conflict({ reason: 'x' })),
+          () => ({
+            state: 'settled',
+          }),
+        ),
+      )
+      expect(refused).toBeInstanceOf(Conflict)
+      expect(yield* operations.receipt('2', 'op-f')).toMatchObject(
+        Option.some({ state: 'refused', reason: 'Conflict' }),
+      )
     }).pipe(Effect.provide(layer))
   })
 

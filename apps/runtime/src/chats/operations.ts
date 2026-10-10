@@ -69,6 +69,27 @@ const receiptsOf = (db: Db['Service'], chats: ChatDirectory) => ({
 type Receipts = ReturnType<typeof receiptsOf>
 type Lock = ReturnType<typeof chatLock>
 
+/** `ChatOperations.tracked`: the receipt recorded, `work`, then the receipt moved on, or refused if `work` failed. */
+const trackedWith =
+  (receipts: Receipts) =>
+  <A, E, R>(
+    chat: string,
+    operationId: string,
+    receipt: ReceiptInput,
+    work: (admitted: Admitted) => Effect.Effect<A, E, R>,
+    end: (value: A) => Omit<ReceiptChange, 'now'>,
+  ): Effect.Effect<A, E | AppError, R> =>
+    Effect.gen(function* () {
+      const admitted = yield* receipts.record(chat, operationId, receipt)
+      const value = yield* work(admitted).pipe(
+        Effect.tapError((error) =>
+          receipts.advance(chat, operationId, { state: 'refused', reason: safeErrorType(error) }),
+        ),
+      )
+      yield* receipts.advance(chat, operationId, end(value))
+      return value
+    })
+
 /** A passive write while `chat`'s lock is held: its receipt, Pi's write into the session it names, then `written`. */
 const writeHeld = (receipts: Receipts, pi: PiSessions['Service']) =>
   Effect.fn('ChatOperations.passiveWrite')(function* (chat: string, write: PassiveWrite) {
@@ -102,25 +123,26 @@ const flowed = <A, E, R>(
 /** What the one admission sequence reads, captured once when the layer is built. */
 type Admitting = {
   readonly withChat: Lock
-  readonly receipts: Receipts
+  readonly tracked: ReturnType<typeof trackedWith>
   readonly flows: FlowEvents['Service']
   readonly requireOpen: (chat: string) => string
 }
 
 /** `ChatOperations.admit`: under the lock, the chat open, the receipt, `then`, the receipt's end; one flow event. */
 const admitWith =
-  ({ withChat, receipts, flows, requireOpen }: Admitting) =>
+  ({ withChat, tracked, flows, requireOpen }: Admitting) =>
   <A, E, R>(admission: Admission, then: (admitted: Admitted) => Effect.Effect<A, E, R>) => {
     const { chat, operationId, receipt } = admission
-    const refuse = (error: unknown) =>
-      receipts.advance(chat, operationId, { state: 'refused', reason: safeErrorType(error) })
-    const admitted = Effect.gen(function* () {
-      yield* attemptSync(() => requireOpen(chat))
-      const found = yield* receipts.record(chat, operationId, receipt)
-      const value = yield* then(found).pipe(Effect.tapError(refuse))
-      yield* receipts.advance(chat, operationId, { state: 'submitted' })
-      return { value, existing: found.existing }
-    })
+    const admitted = Effect.andThen(
+      attemptSync(() => requireOpen(chat)),
+      tracked(
+        chat,
+        operationId,
+        receipt,
+        (found) => Effect.map(then(found), (value) => ({ value, existing: found.existing })),
+        () => ({ state: 'submitted' }),
+      ),
+    )
     return flowed(flows, admission, withChat(chat, admitted)).pipe(Effect.withSpan('ChatOperations.admit'))
   }
 
@@ -166,10 +188,12 @@ export const makeChatOperations = (chats: ChatDirectory) =>
     const withChat = chatLock(yield* KeyedLock)
     const receipts = receiptsOf(db, chats)
     const written = writeHeld(receipts, pi)
-    const admit = admitWith({ withChat, receipts, flows, requireOpen: (chat) => chats.requireOpen(chat) })
+    const tracked = trackedWith(receipts)
+    const admit = admitWith({ withChat, tracked, flows, requireOpen: (chat) => chats.requireOpen(chat) })
     const sending = { admit, budget: yield* Budget, models: yield* Models, pi, harness, applied, routines }
     return ChatOperations.of({
       ...receipts,
+      tracked,
       withChat,
       passiveWrite: (chat, write) => withChat(chat, written(chat, write)),
       admit,

@@ -129,6 +129,18 @@ export class ChatOperations extends Context.Service<
       change: Omit<ReceiptChange, 'now'>,
     ) => Effect.Effect<void, AppError>
     /**
+     * `work` as `operationId`'s operation in `chat`: its receipt is recorded first (a replay finds its first session),
+     * then `work` runs, then `end` moves the receipt on with what it made (`submitted`, `settled`, …). A failure of
+     * `work` leaves the receipt `refused` with the failure's type. No lock: callers that need one take it.
+     */
+    readonly tracked: <A, E, R>(
+      chat: string,
+      operationId: string,
+      receipt: ReceiptInput,
+      work: (admitted: Admitted) => Effect.Effect<A, E, R>,
+      end: (value: A) => Omit<ReceiptChange, 'now'>,
+    ) => Effect.Effect<A, E | AppError, R>
+    /**
      * Runs `effect` holding `chat`'s admission lock: one at a time per chat, in arrival order. An interruption while
      * waiting for the lock waits for it, then lets it go. Not re-entrant: nothing inside takes `chat`'s lock again.
      */
