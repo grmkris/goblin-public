@@ -3,8 +3,7 @@ import type { PiHarness } from 'agents/harness/pi'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { agentApps } from '../../src/agent-apps/engine.ts'
-import { type AppSources, agentAppChanged, agentAppId, agentAppName, appList } from '../../src/apps/registry.ts'
-import { ChatDirectory } from '../../src/chats/directory.ts'
+import { type AgentAppsPort, agentAppChanged, agentAppId, agentAppName, appList } from '../../src/apps/registry.ts'
 import { HomeService } from '../../src/home/service.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
 import { memorySchedules, probePorts } from './apps-jobs-probe.ts'
@@ -40,13 +39,10 @@ export async function inboxAppProbe(
   })
   apps.attach(createRegistry())
   apps.restore()
-  const sources: AppSources = {
-    agents: {
-      info: (name) => apps.info(name),
-      launch: (name) => apps.launch(name),
-      rehome: () => undefined,
-    },
-    chats: new ChatDirectory(db),
+  const sources: AgentAppsPort = {
+    info: (name) => apps.info(name),
+    launch: (name) => apps.launch(name),
+    rehome: () => undefined,
   }
   const built = await apps.build(
     { name: 'inbox-glance', files: { 'app.ts': INBOX_APP, 'view.tsx': INBOX_VIEW } },
@@ -89,7 +85,7 @@ export async function inboxAppProbe(
     lastGood,
     job: apps.jobs.list('inbox-glance')[0],
     placed,
-    app: appList(db, sources.agents)[0],
+    app: appList(db, sources)[0],
     launch,
   }
 }

@@ -1,10 +1,9 @@
 import { type AgentAppLaunch, type AppView } from '@goblin/contracts'
 import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
-import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
-import type { ChatDirectory } from '../chats/directory.ts'
+import { type ChatDb, chatOfSession, chatSession, conversationAbove } from '../chats/directory.ts'
 import { type AppError, NotFound, attempt, toAppError } from '../http/errors.ts'
 import { BACKGROUND, entryId } from '../pi/context.ts'
 import type { PiSessions } from '../pi/sessions.ts'
@@ -14,9 +13,6 @@ import { isRecord } from '../runtime/digest.ts'
 import type { AppPlacement, AppSharing } from './service.ts'
 
 type Row = typeof appRegistry.$inferSelect
-
-/** The agent's synchronous SQLite. */
-type AppsDb<RunResult> = SQLiteAsyncDatabase<'sync', RunResult>
 
 /** Where an App comes from: its server, the tool whose call it shows, the `ui://` resource it renders, its name. */
 export type AppOrigin = {
@@ -55,12 +51,6 @@ export type AgentAppsPort = {
   readonly rehome: (closed: readonly string[], to: string) => void
 }
 
-/** Where a chat sits, as the registry reads it: a session's chat, a chat's session and the Conversation above it. */
-export type ChatPlaces = Pick<ChatDirectory, 'chatOf' | 'session' | 'conversationAbove'>
-
-/** What the registry's writes read besides the database: the agent's apps and where each chat sits. */
-export type AppSources = { readonly agents: AgentAppsPort; readonly chats: ChatPlaces }
-
 /*
  * The owner's Apps (ADRs 0020, 0021), as rows: an MCP App kept per tool call whose tool renders one, under the
  * conversation it was made in, and each agent app with a view, under its home conversation. Showing an App never
@@ -87,7 +77,7 @@ const viewOf = (row: Row, agents: AgentAppsPort): AppView => ({
   source: sourceOf(row, agents),
 })
 
-function rowOf<RunResult>(db: AppsDb<RunResult>, id: string): Row {
+function rowOf(db: ChatDb, id: string): Row {
   const row = /^\d{1,12}$/u.test(id)
     ? db
         .select()
@@ -100,18 +90,18 @@ function rowOf<RunResult>(db: AppsDb<RunResult>, id: string): Row {
 }
 
 /** Lightweight placement metadata for Home validation; unlike `appList`, this never resolves an agent view. */
-export function appPlacement<RunResult>(db: AppsDb<RunResult>, id: string): AppPlacement {
+export function appPlacement(db: ChatDb, id: string): AppPlacement {
   const row = rowOf(db, id)
   return { source: row.source, closed: row.closedAt !== null, tool: row.tool, title: row.title }
 }
 
 /** One App as it is now; `NotFound` when there is none. */
-export function appView<RunResult>(db: AppsDb<RunResult>, agents: AgentAppsPort, id: string): AppView {
+export function appView(db: ChatDb, agents: AgentAppsPort, id: string): AppView {
   return viewOf(rowOf(db, id), agents)
 }
 
 /** Every App, oldest first, closed ones included. */
-export function appList<RunResult>(db: AppsDb<RunResult>, agents: AgentAppsPort): readonly AppView[] {
+export function appList(db: ChatDb, agents: AgentAppsPort): readonly AppView[] {
   return db
     .select()
     .from(appRegistry)
@@ -124,18 +114,13 @@ export function appList<RunResult>(db: AppsDb<RunResult>, agents: AgentAppsPort)
 export type KeptApp = { readonly session: string; readonly callId: string; readonly origin: AppOrigin }
 
 /** Keeps the App of call `callId` in `session`; the same call keeps the same App, opened again if it was closed. */
-export function keepApp<RunResult>(
-  db: AppsDb<RunResult>,
-  { agents, chats }: AppSources,
-  { session, callId, origin }: KeptApp,
-  now: number,
-): AppView {
+export function keepApp(db: ChatDb, agents: AgentAppsPort, { session, callId, origin }: KeptApp, now: number): AppView {
   const [row] = db
     .insert(appRegistry)
     .values({
       source: 'mcp',
       sessionId: session,
-      chatId: chats.chatOf(session) ?? session,
+      chatId: chatOfSession(db, session) ?? session,
       callId,
       serverId: origin.serverId,
       tool: origin.tool,
@@ -155,15 +140,10 @@ export function keepApp<RunResult>(
  * conversation, and every change after that is a change of its App (with its release and revision). Answers the ids
  * of the Apps it changed.
  */
-export function agentAppChanged<RunResult>(
-  db: AppsDb<RunResult>,
-  { agents, chats }: AppSources,
-  name: string,
-  now: number,
-): readonly string[] {
+export function agentAppChanged(db: ChatDb, agents: AgentAppsPort, name: string, now: number): readonly string[] {
   const info = agents.info(name)
   if (info === undefined) return []
-  const home = chats.chatOf(info.home) ?? info.home
+  const home = chatOfSession(db, info.home) ?? info.home
   const row = db.select().from(appRegistry).where(eq(appRegistry.name, name)).get()
   if (row === undefined && !info.ui) return []
   const [changed] =
@@ -183,19 +163,19 @@ export function agentAppChanged<RunResult>(
 }
 
 /** The App id of an agent app with a view, or null. */
-export function agentAppId<RunResult>(db: AppsDb<RunResult>, name: string): string | null {
+export function agentAppId(db: ChatDb, name: string): string | null {
   const row = db.select({ id: appRegistry.id }).from(appRegistry).where(eq(appRegistry.name, name)).get()
   return row === undefined ? null : String(row.id)
 }
 
 /** The owner deleted an agent app: its App goes from every pane and list. Answers the App's id, if it had one. */
-export function removeAgentApp<RunResult>(db: AppsDb<RunResult>, name: string): string | undefined {
+export function removeAgentApp(db: ChatDb, name: string): string | undefined {
   const [row] = db.delete(appRegistry).where(eq(appRegistry.name, name)).returning().all()
   return row === undefined ? undefined : String(row.id)
 }
 
 /** The agent app an App id names. */
-export function agentAppName<RunResult>(db: AppsDb<RunResult>, id: string): string {
+export function agentAppName(db: ChatDb, id: string): string {
   const row = rowOf(db, id)
   if (row.source !== 'agent' || row.name === null) throw new NotFound({ what: 'agent app' })
   return row.name
@@ -205,7 +185,7 @@ export function agentAppName<RunResult>(db: AppsDb<RunResult>, id: string): stri
  * Where an open App comes from, for what it shares with the owner's message: an MCP App's server, or the agent app
  * it is. A closed or unknown App shares nothing.
  */
-export function appOrigin<RunResult>(db: AppsDb<RunResult>, id: string, conversation: string): AppSharing {
+export function appOrigin(db: ChatDb, id: string, conversation: string): AppSharing {
   const row = rowOf(db, id)
   if (row.closedAt !== null || (row.chatId ?? row.sessionId) !== conversation) throw new NotFound({ what: 'app' })
   if (isMcp(row)) return { serverId: row.serverId }
@@ -213,13 +193,7 @@ export function appOrigin<RunResult>(db: AppsDb<RunResult>, id: string, conversa
 }
 
 /** Closes an App (it goes from every pane and transcript) or opens it again. */
-export function setAppClosed<RunResult>(
-  db: AppsDb<RunResult>,
-  agents: AgentAppsPort,
-  id: string,
-  closed: boolean,
-  now: number,
-): AppView {
+export function setAppClosed(db: ChatDb, agents: AgentAppsPort, id: string, closed: boolean, now: number): AppView {
   const [row] = db
     .update(appRegistry)
     .set({ closedAt: closed ? now : null })
@@ -235,9 +209,9 @@ export function setAppClosed<RunResult>(
  * moves the home of each agent app that lived in one to its Topic's Conversation: an agent app outlives its
  * conversation. Answers the ids of the Apps it closed.
  */
-export function closeWithConversations<RunResult>(
-  db: AppsDb<RunResult>,
-  { agents, chats }: AppSources,
+export function closeWithConversations(
+  db: ChatDb,
+  agents: AgentAppsPort,
   sessions: readonly string[],
   now: number,
 ): readonly string[] {
@@ -257,8 +231,8 @@ export function closeWithConversations<RunResult>(
     .all()
   const homes = new Map<string, string[]>()
   for (const chat of closed) {
-    const to = chats.conversationAbove(chat)
-    homes.set(to, [...(homes.get(to) ?? []), chat, chats.session(chat)])
+    const to = conversationAbove(db, chat)
+    homes.set(to, [...(homes.get(to) ?? []), chat, chatSession(db, chat)])
   }
   for (const [to, moved] of homes) agents.rehome([...new Set(moved)], to)
   return rows.map((row) => String(row.id))
@@ -277,7 +251,7 @@ export type LaunchSite =
     }
 
 /** Where App `id` is loaded from. */
-export function launchSite<RunResult>(db: AppsDb<RunResult>, id: string): LaunchSite {
+export function launchSite(db: ChatDb, id: string): LaunchSite {
   const row = rowOf(db, id)
   if (!isMcp(row)) return { kind: 'agent', name: agentAppName(db, id) }
   return {
@@ -291,7 +265,7 @@ export function launchSite<RunResult>(db: AppsDb<RunResult>, id: string): Launch
 }
 
 /** Keeps the entry an MCP App's call was found at, so the next launch reads it there. */
-export function keepCallEntry<RunResult>(db: AppsDb<RunResult>, id: string, entry: number): void {
+export function keepCallEntry(db: ChatDb, id: string, entry: number): void {
   db.update(appRegistry)
     .set({ entryId: entry })
     .where(and(eq(appRegistry.id, Number(id)), isNull(appRegistry.entryId)))

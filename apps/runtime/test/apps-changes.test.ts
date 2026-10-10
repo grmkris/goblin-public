@@ -3,9 +3,9 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AgentAppInfo } from '../src/agent-apps/engine.ts'
-import { type AppSources, agentAppChanged, appView, closeWithConversations, keepApp } from '../src/apps/registry.ts'
+import { type AgentAppsPort, agentAppChanged, appView, closeWithConversations, keepApp } from '../src/apps/registry.ts'
 import { Apps } from '../src/apps/service.ts'
-import { ChatDirectory, ChatsInstance, registerChat, registerPrimary } from '../src/chats/directory.ts'
+import { registerChat, registerPrimary } from '../src/chats/directory.ts'
 import { AppRegistryLive, appsOver } from '../src/layers/apps.ts'
 import { PiSessions } from '../src/pi/sessions.ts'
 import { Changes, makeChanges } from '../src/runtime/changes.ts'
@@ -28,11 +28,8 @@ const apps = () => {
   const { db, close } = chatDatabase()
   closes.push(close)
   registerPrimary(db, 1)
-  const sources: AppSources = {
-    // SAFETY: nothing here launches an App, so `launch` is never called.
-    agents: { info: () => INFO, launch: () => undefined as never, rehome: () => undefined },
-    chats: new ChatDirectory(db),
-  }
+  // SAFETY: nothing here launches an App, so `launch` is never called.
+  const sources: AgentAppsPort = { info: () => INFO, launch: () => undefined as never, rehome: () => undefined }
   const changes = makeChanges()
   const told: unknown[] = []
   Effect.runSync(changes.on('apps.changed', ({ ids }) => Effect.sync(() => void told.push(['changed', ids]))))
@@ -75,16 +72,11 @@ describe("a conversation's close reaches its Apps through the change bus (unit)"
     const told: (readonly string[])[] = []
     // SAFETY: the registry's start reads only these from the instance input; nothing here changes an agent app.
     const input = Object.assign(Object.create(null), {
-      agentApps: { info: () => undefined, launch: () => undefined, rehome: () => undefined, onChange: () => () => {} },
+      agentApps: { info: () => undefined, launch: () => undefined, rehome: () => undefined },
     }) as AgentInputs
     // SAFETY: nothing here launches an App, so `launch` is never called.
     const agents = { info: () => undefined, launch: () => undefined as never, rehome: () => undefined }
-    const app = keepApp(
-      db,
-      { agents, chats: new ChatDirectory(db) },
-      { session: '7', callId: 'call-1', origin: ORIGIN },
-      2,
-    )
+    const app = keepApp(db, agents, { session: '7', callId: 'call-1', origin: ORIGIN }, 2)
     await Effect.runPromise(
       Effect.gen(function* () {
         yield* changes.on('apps.changed', ({ ids }) => Effect.sync(() => void told.push(ids)))
@@ -99,7 +91,6 @@ describe("a conversation's close reaches its Apps through the change bus (unit)"
                 Layer.succeed(AgentInput, input),
                 // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
                 Layer.succeed(Db, db as never),
-                Layer.succeed(ChatsInstance, new ChatDirectory(db)),
                 Layer.succeed(Changes, changes),
                 stub(PiSessions),
               ),

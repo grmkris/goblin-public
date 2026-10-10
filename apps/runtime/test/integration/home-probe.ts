@@ -6,7 +6,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Schema from 'effect/Schema'
 import { agentApps } from '../../src/agent-apps/engine.ts'
 import {
-  type AppSources,
+  type AgentAppsPort,
   agentAppChanged,
   agentAppId,
   appList,
@@ -15,7 +15,6 @@ import {
   removeAgentApp,
   setAppClosed,
 } from '../../src/apps/registry.ts'
-import { ChatDirectory } from '../../src/chats/directory.ts'
 import { appConversations } from '../../src/storage/schema.ts'
 import { InvalidInput } from '../../src/http/errors.ts'
 import { HomeService } from '../../src/home/service.ts'
@@ -55,7 +54,7 @@ const boundsRejected = (kind: 'app' | 'conversations', length: number) =>
     }),
   )
 const hasApp = (tile: HomeLayout['tiles'][number]) => tile.kind === 'app'
-function mcpPlacementProbe(home: HomeService, apps: AppSources, db: ReturnType<typeof drizzle>) {
+function mcpPlacementProbe(home: HomeService, apps: AgentAppsPort, db: ReturnType<typeof drizzle>) {
   const edit = (
     operationId: string,
     expectedRevision: number,
@@ -77,7 +76,7 @@ function mcpPlacementProbe(home: HomeService, apps: AppSources, db: ReturnType<t
     [{ kind: 'add', tile: { kind: 'app', id: 'mcp-board', appId: mcp.id, size: 'medium' } }],
     'owner',
   )
-  setAppClosed(db, apps.agents, mcp.id, true, 4)
+  setAppClosed(db, apps, mcp.id, true, 4)
   const afterClose = edit('home-after-close', 7, [
     { kind: 'update', id: 'today', title: 'Today', markdown: 'Still editable' },
   ])
@@ -105,7 +104,7 @@ function mcpPlacementProbe(home: HomeService, apps: AppSources, db: ReturnType<t
   db.update(appConversations).set({ closedAt: 5 }).where(eq(appConversations.chatId, '222')).run()
   closeWithConversations(db, apps, ['222'], 5)
   const afterThreadClose = edit('home-after-thread-close', 9, [{ kind: 'resize', id: 'today', size: 'large' }])
-  const threadClosed = appList(db, apps.agents).find((app) => app.id === threaded.id)?.closedAt !== undefined
+  const threadClosed = appList(db, apps).find((app) => app.id === threaded.id)?.closedAt !== undefined
   return { agentMcpReason, ownerMcp, afterClose, closedAddRejected, afterThreadClose, threadClosed }
 }
 
@@ -119,13 +118,10 @@ export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, 
   })
   engine.attach(createRegistry())
   engine.restore()
-  const apps: AppSources = {
-    agents: {
-      info: (name) => engine.info(name),
-      launch: (name) => engine.launch(name),
-      rehome: () => undefined,
-    },
-    chats: new ChatDirectory(db),
+  const apps: AgentAppsPort = {
+    info: (name) => engine.info(name),
+    launch: (name) => engine.launch(name),
+    rehome: () => undefined,
   }
   const home = new HomeService(db, engine)
   const edit = (
@@ -182,7 +178,7 @@ export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, 
     edit('home-duplicate', 5, [{ kind: 'add', tile: { kind: 'app', id: 'reading-again', appId: id, size: 'small' } }]),
   )
   const eight = boundsRejected('app', 9)
-  setAppClosed(db, apps.agents, id, true, 2)
+  setAppClosed(db, apps, id, true, 2)
   const closePreserved = home.layout().tiles.some(hasApp)
   await engine.remove('home-list')
   removeAgentApp(db, 'home-list')

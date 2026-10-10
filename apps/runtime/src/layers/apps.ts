@@ -3,8 +3,8 @@ import * as Layer from 'effect/Layer'
 import { AgentAppsLive } from '../agent-apps/live.ts'
 import type { AppEngine } from '../agent-apps/service.ts'
 import {
+  type AgentAppsPort,
   type AppOrigin,
-  type AppSources,
   agentAppChanged,
   agentAppId,
   agentAppName,
@@ -21,7 +21,6 @@ import {
   setAppClosed,
 } from '../apps/registry.ts'
 import { Apps } from '../apps/service.ts'
-import { ChatsInstance } from '../chats/directory.ts'
 import { epochSeconds } from '../clock.ts'
 import { FilesLive } from '../files/live.ts'
 import type { Files } from '../files/service.ts'
@@ -35,11 +34,10 @@ import { AgentInput } from '../runtime/input.ts'
 /** The owner's Apps over the agent's database: each write tells the change bus which Apps it changed. */
 export const appsOver = (
   db: Db['Service'],
-  sources: AppSources,
+  agents: AgentAppsPort,
   changes: Changes['Service'],
   sessions: PiSessions['Service'],
 ) => {
-  const { agents } = sources
   const changed = (id: string) => changes.publish('apps.changed', { ids: [id] })
   return Apps.of({
     list: attemptSync(() => appList(db, agents)).pipe(Effect.withSpan('Apps.list')),
@@ -51,7 +49,7 @@ export const appsOver = (
     }),
     register: Effect.fn('Apps.register')(function* (session: string, callId: string, origin: AppOrigin) {
       const now = yield* epochSeconds
-      const app = yield* attemptSync(() => keepApp(db, sources, { session, callId, origin }, now))
+      const app = yield* attemptSync(() => keepApp(db, agents, { session, callId, origin }, now))
       yield* changed(app.id)
       return app
     }),
@@ -98,32 +96,27 @@ export const appsOver = (
  * its MCP Apps, and an agent app's change (`agent-apps.changed`: a build, a rollback, a new revision) updates its App,
  * each written at once and told to the change bus.
  */
-export const AppRegistryLive: Layer.Layer<Apps, never, AgentInput | Db | ChatsInstance | Changes | PiSessions> =
-  Layer.effect(
-    Apps,
-    Effect.gen(function* () {
-      const { agentApps } = yield* AgentInput
-      const db = yield* Db
-      const changes = yield* Changes
-      const sources: AppSources = {
-        agents: {
-          info: (name) => agentApps.info(name),
-          launch: (name) => agentApps.launch(name),
-          rehome: (closed, to) => agentApps.rehome(closed, to),
-        },
-        chats: yield* ChatsInstance,
-      }
-      const told = (ids: readonly string[]) =>
-        ids.length === 0 ? Effect.void : changes.publish('apps.changed', { ids })
-      yield* changes.on('conversations.changed', ({ ids }) =>
-        Effect.flatMap(epochSeconds, (now) => told(closeWithConversations(db, sources, ids, now))),
-      )
-      yield* changes.on('agent-apps.changed', ({ name }) =>
-        Effect.flatMap(epochSeconds, (now) => told(agentAppChanged(db, sources, name, now))),
-      )
-      return appsOver(db, sources, changes, yield* PiSessions)
-    }),
-  )
+export const AppRegistryLive: Layer.Layer<Apps, never, AgentInput | Db | Changes | PiSessions> = Layer.effect(
+  Apps,
+  Effect.gen(function* () {
+    const { agentApps } = yield* AgentInput
+    const db = yield* Db
+    const changes = yield* Changes
+    const agents: AgentAppsPort = {
+      info: (name) => agentApps.info(name),
+      launch: (name) => agentApps.launch(name),
+      rehome: (closed, to) => agentApps.rehome(closed, to),
+    }
+    const told = (ids: readonly string[]) => (ids.length === 0 ? Effect.void : changes.publish('apps.changed', { ids }))
+    yield* changes.on('conversations.changed', ({ ids }) =>
+      Effect.flatMap(epochSeconds, (now) => told(closeWithConversations(db, agents, ids, now))),
+    )
+    yield* changes.on('agent-apps.changed', ({ name }) =>
+      Effect.flatMap(epochSeconds, (now) => told(agentAppChanged(db, agents, name, now))),
+    )
+    return appsOver(db, agents, changes, yield* PiSessions)
+  }),
+)
 
 /** The agent's apps and the owner's files after the start, native over the one engine the agent object made. */
 export const AppsLive: Layer.Layer<AppEngine | Files, never, AgentInput | KeyedLock> = Layer.mergeAll(
