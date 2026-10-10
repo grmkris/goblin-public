@@ -13,7 +13,7 @@ import { DevClient, type Step } from './smoke-client.ts'
 import { edgeChecks } from './smoke-edge.ts'
 import { delegateReported } from './smoke-entries.ts'
 import { publicSmoke } from './smoke-public.ts'
-import { clientBuild } from './smoke-release.ts'
+import { clientBuild, flowsCheck } from './smoke-release.ts'
 
 const ObjectSchema = Schema.Record(Schema.String, Schema.MutableJson)
 type JsonObject = typeof ObjectSchema.Type
@@ -437,6 +437,8 @@ type Receipt = {
   readonly app: 'ok'
   /** The commit the deployed client bundle names, or why it was not checked. */
   readonly build: string
+  /** `ok`: the smoke's sends reached the flows dataset; or why it was not checked. */
+  readonly flows: string
 }
 
 /** Signed in: resident authority is active and main has a snapshot. */
@@ -460,6 +462,7 @@ async function smokeDev(
 ): Promise<
   Receipt | { readonly stage: string; readonly signup: string; readonly mode: 'read-only'; readonly build: string }
 > {
+  const started = Date.now()
   const config = await Effect.runPromise(settings)
   if ((await stat(new URL(`../.local/${config.stage}.env`, import.meta.url))).mode & 0o077)
     throw new Error('private_stage_env_required')
@@ -489,7 +492,8 @@ async function smokeDev(
       return { inbound, ...thread, ...subagent, ...memory, ...app }
     })
     const model = config.smokeModel ?? 'owner pick'
-    return { stage: config.stage, model, signup, resident, servers, files, edge, build, ...checks }
+    const flows = await flowsCheck(config.stage, started)
+    return { stage: config.stage, model, signup, resident, servers, files, edge, build, flows, ...checks }
   } finally {
     // Never leave the throwaway client authorized, whatever failed above.
     // expected: the step list records the revoke's answer; a refusal here must not hide the failure above
