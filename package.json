@@ -34,6 +34,7 @@
     "test": "turbo run test",
     "test:unit": "turbo run test:unit",
     "test:integration": "turbo run test:integration",
+    "test:integration:permuted": "turbo run test:integration:permuted",
     "agents:check": "bun tools/docs-public.ts",
     "bench:recall": "bun bench/scripts/cli.ts recall",
     "bench:campaign-plan": "bun bench/scripts/cli.ts campaign-plan",
@@ -58,7 +59,7 @@
     "goblin": "bun apps/cli/src/main.ts",
     "graph": "bun tools/check-graph.ts",
     "check:fast": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run check:chat-ids && bun run lint && bun run typecheck && bun run test:unit",
-    "check": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run check:chat-ids && bun run graph && bun run typecheck && bun run check:spikes && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run --cwd apps/runtime test:integration:permuted && bun run build",
+    "check": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run check:chat-ids && bun run graph && bun run typecheck && bun run check:spikes && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run test:integration:permuted && bun run build",
     "infra": "alchemy",
     "deploy:prod": "bun scripts/stage.ts deploy:prod",
     "plan:prod": "bun scripts/stage.ts plan:prod",
@@ -68,7 +69,7 @@
     "bench:decisions": "bun bench/scripts/decisions.ts",
     "check:chat-ids": "bun tools/check-chat-ids.ts",
     "check:spikes": "bun run --cwd spikes/coding typecheck && bun run --cwd spikes/coding test --path-ignore-patterns=test/verifier.test.ts && bun run --cwd spikes/coding-cf typecheck",
-    "check:public": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run check:chat-ids && bun run graph && bun run typecheck && bun run check:spikes && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run --cwd apps/runtime test:integration:permuted && bun run build"
+    "check:public": "bun run fmt:check && bun run agents:check && bun run check:patches && bun run check:chat-ids && bun run graph && bun run typecheck && bun run check:spikes && bun run lint:gate && bun run dupes && bun run test && bun run test:integration && bun run test:integration:permuted && bun run build"
   },
   "devDependencies": {
     "@shadcn/lint": "0.2.0",
