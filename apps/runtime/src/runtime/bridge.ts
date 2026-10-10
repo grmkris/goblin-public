@@ -2,27 +2,24 @@ import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import type * as ManagedRuntime from 'effect/ManagedRuntime'
 import { requirePlan } from '../billing/gates.ts'
-import { type AppError, toAppError } from '../http/errors.ts'
-import { encodeExit, unwrap } from '../http/rpc.ts'
-import { reportAndRecover } from '../observability/report.ts'
+import { type AppError, failureOf, toAppError } from '../http/errors.ts'
 import type { AgentServices } from '../layers/index.ts'
-import { McpConnections } from '../mcp/service.ts'
 import { type Instrument, uninstrumented } from './instrument.ts'
 
 type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
 type Program<A> = Effect.Effect<A, AppError, AgentServices>
 
-/** Runs a program to its value, or rejects with its `AppError` (decoded, as the Worker would see it). */
+/** Runs a program to its value, or rejects with the `AppError` it failed with (a defect is `Internal`, reported). */
 export type RunProgram = <A>(program: Program<A>) => Promise<A>
 /** Runs a program to its exit; a runtime that failed to build is an `AppError` exit too. */
-export type ExitProgram = <A>(program: Program<A>) => Promise<Exit.Exit<A, AppError>>
+type ExitProgram = <A>(program: Program<A>) => Promise<Exit.Exit<A, AppError>>
 
 export interface Bridge {
   /** Checks the account's plan (`requirePlan()`), then runs the program. */
   readonly run: RunProgram
   /** Runs the program with no plan check: the ledger, budget records, routine gates and diagnose. */
   readonly local: RunProgram
-  /** Runs the program to its exit, for the RPC methods that encode it. */
+  /** Runs the program to its exit: the agent's typed APIs answer a failure in their envelope. */
   readonly exit: ExitProgram
 }
 
@@ -47,7 +44,7 @@ export function makeBridge(
     async (program) => {
       const result = await exit(Effect.andThen(checkPlan ? requirePlan() : Effect.void, program))
       if (Exit.isSuccess(result)) return result.value
-      return unwrap(encodeExit(result))
+      throw failureOf(result.cause)
     }
   return { run: settle(true), local: settle(false), exit }
 }
@@ -56,14 +53,4 @@ export function makeBridge(
 export async function openRuntime(runtime: Runtime): Promise<Runtime> {
   await runtime.context()
   return runtime
-}
-
-/** Closes a built runtime's MCP connections, then disposes it. One that never finished building has nothing to close. */
-export async function closeRuntime(runtime: Promise<Runtime>): Promise<void> {
-  // expected: a runtime that failed to build has nothing to close, and its callers already had its failure
-  const services = await runtime.catch(() => undefined)
-  await services?.runPromise(
-    McpConnections.use((connections) => connections.closeAll()).pipe(reportAndRecover('runtime.close', undefined)),
-  )
-  await services?.dispose()
 }

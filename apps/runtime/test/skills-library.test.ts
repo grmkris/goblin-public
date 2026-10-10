@@ -211,7 +211,7 @@ describe('skills over MCP (unit)', () => {
 
   it('reports an unreachable server as unavailable rather than empty, and keeps a cached listing', async () => {
     await run(library.catalog())
-    await run(McpConnections.use((connections) => connections.closeAll()))
+    await run(McpConnections.use((connections) => connections.close('lib')))
     served.down = true
     expect((await run(library.catalog())).skills).toHaveLength(1)
     // A service made later has no listing of its own to keep.

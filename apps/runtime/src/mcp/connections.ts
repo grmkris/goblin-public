@@ -159,7 +159,8 @@ export const remote = <A>(
   )
 }
 
-export const closeAll = (manager: Manager) =>
+/** Closes every connection: the manager's finalizer, when the agent's runtime goes. */
+const closeAll = (manager: Manager) =>
   Effect.suspend(() =>
     Effect.forEach([...manager.connections.keys()], (serverId) => close(manager, serverId), {
       concurrency: 'unbounded',
@@ -184,7 +185,6 @@ export const lifecycle = (manager: Manager) => ({
     return (yield* connectionOf(manager, serverId, {})).snapshot
   }),
   close: (serverId: string) => close(manager, serverId),
-  closeAll: () => closeAll(manager),
   add: (server: McpServerConfig) =>
     attemptSync(() => {
       assertEndpoint(server)

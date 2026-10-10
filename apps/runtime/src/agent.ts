@@ -30,7 +30,7 @@ import { skillLearningExtension, skillsExtension } from './pi/skills.ts'
 import { AgentLive } from './layers/index.ts'
 import type { AgentServices } from './layers/index.ts'
 import { accountEntitlements, type EntitlementPolicy } from './billing/gates.ts'
-import { type Bridge, closeRuntime, makeBridge, openRuntime } from './runtime/bridge.ts'
+import { type Bridge, makeBridge, openRuntime } from './runtime/bridge.ts'
 import type { AgentInputs } from './runtime/input.ts'
 import { type Instrument, reported } from './runtime/instrument.ts'
 import { AgentHttp } from './http/api/server.ts'
@@ -229,7 +229,9 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     }
     const runtime = this.#runtime
     this.#runtime = undefined
-    if (runtime !== undefined) await closeRuntime(runtime)
+    // Disposing runs the layers' finalizers, which close the MCP connections.
+    // expected: a runtime that failed to build has nothing to dispose, and its callers already had its failure
+    await (await runtime?.catch(() => undefined))?.dispose()
     await this.destroy()
     return { ok: true, value: true }
   }

@@ -179,8 +179,6 @@ export class McpConnections extends Context.Service<
       uri: string,
       options?: SkillRequestOptions,
     ) => Effect.Effect<ReadResourceResult, AppError>
-    /** Closes every connection, when the agent's runtime goes. */
-    readonly closeAll: () => Effect.Effect<void>
   }
 >()('goblin/mcp/McpConnections') {}
 
