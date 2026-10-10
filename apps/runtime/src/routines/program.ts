@@ -5,7 +5,7 @@ import * as Option from 'effect/Option'
 import { nextInt } from 'effect/Random'
 import { requirePlan } from '../billing/gates.ts'
 import { Chats } from '../chats/service.ts'
-import { Routines } from './service.ts'
+import { RoutineControl, Routines } from './service.ts'
 
 export const routinesList = Effect.gen(function* () {
   const store = yield* Routines
@@ -56,4 +56,18 @@ export const setRoutineSettings = Effect.fn('routines.setSettings')(function* (s
   const store = yield* Routines
   yield* store.updateSettings(settings.timezone, settings.maxActive, settings.maxRunning)
   return yield* store.settings
+})
+
+/** The owner confirms, pauses or archives a routine: confirm subscribes an event routine, archive stops its runs. */
+export const routineChange = Effect.fn('routines.change')(function* (
+  id: string,
+  input: RoutineRevision,
+  action: 'confirm' | 'pause' | 'archive',
+) {
+  const changed = yield* changeRoutine(id, input, action)
+  const control = yield* RoutineControl
+  if (action === 'confirm') yield* control.confirmEvents(changed.id, changed.revision)
+  if (action === 'archive') yield* control.archive(id)
+  yield* control.reconcile
+  return yield* (yield* Routines).view(id)
 })

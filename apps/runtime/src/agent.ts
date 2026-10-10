@@ -45,7 +45,8 @@ import { type Applied } from './agent-model.ts'
 import { routinesExtension } from './pi/routines.ts'
 import { requireRoutine, requireRoutineSession } from './routines/authority.ts'
 import type { RoutineSlot } from './routines/scheduler.ts'
-import { RoutineController, routineExtensions, routineSchedulePorts } from './routines/controller.ts'
+import { RoutineController, routineSchedulePorts } from './routines/controller.ts'
+import { routineExtensions } from './routines/kit.ts'
 
 type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
 

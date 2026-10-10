@@ -1,38 +1,11 @@
-import type { Extension } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
-import * as Clock from 'effect/Clock'
-import * as Effect from 'effect/Effect'
-import { RoutineControl, RoutineRuns, Routines } from './service.ts'
-import type { RoutineRevision } from '@goblin/contracts'
-import { changeRoutine } from './program.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
-import { askingExtension } from '../pi/ask-user.ts'
-import { personaExtension } from '../pi/persona.ts'
-import { routineBudgetExtension } from '../pi/routine-budget.ts'
-import { routineRunExtension } from '../pi/routine-run.ts'
-import { CredentialCipher } from '../mcp/cipher.ts'
 import { RoutineRunner, type StartRun } from './runner.ts'
 import { RoutineScheduler, type RoutineSchedules, type RoutineSlot } from './scheduler.ts'
 import type { RoutineRun } from './runs.ts'
 import type { EventContext } from '../mcp/events/dispatcher.ts'
 import { Events } from '../mcp/service.ts'
 import { RoutineEventBindings } from './events.ts'
-
-export function routineExtensions(run: RunProgram, resident: Extension, key: string) {
-  const asking = askingExtension(async (session, callId, questions) => {
-    const cipher = await CredentialCipher.fromBase64(key)
-    await run(
-      Effect.gen(function* () {
-        const store = yield* RoutineRuns
-        const at = yield* Clock.currentTimeMillis
-        yield* store.ask(session, callId, questions, cipher, at)
-      }),
-    )
-  })
-  const budget = routineBudgetExtension(run)
-  const task = routineRunExtension(run, [personaExtension, resident, asking, budget], key)
-  return { start: task.start, extra: [task.extension, asking, budget] }
-}
 
 type Input = { storage: DurableObjectStorage; owner: () => string; key: string; schedules: RoutineSchedules }
 export function routineSchedulePorts(input: {
@@ -52,19 +25,6 @@ export function routineSchedulePorts(input: {
     },
   }
 }
-/** The owner confirms, pauses or archives a routine: confirm subscribes an event routine, archive stops its runs. */
-export const routineChange = Effect.fn('routines.change')(function* (
-  id: string,
-  input: RoutineRevision,
-  action: 'confirm' | 'pause' | 'archive',
-) {
-  const changed = yield* changeRoutine(id, input, action)
-  const control = yield* RoutineControl
-  if (action === 'confirm') yield* control.confirmEvents(changed.id, changed.revision)
-  if (action === 'archive') yield* control.archive(id)
-  yield* control.reconcile
-  return yield* (yield* Routines).view(id)
-})
 /** Keeps the Agent shell thin while the native scheduler and Pi own their respective lifecycle boundaries. */
 export class RoutineController extends RoutineRunner {
   readonly #input: Input
