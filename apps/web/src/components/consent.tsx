@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Alert, AlertDescription, Button, Switch } from '@goblin/ui'
-import { AuthRefused, authMessageOf, consentClientQuery, consentMutation, quoting } from '../auth/queries.ts'
+import { AuthRefused, consentClientQuery, consentMutation } from '../auth/queries.ts'
 import { INSPECT_SCOPE, consentBody, requestedScopes } from '../lib/consent-scope.ts'
+import { messageOf, withRef } from '../lib/query/app-error.ts'
 import { AuthShell } from './auth-shell.tsx'
 
 type ClientInfo = { readonly name: string; readonly uri?: string | undefined }
@@ -33,7 +34,7 @@ function useClient(clientId: string): ClientLookup {
   if (read.data !== undefined) return { kind: 'found', client: read.data }
   if (read.error === null) return { kind: 'loading' }
   const unknown = read.error instanceof AuthRefused && read.error.status === 404
-  return { kind: 'failed', reason: quoting(unknown ? UNKNOWN_CLIENT : LOOKUP_FAILED, read.error) }
+  return { kind: 'failed', reason: withRef(unknown ? UNKNOWN_CLIENT : LOOKUP_FAILED, read.error) }
 }
 
 /** The opt-in for inspection, with what it adds; off until the owner turns it on. */
@@ -71,7 +72,7 @@ export function Consent() {
   const [choice, setChoice] = useState<'allow' | 'deny'>()
   // A decision that succeeded is leaving for the client, so its button stays busy.
   const pending = deciding.isPending || deciding.isSuccess ? choice : undefined
-  const error = deciding.error === null ? '' : authMessageOf(deciding.error, 'complete the authorization')
+  const error = deciding.error === null ? '' : messageOf(deciding.error, 'complete the authorization')
   function decide(accept: boolean): void {
     setChoice(accept ? 'allow' : 'deny')
     deciding.mutate(consentBody(requested, accept, inspect), { onSuccess: (next) => window.location.assign(next) })

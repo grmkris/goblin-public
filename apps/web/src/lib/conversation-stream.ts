@@ -2,7 +2,7 @@ import { ConversationQueue, type QueuedInput } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { isString } from './values.ts'
 import { projectBatch, projectSnapshot, type ConversationProjection, UnreadableFrame } from './projection.ts'
-import { withRef } from './refusal.ts'
+import { withRef } from './query/app-error.ts'
 import { reportUnexpected } from './unexpected.ts'
 
 export interface PiEventSource {

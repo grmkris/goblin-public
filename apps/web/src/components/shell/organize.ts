@@ -1,6 +1,5 @@
 import { Conflict } from '@goblin/contracts/api'
-import { messageOf } from '../../lib/query/app-error.ts'
-import { withRef } from '../../lib/refusal.ts'
+import { messageOf, withRef } from '../../lib/query/app-error.ts'
 
 /** Why an Undo was refused, in words: something changed the target since, or it was already undone. */
 export function undoRefusal(failure: unknown): string {

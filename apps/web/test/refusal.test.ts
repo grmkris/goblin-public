@@ -1,6 +1,6 @@
 import { Conflict } from '@goblin/contracts/api'
 import { describe, expect, it } from 'vitest'
-import { withRef } from '../src/lib/refusal.ts'
+import { withRef } from '../src/lib/query/app-error.ts'
 
 describe("the page's own refusal copy", () => {
   it('ends with the reference the agent stamped, shortened as messageOf shortens it', () => {

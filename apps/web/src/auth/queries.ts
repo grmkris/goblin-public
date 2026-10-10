@@ -1,32 +1,24 @@
 import { mutationOptions, queryOptions } from '@tanstack/react-query'
 import { Data, Option, Schema } from 'effect'
+import { requestId } from '../lib/api.ts'
 import { authClient, redirectOf } from '../lib/auth-client.ts'
-import { messageOf } from '../lib/query/app-error.ts'
+import { answerRef } from '../lib/query/app-error.ts'
 
 /**
- * Signing in and what is public about the deployment: Better Auth's own routes (through `authClient`) and the Worker's
- * `/health`, which keep their protocols outside the owner API. Keys are `[feature, kind, input]`. Signing out stays in
- * `session.tsx`, which leaves the page either way. Every call sends its own `x-goblin-request` id, so a failure quotes
- * the reference its answer carried, or that id when nothing answered.
+ * Signing in and out and what is public about the deployment: Better Auth's own routes (through `authClient`) and the
+ * Worker's `/health`, which keep their protocols outside the owner API. Keys are `['auth', kind, input]`. Every call
+ * sends its own `x-goblin-request` id, so a failure quotes the reference its answer carried, or that id when nothing
+ * answered.
  */
 
 /**
  * Better Auth or `/health` refused (`status`, which `describeError` classifies), or nothing answered (503). `ref` is
- * what the owner quotes: the answer's `x-goblin-ref` or Cloudflare's `cf-ray`, else the request's own id.
+ * what the owner quotes (`answerRef`, else the request's own id); `messageOf` and `withRef` end with it.
  */
 export class AuthRefused extends Data.TaggedError('AuthRefused')<{ readonly status: number; readonly ref: string }> {}
 
-/** `text` ending with the reference to quote, when `error` is a sign-in or consent failure that has one. */
-export const quoting = (text: string, error: unknown): string =>
-  error instanceof AuthRefused ? `${text} · ref ${error.ref.slice(0, 8)}` : text
-
-/** `messageOf` for a sign-in or consent failure, with its reference. */
-export const authMessageOf = (error: unknown, action: string): string => quoting(messageOf(error, action), error)
-
-/** A short id for one request: what a failure quotes when no answer came back. */
-const requestId = (): string => crypto.randomUUID().replaceAll('-', '').slice(0, 8)
-const answerRef = (headers: Headers): string | undefined =>
-  headers.get('x-goblin-ref') ?? headers.get('cf-ray') ?? undefined
+/** The reference `response` carries for the owner to quote. */
+const refOf = (response: Response): string | undefined => answerRef((name) => response.headers.get(name))
 
 /** The fetch options every Better Auth call here carries: its request id, and a hook that keeps its answer's ref. */
 type AuthFetch = {
@@ -49,7 +41,7 @@ async function authCall<A>(
   const fetchOptions: AuthFetch = {
     headers: { ...options.headers, 'x-goblin-request': sent },
     onResponse: ({ response }) => {
-      ref = answerRef(response.headers)
+      ref = refOf(response)
     },
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   }
@@ -90,7 +82,7 @@ export const healthQuery = queryOptions({
     } catch {
       throw new AuthRefused({ status: 503, ref: sent })
     }
-    if (!response.ok) throw new AuthRefused({ status: response.status, ref: answerRef(response.headers) ?? sent })
+    if (!response.ok) throw new AuthRefused({ status: response.status, ref: refOf(response) ?? sent })
     const health = Option.getOrElse(decodeHealth(await response.json()), (): typeof Health.Type => ({}))
     return { signup: health.signup ?? 'closed', mail: health.mail === true }
   },

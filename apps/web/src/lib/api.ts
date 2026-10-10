@@ -4,8 +4,11 @@ import * as HttpApiClient from 'effect/http-api/HttpApiClient'
 import { makeApiQuery } from './query/api-query.ts'
 import { crashReporter } from './query/crash-report.ts'
 
-/** A short id for one request: what a failure quotes when no answer came back. */
-const requestId = (): string => crypto.randomUUID().replaceAll('-', '').slice(0, 8)
+/**
+ * A short id for one request, sent as `x-goblin-request` by every call the browser makes (the typed clients, Better
+ * Auth, `/health`, file bytes): what a failure quotes when no answer came back.
+ */
+export const requestId = (): string => crypto.randomUUID().replaceAll('-', '').slice(0, 8)
 
 /**
  * What every API request carries: a fresh `x-goblin-request` id, the CSRF header on every write, and the operation a

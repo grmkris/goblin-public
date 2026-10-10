@@ -17,7 +17,7 @@ import {
   Skeleton,
   Switch,
 } from '@goblin/ui'
-import { AuthRefused, authMessageOf, deleteAccountMutation, quoting } from '../auth/queries.ts'
+import { AuthRefused, deleteAccountMutation } from '../auth/queries.ts'
 import { residentStatus } from '../lib/labels.ts'
 import { budgetFraction } from '../lib/usage.ts'
 import { BillingCard } from './billing.tsx'
@@ -28,7 +28,7 @@ import { StatusLabel } from './status-label.tsx'
 import { useUsageRead } from './use-usage.ts'
 import { clientsQuery, revokeClientMutation } from '../account/queries.ts'
 import { memoryQuery, residentQuery, setResidentMutation } from '../agent/queries.ts'
-import { messageOf } from '../lib/query/app-error.ts'
+import { messageOf, withRef } from '../lib/query/app-error.ts'
 import { QueryError } from '../lib/query/query-boundary.tsx'
 
 const day = (seconds: number): string =>
@@ -223,8 +223,8 @@ function DeleteAccountCard() {
     deleting.error === null
       ? ''
       : deleting.error instanceof AuthRefused && (deleting.error.status === 400 || deleting.error.status === 401)
-        ? quoting('Sign in again with an emailed code, then delete within 10 minutes.', deleting.error)
-        : authMessageOf(deleting.error, 'delete your account')
+        ? withRef('Sign in again with an emailed code, then delete within 10 minutes.', deleting.error)
+        : messageOf(deleting.error, 'delete your account')
   function remove(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault()
     deleting.mutate(undefined, { onSuccess: () => window.location.assign('/') })

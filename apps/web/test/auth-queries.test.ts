@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AuthRefused, authMessageOf, healthQuery, requestSignInCode } from '../src/auth/queries.ts'
+import { AuthRefused, healthQuery, requestSignInCode } from '../src/auth/queries.ts'
+import { messageOf } from '../src/lib/query/app-error.ts'
 import { testQueryClient } from '../src/lib/query/testing.ts'
 
 /** Answers every request with `response` and keeps what was sent. */
@@ -30,7 +31,7 @@ describe('a sign-in failure', () => {
       )
     expect(failure).toBeInstanceOf(AuthRefused)
     expect(failure).toMatchObject({ status: 503, ref: '8f1e2d3c4b5a6978-AMS' })
-    expect(authMessageOf(failure, 'reach goblin')).toMatch(/^Could not reach goblin\. .+ · ref 8f1e2d3c$/u)
+    expect(messageOf(failure, 'reach goblin')).toMatch(/^Could not reach goblin\. .+ · ref 8f1e2d3c$/u)
     expect(sent[0]?.headers.get('x-goblin-request')).toMatch(/^[0-9a-f]{8}$/u)
   })
 
@@ -46,6 +47,6 @@ describe('a sign-in failure', () => {
     expect(failure).toBeInstanceOf(AuthRefused)
     expect(failure).toMatchObject({ status: 503 })
     expect(failure instanceof AuthRefused ? failure.ref : '').toMatch(/^[0-9a-f]{8}$/u)
-    expect(authMessageOf(failure, 'send a code')).toMatch(/ · ref [0-9a-f]{8}$/u)
+    expect(messageOf(failure, 'send a code')).toMatch(/ · ref [0-9a-f]{8}$/u)
   })
 })

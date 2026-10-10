@@ -15,14 +15,8 @@ import {
   succeeded,
 } from '@goblin/ui'
 import { redirectOf } from '../lib/auth-client.ts'
-import {
-  AuthRefused,
-  authMessageOf,
-  healthQuery,
-  quoting,
-  requestSignInCode,
-  verifySignInCode,
-} from '../auth/queries.ts'
+import { AuthRefused, healthQuery, requestSignInCode, verifySignInCode } from '../auth/queries.ts'
+import { messageOf, withRef } from '../lib/query/app-error.ts'
 import { AuthShell } from './auth-shell.tsx'
 
 type SignupMode = 'open' | 'invite' | 'closed'
@@ -45,7 +39,7 @@ function useAuthConfig(): AuthConfig {
     signup: 'closed',
     mail: false,
     status: unread ? 'failed' : 'loading',
-    failure: unread ? authMessageOf(read.error, 'reach goblin') : '',
+    failure: unread ? messageOf(read.error, 'reach goblin') : '',
     retry,
   }
 }
@@ -85,7 +79,7 @@ const OWN_WORDS: Readonly<Record<number, string>> = {
 const reportRefusal = (error: unknown, action: string, words: Readonly<Record<number, string>> = {}) => {
   const status = error instanceof AuthRefused ? error.status : undefined
   const own = status === undefined ? undefined : (words[status] ?? OWN_WORDS[status])
-  return failed(own === undefined ? authMessageOf(error, action) : quoting(own, error))
+  return failed(own === undefined ? messageOf(error, action) : withRef(own, error))
 }
 const CODE_REFUSED = {
   400: 'That code did not work. Check it or get a new one.',

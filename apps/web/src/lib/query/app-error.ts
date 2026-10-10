@@ -21,7 +21,6 @@ export type ErrorKind =
   | 'conflict'
   | 'validation'
   | 'plan_limit'
-  | 'capacity'
   | 'rate_limited'
   | 'unavailable'
   | 'offline'
@@ -34,9 +33,7 @@ export interface AppErrorView {
   readonly status?: number | undefined
   readonly message?: string | undefined
   readonly recovery?: string | undefined
-  readonly recoveryHref?: string | undefined
   readonly retryable: boolean
-  readonly retryAfterMs?: number | undefined
   /** What the owner quotes to find this failure in the logs: the edge's reference, else the browser's request id. */
   readonly ref?: string | undefined
 }
@@ -71,8 +68,7 @@ const KIND_OF_CODE: ReadonlyMap<string, ErrorKind> = new Map([
   ...Object.entries(ERROR_KINDS),
   ...Object.entries(BILLING_KINDS),
 ])
-const kindOf = (code: string, codes: Readonly<Record<string, ErrorKind>>): ErrorKind | undefined =>
-  codes[code] ?? KIND_OF_CODE.get(code)
+const kindOf = (code: string): ErrorKind | undefined => KIND_OF_CODE.get(code)
 
 const isAppError = Schema.is(AppError)
 const gateway = (status: number | undefined) => status !== undefined && [502, 503, 504].includes(status)
@@ -87,42 +83,27 @@ const kindForStatus = (status: number | undefined): ErrorKind => {
   if (status !== undefined && status >= 400) return 'validation'
   return 'defect'
 }
-/** A same-site path (`/subscribe`) or an http(s) URL; anything else is not a link to offer. */
-const recoveryLink = (value: string | undefined): string | undefined => {
-  if (value === undefined) return undefined
-  if (value.startsWith('/') && !value.startsWith('//')) return value
-  try {
-    const url = new URL(value)
-    return url.protocol === 'https:' || url.protocol === 'http:' ? value : undefined
-  } catch {
-    // expected: a recovery that is not a URL is not offered as a link.
-    return undefined
-  }
-}
-
 /** A typed failure the API answered, as the contract describes it; the `ref` is the one the agent stamped. */
-const appView = (error: AppError, codes: Readonly<Record<string, ErrorKind>>): AppErrorView => {
+const appView = (error: AppError): AppErrorView => {
   const copy = ERROR_COPY[error._tag]
   const code = codeOf(error._tag)
   const status = statusOf(error)
-  const subscribe = Predicate.isTagged(error, 'SubscriptionRequired') ? recoveryLink(error.subscribe) : undefined
   return {
-    kind: kindOf(code, codes) ?? kindForStatus(status),
+    kind: kindOf(code) ?? kindForStatus(status),
     code,
     status,
     message: copy.message,
     recovery: 'recovery' in copy ? copy.recovery : undefined,
-    recoveryHref: subscribe,
     retryable: gateway(status),
     ref: error.ref,
   }
 }
 
 /** A billing refusal the account API answered, with its fixed copy; a checkout set up later is worth a retry. */
-const billingView = (error: BillingRefused, codes: Readonly<Record<string, ErrorKind>>): AppErrorView => {
+const billingView = (error: BillingRefused): AppErrorView => {
   const { status, ...copy } = BILLING_REFUSALS[error.code]
   return {
-    kind: kindOf(error.code, codes) ?? kindForStatus(status),
+    kind: kindOf(error.code) ?? kindForStatus(status),
     code: error.code,
     status,
     message: copy.message,
@@ -132,9 +113,16 @@ const billingView = (error: BillingRefused, codes: Readonly<Record<string, Error
   }
 }
 
+/**
+ * The reference an answer carries for the owner to quote, read through `header`: the edge's `x-goblin-ref`, else
+ * Cloudflare's `cf-ray`. Without one, a failure quotes the `x-goblin-request` id it was sent with.
+ */
+export const answerRef = (header: (name: string) => string | null | undefined): string | undefined =>
+  header('x-goblin-ref') ?? header('cf-ray') ?? undefined
+
 /** No typed answer: the edge's reference when a response came back, else the id this request was sent with. */
 const transportView = (error: HttpClientError.HttpClientError): AppErrorView => {
-  const ref = error.response?.headers['x-goblin-ref'] ?? error.request.headers['x-goblin-request']
+  const ref = answerRef((name) => error.response?.headers[name]) ?? error.request.headers['x-goblin-request']
   if (Predicate.isTagged(error.reason, 'TransportError'))
     return {
       kind: onlineManager.isOnline() ? 'unavailable' : 'offline',
@@ -153,58 +141,67 @@ const transportView = (error: HttpClientError.HttpClientError): AppErrorView => 
 }
 
 /** An envelope body that reached the caller undecoded (another client, a raw `fetch`). */
-const envelopeView = (
-  { error: detail }: ErrorEnvelope,
-  codes: Readonly<Record<string, ErrorKind>>,
-  status: number | undefined,
-): AppErrorView => ({
-  kind: kindOf(detail.code, codes) ?? kindForStatus(status),
+const envelopeView = ({ error: detail }: ErrorEnvelope, status: number | undefined): AppErrorView => ({
+  kind: kindOf(detail.code) ?? kindForStatus(status),
   code: detail.code,
   status,
   message: detail.message,
   recovery: detail.recovery,
-  recoveryHref: recoveryLink(detail.subscribe),
   retryable: gateway(status),
   ref: detail.ref,
 })
 
-const WithStatus = Schema.Struct({ status: Schema.optionalKey(Schema.Number) })
+/** A refusal answered outside the typed API (Better Auth, `/health`): its status, and the reference it quotes. */
+const Answered = Schema.Struct({ status: Schema.optionalKey(Schema.Number), ref: Schema.optionalKey(Schema.String) })
+type Answered = typeof Answered.Type
 
 /** Normalize typed API errors, error envelopes and transport failures without exposing exception text. */
-export function describeError(error: unknown, codes: Readonly<Record<string, ErrorKind>> = {}): AppErrorView {
+export function describeError(error: unknown): AppErrorView {
   if (Predicate.isTagged(error, 'ApiDefect')) {
     const kind = Predicate.hasProperty(error, 'interrupted') && error.interrupted === true ? 'cancelled' : 'defect'
     return { kind, code: kind, retryable: false }
   }
   if (Predicate.isTagged(error, 'SchemaError')) return { kind: 'defect', code: 'contract_drift', retryable: false }
-  if (isAppError(error)) return appView(error, codes)
-  if (error instanceof BillingRefused) return billingView(error, codes)
+  if (isAppError(error)) return appView(error)
+  if (error instanceof BillingRefused) return billingView(error)
   if (HttpClientError.isHttpClientError(error)) return transportView(error)
   const envelope = Schema.decodeUnknownOption(ErrorEnvelope)(error)
-  const status = Option.getOrUndefined(Schema.decodeUnknownOption(WithStatus)(error))?.status
-  if (Option.isSome(envelope)) return envelopeView(envelope.value, codes, status)
-  return { kind: kindForStatus(status), code: status === undefined ? 'defect' : 'http_error', status, retryable: false }
+  const { status, ref } = Option.getOrElse(Schema.decodeUnknownOption(Answered)(error), (): Answered => ({}))
+  if (Option.isSome(envelope)) return envelopeView(envelope.value, status)
+  return {
+    kind: kindForStatus(status),
+    code: status === undefined ? 'defect' : 'http_error',
+    status,
+    retryable: false,
+    ...(ref === undefined ? {} : { ref }),
+  }
 }
 
-/** How a reference reads in copy: its first eight characters are enough to find it (`goblin lookup`). */
-const shortRef = (ref: string): string => ref.slice(0, 8)
+/**
+ * `text` ending with a reference to quote ("… · ref 7f3a9c12"): its first eight characters are enough to find it
+ * (`goblin lookup`). The one place copy gains its reference.
+ */
+const quoting = (text: string, ref: string | undefined): string =>
+  ref === undefined ? text : `${text} · ref ${ref.slice(0, 8)}`
+
+/** The page's own words for a failure it expects (a name in use, a move under way), with the failure's reference. */
+export const withRef = (text: string, failure: unknown): string => quoting(text, describeError(failure).ref)
 
 /**
- * Calm action copy, ending with the failure's reference ("… · ref 7f3a9c12") when there is one. Typed server messages
- * are public; exception text and status codes are not.
+ * Calm action copy, ending with the failure's reference when there is one. Typed server messages are public; exception
+ * text and status codes are not.
  */
 export function messageOf(
   error: unknown,
   action: string,
-  opts: {
-    readonly showRecovery?: boolean | undefined
-    readonly codes?: Readonly<Record<string, ErrorKind>> | undefined
-  } = {},
+  opts: { readonly showRecovery?: boolean | undefined } = {},
 ): string {
-  const view = describeError(error, opts.codes)
-  const ref = view.ref === undefined ? '' : ` · ref ${shortRef(view.ref)}`
+  const view = describeError(error)
   if (view.message !== undefined)
-    return `${view.message}${opts.showRecovery === true && view.recovery !== undefined ? ` ${view.recovery}` : ''}${ref}`
+    return quoting(
+      `${view.message}${opts.showRecovery === true && view.recovery !== undefined ? ` ${view.recovery}` : ''}`,
+      view.ref,
+    )
   const copy: Record<ErrorKind, string> = {
     offline: 'You are offline; try again when you reconnect.',
     unavailable: 'The service is not answering. Try again in a minute.',
@@ -214,10 +211,9 @@ export function messageOf(
     conflict: 'Refresh and try again.',
     validation: 'Check the details and try again.',
     plan_limit: 'Your plan has reached its limit. Review your plan.',
-    capacity: 'There is no capacity available. Try again later.',
     rate_limited: 'Wait a moment and try again.',
     defect: 'Try again.',
     cancelled: 'Try again.',
   }
-  return `Could not ${action}. ${copy[view.kind]}${ref}`
+  return quoting(`Could not ${action}. ${copy[view.kind]}`, view.ref)
 }

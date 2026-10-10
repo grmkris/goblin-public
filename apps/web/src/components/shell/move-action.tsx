@@ -3,8 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { Conflict } from '@goblin/contracts/api'
 import { MessageSquareShareIcon } from 'lucide-react'
 import { moveMutation } from '../../conversations/queries.ts'
-import { messageOf } from '../../lib/query/app-error.ts'
-import { withRef } from '../../lib/refusal.ts'
+import { messageOf, withRef } from '../../lib/query/app-error.ts'
 import { usePanel } from './panel.tsx'
 
 /** Move to thread in a channel: the message it is offered on, why it cannot move, and the move itself. */

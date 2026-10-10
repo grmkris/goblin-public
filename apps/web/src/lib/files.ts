@@ -7,7 +7,8 @@ import { API_ERRORS, PayloadTooLarge } from '@goblin/contracts/api'
 import * as Data from 'effect/Data'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { owner } from './api.ts'
+import { owner, requestId } from './api.ts'
+import { answerRef } from './query/app-error.ts'
 
 const NAME_LIMIT = 80
 
@@ -57,19 +58,15 @@ export function fileSize(bytes: number): string {
 const decodeEntry = Schema.decodeUnknownSync(FileEntry)
 const decodeEnvelope = Schema.decodeUnknownOption(Schema.Union(API_ERRORS))
 
-/** An upload whose answer names no failure: its status says what happened. */
-class FilesFailure extends Data.TaggedError('FilesFailure')<{ readonly status: number }> {
-  constructor(status: number) {
-    super({ status })
-  }
-}
+/** An upload whose answer names no failure: its status says what happened, and `ref` is what the owner quotes. */
+class FilesFailure extends Data.TaggedError('FilesFailure')<{ readonly status: number; readonly ref: string }> {}
 
 /**
  * One upload (`PUT /api/files/content`): same-origin with the session cookie, a fresh request id and the CSRF header,
  * the file as the body. A refusal is the typed failure its envelope names, quoting the request's reference.
  */
 async function put(url: string, file: File, type: string): Promise<unknown> {
-  const sent = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
+  const sent = requestId()
   const response = await fetch(url, {
     method: 'PUT',
     credentials: 'same-origin',
@@ -78,7 +75,15 @@ async function put(url: string, file: File, type: string): Promise<unknown> {
   })
   // expected: a body that is not JSON leaves the status to say what happened
   const data: unknown = await response.json().catch(() => null)
-  if (!response.ok) throw Option.getOrElse(decodeEnvelope(data), () => new FilesFailure(response.status))
+  if (!response.ok)
+    throw Option.getOrElse(
+      decodeEnvelope(data),
+      () =>
+        new FilesFailure({
+          status: response.status,
+          ref: answerRef((name) => response.headers.get(name)) ?? sent,
+        }),
+    )
   return data
 }
 

@@ -14,8 +14,7 @@ import {
   Input,
 } from '@goblin/ui'
 import { Conflict, NotFound } from '@goblin/contracts/api'
-import { messageOf } from '../../lib/query/app-error.ts'
-import { withRef } from '../../lib/refusal.ts'
+import { messageOf, withRef } from '../../lib/query/app-error.ts'
 import { reportUnexpected } from '../../lib/unexpected.ts'
 import { createWorkspaceTopicMutation, updateWorkspaceTopicMutation } from '../../lib/workspace/mutations.ts'
 

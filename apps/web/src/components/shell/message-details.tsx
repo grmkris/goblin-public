@@ -13,9 +13,8 @@ import {
 import { InfoIcon } from 'lucide-react'
 import { detailsQuery } from '../../inspect/queries.ts'
 import { type DetailStep, detailSteps, detailSummary, durationText, relatedText } from '../../lib/details.ts'
-import { describeError } from '../../lib/query/app-error.ts'
+import { describeError, withRef } from '../../lib/query/app-error.ts'
 import { QueryError } from '../../lib/query/query-boundary.tsx'
-import { withRef } from '../../lib/refusal.ts'
 import { reportUnexpected } from '../../lib/unexpected.ts'
 import { useOpenChat } from './panel.tsx'
 

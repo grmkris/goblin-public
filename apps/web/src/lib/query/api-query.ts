@@ -19,7 +19,7 @@ import * as Option from 'effect/Option'
 import * as FetchHttpClient from 'effect/http/FetchHttpClient'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
-import { describeError, messageOf, type ErrorKind } from './app-error.ts'
+import { describeError } from './app-error.ts'
 
 /** A failure outside the call's error channel: a defect, or an interruption (an aborted query). */
 export class ApiDefect extends Data.TaggedError('ApiDefect')<{
@@ -43,7 +43,6 @@ export const withOperation =
 
 export interface AppQueryMeta extends Record<string, unknown> {
   readonly auth?: 'optional' | 'required' | undefined
-  readonly errorToast?: string | undefined
 }
 declare module '@tanstack/react-query' {
   interface Register {
@@ -54,10 +53,10 @@ declare module '@tanstack/react-query' {
 export interface QueryClientOptions {
   readonly onError?: (error: unknown) => void
   readonly onUnauthenticated?: () => void | Promise<void>
-  readonly notify?: (message: string) => void
-  readonly codes?: Readonly<Record<string, ErrorKind>>
-  readonly signInPath?: string
 }
+
+/** Where the owner signs in: a failure there never sends them to it again. */
+const SIGN_IN_PATH = '/login'
 
 /** Transient failures retry twice; data stays fresh for thirty seconds. */
 export const makeQueryClient = (options: QueryClientOptions = {}) => {
@@ -78,11 +77,10 @@ export const makeQueryClient = (options: QueryClientOptions = {}) => {
   }
   const onError = (error: unknown, meta: QueryMeta | undefined) => {
     options.onError?.(error)
-    const signInPath = options.signInPath ?? '/login'
     if (
-      describeError(error, options.codes).kind !== 'unauthenticated' ||
+      describeError(error).kind !== 'unauthenticated' ||
       meta?.auth === 'optional' ||
-      globalThis.location?.pathname === signInPath ||
+      globalThis.location?.pathname === SIGN_IN_PATH ||
       signingIn ||
       options.onUnauthenticated === undefined
     )
@@ -93,18 +91,14 @@ export const makeQueryClient = (options: QueryClientOptions = {}) => {
   return new QueryClient({
     queryCache: new QueryCache({ onError: (error, query) => onError(error, query.meta) }),
     mutationCache: new MutationCache({
-      onError: (error, _variables, _context, mutation) => {
-        onError(error, mutation.meta)
-        if (mutation.meta?.errorToast !== undefined) options.notify?.(messageOf(error, mutation.meta.errorToast))
-      },
+      onError: (error, _variables, _context, mutation) => onError(error, mutation.meta),
     }),
     defaultOptions: {
       queries: {
         staleTime: 30_000,
         networkMode: 'online',
-        retry: (failures, error) => failures < 2 && describeError(error, options.codes).retryable,
-        retryDelay: (attempt, error) =>
-          describeError(error, options.codes).retryAfterMs ?? Math.min(1_000 * 2 ** attempt, 30_000),
+        retry: (failures, error) => failures < 2 && describeError(error).retryable,
+        retryDelay: (attempt) => Math.min(1_000 * 2 ** attempt, 30_000),
       },
       mutations: { retry: false, networkMode: 'online' },
     },
