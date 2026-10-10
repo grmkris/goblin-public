@@ -10,7 +10,6 @@ import * as Option from 'effect/Option'
 import * as TestClock from 'effect/testing/TestClock'
 import type { FlowEvent } from '@goblin/contracts/telemetry'
 import { settledWithin } from '../src/chats/instance.ts'
-import { type ChatMover, MovesInstance } from '../src/chats/mover.ts'
 import { ChatOperations, Chats, Conversations, Moves } from '../src/chats/service.ts'
 import { Conflict } from '../src/http/errors.ts'
 import type { FoundationServices } from '../src/layers/core.ts'
@@ -25,7 +24,7 @@ import { Changes, makeChanges } from '../src/runtime/changes.ts'
 import { PiFailure, PiSessions } from '../src/pi/sessions.ts'
 import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
-import { appChatOperations, appConversations } from '../src/storage/schema.ts'
+import { appChatMoves, appChatOperations, appConversations } from '../src/storage/schema.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 
 /** A stand-in implementing only the members these tests reach. */
@@ -33,7 +32,7 @@ const fake = <T>(members: Partial<T>): T =>
   // SAFETY: each fake below is given every member the services under test call on it.
   members as T
 
-/** What Pi and the mover were asked, in order. */
+/** What Pi was asked, in order. */
 type Calls = string[]
 
 /**
@@ -68,8 +67,8 @@ const harnessOf = (calls: Calls) => {
 
 /**
  * The conversation services as the agent builds them, over a real chat directory on SQLite (Personal `1`, an open
- * thread `2` owed its announcement with a thread `5` under it, and a closed thread `3`), Pi's harness above, a mover
- * that records its moves, and the flows recorded. Nothing else the layer captures is read.
+ * thread `2` owed its announcement with a thread `5` under it, and a closed thread `3`), Pi's harness above, and the
+ * flows recorded. Nothing else the layer captures is read.
  */
 const services = (calls: Calls) => {
   const flows: FlowEvent[] = []
@@ -98,12 +97,6 @@ const services = (calls: Calls) => {
       },
     ])
     .run()
-  const moves = fake<ChatMover>({
-    move: async (chat, input, now) => {
-      calls.push(`move:${chat}@${now}`)
-      return { ...input, chat, state: 'refused', reason: 'streaming' }
-    },
-  })
   const harness = harnessOf(calls)
   // SAFETY: a thread's extensions are handed to Pi's fake configure and fork, which never read them.
   const extension = {} as never
@@ -115,6 +108,7 @@ const services = (calls: Calls) => {
       subagentTools: [],
       thread: extension,
       memory: { memory: extension, recall: extension },
+      moves: { handover: async () => [] },
     }),
   )
   const plans = Layer.mergeAll(
@@ -125,7 +119,7 @@ const services = (calls: Calls) => {
   const layer = ConversationLive.pipe(
     Layer.provide(
       Layer.mergeAll(
-        // SAFETY: the layer reads only the core services, the mover and the input given below; the rest stays unprovided.
+        // SAFETY: the layer reads only the core services and the input given below; the rest stays unprovided.
         Layer.succeedContext(Context.empty() as Context.Context<FoundationServices>),
         // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
         Layer.succeed(Db, db as never),
@@ -135,7 +129,6 @@ const services = (calls: Calls) => {
         // SAFETY: no test here names a thread, so the cheap model is never called.
         Layer.succeed(CheapModels, () => fake<CheapModel>({})),
         PiSessions.layer.pipe(Layer.provide(input)),
-        Layer.succeed(MovesInstance, moves),
         input,
         plans,
       ),
@@ -345,8 +338,9 @@ describe('the conversation services', () => {
       expect([yield* conversations.announce('2'), yield* conversations.announce('2')]).toEqual([true, false])
       expect(yield* conversations.announce('3')).toBe(false)
       const receipt = yield* (yield* Moves).move('1', { entry: 4, operationId: 'move-1' })
-      expect(receipt).toMatchObject({ state: 'refused', reason: 'streaming' })
-      expect(calls).toEqual(['write:41:thread-started:2', 'move:1@90'])
+      expect(receipt).toMatchObject({ state: 'refused', reason: 'not_user_message' })
+      expect(db.select().from(appChatMoves).all()).toMatchObject([{ operationId: 'move-1', createdAt: 90 }])
+      expect(calls).toEqual(['write:41:thread-started:2'])
     }).pipe(Effect.provide(layer))
   })
 
@@ -378,30 +372,31 @@ describe('the conversation services', () => {
     }).pipe(Effect.provide(layer))
   })
 
-  it.effect("record a move's receipt and flow from what the mover answered", () => {
+  it.effect('refuse a move with its reason once per operation, with its receipt and flow', () => {
     const { layer, db, flows } = services([])
     return Effect.gen(function* () {
       const moves = yield* Moves
+      // Pi holds no message at entry 4 in Personal, and a thread is not a Topic's Conversation.
+      expect(yield* moves.move('1', { entry: 4, operationId: 'move-1' })).toMatchObject({
+        state: 'refused',
+        reason: 'not_user_message',
+      })
       expect(yield* moves.move('1', { entry: 4, operationId: 'move-1' })).toMatchObject({ state: 'refused' })
+      expect(yield* moves.move('2', { entry: 4, operationId: 'move-2' })).toMatchObject({ reason: 'not_conversation' })
+      expect(yield* Effect.flip(moves.move('1', { entry: 5, operationId: 'move-1' }))).toMatchObject({
+        _tag: 'Conflict',
+        reason: 'operation_used',
+      })
+      expect(yield* moves.moving('1')).toBe(false)
       expect(db.select().from(appChatOperations).all()).toEqual([
-        expect.objectContaining({
-          chatId: '1',
-          operationId: 'move-1',
-          kind: 'move',
-          state: 'refused',
-          reason: 'streaming',
-        }),
+        expect.objectContaining({ chatId: '1', operationId: 'move-1', kind: 'move', state: 'refused' }),
+        expect.objectContaining({ chatId: '2', operationId: 'move-2', kind: 'move', state: 'refused' }),
       ])
-      expect(flows).toEqual([
-        {
-          flow: 'move',
-          via: 'app',
-          actor: 'owner',
-          chat: '1',
-          operationId: 'move-1',
-          status: 'refused',
-          errorType: 'streaming',
-        },
+      expect(flows.map(({ flow, chat, status, errorType }) => [flow, chat, status, errorType])).toEqual([
+        ['move', '1', 'refused', 'not_user_message'],
+        ['move', '1', 'refused', 'not_user_message'],
+        ['move', '2', 'refused', 'not_conversation'],
+        ['move', '1', 'refused', 'Conflict'],
       ])
     }).pipe(Effect.provide(layer))
   })

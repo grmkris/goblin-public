@@ -48,7 +48,7 @@ operation id returns the same receipt; the same operation id from another chat, 
 `Conflict`, and so is a second move of a chat while one is in flight.
 
 **Shipped: the settled-turn move (the owner-approved fallback MF).** Only a Topic's Conversation moves, only its newest
-turn, and only once that turn has finished. `ChatMover` (`chats/mover.ts`, the `Moves` service) checks under the
+turn, and only once that turn has finished. The `Moves` service (`chats/mover.ts`) checks under the
 chat's admission lock that the message is the owner's `pi.user` entry in the chat's own session, that the chat has no
 run and no queued input (`streaming`), that the message started the newest turn still shown (`not_latest`: a steer,
 placed after a tool round, never counts as a start, and entries a later entry omits are skipped), that it has not
@@ -80,7 +80,7 @@ Outside the lock (stopping a relay waits for it, and a relay's report waits for 
 messages to the turn's helpers are chosen once (stored on the row), made again in the Thread with their original
 delivery request ids (so no message is delivered twice) and stopped in the chat; those helpers' `spawner_session`
 becomes the Thread. The row is then `settled`. A restart finishes a `requested` or `forked` row when the services
-start again, or when the same operation is repeated; one step at a time per operation in the isolate.
+start again, or when the same operation is repeated; one run at a time per operation (`SingleFlight`).
 
 The moved Thread is an ordinary thread: Stop and Close reach only it, and the chat never rebinds. The moved message's
 Telegram or inbound operation already has its answer, which stays where it was delivered.

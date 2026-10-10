@@ -28,7 +28,6 @@ import type { Apps } from '../apps/service.ts'
 import type { ProfilesInstance } from '../capabilities/profiles.ts'
 import type { Channel } from '../channel/service.ts'
 import type { ChatsInstance } from '../chats/directory.ts'
-import type { MovesInstance } from '../chats/mover.ts'
 import type { Cipher } from '../mcp/cipher.ts'
 import type { MemoriesInstance } from '../memory/memory.ts'
 import type { CheapModels } from '../memory/model.ts'
@@ -125,7 +124,6 @@ export const CoreLive = (
 /** What the start's steps provide (layers/index.ts). */
 type StartServices =
   | ChatsInstance
-  | MovesInstance
   | McpConnections
   | McpServers
   | McpGrants

@@ -4,7 +4,7 @@ import type { AgentInputs } from '../runtime/input.ts'
 import { AppRegistryLive, AppsLive } from './apps.ts'
 import { ModelBudgetLive } from './budget.ts'
 import { CapabilitiesLive, ProfilesLive, RetoolLive } from './capabilities.ts'
-import { ChatDirectoryLive, ConversationLive, MoverLive, PrimaryChatLive } from './conversation.ts'
+import { ChatDirectoryLive, ConversationLive, PrimaryChatLive } from './conversation.ts'
 import { CoreLive } from './core.ts'
 import { DelegationLive, HelperExecutionLive } from './delegation.ts'
 import { ActivateMemoriesLive, CheapModelsLive, KnowledgeLive, MemoryEngineLive } from './knowledge.ts'
@@ -36,7 +36,6 @@ const start = (input: AgentInputs) =>
     then(RoutineUsageLive), // 9 routines: await
     then(PrimaryChatLive), // 10 conversation: main registered
     then(AppRegistryLive), // 11 apps
-    then(MoverLive), // 13 conversation: reconcile, not awaited
     then(ActivateMemoriesLive), // 14 knowledge: await
     then(SkillsLive), // 15 skills
     then(ChannelLive), // 16 routines

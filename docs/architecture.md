@@ -195,16 +195,14 @@ each over everything before it:
   MCP host (each server's endpoint binding checked, so a re-pointed server loses what it had, the credential cipher,
   held calls a restart cut off recovered); the cheap models; the chat directory; the memory engine;
   the capability profiles; helper execution restored and the retained Pi filters retooled once; the routine usage
-  projection, subscribed to Pi's commits; main registered; the App registry; the
-  mover (a move a restart interrupted finishes in the background, never holding up the start);
-  every Topic Conversation given memory; skills and the learner; the Telegram channel; and Events, with the routine
+  projection, subscribed to Pi's commits; main registered; the App registry; every Topic Conversation given memory;
+  skills and the learner; the Telegram channel; and Events, with the routine
   trigger and then the Telegram and skills consumers registered. A stateful object is made once, by its step, and
-  shared with the layers that wire it by an instance tag in its own module (`ChatsInstance`, `ConversationsInstance`,
-  `MovesInstance`, `Cipher`, `ProfilesInstance`, `MemoriesInstance`); programs use
-  the area's services.
-  The conversation registry tells `conversations.changed` what each write changed, inline (`syncWith` in
-  `runtime/boundary.ts`, because it writes from synchronous code inside Promise work); the App registry and the
-  workspace feed follow that topic.
+  shared with the layers that wire it by an instance tag in its own module (`ChatsInstance`, `Cipher`,
+  `ProfilesInstance`, `MemoriesInstance`); programs use the area's services.
+  The conversation services publish `conversations.changed` with what each write changed, from inside the write; the
+  App registry and the workspace feed follow that topic. A move a restart interrupted finishes once the conversation
+  layer is built (`Moves` forks its reconcile in the layer's scope), never holding up the start.
 - **One layer per area** after the start, in order: the model budget and picker (`Budget`, `Models`, which a send's
   admission reads), conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`), delegation (`Topics`,
   `Personas`, `Invocations`, `Receipts`, `Home`, `Workspace`), capabilities (`Capabilities`), knowledge (`Memories`,
@@ -227,9 +225,11 @@ calls them from inside an Effect, it composes instead.
 
 - `KeyedLock` (`observability/lock.ts`): mutual exclusion per key, strictly first come, first served (Effect's
   `Semaphore` wakes waiters in no fixed order). It is held for admission only, never across a model call or another
-  wait. Topic creates, retrieval catch-up, an agent app's state changes, the Telegram pull and chat admission
-  (`chat:<id>`) take it; admission holds the chat directory's own per-chat lock inside it while the mover, the
-  registry's own writes and the Topic ports still take that one.
+  wait. Topic creates, retrieval catch-up, an agent app's state changes, the Telegram pull, chat admission
+  (`chat:<id>`, which the mover and every passive write take too) and a thread operation (`thread-op:<op>`) take it.
+- `SingleFlight` (`observability/single-flight.ts`): one keyed run at a time across waits, joined by every caller and
+  forked in the layer's scope. A move's remaining steps (`move:<op>`) and naming a thread (`naming:<chat>`) go through
+  it.
 - `Changes` (`runtime/changes.ts`): a synchronous topic bus with no fibers or timers. An area declares its topics
   where it publishes them, with ids as payloads (`topics.changed`, `personas.changed`, `receipts.changed`,
   `home.changed`), and the workspace feed reads each item as it is then. Handlers run inline in order; a failing one

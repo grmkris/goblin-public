@@ -1,7 +1,6 @@
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
-import type { MoveReceipt, MoveToThread } from '@goblin/contracts'
 import type { Budget } from '../budget.ts'
 import { makeChatOperations } from '../chats/operations.ts'
 import {
@@ -24,22 +23,18 @@ import { makeRegistryCore } from '../chats/conversations/core.ts'
 import { registryReads } from '../chats/conversations/reads.ts'
 import { registryThreads } from '../chats/conversations/threads.ts'
 import { registryWrites } from '../chats/conversations/writes.ts'
-import { ChatMover, MovesInstance } from '../chats/mover.ts'
+import { makeMoves } from '../chats/mover.ts'
 import { ChatOperations, Chats, Conversations, Moves } from '../chats/service.ts'
 import { epochSeconds } from '../clock.ts'
 import { ConversationsInstance } from '../conversations.ts'
 import { CheapModels } from '../memory/model.ts'
 import type { Models } from '../models.ts'
-import { attempt, attemptSync } from '../http/errors.ts'
-import { FlowEvents, withFlow } from '../observability/flows.ts'
+import { attemptSync } from '../http/errors.ts'
+import { FlowEvents } from '../observability/flows.ts'
 import { KeyedLock } from '../observability/lock.ts'
-import { writeLine } from '../observability/logger.ts'
-import { safeErrorType } from '../observability/report.ts'
 import { SingleFlight } from '../observability/single-flight.ts'
 import { promiseWith, syncWith } from '../runtime/boundary.ts'
-import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
-import { AgentInput } from '../runtime/input.ts'
 import type { FoundationServices } from './core.ts'
 
 /** Start step 4: the chat directory's reads as one object, for the synchronous code that takes one. */
@@ -54,35 +49,6 @@ export const PrimaryChatLive: Layer.Layer<never, never, Db> = Layer.effectDiscar
     const db = yield* Db
     const now = yield* epochSeconds
     yield* Effect.sync(() => registerPrimary(db, now))
-  }),
-)
-
-/**
- * Start step 13: Move to thread, the one mover. A move a restart interrupted finishes once the services are up again
- * (ADR 0034); it never holds up the start, so its reconcile runs on while the steps after this one are built.
- */
-export const MoverLive: Layer.Layer<MovesInstance, never, AgentInput | Db | Changes> = Layer.effect(
-  MovesInstance,
-  Effect.gen(function* () {
-    const input = yield* AgentInput
-    // The mover is Promise code that writes synchronously: it tells the change bus inline, on its own stack.
-    const changes = yield* Changes
-    const tell = syncWith(yield* Effect.context<Changes>())
-    const moves = new ChatMover({
-      db: yield* Db,
-      harness: input.harness,
-      // The mover is Promise code: it takes the chat's one lock through the bridge (no plan check).
-      withChat: (chat, run) => input.local(ChatOperations.use((operations) => operations.withChat(chat, attempt(run)))),
-      touched: (ids) => tell(changes.publish('conversations.changed', { ids })),
-      subagentTools: input.subagentTools,
-      thread: input.thread,
-      recall: input.memory.recall,
-      ...input.moves,
-    })
-    moves.reconcile().catch((error: unknown) => {
-      writeLine('error', { event: 'failure', where: 'moves.reconcile', 'error.type': safeErrorType(error) })
-    })
-    return moves
   }),
 )
 
@@ -156,69 +122,19 @@ const ConversationsInstanceLive = Layer.effect(
   }),
 )
 
-/** How a move's receipt goes on from what the mover answered: refused with its reason, or settled with its Thread. */
-const moveEnd = (receipt: MoveReceipt) =>
-  receipt.state === 'refused'
-    ? ({ state: 'refused', reason: receipt.reason ?? 'refused' } as const)
-    : ({
-        state: receipt.state === 'settled' ? 'settled' : 'submitted',
-        ...(receipt.thread === undefined ? {} : { targetChat: receipt.thread }),
-      } as const)
+/** Move to thread natively (chats/mover.ts): its reconcile runs in the layer's scope, never holding up the start. */
+const MovesLive = Layer.effect(Moves, makeMoves)
 
 /**
- * Move to thread over the one `ChatMover` (start step 13): the move once per operation (`app_chat_moves`), with its `move` receipt
- * in the chat (settled with the Thread it made, or refused with the mover's reason) and its `move` flow.
- */
-const MovesAdapter = Layer.effect(
-  Moves,
-  Effect.gen(function* () {
-    const moves = yield* MovesInstance
-    const operations = yield* ChatOperations
-    const flows = yield* FlowEvents
-    return Moves.of({
-      move: Effect.fn('Moves.move')(function* (chat: string, input: MoveToThread) {
-        const flow = { flow: 'move', via: 'app', actor: 'owner', chat, operationId: input.operationId } as const
-        const moved = operations.tracked(
-          chat,
-          input.operationId,
-          { kind: 'move', origin: 'owner' },
-          ({ existing }) =>
-            Effect.flatMap(epochSeconds, (now) =>
-              Effect.map(
-                attempt(() => moves.move(chat, input, now)),
-                (receipt) => ({ receipt, existing }),
-              ),
-            ),
-          ({ receipt }) => moveEnd(receipt),
-        )
-        const settled = yield* moved.pipe(
-          withFlow(flow, ({ receipt, existing }) =>
-            receipt.state === 'refused'
-              ? { status: 'refused', errorType: receipt.reason ?? 'refused' }
-              : { status: existing ? 'replayed' : 'ok' },
-          ),
-          Effect.provideService(FlowEvents, flows),
-        )
-        return settled.receipt
-      }),
-      moving: Effect.fn('Moves.moving')(function* (chat: string) {
-        return yield* attemptSync(() => moves.moving(chat))
-      }),
-    })
-  }),
-)
-
-/**
- * The conversation services after the start (chats/service.ts), all native but `Moves`: SQLite reads and receipts,
- * each chat's one lock in `KeyedLock` (the mover takes it through the bridge), Pi through `PiSessions`, flows through
- * `FlowEvents`. `Moves` is served over the one mover (start step 13); its receipts and flows go through
- * `ChatOperations` and `FlowEvents`.
+ * The conversation services after the start (chats/service.ts), natively: SQLite reads and receipts, each chat's one
+ * lock in `KeyedLock`, single flights in `SingleFlight`, Pi through `PiSessions`, flows through `FlowEvents`, and
+ * changes through `Changes`. The registry's Promise view serves the Topic ports and the feed.
  */
 export const ConversationLive: Layer.Layer<
   Chats | ChatOperations | Conversations | ConversationsInstance | Moves,
   never,
   FoundationServices | Budget | Models
-> = Layer.mergeAll(ChatsLive, ConversationsInstanceLive, MovesAdapter).pipe(
+> = Layer.mergeAll(ChatsLive, ConversationsInstanceLive, MovesLive).pipe(
   Layer.provideMerge(ConversationsLive),
   Layer.provideMerge(ChatOperationsLive),
 )

@@ -51,7 +51,7 @@ export interface AgentInputs {
   /** The run ledger and log lines the agent's services report to (ADR 0024). */
   readonly telemetry: RunTelemetry
   /** Move to thread (ADR 0034): hands the moved turn's relays to the Thread, and the boundaries tests stop at. */
-  readonly moves: Pick<MoverPorts, 'handover' | 'after'>
+  readonly moves: MoverPorts
   readonly entitlements: EntitlementPolicy
   /** Runs a program after the plan check, as an owner's or the agent's request does. */
   readonly run: RunProgram

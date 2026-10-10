@@ -26,10 +26,8 @@ declare module '../runtime/changes.ts' {
 }
 
 /**
- * The conversation services (ADRs 0030, 0032, 0034) as Effects. Each reads the current time from the Clock and fails
- * with a typed `AppError`. `Chats` and `ChatOperations` are native (layers/conversation.ts); `Conversations` and
- * `Moves` still wrap the legacy start's registry and mover, the agent's one instance of each, which other lanes'
- * instances share.
+ * The conversation services (ADRs 0030, 0032, 0034) as Effects, built by `layers/conversation.ts`. Each reads the
+ * current time from the Clock and fails with a typed `AppError`.
  */
 
 /** Stable chat identities over Pi sessions (ADR 0030): which session a chat is on now, and where it sits. */
