@@ -1,4 +1,12 @@
-import { GenerationTask, type TaskId, defineDoc, defineExtension, defineTask, hook } from '@earendil-works/pi-durable'
+import {
+  type Extension,
+  GenerationTask,
+  type TaskId,
+  defineDoc,
+  defineExtension,
+  defineTask,
+  hook,
+} from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { requireBudget } from '../budget.ts'
@@ -67,13 +75,16 @@ function builderTask(run: RunProgram) {
   })
 }
 
+/** A Topic Conversation's memory, which keeps it built, and its recall, which reads it. */
+export type MemoryKit = { readonly memory: Extension; readonly recall: Extension }
+
 /**
  * Each Topic Conversation's memory as two extensions (ADR 0032). `memory` (Conversations only) keeps it built: after
  * every response it makes sure one background builder task runs there, which steps that Conversation's `ChatMemory`
  * until caught up, the budget is spent or a step fails (the next response starts another). `recall` (a Conversation and
  * the threads branched from it) explains the view and offers `zoom` into the Conversation above the caller.
  */
-export function memoryExtensions(run: RunProgram) {
+export function memoryExtensions(run: RunProgram): MemoryKit {
   const BuilderTask = builderTask(run)
   const memory = defineExtension({
     name: 'goblin.memory',

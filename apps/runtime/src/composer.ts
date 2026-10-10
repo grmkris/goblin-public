@@ -1,19 +1,15 @@
 import { type ComposerOption, type ComposerOptions, type ComposerSelection, selectionKey } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
-import type { Entitlements } from './billing/gates.ts'
 import { Capabilities } from './capabilities/service.ts'
 import { Conversations } from './chats/service.ts'
-import { type AppError, InvalidInput, NotFound } from './http/errors.ts'
-import { McpServers, Resident, requireResident } from './mcp/service.ts'
+import { InvalidInput, NotFound } from './http/errors.ts'
+import { McpServers, requireResident } from './mcp/service.ts'
 import { Personas } from './personas/service.ts'
 import { skillScope } from './skills/scope.ts'
 import { Skills } from './skills/service.ts'
 
-/** What the composer reads. */
-type ComposerServices = Conversations | Entitlements | Resident | Capabilities | Skills | McpServers | Personas
-
 /** A conversation-scoped catalog. Remote labels and descriptions are display data only. */
-export const composerOptions = (chat: string): Effect.Effect<ComposerOptions, AppError, ComposerServices> =>
+export const composerOptions = (chat: string) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
     const session = yield* conversations.require(chat)

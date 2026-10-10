@@ -1,21 +1,15 @@
-import type { CapabilityChange, ConversationCapabilities } from '@goblin/contracts'
+import type { CapabilityChange } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { Chats, Conversations } from '../chats/service.ts'
-import { type AppError, InvalidInput } from '../http/errors.ts'
+import { InvalidInput } from '../http/errors.ts'
 import { McpConnections, McpGrants, McpServers } from '../mcp/service.ts'
 import { Skills } from '../skills/service.ts'
 import { Capabilities } from './service.ts'
 import { capabilityView, offers } from './view.ts'
 
-/**
- * What reading a conversation's switches takes, written out: a handler of the owner API calls these programs, and its
- * types must never depend on AgentServices.
- */
-type ReadServices = Conversations | Capabilities | McpServers | McpGrants | McpConnections | Skills
-
 /** A registered conversation's switches over the agent's servers, grants and skills libraries, as they are now. */
-export const capabilitiesOf = (thread: string): Effect.Effect<ConversationCapabilities, AppError, ReadServices> =>
+export const capabilitiesOf = (thread: string) =>
   Effect.gen(function* () {
     const kind = yield* (yield* Conversations).kindOf(thread)
     const capabilities = yield* Capabilities
@@ -44,10 +38,7 @@ export const capabilitiesOf = (thread: string): Effect.Effect<ConversationCapabi
  * Only what the conversation shows can be switched off; a subagent follows the conversations above it and main has no
  * reset. A change to subagents reaches Pi's tool filter for that conversation.
  */
-export const changeCapabilities = (
-  thread: string,
-  change: CapabilityChange,
-): Effect.Effect<ConversationCapabilities, AppError, ReadServices | Chats> =>
+export const changeCapabilities = (thread: string, change: CapabilityChange) =>
   Effect.gen(function* () {
     const view = yield* capabilitiesOf(thread)
     const capabilities = yield* Capabilities

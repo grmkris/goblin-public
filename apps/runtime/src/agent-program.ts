@@ -1,4 +1,4 @@
-import type { PiHarness, PiReceipt } from 'agents/harness/pi'
+import type { PiHarness } from 'agents/harness/pi'
 import {
   type AppContext,
   type Attachment,
@@ -10,21 +10,17 @@ import {
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { Apps } from './apps/service.ts'
-import type { Entitlements } from './billing/gates.ts'
-import { type Budget, requireBudget } from './budget.ts'
-import type { Capabilities } from './capabilities/service.ts'
+import { requireBudget } from './budget.ts'
 import type { SessionId } from './chats/directory.ts'
 import { epochSeconds } from './clock.ts'
 import { ChatOperations, Conversations } from './chats/service.ts'
 import { resolveSelections, type ResolvedSelections } from './composer.ts'
 import { Files } from './files/service.ts'
-import { type FlowEvents, withFlow } from './observability/flows.ts'
-import { type AppError, InvalidInput, attempt } from './http/errors.ts'
-import type { McpServers, Resident } from './mcp/service.ts'
-import { Invocations, type Personas } from './personas/service.ts'
+import { withFlow } from './observability/flows.ts'
+import { InvalidInput, attempt } from './http/errors.ts'
+import { Invocations } from './personas/service.ts'
 import { RoutineControl, RoutineRuns } from './routines/service.ts'
 import { AgentInput, type AgentInputs } from './runtime/input.ts'
-import type { Skills } from './skills/service.ts'
 import { conversationId } from './pi/context.ts'
 import { PiSessions } from './pi/sessions.ts'
 import { fromPi } from './chats/operations.ts'
@@ -106,15 +102,7 @@ export const stopOwner = (
  * Stop in `chat` as the owner's Stop does, with the instance's Pi, routines and Persona turns: the one stop path, which
  * a Topic's archive takes too. Records the `stop` flow: who stopped it, and whether anything was running (`count`).
  */
-export const stopChat = (
-  chat: string,
-  operationId?: string,
-  actor: 'owner' | 'agent' = 'owner',
-): Effect.Effect<
-  boolean,
-  AppError,
-  Conversations | RoutineRuns | RoutineControl | Invocations | PiSessions | AgentInput | FlowEvents
-> => {
+export const stopChat = (chat: string, operationId?: string, actor: 'owner' | 'agent' = 'owner') => {
   const flow = {
     flow: 'stop',
     via: actor === 'owner' ? 'app' : 'tool',
@@ -204,23 +192,6 @@ const sendToSubagent = (
     return { session, operationId: input.operationId, accepted }
   })
 
-/** What the owner's message path reads. Spelled out: `run`'s type names every agent service, the owner API's among them. */
-export type OwnerSubmitServices =
-  | Budget
-  | Entitlements
-  | Conversations
-  | ChatOperations
-  | Files
-  | Apps
-  | Capabilities
-  | McpServers
-  | Resident
-  | Skills
-  | Invocations
-  | Personas
-  | PiSessions
-  | RoutineControl
-
 /** The owner's words as the answer to a routine's question waiting in the session they reach, when one is. */
 const routineAnswer = (operationId: string, text: string) => (admitted: SessionId) =>
   RoutineControl.use((control) => control.answer(admitted, operationId, text))
@@ -229,7 +200,7 @@ const routineAnswer = (operationId: string, text: string) => (admitted: SessionI
  * The owner's message into a chat, or an ask of the Personas it tags. Admission (the chat open, the operation recorded,
  * a routine's waiting question answered, the session on the owner's model, Pi's submit) runs under the chat's lock.
  */
-export const submitOwner = (input: OwnerSubmit): Effect.Effect<PiReceipt, AppError, OwnerSubmitServices> =>
+export const submitOwner = (input: OwnerSubmit) =>
   Effect.gen(function* () {
     const {
       appContext = [],
@@ -272,7 +243,7 @@ export const submitOwner = (input: OwnerSubmit): Effect.Effect<PiReceipt, AppErr
 export const sendOwnerMessage = (
   chat: string,
   message: { readonly text: string; readonly operationId: string; readonly context?: OwnerMessageContext },
-): Effect.Effect<PiReceipt, AppError, OwnerSubmitServices | AgentInput> =>
+) =>
   AgentInput.use((input) =>
     submitOwner({
       ...ownerRuntime(input),

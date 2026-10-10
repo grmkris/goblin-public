@@ -85,10 +85,7 @@ const capabilities = ({ params }: ChatRequest) => capabilitiesOf(params.id)
 
 const setCapability = ({ params, payload }: ChatWrite<CapabilityChange>) => changeCapabilities(params.id, payload)
 
-/**
- * A registered chat's Pi snapshot, as the raw route served it. The instance is read with `AgentInput.use`: yielding
- * the tag would type the handler through all of `AgentInputs`, whose kits are typed through the bridge.
- */
+/** A registered chat's Pi snapshot. */
 const snapshot = ({ params }: ChatRequest) =>
   Effect.flatMap(registeredConversation(params.id), (session) =>
     AgentInput.use(({ harness }) => attempt(() => sessionSnapshot(harness, session))),

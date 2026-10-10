@@ -24,7 +24,7 @@ import { personaExtension } from './pi/persona.ts'
 import { type SubagentKit, subagentsExtension } from './pi/subagents.ts'
 import { threadExtension } from './pi/thread.ts'
 import { type PersonaTurnKit, organizingKit } from './organize/kit.ts'
-import { memoryExtensions } from './pi/memory.ts'
+import { type MemoryKit, memoryExtensions } from './pi/memory.ts'
 import { residentMcpExtension } from './pi/resident-mcp.ts'
 import { skillLearningExtension, skillsExtension } from './pi/skills.ts'
 import { AgentLive } from './layers/index.ts'
@@ -63,7 +63,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   readonly harness: PiHarness
   readonly #pi: PiModels
   readonly #thread: Extension
-  readonly #memory: ReturnType<typeof memoryExtensions>
+  readonly #memory: MemoryKit
   readonly #subagents: SubagentKit
   readonly #personas: PersonaTurnKit
   readonly #applied: Applied = new Map()

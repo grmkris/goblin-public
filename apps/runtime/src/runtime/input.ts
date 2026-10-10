@@ -8,7 +8,7 @@ import type { MoverPorts } from '../chats/mover.ts'
 import type { RuntimeEnv } from '../env.ts'
 import type { PersonaTurnKit } from '../organize/kit.ts'
 import type { PiModels } from '../pi/harness.ts'
-import type { memoryExtensions } from '../pi/memory.ts'
+import type { MemoryKit } from '../pi/memory.ts'
 import type { StartRoutine } from '../pi/routine-run.ts'
 import type { SubagentKit } from '../pi/subagents.ts'
 import type { RoutineSchedules } from '../routines/scheduler.ts'
@@ -27,7 +27,7 @@ export interface AgentInputs {
   readonly harness: PiHarness
   readonly pi: PiModels
   readonly thread: Extension
-  readonly memory: ReturnType<typeof memoryExtensions>
+  readonly memory: MemoryKit
   /** The subagent tools, which Pi's tool filter removes where subagents are switched off. */
   readonly subagentTools: readonly ToolRegistration[]
   readonly helperExtensions: readonly Extension[]

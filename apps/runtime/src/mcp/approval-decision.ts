@@ -1,18 +1,16 @@
-import type { ApprovalView } from '@goblin/contracts'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
-import { type Entitlements, requirePlan } from '../billing/gates.ts'
-import type { Budget } from '../budget.ts'
+import { requirePlan } from '../billing/gates.ts'
 import { Capabilities } from '../capabilities/service.ts'
 import { Chats, Conversations } from '../chats/service.ts'
 import { type AppError, NotFound } from '../http/errors.ts'
 import { bound } from '../runtime/boundary.ts'
 import { requireRoutineSession } from '../routines/authority.ts'
-import { RoutineRuns, type RoutineUsage } from '../routines/service.ts'
+import { RoutineRuns } from '../routines/service.ts'
 import type { ApprovalRow } from './approvals.ts'
 import { redactSecretFields } from './redaction.ts'
-import { Approvals, McpConnections, type Resident, requireResident } from './service.ts'
+import { Approvals, McpConnections, requireResident } from './service.ts'
 
 /** What a held call needs again just before it is dispatched: current authority, its open chat and its scope. */
 const authority = (row: ApprovalRow) =>
@@ -27,9 +25,6 @@ const authority = (row: ApprovalRow) =>
     if (!(yield* (yield* Capabilities).scope(session)).tool(row.serverId, row.name))
       return yield* new NotFound({ what: 'tool scope' })
   })
-
-/** What the check before a held call's dispatch reads (`authority`, after the plan). */
-type AuthorityServices = Entitlements | Resident | Chats | Conversations | Capabilities | RoutineUsage | Budget
 
 /** A routine run waiting on the owner goes on running once its held call is approved. */
 const resumeRoutine = (row: ApprovalRow) =>
@@ -87,16 +82,13 @@ const decisionText = (row: ApprovalRow): string => {
   return `The held call ${row.serverId} · ${row.name} is ${row.state}. Nothing was dispatched. Do not retry without a new owner decision.`
 }
 
-/**
- * A decision dispatches frozen arguments once; retries can deliver the result but cannot repeat the remote call. Its
- * type is written out: the owner API's handlers reach it, and their types must not depend on the agent's services.
- */
+/** A decision dispatches frozen arguments once; retries can deliver the result but cannot repeat the remote call. */
 export const decideApproval = <R>(input: {
   readonly id: string
   readonly allowed: boolean
   /** Delivers the decision to the conversation that held the call: its routine run, or its chat. */
   readonly continue: (session: string, text: string, operationId: string) => Effect.Effect<unknown, AppError, R>
-}): Effect.Effect<ApprovalView, AppError, Approvals | McpConnections | RoutineRuns | AuthorityServices | R> =>
+}) =>
   Effect.gen(function* () {
     const approvals = yield* Approvals
     const decision = yield* approvals.decide(input.id, input.allowed)

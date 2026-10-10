@@ -1,16 +1,7 @@
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
-import type { Entitlements } from '../billing/gates.ts'
-import type { Budget } from '../budget.ts'
-import type { Channel } from '../channel/service.ts'
-import type { Chats, Conversations } from '../chats/service.ts'
 import type { AppError } from '../http/errors.ts'
-import type { Cipher } from '../mcp/cipher.ts'
-import { Events, type McpConnections, type Resident } from '../mcp/service.ts'
-import type { Models } from '../models.ts'
-import type { FlowEvents } from '../observability/flows.ts'
-import type { PiSessions } from '../pi/sessions.ts'
-import type { AgentInput } from '../runtime/input.ts'
+import { Events } from '../mcp/service.ts'
 import { confirmEvents, consumeEvent, reconcileEvents } from './events.ts'
 import { notifyRoutine } from './notifications.ts'
 import {
@@ -26,7 +17,7 @@ import {
   wakeIn,
 } from './runner.ts'
 import { fire, reconcileSchedules } from './scheduler.ts'
-import { RoutineControl, RoutineRuns, type RoutineUsage, type Routines } from './service.ts'
+import { RoutineControl, RoutineRuns } from './service.ts'
 import type { RoutineStore } from './store.ts'
 
 /** The native schedules, then the Events subscriptions, repaired to match the stored routines. */
@@ -54,27 +45,22 @@ const maintainRoutines = Effect.gen(function* () {
   yield* reconcileRoutines
 })
 
-/**
- * Everything the routines' programs read, which their service captures once from its layer. Written out: inferring it
- * from the programs would make the agent's services depend on themselves through `AgentInput`.
- */
-export type RoutineControlServices =
-  | AgentInput
-  | Budget
-  | Channel
-  | Chats
-  | Cipher
-  | Conversations
-  | Entitlements
-  | Events
-  | FlowEvents
-  | McpConnections
-  | Models
-  | PiSessions
-  | Resident
-  | RoutineRuns
-  | RoutineUsage
-  | Routines
+/** Everything the routines' programs read, which their service captures once from its layer. */
+export type RoutineControlServices = Effect.Services<
+  [
+    ReturnType<typeof manualRun>,
+    typeof reconcileRoutines,
+    ReturnType<typeof confirmEvents>,
+    ReturnType<typeof archiveRuns>,
+    ReturnType<typeof stopRun>,
+    ReturnType<typeof answerRun>,
+    ReturnType<typeof startRun>,
+    ReturnType<typeof deadlineRun>,
+    ReturnType<typeof fire>,
+    typeof maintainRoutines,
+    ReturnType<typeof consumeEvent>,
+  ][number]
+>
 
 /**
  * The routines' runtime (`RoutineControl`) over the services its layer was built with: each method runs its program
