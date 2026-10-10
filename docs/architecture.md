@@ -204,7 +204,7 @@ each over everything before it:
 - **One layer per area** after the start, in order: the model budget and picker (`Budget`, `Models`, which a send's
   admission reads), conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`), delegation (`Topics`,
   `Personas`, `Invocations`, `Receipts`, `Home`, `Workspace`), capabilities (`Capabilities`), knowledge (`Memories`,
-  `Retrieval`), routines (`Routines`, `RoutineRuns`, `RoutineControl`), observability (`Inspection`), apps (`Apps`,
+  `Retrieval`), routines (`Routines`, `RoutineRuns`, `RoutineControl`), inspection (`Inspection`), apps (`Apps`,
   `AppEngine`, `Files`) and HTTP (`AgentHttp`). The MCP host's `McpConnections`, `McpServers`, `McpGrants` and
   `Approvals`, and `Events`, `Skills`, `Learner`, `RoutineUsage` and `Channel`, are served by their start steps.
 
@@ -216,10 +216,12 @@ the fresh plan reads, billing) through `runAtEdge` (`http/api/edge.ts`): with th
 run.
 
 The object runs its programs through one bridge (`runtime/bridge.ts`): `run` checks the plan
-(`Entitlements.require()`) first, `local` does not (the ledger, budget records, routine gates, diagnose), and `exit`
-returns the program's exit, for `onRequest` and `deleteAgentData`. Every program it runs reports an `Internal` failure
-or a defect with its code location (`runtime/instrument.ts`). Pi extensions receive `run` and `local`; a program never
-calls them from inside an Effect, it composes instead.
+(`Entitlements.require()`) first, `local` does not (the ledger, budget records, routine gates, diagnose), and both
+reject with the `AppError` the program failed with; `exit` returns the program's exit, for `onRequest`. Every program
+it runs reports an `Internal` failure or a defect with its code location (`runtime/instrument.ts`). `agent.ts` hands
+`run` and `local` to the Pi extensions, alarms and apps engine it builds; `AgentInput` does not carry them, and only
+the files `tools/graph.ts` lists may import the bridge. A program never calls them from inside an Effect, it composes
+instead. Erasing the agent disposes its runtime, whose MCP host closes every connection as it goes.
 
 - `KeyedLock` (`observability/lock.ts`): mutual exclusion per key, strictly first come, first served (Effect's
   `Semaphore` wakes waiters in no fixed order). It is held for admission only, never across a model call or another
@@ -933,8 +935,8 @@ Each user picks the model their agent answers with, in the composer. The deploym
 default) plus `GOBLIN_MODELS`, all served by the same LiteLLM key; `models.ts` names and groups them by route
 (Google, Alibaba Cloud), because quota runs out per route. The pick is one row in `app_model_choice`; without one, or
 when the deployment stops offering it, the default applies. Pi stores one model per conversation, set when it is
-created, so before each turn the agent calls `session.setModel` for the conversation the turn runs in, skipping it
-when that conversation already has the model. Every offered model is registered with
+created, so before each turn the agent sets it (`PiSessions.setModel`) for the conversation the turn runs in,
+skipping it when that conversation already has the model. Every offered model is registered with
 Pi's `Models` under the one `goblin-litellm` provider. A failed model call shows its reason in the chat, and a
 quota or outage failure points at the picker.
 
