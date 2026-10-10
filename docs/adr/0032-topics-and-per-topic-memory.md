@@ -1,7 +1,8 @@
 # ADR 0032: Topics and per-Topic memory
 
 Accepted 2026-10-09 with the owner (Topics, round 4 of the spec). Builds on ADRs 0010, 0017 and 0030; the shell that
-shows Topics is ADR 0036.
+shows Topics is ADR 0036. Amended by ADR 0040: a Topic has a setup (its MCP servers, skills, apps and subagents) instead
+of copying Personal's switches.
 
 A Topic is a Slack-style channel: a durable container with exactly one Conversation and any number of Threads under
 it. Personal is the default Topic, and today's Main (chat `1`) is its Conversation. Every other chat is a Thread of

@@ -1,6 +1,6 @@
 # ADR 0021: Agent apps
 
-Accepted 2026-10-06 with the owner. goblin's agent could call tools and show servers' MCP Apps, but could not build
+Accepted 2026-10-06 with the owner. Amended by ADR 0040: a Topic's setup selects the apps its chats may call. goblin's agent could call tools and show servers' MCP Apps, but could not build
 software for its owner. Spikes on 2026-10-06 proved the ingredients on Cloudflare: Dynamic Workers in the agent
 object, live tool activation in Pi, sucrase in an isolate, server-side state with a queue, and low-end models building
 working apps from a short reference.

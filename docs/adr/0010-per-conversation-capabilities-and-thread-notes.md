@@ -2,7 +2,8 @@
 
 Accepted 2026-10-05 with the owner. Amends ADR 0007 (what reaches main from a thread) and ADR 0008 (skills switched on
 for a server can be narrowed per conversation). Amended by ADR 0017: a new thread copies the switches of the conversation
-it came from, and Reset restores those.
+it came from, and Reset restores those. Its per-conversation switches are superseded by ADR 0040 (a Topic's setup):
+only the thread notes below still stand.
 
 **Main learns the name of a thread the owner starts with "+".** A thread branched from a message of main already
 shows under that message. A thread started empty, from the "+" beside Threads, used to leave no trace in main. Now,

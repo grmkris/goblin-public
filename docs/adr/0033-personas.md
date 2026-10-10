@@ -1,7 +1,7 @@
 # ADR 0033: Personas, organize receipts and Delegate results
 
 Accepted 2026-10-09 with the owner (Topics spec, section 5: Personas and Delegates). Builds on ADRs 0010, 0018, 0027
-and 0032.
+and 0032. Amended by ADR 0040: a Persona's exclusions are replaced by its setup, what it adds to the Topic's.
 
 A **Persona** is a named, versioned agent definition the owner tags in the composer with `@name`. Each tagged Persona
 answers once, attributed, in the same chat. Goblin does not answer that message. The same round makes two neighbours

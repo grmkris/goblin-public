@@ -23,9 +23,11 @@ An MCP client (Claude Code, another agent) the owner authorized to call goblin's
 **Grant**:
 The owner's permission for one tool of one outbound server. A tool grant also covers the App that tool declares.
 
-**Capabilities**:
-What one conversation lets its agent use: the owner's grants, skills libraries and subagents, narrowed by what was
-switched off there (ADR 0010). Switches only narrow; they never grant.
+**Setup**:
+What a Topic's chats work with: its MCP servers, skills, agent apps and whether they may start subagents, each all of
+what the owner allows or a list (ADR 0040). A Persona's setup is what it adds to the Topic's. A setup chooses; it never
+grants.
+_Avoid_: capabilities, switches, toolset, plugin
 
 ## Conversations
 

@@ -1,6 +1,7 @@
 # ADR 0012: Confirmed routines and isolated run threads
 
 Status: scheduled and Event execution implemented; native workerd verified. Phase 1 and the Event checkpoint are deployed on dev; the recurring-wake follow-up and real producer acceptance remain pending.
+Amended by ADR 0040: a routine run is bounded by its Topic's setup as well as its own allowed tools.
 
 ## Decision
 

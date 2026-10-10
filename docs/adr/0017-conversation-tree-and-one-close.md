@@ -1,7 +1,8 @@
 # A tree of conversations, threads from anywhere, one Close
 
 Accepted 2026-10-05 with the owner. Supersedes ADR 0007's "threads do not branch further", its archiving and its
-`share_to_main`; amends ADR 0010 (a new thread copies its parent's switches, not main's).
+`share_to_main`; amends ADR 0010 (a new thread copies its parent's switches, not main's). Amended by ADR 0040: there are
+no switches to copy; every chat of a Topic uses the Topic's setup.
 
 **Conversations form a tree.** `app_conversations.parent_session` is where each conversation came from: the
 conversation a thread branched from (main for one started empty with "+") and the spawner of a subagent. Main is the
