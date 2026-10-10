@@ -88,7 +88,7 @@ export const RunAttribute = {
   /** Shared transport discovery belongs to the connection; caller waits carry their own explicit scope. */
   sharedConnection: 'goblin.mcp.shared_connection',
   source: 'goblin.source',
-  /** What a model call outside a turn was for: `naming`, `memory`, `skill`, `app_llm` or `retrieval`. */
+  /** What a model call outside a turn was for: `naming`, `memory`, `skill`, `app_llm`, `retrieval` or `decision`. */
   purpose: 'goblin.purpose',
   channel: 'goblin.channel',
   /** The channel's own id for the message (mygram's inbox id). */
@@ -125,7 +125,7 @@ export const RunAttribute = {
 
 /**
  * The conversation flows that record a `flow` event: how people and agents move through conversations (replies, "+",
- * start thread, move, Personas, Delegates, Topics, routines, Telegram), plus browser crashes.
+ * start thread, move, Personas, Delegates, Topics, routines, Telegram, decision proposals), plus browser crashes.
  */
 export const FlowName = Schema.Literals([
   'send',
@@ -150,6 +150,9 @@ export const FlowName = Schema.Literals([
   'routine_fire',
   'routine_report',
   'telegram_delivery',
+  'decision_propose',
+  'decision_confirm',
+  'decision_dismiss',
   'client_error',
 ])
 export type FlowName = typeof FlowName.Type

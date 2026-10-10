@@ -8,7 +8,7 @@ import { expectedFailure, safeFailureCode } from './safety.ts'
 export type AuxCall = { readonly startedAt: number; readonly message?: Answer; readonly error?: unknown }
 
 /** What a model call outside a turn was for (ADR 0024). */
-export type AuxPurpose = 'naming' | 'memory' | 'skill' | 'app_llm' | 'retrieval'
+export type AuxPurpose = 'naming' | 'memory' | 'skill' | 'app_llm' | 'retrieval' | 'decision'
 
 /** Records each cheap-model call for `purpose` as one `model.aux` event. */
 export const auxReporter =

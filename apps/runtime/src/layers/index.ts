@@ -7,6 +7,7 @@ import { ModelBudgetLive } from './budget.ts'
 import { CapabilitiesLive, RetoolLive } from './capabilities.ts'
 import { ConversationLive, PrimaryChatLive } from './conversation.ts'
 import { CoreLive } from './core.ts'
+import { DecisionsLive } from './decisions.ts'
 import { DelegationLive, HelperExecutionLive } from './delegation.ts'
 import { ActivateMemoriesLive, CheapModelsLive, KnowledgeLive } from './knowledge.ts'
 import { McpEventsLive, McpHostLive } from './mcp.ts'
@@ -73,6 +74,7 @@ export const AgentLive = (input: AgentInputs) =>
     then(RoutinesLive),
     then(Inspection.layer),
     then(AppsLive),
+    then(DecisionsLive),
     then(WorkspaceLive),
     then(AgentHttp.layer),
   )
