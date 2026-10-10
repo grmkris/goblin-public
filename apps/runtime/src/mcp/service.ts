@@ -20,6 +20,7 @@ import type { AppError } from '../http/errors.ts'
 import type { ApprovalRow, HeldCall } from './approvals.ts'
 import type { CredentialCipher } from './cipher.ts'
 import type { EventWebhook, EventWebhookResult, SubscribeConsumer } from './events.ts'
+import type { EventContext } from './events/dispatcher.ts'
 import type { Consumer, Receipt, Subscription } from './events/store.ts'
 import type { Stage } from './suggested.ts'
 import type {
@@ -230,6 +231,14 @@ export class Events extends Context.Service<
     readonly disableServer: (serverId?: string) => Effect.Effect<void, AppError>
     /** One signed webhook delivery, verified and stored before it is answered. */
     readonly receive: (input: EventWebhook) => Effect.Effect<EventWebhookResult, AppError>
+    /**
+     * Handles deliveries to consumers registered under `key` with `handler`, an Effect bound to its services; a
+     * completed handler has durably taken the delivery before its own ack.
+     */
+    readonly register: (
+      key: string,
+      handler: (context: EventContext) => Effect.Effect<void, AppError>,
+    ) => Effect.Effect<void>
     /** One maintenance sweep: dispatch, refresh or poll each subscription, prune, dispatch again. */
     readonly maintain: () => Effect.Effect<void, AppError>
   }

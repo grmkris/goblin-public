@@ -1,4 +1,6 @@
 import * as Effect from 'effect/Effect'
+import { attempt } from '../../src/http/errors.ts'
+import { eventsOver } from '../../src/layers/mcp.ts'
 import { McpEvents } from '../../src/mcp/events.ts'
 import { installEventConsumers } from '../../src/mcp/events/consumers.ts'
 import { SqliteEventStore } from '../../src/mcp/events/store.ts'
@@ -26,14 +28,16 @@ export async function eventsSkillsProbe(state: EventsProbeState) {
   const { manager, skillState, fixture, events, channel } = state
   const library = new SkillLibrary(manager, skillState, () => fixture.now)
   library.setEnabled('mygram', true)
-  installEventConsumers(events, {
-    channel: async () => channel.status(),
-    pull: state.pull,
-    skills: {
-      enabled: async (serverId) => library.enabled(serverId),
-      invalidate: async (serverId, unavailable) => library.invalidate(serverId, unavailable),
-    },
-  })
+  await Effect.runPromise(
+    installEventConsumers(eventsOver(events), {
+      channel: Effect.sync(() => channel.status()),
+      pull: attempt(state.pull),
+      skills: {
+        enabled: (serverId) => Effect.sync(() => library.enabled(serverId)),
+        invalidate: (serverId, unavailable) => Effect.sync(() => library.invalidate(serverId, unavailable)),
+      },
+    }),
+  )
   await skillVersion(state, '1')
   const first = await library.activate('skills-old', 'mygram:events-test')
   events.grant('mygram', 'skills.updated', {}, true)

@@ -8,7 +8,7 @@ import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import { Channel } from '../channel/service.ts'
 import { nowMillis } from '../clock.ts'
-import { Forbidden, GrantDenied, attempt, attemptSync } from '../http/errors.ts'
+import { type AppError, Forbidden, GrantDenied, attempt, attemptSync } from '../http/errors.ts'
 import { type HeldCall, McpApprovalStore } from '../mcp/approvals.ts'
 import { Cipher, CredentialCipher } from '../mcp/cipher.ts'
 import { configuredServers } from '../mcp/config.ts'
@@ -16,6 +16,7 @@ import { CredentialStore } from '../mcp/credentials.ts'
 import { bindEndpoints } from '../mcp/endpoints.ts'
 import { type EventWebhook, McpEvents, type SubscribeConsumer } from '../mcp/events.ts'
 import { type EventConsumerPorts, installEventConsumers } from '../mcp/events/consumers.ts'
+import type { EventContext } from '../mcp/events/dispatcher.ts'
 import { eventsHookToken, eventsHookUrl } from '../mcp/events/route-token.ts'
 import { type Receipt, SqliteEventStore } from '../mcp/events/store.ts'
 import { GrantStore } from '../mcp/grants.ts'
@@ -24,9 +25,18 @@ import { logEndpointsReset } from '../mcp/log.ts'
 import { RegistryStore } from '../mcp/registries.ts'
 import { makeCatalog } from '../mcp/registry.ts'
 import { AddedServerStore } from '../mcp/servers.ts'
-import { Approvals, Events, McpConnections, McpGrants, McpServers, requireResident } from '../mcp/service.ts'
+import {
+  Approvals,
+  Events,
+  McpConnections,
+  McpGrants,
+  McpServers,
+  type Resident,
+  requireResident,
+} from '../mcp/service.ts'
 import { type Stage, suggestions } from '../mcp/suggested.ts'
 import type { McpCallOptions, McpRequestOptions } from '../mcp/types.ts'
+import { promiseWith } from '../runtime/boundary.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../runtime/input.ts'
 import { SqliteSkillState } from '../skills/store.ts'
@@ -39,14 +49,19 @@ import { mcpReporter } from '../telemetry/report.ts'
 // those instances, and held calls and the registry catalog are built over the agent's database.
 
 /**
- * The plan, then current resident authority: what the MCP host and Events check before an Events call goes out. It
- * runs through the bridge's `local` (no second plan check) on the agent's own plan policy, read fresh each time.
+ * The plan, read fresh from the agent's own plan policy, then current resident authority: what the MCP host and Events
+ * check before an Events call goes out.
  */
-const eventsAuthority = (input: AgentInputs): Promise<void> =>
-  input.local(Effect.andThen(input.entitlements.require(), requireResident))
+const eventsAuthority = Effect.andThen(
+  AgentInput.use((input) => input.entitlements.require()),
+  requireResident,
+)
 
-/** The MCP host over the agent's database, with the stores it checks and the held calls a restart cut off recovered. */
-async function makeHost(input: AgentInputs, db: DrizzleSqliteDODatabase) {
+/**
+ * The MCP host over the agent's database, with the stores it checks and the held calls a restart cut off recovered;
+ * `authority` is the Events check (`eventsAuthority`).
+ */
+async function makeHost(input: AgentInputs, db: DrizzleSqliteDODatabase, authority: () => Promise<void>) {
   const env = input.env
   const servers = configuredServers(env.MCP_SERVERS)
   const added = new AddedServerStore(db)
@@ -64,7 +79,7 @@ async function makeHost(input: AgentInputs, db: DrizzleSqliteDODatabase) {
     added,
     credentials,
     authorizeEvents: async (serverId, name, argumentsJson) => {
-      await eventsAuthority(input)
+      await authority()
       if (credentials.status(serverId) !== 'connected')
         throw new Forbidden({ reason: 'event connection requires authorization' })
       if (!eventStore.allows(serverId, name, argumentsJson)) throw new GrantDenied({ serverId, name })
@@ -99,17 +114,23 @@ async function makeHost(input: AgentInputs, db: DrizzleSqliteDODatabase) {
  * Start step 2: every server's endpoint binding is checked (a re-pointed server loses what it had), the credential
  * cipher is made, held calls a restart cut off are recovered, and the one MCP host is made.
  */
-export const McpHostLive: Layer.Layer<McpHostInstance | Cipher, never, AgentInput | Db> = Layer.effectContext(
-  Effect.gen(function* () {
-    const input = yield* AgentInput
-    const db = yield* Db
-    const { host, cipher } = yield* Effect.promise(() => makeHost(input, db))
-    return Context.mergeAll(McpHostInstance.context(host), Cipher.context(cipher))
-  }),
-)
+export const McpHostLive: Layer.Layer<McpHostInstance | Cipher, never, AgentInput | Db | Resident> =
+  Layer.effectContext(
+    Effect.gen(function* () {
+      const input = yield* AgentInput
+      const db = yield* Db
+      // The host's Events check is Promise code: it runs the Effect with this layer's services.
+      const run = promiseWith(yield* Effect.context<AgentInput | Resident>())
+      const { host, cipher } = yield* Effect.promise(() => makeHost(input, db, () => run(eventsAuthority)))
+      return Context.mergeAll(McpHostInstance.context(host), Cipher.context(cipher))
+    }),
+  )
+
+/** Runs a registered handler, bound to its own services, from the engine's Promise dispatch. */
+const handled = promiseWith(Context.empty())
 
 /** `Events` over the agent's one engine: its methods are Effects already. */
-const eventsOver = (engine: McpEvents) =>
+export const eventsOver = (engine: McpEvents) =>
   Events.of({
     health: Effect.fn('Events.health')(function* (serverId: string) {
       return yield* Effect.sync(() => engine.health(serverId))
@@ -157,18 +178,28 @@ const eventsOver = (engine: McpEvents) =>
     maintain: Effect.fn('Events.maintain')(function* () {
       yield* engine.maintain()
     }),
+    register: Effect.fn('Events.register')(function* (
+      key: string,
+      handler: (context: EventContext) => Effect.Effect<void, AppError>,
+    ) {
+      yield* Effect.sync(() => engine.register(key, (context) => handled(handler(context))))
+    }),
   })
 
 /**
- * What the Telegram and skills consumers reach, read when an event arrives: the channel and skills services through
- * the bridge's `local` (no plan check), and the agent's scheduled Telegram pull.
+ * What the Telegram and skills consumers reach, read when an event arrives: the channel and skills services of the
+ * start (steps 15 and 16, before Events), and the agent's scheduled Telegram pull.
  */
-const consumerPorts = ({ local, pullTelegram }: AgentInputs): EventConsumerPorts => ({
-  channel: () => local(Channel.use((channel) => channel.status)),
-  pull: pullTelegram,
+const consumerPorts = (
+  { pullTelegram }: AgentInputs,
+  context: Context.Context<Channel | Skills>,
+): EventConsumerPorts => ({
+  channel: Channel.use((channel) => channel.status).pipe(Effect.provideContext(context)),
+  pull: attempt(pullTelegram),
   skills: {
-    enabled: (serverId) => local(Skills.use((skills) => skills.enabled(serverId))),
-    invalidate: (serverId, unavailable) => local(Skills.use((skills) => skills.invalidate(serverId, unavailable))),
+    enabled: (serverId) => Skills.use((skills) => skills.enabled(serverId)).pipe(Effect.provideContext(context)),
+    invalidate: (serverId, unavailable) =>
+      Skills.use((skills) => skills.invalidate(serverId, unavailable)).pipe(Effect.provideContext(context)),
   },
 })
 
@@ -176,10 +207,16 @@ const consumerPorts = ({ local, pullTelegram }: AgentInputs): EventConsumerPorts
  * Start step 17: the one Events engine over the host's connections, with the routine trigger and then the Telegram
  * and skills consumers registered before any delivery can reach it.
  */
-export const McpEventsLive: Layer.Layer<Events, never, AgentInput | Db | McpHostInstance | Cipher> = Layer.effect(
+export const McpEventsLive: Layer.Layer<
+  Events,
+  never,
+  AgentInput | Db | Resident | McpHostInstance | Cipher | Channel | Skills
+> = Layer.effect(
   Events,
   Effect.gen(function* () {
     const input = yield* AgentInput
+    const context = yield* Effect.context<AgentInput | Resident | Channel | Skills>()
+    const run = promiseWith(context)
     const { env, userId } = input
     const host = yield* McpHostInstance
     const cipher = yield* Cipher
@@ -192,11 +229,12 @@ export const McpEventsLive: Layer.Layer<Events, never, AgentInput | Db | McpHost
       principal: userId,
       callback: eventsHookUrl(env.APP_URL, userId, token),
       wake: input.scheduleEvents,
-      authorize: () => eventsAuthority(input),
+      authorize: () => run(eventsAuthority),
     })
-    engine.register('routine-trigger', input.routineEvent)
-    installEventConsumers(engine, consumerPorts(input))
-    return eventsOver(engine)
+    const events = eventsOver(engine)
+    yield* events.register('routine-trigger', (event) => attempt(() => input.routineEvent(event)))
+    yield* installEventConsumers(events, consumerPorts(input, context))
+    return events
   }),
 )
 

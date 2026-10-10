@@ -1,28 +1,38 @@
 import type { ChannelStatus } from '@goblin/contracts'
-import type { McpEvents } from '../events.ts'
+import * as Effect from 'effect/Effect'
+import type { AppError } from '../../http/errors.ts'
+import type { Events } from '../service.ts'
 
 /** What the static consumers reach: the Telegram channel, the pull it schedules, and the skills libraries. */
 export type EventConsumerPorts = {
   /** The Telegram channel's server and transport, or null while it is off. */
-  readonly channel: () => Promise<ChannelStatus>
-  readonly pull: () => Promise<void>
+  readonly channel: Effect.Effect<ChannelStatus, AppError>
+  readonly pull: Effect.Effect<void, AppError>
   /** Whether the owner takes skills from `serverId`, and forgetting its listing (`unavailable` when it stopped). */
   readonly skills: {
-    readonly enabled: (serverId: string) => Promise<boolean>
-    readonly invalidate: (serverId: string, unavailable: boolean) => Promise<void>
+    readonly enabled: (serverId: string) => Effect.Effect<boolean, AppError>
+    readonly invalidate: (serverId: string, unavailable: boolean) => Effect.Effect<void, AppError>
   }
 }
 
 /** Installed static handlers never execute event text; Telegram pulls inbox, Skills persist invalidation. */
-export function installEventConsumers(events: McpEvents, ports: EventConsumerPorts): void {
-  events.register('telegram-inbox', async ({ subscription, envelope }) => {
-    const status = await ports.channel()
-    if (status?.serverId !== subscription.serverId || status.transport !== 'events') return
-    if ('type' in envelope && envelope.type === 'terminated') return
-    await ports.pull()
-  })
-  events.register('skills-refresh', async ({ subscription, envelope }) => {
-    if (!(await ports.skills.enabled(subscription.serverId))) return
-    await ports.skills.invalidate(subscription.serverId, 'type' in envelope && envelope.type === 'terminated')
-  })
-}
+export const installEventConsumers = (
+  events: Pick<Events['Service'], 'register'>,
+  ports: EventConsumerPorts,
+): Effect.Effect<void> =>
+  Effect.andThen(
+    events.register('telegram-inbox', ({ subscription, envelope }) =>
+      Effect.gen(function* () {
+        const status = yield* ports.channel
+        if (status?.serverId !== subscription.serverId || status.transport !== 'events') return
+        if ('type' in envelope && envelope.type === 'terminated') return
+        yield* ports.pull
+      }),
+    ),
+    events.register('skills-refresh', ({ subscription, envelope }) =>
+      Effect.gen(function* () {
+        if (!(yield* ports.skills.enabled(subscription.serverId))) return
+        yield* ports.skills.invalidate(subscription.serverId, 'type' in envelope && envelope.type === 'terminated')
+      }),
+    ),
+  )
