@@ -3,7 +3,6 @@ import * as Context from 'effect/Context'
 import type * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
 import type { CredentialCipher } from '../mcp/cipher.ts'
-import type { EventContext } from '../mcp/events/dispatcher.ts'
 import type { appRoutineSettings } from '../storage/routines.ts'
 import type { Firing, RoutineRun } from './runs.ts'
 import type { RoutineSlot } from './scheduler.ts'
@@ -11,6 +10,8 @@ import type { RoutineOperationResult, RoutineRow } from './store.ts'
 
 /** The owner's routine caps and timezone, as stored (one row). */
 type RoutineSettingsRow = typeof appRoutineSettings.$inferSelect
+/** The owner's answer to a run's question, which starts the run again with it. */
+export type RoutineAnswer = { readonly operationId: string; readonly text: string }
 /** A cron or one-off slot that fired: which one was expected, the next one, and how many were missed between. */
 type SlotAdvance = {
   readonly id: string
@@ -174,7 +175,8 @@ export class RoutineUsage extends Context.Service<
 
 /**
  * The routines' runtime: admission, the native schedules, Events bindings, and starting, answering and stopping runs.
- * Pi executes each run; this owns the handoffs to it.
+ * Pi executes each run; this owns the handoffs to it. Built once by `RoutinesLive`, which also registers the routine
+ * trigger with Events.
  */
 export class RoutineControl extends Context.Service<
   RoutineControl,
@@ -190,13 +192,13 @@ export class RoutineControl extends Context.Service<
     readonly stop: (id: string, reason?: string) => Effect.Effect<void, AppError>
     /** The owner's answer to a waiting run's question; false when `session` is no routine run waiting for one. */
     readonly answer: (session: string, operationId: string, text: string) => Effect.Effect<boolean, AppError>
+    /** Hands a run to Pi, again with `answer` when the owner answered it; answers the session it runs in. */
+    readonly start: (record: RoutineRun, answer?: RoutineAnswer) => Effect.Effect<string, AppError>
     /** A run reached its deadline alarm. */
     readonly deadline: (id: string) => Effect.Effect<void, AppError>
     /** A native schedule's slot is due. */
     readonly fire: (slot: RoutineSlot) => Effect.Effect<void, AppError>
     /** The routines' sweep: deadlines, admitted starts, reports, notifications, then reconciliation. */
     readonly maintain: Effect.Effect<void, AppError>
-    /** An Events delivery for a routine's subscription. */
-    readonly consumeEvent: (context: EventContext) => Effect.Effect<void, AppError>
   }
 >()('goblin/routines/RoutineControl') {}

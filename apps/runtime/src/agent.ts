@@ -14,7 +14,7 @@ import { appPorts } from './agent-apps/ports.ts'
 import { JOB_CALLBACK, type JobSchedules, type JobSlot } from './agent-apps/jobs.ts'
 import { reconcileAppJobs, runAppJob } from './agent-apps/wake.ts'
 import { mcpEventsWake } from './mcp/wake.ts'
-import { routinesWake, runRoutine, runRoutineDeadline } from './routines/wake.ts'
+import { routineSchedulePorts, routinesWake, runRoutine, runRoutineDeadline } from './routines/wake.ts'
 import { appsExtension, appExecutionExtension } from './pi/apps.ts'
 import { serversExtension } from './pi/servers.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
@@ -45,8 +45,8 @@ import { type Applied } from './agent-model.ts'
 import { routinesExtension } from './pi/routines.ts'
 import { requireRoutine, requireRoutineSession } from './routines/authority.ts'
 import type { RoutineSlot } from './routines/scheduler.ts'
-import { RoutineController, routineSchedulePorts } from './routines/controller.ts'
 import { routineExtensions } from './routines/kit.ts'
+import type { StartRoutine } from './pi/routine-run.ts'
 
 type Runtime = ManagedRuntime.ManagedRuntime<AgentServices, never>
 
@@ -67,7 +67,8 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   readonly #subagents: SubagentKit
   readonly #personas: PersonaTurnKit
   readonly #applied: Applied = new Map()
-  readonly #routines: RoutineController
+  /** How a routine run's Pi work starts (the routines kit's, routines/kit.ts). */
+  readonly #routineStart: StartRoutine
   readonly #apps: AgentApps
   readonly #telemetry: AgentTelemetry
   /** How the object runs its programs (runtime/bridge.ts). */
@@ -89,6 +90,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     this.#memory = memoryExtensions(run)
     const { memory, recall } = this.#memory
     const routineKit = routineExtensions(routineRun, residentTools, env.CREDENTIAL_KEY)
+    this.#routineStart = routineKit.start
     const apps = agentApps(ctx.storage, env, () => this.name, {
       schedules: this.#jobSchedules(),
       ...appPorts(this.#bridge),
@@ -105,18 +107,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     const own = [serversExtension(run, env.STAGE), subagents, routinesExtension(run), this.#telemetry.diagnose]
     const extras = [this.#thread, memory, recall, this.#personas.extension, ...routineKit.extra]
     this.harness = makePiHarness(this.#pi, [...base, ...own], extras, apps, this.#telemetry.recorder)
-    this.#routines = new RoutineController(routineRun, this.harness, routineKit.start, {
-      storage: this.ctx.storage,
-      owner: () => this.name,
-      key: env.CREDENTIAL_KEY,
-      schedules: routineSchedulePorts({
-        list: () => this.listSchedules(),
-        cancel: (id) => this.cancelSchedule(id),
-        armNative: (at, payload) => this.schedule(at, 'runRoutine', payload, { idempotent: true }),
-        deadlineNative: (at, payload) => this.schedule(at, 'runRoutineDeadline', payload, { idempotent: true }),
-        wake: (at) => this.#scheduleWake('routinesWake', at),
-      }),
-    })
     const again = (seconds: number) => this.schedule(seconds, 'channelReplies')
     this.#channel = new ChannelWakes({ harness: this.harness, applied: this.#applied, run, again })
     this.lifecycle.use(this.harness)
@@ -175,7 +165,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       scheduleEvents: (at) => this.#scheduleWake('mcpEventsWake', at),
       pullTelegram: () => this.channelPull(),
       schedulePull: () => this.schedule(0, 'channelPull'),
-      routineEvent: (context) => this.#routines.consumeEvent(context),
       mcpFetch: this.mcpFetch(),
       agentApps: this.#apps,
       telemetry: this.#telemetry.telemetry,
@@ -186,10 +175,16 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       subagents: this.#subagents,
       personas: this.#personas,
       applied: this.#applied,
-      routines: this.#routines,
+      routineSchedules: routineSchedulePorts({
+        list: () => this.listSchedules(),
+        cancel: (id) => this.cancelSchedule(id),
+        armNative: (at, payload) => this.schedule(at, 'runRoutine', payload, { idempotent: true }),
+        deadlineNative: (at, payload) => this.schedule(at, 'runRoutineDeadline', payload, { idempotent: true }),
+        wake: (at) => this.#scheduleWake('routinesWake', at),
+      }),
+      startRoutine: this.#routineStart,
       run: this.#bridge.run,
       local: this.#bridge.local,
-      stopping: this.#stopping,
       instrument,
     }
   }
@@ -211,21 +206,21 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     await this.#bridge.local(mcpEventsWake)
   }
   async routinesWake(): Promise<void> {
-    await routinesWake(this.#routines, (at) => this.#scheduleWake('routinesWake', at))
+    await routinesWake(this.#bridge.local, (at) => this.#scheduleWake('routinesWake', at))
   }
   async runRoutine(slot: RoutineSlot): Promise<void> {
-    await runRoutine(this.#routines, slot)
+    await runRoutine(this.#bridge.local, slot)
   }
   async runRoutineDeadline(input: { runId: string }): Promise<void> {
-    await runRoutineDeadline(this.#routines, input)
+    await runRoutineDeadline(this.#bridge.local, input)
   }
   /** An agent app's job is due (ADR 0021). */
   async runAppJob(slot: JobSlot): Promise<void> {
     await runAppJob(this.#apps, slot)
   }
 
-  /** What an archive or a Stop reaches: Pi, a routine's runs and the Persona turns asked in a chat. */
-  readonly #stopping = () => ({ harness: this.harness, routines: this.#routines, personas: this.#personas })
+  /** What an archive or a Stop reaches besides the services: Pi and the Persona turns asked in a chat. */
+  readonly #stopping = () => ({ harness: this.harness, personas: this.#personas })
 
   async channelPull(): Promise<void> {
     await this.#channel.pull()

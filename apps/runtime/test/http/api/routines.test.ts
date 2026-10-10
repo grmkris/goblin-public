@@ -1,22 +1,18 @@
-import type { RoutineDefinition, RoutineManualRun } from '@goblin/contracts'
+import type { RoutineDefinition } from '@goblin/contracts'
 import { RoutinePage, RoutineRunView, RoutineView } from '@goblin/contracts'
 import { RoutinesGroup } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
-import type { EntitlementPolicy } from '../../../src/billing/gates.ts'
 import { Resident } from '../../../src/mcp/service.ts'
 import { RoutinesHandlers } from '../../../src/routines/api.ts'
-import { ModelBudgetLive } from '../../../src/layers/budget.ts'
-import { RoutinesLive } from '../../../src/layers/routines.ts'
-import { RoutineController } from '../../../src/routines/controller.ts'
+import { routineRunsOf, routinesOf } from '../../../src/layers/routines.ts'
 import { RoutineRunStore } from '../../../src/routines/runs.ts'
+import { RoutineControl, RoutineRuns, Routines } from '../../../src/routines/service.ts'
 import { RoutineStore } from '../../../src/routines/store.ts'
-import { Db } from '../../../src/runtime/db.ts'
-import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import { callOwner } from '../../owner-client.ts'
-import { currentResident, database, json, PLAN, plans, post, serve, served } from './fixture.ts'
+import { currentResident, database, json, plans, post, serve, served, stub } from './fixture.ts'
 
 const DEFINITION: RoutineDefinition = {
   title: 'Plants',
@@ -29,8 +25,8 @@ const DEFINITION: RoutineDefinition = {
 }
 
 /**
- * The routines group as the agent serves it, over the real routine stores on SQLite and the lane's adapters. The routine
- * controller is the one fake: it records what the runtime asked of it, and "run now" claims the run in the real store.
+ * The routines group as the agent serves it, over the real routine stores on SQLite. The routines' runtime is the one
+ * fake: it records what the handlers asked of it, and "run now" claims the run in the real store.
  */
 const fixture = () => {
   const db = database()
@@ -39,42 +35,34 @@ const fixture = () => {
   const routines = new RoutineStore(sqlite, 'owner')
   const runs = new RoutineRunStore(sqlite, 'owner')
   const calls: string[] = []
-  const controller: RoutineController = Object.assign(Object.create(RoutineController.prototype), {
-    reconcile: async () => void calls.push('reconcile'),
-    confirmEvents: async (id: string, revision: number) => void calls.push(`confirmEvents ${id} ${revision}`),
-    archive: async (id: string) => void calls.push(`archive ${id}`),
-    manual: async (id: string, input: RoutineManualRun) => {
-      calls.push(`manual ${id}`)
-      const firing = {
-        routineId: id,
-        revision: input.revision,
-        operationId: `routine-manual:${id}:${input.operationId}`,
-        source: 'manual' as const,
-        firedAt: 1,
-      }
-      return runs.claim(firing, 'rr_1', undefined, Date.now()).run
-    },
+  const record = (call: string) => Effect.sync(() => void calls.push(call))
+  const control = stub(RoutineControl, {
+    reconcile: record('reconcile'),
+    confirmEvents: (id, revision) => record(`confirmEvents ${id} ${revision}`),
+    archive: (id) => record(`archive ${id}`),
+    manual: (id, input) =>
+      Effect.sync(() => {
+        calls.push(`manual ${id}`)
+        const firing = {
+          routineId: id,
+          revision: input.revision,
+          operationId: `routine-manual:${id}:${input.operationId}`,
+          source: 'manual' as const,
+          firedAt: 1,
+        }
+        return runs.claim(firing, 'rr_1', undefined, Date.now()).run
+      }),
   })
-  const entitlements: EntitlementPolicy = { state: () => Effect.succeed(PLAN), require: () => Effect.succeed(PLAN) }
   const resident = currentResident()
-  const legacy = Layer.mergeAll(
-    Layer.succeed(Db, sqlite),
+  const services = Layer.mergeAll(
+    Layer.succeed(Routines, routinesOf(routines)),
+    Layer.succeed(RoutineRuns, routineRunsOf(runs)),
+    control,
     // The gate's resident authority and plan.
     Layer.succeed(Resident, resident.service),
     plans(),
-    // SAFETY: the routines handlers and the lane's layers read only these from the instance input.
-    Layer.succeed(AgentInput, {
-      routines: controller,
-      entitlements,
-      userId: 'owner',
-      env: { MODEL_ID: 'model-a' },
-    } as AgentInputs),
   )
-  const { fetch } = serve(
-    served([RoutinesGroup], RoutinesHandlers).pipe(
-      Layer.provide(Layer.provideMerge(Layer.merge(ModelBudgetLive, RoutinesLive), legacy)),
-    ),
-  )
+  const { fetch } = serve(served([RoutinesGroup], RoutinesHandlers).pipe(Layer.provide(services)))
   return { fetch, calls, routines, runs, resident }
 }
 

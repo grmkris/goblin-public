@@ -20,7 +20,6 @@ import type { PersonaTurnKit } from '../../../src/organize/kit.ts'
 import { Invocations, Personas } from '../../../src/personas/service.ts'
 import type { PersonaView } from '@goblin/contracts'
 import { Retrieval } from '../../../src/retrieval/service.ts'
-import type { RoutineController } from '../../../src/routines/controller.ts'
 import { RoutineControl, RoutineRuns } from '../../../src/routines/service.ts'
 import { FlowEvents } from '../../../src/observability/flows.ts'
 import { KeyedLock } from '../../../src/observability/lock.ts'
@@ -230,15 +229,13 @@ const run = async () =>
   // SAFETY: as above, nothing calls it.
   undefined as never
 
-/** The instance's pieces the handlers read: Pi, the model choices, no routine answers, the Personas and the bridge. */
+/** The instance's pieces the handlers read: Pi, the model choices, the Personas and the bridge. */
 const instance = (harness: PiHarness, calls: Calls) => {
-  const routines = fake<RoutineController>({ answer: async () => false, stop: async () => undefined })
   const personas = fake<PersonaTurnKit>({
     drop: async () => calls.push('personas:drop'),
     start: async (_pi, ask) => void calls.push(`personas:${ask.order}`),
   })
-  const stopping = () => ({ harness, routines, personas })
-  return fake<AgentInputs>({ harness, applied: new Map(), routines, personas, run, stopping })
+  return fake<AgentInputs>({ harness, applied: new Map(), personas, run })
 }
 
 /**

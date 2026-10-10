@@ -10,7 +10,7 @@ import { DelegationLive, HelperExecutionLive } from './delegation.ts'
 import { ActivateMemoriesLive, CheapModelsLive, KnowledgeLive } from './knowledge.ts'
 import { McpEventsLive, McpHostLive } from './mcp.ts'
 import { ObservabilityLive } from './observability.ts'
-import { ChannelLive, RoutineUsageLive, RoutinesLive } from './routines.ts'
+import { ChannelLive, RoutineRunsLive, RoutinesLive } from './routines.ts'
 import { SkillsLive } from './skills.ts'
 import { WorkspaceLive } from '../workspace/live.ts'
 
@@ -31,7 +31,7 @@ const start = (input: AgentInputs) =>
     then(ChatDirectoryLive), // 4 conversation
     then(HelperExecutionLive), // 7 delegation: await
     then(RetoolLive), // 8 capabilities: await
-    then(RoutineUsageLive), // 9 routines: await
+    then(RoutineRunsLive), // 9 routines: runs and their usage projection, await
     then(PrimaryChatLive), // 10 conversation: main registered
     then(AppRegistryLive), // 11 apps
     then(ActivateMemoriesLive), // 14 knowledge: await

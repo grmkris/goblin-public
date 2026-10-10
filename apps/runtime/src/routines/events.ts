@@ -1,21 +1,31 @@
+import type { RoutineDefinition } from '@goblin/contracts'
+import * as Clock from 'effect/Clock'
+import * as Effect from 'effect/Effect'
 import * as Match from 'effect/Match'
 import * as Option from 'effect/Option'
-import { drizzle } from 'drizzle-orm/durable-sqlite'
-import { Conflict, NotFound, isAppError } from '../http/errors.ts'
+import { type AppError, Conflict, attempt, isAppError } from '../http/errors.ts'
+import { Cipher } from '../mcp/cipher.ts'
+import type { EventContext } from '../mcp/events/dispatcher.ts'
+import { type Consumer, canonicalArguments } from '../mcp/events/store.ts'
+import { redactSecretFields } from '../mcp/redaction.ts'
+import { Events } from '../mcp/service.ts'
 import { writeLine } from '../observability/logger.ts'
 import { safeErrorType } from '../observability/report.ts'
-import type { RunProgram } from '../runtime/bridge.ts'
-import { CredentialCipher } from '../mcp/cipher.ts'
-import { redactSecretFields } from '../mcp/redaction.ts'
-import type { Events } from '../mcp/service.ts'
-import type { EventContext } from '../mcp/events/dispatcher.ts'
-import { canonicalArguments } from '../mcp/events/store.ts'
-import { RoutineStore, definitionOf } from './store.ts'
-import type { RoutineRunner, RoutineWake } from './runner.ts'
+import { admit, wakeIn } from './runner.ts'
 import type { Firing } from './runs.ts'
+import { Routines } from './service.ts'
+import { type RoutineRow, type RoutineStore, definitionOf } from './store.ts'
 import { routineSummary } from './summary.ts'
 
+// The shared Events dispatcher owns delivery (the 'routine-trigger' handler); these are only confirmed routine
+// admission and sealed pending metadata.
+
+type Trigger = RoutineDefinition['trigger']
+type EventTrigger = Extract<Trigger, { kind: 'event' }>
+
 const consumerId = (id: string) => `routine:${id}`
+const live = (state: RoutineRow['state']) => state === 'active' || state === 'activating'
+const DAY = 86_400_000
 
 /**
  * Whether subscribing a confirmed event routine failed for a reason the owner has to act on: the server needs signing
@@ -34,164 +44,136 @@ export const activationRefused = (error: unknown): boolean =>
     Match.orElse(() => false),
   )
 
-const busy = (error: unknown) =>
-  error instanceof Conflict &&
-  ['routine already running', 'running routine limit', 'event run spacing limit'].includes(error.reason)
+const conflict = (reasons: readonly string[]) => (error: AppError) =>
+  error instanceof Conflict && reasons.includes(error.reason)
+/** The routine is at a cap: the occurrence waits, sealed, for the next sweep. */
+const busy = conflict(['routine already running', 'running routine limit', 'event run spacing limit'])
+/** The routine changed since the delivery was bound to it: the occurrence is dropped. */
+const inactive = conflict(['routine is not active at this revision'])
 
-/** The shared dispatcher owns delivery; these are only confirmed routine admission and sealed pending metadata. */
-export class RoutineEventBindings {
-  readonly #run: RunProgram
-  readonly #store: RoutineStore
-  readonly #events: Events['Service']
-  readonly #runner: RoutineRunner
-  readonly #cipher: Promise<CredentialCipher>
-  readonly #wake: RoutineWake
-  constructor(input: {
-    /** Runs the Events subscription programs (the bridge's `local`). */
-    run: RunProgram
-    storage: DurableObjectStorage
-    owner: string
-    events: Events['Service']
-    runner: RoutineRunner
-    key: string
-    wake: RoutineWake
-  }) {
-    this.#run = input.run
-    this.#store = new RoutineStore(drizzle(input.storage), input.owner)
-    this.#events = input.events
-    this.#runner = input.runner
-    this.#cipher = CredentialCipher.fromBase64(input.key)
-    this.#wake = input.wake
-  }
+/** The routine trigger's subscription for `row`'s revision of `trigger`. */
+const subscription = (row: Pick<RoutineRow, 'id' | 'revision'>, trigger: EventTrigger) => ({
+  consumerId: consumerId(row.id),
+  revision: row.revision,
+  serverId: trigger.serverId,
+  name: trigger.name,
+  arguments: trigger.arguments,
+  handlerKey: 'routine-trigger',
+})
 
-  /** Called solely by the authenticated exact-revision Confirm API, never by reconciliation or the model. */
-  async confirm(id: string, revision: number): Promise<void> {
-    const row = this.#store.get(id)
-    if (row.revision !== revision || row.state !== 'activating' || row.confirmedAt === null) return
-    const trigger = definitionOf(row).trigger
-    if (trigger.kind !== 'event') return
-    await this.#run(this.#events.grant(trigger.serverId, trigger.name, trigger.arguments, true))
-    await this.#run(
-      this.#events.subscribe({
-        consumerId: consumerId(id),
-        revision,
-        serverId: trigger.serverId,
-        name: trigger.name,
-        arguments: trigger.arguments,
-        handlerKey: 'routine-trigger',
-      }),
-    )
-    this.#store.markActive(id, revision, null, Date.now())
-  }
+/** Subscribes a confirmed event routine's revision; only the owner's exact-revision Confirm calls it. */
+export const confirmEvents = Effect.fn('routines.confirmEvents')(function* (id: string, revision: number) {
+  const routines = yield* Routines
+  const row = yield* routines.get(id)
+  if (row.revision !== revision || row.state !== 'activating' || row.confirmedAt === null) return
+  const trigger = definitionOf(row).trigger
+  if (trigger.kind !== 'event') return
+  const events = yield* Events
+  yield* events.grant(trigger.serverId, trigger.name, trigger.arguments, true)
+  yield* events.subscribe(subscription(row, trigger))
+  yield* routines.markActive(id, revision, null, yield* Clock.currentTimeMillis)
+})
 
-  async reconcile(): Promise<void> {
-    for (const row of this.#store.scheduling()) await this.#repair(row)
-  }
-  async #repair(row: ReturnType<RoutineStore['get']>): Promise<void> {
-    const binding = Option.getOrUndefined(await this.#run(this.#events.activeConsumer(consumerId(row.id))))
-    const definition = definitionOf(row)
-    if (binding !== undefined && (binding.revision !== row.revision || !['active', 'activating'].includes(row.state)))
-      await this.#run(this.#events.unsubscribe(binding))
-    if (
-      definition.trigger.kind !== 'event' ||
-      !['active', 'activating'].includes(row.state) ||
-      row.confirmedAt === null
-    )
-      return
-    if (binding?.revision === row.revision) {
-      const lease = Option.getOrUndefined(await this.#run(this.#events.subscription(binding.subscriptionId)))
-      if (lease?.status === 'terminated' || lease?.status === 'tombstone') {
-        this.#store.pause(row.id, row.revision, `event-ended:${row.id}:${row.revision}`, Date.now())
-        this.#store.eventHealth(
-          row.id,
-          row.revision + 1,
-          'Event subscription ended; review and confirm to reconnect.',
-          Date.now(),
-        )
-        await this.#run(this.#events.unsubscribe(binding))
-      } else if (lease?.status === 'active') this.#store.markActive(row.id, row.revision, null, Date.now())
-      return
-    }
-    const trigger = definition.trigger
-    try {
-      await this.#run(
-        this.#events.subscribe({
-          consumerId: consumerId(row.id),
-          revision: row.revision,
-          serverId: trigger.serverId,
-          name: trigger.name,
-          arguments: trigger.arguments,
-          handlerKey: 'routine-trigger',
-        }),
-      )
-      const current = this.#store.get(row.id)
-      if (current.revision !== row.revision || !['active', 'activating'].includes(current.state)) {
-        await this.#run(this.#events.unsubscribe({ consumerId: consumerId(row.id), revision: row.revision }))
-        return
-      }
-      this.#store.markActive(row.id, row.revision, null, Date.now())
-    } catch (error) {
-      if (!activationRefused(error)) {
-        writeLine('warn', { event: 'failure', where: 'routines.events.activate', 'error.type': safeErrorType(error) })
-        return
-      }
-      this.#store.eventHealth(
+/** A bound revision whose lease ended pauses for the owner to review; one whose lease is active is active. */
+const checkLease = (row: RoutineRow, binding: Consumer) =>
+  Effect.gen(function* () {
+    const events = yield* Events
+    const routines = yield* Routines
+    const lease = Option.getOrUndefined(yield* events.subscription(binding.subscriptionId))
+    const at = yield* Clock.currentTimeMillis
+    if (lease?.status === 'terminated' || lease?.status === 'tombstone') {
+      yield* routines.pause(row.id, row.revision, `event-ended:${row.id}:${row.revision}`, at)
+      yield* routines.eventHealth(
         row.id,
-        row.revision,
-        'Event activation needs the connected server and exact event selector.',
-        Date.now(),
+        row.revision + 1,
+        'Event subscription ended; review and confirm to reconnect.',
+        at,
       )
-    }
-  }
+      yield* events.unsubscribe(binding)
+    } else if (lease?.status === 'active') yield* routines.markActive(row.id, row.revision, null, at)
+  })
 
-  async consume(context: EventContext): Promise<void> {
-    const id = context.consumer.consumerId.slice('routine:'.length)
-    let row: ReturnType<RoutineStore['get']>
-    try {
-      row = this.#store.get(id)
-    } catch (error) {
-      if (error instanceof NotFound) return
-      throw error
-    }
-    const trigger = definitionOf(row).trigger
-    if (
-      row.state !== 'active' ||
-      row.revision !== context.consumer.revision ||
-      trigger.kind !== 'event' ||
-      trigger.serverId !== context.subscription.serverId ||
-      trigger.name !== context.subscription.name ||
-      canonicalArguments(trigger.arguments) !== context.subscription.argumentsJson
-    )
-      return
-    if ('type' in context.envelope) {
-      if (context.envelope.type === 'terminated') {
-        this.#store.pause(id, row.revision, `event-terminated:${context.receipt.operationId}`, Date.now())
-        this.#store.eventHealth(
-          id,
-          row.revision + 1,
-          'Event subscription terminated; review and confirm to reconnect.',
-          Date.now(),
-        )
-      } else if (context.envelope.type === 'gap') {
-        this.#store.eventHealth(id, row.revision, 'Catching up through the originating event selector.', Date.now())
-      }
-      await this.#wake(Date.now() + 1000)
+/**
+ * Subscribes a live revision that has no binding yet. A refusal the owner must act on is shown as the routine's event
+ * health; anything else is logged, and the next sweep tries again.
+ */
+const activate = (row: RoutineRow, trigger: EventTrigger) =>
+  Effect.gen(function* () {
+    const events = yield* Events
+    const routines = yield* Routines
+    yield* events.subscribe(subscription(row, trigger))
+    const current = yield* routines.get(row.id)
+    if (current.revision !== row.revision || !live(current.state)) {
+      yield* events.unsubscribe({ consumerId: consumerId(row.id), revision: row.revision })
       return
     }
-    await this.#occurrence(row, context)
-  }
+    yield* routines.markActive(row.id, row.revision, null, yield* Clock.currentTimeMillis)
+  }).pipe(
+    Effect.catch((error) =>
+      activationRefused(error)
+        ? Effect.flatMap(Clock.currentTimeMillis, (at) =>
+            Routines.use((routines) =>
+              routines.eventHealth(
+                row.id,
+                row.revision,
+                'Event activation needs the connected server and exact event selector.',
+                at,
+              ),
+            ),
+          )
+        : Effect.sync(() =>
+            writeLine('warn', {
+              event: 'failure',
+              where: 'routines.events.activate',
+              'error.type': safeErrorType(error),
+            }),
+          ),
+    ),
+  )
 
-  async #occurrence(row: ReturnType<RoutineStore['get']>, context: EventContext): Promise<void> {
+/** One routine's Events binding: a stale one retired, a live revision's lease checked or subscribed. */
+const repair = Effect.fn('routines.repairBinding')(function* (row: RoutineRow) {
+  const events = yield* Events
+  const binding = Option.getOrUndefined(yield* events.activeConsumer(consumerId(row.id)))
+  const { trigger } = definitionOf(row)
+  if (binding !== undefined && (binding.revision !== row.revision || !live(row.state)))
+    yield* events.unsubscribe(binding)
+  if (trigger.kind !== 'event' || !live(row.state) || row.confirmedAt === null) return
+  if (binding?.revision === row.revision) return yield* checkLease(row, binding)
+  yield* activate(row, trigger)
+})
+
+/** The Events subscriptions repaired to match the stored routines. */
+export const reconcileEvents = Effect.gen(function* () {
+  for (const row of yield* (yield* Routines).scheduling) yield* repair(row)
+})
+
+/** Whether `context` is still a delivery for the routine's active revision of exactly this event selector. */
+const current = (row: RoutineRow, trigger: Trigger, context: EventContext) =>
+  row.state === 'active' &&
+  row.revision === context.consumer.revision &&
+  trigger.kind === 'event' &&
+  trigger.serverId === context.subscription.serverId &&
+  trigger.name === context.subscription.name &&
+  canonicalArguments(trigger.arguments) === context.subscription.argumentsJson
+
+/**
+ * One event occurrence as a firing, its selected metadata sealed for the run's prompt. A busy routine keeps it sealed
+ * as the routine's pending trigger, in one short transaction with this consumer's acknowledgement (`store`'s write).
+ */
+const occurrence = (store: RoutineStore, row: RoutineRow, context: EventContext) =>
+  Effect.gen(function* () {
     const envelope = context.envelope
     if ('type' in envelope || envelope.name !== context.subscription.name) return
     const operationId = `routine:${row.id}:${encodeURIComponent(envelope.eventId)}`
-    const at = Date.now()
+    const at = yield* Clock.currentTimeMillis
     const occurredAt = Date.parse(envelope.timestamp)
     const data = JSON.stringify(
       redactSecretFields({ name: envelope.name, timestamp: envelope.timestamp, data: envelope.data }),
     )
+    const cipher = yield* Cipher
     const selected = routineSummary(data).slice(0, 8000)
-    const dataSealed = await (await this.#cipher).encrypt(selected, `routine-event:${operationId}:${row.revision}`)
+    const dataSealed = yield* attempt(() => cipher.encrypt(selected, `routine-event:${operationId}:${row.revision}`))
     const firing: Firing = {
       routineId: row.id,
       revision: row.revision,
@@ -205,26 +187,51 @@ export class RoutineEventBindings {
         dataSealed,
       },
     }
-    try {
-      await this.#runner.admit(
-        firing,
-        !Number.isFinite(occurredAt) || occurredAt < at - 86_400_000
-          ? 'Event is invalid or older than the 24-hour catch-up window'
-          : undefined,
+    const hold = Effect.gen(function* () {
+      const pending = yield* attempt(() =>
+        cipher.encrypt(JSON.stringify(firing), `routine-pending:${row.id}:${row.revision}`),
       )
-    } catch (error) {
-      if (!busy(error)) {
-        if (error instanceof Conflict && error.reason === 'routine is not active at this revision') return
-        throw error
-      }
-      const pending = await (
-        await this.#cipher
-      ).encrypt(JSON.stringify(firing), `routine-pending:${row.id}:${row.revision}`)
-      await this.#wake(Date.now() + 60_000)
-      // The pending handoff and this consumer's acknowledgement share one short app transaction.
-      await this.#run(
-        this.#events.ackWith(context.receipt, () => this.#store.pending(row.id, row.revision, pending, Date.now())),
+      yield* wakeIn(60_000)
+      const now = yield* Clock.currentTimeMillis
+      yield* (yield* Events).ackWith(context.receipt, () => store.pending(row.id, row.revision, pending, now))
+    })
+    const stale = !Number.isFinite(occurredAt) || occurredAt < at - DAY
+    yield* admit(firing, stale ? 'Event is invalid or older than the 24-hour catch-up window' : undefined).pipe(
+      // expected: a busy routine holds the occurrence as its pending trigger, acknowledged with it
+      Effect.catchIf(busy, () => hold),
+      // expected: the routine changed since the delivery was bound to it, so the occurrence is not its to run
+      Effect.catchIf(inactive, () => Effect.void),
+    )
+  })
+
+/**
+ * The routine trigger's handler: a delivery for a routine's active revision fires it, a terminated subscription
+ * pauses it for the owner to review, and a gap shows as catching up. `store` writes a busy routine's pending trigger
+ * inside the acknowledgement's transaction.
+ */
+export const consumeEvent = (store: RoutineStore, context: EventContext) =>
+  Effect.gen(function* () {
+    const id = context.consumer.consumerId.slice('routine:'.length)
+    const routines = yield* Routines
+    const found = yield* routines.get(id).pipe(
+      Effect.map(Option.some),
+      Effect.catchTag('NotFound', () => Effect.succeedNone),
+    )
+    if (Option.isNone(found)) return
+    const row = found.value
+    const trigger = definitionOf(row).trigger
+    if (!current(row, trigger, context)) return
+    if (!('type' in context.envelope)) return yield* occurrence(store, row, context)
+    const at = yield* Clock.currentTimeMillis
+    if (context.envelope.type === 'terminated') {
+      yield* routines.pause(id, row.revision, `event-terminated:${context.receipt.operationId}`, at)
+      yield* routines.eventHealth(
+        id,
+        row.revision + 1,
+        'Event subscription terminated; review and confirm to reconnect.',
+        at,
       )
-    }
-  }
-}
+    } else if (context.envelope.type === 'gap')
+      yield* routines.eventHealth(id, row.revision, 'Catching up through the originating event selector.', at)
+    yield* wakeIn(1000)
+  })

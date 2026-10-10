@@ -3,23 +3,22 @@ import type { PiHarness } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
 import type { AgentApps } from '../agent-apps/engine.ts'
 import type { Applied } from '../agent-model.ts'
-import type { StopRuntime } from '../agent-program.ts'
 import type { EntitlementPolicy } from '../billing/gates.ts'
 import type { MoverPorts } from '../chats/mover.ts'
 import type { RuntimeEnv } from '../env.ts'
-import type { EventContext } from '../mcp/events/dispatcher.ts'
 import type { PersonaTurnKit } from '../organize/kit.ts'
 import type { PiModels } from '../pi/harness.ts'
 import type { memoryExtensions } from '../pi/memory.ts'
+import type { StartRoutine } from '../pi/routine-run.ts'
 import type { SubagentKit } from '../pi/subagents.ts'
-import type { RoutineController } from '../routines/controller.ts'
+import type { RoutineSchedules } from '../routines/scheduler.ts'
 import type { RunTelemetry } from '../telemetry/events.ts'
 import type { RunProgram } from './bridge.ts'
 import type { Instrument } from './instrument.ts'
 
 /**
  * What the agent's programs and services need from its Durable Object instance, as one record: its storage and env,
- * the Pi pieces its constructor made, and the callbacks into the instance (schedules, the plan policy, Stop). A program
+ * the Pi pieces its constructor made, and the callbacks into the instance (schedules, the plan policy). A program
  * reads it instead of taking these as arguments. Built once per runtime from the instance (agent.ts).
  */
 export interface AgentInputs {
@@ -37,14 +36,16 @@ export interface AgentInputs {
   readonly personas: PersonaTurnKit
   /** The model each session was last put on (agent-model.ts). */
   readonly applied: Applied
-  readonly routines: RoutineController
+  /** The native schedules the routines arm and cancel, and their sweep's alarm (routines/wake.ts). */
+  readonly routineSchedules: RoutineSchedules
+  /** Starts a routine run's Pi work: the routines kit's, made before Pi opened (routines/kit.ts). */
+  readonly startRoutine: StartRoutine
   /** Schedules the Telegram replies alarm. */
   readonly scheduleReplies: () => void
   readonly scheduleEvents: (at: number) => Promise<void>
   readonly pullTelegram: () => Promise<void>
   /** Schedules the Telegram pull alarm (channelPull) at once, instead of pulling inline. */
   readonly schedulePull: () => Promise<unknown>
-  readonly routineEvent: (context: EventContext) => Promise<void>
   readonly mcpFetch: typeof fetch
   /** The agent's apps, made before Pi opened (their tools are Pi's). */
   readonly agentApps: AgentApps
@@ -57,8 +58,6 @@ export interface AgentInputs {
   readonly run: RunProgram
   /** Runs a program without the plan check (ledger, budget record, routine gates, diagnose). */
   readonly local: RunProgram
-  /** What an archive or a Stop reaches: Pi, a routine's runs and the Persona turns asked in a chat. */
-  readonly stopping: () => StopRuntime
   /** How the bridge's programs and the change handlers are wrapped (instrument.ts). */
   readonly instrument: Instrument
 }

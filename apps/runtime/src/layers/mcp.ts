@@ -168,8 +168,9 @@ const consumerPorts = (
 })
 
 /**
- * Start step 17: the one Events engine over the host's connections and its event store, with the routine trigger and
- * then the Telegram and skills consumers registered before any delivery can reach it.
+ * Start step 17: the one Events engine over the host's connections and its event store, with the Telegram and skills
+ * consumers registered before any delivery can reach it (the routine trigger is registered by `RoutinesLive`, before
+ * the agent runs anything).
  */
 export const McpEventsLive: Layer.Layer<
   Events,
@@ -201,7 +202,6 @@ export const McpEventsLive: Layer.Layer<
           if (!store.allows(serverId, name, argumentsJson)) return yield* new GrantDenied({ serverId, name })
         }),
     })
-    yield* events.register('routine-trigger', (event) => attempt(() => input.routineEvent(event)))
     yield* installEventConsumers(events, consumerPorts(input, context))
     return events
   }),

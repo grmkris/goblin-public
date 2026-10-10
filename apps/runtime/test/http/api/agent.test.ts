@@ -14,9 +14,8 @@ import { ChatDirectory, registerPrimary } from '../../../src/chats/directory.ts'
 import { AgentHandlers } from '../../../src/routines/agent-api.ts'
 import { ChatsLive } from '../../../src/layers/conversation.ts'
 import { ModelBudgetLive } from '../../../src/layers/budget.ts'
-import { RoutinesLive, channelOver } from '../../../src/layers/routines.ts'
+import { channelOver } from '../../../src/layers/routines.ts'
 import { Events, McpConnections, McpGrants, McpServers, Resident } from '../../../src/mcp/service.ts'
-import { RoutineController } from '../../../src/routines/controller.ts'
 import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
 import { callOwner } from '../../owner-client.ts'
@@ -57,7 +56,6 @@ const fixture = () => {
       Object.assign(Object.create(null), {
         harness,
         applied,
-        routines: Object.create(RoutineController.prototype),
         entitlements,
         env: { APP_URL: 'https://goblin.test', CREDENTIAL_KEY: 'unused', MODELS: 'model-b', MODEL_ID: 'model-a' },
         userId: 'owner',
@@ -67,7 +65,7 @@ const fixture = () => {
   )
   const { fetch } = serve(
     served([AgentGroup], AgentHandlers).pipe(
-      Layer.provide(Layer.provideMerge(Layer.mergeAll(ModelBudgetLive, RoutinesLive, ChatsLive), legacy)),
+      Layer.provide(Layer.provideMerge(Layer.mergeAll(ModelBudgetLive, ChatsLive), legacy)),
     ),
   )
   return { fetch, budget, pinned, applied }

@@ -1,3 +1,4 @@
+import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { creditRates } from '../budget-credits.ts'
@@ -6,6 +7,7 @@ import { ChatsInstance } from '../chats/directory.ts'
 import { Channel } from '../channel/service.ts'
 import { attempt, attemptSync } from '../http/errors.ts'
 import { Cipher } from '../mcp/cipher.ts'
+import { type RoutineControlServices, makeRoutineControl } from '../routines/control.ts'
 import type { RoutineRunStore } from '../routines/runs.ts'
 import { RoutineRunStore as RunStore } from '../routines/runs.ts'
 import { RoutineControl, RoutineRuns, RoutineUsage, Routines } from '../routines/service.ts'
@@ -63,15 +65,6 @@ export const routinesOf = (store: RoutineStore) =>
     clearPending: trySync('Routines.clearPending', store.clearPending.bind(store)),
   })
 
-/** The owner's routines over the agent's SQLite (the store keeps no state of its own). */
-const RoutineStoreLive: Layer.Layer<Routines, never, AgentInput | Db> = Layer.effect(
-  Routines,
-  Effect.gen(function* () {
-    const { userId } = yield* AgentInput
-    return routinesOf(new RoutineStore(yield* Db, userId))
-  }),
-)
-
 /** Routine runs over `store`, wrapped once here. */
 export const routineRunsOf = (store: RoutineRunStore) =>
   RoutineRuns.of({
@@ -93,51 +86,23 @@ export const routineRunsOf = (store: RoutineRunStore) =>
     recordUsage: sync('RoutineRuns.recordUsage', store.recordUsage.bind(store)),
   })
 
-/** Routine runs over the agent's SQLite (the store keeps no state of its own). */
-const RoutineRunStoreLive: Layer.Layer<RoutineRuns, never, AgentInput | Db> = Layer.effect(
-  RoutineRuns,
-  Effect.gen(function* () {
-    const { userId } = yield* AgentInput
-    return routineRunsOf(new RunStore(yield* Db, userId))
-  }),
-)
-
 /**
- * Start step 9: the routine runs' usage projection, subscribed to Pi's commits once, after a snapshot of each live
- * run, before anything after it in the start can commit to Pi.
+ * Start step 9: routine runs over the agent's SQLite, and their usage projection subscribed to Pi's commits once,
+ * after a snapshot of each live run, before anything after it in the start can commit to Pi. The run store is built
+ * once, here, for both.
  */
-export const RoutineUsageLive: Layer.Layer<RoutineUsage, never, AgentInput | Db> = Layer.effect(
-  RoutineUsage,
+export const RoutineRunsLive: Layer.Layer<RoutineRuns | RoutineUsage, never, AgentInput | Db> = Layer.effectContext(
   Effect.gen(function* () {
     const { env, harness, userId } = yield* AgentInput
     const db = yield* Db
     const runs = new RunStore(db, userId)
     const projection = new UsageProjection(db, runs, creditRates(env.MODEL_CREDIT_RATES), harness)
     yield* Effect.promise(() => installRoutineUsage(harness, projection, runs))
-    return RoutineUsage.of({
+    const usage = RoutineUsage.of({
       project: trySync('RoutineUsage.project', projection.project.bind(projection)),
       snapshot: tryAsync('RoutineUsage.snapshot', projection.snapshot.bind(projection)),
     })
-  }),
-)
-
-/** The agent's one routine controller, which its constructor made (`AgentInput.routines`). */
-const RoutineControlAdapter = Layer.effect(
-  RoutineControl,
-  Effect.gen(function* () {
-    const { routines } = yield* AgentInput
-    return RoutineControl.of({
-      manual: tryAsync('RoutineControl.manual', routines.manual.bind(routines)),
-      reconcile: tryAsync('RoutineControl.reconcile', routines.reconcile.bind(routines))(),
-      confirmEvents: tryAsync('RoutineControl.confirmEvents', routines.confirmEvents.bind(routines)),
-      archive: tryAsync('RoutineControl.archive', routines.archive.bind(routines)),
-      stop: tryAsync('RoutineControl.stop', routines.stop.bind(routines)),
-      answer: tryAsync('RoutineControl.answer', routines.answer.bind(routines)),
-      deadline: tryAsync('RoutineControl.deadline', routines.deadline.bind(routines)),
-      fire: tryAsync('RoutineControl.fire', routines.fire.bind(routines)),
-      maintain: tryAsync('RoutineControl.maintain', routines.maintain.bind(routines))(),
-      consumeEvent: tryAsync('RoutineControl.consumeEvent', routines.consumeEvent.bind(routines)),
-    })
+    return Context.make(RoutineRuns, routineRunsOf(runs)).pipe(Context.add(RoutineUsage, usage))
   }),
 )
 
@@ -166,9 +131,20 @@ export const ChannelLive: Layer.Layer<Channel, never, AgentInput | Db | Cipher |
 )
 
 /**
- * Lane R's services after the start: the routine stores, built here over the agent's SQLite (they keep no state of
- * their own), and the routine controller the agent's constructor made (`AgentInput.routines`). The usage projection
- * (start step 9) and the Telegram channel (16) are start steps above.
+ * The owner's routines and their runtime, after the start: the routine store, built once here over the agent's SQLite
+ * and wrapped as `Routines`, and the native `RoutineControl` over it, which registers the routine trigger with Events.
+ * Routine runs (start step 9) and the Telegram channel (16) are start steps above.
  */
-export const RoutinesLive: Layer.Layer<Routines | RoutineRuns | RoutineControl, never, AgentInput | Db> =
-  Layer.mergeAll(RoutineStoreLive, RoutineRunStoreLive, RoutineControlAdapter)
+export const RoutinesLive: Layer.Layer<
+  Routines | RoutineControl,
+  never,
+  Exclude<RoutineControlServices, Routines> | Db
+> = Layer.effectContext(
+  Effect.gen(function* () {
+    const { userId } = yield* AgentInput
+    const store = new RoutineStore(yield* Db, userId)
+    const routines = routinesOf(store)
+    const control = yield* makeRoutineControl(store).pipe(Effect.provideService(Routines, routines))
+    return Context.make(Routines, routines).pipe(Context.add(RoutineControl, control))
+  }),
+)

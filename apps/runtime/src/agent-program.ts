@@ -122,7 +122,7 @@ export const stopChat = (
     chat,
     ...(operationId === undefined ? {} : { operationId }),
   } as const
-  return AgentInput.use((input) => stopOwner({ ...input.stopping(), thread: chat, operationId })).pipe(
+  return AgentInput.use(({ harness, personas }) => stopOwner({ harness, personas, thread: chat, operationId })).pipe(
     withFlow(flow, (stopped) => ({ count: stopped ? 1 : 0 })),
   )
 }

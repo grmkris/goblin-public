@@ -4,10 +4,9 @@ import * as Option from 'effect/Option'
 import { Entitlements, requirePlan } from '../billing/gates.ts'
 import { type OwnerSubmitServices, sendOwnerMessage } from '../agent-program.ts'
 import { Chats } from '../chats/service.ts'
-import { type AppError, NotFound, attempt } from '../http/errors.ts'
-import type { RoutineRunner } from '../routines/runner.ts'
-import { RoutineRuns, type RoutineUsage } from '../routines/service.ts'
-import { AgentInput } from '../runtime/input.ts'
+import { type AppError, NotFound } from '../http/errors.ts'
+import { RoutineControl, RoutineRuns, type RoutineUsage } from '../routines/service.ts'
+import type { AgentInput } from '../runtime/input.ts'
 import { decideApproval } from './approval-decision.ts'
 import { Approvals, McpConnections, McpGrants, Resident } from './service.ts'
 
@@ -21,14 +20,12 @@ export const approvalView = (id: string) => Approvals.use((approvals) => approva
  * message in the chat that held the call (`submit`).
  */
 const continuation =
-  <R>(
-    routines: RoutineRunner,
-    submit: (chat: string, text: string, operationId: string) => Effect.Effect<unknown, AppError, R>,
-  ) =>
+  <R>(submit: (chat: string, text: string, operationId: string) => Effect.Effect<unknown, AppError, R>) =>
   (session: string, text: string, operationId: string) =>
     Effect.gen(function* () {
       const record = yield* (yield* RoutineRuns).session(session)
-      if (record?.state === 'running') return yield* attempt(() => routines.start(record, { text, operationId }))
+      if (record?.state === 'running')
+        return yield* RoutineControl.use((control) => control.start(record, { text, operationId }))
       const chat = yield* (yield* Chats).chatOf(session)
       if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })
       return yield* submit(chat.value, text, operationId)
@@ -43,6 +40,7 @@ type DecisionServices =
   | Entitlements
   | McpConnections
   | Resident
+  | RoutineControl
   | RoutineRuns
   | RoutineUsage
 
@@ -56,7 +54,6 @@ export const decideOwnerApproval = (
   allowed: boolean,
 ): Effect.Effect<ApprovalView, AppError, DecisionServices> =>
   Effect.gen(function* () {
-    const { routines } = yield* AgentInput
     const admit = Effect.andThen(
       requirePlan(),
       Resident.use((resident) => resident.renew()),
@@ -64,7 +61,7 @@ export const decideOwnerApproval = (
     return yield* decideApproval({
       id,
       allowed,
-      continue: continuation(routines, (chat, text, operationId) =>
+      continue: continuation((chat, text, operationId) =>
         Effect.andThen(admit, sendOwnerMessage(chat, { text, operationId })),
       ),
     })

@@ -11,7 +11,8 @@ import { RoutineRuns } from './service.ts'
 
 /**
  * The routines' Pi kit, made before Pi opens: the run task, `ask_user` and the routine budget gate, and the start of a
- * run's Pi work. Its Pi callbacks run their programs through the bridge `agent.ts` gives it.
+ * run's Pi work (`RoutineControl` starts runs through it, as `AgentInput.startRoutine`). Its Pi callbacks run their
+ * programs through the bridge `agent.ts` gives it.
  */
 export function routineExtensions(run: RunProgram, resident: Extension, key: string) {
   const asking = askingExtension(async (session, callId, questions) => {
@@ -25,6 +26,6 @@ export function routineExtensions(run: RunProgram, resident: Extension, key: str
     )
   })
   const budget = routineBudgetExtension(run)
-  const task = routineRunExtension(run, [personaExtension, resident, asking, budget], key)
+  const task = routineRunExtension(run, [personaExtension, resident, asking, budget])
   return { start: task.start, extra: [task.extension, asking, budget] }
 }
