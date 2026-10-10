@@ -13,8 +13,9 @@ import {
 } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
+import * as Option from 'effect/Option'
 import { stopChat } from '../agent-program.ts'
-import { Conversations } from '../chats/service.ts'
+import { Chats, Conversations } from '../chats/service.ts'
 import type { AppError } from '../http/errors.ts'
 import { viaOf } from '../organize/flows.ts'
 import { FlowEvents, failedFlow, withFlow } from '../observability/flows.ts'
@@ -181,4 +182,18 @@ export const editTopicSetup = (id: number, edit: TopicSetupEdit, provenance: Pro
     if (after.setup.subagents !== before.setup.subagents) yield* setups.retoolTopic(id)
     const routines = yield* setups.routinesOutside(id, after.setup)
     return { topic: after, routines } satisfies TopicSetupSaved
+  })
+
+/**
+ * An agent app built in a chat whose Topic lists its apps joins that Topic's setup (ADR 0040), with the agent's
+ * receipt, so the agent can use what it just built there. A Topic that holds every app, or this one, is left as it is.
+ */
+export const newAppJoinsTopic = (session: string, app: string, operationId: string) =>
+  Effect.gen(function* () {
+    const chats = yield* Chats
+    const chat = Option.getOrUndefined(yield* chats.chatOf(session))
+    if (chat === undefined) return
+    const topic = yield* (yield* Topics).get(yield* chats.topicOf(chat))
+    if (topic.setup.apps === 'all' || topic.setup.apps.includes(app)) return
+    yield* editTopicSetup(topic.id, { add: [{ kind: 'app', app }] }, { actor: 'agent', chat, operationId })
   })

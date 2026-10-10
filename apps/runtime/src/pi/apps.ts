@@ -9,6 +9,9 @@ import { ScriptResult, runScript } from '../agent-apps/script.ts'
 import { withContext } from './context-tail.ts'
 import { homeExtension } from './home.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
+import { reportAndRecover } from '../observability/report.ts'
+import { Setups } from '../setup/service.ts'
+import { newAppJoinsTopic } from '../topics/program.ts'
 import { typedTool } from './typed-tool.ts'
 
 const GUIDE = [
@@ -27,11 +30,16 @@ const GUIDE = [
   'each request.',
 ].join(' ')
 
-/** The apps as they are now, for the trailing context block: they change with every build, the guide never does. */
-function appsNow(apps: AgentApps): string {
-  const list = apps.summary()
-  return list === '' ? '(none yet)' : list
-}
+/**
+ * The apps this chat may call as they are now, for the trailing context block: they change with every build and the
+ * Topic's setup (ADR 0040), the guide never does.
+ */
+const appsNow = (apps: AgentApps, run: RunProgram, session: string): Promise<string> =>
+  run(Setups.use((setups) => setups.scope(session))).then(
+    (scope) => apps.summary((name) => scope.app(name)) || '(none here)',
+    // expected: the listing is optional context; run reported anything unexpected
+    () => '(none here)',
+  )
 
 const AppName = Schema.String.check(Schema.isMaxLength(24))
 
@@ -49,7 +57,7 @@ const docsTool = (apps: AgentApps) =>
   })
 
 /** `app_build`: create or change an app. */
-const buildTool = (apps: AgentApps) =>
+const buildTool = (apps: AgentApps, run: RunProgram) =>
   typedTool({
     name: 'app_build',
     description:
@@ -73,7 +81,18 @@ const buildTool = (apps: AgentApps) =>
     }),
     output: BuildResult,
     replay: 'safe',
-    execute: async (request, api) => apps.build(request, { session: String(api.conversationId), callId: api.callId }),
+    execute: async (request, api) => {
+      const session = String(api.conversationId)
+      const built = await apps.build(request, { session, callId: api.callId })
+      // A new app joins a Topic that lists its apps; failing that leaves the build as it is, and the owner can add it.
+      if (built.status === 'active' && built.version === 1)
+        await run(
+          newAppJoinsTopic(session, built.app, `app:${session}:${api.callId}`).pipe(
+            reportAndRecover('apps.join-topic', undefined),
+          ),
+        )
+      return built
+    },
     failure: problemText,
   })
 
@@ -121,13 +140,13 @@ export function appsExtension(apps: AgentApps, run: RunProgram) {
   const extension = defineExtension({
     name: 'goblin.apps',
     sections: [section('apps', () => GUIDE)],
-    tools: [docsTool(apps), buildTool(apps), inspectTool(apps), rollbackTool(apps)],
+    tools: [docsTool(apps), buildTool(apps, run), inspectTool(apps), rollbackTool(apps)],
   })
   return [extension, homeExtension(run)]
 }
 
 /** Execution shared with helpers, without app or Home management. */
-export function appExecutionExtension(apps: AgentApps) {
+export function appExecutionExtension(apps: AgentApps, run: RunProgram) {
   return defineExtension({
     name: 'goblin.app-execution',
     sections: [
@@ -140,7 +159,9 @@ export function appExecutionExtension(apps: AgentApps) {
     tools: [codeTool(apps)],
     hooks: [
       hook(GenerationTask, {
-        beforeRequest: ({ messages }) => ({ messages: withContext(messages, 'apps', appsNow(apps)) }),
+        beforeRequest: async ({ messages }, api) => ({
+          messages: withContext(messages, 'apps', await appsNow(apps, run, String(api.conversationId))),
+        }),
       }),
     ],
   })

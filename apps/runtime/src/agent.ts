@@ -96,7 +96,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     })
     this.#apps = apps
     this.#telemetry = agentTelemetry(ctx.storage, () => this.name, routineRun)
-    const execution = [...tools, skillsExtension(run), filesExtension(run), appExecutionExtension(apps)]
+    const execution = [...tools, skillsExtension(run), filesExtension(run), appExecutionExtension(apps, run)]
     this.#subagents = subagentsExtension(run, (self) => [personaExtension, ...execution, ...apps.extensions(), self])
     const subagents = this.#subagents.extension
     const { personas, organize } = organizingKit(run)

@@ -218,10 +218,14 @@ export class AgentApps {
     return DOCS[topic] ?? `No topic "${topic}". Topics: ${Object.keys(DOCS).join(', ')}.`
   }
 
-  /** The apps for the model's prompt: name, title, version, view, each member's signature, and a failure since. */
-  summary(): string {
+  /**
+   * The apps for the model's prompt: name, title, version, view, each member's signature, and a failure since; only
+   * those `include` keeps (a chat's setup, ADR 0040).
+   */
+  summary(include: (name: string) => boolean = () => true): string {
     return this.store
       .apps()
+      .filter((app) => include(app.name))
       .map((app) => {
         const manifest = this.dispatch.manifest(app.activeRelease)
         const version = this.store.release(app.activeRelease)?.seq ?? 0
