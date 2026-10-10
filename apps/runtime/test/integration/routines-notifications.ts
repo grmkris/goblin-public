@@ -1,4 +1,4 @@
-import { createMcpHandler, Server } from '@modelcontextprotocol/server'
+import { createMcpHandler } from '@modelcontextprotocol/server'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
@@ -28,6 +28,7 @@ type LaneServices = Entitlements | ResidentService | ChannelService
 import { MemoryCredentials, MemoryGrants } from '../mcp/memory.ts'
 import { appRoutineRuns } from '../../src/storage/routines.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
+import { lowLevelServer } from '../mcp/low-level-server.ts'
 
 const KEY = 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE='
 const fixturePlan = () =>
@@ -42,8 +43,7 @@ const fixturePlan = () =>
   })
 function notificationHandler(calls: Record<string, unknown>[]) {
   return createMcpHandler(() => {
-    // oxlint-disable-next-line typescript/no-deprecated -- low-level official Server keeps this injected transport fixture independent of schema-library adapters.
-    const server = new Server({ name: 'notification-fixture', version: '1' }, { capabilities: { tools: {} } })
+    const server = lowLevelServer({ name: 'notification-fixture', version: '1' }, { capabilities: { tools: {} } })
     server.setRequestHandler('tools/list', () => ({
       tools: [{ name: 'send_message', inputSchema: { type: 'object' } }],
     }))

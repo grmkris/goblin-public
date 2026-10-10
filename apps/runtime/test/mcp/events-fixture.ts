@@ -1,9 +1,10 @@
-import { createMcpHandler, ProtocolError, Server } from '@modelcontextprotocol/server'
+import { createMcpHandler, ProtocolError } from '@modelcontextprotocol/server'
 import * as Schema from 'effect/Schema'
 import * as Option from 'effect/Option'
 import { sign } from '../../src/mcp/events/webhook.ts'
 import type { EventEnvelope } from '../../src/mcp/events/protocol.ts'
 import { SKILLS_EXTENSION, type SkillEntry } from '../../src/skills/protocol.ts'
+import { lowLevelServer } from './low-level-server.ts'
 
 const Params = Schema.toStandardSchemaV1(Schema.Record(Schema.String, Schema.Unknown))
 const Subscribe = Schema.Struct({
@@ -25,8 +26,7 @@ export class EventsFixture {
   ttlMs = 3_600_000
   receiver: ((request: Request) => Promise<Response>) | undefined
   readonly #handler = createMcpHandler(() => {
-    // oxlint-disable-next-line typescript/no-deprecated -- Low-level official Server exposes draft methods absent from McpServer.
-    const server = new Server(
+    const server = lowLevelServer(
       { name: 'mygram-events-fixture', version: '1' },
       { capabilities: { tools: {}, resources: {}, extensions: { [SKILLS_EXTENSION]: {} } } },
     )

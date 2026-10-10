@@ -1,13 +1,13 @@
-import { createMcpHandler, Server } from '@modelcontextprotocol/server'
+import { createMcpHandler } from '@modelcontextprotocol/server'
 import { Schema } from 'effect'
+import { lowLevelServer } from '../mcp/low-level-server.ts'
 
 /** No-auth, in-Worker inbox MCP fixture. Only synthetic rows leave this transport. */
 export class InboxMcpFixture {
   calls = 0
   failed = false
   readonly #handler = createMcpHandler(() => {
-    // oxlint-disable-next-line typescript/no-deprecated -- the low-level SDK serves this bounded local transport fixture.
-    const server = new Server({ name: 'inbox-fixture', version: '1' }, { capabilities: { tools: {} } })
+    const server = lowLevelServer({ name: 'inbox-fixture', version: '1' }, { capabilities: { tools: {} } })
     server.setRequestHandler('tools/list', () => ({
       tools: [{ name: 'message_list', inputSchema: { type: 'object' as const } }],
     }))

@@ -1,4 +1,4 @@
-import { createMcpHandler, Server } from '@modelcontextprotocol/server'
+import { createMcpHandler } from '@modelcontextprotocol/server'
 import type { ConversationId, GenerationHooks } from '@earendil-works/pi-durable'
 import * as Schema from 'effect/Schema'
 import * as Effect from 'effect/Effect'
@@ -16,6 +16,7 @@ import { SkillLibrary } from '../src/skills/library.ts'
 import { SKILLS_EXTENSION } from '../src/skills/protocol.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
 import { MemoryDraftLog, MemorySkillState } from './skills-memory.ts'
+import { lowLevelServer } from './mcp/low-level-server.ts'
 
 /** What the library fixture received and answers: drafts in order, and the status it reports for each. */
 const library: { drafts: Record<string, unknown>[]; status: 'open' | 'accepted' | 'rejected' } = {
@@ -24,8 +25,7 @@ const library: { drafts: Record<string, unknown>[]; status: 'open' | 'accepted' 
 }
 const AnyParams = Schema.toStandardSchemaV1(Schema.Record(Schema.String, Schema.Unknown))
 const skills = createMcpHandler(() => {
-  // oxlint-disable-next-line typescript/no-deprecated -- the low-level SDK Server keeps this fixture's lists exact.
-  const server = new Server(
+  const server = lowLevelServer(
     { name: 'library', version: '1.0.0' },
     { capabilities: { tools: {}, resources: {}, extensions: { [SKILLS_EXTENSION]: {} } } },
   )

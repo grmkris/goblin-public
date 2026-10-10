@@ -1,7 +1,8 @@
-import { createMcpHandler, Server } from '@modelcontextprotocol/server'
+import { createMcpHandler } from '@modelcontextprotocol/server'
 import { describe, expect, it } from 'vitest'
 import { McpHost } from '../../src/mcp/host.ts'
 import { MemoryAddedServers, MemoryCredentials, MemoryGrants } from './memory.ts'
+import { lowLevelServer } from './low-level-server.ts'
 
 /** A remote that only serves a server card; nothing here connects. */
 const remote: typeof fetch = async (input) =>
@@ -73,8 +74,7 @@ describe('servers the owner adds', () => {
 
 /** A public server with no sign-in: it publishes no OAuth metadata and refuses any Authorization header it gets. */
 const open = createMcpHandler(() => {
-  // oxlint-disable-next-line typescript/no-deprecated -- the low-level SDK Server keeps this fixture's tool list exact.
-  const server = new Server({ name: 'docs', version: '1.0.0' }, { capabilities: { tools: {} } })
+  const server = lowLevelServer({ name: 'docs', version: '1.0.0' }, { capabilities: { tools: {} } })
   server.setRequestHandler('tools/list', () => ({ tools: [{ name: 'search', inputSchema: { type: 'object' } }] }))
   return server
 })

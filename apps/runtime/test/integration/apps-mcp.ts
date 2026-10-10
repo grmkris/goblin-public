@@ -1,5 +1,6 @@
-import { createMcpHandler, Server } from '@modelcontextprotocol/server'
+import { createMcpHandler } from '@modelcontextprotocol/server'
 import { Schema } from 'effect'
+import { lowLevelServer } from '../mcp/low-level-server.ts'
 
 /** The fixture's App: `board` renders it (ADR 0020). */
 export const BOARD = 'ui://apps-fixture/board.html'
@@ -8,8 +9,10 @@ export const BOARD = 'ui://apps-fixture/board.html'
 export class AppsMcpFixture {
   readonly calls: { name: string; args: unknown }[] = []
   readonly #handler = createMcpHandler(() => {
-    // oxlint-disable-next-line typescript/no-deprecated -- the low-level SDK serves bounded native transport fixtures.
-    const server = new Server({ name: 'apps-fixture', version: '1' }, { capabilities: { tools: {}, resources: {} } })
+    const server = lowLevelServer(
+      { name: 'apps-fixture', version: '1' },
+      { capabilities: { tools: {}, resources: {} } },
+    )
     server.setRequestHandler('tools/list', () => ({
       tools: [
         {

@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import { McpConnectionManager } from '../../src/mcp/connection.ts'
-import { createMcpHandler, Server } from '@modelcontextprotocol/server'
+import { createMcpHandler } from '@modelcontextprotocol/server'
 import * as Schema from 'effect/Schema'
 import { SKILLS_EXTENSION } from '../../src/skills/protocol.ts'
 import { SkillLibrary } from '../../src/skills/library.ts'
@@ -17,6 +17,7 @@ import { scriptedStreams } from './model.ts'
 import { makePiModels } from '../../src/pi/model.ts'
 import { conversationId } from '../../src/pi/context.ts'
 import type { PiHarness } from 'agents/harness/pi'
+import { lowLevelServer } from '../mcp/low-level-server.ts'
 
 /** Real SkillLibrary and SQLite cache in workerd; the network boundary alone is injected. */
 export async function skillsCacheProbe(storage: DurableObjectStorage) {
@@ -35,8 +36,7 @@ export async function skillsCacheProbe(storage: DurableObjectStorage) {
   } as const
   let reads = 0
   const handler = createMcpHandler(() => {
-    // oxlint-disable-next-line typescript/no-deprecated -- the low-level SDK Server serves the Skills extension methods.
-    const server = new Server(
+    const server = lowLevelServer(
       { name: 'skills-fixture', version: '1' },
       { capabilities: { resources: {}, extensions: { [SKILLS_EXTENSION]: {} } } },
     )
@@ -130,8 +130,7 @@ export async function skillsLearnerRejectionProbe(storage: DurableObjectStorage,
   let submitted = 0
   let statusCalls = 0
   const handler = createMcpHandler(() => {
-    // oxlint-disable-next-line typescript/no-deprecated -- the low-level SDK serves this deterministic MySkills double.
-    const server = new Server(
+    const server = lowLevelServer(
       { name: 'myskills-double', version: '1' },
       { capabilities: { resources: {}, tools: {}, extensions: { [SKILLS_EXTENSION]: {} } } },
     )

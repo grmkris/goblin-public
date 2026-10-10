@@ -1,14 +1,14 @@
-import { createMcpHandler, Server } from '@modelcontextprotocol/server'
+import { createMcpHandler } from '@modelcontextprotocol/server'
 import { describe, expect, it } from 'vitest'
 import { McpHost } from '../../src/mcp/host.ts'
 import { MemoryCredentials, MemoryGrants } from './memory.ts'
+import { lowLevelServer } from './low-level-server.ts'
 
 const BOARD = 'ui://notes/board.html'
 
 /** A notes server whose board App uses `open` (offered to the model) and `move` (App-only); `delete` is separate. */
 const notes = createMcpHandler(() => {
-  // oxlint-disable-next-line typescript/no-deprecated -- the low-level SDK Server keeps this fixture's tool list exact.
-  const server = new Server({ name: 'notes', version: '1.0.0' }, { capabilities: { tools: {} } })
+  const server = lowLevelServer({ name: 'notes', version: '1.0.0' }, { capabilities: { tools: {} } })
   server.setRequestHandler('tools/list', () => ({
     tools: [
       { name: 'open', inputSchema: { type: 'object', properties: {} }, _meta: { ui: { resourceUri: BOARD } } },

@@ -1,9 +1,10 @@
-import { createMcpHandler, Server } from '@modelcontextprotocol/server'
+import { createMcpHandler } from '@modelcontextprotocol/server'
 import { describe, expect, it } from 'vitest'
 import { McpConnectionManager, encodedSize } from '../../src/mcp/connection.ts'
 import { MemoryGrants } from './memory.ts'
 import { Forbidden } from '../../src/http/errors.ts'
 import type { McpStep } from '../../src/telemetry/report.ts'
+import { lowLevelServer } from './low-level-server.ts'
 
 const serverConfig = {
   serverId: 'fixture',
@@ -17,8 +18,7 @@ const grants = new MemoryGrants([
 type ResourceFixture = { readonly text?: string; readonly mimeType?: string; readonly returnedUri?: string }
 const handler = (resourceTemplates = true, resource: ResourceFixture = {}) =>
   createMcpHandler(() => {
-    // oxlint-disable-next-line typescript/no-deprecated -- low-level SDK Server is required here to preserve unknown metadata byte-for-byte in the interoperability contract fixture.
-    const server = new Server({ name: 'fixture', version: '1.0.0' }, { capabilities: { tools: {}, resources: {} } })
+    const server = lowLevelServer({ name: 'fixture', version: '1.0.0' }, { capabilities: { tools: {}, resources: {} } })
     server.setRequestHandler('tools/list', () => ({
       tools: [
         {

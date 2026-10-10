@@ -1,15 +1,15 @@
-import { createMcpHandler, Server } from '@modelcontextprotocol/server'
+import { createMcpHandler } from '@modelcontextprotocol/server'
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { McpHost } from '../../src/mcp/host.ts'
 import { MemoryCredentials, MemoryGrants } from './memory.ts'
+import { lowLevelServer } from './low-level-server.ts'
 
 const BASE = 'https://fixture.test'
 const RESOURCE_METADATA = `${BASE}/.well-known/oauth-protected-resource/mcp`
 
 const mcp = createMcpHandler(() => {
-  // oxlint-disable-next-line typescript/no-deprecated -- the low-level Server keeps this fixture independent of tool schema helpers.
-  const server = new Server({ name: 'fixture', version: '1.0.0' }, { capabilities: { tools: {} } })
+  const server = lowLevelServer({ name: 'fixture', version: '1.0.0' }, { capabilities: { tools: {} } })
   server.setRequestHandler('tools/list', () => ({
     tools: [{ name: 'read', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true } }],
   }))

@@ -1,4 +1,4 @@
-import { ProtocolError, createMcpHandler, Server } from '@modelcontextprotocol/server'
+import { ProtocolError, createMcpHandler } from '@modelcontextprotocol/server'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Schema from 'effect/Schema'
@@ -17,6 +17,7 @@ import { FixedProfiles } from './fixed-services.ts'
 import { knowledgeOver } from './knowledge-layer.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
 import { MemorySkillState } from './skills-memory.ts'
+import { lowLevelServer } from './mcp/low-level-server.ts'
 
 const bytes = (text: string) => new TextEncoder().encode(text)
 const skillMd = (version: string) =>
@@ -57,8 +58,7 @@ const register = (published: Awaited<ReturnType<typeof version>>) => {
 
 const AnyParams = Schema.toStandardSchemaV1(Schema.Record(Schema.String, Schema.Unknown))
 const skills = createMcpHandler(() => {
-  // oxlint-disable-next-line typescript/no-deprecated -- the low-level SDK Server serves the extension methods exactly.
-  const server = new Server(
+  const server = lowLevelServer(
     { name: 'skills', version: '1.0.0' },
     { capabilities: { resources: {}, extensions: { [SKILLS_EXTENSION]: {} } } },
   )
