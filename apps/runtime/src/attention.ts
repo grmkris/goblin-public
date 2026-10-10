@@ -32,7 +32,7 @@ const questionLabel = (details: Fields): string =>
 
 /**
  * goblin's own markers that ask the owner, by the `kind` of a tool result's details: `ask_user`'s questions,
- * `mcp_call`'s grant request, and something the Topic's setup does not hold (`pi/capabilities.ts`).
+ * `mcp_call`'s grant request, and something the Topic's setup does not hold (`pi/setup.ts`).
  */
 const MARKERS: Readonly<Record<string, (details: Fields, result: ToolResult) => Ask | undefined>> = {
   question: (details, result) =>
@@ -43,7 +43,7 @@ const MARKERS: Readonly<Record<string, (details: Fields, result: ToolResult) => 
       : undefined,
   'not-in-topic': (details, result) => {
     const add = result.isError ? addLabel(details) : undefined
-    return add === undefined ? undefined : { kind: 'capability', label: add }
+    return add === undefined ? undefined : { kind: 'setup', label: add }
   },
 }
 

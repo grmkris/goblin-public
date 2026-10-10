@@ -17,13 +17,13 @@ import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { HelperExclusions, type HelperExclusion } from '@goblin/contracts'
-import { Capabilities } from '../capabilities/service.ts'
+import { Setups } from '../setup/service.ts'
 import { Chats, Conversations } from '../chats/service.ts'
 import { requireResident } from '../mcp/service.ts'
 import { FlowEvents } from '../observability/flows.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { AgentInput } from '../runtime/input.ts'
-import { capabilityOffResult } from './capabilities.ts'
+import { outsideScopeResult } from './setup.ts'
 import { BACKGROUND, conversationId } from './context.ts'
 import {
   ConversationMissing,
@@ -241,8 +241,8 @@ const configTool = (run: RunProgram, roster: (api: Api, context: CallContext) =>
       const agent = known(await roster(api, context), name)
       if (agent === undefined) return done(name, 'unknown', undefined)
       await run(
-        Capabilities.use((capabilities) =>
-          capabilities.configureHelper(String(api.conversationId), String(agent.conversationId), exclusions),
+        Setups.use((setups) =>
+          setups.configureHelper(String(api.conversationId), String(agent.conversationId), exclusions),
         ),
       )
       return done(name, 'configured', agent)
@@ -261,8 +261,8 @@ function subagentTools(run: RunProgram, deliver: Deliver): readonly ToolRegistra
   }
   /** Pi's tool filter hides these tools where subagents are switched off; a call that still arrives starts nothing. */
   const off = async (api: Api) => {
-    const scope = await run(Capabilities.use((capabilities) => capabilities.scope(String(api.conversationId))))
-    return scope.subagents() ? undefined : new ReadyResult(capabilityOffResult({ kind: 'subagents' }, scope))
+    const scope = await run(Setups.use((setups) => setups.scope(String(api.conversationId))))
+    return scope.subagents() ? undefined : new ReadyResult(outsideScopeResult({ kind: 'subagents' }, scope))
   }
   const common = { output: Done, text: said, details: linked } as const
   return [

@@ -2,14 +2,14 @@ import { type ConversationId, GenerationTask, defineExtension, hook, section } f
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { requireBudget } from '../budget.ts'
-import { Capabilities } from '../capabilities/service.ts'
+import { Setups } from '../setup/service.ts'
 import { requireResident } from '../mcp/service.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { logLearnOutcome, type LearnOutcome } from '../skills/learner.ts'
 import type { Catalog } from '../skills/library.ts'
 import { skillScope } from '../skills/scope.ts'
 import { Learner, Skills } from '../skills/service.ts'
-import { capabilityOffResult } from './capabilities.ts'
+import { outsideScopeResult } from './setup.ts'
 import { withContext } from './context-tail.ts'
 import { ReadyResult, typedTool } from './typed-tool.ts'
 
@@ -60,7 +60,7 @@ const SkillFile = Schema.Union([
 ])
 
 /** What a conversation may use now: its switches over the owner's skills libraries among the rest. */
-const scopeFor = (session: string) => Capabilities.use((capabilities) => capabilities.scope(session))
+const scopeFor = (session: string) => Setups.use((setups) => setups.scope(session))
 
 /**
  * The skills on offer: what the owner's skill servers list, from the library's cache, without the libraries this
@@ -107,7 +107,7 @@ const skillsOff = (session: string, handle: string) =>
     const scope = yield* scopeFor(session)
     const serverId = handle.split(':', 1)[0] ?? ''
     if (scope.skills(serverId) || !(yield* skills.sources()).includes(serverId)) return undefined
-    return capabilityOffResult({ kind: 'skills', serverId }, scope)
+    return outsideScopeResult({ kind: 'skills', serverId }, scope)
   })
 
 /** `skill_activate`: load one verified `SKILL.md` into the conversation. */

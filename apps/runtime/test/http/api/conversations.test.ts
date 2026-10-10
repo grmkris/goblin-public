@@ -9,8 +9,8 @@ import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 import { Apps } from '../../../src/apps/service.ts'
 import { Budget } from '../../../src/budget.ts'
-import { scopeOf } from '../../../src/capabilities/profiles.ts'
-import { Capabilities } from '../../../src/capabilities/service.ts'
+import { scopeOf } from '../../../src/setup/scope.ts'
+import { Setups } from '../../../src/setup/service.ts'
 import { ConversationsHandlers } from '../../../src/chats/api.ts'
 import { Files } from '../../../src/files/service.ts'
 import { ChatOperationsLive, ChatsLive } from '../../../src/layers/conversation.ts'
@@ -199,7 +199,7 @@ const services = (calls: Calls, personas: readonly PersonaView[]) =>
         }),
     }),
     stub(Personas, { active: Effect.succeed(personas), offers: () => Effect.succeed(false) }),
-    stub(Capabilities, { scope: () => Effect.succeed(scopeOf([], true)) }),
+    stub(Setups, { scope: () => Effect.succeed(scopeOf([], true)) }),
     // No servers, grants or connections: the composer offers none.
     stub(McpServers, { list: () => Effect.succeed([]) }),
     stub(McpGrants, { list: () => Effect.succeed([]) }),

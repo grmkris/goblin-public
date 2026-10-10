@@ -14,7 +14,7 @@ import { SingleFlight } from '../../../src/observability/single-flight.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import { Apps } from '../../../src/apps/service.ts'
 import { Budget } from '../../../src/budget.ts'
-import { Capabilities } from '../../../src/capabilities/service.ts'
+import { Setups } from '../../../src/setup/service.ts'
 import { ChatOperations, Chats, Conversations } from '../../../src/chats/service.ts'
 import { Files } from '../../../src/files/service.ts'
 import { Invocations, Personas } from '../../../src/personas/service.ts'
@@ -97,7 +97,7 @@ const fixture = async () => {
           // Settling a held call, skills and an owner message (agent-program.ts sendOwnerMessage) read these; no test
           // here reaches them.
           Layer.mergeAll(stub(ChatOperations), stub(Skills), stub(Chats), stub(RoutineRuns), stub(Apps), stub(Budget)),
-          Layer.mergeAll(stub(Capabilities), stub(Conversations), stub(Files), stub(Invocations), stub(Personas)),
+          Layer.mergeAll(stub(Setups), stub(Conversations), stub(Files), stub(Invocations), stub(Personas)),
           stub(PiSessions),
           stub(RoutineControl),
           stub(RoutineUsage),

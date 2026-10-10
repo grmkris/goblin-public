@@ -2,7 +2,7 @@ import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { requirePlan } from '../billing/gates.ts'
-import { Capabilities } from '../capabilities/service.ts'
+import { Setups } from '../setup/service.ts'
 import { Chats, Conversations } from '../chats/service.ts'
 import { type AppError, NotFound } from '../http/errors.ts'
 import { bound } from '../runtime/boundary.ts'
@@ -22,7 +22,7 @@ const authority = (row: ApprovalRow) =>
     if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })
     yield* (yield* Conversations).requireOpen(chat.value)
     yield* requireRoutineSession(session)
-    if (!(yield* (yield* Capabilities).scope(session)).tool(row.serverId, row.name))
+    if (!(yield* (yield* Setups).scope(session)).tool(row.serverId, row.name))
       return yield* new NotFound({ what: 'tool scope' })
   })
 

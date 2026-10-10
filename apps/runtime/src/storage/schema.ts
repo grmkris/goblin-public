@@ -151,10 +151,11 @@ export const appChatMoves = sqliteTable('app_chat_moves', {
 })
 
 /**
- * What each conversation switched off for its agent (ADR 0010): one row per thing off there, so anything granted later
- * is on everywhere. `server_id` is empty for `subagents`; `name` is set only for a `tool`.
+ * What a spawner switched off for its subagent (ADR 0018), in the table ADR 0010's per-conversation switches used: one
+ * row per thing off. Only subagents have rows since ADR 0040. `server_id` is empty for `subagents`; `name` is set only
+ * for a `tool`.
  */
-export const appConversationCapabilities = sqliteTable(
+export const appHelperExclusions = sqliteTable(
   'app_conversation_capabilities',
   {
     sessionId: text('session_id').notNull(),

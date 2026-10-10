@@ -2,7 +2,7 @@ import type { McpServerConfig } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import {
-  appConversationCapabilities,
+  appHelperExclusions,
   appMcpCredentials,
   appMcpEndpoints,
   appMcpGrants,
@@ -19,7 +19,7 @@ function forget(db: Pick<Database, 'delete'>, serverId: string): void {
   db.delete(appMcpCredentials).where(eq(appMcpCredentials.serverId, serverId)).run()
   db.delete(appMcpOauthPending).where(eq(appMcpOauthPending.serverId, serverId)).run()
   db.delete(appMcpGrants).where(eq(appMcpGrants.serverId, serverId)).run()
-  db.delete(appConversationCapabilities).where(eq(appConversationCapabilities.serverId, serverId)).run()
+  db.delete(appHelperExclusions).where(eq(appHelperExclusions.serverId, serverId)).run()
 }
 
 /**

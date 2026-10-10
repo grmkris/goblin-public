@@ -6,14 +6,14 @@ import {
   type PiTools,
   type Retooling,
   appAllowed,
-  capabilityScope,
+  sessionScope,
   configureHelper,
   dropSwitchesOnce,
   piToolsFor,
   retoolOnce,
   syncPi,
-} from '../capabilities/profiles.ts'
-import { Capabilities } from '../capabilities/service.ts'
+} from '../setup/scope.ts'
+import { Setups } from '../setup/service.ts'
 import { epochSeconds } from '../clock.ts'
 import { attempt } from '../http/errors.ts'
 import { logEvent } from '../observability/logger.ts'
@@ -21,8 +21,8 @@ import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 
-// What each chat may use, as functions of the agent's database (capabilities/profiles.ts). The retools are a step of
-// the agent's start (layers/index.ts); `CapabilitiesLive` serves the scope after the start.
+// What each chat may use, as functions of the agent's database (setup/scope.ts). The retools are a step of
+// the agent's start (layers/index.ts); `SetupsLive` serves the scope after the start.
 
 /** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
 const retool = (harness: PiHarness) => async (session: string, tools: PiTools) => {
@@ -52,19 +52,19 @@ export const RetoolLive: Layer.Layer<never, never, AgentInput | Db> = Layer.effe
 )
 
 /** What each chat may use, over the agent's database, applied to Pi through its harness. */
-export const CapabilitiesLive: Layer.Layer<Capabilities, never, AgentInput | Db> = Layer.effect(
-  Capabilities,
+export const SetupsLive: Layer.Layer<Setups, never, AgentInput | Db> = Layer.effect(
+  Setups,
   Effect.gen(function* () {
     const pi = yield* retooling
     const { db } = pi
-    return Capabilities.of({
-      scope: Effect.fn('Capabilities.scope')(function* (session: string) {
-        return yield* Effect.sync(() => capabilityScope(db, session))
+    return Setups.of({
+      scope: Effect.fn('Setups.scope')(function* (session: string) {
+        return yield* Effect.sync(() => sessionScope(db, session))
       }),
-      app: Effect.fn('Capabilities.app')(function* (session: string, app: string) {
+      app: Effect.fn('Setups.app')(function* (session: string, app: string) {
         return yield* Effect.sync(() => appAllowed(db, session, app))
       }),
-      configureHelper: Effect.fn('Capabilities.configureHelper')(function* (
+      configureHelper: Effect.fn('Setups.configureHelper')(function* (
         parent: string,
         session: string,
         exclusions: readonly HelperExclusion[],
@@ -72,10 +72,10 @@ export const CapabilitiesLive: Layer.Layer<Capabilities, never, AgentInput | Db>
         const now = yield* epochSeconds
         yield* attempt(() => configureHelper(pi, { parent, session, exclusions }, now))
       }),
-      piTools: Effect.fn('Capabilities.piTools')(function* (session: string) {
+      piTools: Effect.fn('Setups.piTools')(function* (session: string) {
         return yield* Effect.sync(() => piToolsFor(db, pi.subagentTools, session))
       }),
-      syncPi: Effect.fn('Capabilities.syncPi')(function* (session: string) {
+      syncPi: Effect.fn('Setups.syncPi')(function* (session: string) {
         yield* attempt(() => syncPi(pi, session))
       }),
     })

@@ -1,6 +1,6 @@
 import { type ComposerOption, type ComposerOptions, type ComposerSelection, selectionKey } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
-import { Capabilities } from './capabilities/service.ts'
+import { Setups } from './setup/service.ts'
 import { Conversations } from './chats/service.ts'
 import { InvalidInput, NotFound } from './http/errors.ts'
 import { McpServers, requireResident } from './mcp/service.ts'
@@ -14,7 +14,7 @@ export const composerOptions = (chat: string) =>
     const conversations = yield* Conversations
     const session = yield* conversations.require(chat)
     yield* requireResident
-    const scope = yield* (yield* Capabilities).scope(session)
+    const scope = yield* (yield* Setups).scope(session)
     const catalog = yield* (yield* Skills).catalog({ timeout: 5000, authorize: yield* skillScope(session) }, (id) =>
       scope.skills(id),
     )
@@ -61,7 +61,7 @@ export type ResolvedSelections = {
 
 const resolveOne = (session: string, selection: ComposerSelection) =>
   Effect.gen(function* () {
-    const scope = yield* (yield* Capabilities).scope(session)
+    const scope = yield* (yield* Setups).scope(session)
     if (selection.kind === 'connection') {
       const server = (yield* (yield* McpServers).list()).find((item) => item.serverId === selection.serverId)
       if (server === undefined || server.status !== 'connected' || !scope.server(server.serverId))

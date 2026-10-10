@@ -2,7 +2,7 @@ import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import { requirePlan } from '../billing/gates.ts'
 import { requireBudget } from '../budget.ts'
-import { Capabilities } from '../capabilities/service.ts'
+import { Setups } from '../setup/service.ts'
 import { Channel } from '../channel/service.ts'
 import { Forbidden } from '../http/errors.ts'
 import type { AgentServices } from '../layers/index.ts'
@@ -59,7 +59,7 @@ export function appServices(run: RunProgram, complete: AppCompletion): AppServic
       settled(
         Effect.gen(function* () {
           yield* requireResident
-          if (session !== undefined && !(yield* Capabilities.use((capabilities) => capabilities.app(session, app))))
+          if (session !== undefined && !(yield* Setups.use((setups) => setups.app(session, app))))
             return yield* new Forbidden({ reason: 'app execution excluded here' })
         }),
       ),
@@ -67,7 +67,7 @@ export function appServices(run: RunProgram, complete: AppCompletion): AppServic
       const authorize = Effect.gen(function* () {
         yield* requireResident
         if (session === undefined) return
-        const scope = yield* Capabilities.use((capabilities) => capabilities.scope(session))
+        const scope = yield* Setups.use((setups) => setups.scope(session))
         if (!scope.tool(serverId, name)) return yield* new Forbidden({ reason: 'app MCP tool excluded here' })
       })
       return settled(

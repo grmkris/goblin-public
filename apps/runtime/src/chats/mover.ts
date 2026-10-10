@@ -9,7 +9,7 @@ import type {
 import { authorOf, type MoveReceipt, type MoveToThread } from '@goblin/contracts'
 import { and, eq } from 'drizzle-orm'
 import * as Effect from 'effect/Effect'
-import { piToolsFor } from '../capabilities/profiles.ts'
+import { piToolsFor } from '../setup/scope.ts'
 import { epochSeconds } from '../clock.ts'
 import { Conflict, NotFound, attempt, attemptSync } from '../http/errors.ts'
 import { forgetFrom, rememberedThrough } from '../memory/store.ts'

@@ -5,8 +5,8 @@ import * as Layer from 'effect/Layer'
 import { describe, expect, it } from 'vitest'
 import type { AppError } from '../src/http/errors.ts'
 import { mcpHost } from '../src/mcp/host.ts'
-import { type CapabilityScope, type Exclusion, scopeOf, topicScope } from '../src/capabilities/profiles.ts'
-import { Capabilities } from '../src/capabilities/service.ts'
+import { type SetupScope, type Exclusion, scopeOf, topicScope } from '../src/setup/scope.ts'
+import { Setups } from '../src/setup/service.ts'
 import { residentMcpExtension } from '../src/pi/resident-mcp.ts'
 import { Resident } from '../src/mcp/service.ts'
 import { RoutineRuns } from '../src/routines/service.ts'
@@ -62,7 +62,7 @@ const off = (kind: Exclusion['kind'], serverId = '', name = ''): Exclusion => ({
  * only notes' `write`, and 10 a subagent whose spawner switched notes off for it.
  */
 const work = (setup: Partial<TopicSetup>) => topicScope({ id: 2, name: 'Work', setup: { ...EVERYTHING, ...setup } })
-const scopes: Readonly<Record<string, CapabilityScope>> = {
+const scopes: Readonly<Record<string, SetupScope>> = {
   '7': scopeOf([], true),
   '8': work({ mcpServers: [] }),
   '9': work({ mcpServers: [{ serverId: 'notes', tools: ['write'] }] }),
@@ -74,7 +74,7 @@ const layer = host.pipe(
   Layer.provideMerge(
     Layer.mergeAll(
       SingleFlight.layer,
-      stub(Capabilities, { scope: (session) => Effect.sync(() => profiles.scope(session)) }),
+      stub(Setups, { scope: (session) => Effect.sync(() => profiles.scope(session)) }),
       // No conversation here is a routine run's.
       stub(RoutineRuns, { session: () => Effect.succeed(undefined) }),
       Layer.succeed(AgentInput, instance),

@@ -4,7 +4,7 @@ import { Inspection } from '../inspect/service.ts'
 import type { AgentInputs } from '../runtime/input.ts'
 import { AppRegistryLive, AppsLive } from './apps.ts'
 import { ModelBudgetLive } from './budget.ts'
-import { CapabilitiesLive, RetoolLive } from './capabilities.ts'
+import { SetupsLive, RetoolLive } from './setup.ts'
 import { ConversationLive, PrimaryChatLive } from './conversation.ts'
 import { CoreLive } from './core.ts'
 import { DecisionsLive } from './decisions.ts'
@@ -68,7 +68,7 @@ export const AgentLive = (input: AgentInputs) =>
   start(input).pipe(
     then(ModelBudgetLive),
     then(ConversationLive),
-    then(CapabilitiesLive),
+    then(SetupsLive),
     then(KnowledgeLive),
     then(DelegationLive),
     then(RoutinesLive),

@@ -1,6 +1,6 @@
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
-import { CapabilityProfiles, type CapabilityScope, scopeOf } from '../src/capabilities/profiles.ts'
+import { SetupScopes, type SetupScope, scopeOf } from '../src/setup/scope.ts'
 import { Resident } from '../src/mcp/service.ts'
 import { unread } from './fake.ts'
 
@@ -27,16 +27,16 @@ export const currentResident = () => {
 }
 
 /** Fixed switches per conversation (everything on for any other): the tools only ask for a `scope`. */
-export class FixedProfiles extends CapabilityProfiles {
-  readonly #scopes: Readonly<Record<string, CapabilityScope>>
+export class FixedProfiles extends SetupScopes {
+  readonly #scopes: Readonly<Record<string, SetupScope>>
 
-  constructor(scopes: Readonly<Record<string, CapabilityScope>>) {
+  constructor(scopes: Readonly<Record<string, SetupScope>>) {
     // `scope` is overridden below and nothing else is called, so neither the database nor the tools are read.
     super(unread, unread, async () => undefined)
     this.#scopes = scopes
   }
 
-  override scope(session: string): CapabilityScope {
+  override scope(session: string): SetupScope {
     return this.#scopes[session] ?? scopeOf([], true)
   }
 }

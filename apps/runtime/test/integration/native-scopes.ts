@@ -5,9 +5,9 @@ import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Schema from 'effect/Schema'
 import { expect } from 'vitest'
-import { CapabilityProfiles } from '../../src/capabilities/profiles.ts'
+import { SetupScopes } from '../../src/setup/scope.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
-import { appConversationCapabilities, appConversations } from '../../src/storage/schema.ts'
+import { appHelperExclusions, appConversations } from '../../src/storage/schema.ts'
 import { appTopics } from '../../src/storage/topics.ts'
 import { type NativeCase, probeOf } from './native-case.ts'
 import { type Probes, inAgent } from './probe.ts'
@@ -59,7 +59,7 @@ async function scopeProbe(storage: DurableObjectStorage) {
     execute: async () => ({ content: [] }),
   })
   const retooled: string[] = []
-  const profiles = new CapabilityProfiles(db, [tool], async (session) => void retooled.push(session))
+  const profiles = new SetupScopes(db, [tool], async (session) => void retooled.push(session))
   await profiles.configureHelper('900', '901', [{ kind: 'skills', serverId: 'myskills' }], 2)
   const view = (session: string) => {
     const scope = profiles.scope(session)
@@ -117,9 +117,7 @@ async function scopeProbe(storage: DurableObjectStorage) {
   await profiles.retoolOnce('retool:probe', 6)
   const again = retooled.length - configured.length - once.length
   // An owner switch left from before setups goes; the helper's exclusions stay.
-  db.insert(appConversationCapabilities)
-    .values({ sessionId: '900', kind: 'subagents', serverId: '', name: '', offAt: 1 })
-    .run()
+  db.insert(appHelperExclusions).values({ sessionId: '900', kind: 'subagents', serverId: '', name: '', offAt: 1 }).run()
   const dropped = await profiles.dropSwitchesOnce('drop:probe', 7)
   const droppedAgain = await profiles.dropSwitchesOnce('drop:probe', 8)
   const helperKept = view('902').skills
@@ -158,7 +156,7 @@ const closed = { editable: false, mail: false, send: false, read: false, write: 
 
 /**
  * Every chat works with its Topic's setup, read live; a subagent is bounded by every chat above it and its spawner's
- * exclusions; stored tool filters are applied again once (`CapabilityProfiles.retoolOnce`), and the owner's old
+ * exclusions; stored tool filters are applied again once (`SetupScopes.retoolOnce`), and the owner's old
  * switches are dropped once (`dropSwitchesOnce`).
  */
 async function scopeChecks(base: string): Promise<void> {

@@ -6,8 +6,8 @@ import { AppCodeError } from '../src/agent-apps/queue.ts'
 import { Entitlements } from '../src/billing/gates.ts'
 import type { AccountPlan } from '../src/billing/reconcile.ts'
 import { Budget } from '../src/budget.ts'
-import { Capabilities } from '../src/capabilities/service.ts'
-import type { CapabilityScope } from '../src/capabilities/profiles.ts'
+import { Setups } from '../src/setup/service.ts'
+import type { SetupScope } from '../src/setup/scope.ts'
 import { Channel } from '../src/channel/service.ts'
 import { Forbidden, ResidentInactive, SubscriptionRequired } from '../src/http/errors.ts'
 import { McpConnections, Resident } from '../src/mcp/service.ts'
@@ -34,7 +34,7 @@ const part = <S>(service: Partial<S>): S =>
 /** The services an app's powers read, each the part these tests use, with what the tests change about them. */
 const world = (options: { readonly resident?: boolean; readonly plan?: boolean; readonly channel?: string } = {}) => {
   const calls: { readonly serverId: string; readonly name: string; readonly authorized: boolean }[] = []
-  const scope: CapabilityScope = {
+  const scope: SetupScope = {
     editable: true,
     server: () => true,
     tool: (_serverId, name) => name !== 'off',
@@ -57,8 +57,8 @@ const world = (options: { readonly resident?: boolean; readonly plan?: boolean; 
       }),
     ),
     Layer.succeed(
-      Capabilities,
-      part<Capabilities['Service']>({
+      Setups,
+      part<Setups['Service']>({
         app: (session: string) => Effect.succeed(session !== 'no-apps'),
         scope: () => Effect.succeed(scope),
       }),

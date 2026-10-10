@@ -4,7 +4,7 @@ import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { Chats, Conversations } from '../chats/service.ts'
-import { Capabilities } from '../capabilities/service.ts'
+import { Setups } from '../setup/service.ts'
 import { requireRoutineSession } from '../routines/authority.ts'
 import { RoutineRuns } from '../routines/service.ts'
 import { Conflict, NotFound } from '../http/errors.ts'
@@ -29,7 +29,7 @@ export const holdModelCall = (session: string, callId: string, taskId: string, i
     const chat = yield* (yield* Chats).chatOf(session)
     if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })
     yield* (yield* Conversations).requireOpen(chat.value)
-    const scope = yield* (yield* Capabilities).scope(session)
+    const scope = yield* (yield* Setups).scope(session)
     if (!scope.tool(input.serverId, input.name)) return undefined
     const server = yield* (yield* McpConnections).server(input.serverId)
     const row = yield* (yield* Approvals).hold({

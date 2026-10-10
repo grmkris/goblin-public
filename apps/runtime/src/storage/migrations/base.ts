@@ -95,7 +95,7 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
     sql: "ALTER TABLE app_conversations ADD COLUMN main_note TEXT CHECK (main_note IN ('owed', 'written'))",
   },
   {
-    // What each conversation switched off for its agent (capabilities/profiles.ts): a row is one thing off there.
+    // What each conversation switched off for its agent (setup/scope.ts): a row is one thing off there.
     key: '20261016000100_conversation_capabilities',
     tables: ['app_conversation_capabilities'],
     sql: `CREATE TABLE app_conversation_capabilities (session_id TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('server', 'tool', 'skills', 'subagents')), server_id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', off_at INTEGER NOT NULL, PRIMARY KEY (session_id, kind, server_id, name), CHECK ((kind = 'subagents') = (server_id = '')), CHECK ((kind = 'tool') = (name <> '')))`,

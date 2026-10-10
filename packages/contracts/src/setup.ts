@@ -266,3 +266,23 @@ export function itemLabel(item: SetupItem): string {
       return 'subagents'
   }
 }
+
+/**
+ * One thing a spawner can switch off for its subagent: a connected server, one of that server's granted tools, the
+ * server's skills library, or starting subagents. Switching off only narrows (ADR 0018).
+ */
+export const ExclusionTarget = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal('server'), serverId: ServerId }),
+  Schema.Struct({ kind: Schema.Literal('tool'), serverId: ServerId, name: ToolName }),
+  Schema.Struct({ kind: Schema.Literal('skills'), serverId: ServerId }),
+  Schema.Struct({ kind: Schema.Literal('subagents') }),
+])
+export type ExclusionTarget = typeof ExclusionTarget.Type
+
+/** A helper may narrow what it inherits from the chats above it, never gain anything. */
+export const HelperExclusion = Schema.Union([
+  ExclusionTarget,
+  Schema.Struct({ kind: Schema.Literal('app'), app: SetupAppName }),
+])
+export type HelperExclusion = typeof HelperExclusion.Type
+export const HelperExclusions = Schema.Array(HelperExclusion).check(Schema.isMaxLength(100))

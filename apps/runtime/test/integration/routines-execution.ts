@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm'
 import { proposeRoutine, changeRoutine, runRoutineNow } from './routines-owner.ts'
 import { callOwner } from '../owner-client.ts'
 import { RoutineRunStore } from '../../src/routines/runs.ts'
-import { appConversations, appConversationCapabilities } from '../../src/storage/schema.ts'
+import { appConversations, appHelperExclusions } from '../../src/storage/schema.ts'
 import { BACKGROUND, conversationId } from '../../src/pi/context.ts'
 import type { SeenRequest } from './model.ts'
 import { type RoutineDefinition } from '@goblin/contracts'
@@ -64,8 +64,8 @@ async function routineExecutionProbe(
     registered: thread?.kind === 'thread' && thread.routineRunId === first.id && thread.mainNote === null,
     copiedCapabilities: db
       .select()
-      .from(appConversationCapabilities)
-      .where(eq(appConversationCapabilities.sessionId, record.sessionId))
+      .from(appHelperExclusions)
+      .where(eq(appHelperExclusions.sessionId, record.sessionId))
       .all().length,
     reportCount: notes.length,
     reportRequest: record.reportRequestId,

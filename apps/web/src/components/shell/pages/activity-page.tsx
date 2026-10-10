@@ -7,7 +7,7 @@ import {
   CircleDotIcon,
   KeyRoundIcon,
   MessageCircleQuestionIcon,
-  PowerIcon,
+  Settings2Icon,
   WandSparklesIcon,
 } from 'lucide-react'
 import { type NeedsYou, needsYou, unreadChats } from '../../../lib/rail.ts'
@@ -24,7 +24,7 @@ const ASKS: Readonly<Record<Attention['kind'], { readonly icon: typeof KeyRoundI
   question: { icon: MessageCircleQuestionIcon, label: 'A question for you' },
   approval: { icon: KeyRoundIcon, label: 'A call to approve' },
   grant: { icon: KeyRoundIcon, label: 'A tool to allow' },
-  capability: { icon: PowerIcon, label: 'Something to turn on' },
+  setup: { icon: Settings2Icon, label: 'Something to add to a Topic' },
   'app-power': { icon: AppWindowIcon, label: 'An app power to allow' },
 }
 

@@ -1,6 +1,6 @@
 import * as Effect from 'effect/Effect'
 import { type Entitlements, requirePlan } from '../billing/gates.ts'
-import { Capabilities } from '../capabilities/service.ts'
+import { Setups } from '../setup/service.ts'
 import { type AppError, NotFound } from '../http/errors.ts'
 import { type Resident, requireResident } from '../mcp/service.ts'
 
@@ -10,14 +10,14 @@ import { type Resident, requireResident } from '../mcp/service.ts'
  */
 export const skillScope = (
   session: string,
-): Effect.Effect<(serverId: string) => Effect.Effect<void, AppError>, never, Entitlements | Resident | Capabilities> =>
+): Effect.Effect<(serverId: string) => Effect.Effect<void, AppError>, never, Entitlements | Resident | Setups> =>
   Effect.map(
-    Effect.context<Entitlements | Resident | Capabilities>(),
+    Effect.context<Entitlements | Resident | Setups>(),
     (context) => (serverId: string) =>
       Effect.gen(function* () {
         yield* requirePlan()
         yield* requireResident
-        const scope = yield* Capabilities.use((capabilities) => capabilities.scope(session))
+        const scope = yield* Setups.use((setups) => setups.scope(session))
         if (!scope.skills(serverId)) return yield* new NotFound({ what: 'skill scope' })
       }).pipe(Effect.provideContext(context)),
   )

@@ -2,11 +2,11 @@ import { EVERYTHING, type TopicSetup } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'vitest'
 import { openAsks } from '../src/attention.ts'
-import { capabilityScope, chatScope, piToolsFor } from '../src/capabilities/profiles.ts'
-import { capabilityOffResult } from '../src/pi/capabilities.ts'
+import { sessionScope, chatScope, piToolsFor } from '../src/setup/scope.ts'
+import { outsideScopeResult } from '../src/pi/setup.ts'
 import { appPersonaForks } from '../src/storage/personas.ts'
 import { appRoutineRuns } from '../src/storage/routines.ts'
-import { appConversationCapabilities, appConversations, appExecutionExclusions } from '../src/storage/schema.ts'
+import { appHelperExclusions, appConversations, appExecutionExclusions } from '../src/storage/schema.ts'
 import { appTopics } from '../src/storage/topics.ts'
 import { storedSetup } from '../src/topics/setup.ts'
 import { chatDatabase, durable } from './chats-sqlite.ts'
@@ -92,7 +92,7 @@ const fixture = () => {
 describe("a chat's scope follows its Topic's setup (ADR 0040)", () => {
   it('lets every chat of Personal use everything, as before', () => {
     const { db } = fixture()
-    const scope = capabilityScope(db, 's1')
+    const scope = sessionScope(db, 's1')
     expect(scope.tool('anything', 'at-all')).toBe(true)
     expect(scope.skills('lib')).toBe(true)
     expect(scope.subagents()).toBe(true)
@@ -133,7 +133,7 @@ describe("a chat's scope follows its Topic's setup (ADR 0040)", () => {
   it("bounds a subagent by its Topic and by its spawner's exclusions, and never lets the owner act there", () => {
     const { db, raw } = fixture()
     raw
-      .insert(appConversationCapabilities)
+      .insert(appHelperExclusions)
       .values({ sessionId: '22', kind: 'server', serverId: 'plan', name: '', offAt: 1 })
       .run()
     raw.insert(appExecutionExclusions).values({ sessionId: '22', app: 'tracker', offAt: 1 }).run()
@@ -160,7 +160,7 @@ describe("a chat's scope follows its Topic's setup (ADR 0040)", () => {
     const { db, raw } = fixture()
     raw.delete(appTopics).where(eq(appTopics.id, 2)).run()
     expect(chatScope(db, '21').tool('notes', 'read')).toBe(false)
-    expect(capabilityScope(db, 'nobody').server('notes')).toBe(false)
+    expect(sessionScope(db, 'nobody').server('notes')).toBe(false)
   })
 
   it("removes the subagent tools from Pi where the Topic's setup does not allow subagents", () => {
@@ -224,7 +224,7 @@ describe("a Persona's fork works with its Topic's setup and its own (ADR 0040)",
 
   it('tells a Persona in words what neither setup holds', () => {
     const db = forks()
-    const result = capabilityOffResult({ kind: 'server', serverId: 'calendar' }, chatScope(db, '24'))
+    const result = outsideScopeResult({ kind: 'server', serverId: 'calendar' }, chatScope(db, '24'))
     expect(result.details).toBeUndefined()
     expect(result.content).toEqual([expect.objectContaining({ text: expect.stringContaining('calendar') })])
   })
@@ -233,7 +233,7 @@ describe("a Persona's fork works with its Topic's setup and its own (ADR 0040)",
 describe('a call outside the setup', () => {
   it('asks the owner to add it to the Topic, and waits', () => {
     const { db } = fixture()
-    const result = capabilityOffResult({ kind: 'server', serverId: 'mail' }, chatScope(db, '21'))
+    const result = outsideScopeResult({ kind: 'server', serverId: 'mail' }, chatScope(db, '21'))
     expect(result.details).toEqual({
       kind: 'not-in-topic',
       target: { kind: 'server', serverId: 'mail' },
@@ -245,7 +245,7 @@ describe('a call outside the setup', () => {
 
   it('names a skills library as a library, and gives a subagent words only', () => {
     const { db } = fixture()
-    const library = capabilityOffResult({ kind: 'skills', serverId: 'other' }, chatScope(db, '22'))
+    const library = outsideScopeResult({ kind: 'skills', serverId: 'other' }, chatScope(db, '22'))
     expect(library.details).toBeUndefined()
     expect(library.content).toEqual([
       expect.objectContaining({ text: expect.stringContaining("Not in #Work's setup: skills from other") }),
@@ -255,10 +255,10 @@ describe('a call outside the setup', () => {
   it("tells a subagent in words what its spawner switched off, though the Topic's setup holds it", () => {
     const { db, raw } = fixture()
     raw
-      .insert(appConversationCapabilities)
+      .insert(appHelperExclusions)
       .values({ sessionId: '22', kind: 'tool', serverId: 'notes', name: 'read', offAt: 1 })
       .run()
-    const result = capabilityOffResult({ kind: 'tool', serverId: 'notes', name: 'read' }, chatScope(db, '22'))
+    const result = outsideScopeResult({ kind: 'tool', serverId: 'notes', name: 'read' }, chatScope(db, '22'))
     expect(result.details).toBeUndefined()
     expect(result.content).toEqual([
       expect.objectContaining({ text: expect.stringContaining('Off for the conversation') }),
@@ -267,7 +267,7 @@ describe('a call outside the setup', () => {
 
   it('shows the owner what to add, and where, among what waits on them', () => {
     const { db } = fixture()
-    const result = capabilityOffResult({ kind: 'tool', serverId: 'notes', name: 'write' }, chatScope(db, '21'))
+    const result = outsideScopeResult({ kind: 'tool', serverId: 'notes', name: 'write' }, chatScope(db, '21'))
     const entry = {
       id: '5',
       kind: 'pi.tool_result',
@@ -275,7 +275,7 @@ describe('a call outside the setup', () => {
     }
     // SAFETY: `openAsks` reads only an entry's id, kind and model messages, which this entry has.
     expect(openAsks([entry as never])).toEqual([
-      { kind: 'capability', since: 9, entry: 5, label: 'Add notes · write to #Work' },
+      { kind: 'setup', since: 9, entry: 5, label: 'Add notes · write to #Work' },
     ])
   })
 })

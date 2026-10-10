@@ -73,7 +73,7 @@ event streams, the files group and the OAuth callback). It annotates the request
 
 | Group | Paths under `/api` | Handlers |
 | --- | --- | --- |
-| `conversations` | `/conversations`, `/conversations/:id`, and under it `messages`, `threads`, `move`, `stop`, `queue`, `read`, `capabilities`, `composer`, `snapshot`, `history`, `sources`, `events` (SSE) | `chats/api.ts` |
+| `conversations` | `/conversations`, `/conversations/:id`, and under it `messages`, `threads`, `move`, `stop`, `queue`, `read`, `composer`, `snapshot`, `history`, `sources`, `events` (SSE) | `chats/api.ts` |
 | `inspect` | `GET /conversations/:id/details` | `inspect/api.ts` |
 | `topics` | `/topics`, `/topics/:id` | `topics/api.ts` |
 | `personas` | `/personas`, `/personas/:id` | `personas/api.ts` |
@@ -208,7 +208,7 @@ fixed order, each over everything before it:
   App registry and the workspace feed follow that topic. A move a restart interrupted finishes once the conversation
   layer is built (`Moves` forks its reconcile in the layer's scope), never holding up the start.
 - **One layer per area** after the start, in order: the model budget and picker (`Budget`, `Models`, which a send's
-  admission reads), conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`), capabilities (`Capabilities`),
+  admission reads), conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`), setup (`Setups`),
   knowledge (`Memories`, `Retrieval`), delegation (`Topics`, `Personas`, `Invocations`, `Receipts`, `Home`), routines
   (`Routines`, `RoutineControl`), inspection (`Inspection`), apps (`AppEngine`, `Files`), typed decisions (`Decisions`),
   the workspace feed (`Workspace`) and HTTP (`AgentHttp`). The MCP host's `McpConnections`, `McpServers`, `McpGrants`,
@@ -450,8 +450,8 @@ pruned opportunistically. The lock covers admission only, and releases before mo
 answer. Nothing rebinds a chat: Move to thread (ADR 0034) forks the moved turn's Thread and records a `move` receipt;
 Topics and their memory are below.
 
-**Capabilities** (`capabilities/`): each chat works with its Topic's setup ([ADR 0040](adr/0040-topic-and-persona-setup.md)).
-`capabilityScope(db, session)` maps the calling Pi session through `chatOf` to its current chat; `chatScope(db, chat)`
+**Setup and scope** (`setup/`): each chat works with its Topic's setup ([ADR 0040](adr/0040-topic-and-persona-setup.md)).
+`sessionScope(db, session)` (`setup/scope.ts`) maps the calling Pi session through `chatOf` to its current chat; `chatScope(db, chat)`
 reads, live, the setup of the Topic at the top of its chain (a chat's `topic_id`), joined in a Persona's fork with the
 Persona's, and narrows it for a subagent by the exclusions of every spawner above it (`subagent_config`, ADR 0018;
 `app_conversation_capabilities` and `app_execution_exclusions` hold them), at any depth, then by a routine run's
@@ -463,7 +463,7 @@ the subagent tools, whose section then hides too; Pi stores the filter as tool n
 every filtering conversation's filter was applied again once (`retoolOnce`, which skips Persona forks and routine
 runs, whose filters are set when they are made). A call that still arrives runs nothing: `mcp_call`, `skill_activate`,
 `skill_read`, `subagent_spawn` and `subagent_send` check the scope before anything else (before the grant check or any
-connection) and return an error result (`pi/capabilities.ts`): when the Topic's setup does not hold the target,
+connection) and return an error result (`pi/setup.ts`, `outsideScopeResult`): when the Topic's setup does not hold the target,
 details `{ kind: 'not-in-topic', target, topic }` (`NotInTopic`) that ask the owner to add it to the Topic, and Goblin
 waits; in a subagent, a Persona or a routine the result has words only. The ask shows in the chat's `attention`. The
 owner's console and an App view and job calls carry no conversation. Agent-initiated app calls carry their
@@ -629,7 +629,7 @@ all and None, which send the same exact grants one at a time. Tool annotations f
 not granted, nothing runs. `mcp_call` returns an error result whose details are
 `{ kind: 'grant-required', serverId, name }`, and the model is told to wait.
 `mcpModelResult` details never carry a top-level `kind`, so remote content cannot forge one. The web turns that
-result into an owner-only Allow card. A Topic's setup chooses servers and tools for its chats (Capabilities, above);
+result into an owner-only Allow card. A Topic's setup chooses servers and tools for its chats (Setup and scope, above);
 that check comes first, and a helper's exclusions are forgotten with the server's grants.
 
 ## Skills
@@ -653,8 +653,8 @@ An unreachable server keeps its last listing while it remains cached in the isol
 Dynamic skills are declined; skill scripts can be read but are never executed (the only code goblin runs for the agent
 is its own apps' and `code_run`'s, in Dynamic Workers; see Agent apps). Enabled skills are procedures the agent
 follows, but they grant no permissions and cannot override the owner. Disabling the server stops new activations and
-file reads; instructions already in a conversation stay there. A conversation can switch one library off for itself
-(Capabilities): its section leaves the library out without fetching it, and its activations and reads are refused.
+file reads; instructions already in a conversation stay there. A Topic's setup can leave a library out (Setup and
+scope): its chats' section leaves it out without fetching it, and their activations and reads are refused.
 
 After a final answer in an owner conversation (`goblin.skill-learning`, `onYield`), the learner (`skills/learner.ts`) looks at the latest user message. On a correction
 or a request to keep how something was done, the memory model decides whether the exchange teaches a procedure. A
@@ -1448,7 +1448,7 @@ sweep. UTC reminders require an explicit offset. The
 numeric cron parser enforces 15-minute spacing, skips spring DST gaps and chooses the earlier autumn repeated instant.
 
 Pi background Anchor/Reporter tasks create and recover an empty task-owned run conversation, registered as a thread
-without copied capability rows or an ordinary main-start note. The confirmed MCP ceiling narrows `Capabilities.scope`.
+without copied capability rows or an ordinary main-start note. The confirmed MCP ceiling narrows `Setups.scope`.
 A dedicated per-run model provider checks resident authority, entitlements, deadlines and committed usage before
 every model dispatch, including compaction. MCP checks repeat at the HTTP dispatch seam after token refresh, with
 local correlation headers removed before egress. Main Stop leaves background runs alone; run Stop and archive fence

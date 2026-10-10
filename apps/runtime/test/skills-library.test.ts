@@ -4,12 +4,12 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Schema from 'effect/Schema'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { topicScope } from '../src/capabilities/profiles.ts'
+import { topicScope } from '../src/setup/scope.ts'
 import * as TestClock from 'effect/testing/TestClock'
 import type { AppError } from '../src/http/errors.ts'
 import { mcpHost } from '../src/mcp/host.ts'
 import { skillsExtension } from '../src/pi/skills.ts'
-import { Capabilities } from '../src/capabilities/service.ts'
+import { Setups } from '../src/setup/service.ts'
 import { McpConnections, McpServers, Resident } from '../src/mcp/service.ts'
 import type { AgentServices } from '../src/layers/index.ts'
 import { SingleFlight } from '../src/observability/single-flight.ts'
@@ -237,10 +237,10 @@ describe("a skills library outside the Topic's setup (unit)", () => {
     const layer = Layer.mergeAll(
       knowledgeOver({ skills: library }),
       Layer.mock(Resident)({ require: () => Effect.void }),
-      Layer.mock(Capabilities)({ scope: (session: string) => Effect.sync(() => profiles.scope(session)) }),
+      Layer.mock(Setups)({ scope: (session: string) => Effect.sync(() => profiles.scope(session)) }),
     )
     const run = <A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<A> =>
-      // SAFETY: skill_activate needs only the Skills, Resident and Capabilities services provided here.
+      // SAFETY: skill_activate needs only the Skills, Resident and Setups services provided here.
       Effect.runPromise(Effect.provide(program, layer) as Effect.Effect<A, AppError>)
     const activate = skillsExtension(run).tools?.find((tool) => tool.name === 'skill_activate')
     if (activate === undefined) throw new Error('skill_activate is not registered')

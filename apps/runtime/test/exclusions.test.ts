@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type Exclusion, scopeOf } from '../src/capabilities/profiles.ts'
+import { type Exclusion, scopeOf } from '../src/setup/scope.ts'
 
 const off = (kind: Exclusion['kind'], serverId = '', name = ''): Exclusion => ({ kind, serverId, name })
 

@@ -5,8 +5,8 @@ import type { Grant } from '@goblin/contracts'
 import type { Tool } from '@modelcontextprotocol/client'
 import * as Option from 'effect/Option'
 import { Apps } from '../apps/service.ts'
-import type { CapabilityScope } from '../capabilities/profiles.ts'
-import { Capabilities } from '../capabilities/service.ts'
+import type { SetupScope } from '../setup/scope.ts'
+import { Setups } from '../setup/service.ts'
 import { type GrantDenied, NotFound } from '../http/errors.ts'
 import { toolAppResource, toolOffered } from '../mcp/remote.ts'
 import { grantRequiredResult, mcpModelResult } from '../mcp/extension.ts'
@@ -16,7 +16,7 @@ import { requirePlan } from '../billing/gates.ts'
 import { requireRoutineSession } from '../routines/authority.ts'
 import { bound } from '../runtime/boundary.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
-import { capabilityOffResult, mcpOff } from './capabilities.ts'
+import { outsideScopeResult, mcpOff } from './setup.ts'
 import { ReadyResult, typedTool } from './typed-tool.ts'
 import { McpCallInput, holdModelCall, approvalResult } from '../mcp/approval-request.ts'
 
@@ -28,7 +28,7 @@ const dispatchAuthority = (session: string, input: { serverId: string; name: str
   Effect.gen(function* () {
     yield* requirePlan()
     yield* executionAuthority(session)
-    if (!(yield* (yield* Capabilities).scope(session)).tool(input.serverId, input.name))
+    if (!(yield* (yield* Setups).scope(session)).tool(input.serverId, input.name))
       return yield* new NotFound({ what: 'tool scope' })
   })
 
@@ -81,7 +81,7 @@ const Listing = Schema.Union([
 function offered(
   listing: readonly Tool[],
   grants: readonly Grant[],
-  current: CapabilityScope,
+  current: SetupScope,
   serverId: string,
 ): (typeof RemoteTool.Type)[] {
   return listing
@@ -140,8 +140,8 @@ export function residentMcpExtension(run: RunProgram) {
           run(
             Effect.gen(function* () {
               yield* executionAuthority(String(api.conversationId))
-              const capabilities = yield* Capabilities
-              const scope = yield* capabilities.scope(String(api.conversationId))
+              const setups = yield* Setups
+              const scope = yield* setups.scope(String(api.conversationId))
               if (serverId === undefined)
                 return {
                   servers: (yield* (yield* McpServers).list())
@@ -151,7 +151,7 @@ export function residentMcpExtension(run: RunProgram) {
               if (!scope.server(serverId)) return yield* new NotFound({ what: `server ${serverId}` })
               const snapshot = yield* (yield* McpConnections).connect(serverId, requestFor(api, context.abortSignal))
               yield* executionAuthority(String(api.conversationId))
-              const current = yield* capabilities.scope(String(api.conversationId))
+              const current = yield* setups.scope(String(api.conversationId))
               const tools = offered(snapshot.tools, yield* (yield* McpGrants).list(), current, serverId)
               return { origin: serverId, trusted: false as const, tools }
             }),
@@ -171,10 +171,10 @@ export function residentMcpExtension(run: RunProgram) {
           run(
             Effect.gen(function* () {
               yield* executionAuthority(String(api.conversationId))
-              const scope = yield* (yield* Capabilities).scope(String(api.conversationId))
+              const scope = yield* (yield* Setups).scope(String(api.conversationId))
               const off = mcpOff(scope, input.serverId, input.name)
               const session = String(api.conversationId)
-              if (off !== undefined) return new ReadyResult(capabilityOffResult(off, scope))
+              if (off !== undefined) return new ReadyResult(outsideScopeResult(off, scope))
               const held = yield* holdModelCall(session, api.callId, String(api.taskId), input)
               if (held !== undefined) return new ReadyResult(yield* approvalResult(session, api.callId, held.id, input))
               const connections = yield* McpConnections

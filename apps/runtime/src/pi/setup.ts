@@ -1,16 +1,16 @@
 import type { ToolExecutionResult } from '@earendil-works/pi-durable'
-import { type CapabilityTarget, type NotInTopic, type SetupItem, itemLabel } from '@goblin/contracts'
-import type { CapabilityScope, ScopeTopic } from '../capabilities/profiles.ts'
+import { type ExclusionTarget, type NotInTopic, type SetupItem, itemLabel } from '@goblin/contracts'
+import type { SetupScope, ScopeTopic } from '../setup/scope.ts'
 
 /** How a target reads in a tool result: the server, the server's tool, its skills, or subagents. */
-const named = (target: CapabilityTarget): string => {
+const named = (target: ExclusionTarget): string => {
   if (target.kind === 'subagents') return 'subagents'
   if (target.kind === 'skills') return `skills from ${target.serverId}`
   return target.kind === 'tool' ? `${target.serverId} · ${target.name}` : target.serverId
 }
 
 /** The setup item a switch target names: a skills switch is a library. */
-const itemOf = (target: CapabilityTarget): SetupItem =>
+const itemOf = (target: ExclusionTarget): SetupItem =>
   target.kind === 'skills' ? { ...target, kind: 'library' } : target
 
 /**
@@ -52,7 +52,7 @@ function notInTopicResult(item: SetupItem, topic: ScopeTopic, editable: boolean)
  * the Topic (above); otherwise something the conversation that started a subagent switched off for it, or a routine's
  * allowed tools leave out: nothing ran, and it says so in its answer.
  */
-export function capabilityOffResult(target: CapabilityTarget, scope: CapabilityScope): ToolExecutionResult {
+export function outsideScopeResult(target: ExclusionTarget, scope: SetupScope): ToolExecutionResult {
   const item = itemOf(target)
   if (scope.topic !== undefined && !scope.topic.holds(item)) return notInTopicResult(item, scope.topic, scope.editable)
   return {
@@ -68,7 +68,7 @@ export function capabilityOffResult(target: CapabilityTarget, scope: CapabilityS
 }
 
 /** What of an MCP server and tool is switched off in `scope`: the server first, then the tool; none when both are on. */
-export function mcpOff(scope: CapabilityScope, serverId: string, name: string): CapabilityTarget | undefined {
+export function mcpOff(scope: SetupScope, serverId: string, name: string): ExclusionTarget | undefined {
   if (!scope.server(serverId)) return { kind: 'server', serverId }
   return scope.tool(serverId, name) ? undefined : { kind: 'tool', serverId, name }
 }
