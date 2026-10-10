@@ -1,5 +1,8 @@
 import * as Schema from 'effect/Schema'
+import { request as httpRequest } from 'node:http'
 import { expect } from 'vitest'
+import { hookToken } from '../../src/channel/doorbell.ts'
+import { eventsHookToken } from '../../src/mcp/events/route-token.ts'
 import { call, ownerFetch, person, workspaceOf, type Person } from './owner-requests.ts'
 
 const APP = 'https://goblin.test'
@@ -103,4 +106,102 @@ export async function csrfCase(url: string): Promise<void> {
   })
   expect(created.status).toBe(201)
   expect((await topics()).some((each) => each.name === name)).toBe(true)
+}
+
+/** The owner stack's credential key (`owner-stack.ts`): the hook tokens are made from it. */
+const CREDENTIAL_KEY = 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE='
+
+/**
+ * A GET of `path` exactly as written. `fetch` (and a browser) resolves `..` and `%2e%2e` before it sends anything; a
+ * raw client need not, so this is what one sends.
+ */
+const rawGet = (base: string, path: string, headers: Record<string, string>) =>
+  new Promise<{ readonly status: number; readonly body: string }>((resolve, reject) => {
+    const { hostname, port } = new URL(base)
+    const sent = httpRequest({ hostname, port, path, headers: { ...headers, connection: 'close' } }, (response) => {
+      let body = ''
+      response.setEncoding('utf8')
+      response.on('data', (chunk: string) => {
+        body += chunk
+      })
+      response.on('end', () => resolve({ status: response.statusCode ?? 0, body }))
+    })
+    sent.on('error', reject)
+    sent.end()
+  })
+
+/** A hook as its sender posts it to the real Worker: myagent's doorbell or an MCP Events webhook. */
+const hook = (url: string, path: string, headers: Record<string, string>, body: string) =>
+  ownerFetch(`${url}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body })
+
+/**
+ * The agent's internal API from outside the Worker (`/internal/*`): nobody reaches it, signed in or not, whatever the
+ * path says on the way. The Worker's own callers still do: a doorbell with its user's route token reaches the agent,
+ * which refuses it without a plan (402) and checks myagent's signature with one (403, no channel here); an Events
+ * webhook reaches ingress, which ends the subscription once resident authority is off (410).
+ */
+export async function internalRefusalCase(url: string): Promise<void> {
+  const outside = await ownerFetch(`${url}/internal/recent?limit=5`, { headers: { 'cf-ray': 'ray-internal' } })
+  expect(await refusalOf(outside)).toMatchObject({ status: 404, code: 'not_found', quoted: true })
+  const owner = await person(url)
+  const signedIn = { cookie: owner.cookie, 'cf-connecting-ip': owner.ip }
+  for (const path of ['/api/%2e%2e/internal/recent?limit=5', '/api/%2E%2E/internal/inspect', '/api/../internal/recent'])
+    expect(await rawGet(url, path, signedIn)).toMatchObject({ status: 404, body: expect.stringContaining('not_found') })
+  const doorbell = `/hooks/myagent/${owner.userId}/${await hookToken(CREDENTIAL_KEY, owner.userId)}`
+  const ring = () =>
+    hook(url, doorbell, { 'x-myagent-timestamp': String(Date.now()), 'x-myagent-signature': 'x' }, '{"cursor":"0"}')
+  expect(await refusalOf(await ring())).toMatchObject({ status: 402, code: 'subscription_required' })
+  await call(url, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
+  expect(await refusalOf(await ring())).toMatchObject({ status: 403, code: 'forbidden', quoted: true })
+  expect((await call(url, owner, '/api/agent/resident', { enabled: false })).status).toBe(200)
+  const webhook = await hook(
+    url,
+    `/hooks/mcp-events/${owner.userId}/${await eventsHookToken(CREDENTIAL_KEY, owner.userId)}`,
+    { 'x-mcp-subscription-id': 'remote-1', 'webhook-id': 'msg_1', 'webhook-timestamp': '0', 'webhook-signature': '' },
+    '{}',
+  )
+  expect(webhook.status).toBe(410)
+}
+
+/** The text of the server-sent events on `response` so far: `until` reads on until `seen` holds or `ms` pass. */
+function eventText(response: Response) {
+  const reader = response.body?.getReader()
+  const decoder = new TextDecoder()
+  let text = ''
+  const until = async (seen: (text: string) => boolean, ms: number): Promise<string> => {
+    if (reader === undefined) return text
+    const deadline = Date.now() + ms
+    while (!seen(text) && Date.now() < deadline) {
+      const timeout = new Promise<undefined>((resolve) => setTimeout(resolve, Math.max(0, deadline - Date.now())))
+      const read = await Promise.race([reader.read(), timeout])
+      if (read === undefined || read.done) break
+      text += decoder.decode(read.value, { stream: true })
+    }
+    return text
+  }
+  return { until, close: () => reader?.cancel() }
+}
+
+/**
+ * A chat's event stream through the real Worker stays open past the request that opened it: its snapshot first, then
+ * the batch Pi commits when the owner sends a message afterwards.
+ */
+export async function conversationEventsCase(url: string): Promise<void> {
+  const owner = await person(url)
+  await call(url, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
+  const stream = await call(url, owner, '/api/conversations/1/events')
+  expect(stream.status).toBe(200)
+  expect(stream.headers.get('content-type')).toBe('text/event-stream')
+  const events = eventText(stream)
+  try {
+    expect(await events.until((text) => text.includes('event: snapshot'), 5000)).toContain('event: snapshot')
+    const sent = await call(url, owner, '/api/conversations/1/messages', {
+      input: 'hello stream',
+      operationId: 'sse-1',
+    })
+    expect(sent.status).toBe(202)
+    expect(await events.until((text) => text.includes('event: batch'), 10_000)).toContain('event: batch')
+  } finally {
+    await events.close()
+  }
 }
