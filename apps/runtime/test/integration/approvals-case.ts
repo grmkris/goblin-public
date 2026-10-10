@@ -1,8 +1,10 @@
 import { approvalsBackground } from './approvals-background.ts'
 import { expect } from 'vitest'
 import { Predicate, Schema } from 'effect'
-import { ApprovalView, ConversationView } from '@goblin/contracts'
-import { person, call, ownerFetch, waitFor, type Person } from './owner-requests.ts'
+import { ApprovalView } from '@goblin/contracts'
+import { type AgentFetch, callOwner } from '../owner-client.ts'
+import { call, grantPlan, lever, person, showing, signedIn, type Person } from './owner-requests.ts'
+import { answerOf } from './probe-reads.ts'
 
 const SERVER = 'apps-fixture'
 const TOOL = 'board'
@@ -14,17 +16,6 @@ const args = {
 }
 const decodeCalls = Schema.decodeUnknownSync(Schema.Array(Schema.Struct({ name: Schema.String, args: Schema.Unknown })))
 const decodeApproval = Schema.decodeUnknownSync(ApprovalView)
-const send = (base: string, owner: Person, path: string, method: string, body: unknown) =>
-  ownerFetch(`${base}${path}`, {
-    method,
-    headers: {
-      cookie: owner.cookie,
-      origin: 'https://goblin.test',
-      'content-type': 'application/json',
-      'x-goblin-csrf': '1',
-    },
-    body: JSON.stringify(body),
-  })
 export function approvalId(value: unknown): string | undefined {
   if (Array.isArray(value)) return value.map(approvalId).find((id) => id !== undefined)
   if (!Predicate.isObject(value)) return undefined
@@ -39,97 +30,109 @@ export function approvalId(value: unknown): string | undefined {
     .map(approvalId)
     .find((id) => id !== undefined)
 }
-async function hold(base: string, owner: Person, inputArgs: unknown = args) {
-  const thread = Schema.decodeUnknownSync(ConversationView)(
-    await (await call(base, owner, '/api/conversations', {})).json(),
-  )
-  expect(
-    (
-      await call(base, owner, `/api/conversations/${thread.id}/messages`, {
-        input: `call mcp_call ${JSON.stringify({ serverId: SERVER, name: TOOL, arguments: inputArgs })}`,
-        operationId: crypto.randomUUID(),
-      })
-    ).status,
-  ).toBe(202)
-  const snapshot = await waitFor(base, owner, `/api/conversations/${thread.id}/snapshot`, 'approval-required')
-  const id = approvalId(JSON.parse(snapshot))
+
+/** The id of the call held for approval in `chat`, once its snapshot shows it. */
+export async function heldIn(me: AgentFetch, chat: string): Promise<string> {
+  const id = approvalId(JSON.parse(await showing(me, chat, 'approval-required')))
   if (id === undefined) throw new Error('missing held call')
+  return id
+}
+
+/** The owner's decision on the held call `id`. */
+export const decide = (me: AgentFetch, id: string, allowed: boolean) =>
+  callOwner(me, (api) => api.mcp.decideApproval({ params: { id }, payload: { allowed } }))
+
+async function hold(me: AgentFetch, inputArgs: unknown = args) {
+  const thread = await callOwner(me, (api) => api.conversations.create({ payload: {} }))
+  const input = `call mcp_call ${JSON.stringify({ serverId: SERVER, name: TOOL, arguments: inputArgs })}`
+  const sent = await callOwner(me, (api) =>
+    api.conversations.submit({ params: { id: thread.id }, payload: { input, operationId: crypto.randomUUID() } }),
+  )
+  expect(sent.accepted).toBe(true)
+  const id = await heldIn(me, thread.id)
   return { id, thread: thread.id, path: `/api/mcp/approvals/${encodeURIComponent(id)}` }
 }
 const calls = async (base: string, owner: Person) =>
-  decodeCalls(await (await call(base, owner, '/__test/approvals/calls')).json())
-const mark = (base: string, owner: Person, enabled: boolean) =>
-  send(base, owner, '/api/mcp/ask-first', 'PUT', { serverId: SERVER, name: TOOL, enabled })
-const grant = (base: string, owner: Person, allowed: boolean) =>
-  send(base, owner, '/api/mcp/grants', 'PUT', { serverId: SERVER, name: TOOL, allowed })
+  decodeCalls(await (await lever(base, owner, 'approvals/calls')).json())
+const mark = (me: AgentFetch, enabled: boolean) =>
+  callOwner(me, (api) => api.mcp.setAskFirst({ payload: { serverId: SERVER, name: TOOL, enabled } }))
+const grant = (me: AgentFetch, allowed: boolean) =>
+  callOwner(me, (api) => api.mcp.setToolGrant({ payload: { serverId: SERVER, name: TOOL, allowed } }))
+const approval = (me: AgentFetch, id: string) => callOwner(me, (api) => api.mcp.approval({ params: { id } }))
 
 export async function approvalsCase(base: string): Promise<void> {
   const owner = await person(base)
-  await call(base, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
-  expect((await call(base, owner, `/api/mcp/${SERVER}/connect`, {})).status).toBe(200)
-  expect((await grant(base, owner, true)).status).toBe(200)
-  expect((await mark(base, owner, true)).status).toBe(200)
-  const held = await hold(base, owner)
+  await grantPlan(base, owner)
+  const me = signedIn(base, owner)
+  await callOwner(me, (api) => api.mcp.connect({ params: { id: SERVER } }))
+  await grant(me, true)
+  await mark(me, true)
+  const held = await hold(me)
   expect(await calls(base, owner)).toEqual([])
-  const reviewed = decodeApproval(await (await call(base, owner, held.path)).json())
+  const reviewed = await approval(me, held.id)
   expect(reviewed).toMatchObject({ state: 'pending', arguments: { ...args, accessToken: '[redacted]' } })
   expect(JSON.stringify(reviewed)).not.toContain('fixture-private')
   const other = await person(base)
-  await call(base, other, '/__test/billing/override', { userId: other.userId, dailyCredits: 1000 })
-  expect((await call(base, other, held.path)).status).toBe(404)
-  expect((await call(base, other, held.path, { allowed: true })).status).toBe(404)
+  await grantPlan(base, other)
+  const them = signedIn(base, other)
+  expect(await answerOf(them, (api) => api.mcp.approval({ params: { id: held.id } }))).toBe('NotFound')
+  expect(
+    await answerOf(them, (api) => api.mcp.decideApproval({ params: { id: held.id }, payload: { allowed: true } })),
+  ).toBe('NotFound')
+  // Arguments the browser adds to its decision are not part of it: the call runs with the frozen ones.
   const approved = await call(base, owner, held.path, { allowed: true, arguments: { operationKey: 'browser-tamper' } })
   expect(approved.status).toBe(200)
   expect(decodeApproval(await approved.json()).state).toBe('completed')
   expect(await calls(base, owner)).toEqual([{ name: TOOL, args }])
-  await call(base, owner, held.path, { allowed: true })
+  await decide(me, held.id, true)
   expect(await calls(base, owner)).toHaveLength(1)
-  await waitFor(base, owner, `/api/conversations/${held.thread}/snapshot`, 'fixture-board')
+  await showing(me, held.thread, 'fixture-board')
 
-  const refused = await hold(base, owner, { operationKey: 'op-refused' })
-  expect(decodeApproval(await (await call(base, owner, refused.path, { allowed: false })).json()).state).toBe('refused')
-  await call(base, owner, refused.path, { allowed: true })
-  expect(await calls(base, owner)).toHaveLength(1)
-
-  const revoked = await hold(base, owner, { operationKey: 'op-revoked' })
-  await grant(base, owner, false)
-  await grant(base, owner, true)
-  await mark(base, owner, true)
-  expect(decodeApproval(await (await call(base, owner, revoked.path, { allowed: true })).json()).state).toBe('failed')
+  const refused = await hold(me, { operationKey: 'op-refused' })
+  expect((await decide(me, refused.id, false)).state).toBe('refused')
+  await decide(me, refused.id, true)
   expect(await calls(base, owner)).toHaveLength(1)
 
-  const scoped = await hold(base, owner, { operationKey: 'op-scoped' })
-  expect(
-    (
-      await send(base, owner, `/api/conversations/${scoped.thread}/capabilities`, 'PATCH', {
-        target: { kind: 'tool', serverId: SERVER, name: TOOL },
-        on: false,
-      })
-    ).status,
-  ).toBe(200)
-  expect(decodeApproval(await (await call(base, owner, scoped.path, { allowed: true })).json()).state).toBe('failed')
+  const revoked = await hold(me, { operationKey: 'op-revoked' })
+  await grant(me, false)
+  await grant(me, true)
+  await mark(me, true)
+  expect((await decide(me, revoked.id, true)).state).toBe('failed')
+  expect(await calls(base, owner)).toHaveLength(1)
+
+  const scoped = await hold(me, { operationKey: 'op-scoped' })
+  await callOwner(me, (api) =>
+    api.conversations.setCapability({
+      params: { id: scoped.thread },
+      payload: { target: { kind: 'tool', serverId: SERVER, name: TOOL }, on: false },
+    }),
+  )
+  expect((await decide(me, scoped.id, true)).state).toBe('failed')
   expect(await calls(base, owner)).toHaveLength(1)
 
   // App and alternate model dispatches must stop at the central seam even without the Pi hook.
-  const app = await call(
-    base,
-    owner,
-    `/api/mcp/${SERVER}/tools/call`,
-    { name: TOOL, arguments: {} },
-    { 'x-mcp-caller': 'app' },
+  const app = await answerOf(me, (api) =>
+    api.mcp.callTool({
+      params: { id: SERVER },
+      headers: { 'x-mcp-caller': 'app' },
+      payload: { name: TOOL, arguments: {} },
+    }),
   )
-  expect(app.status).toBe(403)
+  // A 403: the App's own grants do not hold this tool.
+  expect(['Forbidden', 'GrantDenied']).toContain(app)
   expect(await calls(base, owner)).toHaveLength(1)
-  const human = await call(base, owner, `/api/mcp/${SERVER}/tools/call`, {
-    name: TOOL,
-    arguments: { operationKey: 'manual-owner' },
-  })
-  expect(human.status).toBe(200)
+  await callOwner(me, (api) =>
+    api.mcp.callTool({
+      params: { id: SERVER },
+      headers: {},
+      payload: { name: TOOL, arguments: { operationKey: 'manual-owner' } },
+    }),
+  )
   expect(await calls(base, owner)).toHaveLength(2)
   await approvalsBackground(base, owner)
   expect((await calls(base, owner)).map((item) => item.args)).toContainEqual({ operationKey: 'routine-frozen' })
   expect((await calls(base, owner)).map((item) => item.args)).not.toContainEqual({ operationKey: 'subagent-frozen' })
-  const recovery = await (await call(base, owner, '/__test/approvals/recovery')).json()
+  const recovery = await (await lever(base, owner, 'approvals/recovery')).json()
   expect(recovery).toMatchObject({
     refused: ['arguments', 'session', 'endpoint', 'caller'],
     dispatching: 'dispatching',

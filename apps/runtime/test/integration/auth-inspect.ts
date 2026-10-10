@@ -3,7 +3,7 @@ import { InspectConversations } from '@goblin/contracts/inspect'
 import { Schema } from 'effect'
 import { createHash } from 'node:crypto'
 import { expect } from 'vitest'
-import { call, type Person, person } from './owner-requests.ts'
+import { grantPlan, type Person, person } from './owner-requests.ts'
 
 const APP = 'https://goblin.test'
 const REDIRECT = 'http://127.0.0.1:9/callback'
@@ -225,7 +225,7 @@ export async function inspectAuthCase(base: string) {
   expect(inspection(await toolsOf(base, narrowed.access))).toEqual([])
 
   // With a plan, reading main's newest messages works; revoking the client in Settings then ends every token.
-  await call(base, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
+  await grantPlan(base, owner)
   const reading = await connect(base, narrowed.access)
   try {
     const recent = await reading.callTool({ name: 'get_recent_messages', arguments: { limit: 5 } })

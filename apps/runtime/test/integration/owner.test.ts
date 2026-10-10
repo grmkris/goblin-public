@@ -2,8 +2,8 @@ import * as Alchemy from 'alchemy'
 import * as Cloudflare from 'alchemy/Cloudflare'
 import * as Test from 'alchemy/Test/Vitest'
 import { Config, Effect, Schema } from 'effect'
-import { ConversationView } from '@goblin/contracts'
 import { expect } from 'vitest'
+import { callOwner } from '../owner-client.ts'
 import Stack from './owner-stack.ts'
 import { approvalsCase } from './approvals-case.ts'
 import { appsCase } from './apps-case.ts'
@@ -22,7 +22,7 @@ import {
   moveStopCase,
   moveTopicCase,
 } from './move-case.ts'
-import { person, call, ownerFetch, workspaceOf, type Person } from './owner-requests.ts'
+import { call, grantPlan, lever, person, signedIn, workspaceOf, type Person } from './owner-requests.ts'
 import { clientErrorsCase, conversationEventsCase, csrfCase, internalRefusalCase } from './edge-case.ts'
 
 const harness = Test.make({
@@ -134,24 +134,11 @@ harness.test(
 async function ownerRoutingCase(url: string): Promise<void> {
   const owner = await person(url)
   const other = await person(url)
-  for (const who of [owner, other])
-    await call(url, who, '/__test/billing/override', { userId: who.userId, dailyCredits: 1000 })
-  const thread = Schema.decodeUnknownSync(ConversationView)(
-    await (await call(url, owner, '/api/conversations', {})).json(),
-  )
+  for (const who of [owner, other]) await grantPlan(url, who)
+  const me = signedIn(url, owner)
+  const thread = await callOwner(me, (api) => api.conversations.create({ payload: {} }))
   const sentinel = `private-owner-${crypto.randomUUID()}`
-  const renamed = await ownerFetch(`${url}/api/conversations/${thread.id}`, {
-    method: 'PATCH',
-    // Every owner write carries the CSRF header, as the web sends it.
-    headers: {
-      cookie: owner.cookie,
-      origin: 'https://goblin.test',
-      'content-type': 'application/json',
-      'x-goblin-csrf': '1',
-    },
-    body: JSON.stringify({ title: sentinel }),
-  })
-  expect(renamed.status).toBe(200)
+  await callOwner(me, (api) => api.conversations.update({ params: { id: thread.id }, payload: { title: sentinel } }))
   const selection = { 'x-goblin-workspace': owner.userId }
   // What each account's workspace feed shows, as JSON.
   const shown = async (who: Person, path?: string, headers?: Record<string, string>) =>
@@ -183,8 +170,8 @@ if (primaryProfile === 'permuted')
       const { url } = yield* stack
       const response = yield* Effect.promise(async () => {
         const owner = await person(url)
-        await call(url, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
-        return call(url, owner, '/__test/primary-profile')
+        await grantPlan(url, owner)
+        return lever(url, owner, 'primary-profile')
       })
       expect(response.status).toBe(200)
       const result = yield* Schema.decodeUnknownEffect(

@@ -1,5 +1,5 @@
 import { WorkspaceSnapshot } from '@goblin/contracts'
-import { OwnerApi } from '@goblin/contracts/api'
+import { AccountApi, OwnerApi } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import * as FetchHttpClient from 'effect/http/FetchHttpClient'
@@ -12,6 +12,9 @@ export type AgentFetch = { readonly fetch: (request: Request) => Promise<Respons
 
 /** The owner API's typed client, as the tests see it. */
 export type OwnerClient = HttpApiClient.ForApi<typeof OwnerApi>
+
+/** The account API's typed client (billing, inbound clients, crash reports): what the Worker answers itself. */
+type AccountClient = HttpApiClient.ForApi<typeof AccountApi>
 
 /**
  * The typed owner API over one agent's own `fetch`, with what the Worker edge adds to a forwarded request: its
@@ -29,6 +32,16 @@ export const ownerApi = (agent: AgentFetch, ref = 'integration-probe') =>
 /** One owner API call against `agent`: its value, or a rejection with the typed failure it answered. */
 export const callOwner = <A, E>(agent: AgentFetch, call: (api: OwnerClient) => Effect.Effect<A, E>): Promise<A> =>
   Effect.runPromise(Effect.flatMap(ownerApi(agent), call))
+
+/** One account API call through `worker` (a signed-in browser, `signedIn`), as `callOwner` makes an owner one. */
+export const callAccount = <A, E>(worker: AgentFetch, call: (api: AccountClient) => Effect.Effect<A, E>): Promise<A> =>
+  Effect.runPromise(
+    HttpApiClient.make(AccountApi, { baseUrl: 'https://agent' }).pipe(
+      Effect.flatMap(call),
+      Effect.provide(FetchHttpClient.layer),
+      Effect.provideService(FetchHttpClient.Fetch, (input, init) => worker.fetch(new Request(input, init))),
+    ),
+  )
 
 const decodeWorkspace = Schema.decodeUnknownSync(WorkspaceSnapshot)
 

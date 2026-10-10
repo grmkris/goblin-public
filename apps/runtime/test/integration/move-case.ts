@@ -2,13 +2,14 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { URL as FileURL } from 'node:url'
 import { expect } from 'vitest'
 import * as Schema from 'effect/Schema'
-import { ConversationView, MoveReceipt, ThreadHeadData, TopicView } from '@goblin/contracts'
-import { call, ownerFetch, person, workspaceOf, type Person } from './owner-requests.ts'
+import { ThreadHeadData, type TopicView } from '@goblin/contracts'
+import { statusOf } from '@goblin/contracts/api'
+import { type OwnerClient, callOwner } from '../owner-client.ts'
+import { grantPlan, holding, lever, person, showing, signedIn, workspaceOf, type Person } from './owner-requests.ts'
+import { ownerResult, ownerSnapshot } from './probe-reads.ts'
+import { waitFor } from './until.ts'
 
-const decodeReceipt = Schema.decodeUnknownSync(MoveReceipt)
-const decodeView = Schema.decodeUnknownSync(ConversationView)
 const decodeHead = Schema.decodeUnknownSync(ThreadHeadData)
-const decodeTopic = Schema.decodeUnknownSync(TopicView)
 const Entry = Schema.Struct({
   id: Schema.Finite,
   kind: Schema.String,
@@ -42,33 +43,28 @@ const decodeState = Schema.decodeUnknownSync(
 )
 
 /** Polls `read` until `done` holds, for up to ten seconds. */
-async function until<A>(read: () => Promise<A>, done: (value: A) => boolean, what: string): Promise<A> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    const value = await read()
-    if (done(value)) return value
-    await new Promise((resolve) => setTimeout(resolve, 25))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
+const until = <A>(read: () => Promise<A>, done: (value: A) => boolean, what: string): Promise<A> =>
+  waitFor(read, done, what, 10_000)
 
-const send = (url: string, owner: Person, chat: string, input: string, operationId = crypto.randomUUID()) =>
-  call(url, owner, `/api/conversations/${chat}/messages`, { input, operationId })
+/** The owner's message into `chat`, admitted. */
+const send = async (url: string, owner: Person, chat: string, input: string) => {
+  const receipt = await callOwner(signedIn(url, owner), (api) =>
+    api.conversations.submit({ params: { id: chat }, payload: { input, operationId: crypto.randomUUID() } }),
+  )
+  expect(receipt.accepted).toBe(true)
+}
+/** Move to thread of `entry` in `chat`, as the owner API answers it: the receipt, or the refusal as data. */
+const moving = (chat: string, entry: number, operationId: string) => (api: OwnerClient) =>
+  api.conversations.move({ params: { id: chat }, payload: { entry, operationId } })
+const tryMove = (url: string, owner: Person, chat: string, entry: number, operationId: string) =>
+  ownerResult(signedIn(url, owner), moving(chat, entry, operationId))
+/** Move to thread of `entry` in `chat`: its receipt, a refused one included. */
 const move = (url: string, owner: Person, chat: string, entry: number, operationId: string) =>
-  call(url, owner, `/api/conversations/${chat}/move`, { entry, operationId })
-const patch = (url: string, owner: Person, path: string, body: unknown) =>
-  ownerFetch(`${url}${path}`, {
-    method: 'PATCH',
-    headers: {
-      cookie: owner.cookie,
-      origin: 'https://goblin.test',
-      'x-goblin-csrf': '1',
-      'content-type': 'application/json',
-      'cf-connecting-ip': owner.ip,
-    },
-    body: JSON.stringify(body),
-  })
+  callOwner(signedIn(url, owner), moving(chat, entry, operationId))
+const stop = (url: string, owner: Person, chat: string) =>
+  callOwner(signedIn(url, owner), (api) => api.conversations.stop({ params: { id: chat }, payload: {} }))
 const entries = async (url: string, owner: Person, chat: string): Promise<readonly Entry[]> =>
-  decodeSnapshot(await (await call(url, owner, `/api/conversations/${chat}/snapshot`)).json()).entries ?? []
+  decodeSnapshot(await ownerSnapshot(signedIn(url, owner), chat)).entries ?? []
 const text = (entry: Entry): string => JSON.stringify(entry.model ?? null)
 /** How many of `chat`'s answers say exactly `echo: <said>`. */
 const echoes = async (url: string, owner: Person, chat: string, said: string) =>
@@ -93,39 +89,36 @@ const messageId = async (url: string, owner: Person, chat: string, said: string)
       `message ${said}`,
     )
   )?.id ?? 0
-const held = async (url: string, owner: Person) => (await call(url, owner, '/__test/queue/held')).text()
-const holding = (url: string, owner: Person, input: string) =>
-  until(
-    async () => held(url, owner),
-    (inputs) => inputs.includes(input),
-    `${input} held`,
-  )
-const release = (url: string, owner: Person, input: string) => call(url, owner, '/__test/queue/release', { input })
+const held = async (url: string, owner: Person) => (await lever(url, owner, 'queue/held')).text()
+const release = (url: string, owner: Person, input: string) => lever(url, owner, 'queue/release', { input })
 const requests = async (url: string, owner: Person) =>
-  decodeRequests(await (await call(url, owner, '/__test/move/requests')).json())
-const state = async (url: string, owner: Person) =>
-  decodeState(await (await call(url, owner, '/__test/move/state')).json())
+  decodeRequests(await (await lever(url, owner, 'move/requests')).json())
+const state = async (url: string, owner: Person) => decodeState(await (await lever(url, owner, 'move/state')).json())
+/** Arms the mover to stop (`crash`) or wait (`pause`) at `phase` of the next move. */
+const arm = async (url: string, owner: Person, what: 'crash' | 'pause', phase: 'fork' | 'head') =>
+  expect((await lever(url, owner, `move/${what}`, { phase })).status).toBe(200)
+/** Until the armed move waits after its fork. */
+const pausedAfterFork = (url: string, owner: Person) =>
+  until(
+    async () => (await (await lever(url, owner, 'move/paused')).text()).includes('fork'),
+    Boolean,
+    'the move paused after its fork',
+  )
+const resume = async (url: string, owner: Person) =>
+  expect((await lever(url, owner, 'move/resume', {})).status).toBe(200)
 const views = async (url: string, owner: Person) => (await workspaceOf(url, owner)).conversations
 const heads = async (url: string, owner: Person, chat: string) =>
   (await entries(url, owner, chat)).filter((entry) => entry.kind === 'app.thread_head').map((e) => decodeHead(e.data))
 
-/** Waits until `chat`'s transcript holds `needle`. */
-const showing = (url: string, owner: Person, chat: string, needle: string) =>
-  until(
-    async () => JSON.stringify(await entries(url, owner, chat)),
-    (body) => body.includes(needle),
-    `${needle} in ${chat}`,
-  )
-
 async function owned(url: string): Promise<Person> {
   const owner = await person(url)
-  await call(url, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
+  await grantPlan(url, owner)
   return owner
 }
 
 /** Sends `said` into `chat` and waits for its answer: a settled turn, when nothing else runs there. */
 async function turn(url: string, owner: Person, chat: string, said: string): Promise<number> {
-  expect((await send(url, owner, chat, said)).status).toBe(202)
+  await send(url, owner, chat, said)
   await waitEcho(url, owner, chat, said)
   return messageId(url, owner, chat, said)
 }
@@ -148,7 +141,7 @@ export async function moveSettledCase(url: string): Promise<void> {
   const entry = await turn(url, owner, '1', moved)
   const before = (await state(url, owner)).sessions
   const operationId = crypto.randomUUID()
-  const receipt = decodeReceipt(await (await move(url, owner, '1', entry, operationId)).json())
+  const receipt = await move(url, owner, '1', entry, operationId)
   expect(receipt).toMatchObject({ operationId, chat: '1', state: 'settled' })
   const thread = receipt.thread ?? ''
   expect((await state(url, owner)).sessions).toBe(before + 1)
@@ -189,10 +182,13 @@ export async function moveSettledCase(url: string): Promise<void> {
   const memory = (await state(url, owner)).memory
   for (const id of turnIds.map((each) => each.id)) expect(memory).not.toContain(id)
   // The same operation finds the same move; the moved turn cannot move twice.
-  expect(decodeReceipt(await (await move(url, owner, '1', entry, operationId)).json())).toEqual(receipt)
-  const again = decodeReceipt(await (await move(url, owner, '1', entry, crypto.randomUUID())).json())
+  expect(await move(url, owner, '1', entry, operationId)).toEqual(receipt)
+  const again = await move(url, owner, '1', entry, crypto.randomUUID())
   expect(again).toMatchObject({ state: 'refused', reason: 'moved' })
-  expect((await move(url, owner, thread, entry, operationId)).status).toBe(409)
+  expect(await tryMove(url, owner, thread, entry, operationId)).toMatchObject({
+    ok: false,
+    error: { _tag: 'Conflict' },
+  })
   expect((await state(url, owner)).sessions).toBe(before + 1)
 }
 
@@ -205,50 +201,41 @@ export async function moveRefusedCase(url: string): Promise<void> {
   const owner = await owned(url)
   const older = await turn(url, owner, '1', 'an older turn')
   const running = 'queue-hold:still running'
-  expect((await send(url, owner, '1', running)).status).toBe(202)
+  await send(url, owner, '1', running)
   await holding(url, owner, running)
   const runningEntry = await messageId(url, owner, '1', running)
   const streaming = crypto.randomUUID()
-  const refused = decodeReceipt(await (await move(url, owner, '1', runningEntry, streaming)).json())
+  const refused = await move(url, owner, '1', runningEntry, streaming)
   expect(refused).toMatchObject({ state: 'refused', reason: 'streaming' })
   await release(url, owner, running)
   await waitEcho(url, owner, '1', running)
-  expect(decodeReceipt(await (await move(url, owner, '1', runningEntry, streaming)).json())).toEqual(refused)
-  expect(decodeReceipt(await (await move(url, owner, '1', older, crypto.randomUUID())).json())).toMatchObject({
-    reason: 'not_latest',
-  })
+  expect(await move(url, owner, '1', runningEntry, streaming)).toEqual(refused)
+  expect(await move(url, owner, '1', older, crypto.randomUUID())).toMatchObject({ reason: 'not_latest' })
   const answer = (await entries(url, owner, '1')).findLast((each) => each.kind === 'pi.assistant')?.id ?? 0
-  expect(decodeReceipt(await (await move(url, owner, '1', answer, crypto.randomUUID())).json())).toMatchObject({
-    reason: 'not_user_message',
-  })
-  const side = decodeView(await (await call(url, owner, '/api/conversations', {})).json())
+  expect(await move(url, owner, '1', answer, crypto.randomUUID())).toMatchObject({ reason: 'not_user_message' })
+  const side = await callOwner(signedIn(url, owner), (api) => api.conversations.create({ payload: {} }))
   const sideEntry = await turn(url, owner, side.id, 'in a side thread')
-  expect(decodeReceipt(await (await move(url, owner, side.id, sideEntry, crypto.randomUUID())).json())).toMatchObject({
+  expect(await move(url, owner, side.id, sideEntry, crypto.randomUUID())).toMatchObject({
     reason: 'not_conversation',
   })
   const before = (await state(url, owner)).sessions
   const operationId = crypto.randomUUID()
   // The same operation twice at once; the other one is sent only while that move holds after its fork, so it always
   // comes second (409 while the move works, else the turn is already moved).
-  expect((await call(url, owner, '/__test/move/pause', { phase: 'fork' })).status).toBe(200)
+  await arm(url, owner, 'pause', 'fork')
   const pair = [move(url, owner, '1', runningEntry, operationId), move(url, owner, '1', runningEntry, operationId)]
-  await until(
-    async () => (await (await call(url, owner, '/__test/move/paused')).text()).includes('fork'),
-    Boolean,
-    'the move paused after its fork',
-  )
-  const other = move(url, owner, '1', runningEntry, crypto.randomUUID())
-  expect((await call(url, owner, '/__test/move/resume', {})).status).toBe(200)
-  const [first, second, third] = await Promise.all([...pair, other])
-  const [a, b] = [decodeReceipt(await first?.json()), decodeReceipt(await second?.json())]
+  await pausedAfterFork(url, owner)
+  const other = tryMove(url, owner, '1', runningEntry, crypto.randomUUID())
+  await resume(url, owner)
+  const [[a, b], third] = await Promise.all([Promise.all(pair), other])
   expect(a).toEqual(b)
   expect(a).toMatchObject({ state: 'settled' })
-  if (third?.status === 200) expect(decodeReceipt(await third.json())).toMatchObject({ reason: 'moved' })
-  else expect(third?.status).toBe(409)
+  if (third.ok) expect(third.value).toMatchObject({ reason: 'moved' })
+  else expect(third.error._tag).toBe('Conflict')
   expect((await state(url, owner)).sessions).toBe(before + 1)
   expect(await heads(url, owner, '1')).toHaveLength(1)
   // With the newest turn moved, the one before it is the newest the chat still shows: it moves too.
-  const earlier = decodeReceipt(await (await move(url, owner, '1', older, crypto.randomUUID())).json())
+  const earlier = await move(url, owner, '1', older, crypto.randomUUID())
   expect(earlier).toMatchObject({ state: 'settled' })
   expect(await heads(url, owner, '1')).toHaveLength(2)
   // That Thread holds the earlier turn only, never the one moved before it.
@@ -270,16 +257,17 @@ export async function moveRestartCase(url: string): Promise<void> {
     const moved = `restart at ${phase}`
     const entry = await turn(url, owner, '1', moved)
     const before = (await state(url, owner)).sessions
-    expect((await call(url, owner, '/__test/move/crash', { phase })).status).toBe(200)
+    await arm(url, owner, 'crash', phase)
     const operationId = crypto.randomUUID()
     // expected: the object stops at the boundary, so the request may fail before it answers.
-    const crashed = await move(url, owner, '1', entry, operationId).catch(() => undefined)
-    expect(crashed?.status ?? 500).toBeGreaterThanOrEqual(500)
+    const crashed = await tryMove(url, owner, '1', entry, operationId).catch(() => undefined)
+    // It answers a 5xx, if it answers at all.
+    expect(crashed === undefined || (!crashed.ok && statusOf(crashed.error) >= 500)).toBe(true)
     const receipt = await until(
       async () => {
         // expected: the object may still be restarting; the next read tries again.
-        const response = await move(url, owner, '1', entry, operationId).catch(() => undefined)
-        return response?.status === 200 ? decodeReceipt(await response.json()) : undefined
+        const result = await tryMove(url, owner, '1', entry, operationId).catch(() => undefined)
+        return result?.ok === true ? result.value : undefined
       },
       (value) => value?.state === 'settled',
       `move settled after a restart at ${phase}`,
@@ -312,24 +300,22 @@ export async function moveStopCase(url: string): Promise<void> {
   const owner = await owned(url)
   await turn(url, owner, '1', 'stop history')
   const entry = await turn(url, owner, '1', 'stop around the move')
-  expect((await call(url, owner, '/__test/move/pause', { phase: 'fork' })).status).toBe(200)
+  await arm(url, owner, 'pause', 'fork')
   const paused = move(url, owner, '1', entry, crypto.randomUUID())
-  await until(
-    async () => (await (await call(url, owner, '/__test/move/paused')).text()).includes('fork'),
-    Boolean,
-    'paused after the fork',
-  )
-  expect((await call(url, owner, '/api/conversations/1/stop', {})).status).toBe(200)
-  expect((await call(url, owner, '/__test/move/resume', {})).status).toBe(200)
-  const receipt = decodeReceipt(await (await paused).json())
+  await pausedAfterFork(url, owner)
+  await stop(url, owner, '1')
+  await resume(url, owner)
+  const receipt = await paused
   expect(receipt).toMatchObject({ state: 'settled' })
   const thread = receipt.thread ?? ''
   const hold = 'queue-hold:in the moved thread'
-  expect((await send(url, owner, thread, hold)).status).toBe(202)
+  await send(url, owner, thread, hold)
   await holding(url, owner, hold)
-  expect((await call(url, owner, '/api/conversations/1/stop', {})).status).toBe(200)
+  await stop(url, owner, '1')
   expect(await held(url, owner)).toContain(hold)
-  expect((await patch(url, owner, `/api/conversations/${thread}`, { closed: true })).status).toBe(200)
+  await callOwner(signedIn(url, owner), (api) =>
+    api.conversations.update({ params: { id: thread }, payload: { closed: true } }),
+  )
   await until(
     async () => held(url, owner),
     (inputs) => !inputs.includes(hold),
@@ -345,18 +331,16 @@ export async function moveStopCase(url: string): Promise<void> {
  */
 export async function moveHelpersCase(url: string): Promise<void> {
   const owner = await owned(url)
-  expect(
-    (await send(url, owner, '1', 'call subagent_spawn {"name":"pre","message":"queue-hold:pre-job"}')).status,
-  ).toBe(202)
+  await send(url, owner, '1', 'call subagent_spawn {"name":"pre","message":"queue-hold:pre-job"}')
   await holding(url, owner, 'queue-hold:pre-job')
-  await showing(url, owner, '1', 'done: Started pre')
+  await showing(signedIn(url, owner), '1', 'done: Started pre')
   const spawning = 'call subagent_spawn {"name":"post","message":"queue-hold:post-job"}'
-  expect((await send(url, owner, '1', spawning)).status).toBe(202)
+  await send(url, owner, '1', spawning)
   await holding(url, owner, 'queue-hold:post-job')
-  await showing(url, owner, '1', 'done: Started post')
+  await showing(signedIn(url, owner), '1', 'done: Started post')
   const entry = await messageId(url, owner, '1', spawning)
   const receipt = await until(
-    async () => decodeReceipt(await (await move(url, owner, '1', entry, crypto.randomUUID())).json()),
+    async () => move(url, owner, '1', entry, crypto.randomUUID()),
     (value) => value.state === 'settled',
     'the spawning turn settled and moved',
   )
@@ -368,40 +352,30 @@ export async function moveHelpersCase(url: string): Promise<void> {
   expect(after.memory.every((logged) => logged < entry)).toBe(true)
   expect(recall).toBe(after.memory.length)
   await release(url, owner, 'queue-hold:post-job')
-  await showing(url, owner, thread, '[from subagent post]')
+  await showing(signedIn(url, owner), thread, '[from subagent post]')
   await release(url, owner, 'queue-hold:pre-job')
-  await showing(url, owner, '1', '[from subagent pre]')
+  await showing(signedIn(url, owner), '1', '[from subagent pre]')
   expect(JSON.stringify(await entries(url, owner, '1'))).not.toContain('[from subagent post]')
-  expect((await send(url, owner, thread, `call zoom {"id":${recall ?? 0},"n":1}`)).status).toBe(202)
-  await showing(url, owner, thread, `No line ${recall ?? 0}+1`)
+  await send(url, owner, thread, `call zoom {"id":${recall ?? 0},"n":1}`)
+  await showing(signedIn(url, owner), thread, `No line ${recall ?? 0}+1`)
 }
 
 /** A turn waiting on the owner's approval of an MCP call stays in its chat (`awaiting_approval`): it resumes there. */
 export async function moveApprovalCase(url: string): Promise<void> {
   const owner = await owned(url)
   const server = 'apps-fixture'
-  expect((await call(url, owner, `/api/mcp/${server}/connect`, {})).status).toBe(200)
-  const put = (path: string, body: unknown) =>
-    ownerFetch(`${url}${path}`, {
-      method: 'PUT',
-      headers: {
-        cookie: owner.cookie,
-        origin: 'https://goblin.test',
-        'content-type': 'application/json',
-        'x-goblin-csrf': '1',
-      },
-      body: JSON.stringify(body),
-    })
-  expect((await put('/api/mcp/grants', { serverId: server, name: 'board', allowed: true })).status).toBe(200)
-  expect((await put('/api/mcp/ask-first', { serverId: server, name: 'board', enabled: true })).status).toBe(200)
+  const me = signedIn(url, owner)
+  await callOwner(me, (api) => api.mcp.connect({ params: { id: server } }))
+  await callOwner(me, (api) => api.mcp.setToolGrant({ payload: { serverId: server, name: 'board', allowed: true } }))
+  await callOwner(me, (api) => api.mcp.setAskFirst({ payload: { serverId: server, name: 'board', enabled: true } }))
   await turn(url, owner, '1', 'approval history')
   const args = { serverId: server, name: 'board', arguments: { operationKey: 'moved-approval' } }
   const asking = `call mcp_call ${JSON.stringify(args)}`
-  expect((await send(url, owner, '1', asking)).status).toBe(202)
-  await showing(url, owner, '1', 'approval-required')
+  await send(url, owner, '1', asking)
+  await showing(signedIn(url, owner), '1', 'approval-required')
   const entry = await messageId(url, owner, '1', asking)
   const receipt = await until(
-    async () => decodeReceipt(await (await move(url, owner, '1', entry, crypto.randomUUID())).json()),
+    async () => move(url, owner, '1', entry, crypto.randomUUID()),
     (value) => value.reason !== 'streaming',
     'the asking turn settled',
   )
@@ -412,7 +386,7 @@ export async function moveApprovalCase(url: string): Promise<void> {
 async function readCost(url: string, owner: Person, chat: string): Promise<number> {
   const once = async () => {
     const started = performance.now()
-    expect((await call(url, owner, '/__test/move/latency', { chat, rounds: 200 })).status).toBe(200)
+    expect((await lever(url, owner, 'move/latency', { chat, rounds: 200 })).status).toBe(200)
     return performance.now() - started
   }
   await once()
@@ -421,11 +395,11 @@ async function readCost(url: string, owner: Person, chat: string): Promise<numbe
 
 /** A Topic with three exchanges, ready for moves or thread heads. */
 async function talkedTopic(url: string, owner: Person, name: string): Promise<TopicView> {
-  const topic = decodeTopic(
-    await (await call(url, owner, '/api/topics', { name, operationId: crypto.randomUUID() })).json(),
+  const topic = await callOwner(signedIn(url, owner), (api) =>
+    api.topics.create({ payload: { name, operationId: crypto.randomUUID() } }),
   )
   for (const said of [`${name} one`, `${name} two`, `${name} three`]) {
-    expect((await send(url, owner, topic.conversation, said)).status).toBe(202)
+    await send(url, owner, topic.conversation, said)
     await waitEcho(url, owner, topic.conversation, said)
   }
   return topic
@@ -441,7 +415,7 @@ export async function moveTopicCase(url: string): Promise<void> {
   const topic = await talkedTopic(url, owner, 'Moves')
   const channel = topic.conversation
   const entry = await turn(url, owner, channel, 'topic move')
-  const receipt = decodeReceipt(await (await move(url, owner, channel, entry, crypto.randomUUID())).json())
+  const receipt = await move(url, owner, channel, entry, crypto.randomUUID())
   expect(receipt).toMatchObject({ state: 'settled', chat: channel })
   expect((await views(url, owner)).find((view) => view.id === receipt.thread)).toMatchObject({
     topic: topic.id,
@@ -454,7 +428,7 @@ export async function moveTopicCase(url: string): Promise<void> {
   for (let index = 0; index < 20; index++) {
     const said = `chained ${index}`
     const chained = await turn(url, owner, channel, said)
-    const each = decodeReceipt(await (await move(url, owner, channel, chained, crypto.randomUUID())).json())
+    const each = await move(url, owner, channel, chained, crypto.randomUUID())
     expect(each).toMatchObject({ state: 'settled' })
     await turn(url, owner, control.conversation, said)
   }

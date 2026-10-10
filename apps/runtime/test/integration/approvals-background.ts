@@ -1,26 +1,22 @@
 import { expect } from 'vitest'
-import { Schema } from 'effect'
-import { ApprovalView, ConversationView, RoutineRunView, RoutineView } from '@goblin/contracts'
-import { call, waitFor, workspaceUntil, type Person } from './owner-requests.ts'
-import { approvalId } from './approvals-case.ts'
+import type { ConversationView } from '@goblin/contracts'
+import { callOwner } from '../owner-client.ts'
+import { signedIn, workspaceUntil, type Person } from './owner-requests.ts'
+import { decide, heldIn } from './approvals-case.ts'
+import { waitFor } from './until.ts'
 
 /** The subagent the background run starts to hold a call. */
 const approver = (view: ConversationView) => view.kind === 'subagent' && view.title === 'approver'
 
 const toolInput = (operationKey: string) =>
   `call mcp_call ${JSON.stringify({ serverId: 'apps-fixture', name: 'board', arguments: { operationKey } })}`
-async function heldIn(base: string, owner: Person, session: string): Promise<string> {
-  const snapshot = await waitFor(base, owner, `/api/conversations/${session}/snapshot`, 'approval-required')
-  const id = approvalId(JSON.parse(snapshot))
-  if (id === undefined) throw new Error('no background approval')
-  return `/api/mcp/approvals/${encodeURIComponent(id)}`
-}
-const RunPage = Schema.Struct({ runs: Schema.Array(RoutineRunView) })
 
+/** A routine run and a subagent each hold an ask-first call: the owner approves the routine's and refuses the other. */
 export async function approvalsBackground(base: string, owner: Person) {
-  const draft = Schema.decodeUnknownSync(RoutineView)(
-    await (
-      await call(base, owner, '/api/routines', {
+  const me = signedIn(base, owner)
+  const draft = await callOwner(me, (api) =>
+    api.routines.propose({
+      payload: {
         operationId: crypto.randomUUID(),
         definition: {
           title: 'Approval fixture',
@@ -31,63 +27,41 @@ export async function approvalsBackground(base: string, owner: Person) {
           allowedTools: [{ serverId: 'apps-fixture', name: 'board' }],
           budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
         },
-      })
-    ).json(),
+      },
+    }),
   )
-  expect(
-    (
-      await call(base, owner, `/api/routines/${draft.id}/confirm`, {
-        revision: draft.revision,
-        operationId: crypto.randomUUID(),
-      })
-    ).status,
-  ).toBe(200)
-  const run = Schema.decodeUnknownSync(RoutineRunView)(
-    await (
-      await call(base, owner, `/api/routines/${draft.id}/run`, {
-        revision: draft.revision,
-        operationId: crypto.randomUUID(),
-        confirmRun: true,
-      })
-    ).json(),
+  const params = { id: draft.id }
+  const revision = { revision: draft.revision, operationId: crypto.randomUUID() }
+  await callOwner(me, (api) => api.routines.confirm({ params, payload: revision }))
+  const run = await callOwner(me, (api) =>
+    api.routines.run({
+      params,
+      payload: { revision: draft.revision, operationId: crypto.randomUUID(), confirmRun: true },
+    }),
   )
-  let session = run.sessionId
-  for (let attempt = 0; session === null && attempt < 100; attempt++) {
-    const page = Schema.decodeUnknownSync(RunPage)(
-      await (await call(base, owner, `/api/routines/${draft.id}/runs`)).json(),
-    )
-    session = page.runs.find((item) => item.id === run.id)?.sessionId ?? null
-    if (session === null) await new Promise((resolve) => setTimeout(resolve, 20))
-  }
+  const runs = async () => (await callOwner(me, (api) => api.routines.runs({ params }))).runs
+  const session = await waitFor(
+    async () => run.sessionId ?? (await runs()).find((item) => item.id === run.id)?.sessionId ?? null,
+    (found) => found !== null,
+    'the routine conversation',
+  )
   if (session === null) throw new Error('no routine conversation')
-  const path = await heldIn(base, owner, session)
-  const waiting = Schema.decodeUnknownSync(RunPage)(
-    await (await call(base, owner, `/api/routines/${draft.id}/runs`)).json(),
-  )
-  expect(waiting.runs[0]?.state).toBe('waiting_owner')
-  const approved = await call(base, owner, path, { allowed: true })
-  expect(approved.status).toBe(200)
-  expect(Schema.decodeUnknownSync(ApprovalView)(await approved.json()).state).toBe('completed')
-  await waitFor(base, owner, `/api/routines/${draft.id}/runs`, '"state":"completed"')
+  const held = await heldIn(me, session)
+  expect((await runs())[0]?.state).toBe('waiting_owner')
+  expect((await decide(me, held, true)).state).toBe('completed')
+  await waitFor(runs, (all) => all.some((item) => item.state === 'completed'), 'the routine run completed')
 
-  const parent = Schema.decodeUnknownSync(ConversationView)(
-    await (await call(base, owner, '/api/conversations', {})).json(),
+  const parent = await callOwner(me, (api) => api.conversations.create({ payload: {} }))
+  const input = `call subagent_spawn ${JSON.stringify({ name: 'approver', message: toolInput('subagent-frozen') })}`
+  const sent = await callOwner(me, (api) =>
+    api.conversations.submit({ params: { id: parent.id }, payload: { input, operationId: crypto.randomUUID() } }),
   )
-  expect(
-    (
-      await call(base, owner, `/api/conversations/${parent.id}/messages`, {
-        input: `call subagent_spawn ${JSON.stringify({ name: 'approver', message: toolInput('subagent-frozen') })}`,
-        operationId: crypto.randomUUID(),
-      })
-    ).status,
-  ).toBe(202)
+  expect(sent.accepted).toBe(true)
   const child = (
     await workspaceUntil(base, owner, ({ conversations }) => conversations.some(approver))
   ).conversations.find(approver)
   if (child === undefined) throw new Error('no subagent conversation')
-  const childPath = await heldIn(base, owner, child.id)
-  expect((await call(base, owner, childPath, { allowed: false })).status).toBe(200)
-  expect(Schema.decodeUnknownSync(ApprovalView)(await (await call(base, owner, childPath)).json()).state).toBe(
-    'refused',
-  )
+  const childHeld = await heldIn(me, child.id)
+  await decide(me, childHeld, false)
+  expect((await callOwner(me, (api) => api.mcp.approval({ params: { id: childHeld } }))).state).toBe('refused')
 }

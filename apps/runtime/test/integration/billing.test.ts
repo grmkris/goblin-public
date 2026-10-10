@@ -1,4 +1,6 @@
-import { person, call, type Person } from './owner-requests.ts'
+import { callAccount, callOwner } from '../owner-client.ts'
+import { call, lever, person, signedIn, type Person } from './owner-requests.ts'
+import { answerOf } from './probe-reads.ts'
 import * as Alchemy from 'alchemy'
 import * as Cloudflare from 'alchemy/Cloudflare'
 import * as Test from 'alchemy/Test/Vitest'
@@ -16,8 +18,9 @@ const stack = harness.beforeAll(harness.deploy(Stack))
 const KEY = 'whsec_Zml4dHVyZS1iaWxsaW5nLXNpZ25pbmcta2V5'
 const Checkout = Schema.Struct({ checkoutUrl: Schema.String })
 const DAY = 86_400_000
-const lever = async (base: string, who: Person, action: string, extra: Record<string, unknown> = {}) =>
-  (await call(base, who, `/__test/billing/${action}`, { userId: who.userId, ...extra })).json()
+/** A billing test lever for `who` (`/__test/billing/<action>`), its JSON answer. */
+const billing = async (base: string, who: Person, action: string, extra: Record<string, unknown> = {}) =>
+  (await lever(base, who, `billing/${action}`, { userId: who.userId, ...extra })).json()
 async function deliver(
   base: string,
   who: Person,
@@ -49,23 +52,23 @@ async function deliver(
   })
   // Webhook acceptance precedes application. Observe the durable receipt before asserting the resulting plan.
   if (response.ok)
-    await expect.poll(() => lever(base, who, 'inbox', { eventId: id })).toMatchObject({ state: 'processed' })
+    await expect.poll(() => billing(base, who, 'inbox', { eventId: id })).toMatchObject({ state: 'processed' })
   return response
 }
 async function active(base: string, who: Person, enabled: boolean) {
   await expect
-    .poll(async () => {
-      const data = Schema.decodeUnknownSync(Schema.Struct({ active: Schema.Boolean }))(
-        await (await call(base, who, '/api/billing/state')).json(),
-      )
-      return data.active
-    })
+    .poll(async () => (await callAccount(signedIn(base, who), (api) => api.billing.state())).active)
     .toBe(enabled)
 }
 
+/** The agent's usage as `who` reads it: `ok`, or the tag of the plan admission's refusal. */
+const usage = (base: string, who: Person) => answerOf(signedIn(base, who), (api) => api.agent.usage())
+const usageToday = (base: string, who: Person) => callOwner(signedIn(base, who), (api) => api.agent.usage())
+
 async function activationCase(url: string) {
   const who = await person(url)
-  expect((await call(url, who, '/api/agent/usage')).status).toBe(402)
+  expect(await usage(url, who)).toBe('SubscriptionRequired')
+  // The checkout ignores what the browser says about the product and the account.
   const checkout = await call(url, who, '/api/billing/checkout', {
     productId: 'attacker-product',
     userId: 'another-user',
@@ -75,16 +78,15 @@ async function activationCase(url: string) {
   expect(link.searchParams.get('product')).toBe('pdt_goblin_fixture')
   expect(link.searchParams.get('user')).toBe(who.userId)
   expect(link.searchParams.get('return')).toBe('https://goblin.test/subscribe/success')
-  expect((await call(url, who, '/api/agent/usage')).status).toBe(402)
+  expect(await usage(url, who)).toBe('SubscriptionRequired')
   const id = crypto.randomUUID()
   expect((await deliver(url, who, {}, id)).status).toBe(200)
   await active(url, who, true)
-  expect((await call(url, who, '/api/agent/usage')).status).toBe(200)
-  expect(await (await call(url, who, '/api/agent/usage')).json()).toMatchObject({ limit: 800 })
+  expect(await usageToday(url, who)).toMatchObject({ limit: 800 })
   expect((await call(url, who, '/api/billing/checkout', {})).status).toBe(409)
   expect((await deliver(url, who, { status: 'expired' }, id)).status).toBe(200)
   await active(url, who, true)
-  expect(await lever(url, who, 'inbox', { eventId: id })).toMatchObject({ state: 'processed', attempts: 1 })
+  expect(await billing(url, who, 'inbox', { eventId: id })).toMatchObject({ state: 'processed', attempts: 1 })
   expect((await deliver(url, who, { status: 'expired' }, crypto.randomUUID(), Date.now() - DAY)).status).toBe(200)
   await active(url, who, true)
   expect(
@@ -119,12 +121,12 @@ async function cancellationCase(url: string) {
     next_billing_date: new Date(end).toISOString(),
   })
   await active(url, who, true)
-  expect(await lever(url, who, 'state', { at: end - 1 })).toMatchObject({ active: true, cancelAtPeriodEnd: true })
-  expect(await lever(url, who, 'state', { at: end })).toMatchObject({ active: false })
+  expect(await billing(url, who, 'state', { at: end - 1 })).toMatchObject({ active: true, cancelAtPeriodEnd: true })
+  expect(await billing(url, who, 'state', { at: end })).toMatchObject({ active: false })
   const expired = crypto.randomUUID()
   await deliver(url, who, { status: 'cancelled', next_billing_date: new Date(Date.now() - DAY).toISOString() }, expired)
   await active(url, who, false)
-  expect((await call(url, who, '/api/agent/usage')).status).toBe(402)
+  expect(await usage(url, who)).toBe('SubscriptionRequired')
   const grace = Date.now() + DAY
   await deliver(url, who, {
     status: 'on_hold',
@@ -132,14 +134,14 @@ async function cancellationCase(url: string) {
     past_due_ends_at: new Date(grace).toISOString(),
   })
   await active(url, who, true)
-  expect(await lever(url, who, 'state', { at: grace })).toMatchObject({ active: false })
+  expect(await billing(url, who, 'state', { at: grace })).toMatchObject({ active: false })
   await deliver(url, who, {
     status: 'past_due',
     next_billing_date: new Date(Date.now() - DAY).toISOString(),
     past_due_ends_at: null,
   })
   await active(url, who, true)
-  expect(await lever(url, who, 'state', { at: Date.now() + 3 * DAY })).toMatchObject({ active: false })
+  expect(await billing(url, who, 'state', { at: Date.now() + 3 * DAY })).toMatchObject({ active: false })
   await deliver(url, who, { status: 'expired' })
   await active(url, who, false)
 }
@@ -155,13 +157,13 @@ harness.test(
 async function allowanceCase(url: string) {
   const first = await person(url)
   const second = await person(url)
-  await lever(url, first, 'override', { dailyCredits: 17 })
-  await lever(url, second, 'override', { dailyCredits: 1234 })
-  expect(await (await call(url, first, '/api/agent/usage')).json()).toMatchObject({ used: 0, limit: 17 })
-  expect(await (await call(url, second, '/api/agent/usage')).json()).toMatchObject({ used: 0, limit: 1234 })
-  expect(await lever(url, first, 'as-prod')).toMatchObject({ active: false, dailyCredits: 0 })
+  await billing(url, first, 'override', { dailyCredits: 17 })
+  await billing(url, second, 'override', { dailyCredits: 1234 })
+  expect(await usageToday(url, first)).toMatchObject({ used: 0, limit: 17 })
+  expect(await usageToday(url, second)).toMatchObject({ used: 0, limit: 1234 })
+  expect(await billing(url, first, 'as-prod')).toMatchObject({ active: false, dailyCredits: 0 })
   const stranger = await person(url)
-  expect((await call(url, stranger, '/api/agent/usage')).status).toBe(402)
+  expect(await usage(url, stranger)).toBe('SubscriptionRequired')
 }
 
 harness.test(
@@ -185,13 +187,13 @@ async function recoveryCase(url: string) {
       metadata: { userId: who.userId },
     },
   })
-  await lever(url, who, 'pending', { eventId: id, body })
-  expect((await call(url, who, '/api/agent/usage')).status).toBe(402)
-  await lever(url, who, 'cron')
+  await billing(url, who, 'pending', { eventId: id, body })
+  expect(await usage(url, who)).toBe('SubscriptionRequired')
+  await billing(url, who, 'cron')
   await active(url, who, true)
-  expect(await lever(url, who, 'inbox', { eventId: id })).toMatchObject({ state: 'processed', attempts: 1 })
-  await lever(url, who, 'cron')
-  expect(await lever(url, who, 'inbox', { eventId: id })).toMatchObject({ state: 'processed', attempts: 1 })
+  expect(await billing(url, who, 'inbox', { eventId: id })).toMatchObject({ state: 'processed', attempts: 1 })
+  await billing(url, who, 'cron')
+  expect(await billing(url, who, 'inbox', { eventId: id })).toMatchObject({ state: 'processed', attempts: 1 })
 }
 harness.test(
   'local workerd: billing cron recovers a durable accepted event without a background run',

@@ -5,7 +5,8 @@ import { Effect, Schema } from 'effect'
 import { createHash } from 'node:crypto'
 import { expect } from 'vitest'
 import Stack from './auth-stack.ts'
-import { person, call } from './owner-requests.ts'
+import { call, person, signedIn } from './owner-requests.ts'
+import { answerOf } from './probe-reads.ts'
 import { inspectAuthCase } from './auth-inspect.ts'
 
 const harness = Test.make({
@@ -150,7 +151,8 @@ async function onlyCodeCase(base: string) {
   expect((await call(base, who, '/api/auth/delete-user', {})).ok).toBe(false)
   const fresh = await person(base)
   expect((await call(base, fresh, '/api/auth/delete-user', {})).status).toBe(200)
-  expect((await call(base, fresh, '/api/agent/usage')).status).toBe(401)
+  // Deleted: the session no longer signs anyone in.
+  expect(await answerOf(signedIn(base, fresh), (api) => api.agent.usage())).toBe('Unauthenticated')
 }
 harness.test(
   'native OTP only: removed account methods return 404; deletion requires a fresh code session',
@@ -200,9 +202,9 @@ async function oauthCase(base: string) {
   expect(loginUrl.pathname).toBe('/login')
   const oauth_query = loginUrl.search.slice(1)
   expect((await post(SEND, { email, type: 'sign-in', oauth_query })).status).toBe(200)
-  const signedIn = await post(SIGN_IN, { email, otp: (await mailFor(base, email)).code, oauth_query })
-  expect(signedIn.status).toBe(200)
-  const result = Schema.decodeUnknownSync(Schema.Struct({ url: Schema.String }))(await signedIn.json())
+  const login = await post(SIGN_IN, { email, otp: (await mailFor(base, email)).code, oauth_query })
+  expect(login.status).toBe(200)
+  const result = Schema.decodeUnknownSync(Schema.Struct({ url: Schema.String }))(await login.json())
   expect(new URL(result.url, 'https://goblin.test').pathname).toBe('/consent')
   expect(result.url).toContain(client.client_id)
 }

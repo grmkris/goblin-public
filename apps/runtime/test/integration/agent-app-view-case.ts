@@ -1,7 +1,7 @@
 import { expect } from 'vitest'
-import { Schema } from 'effect'
-import { AppCallResult, AppLaunch, AppSnapshot, ConversationView, WorkspaceSnapshot } from '@goblin/contracts'
-import { type Person, call, ownerFetch, person, waitFor } from './owner-requests.ts'
+import { type AgentFetch, callOwner } from '../owner-client.ts'
+import { call, grantPlan, person, showing, signedIn, snapshotText, workspaceOf } from './owner-requests.ts'
+import { answerOf } from './probe-reads.ts'
 
 const APP = `import { defineApp, s } from '@goblin/app'
 
@@ -48,42 +48,13 @@ export default function View() {
 }
 `
 
-/** An owner request; `csrf: false` leaves out the header the web sends on every write. */
-const send = (base: string, who: Person, path: string, init: { method: string; body?: unknown; csrf?: boolean }) =>
-  ownerFetch(`${base}${path}`, {
-    method: init.method,
-    headers: {
-      cookie: who.cookie,
-      origin: 'https://goblin.test',
-      'content-type': 'application/json',
-      ...(init.csrf === false ? {} : { 'x-goblin-csrf': '1' }),
-      'cf-connecting-ip': who.ip,
-    },
-    ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
-  })
-
-async function snapshot(base: string, owner: Person): Promise<WorkspaceSnapshot> {
-  const response = await send(base, owner, '/api/workspace/events', { method: 'GET' })
-  const reader = response.body?.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  for (let read = await reader?.read(); read !== undefined && !read.done; read = await reader?.read()) {
-    buffer += decoder.decode(read.value, { stream: true })
-    const frame = buffer.split('\n\n').find((part) => part.includes('event: snapshot'))
-    const data = frame === undefined ? undefined : /^data: (.*)$/mu.exec(frame)?.[1]
-    if (data !== undefined) {
-      await reader?.cancel()
-      return Schema.decodeUnknownSync(WorkspaceSnapshot)(JSON.parse(data))
-    }
-  }
-  throw new Error('no workspace snapshot')
-}
-
-const say = (base: string, owner: Person, thread: string, tool: string, input: unknown) =>
-  call(base, owner, `/api/conversations/${thread}/messages`, {
-    input: `call ${tool} ${JSON.stringify(input)}`,
-    operationId: crypto.randomUUID(),
-  })
+const say = (me: AgentFetch, thread: string, tool: string, input: unknown) =>
+  callOwner(me, (api) =>
+    api.conversations.submit({
+      params: { id: thread },
+      payload: { input: `call ${tool} ${JSON.stringify(input)}`, operationId: crypto.randomUUID() },
+    }),
+  )
 
 /**
  * An agent app with a view (ADR 0021): built in a conversation, it shows under that conversation in the workspace, its
@@ -93,74 +64,69 @@ const say = (base: string, owner: Person, thread: string, tool: string, input: u
  */
 export async function agentAppViewCase(base: string): Promise<void> {
   const owner = await person(base)
-  await call(base, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
-  const thread = Schema.decodeUnknownSync(ConversationView)(
-    await (await call(base, owner, '/api/conversations', {})).json(),
-  )
-  const conversation = `/api/conversations/${thread.id}/snapshot`
-  await say(base, owner, thread.id, 'app_build', { name: 'tapper', files: { 'app.ts': APP, 'view.tsx': VIEW } })
-  await waitFor(base, owner, conversation, '\\"ui\\":true')
-  const app = (await snapshot(base, owner)).apps.find((each) => each.source.kind === 'agent')
+  await grantPlan(base, owner)
+  const me = signedIn(base, owner)
+  const thread = await callOwner(me, (api) => api.conversations.create({ payload: {} }))
+  const apps = async () => (await workspaceOf(base, owner)).apps
+  await say(me, thread.id, 'app_build', { name: 'tapper', files: { 'app.ts': APP, 'view.tsx': VIEW } })
+  await showing(me, thread.id, '\\"ui\\":true')
+  const app = (await apps()).find((each) => each.source.kind === 'agent')
   expect(app).toMatchObject({
     conversation: thread.id,
     title: 'Tapper',
     source: { kind: 'agent', name: 'tapper', version: 1, revision: 1 },
   })
   if (app === undefined) throw new Error('no agent app shown')
+  const params = { id: app.id }
 
-  const launch = Schema.decodeUnknownSync(AppLaunch)(
-    await (await send(base, owner, `/api/apps/${app.id}/launch`, { method: 'GET' })).json(),
-  )
+  const launch = await callOwner(me, (api) => api.apps.launch({ params }))
   if (launch.kind !== 'agent') throw new Error('not an agent app launch')
   expect(launch).toMatchObject({ name: 'tapper', revision: 1, state: { count: 0 }, ui: { libs: ['charts'] } })
   expect(launch.ui.module).toMatch(/require\(['"]@goblin\/kit\/chart['"]\)/u)
   expect(launch.ui.module).not.toContain('./app')
   expect(launch.ui.css).toContain('grid-cols-\\[2fr_1fr\\]')
 
-  const act = async (name: string, args: Record<string, unknown>, op: string = crypto.randomUUID()) => {
-    const response = await send(base, owner, `/api/apps/${app.id}/call`, {
-      method: 'POST',
-      body: { name, arguments: args, op },
-    })
-    return { status: response.status, body: await response.text() }
-  }
+  const act = (name: string, args: Record<string, unknown>, op: string = crypto.randomUUID()) =>
+    callOwner(me, (api) => api.apps.call({ params, payload: { name, arguments: args, op } }))
+  const refusedAct = (name: string, args: Record<string, unknown>) =>
+    answerOf(me, (api) => api.apps.call({ params, payload: { name, arguments: args, op: crypto.randomUUID() } }))
   const op = crypto.randomUUID()
-  const tapped = await act('tap', { by: 2 }, op)
-  expect(Schema.decodeUnknownSync(AppCallResult)(JSON.parse(tapped.body))).toMatchObject({
+  expect(await act('tap', { by: 2 }, op)).toMatchObject({
     ok: true,
     revision: 2,
     release: launch.release,
     state: { count: 2 },
   })
-  expect(JSON.parse((await act('tap', { by: 2 }, op)).body)).toMatchObject({ ok: true, revision: 2 })
-  expect(JSON.parse((await act('broken', {})).body)).toMatchObject({
+  expect(await act('tap', { by: 2 }, op)).toMatchObject({ ok: true, revision: 2 })
+  expect(await act('broken', {})).toMatchObject({
     ok: false,
     error: expect.stringContaining('broken on purpose'),
   })
-  expect((await act('missing', {})).status).toBe(400)
-  expect((await act('tap', { by: 9 })).status).toBe(400)
-  const refused = await send(base, owner, `/api/apps/${app.id}/call`, {
-    method: 'POST',
-    body: { name: 'tap', arguments: {}, op },
-    csrf: false,
-  })
+  expect(await refusedAct('missing', {})).toBe('InvalidInput')
+  expect(await refusedAct('tap', { by: 9 })).toBe('InvalidInput')
+  // A write without the CSRF header is refused at the edge.
+  const refused = await call(
+    base,
+    owner,
+    `/api/apps/${app.id}/call`,
+    { name: 'tap', arguments: {}, op },
+    {
+      'x-goblin-csrf': '',
+    },
+  )
   expect(refused.status).toBe(403)
 
-  const state = Schema.decodeUnknownSync(AppSnapshot)(
-    await (await send(base, owner, `/api/apps/${app.id}/state`, { method: 'GET' })).json(),
-  )
-  expect(state).toMatchObject({ revision: 2, state: { count: 2 } })
-  const report = (message: string) =>
-    send(base, owner, `/api/apps/${app.id}/diagnostics`, { method: 'POST', body: { message } })
-  expect(await (await report('TypeError: count is undefined')).json()).toEqual({ kept: true })
-  expect(await (await report('TypeError: again')).json()).toEqual({ kept: false })
-  expect((await snapshot(base, owner)).apps.find((each) => each.id === app.id)?.source).toMatchObject({ revision: 2 })
+  const state = () => callOwner(me, (api) => api.apps.state({ params }))
+  expect(await state()).toMatchObject({ revision: 2, state: { count: 2 } })
+  const report = (message: string) => callOwner(me, (api) => api.apps.diagnostics({ params, payload: { message } }))
+  expect(await report('TypeError: count is undefined')).toEqual({ kept: true })
+  expect(await report('TypeError: again')).toEqual({ kept: false })
+  expect((await apps()).find((each) => each.id === app.id)?.source).toMatchObject({ revision: 2 })
 
   // The view renders once at build time with the state it starts with. One that throws fails its build with its line
   // of view.tsx, and the working release and its state stay as they were.
-  const built = await (await send(base, owner, conversation, { method: 'GET' })).text()
-  expect(built).not.toContain('viewWarning')
-  await say(base, owner, thread.id, 'app_build', {
+  expect(await snapshotText(me, thread.id)).not.toContain('viewWarning')
+  await say(me, thread.id, 'app_build', {
     name: 'tapper',
     edits: [
       {
@@ -170,19 +136,15 @@ export async function agentAppViewCase(base: string): Promise<void> {
       },
     ],
   })
-  await waitFor(base, owner, conversation, "It throws when rendered with the app's current state")
-  expect(await waitFor(base, owner, conversation, '\\"line\\":11')).toContain('\\"status\\":\\"failed\\"')
-  const kept = (await snapshot(base, owner)).apps.find((each) => each.id === app.id)?.source
+  await showing(me, thread.id, "It throws when rendered with the app's current state")
+  expect(await showing(me, thread.id, '\\"line\\":11')).toContain('\\"status\\":\\"failed\\"')
+  const kept = (await apps()).find((each) => each.id === app.id)?.source
   expect(kept).toMatchObject({ version: 1, revision: 2, release: launch.release })
-  expect(await (await send(base, owner, `/api/apps/${app.id}/state`, { method: 'GET' })).json()).toMatchObject({
-    revision: 2,
-    release: launch.release,
-    state: { count: 2 },
-  })
+  expect(await state()).toMatchObject({ revision: 2, release: launch.release, state: { count: 2 } })
 
   // Edits apply to the failed candidate, so the fix goes with them. Charts, maps, diagrams and icons pass the check; a
   // view that reads a browser global while rendering is not checkable there, so it activates with a warning.
-  await say(base, owner, thread.id, 'app_build', {
+  await say(me, thread.id, 'app_build', {
     name: 'tapper',
     edits: [
       {
@@ -208,23 +170,23 @@ import type { State } from './app'`,
       },
     ],
   })
-  await waitFor(base, owner, conversation, '\\"version\\":2')
-  expect(await (await send(base, owner, conversation, { method: 'GET' })).text()).not.toContain('viewWarning')
-  await say(base, owner, thread.id, 'app_build', {
+  await showing(me, thread.id, '\\"version\\":2')
+  expect(await snapshotText(me, thread.id)).not.toContain('viewWarning')
+  await say(me, thread.id, 'app_build', {
     name: 'tapper',
     edits: [
       { file: 'view.tsx', find: '>{state.count}<', replace: '>{state.count + (window.innerWidth > 600 ? 1 : 0)}<' },
     ],
   })
-  await waitFor(base, owner, conversation, 'it reads window while rendering')
-  expect((await snapshot(base, owner)).apps.find((each) => each.id === app.id)?.source).toMatchObject({ version: 3 })
+  await showing(me, thread.id, 'it reads window while rendering')
+  expect((await apps()).find((each) => each.id === app.id)?.source).toMatchObject({ version: 3 })
 
-  await say(base, owner, thread.id, 'app_build', {
+  await say(me, thread.id, 'app_build', {
     name: 'tapper',
     edits: [
       { file: 'view.tsx', find: "import { Button } from '@goblin/ui'", replace: "import fs from 'node:fs'" },
       { file: 'view.tsx', find: '<Button onClick', replace: '<Button title={fs.readFileSync("/x")} onClick' },
     ],
   })
-  await waitFor(base, owner, conversation, 'Cannot import \\\\\\"node:fs\\\\\\" in the view')
+  await showing(me, thread.id, 'Cannot import \\\\\\"node:fs\\\\\\" in the view')
 }

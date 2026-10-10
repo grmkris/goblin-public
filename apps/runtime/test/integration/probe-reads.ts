@@ -34,6 +34,12 @@ export const ownerResult = <A, E>(
     ),
   )
 
+/** The owner API's answer to `call` as one word: `ok`, or the tag of the failure it refused with. */
+export const answerOf = async <A, E>(agent: AgentFetch, call: (api: OwnerClient) => Effect.Effect<A, E>) => {
+  const result = await ownerResult(agent, call)
+  return result.ok ? 'ok' : result.error._tag
+}
+
 /** The owner's message into a chat: `POST /api/conversations/:id/messages`. */
 export const ownerSend = (
   agent: AgentFetch,

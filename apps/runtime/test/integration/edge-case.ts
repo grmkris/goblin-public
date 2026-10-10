@@ -3,7 +3,8 @@ import { request as httpRequest } from 'node:http'
 import { expect } from 'vitest'
 import { hookToken } from '../../src/channel/doorbell.ts'
 import { eventsHookToken } from '../../src/mcp/events/route-token.ts'
-import { call, ownerFetch, person, workspaceOf, type Person } from './owner-requests.ts'
+import { callOwner } from '../owner-client.ts'
+import { call, grantPlan, ownerFetch, person, signedIn, workspaceOf, type Person } from './owner-requests.ts'
 
 const APP = 'https://goblin.test'
 const Detail = Schema.Struct({ error: Schema.Struct({ code: Schema.String, ref: Schema.optional(Schema.String) }) })
@@ -80,7 +81,7 @@ const write = (
  */
 export async function csrfCase(url: string): Promise<void> {
   const owner = await person(url)
-  await call(url, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
+  await grantPlan(url, owner)
   const name = `Forged ${crypto.randomUUID().slice(0, 8)}`
   const topic = { name, operationId: crypto.randomUUID() }
   for (const headers of [
@@ -144,16 +145,16 @@ export async function internalRefusalCase(url: string): Promise<void> {
   const outside = await ownerFetch(`${url}/internal/recent?limit=5`, { headers: { 'cf-ray': 'ray-internal' } })
   expect(await refusalOf(outside)).toMatchObject({ status: 404, code: 'not_found', quoted: true })
   const owner = await person(url)
-  const signedIn = { cookie: owner.cookie, 'cf-connecting-ip': owner.ip }
+  const session = { cookie: owner.cookie, 'cf-connecting-ip': owner.ip }
   for (const path of ['/api/%2e%2e/internal/recent?limit=5', '/api/%2E%2E/internal/inspect', '/api/../internal/recent'])
-    expect(await rawGet(url, path, signedIn)).toMatchObject({ status: 404, body: expect.stringContaining('not_found') })
+    expect(await rawGet(url, path, session)).toMatchObject({ status: 404, body: expect.stringContaining('not_found') })
   const doorbell = `/hooks/myagent/${owner.userId}/${await hookToken(CREDENTIAL_KEY, owner.userId)}`
   const ring = () =>
     hook(url, doorbell, { 'x-myagent-timestamp': String(Date.now()), 'x-myagent-signature': 'x' }, '{"cursor":"0"}')
   expect(await refusalOf(await ring())).toMatchObject({ status: 402, code: 'subscription_required' })
-  await call(url, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
+  await grantPlan(url, owner)
   expect(await refusalOf(await ring())).toMatchObject({ status: 403, code: 'forbidden', quoted: true })
-  expect((await call(url, owner, '/api/agent/resident', { enabled: false })).status).toBe(200)
+  await callOwner(signedIn(url, owner), (api) => api.resident.set({ payload: { enabled: false } }))
   const webhook = await hook(
     url,
     `/hooks/mcp-events/${owner.userId}/${await eventsHookToken(CREDENTIAL_KEY, owner.userId)}`,
@@ -188,18 +189,17 @@ function eventText(response: Response) {
  */
 export async function conversationEventsCase(url: string): Promise<void> {
   const owner = await person(url)
-  await call(url, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
+  await grantPlan(url, owner)
   const stream = await call(url, owner, '/api/conversations/1/events')
   expect(stream.status).toBe(200)
   expect(stream.headers.get('content-type')).toBe('text/event-stream')
   const events = eventText(stream)
   try {
     expect(await events.until((text) => text.includes('event: snapshot'), 5000)).toContain('event: snapshot')
-    const sent = await call(url, owner, '/api/conversations/1/messages', {
-      input: 'hello stream',
-      operationId: 'sse-1',
-    })
-    expect(sent.status).toBe(202)
+    const sent = await callOwner(signedIn(url, owner), (api) =>
+      api.conversations.submit({ params: { id: '1' }, payload: { input: 'hello stream', operationId: 'sse-1' } }),
+    )
+    expect(sent).toMatchObject({ accepted: true })
     expect(await events.until((text) => text.includes('event: batch'), 10_000)).toContain('event: batch')
   } finally {
     await events.close()

@@ -1,108 +1,51 @@
 import { expect } from 'vitest'
-import { Schema } from 'effect'
-import { AppLaunch, ConversationView, WorkspaceSnapshot } from '@goblin/contracts'
+import { type AgentFetch, type OwnerClient, callOwner } from '../owner-client.ts'
 import { BOARD } from './apps-mcp.ts'
-import { person, call, ownerFetch, waitFor, type Person } from './owner-requests.ts'
+import { call, grantPlan, person, showing, signedIn, workspaceOf, type Person } from './owner-requests.ts'
+import { answerOf } from './probe-reads.ts'
 
-/** An owner request with any method (the harness's `call` only GETs and POSTs). */
-const send = (base: string, who: Person, path: string, method: string, body?: unknown) =>
-  ownerFetch(`${base}${path}`, {
-    method,
-    headers: {
-      cookie: who.cookie,
-      origin: 'https://goblin.test',
-      'content-type': 'application/json',
-      'x-goblin-csrf': '1',
-      'cf-connecting-ip': who.ip,
-      'x-mcp-caller': 'app',
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  })
+/** What an App the owner opened sends with its calls: it is held to the App's grants, not the owner's. */
+const APP_CALLER = { 'x-mcp-caller': 'app' }
 
-/**
- * A refusal's tag as the Worker's routes write it (`"error":"GrantDenied"`) or as the owner API's envelope does
- * (`"code":"grant_denied"`), so the case holds on either side of the switch to the typed API.
- */
-const REFUSED = { notFound: /NotFound|"not_found"/u, grantDenied: /GrantDenied|"grant_denied"/u }
+const grant = (me: AgentFetch, allowed: boolean) =>
+  callOwner(me, (api) => api.mcp.setToolGrant({ payload: { serverId: 'apps-fixture', name: 'board', allowed } }))
+/** The board's resource, read as the App reads it. */
+const read = (api: OwnerClient) =>
+  api.mcp.readResource({ params: { id: 'apps-fixture' }, headers: APP_CALLER, payload: { uri: BOARD } })
 
-const grant = async (base: string, owner: Person, allowed: boolean) =>
-  expect(
-    (await send(base, owner, '/api/mcp/grants', 'PUT', { serverId: 'apps-fixture', name: 'board', allowed })).status,
-  ).toBe(200)
-
-/** The workspace feed's first event: every conversation and App now. */
-async function snapshot(base: string, owner: Person): Promise<WorkspaceSnapshot> {
-  const response = await send(base, owner, '/api/workspace/events', 'GET')
-  const reader = response.body?.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  for (let read = await reader?.read(); read !== undefined && !read.done; read = await reader?.read()) {
-    buffer += decoder.decode(read.value, { stream: true })
-    const frame = buffer.split('\n\n').find((part) => part.includes('event: snapshot'))
-    const data = frame === undefined ? undefined : /^data: (.*)$/mu.exec(frame)?.[1]
-    if (data !== undefined) {
-      await reader?.cancel()
-      return Schema.decodeUnknownSync(WorkspaceSnapshot)(JSON.parse(data))
-    }
-  }
-  throw new Error('no workspace snapshot')
-}
-
-/**
- * The owner's App is kept per call (ADR 0020): the call registers it under its conversation, launch reads the call
- * back, Close of the conversation closes it, showing it again reopens the same App, and its resource is checked
- * against the owner's grants live (reopening restores none).
- */
-export async function appsCase(base: string): Promise<void> {
-  const owner = await person(base)
-  await call(base, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
-  expect((await call(base, owner, '/api/mcp/apps-fixture/connect', {})).status).toBe(200)
-  await grant(base, owner, true)
-  const thread = Schema.decodeUnknownSync(ConversationView)(
-    await (await call(base, owner, '/api/conversations', {})).json(),
-  )
+/** The board App, kept from a call in a new thread of `owner`'s, as the workspace shows it. */
+async function keptApp(base: string, owner: Person) {
+  const me = signedIn(base, owner)
+  const thread = await callOwner(me, (api) => api.conversations.create({ payload: {} }))
   const input = `call mcp_call ${JSON.stringify({ serverId: 'apps-fixture', name: 'board', arguments: { marker: 'kept' } })}`
-  await call(base, owner, `/api/conversations/${thread.id}/messages`, { input, operationId: crypto.randomUUID() })
-  await waitFor(base, owner, `/api/conversations/${thread.id}/snapshot`, 'fixture-board')
-  const [app] = (await snapshot(base, owner)).apps
+  await callOwner(me, (api) =>
+    api.conversations.submit({ params: { id: thread.id }, payload: { input, operationId: crypto.randomUUID() } }),
+  )
+  await showing(me, thread.id, 'fixture-board')
+  const [app] = (await workspaceOf(base, owner)).apps
   expect(app).toMatchObject({
     conversation: thread.id,
     title: 'Board',
     source: { kind: 'mcp', serverId: 'apps-fixture', tool: 'board', uri: BOARD },
   })
   if (app === undefined) throw new Error('no app kept')
-  const launch = Schema.decodeUnknownSync(AppLaunch)(
-    await (await send(base, owner, `/api/apps/${app.id}/launch`, 'GET')).json(),
-  )
-  expect(launch).toMatchObject({ kind: 'mcp', serverId: 'apps-fixture', uri: BOARD, arguments: { marker: 'kept' } })
-  expect(JSON.stringify(launch.kind === 'mcp' ? launch.result : null)).toContain('fixture-board')
-  const html = await send(base, owner, '/api/mcp/apps-fixture/resources/read', 'POST', { uri: BOARD })
-  expect(html.status).toBe(200)
-  const crossed = await call(base, owner, '/api/conversations/1/messages', {
-    input: 'Continue with the saved MyPlan answer.',
-    operationId: crypto.randomUUID(),
-    appContext: [{ app: app.id, text: 'receipt from another conversation' }],
-  })
-  expect(crossed.status).toBe(404)
-  expect(await crossed.text()).toMatch(REFUSED.notFound)
-  expect((await send(base, owner, `/api/conversations/${thread.id}`, 'PATCH', { closed: true })).status).toBe(200)
-  expect((await snapshot(base, owner)).apps[0]?.closedAt).toBeDefined()
-  const callId = app.source.kind === 'mcp' ? app.source.callId : ''
-  const reopened = await (await call(base, owner, '/api/apps', { conversation: thread.id, callId })).json()
-  expect(reopened).toMatchObject({ id: app.id })
-  expect(reopened).not.toHaveProperty('closedAt')
+  return { app, thread: thread.id }
+}
 
-  await grant(base, owner, false)
-  const denied = await send(base, owner, '/api/mcp/apps-fixture/resources/read', 'POST', { uri: BOARD })
-  expect(denied.status).toBeGreaterThanOrEqual(400)
-  expect(await denied.text()).toMatch(REFUSED.grantDenied)
-  const deniedCall = await send(base, owner, '/api/mcp/apps-fixture/tools/call', 'POST', {
-    name: 'board',
-    arguments: {},
-  })
-  expect(deniedCall.status).toBeGreaterThanOrEqual(400)
-  expect(await deniedCall.text()).toMatch(REFUSED.grantDenied)
-  const grants = await (await call(base, owner, '/api/mcp/grants')).json()
+/** With the grant gone, the App's resource and tool are refused, and an edge refusal applies no grant either. */
+async function grantsLive(base: string, owner: Person): Promise<void> {
+  const me = signedIn(base, owner)
+  await grant(me, false)
+  expect(await answerOf(me, read)).toBe('GrantDenied')
+  const deniedCall = await answerOf(me, (api) =>
+    api.mcp.callTool({
+      params: { id: 'apps-fixture' },
+      headers: APP_CALLER,
+      payload: { name: 'board', arguments: {} },
+    }),
+  )
+  expect(deniedCall).toBe('GrantDenied')
+  const grants = await callOwner(me, (api) => api.mcp.grants())
   expect(JSON.stringify(grants)).not.toContain('"name":"board"')
   for (const headers of [{ origin: '' }, { 'x-goblin-csrf': '' }]) {
     const refused = await call(
@@ -114,5 +57,41 @@ export async function appsCase(base: string): Promise<void> {
     )
     expect(refused.status).toBe(403)
   }
-  expect((await send(base, owner, '/api/apps/999999/launch', 'GET')).status).toBe(404)
+}
+
+/**
+ * The owner's App is kept per call (ADR 0020): the call registers it under its conversation, launch reads the call
+ * back, Close of the conversation closes it, showing it again reopens the same App, and its resource is checked
+ * against the owner's grants live (reopening restores none).
+ */
+export async function appsCase(base: string): Promise<void> {
+  const owner = await person(base)
+  await grantPlan(base, owner)
+  const me = signedIn(base, owner)
+  await callOwner(me, (api) => api.mcp.connect({ params: { id: 'apps-fixture' } }))
+  await grant(me, true)
+  const { app, thread } = await keptApp(base, owner)
+  const launch = await callOwner(me, (api) => api.apps.launch({ params: { id: app.id } }))
+  expect(launch).toMatchObject({ kind: 'mcp', serverId: 'apps-fixture', uri: BOARD, arguments: { marker: 'kept' } })
+  expect(JSON.stringify(launch.kind === 'mcp' ? launch.result : null)).toContain('fixture-board')
+  await callOwner(me, read)
+  const crossed = await answerOf(me, (api) =>
+    api.conversations.submit({
+      params: { id: '1' },
+      payload: {
+        input: 'Continue with the saved MyPlan answer.',
+        operationId: crypto.randomUUID(),
+        appContext: [{ app: app.id, text: 'receipt from another conversation' }],
+      },
+    }),
+  )
+  expect(crossed).toBe('NotFound')
+  await callOwner(me, (api) => api.conversations.update({ params: { id: thread }, payload: { closed: true } }))
+  expect((await workspaceOf(base, owner)).apps[0]?.closedAt).toBeDefined()
+  const callId = app.source.kind === 'mcp' ? app.source.callId : ''
+  const reopened = await callOwner(me, (api) => api.apps.create({ payload: { conversation: thread, callId } }))
+  expect(reopened).toMatchObject({ id: app.id })
+  expect(reopened).not.toHaveProperty('closedAt')
+  await grantsLive(base, owner)
+  expect(await answerOf(me, (api) => api.apps.launch({ params: { id: '999999' } }))).toBe('NotFound')
 }

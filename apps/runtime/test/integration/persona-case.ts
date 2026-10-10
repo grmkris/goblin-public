@@ -1,19 +1,11 @@
 import { expect } from 'vitest'
 import * as Schema from 'effect/Schema'
-import {
-  ComposerOptions,
-  OrganizeReceipt,
-  PersonaDetail,
-  PersonaView,
-  WorkspaceChange,
-  type PersonaDefinition,
-} from '@goblin/contracts'
-import { call, ownerFetch, person, waitFor, workspaceOf, type Person } from './owner-requests.ts'
+import { type PersonaDefinition, type PersonaView, type UpdatePersona, WorkspaceChange } from '@goblin/contracts'
+import { type OwnerClient, callOwner } from '../owner-client.ts'
+import { grantPlan, holding, lever, person, showing, signedIn, workspaceOf, type Person } from './owner-requests.ts'
+import { answerOf, ownerSnapshot } from './probe-reads.ts'
+import { until as untilWithin } from './until.ts'
 
-const decodePersona = Schema.decodeUnknownSync(PersonaView)
-const decodeDetail = Schema.decodeUnknownSync(PersonaDetail)
-const decodeReceipt = Schema.decodeUnknownSync(OrganizeReceipt)
-const decodeOptions = Schema.decodeUnknownSync(ComposerOptions)
 const decodeChanges = Schema.decodeUnknownSync(Schema.Array(WorkspaceChange))
 const decodeSeen = Schema.decodeUnknownSync(
   Schema.Struct({
@@ -46,29 +38,15 @@ const decodeEntries = Schema.decodeUnknownSync(
   }),
 )
 
-const withBody = (method: 'PATCH' | 'POST', url: string, owner: Person, path: string, body: unknown) =>
-  ownerFetch(`${url}${path}`, {
-    method,
-    headers: {
-      cookie: owner.cookie,
-      origin: 'https://goblin.test',
-      'x-goblin-csrf': '1',
-      'content-type': 'application/json',
-      'cf-connecting-ip': owner.ip,
-    },
-    body: JSON.stringify(body),
-  })
-const patch = (url: string, owner: Person, path: string, body: unknown) => withBody('PATCH', url, owner, path, body)
-
 const seen = async (url: string, owner: Person) =>
-  decodeSeen(await (await call(url, owner, '/__test/queue/seen')).json()).requests
+  decodeSeen(await (await lever(url, owner, 'queue/seen')).json()).requests
 /** The requests a Persona's fork made: they carry its `<persona>` part in the context tail. */
 const forkRequests = (requests: Awaited<ReturnType<typeof seen>>) =>
   requests.filter((request) => request.context?.includes('<persona>') === true)
 const goblinRequests = (requests: Awaited<ReturnType<typeof seen>>) =>
   requests.filter((request) => request.context?.includes('<persona>') !== true)
 const entries = async (url: string, owner: Person, chat = '1') =>
-  decodeEntries(await (await call(url, owner, `/api/conversations/${chat}/snapshot`)).json()).entries ?? []
+  decodeEntries(await ownerSnapshot(signedIn(url, owner), chat)).entries ?? []
 const textOf = (content: unknown): string =>
   typeof content === 'string'
     ? content
@@ -78,14 +56,8 @@ const textOf = (content: unknown): string =>
           .join('\n')
       : ''
 
-async function until<A>(read: () => Promise<A>, done: (value: A) => boolean, ms = 15_000): Promise<A> {
-  let value = await read()
-  for (let attempt = 0; attempt < ms / 25 && !done(value); attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 25))
-    value = await read()
-  }
-  return value
-}
+/** As `until`, for up to 15 s: a Persona's fork answers after Goblin's turn. */
+const until = <A>(read: () => Promise<A>, done: (value: A) => boolean) => untilWithin(read, done, 15_000)
 
 /** The attributed answers in the chat so far, oldest first. */
 const answers = async (url: string, owner: Person) =>
@@ -125,66 +97,59 @@ const definition = (name: string, extra: Partial<PersonaDefinition> = {}): Perso
   exclusions: [],
   ...extra,
 })
-async function makePersona(url: string, owner: Person, input: PersonaDefinition): Promise<PersonaView> {
-  const response = await call(url, owner, '/api/personas', { ...input, operationId: crypto.randomUUID() })
-  expect(response.status).toBe(201)
-  return decodePersona(await response.json())
-}
-const send = (url: string, owner: Person, input: string, personas: readonly PersonaView[], extra: object = {}) => {
+const create = (input: PersonaDefinition, operationId: string) => (api: OwnerClient) =>
+  api.personas.create({ payload: { ...input, operationId } })
+const makePersona = (url: string, owner: Person, input: PersonaDefinition): Promise<PersonaView> =>
+  callOwner(signedIn(url, owner), create(input, crypto.randomUUID()))
+const edit = (id: number, change: UpdatePersona) => (api: OwnerClient) =>
+  api.personas.update({ params: { id }, payload: change })
+/** The owner's message into main tagging `personas`, as the owner API answered it, and its operation id. */
+const send = async (
+  url: string,
+  owner: Person,
+  input: string,
+  personas: readonly PersonaView[],
+  extra: { readonly personaOrder?: 'parallel' | 'sequence' } = {},
+) => {
   const operationId = crypto.randomUUID()
-  return call(url, owner, '/api/conversations/1/messages', {
-    input,
-    operationId,
-    selections: personas.map((persona) => ({ kind: 'persona', personaId: persona.id })),
-    ...extra,
-  }).then((response) => ({ response, operationId }))
+  const selections = personas.map((persona) => ({ kind: 'persona' as const, personaId: persona.id }))
+  const answered = await answerOf(signedIn(url, owner), (api) =>
+    api.conversations.submit({ params: { id: '1' }, payload: { input, operationId, selections, ...extra } }),
+  )
+  return { answered, operationId }
 }
 const ready = async (url: string): Promise<Person> => {
   const owner = await person(url)
-  await call(url, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
+  await grantPlan(url, owner)
   return owner
 }
 
 /** Registry routes: create once per operation, name clash, model, revisions with compare-and-set, composer options. */
 async function registry(url: string, owner: Person): Promise<PersonaView> {
+  const me = signedIn(url, owner)
   const operationId = crypto.randomUUID()
-  const input = { ...definition('Scout'), operationId }
-  const first = await call(url, owner, '/api/personas', input)
-  const again = await call(url, owner, '/api/personas', input)
-  expect([first.status, again.status]).toEqual([201, 201])
-  const scout = decodePersona(await first.json())
-  expect(decodePersona(await again.json())).toEqual(scout)
+  const scout = await callOwner(me, create(definition('Scout'), operationId))
+  expect(await callOwner(me, create(definition('Scout'), operationId))).toEqual(scout)
   expect(scout).toMatchObject({ name: 'Scout', revision: 1 })
-  expect(
-    (await call(url, owner, '/api/personas', { ...definition('scout'), operationId: crypto.randomUUID() })).status,
-  ).toBe(409)
-  expect(
-    (
-      await call(url, owner, '/api/personas', {
-        ...definition('Odd'),
-        model: 'not-offered',
-        operationId: crypto.randomUUID(),
-      })
-    ).status,
-  ).toBe(400)
-  const edited = await patch(url, owner, `/api/personas/${scout.id}`, { role: 'Scouts ahead', expectedRevision: 1 })
-  expect(edited.status).toBe(200)
-  expect(decodePersona(await edited.json())).toMatchObject({ revision: 2, role: 'Scouts ahead' })
-  expect((await patch(url, owner, `/api/personas/${scout.id}`, { role: 'Stale', expectedRevision: 1 })).status).toBe(
-    409,
+  expect(await answerOf(me, create(definition('scout'), crypto.randomUUID()))).toBe('Conflict')
+  expect(await answerOf(me, create({ ...definition('Odd'), model: 'not-offered' }, crypto.randomUUID()))).toBe(
+    'InvalidInput',
   )
-  const detail = decodeDetail(await (await call(url, owner, `/api/personas/${scout.id}`)).json())
+  const edited = await callOwner(me, edit(scout.id, { role: 'Scouts ahead', expectedRevision: 1 }))
+  expect(edited).toMatchObject({ revision: 2, role: 'Scouts ahead' })
+  expect(await answerOf(me, edit(scout.id, { role: 'Stale', expectedRevision: 1 }))).toBe('Conflict')
+  const detail = await callOwner(me, (api) => api.personas.detail({ params: { id: scout.id } }))
   expect(detail.revisions.map((each) => [each.revision, each.role])).toEqual([
     [2, 'Scouts ahead'],
     [1, 'Scout the helper'],
   ])
-  const options = decodeOptions(await (await call(url, owner, '/api/conversations/1/composer')).json())
+  const options = await callOwner(me, (api) => api.conversations.composer({ params: { id: '1' } }))
   expect(options.options.find((option) => option.selection.kind === 'persona')).toMatchObject({
     selection: { kind: 'persona', personaId: scout.id },
     label: 'Scout',
     description: 'Scouts ahead',
   })
-  expect((await call(url, owner, '/api/personas/999')).status).toBe(404)
+  expect(await answerOf(me, (api) => api.personas.detail({ params: { id: 999 } }))).toBe('NotFound')
   return personaOf(url, owner, scout.id)
 }
 
@@ -195,8 +160,8 @@ async function registry(url: string, owner: Person): Promise<PersonaView> {
 async function asking(url: string, owner: Person, scout: PersonaView): Promise<void> {
   const critic = await makePersona(url, owner, definition('Critic'))
   const before = (await seen(url, owner)).length
-  const { response, operationId } = await send(url, owner, 'weigh in on seeds', [scout, critic])
-  expect(response.status).toBe(202)
+  const { answered, operationId } = await send(url, owner, 'weigh in on seeds', [scout, critic])
+  expect(answered).toBe('ok')
   const both = await answersUntil(url, owner, 2)
   expect(both.map((answer) => answer.name).toSorted()).toEqual(['Critic', 'Scout'])
   expect(both.every((answer) => answer.operationId === operationId)).toBe(true)
@@ -221,7 +186,7 @@ async function asking(url: string, owner: Person, scout: PersonaView): Promise<v
   const second = await makePersona(url, owner, definition('Second'))
   const mark = (await seen(url, owner)).length
   const sequenced = await send(url, owner, 'one after the other', [first, second], { personaOrder: 'sequence' })
-  expect(sequenced.response.status).toBe(202)
+  expect(sequenced.answered).toBe('ok')
   await answersBy(url, owner, 'Second', 1)
   const ordered = (await answers(url, owner)).filter((answer) => answer.operationId === sequenced.operationId)
   expect(ordered.map((answer) => answer.name)).toEqual(['First', 'Second'])
@@ -235,23 +200,16 @@ async function asking(url: string, owner: Person, scout: PersonaView): Promise<v
   expect(textFor('Second')).toContain('[from persona First]')
   // An unknown or archived Persona refuses the whole send, and nothing is asked.
   const refused = await send(url, owner, 'nobody home', [{ ...first, id: 9999 }])
-  expect(refused.response.status).toBe(400)
-  await patch(url, owner, `/api/personas/${second.id}`, { archived: true, expectedRevision: 1 })
-  expect((await send(url, owner, 'gone', [second])).response.status).toBe(400)
+  expect(refused.answered).toBe('InvalidInput')
+  await callOwner(signedIn(url, owner), edit(second.id, { archived: true, expectedRevision: 1 }))
+  expect((await send(url, owner, 'gone', [second])).answered).toBe('InvalidInput')
 }
 
 /** The fork's request starts with the chat's last request as Goblin made it: the same cacheable prefix. */
 async function prefix(url: string, owner: Person): Promise<void> {
   const scout = await makePersona(url, owner, definition('Prefix'))
-  expect(
-    (
-      await call(url, owner, '/api/conversations/1/messages', {
-        input: 'hello prefix',
-        operationId: crypto.randomUUID(),
-      })
-    ).status,
-  ).toBe(202)
-  await waitFor(url, owner, '/api/conversations/1/snapshot', 'echo: hello prefix')
+  expect((await send(url, owner, 'hello prefix', [])).answered).toBe('ok')
+  await showing(signedIn(url, owner), '1', 'echo: hello prefix')
   const parent = goblinRequests(await seen(url, owner)).at(-1)
   expect(parent).toBeDefined()
   await send(url, owner, 'now the persona', [scout])
@@ -268,13 +226,13 @@ async function revisions(url: string, owner: Person): Promise<void> {
   const drift = await makePersona(url, owner, definition('Drift', { instructions: 'Alpha rules.' }))
   const key = 'queue-hold:rev@Drift'
   await send(url, owner, 'queue-hold:rev', [drift])
-  await waitFor(url, owner, '/__test/queue/held', key)
-  const edit = await patch(url, owner, `/api/personas/${drift.id}`, {
-    instructions: 'Beta rules.',
-    expectedRevision: 1,
-  })
-  expect(decodePersona(await edit.json()).revision).toBe(2)
-  const released = await call(url, owner, '/__test/queue/release', { input: key })
+  await holding(url, owner, key)
+  const edited = await callOwner(
+    signedIn(url, owner),
+    edit(drift.id, { instructions: 'Beta rules.', expectedRevision: 1 }),
+  )
+  expect(edited.revision).toBe(2)
+  const released = await lever(url, owner, 'queue/release', { input: key })
   expect(released.status).toBe(200)
   const [old] = await answersBy(url, owner, 'Drift', 1)
   expect(old?.revision).toBe(1)
@@ -336,10 +294,11 @@ async function stopping(url: string, owner: Person): Promise<void> {
   const feed = watchFeed(url, owner)
   const written = (await answers(url, owner)).length
   await send(url, owner, 'queue-hold:stop', [slow, slower])
-  await waitFor(url, owner, '/__test/queue/held', 'queue-hold:stop@Slow')
-  await waitFor(url, owner, '/__test/queue/held', 'queue-hold:stop@Slower')
-  const stop = await call(url, owner, '/api/conversations/1/stop', { operationId: crypto.randomUUID() })
-  expect(stop.status).toBe(200)
+  await holding(url, owner, 'queue-hold:stop@Slow')
+  await holding(url, owner, 'queue-hold:stop@Slower')
+  await callOwner(signedIn(url, owner), (api) =>
+    api.conversations.stop({ params: { id: '1' }, payload: { operationId: crypto.randomUUID() } }),
+  )
   const stopped = await until(
     async () =>
       feed.changes.flatMap((change) =>
@@ -350,7 +309,7 @@ async function stopping(url: string, owner: Person): Promise<void> {
   await feed.stop()
   expect(new Set(stopped.map((invocation) => invocation.persona))).toEqual(new Set([slow.id, slower.id]))
   expect((await answers(url, owner)).length).toBe(written)
-  expect(await (await call(url, owner, '/__test/queue/held')).text()).not.toContain('queue-hold:stop')
+  expect(await (await lever(url, owner, 'queue/held')).text()).not.toContain('queue-hold:stop')
 }
 
 /** A Persona's excluded server is off in its fork, as in any conversation that switched it off. */
@@ -386,17 +345,17 @@ export async function personasCase(url: string): Promise<void> {
 }
 
 const ask = async (url: string, owner: Person, input: string, expected: string) => {
-  const sent = await call(url, owner, '/api/conversations/1/messages', { input, operationId: crypto.randomUUID() })
-  expect(sent.status).toBe(202)
-  await waitFor(url, owner, '/api/conversations/1/snapshot', expected)
+  expect((await send(url, owner, input, [])).answered).toBe('ok')
+  await showing(signedIn(url, owner), '1', expected)
 }
 const receipts = async (url: string, owner: Person) => (await workspaceOf(url, owner)).receipts ?? []
 const newest = async (url: string, owner: Person) => (await receipts(url, owner))[0]
+/** Undo of the organize receipt `id`, as the owner API answered it. */
 const undo = (url: string, owner: Person, id: string | undefined) =>
-  call(url, owner, `/api/organize/${id ?? ''}/undo`, {})
+  answerOf(signedIn(url, owner), (api) => api.organize.undo({ params: { id: id ?? '' } }))
 const topics = async (url: string, owner: Person) => (await workspaceOf(url, owner)).topics ?? []
 const personaOf = async (url: string, owner: Person, id: number | string) =>
-  decodeDetail(await (await call(url, owner, `/api/personas/${String(id)}`)).json()).persona
+  (await callOwner(signedIn(url, owner), (api) => api.personas.detail({ params: { id: Number(id) } }))).persona
 
 /** Topics: the agent creates, renames and archives; Undo is refused after a later edit and applies once. */
 async function organizingTopics(url: string, owner: Person): Promise<void> {
@@ -417,12 +376,7 @@ async function organizingTopics(url: string, owner: Person): Promise<void> {
   const orchard = (await topics(url, owner)).find((topic) => topic.name === 'Orchard')
   expect(orchard).toMatchObject({ createdBy: 'agent', revision: 1 })
   // The new Conversation starts with its seed: the brief and a frozen excerpt of the owner's request, as quoted history.
-  const seeded = await waitFor(
-    url,
-    owner,
-    `/api/conversations/${orchard?.conversation ?? ''}/snapshot`,
-    'app.topic_seed',
-  )
+  const seeded = await showing(signedIn(url, owner), orchard?.conversation ?? '', 'app.topic_seed')
   expect(seeded).toContain('Fruit trees for the back garden')
   expect(seeded).toContain('quoted-history')
   expect(seeded).toContain('call topic_create')
@@ -432,20 +386,21 @@ async function organizingTopics(url: string, owner: Person): Promise<void> {
   expect(rename).toMatchObject({ kind: 'topic.rename', actor: 'agent', undoable: true })
   // The rename touched what the creation made: its Undo is refused, the rename's is not.
   expect(list.find((each) => each.id === created?.id)?.undoable).toBe(false)
-  expect((await undo(url, owner, created?.id)).status).toBe(409)
-  const undone = await undo(url, owner, rename?.id)
-  expect(undone.status).toBe(200)
-  expect(decodeReceipt(await undone.json()).undoneAt).toBeTypeOf('number')
+  expect(await undo(url, owner, created?.id)).toBe('Conflict')
+  const undone = await callOwner(signedIn(url, owner), (api) => api.organize.undo({ params: { id: rename?.id ?? '' } }))
+  expect(undone.undoneAt).toBeTypeOf('number')
   expect((await topics(url, owner)).find((topic) => topic.id === orchard?.id)?.name).toBe('Orchard')
-  expect((await undo(url, owner, rename?.id)).status).toBe(409)
+  expect(await undo(url, owner, rename?.id)).toBe('Conflict')
   // The owner's own UI change leaves an owner receipt.
-  expect((await patch(url, owner, `/api/topics/${orchard?.id ?? 0}`, { name: 'Orchard Two' })).status).toBe(200)
+  await callOwner(signedIn(url, owner), (api) =>
+    api.topics.update({ params: { id: orchard?.id ?? 0 }, payload: { name: 'Orchard Two' } }),
+  )
   expect(await newest(url, owner)).toMatchObject({ kind: 'topic.rename', actor: 'owner', undoable: true })
   await ask(url, owner, 'call topic_archive {"topic":"Orchard Two"}', 'Archived topic')
   expect((await topics(url, owner)).find((topic) => topic.id === orchard?.id)?.archivedAt).toBeTypeOf('number')
   const archive = await newest(url, owner)
   expect(archive).toMatchObject({ kind: 'topic.archive', actor: 'agent' })
-  expect((await undo(url, owner, archive?.id)).status).toBe(200)
+  expect(await undo(url, owner, archive?.id)).toBe('ok')
   expect((await topics(url, owner)).find((topic) => topic.id === orchard?.id)?.archivedAt).toBeUndefined()
 }
 
@@ -458,10 +413,10 @@ async function organizingPersonas(url: string, owner: Person): Promise<void> {
   const scribe = await personaOf(url, owner, made?.target ?? 0)
   expect(scribe).toMatchObject({ name: 'Scribe', revision: 1, role: 'Writes' })
   await ask(url, owner, 'call persona_update {"persona":"Scribe","role":"Writes better"}', 'Updated persona')
-  expect((await undo(url, owner, made?.id)).status).toBe(409)
-  const edit = await newest(url, owner)
-  expect(edit).toMatchObject({ kind: 'persona.update', actor: 'agent' })
-  expect((await undo(url, owner, edit?.id)).status).toBe(200)
+  expect(await undo(url, owner, made?.id)).toBe('Conflict')
+  const update = await newest(url, owner)
+  expect(update).toMatchObject({ kind: 'persona.update', actor: 'agent' })
+  expect(await undo(url, owner, update?.id)).toBe('ok')
   expect(await personaOf(url, owner, scribe.id)).toMatchObject({ role: 'Writes', revision: 3 })
   await send(url, owner, 'persona-call topic_create {"name":"Sneaky"}', [scribe])
   await until(
