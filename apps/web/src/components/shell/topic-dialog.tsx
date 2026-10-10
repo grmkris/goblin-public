@@ -1,9 +1,12 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import type { TopicView } from '@goblin/contracts'
+import { EVERYTHING, type TopicSetup, type TopicView } from '@goblin/contracts'
 import {
   Button,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
   Dialog,
   DialogClose,
   DialogContent,
@@ -12,7 +15,12 @@ import {
   FieldError,
   FieldLabel,
   Input,
+  Spinner,
 } from '@goblin/ui'
+import { ChevronRightIcon } from 'lucide-react'
+import { setupSummary } from '../../lib/setup.ts'
+import { setupCatalogQuery } from '../../setup/queries.ts'
+import { SetupPicker } from '../setup-picker.tsx'
 import { Conflict, NotFound } from '@goblin/contracts/api'
 import { messageOf, withRef } from '../../lib/query/app-error.ts'
 import { reportUnexpected } from '../../lib/unexpected.ts'
@@ -27,8 +35,45 @@ function refusal(failure: unknown, action: string): string {
 }
 
 /**
- * A Topic's name: a new Topic (which then opens its channel), or a new name for `topic`. One operation id per opening,
- * so a retry finds the Topic the first try made.
+ * A new Topic's setup (ADR 0040): everything the owner allows unless they open it and choose. The catalog is read only
+ * once it is opened.
+ */
+function NewTopicSetup({
+  setup,
+  onChange,
+}: {
+  readonly setup: TopicSetup
+  readonly onChange: (setup: TopicSetup) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const catalog = useQuery({ ...setupCatalogQuery, enabled: open })
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger render={<button type="button" className="switch-row switch-expand" />}>
+        <ChevronRightIcon aria-hidden />
+        <span className="switch-name">
+          <span>MCP servers & skills</span>
+          <span className="switch-detail">
+            {catalog.data === undefined ? 'Everything' : setupSummary(setup, catalog.data)}
+          </span>
+        </span>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="max-h-[50dvh] overflow-y-auto">
+          {catalog.data === undefined ? (
+            <Spinner className="m-4" />
+          ) : (
+            <SetupPicker setup={setup} catalog={catalog.data} onChange={onChange} />
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+/**
+ * A Topic's name: a new Topic (which then opens its channel) with the setup chosen here, everything unless the owner
+ * chose; or a new name for `topic`. One operation id per opening, so a retry finds the Topic the first try made.
  */
 export function TopicDialog({
   open,
@@ -44,6 +89,7 @@ export function TopicDialog({
   const create = useMutation(createWorkspaceTopicMutation)
   const rename = useMutation(updateWorkspaceTopicMutation)
   const [name, setName] = useState(topic?.name ?? '')
+  const [setup, setSetup] = useState<TopicSetup>(EVERYTHING)
   const [operation] = useState(() => crypto.randomUUID())
   const pending = create.isPending || rename.isPending
   // expected: the dialog stays open and shows the refusal (a name in use) under the name
@@ -54,7 +100,7 @@ export function TopicDialog({
     if (trimmed === '' || pending) return
     if (topic === undefined)
       create.mutate(
-        { name: trimmed, operationId: operation },
+        { name: trimmed, operationId: operation, ...(setup === EVERYTHING ? {} : { setup }) },
         {
           onSuccess: (created) => {
             onOpenChange(false)
@@ -66,7 +112,7 @@ export function TopicDialog({
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(26rem,calc(100vw-2rem))]">
+      <DialogContent className="w-[min(30rem,calc(100vw-2rem))]">
         <DialogTitle>{topic === undefined ? 'New topic' : 'Rename topic'}</DialogTitle>
         <form
           className="mt-4 flex flex-col gap-4"
@@ -89,6 +135,7 @@ export function TopicDialog({
             />
             {error !== '' && <FieldError>{error}</FieldError>}
           </Field>
+          {topic === undefined && <NewTopicSetup setup={setup} onChange={setSetup} />}
           <div className="flex justify-end gap-2">
             <DialogClose render={<Button type="button" variant="ghost" />}>Cancel</DialogClose>
             <Button type="submit" pending={pending} disabled={name.trim() === ''}>

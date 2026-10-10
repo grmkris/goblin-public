@@ -41,10 +41,10 @@ function useClient(clientId: string): ClientLookup {
 function InspectChoice({ on, onChange }: { readonly on: boolean; readonly onChange: (on: boolean) => void }) {
   return (
     <div className="flex flex-col gap-2">
-      <label className="capability-row">
-        <span className="capability-name">
+      <label className="switch-row">
+        <span className="switch-name">
           <span>Also let it read your conversations and runs</span>
-          <span className="capability-detail">Off unless you turn it on. With it, the app can:</span>
+          <span className="switch-detail">Off unless you turn it on. With it, the app can:</span>
         </span>
         <Switch checked={on} onCheckedChange={onChange} />
       </label>

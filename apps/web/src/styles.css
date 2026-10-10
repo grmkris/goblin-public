@@ -1535,19 +1535,81 @@
   }
 
   /*
- * What a conversation lets its agent use (components/capabilities.tsx): sections of switch rows in the composer's
- * panel. A whole row toggles its switch; rows reach 44px on touch screens.
+ * A setup picker (components/setup-picker.tsx) and the app consent rows: sections of switch rows. A whole row toggles
+ * its switch; rows reach 44px on touch screens.
  */
-  .capability-header {
+  .setup-header {
     padding: 0.5rem 0.625rem 0.25rem;
   }
-  .capability-section {
+  .setup-picker {
+    display: flex;
+    flex-direction: column;
+  }
+  /* A category's heading and its Everything | Only these choice on one line, wrapping on a narrow screen. */
+  .setup-category {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.25rem 0.75rem;
+    padding: 0.25rem 0.625rem 0.25rem 0;
+  }
+  .setup-filter {
+    padding: 0.25rem 0.625rem 0.375rem;
+  }
+  /* The setup editor: a panel from the right on a wide screen, a sheet on a phone; the picker scrolls, Save stays put. */
+  .setup-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 0.5rem 0.5rem;
+  }
+  .setup-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem;
+    border-top: 1px solid var(--border);
+  }
+  .setup-footer > .setup-error {
+    flex-basis: 100%;
+    padding: 0;
+  }
+  .setup-saved {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    padding: 0 1rem 1rem;
+    font-size: var(--text-13);
+  }
+  .setup-saved > ul {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding-inline-start: 1rem;
+    list-style: disc;
+  }
+  .setup-saved > button {
+    align-self: flex-end;
+  }
+  /* What a narrowed setup holds, beside the composer: one line, cut short in a narrow channel. */
+  .setup-summary {
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .setup-section {
     display: flex;
     flex-direction: column;
     padding-block: 0.25rem;
     border-top: 1px solid var(--border);
   }
-  .capability-heading {
+  .setup-heading {
     padding: 0.375rem 0.625rem 0.125rem;
     color: var(--muted-foreground);
     font-size: var(--text-2xs);
@@ -1555,7 +1617,7 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
-  .capability-row {
+  .switch-row {
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -1565,39 +1627,39 @@
     cursor: pointer;
     user-select: none;
   }
-  .capability-row:not([data-disabled]):active {
+  .switch-row:not([data-disabled]):active {
     background: var(--accent);
   }
   @media (hover: hover) and (pointer: fine) {
-    .capability-row:not([data-disabled]):hover {
+    .switch-row:not([data-disabled]):hover {
       background: var(--accent);
     }
   }
-  .capability-row[data-disabled] {
+  .switch-row[data-disabled] {
     cursor: default;
     opacity: 0.5;
   }
   @media (pointer: coarse) {
-    .capability-row {
+    .switch-row {
       min-height: 2.75rem;
     }
   }
-  .capability-name {
+  .switch-name {
     display: flex;
     flex: 1;
     flex-direction: column;
     min-width: 0;
     text-align: left;
   }
-  .capability-detail {
+  .switch-detail {
     color: var(--muted-foreground);
     font-size: 0.75rem;
   }
-  .capability-detail[data-state='off'] {
+  .switch-detail[data-state='off'] {
     color: var(--muted-foreground);
     opacity: 0.8;
   }
-  .capability-expand {
+  .switch-expand {
     display: flex;
     flex: 1;
     align-items: center;
@@ -1606,33 +1668,33 @@
     align-self: stretch;
     margin-left: -0.25rem;
   }
-  .capability-expand > svg {
+  .switch-expand > svg {
     flex: none;
     width: 0.875rem;
     height: 0.875rem;
     color: var(--muted-foreground);
     transition: rotate 150ms var(--ease-out);
   }
-  .capability-expand[data-panel-open] > svg {
+  .switch-expand[data-panel-open] > svg {
     rotate: 90deg;
   }
-  .capability-tools {
+  .switch-children {
     padding-left: 1.125rem;
   }
-  .capability-empty,
-  .capability-error {
+  .setup-empty,
+  .setup-error {
     padding: 0.25rem 0.625rem 0.5rem;
     font-size: var(--text-13);
   }
-  .capability-empty {
+  .setup-empty {
     color: var(--muted-foreground);
   }
-  .capability-empty a {
+  .setup-empty a {
     color: var(--foreground);
     text-decoration: underline;
     text-underline-offset: 2px;
   }
-  .capability-error {
+  .setup-error {
     color: var(--destructive);
   }
 

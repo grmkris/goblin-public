@@ -3,6 +3,7 @@ import { appClosedMutation, keepAppMutation } from '../../apps/queries.ts'
 import { markReadMutation, startThreadMutation, updateConversationMutation } from '../../conversations/queries.ts'
 import { undoMutation } from '../../organize/queries.ts'
 import { createPersonaMutation, updatePersonaMutation } from '../../personas/queries.ts'
+import { setTopicSetupMutation } from '../../setup/queries.ts'
 import { createTopicMutation, updateTopicMutation } from '../../topics/queries.ts'
 import { messageOf } from '../query/app-error.ts'
 import { applyWorkspaceChanges, setFeedStatus, workspaceKeys, workspaceQueries, workspaceSync } from './sync.ts'
@@ -72,6 +73,13 @@ export const createWorkspaceTopicMutation = mutationOptions({
 export const updateWorkspaceTopicMutation = mutationOptions({
   ...updateTopicMutation,
   onSuccess: (topic, _update, _context, { client }) => applyWorkspaceChanges(client, [{ type: 'topic', topic }]),
+})
+
+/** A Topic's setup changed (ADR 0040): the Topic shows as the server answers. */
+export const setWorkspaceTopicSetupMutation = mutationOptions({
+  ...setTopicSetupMutation,
+  onSuccess: (saved, _edit, _context, { client }) =>
+    applyWorkspaceChanges(client, [{ type: 'topic', topic: saved.topic }]),
 })
 
 /** Undo of an organizing receipt: the receipt shows undone as the server answers; the feed brings what it restored. */

@@ -77,27 +77,42 @@ function DrawerContent({
   )
 }
 
+/** Where a side panel comes from and goes back to: its viewport's alignment and its offscreen transform. */
+const SIDES = {
+  left: {
+    viewport: 'justify-start',
+    away: 'data-ending-style:[transform:translateX(-100%)] data-starting-style:[transform:translateX(-100%)]',
+  },
+  right: {
+    viewport: 'justify-end',
+    away: 'data-ending-style:[transform:translateX(100%)] data-starting-style:[transform:translateX(100%)]',
+  },
+} as const
+
 /**
- * A panel from the left edge (the phone's navigation); give the root `swipeDirection="left"` so a swipe left closes it.
- * `tone="shell"` paints it in the shell's moss, as the rail and sidebar it holds are on a desktop.
+ * A panel from the left edge (the phone's navigation), or from the right (`side="right"`, a settings panel on a wide
+ * screen); give the root the matching `swipeDirection` so a swipe that way closes it. `tone="shell"` paints it in the
+ * shell's moss, as the rail and sidebar it holds are on a desktop.
  */
 function DrawerSide({
   className,
   tone = 'popover',
+  side = 'left',
   ...props
-}: DrawerPrimitive.Popup.Props & { readonly tone?: 'popover' | 'shell' }) {
+}: DrawerPrimitive.Popup.Props & { readonly tone?: 'popover' | 'shell'; readonly side?: 'left' | 'right' }) {
   return (
     <DrawerPrimitive.Portal>
       <DrawerBackdrop />
       <DrawerPrimitive.Viewport
         data-slot="drawer-viewport"
-        className="fixed inset-0 z-(--z-overlay) flex items-stretch justify-start"
+        className={cn('fixed inset-0 z-(--z-overlay) flex items-stretch', SIDES[side].viewport)}
       >
         <DrawerPrimitive.Popup
           data-slot="drawer-side"
           className={cn(
             tone === 'shell' ? 'bg-(--shell-rail) text-(--shell-foreground)' : 'bg-popover text-popover-foreground',
-            'flex h-full flex-col shadow-lg outline-none [transform:translateX(var(--drawer-swipe-movement-x,0px))] transition-transform duration-300 ease-drawer data-ending-style:[transform:translateX(-100%)] data-ending-style:duration-[calc(var(--drawer-swipe-strength,0.7)*300ms)] data-starting-style:[transform:translateX(-100%)] data-swiping:duration-0 data-swiping:select-none',
+            'flex h-full flex-col shadow-lg outline-none [transform:translateX(var(--drawer-swipe-movement-x,0px))] transition-transform duration-300 ease-drawer data-ending-style:duration-[calc(var(--drawer-swipe-strength,0.7)*300ms)] data-swiping:duration-0 data-swiping:select-none',
+            SIDES[side].away,
             className,
           )}
           {...props}

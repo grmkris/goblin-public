@@ -16,6 +16,7 @@ import type { SendExtras } from './composer-state.ts'
 import { QueuedMessages } from './queued-messages.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
 import { ModelPicker } from './model-picker.tsx'
+import { SetupButton } from './topic-setup.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
 import type { useConversation } from './use-conversation.ts'
 
@@ -107,6 +108,7 @@ function ComposerContext({
         <span className="truncate">{presence.label}</span>
       </span>
       <ModelPicker onError={onError} />
+      <SetupButton chat={id} />
       <UsageIndicator
         usage={usage}
         context={context}

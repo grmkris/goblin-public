@@ -17,11 +17,13 @@ import {
   HashIcon,
   PencilIcon,
   SearchIcon,
+  Settings2Icon,
 } from 'lucide-react'
 import { messageOf } from '../../lib/query/app-error.ts'
 import { isArchived } from '../../lib/topics.ts'
 import { useTopics } from '../../lib/workspace/hooks.ts'
 import { updateWorkspaceTopicMutation } from '../../lib/workspace/mutations.ts'
+import { TopicSetupDrawer } from '../topic-setup.tsx'
 import { TopicDialog } from './topic-dialog.tsx'
 
 /** The channel's name as its bar shows it: `#` and the Topic's name, with a pulse while its agent works. */
@@ -36,8 +38,9 @@ function ChannelName({ name, working }: { readonly name: string; readonly workin
 }
 
 /**
- * The channel's name, and on a server with Topics its menu, as Slack's channel header has: rename, keep the Topic out of
- * automatic search or let it back in, and archive it or restore it (never Personal). A failure shows under the bar.
+ * The channel's name, and on a server with Topics its menu, as Slack's channel header has: rename, choose its MCP
+ * servers and skills (ADR 0040), keep the Topic out of automatic search or let it back in, and archive it or restore it
+ * (never Personal). A failure shows under the bar.
  */
 export function ChannelMenu({
   topic,
@@ -53,6 +56,7 @@ export function ChannelMenu({
   const topics = useTopics()
   const update = useMutation(updateWorkspaceTopicMutation)
   const [renaming, setRenaming] = useState(false)
+  const [settingUp, setSettingUp] = useState(false)
   if (topic === undefined || topics.length === 0) return <ChannelName name={name} working={working} />
   const change = (patch: UpdateTopic) =>
     update.mutate(
@@ -72,6 +76,10 @@ export function ChannelMenu({
             <PencilIcon aria-hidden />
             Rename
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setSettingUp(true)}>
+            <Settings2Icon aria-hidden />
+            MCP servers & skills…
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => change({ searchExcluded: !topic.searchExcluded })}>
             {topic.searchExcluded ? <SearchIcon aria-hidden /> : <EyeOffIcon aria-hidden />}
             {topic.searchExcluded ? 'Include in search' : 'Exclude from search'}
@@ -88,6 +96,7 @@ export function ChannelMenu({
         </DropdownMenuContent>
       </DropdownMenu>
       {renaming && <TopicDialog open onOpenChange={setRenaming} topic={topic} />}
+      <TopicSetupDrawer topic={topic} open={settingUp} onOpenChange={setSettingUp} />
     </>
   )
 }
