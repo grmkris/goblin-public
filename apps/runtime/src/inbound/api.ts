@@ -1,10 +1,8 @@
 import { InternalApi } from '@goblin/contracts/internal'
-import * as Effect from 'effect/Effect'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { acceptDoorbell } from '../channel/program.ts'
 import { Inspection } from '../inspect/service.ts'
 import { Events } from '../mcp/service.ts'
-import { AgentInput } from '../runtime/input.ts'
 import { askClient, recentOwnerMessages } from './program.ts'
 
 /**
@@ -16,9 +14,7 @@ export const InboundHandlers = HttpApiBuilder.group(InternalApi, 'inbound', (han
   handlers
     .handle('ask', ({ payload }) => askClient(payload))
     .handle('recent', ({ query }) => recentOwnerMessages(query.limit))
-    .handle('doorbell', ({ payload }) =>
-      Effect.asVoid(AgentInput.use(({ schedulePull }) => acceptDoorbell(payload, schedulePull))),
-    )
+    .handle('doorbell', ({ payload }) => acceptDoorbell(payload))
     .handle('mcpEvents', ({ payload, headers }) =>
       Events.use((events) =>
         events.receive({

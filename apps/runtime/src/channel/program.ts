@@ -9,6 +9,7 @@ import { offersEvents } from '../mcp/remote.ts'
 import type { Consumer } from '../mcp/events/store.ts'
 import { Events, McpConnections, McpGrants, McpServers } from '../mcp/service.ts'
 import { epochSeconds } from '../clock.ts'
+import { AgentInput } from '../runtime/input.ts'
 
 const TELEGRAM_EVENTS = ['message.received', 'question.answered']
 
@@ -84,16 +85,16 @@ export const disableTelegram = Effect.gen(function* () {
   return null
 })
 
-/** Verify a channel's doorbell before scheduling its pull; it never renews resident authority. */
-export const acceptDoorbell = Effect.fn('channel.acceptDoorbell')(function* (
-  doorbell: Doorbell,
-  pull: () => Promise<unknown>,
-) {
+/**
+ * A doorbell from myagent, checked against the secret the agent gave it, then answered at once: the pull runs from the
+ * agent's `channelPull` schedule. It never renews resident authority.
+ */
+export const acceptDoorbell = Effect.fn('channel.acceptDoorbell')(function* (doorbell: Doorbell) {
   const channel = yield* Channel
   const secret = yield* channel.secret
   const now = yield* Clock.currentTimeMillis
   const valid = secret !== undefined && (yield* attempt(() => doorbellValid(secret, doorbell, now)))
   if (!valid) return yield* new Forbidden({ reason: 'doorbell' })
-  yield* attempt(pull)
-  return true as const
+  const { schedulePull } = yield* AgentInput
+  yield* attempt(schedulePull)
 })
