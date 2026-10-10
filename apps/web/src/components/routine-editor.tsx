@@ -1,6 +1,6 @@
 // Writing a routine: what it does, when it runs, and what it may use. Saving makes a proposal the owner then confirms
 // on its card; nothing here turns a routine on.
-import { type SubmitEvent, type ReactNode, useEffect, useId, useState } from 'react'
+import { type SubmitEvent, type ReactNode, useId, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Option, Schema } from 'effect'
 import type { RoutineDefinition, RoutineView } from '@goblin/contracts'
@@ -82,14 +82,17 @@ type EditorProps = {
   readonly onCancel?: () => void
 }
 
-/** The tools the owner has allowed, plus any the routine already names, so editing never drops one silently. */
-function useAvailableTools(selected: readonly Tool[], onError: (message: string) => void) {
+/**
+ * The tools the owner has allowed, plus any the routine already names, so editing never drops one silently; and why
+ * the allowed ones could not be read, if they could not.
+ */
+function useAvailableTools(selected: readonly Tool[]) {
   const read = useQuery(grantsQuery)
-  useEffect(() => {
-    if (read.error !== null) onError(messageOf(read.error, 'list the tools you allowed'))
-  }, [read.error, onError])
   const tools = (read.data ?? []).filter((grant) => grant.capability === 'tool')
-  return [...tools, ...selected.filter((tool) => !tools.some((item) => same(item, tool)))]
+  return {
+    available: [...tools, ...selected.filter((tool) => !tools.some((item) => same(item, tool)))],
+    unread: read.error === null ? '' : messageOf(read.error, 'list the tools you allowed'),
+  }
 }
 
 const same = (a: Tool, b: Tool): boolean => a.serverId === b.serverId && a.name === b.name
@@ -103,9 +106,9 @@ function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
   const [notify, setNotify] = useState(initial.notifyTelegram)
   const saving = useMutation(saveRoutineMutation)
   const [problem, setProblem] = useState('')
-  const available = useAvailableTools(selected, setProblem)
+  const { available, unread } = useAvailableTools(selected)
   const pending = saving.isPending
-  const error = problem || (saving.error === null ? '' : messageOf(saving.error, 'save the routine'))
+  const error = problem || (saving.error === null ? '' : messageOf(saving.error, 'save the routine')) || unread
   function save(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault()
     const data = new FormData(event.currentTarget)

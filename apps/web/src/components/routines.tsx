@@ -157,31 +157,19 @@ function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
 
 type Change = 'confirm' | 'pause' | 'archive'
 
-/** Confirm, Pause, Edit and Archive, each busy while it is under way. */
-function useRoutineChange(routine: RoutineView, onChange?: (routine: RoutineView) => void) {
+/** Confirm, Pause, Edit and Archive, each busy while it is under way; the routines read again once it lands. */
+function useRoutineChange(routine: RoutineView) {
   const changing = useMutation(changeRoutineMutation)
   const pending = changing.isPending ? changing.variables.action : undefined
   const error = changing.error === null ? '' : messageOf(changing.error, 'change this routine')
   const change = (action: Change) =>
-    changing.mutate(
-      { action, id: routine.id, revision: routine.revision, operationId: operation() },
-      { onSuccess: (changed) => onChange?.(changed) },
-    )
+    changing.mutate({ action, id: routine.id, revision: routine.revision, operationId: operation() })
   return { pending, error, change }
 }
 
 /** Owner review is an authenticated revisioned API operation, never a model tool confirmation. */
-export function RoutineReview({
-  routine,
-  onChange,
-  onEdit,
-}: {
-  readonly routine: RoutineView
-  /** Hears the routine as the agent answers a change; the list on its own page refreshes either way. */
-  readonly onChange?: (routine: RoutineView) => void
-  readonly onEdit?: () => void
-}) {
-  const { pending, error, change } = useRoutineChange(routine, onChange)
+export function RoutineReview({ routine, onEdit }: { readonly routine: RoutineView; readonly onEdit?: () => void }) {
+  const { pending, error, change } = useRoutineChange(routine)
   const { state, definition } = routine
   const busy = pending !== undefined
   return (

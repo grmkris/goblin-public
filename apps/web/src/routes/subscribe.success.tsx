@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Button } from '@goblin/ui'
 import { AuthShell } from '../components/auth-shell.tsx'
 import { OwnerGate } from '../components/owner-gate.tsx'
-import { billingStateQuery } from '../account/queries.ts'
+import { awaitedBillingQuery } from '../account/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 
 /** How often the payment return asks whether the plan is active, and for how long before it asks the owner to check. */
@@ -25,10 +25,8 @@ function PaymentReturn() {
     const timer = setTimeout(() => setWaiting(false), PATIENCE_MS)
     return () => clearTimeout(timer)
   }, [])
-  const billing = useQuery({
-    ...billingStateQuery,
-    refetchInterval: (query) => (waiting && query.state.data?.active !== true ? POLL_MS : false),
-  })
+  // The page's one read: it waits for the plan, so a failure stays beside Check again rather than replacing the page.
+  const billing = useQuery(awaitedBillingQuery(waiting, POLL_MS))
   const [checking, setChecking] = useState(false)
   async function checkAgain(): Promise<void> {
     setChecking(true)

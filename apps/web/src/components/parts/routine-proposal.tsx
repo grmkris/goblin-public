@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Option, Schema } from 'effect'
 import type { RoutineView } from '@goblin/contracts'
 import { Alert, AlertDescription, Button } from '@goblin/ui'
 import { record } from '../../lib/values.ts'
 import { messageOf } from '../../lib/query/app-error.ts'
-import { routinesQuery } from '../../routines/queries.ts'
+import { reviewedRoutinesQuery } from '../../routines/queries.ts'
 import type { ToolPart } from '../../lib/parts.ts'
 import { RoutineReview } from '../routines.tsx'
 import { ToolCard } from './tool-part.tsx'
@@ -16,37 +16,37 @@ const Receipt = Schema.Struct({
   revision: Schema.Int,
 })
 const decodeReceipt = Schema.decodeUnknownOption(Receipt)
+/** What the review shows: the routine as it is now, or why there is none to review. */
+export function reviewed(routines: readonly RoutineView[] | undefined, routineId: string, revision: number) {
+  if (routines === undefined) return { routine: undefined, note: '' }
+  const routine = routines.find((item) => item.id === routineId)
+  if (routine === undefined) return { routine, note: 'This routine has been archived or removed.' }
+  const note = routine.revision === revision ? '' : 'The routine has changed. Review its current revision below.'
+  return { routine, note }
+}
+
 /** Load the current owner-visible definition; tool text never activates or supplies the review authority. */
 export function RoutineProposalPart({ part }: { readonly part: ToolPart }) {
   const details = record(part.result?.details)
   const receipt = Option.getOrUndefined(decodeReceipt(details))
-  const queryClient = useQueryClient()
-  const [routine, setRoutine] = useState<RoutineView>()
-  const [error, setError] = useState('')
-  const [pending, setPending] = useState(false)
-  async function review() {
-    if (!receipt) return
-    setPending(true)
-    try {
-      // The review reads the routines as they are now, never a cached list.
-      const page = await queryClient.query({ ...routinesQuery, staleTime: 0 })
-      const current = page.routines.find((item) => item.id === receipt.routineId)
-      if (!current) {
-        setError('This routine has been archived or removed.')
-        return
-      }
-      setRoutine(current)
-      if (current.revision !== receipt.revision) setError('The routine has changed. Review its current revision below.')
-    } catch (cause) {
-      setError(messageOf(cause, 'read the routine'))
-    } finally {
-      setPending(false)
-    }
-  }
+  const [open, setOpen] = useState(false)
+  const read = useQuery(reviewedRoutinesQuery(open))
+  // The review shows the routines as read after it opened, never a list cached before it.
+  const { routine, note } = reviewed(
+    read.isFetchedAfterMount ? read.data?.routines : undefined,
+    receipt?.routineId ?? '',
+    receipt?.revision ?? 0,
+  )
+  const error = read.error === null ? note : messageOf(read.error, 'read the routine')
   return (
     <ToolCard part={part}>
       {receipt && details && !('origin' in details) && !part.result?.isError && (
-        <Button size="sm" variant="outline" pending={pending} onClick={() => void review()}>
+        <Button
+          size="sm"
+          variant="outline"
+          pending={open && read.isFetching}
+          onClick={() => (open ? void read.refetch() : setOpen(true))}
+        >
           Review routine proposal
         </Button>
       )}
@@ -55,7 +55,7 @@ export function RoutineProposalPart({ part }: { readonly part: ToolPart }) {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      {routine && <RoutineReview routine={routine} onChange={setRoutine} />}
+      {routine && <RoutineReview routine={routine} />}
     </ToolCard>
   )
 }

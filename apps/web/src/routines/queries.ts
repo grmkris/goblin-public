@@ -1,4 +1,4 @@
-import { type QueryClient, mutationOptions } from '@tanstack/react-query'
+import { type QueryClient, mutationOptions, queryOptions, skipToken } from '@tanstack/react-query'
 import type { RoutineDefinition, RoutineSettings } from '@goblin/contracts'
 import { owner } from '../lib/api.ts'
 import { withOperation } from '../lib/query/api-query.ts'
@@ -16,6 +16,9 @@ const routineKeys = {
 
 /** Every routine but the archived ones. */
 export const routinesQuery = owner.apiQuery({ queryKey: routineKeys.list, queryFn: (api) => api.routines.list() })
+/** The routines as they are now, for a proposal's review: nothing until `open`, then never a cached list. */
+export const reviewedRoutinesQuery = (open: boolean) =>
+  queryOptions({ queryKey: routineKeys.list, queryFn: open ? routinesQuery.queryFn : skipToken, staleTime: 0 })
 /** The timezone new routines use, and the active and running caps. */
 export const routineSettingsQuery = owner.apiQuery({
   queryKey: routineKeys.settings,

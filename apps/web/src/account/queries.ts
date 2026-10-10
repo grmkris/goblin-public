@@ -19,6 +19,13 @@ export const billingStateQuery = account.apiQuery({
 export const signedInBillingQuery = (signedIn: boolean) =>
   queryOptions({ queryKey: accountKeys.billing, queryFn: signedIn ? billingStateQuery.queryFn : skipToken })
 
+/** The plan after a payment, read every `pollMs` while `waiting` and it is not active yet. */
+export const awaitedBillingQuery = (waiting: boolean, pollMs: number) =>
+  queryOptions({
+    ...billingStateQuery,
+    refetchInterval: (query) => (waiting && query.state.data?.active !== true ? pollMs : false),
+  })
+
 /** Opens a Pro checkout; the page goes there, so nothing here needs refreshing. */
 export const checkoutMutation = account.apiMutation({ mutationFn: (api, _: void) => api.billing.checkout() })
 /** The payment provider's portal for an account that has paid before. */
