@@ -6,8 +6,8 @@ import { AgentInput } from './input.ts'
 import { type Instrument, uninstrumented } from './instrument.ts'
 
 /**
- * The topics the runtime publishes, each with its payload. Empty here: a lane adds its topics from its own module by
- * declaration merging, so no two lanes edit one shared file:
+ * The topics the runtime publishes, each with its payload. Empty here: an area adds its topics from its own module by
+ * declaration merging, so no two areas edit one shared file:
  *
  *     declare module '../runtime/changes.ts' {
  *       interface ChangeTopics {

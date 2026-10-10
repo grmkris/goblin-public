@@ -153,7 +153,7 @@ type Sending = {
   readonly applied: Applied
 }
 
-/** `ChatOperations.send`: the one admission sequence of an input (plan §3). */
+/** `ChatOperations.send`: the one admission sequence of an input (ADR 0030). */
 const sendWith =
   ({ admit, budget, models, pi, applied }: Sending) =>
   <R = never>(input: Submit<R>): Effect.Effect<PiReceipt, AppError, R> =>
@@ -172,8 +172,8 @@ const sendWith =
     }).pipe(Effect.withSpan('ChatOperations.send'))
 
 /**
- * The chat operations natively: receipts and the chat directory in the agent's SQLite, the chat's lock in `KeyedLock`,
- * Pi through `PiSessions`, flows through `FlowEvents`.
+ * The chat operations: receipts and the chat directory in the agent's SQLite, the chat's lock in `KeyedLock`, Pi
+ * through `PiSessions`, flows through `FlowEvents`.
  */
 export const makeChatOperations = Effect.gen(function* () {
   const db = yield* Db

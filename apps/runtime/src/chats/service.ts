@@ -77,7 +77,7 @@ export type ChatWrite = { readonly chat: string; readonly write: PassiveWrite }
 export type Admitted = { readonly session: SessionId; readonly existing: boolean }
 
 /**
- * The flow event an admission records once it ends (plan §4), besides its chat, operation, status and time: the flow,
+ * The flow event an admission records once it ends (ADR 0037), besides its chat, operation, status and time: the flow,
  * how it came in, who acted, and what else it says (a Persona ask's count and order).
  */
 export type AdmissionFlow = Pick<FlowEvent, 'flow' | 'via' | 'actor'> &
@@ -105,8 +105,8 @@ export type Submit<R> = Admission & {
 }
 
 /**
- * What happens in a chat by operation (plan §3): admission (an operation's receipt is recorded before Pi sees it, and a
- * replay keeps its first session), the one admission sequence of an input, and passive writes, each under the chat's
+ * What happens in a chat by operation (ADR 0030): admission (an operation's receipt is recorded before Pi sees it, and
+ * a replay keeps its first session), the one admission sequence of an input, and passive writes, each under the chat's
  * admission lock (`KeyedLock`). The lock covers admission only, never a model call or a wait.
  */
 export class ChatOperations extends Context.Service<

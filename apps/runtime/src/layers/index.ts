@@ -79,5 +79,5 @@ export const AgentLive = (input: AgentInputs) =>
     then(AgentHttp.layer),
   )
 
-/** Every service a program may require, derived from the layers so no lane edits a shared union. */
+/** Every service a program may require, derived from the layers so no area edits a shared union. */
 export type AgentServices = Layer.Success<ReturnType<typeof AgentLive>>

@@ -30,7 +30,7 @@ const DAY = 86_400_000
 /**
  * Whether subscribing a confirmed event routine failed for a reason the owner has to act on: the server needs signing
  * in again, the selector is not granted or does not exist, or the server refused (anything but a transport failure).
- * Anything else is transient: the routine stays activating and the next sweep tries again (R4).
+ * Anything else is transient: the routine stays activating and the next sweep tries again.
  */
 export const activationRefused = (error: unknown): boolean =>
   isAppError(error) &&

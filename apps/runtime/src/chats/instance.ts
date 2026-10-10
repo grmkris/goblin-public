@@ -7,7 +7,7 @@ import { PiSessions } from '../pi/sessions.ts'
 
 /**
  * How `operationId` ended in `session` if Pi settles it within `ms`; none while it still runs. A wait that fails for
- * any other reason is that failure, never "still running" (C2, C3).
+ * any other reason is that failure, never "still running".
  */
 export const settledWithin = (
   session: string,

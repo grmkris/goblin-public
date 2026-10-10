@@ -33,7 +33,7 @@ import { SingleFlight } from '../observability/single-flight.ts'
 import { Db } from '../runtime/db.ts'
 import type { FoundationServices } from './core.ts'
 
-/** Start step 7: main is registered, once (a retained or rebound binding is never overwritten). */
+/** Start step 7: main is registered, once (a retained binding is never overwritten). */
 export const PrimaryChatLive: Layer.Layer<never, never, Db> = Layer.effectDiscard(
   Effect.gen(function* () {
     const db = yield* Db
@@ -51,7 +51,7 @@ const read = <Args extends readonly unknown[], A>(db: ChatDb, name: string, look
     return yield* attemptSync(() => lookup(db, ...args))
   })
 
-/** The chat directory natively: reads over the agent's SQLite (it keeps no state) and the one row inserter. */
+/** The chat directory: reads over the agent's SQLite (it keeps no state) and the one row inserter. */
 export const ChatsLive = Layer.effect(
   Chats,
   Effect.gen(function* () {
@@ -95,11 +95,11 @@ export const ConversationsLive = Layer.effect(
   }),
 )
 
-/** Move to thread natively (chats/mover.ts): its reconcile runs in the layer's scope, never holding up the start. */
+/** Move to thread (chats/mover.ts): its reconcile runs in the layer's scope, never holding up the start. */
 const MovesLive = Layer.effect(Moves, makeMoves)
 
 /**
- * The conversation services after the start (chats/service.ts), natively: SQLite reads and receipts, each chat's one
+ * The conversation services after the start (chats/service.ts): SQLite reads and receipts, each chat's one
  * lock in `KeyedLock`, single flights in `SingleFlight`, Pi through `PiSessions`, flows through `FlowEvents`, and
  * changes through `Changes`.
  */

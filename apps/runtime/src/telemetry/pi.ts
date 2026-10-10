@@ -63,7 +63,7 @@ const RECEIPT_SOURCES: Readonly<Record<string, string>> = {
 }
 
 /**
- * Where a turn came from: its operation's receipt when it has one with a kind (O2), else its operation id's prefix. A
+ * Where a turn came from: its operation's receipt when it has one with a kind, else its operation id's prefix. A
  * passive write's receipt starts no turn of its own, so it falls back too.
  */
 export const sourceOf = (operationId: string, receipt?: ReceiptSource): string =>

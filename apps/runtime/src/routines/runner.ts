@@ -67,7 +67,7 @@ const reportFlow = (record: RoutineRun, topic: number | undefined, status: FlowS
 
 /**
  * Why a firing is recorded as skipped rather than run: no plan, resident authority off, or today's budget spent. Any
- * other failure (auth D1, storage) fails the admission and is reported, so an outage never skips a firing (R3).
+ * other failure (auth D1, storage) fails the admission and is reported, so an outage never skips a firing.
  */
 export const admissionSkip = Effect.gen(function* () {
   yield* requirePlan('routines')

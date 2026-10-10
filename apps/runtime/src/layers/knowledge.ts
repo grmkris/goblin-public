@@ -94,7 +94,7 @@ const MemoriesLive = Layer.effect(
       truncate: Effect.fn('Memories.truncate')(function* (chat: string, size: number) {
         yield* Effect.sync(() => forgetFrom(db, chat, size))
       }),
-      // A view is placed as a passive write under the chat's admission lock, never beside a send (K1), and recorded
+      // A view is placed as a passive write under the chat's admission lock, never beside a send, and recorded
       // only once the write was admitted: a failed write is placed again by the next step.
       step: Effect.fn('Memories.step')(function* (chat: string, signal: AbortSignal) {
         const next = yield* attempt(() => memoryOf(engine, chat).advance(signal))

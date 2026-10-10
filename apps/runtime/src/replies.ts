@@ -11,7 +11,7 @@ const MAX_PAGES = 20
 /** The one read the ledger needs of a conversation. */
 type Entries = Pick<Conversation, 'entries'>
 
-/** What a chat's own entries say: its messages, and what in them still waits on the owner (A5, ADR 0032). */
+/** What a chat's own entries say: its messages, and what in them still waits on the owner (ADR 0032). */
 export type ChatActivity = ReplyStats & { readonly asks: readonly Attention[] }
 
 /** A thread's count so far, through its entry `through`. */

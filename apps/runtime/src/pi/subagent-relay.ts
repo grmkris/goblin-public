@@ -50,7 +50,7 @@ export type Subagent = {
   readonly reported: EntryId[]
   /** What the owner wrote to it since its last report, quoted in the next one. */
   quotes?: string[]
-  /** The spawn asked for synthesis: its report is an input Goblin answers once, not a passive result (spec §5). */
+  /** The spawn asked for synthesis: its report is an input Goblin answers once, not a passive result (ADR 0033). */
   synthesize?: boolean
 }
 

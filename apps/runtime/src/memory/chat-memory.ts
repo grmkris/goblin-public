@@ -101,7 +101,7 @@ export type MemoryDeps = {
  * way Pi places a compaction: the model then sees the view and, verbatim, everything from that input on. Nothing waits
  * for the summarizer: until a message is summarized it is simply still shown in full. The builder task
  * (`pi/memory.ts`) drives `step`; `zoom` opens a line. Every row is keyed by the chat id, and the chat's Pi session is
- * resolved on each use, so a rebind moves nothing here. It keeps no state of its own: any number of them over one
+ * resolved on each use, so no row names a session. It keeps no state of its own: any number of them over one
  * database agree.
  */
 export class ChatMemory {

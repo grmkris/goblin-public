@@ -1,9 +1,9 @@
 import { BREAK, type Migration } from './migration.ts'
 
-/** Lane C's conversation-operation migrations (keys from `20261027000000_`), after the base ones. */
+/** The conversation-operation migrations (keys from `20261027000000_`), after the base ones. */
 export const CONVERSATION_MIGRATIONS: readonly Migration[] = [
   {
-    // Receipts (plan §3): what each operation in a chat was, who started it, what it led to and how it ended. Rows
+    // Receipts (ADR 0030): what each operation in a chat was, who started it, what it led to and how it ended. Rows
     // admitted before carry none of it and read as `legacy`; the key, the retention and the first session are unchanged.
     key: '20261027000000_chat_operation_receipts',
     tables: ['app_chat_operations'],

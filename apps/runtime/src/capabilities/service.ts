@@ -7,7 +7,7 @@ import type { CapabilityScope, Exclusion, PiTools } from './profiles.ts'
 /**
  * What each conversation switched off (ADR 0010): the one gate every MCP, skills, subagent and app tool asks. It only
  * narrows the owner's grants, which the MCP connections still check. Times are read inside, in seconds.
- * `layers/capabilities.ts` builds it over the agent's one `CapabilityProfiles`.
+ * `layers/capabilities.ts` builds it over the switches' functions of the agent's database (`capabilities/profiles.ts`).
  */
 export class Capabilities extends Context.Service<
   Capabilities,

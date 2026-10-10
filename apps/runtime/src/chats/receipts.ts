@@ -9,7 +9,7 @@ type Row = typeof appChatOperations.$inferSelect
 /** How long a receipt is kept, in seconds: an operation replayed later than this is a new one. */
 export const RECEIPT_RETENTION = 30 * 24 * 60 * 60
 
-/** The operations a chat records (plan §3), besides passive writes. */
+/** The operations a chat records (ADR 0030), besides passive writes. */
 export const OPERATION_KINDS = [
   'send',
   'ask_client',
@@ -135,7 +135,7 @@ export type Admission = {
 
 /**
  * Records an operation's intent in its chat before Pi sees it, in one transaction, dropping every receipt past the
- * retention but this one. A replay finds its first receipt, so it keeps its first session, even after a rebind.
+ * retention but this one. A replay finds its first receipt, so it keeps its first session.
  */
 export function admitReceipt<RunResult>(
   db: Database<RunResult>,

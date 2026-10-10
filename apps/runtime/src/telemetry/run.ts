@@ -27,7 +27,7 @@ export function runTelemetry(
   const db = drizzle(storage)
   const ledger = new RunLedger(db)
   const telemetry = new RunTelemetry([ledger, new RunLog(agent), ...sinks], (id) => ledger.read(id))
-  // A turn's source is its operation's receipt (O2): one short synchronous read inside Pi's commit.
+  // A turn's source is its operation's receipt: one short synchronous read inside Pi's commit.
   const recorder = new PiRunRecorder(telemetry, {
     latestForTask: (kind, taskId) => ledger.latestForTask(kind, taskId),
     read: (id) => ledger.read(id),

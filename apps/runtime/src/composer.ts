@@ -113,7 +113,7 @@ const resolveOne = (session: string, selection: ComposerSelection) =>
 /**
  * Resolve all selections before model work. A selection that is not there for this chat (gone, invalid, not granted)
  * refuses the entire send with its identity key; any other failure (a connection or an MCP call that failed) is the
- * send's failure as it is (C1).
+ * send's failure as it is.
  */
 export const resolveSelections = (session: string, selections: readonly ComposerSelection[]) =>
   Effect.gen(function* () {

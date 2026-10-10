@@ -48,8 +48,9 @@ export function enableResident(db: Database, now: number): void {
 
 /**
  * Resident authority: what lets tools run without a live browser session (chat, inbound MCP clients, routines and
- * channels). Every owner request renews it; a revocation is sticky until the owner re-enables it. The legacy start
- * still hands this object to the services it makes; the `Resident` service (mcp/service.ts) reads the same row.
+ * channels). Owner admission renews it; a revocation is sticky until the owner re-enables it. The agent's programs use
+ * the `Resident` service (mcp/service.ts, built over the functions above in layers/core.ts); this object reads and
+ * writes the same row for code that holds only the database.
  */
 export class ResidentAuthority {
   readonly #db: Database

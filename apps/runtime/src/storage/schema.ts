@@ -92,10 +92,11 @@ export const appUsageDaily = sqliteTable('app_usage_daily', {
 
 /**
  * The conversations the owner can reach, keyed by stable chat id: main, threads and subagents, as a tree through
- * `parent_session` (the parent chat). `pi_session` resolves each chat to its current Pi conversation; epoch fences
- * rebinds and a helper's immutable `spawner_session` keeps its original anchor. Pi owns their transcripts; this is
- * only what Pi does not keep: identity, kind, title, where it came from, and whether it is closed. The retired
- * `archived_at` column stays in the table (migrations are additive) and is no longer read.
+ * `parent_session` (the parent chat). `pi_session` resolves each chat to its current Pi conversation (nothing rebinds
+ * a chat; `epoch` is kept, and a decision is fenced on it) and a helper's immutable `spawner_session` keeps its
+ * original anchor. Pi owns their transcripts; this is only what Pi does not keep: identity, kind, title, where it came
+ * from, and whether it is closed. The retired `archived_at` column stays in the table (migrations are additive) and is
+ * no longer read.
  */
 export const appConversations = sqliteTable('app_conversations', {
   chatId: text('session_id').primaryKey().notNull(),
