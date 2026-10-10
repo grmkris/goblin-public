@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./inspect": "./src/inspect.ts",
     "./telemetry": "./src/telemetry.ts",
-    "./api": "./src/api/index.ts"
+    "./api": "./src/api/index.ts",
+    "./internal": "./src/api/internal.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
