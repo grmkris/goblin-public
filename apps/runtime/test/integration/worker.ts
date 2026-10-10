@@ -17,6 +17,7 @@ import { probes as budgetProbes } from './budget-outage.ts'
 import { probes as codeRecoveryProbes } from './code-recovery-probe.ts'
 import { probes as composerProbes } from './composer-probe.ts'
 import { probes as conversationProbes } from './conversation-probe.ts'
+import { probes as decisionsProbes } from './decisions-probe.ts'
 import { probes as ingressProbes } from './events-ingress-case.ts'
 import { probes as eventsProbes } from './events-probe.ts'
 import { probes as filesProbes } from './files-probe.ts'
@@ -56,6 +57,7 @@ const PROBES = registry(
   composerProbes,
   conversationOpsProbes,
   conversationProbes,
+  decisionsProbes,
   delegationProbes,
   eventsProbes,
   filesProbes,

@@ -6,6 +6,7 @@ import { expect } from 'vitest'
 import { callOwner } from '../owner-client.ts'
 import Stack from './owner-stack.ts'
 import { approvalsCase } from './approvals-case.ts'
+import { decisionsOwnerCase } from './decisions-owner-case.ts'
 import { appsCase } from './apps-case.ts'
 import { agentAppViewCase } from './agent-app-view-case.ts'
 import { queueCase } from './queue-case.ts'
@@ -122,6 +123,10 @@ harness.test(
 harness.test(
   "native: a chat's event stream through the Worker stays open and carries later commits",
   stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => conversationEventsCase(url)))),
+)
+harness.test(
+  'native: a decision is labelled only through a CSRF-checked write of its owner, and shows only in their feed',
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => decisionsOwnerCase(url)))),
 )
 harness.test(
   'native: only the session user reaches their own Agent; request selectors cannot redirect it',

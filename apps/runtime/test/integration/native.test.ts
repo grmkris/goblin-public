@@ -11,6 +11,7 @@ import type { NativeCase } from './native-case.ts'
 import { permutedCases } from './native-chats.ts'
 import { cases as composerCases } from './native-composer.ts'
 import { cases as conversationOpsCases } from './native-conversation-ops.ts'
+import { cases as decisionsCases } from './native-decisions.ts'
 import { cases as delegationCases } from './native-delegation.ts'
 import { cases as filesCases } from './native-files.ts'
 import { cases as mcpCases } from './native-mcp.ts'
@@ -55,6 +56,7 @@ const CASES: readonly NativeCase[] = [
   ...delegationCases,
   ...(primaryProfile === 'permuted' ? permutedCases : []),
   ...conversationOpsCases,
+  ...decisionsCases,
 ]
 
 for (const { title, secondProcess, run } of CASES)
