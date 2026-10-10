@@ -25,7 +25,7 @@ async function delegationFlowsSequence(agent: ProbeStub) {
         avatar: { glyph: 'S', hue: 120 },
         role: 'Finds things out',
         instructions: 'Be brief.',
-        exclusions: [],
+        setup: { mcpServers: [], skills: [], apps: [] },
         operationId: 'flows-persona',
       },
     }),

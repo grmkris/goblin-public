@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { openAsks } from '../src/attention.ts'
 import { capabilityScope, chatScope, piToolsFor } from '../src/capabilities/profiles.ts'
 import { capabilityOffResult } from '../src/pi/capabilities.ts'
+import { appPersonaForks } from '../src/storage/personas.ts'
 import { appRoutineRuns } from '../src/storage/routines.ts'
 import { appConversationCapabilities, appConversations, appExecutionExclusions } from '../src/storage/schema.ts'
 import { appTopics } from '../src/storage/topics.ts'
@@ -168,6 +169,64 @@ describe("a chat's scope follows its Topic's setup (ADR 0040)", () => {
     const tools = [{ name: 'subagent_spawn' }] as never
     expect(piToolsFor(db, tools, '1')).toBeNull()
     expect(piToolsFor(db, tools, '21')).toEqual({ remove: tools })
+  })
+})
+
+describe("a Persona's fork works with its Topic's setup and its own (ADR 0040)", () => {
+  /** Two Persona forks of the thread `21`: `24` adds the mail server and an app, `25` was asked before setups. */
+  const forks = () => {
+    const { db, raw } = fixture()
+    for (const chatId of ['24', '25'])
+      raw
+        .insert(appConversations)
+        .values({
+          chatId,
+          piSession: `s${chatId}`,
+          kind: 'thread',
+          role: 'persona',
+          parentSession: '21',
+          topicId: 2,
+          createdAt: 1,
+        })
+        .run()
+    raw
+      .insert(appPersonaForks)
+      .values({
+        chatId: '24',
+        personaId: 1,
+        revision: 3,
+        setup: JSON.stringify({ mcpServers: [{ serverId: 'mail', tools: 'all' }], skills: [], apps: ['diary'] }),
+        createdAt: 1,
+      })
+      .run()
+    return db
+  }
+
+  it('lets the Persona use what it adds, while Goblin in the same Topic still may not', () => {
+    const db = forks()
+    const persona = chatScope(db, '24')
+    expect(persona.tool('mail', 'send')).toBe(true)
+    expect(persona.tool('notes', 'read')).toBe(true)
+    expect(persona.tool('notes', 'write')).toBe(false)
+    expect(persona.app('diary')).toBe(true)
+    expect(persona.subagents()).toBe(false)
+    expect(persona.editable).toBe(false)
+    expect(chatScope(db, '21').tool('mail', 'send')).toBe(false)
+  })
+
+  it("keeps each Persona's fork to its own setup: one asked before setups adds nothing", () => {
+    const db = forks()
+    const older = chatScope(db, '25')
+    expect(older.tool('mail', 'send')).toBe(false)
+    expect(older.tool('notes', 'read')).toBe(true)
+    expect(older.subagents()).toBe(false)
+  })
+
+  it('tells a Persona in words what neither setup holds', () => {
+    const db = forks()
+    const result = capabilityOffResult({ kind: 'server', serverId: 'calendar' }, chatScope(db, '24'))
+    expect(result.details).toBeUndefined()
+    expect(result.content).toEqual([expect.objectContaining({ text: expect.stringContaining('calendar') })])
   })
 })
 

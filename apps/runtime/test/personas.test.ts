@@ -1,4 +1,4 @@
-import type { PersonaDefinition } from '@goblin/contracts'
+import { NOTHING, type PersonaDefinition } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -36,7 +36,7 @@ const scout: PersonaDefinition = {
   avatar: { glyph: 'S', hue: 120 },
   role: 'Finds things out',
   instructions: 'Be brief.',
-  exclusions: [],
+  setup: { mcpServers: [], skills: [], apps: [] },
 }
 
 const fixture = () => {
@@ -151,16 +151,21 @@ describe('Personas (ADR 0033)', () => {
     )
   })
 
-  it('stores exclusions as given without repeats: they only ever narrow', () => {
+  it('stores the setup a Persona adds, nothing by default, and keeps it in each revision (ADR 0040)', () => {
     const { personas } = fixture()
-    const exclusions = [
-      { kind: 'server', serverId: 'myplan' },
-      { kind: 'subagents' },
-      { kind: 'server', serverId: 'myplan' },
-    ] as const
-    const { persona } = personas.create({ ...scout, exclusions: [...exclusions], operationId: 'op-1' }, 'owner', 10)
-    expect(persona.exclusions).toEqual([{ kind: 'server', serverId: 'myplan' }, { kind: 'subagents' }])
-    expect(personas.update(1, { exclusions: [], expectedRevision: 1 }, 'owner', 11).exclusions).toEqual([])
+    const { setup: _setup, ...bare } = scout
+    const { persona } = personas.create({ ...bare, operationId: 'op-1' }, 'owner', 10)
+    expect(persona.setup).toEqual(NOTHING)
+    const setup = {
+      mcpServers: [{ serverId: 'myplan', tools: 'all' }],
+      skills: [{ serverId: 'lib' }],
+      apps: [],
+    } as const
+    const updated = personas.update(1, { setup, expectedRevision: 1 }, 'owner', 11)
+    expect(updated.setup).toEqual(setup)
+    expect(personas.revision(1, 1).setup).toEqual(NOTHING)
+    expect(personas.revision(1, 2).setup).toEqual(setup)
+    expect(personas.update(1, { setup, expectedRevision: 2 }, 'owner', 12).revision).toBe(2)
   })
 
   it('tells the change bus which Persona each real write changed', async () => {

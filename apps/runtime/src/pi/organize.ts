@@ -1,4 +1,4 @@
-import { HelperExclusions, PersonaName, type PersonaView, type TopicView } from '@goblin/contracts'
+import { PersonaName, type PersonaView, type TopicView } from '@goblin/contracts'
 import { defineExtension, section } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
@@ -154,17 +154,16 @@ const personaTools = (run: RunProgram) => [
   typedTool({
     name: 'persona_create',
     description:
-      "Create a Persona the owner can tag with @name, only on the owner's direct request: a name, a one-line role, instructions, optionally a model from the offered list and capabilities it may not use (exclusions only narrow).",
+      "Create a Persona the owner can tag with @name, only on the owner's direct request: a name, a one-line role, instructions and optionally a model from the offered list.",
     input: Schema.Struct({
       name: PersonaName,
       role: Text(120),
       instructions: Text(8000),
       model: Schema.optionalKey(Schema.String),
-      exclusions: Schema.optionalKey(HelperExclusions),
     }),
     output: Done,
     replay: 'safe',
-    execute: async ({ name, role, instructions, model, exclusions }, api) => {
+    execute: async ({ name, role, instructions, model }, api) => {
       await run(requireResident)
       const persona = await run(
         Effect.gen(function* () {
@@ -175,7 +174,6 @@ const personaTools = (run: RunProgram) => [
             role,
             instructions,
             ...(model === undefined ? {} : { model }),
-            exclusions: exclusions ?? [],
           }
           return yield* createPersona({ ...definition, operationId }, by)
         }),
@@ -188,14 +186,13 @@ const personaTools = (run: RunProgram) => [
   typedTool({
     name: 'persona_update',
     description:
-      "Change the Persona called `persona`, only on the owner's direct request: a new revision with the fields given (name, role, instructions, model, exclusions) or `archived`. Past answers keep the revision they used.",
+      "Change the Persona called `persona`, only on the owner's direct request: a new revision with the fields given (name, role, instructions, model) or `archived`. Past answers keep the revision they used.",
     input: Schema.Struct({
       persona: Schema.String,
       name: Schema.optionalKey(PersonaName),
       role: Schema.optionalKey(Text(120)),
       instructions: Schema.optionalKey(Text(8000)),
       model: Schema.optionalKey(Schema.NullOr(Schema.String)),
-      exclusions: Schema.optionalKey(HelperExclusions),
       archived: Schema.optionalKey(Schema.Boolean),
     }),
     output: Done,

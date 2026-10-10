@@ -1,16 +1,17 @@
 import {
   type CreatePersona,
-  type HelperExclusion,
+  NOTHING,
   type PersonaAvatar,
   type PersonaDefinition,
   type PersonaDetail,
   type PersonaRevisionView,
+  PersonaSetup,
   type PersonaView,
   type UpdatePersona,
-  HelperExclusions,
 } from '@goblin/contracts'
 import { and, asc, desc, eq, isNull, ne, sql } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
+import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { Conflict, InvalidInput, NotFound } from '../http/errors.ts'
 import { appPersonaRevisions, appPersonas } from '../storage/personas.ts'
@@ -21,18 +22,10 @@ type RevisionRow = typeof appPersonaRevisions.$inferSelect
 /** Who changed a Persona: the owner (UI) or the agent (its organize tools, on a direct request). */
 export type PersonaActor = 'owner' | 'agent'
 
-const decodeExclusions = Schema.decodeUnknownSync(Schema.fromJsonString(HelperExclusions))
+const decodeSetup = Schema.decodeUnknownOption(Schema.fromJsonString(PersonaSetup))
 
-/** One exclusion once, in the order first given: a list only ever narrows, so repeats mean nothing. */
-const distinct = (exclusions: readonly HelperExclusion[]): readonly HelperExclusion[] => {
-  const seen = new Set<string>()
-  return exclusions.filter((each) => {
-    const key = JSON.stringify(each)
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
+/** A Persona's stored setup (ADR 0040), or nothing added when the row cannot be read: a bad row never widens. */
+export const personaSetupOf = (stored: string): PersonaSetup => Option.getOrElse(decodeSetup(stored), () => NOTHING)
 
 /** A name as stored: runs of whitespace become one space, ends trimmed. */
 const cleanName = (name: string): string => name.replaceAll(/\s+/gu, ' ').trim()
@@ -43,7 +36,7 @@ const definitionOf = (row: Row | RevisionRow): PersonaDefinition => ({
   role: row.role,
   instructions: row.instructions,
   ...(row.model === null ? {} : { model: row.model }),
-  exclusions: decodeExclusions(row.exclusions),
+  setup: personaSetupOf(row.setup),
 })
 
 const view = (row: Row): PersonaView => ({
@@ -70,14 +63,16 @@ const stored = (definition: PersonaDefinition) => ({
   role: definition.role,
   instructions: definition.instructions,
   model: definition.model ?? null,
-  exclusions: JSON.stringify(definition.exclusions),
+  exclusions: '[]',
+  setup: JSON.stringify(definition.setup),
 })
 
 /**
  * The owner's Personas (ADR 0033): named, versioned agent definitions. Every create and update writes a new revision
  * and bumps `revision`; an update names the revision it edits (`expectedRevision`), so two edits never silently
- * overwrite each other. A model must be one the deployment offers. Exclusions can only narrow what the Persona may use,
- * so they are stored as given, de-duplicated; nothing here can grant a capability. Archiving keeps the history; an
+ * overwrite each other. A model must be one the deployment offers. A setup is stored as given: it only chooses among
+ * the owner's grants, which are checked when anything runs, so nothing here can grant one (ADR 0040). Archiving keeps
+ * the history; an
  * archived Persona no longer answers and frees its name. All writes are synchronous in one SQLite step. The store keeps
  * no state; the Personas service tells the change bus what each write changed (`personas/service.ts`).
  */
@@ -168,12 +163,12 @@ export class PersonaRegistry<RunResult = unknown> {
     if (model !== undefined && !this.#models.includes(model)) throw new InvalidInput({ reason: 'persona_model' })
   }
 
-  /** The definition `definition` normalizes to, checked: a clean name, an offered model, narrowing exclusions. */
+  /** The definition `definition` normalizes to, checked: a clean name and an offered model. */
   #normalize(definition: PersonaDefinition): PersonaDefinition {
     const name = cleanName(definition.name)
     if (name === '') throw new InvalidInput({ reason: 'persona_name' })
     this.#assertModel(definition.model)
-    return { ...definition, name, exclusions: distinct(definition.exclusions) }
+    return { ...definition, name }
   }
 
   /**
@@ -184,7 +179,7 @@ export class PersonaRegistry<RunResult = unknown> {
     const existing = this.#db.select().from(appPersonas).where(eq(appPersonas.operationId, input.operationId)).get()
     if (existing !== undefined) return { persona: view(existing), created: false }
     const { operationId, ...fields } = input
-    const definition = this.#normalize(fields)
+    const definition = this.#normalize({ ...fields, setup: fields.setup ?? NOTHING })
     const row = this.#db.transaction(() => {
       this.#assertName(definition.name)
       const [inserted] = this.#db
@@ -211,7 +206,7 @@ export class PersonaRegistry<RunResult = unknown> {
       role: change.role ?? current.role,
       instructions: change.instructions ?? current.instructions,
       ...(model === undefined ? {} : { model }),
-      exclusions: change.exclusions ?? current.exclusions,
+      setup: change.setup ?? current.setup,
     })
   }
 
@@ -254,7 +249,7 @@ const sameValues = (values: ReturnType<typeof stored>, row: Row): boolean =>
   values.role === row.role &&
   values.instructions === row.instructions &&
   values.model === row.model &&
-  values.exclusions === row.exclusions
+  values.setup === row.setup
 
 /** A glyph and hue for a Persona made without an avatar: its first letter on a hue from its name. */
 export function defaultAvatar(name: string): PersonaAvatar {

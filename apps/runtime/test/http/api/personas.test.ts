@@ -11,7 +11,7 @@ const scout: PersonaDefinition = {
   avatar: { glyph: 'S', hue: 120 },
   role: 'Finds things out',
   instructions: 'Be brief.',
-  exclusions: [],
+  setup: { mcpServers: [], skills: [], apps: [] },
 }
 
 const decodeView = Schema.decodeUnknownSync(PersonaView)

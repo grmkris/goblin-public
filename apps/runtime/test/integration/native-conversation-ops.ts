@@ -38,7 +38,7 @@ async function startOrderSequence(agent: AgentFetch) {
           avatar: { glyph: name.slice(0, 1), hue: 200 },
           role: 'Reviews',
           instructions: 'Be brief.',
-          exclusions: [],
+          setup: { mcpServers: [], skills: [], apps: [] },
           operationId: `order-${name}`,
         },
       }),

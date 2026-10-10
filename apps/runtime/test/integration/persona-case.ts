@@ -59,9 +59,9 @@ const textOf = (content: unknown): string =>
 /** As `until`, for up to 15 s: a Persona's fork answers after Goblin's turn. */
 const until = <A>(read: () => Promise<A>, done: (value: A) => boolean) => untilWithin(read, done, 15_000)
 
-/** The attributed answers in the chat so far, oldest first. */
-const answers = async (url: string, owner: Person) =>
-  (await entries(url, owner))
+/** The attributed answers in the chat (main unless named) so far, oldest first. */
+const answers = async (url: string, owner: Person, chat = '1') =>
+  (await entries(url, owner, chat))
     .filter((entry) => entry.kind === 'app.persona')
     .map((entry) => {
       const data = Schema.decodeUnknownSync(
@@ -94,7 +94,7 @@ const definition = (name: string, extra: Partial<PersonaDefinition> = {}): Perso
   avatar: { glyph: name.slice(0, 1), hue: 200 },
   role: `${name} the helper`,
   instructions: `Answer as ${name}.`,
-  exclusions: [],
+  setup: { mcpServers: [], skills: [], apps: [] },
   ...extra,
 })
 const create = (input: PersonaDefinition, operationId: string) => (api: OwnerClient) =>
@@ -103,18 +103,18 @@ const makePersona = (url: string, owner: Person, input: PersonaDefinition): Prom
   callOwner(signedIn(url, owner), create(input, crypto.randomUUID()))
 const edit = (id: number, change: UpdatePersona) => (api: OwnerClient) =>
   api.personas.update({ params: { id }, payload: change })
-/** The owner's message into main tagging `personas`, as the owner API answered it, and its operation id. */
+/** The owner's message into main (or `chat`) tagging `personas`, as the owner API answered it, and its operation id. */
 const send = async (
   url: string,
   owner: Person,
   input: string,
   personas: readonly PersonaView[],
-  extra: { readonly personaOrder?: 'parallel' | 'sequence' } = {},
+  { chat = '1', ...extra }: { readonly personaOrder?: 'parallel' | 'sequence'; readonly chat?: string } = {},
 ) => {
   const operationId = crypto.randomUUID()
   const selections = personas.map((persona) => ({ kind: 'persona' as const, personaId: persona.id }))
   const answered = await answerOf(signedIn(url, owner), (api) =>
-    api.conversations.submit({ params: { id: '1' }, payload: { input, operationId, selections, ...extra } }),
+    api.conversations.submit({ params: { id: chat }, payload: { input, operationId, selections, ...extra } }),
   )
   return { answered, operationId }
 }
@@ -312,22 +312,37 @@ async function stopping(url: string, owner: Person): Promise<void> {
   expect(await (await lever(url, owner, 'queue/held')).text()).not.toContain('queue-hold:stop')
 }
 
-/** A Persona's excluded server is off in its fork, as in any conversation that switched it off. */
-async function exclusions(url: string, owner: Person): Promise<void> {
-  const guard = await makePersona(
+/**
+ * In a Topic whose setup holds no MCP server, a Persona works with the Topic's setup joined with its own (ADR 0040):
+ * one that adds nothing is refused the server, one that adds it gets past the setup to the owner's grants.
+ */
+async function setups(url: string, owner: Person): Promise<void> {
+  const narrow = await callOwner(signedIn(url, owner), (api) =>
+    api.topics.create({
+      payload: {
+        name: 'Narrow',
+        operationId: crypto.randomUUID(),
+        setup: { mcpServers: [], skills: [], apps: [], subagents: false },
+      },
+    }),
+  )
+  const guard = await makePersona(url, owner, definition('Guard'))
+  const fetcher = await makePersona(
     url,
     owner,
-    definition('Guard', { exclusions: [{ kind: 'server', serverId: 'apps-fixture' }] }),
+    definition('Fetcher', {
+      setup: { mcpServers: [{ serverId: 'apps-fixture', tools: 'all' }], skills: [], apps: [] },
+    }),
   )
   const call_ = 'persona-call mcp_call {"serverId":"apps-fixture","name":"anything","arguments":{}}'
-  await send(url, owner, call_, [guard])
-  const answer = (
-    await until(
-      () => answers(url, owner),
-      (all) => all.some((each) => each.name === 'Guard'),
-    )
-  ).find((each) => each.name === 'Guard')
-  expect(answer?.text).toContain('Off in this conversation: apps-fixture')
+  await send(url, owner, call_, [guard], { chat: narrow.conversation })
+  await send(url, owner, call_, [fetcher], { chat: narrow.conversation })
+  const all = await until(
+    () => answers(url, owner, narrow.conversation),
+    (found) => ['Guard', 'Fetcher'].every((name) => found.some((each) => each.name === name)),
+  )
+  expect(all.find((each) => each.name === 'Guard')?.text).toContain("Not in #Narrow's setup: apps-fixture")
+  expect(all.find((each) => each.name === 'Fetcher')?.text).not.toContain('Not in #Narrow')
   const request = forkRequests(await seen(url, owner))
     .filter((each) => each.context?.includes('You are Guard') === true)
     .at(0)
@@ -341,7 +356,7 @@ export async function personasCase(url: string): Promise<void> {
   await prefix(url, owner)
   await revisions(url, owner)
   await stopping(url, owner)
-  await exclusions(url, owner)
+  await setups(url, owner)
 }
 
 const ask = async (url: string, owner: Person, input: string, expected: string) => {

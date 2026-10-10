@@ -9,6 +9,7 @@ import { FlowEvents, withFlow } from '../../observability/flows.ts'
 import type { KeyedLock } from '../../observability/lock.ts'
 import { BACKGROUND, entryId } from '../../pi/context.ts'
 import { settledEnd } from '../../pi/turns.ts'
+import { appPersonaForks } from '../../storage/personas.ts'
 import { appConversations } from '../../storage/schema.ts'
 import { appTopics } from '../../storage/topics.ts'
 import {
@@ -25,7 +26,7 @@ import {
   topicOfChat,
 } from '../directory.ts'
 import { fromPi } from '../../pi/sessions.ts'
-import type { ChatOperations, ThreadAnchor } from '../service.ts'
+import type { ChatOperations, PersonaFork, ThreadAnchor } from '../service.ts'
 import {
   type RegistryCore,
   changed,
@@ -260,18 +261,38 @@ const registerSubagent = Effect.fn('Conversations.registerSubagent')(function* (
 
 /**
  * Lists the fork a Persona answers in (ADR 0033): a hidden thread of its parent's Topic, never listed and never open
- * to the owner. Its switches are the parent's now; the caller narrows them with the Persona's exclusions.
+ * to the owner. Its switches are the parent's now. The setup the ask froze is kept for it first (ADR 0040), so a fork
+ * that is listed always has it; the scope joins it with its Topic's setup.
  */
 const registerPersona = Effect.fn('Conversations.registerPersona')(function* (
   core: RegistryCore,
   session: string,
   parentChat: string,
-  name: string,
+  persona: PersonaFork,
 ) {
   if (chatRow(core.db, session) !== undefined) return
   const now = yield* epochSeconds
-  const topicId = yield* attemptSync(() => topicOfChat(core.db, parentChat))
-  const row = { chatId: session, role: 'persona', kind: 'thread', title: name, parentSession: parentChat } as const
+  const topicId = yield* attemptSync(() => {
+    core.db
+      .insert(appPersonaForks)
+      .values({
+        chatId: session,
+        personaId: persona.id,
+        revision: persona.revision,
+        setup: JSON.stringify(persona.setup),
+        createdAt: now,
+      })
+      .onConflictDoNothing()
+      .run()
+    return topicOfChat(core.db, parentChat)
+  })
+  const row = {
+    chatId: session,
+    role: 'persona',
+    kind: 'thread',
+    title: persona.name,
+    parentSession: parentChat,
+  } as const
   yield* insertThread(core, { ...row, topicId }, now)
 })
 
@@ -309,8 +330,8 @@ export const registryThreads = (core: RegistryCore, ports: ThreadPorts) => ({
     ),
   registerSubagent: (session: string, parent: string, name: string, exclusions: readonly HelperExclusion[] = []) =>
     registerSubagent(core, { session, parent, name }, exclusions),
-  registerPersona: (session: string, parentChat: string, name: string) =>
-    registerPersona(core, session, parentChat, name),
+  registerPersona: (session: string, parentChat: string, persona: PersonaFork) =>
+    registerPersona(core, session, parentChat, persona),
   registerRoutine: (session: string, runId: string, title: string, topic: number = PERSONAL_TOPIC) =>
     registerRoutine(core, { session, runId, title }, topic),
 })

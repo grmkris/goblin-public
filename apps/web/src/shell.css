@@ -1132,23 +1132,6 @@ a.list-row:focus-visible {
   min-height: 2.75rem;
   accent-color: var(--moss);
 }
-.persona-allows {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.persona-allows > legend {
-  margin-block-end: 0.5rem;
-  font-size: var(--text-13);
-  font-weight: 600;
-}
-.persona-allow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  min-height: 2.75rem;
-}
 
 /* The model button: its name where the chat has room, its icon alone where it has not (a phone, a narrow channel). */
 .model-icon {

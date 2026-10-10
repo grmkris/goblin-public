@@ -25,7 +25,7 @@ const SAGE: PersonaView = {
   avatar: { glyph: 'S', hue: 140 },
   role: 'Reviewer',
   instructions: 'Review carefully.',
-  exclusions: [],
+  setup: { mcpServers: [], skills: [], apps: [] },
   revision: 1,
   createdAt: 1,
   updatedAt: 1,

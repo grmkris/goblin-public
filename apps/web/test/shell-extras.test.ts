@@ -47,7 +47,7 @@ const persona = (id: number, name: string, archivedAt?: number) =>
     avatar: { glyph: name.slice(0, 1), hue: id * 40 },
     role: `${name} role`,
     instructions: 'Be useful.',
-    exclusions: [],
+    setup: { mcpServers: [], skills: [], apps: [] },
     revision: 1,
     createdAt: 1,
     updatedAt: 1,

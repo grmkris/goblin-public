@@ -400,7 +400,7 @@ describe('the conversations API served by the agent', () => {
       revision: 2,
       role: 'critic',
       instructions: 'Brief.',
-      exclusions: [],
+      setup: { mcpServers: [], skills: [], apps: [] },
     })
     const { fetch, calls, record } = fixture({ personas: [ada] })
     const message = { input: 'compare them', selections: [{ kind: 'persona', personaId: 5 }] }

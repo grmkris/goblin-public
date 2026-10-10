@@ -91,7 +91,7 @@ const scout = {
   avatar: { glyph: 'S', hue: 120 },
   role: 'Finds things out',
   instructions: 'Be brief.',
-  exclusions: [],
+  setup: { mcpServers: [], skills: [], apps: [] },
 }
 
 describe("lane D's services over their stores", () => {

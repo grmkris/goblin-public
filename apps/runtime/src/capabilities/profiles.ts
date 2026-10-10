@@ -3,6 +3,7 @@ import {
   type CapabilityTarget,
   type ConversationKind,
   type HelperExclusion,
+  type PersonaSetup,
   type SetupItem,
   type TopicSetup,
   hasApp,
@@ -10,6 +11,7 @@ import {
   hasServer,
   hasTool,
   holds,
+  NOTHING,
 } from '@goblin/contracts'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
@@ -22,7 +24,9 @@ import {
   appTelegramChannel,
 } from '../storage/schema.ts'
 import { appRoutineRuns } from '../storage/routines.ts'
+import { appPersonaForks } from '../storage/personas.ts'
 import { appTopics } from '../storage/topics.ts'
+import { personaSetupOf } from '../personas/registry.ts'
 import { topicSetupOf } from '../topics/setup.ts'
 import { chatOfSession, chatSession, primaryChat } from '../chats/directory.ts'
 import { InvalidInput } from '../http/errors.ts'
@@ -77,13 +81,22 @@ const both = (one: Allow, other: Allow): Allow => ({
   app: (name) => one.app(name) && other.app(name),
 })
 
-/** What a setup lets a chat use: only what it holds. */
-const setupAllows = (setup: TopicSetup): Allow => ({
+/** What a setup lets a chat use: only what it holds. A Persona's setup never holds subagents. */
+const setupAllows = (setup: TopicSetup | PersonaSetup): Allow => ({
   server: (serverId) => hasServer(setup, serverId),
   tool: (serverId, name) => hasTool(setup, serverId, name),
   skills: (serverId) => hasLibrary(setup, serverId),
-  subagents: () => setup.subagents,
+  subagents: () => 'subagents' in setup && setup.subagents,
   app: (name) => hasApp(setup, name),
+})
+
+/** Everything either bound allows. */
+const either = (one: Allow, other: Allow): Allow => ({
+  server: (serverId) => one.server(serverId) || other.server(serverId),
+  tool: (serverId, name) => one.tool(serverId, name) || other.tool(serverId, name),
+  skills: (serverId) => one.skills(serverId) || other.skills(serverId),
+  subagents: () => one.subagents() || other.subagents(),
+  app: (name) => one.app(name) || other.app(name),
 })
 
 const key = ({ kind, serverId, name }: Exclusion) => `${kind}\n${serverId}\n${name}`
@@ -131,6 +144,7 @@ export const sameExclusions = (one: readonly Exclusion[], other: readonly Exclus
 type Link = {
   readonly session: string
   readonly kind: ConversationKind
+  readonly role: string | null
   readonly routineRunId: string | null
   readonly topicId: number
 }
@@ -178,6 +192,7 @@ const switchRow = (db: Db, session: string) =>
   db
     .select({
       kind: appConversations.kind,
+      role: appConversations.role,
       parent: appConversations.parentSession,
       routineRunId: appConversations.routineRunId,
       topicId: appConversations.topicId,
@@ -198,7 +213,7 @@ const chainOf = (db: Db, session: string): readonly Link[] | undefined => {
     const row = switchRow(db, at)
     if (row === undefined) return undefined
     seen.add(at)
-    chain.push({ session: at, kind: row.kind, routineRunId: row.routineRunId, topicId: row.topicId })
+    chain.push({ session: at, kind: row.kind, role: row.role, routineRunId: row.routineRunId, topicId: row.topicId })
     if (row.kind !== 'subagent') return chain
     at = row.parent
   }
@@ -244,6 +259,28 @@ const topicOf = (db: Db, id: number): (ScopeTopic & { readonly setup: TopicSetup
   return { id, name: row.name, setup, holds: (item) => holds(setup, item) }
 }
 
+/** The setup a Persona's fork answers with, as the ask froze it; a fork without one adds nothing. */
+const forkSetup = (db: Db, chat: string): PersonaSetup | undefined => {
+  const row = db
+    .select({ setup: appPersonaForks.setup })
+    .from(appPersonaForks)
+    .where(eq(appPersonaForks.chatId, chat))
+    .get()
+  return row === undefined ? undefined : personaSetupOf(row.setup)
+}
+
+/**
+ * What a chat's root works with: its Topic's setup, joined, in a Persona's fork, with the setup the Persona adds
+ * (ADR 0040). A Persona never starts subagents and the owner never acts on a refusal there.
+ */
+const rootBound = (db: Db, root: Link, topic: ScopeTopic & { readonly setup: TopicSetup }) => {
+  const added = root.role === 'persona' ? (forkSetup(db, root.session) ?? NOTHING) : undefined
+  if (added === undefined) return { allow: setupAllows(topic.setup), topic, persona: false }
+  const allow = { ...either(setupAllows(topic.setup), setupAllows(added)), subagents: () => false }
+  const holdsEither = (item: SetupItem) => topic.holds(item) || holds(added, item)
+  return { allow, topic: { ...topic, holds: holdsEither }, persona: true }
+}
+
 /** The apps switched off in any of `sessions` (a helper's exclusions). */
 const appsOffIn = (db: Db, sessions: readonly string[]): ReadonlySet<string> =>
   new Set(
@@ -256,17 +293,19 @@ const appsOffIn = (db: Db, sessions: readonly string[]): ReadonlySet<string> =>
   )
 
 /**
- * The scope of a registered chat (ADR 0040): its Topic's setup, read live, narrowed by its own switches and, for a
- * subagent, those of every spawner above it; a routine's thread is narrowed to its allowed tools as well.
+ * The scope of a registered chat (ADR 0040): its Topic's setup, read live (joined, in a Persona's fork, with the setup
+ * the ask froze), narrowed by its own switches and, for a subagent, those of every spawner above it; a routine's thread
+ * is narrowed to its allowed tools as well.
  */
 export const chatScope = (db: Db, chat: string): CapabilityScope => {
   const chain = chainOf(db, chat)
   const start = chain?.[0]
   const root = chain?.at(-1)
   if (chain === undefined || start === undefined || root === undefined) return CLOSED
-  const topic = topicOf(db, root.topicId)
-  if (topic === undefined) return CLOSED
-  const editable = start.kind !== 'subagent' && start.routineRunId === null
+  const found = topicOf(db, root.topicId)
+  if (found === undefined) return CLOSED
+  const { allow, topic, persona } = rootBound(db, root, found)
+  const editable = start.kind !== 'subagent' && start.routineRunId === null && !persona
   const switches = scopeOf(
     chain.flatMap((link) => ownExclusions(db, link.session)),
     editable,
@@ -275,7 +314,7 @@ export const chatScope = (db: Db, chat: string): CapabilityScope => {
       chain.map((link) => link.session),
     ),
   )
-  const scope: CapabilityScope = { ...both(setupAllows(topic.setup), switches), editable, topic }
+  const scope: CapabilityScope = { ...both(allow, switches), editable, topic }
   return root.routineRunId === null ? scope : routineScope(db, scope, root.routineRunId)
 }
 

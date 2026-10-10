@@ -872,8 +872,12 @@ admits the operation, records one `app_persona_invocations` row per Persona, wri
 `app.persona-asks` document. A turn (`pi/persona-turn.ts`) forks the chat at the ask entry (in a sequence, at the
 previous Persona's answer), prompts the fork with the frozen revision text in the context tail, and passive-writes the
 answer back as an attributed `app.persona` entry holding the revision. The fork is a hidden `persona`-role thread of
-the chat's Topic with main's memory and the delegating, organizing and asking tools removed and a `subagents`
-exclusion added. Stop aborts the chat's turns and marks their invocations `stopped`.
+the chat's Topic with main's memory and the delegating, organizing and asking tools removed. A Persona's **setup**
+(`PersonaSetup`, ADR 0040) is the MCP servers, skills and apps it adds to the Topic's: the ask freezes it with the
+revision, `registerPersona` keeps it in `app_persona_forks` (by the fork's chat) before listing the fork, and the
+fork's scope is its Topic's setup, read live, joined with it, never with subagents; its refusals are words only. The
+`exclusions` Personas had before (`20261028000100_persona_setup`) are no longer read; a receipt kept before setups
+undoes without touching the setup. Stop aborts the chat's turns and marks their invocations `stopped`.
 
 | Route | Purpose |
 | --- | --- |
@@ -1298,6 +1302,7 @@ that is not in `app_conversations` (a routine's run) has no entries page; its tu
 | Agent DO SQLite | `app_resident`, `app_conversations`, `app_model_choice`, `app_usage_daily`, `app_metadata` | Drizzle: agent metadata and logical chat bindings (ADR 0030). |
 | Agent DO SQLite | `app_chat_operations` | Drizzle: operation receipts per chat, pinned to their original Pi session, with kind, origin, target chat, parent operation, state and reason (`20261027000000_chat_operation_receipts`), pruned opportunistically after 30 days (ADR 0030). |
 | Agent DO SQLite | `app_conversation_capabilities`, `app_execution_exclusions` | Drizzle: conversation switches and helper app exclusions (ADRs 0010, 0029). |
+| Agent DO SQLite | `app_persona_forks` | Drizzle: the setup each Persona fork answers with, frozen at the ask (ADR 0040). |
 | Agent DO SQLite | `app_chat_memory_log`, `app_chat_memory_nodes`, `app_chat_memory_state` | Drizzle: each Topic Conversation's memory, keyed by chat id (ADR 0032). `app_memory_log`, `app_memory_nodes` and `app_memory_state`, Main's agent-wide predecessors, were copied into chat `1` and are no longer read. |
 | Agent DO SQLite | `app_topics` | Drizzle: the owner's Topics, each with its Conversation's chat id (ADR 0032) and its setup (ADR 0040). |
 | Agent DO SQLite | `app_transcript_excerpts`, `app_transcript_fts` (FTS5, shadow tables `app_transcript_fts_*`), `app_transcript_index`, `app_retrieval_uses` | Drizzle and raw FTS5 SQL: the cross-Topic transcript index and the frozen sources each run used (ADR 0035). |

@@ -1,4 +1,5 @@
 import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { NOTHING_JSON } from './migrations/setup.ts'
 
 /**
  * Personas (ADR 0033): the current definition of each, global to the owner. A name is unique among active Personas,
@@ -13,8 +14,10 @@ export const appPersonas = sqliteTable('app_personas', {
   role: text('role').notNull(),
   instructions: text('instructions').notNull(),
   model: text('model'),
-  /** The `HelperExclusions` JSON. */
+  /** The `HelperExclusions` JSON Personas had before ADR 0040: written `[]`, no longer read. */
   exclusions: text('exclusions').notNull(),
+  /** The `PersonaSetup` JSON: what the Persona adds to its Topic's setup (ADR 0040). */
+  setup: text('setup').notNull().default(NOTHING_JSON),
   revision: integer('revision').notNull(),
   operationId: text('operation_id').unique(),
   archivedAt: integer('archived_at'),
@@ -35,6 +38,7 @@ export const appPersonaRevisions = sqliteTable(
     instructions: text('instructions').notNull(),
     model: text('model'),
     exclusions: text('exclusions').notNull(),
+    setup: text('setup').notNull().default(NOTHING_JSON),
     actor: text('actor', { enum: ['owner', 'agent'] }).notNull(),
     createdAt: integer('created_at').notNull(),
   },
@@ -89,4 +93,16 @@ export const appOrganizeReceipts = sqliteTable('app_organize_receipts', {
   afterRevision: integer('after_revision').notNull(),
   createdAt: integer('created_at').notNull(),
   undoneAt: integer('undone_at'),
+})
+
+/**
+ * The setup a Persona answered with in its hidden fork (ADR 0040), frozen when the owner tagged it: the fork's chat,
+ * which Persona at which revision, and the `PersonaSetup` JSON its Topic's setup is joined with there.
+ */
+export const appPersonaForks = sqliteTable('app_persona_forks', {
+  chatId: text('chat_id').primaryKey().notNull(),
+  personaId: integer('persona_id').notNull(),
+  revision: integer('revision').notNull(),
+  setup: text('setup').notNull(),
+  createdAt: integer('created_at').notNull(),
 })

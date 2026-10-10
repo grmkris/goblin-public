@@ -1,6 +1,6 @@
 import * as Schema from 'effect/Schema'
-import { HelperExclusions } from './capabilities.ts'
 import { ChatId, EntryId, NonEmptyString, OperationId, PersonaId } from './ids.ts'
+import { PersonaSetup } from './setup.ts'
 
 /** A Persona's name, as `@name` in the composer: a letter, then up to 31 letters, digits, spaces, `_` or `-`. */
 export const PersonaName = Schema.String.check(Schema.isPattern(/^[A-Za-z][\w -]{0,31}$/u))
@@ -14,8 +14,8 @@ export type PersonaAvatar = typeof PersonaAvatar.Type
 
 /**
  * A Persona's definition (ADR 0033): a global name, its role in a line, its instructions, an optional model from the
- * offered list, and the capabilities it may not use. Exclusions only narrow the owner's grants; a Persona never gains
- * one.
+ * offered list, and its setup: the MCP servers, skills and apps it adds to the setup of the Topic it answers in
+ * (ADR 0040). A setup only chooses among the owner's grants; a Persona never gains one.
  */
 export const PersonaDefinition = Schema.Struct({
   name: PersonaName,
@@ -23,7 +23,7 @@ export const PersonaDefinition = Schema.Struct({
   role: Schema.String.check(Schema.isMaxLength(120)),
   instructions: Schema.String.check(Schema.isMaxLength(8000)),
   model: Schema.optional(NonEmptyString(128)),
-  exclusions: HelperExclusions,
+  setup: PersonaSetup,
 })
 export type PersonaDefinition = typeof PersonaDefinition.Type
 
@@ -38,8 +38,12 @@ export const PersonaView = Schema.Struct({
 })
 export type PersonaView = typeof PersonaView.Type
 
-/** `POST /api/personas`: the same operation id finds the same Persona. */
-export const CreatePersona = Schema.Struct({ ...PersonaDefinition.fields, operationId: OperationId })
+/** `POST /api/personas`: the same operation id finds the same Persona. Without a setup it adds nothing. */
+export const CreatePersona = Schema.Struct({
+  ...PersonaDefinition.fields,
+  setup: Schema.optional(PersonaSetup),
+  operationId: OperationId,
+})
 export type CreatePersona = typeof CreatePersona.Type
 
 /**
@@ -52,7 +56,7 @@ export const UpdatePersona = Schema.Struct({
   role: Schema.optional(PersonaDefinition.fields.role),
   instructions: Schema.optional(PersonaDefinition.fields.instructions),
   model: Schema.optional(Schema.NullOr(NonEmptyString(128))),
-  exclusions: Schema.optional(HelperExclusions),
+  setup: Schema.optional(PersonaSetup),
   archived: Schema.optional(Schema.Boolean),
   expectedRevision: Schema.Int,
 })

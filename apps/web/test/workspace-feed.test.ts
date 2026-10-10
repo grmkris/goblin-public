@@ -83,7 +83,7 @@ const CRITIC = {
   avatar: { glyph: 'C', hue: 20 },
   role: 'Finds the weak spot',
   instructions: 'Be blunt.',
-  exclusions: [],
+  setup: { mcpServers: [], skills: [], apps: [] },
   revision: 1,
   createdAt: 1,
   updatedAt: 1,

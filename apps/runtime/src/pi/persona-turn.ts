@@ -13,12 +13,11 @@ import {
   defineTask,
   hook,
 } from '@earendil-works/pi-durable'
-import { type HelperExclusion, type PersonaAnswerData, type PersonaAvatar } from '@goblin/contracts'
+import { NOTHING, type PersonaAnswerData, type PersonaAvatar, type PersonaSetup } from '@goblin/contracts'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { requireBudget } from '../budget.ts'
-import { Capabilities } from '../capabilities/service.ts'
 import { Conversations } from '../chats/service.ts'
 import { requireResident } from '../mcp/service.ts'
 import { FlowEvents } from '../observability/flows.ts'
@@ -69,7 +68,8 @@ export type FrozenPersona = {
   readonly role: string
   readonly instructions: string
   readonly model?: string
-  readonly exclusions: readonly HelperExclusion[]
+  /** What it adds to its Topic's setup (ADR 0040); a turn started before setups has none and adds nothing. */
+  readonly setup?: PersonaSetup
 }
 
 type Input = {
@@ -192,11 +192,19 @@ const settle = (input: Input, state: 'answered' | 'failed' | 'stopped', entry?: 
     })
   })
 
-/** What a Persona's fork starts with: the parent's switches, narrowed by the Persona's exclusions and no subagents. */
+/**
+ * What a Persona's fork works with: its Topic's setup joined with the setup the ask froze (ADR 0040), never subagents.
+ * A turn started before setups has none and adds nothing.
+ */
 const registerFork = (input: Input, fork: ConversationId) =>
   Effect.gen(function* () {
-    yield* (yield* Conversations).registerPersona(String(fork), input.chat, input.persona.name)
-    yield* (yield* Capabilities).narrow(String(fork), [...input.persona.exclusions, { kind: 'subagents' }])
+    const { id, revision, name, setup } = input.persona
+    yield* (yield* Conversations).registerPersona(String(fork), input.chat, {
+      id,
+      revision,
+      name,
+      setup: setup ?? NOTHING,
+    })
     yield* (yield* Invocations).running(input.operationId, input.persona.id)
   })
 

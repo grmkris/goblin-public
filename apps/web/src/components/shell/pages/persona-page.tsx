@@ -25,19 +25,12 @@ function refusal(failure: Error | null, action: string): string {
   return messageOf(failure, action)
 }
 
-const definitionOf = ({
+const definitionOf = ({ name, avatar, role, instructions, model, setup }: PersonaDefinition): PersonaDefinition => ({
   name,
   avatar,
   role,
   instructions,
-  model,
-  exclusions,
-}: PersonaDefinition): PersonaDefinition => ({
-  name,
-  avatar,
-  role,
-  instructions,
-  exclusions,
+  setup,
   ...(model !== undefined && { model }),
 })
 

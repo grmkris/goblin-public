@@ -29,7 +29,7 @@ const freeze = (ids: readonly number[]) =>
       Effect.gen(function* () {
         const persona = active.find((each) => each.id === id)
         if (persona === undefined) return yield* new InvalidInput({ reason: `composer:persona:${String(id)}` })
-        const { name, revision, avatar, role, instructions, exclusions, model } = persona
+        const { name, revision, avatar, role, instructions, setup, model } = persona
         const offered = (yield* personas.offers(model)) && model !== undefined
         return {
           id,
@@ -39,7 +39,7 @@ const freeze = (ids: readonly number[]) =>
           role,
           instructions,
           ...(offered ? { model } : {}),
-          exclusions,
+          setup,
         } satisfies FrozenPersona
       }),
     )

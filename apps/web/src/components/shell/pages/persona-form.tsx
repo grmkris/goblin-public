@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { HelperExclusion, ModelChoice, PersonaDefinition } from '@goblin/contracts'
+import { type ModelChoice, NOTHING, type PersonaDefinition } from '@goblin/contracts'
 import {
   Field,
   FieldDescription,
@@ -8,13 +8,10 @@ import {
   Input,
   NativeSelect,
   NativeSelectOption,
-  Switch,
   Textarea,
 } from '@goblin/ui'
 import { modelQuery } from '../../../agent/queries.ts'
-import { serversQuery } from '../../../mcp/queries.ts'
 import { QueryError } from '../../../lib/query/query-boundary.tsx'
-import { serverTitle } from '../../../lib/labels.ts'
 import { PersonaAvatar } from '../../persona-avatar.tsx'
 
 /** A Persona's name as `@name` takes it: a letter, then up to 31 letters, digits, spaces, `_` or `-`. */
@@ -26,60 +23,23 @@ export const BLANK: PersonaDefinition = {
   avatar: { glyph: '', hue: 140 },
   role: '',
   instructions: '',
-  exclusions: [],
+  setup: NOTHING,
 }
 
 /**
- * The models and connected servers a Persona can be given or kept from, from the Query cache. A list that could
- * not be read says why instead of reading as empty, so "No connections yet" is never shown for a failed read.
+ * The models a Persona can be given, from the Query cache. A list that could not be read says why instead of reading
+ * as empty.
  */
-function useChoices() {
+function useModels() {
   const models = useQuery(modelQuery)
-  const servers = useQuery(serversQuery)
   return {
     models: models.data?.options ?? [],
-    servers: (servers.data ?? []).filter((server) => server.status === 'connected'),
-    failures: {
-      models: models.error === null ? undefined : { error: models.error, retry: () => void models.refetch() },
-      servers: servers.error === null ? undefined : { error: servers.error, retry: () => void servers.refetch() },
-    },
+    failure: models.error === null ? undefined : { error: models.error, retry: () => void models.refetch() },
   }
 }
 
 /** A list the form could not read, and a way to read it again. */
 type ReadFailure = { readonly error: unknown; readonly retry: () => void }
-
-const keyOf = (exclusion: HelperExclusion) => (exclusion.kind === 'server' ? `server:${exclusion.serverId}` : undefined)
-
-/** Whether the Persona may use something: on unless its exclusions keep it from it; a switch toggles that. */
-function Allowed({
-  label,
-  exclusion,
-  draft,
-  onChange,
-}: {
-  readonly label: string
-  readonly exclusion: HelperExclusion
-  readonly draft: PersonaDefinition
-  readonly onChange: (draft: PersonaDefinition) => void
-}) {
-  const key = keyOf(exclusion)
-  const off = draft.exclusions.some((each) => keyOf(each) === key)
-  return (
-    <label className="persona-allow">
-      <span>{label}</span>
-      <Switch
-        checked={!off}
-        onCheckedChange={(on) =>
-          onChange({
-            ...draft,
-            exclusions: on ? draft.exclusions.filter((each) => keyOf(each) !== key) : [...draft.exclusions, exclusion],
-          })
-        }
-      />
-    </label>
-  )
-}
 
 type Edit = { readonly draft: PersonaDefinition; readonly onChange: (draft: PersonaDefinition) => void }
 
@@ -184,33 +144,15 @@ function Behaviour({
 }
 
 /**
- * A Persona's definition: its mark (a glyph on a hue), name, role, instructions, model, and which of the owner's
- * connections it may use (it only ever narrows the owner's grants). A Persona never starts subagents, so it never
- * delegates or loops (ADR 0033); tool, skills and app exclusions it already has are kept as they are.
+ * A Persona's definition: its mark (a glyph on a hue), name, role, instructions and model. What it adds to a Topic's
+ * setup is kept as it is (ADR 0040). A Persona never starts subagents, so it never delegates or loops (ADR 0033).
  */
 export function PersonaForm({ draft, onChange }: Edit) {
-  const { models, servers, failures } = useChoices()
+  const { models, failure } = useModels()
   return (
     <FieldGroup>
       <Identity draft={draft} onChange={onChange} />
-      <Behaviour draft={draft} onChange={onChange} models={models} failure={failures.models} />
-      <fieldset className="persona-allows">
-        <legend>May use</legend>
-        {failures.servers !== undefined ? (
-          <QueryError error={failures.servers.error} action="load your connections" onRetry={failures.servers.retry} />
-        ) : (
-          servers.length === 0 && <p className="list-row-meta">No connections yet.</p>
-        )}
-        {servers.map((server) => (
-          <Allowed
-            key={server.serverId}
-            label={serverTitle(server)}
-            exclusion={{ kind: 'server', serverId: server.serverId }}
-            draft={draft}
-            onChange={onChange}
-          />
-        ))}
-      </fieldset>
+      <Behaviour draft={draft} onChange={onChange} models={models} failure={failure} />
     </FieldGroup>
   )
 }

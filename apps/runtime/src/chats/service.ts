@@ -6,6 +6,7 @@ import type {
   HelperExclusion,
   MoveReceipt,
   MoveToThread,
+  PersonaSetup,
   ThreadAnchor,
   UpdateConversation,
 } from '@goblin/contracts'
@@ -17,6 +18,14 @@ import type * as Option from 'effect/Option'
 import type { AppError } from '../http/errors.ts'
 import type { ChatId, ChatRow, SessionId } from './directory.ts'
 import type { Receipt, ReceiptChange, ReceiptInput, ReceiptOrigin } from './receipts.ts'
+
+/** The Persona a fork answers as, at the revision the ask froze, with the setup it adds to its Topic's (ADR 0040). */
+export type PersonaFork = {
+  readonly id: number
+  readonly revision: number
+  readonly name: string
+  readonly setup: PersonaSetup
+}
 
 declare module '../runtime/changes.ts' {
   interface ChangeTopics {
@@ -248,7 +257,11 @@ export class Conversations extends Context.Service<
       name: string,
       exclusions?: readonly HelperExclusion[],
     ) => Effect.Effect<void, AppError>
-    readonly registerPersona: (session: string, parentChat: string, name: string) => Effect.Effect<void, AppError>
+    readonly registerPersona: (
+      session: string,
+      parentChat: string,
+      persona: PersonaFork,
+    ) => Effect.Effect<void, AppError>
     readonly registerRoutine: (
       session: string,
       runId: string,
