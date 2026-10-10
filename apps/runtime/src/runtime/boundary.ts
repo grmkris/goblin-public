@@ -20,3 +20,11 @@ export const promiseWith =
   <R>(context: Context.Context<R>) =>
   <A, E>(effect: Effect.Effect<A, E, R>): Promise<A> =>
     Effect.runPromiseWith(context)(effect)
+
+/**
+ * `effect` with the services of the program that makes it, to hand to Promise code that runs it later (the MCP
+ * manager's dispatch guard, the skills guard): it needs nothing more, so that code runs it with `promiseWith` and an
+ * empty context.
+ */
+export const bound = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<Effect.Effect<A, E>, never, R> =>
+  Effect.map(Effect.context<R>(), (context) => Effect.provideContext(effect, context))

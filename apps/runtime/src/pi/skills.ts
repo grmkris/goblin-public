@@ -3,11 +3,11 @@ import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { requireBudget } from '../budget.ts'
 import { Capabilities } from '../capabilities/service.ts'
-import { NotFound } from '../http/errors.ts'
 import { requireResident } from '../mcp/service.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { logLearnOutcome, type LearnOutcome } from '../skills/learner.ts'
 import type { Catalog } from '../skills/library.ts'
+import { skillScope } from '../skills/scope.ts'
 import { Learner, Skills } from '../skills/service.ts'
 import { capabilityOffResult } from './capabilities.ts'
 import { withContext } from './context-tail.ts'
@@ -62,16 +62,6 @@ const SkillFile = Schema.Union([
 /** What a conversation may use now: its switches over the owner's skills libraries among the rest. */
 const scopeFor = (session: string) => Capabilities.use((capabilities) => capabilities.scope(session))
 
-const authorizeSkill =
-  (run: RunProgram, session: string) =>
-  (serverId: string): Promise<void> =>
-    run(
-      Effect.gen(function* () {
-        yield* requireResident
-        if (!(yield* scopeFor(session)).skills(serverId)) return yield* new NotFound({ what: 'skill scope' })
-      }),
-    )
-
 /**
  * The skills on offer: what the owner's skill servers list, from the library's cache, without the libraries this
  * conversation switched off; undefined when there are none or they cannot be read now.
@@ -86,9 +76,8 @@ const skillsNow = async (run: RunProgram, session: string): Promise<string | und
           const scope = yield* scopeFor(session)
           const sources = (yield* skills.sources()).filter((serverId) => scope.skills(serverId))
           if (sources.length === 0) return { skills: [], unavailable: [] }
-          const catalog = yield* skills.catalog(
-            { timeout: 5000, authorize: authorizeSkill(run, session) },
-            (serverId) => scope.skills(serverId),
+          const catalog = yield* skills.catalog({ timeout: 5000, authorize: yield* skillScope(session) }, (serverId) =>
+            scope.skills(serverId),
           )
           const current = yield* scopeFor(session)
           return {
@@ -136,9 +125,10 @@ const activateTool = (run: RunProgram) =>
           yield* requireResident
           const off = yield* skillsOff(String(api.conversationId), skill)
           if (off !== undefined) return new ReadyResult(off)
+          const authorize = yield* skillScope(String(api.conversationId))
           const loaded = yield* Skills.use((skills) =>
             skills.activate(String(api.conversationId), skill, {
-              authorize: authorizeSkill(run, String(api.conversationId)),
+              authorize,
               ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
             }),
           )
@@ -177,9 +167,10 @@ const readTool = (run: RunProgram) =>
           yield* requireResident
           const off = yield* skillsOff(String(api.conversationId), skill)
           if (off !== undefined) return new ReadyResult(off)
+          const authorize = yield* skillScope(String(api.conversationId))
           const file = yield* Skills.use((skills) =>
             skills.read(String(api.conversationId), skill, path, {
-              authorize: authorizeSkill(run, String(api.conversationId)),
+              authorize,
               ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
             }),
           )

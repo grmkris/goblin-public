@@ -10,6 +10,7 @@ import {
 } from '@modelcontextprotocol/client'
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/client/validators/cf-worker'
 import { Predicate } from 'effect'
+import * as Context from 'effect/Context'
 import { Forbidden, Conflict, GrantDenied, Internal, NotFound, UpstreamMcp } from '../http/errors.ts'
 import {
   SKILLS_EXTENSION,
@@ -24,6 +25,7 @@ import { timed } from './log.ts'
 import type { GrantCapability } from './grants.ts'
 import * as Schema from 'effect/Schema'
 import { readBytes } from '../http/body.ts'
+import { promiseWith } from '../runtime/boundary.ts'
 import type {
   McpCallOptions,
   McpRequestOptions,
@@ -57,6 +59,12 @@ export function encodedSize(value: unknown): number | undefined {
   }
   return new TextEncoder().encode(encoded).byteLength
 }
+
+/**
+ * Runs a caller's authority check (an Effect bound to the caller's services) inside the SDK's Promise callbacks: it
+ * rejects with the check's own `AppError`, which the SDK passes through.
+ */
+const checked = promiseWith(Context.empty())
 
 /** Failures the server answered over a working connection, which is kept: a JSON-RPC error, or a result refused here. */
 const ANSWERED: ReadonlySet<UpstreamMcp['reason']> = new Set(['remote-rpc', 'content-limit', 'unsupported'])
@@ -347,8 +355,9 @@ export class McpConnectionManager {
     const { caller = 'model', authorize, approvalId, approvalContext, runContext, ...request } = options
     // Freeze the input before any wait; local guards and the SDK dispatch see the same object.
     const argumentsJson = JSON.stringify(args)
+    const recheck = authorize === undefined ? undefined : () => checked(authorize)
     const guard = async (dispatch = false) => {
-      await authorize?.()
+      await recheck?.()
       if (!this.#options.allows({ serverId, capability: 'tool', name })) throw new GrantDenied({ serverId, name })
       // SAFETY: args is serialized once above, so this JSON object is the immutable dispatch input.
       const frozen = JSON.parse(argumentsJson) as Record<string, unknown>
@@ -363,7 +372,7 @@ export class McpConnectionManager {
         },
         approvalId,
         dispatch,
-        authorize,
+        recheck,
       )
     }
     let dispatched = false
@@ -520,7 +529,7 @@ export class McpConnectionManager {
   /** Skills are read only from servers the owner turned them on for; nothing is opened otherwise. */
   async #skillsConnection(serverId: string, options: SkillRequestOptions): Promise<Connection> {
     this.server(serverId)
-    await options.authorize?.(serverId)
+    if (options.authorize !== undefined) await checked(options.authorize(serverId))
     if (this.#options.skillsEnabled?.(serverId) !== true)
       throw new Forbidden({ reason: `skills are not enabled for ${serverId}` })
     return this.#connection(serverId, options)
@@ -538,7 +547,7 @@ export class McpConnectionManager {
       () =>
         this.#dispatch.request(
           async () => {
-            await authorize?.(connection.server.serverId)
+            if (authorize !== undefined) await checked(authorize(connection.server.serverId))
             if (this.#options.skillsEnabled?.(connection.server.serverId) !== true)
               throw new Forbidden({ reason: 'skills disabled' })
           },

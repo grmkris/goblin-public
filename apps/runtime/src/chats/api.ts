@@ -78,7 +78,7 @@ const queue = ({ params }: ChatRequest) => AgentInput.use(({ harness }) => owner
 const removeQueued = ({ params, payload }: ChatWrite<QueueRemoval>) =>
   AgentInput.use(({ harness }) => removeOwnerQueuedInput(harness, params.id, payload))
 const markRead = ({ params }: ChatRequest) => Effect.map(markOwnerRead(params.id), (read) => ({ read }))
-const composer = ({ params }: ChatRequest) => AgentInput.use(({ run }) => composerOptions(params.id, run))
+const composer = ({ params }: ChatRequest) => composerOptions(params.id)
 
 const capabilities = ({ params }: ChatRequest) => capabilitiesOf(params.id)
 

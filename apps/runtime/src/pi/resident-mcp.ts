@@ -12,6 +12,8 @@ import { toolAppResource, toolOffered } from '../mcp/connection.ts'
 import { grantRequiredResult, mcpModelResult } from '../mcp/extension.ts'
 import { McpConnections, McpGrants, McpServers, requireResident } from '../mcp/service.ts'
 import type { McpRequestOptions } from '../mcp/types.ts'
+import { requirePlan } from '../billing/gates.ts'
+import { bound } from '../runtime/boundary.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { capabilityOffResult, mcpOff } from './capabilities.ts'
 import { ReadyResult, typedTool } from './typed-tool.ts'
@@ -26,21 +28,18 @@ const executionAuthority = (session: string, authorize?: (session: string) => Pr
 /** Runs a program on the Agent DO's services; failures reject with the typed `AppError` (the bridge's `run`). */
 export type { RunProgram }
 
-const dispatchAuthority =
-  (
-    run: RunProgram,
-    session: string,
-    input: { serverId: string; name: string },
-    authorize?: (session: string) => Promise<void>,
-  ) =>
-  () =>
-    run(
-      Effect.gen(function* () {
-        yield* executionAuthority(session, authorize)
-        if (!(yield* (yield* Capabilities).scope(session)).tool(input.serverId, input.name))
-          return yield* new NotFound({ what: 'tool scope' })
-      }),
-    )
+/** What the manager checks again right before a model's call leaves: the plan, then the call's execution scope. */
+const dispatchAuthority = (
+  session: string,
+  input: { serverId: string; name: string },
+  authorize?: (session: string) => Promise<void>,
+) =>
+  Effect.gen(function* () {
+    yield* requirePlan()
+    yield* executionAuthority(session, authorize)
+    if (!(yield* (yield* Capabilities).scope(session)).tool(input.serverId, input.name))
+      return yield* new NotFound({ what: 'tool scope' })
+  })
 
 /**
  * A call the owner has not granted becomes a request for their decision, but only for a tool that exists and the
@@ -188,10 +187,11 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
               const held = yield* holdModelCall(session, api.callId, String(api.taskId), input)
               if (held !== undefined) return new ReadyResult(yield* approvalResult(session, api.callId, held.id, input))
               const connections = yield* McpConnections
+              const recheck = yield* bound(dispatchAuthority(session, input, authorize))
               return yield* connections
                 .callTool(input.serverId, input.name, input.arguments, {
                   caller: 'model',
-                  authorize: dispatchAuthority(run, String(api.conversationId), input, authorize),
+                  authorize: recheck,
                   ...requestFor(api, context.abortSignal),
                 })
                 .pipe(

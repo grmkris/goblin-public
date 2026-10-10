@@ -13,7 +13,7 @@ import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 import type { AgentServices } from '../src/layers/index.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 import { FixedProfiles } from './fixed-services.ts'
-import { sqliteDb, stub } from './http/api/fixture.ts'
+import { plans, sqliteDb, stub } from './http/api/fixture.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
 import { lowLevelServer } from './mcp/low-level-server.ts'
 
@@ -62,7 +62,7 @@ const scopes: Readonly<Record<string, CapabilityScope>> = {
   '9': scopeOf([off('tool', 'notes', 'read')], true),
   '10': scopeOf([off('server', 'notes')], false),
 }
-/** The tools' services, built by lane M's layers over the host and the fixed switches above, always resident. */
+/** The tools' services over the host and the fixed switches above, always resident, on an active plan. */
 const layer = Layer.mergeAll(McpServersLive, McpGrantsLive, McpConnectionsLive, CapabilitiesLive).pipe(
   Layer.provideMerge(
     Layer.mergeAll(
@@ -72,7 +72,7 @@ const layer = Layer.mergeAll(McpServersLive, McpGrantsLive, McpConnectionsLive, 
       sqliteDb(chatDatabase().db),
     ),
   ),
-  Layer.merge(resident),
+  Layer.merge(Layer.mergeAll(resident, plans())),
 )
 const run = <A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<A> =>
   // SAFETY: mcp_call and mcp_list need only the MCP, resident authority and capability services provided here.

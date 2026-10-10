@@ -149,9 +149,10 @@ describe('skills over MCP (unit)', () => {
 
   it('resolves a selected stable URI and verifies its bytes before activating it', async () => {
     let checks = 0
-    const authorize = async () => {
-      checks += 1
-    }
+    const authorize = () =>
+      Effect.sync(() => {
+        checks += 1
+      })
     const selected = await library.activateSelection('selected', 'lib', served.current.entry.uri, { authorize })
     expect(selected.skill.entry.uri).toBe(served.current.entry.uri)
     expect(selected.body).toContain('# Code review v1')

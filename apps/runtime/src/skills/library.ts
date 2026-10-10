@@ -3,11 +3,16 @@
 // another. Activation reads `SKILL.md` lazily, verifies it against the entry and records the entry for the
 // conversation; supporting files are read only from that retained manifest. Nothing is fetched at wake.
 import type { SkillRequestOptions as RequestOptions } from '../mcp/types.ts'
+import * as Context from 'effect/Context'
 import { NotFound, UpstreamMcp } from '../http/errors.ts'
 import type { McpConnectionManager } from '../mcp/connection.ts'
+import { promiseWith } from '../runtime/boundary.ts'
 import type { SkillEntry } from './protocol.ts'
 import type { Activation, SkillState } from './store.ts'
 import { SkillVerifyError, contentBytes, fileAt, usableManifest, verifyBytes, verifySkillFile } from './verify.ts'
+
+/** Runs a caller's skill-scope check (an Effect bound to its services) from this Promise code. */
+const checked = promiseWith(Context.empty())
 
 const DEFAULT_TTL_MS = 300_000
 const MIN_TTL_MS = 30_000
@@ -197,7 +202,7 @@ export class SkillLibrary {
     const files = usableManifest(skill.entry)
     const { bytes } = await this.#bytes(skill.serverId, skill.entry, 'SKILL.md', options)
     const { body } = verifySkillFile(skill.entry, new TextDecoder().decode(bytes))
-    await options.authorize?.(skill.serverId)
+    if (options.authorize !== undefined) await checked(options.authorize(skill.serverId))
     this.#state.activate(sessionId, { serverId: skill.serverId, entry: skill.entry, activatedAt: this.#now() })
     return {
       skill,
@@ -215,7 +220,7 @@ export class SkillLibrary {
     uri: string,
     options: RequestOptions,
   ): Promise<Activated> {
-    await options.authorize?.(serverId)
+    if (options.authorize !== undefined) await checked(options.authorize(serverId))
     if (!this.sources().includes(serverId)) throw new NotFound({ what: 'skill library' })
     const skill = (await this.#listing(serverId, options)).find((item) => item.entry.uri === uri)
     if (skill === undefined) throw new NotFound({ what: 'selected skill' })

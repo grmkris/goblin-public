@@ -6,7 +6,7 @@ import { type OwnerSubmitServices, sendOwnerMessage } from '../agent-program.ts'
 import { Chats } from '../chats/service.ts'
 import { type AppError, NotFound, attempt } from '../http/errors.ts'
 import type { RoutineRunner } from '../routines/runner.ts'
-import { RoutineRuns } from '../routines/service.ts'
+import { RoutineRuns, type RoutineUsage } from '../routines/service.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { decideApproval } from './approval-decision.ts'
 import { Approvals, McpConnections, McpGrants, Resident } from './service.ts'
@@ -44,6 +44,7 @@ type DecisionServices =
   | McpConnections
   | Resident
   | RoutineRuns
+  | RoutineUsage
 
 /**
  * The owner's decision on a held call, as the owner API runs it: the outcome is the owner's message, sent in this
@@ -55,7 +56,7 @@ export const decideOwnerApproval = (
   allowed: boolean,
 ): Effect.Effect<ApprovalView, AppError, DecisionServices> =>
   Effect.gen(function* () {
-    const { run, routines } = yield* AgentInput
+    const { routines } = yield* AgentInput
     const admit = Effect.andThen(
       requirePlan(),
       Resident.use((resident) => resident.renew()),
@@ -63,7 +64,6 @@ export const decideOwnerApproval = (
     return yield* decideApproval({
       id,
       allowed,
-      run,
       continue: continuation(routines, (chat, text, operationId) =>
         Effect.andThen(admit, sendOwnerMessage(chat, { text, operationId })),
       ),

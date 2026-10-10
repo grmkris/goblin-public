@@ -1,37 +1,25 @@
 import { type ComposerOption, type ComposerOptions, type ComposerSelection, selectionKey } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
+import type { Entitlements } from './billing/gates.ts'
 import { Capabilities } from './capabilities/service.ts'
 import { Conversations } from './chats/service.ts'
 import { type AppError, InvalidInput, NotFound } from './http/errors.ts'
 import { McpServers, Resident, requireResident } from './mcp/service.ts'
 import { Personas } from './personas/service.ts'
-import type { RunProgram } from './runtime/bridge.ts'
+import { skillScope } from './skills/scope.ts'
 import { Skills } from './skills/service.ts'
 
-/** The check a skills library runs before each dispatch for `session`: current resident authority and its scope. */
-const authorize = (run: RunProgram, session: string) => (serverId: string) =>
-  run(
-    Effect.gen(function* () {
-      yield* requireResident
-      const scope = yield* (yield* Capabilities).scope(session)
-      if (!scope.skills(serverId)) return yield* new NotFound({ what: 'skill scope' })
-    }),
-  )
-
-/** What the composer reads. Spelled out: it takes the bridge's `run`, whose type names every agent service. */
-type ComposerServices = Conversations | Resident | Capabilities | Skills | McpServers | Personas
+/** What the composer reads. */
+type ComposerServices = Conversations | Entitlements | Resident | Capabilities | Skills | McpServers | Personas
 
 /** A conversation-scoped catalog. Remote labels and descriptions are display data only. */
-export const composerOptions = (
-  chat: string,
-  run: RunProgram,
-): Effect.Effect<ComposerOptions, AppError, ComposerServices> =>
+export const composerOptions = (chat: string): Effect.Effect<ComposerOptions, AppError, ComposerServices> =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
     const session = yield* conversations.require(chat)
     yield* requireResident
     const scope = yield* (yield* Capabilities).scope(session)
-    const catalog = yield* (yield* Skills).catalog({ timeout: 5000, authorize: authorize(run, session) }, (id) =>
+    const catalog = yield* (yield* Skills).catalog({ timeout: 5000, authorize: yield* skillScope(session) }, (id) =>
       scope.skills(id),
     )
     const connections: ComposerOption[] = (yield* (yield* McpServers).list())
@@ -75,7 +63,7 @@ export type ResolvedSelections = {
   readonly context: readonly Record<string, unknown>[]
 }
 
-const resolveOne = (session: string, selection: ComposerSelection, run: RunProgram) =>
+const resolveOne = (session: string, selection: ComposerSelection) =>
   Effect.gen(function* () {
     const scope = yield* (yield* Capabilities).scope(session)
     if (selection.kind === 'connection') {
@@ -98,7 +86,7 @@ const resolveOne = (session: string, selection: ComposerSelection, run: RunProgr
     if (selection.kind === 'skill') {
       const loaded = yield* (yield* Skills).activateSelection(session, selection.serverId, selection.uri, {
         timeout: 10_000,
-        authorize: authorize(run, session),
+        authorize: yield* skillScope(session),
       })
       return {
         option: { selection, label: loaded.skill.name, description: loaded.skill.serverId },
@@ -131,14 +119,14 @@ const resolveOne = (session: string, selection: ComposerSelection, run: RunProgr
  * refuses the entire send with its identity key; any other failure (a connection or an MCP call that failed) is the
  * send's failure as it is (C1).
  */
-export const resolveSelections = (session: string, selections: readonly ComposerSelection[], run: RunProgram) =>
+export const resolveSelections = (session: string, selections: readonly ComposerSelection[]) =>
   Effect.gen(function* () {
     const unique = [...new Map(selections.map((selection) => [selectionKey(selection), selection])).values()]
     const options: ComposerOption[] = []
     const context: Record<string, unknown>[] = []
     for (const selection of unique) {
       const refused = new InvalidInput({ reason: `composer:${selectionKey(selection)}` })
-      const resolved = yield* resolveOne(session, selection, run).pipe(
+      const resolved = yield* resolveOne(session, selection).pipe(
         Effect.catchTags({
           NotFound: () => Effect.fail(refused),
           InvalidInput: () => Effect.fail(refused),

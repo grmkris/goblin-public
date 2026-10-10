@@ -3,15 +3,28 @@ import * as Layer from 'effect/Layer'
 import { describe, expect, it } from 'vitest'
 import { appServices } from '../src/agent-apps/ports.ts'
 import { AppCodeError } from '../src/agent-apps/queue.ts'
+import { Entitlements } from '../src/billing/gates.ts'
+import type { AccountPlan } from '../src/billing/reconcile.ts'
 import { Budget } from '../src/budget.ts'
 import { Capabilities } from '../src/capabilities/service.ts'
 import type { CapabilityScope } from '../src/capabilities/profiles.ts'
 import { Channel } from '../src/channel/service.ts'
 import { Forbidden, ResidentInactive, SubscriptionRequired } from '../src/http/errors.ts'
 import { McpConnections, Resident } from '../src/mcp/service.ts'
+import type { McpCallOptions } from '../src/mcp/types.ts'
 import type { RunProgram } from '../src/runtime/bridge.ts'
 
 const complete = () => Effect.succeed('an answer')
+
+const PLAN: AccountPlan = {
+  active: true,
+  source: 'override',
+  until: null,
+  dailyCredits: 800,
+  status: 'active',
+  hasCustomer: false,
+  cancelAtPeriodEnd: false,
+}
 
 /** A service of which a test fakes only the members the code under test calls. */
 const part = <S>(service: Partial<S>): S =>
@@ -28,7 +41,13 @@ const world = (options: { readonly resident?: boolean; readonly plan?: boolean; 
     skills: () => true,
     subagents: () => true,
   }
+  const refused = Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' }))
   const services = Layer.mergeAll(
+    // The plan the host's re-check reads, as the fake `run` below checks it first.
+    Layer.succeed(
+      Entitlements,
+      part<Entitlements['Service']>({ require: () => (options.plan === false ? refused : Effect.succeed(PLAN)) }),
+    ),
     Layer.succeed(
       Resident,
       part<Resident['Service']>({
@@ -53,17 +72,12 @@ const world = (options: { readonly resident?: boolean; readonly plan?: boolean; 
     Layer.succeed(
       McpConnections,
       part<McpConnections['Service']>({
-        callTool: (
-          serverId: string,
-          name: string,
-          _args: unknown,
-          call?: { readonly authorize?: () => Promise<void> },
-        ) =>
-          Effect.promise(async () => {
-            const authorized = await (call?.authorize?.() ?? Promise.resolve()).then(
-              () => true,
+        callTool: (serverId: string, name: string, _args: unknown, call?: McpCallOptions) =>
+          Effect.gen(function* () {
+            const authorized = yield* (call?.authorize ?? Effect.void).pipe(
+              Effect.as(true),
               // expected: a refused re-check is what the test reads, as `authorized: false`
-              () => false,
+              Effect.orElseSucceed(() => false),
             )
             calls.push({ serverId, name, authorized })
             return { content: [], isError: name === 'refuse' }
@@ -75,7 +89,7 @@ const world = (options: { readonly resident?: boolean; readonly plan?: boolean; 
   const run: RunProgram = (program) =>
     Effect.runPromise(
       Effect.andThen(
-        options.plan === false ? Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' })) : Effect.void,
+        options.plan === false ? refused : Effect.void,
         // SAFETY: the powers' programs require only the services faked above.
         program.pipe(Effect.provide(services)) as Effect.Effect<never>,
       ),

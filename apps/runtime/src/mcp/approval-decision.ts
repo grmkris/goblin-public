@@ -2,15 +2,17 @@ import type { ApprovalView } from '@goblin/contracts'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
+import { type Entitlements, requirePlan } from '../billing/gates.ts'
+import type { Budget } from '../budget.ts'
 import { Capabilities } from '../capabilities/service.ts'
 import { Chats, Conversations } from '../chats/service.ts'
 import { type AppError, NotFound } from '../http/errors.ts'
-import type { RunProgram } from '../runtime/bridge.ts'
+import { bound } from '../runtime/boundary.ts'
 import { requireRoutineSession } from '../routines/authority.ts'
-import { RoutineRuns } from '../routines/service.ts'
+import { RoutineRuns, type RoutineUsage } from '../routines/service.ts'
 import type { ApprovalRow } from './approvals.ts'
 import { redactSecretFields } from './redaction.ts'
-import { Approvals, McpConnections, requireResident } from './service.ts'
+import { Approvals, McpConnections, type Resident, requireResident } from './service.ts'
 
 /** What a held call needs again just before it is dispatched: current authority, its open chat and its scope. */
 const authority = (row: ApprovalRow) =>
@@ -26,6 +28,9 @@ const authority = (row: ApprovalRow) =>
       return yield* new NotFound({ what: 'tool scope' })
   })
 
+/** What the check before a held call's dispatch reads (`authority`, after the plan). */
+type AuthorityServices = Entitlements | Resident | Chats | Conversations | Capabilities | RoutineUsage | Budget
+
 /** A routine run waiting on the owner goes on running once its held call is approved. */
 const resumeRoutine = (row: ApprovalRow) =>
   Effect.gen(function* () {
@@ -37,7 +42,7 @@ const resumeRoutine = (row: ApprovalRow) =>
     yield* runs.resume(session, `mcp-decision-resume:${row.id}`, yield* Clock.currentTimeMillis, 'approved')
   })
 
-const dispatch = (row: ApprovalRow, run: RunProgram) =>
+const dispatch = (row: ApprovalRow) =>
   Effect.gen(function* () {
     const approvals = yield* Approvals
     yield* resumeRoutine(row)
@@ -50,14 +55,15 @@ const dispatch = (row: ApprovalRow, run: RunProgram) =>
             sourceCallId: row.sourceCallId,
             taskId: row.taskId,
           }
+    // The manager checks authority again right before it dispatches, from inside its own guard: the plan, then the rest.
+    const authorize = yield* bound(Effect.andThen(requirePlan(), authority(row)))
     const result = yield* (yield* McpConnections).callTool(row.serverId, row.name, args, {
       caller: row.caller,
       approvalId: row.id,
       ...(context === undefined
         ? {}
         : { approvalContext: context, runContext: { conversationId: context.sessionId, taskId: context.taskId } }),
-      // The manager checks authority again right before it dispatches, from inside its own guard.
-      authorize: () => run(authority(row)),
+      authorize,
     })
     yield* approvals.finish(row.id, result)
   }).pipe(
@@ -88,14 +94,13 @@ const decisionText = (row: ApprovalRow): string => {
 export const decideApproval = <R>(input: {
   readonly id: string
   readonly allowed: boolean
-  readonly run: RunProgram
   /** Delivers the decision to the conversation that held the call: its routine run, or its chat. */
   readonly continue: (session: string, text: string, operationId: string) => Effect.Effect<unknown, AppError, R>
-}): Effect.Effect<ApprovalView, AppError, Approvals | McpConnections | RoutineRuns | R> =>
+}): Effect.Effect<ApprovalView, AppError, Approvals | McpConnections | RoutineRuns | AuthorityServices | R> =>
   Effect.gen(function* () {
     const approvals = yield* Approvals
     const decision = yield* approvals.decide(input.id, input.allowed)
-    if (decision.changed && decision.row.state === 'approved') yield* dispatch(decision.row, input.run)
+    if (decision.changed && decision.row.state === 'approved') yield* dispatch(decision.row)
     const row = yield* approvals.get(input.id)
     if (row.sessionId !== null && ['completed', 'refused', 'expired', 'failed'].includes(row.state)) {
       const result = yield* approvals.result(input.id)

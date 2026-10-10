@@ -1,11 +1,13 @@
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
+import { requirePlan } from '../billing/gates.ts'
 import { requireBudget } from '../budget.ts'
 import { Capabilities } from '../capabilities/service.ts'
 import { Channel } from '../channel/service.ts'
 import { Forbidden } from '../http/errors.ts'
 import type { AgentServices } from '../layers/index.ts'
 import { McpConnections, requireResident } from '../mcp/service.ts'
+import { bound } from '../runtime/boundary.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { AppCodeError, problemText, thrownOf } from './queue.ts'
 
@@ -66,16 +68,14 @@ export function appServices(run: RunProgram, complete: AppCompletion): AppServic
         if (!scope.tool(serverId, name)) return yield* new Forbidden({ reason: 'app MCP tool excluded here' })
       })
       return settled(
-        Effect.andThen(
-          authorize,
-          McpConnections.use((connections) =>
-            connections.callTool(serverId, name, args, {
-              caller: 'model',
-              timeout: 15_000,
-              authorize: () => run(authorize),
-            }),
-          ),
-        ),
+        Effect.gen(function* () {
+          yield* authorize
+          // The host checks again right before the call leaves, after the plan as `run` checks it.
+          const recheck = yield* bound(Effect.andThen(requirePlan(), authorize))
+          return yield* McpConnections.use((connections) =>
+            connections.callTool(serverId, name, args, { caller: 'model', timeout: 15_000, authorize: recheck }),
+          )
+        }),
       )
     },
     complete: (system, prompt, maxTokens) =>
@@ -87,12 +87,13 @@ export function appServices(run: RunProgram, complete: AppCompletion): AppServic
           const serverId = (yield* Channel.use((channel) => channel.status))?.serverId
           if (serverId === undefined)
             return yield* Effect.fail(new AppCodeError('notify: the owner has no Telegram channel connected'))
+          const recheck = yield* bound(Effect.andThen(requirePlan(), requireResident))
           const result = yield* McpConnections.use((connections) =>
             connections.callTool(
               serverId,
               'send_message',
               { operationId: op, text: escaped(text) },
-              { caller: 'model', timeout: 5000, authorize: () => run(requireResident) },
+              { caller: 'model', timeout: 5000, authorize: recheck },
             ),
           )
           if (result.isError === true)

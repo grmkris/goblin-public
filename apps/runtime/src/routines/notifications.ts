@@ -8,7 +8,7 @@ import { McpConnections, requireResident } from '../mcp/service.ts'
 import { reportFailure } from '../observability/report.ts'
 import { definitionOf, type RoutineRun } from './runs.ts'
 import { RoutineRuns } from './service.ts'
-import { AgentInput } from '../runtime/input.ts'
+import { bound } from '../runtime/boundary.ts'
 
 const Receipt = Schema.Struct({
   id: Schema.optional(Schema.String.check(Schema.isMaxLength(200))),
@@ -32,7 +32,6 @@ const suppress = () => Effect.succeed<Delivery>({ state: 'suppressed', receipt: 
 export const notifyRoutine = (record: RoutineRun) =>
   Effect.gen(function* () {
     const store = yield* RoutineRuns
-    const local = yield* AgentInput.use((input) => Effect.succeed(input.local))
     const at = yield* Clock.currentTimeMillis
     if (!definitionOf(record).notifyTelegram || record.notificationText === null) return
     const text = record.notificationText.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -55,12 +54,13 @@ export const notifyRoutine = (record: RoutineRun) =>
       yield* authority
       if (serverId === null || channel?.serverId !== serverId)
         return yield* new Forbidden({ reason: 'routine notification channel changed' })
+      const authorize = yield* bound(stillAuthorized(serverId))
       const result = yield* McpConnections.use((connections) =>
         connections.callTool(
           serverId,
           'send_message',
           { operationId: `routine-${record.id}-0`, text },
-          { caller: 'model', timeout: 5000, authorize: () => local(stillAuthorized(serverId)) },
+          { caller: 'model', timeout: 5000, authorize },
         ),
       )
       if (result.isError === true) return yield* new Forbidden({ reason: 'routine notification refused' })

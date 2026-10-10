@@ -10,6 +10,7 @@ import {
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { Apps } from './apps/service.ts'
+import type { Entitlements } from './billing/gates.ts'
 import { type Budget, requireBudget } from './budget.ts'
 import type { Capabilities } from './capabilities/service.ts'
 import type { SessionId } from './chats/directory.ts'
@@ -213,6 +214,7 @@ const sendToSubagent = (
 /** What the owner's message path reads. Spelled out: `run`'s type names every agent service, the owner API's among them. */
 export type OwnerSubmitServices =
   | Budget
+  | Entitlements
   | Conversations
   | ChatOperations
   | Files
@@ -251,7 +253,7 @@ export const submitOwner = (input: OwnerSubmit): Effect.Effect<PiReceipt, AppErr
       return yield* new InvalidInput({ reason: 'empty_message' })
     const attachments = yield* attachedFiles(paths)
     const shared = yield* sharedContext(appContext, input.thread)
-    const selections = yield* resolveSelections(session, picks, input.run)
+    const selections = yield* resolveSelections(session, picks)
     const view = Option.getOrUndefined(yield* conversations.view(input.thread))
     const content = ownerContent(input.text, shared, attachments, selections)
     if (personaIds.length > 0) {

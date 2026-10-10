@@ -11,6 +11,8 @@ import type {
   Tool,
 } from '@modelcontextprotocol/client'
 import type { McpServerConfig } from '@goblin/contracts'
+import type * as Effect from 'effect/Effect'
+import type { AppError } from '../http/errors.ts'
 import type { Grant } from './grants.ts'
 export type { McpServerConfig }
 export type McpCaller = 'model' | 'app' | 'human'
@@ -74,13 +76,21 @@ export type ApprovedDispatch = {
 }
 export type McpCallOptions = McpRequestOptions & {
   readonly caller?: McpCaller
-  /** Recheck the local execution scope after connection/credential waits, immediately before dispatch. */
-  readonly authorize?: () => Promise<void>
+  /**
+   * Recheck the local execution scope after connection/credential waits, immediately before dispatch: an Effect bound
+   * to the caller's services (`bound`), which the manager runs at its SDK boundary.
+   */
+  readonly authorize?: Effect.Effect<void, AppError>
   readonly approvalId?: string
   readonly approvalContext?: ApprovalContext
 }
 export type McpToolResult = CallToolResult
 export type McpPromptResult = GetPromptResult
 
-/** Skills transport authority is checked again for every HTTP dispatch, including refresh retries. */
-export type SkillRequestOptions = RequestOptions & { readonly authorize?: (serverId: string) => Promise<void> }
+/**
+ * Skills transport authority is checked again for every HTTP dispatch, including refresh retries: per server, an Effect
+ * bound to the caller's services.
+ */
+export type SkillRequestOptions = RequestOptions & {
+  readonly authorize?: (serverId: string) => Effect.Effect<void, AppError>
+}

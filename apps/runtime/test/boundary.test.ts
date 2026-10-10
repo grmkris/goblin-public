@@ -2,7 +2,7 @@ import { assert, describe, it } from '@effect/vitest'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import { NotFound } from '../src/http/errors.ts'
-import { promiseWith, syncWith } from '../src/runtime/boundary.ts'
+import { bound, promiseWith, syncWith } from '../src/runtime/boundary.ts'
 
 class Greeting extends Context.Service<Greeting, { readonly word: string }>()('test/boundary/Greeting') {}
 
@@ -36,5 +36,14 @@ describe('runtime boundary', () => {
       (cause: unknown) => cause,
     )
     assert.strictEqual(rejected, defect)
+  })
+
+  it('bound keeps the services of the program that made it, so Promise code runs it with none', async () => {
+    const check = Effect.runSync(
+      bound(Greeting.use((greeting) => Effect.succeed(greeting.word))).pipe(
+        Effect.provideService(Greeting, { word: 'kept' }),
+      ),
+    )
+    assert.strictEqual(await promiseWith(Context.empty())(check), 'kept')
   })
 })

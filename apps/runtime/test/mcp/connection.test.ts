@@ -1,4 +1,5 @@
 import { createMcpHandler } from '@modelcontextprotocol/server'
+import * as Effect from 'effect/Effect'
 import { describe, expect, it } from 'vitest'
 import { McpConnectionManager, encodedSize } from '../../src/mcp/connection.ts'
 import { MemoryGrants } from './memory.ts'
@@ -147,9 +148,9 @@ describe('official MCP SDK host interoperability (unit)', () => {
           'read',
           {},
           {
-            authorize: async () => {
-              if (revoked) throw new Forbidden({ reason: 'execution revoked during refresh' })
-            },
+            authorize: Effect.suspend(() =>
+              revoked ? Effect.fail(new Forbidden({ reason: 'execution revoked during refresh' })) : Effect.void,
+            ),
           },
         ),
       ).rejects.toMatchObject({ _tag: 'Forbidden' })
