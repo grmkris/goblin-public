@@ -10,6 +10,7 @@ import type { AgentApps } from '../src/agent-apps/engine.ts'
 import { Apps } from '../src/apps/service.ts'
 import type { ChatId } from '../src/chats/directory.ts'
 import { Chats, Conversations } from '../src/chats/service.ts'
+import { Decisions } from '../src/decisions/service.ts'
 import { Home, HomeService } from '../src/home/service.ts'
 import { delegationServices } from '../src/layers/delegation.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
@@ -78,6 +79,7 @@ const services = () => {
     stub(Chats, { primary: '1' as ChatId, isHidden: () => Effect.succeed(false) }),
     stub(Conversations, { list: Effect.succeed([]) }),
     stub(Apps, { list: Effect.succeed([]) }),
+    stub(Decisions, { list: Effect.succeed([]) }),
     stub(PiSessions, { pi: Effect.succeed(pi) }),
   )
   const layer = Layer.provideMerge(WorkspaceLive, Layer.merge(lane, sources))

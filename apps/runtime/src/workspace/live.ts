@@ -11,6 +11,7 @@ import type * as Scope from 'effect/Scope'
 import * as Stream from 'effect/Stream'
 import { Apps } from '../apps/service.ts'
 import { Chats, Conversations } from '../chats/service.ts'
+import { Decisions } from '../decisions/service.ts'
 import { Home } from '../home/service.ts'
 import { type AppError, attempt, toAppError } from '../http/errors.ts'
 import { reportAndRecover, reportFailure } from '../observability/report.ts'
@@ -34,6 +35,7 @@ type Sources = {
   readonly personas: Personas['Service']
   readonly invocations: Invocations['Service']
   readonly receipts: Receipts['Service']
+  readonly decisions: Decisions['Service']
 }
 
 const sources = Effect.gen(function* () {
@@ -46,6 +48,7 @@ const sources = Effect.gen(function* () {
     personas: yield* Personas,
     invocations: yield* Invocations,
     receipts: yield* Receipts,
+    decisions: yield* Decisions,
   } satisfies Sources
 })
 
@@ -123,6 +126,14 @@ const followTopics = (
         ),
       ),
     ),
+    changes.on('decisions.changed', ({ ids }) =>
+      follow(
+        'workspace.decisions',
+        each(ids, (id) =>
+          Effect.map(read.decisions.view(id), (proposal): WorkspaceChange => ({ type: 'proposal', proposal })),
+        ),
+      ),
+    ),
     changes.on('home.changed', () =>
       follow(
         'workspace.home',
@@ -179,7 +190,7 @@ const taskGraph = (
 export const WorkspaceLive: Layer.Layer<
   Workspace,
   never,
-  Changes | PiSessions | Chats | Conversations | Apps | Home | Topics | Personas | Invocations | Receipts
+  Changes | PiSessions | Chats | Conversations | Apps | Home | Topics | Personas | Invocations | Receipts | Decisions
 > = Layer.effect(
   Workspace,
   Effect.gen(function* () {
@@ -212,6 +223,7 @@ export const WorkspaceLive: Layer.Layer<
         personas: yield* read.personas.list,
         invocations: yield* read.invocations.live,
         receipts: yield* read.receipts.list(),
+        proposals: yield* read.decisions.list,
       }
     })
     const stream: Stream.Stream<WorkspaceEvent, AppError> = Stream.unwrap(
