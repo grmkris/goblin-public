@@ -7,6 +7,7 @@ import { REPLY_HTML, replyUrl } from '../../lib/reply-html.ts'
 import { RichBlock } from './blocks.tsx'
 import { CodeBlock } from './code-block.tsx'
 import { LinkConfirm } from './link-confirm.tsx'
+import { ReplyTable } from './reply-table.tsx'
 
 /** Streamdown's renderers for prose, each replaced by its plain element: shadcn/typeset sets the text. */
 const PROSE = {
@@ -145,8 +146,8 @@ function ChatImage({
   )
 }
 
-/** Prose as typeset sets it, Goblin's own code blocks and figures, and the reply's links and images. */
-const CHAT: Components = { ...PROSE, a: ChatLink, img: ChatImage, table: Table, code: Code }
+/** Prose as typeset sets it, Goblin's own code blocks, tables and figures, and the reply's links and images. */
+const CHAT: Components = { ...PROSE, a: ChatLink, img: ChatImage, table: ReplyTable, code: Code }
 
 export const REMARK = [remarkGfm]
 /** No rehype plugins, for tool output: Streamdown's defaults would render raw HTML (`rehype-raw`). */

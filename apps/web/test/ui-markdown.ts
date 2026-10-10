@@ -1,6 +1,6 @@
 /** Chat Markdown in local Chromium: real source components, no account, network or model. */
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync, writeSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, writeSync } from 'node:fs'
 import path from 'node:path'
 import { chromium, type Page } from 'playwright-core'
 import { createServer } from 'vite'
@@ -74,6 +74,29 @@ async function code(page: Page, label: string) {
   checks.push('code highlights once Shiki loads, and Copy copies exactly the code (light and dark captured)')
 }
 
+/** A table copies as CSV or Markdown, and downloads as CSV, from what is on screen. */
+async function table(page: Page) {
+  const block = page.getByLabel('Streaming reply').locator('.table-block')
+  const menu = async (item: string) => {
+    await block.hover()
+    await block.getByRole('button', { name: 'Table actions' }).click()
+    await page.getByRole('menuitem', { name: item }).click()
+  }
+  await menu('Copy as CSV')
+  const csv = await page.evaluate(() => navigator.clipboard.readText())
+  assert(csv.startsWith('Plan,Monthly,Requests,Backups,Support,Region,Notes'), csv)
+  assert(csv.includes('Starter,$5,10M,none,community,one,fine for a hobby project and nothing more'), csv)
+  await menu('Copy as Markdown')
+  assert((await page.evaluate(() => navigator.clipboard.readText())).startsWith('| Plan | Monthly |'))
+  const download = page.waitForEvent('download')
+  await menu('Download CSV')
+  const saved = await download
+  assert.equal(saved.suggestedFilename(), 'table.csv')
+  const file = await saved.path()
+  assert.equal(readFileSync(file, 'utf8'), csv)
+  checks.push('a table copies as CSV and Markdown, and downloads the same CSV')
+}
+
 /** A link asks first, showing where it goes; Cancel opens nothing, Open opens one tab there. */
 async function link(page: Page) {
   const anchor = page.getByLabel('Reply with a link').getByRole('link', { name: 'the official guide' })
@@ -107,7 +130,11 @@ if (!origin) throw new Error('markdown_fixture_origin_missing')
 const browser = await chromium.launch({ headless: true })
 try {
   for (const width of [1280, 390]) {
-    const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: 'reduce' })
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      reducedMotion: 'reduce',
+      acceptDownloads: true,
+    })
     await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin })
     const page = await context.newPage()
     page.on('pageerror', (error) => errors.push(error.message))
@@ -122,6 +149,7 @@ try {
     await page.goto(`${origin}markdown.html`)
     await settling(page)
     await code(page, String(width))
+    await table(page)
     await link(page)
     await image(page, fetched)
     await context.close()

@@ -24,6 +24,10 @@ used: its Tailwind classes that Goblin's sources also use (`flex`, `p-4`, `borde
 from the utilities layer, and it skips painting off-screen blocks at a guessed height, which the transcript's
 measured anchoring cannot have.
 
+**Tables copy and export** (`reply-table.tsx`): a corner menu copies a reply's table as Markdown, CSV or TSV or
+downloads it as CSV, with Streamdown's table helpers reading what is on screen; Streamdown's own table and its
+controls are not used, for the same reasons as its code block. Tool tables stay plain.
+
 **Images load when the owner asks.** An image in a reply is a button naming it and its host; a click fetches it once,
 without a referrer. Anything but an http(s) source stays a name.
 

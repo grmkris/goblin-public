@@ -776,17 +776,20 @@
     white-space: pre-wrap;
   }
   /*
-   * A code block in a reply (components/parts/code-block.tsx): typeset's code, a copy button in its corner that shows
-   * on hover or focus (always, without hover), and Shiki's colours for the theme once highlighting has loaded.
+   * A code block and a table in a reply (components/parts/code-block.tsx, reply-table.tsx): typeset's own, with an
+   * action in the corner (copy, or the table's menu) that shows on hover or focus, and always without hover. A code
+   * block takes Shiki's colours for the theme once highlighting has loaded.
    */
-  .code-block {
+  .code-block,
+  .table-block {
     position: relative;
     margin-block-start: var(--typeset-flow);
   }
-  .code-block > pre {
+  .code-block > pre,
+  .table-block > .typeset-scroll {
     margin-block-start: 0;
   }
-  .typeset > * > .code-block:first-child {
+  .typeset > * > :is(.code-block, .table-block):first-child {
     margin-block-start: 0;
   }
   .code-block span[style] {
@@ -795,7 +798,7 @@
   .dark .code-block span[style] {
     color: var(--code-dark, var(--code-light, inherit));
   }
-  .code-copy {
+  .block-action {
     position: absolute;
     inset-block-start: 0.375rem;
     inset-inline-end: 0.375rem;
@@ -810,18 +813,19 @@
     opacity: 0;
     transition: opacity 150ms var(--ease-out);
   }
-  .code-copy > svg {
+  .block-action > svg {
     inline-size: 0.875rem;
     block-size: 0.875rem;
   }
-  .code-block:is(:hover, :focus-within) > .code-copy {
+  :is(.code-block, .table-block):is(:hover, :focus-within) > .block-action,
+  .block-action[data-popup-open] {
     opacity: 1;
   }
-  .code-copy:hover {
+  .block-action:hover {
     color: var(--foreground);
   }
   @media (hover: none) {
-    .code-copy {
+    .block-action {
       opacity: 1;
     }
   }

@@ -46,7 +46,7 @@ function CopyCode({ code }: { readonly code: string }) {
   return (
     <button
       type="button"
-      className="code-copy"
+      className="block-action"
       aria-label={copied ? 'Copied' : 'Copy code'}
       title="Copy code"
       onClick={() => {
