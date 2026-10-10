@@ -23,6 +23,7 @@ import { useConversations } from '../lib/workspace/hooks.ts'
 import { PageSection } from './page-section.tsx'
 import { powerText } from './parts/app-powers.tsx'
 import { AppTile } from './apps/app-tile.tsx'
+import { useMinute } from './use-now.ts'
 
 type Run = (change: AgentAppChange) => void
 
@@ -95,10 +96,11 @@ function Overview({ app, busy, run }: { readonly app: AgentAppDetail; readonly b
 
 function JobRow({ job, busy, run }: { readonly job: AgentAppJob; readonly busy: boolean; readonly run: Run }) {
   const paused = job.paused !== null
+  const now = useMinute() * 1000
   return (
     <li className="apps-row">
       <div className="min-w-0 flex-1">
-        <p className="text-sm">{jobLine(job, Date.now())}</p>
+        <p className="text-sm">{jobLine(job, now)}</p>
         {job.lastAt !== null && (
           <p className="text-xs text-muted-foreground">
             Last run {when(job.lastAt)}: {job.status ?? 'none'}

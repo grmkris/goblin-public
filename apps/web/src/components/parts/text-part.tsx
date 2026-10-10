@@ -7,6 +7,7 @@ import { relativeTime, reporterOf } from '../../lib/threads.ts'
 import { MessageFiles } from '../attachments.tsx'
 import { ChatMarkdown } from './markdown.tsx'
 import { useConversations } from '../../lib/workspace/hooks.ts'
+import { useMinute } from '../use-now.ts'
 
 /**
  * Assistant text as GitHub-flavoured Markdown, set by shadcn/typeset (`ChatMarkdown`), with the little HTML ADR 0039 allows.
@@ -84,7 +85,8 @@ function SubagentReport({
         {name}
       </button>
     )
-  const when = at === undefined ? '' : ` · ${relativeTime(Math.floor(at / 1000), Math.floor(Date.now() / 1000))}`
+  const now = useMinute()
+  const when = at === undefined ? '' : ` · ${relativeTime(Math.floor(at / 1000), now)}`
   return (
     <Cause
       icon={<CornerDownRightIcon aria-hidden />}

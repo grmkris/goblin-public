@@ -2,6 +2,7 @@ import type { EventHealth } from '@goblin/contracts'
 import { eventStatus } from '../lib/labels.ts'
 import { relativeTime } from '../lib/threads.ts'
 import { StatusLabel } from './status-label.tsx'
+import { useMinute } from './use-now.ts'
 
 const seconds = (ms: number): number => Math.floor(ms / 1000)
 
@@ -10,8 +11,8 @@ const seconds = (ms: number): number => Math.floor(ms / 1000)
  * health metadata is rendered; the events themselves stay inside the Agent.
  */
 export function EventsHealth({ events }: { readonly events: readonly EventHealth[] }) {
+  const now = useMinute()
   if (events.length === 0) return null
-  const now = seconds(Date.now())
   return (
     <section className="server-part" aria-label="Events">
       <h3 className="server-part-title">Events</h3>

@@ -1,15 +1,16 @@
 import type { AgentAppJob } from '@goblin/contracts'
 import { CalendarClockIcon } from 'lucide-react'
 import { jobLine, jobTrouble } from '../../lib/app-jobs.ts'
+import { useMinute } from '../use-now.ts'
 
 /**
  * An agent app's schedules in its bar (ADR 0021): the one that needs the owner's eye first, otherwise the first, and
  * every schedule in its title.
  */
 export function AppJobs({ jobs }: { readonly jobs: readonly AgentAppJob[] }) {
+  const now = useMinute() * 1000
   const shown = jobs.find(jobTrouble) ?? jobs[0]
   if (shown === undefined) return null
-  const now = Date.now()
   const more = jobs.length > 1 ? ` +${String(jobs.length - 1)}` : ''
   return (
     <span

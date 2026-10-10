@@ -7,6 +7,7 @@ import { jobLine, jobTrouble } from '../lib/app-jobs.ts'
 import { QueryBoundary, QueryError } from '../lib/query/query-boundary.tsx'
 import { reportUnexpected } from '../lib/unexpected.ts'
 import { AppTile } from './apps/app-tile.tsx'
+import { useMinute } from './use-now.ts'
 
 /** What an app needs from the owner, if anything: powers to allow, a schedule in trouble, a failure. */
 function needs(app: AgentAppSummary): string | undefined {
@@ -18,6 +19,7 @@ function needs(app: AgentAppSummary): string | undefined {
 function AppCard({ app }: { readonly app: AgentAppSummary }) {
   const [job] = app.jobs
   const need = needs(app)
+  const now = useMinute() * 1000
   return (
     <Link to="/apps/$name" params={{ name: app.name }} className="apps-card">
       <Card interactive>
@@ -39,7 +41,7 @@ function AppCard({ app }: { readonly app: AgentAppSummary }) {
           <p className="text-xs text-muted-foreground">
             v{app.version}
             {app.app === null ? ' · no view' : ''}
-            {job === undefined ? '' : ` · ${jobLine(job, Date.now())}`}
+            {job === undefined ? '' : ` · ${jobLine(job, now)}`}
           </p>
         </CardHeader>
       </Card>

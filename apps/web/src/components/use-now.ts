@@ -5,9 +5,14 @@ export function useNow(active = true): number {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!active) return
-    setNow(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
+    const tick = () => setNow(Date.now())
+    // Caught up at once when it starts (its last value may be old), then once a second.
+    const first = setTimeout(tick, 0)
+    const timer = setInterval(tick, 1000)
+    return () => {
+      clearTimeout(first)
+      clearInterval(timer)
+    }
   }, [active])
   return now
 }

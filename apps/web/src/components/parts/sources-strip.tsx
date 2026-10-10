@@ -6,6 +6,7 @@ import { ChevronRightIcon, LibraryIcon } from 'lucide-react'
 import { sourceTopics } from '../../lib/sources.ts'
 import { relativeTime } from '../../lib/threads.ts'
 import { OpenThread } from './text-part.tsx'
+import { useMinute } from '../use-now.ts'
 
 /**
  * One source: where it is (the Topic, and the thread when it is not the Topic's channel itself), when it was read, the
@@ -44,10 +45,10 @@ export function SourcesStrip({
   readonly searched?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const now = useMinute()
   if (sources.length === 0) return null
   const topics = sourceTopics(sources).map((name) => `#${name}`)
   const named = topics.length <= 2 ? topics.join(' and ') : `${topics.slice(0, 2).join(', ')} and more`
-  const now = Math.floor(Date.now() / 1000)
   return (
     <div className="sources-strip">
       <button type="button" className="sources-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
