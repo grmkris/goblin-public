@@ -7,11 +7,12 @@
  */
 import { Config, Effect, Option, Redacted, Schema } from 'effect'
 import { createHash, randomBytes } from 'node:crypto'
-import { chmod, readFile, stat, writeFile } from 'node:fs/promises'
+import { chmod, stat, writeFile } from 'node:fs/promises'
 import { appChecks } from './smoke-apps.ts'
 import { edgeChecks } from './smoke-edge.ts'
 import { delegateReported } from './smoke-entries.ts'
 import { publicSmoke } from './smoke-public.ts'
+import { readSession } from './session.ts'
 
 const ObjectSchema = Schema.Record(Schema.String, Schema.MutableJson)
 type JsonObject = typeof ObjectSchema.Type
@@ -109,12 +110,8 @@ class DevClient {
   }
 
   async useSession(file: string, email: Redacted.Redacted): Promise<void> {
-    if (!file || (await stat(file)).mode & 0o077) throw new Error('private_otp_session_file_required')
-    const saved = Schema.decodeUnknownSync(Schema.Struct({ origin: Schema.String, cookie: Schema.String }))(
-      JSON.parse(await readFile(file, 'utf8')),
-    )
-    if (saved.origin !== this.origin || !saved.cookie.includes('session_token='))
-      throw new Error('session_origin_mismatch')
+    const saved = readSession(file)
+    if (saved.origin !== this.origin) throw new Error('session_origin_mismatch')
     this.#cookie = saved.cookie
     const session = await this.json('/api/auth/get-session')
     const owner = object(session['user'])

@@ -9,12 +9,12 @@
  * touch, landscape, tablet, desktop 1440×900; light and dark) and a receipt go to a private
  * `.local/goblin-acceptance/ui-<utc>/`. Chromium emulation is not device evidence: a real phone still checks feel.
  */
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { type Browser, type BrowserContextOptions, type Page, chromium } from 'playwright-core'
+import { readSession, type Session } from './session.ts'
 
 type Check = { readonly ok: boolean; readonly detail: unknown } | { readonly skipped: true; readonly detail: unknown }
-type Session = { readonly origin: string; readonly cookie: string }
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const PAGES = ['/c/1', '/threads', '/activity', '/tasks', '/settings', '/connections', '/apps']
@@ -28,19 +28,6 @@ const DESK: BrowserContextOptions = { viewport: { width: 1440, height: 900 } }
 const SETTLE_MS = 1500
 
 const skipped = (detail: unknown): Check => ({ skipped: true, detail })
-
-function readSession(file: string): Session {
-  const saved: unknown = JSON.parse(readFileSync(file, 'utf8'))
-  if (typeof saved !== 'object' || saved === null || !('origin' in saved) || !('cookie' in saved))
-    throw new Error('session_file_shape')
-  const { origin, cookie } = saved
-  if (typeof origin !== 'string' || typeof cookie !== 'string' || !cookie.includes('session_token='))
-    throw new Error('session_file_shape')
-  const url = new URL(origin)
-  const local = url.protocol === 'http:' && url.hostname === 'localhost'
-  if ((url.protocol !== 'https:' && !local) || url.origin !== origin) throw new Error('session_origin_must_be_https')
-  return { origin, cookie }
-}
 
 function cookiesOf({ origin, cookie }: Session) {
   const { hostname: domain, protocol } = new URL(origin)
