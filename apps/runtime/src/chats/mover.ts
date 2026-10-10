@@ -329,7 +329,7 @@ const reconcile = (mover: Mover) =>
   }).pipe(reportAndRecover('moves.reconcile', undefined), Effect.withSpan('Moves.reconcile'))
 
 /** How a move's receipt goes on from what the mover answered: refused with its reason, or settled with its Thread. */
-const moveEnd = (receipt: MoveReceipt) =>
+export const moveEnd = (receipt: MoveReceipt) =>
   receipt.state === 'refused'
     ? ({ state: 'refused', reason: receipt.reason ?? 'refused' } as const)
     : ({

@@ -10,6 +10,7 @@ import * as Option from 'effect/Option'
 import * as TestClock from 'effect/testing/TestClock'
 import type { FlowEvent } from '@goblin/contracts/telemetry'
 import { settledWithin } from '../src/chats/instance.ts'
+import { moveEnd } from '../src/chats/mover.ts'
 import { ChatOperations, Chats, Conversations, Moves } from '../src/chats/service.ts'
 import { Conflict } from '../src/http/errors.ts'
 import type { FoundationServices } from '../src/layers/core.ts'
@@ -35,9 +36,18 @@ const fake = <T>(members: Partial<T>): T =>
 /** What Pi was asked, in order. */
 type Calls = string[]
 
+/** A page of entries as Pi's `entries` reads them: an owner's message at any one entry asked for alone, else none. */
+const entriesOf = (id: number) => async (query: { readonly minEntryId?: number; readonly maxEntryId?: number }) => ({
+  items:
+    query.minEntryId !== undefined && query.minEntryId === query.maxEntryId
+      ? [{ id: query.minEntryId, conversationId: id, kind: 'pi.user' }]
+      : [],
+  next: undefined,
+})
+
 /**
- * Pi's harness: a conversation's writes, aborts and Pi configuration, an empty history, a new session, a session's
- * model and a submit, each recorded.
+ * Pi's harness: a conversation's writes, aborts, configuration and forks, its entries (`entriesOf`), no run in
+ * progress but an input queued in Personal, a new session, a session's model and a submit, each recorded.
  */
 const harnessOf = (calls: Calls) => {
   const conversation = (id: number) => ({
@@ -47,12 +57,22 @@ const harnessOf = (calls: Calls) => {
     },
     abort: async () => void calls.push(`abort:${id}`),
     configure: async () => void calls.push(`configure:${id}`),
-    entries: async () => ({ items: [], next: undefined }),
+    entries: entriesOf(id),
+    fork: async (at: number) => {
+      calls.push(`fork:${id}@${at}`)
+      return { id: 70 }
+    },
   })
   let sessions = 60
   return fake<PiHarness>({
-    // SAFETY: the services ask Pi's harness only for a conversation.
-    pi: async () => ({ conversation: async (id: number) => conversation(id) }) as never,
+    // SAFETY: the services ask Pi's harness only for a conversation, a run in progress (none) and its submissions:
+    // an input queued in Personal's session.
+    pi: async () =>
+      ({
+        conversation: async (id: number) => conversation(id),
+        snapshot: async () => undefined,
+        inspect: async () => ({ submissions: [{ conversationId: 41, type: 'input' }] }),
+      }) as never,
     // SAFETY: a send asks a session only to change its model.
     session: (session: string) =>
       ({ setModel: async ({ id }: { id: string }) => void calls.push(`model:${session}:${id}`) }) as never,
@@ -338,7 +358,7 @@ describe('the conversation services', () => {
       expect([yield* conversations.announce('2'), yield* conversations.announce('2')]).toEqual([true, false])
       expect(yield* conversations.announce('3')).toBe(false)
       const receipt = yield* (yield* Moves).move('1', { entry: 4, operationId: 'move-1' })
-      expect(receipt).toMatchObject({ state: 'refused', reason: 'not_user_message' })
+      expect(receipt).toMatchObject({ state: 'refused', reason: 'streaming' })
       expect(db.select().from(appChatMoves).all()).toMatchObject([{ operationId: 'move-1', createdAt: 90 }])
       expect(calls).toEqual(['write:41:thread-started:2'])
     }).pipe(Effect.provide(layer))
@@ -372,14 +392,59 @@ describe('the conversation services', () => {
     }).pipe(Effect.provide(layer))
   })
 
+  it.effect('start a Thread from the composer and reply at an entry, each with its receipt and flow', () => {
+    const { layer, calls, db, flows } = services([])
+    return Effect.gen(function* () {
+      const conversations = yield* Conversations
+      // Personal has no settled entry yet, so Start thread makes an empty Thread under it.
+      expect(yield* conversations.startThread('1', 'op-s', 'latest')).toMatchObject({ id: '61', parent: '1' })
+      expect(yield* conversations.startThread('2', 'op-r', { entry: 4 })).toMatchObject({
+        id: '70',
+        parent: '2',
+        forkEntry: 4,
+      })
+      expect(calls).toEqual(['configure:61', 'fork:42@4'])
+      expect(db.select().from(appChatOperations).all()).toEqual([
+        expect.objectContaining({
+          chatId: '1',
+          operationId: 'op-s',
+          kind: 'start',
+          state: 'settled',
+          targetChat: '61',
+        }),
+        expect.objectContaining({
+          chatId: '2',
+          operationId: 'op-r',
+          kind: 'reply',
+          state: 'settled',
+          targetChat: '70',
+        }),
+      ])
+      expect(flows.map(({ flow, chat, parentChat, status }) => [flow, chat, parentChat, status])).toEqual([
+        ['start', '61', '1', 'ok'],
+        ['reply', '70', '2', 'ok'],
+      ])
+    }).pipe(Effect.provide(layer))
+  })
+
+  it('carry a move on in its receipt as the mover answered: settled with its Thread, refused with its reason', () => {
+    const move = { operationId: 'move-1', chat: '1' } as const
+    expect(moveEnd({ ...move, state: 'settled', thread: '70' })).toEqual({ state: 'settled', targetChat: '70' })
+    expect(moveEnd({ ...move, state: 'forked', thread: '70' })).toEqual({ state: 'submitted', targetChat: '70' })
+    expect(moveEnd({ ...move, state: 'refused', reason: 'streaming' })).toEqual({
+      state: 'refused',
+      reason: 'streaming',
+    })
+  })
+
   it.effect('refuse a move with its reason once per operation, with its receipt and flow', () => {
     const { layer, db, flows } = services([])
     return Effect.gen(function* () {
       const moves = yield* Moves
-      // Pi holds no message at entry 4 in Personal, and a thread is not a Topic's Conversation.
+      // An input is queued in Personal, and a thread is not a Topic's Conversation.
       expect(yield* moves.move('1', { entry: 4, operationId: 'move-1' })).toMatchObject({
         state: 'refused',
-        reason: 'not_user_message',
+        reason: 'streaming',
       })
       expect(yield* moves.move('1', { entry: 4, operationId: 'move-1' })).toMatchObject({ state: 'refused' })
       expect(yield* moves.move('2', { entry: 4, operationId: 'move-2' })).toMatchObject({ reason: 'not_conversation' })
@@ -393,8 +458,8 @@ describe('the conversation services', () => {
         expect.objectContaining({ chatId: '2', operationId: 'move-2', kind: 'move', state: 'refused' }),
       ])
       expect(flows.map(({ flow, chat, status, errorType }) => [flow, chat, status, errorType])).toEqual([
-        ['move', '1', 'refused', 'not_user_message'],
-        ['move', '1', 'refused', 'not_user_message'],
+        ['move', '1', 'refused', 'streaming'],
+        ['move', '1', 'refused', 'streaming'],
         ['move', '2', 'refused', 'not_conversation'],
         ['move', '1', 'refused', 'Conflict'],
       ])
