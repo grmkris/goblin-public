@@ -184,40 +184,57 @@ const fromWire = ({ code, message: _message, recovery: _recovery, rpcCode, ...fi
   ...(rpcCode === undefined ? {} : { code: rpcCode }),
 })
 
-type AppErrorClass = (typeof AppError.members)[number]
-
 /**
- * The envelope of the failures one HTTP status answers (myapps' `envelope`). It decodes `{ error: { code, … } }` back
- * into the tagged class, and encodes only a failure whose `statusOf` is `status`, so a union of envelopes picks the
- * right one (UpstreamMcp answers 502, or 504 for a timeout).
+ * The envelope of the failures one HTTP status answers (myapps' `envelope`): `{ error: { code, message, … } }` on the
+ * wire, `target` on either side. `toWire` is the body of a value this status answers and `undefined` for one another
+ * status answers, so a union of envelopes picks the right one; `fromWire` is the target's encoded form of a body,
+ * which the target validates right after.
  */
-const envelope = <const Members extends readonly [AppErrorClass, ...AppErrorClass[]]>(
+export const statusEnvelope = <Target extends Schema.Codec<unknown, unknown>>(
   status: number,
-  members: Members,
+  identifier: string,
+  codes: readonly string[],
+  target: Target,
+  wire: {
+    readonly toWire: (encoded: Target['Encoded']) => ErrorEnvelope | undefined
+    readonly fromWire: (detail: ErrorEnvelope['error']) => unknown
+  },
 ) => {
-  const Target = Schema.Union(members)
   const Wire = Schema.Struct({
-    error: Schema.Struct({
-      code: Schema.Literals(members.map((member) => codeOf(member.identifier))),
-      message: Schema.String,
-      ...DETAIL_FIELDS,
-    }),
-  }).annotate({ identifier: `GoblinError${status}` })
-  const decodeTarget = SchemaParser.decodeUnknownEffect(Schema.toEncoded(Target))
+    error: Schema.Struct({ code: Schema.Literals(codes), message: Schema.String, ...DETAIL_FIELDS }),
+  }).annotate({ identifier })
+  const decodeTarget = SchemaParser.decodeUnknownEffect(Schema.toEncoded(target))
   return Wire.pipe(
     Schema.decodeTo(
-      Target,
+      target,
       SchemaTransformation.transformEffect({
-        decode: ({ error }) => decodeTarget(fromWire(error)),
-        encode: (encoded, options) =>
-          statusOf(encoded) === status
-            ? Effect.succeed(toWire(encoded))
-            : Effect.fail(new SchemaIssue.InvalidValue({ message: `Not a ${status} failure.` }, encoded, options)),
+        decode: ({ error }) => decodeTarget(wire.fromWire(error)),
+        encode: (encoded, options) => {
+          const body = wire.toWire(encoded)
+          return body === undefined
+            ? Effect.fail(new SchemaIssue.InvalidValue({ message: `Not a ${status} failure.` }, encoded, options))
+            : Effect.succeed(body)
+        },
       }),
     ),
     HttpApiSchema.status(status),
   )
 }
+
+type AppErrorClass = (typeof AppError.members)[number]
+
+/** The envelope of the `AppError`s `status` answers: it encodes only a failure whose `statusOf` is `status`. */
+const envelope = <const Members extends readonly [AppErrorClass, ...AppErrorClass[]]>(
+  status: number,
+  members: Members,
+) =>
+  statusEnvelope(
+    status,
+    `GoblinError${status}`,
+    members.map((member) => codeOf(member.identifier)),
+    Schema.Union(members),
+    { toWire: (encoded) => (statusOf(encoded) === status ? toWire(encoded) : undefined), fromWire },
+  )
 
 /** One envelope per status the API answers a failure with. */
 export const ApiErrors = {

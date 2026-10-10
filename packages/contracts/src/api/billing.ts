@@ -1,12 +1,8 @@
-import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import * as SchemaIssue from 'effect/SchemaIssue'
-import * as SchemaTransformation from 'effect/SchemaTransformation'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
-import * as HttpApiSchema from 'effect/http-api/HttpApiSchema'
 import { BillingState } from '../billing.ts'
-import { API_ERRORS } from './errors.ts'
+import { API_ERRORS, statusEnvelope } from './errors.ts'
 
 /**
  * Why billing refused a checkout or the portal: its status and fixed copy, never runtime text. The codes and statuses
@@ -38,39 +34,16 @@ export class BillingRefused extends Schema.TaggedError<BillingRefused>()('Billin
   ref: Schema.optionalKey(Schema.String),
 }) {}
 
-/**
- * The envelope of the refusals one status answers, as `errors.ts` builds the `AppError` ones: `{ error: { code,
- * message, recovery?, ref? } }` on the wire, `BillingRefused` on either side, and only `codes` encode through it, so
- * a union of these picks the refusal's own status.
- */
-const refusal = <const Codes extends readonly [BillingCode, ...BillingCode[]]>(status: number, codes: Codes) => {
-  const member = (code: BillingCode): code is Codes[number] => codes.some((known) => known === code)
-  const Wire = Schema.Struct({
-    error: Schema.Struct({
-      code: Schema.Literals(codes),
-      message: Schema.String,
-      recovery: Schema.optionalKey(Schema.String),
-      ref: Schema.optionalKey(Schema.String),
-    }),
-  }).annotate({ identifier: `BillingRefused${status}` })
-  return Wire.pipe(
-    Schema.decodeTo(
-      BillingRefused,
-      SchemaTransformation.transformEffect({
-        decode: ({ error: { code, ref } }) =>
-          Effect.succeed({ _tag: 'BillingRefused' as const, code, ...(ref === undefined ? {} : { ref }) }),
-        encode: (refused, options) => {
-          const { code, ref } = refused
-          if (!member(code))
-            return Effect.fail(new SchemaIssue.InvalidValue({ message: `Not a ${status} refusal.` }, refused, options))
-          const { status: _status, ...copy } = BILLING_REFUSALS[code]
-          return Effect.succeed({ error: { code, ...copy, ...(ref === undefined ? {} : { ref }) } })
-        },
-      }),
-    ),
-    HttpApiSchema.status(status),
-  )
-}
+/** The envelope of the refusals `codes` (one status's), built as the `AppError` ones are (`statusEnvelope`). */
+const refusal = (status: number, codes: readonly [BillingCode, ...BillingCode[]]) =>
+  statusEnvelope(status, `BillingRefused${status}`, codes, BillingRefused, {
+    toWire: ({ code, ref }) => {
+      if (!codes.includes(code)) return undefined
+      const { status: _status, ...copy } = BILLING_REFUSALS[code]
+      return { error: { code, ...copy, ...(ref === undefined ? {} : { ref }) } }
+    },
+    fromWire: ({ code, ref }) => ({ _tag: 'BillingRefused', code, ...(ref === undefined ? {} : { ref }) }),
+  })
 
 const Refusals = {
   unavailable: refusal(503, ['billing_unavailable']),
