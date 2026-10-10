@@ -63,6 +63,15 @@ function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
               : definition.allowedTools.map((tool) => `${tool.serverId} · ${tool.name}`).join(', ')}
           </dd>
         </div>
+        {(routine.outsideSetup?.length ?? 0) > 0 && (
+          <div>
+            <dt>Not in its Topic</dt>
+            <dd>
+              {routine.outsideSetup?.map((tool) => `${tool.serverId} · ${tool.name}`).join(', ')}: its Topic's MCP
+              servers & skills leave these out, so a run that calls one is refused.
+            </dd>
+          </div>
+        )}
         <div>
           <dt>Limits</dt>
           <dd>
