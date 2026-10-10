@@ -1,4 +1,12 @@
-import type { Conversation, EntryDraft, EntryRecord, Submission, UserInput } from '@earendil-works/pi-durable'
+import type {
+  AgentEventStream,
+  Conversation,
+  EntryDraft,
+  EntryRecord,
+  Harness,
+  Submission,
+  UserInput,
+} from '@earendil-works/pi-durable'
 import type { PiOperationResult, PiReceipt, PiSubmitOptions } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
@@ -9,7 +17,17 @@ import { NotFound } from '../http/errors.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { BACKGROUND, conversationId } from './context.ts'
 
-const PiOperation = Schema.Literals(['submit', 'write', 'wait', 'abort', 'conversation', 'messages', 'busy'])
+const PiOperation = Schema.Literals([
+  'pi',
+  'submit',
+  'write',
+  'wait',
+  'abort',
+  'conversation',
+  'messages',
+  'busy',
+  'events',
+])
 
 /**
  * A Pi call failed. `operation` names the call and is safe to log; `cause` is Pi's own error, kept for the reporter's
@@ -31,6 +49,8 @@ type PassiveWrite = { readonly requestId: string; readonly entry: EntryDraft }
 export class PiSessions extends Context.Service<
   PiSessions,
   {
+    /** Pi's opened `Harness`, for what the session calls below do not cover (a kit's work, a commit, a watch). */
+    readonly pi: Effect.Effect<Harness, PiFailure>
     /** Durably submits input to `session`; resolves before the model runs. */
     readonly submit: (
       session: string,
@@ -48,6 +68,8 @@ export class PiSessions extends Context.Service<
     /** The session's active transcript, as Pi's entries. */
     readonly messages: (session: string) => Effect.Effect<EntryRecord[], PiFailure>
     readonly busy: (session: string) => Effect.Effect<boolean, PiFailure>
+    /** Pi's agent events for `session`: a snapshot, then one batch per commit, until the stream is stopped. */
+    readonly events: (session: string) => Effect.Effect<AgentEventStream, PiFailure>
   }
 >()('goblin/pi/PiSessions') {
   static readonly layer = Layer.effect(
@@ -63,6 +85,7 @@ export class PiSessions extends Context.Service<
         return Option.fromNullishOr(found)
       })
       return PiSessions.of({
+        pi: call('pi', () => harness.pi()).pipe(Effect.withSpan('PiSessions.pi')),
         submit: Effect.fn('PiSessions.submit')(function* (
           session: string,
           input: UserInput,
@@ -89,6 +112,9 @@ export class PiSessions extends Context.Service<
         }),
         busy: Effect.fn('PiSessions.busy')(function* (session: string) {
           return yield* call('busy', () => harness.session(session).busy())
+        }),
+        events: Effect.fn('PiSessions.events')(function* (session: string) {
+          return yield* call('events', () => harness.session(session).events())
         }),
       })
     }),
