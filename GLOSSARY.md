@@ -122,6 +122,16 @@ The rail's page of work under way: Delegates, Personas answering and routines on
 The rail's first place: the channel this tab showed last. The Home dashboard of App tiles (ADR 0025) is deferred; its
 saved layout is kept.
 
+**Decision proposal**:
+A suggestion the agent makes about the owner's own chats (a report worth attention, an exchange that could be a
+thread, earlier work that may help), shown only to the owner as an "Only visible to you" row to confirm or dismiss. It
+never acts on its own (ADR 0031).
+_Avoid_: recommendation, automatic action
+
+**Clef**:
+The typed judgment model decisions ask through Workers AI, bound on dev only. It answers bounded questions and never
+writes a reply.
+
 ## Connections, skills and apps
 
 **Outbound MCP server**:

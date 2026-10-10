@@ -87,6 +87,7 @@ event streams, the files group and the OAuth callback). It annotates the request
 | `agentApps` | `/agent-apps`, `/agent-apps/:name` | `agent-apps/api.ts` |
 | `workspace` | `GET /workspace/events` (SSE) | `workspace/api.ts` |
 | `files` | `GET /files`, `GET`/`PUT`/`DELETE /files/content` | `files/api.ts` |
+| `decisions` | `POST /decisions/:id` | `decisions/api.ts` |
 | account (Worker) | `billing`: `/billing/state`, `/billing/checkout`, `/billing/portal`; `clients`: `/clients`, `/clients/:clientId`; `clientErrors`: `/client-errors` | `http/api/account.ts` |
 
 What is not JSON in and out is served through HttpApi's raw handlers, all annotated `RenewsResident: false`: the two
@@ -130,11 +131,10 @@ the web's instructions spell out:
   route loader may prime a read with `primeOwnerRead` (`lib/prime.ts`), which runs ahead of the gate and decides
   nothing. Components read with `useSuspenseQuery` inside a `QueryBoundary` (`lib/query/query-boundary.tsx`), which
   keeps a failure inline with its reference and a retry; a section that reads with `useQuery` shows `QueryError`.
-- The workspace feed writes into the same cache (`lib/workspace/`): each slice (conversations, activity, apps,
-  topics, personas, invocations, receipts) is a query under `['workspace', slice]` that never goes stale, filled from
-  the stream's snapshot and changes, and a change that makes another feature's reads stale invalidates them through
-  one map (`lib/workspace/invalidations.ts`). The conversation stream stays a dedicated SSE store that only
-  invalidates.
+- The workspace feed writes into the same cache (`lib/workspace/`): each slice (conversations, activity, apps, topics,
+  personas, invocations, receipts, proposals) is a query under `['workspace', slice]` that never goes stale, filled from
+  the stream's snapshot and changes, and a change that makes another feature's reads stale invalidates them through one
+  map (`lib/workspace/invalidations.ts`). The conversation stream stays a dedicated SSE store that only invalidates.
 - A failure reads through `messageOf` or `describeError` (`lib/query/app-error.ts`) and quotes its reference. A route
   that fails shows `ReportedRouteError`, which reports a defect as a crash (see Logs, failures and references).
 
@@ -208,12 +208,12 @@ fixed order, each over everything before it:
   App registry and the workspace feed follow that topic. A move a restart interrupted finishes once the conversation
   layer is built (`Moves` forks its reconcile in the layer's scope), never holding up the start.
 - **One layer per area** after the start, in order: the model budget and picker (`Budget`, `Models`, which a send's
-  admission reads), conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`), capabilities
-  (`Capabilities`), knowledge (`Memories`, `Retrieval`), delegation (`Topics`, `Personas`, `Invocations`, `Receipts`,
-  `Home`), routines (`Routines`, `RoutineControl`), inspection (`Inspection`), apps (`AppEngine`, `Files`), the
-  workspace feed (`Workspace`) and HTTP (`AgentHttp`). The MCP host's `McpConnections`, `McpServers`, `McpGrants`,
-  `Approvals` and `Cipher`, and `CheapModels`, `RoutineRuns`, `RoutineUsage`, `Apps`, `Skills`, `Learner`, `Channel`
-  and `Events`, are served by their start steps.
+  admission reads), conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`), capabilities (`Capabilities`),
+  knowledge (`Memories`, `Retrieval`), delegation (`Topics`, `Personas`, `Invocations`, `Receipts`, `Home`), routines
+  (`Routines`, `RoutineControl`), inspection (`Inspection`), apps (`AppEngine`, `Files`), typed decisions (`Decisions`),
+  the workspace feed (`Workspace`) and HTTP (`AgentHttp`). The MCP host's `McpConnections`, `McpServers`, `McpGrants`,
+  `Approvals` and `Cipher`, and `CheapModels`, `RoutineRuns`, `RoutineUsage`, `Apps`, `Skills`, `Learner`, `Channel` and
+  `Events`, are served by their start steps.
 
 `AgentServices`, every service a program may require, is derived from the layers, so no area edits a shared union. A
 service is a `Context.Service` tag in its area (`<area>/service.ts`) whose methods are `Effect.fn` Effects with typed
@@ -246,10 +246,11 @@ Erasing the agent disposes its runtime, whose layers' finalizers close every MCP
   so interrupting its first caller does not cancel it. `run` joins every caller to it: an MCP token refresh
   (`mcp.refresh:<server>`) and connect (`mcp.connect:<server>`), a skills listing (`skills.listing:<server>`) and a
   move's remaining steps (`move:<op>`). `skip` answers at once while one is in flight: naming a thread
-  (`naming:<chat>`) and the skill learner (`skills.learn:<conversation>`).
+  (`naming:<chat>`), the skill learner (`skills.learn:<conversation>`) and a decision's judgment (`decision:<id>`).
 - `Changes` (`runtime/changes.ts`): a synchronous topic bus with no fibers or timers. An area declares its topics where
   it publishes them, with ids as payloads (`conversations.changed`, `topics.changed`, `personas.changed`,
-  `invocations.changed`, `receipts.changed`, `apps.changed`, `apps.removed`, `agent-apps.changed`, `home.changed`), and
+  `invocations.changed`, `receipts.changed`, `apps.changed`, `apps.removed`, `agent-apps.changed`, `home.changed`,
+  `decisions.changed`), and
   the workspace feed reads each item as it is then. Handlers run inline in order; a failing one is reported and ends
   only itself.
 - `PiSessions` (`pi/sessions.ts`): Pi's submit, write, wait, abort, model choice, event stream and reads as Effects
@@ -257,83 +258,89 @@ Erasing the agent disposes its runtime, whose layers' finalizers close every MCP
 
 Conversations (`chats/conversations/`): every agent has one **main** conversation, stable chat id `1` (`PRIMARY_CHAT`),
 where the owner's browser and every inbound MCP client talk. The chat directory (`chats/directory.ts`, read through
-`Chats`) resolves that chat to its current Pi session. A fresh agent starts with Pi's root session `1`; `/c/1` stays the
-same whatever session it names. A message from anyone but the owner's browser starts with an author tag block (`[from
-Claude Code]`, the `authorTag` contract), so the model and the web both know who wrote it. Side **threads** are Pi
-conversations of their own: branched from a message of any open conversation (a Pi fork at that entry, so the thread
-sees its parent up to there and the parent never sees the thread), at any depth, or empty under main (ADR 0017).
-`app_conversations` registers each one as a chat tree (`parent_session`: its parent chat), with its kind, title, origin
-and close time. Its existing `session_id` primary key is the stable chat id (`chatId` in Drizzle); `pi_session` names
-the current Pi session, uniquely owned by that chat, and `role = 'primary'` marks Main (`epoch` is kept, unused: nothing
-rebinds a chat). Every chat row goes in through one inserter, `registerChat` (`chats/directory.ts`; `Chats.register` for
-programs). A helper's immutable `spawner_session` keeps its anchor and relays on the Pi session that started them. A
-chat id reaches Pi only after the directory resolves its registered session, so no request opens a conversation by
-guessing its number. Pi cannot delete a conversation, so Close stops a conversation and everything under it and keeps it
-readable until Reopen; main never closes. The web shows the Topics as channels in the app's sidebar
-(`components/shell/sidebar.tsx` over the pure `lib/topics.ts`): Personal first, then by name, the archived folded at the
-end, each bold with a dot while it has unread replies and a pulse while its agent works, with one flat level under it of
-its threads at work, unread, recently opened in this browser or showing now (`topicThreads`); the open agent apps
-follow. A server without Topics implies Personal alone, holding Main, and shows no Topic controls. With Topics, Add
-topic names a new one (`POST /api/topics`, one operation id per opening of the dialog) and opens its channel; the
-channel's `#name` opens its menu: Rename, Exclude from search or Include in search, and Archive or Restore (never
-Personal), all `PATCH /api/topics/:id`. An archived Topic's channel shows a banner with Restore in place of its
-composer. Unread is the server's: `read_at` on `app_conversations` is the owner's read mark, set when a chat has been
-shown for a moment (half in view, the page in front). A channel is `/c/:id`; its threads open in the thread panel beside
-it (ADR 0036, `components/shell`): `/c/<channel>?thread=<id>` names the thread on top, `stack=` the threads under it
-where its parents would not derive them, and `reply=<chat>-<entry>` or `reply=new` a draft on top (`lib/panel.ts`); a
-thread's or subagent's own `/c/<id>` opens its channel with the panel showing it. Under the message a thread started
-from, a summary (reply count, when the last reply came, a dot while unread, a pulse while it works) opens it; threads
-opened inside a thread stack with a back crumb. A message offers Reply in thread, Copy and Details in a small toolbar
-over its top edge where a pointer rests, and on a touch screen once the message is tapped. Reply in thread opens a draft
-in the panel, with the focus in its composer, that branches the thread only when it is sent, because Pi cannot delete a
-conversation; `/new-thread` moves the composer's draft into a new thread's draft the same way. A draft's (Reply's or
-"+"'s) first send is one call of the thread operation under the draft's one operation id: it makes the thread and sends
-that message as its first. A send meanwhile waits for the same thread and goes into it as a message of its own, and a
-retry asks for the same thread again (`lib/draft-thread.ts`, `components/shell/thread-start.ts`). Details opens a sheet
-of what ran behind the message (`GET /api/conversations/:id/details?entry=`, the inspect group): its operation in a few
-lines, its steps in order with their status and duration, the operations it led to, and what was not recorded; a message
-with nothing recorded says so. The channel and the panel follow conversations through one stream pool
-(`lib/stream-pool.ts`): one event stream per conversation however many show it, at most eight following beyond those on
-screen, and one off screen stops following after ten seconds, resuming from a fresh snapshot when it comes back. Start
-thread, a toggle in the composer (and `/new-thread`), posts the message as the head of a new thread whose reply lands
-there (`POST /api/conversations/:id/threads` anchored at `latest`; the runtime writes the `app.thread_head` into the
-chat it started from), and the panel opens on it; turning it off keeps the draft, its files and references. Move to
-thread, in the toolbar of a channel's newest owner message (`POST …/move`, `movableEntry` in `lib/threads.ts`), waits
-while that turn's reply streams, then leaves the message as the thread's head and opens the thread; a refused receipt's
-reason (`not_latest`, `awaiting_approval`, …) shows as one short line under the message until the turn changes. The
-transcript draws what those runtimes write (`components/parts/drawn-parts.tsx`): a thread's head with the thread's
-summary ("Moved to a thread" for a moved turn, whose own entries a later entry's edits omit), the owner's message to
-Personas with whom it went to, a Persona's answer and a Delegate's result as attributed messages (a mark, a name,
-Persona or Delegate), and a Topic's brief. Personas still answering show after the transcript ("answering…", from the
-feed's invocations). With Personas on the server the composer offers them as `@` references (with their avatars), and
-with two or more tagged a Together or In turn choice that is sent as `personaOrder`. What an answer used from other
-chats shows as a strip under it: a `search_chats` call's `SourcesDetails`, and automatic retrieval from `GET
-/api/conversations/:id/sources` (`lib/sources.ts`), each source opening its chat. Owner-only messages
-(`EphemeralMessage`, "Only visible to you") have a slot after the entry they follow and a provider
-(`components/shell/ephemeral-slot.tsx`) that nothing fills yet. A thread started with "+" tells its channel its name
-once it has one (ADR 0010): the channel gets one `app.thread_started` note, `[thread started: "<title>"]`, and its
-transcript shows that thread's summary. **The thread operation** ([ADR 0034](adr/0034-move-to-thread.md),
-`chats/thread-heads.ts`) is one idempotent call for Reply, "+" and Start thread: `POST /api/conversations/:id/threads`
-with `StartThread` (`{ operationId, anchor, message, personaOrder? }`) makes the Thread at `anchor` (`{ entry }` forks
-there, `empty` starts one under the Conversation the chat sits under, `latest` forks at the chat's newest entry outside
-a running turn, or starts empty when it has none), in the same Topic, then submits `message` into the Thread through the
-ordinary owner path as `<operationId>:first`, with its Persona order. For `latest` (Start thread) it first writes an
-`app.thread_head` entry (`ThreadHeadData`, request id `thread-head:<op>`) into the chat as a passive write whose model
-text is a bounded `[the owner started a thread: "…"]`. `app_conversations.origin_op` (unique) makes one Thread per
-operation id, also for concurrent repeats, and `POST /api/conversations` with an `operationId` goes through the same
-path. The web keeps a Reply or "+" draft in the browser until its first send, which is this one call. **Move to thread**
-(ADR 0034, `chats/mover.ts`) moves a channel's newest finished turn into a new Thread: `POST
-/api/conversations/:id/move` with `MoveToThread` returns a `MoveReceipt` (the same operation id, the same receipt). The
-Thread is a Pi fork of the chat at the turn's last entry, made a thread with the chat's switches, in its Topic; the chat
-keeps its session and gets an `app.thread_head` (`moved: true`, request id `thread-head:<op>`) whose model text is only
-`[moved to thread "<title>"]` and whose Pi `edits` omit the turn's own entries from the chat's model context. Helpers
-the turn started report to the Thread from then on (their relays are handed over), the threads branched from the turn
-and its App placements move under it, the chat's memory forgets the turn (`forgetFrom`; its collector skips omitted
-entries), and the transcript index gives it to the Thread. A turn still running, an older turn, a turn already moved and
-a turn waiting on an MCP approval are refused with a reason (`streaming`, `not_latest`, `moved`, `awaiting_approval`).
-Each move is an `app_chat_moves` row (`requested`, `forked`, `settled` or `refused`) that a restart finishes. The
-running-turn identity swap was built and measured first; it hit the latency kill criterion and is not shipped (ADR
-0034).
+`Chats`) resolves that chat to its current Pi session. A fresh agent starts with Pi's root session `1`; `/c/1` stays the same whatever session it names. A message
+from anyone but the owner's browser starts with an author tag block (`[from Claude Code]`, the `authorTag` contract),
+so the model and the web both know who wrote it. Side
+**threads** are Pi conversations of their own: branched from a message of any open conversation (a Pi fork at that
+entry, so the thread sees its parent up to there and the parent never sees the thread), at any depth, or empty under
+main (ADR 0017). `app_conversations` registers each one as a chat tree (`parent_session`: its parent chat), with its
+kind, title, origin and close time. Its existing `session_id` primary key is the stable chat id (`chatId` in Drizzle);
+`pi_session` names the current Pi session, uniquely owned by that chat, and `role = 'primary'` marks Main (`epoch`
+is kept, unused: nothing rebinds a chat). Every chat row goes in through one inserter, `registerChat`
+(`chats/directory.ts`; `Chats.register` for programs). A helper's immutable `spawner_session` keeps its anchor and
+relays on the Pi session that started them.
+A chat id reaches Pi only after the directory resolves its registered session, so no request opens a conversation by
+guessing its number. Pi cannot delete a conversation, so Close stops a
+conversation and everything under it and keeps it readable until Reopen; main never closes. The web
+shows the Topics as channels in the app's sidebar (`components/shell/sidebar.tsx` over the pure `lib/topics.ts`):
+Personal first, then by name, the archived folded at the end, each bold with a dot while it has unread replies and a
+pulse while its agent works, with one flat level under it of its threads at work, unread, recently opened in this
+browser or showing now (`topicThreads`); the open agent apps follow. A server without Topics implies Personal alone,
+holding Main, and shows no Topic controls. With Topics, Add topic names a new one (`POST /api/topics`, one operation id
+per opening of the dialog) and opens its channel; the channel's `#name` opens its menu: Rename, Exclude from search or
+Include in search, and Archive or Restore (never Personal), all `PATCH /api/topics/:id`. An archived Topic's channel
+shows a banner with Restore in place of its composer.
+Unread is the server's: `read_at` on
+`app_conversations` is the owner's read mark, set when a chat has been shown for a moment (half in view, the page in
+front). A channel is `/c/:id`; its threads open in the thread panel beside it (ADR 0036, `components/shell`):
+`/c/<channel>?thread=<id>` names the thread on top, `stack=` the threads under it where its parents would not derive
+them, and `reply=<chat>-<entry>` or `reply=new` a draft on top (`lib/panel.ts`); a thread's or subagent's own `/c/<id>`
+opens its channel with the panel showing it. Under the message a thread started from, a summary (reply count, when the
+last reply came, a dot while unread, a pulse while it works) opens it; threads opened inside a thread stack with a back
+crumb. A message offers Reply in thread, Copy and Details in a small toolbar over its top edge where a pointer rests,
+and on a touch screen once the message is tapped. Reply in thread opens a draft in the panel, with the focus in its
+composer, that branches the thread only when it is sent, because Pi cannot delete a conversation; `/new-thread` moves the
+composer's draft into a new thread's draft the same way. A draft's (Reply's or "+"'s) first send is one call of the
+thread operation under the draft's one operation id: it makes the thread and sends that message as its first. A send
+meanwhile waits for the same thread and goes into it as a message of its own, and a retry asks for the same thread
+again (`lib/draft-thread.ts`, `components/shell/thread-start.ts`). Details opens a sheet of what ran behind the message
+(`GET /api/conversations/:id/details?entry=`, the inspect group): its operation in a few lines, its steps in order with
+their status and duration, the operations it led to, and what was not recorded; a message with nothing recorded says
+so. The channel and the panel follow conversations through one
+stream pool (`lib/stream-pool.ts`): one event stream per conversation however many show it, at most eight following
+beyond those on screen, and one off screen stops following after ten seconds, resuming from a fresh snapshot when it
+comes back. Start thread, a toggle in the composer (and `/new-thread`), posts the message as the head of a new thread whose
+reply lands there (`POST /api/conversations/:id/threads` anchored at `latest`; the runtime writes the
+`app.thread_head` into the chat it started from), and the panel opens on it; turning it off keeps the draft, its
+files and references. Move to thread, in the toolbar of a channel's newest owner message (`POST …/move`,
+`movableEntry` in `lib/threads.ts`), waits while that turn's reply streams, then leaves the message as the thread's
+head and opens the thread; a refused receipt's reason (`not_latest`, `awaiting_approval`, …) shows as one short line
+under the message until the turn changes. The transcript draws what those runtimes write
+(`components/parts/drawn-parts.tsx`): a thread's head with the thread's summary ("Moved to a thread" for a moved
+turn, whose own entries a later entry's edits omit), the owner's message to Personas with whom it went to, a Persona's
+answer and a Delegate's result as attributed messages (a mark, a name, Persona or Delegate), and a Topic's brief.
+Personas still answering show after the transcript ("answering…", from the feed's invocations). With Personas on the
+server the composer offers them as `@` references (with their avatars), and with two or more tagged a Together or
+In turn choice that is sent as `personaOrder`. What an answer used from other chats shows as a strip under it: a
+`search_chats` call's `SourcesDetails`, and automatic retrieval from `GET /api/conversations/:id/sources`
+(`lib/sources.ts`), each source opening its chat. Owner-only messages (`EphemeralMessage`, "Only visible to you")
+have a slot after the entry they follow and a provider (`components/shell/ephemeral-slot.tsx`); acting on one or
+dismissing it hides it at once, and a refusal brings it back. Decision proposals fill it (see Typed decision
+proposals).
+A thread started with "+" tells its channel its name once it has one (ADR 0010): the channel gets one
+`app.thread_started` note, `[thread started: "<title>"]`, and its transcript shows that thread's summary.
+**The thread operation** ([ADR 0034](adr/0034-move-to-thread.md), `chats/thread-heads.ts`) is one idempotent call for
+Reply, "+" and Start thread: `POST /api/conversations/:id/threads` with `StartThread` (`{ operationId, anchor, message,
+personaOrder? }`) makes the Thread at `anchor` (`{ entry }` forks there, `empty` starts one under the Conversation the
+chat sits under, `latest` forks at the chat's newest entry outside a running turn, or starts empty when it has none),
+in the same Topic, then submits `message` into the Thread through the ordinary owner path as `<operationId>:first`,
+with its Persona order. For `latest` (Start thread) it first writes an `app.thread_head` entry (`ThreadHeadData`,
+request id `thread-head:<op>`) into the chat as a passive write whose model text is a bounded `[the owner started a
+thread: "…"]`. `app_conversations.origin_op` (unique) makes one Thread per operation id, also for concurrent repeats,
+and `POST /api/conversations` with an `operationId` goes through the same path. The web keeps a Reply or "+" draft in
+the browser until its first send, which is this one call.
+**Move to thread** (ADR 0034, `chats/mover.ts`) moves a channel's newest finished turn into a new Thread:
+`POST /api/conversations/:id/move` with `MoveToThread` returns a `MoveReceipt` (the same operation id, the same
+receipt). The Thread is a Pi fork of the chat at the turn's last entry, made a thread with the chat's switches, in its
+Topic; the chat keeps its session and gets an `app.thread_head` (`moved: true`, request id `thread-head:<op>`) whose
+model text is only `[moved to thread "<title>"]` and whose Pi `edits` omit the turn's own entries from the chat's
+model context. Helpers the turn started report to the Thread from then on (their relays are handed over), the threads
+branched from the turn and its App placements move under it, the chat's memory forgets the turn
+(`forgetFrom`; its collector skips omitted entries), and the transcript index gives it to the Thread. A
+turn still running, an older turn, a turn already moved and a turn waiting on an MCP approval are refused with a
+reason (`streaming`, `not_latest`, `moved`, `awaiting_approval`). Each move is an `app_chat_moves` row (`requested`,
+`forked`, `settled` or `refused`) that a restart finishes. The running-turn identity swap was built and measured
+first; it hit the latency kill criterion and is not shipped (ADR 0034).
 
 Queued inputs in Main and ordinary threads stay in Pi's native `InboxDoc`. The browser projects native inbox IDs
 and modes, then reads contents through `GET /api/conversations/:id/queue`; helper and routine queues are absent
@@ -561,23 +568,25 @@ the border is absent. Colours come from the theme's `--presence-*` tokens, resol
 
 ## Outbound MCP
 
-Servers come from `GOBLIN_MCP_SERVERS` (JSON: `serverId`, `endpoint`, optional `issuer` and `resource`) and from the
-owner, who may add up to sixteen by URL (`app_mcp_servers`, ADR 0006). An added endpoint is a public https address
-(`mcp/endpoint.ts`), and its server card labels it as the server's own claim. Configured servers win on ID and cannot be
-removed. Removing an added server forgets its row, endpoint binding, credentials, pending sign-ins and grants in one
-transaction. Connections also offers a shelf of suggested servers (`mcp/suggested.ts`), with source comments recording
-their connection checks. One tap adds and connects. It also searches MCP registries that speak the generic registry API
-(`mcp/registry.ts`, `GET /api/mcp/catalog?q=`): the Official MCP Registry and GitHub's, built in, then up to eight the
-owner adds (`app_mcp_registries`). A registry is added only once it answers `/v0.1/servers`, and removing it keeps the
-servers added from it. Search reads one page of up to twenty entries per registry and keeps https streamable-HTTP
-remotes, rejecting entries explicitly marked inactive or not latest. Missing status metadata is accepted. Results are
-labelled by registry, each server once (the official registry first), and cached for ten minutes. Each registry gets
-eight seconds (`Effect.timeout`). A registry that is not reached fails as `UpstreamMcp` transport and one that answers
-anything but the registry API as `not_a_registry`; in a search either is logged and leaves the answer partial and
-uncached (`mcp_suggest` says so, and `GET /api/mcp/catalog` answers `{ entries, partial }`, which Connections shows).
-The catalog lives in the `McpServers` layer (`layers/mcp.ts`), not the host. Endpoint placeholders are filled with one
-safe path segment each, and servers that require a secret header are listed but cannot be added yet. An added entry
-records its registry, name and version. The owner connects each server from the Connections page:
+Servers come from `GOBLIN_MCP_SERVERS` (JSON: `serverId`, `endpoint`, optional `issuer` and `resource`) and from
+the owner, who may add up to sixteen by URL (`app_mcp_servers`, ADR 0006). An added endpoint is a public https
+address (`mcp/endpoint.ts`), and its server card labels it as the server's own claim. Configured servers win on ID
+and cannot be removed. Removing an added server forgets its row, endpoint binding, credentials, pending sign-ins and
+grants in one transaction. Connections also offers a shelf of suggested servers (`mcp/suggested.ts`), with source
+comments recording their connection checks. One tap adds and connects. It also searches MCP registries that speak
+the generic registry API (`mcp/registry.ts`, `GET /api/mcp/catalog?q=`): the Official MCP Registry and GitHub's, built
+in, then up to eight the owner adds (`app_mcp_registries`). A registry is
+added only once it answers `/v0.1/servers`, and removing it keeps the servers added from it. Search reads one page of
+up to twenty entries per registry and keeps https streamable-HTTP remotes, rejecting entries explicitly marked
+inactive or not latest. Missing status metadata is accepted. Results are labelled by registry, each server once
+(the official registry first), and cached for ten minutes. Each registry gets eight seconds (`Effect.timeout`). A
+registry that is not reached fails as `UpstreamMcp` transport and one that answers anything but the registry API as
+`not_a_registry`; in a search either is logged and leaves the answer partial and uncached (`mcp_suggest` says so, and
+`GET /api/mcp/catalog` answers `{ entries, partial }`, which Connections shows). The catalog lives in the `McpServers`
+layer (`layers/mcp.ts`), not the host.
+Endpoint placeholders are filled with one safe path
+segment each, and servers that require a secret header are listed but cannot be added yet. An added entry records
+its registry, name and version. The owner connects each server from the Connections page:
 
 1. `POST /api/mcp/:id/connect` first tries without sign-in. If needed, it runs the MCP SDK's `auth()` with our
    `StoredOAuthProvider`: discovery, dynamic client registration, PKCE. Only a flow needing consent returns a remote
@@ -941,7 +950,60 @@ messages main remembers; `GET /api/agent/memory?chat=<id>` reports the memory of
 without one). Unit tests prove the copy migration and per-chat isolation and truncation in `node:sqlite`; the local
 workerd case `native-topics.ts` proves two Topics remember apart with each view placed only in its own Conversation.
 
+## Typed decision proposals
+
+[ADR 0031](adr/0031-typed-decisions-through-workers-ai.md). The `Decisions` service (`decisions/`, built by
+`layers/decisions.ts` after the apps layer and before the workspace feed) judges the owner's chats and keeps the
+proposals the owner confirms or dismisses. Its rules, question builders and strict answer and usage decoding are pure
+code exported as `@goblin/runtime/decisions`, which the benchmark imports; fixture labels and provider experiments
+stay in `bench/`. The critic (`decisions/critic.ts`) applies state-only rules first and asks Clef
+(`decisions/client.ts`, the Worker's `AI` binding, five seconds at most) only for undecided ordinary evidence. A report
+highlight is offered at 0.5107, a thread draft at 0.7503 and earlier work at 0.594, the frozen v4 thresholds; `none`
+and `uncertain` are valid outcomes. The held-out evaluation supports owner review, not automatic actions.
+
+`pi/subagent-relay.ts` hands a Delegate's final report to the service after its passive write, outside Pi commits,
+keyed by its relay; the `goblin.decisions` extension (`pi/decisions.ts`, in the owner's chats only: helpers and
+routine runs never install it) hands it each answered exchange after yield. A judgment checks resident authority and
+the daily budget before any call, runs once at a time per proposal (`SingleFlight`), is fenced on the chat's current Pi
+session and epoch and a digest of the exchange, and checks them again before it keeps a proposal; a failure or an
+unavailable Clef proposes nothing and never fails the owner's turn. Only the dev stage binds `AI`; everywhere else
+(prod, the local stack, the native test stacks) the hooks do nothing at all. Each Clef call is charged to the daily
+budget as model `clef` and is one `model.aux` event of purpose `decision`; proposing, confirming and dismissing are the
+flows `decision_propose`, `decision_confirm` and `decision_dismiss`.
+
+The third judgment, cross-Topic context relevance (`decisions/context.ts`), follows the same exchange: after a bounded
+catch-up, a search of the transcript index for the owner's newest message (ADR 0035's default Topics, never the asking
+chat or a Persona fork) gives the top three sources automatic retrieval did not already give that message. The rules
+decide what they can (a source sharing no significant word with the message is not relevant), Clef judges the rest,
+and the sources at or above the threshold become one `context` proposal. Once the owner uses it, `goblin.decisions`'
+`beforeRequest` hook adds the chat's newest such proposal confirmed in the last day to each request as a
+`<chosen-context>` part of goblin's context block (quoted history, for that request only), and records an `auto`
+source use (`decision:<proposal>:<entry>`) for each later owner message it serves, so that answer's source strip
+names it.
+
+Additive tables `app_decision_proposals` and `app_decision_labels` (migration `20261026000600_decisions`) keep the
+proposals and the owner's first label. Every proposal made, labelled or made stale is a `decisions.changed` change, and
+the workspace feed carries the newest open and confirmed ones in its snapshot (`proposals`) and each as a
+`{ type: 'proposal', proposal }` change. `POST /api/decisions/:id` (the owner API's `decisions` group) takes
+`{ label: 'confirm' | 'dismiss' }`; the same label again answers the same proposal, the other one is 409, and
+confirming one whose chat moved on makes it stale (409). Confirming keeps a highlight or offers an empty thread draft;
+Pi history and send targets stay as they were.
+
+The web keeps the proposals as the workspace's `proposals` slice, and `decisions/hooks.ts` turns each open one into its
+chat's "Only visible to you" row (`decisions/rows.ts`): a report highlight quotes the report with Useful, "This could
+be a thread" quotes the owner's message with New thread, and "Earlier work may help here" quotes the first source with
+Use, each with Dismiss; of a chat's thread and context suggestions only the newest of each shows. A choice posts the
+label (`labelDecisionMutation`) and the row goes at once; a proposal gone, settled the other way or stale (404, 409)
+stays gone, and any other refusal brings the row back. A confirmed thread suggestion then opens an empty new-thread
+draft in that chat's channel (`Navigation.newThreadWith`); nothing is sent or moved. Unit tests cover the runtime
+(`test/decisions*.test.ts`, `test/decision-*.test.ts`) and the web (`apps/web/test/decisions.test.ts`); the native
+`decisions` probe and the owner's decisions case run with the probe's own Clef, never a paid call.
+
 ## Models
+
+Typed decisions are the scoped Workers AI exception ([ADR 0031](adr/0031-typed-decisions-through-workers-ai.md)): Clef
+judges bounded state and questions through `AI` after the rules decide what they can. It is never a chat model, and
+its calls check and charge the budget like the cheap model's (input only, 5,000 tokens per Credit by default).
 
 Each user picks the model their agent answers with, in the composer. The deployment offers `GOBLIN_MODEL_ID` (the
 default) plus `GOBLIN_MODELS`, all served by the same LiteLLM key; `models.ts` names and groups them by route
@@ -969,8 +1031,10 @@ the unit the plan bills (ADR 0026), per UTC day: Pro's 800, or the account's ope
 Pi extension (`pi/budget.ts`) records every model response's tokens in `app_usage_daily` and prices them in
 thousandths of a Credit at its model's rate (`budget-credits.ts`): by default about 5 000 fresh input, 50 000 cached
 input or 830 output tokens per Credit, Alibaba's own example, with per-model overrides and aliases in
-`GOBLIN_MODEL_CREDIT_RATES` (Gemini 3.8 Flash is priced as Qwen 3.8 Flash). The cheap model's calls (titles, memory,
-skill drafts, an app's `llm` power) and routine runs (`routines/usage.ts`, from Pi's `pi.usage`) count the same way.
+`GOBLIN_MODEL_CREDIT_RATES` (Gemini 3.8 Flash is priced as Qwen 3.8 Flash; Clef, `clef`, has an input-only rate
+of its own, and a Clef call whose usage is unknown is charged its whole 65,536-token context). The cheap model's calls
+(titles, memory, skill drafts, an app's `llm` power), Clef's decisions and routine runs (`routines/usage.ts`, from
+Pi's `pi.usage`) count the same way.
 Compaction summaries in main and threads are not counted yet. Once the day is spent, new turns are refused with `BudgetExhausted`: HTTP 429 from the owner API,
 or a tool error from `/mcp`. Telegram submissions check the same budget. Tool calls inside a running turn are blocked,
 so a looping turn ends after one more reply. Pi reports and swallows exceptions thrown by hooks, so the in-turn lever
@@ -1084,7 +1148,7 @@ a run. The ledger supplies exact submission/task correlation when a cache entry 
 Outside Pi, the agent's services report to the same telemetry (`telemetry/report.ts`):
 
 - **Model calls outside a turn** (`model.aux`): one cheap model per purpose (`naming`, `memory`, `skill`,
-  `app_llm`, `retrieval`), with tokens and errors (`memory/model.ts`).
+  `app_llm`, `retrieval`, and `decision` for Clef), with tokens and errors (`memory/model.ts`).
 - **Remote MCP steps** (`mcp.request`): every connect, tool call, skills request and Events request, with server,
   tool, outcome code (`UpstreamMcp:timeout`), expected blocked waits and duration (`mcp/log.ts`). Resident callers pass
   explicit conversation/task metadata, stripped before SDK dispatch; shared connection discovery is marked without
@@ -1096,7 +1160,8 @@ Outside Pi, the agent's services report to the same telemetry (`telemetry/report
   records every flow `FlowName` names: an owner's send, a client's ask and a Telegram message as they are admitted, a
   thread started (`start`, `reply`, `empty`), a move, a share-back, a close and a Stop, a Persona's ask and answer, a
   Delegate's spawn and report, a thread's announcement, a Topic created or archived, an organize Undo, a routine
-  firing and report, and a Telegram delivery (and the Worker a browser crash). The operation id has its own column and
+  firing and report, a Telegram delivery, a decision proposed, confirmed or dismissed (and the Worker a browser
+  crash). The operation id has its own column and
   the operation that caused it is
   `goblin.operation.parent`; the rest are allowlisted ids and closed classes. A `refused` step is stored `blocked`,
   an `error` step `error`. Ledger reads skip a row of a kind they do not know.
@@ -1124,7 +1189,7 @@ right after `Harness.open`, before scheduling resumes. Tests pass a `CollectedRu
 read events in process, and `summarize(turn, events)` (`inspect/inspector.ts`) gives the per-turn numbers: attempts,
 failures, tool calls and tokens. Attempt timing runs from the generation entering `request` to its assistant entry;
 the first chunk is the first committed partial, so it is good to about 100 ms. The runtime package exports no
-telemetry entry; the benchmark workspace imports only `@goblin/runtime/memory`.
+telemetry entry; the benchmark workspace imports `@goblin/runtime/memory` and `@goblin/runtime/decisions`.
 
 ### Logs, failures and references
 
@@ -1229,6 +1294,7 @@ that is not in `app_conversations` (a routine's run) has no entries page; its tu
 | Agent DO SQLite | `cf_workspace_app_<name>` | Shell: each agent app's own files. |
 | Agent DO SQLite | `app_registry` | Drizzle: every App the workspace shows, by source: an MCP App per Pi session and call, with logical `chat_id` placement, an agent app per name (ADRs 0020, 0021, 0030). `app_apps`, its predecessor, was copied in with the same ids and is no longer read. |
 | Agent DO SQLite | `app_run_events` | Drizzle: the run ledger, turns, model attempts and tool calls without content, 30 days (ADR 0024). |
+| Agent DO SQLite | `app_decision_proposals`, `app_decision_labels` | Drizzle: typed decision proposals and the owner's first label of each (ADR 0031). |
 | D1 `goblinAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `oauth*` | Better Auth, `apps/runtime/migrations`. |
 | D1 `goblinAuth` | `app_billing_accounts`, `app_billing_subscriptions`, `app_billing_inbox`, `app_billing_checkouts` | Drizzle: account payments and durable reconciliation. |
 
@@ -1262,8 +1328,9 @@ meet its contract (ADR 0001). SQLite transactions are short and never span model
 ## Infrastructure
 
 `apps/web/alchemy.run.ts` declares the Vite Worker, the `PersonalAgent` namespace, the D1 database, the `FILES` R2
-bucket, the `FLOWS` Analytics Engine dataset (`goblin-<stage>-flows`, ADR 0037) and the `LOADER` Worker Loader
-(Dynamic Workers, open beta, Workers Paid); it is the only deployment entrypoint.
+bucket, the `FLOWS` Analytics Engine dataset (`goblin-<stage>-flows`, ADR 0037), the `LOADER` Worker Loader
+(Dynamic Workers, open beta, Workers Paid) and, on dev only, Workers AI as `AI` for typed decisions (ADR 0031; without
+it decisions judge nothing); it is the only deployment entrypoint.
 `scripts/stage.ts` builds `packages/app`'s toolchain before Alchemy runs. The local stage runs in workerd with CLIProxy; the dev stage calls Railway LiteLLM with a
 dedicated model-limited, budget-capped key. Offered models and Credit rates come from stage configuration; the per-account allowance comes from its plan or
 operator override. The key's provider caps and shared quotas are managed outside this repository; source does not prove

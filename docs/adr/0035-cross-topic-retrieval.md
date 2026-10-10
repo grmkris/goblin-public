@@ -96,7 +96,9 @@ Every search records one `app_retrieval_uses` row under a stable id (`tool:<sess
 `auto:<session>:<input entry>`), with the sources as captured. A replayed or re-run tool call finds the first record and returns it unchanged, so the tool is replay-safe.
 `GET /api/conversations/:id/sources` returns the chat's recorded uses that found something, newest first, as
 `SourceUse[]`. The agent object serves it like a chat's snapshot and history (`chats/api.ts`): only a registered
-chat of the signed-in owner's own agent, so another account sees none of them.
+chat of the signed-in owner's own agent, so another account sees none of them. Earlier work the owner chose to use
+from a context proposal ([ADR 0031](0031-typed-decisions-through-workers-ai.md), 2026-10-10) is recorded as mode
+`auto` (`decision:<proposal>:<entry>`), once for each later owner message it serves.
 
 ## Boundaries
 
