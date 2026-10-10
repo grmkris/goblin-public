@@ -10,10 +10,10 @@ import {
   MessageScrollerViewport,
   useMessageScroller,
 } from '@goblin/ui'
-import { type ReactNode, useMemo, useRef } from 'react'
+import { memo, type ReactNode, useMemo, useRef } from 'react'
 import { TELEGRAM_AUTHOR } from '@goblin/contracts'
 import { HistoryIcon } from 'lucide-react'
-import { isOwnTurn, type Part, partKey } from '../lib/parts.ts'
+import { isOwnTurn, type Part, partKey, samePart } from '../lib/parts.ts'
 import { turnLabel } from '../lib/turn-map.ts'
 import { PartView } from './parts/registry.tsx'
 import { OpenThread } from './parts/text-part.tsx'
@@ -39,6 +39,16 @@ type ConversationProps = {
   /** What comes after the parts (Personas still answering). */
   readonly trail?: ReactNode
 }
+
+/**
+ * A message's actions and threads, memoised like its part (`samePart`): a streamed batch rebuilds every part, and
+ * without this every message's toolbar and Details drawer rendered again with each batch, in proportion to the
+ * transcript's length.
+ */
+const Footer = memo(
+  MessageFooter,
+  (before, after) => before.threads === after.threads && samePart(before.part, after.part),
+)
 
 /** A conversation's way to its end; it jumps instead of gliding when the person asks for less motion. */
 function EndButton() {
@@ -109,7 +119,7 @@ export function Conversation({
                   <MessageScrollerItem key={partKey(part)} messageId={part.id} scrollAnchor={isOwnTurn(part)}>
                     <div className="message-item flex flex-col" tabIndex={-1}>
                       <PartView part={part} canSwitchModel={canSwitchModel} />
-                      {threads !== undefined && <MessageFooter part={part} threads={threads} />}
+                      {threads !== undefined && <Footer part={part} threads={threads} />}
                       {after?.(part)}
                     </div>
                   </MessageScrollerItem>

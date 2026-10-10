@@ -199,11 +199,10 @@ export function useTranscript(
     const messages = [...entryMessages(history.entries, omitted), ...projection.messages]
     return conversationParts({ ...projection, messages: floor === undefined ? messages : fromEntry(messages, floor) })
   }, [projection, history.entries, floor])
-  // Which of the parts' entries a thread can branch from (a shared note in main cannot).
-  const branchable = useMemo(
-    () => branchPoints([...history.entries, ...(projection?.entries ?? [])]),
-    [projection, history.entries],
-  )
+  // Which of the parts' entries a thread can branch from (a shared note in main cannot). Keyed on the entries, which
+  // keep their identity across a streamed batch, so the transcript's footers do not render again with every batch.
+  const entries = projection?.entries
+  const branchable = useMemo(() => branchPoints([...history.entries, ...(entries ?? [])]), [entries, history.entries])
   const oldest = history.entries[0]?.id
   const reachedFloor = floor !== undefined && isNumber(oldest) && oldest <= floor
   return { parts, branchable, earlier: reachedFloor ? undefined : history.earlier }
