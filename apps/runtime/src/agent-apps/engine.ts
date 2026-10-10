@@ -5,30 +5,22 @@ import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { FileStore } from '../files/store.ts'
 import { nowMillis } from '../clock.ts'
 import type { RuntimeEnv } from '../env.ts'
-import { InvalidInput, NotFound } from '../http/errors.ts'
-import {
-  AppBuilder,
-  type BuildCaller,
-  type BuildRequest,
-  type BuildResult,
-  Problem,
-  type Toolchain,
-  readProblems,
-} from './build.ts'
-import { AppDispatch, type CallRequest } from './dispatch.ts'
+import { NotFound } from '../http/errors.ts'
+import { AppBuilder, type BuildCaller, type BuildRequest, type BuildResult, type Toolchain } from './build.ts'
+import { AppDispatch } from './dispatch.ts'
 import { AppFiles } from './files.ts'
+import { type AppInspection, type InspectPart, inspectApp } from './inspect.ts'
 import { Isolates } from './isolates.ts'
-import { mismatches } from './json.ts'
-import { type Power, type PowerKind, requestedPowers } from './manifest.ts'
-import { type Send, egress } from './egress.ts'
+import type { Power } from './manifest.ts'
+import type { Send } from './egress.ts'
 import { eraseApp } from './erase.ts'
 import { AppJobs, type JobSchedules, type JobView } from './jobs.ts'
 import type { AppServices } from './ports.ts'
-import { AppPowers } from './powers.ts'
-import { AppCodeError, type AppLock, problemText } from './queue.ts'
+import { type AppLock, problemText } from './queue.ts'
+import { type PowerView, powerViews, reachOf } from './reach.ts'
+import { type RolledBack, restoreOf } from './rollback.ts'
 import { schedulesText, signatures } from './signatures.ts'
-import { AgentAppStore, type UsageKind, isApproved } from './store.ts'
-import { readFiles } from './stored.ts'
+import { AgentAppStore } from './store.ts'
 import { AppToolset } from './toolset.ts'
 
 export type AgentAppsDeps = {
@@ -55,65 +47,8 @@ export type AgentAppsDeps = {
   readonly changed: (app: string) => void
 }
 
-/** What `app_inspect` can include besides the summary. */
-export const InspectPart = Schema.Literals(['source', 'state', 'events', 'releases'])
-export type InspectPart = typeof InspectPart.Type
-
-/** What `app_inspect` shows of an app: its version and members, and the parts asked for with `include`. */
-export const AppInspection = Schema.Struct({
-  app: Schema.Struct({
-    name: Schema.String,
-    title: Schema.String,
-    description: Schema.String,
-    version: Schema.optionalKey(Schema.Number),
-    release: Schema.String,
-    revision: Schema.optionalKey(Schema.Number),
-  }),
-  /** Its actions and views with their input fields, as `<apps>` lists them. */
-  members: Schema.String,
-  lastBuildFailed: Schema.optionalKey(Schema.Struct({ release: Schema.String, problems: Schema.Array(Problem) })),
-  /** The state as JSON text, cut at half the inspection's size. */
-  state: Schema.optionalKey(Schema.String),
-  /** Its files, or each file's length when they are too large to show beside the rest. */
-  source: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-  events: Schema.optionalKey(
-    Schema.Array(Schema.Struct({ kind: Schema.String, detail: Schema.String, createdAt: Schema.Number })),
-  ),
-  releases: Schema.optionalKey(
-    Schema.Array(
-      Schema.Struct({
-        release: Schema.String,
-        version: Schema.NullOr(Schema.Number),
-        status: Schema.Literals(['active', 'retired', 'failed']),
-        note: Schema.NullOr(Schema.String),
-        at: Schema.Number,
-      }),
-    ),
-  ),
-})
-export type AppInspection = typeof AppInspection.Type
-
-/** What `app_rollback` made active: the release, its version, and whether the state was kept or came from a snapshot. */
-export const RolledBack = Schema.Struct({
-  release: Schema.String,
-  version: Schema.NullOr(Schema.Number),
-  restored: Schema.Literals(['kept', 'snapshot']),
-})
-export type RolledBack = typeof RolledBack.Type
-
-const INSPECT_BYTES = 24 * 1024
 /** How often a view's failure is kept, at most. */
 const REPORT_MS = 10_000
-/** What one app may spend in a UTC day (ADR 0021): fetches, model tokens, notifications. */
-const DAILY = { egress: 2000, tokens: 20_000, notify: 10 } as const
-/** The longest model answer an app gets, the longest notification, and how deep apps call apps. */
-const MAX_ANSWER_TOKENS = 1024
-const MAX_NOTIFY = 1000
-const MAX_DEPTH = 3
-
-/** A power an app asks for, with the owner's answer. */
-export type PowerView = Power & { readonly status: 'pending' | 'approved' | 'revoked' }
-
 /** An agent app as the App registry shows it (ADR 0021). */
 export type AgentAppInfo = {
   readonly title: string
@@ -129,7 +64,6 @@ export type AgentAppInfo = {
 }
 
 const isAgentAppLib = Schema.is(AgentAppLib)
-const clip = (text: string, bytes: number) => (text.length <= bytes ? text : `${text.slice(0, bytes)}… (cut)`)
 
 /**
  * The agent's apps (ADR 0021), built by the agent object before Pi opens: build and activate releases, dispatch calls,
@@ -159,7 +93,8 @@ export class AgentApps {
       store: this.store,
       isolates,
       lock: this.#lock,
-      powers: (request) => this.#powers(request),
+      powers: (request) =>
+        reachOf({ store: this.store, dispatch: this.dispatch, files: (app) => this.files(app), ...deps }, request),
       authorize: async ({ session, app }) => {
         if (session !== undefined) await deps.services.authorizeCall(session, app)
       },
@@ -219,13 +154,7 @@ export class AgentApps {
 
   /** The powers the app's running release asks for, and the owner's answer to each. */
   powers(app: string): readonly PowerView[] {
-    const manifest = this.dispatch.manifest(this.dispatch.active(app))
-    const rows = new Map(this.store.powers(app).map((row) => [`${row.kind} ${row.target}`, row]))
-    return requestedPowers(manifest).map((power) => {
-      const row = rows.get(`${power.kind} ${power.target}`)
-      const status = isApproved(row) ? 'approved' : row?.revokedAt == null ? 'pending' : 'revoked'
-      return { ...power, status }
-    })
+    return powerViews(this.store, this.dispatch, app)
   }
 
   /** The owner approves or revokes one power the app asks for. */
@@ -310,50 +239,7 @@ export class AgentApps {
   }
 
   inspect(app: string, include: readonly InspectPart[]): AppInspection {
-    const row = this.store.app(app)
-    if (row === undefined) throw new NotFound({ what: `app ${app}` })
-    const manifest = this.dispatch.manifest(row.activeRelease)
-    const state = this.store.state(app)
-    const active = this.store.release(row.activeRelease)
-    const releases = this.store.releases(app, 10)
-    const latest = releases[0]
-    const source = readFiles(active?.source ?? '{}')
-    const inspection: AppInspection = {
-      app: {
-        name: app,
-        title: row.title,
-        description: row.description,
-        ...(active?.seq == null ? {} : { version: active.seq }),
-        release: row.activeRelease,
-        ...(state === undefined ? {} : { revision: state.revision }),
-      },
-      members: signatures(manifest),
-      ...(latest?.status === 'failed' && {
-        lastBuildFailed: { release: latest.id, problems: readProblems(latest.diagnostics ?? '[]') },
-      }),
-      ...(include.includes('state') && { state: clip(JSON.stringify(state?.state ?? null), INSPECT_BYTES / 2) }),
-      ...(include.includes('source') && { source }),
-      ...(include.includes('events') && { events: this.store.events(app, 20) }),
-      ...(include.includes('releases') && {
-        releases: releases.map((release) => ({
-          release: release.id,
-          version: release.seq,
-          status: release.status,
-          note: release.note,
-          at: release.createdAt,
-        })),
-      }),
-    }
-    if (!include.includes('source') || JSON.stringify(inspection).length <= INSPECT_BYTES) return inspection
-    return {
-      ...inspection,
-      source: Object.fromEntries(
-        Object.entries(source).map(([file, text]) => [
-          file,
-          `${String(text.length)} characters: inspect with include ["source"] alone`,
-        ]),
-      ),
-    }
+    return inspectApp(this.store, this.dispatch, app, include)
   }
 
   /**
@@ -365,86 +251,11 @@ export class AgentApps {
   }
 
   async #rollback(app: string, release: string): Promise<RolledBack> {
-    const row = this.store.release(release)
-    if (row?.app !== app || row.status !== 'retired')
-      throw new InvalidInput({
-        reason: `${release} is not an earlier version of ${app} (see app_inspect with releases)`,
-      })
-    const manifest = this.dispatch.manifest(release)
-    const current = this.store.state(app)
-    const fits = current !== undefined && mismatches(manifest.state.schema, current.state).length === 0
-    const snapshot = fits
-      ? undefined
-      : this.store
-          .snapshots(app)
-          .find((entry) => entry.release === release && mismatches(manifest.state.schema, entry.state).length === 0)
-    if (!fits && snapshot === undefined)
-      throw new InvalidInput({ reason: 'the current state does not fit that version, and no snapshot from it does' })
-    this.store.rollback({ app, release, state: snapshot?.state, now: this.#deps.now() })
+    const { state, version, restored } = restoreOf(this.store, this.dispatch, app, release)
+    this.store.rollback({ app, release, state, now: this.#deps.now() })
     this.#deps.changed(app)
     await this.#reconcile(app)
-    return { release, version: row.seq, restored: snapshot === undefined ? 'kept' : 'snapshot' }
-  }
-
-  /** What one `prepare` of `app` may reach (ADR 0021): its files and log, and each power the owner approved. */
-  #powers({ app, op, depth = 0, session }: CallRequest): AppPowers {
-    const now = this.#deps.now
-    const allowed = (kind: PowerKind, target: string) => {
-      if (!this.store.approved(app, { kind, target }))
-        throw new AppCodeError(
-          `${kind} ${target} is not approved for ${app}. Declare it in the app (egress or uses); the owner approves it.`,
-        )
-    }
-    const within = (kind: UsageKind, amount: number, cap: number) => {
-      if (!this.store.spend(app, kind, amount, cap, now()))
-        throw new AppCodeError(`${app} reached today's limit of ${String(cap)} ${kind === 'egress' ? 'fetches' : kind}`)
-    }
-    const { services } = this.#deps
-    let calls = 0
-    return new AppPowers({
-      files: this.files(app),
-      log: (line) => this.store.event(app, 'log', line, now()),
-      fetch: async (url, init) => {
-        within('egress', 1, DAILY.egress)
-        return egress(this.#deps.fetch, url, init, {
-          approved: (host) => this.store.approved(app, { kind: 'egress', target: host }),
-          appUrl: this.#deps.appUrl,
-        })
-      },
-      tool: async (tool, args) => {
-        allowed('tool', tool)
-        const [serverId = '', name = ''] = tool.split('/', 2)
-        return services.tool({ serverId, name, args, session })
-      },
-      llm: async (prompt, options) => {
-        allowed('llm', '*')
-        within('tokens', 0, DAILY.tokens - 1)
-        const maxTokens = Math.min(Math.max(Math.trunc(options.maxTokens ?? 512), 1), MAX_ANSWER_TOKENS)
-        const answer = await services.complete(options.system ?? '', prompt.slice(0, 20_000), maxTokens)
-        this.store.spend(app, 'tokens', Math.ceil((prompt.length + answer.length) / 4), Number.MAX_SAFE_INTEGER, now())
-        return answer
-      },
-      notify: async (text) => {
-        allowed('notify', '*')
-        within('notify', 1, DAILY.notify)
-        calls += 1
-        await services.notify(`app-${app}-${op}-${String(calls)}`.slice(0, 200), text.slice(0, MAX_NOTIFY))
-      },
-      app: async (target, member, input) => {
-        allowed('app', target)
-        if (depth + 1 > MAX_DEPTH) throw new AppCodeError(`apps call apps at most ${String(MAX_DEPTH)} deep`)
-        calls += 1
-        const result = await this.dispatch.call({
-          app: target,
-          member,
-          input,
-          op: `app:${op}:${String(calls)}`,
-          depth: depth + 1,
-          session,
-        })
-        return result.kind === 'view' ? result.value : (result.state ?? this.store.state(target)?.state)
-      },
-    })
+    return { release, version, restored }
   }
 
   /** Arms the schedules a new or earlier release declares; a failure is kept with the app's events, not thrown. */
