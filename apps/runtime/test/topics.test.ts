@@ -23,14 +23,15 @@ const fixture = () => {
   const retitled: string[] = []
   const activated: string[] = []
   const seeded: string[] = []
+  const touched: string[] = []
   let gate: Promise<void> = Promise.resolve()
   const topics = new TopicRegistry(db, {
-    open: async () => {
+    open: Effect.promise(async () => {
       await gate
       const session = String(100 + opened.length)
       opened.push(session)
       return session
-    },
+    }),
     register: (chat, topic, name, now) =>
       void db
         .insert(appConversations)
@@ -44,13 +45,17 @@ const fixture = () => {
           createdAt: now,
         })
         .run(),
-    activate: async (chat) => void activated.push(chat),
-    seed: async (chat, operationId, seed) => void seeded.push(`${chat}:${operationId}:${seed.brief}`),
+    activate: (chat) => Effect.sync(() => void activated.push(chat)),
+    seed: (chat, operationId, seed) => Effect.sync(() => void seeded.push(`${chat}:${operationId}:${seed.brief}`)),
     retitle: (chat, name) => void retitled.push(`${chat}:${name}`),
+    touched: (chats) => Effect.sync(() => void touched.push(...chats)),
   })
   return {
     db,
     topics,
+    /** The store's own create, run on its own. */
+    create: (...args: Parameters<typeof topics.create>) => Effect.runPromise(topics.create(...args)),
+    touched,
     opened,
     retitled,
     activated,
@@ -122,18 +127,18 @@ describe('Topics (ADR 0032)', () => {
   })
 
   it('refuses an active name in any case before making a Pi session, and frees an archived one', async () => {
-    const { topics, opened } = fixture()
-    const { topic } = await topics.create({ name: 'Garden', operationId: 'a' }, 'owner', 10)
+    const { topics, create, opened } = fixture()
+    const { topic } = await create({ name: 'Garden', operationId: 'a' }, 'owner', 10)
     for (const name of ['garden', 'GARDEN ', 'personal'])
-      await expect(topics.create({ name, operationId: `b-${name}` }, 'owner', 11)).rejects.toMatchObject({
+      await expect(create({ name, operationId: `b-${name}` }, 'owner', 11)).rejects.toMatchObject({
         _tag: 'Conflict',
       })
     expect(opened).toHaveLength(1)
-    await expect(topics.create({ name: '   ', operationId: 'blank' }, 'owner', 11)).rejects.toMatchObject({
+    await expect(create({ name: '   ', operationId: 'blank' }, 'owner', 11)).rejects.toMatchObject({
       _tag: 'InvalidInput',
     })
     topics.update(topic.id, { archived: true }, 12)
-    const again = await topics.create({ name: 'garden', operationId: 'c' }, 'agent', 13)
+    const again = await create({ name: 'garden', operationId: 'c' }, 'agent', 13)
     expect(again.topic).toMatchObject({ name: 'garden', createdBy: 'agent' })
     expect(() => topics.update(topic.id, { archived: false }, 14)).toThrow(
       expect.objectContaining({ _tag: 'Conflict' }),
@@ -142,8 +147,8 @@ describe('Topics (ADR 0032)', () => {
   })
 
   it('renames, archives, restores and opts out of search with one revision per change', async () => {
-    const { topics, retitled } = fixture()
-    const { topic } = await topics.create({ name: 'Trips', operationId: 'op' }, 'owner', 10)
+    const { topics, create, retitled } = fixture()
+    const { topic } = await create({ name: 'Trips', operationId: 'op' }, 'owner', 10)
     const renamed = topics.update(topic.id, { name: 'Travel' }, 11)
     expect(renamed).toMatchObject({ name: 'Travel', revision: 2 })
     expect(retitled).toEqual([`${topic.conversation}:Travel`])
@@ -159,9 +164,10 @@ describe('Topics (ADR 0032)', () => {
   })
 
   it('answers a change before and after, and tells the bus only of a real one', async () => {
-    const { topics: store } = fixture()
+    const { topics: store, touched } = fixture()
     const { run, changed } = serviceOf(store)
     const { topic } = await run((topics) => topics.create({ name: 'Trips', operationId: 'op' }, 'owner'))
+    expect(touched).toEqual([topic.conversation])
     changed.length = 0
     const renamed = await run((topics) => topics.update(topic.id, { name: 'Travel' }))
     expect(renamed).toMatchObject({ before: { name: 'Trips', revision: 1 }, after: { name: 'Travel', revision: 2 } })
@@ -170,6 +176,8 @@ describe('Topics (ADR 0032)', () => {
     const refused = await run((topics) => Effect.flip(topics.update(1, { archived: true })))
     expect(refused).toMatchObject({ _tag: 'InvalidInput', reason: 'personal_topic' })
     expect(changed).toEqual([topic.id])
+    // The rename retitled its Conversation, and the conversations' listeners were told once.
+    expect(touched).toEqual([topic.conversation, topic.conversation])
   })
 
   it('never archives Personal, but renames it and changes its search opt-out', () => {
@@ -188,11 +196,11 @@ describe('Topics (ADR 0032)', () => {
   })
 
   it('writes the seed a Topic made from a discussion starts with, again on a retry, never without one', async () => {
-    const { topics, seeded } = fixture()
+    const { create, seeded } = fixture()
     const seed = { brief: 'Plan the garden beds', sources: [] }
-    const { topic } = await topics.create({ name: 'Garden', operationId: 'seeded' }, 'agent', 10, seed)
-    await topics.create({ name: 'Garden', operationId: 'seeded' }, 'agent', 11, seed)
-    await topics.create({ name: 'Plain', operationId: 'plain' }, 'owner', 12)
+    const { topic } = await create({ name: 'Garden', operationId: 'seeded' }, 'agent', 10, seed)
+    await create({ name: 'Garden', operationId: 'seeded' }, 'agent', 11, seed)
+    await create({ name: 'Plain', operationId: 'plain' }, 'owner', 12)
     expect(seeded).toEqual([
       `${topic.conversation}:seeded:Plan the garden beds`,
       `${topic.conversation}:seeded:Plan the garden beds`,

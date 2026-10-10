@@ -1,7 +1,7 @@
 import type { CreateTopic, TopicSeedData, TopicView, UpdateTopic } from '@goblin/contracts'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
-import { type AppError, attempt, attemptSync } from '../http/errors.ts'
+import { type AppError, attemptSync } from '../http/errors.ts'
 import { KeyedLock } from '../observability/lock.ts'
 import { epochSeconds } from '../clock.ts'
 import { Changes } from '../runtime/changes.ts'
@@ -62,7 +62,7 @@ export class Topics extends Context.Service<
         }),
         create: Effect.fn('Topics.create')(function* (input: CreateTopic, actor: TopicActor, seed?: TopicSeedData) {
           const now = yield* epochSeconds
-          const made = yield* lock.withLock('topics.create')(attempt(() => store.create(input, actor, now, seed)))
+          const made = yield* lock.withLock('topics.create')(store.create(input, actor, now, seed))
           yield* changed(made.topic.id)
           return made
         }),
@@ -72,6 +72,7 @@ export class Topics extends Context.Service<
             const before = store.get(id)
             return { before, after: store.update(id, change, now) }
           })
+          if (result.after.name !== result.before.name) yield* store.retitled(result.after.conversation)
           if (result.after.revision !== result.before.revision) yield* changed(id)
           return result
         }),

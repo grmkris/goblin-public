@@ -44,7 +44,7 @@ const fixture = () => {
   const personas = new PersonaRegistry(db, ['model-a', 'model-b'])
   let opened = 100
   const topics = new TopicRegistry(db, {
-    open: async () => String(opened++),
+    open: Effect.sync(() => String(opened++)),
     register: (chat, topic, name, now) =>
       void db
         .insert(appConversations)
@@ -59,8 +59,9 @@ const fixture = () => {
         })
         .run(),
     retitle: () => undefined,
-    activate: async () => undefined,
-    seed: async () => undefined,
+    activate: () => Effect.void,
+    seed: () => Effect.void,
+    touched: () => Effect.void,
   })
   const receipts = new OrganizeReceipts(db, (kind, target) => {
     try {
@@ -388,7 +389,7 @@ describe('organize receipts and Undo', () => {
 
   it('undoes a Topic rename and refuses once the Topic was renamed again', async () => {
     const { layer, receipts, topics } = services()
-    await topics.create({ name: 'Garden', operationId: 'topic-1' }, 'owner', 5)
+    await Effect.runPromise(topics.create({ name: 'Garden', operationId: 'topic-1' }, 'owner', 5))
     const renamed = await run(layer, updateTopic(2, { name: 'Garden shed' }, { actor: 'agent', chat: '1' }))
     expect(renamed).toMatchObject({ name: 'Garden shed', revision: 2 })
     const rename = receipts.list().find((each) => each.kind === 'topic.rename')

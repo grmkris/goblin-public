@@ -43,10 +43,11 @@ const services = () => {
   closes.push(close)
   db.insert(appConversations).values({ chatId: '1', piSession: '1', kind: 'main', role: 'primary', createdAt: 1 }).run()
   const topics = new TopicRegistry(db, {
-    open: async () => '100',
+    open: Effect.succeed('100'),
     register: () => undefined,
-    activate: async () => undefined,
-    seed: async () => undefined,
+    activate: () => Effect.void,
+    seed: () => Effect.void,
+    touched: () => Effect.void,
     retitle: () => undefined,
   })
   const personas = new PersonaRegistry(db, ['model-a'])

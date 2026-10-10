@@ -1,11 +1,9 @@
-import type { EntryDraft } from '@earendil-works/pi-durable'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { ProfilesInstance } from '../capabilities/profiles.ts'
 import { ChatsInstance } from '../chats/directory.ts'
-import { Conversations } from '../chats/service.ts'
-import { ConversationsInstance } from '../conversations.ts'
+import { Chats, Conversations } from '../chats/service.ts'
 import { Home, HomeService } from '../home/service.ts'
 import { MemoriesInstance } from '../memory/memory.ts'
 import { modelOptions } from '../models.ts'
@@ -58,27 +56,25 @@ export const delegationServices = (
 
 /**
  * The agent's own delegation stores, each made here once: Topics, Personas, the invocations, receipts and Home. A
- * Topic's Conversation is made, listed and given memory by the agent's one conversation registry, profile store and
- * memory engine, synchronously inside the Topic's own transaction.
+ * Topic's Conversation is made, written and told about through the conversation services, and listed with Personal's
+ * switches by the agent's one profile store inside the Topic's own transaction; its memory is the one engine's.
  */
 const stores: Effect.Effect<
   DelegationStores,
   never,
-  AgentInput | Db | ConversationsInstance | ChatsInstance | ProfilesInstance | MemoriesInstance
+  AgentInput | Db | Conversations | Chats | ProfilesInstance | MemoriesInstance
 > = Effect.gen(function* () {
   const input = yield* AgentInput
   const db = yield* Db
-  const conversations = yield* ConversationsInstance
-  const kit = {
-    capabilities: yield* ProfilesInstance,
-    chats: yield* ChatsInstance,
-    memories: yield* MemoriesInstance,
-    // A Topic's seed is Promise code inside its create: it writes through the bridge (no second plan check), under the
-    // chat's lock and with its receipt.
-    write: (chat: string, requestId: string, entry: EntryDraft) =>
-      input.local(Conversations.use((registry) => registry.writeEntry(chat, requestId, entry))),
-  }
-  const topics = new TopicRegistry(db, topicPorts(db, conversations, kit))
+  const topics = new TopicRegistry(
+    db,
+    topicPorts(db, {
+      conversations: yield* Conversations,
+      chats: yield* Chats,
+      capabilities: yield* ProfilesInstance,
+      memories: yield* MemoriesInstance,
+    }),
+  )
   const personas = new PersonaRegistry(
     db,
     modelOptions(input.env.MODELS, input.env.MODEL_ID).map((option) => option.id),
@@ -99,7 +95,7 @@ const stores: Effect.Effect<
 export const DelegationLive: Layer.Layer<
   Topics | Personas | Invocations | Receipts | Home,
   never,
-  AgentInput | Db | KeyedLock | Changes | ConversationsInstance | ChatsInstance | ProfilesInstance | MemoriesInstance
+  AgentInput | Db | KeyedLock | Changes | Conversations | Chats | ProfilesInstance | MemoriesInstance
 > = Layer.unwrap(Effect.map(stores, delegationServices))
 
 /** Start step 7: each helper conversation runs with the execution extensions the agent has now. */

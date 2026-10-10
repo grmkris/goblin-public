@@ -7,7 +7,8 @@ import {
 } from '@goblin/contracts'
 import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
-import { Conflict, InvalidInput, NotFound } from '../http/errors.ts'
+import * as Effect from 'effect/Effect'
+import { type AppError, Conflict, InvalidInput, NotFound, attemptSync } from '../http/errors.ts'
 import { appTopics } from '../storage/topics.ts'
 
 type Row = typeof appTopics.$inferSelect
@@ -17,17 +18,19 @@ export type TopicActor = 'owner' | 'agent'
 
 /**
  * What a new Topic's Conversation needs beyond this table, injected so the registry is tested without Pi: `open` makes
- * a new Pi session configured like Personal's Conversation (never a fork of it) and returns its id; `register` lists
- * it in the chat registry as the Topic's Conversation, inside the registry's transaction; `activate` turns its memory
- * on (once; repeating it does nothing); `retitle` keeps the Conversation's title the Topic's name.
+ * a new Pi session configured like Personal's Conversation (never a fork of it) and answers its id; `register` lists
+ * it in the chat registry as the Topic's Conversation, and `retitle` keeps its title the Topic's name, each inside the
+ * registry's transaction; `touched` tells the conversations' listeners about a Conversation either wrote, after it;
+ * `activate` turns its memory on (once; repeating it does nothing).
  */
 export type TopicPorts = {
-  readonly open: () => Promise<string>
+  readonly open: Effect.Effect<string, AppError>
   readonly register: (chat: string, topic: number, name: string, now: number) => void
-  readonly activate: (chat: string) => Promise<void>
   readonly retitle: (chat: string, name: string) => void
+  readonly touched: (chats: readonly string[]) => Effect.Effect<void, AppError>
+  readonly activate: (chat: string) => Effect.Effect<void, AppError>
   /** Writes a Topic's seed into its Conversation once per operation (a passive write; it starts no run). */
-  readonly seed: (chat: string, operationId: string, seed: TopicSeedData) => Promise<void>
+  readonly seed: (chat: string, operationId: string, seed: TopicSeedData) => Effect.Effect<void, AppError>
 }
 
 const view = (row: Row): TopicView => ({
@@ -107,47 +110,60 @@ export class TopicRegistry<RunResult = unknown> {
    * (the organize tools) starts with `seed`, its brief and frozen excerpts, as an `app.topic_seed` entry. Two creates
    * at once are the caller's to serialize: each would make a Pi session before the other's row exists.
    */
-  async create(
+  create(
     input: CreateTopic,
     actor: TopicActor,
     now: number,
     seed?: TopicSeedData,
-  ): Promise<{ topic: TopicView; created: boolean }> {
-    const existing = this.#db.select().from(appTopics).where(eq(appTopics.operationId, input.operationId)).get()
-    if (existing !== undefined) {
-      // A retry finishes what a failed first attempt began: the Conversation's memory and its seed.
-      await this.#ready(existing.chatId, input.operationId, seed)
-      return { topic: view(existing), created: false }
-    }
-    const name = cleanName(input.name)
-    this.#assertFree(name)
-    const chat = await this.#ports.open()
-    const row = this.#db.transaction(() => {
-      this.#assertFree(name)
-      const [inserted] = this.#db
-        .insert(appTopics)
-        .values({
-          name,
-          chatId: chat,
-          operationId: input.operationId,
-          createdBy: actor,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning()
-        .all()
-      if (inserted === undefined) throw new Conflict({ reason: 'topic_not_created' })
-      this.#ports.register(chat, inserted.id, name, now)
-      return inserted
+  ): Effect.Effect<{ readonly topic: TopicView; readonly created: boolean }, AppError> {
+    const db = this.#db
+    const ports = this.#ports
+    const assertFree = (name: string) => this.#assertFree(name)
+    /** Turns the Conversation's memory on, then writes the seed it was made with, if any; both are idempotent. */
+    const ready = (chat: string) =>
+      Effect.andThen(ports.activate(chat), seed === undefined ? Effect.void : ports.seed(chat, input.operationId, seed))
+    return Effect.gen(function* () {
+      const existing = db.select().from(appTopics).where(eq(appTopics.operationId, input.operationId)).get()
+      if (existing !== undefined) {
+        // A retry finishes what a failed first attempt began: the Conversation's memory and its seed.
+        yield* ready(existing.chatId)
+        return { topic: view(existing), created: false }
+      }
+      const name = yield* attemptSync(() => {
+        const clean = cleanName(input.name)
+        assertFree(clean)
+        return clean
+      })
+      const chat = yield* ports.open
+      const row = yield* attemptSync(() =>
+        db.transaction(() => {
+          assertFree(name)
+          const [inserted] = db
+            .insert(appTopics)
+            .values({
+              name,
+              chatId: chat,
+              operationId: input.operationId,
+              createdBy: actor,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .returning()
+            .all()
+          if (inserted === undefined) throw new Conflict({ reason: 'topic_not_created' })
+          ports.register(chat, inserted.id, name, now)
+          return inserted
+        }),
+      )
+      yield* ports.touched([chat])
+      yield* ready(chat)
+      return { topic: view(row), created: true }
     })
-    await this.#ready(chat, input.operationId, seed)
-    return { topic: view(row), created: true }
   }
 
-  /** Turns the new Conversation's memory on, then writes the seed it was made with, if any; both are idempotent. */
-  async #ready(chat: string, operationId: string, seed: TopicSeedData | undefined): Promise<void> {
-    await this.#ports.activate(chat)
-    if (seed !== undefined) await this.#ports.seed(chat, operationId, seed)
+  /** Tells the conversations' listeners that `update` retitled a Topic's Conversation. */
+  retitled(chat: string): Effect.Effect<void, AppError> {
+    return this.#ports.touched([chat])
   }
 
   /**

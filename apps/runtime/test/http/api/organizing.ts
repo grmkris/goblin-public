@@ -32,7 +32,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
   db.insert(appConversations).values({ chatId: '1', piSession: '1', kind: 'main', role: 'primary', createdAt: 1 }).run()
   let sessions = 100
   const topics = new TopicRegistry(db, {
-    open: async () => String(sessions++),
+    open: Effect.sync(() => String(sessions++)),
     register: (chat, topic, name, now) =>
       void db
         .insert(appConversations)
@@ -46,8 +46,9 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
           createdAt: now,
         })
         .run(),
-    activate: async () => undefined,
-    seed: async () => undefined,
+    activate: () => Effect.void,
+    seed: () => Effect.void,
+    touched: () => Effect.void,
     retitle: () => undefined,
   })
   const personas = new PersonaRegistry(db, ['model-a', 'model-b'])
