@@ -56,13 +56,29 @@ const rawGet = (origin: string, path: string) =>
     request.end()
   })
 
-/** The agent's internal API from outside: `/internal/*`, and a path that climbs into it, answer the 404 envelope. */
+/**
+ * Whether an outside request for the internal API was refused: a 404, either the runtime's envelope (`not_found`) or a
+ * page that is not JSON at all. The deployed web Worker answers `/internal/*` itself with its not-found page, because it
+ * forwards only `/api`, `/hooks`, `/.well-known`, `/health` and `/mcp` to the runtime.
+ */
+export function internalRefused(status: number, body: string): boolean {
+  if (status !== 404) return false
+  let json: unknown
+  try {
+    json = JSON.parse(body)
+  } catch {
+    // expected: the web Worker's own not-found page is HTML
+    return true
+  }
+  return object(object(json)['error'])['code'] === 'not_found'
+}
+
+/** The agent's internal API from outside: `/internal/*`, and a path that climbs into it, are refused with a 404. */
 export async function internalChecks(origin: string, steps: Step[]): Promise<{ readonly internal: 'refused' }> {
   for (const path of ['/internal/recent', '/api/%2e%2e/internal/recent']) {
     const { status, body } = await rawGet(origin, path)
     steps.push({ step: `GET ${path} (outside)`, status })
-    const code = status === 404 ? object(object(JSON.parse(body))['error'])['code'] : undefined
-    if (code !== 'not_found') throw new Error('internal_route_reachable')
+    if (!internalRefused(status, body)) throw new Error('internal_route_reachable')
   }
   return { internal: 'refused' }
 }
