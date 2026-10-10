@@ -5,7 +5,7 @@
 // resource and every call it makes go through the owner's grants, live, and an agent app's view calls only its own
 // actions (frame.tsx). An agent app's new release reloads its frame; a new state is pushed into it.
 import * as Data from 'effect/Data'
-import { type ReactNode, createContext, use, useCallback, useMemo, useRef } from 'react'
+import { type ReactNode, createContext, use, useCallback, useLayoutEffect, useMemo, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import type { AppView } from '@goblin/contracts'
 import type { DownloadFile } from '../../lib/app-download.ts'
@@ -71,7 +71,10 @@ export function AppHost({ children }: { readonly children: ReactNode }) {
   const { slot, element } = useSlots(kick)
   const { instances, setInstances, dormant, problems, setProblems, show, seen, unload } = useResidency(useApps())
   const outside = useRef({ navigation, instances })
-  outside.current = { navigation, instances }
+  // Clicks and App messages read these as they are now; they are written after each render, before anyone can act.
+  useLayoutEffect(() => {
+    outside.current = { navigation, instances }
+  })
   const close = useCallback(
     (id: string) => {
       unload([id], false)

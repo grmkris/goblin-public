@@ -1,6 +1,6 @@
 // Which Apps are loaded, at most LIVE_APPS at a time, and the launch that loads one: an MCP App's resource and tool
 // result, or an agent app's release.
-import { type Dispatch, type SetStateAction, useCallback, useEffect, useRef, useState } from 'react'
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import type { AppView } from '@goblin/contracts'
 import type { CallToolResult } from '@modelcontextprotocol/client'
@@ -73,7 +73,10 @@ export function useResidency(apps: readonly AppView[]) {
   const { loading, load } = useLaunch(setProblems)
   const seenAt = useRef(new Map<string, { seenAt: number; visible: boolean }>())
   const latest = useRef(instances)
-  latest.current = instances
+  // Balancing reads the residents as they are now, written after each render.
+  useLayoutEffect(() => {
+    latest.current = instances
+  })
   const unload = useCallback((ids: readonly string[], keepStub: boolean) => {
     if (ids.length === 0) return
     for (const id of ids) seenAt.current.delete(id)
