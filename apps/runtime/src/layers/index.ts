@@ -1,5 +1,6 @@
 import * as Layer from 'effect/Layer'
 import { AgentHttp } from '../http/api/server.ts'
+import { Inspection } from '../inspect/service.ts'
 import type { AgentInputs } from '../runtime/input.ts'
 import { AppRegistryLive, AppsLive } from './apps.ts'
 import { ModelBudgetLive } from './budget.ts'
@@ -9,7 +10,6 @@ import { CoreLive } from './core.ts'
 import { DelegationLive, HelperExecutionLive } from './delegation.ts'
 import { ActivateMemoriesLive, CheapModelsLive, KnowledgeLive } from './knowledge.ts'
 import { McpEventsLive, McpHostLive } from './mcp.ts'
-import { ObservabilityLive } from './observability.ts'
 import { ChannelLive, RoutineRunsLive, RoutinesLive } from './routines.ts'
 import { SkillsLive } from './skills.ts'
 import { WorkspaceLive } from '../workspace/live.ts'
@@ -52,7 +52,7 @@ export const AgentLive = (input: AgentInputs) =>
     then(KnowledgeLive),
     then(DelegationLive),
     then(RoutinesLive),
-    then(ObservabilityLive),
+    then(Inspection.layer),
     then(AppsLive),
     then(WorkspaceLive),
     then(AgentHttp.layer),
