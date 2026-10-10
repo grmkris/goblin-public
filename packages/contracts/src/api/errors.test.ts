@@ -35,7 +35,7 @@ import {
   statusOf,
 } from './errors.ts'
 
-/** One of every failure, with its HTTP status as the runtime has always answered it (`http/respond.ts`). */
+/** One of every failure, with its HTTP status as the runtime has always answered it. */
 const CASES: readonly (readonly [AppError, number])[] = [
   [new Unauthenticated({ reason: 'session' }), 401],
   [new Forbidden({ reason: 'csrf' }), 403],

@@ -8,7 +8,8 @@ import { makeBillingStore } from '../../src/billing/store.ts'
 import { startCheckout } from '../../src/billing/routes.ts'
 import { billingWebhook } from '../../src/billing/webhook.ts'
 import { billingTestRoute } from '../../src/billing/test-route.ts'
-import { failureResponse } from '../../src/http/respond.ts'
+import { refusal } from '../../src/http/api/render.ts'
+import { toAppError } from '../../src/http/errors.ts'
 import { PersonalAgent } from '../../src/agent.ts'
 import { scriptedStreams } from './model.ts'
 
@@ -52,7 +53,8 @@ export default {
       }
       return await runtime.fetch(input, env, ctx)
     } catch (cause) {
-      return failureResponse(cause, url.pathname, 'billing-fixture')
+      // expected: the failure is the fixture's answer, in the envelope; toAppError reports an unexpected one
+      return refusal(toAppError(cause), 'billing-fixture')
     }
   },
 }

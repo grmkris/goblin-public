@@ -5,19 +5,15 @@ import * as Schema from 'effect/Schema'
 import { expect, test, vi } from 'vitest'
 import { readJson } from '../../src/http/body.ts'
 import {
-  BudgetExhausted,
   GrantDenied,
   Internal,
   InvalidInput,
-  NotFound,
   PayloadTooLarge,
-  UpstreamMcp,
   attempt,
   attemptSync,
   isAppError,
   toAppError,
 } from '../../src/http/errors.ts'
-import { failureResponse, statusOf } from '../../src/http/respond.ts'
 
 const SECRET = 'secret-value'
 const parseLine = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))
@@ -56,36 +52,6 @@ test('bodies decode through the schema; mismatches are InvalidInput', async () =
   await expect(readJson(chunked(['{"input":"hi"}']), schema)).resolves.toEqual({ input: 'hi' })
   await expect(readJson(chunked(['{"input":1}']), schema)).rejects.toBeInstanceOf(InvalidInput)
   await expect(readJson(chunked(['not json']), schema)).rejects.toBeInstanceOf(InvalidInput)
-})
-
-test('each failure maps to one status; unknown causes become a bodiless 500', async () => {
-  expect(statusOf(new GrantDenied({ serverId: 'myplan', name: 'x' }))).toBe(403)
-  expect(statusOf(new UpstreamMcp({ serverId: 'myplan', reason: 'timeout' }))).toBe(504)
-  expect(statusOf(new BudgetExhausted({ limit: 1000, resetsAt: 86_400 }))).toBe(429)
-  let response = new Response()
-  const lines = linesOf('error', () => {
-    response = failureResponse(new Error(`token=${SECRET}`), '/api/x', 'req-1')
-  })
-  expect(JSON.stringify(lines)).not.toContain(SECRET)
-  expect(lines.at(-1)).toEqual({
-    level: 'error',
-    event: 'http.failure',
-    route: '/api/x',
-    status: 500,
-    code: 'internal',
-    ref: 'req-1',
-  })
-  expect(response.status).toBe(500)
-  const body = JSON.stringify(await response.json())
-  expect(body).toBe('{"error":"Internal","reason":"unexpected"}')
-  expect(response.headers.get('cache-control')).toBe('no-store')
-})
-
-test("a failure line names the route's area, never the ids below it", () => {
-  const lines = linesOf('warn', () => failureResponse(new NotFound({ what: 'x' }), '/api/agent-apps/my-diary', 'r'))
-  expect(lines).toEqual([
-    { level: 'warn', event: 'http.failure', route: '/api/agent-apps/{path}', status: 404, code: 'not_found', ref: 'r' },
-  ])
 })
 
 test('a typed failure passes through; anything else, stored data that does not decode included, is ours (H2)', () => {

@@ -3,7 +3,8 @@ import { authFixtureRoute, fixtureAuth } from './auth-fixture.ts'
 import { Effect, Schema } from 'effect'
 import runtime from '../../src/worker.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
-import { failureResponse } from '../../src/http/respond.ts'
+import { refusal } from '../../src/http/api/render.ts'
+import { toAppError } from '../../src/http/errors.ts'
 import { makeBillingStore } from '../../src/billing/store.ts'
 import { liveApi } from '../../src/billing/dodo.ts'
 import { billingTestRoute } from '../../src/billing/test-route.ts'
@@ -176,7 +177,8 @@ export default {
         )
       return await runtime.fetch(input, env, ctx)
     } catch (cause) {
-      return failureResponse(cause, url.pathname, 'owner-fixture')
+      // expected: the failure is the fixture's answer, in the envelope; toAppError reports an unexpected one
+      return refusal(toAppError(cause), 'owner-fixture')
     }
   },
 }

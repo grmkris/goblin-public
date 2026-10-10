@@ -1,28 +1,10 @@
-import {
-  type AppError,
-  BillingRefused,
-  BudgetExhausted,
-  Conflict,
-  Forbidden,
-  GrantDenied,
-  Internal,
-  InvalidInput,
-  NeedsAuthorization,
-  NotFound,
-  PayloadTooLarge,
-  ResidentInactive,
-  SubscriptionRequired,
-  Unauthenticated,
-  UpstreamMcp,
-  envelopeOf,
-  statusOf as contractStatusOf,
-} from '@goblin/contracts/api'
+import { BillingRefused, NotFound, SubscriptionRequired, Unauthenticated, envelopeOf } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { describe, expect, it } from 'vitest'
 import { type AccountRecords, crashPoint } from '../../../src/http/api/account.ts'
 import { type Edge, isAccountPath, makeEdgeHttp } from '../../../src/http/api/edge.ts'
-import { statusOf } from '../../../src/http/respond.ts'
+import { attempt } from '../../../src/http/errors.ts'
 import { FlowPointFailure } from '../../../src/observability/ae.ts'
 import { withLines } from '../../observability/lines.ts'
 
@@ -378,24 +360,55 @@ describe('the account API in the Worker', () => {
   })
 })
 
-describe('the error statuses', () => {
-  it('are the same in the contract and in the runtime routes', () => {
-    const errors: readonly AppError[] = [
-      new Unauthenticated({ reason: 'x' }),
-      new Forbidden({ reason: 'x' }),
-      new GrantDenied({ serverId: 's', name: 'n' }),
-      new NotFound({ what: 'x' }),
-      new Conflict({ reason: 'x' }),
-      new InvalidInput({ reason: 'x' }),
-      new PayloadTooLarge({ limit: 1 }),
-      new ResidentInactive({ state: 'revoked' }),
-      new BudgetExhausted({ limit: 1, resetsAt: 1 }),
-      new SubscriptionRequired({ subscribe: '/subscribe' }),
-      new NeedsAuthorization({ serverId: 's' }),
-      new UpstreamMcp({ serverId: 's', reason: 'transport' }),
-      new UpstreamMcp({ serverId: 's', reason: 'timeout' }),
-      new Internal({ reason: 'x' }),
-    ]
-    for (const error of errors) expect(contractStatusOf(error)).toBe(statusOf(error))
+describe("the Worker's own routes", () => {
+  const route = async (request: Request, serve: () => Promise<Response>) => {
+    const http = await built
+    const { value, lines } = await Effect.runPromise(withLines(http.route(request, () => attempt(serve))))
+    return { response: value, lines: lines.map(({ line }) => line) }
+  }
+
+  it('answers with the API headers and the reference', async () => {
+    const request = new Request(`${APP}/mcp`, { method: 'POST', headers: { 'cf-ray': 'ray-4' } })
+    const { response, lines } = await route(request, async () => Response.json({ ok: true }))
+    expect(response.status).toBe(200)
+    expect(response.headers.get('x-goblin-ref')).toBe('ray-4')
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(lines).toEqual([])
+  })
+
+  it('answers a failure of ours as the internal envelope, its line naming only the route area', async () => {
+    const request = new Request(`${APP}/hooks/myagent/${SECRET}/token`, {
+      method: 'POST',
+      headers: { 'cf-ray': 'ray-5' },
+    })
+    const { response, lines } = await route(request, () => Promise.reject(new Error(`token=${SECRET}`)))
+    expect(response.status).toBe(500)
+    expect(await response.json()).toEqual({
+      error: {
+        code: 'internal',
+        message: 'Something went wrong on our side.',
+        recovery: 'Try again.',
+        reason: 'unexpected',
+        ref: 'ray-5',
+      },
+    })
+    expect(lines).toContainEqual({
+      level: 'error',
+      event: 'http.failure',
+      route: '/hooks/myagent/{path}',
+      method: 'POST',
+      status: 500,
+      code: 'internal',
+      ref: 'ray-5',
+    })
+    expect(JSON.stringify(lines)).not.toContain(SECRET)
+  })
+
+  it('answers a typed refusal in its envelope, logged as information', async () => {
+    const request = new Request(`${APP}/internal/recent`, { headers: { 'cf-ray': 'ray-6' } })
+    const { response, lines } = await route(request, () => Promise.reject(new NotFound({ what: 'route' })))
+    expect(response.status).toBe(404)
+    expect(await response.json()).toMatchObject({ error: { code: 'not_found', what: 'route', ref: 'ray-6' } })
+    expect(lines).toMatchObject([{ level: 'info', route: '/internal/recent', status: 404, code: 'not_found' }])
   })
 })

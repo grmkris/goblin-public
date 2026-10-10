@@ -7,9 +7,10 @@ import { writeLine } from '../observability/logger.ts'
 import { framesOf, safeErrorType } from '../observability/report.ts'
 
 /**
- * The runtime's failure vocabulary lives with the API contract (`@goblin/contracts/api`), which answers each one in its
- * error envelope. Every boundary maps one to an HTTP status (`respond.ts`); Durable Object RPC carries them as an
- * encoded `ErrorBody` because Workers RPC does not preserve error classes. Re-exported here so runtime imports stay.
+ * The runtime's failure vocabulary lives with the API contract (`@goblin/contracts/api`), which gives each one its HTTP
+ * status and its error envelope; every HTTP answer uses that envelope (`http/api/render.ts`). The one Durable Object RPC
+ * method left carries them encoded (`rpc.ts`) because Workers RPC does not preserve error classes. Re-exported here so
+ * runtime imports stay.
  */
 export {
   AppError,

@@ -120,7 +120,7 @@ type SnakeCase<Tag extends string, Done extends string = ''> = string extends Ta
 /** A failure's wire code: its tag in lower_snake_case (`NotFound` is `not_found`). */
 export type ApiCode = SnakeCase<AppErrorTag>
 
-/** The HTTP status of each failure; the same table as the runtime's `statusOf` in `http/respond.ts`. */
+/** The HTTP status of each failure, wherever the agent or the Worker answers one. */
 export const statusOf = (error: AppError | typeof AppError.Encoded): number =>
   Match.value(error).pipe(
     Match.tagsExhaustive({
