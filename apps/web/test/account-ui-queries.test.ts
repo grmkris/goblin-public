@@ -9,6 +9,7 @@ import { chooseModelMutation, modelQuery } from '../src/agent/queries.ts'
 import { owner } from '../src/lib/api.ts'
 import { fakeHttpApi, testQueryClient } from '../src/lib/query/testing.ts'
 import { changeRoutineMutation, routinesQuery } from '../src/routines/queries.ts'
+import { unusedHandlers } from './query/unused-handlers.ts'
 
 const OPTION = { route: 'Google', note: '', images: false, contextWindow: 1_000_000 }
 const CHOICE: ModelChoice = {
@@ -43,42 +44,33 @@ const ROUTINE: RoutineView = {
   updatedAt: 1,
 }
 
-const unused = () => Effect.die('not used')
-
 /** The real agent and routines groups served in memory, over one model choice and one routine. */
 const fakeOwner = () => {
   const operations: string[] = []
   const state = { choice: CHOICE, routine: ROUTINE, operations }
   const Agent = HttpApiBuilder.group(OwnerApi, 'agent', (handlers) =>
-    handlers
-      .handle('usage', unused)
-      .handle('model', () => Effect.succeed(state.choice))
-      .handle('chooseModel', ({ payload }) => {
+    handlers.handleAll({
+      ...unusedHandlers(OwnerApi.groups.agent),
+      model: () => Effect.succeed(state.choice),
+      chooseModel: ({ payload }) => {
         if (!state.choice.options.some((option) => option.id === payload.model))
           return Effect.fail(new InvalidInput({ reason: 'model_not_offered' }))
         state.choice = { ...state.choice, current: payload.model }
         return Effect.succeed(state.choice)
-      })
-      .handle('channel', unused)
-      .handle('enableChannel', unused)
-      .handle('disableChannel', unused),
+      },
+    }),
   )
   const Routines = HttpApiBuilder.group(OwnerApi, 'routines', (handlers) =>
-    handlers
-      .handle('list', () => Effect.succeed({ routines: [state.routine] }))
-      .handle('propose', unused)
-      .handle('settings', () => Effect.succeed(SETTINGS))
-      .handle('updateSettings', unused)
-      .handle('edit', unused)
-      .handle('archive', unused)
-      .handle('confirm', ({ payload }) => {
+    handlers.handleAll({
+      ...unusedHandlers(OwnerApi.groups.routines),
+      list: () => Effect.succeed({ routines: [state.routine] }),
+      settings: () => Effect.succeed(SETTINGS),
+      confirm: ({ payload }) => {
         state.operations.push(payload.operationId)
         state.routine = { ...state.routine, state: 'active', revision: payload.revision + 1 }
         return Effect.succeed(state.routine)
-      })
-      .handle('pause', unused)
-      .handle('run', unused)
-      .handle('runs', unused),
+      },
+    }),
   )
   const gate = Layer.succeed(
     OwnerAdmission,

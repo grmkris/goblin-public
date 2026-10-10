@@ -19,6 +19,7 @@ import { owner } from '../../src/lib/api.ts'
 import { ApiDefect, makeApiQuery, withOperation } from '../../src/lib/query/api-query.ts'
 import { ERROR_KINDS, type ErrorKind, describeError, messageOf } from '../../src/lib/query/app-error.ts'
 import { fakeHttpApi, testQueryClient } from '../../src/lib/query/testing.ts'
+import { unusedHandlers } from './unused-handlers.ts'
 
 const RAY = '7f3a9c12e4b5a6d7-AMS'
 const PERSONAL: TopicView = {
@@ -44,15 +45,16 @@ const fakeOwner = () => {
     handlers.handle('status', () => Effect.succeed(MEMORY)),
   )
   const Topics = HttpApiBuilder.group(OwnerApi, 'topics', (handlers) =>
-    handlers
-      .handle('create', ({ payload }) => {
+    handlers.handleAll({
+      ...unusedHandlers(OwnerApi.groups.topics),
+      create: ({ payload }) => {
         if (topics.some((topic) => topic.name.toLowerCase() === payload.name.toLowerCase()))
           return Effect.fail(new Conflict({ reason: 'topic_name_taken', ref: RAY }))
         const topic: TopicView = { ...PERSONAL, id: topics.length + 1, name: payload.name, personal: undefined }
         topics.push(topic)
         return Effect.succeed(topic)
-      })
-      .handle('update', () => Effect.die('not used')),
+      },
+    }),
   )
   const gate = Layer.succeed(OwnerAdmission, (handler) => handler)
   const server = fakeHttpApi(

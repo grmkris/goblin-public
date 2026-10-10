@@ -17,6 +17,7 @@ import { owner } from '../src/lib/api.ts'
 import { primeOwnerRead } from '../src/lib/prime.ts'
 import { fakeHttpApi, testQueryClient } from '../src/lib/query/testing.ts'
 import { personaDetailQuery, personaKeys, updatePersonaMutation } from '../src/personas/queries.ts'
+import { unusedHandlers } from './query/unused-handlers.ts'
 
 const SAGE: PersonaView = {
   id: 1,
@@ -38,19 +39,19 @@ const fakeOwner = () => {
     revisions: [{ ...state.persona, actor: 'owner', createdAt: state.persona.updatedAt }],
   })
   const Personas = HttpApiBuilder.group(OwnerApi, 'personas', (handlers) =>
-    handlers
-      .handle('create', () => Effect.die('not used'))
-      .handle('detail', ({ params }) =>
+    handlers.handleAll({
+      ...unusedHandlers(OwnerApi.groups.personas),
+      detail: ({ params }) =>
         params.id === state.persona.id ? Effect.succeed(detail()) : Effect.fail(new NotFound({ what: 'persona' })),
-      )
-      .handle('update', ({ payload }) => {
+      update: ({ payload }) => {
         if (payload.expectedRevision !== state.persona.revision)
           return Effect.fail(new Conflict({ reason: 'revision' }))
         const revision = state.persona.revision + 1
         const role = payload.role ?? state.persona.role
         state.persona = { ...state.persona, role, revision, updatedAt: revision }
         return Effect.succeed(state.persona)
-      }),
+      },
+    }),
   )
   const admit = Effect.suspend(() =>
     state.signedIn ? Effect.void : Effect.fail(new Unauthenticated({ reason: 'no_session' })),

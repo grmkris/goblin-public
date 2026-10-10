@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { historyQuery, streamReads, submitMutation } from '../src/conversations/queries.ts'
 import { owner } from '../src/lib/api.ts'
 import { fakeHttpApi, testQueryClient } from '../src/lib/query/testing.ts'
+import { unusedHandlers } from './query/unused-handlers.ts'
 
 /** Entries 1 to 9 of chat 7, two to a page: a page before `before` holds the two entries just older. */
 const page = (before: number) => {
@@ -14,29 +15,17 @@ const page = (before: number) => {
   return { entries: ids.map((id) => ({ id, type: 'message' })), more: (ids[0] ?? 1) > 1 }
 }
 
-const unused = () => Effect.die('not used')
-
 /** The real conversations group served in memory: its history pages and the owner's messages, nothing else. */
 const fakeOwner = () => {
   const Conversations = HttpApiBuilder.group(OwnerApi, 'conversations', (handlers) =>
-    handlers
-      .handle('create', unused)
-      .handle('update', unused)
-      .handle('submit', ({ payload }) =>
+    handlers.handleAll({
+      ...unusedHandlers(OwnerApi.groups.conversations),
+      submit: ({ payload }) =>
         Effect.succeed({ operationId: payload.operationId, session: 'session-7', accepted: true }),
-      )
-      .handle('startThread', unused)
-      .handle('move', unused)
-      .handle('stop', unused)
-      .handle('queue', () => Effect.succeed({ inputs: [{ id: 4, mode: 'followUp' as const, content: 'later' }] }))
-      .handle('removeQueued', unused)
-      .handle('markRead', unused)
-      .handle('capabilities', unused)
-      .handle('setCapability', unused)
-      .handle('composer', unused)
-      .handle('snapshot', () => Effect.succeed({ type: 'snapshot', entries: [], tools: [], inbox: [] }))
-      .handle('history', ({ query }) => Effect.succeed(page(query.before)))
-      .handle('sources', unused),
+      queue: () => Effect.succeed({ inputs: [{ id: 4, mode: 'followUp' as const, content: 'later' }] }),
+      snapshot: () => Effect.succeed({ type: 'snapshot', entries: [], tools: [], inbox: [] }),
+      history: ({ query }) => Effect.succeed(page(query.before)),
+    }),
   )
   const gate = Layer.succeed(
     OwnerAdmission,

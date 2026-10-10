@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { approvalKeys, approvalQuery, decideApprovalMutation } from '../src/approvals/queries.ts'
 import { owner } from '../src/lib/api.ts'
 import { fakeHttpApi, testQueryClient } from '../src/lib/query/testing.ts'
+import { unusedHandlers } from './query/unused-handlers.ts'
 
 const HELD: ApprovalView = {
   id: 'apr-1',
@@ -18,36 +19,18 @@ const HELD: ApprovalView = {
   expiresAt: 100,
 }
 
-const unused = () => Effect.die('not used')
-
 /** The real MCP group served in memory: one held call, and the owner's decision on it. */
 const fakeOwner = () => {
   const state = { held: HELD }
   const Mcp = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
-    handlers
-      .handle('servers', unused)
-      .handle('addServer', unused)
-      .handle('suggested', unused)
-      .handle('catalog', unused)
-      .handle('registries', unused)
-      .handle('addRegistry', unused)
-      .handle('removeRegistry', unused)
-      .handle('grants', unused)
-      .handle('setToolGrant', unused)
-      .handle('setAskFirst', unused)
-      .handle('setSkills', unused)
-      .handle('setAppGrant', unused)
-      .handle('approval', () => Effect.succeed(state.held))
-      .handle('decideApproval', ({ payload }) => {
+    handlers.handleAll({
+      ...unusedHandlers(OwnerApi.groups.mcp),
+      approval: () => Effect.succeed(state.held),
+      decideApproval: ({ payload }) => {
         state.held = { ...state.held, state: payload.allowed ? 'approved' : 'refused' }
         return Effect.succeed(state.held)
-      })
-      .handle('tools', unused)
-      .handle('connect', unused)
-      .handle('disconnect', unused)
-      .handle('removeServer', unused)
-      .handle('callTool', unused)
-      .handle('readResource', unused),
+      },
+    }),
   )
   const gate = Layer.succeed(
     OwnerAdmission,

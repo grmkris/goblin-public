@@ -16,6 +16,7 @@ import {
   appToolCallMutation,
   perform,
 } from '../src/apps/queries.ts'
+import { unusedHandlers } from './query/unused-handlers.ts'
 
 const LAUNCH: AppLaunch = {
   kind: 'agent',
@@ -26,7 +27,6 @@ const LAUNCH: AppLaunch = {
   ui: { module: '', css: '', libs: [] },
 }
 const OP = '0f1e2d3c-4b5a-4968-8778-695a4b3c2d1e'
-const unused = () => Effect.die('not used here')
 
 /** The real contract's Apps and MCP groups, answering one agent app and one MCP server. */
 const fakeApps = () => {
@@ -34,54 +34,38 @@ const fakeApps = () => {
   const reports: string[] = []
   const callers: Array<string | undefined> = []
   const apps = HttpApiBuilder.group(OwnerApi, 'apps', (handlers) =>
-    handlers
-      .handle('create', unused)
-      .handle('update', unused)
-      .handle('launch', ({ params }) =>
+    handlers.handleAll({
+      ...unusedHandlers(OwnerApi.groups.apps),
+      launch: ({ params }) =>
         params.id === '7'
           ? Effect.succeed({ ...LAUNCH, revision })
           : Effect.fail(new NotFound({ what: 'app', ref: 'ray-404' })),
-      )
-      .handle('state', () => Effect.succeed({ revision, release: 'r_1', state: { n: revision } }))
-      .handle('call', ({ payload }) => {
+      state: () => Effect.succeed({ revision, release: 'r_1', state: { n: revision } }),
+      call: ({ payload }) => {
         revision += 1
         return Effect.succeed({ ok: true as const, revision, release: 'r_1', state: { n: revision, by: payload.op } })
-      })
-      .handle('diagnostics', ({ payload }) => {
+      },
+      diagnostics: ({ payload }) => {
         reports.push(payload.message)
         return Effect.succeed({ kept: true })
-      }),
+      },
+    }),
   )
   const mcp = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
-    handlers
-      .handle('servers', unused)
-      .handle('addServer', unused)
-      .handle('suggested', unused)
-      .handle('catalog', unused)
-      .handle('registries', unused)
-      .handle('addRegistry', unused)
-      .handle('removeRegistry', unused)
-      .handle('grants', () => Effect.succeed([]))
-      .handle('setToolGrant', ({ payload }) =>
+    handlers.handleAll({
+      ...unusedHandlers(OwnerApi.groups.mcp),
+      grants: () => Effect.succeed([]),
+      setToolGrant: ({ payload }) =>
         Effect.succeed([{ serverId: payload.serverId, capability: 'tool' as const, name: payload.name }]),
-      )
-      .handle('setAskFirst', unused)
-      .handle('setSkills', unused)
-      .handle('setAppGrant', unused)
-      .handle('approval', unused)
-      .handle('decideApproval', unused)
-      .handle('tools', unused)
-      .handle('connect', unused)
-      .handle('disconnect', unused)
-      .handle('removeServer', unused)
-      .handle('callTool', ({ headers, payload }) => {
+      callTool: ({ headers, payload }) => {
         callers.push(headers['x-mcp-caller'])
         return Effect.succeed({ content: [{ type: 'text', text: payload.name }], extra: 'kept' })
-      })
-      .handle('readResource', ({ headers, payload }) => {
+      },
+      readResource: ({ headers, payload }) => {
         callers.push(headers['x-mcp-caller'])
         return Effect.succeed({ contents: [{ uri: payload.uri, text: '<p>App</p>' }] })
-      }),
+      },
+    }),
   )
   const gate = Layer.succeed(OwnerAdmission, (handler) => handler)
   const server = fakeHttpApi(ownerApiOf(AppsGroup, McpGroup), Layer.mergeAll(apps, mcp).pipe(Layer.provide(gate)))

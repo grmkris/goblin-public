@@ -9,6 +9,7 @@ import { billingStateQuery, checkoutMutation, signedInBillingQuery } from '../sr
 import { account } from '../src/lib/api.ts'
 import { messageOf } from '../src/lib/query/app-error.ts'
 import { fakeHttpApi, testQueryClient } from '../src/lib/query/testing.ts'
+import { unusedHandlers } from './query/unused-handlers.ts'
 
 const LAPSED: BillingState = {
   active: false,
@@ -22,7 +23,6 @@ const LAPSED: BillingState = {
   plan: null,
   priceCents: 1000,
 }
-const unused = () => Effect.die('not used')
 
 /** The real account API served in memory: the plan as `state.plan`, and checkout refused until it is set up. */
 const fakeAccount = () => {
@@ -38,9 +38,11 @@ const fakeAccount = () => {
       .handle('portal', () => Effect.fail(new BillingRefused({ code: 'no_customer' }))),
   )
   const Clients = HttpApiBuilder.group(AccountApi, 'clients', (handlers) =>
-    handlers.handle('list', unused).handle('revoke', unused),
+    handlers.handleAll({ ...unusedHandlers(AccountApi.groups.clients) }),
   )
-  const ClientErrors = HttpApiBuilder.group(AccountApi, 'clientErrors', (handlers) => handlers.handle('report', unused))
+  const ClientErrors = HttpApiBuilder.group(AccountApi, 'clientErrors', (handlers) =>
+    handlers.handleAll({ ...unusedHandlers(AccountApi.groups.clientErrors) }),
+  )
   const server = fakeHttpApi(AccountApi, Layer.mergeAll(Billing, Clients, ClientErrors))
   return {
     ...server,
