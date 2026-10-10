@@ -69,7 +69,7 @@ try {
         rows.push({ scenario, profile, report })
         const { trace, ...numbers } = report
         writeSync(STDERR, `${profile} ${scenario} ${JSON.stringify(numbers)}\n`)
-        for (const line of trace.slice(0, 12)) writeSync(STDERR, `    ${line}\n`)
+        for (const line of trace.slice(0, 40)) writeSync(STDERR, `    ${line}\n`)
       } finally {
         await context.close()
       }

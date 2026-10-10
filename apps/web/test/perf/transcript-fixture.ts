@@ -288,15 +288,15 @@ export type FollowReport = {
   readonly arrowFinal: boolean
   /** Frames in which the arrow was offered while the reply was still streaming. */
   readonly arrowFrames: number
-  /** Frames where the viewport moved back up, and by how much at most (px). */
+  /** Frames where the scroll position moved back up, and by how much at most (px); content above the screen settling does it too. */
   readonly backFrames: number
   readonly backMax: number
-  /** Rows that were already there and moved (not the newest), and the biggest move (px). */
+  /** Times the gap between two rows both on screen changed from one frame to the next (a row grew or one was inserted between), and the biggest change (px). */
   readonly shifts: number
   readonly shiftMax: number
   /** The tallest the reserved space under a pinned turn got (px). */
   readonly spacerMax: number
-  /** What the scroller held at each of the first frames after the turn's first batch: the rows' ids and tops. */
+  /** What happened, frame by frame: the view pulled back, the arrow toggled, the newest row shrank, rows jumped on screen. */
   readonly trace: readonly string[]
 }
 

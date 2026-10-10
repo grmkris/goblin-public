@@ -47,14 +47,20 @@ function look() {
   const last = rows.at(-1)?.getBoundingClientRect()
   const box = viewport.getBoundingClientRect()
   const clear = box.bottom - Number.parseFloat(getComputedStyle(content).paddingBottom)
+  const newest = rows.at(-1)
   return {
+    newestId: newest?.dataset.messageId ?? '',
+    newestHeight: last?.height ?? 0,
     top: viewport.scrollTop,
     hidden: last === undefined ? 0 : last.bottom - clear,
     arrow: (viewport.parentElement?.getAttribute('data-scrollable') ?? '').split(' ').includes('end'),
     spacer: document.querySelector<HTMLElement>('[data-message-scroller-spacer]')?.offsetHeight ?? 0,
-    rows: new Map(
-      rows.map((row) => [row.dataset.messageId ?? '', row.getBoundingClientRect().top + viewport.scrollTop]),
-    ),
+    visible: rows
+      .filter((row) => {
+        const rect = row.getBoundingClientRect()
+        return rect.bottom > box.top && rect.top < box.bottom
+      })
+      .map((row) => [row.dataset.messageId ?? '', row.getBoundingClientRect().top + viewport.scrollTop] as const),
   }
 }
 
@@ -85,12 +91,19 @@ async function follow(steps: readonly Step[]): Promise<FollowReport> {
           backFrames += 1
           backMax = Math.max(backMax, back)
         }
-        const newest = [...now.rows.keys()].at(-1)
-        for (const [id, top] of now.rows) {
-          const before = previous.rows.get(id)
-          if (before !== undefined && id !== newest && Math.abs(top - before) > 1) {
+        // A visible jump: the gap between two rows that are both on screen, in this frame and the last, changed. Rows
+        // above the screen changing height are not one; the scroller keeps the screen where it was.
+        const was = new Map(previous.visible)
+        for (const [index, [id, top]] of now.visible.entries()) {
+          const next = now.visible[index + 1]
+          const before = was.get(id)
+          const nextBefore = next === undefined ? undefined : was.get(next[0])
+          if (next === undefined || before === undefined || nextBefore === undefined) continue
+          const change = next[1] - top - (nextBefore - before)
+          if (Math.abs(change) > 1) {
             shifts += 1
-            shiftMax = Math.max(shiftMax, Math.abs(top - before))
+            shiftMax = Math.max(shiftMax, Math.abs(change))
+            if (trace.length < 400) trace.push(`f${frames} row ${id} is ${Math.round(change)}px taller on screen`)
           }
         }
         if (trace.length < 400 && (back > 2 || now.arrow !== previous.arrow))
