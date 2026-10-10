@@ -98,16 +98,56 @@ describe('chat Markdown through Streamdown', () => {
     expect(html).toContain('data-footnotes')
     expect(html).not.toContain('data-streamdown')
   })
-  it('never renders raw HTML', () => {
-    const html = chat('<script>alert(1)</script>\n\nSome <b>bold</b> text.')
-    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
-    expect(html).not.toContain('<script')
-    expect(html).not.toContain('<b>')
+  it('renders the little HTML a reply may use', () => {
+    const html = chat(
+      '| a | b |\n| - | - |\n| one<br>two | x |\n\n<details><summary>More</summary>\n\nHidden **text**\n\n</details>\n\n' +
+        'Press <kbd>Ctrl</kbd>, H<sub>2</sub>O, x<sup>2</sup>, <mark>hi</mark>, <del>a</del><ins>b</ins>',
+    )
+    expect(html).toContain('<td>one<br/>two</td>')
+    expect(html).toContain('<details><summary>More</summary>')
+    expect(html).toContain('<strong>text</strong>')
+    for (const tag of ['kbd', 'sub', 'sup', 'mark', 'del', 'ins']) expect(html).toContain(`<${tag}>`)
   })
-  it.each(['[x](javascript:alert(1))', '[x](vbscript:msgbox(1))', '[x](data:text/html,hi)'])(
-    'keeps a script or data link as text: %s',
-    (text) => expect(chat(text)).not.toContain('href'),
-  )
+  it('keeps nothing that runs, loads or restyles', () => {
+    const html = chat(
+      '<script>alert(1)</script><style>p{color:red}</style><iframe src="https://x.example"></iframe>' +
+        '<div onclick="x()" style="color:red" class="evil" id="perf">div text</div><svg><circle/></svg>',
+    )
+    for (const gone of [
+      '<script',
+      'alert(1)',
+      '<style',
+      'color:red',
+      '<iframe',
+      'onclick',
+      'class="evil"',
+      'id="perf"',
+      '<svg',
+      '<div onclick',
+    ])
+      expect(html).not.toContain(gone)
+    expect(html).toContain('div text')
+  })
+  it.each([
+    '[x](javascript:alert(1))',
+    '<a href="javascript:alert(1)">x</a>',
+    '[x](vbscript:msgbox(1))',
+    '[x](data:text/html,hi)',
+    '[x](/relative/path)',
+    '<a href="../api/conversations">x</a>',
+    '[x](irc://irc.example/room)',
+  ])('keeps a link that is not a web or mail address as its text: %s', (text) => {
+    const html = chat(text)
+    expect(html).not.toContain('href')
+    expect(html).toContain('<span>x</span>')
+    expect(html).not.toContain('[blocked]')
+  })
+  it('links a footnote both ways inside the reply, without asking or a new tab', () => {
+    const html = chat('Note[^1].\n\n[^1]: Details.')
+    expect(html).toContain('<a href="#user-content-fn-1" id="user-content-fnref-1">1</a>')
+    expect(html).toContain('<li id="user-content-fn-1">')
+    expect(html).toContain('href="#user-content-fnref-1"')
+  })
   it('names an image and its host instead of loading it, until the owner asks', () => {
     const html = chat('![quarterly chart](https://tracker.example/pixel.png?d=secret)')
     expect(html).not.toContain('<img')
@@ -116,14 +156,16 @@ describe('chat Markdown through Streamdown', () => {
     expect(html).toContain('tracker.example')
     expect(html).toContain('aria-label="Load image quarterly chart from tracker.example"')
   })
-  it.each(['![x](data:image/png;base64,AAAA)', '![x](javascript:alert(1))', '![x](/relative.png)'])(
-    'only names an image that is not a web address: %s',
-    (text) => {
-      const html = chat(text)
-      expect(html).not.toContain('<img')
-      expect(html).not.toContain('<button')
-    },
-  )
+  it.each([
+    '![x](data:image/png;base64,AAAA)',
+    '![x](javascript:alert(1))',
+    '![x](/relative.png)',
+    '<img src="x.png" onerror="alert(1)">',
+  ])('only names an image that is not a web address: %s', (text) => {
+    const html = chat(text)
+    expect(html).not.toContain('<img')
+    expect(html).not.toContain('<button')
+  })
   it('keeps an unfinished reply readable while it streams', () => {
     expect(chat('Hello **wor', true)).toContain('<strong>wor</strong>')
     expect(chat('Hello **wor', false)).toContain('**wor')

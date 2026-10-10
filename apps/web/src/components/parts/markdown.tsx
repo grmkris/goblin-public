@@ -1,8 +1,9 @@
 import { type MouseEvent, type ReactNode, use, useState } from 'react'
-import { type Components, type ExtraProps, Streamdown, type UrlTransform, useIsCodeFenceIncomplete } from 'streamdown'
+import { type Components, type ExtraProps, Streamdown, useIsCodeFenceIncomplete } from 'streamdown'
 import remarkGfm from 'remark-gfm'
 import { ImageIcon } from 'lucide-react'
 import { blockKind } from '../../lib/fences.ts'
+import { REPLY_HTML, replyUrl } from '../../lib/reply-html.ts'
 import { RichBlock } from './blocks.tsx'
 import { LinkConfirm } from './link-confirm.tsx'
 
@@ -62,33 +63,30 @@ function Pre({ node, children }: PreProps) {
   return <RichBlock kind={kind} source={source} code={<pre data-figure={kind}>{children}</pre>} />
 }
 
-const SAFE_PROTOCOL = /^(?:https?|ircs?|mailto|xmpp)$/iu
-/** Where a URL's scheme would end, if what comes before its first `/`, `?` or `#` has a colon. */
-const schemeEnd = (url: string) => {
-  const colon = url.indexOf(':')
-  const path = Math.min(...['/', '?', '#'].map((mark) => url.indexOf(mark)).filter((at) => at !== -1))
-  return colon !== -1 && colon < path ? colon : -1
-}
-/**
- * The URLs react-markdown let through: relative ones, and web, mail and chat addresses; every other scheme
- * (`javascript:`, `data:`) is dropped. Streamdown's own default passes everything and leaves this to rehype-harden.
- */
-export const safeUrl: UrlTransform = (url) => {
-  const end = schemeEnd(url)
-  return end === -1 || SAFE_PROTOCOL.test(url.slice(0, end)) ? url : undefined
-}
-
 /**
  * A link in a reply: a real link (its address shows on hover and copies), which in the shell asks before it opens
  * (`LinkConfirm`), on a click or a middle click alike. It opens in a new tab without a referrer.
  */
 function ChatLink({
   href,
+  id,
   children,
-}: { readonly href?: string | undefined; readonly children?: ReactNode } & ExtraProps) {
+}: {
+  readonly href?: string | undefined
+  readonly id?: string | undefined
+  readonly children?: ReactNode
+} & ExtraProps) {
   const ask = use(LinkConfirm)
+  if (href === undefined) return <span>{children}</span>
+  // A footnote and its way back stay in the reply.
+  if (href.startsWith('#'))
+    return (
+      <a href={href} id={id}>
+        {children}
+      </a>
+    )
   const confirm =
-    ask === undefined || href === undefined
+    ask === undefined
       ? undefined
       : (event: MouseEvent) => {
           if (event.button > 1) return
@@ -139,11 +137,11 @@ function ChatImage({
 
 const CHAT: Components = { ...PLAIN, a: ChatLink, img: ChatImage, table: Table, pre: Pre }
 export const REMARK = [remarkGfm]
-/** No rehype plugins: Streamdown's defaults would render raw HTML (`rehype-raw`). */
+/** No rehype plugins, for tool output: Streamdown's defaults would render raw HTML (`rehype-raw`). */
 export const NO_REHYPE: [] = []
 
 /**
- * Assistant Markdown, set by shadcn/typeset; raw HTML is never rendered. Always in Streamdown's streaming mode, so a
+ * Assistant Markdown, set by shadcn/typeset, with the little HTML a reply may use (`REPLY_HTML`). Always in Streamdown's streaming mode, so a
  * reply's blocks stay mounted when it settles (a table scrolled sideways keeps its place): `live` only says whether
  * the last block may still be unfinished, and lets Streamdown close what the model has not closed yet (`**bold`).
  * Streamdown parses the text into blocks and renders each on its own, so a streamed batch renders the block being
@@ -157,8 +155,8 @@ export function ChatMarkdown({ text, live }: { readonly text: string; readonly l
         isAnimating={live}
         parseIncompleteMarkdown={live}
         remarkPlugins={REMARK}
-        rehypePlugins={NO_REHYPE}
-        urlTransform={safeUrl}
+        rehypePlugins={REPLY_HTML}
+        urlTransform={replyUrl}
         components={CHAT}
         controls={false}
         lineNumbers={false}

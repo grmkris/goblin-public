@@ -492,8 +492,10 @@ bottom drawer that a swipe down closes. The view follows a streaming reply only 
 otherwise offers a jump back. The chat's bar and the composer float over the transcript as translucent chrome. Assistant Markdown is parsed by Streamdown (`components/parts/markdown.tsx`) and set by shadcn/typeset, whose append-stable rules keep earlier blocks still
 while a reply streams. Streamdown splits a reply into blocks and renders each on its own, so a streamed batch renders
 only the block being written; it stays in streaming mode once the reply settles, so the blocks are not remounted. Every
-Streamdown renderer is replaced by its plain element, raw HTML is never rendered, and links keep react-markdown's safe
-schemes (`safeUrl`). An image in a reply is a button naming it and its host; it is fetched only when the owner asks,
+Streamdown renderer is replaced by its plain element. A reply may use a little HTML (`lib/reply-html.ts`: line breaks,
+folds, keys, sub/superscripts, marks and edits, with no styles, handlers, frames or scripts), and its links and images
+keep only absolute web addresses (and mail or footnotes for links); everything else becomes text
+([ADR 0039](adr/0039-chat-markdown-through-streamdown.md)). An image in a reply is a button naming it and its host; it is fetched only when the owner asks,
 without a referrer, so a reply cannot make the browser call an address by itself (a prompt-injected image URL would
 otherwise carry data out). A link stays a real link, but in the shell a click or middle click opens one shared dialog
 (`LinkConfirmProvider`) showing the whole address and its host first, since a reply can name one place and point at

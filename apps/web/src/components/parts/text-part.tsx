@@ -9,7 +9,7 @@ import { ChatMarkdown } from './markdown.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 
 /**
- * Assistant text as GitHub-flavoured Markdown, set by shadcn/typeset (`ChatMarkdown`). Raw HTML is never rendered.
+ * Assistant text as GitHub-flavoured Markdown, set by shadcn/typeset (`ChatMarkdown`), with the little HTML ADR 0039 allows.
  * ```mermaid, ```chart and ```map blocks are drawn (ADR 0023). While `live`, an open fence stays code.
  *
  * Memoised on its text, and its renderers are module constants: a streamed batch rebuilds every part of the
