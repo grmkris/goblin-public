@@ -140,9 +140,9 @@ export const appChatMoves = sqliteTable('app_chat_moves', {
   forkSession: text('fork_session'),
   messageEntry: integer('message_entry').notNull(),
   cutEntry: integer('cut_entry'),
-  // The table's CHECKs also admit `swap` and `swapped`, which nothing writes.
-  mode: text('mode', { enum: ['settled'] }).notNull(),
-  state: text('state', { enum: ['requested', 'forked', 'settled', 'refused'] }).notNull(),
+  // Nothing writes `swap` or `swapped`, but an agent that ran the running-turn swap may hold such rows: reads see them.
+  mode: text('mode', { enum: ['swap', 'settled'] }).notNull(),
+  state: text('state', { enum: ['requested', 'forked', 'swapped', 'settled', 'refused'] }).notNull(),
   reason: text('reason'),
   relays: text('relays'),
   createdAt: integer('created_at').notNull(),

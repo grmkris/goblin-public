@@ -90,12 +90,13 @@ export class ChatMover {
     if (existing !== undefined && (existing.chatId !== chat || existing.messageEntry !== input.entry))
       throw new Conflict({ reason: 'operation_used' })
     const row = existing ?? (await this.#ports.withChat(chat, async () => this.#begin(chat, input, now)))
-    if (row.state !== 'refused') await this.#finish(row.operationId)
+    if (row.state !== 'refused' && row.mode === 'settled') await this.#finish(row.operationId)
     return moveReceipt(this.#store.require(row.operationId))
   }
 
-  /** Finishes every move a restart interrupted. */
+  /** Finishes every move a restart interrupted, and refuses a swap that never settled. */
   async reconcile(): Promise<void> {
+    this.#store.retireSwaps(nowSeconds())
     for (const row of this.#store.unfinished())
       await this.#finish(row.operationId).catch((error: unknown) => reportMove('reconcile', error))
   }

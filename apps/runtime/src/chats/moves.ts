@@ -1,5 +1,5 @@
 import type { MoveReceipt } from '@goblin/contracts'
-import { and, between, eq, inArray, sql } from 'drizzle-orm'
+import { and, between, eq, inArray, or, sql } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
@@ -9,17 +9,29 @@ import { appChatMoves, appConversations, appRegistry } from '../storage/schema.t
 
 export type MoveRow = typeof appChatMoves.$inferSelect
 
-/** The states a move is still working through; a chat has at most one move in them (a partial unique index). */
+/**
+ * The states a move is still working through; a chat has at most one move in them (a partial unique index, which
+ * also counts `swapped`).
+ */
 const ACTIVE_MOVE = ['requested', 'forked'] as const
 
-/** What the owner and the web see of a move. */
-export const moveReceipt = (row: MoveRow): MoveReceipt => ({
-  operationId: row.operationId,
-  chat: row.chatId,
-  ...(row.threadChat === null ? {} : { thread: row.threadChat }),
-  state: row.state,
-  ...(row.reason === null ? {} : { reason: row.reason }),
-})
+/** Why a running turn's swap that never settled is refused (`retireSwaps`). */
+const UNSUPPORTED = 'unsupported'
+
+/**
+ * What the owner and the web see of a move. Nothing starts a running turn's swap, but an agent that ran it may still
+ * hold its rows: one that has not settled reads as refused, as `retireSwaps` leaves it.
+ */
+export const moveReceipt = (row: MoveRow): MoveReceipt => {
+  const move = {
+    operationId: row.operationId,
+    chat: row.chatId,
+    ...(row.threadChat === null ? {} : { thread: row.threadChat }),
+  }
+  if (row.state === 'swapped' || (row.mode === 'swap' && row.state !== 'settled' && row.state !== 'refused'))
+    return { ...move, state: 'refused', reason: UNSUPPORTED }
+  return { ...move, state: row.state, ...(row.reason === null ? {} : { reason: row.reason }) }
+}
 
 /** The moved Thread's row, made once the Thread's Pi fork exists (ADR 0034). */
 export type ThreadRow = {
@@ -93,13 +105,27 @@ export class MoveStore<RunResult = unknown> {
     return row !== undefined
   }
 
-  /** Moves a restart must finish. */
+  /** Moves a restart must finish: a settled turn's, never a swap's. */
   unfinished(): readonly MoveRow[] {
     return this.#db
       .select()
       .from(appChatMoves)
-      .where(inArray(appChatMoves.state, [...ACTIVE_MOVE]))
+      .where(and(eq(appChatMoves.mode, 'settled'), inArray(appChatMoves.state, [...ACTIVE_MOVE])))
       .all()
+  }
+
+  /** Refuses every swap that has not settled, so it frees its chat; how many it refused. */
+  retireSwaps(now: number): number {
+    const unfinished = or(
+      eq(appChatMoves.state, 'swapped'),
+      and(eq(appChatMoves.mode, 'swap'), inArray(appChatMoves.state, [...ACTIVE_MOVE])),
+    )
+    return this.#db
+      .update(appChatMoves)
+      .set({ state: 'refused', reason: UNSUPPORTED, updatedAt: now })
+      .where(unfinished)
+      .returning({ operation: appChatMoves.operationId })
+      .all().length
   }
 
   /** A move the preconditions refused, kept so the same operation answers the same. */
