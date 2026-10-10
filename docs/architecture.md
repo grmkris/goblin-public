@@ -493,7 +493,9 @@ otherwise offers a jump back. The chat's bar and the composer float over the tra
 while a reply streams. Streamdown splits a reply into blocks and renders each on its own, so a streamed batch renders
 only the block being written; it stays in streaming mode once the reply settles, so the blocks are not remounted. Every
 Streamdown renderer is replaced by its plain element, raw HTML is never rendered, and links keep react-markdown's safe
-schemes (`safeUrl`).
+schemes (`safeUrl`). An image in a reply is a button naming it and its host; it is fetched only when the owner asks,
+without a referrer, so a reply cannot make the browser call an address by itself (a prompt-injected image URL would
+otherwise carry data out).
 
 Tool calls remain quiet expandable lines (`ToolCall` in `packages/ui`). Opening one shows labelled Input and Output
 sections (`ToolPayload`), with the local `JsonView` adapted from MIT-licensed `mnove/json-view-cn`. The root opens,

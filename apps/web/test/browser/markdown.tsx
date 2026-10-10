@@ -1,0 +1,34 @@
+import { useState } from 'react'
+import { createRoot } from 'react-dom/client'
+import { MessageText } from '../../src/components/parts/text-part.tsx'
+import '../../src/styles.css'
+
+/** A reply with a wide table, which must keep its place when the reply settles. */
+const TABLE = [
+  '| Plan | Monthly | Requests | Backups | Support | Region | Notes |',
+  '| --- | ---: | ---: | --- | --- | --- | --- |',
+  '| Starter | $5 | 10M | none | community | one | fine for a hobby project and nothing more |',
+  '| Business | $90 | 250M | daily | four-hour response | three | the one to pick once it earns money |',
+].join('\n')
+const REPLY = ['Here is the comparison.', TABLE, 'And the summary **after** it.'].join('\n\n')
+
+/** Real source components for Markdown behaviour in a browser: images, settling streams. */
+function Fixture() {
+  const [live, setLive] = useState(true)
+  return (
+    <main className="mx-auto flex max-w-xl flex-col gap-6 p-6">
+      <button type="button" onClick={() => setLive(false)}>
+        Finish stream
+      </button>
+      <section aria-label="Streaming reply">
+        <MessageText text={REPLY} live={live} />
+      </section>
+      <section aria-label="Reply with an image">
+        <MessageText text="The chart: ![quarterly chart](https://images.example/chart.png?d=secret)" />
+      </section>
+    </main>
+  )
+}
+
+const root = document.getElementById('root')
+if (root) createRoot(root).render(<Fixture />)

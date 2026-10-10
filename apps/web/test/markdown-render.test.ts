@@ -108,6 +108,22 @@ describe('chat Markdown through Streamdown', () => {
     'keeps a script or data link as text: %s',
     (text) => expect(chat(text)).not.toContain('href'),
   )
+  it('names an image and its host instead of loading it, until the owner asks', () => {
+    const html = chat('![quarterly chart](https://tracker.example/pixel.png?d=secret)')
+    expect(html).not.toContain('<img')
+    expect(html).toContain('<button type="button"')
+    expect(html).toContain('quarterly chart')
+    expect(html).toContain('tracker.example')
+    expect(html).toContain('aria-label="Load image quarterly chart from tracker.example"')
+  })
+  it.each(['![x](data:image/png;base64,AAAA)', '![x](javascript:alert(1))', '![x](/relative.png)'])(
+    'only names an image that is not a web address: %s',
+    (text) => {
+      const html = chat(text)
+      expect(html).not.toContain('<img')
+      expect(html).not.toContain('<button')
+    },
+  )
   it('keeps an unfinished reply readable while it streams', () => {
     expect(chat('Hello **wor', true)).toContain('<strong>wor</strong>')
     expect(chat('Hello **wor', false)).toContain('**wor')

