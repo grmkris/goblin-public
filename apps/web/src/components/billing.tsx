@@ -14,7 +14,7 @@ import {
   Skeleton,
 } from '@goblin/ui'
 import { checkoutMutation, portalMutation } from '../account/queries.ts'
-import { useBilling } from '../lib/billing.tsx'
+import { useBilling } from '../account/hooks.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { planStatus } from '../lib/labels.ts'
 import { AuthShell } from './auth-shell.tsx'

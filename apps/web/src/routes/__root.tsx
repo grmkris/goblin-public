@@ -15,8 +15,8 @@ import { EphemeralProvider } from '../components/shell/ephemeral-slot.tsx'
 import { ShellNavigation } from '../components/shell/navigation.tsx'
 import { ShellFrame } from '../components/shell/shell.tsx'
 import { WorkspaceFeedProvider } from '../components/workspace-feed.tsx'
-import { SessionProvider, useSession } from '../lib/session.tsx'
-import { BillingProvider, useBilling } from '../lib/billing.tsx'
+import { useBilling } from '../account/hooks.ts'
+import { useSession } from '../auth/hooks.ts'
 import { startupImages } from '../lib/startup-images.ts'
 import { reportCrash } from '../lib/api.ts'
 import { reportUncaught } from '../lib/query/crash-report.ts'
@@ -70,13 +70,9 @@ function Root() {
     [router],
   )
   return (
-    <SessionProvider>
-      <BillingProvider>
-        <Shell>
-          <Outlet />
-        </Shell>
-      </BillingProvider>
-    </SessionProvider>
+    <Shell>
+      <Outlet />
+    </Shell>
   )
 }
 
@@ -86,7 +82,7 @@ function Root() {
  * checked the shell already shows, so a signed-in owner's first paint does not jump.
  */
 function Shell({ children }: { readonly children: ReactNode }) {
-  const [state] = useSession()
+  const { state } = useSession()
   const billing = useBilling()
   const path = useRouterState({ select: (router) => router.location.pathname })
   if (state === 'signed-out' || AUTH_PAGES.has(path)) return <main className="shell">{children}</main>
