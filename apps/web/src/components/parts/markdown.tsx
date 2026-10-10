@@ -1,5 +1,5 @@
 import { type MouseEvent, type ReactNode, use, useState } from 'react'
-import { type Components, type ExtraProps, Streamdown, useIsCodeFenceIncomplete } from 'streamdown'
+import { type Components, type ExtraProps, type PluginConfig, Streamdown, useIsCodeFenceIncomplete } from 'streamdown'
 import remarkGfm from 'remark-gfm'
 import { ImageIcon } from 'lucide-react'
 import { blockKind } from '../../lib/fences.ts'
@@ -7,6 +7,7 @@ import { REPLY_HTML, replyUrl } from '../../lib/reply-html.ts'
 import { RichBlock } from './blocks.tsx'
 import { CodeBlock } from './code-block.tsx'
 import { LinkConfirm } from './link-confirm.tsx'
+import { mayHoldMath, useMath } from './math.ts'
 import { ReplyTable } from './reply-table.tsx'
 
 /** Streamdown's renderers for prose, each replaced by its plain element: shadcn/typeset sets the text. */
@@ -149,6 +150,11 @@ function ChatImage({
 /** Prose as typeset sets it, Goblin's own code blocks, tables and figures, and the reply's links and images. */
 const CHAT: Components = { ...PROSE, a: ChatLink, img: ChatImage, table: ReplyTable, code: Code }
 
+const NO_PLUGINS: PluginConfig = {}
+let withMath: PluginConfig | undefined
+/** The plugins once math has loaded, made once so every message gets the same object and its blocks stay memoised. */
+const mathPlugins = (math: PluginConfig['math']): PluginConfig =>
+  math === undefined ? NO_PLUGINS : (withMath ??= { math })
 export const REMARK = [remarkGfm]
 /** No rehype plugins, for tool output: Streamdown's defaults would render raw HTML (`rehype-raw`). */
 export const NO_REHYPE: [] = []
@@ -161,6 +167,7 @@ export const NO_REHYPE: [] = []
  * written again, not the whole reply.
  */
 export function ChatMarkdown({ text, live }: { readonly text: string; readonly live: boolean }) {
+  const math = useMath(mayHoldMath(text))
   return (
     <div className="typeset typeset-chat">
       <Streamdown
@@ -171,6 +178,7 @@ export function ChatMarkdown({ text, live }: { readonly text: string; readonly l
         rehypePlugins={REPLY_HTML}
         urlTransform={replyUrl}
         components={CHAT}
+        plugins={mathPlugins(math)}
         controls={false}
       >
         {text}

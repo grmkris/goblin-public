@@ -498,7 +498,8 @@ keep only absolute web addresses (and mail or footnotes for links); everything e
 ([ADR 0039](adr/0039-chat-markdown-through-streamdown.md)). A code block is Goblin's own (`CodeBlock`): typeset's
 code with a copy button, coloured by Shiki for the theme once the first code block loads it in the browser; Shiki and
 its grammars never reach the first load or the Worker. A table in a reply (`ReplyTable`) scrolls sideways and has a
-corner menu to copy it as Markdown, CSV or TSV, or download it as CSV, read from what is on screen. An image in a reply is a button naming it and its host; it is fetched only when the owner asks,
+corner menu to copy it as Markdown, CSV or TSV, or download it as CSV, read from what is on screen. Math between `$$`
+marks sets in KaTeX, loaded with its stylesheet the first time a reply holds `$$`; a single `$` stays a dollar sign. An image in a reply is a button naming it and its host; it is fetched only when the owner asks,
 without a referrer, so a reply cannot make the browser call an address by itself (a prompt-injected image URL would
 otherwise carry data out). A link stays a real link, but in the shell a click or middle click opens one shared dialog
 (`LinkConfirmProvider`) showing the whole address and its host first, since a reply can name one place and point at

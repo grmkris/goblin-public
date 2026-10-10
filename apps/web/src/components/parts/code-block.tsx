@@ -23,7 +23,7 @@ function Token({ token }: { readonly token: ThemedToken }) {
  * the code they colour, so a block that grew shows plain until its new colours arrive, never colours for other text.
  */
 function useTokens(code: string, language: string, live: boolean): Tokens | null {
-  const highlighter = useCodeHighlighter()
+  const highlighter = useCodeHighlighter(true)
   const [colored, setColored] = useState<{ readonly code: string; readonly tokens: Tokens }>()
   useEffect(() => {
     if (highlighter === undefined || language === '' || !highlighter.supportsLanguage(language)) return

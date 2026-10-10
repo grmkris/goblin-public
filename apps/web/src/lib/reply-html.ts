@@ -51,7 +51,8 @@ export const REPLY_SCHEMA: Schema = {
   attributes: {
     a: ['href', 'title', FOOTNOTE_ID, 'ariaDescribedBy', 'ariaLabel', 'dataFootnoteRef', 'dataFootnoteBackref'],
     img: ['src', 'alt', 'title'],
-    code: [['className', /^language-./u]],
+    // A code block's language, and remark-math's marks on math, which KaTeX then sets.
+    code: [['className', /^language-./u, 'math-inline', 'math-display']],
     input: [['type', 'checkbox'], ['disabled', true], 'checked'],
     li: [FOOTNOTE_ID, ['className', 'task-list-item']],
     ul: [['className', 'contains-task-list']],

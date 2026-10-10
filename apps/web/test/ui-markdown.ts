@@ -97,6 +97,21 @@ async function table(page: Page) {
   checks.push('a table copies as CSV and Markdown, and downloads the same CSV')
 }
 
+/** Math sets in KaTeX, with its fonts, once loaded; a single `$` stays a dollar sign. */
+async function math(page: Page, label: string) {
+  const section = page.getByLabel('Reply with math')
+  await section.locator('.katex-display').waitFor()
+  assert.equal(await section.locator('.katex').count(), 2, 'inline and display math')
+  assert((await section.innerText()).includes('costs $5 or $10'), 'prices stay prices')
+  const font = await section
+    .locator('.katex')
+    .first()
+    .evaluate((element) => getComputedStyle(element).fontFamily)
+  assert(font.includes('KaTeX'), font)
+  await section.screenshot({ path: path.join(out, `math-${label}.png`) })
+  checks.push('math sets in KaTeX with its fonts once loaded; a single $ stays a dollar sign')
+}
+
 /** A link asks first, showing where it goes; Cancel opens nothing, Open opens one tab there. */
 async function link(page: Page) {
   const anchor = page.getByLabel('Reply with a link').getByRole('link', { name: 'the official guide' })
@@ -150,6 +165,7 @@ try {
     await settling(page)
     await code(page, String(width))
     await table(page)
+    await math(page, String(width))
     await link(page)
     await image(page, fetched)
     await context.close()

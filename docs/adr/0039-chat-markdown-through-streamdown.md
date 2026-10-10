@@ -28,6 +28,10 @@ measured anchoring cannot have.
 downloads it as CSV, with Streamdown's table helpers reading what is on screen; Streamdown's own table and its
 controls are not used, for the same reasons as its code block. Tool tables stay plain.
 
+**Math is KaTeX, between `$$` marks** (`math.ts`): `@streamdown/math` and KaTeX's stylesheet load in the browser the
+first time a reply holds `$$`. Single-dollar math stays off, so `$5 or $10` reads as prices. KaTeX runs after the
+sanitizer and sets only what remark-math marked (it does not run `\href` or other trusted commands).
+
 **Images load when the owner asks.** An image in a reply is a button naming it and its host; a click fetches it once,
 without a referrer. Anything but an http(s) source stays a name.
 
