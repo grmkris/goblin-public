@@ -6,6 +6,7 @@ import { AgentGroup } from './agent.ts'
 import { AgentAppsGroup } from './agent-apps.ts'
 import { AppsGroup } from './apps.ts'
 import { ConversationsGroup } from './conversations.ts'
+import { DecisionsGroup } from './decisions.ts'
 import { API_ERRORS } from './errors.ts'
 import { FilesGroup } from './files.ts'
 import { InspectGroup } from './inspect.ts'
@@ -47,6 +48,7 @@ export class OwnerApi extends HttpApi.make('goblin-owner')
     InspectGroup,
     WorkspaceGroup,
     FilesGroup,
+    DecisionsGroup,
   )
   .prefix('/api')
   .middleware(OwnerAdmission) {}

@@ -6,6 +6,7 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { AgentAppsHandlers } from '../../agent-apps/api.ts'
 import { AppsHandlers } from '../../apps/api.ts'
 import { ConversationsHandlers } from '../../chats/api.ts'
+import { DecisionsHandlers } from '../../decisions/api.ts'
 import { FilesHandlers } from '../../files/api.ts'
 import { InboundHandlers } from '../../inbound/api.ts'
 import { InspectHandlers } from '../../inspect/api.ts'
@@ -37,6 +38,7 @@ const OwnerApiLayer = HttpApiBuilder.layer(OwnerApi).pipe(
     InspectHandlers,
     WorkspaceHandlers,
     FilesHandlers,
+    DecisionsHandlers,
   ]),
   Layer.provide(OwnerAdmissionLive),
 )
