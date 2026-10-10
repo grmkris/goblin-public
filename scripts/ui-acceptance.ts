@@ -320,8 +320,11 @@ async function setupCheck(page: Page, checks: Record<string, Check>, prefix: str
   }
   await button.click()
   const editor = page.getByRole('dialog', { name: 'MCP servers & skills' })
+  // The picker shows once the catalog it is chosen from has loaded: wait for its first choice, not just the panel.
   const shown = await editor
-    .waitFor({ timeout: 8000 })
+    .getByRole('tab', { name: 'Only these' })
+    .first()
+    .waitFor({ timeout: 10_000 })
     .then(() => true)
     // expected: a timeout means it did not show, which the check records
     .catch(() => false)
