@@ -15,7 +15,6 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import {
   createOwnerConversation,
   markOwnerRead,
-  ownerRuntime,
   registeredConversation,
   sendOwnerMessage,
   stopChat,
@@ -60,16 +59,13 @@ const submit = ({ params, payload }: ChatWrite<SendMessage>) =>
  * route dropped `personaOrder`, H1).
  */
 const threadStart = ({ params, payload }: ChatWrite<StartThread>) =>
-  AgentInput.use((input) =>
-    startThread({
-      ...ownerRuntime(input),
-      parent: params.id,
-      anchor: payload.anchor,
-      text: payload.message.input,
-      operationId: payload.operationId,
-      context: contextOf({ ...payload.message, personaOrder: payload.personaOrder }),
-    }),
-  )
+  startThread({
+    parent: params.id,
+    anchor: payload.anchor,
+    text: payload.message.input,
+    operationId: payload.operationId,
+    context: contextOf({ ...payload.message, personaOrder: payload.personaOrder }),
+  })
 
 const create = ({ payload }: { readonly payload: CreateConversation }) => createOwnerConversation(payload)
 const update = ({ params, payload }: ChatWrite<UpdateConversation>) => updateOwnerConversation(params.id, payload)

@@ -3,7 +3,7 @@ import { defineExtension, section } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import type { StopRuntime } from '../agent-program.ts'
+import { fromPi } from '../chats/operations.ts'
 import { Chats } from '../chats/service.ts'
 import { NotFound, attempt } from '../http/errors.ts'
 import { requireResident } from '../mcp/service.ts'
@@ -14,7 +14,7 @@ import type { RunProgram } from '../runtime/bridge.ts'
 import { createTopic, updateTopic } from '../topics/program.ts'
 import { discussionSeed } from '../topics/seed.ts'
 import { Topics } from '../topics/service.ts'
-import { BACKGROUND } from './context.ts'
+import { PiSessions } from './sessions.ts'
 import { typedTool } from './typed-tool.ts'
 
 const GUIDE = [
@@ -37,9 +37,6 @@ const Text = (max: number) => Schema.String.check(Schema.isMaxLength(max))
 
 const operationOf = (api: { readonly conversationId: unknown; readonly callId: string }) =>
   `organize:${String(api.conversationId)}:${api.callId}`
-
-/** The instance pieces a Topic made from a discussion reads (its Pi conversation); read when a tool runs. */
-export type OrganizeRuntime = () => StopRuntime
 
 /** Fails with `ResidentInactive` unless the owner's resident authority is current. */
 
@@ -84,7 +81,7 @@ const personaDone = (persona: PersonaView, summary: string) => ({
   summary,
 })
 
-const topicTools = (run: RunProgram, runtime: OrganizeRuntime) => [
+const topicTools = (run: RunProgram) => [
   typedTool({
     name: 'topic_create',
     description:
@@ -94,9 +91,10 @@ const topicTools = (run: RunProgram, runtime: OrganizeRuntime) => [
     replay: 'safe',
     execute: async ({ name, brief }, api) => {
       await run(requireResident)
-      const conversation = await (await runtime().harness.pi()).conversation(api.conversationId, BACKGROUND)
       const topic = await run(
         Effect.gen(function* () {
+          const found = yield* fromPi(PiSessions.use((pi) => pi.conversation(String(api.conversationId))))
+          const conversation = Option.getOrUndefined(found)
           const { operationId, ...by } = yield* byAgent(api)
           const { chat } = by
           const seed =
@@ -223,7 +221,7 @@ const personaTools = (run: RunProgram) => [
  * and update Personas. Every change writes an organize receipt (actor `agent`) the owner can undo from Activity. A tool
  * call that runs twice finds the receipt it made.
  */
-export function organizeExtension(run: RunProgram, runtime: OrganizeRuntime) {
+export function organizeExtension(run: RunProgram) {
   return defineExtension({
     name: 'goblin.organize',
     // Only where the tools are offered: a Persona's fork has them filtered out.
@@ -232,6 +230,6 @@ export function organizeExtension(run: RunProgram, runtime: OrganizeRuntime) {
         input.agent.tools.some((offered) => ORGANIZE_TOOLS.includes(offered.name)) ? GUIDE : undefined,
       ),
     ],
-    tools: [...topicTools(run, runtime), ...personaTools(run)],
+    tools: [...topicTools(run), ...personaTools(run)],
   })
 }

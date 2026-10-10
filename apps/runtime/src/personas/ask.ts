@@ -6,7 +6,8 @@ import { ChatOperations } from '../chats/service.ts'
 import { InvalidInput, attempt, toAppError } from '../http/errors.ts'
 import { conversationId } from '../pi/context.ts'
 import { PiSessions } from '../pi/sessions.ts'
-import type { FrozenPersona, PersonaTurnKit } from '../pi/persona-turn.ts'
+import type { FrozenPersona } from '../pi/persona-turn.ts'
+import { AgentInput } from '../runtime/input.ts'
 import { Invocations, Personas } from './service.ts'
 
 /** The owner's content with the Personas it went to named in front, as the model of the chat reads it. */
@@ -45,7 +46,6 @@ const freeze = (ids: readonly number[]) =>
   })
 
 type Ask = {
-  readonly personas: PersonaTurnKit
   readonly thread: string
   readonly operationId: string
 }
@@ -83,6 +83,7 @@ export const askPersonas = (
 ) =>
   Effect.gen(function* () {
     const invocations = yield* Invocations
+    const { personas } = yield* AgentInput
     const pi = yield* PiSessions
     const now = yield* epochSeconds
     const frozen = yield* freeze(ids)
@@ -109,7 +110,7 @@ export const askPersonas = (
         )
         const parent = conversationId(admitted.session)
         yield* attempt(() =>
-          input.personas.start(harness, {
+          personas.start(harness, {
             operationId: input.operationId,
             chat: input.thread,
             parent,

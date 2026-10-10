@@ -1,4 +1,3 @@
-import type { PiHarness } from 'agents/harness/pi'
 import {
   type AppContext,
   type Attachment,
@@ -20,13 +19,11 @@ import { withFlow } from './observability/flows.ts'
 import { InvalidInput, attempt } from './http/errors.ts'
 import { Invocations } from './personas/service.ts'
 import { RoutineControl, RoutineRuns } from './routines/service.ts'
-import { AgentInput, type AgentInputs } from './runtime/input.ts'
+import { AgentInput } from './runtime/input.ts'
 import { conversationId } from './pi/context.ts'
 import { PiSessions } from './pi/sessions.ts'
 import { fromPi } from './chats/operations.ts'
 import { type SharedContext, ownerContent } from './pi/content.ts'
-import type { SubagentKit } from './pi/subagents.ts'
-import type { PersonaTurnKit } from './pi/persona-turn.ts'
 import { askPersonas } from './personas/ask.ts'
 
 /** The registration gate for every owner conversation request. */
@@ -64,22 +61,11 @@ export const markOwnerRead = (id: string) =>
     true,
   )
 
-/** What the owner's Stop reaches besides the services: Pi and the Persona turns asked in the chat. */
-export type StopRuntime = {
-  readonly harness: PiHarness
-  readonly personas: PersonaTurnKit
-}
-
 /**
  * Stop in a conversation: its current work, a routine's run when it is one, the subagents it started and the Personas
  * asked in it (their unsettled answers are dropped).
  */
-export const stopOwner = (
-  input: Pick<StopRuntime, 'personas'> & {
-    thread: string
-    operationId: string | undefined
-  },
-) =>
+export const stopOwner = (input: { readonly thread: string; readonly operationId: string | undefined }) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
     const session = yield* conversations.require(input.thread)
@@ -91,9 +77,10 @@ export const stopOwner = (
     yield* conversations.stopSubagents(input.thread)
     const invocations = yield* Invocations
     const now = yield* epochSeconds
+    const { personas } = yield* AgentInput
     const pi = yield* PiSessions
     const harness = yield* fromPi(pi.pi)
-    yield* attempt(() => input.personas.drop(harness, conversationId(session)))
+    yield* attempt(() => personas.drop(harness, conversationId(session)))
     yield* invocations.stopChat(input.thread, now)
     return yield* fromPi(pi.abort(session, input.operationId))
   })
@@ -110,9 +97,7 @@ export const stopChat = (chat: string, operationId?: string, actor: 'owner' | 'a
     chat,
     ...(operationId === undefined ? {} : { operationId }),
   } as const
-  return AgentInput.use(({ personas }) => stopOwner({ personas, thread: chat, operationId })).pipe(
-    withFlow(flow, (stopped) => ({ count: stopped ? 1 : 0 })),
-  )
+  return stopOwner({ thread: chat, operationId }).pipe(withFlow(flow, (stopped) => ({ count: stopped ? 1 : 0 })))
 }
 
 export type OwnerMessageContext = {
@@ -124,8 +109,6 @@ export type OwnerMessageContext = {
 }
 
 export type OwnerSubmit = {
-  subagents: SubagentKit
-  personas: PersonaTurnKit
   thread: string
   text: string
   operationId: string
@@ -133,9 +116,6 @@ export type OwnerSubmit = {
   /** The operation this message is part of: a started thread's first message is its start's. */
   parentOp?: string
 }
-
-/** What the owner's message paths run with, from the agent's instance. */
-export const ownerRuntime = ({ subagents, personas }: AgentInputs) => ({ subagents, personas })
 
 /** What the owner's open Apps shared, each with where it comes from, read from the App registry (never the browser). */
 const sharedContext = (context: readonly AppContext[], conversation: string) =>
@@ -187,8 +167,9 @@ const sendToSubagent = (
       operationId: input.operationId,
       busy,
     }
+    const { subagents } = yield* AgentInput
     const harness = yield* fromPi(pi.pi)
-    const accepted = yield* attempt(() => input.subagents.ownerSend(harness, send))
+    const accepted = yield* attempt(() => subagents.ownerSend(harness, send))
     return { session, operationId: input.operationId, accepted }
   })
 
@@ -228,7 +209,7 @@ export const submitOwner = (input: OwnerSubmit) =>
       view?.kind === 'subagent' && view.parent !== undefined
         ? (admitted: SessionId) => sendToSubagent(input, view, admitted, { attachments, shared, selections })
         : undefined
-    return yield* (yield* ChatOperations).send<Conversations | RoutineControl | PiSessions>({
+    return yield* (yield* ChatOperations).send<Conversations | RoutineControl | PiSessions | AgentInput>({
       chat: input.thread,
       operationId: input.operationId,
       receipt: { kind: 'send', origin: 'owner', ...(input.parentOp === undefined ? {} : { parentOp: input.parentOp }) },
@@ -243,13 +224,4 @@ export const submitOwner = (input: OwnerSubmit) =>
 export const sendOwnerMessage = (
   chat: string,
   message: { readonly text: string; readonly operationId: string; readonly context?: OwnerMessageContext },
-) =>
-  AgentInput.use((input) =>
-    submitOwner({
-      ...ownerRuntime(input),
-      thread: chat,
-      text: message.text,
-      operationId: message.operationId,
-      context: message.context ?? {},
-    }),
-  )
+) => submitOwner({ thread: chat, text: message.text, operationId: message.operationId, context: message.context ?? {} })

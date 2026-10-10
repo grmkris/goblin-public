@@ -98,7 +98,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     const execution = [...tools, skillsExtension(run), filesExtension(run), appExecutionExtension(apps)]
     this.#subagents = subagentsExtension(run, (self) => [personaExtension, ...execution, ...apps.extensions(), self])
     const subagents = this.#subagents.extension
-    const { personas, organize } = organizingKit(run, () => this.#stopping())
+    const { personas, organize } = organizingKit(run)
     this.#personas = personas
     const retrieval = retrievalExtension(run)
     const base = [...execution, skillLearningExtension(run), ...appsExtension(apps, run), organize, retrieval]
@@ -211,9 +211,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   async runAppJob(slot: JobSlot): Promise<void> {
     await runAppJob(this.#apps, slot)
   }
-
-  /** What an archive or a Stop reaches besides the services: Pi and the Persona turns asked in a chat. */
-  readonly #stopping = () => ({ harness: this.harness, personas: this.#personas })
 
   /** The Telegram channel's alarms (channel/wake.ts): one pull, and the ready answers sent. */
   async channelPull(): Promise<void> {
