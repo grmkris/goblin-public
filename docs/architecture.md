@@ -495,7 +495,9 @@ only the block being written; it stays in streaming mode once the reply settles,
 Streamdown renderer is replaced by its plain element. A reply may use a little HTML (`lib/reply-html.ts`: line breaks,
 folds, keys, sub/superscripts, marks and edits, with no styles, handlers, frames or scripts), and its links and images
 keep only absolute web addresses (and mail or footnotes for links); everything else becomes text
-([ADR 0039](adr/0039-chat-markdown-through-streamdown.md)). An image in a reply is a button naming it and its host; it is fetched only when the owner asks,
+([ADR 0039](adr/0039-chat-markdown-through-streamdown.md)). A code block is Goblin's own (`CodeBlock`): typeset's
+code with a copy button, coloured by Shiki for the theme once the first code block loads it in the browser; Shiki and
+its grammars never reach the first load or the Worker. An image in a reply is a button naming it and its host; it is fetched only when the owner asks,
 without a referrer, so a reply cannot make the browser call an address by itself (a prompt-injected image URL would
 otherwise carry data out). A link stays a real link, but in the shell a click or middle click opens one shared dialog
 (`LinkConfirmProvider`) showing the whole address and its host first, since a reply can name one place and point at

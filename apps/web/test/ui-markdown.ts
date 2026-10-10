@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync, writeSync } from 'node:fs'
 import path from 'node:path'
 import { chromium, type Page } from 'playwright-core'
 import { createServer } from 'vite'
+import { CODE } from './browser/markdown-text.ts'
 
 /** The file descriptor this script's result line goes to (`process` is `any` here: @cloudflare/workers-types). */
 const STDOUT = 1
@@ -52,6 +53,27 @@ async function image(page: Page, fetched: { url: string; referer: string | undef
   checks.push('an image loads only on request, once, with no referrer')
 }
 
+/** Code highlights once Shiki loads, and its copy button copies exactly the code. */
+async function code(page: Page, label: string) {
+  const block = page.getByLabel('Reply with code').locator('.code-block')
+  await block.waitFor()
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('.code-block span[style]')].some((span) =>
+      /--code-light:\s*#/u.test(span.getAttribute('style') ?? ''),
+    ),
+  )
+  await block.hover()
+  await block.getByRole('button', { name: 'Copy code' }).click()
+  await block.getByRole('button', { name: 'Copied' }).waitFor()
+  const copied = await page.evaluate(() => navigator.clipboard.readText())
+  assert.equal(copied, CODE)
+  await block.screenshot({ path: path.join(out, `code-${label}.png`) })
+  await page.evaluate(() => document.documentElement.classList.add('dark'))
+  await block.screenshot({ path: path.join(out, `code-${label}-dark.png`) })
+  await page.evaluate(() => document.documentElement.classList.remove('dark'))
+  checks.push('code highlights once Shiki loads, and Copy copies exactly the code (light and dark captured)')
+}
+
 /** A link asks first, showing where it goes; Cancel opens nothing, Open opens one tab there. */
 async function link(page: Page) {
   const anchor = page.getByLabel('Reply with a link').getByRole('link', { name: 'the official guide' })
@@ -85,7 +107,9 @@ if (!origin) throw new Error('markdown_fixture_origin_missing')
 const browser = await chromium.launch({ headless: true })
 try {
   for (const width of [1280, 390]) {
-    const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' })
+    const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: 'reduce' })
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin })
+    const page = await context.newPage()
     page.on('pageerror', (error) => errors.push(error.message))
     const fetched: { url: string; referer: string | undefined }[] = []
     await page
@@ -97,9 +121,10 @@ try {
     })
     await page.goto(`${origin}markdown.html`)
     await settling(page)
+    await code(page, String(width))
     await link(page)
     await image(page, fetched)
-    await page.close()
+    await context.close()
   }
   assert.deepEqual(errors, [])
 } finally {

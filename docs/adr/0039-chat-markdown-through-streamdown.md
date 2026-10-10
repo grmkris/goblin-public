@@ -17,6 +17,13 @@ element (`PLAIN` in `components/parts/markdown.tsx`), so shadcn/typeset sets the
 ```chart or ```map fence draws only once whole; Streamdown says which block's fence is still open
 (`useIsCodeFenceIncomplete`).
 
+**Code blocks are Goblin's own** (`components/parts/code-block.tsx`): typeset's `<pre>`, a copy button, and Shiki's
+colours for the theme once the first code block loads `@streamdown/code` in the browser (`code-highlight.ts`; never on
+the server, so Shiki stays out of the Worker and the chat route's first load). Streamdown's own code block is not
+used: its Tailwind classes that Goblin's sources also use (`flex`, `p-4`, `border`) are generated and would restyle it
+from the utilities layer, and it skips painting off-screen blocks at a guessed height, which the transcript's
+measured anchoring cannot have.
+
 **Images load when the owner asks.** An image in a reply is a button naming it and its host; a click fetches it once,
 without a referrer. Anything but an http(s) source stays a name.
 

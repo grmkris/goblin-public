@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { LinkConfirmProvider } from '../../src/components/parts/link-confirm.tsx'
 import { MessageText } from '../../src/components/parts/text-part.tsx'
+import { CODE } from './markdown-text.ts'
 import '../../src/styles.css'
 
 /** A reply with a wide table, which must keep its place when the reply settles. */
@@ -13,7 +14,7 @@ const TABLE = [
 ].join('\n')
 const REPLY = ['Here is the comparison.', TABLE, 'And the summary **after** it.'].join('\n\n')
 
-/** Real source components for Markdown behaviour in a browser: images, links, settling streams. */
+/** Real source components for Markdown behaviour in a browser: code, images, links, settling streams. */
 function Fixture() {
   const [live, setLive] = useState(true)
   return (
@@ -23,6 +24,9 @@ function Fixture() {
       </button>
       <section aria-label="Streaming reply">
         <MessageText text={REPLY} live={live} />
+      </section>
+      <section aria-label="Reply with code">
+        <MessageText text={`Use \`groupBy\` like this:\n\n\`\`\`ts\n${CODE}\n\`\`\``} />
       </section>
       <section aria-label="Reply with a link">
         <MessageText text="Read [the official guide](https://phish.example/login?next=bank) first." />

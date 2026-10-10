@@ -5,16 +5,13 @@ import { ImageIcon } from 'lucide-react'
 import { blockKind } from '../../lib/fences.ts'
 import { REPLY_HTML, replyUrl } from '../../lib/reply-html.ts'
 import { RichBlock } from './blocks.tsx'
+import { CodeBlock } from './code-block.tsx'
 import { LinkConfirm } from './link-confirm.tsx'
 
-/**
- * Streamdown's own renderers, each replaced by its plain element: shadcn/typeset sets Goblin's Markdown, not
- * Streamdown's classes, buttons and wrappers. `test/markdown-render.test.ts` checks that this names every one of them.
- */
-export const PLAIN = {
+/** Streamdown's renderers for prose, each replaced by its plain element: shadcn/typeset sets the text. */
+const PROSE = {
   a: 'a',
   blockquote: 'blockquote',
-  code: 'code',
   h1: 'h1',
   h2: 'h2',
   h3: 'h3',
@@ -26,7 +23,6 @@ export const PLAIN = {
   li: 'li',
   ol: 'ol',
   p: 'p',
-  pre: 'pre',
   section: 'section',
   strong: 'strong',
   sub: 'sub',
@@ -40,6 +36,12 @@ export const PLAIN = {
   ul: 'ul',
 } as const satisfies Components
 
+/**
+ * Every Streamdown renderer replaced by its plain element, code included: tool output is set by typeset alone, without
+ * Streamdown's classes, buttons and wrappers. `test/markdown-render.test.ts` checks that this names every one of them.
+ */
+export const PLAIN = { ...PROSE, code: 'code', pre: 'pre' } as const satisfies Components
+
 /** Wide tables scroll sideways instead of widening the conversation. */
 export const Table = ({ children }: { readonly children?: ReactNode } & ExtraProps) => (
   <div className="typeset-scroll">
@@ -47,20 +49,28 @@ export const Table = ({ children }: { readonly children?: ReactNode } & ExtraPro
   </div>
 )
 
-type PreProps = { readonly children?: ReactNode } & ExtraProps
+type CodeProps = { readonly className?: string | undefined; readonly children?: ReactNode } & ExtraProps
+const LANGUAGE = /(?:^|\s)language-(\S+)/u
+
 /**
- * A code block, or the figure it describes (```mermaid, ```chart, ```map). While a reply streams, the block whose
- * fence is still open stays code until it is whole: Streamdown parses each block on its own and says which one that is.
- * The figure's fallback is marked `data-figure`, so it is visible (and tested) which code becomes a figure.
+ * Code in a reply. Inline, it is typeset's. A block (Streamdown's `pre` marks it `data-block`) is a figure when its
+ * language is ```mermaid, ```chart or ```map and its fence is whole, and a `CodeBlock` otherwise. While a reply
+ * streams, the block still being written stays code: Streamdown says which one that is. A figure's fallback is marked
+ * `data-figure`, so which code becomes a figure shows (and is tested) before hydration.
  */
-function Pre({ node, children }: PreProps) {
+function Code({ className, children, ...props }: CodeProps) {
   const incomplete = useIsCodeFenceIncomplete()
-  const code = node?.children[0]
-  if (code?.type !== 'element' || code.tagName !== 'code') return <pre>{children}</pre>
-  const kind = blockKind(code.properties.className)
-  if (kind === undefined || incomplete) return <pre>{children}</pre>
-  const source = code.children.map((child) => (child.type === 'text' ? child.value : '')).join('')
-  return <RichBlock kind={kind} source={source} code={<pre data-figure={kind}>{children}</pre>} />
+  if (!('data-block' in props)) return <code>{children}</code>
+  const language = LANGUAGE.exec(className ?? '')?.[1] ?? ''
+  const source = typeof children === 'string' ? children : ''
+  const kind = blockKind(className)
+  if (kind === undefined || incomplete) return <CodeBlock code={source} language={language} live={incomplete} />
+  const fallback = (
+    <pre data-figure={kind}>
+      <code className={className}>{source}</code>
+    </pre>
+  )
+  return <RichBlock kind={kind} source={source} code={fallback} />
 }
 
 /**
@@ -135,7 +145,9 @@ function ChatImage({
   )
 }
 
-const CHAT: Components = { ...PLAIN, a: ChatLink, img: ChatImage, table: Table, pre: Pre }
+/** Prose as typeset sets it, Goblin's own code blocks and figures, and the reply's links and images. */
+const CHAT: Components = { ...PROSE, a: ChatLink, img: ChatImage, table: Table, code: Code }
+
 export const REMARK = [remarkGfm]
 /** No rehype plugins, for tool output: Streamdown's defaults would render raw HTML (`rehype-raw`). */
 export const NO_REHYPE: [] = []
@@ -159,7 +171,6 @@ export function ChatMarkdown({ text, live }: { readonly text: string; readonly l
         urlTransform={replyUrl}
         components={CHAT}
         controls={false}
-        lineNumbers={false}
       >
         {text}
       </Streamdown>

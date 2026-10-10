@@ -775,11 +775,55 @@
     margin: 0;
     white-space: pre-wrap;
   }
-  /* Pages outside the workspace (Connections, Settings): sections, each a heading, a note and its cards. */
-  .page-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
+  /*
+   * A code block in a reply (components/parts/code-block.tsx): typeset's code, a copy button in its corner that shows
+   * on hover or focus (always, without hover), and Shiki's colours for the theme once highlighting has loaded.
+   */
+  .code-block {
+    position: relative;
+    margin-block-start: var(--typeset-flow);
+  }
+  .code-block > pre {
+    margin-block-start: 0;
+  }
+  .typeset > * > .code-block:first-child {
+    margin-block-start: 0;
+  }
+  .code-block span[style] {
+    color: var(--code-light, inherit);
+  }
+  .dark .code-block span[style] {
+    color: var(--code-dark, var(--code-light, inherit));
+  }
+  .code-copy {
+    position: absolute;
+    inset-block-start: 0.375rem;
+    inset-inline-end: 0.375rem;
+    display: grid;
+    place-items: center;
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    border-radius: var(--radius-sm);
+    color: var(--muted-foreground);
+    background: color-mix(in oklab, var(--muted) 85%, var(--background));
+    box-shadow: 0 0 0 1px var(--border);
+    opacity: 0;
+    transition: opacity 150ms var(--ease-out);
+  }
+  .code-copy > svg {
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+  }
+  .code-block:is(:hover, :focus-within) > .code-copy {
+    opacity: 1;
+  }
+  .code-copy:hover {
+    color: var(--foreground);
+  }
+  @media (hover: none) {
+    .code-copy {
+      opacity: 1;
+    }
   }
   .page-stack > .page-section + .page-section {
     margin-top: 1.25rem;
