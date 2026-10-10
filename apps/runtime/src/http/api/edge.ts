@@ -1,4 +1,5 @@
 import { AccountApi, AppError, ErrorEnvelope, Forbidden, NotFound, OwnerApi } from '@goblin/contracts/api'
+import { FORWARDED_HEADER } from '@goblin/contracts/internal'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
@@ -16,7 +17,8 @@ import { answer, refusal, secured } from './render.ts'
 
 /**
  * The Worker side of the typed API (ADR 0038). The Worker keeps the session, origin, CSRF and fresh plan checks,
- * answers the account API itself and forwards every owner `/api/*` request to the owner's own agent.
+ * answers the account API itself and forwards every owner `/api/*` request to the owner's own agent, marked as an owner
+ * forward so the agent never takes it for an internal request.
  */
 
 /**
@@ -59,6 +61,9 @@ const JSON_BODY_LIMIT = 65_536
 /** A crash report is at most 2 KiB of JSON (`ClientErrorReport`). */
 const REPORT_BODY_LIMIT = 4096
 const FILES = '/api/files'
+
+/** The owner paths the edge forwards: under `/api/`, never the account API's. */
+const OWNER_PREFIX = '/api/'
 
 /** The edge's reference for a request: Cloudflare's ray id, or a random one where there is none (a local run). */
 export const refOf = (request: Request): string =>
@@ -165,7 +170,11 @@ const sessionUser = (request: Request, edge: Edge): Effect.Effect<Option.Option<
 export interface EdgeHttp {
   /** Answers a request under the account API's paths (`isAccountPath`) in the Worker, without waking the agent. */
   readonly account: (request: Request, edge: Edge) => Effect.Effect<Response>
-  /** Admits an owner request and forwards it to the owner's own agent, which answers it. */
+  /**
+   * Admits an owner request and forwards it to the owner's own agent, which answers it. Only an `/api/*` path that is
+   * not the account API's is forwarded, as the parsed URL names it (`..` and `%2e%2e` already resolved); any other is a
+   * 404 in the envelope.
+   */
   readonly owner: (request: Request, edge: Edge) => Effect.Effect<Response>
   /**
    * One of the Worker's own routes (`/mcp`, `/hooks/*`, anything else it does not serve): `serve`'s answer with the
@@ -220,11 +229,13 @@ export const makeEdgeHttp: Effect.Effect<EdgeHttp> = Effect.gen(function* () {
     const facts = { ...requestFacts(request, ownerRoute(request) ?? routeTemplate(url.pathname)), ref: refOf(request) }
     const served = settle(request, facts, (known) =>
       Effect.gen(function* () {
+        if (!url.pathname.startsWith(OWNER_PREFIX) || isAccountPath(url.pathname))
+          return yield* new NotFound({ what: 'route' })
         const userId = yield* admitUser(request, edge, true)
         known(userId)
         const files = url.pathname === FILES || url.pathname.startsWith(`${FILES}/`)
         const body = files ? request.body : yield* bounded(request, JSON_BODY_LIMIT)
-        const headers = new Headers({ 'x-goblin-ref': facts.ref })
+        const headers = new Headers({ 'x-goblin-ref': facts.ref, [FORWARDED_HEADER]: 'owner' })
         for (const name of FORWARDED) {
           const value = request.headers.get(name)
           if (value !== null) headers.set(name, value)

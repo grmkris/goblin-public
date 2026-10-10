@@ -107,7 +107,7 @@ const write = (path: string, init: { headers?: Record<string, string>; body?: Bo
   })
 
 describe('the owner forward', () => {
-  it('forwards only the allowlisted headers, with the edge reference, and never a credential', async () => {
+  it('forwards only the allowlisted headers, with the edge reference and the owner mark, and never a credential', async () => {
     const { seen, edge } = deployment()
     const request = write('/api/mcp/myplan/tools/call?x=1', {
       headers: {
@@ -117,6 +117,7 @@ describe('the owner forward', () => {
         'x-goblin-operation': 'op-1',
         'x-mcp-caller': 'app',
         'x-goblin-ref': 'forged',
+        'x-goblin-forwarded': 'forged',
       },
       body: JSON.stringify({ name: 'x' }),
     })
@@ -131,8 +132,39 @@ describe('the owner forward', () => {
       'x-goblin-operation': 'op-1',
       'x-mcp-caller': 'app',
       'x-goblin-ref': '8c1f2a3b4d5e6f70-AMS',
+      'x-goblin-forwarded': 'owner',
     })
     expect(await forwarded?.json()).toEqual({ name: 'x' })
+  })
+
+  // Whatever a path says, the agent sees only `/api/*` as the parsed URL names it, marked as the owner's forward: an
+  // internal path never reaches it from the owner's session (the agent refuses a marked one too, `internal.test.ts`).
+  it.each([
+    ['/internal/x', 404],
+    ['/api/../internal/x', 404],
+    ['/api/%2e%2e/internal/x', 404],
+    ['/api/%2E%2E/internal/x', 404],
+    ['/api/.%2e/internal/x', 404],
+    ['//../internal/x', 404],
+    ['/API/internal/x', 404],
+    ['/api%2Finternal/x', 404],
+    ['/api\\..\\internal\\x', 404],
+    ['/api/billing/state', 404],
+    ['/api/internal/x', 200],
+    ['/api/%2F..%2Finternal/x', 200],
+  ] as const)('forwards %s only under /api/ and marked as the owner', async (path, status) => {
+    const { seen, edge } = deployment()
+    const request = new Request(`${APP}${path}`, {
+      headers: { cookie: 'session=owner', 'x-goblin-forwarded': 'internal' },
+    })
+    const { response } = await through('owner', request, edge)
+    expect(response.status).toBe(status)
+    if (status === 404) expect(await response.json()).toMatchObject({ error: { code: 'not_found', what: 'route' } })
+    for (const forwarded of seen) {
+      expect(new URL(forwarded.url).pathname).toMatch(/^\/api\//u)
+      expect(forwarded.headers.get('x-goblin-forwarded')).toBe('owner')
+    }
+    expect(seen).toHaveLength(status === 404 ? 0 : 1)
   })
 
   it('makes up a reference where there is no cf-ray', async () => {
