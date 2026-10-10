@@ -1,5 +1,3 @@
-import * as Schema from 'effect/Schema'
-
 export * from './account.ts'
 export * from './agent.ts'
 export * from './agent-apps.ts'
@@ -20,11 +18,3 @@ export * from './routines.ts'
 export * from './threads.ts'
 export * from './topics.ts'
 export * from './workspace.ts'
-
-/** Every failed API response: the error tag plus optional safe detail fields. */
-export const ApiError = Schema.Struct({
-  error: Schema.String,
-  reason: Schema.optional(Schema.String),
-  serverId: Schema.optional(Schema.String),
-})
-export type ApiError = typeof ApiError.Type
