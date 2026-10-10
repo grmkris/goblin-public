@@ -328,6 +328,17 @@ async function memoryChecks(dev: DevClient): Promise<MemoryCheck> {
 const revokeClient = (dev: DevClient, clientId: string) =>
   dev.account((api) => api.clients.revoke({ params: { clientId } }))
 
+/**
+ * Why an inbound answer is not the smoke's marker, or nothing when it is: its status and the reason it went unanswered
+ * (or the type of the text it answered), never the text itself. Enough to tell a turn still running past the wait from
+ * one that failed.
+ */
+function notTheMarker(reply: JsonObject): string | undefined {
+  if (reply['status'] === 'done' && reply['text'] === DEV_MARKER) return undefined
+  const why = reply['status'] === 'done' ? `text:${typeof reply['text']}` : (reply['reason'] ?? 'none')
+  return `${JSON.stringify(reply['status'])}:${JSON.stringify(why)}`
+}
+
 async function inboundChecks(dev: DevClient, client: InboundClient, servers: readonly ServerReport[]) {
   await client.authorize()
   const init = await client.rpc('initialize', {
@@ -345,7 +356,8 @@ async function inboundChecks(dev: DevClient, client: InboundClient, servers: rea
   if (!Array.isArray(problems['problems'])) throw new Error('inbound_inspection_missing')
   const smokeInput = `Reply with exactly: ${DEV_MARKER}`
   const reply = await client.ask(smokeInput)
-  if (reply['status'] !== 'done' || reply['text'] !== DEV_MARKER) throw new Error('inbound_model_turn_failed')
+  const unexpected = notTheMarker(reply)
+  if (unexpected !== undefined) throw new Error(`inbound_model_turn_failed:${unexpected}`)
   const residentTool = await residentToolTurn(client, servers)
   const recent = await client.tool('get_recent_messages', { limit: 10 })
   const messages = objects(recent['messages'])
