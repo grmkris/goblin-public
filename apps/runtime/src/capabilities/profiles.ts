@@ -1,10 +1,5 @@
 import type { ToolRegistration } from '@earendil-works/pi-durable'
-import {
-  type CapabilityTarget,
-  type ConversationKind,
-  type HelperExclusion,
-  RoutineDefinition,
-} from '@goblin/contracts'
+import type { CapabilityTarget, ConversationKind, HelperExclusion } from '@goblin/contracts'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import {
@@ -16,9 +11,9 @@ import {
   appTelegramChannel,
 } from '../storage/schema.ts'
 import { appRoutineRuns } from '../storage/routines.ts'
-import * as Schema from 'effect/Schema'
 import { chatOfSession, chatSession, primaryChat } from '../chats/directory.ts'
 import { InvalidInput } from '../http/errors.ts'
+import { definitionOf } from '../routines/runs.ts'
 
 type Kind = CapabilityTarget['kind']
 type Db = DrizzleSqliteDODatabase
@@ -165,7 +160,7 @@ const effectiveExclusions = (db: Db, session: string): readonly Exclusion[] | un
 const routineScope = (db: Db, scope: CapabilityScope, runId: string): CapabilityScope => {
   const run = db.select().from(appRoutineRuns).where(eq(appRoutineRuns.id, runId)).get()
   if (run === undefined) return CLOSED
-  const definition = Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(run.definitionJson))
+  const definition = definitionOf(run)
   const channel = db.select().from(appTelegramChannel).get() ?? db.select().from(appChannel).get()
   return {
     editable: false,
