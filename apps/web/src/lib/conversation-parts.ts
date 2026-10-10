@@ -87,11 +87,12 @@ function assistantParts(message: AssistantMessage, context: Context): Part[] {
   return parts
 }
 
-/** The in-flight turn: tools whose asking message is not committed yet, then the streaming thinking and text. */
+/**
+ * The in-flight turn: the streaming thinking and text, then the tools whose asking message is not committed yet. That is
+ * the order a committed message has (`assistantParts`), so a row does not change places when the message commits.
+ */
 function liveParts(projection: ConversationProjection, context: Context, seen: ReadonlySet<string>): Part[] {
-  const parts: Part[] = projection.tools
-    .filter((tool) => !seen.has(tool.callId))
-    .map((tool) => toolPart({ id: tool.callId, name: tool.name, arguments: tool.args }, context, tool.startedAt))
+  const parts: Part[] = []
   const at = projection.partialAt
   if (projection.partialReasoning !== '')
     parts.push({
@@ -103,7 +104,10 @@ function liveParts(projection: ConversationProjection, context: Context, seen: R
     })
   if (projection.partial !== '')
     parts.push({ kind: 'text', id: 'partial:text', ...keyed(at, 'text'), text: projection.partial, live: true })
-  return parts
+  const tools = projection.tools
+    .filter((tool) => !seen.has(tool.callId))
+    .map((tool) => toolPart({ id: tool.callId, name: tool.name, arguments: tool.args }, context, tool.startedAt))
+  return [...parts, ...tools]
 }
 
 /**

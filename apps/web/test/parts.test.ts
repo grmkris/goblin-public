@@ -76,7 +76,7 @@ describe('the transcript as render parts', () => {
     const ended = projectBatch(running, [{ type: 'run_end' }])
     expect(conversationParts(ended).find((part) => part.id === 'tool:queued')).toMatchObject({ state: 'stopped' })
   })
-  it('shows a live tool before its asking message is committed, then the streaming thinking and text', () => {
+  it('shows the streaming thinking and text, then a live tool whose asking message is not committed yet', () => {
     const next = projectBatch(snapshot([], { run: { inputs: [1] } }), [
       { type: 'tool_execution_start', toolCallId: 'early', toolName: 'mcp_list', args: { serverId: 'x' } },
       {
@@ -87,15 +87,16 @@ describe('the transcript as render parts', () => {
         ],
       },
     ])
+    // The order a committed message has, so the tool row does not change places when its message commits.
     expect(conversationParts(next)).toEqual([
+      { kind: 'reasoning', id: 'partial:reasoning', text: 'Plan', live: true },
+      { kind: 'text', id: 'partial:text', text: 'Hi', live: true },
       expect.objectContaining({
         kind: 'tool',
         id: 'tool:early',
         state: 'running',
         call: { id: 'early', name: 'mcp_list', arguments: { serverId: 'x' } },
       }),
-      { kind: 'reasoning', id: 'partial:reasoning', text: 'Plan', live: true },
-      { kind: 'text', id: 'partial:text', text: 'Hi', live: true },
     ])
   })
   it('keeps one React key for a message from its first token to its commit, so an open Thoughts stays open', () => {
