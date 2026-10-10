@@ -1,5 +1,16 @@
 import type { ToolRegistration } from '@earendil-works/pi-durable'
-import type { CapabilityTarget, ConversationKind, HelperExclusion } from '@goblin/contracts'
+import {
+  type CapabilityTarget,
+  type ConversationKind,
+  type HelperExclusion,
+  type SetupItem,
+  type TopicSetup,
+  hasApp,
+  hasLibrary,
+  hasServer,
+  hasTool,
+  holds,
+} from '@goblin/contracts'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import {
@@ -11,6 +22,8 @@ import {
   appTelegramChannel,
 } from '../storage/schema.ts'
 import { appRoutineRuns } from '../storage/routines.ts'
+import { appTopics } from '../storage/topics.ts'
+import { topicSetupOf } from '../topics/setup.ts'
 import { chatOfSession, chatSession, primaryChat } from '../chats/directory.ts'
 import { InvalidInput } from '../http/errors.ts'
 import { definitionOf } from '../routines/store.ts'
@@ -24,19 +37,26 @@ export type PiTools = { readonly remove: readonly ToolRegistration[] } | null
 /** One thing switched off in a conversation, as stored: `serverId` empty for subagents, `name` set only for a tool. */
 export type Exclusion = { readonly kind: Kind; readonly serverId: string; readonly name: string }
 
-/**
- * What a conversation's agent may use, after its switches: the one gate every tool and section asks. It only narrows
- * the owner's grants, which the MCP manager still checks. `editable`: the owner can switch things here (not in a
- * subagent, which follows the conversations above it).
- */
-export type CapabilityScope = {
-  readonly editable: boolean
+/** What one bound lets a chat use: its Topic's setup, the switches of a chat, a routine's allowed tools. */
+type Allow = {
   readonly server: (serverId: string) => boolean
   /** A tool is off when it or its server is. */
   readonly tool: (serverId: string, name: string) => boolean
   readonly skills: (serverId: string) => boolean
   readonly subagents: () => boolean
+  readonly app: (name: string) => boolean
 }
+
+/** The Topic a chat works in (ADR 0040), and whether its setup holds an item: a refusal says what held it back. */
+export type ScopeTopic = { readonly id: number; readonly name: string; readonly holds: (item: SetupItem) => boolean }
+
+/**
+ * What a chat's agent may use: its Topic's setup, narrowed by its switches and those of every spawner above a subagent,
+ * and by a routine's allowed tools. The one gate every tool and section asks. It only chooses among the owner's grants,
+ * which the MCP manager still checks. `editable`: the owner can act on a refusal here (not in a subagent, which follows
+ * the chats above it). `topic` is the Topic whose setup bounds it.
+ */
+export type CapabilityScope = Allow & { readonly editable: boolean; readonly topic?: ScopeTopic }
 
 /** A conversation the agent does not know may use nothing. */
 export const CLOSED: CapabilityScope = {
@@ -45,7 +65,26 @@ export const CLOSED: CapabilityScope = {
   tool: () => false,
   skills: () => false,
   subagents: () => false,
+  app: () => false,
 }
+
+/** Everything both bounds allow. */
+const both = (one: Allow, other: Allow): Allow => ({
+  server: (serverId) => one.server(serverId) && other.server(serverId),
+  tool: (serverId, name) => one.tool(serverId, name) && other.tool(serverId, name),
+  skills: (serverId) => one.skills(serverId) && other.skills(serverId),
+  subagents: () => one.subagents() && other.subagents(),
+  app: (name) => one.app(name) && other.app(name),
+})
+
+/** What a setup lets a chat use: only what it holds. */
+const setupAllows = (setup: TopicSetup): Allow => ({
+  server: (serverId) => hasServer(setup, serverId),
+  tool: (serverId, name) => hasTool(setup, serverId, name),
+  skills: (serverId) => hasLibrary(setup, serverId),
+  subagents: () => setup.subagents,
+  app: (name) => hasApp(setup, name),
+})
 
 const key = ({ kind, serverId, name }: Exclusion) => `${kind}\n${serverId}\n${name}`
 
@@ -56,8 +95,15 @@ export const exclusionOf = (target: CapabilityTarget): Exclusion => ({
   name: target.kind === 'tool' ? target.name : '',
 })
 
-/** The scope that switches off everything in `exclusions` (the rows of a conversation and those above it). */
-export function scopeOf(exclusions: readonly Exclusion[], editable: boolean): CapabilityScope {
+/**
+ * The scope that switches off everything in `exclusions` (the rows of a conversation and those above it) and the apps
+ * in `appsOff`, and nothing else.
+ */
+export function scopeOf(
+  exclusions: readonly Exclusion[],
+  editable: boolean,
+  appsOff: ReadonlySet<string> = new Set(),
+): CapabilityScope {
   const off = new Set(exclusions.map(key))
   const server = (serverId: string) => !off.has(key({ kind: 'server', serverId, name: '' }))
   return {
@@ -66,6 +112,7 @@ export function scopeOf(exclusions: readonly Exclusion[], editable: boolean): Ca
     tool: (serverId, name) => server(serverId) && !off.has(key({ kind: 'tool', serverId, name })),
     skills: (serverId) => !off.has(key({ kind: 'skills', serverId, name: '' })),
     subagents: () => !off.has(key({ kind: 'subagents', serverId: '', name: '' })),
+    app: (name) => !appsOff.has(name),
   }
 }
 
@@ -81,7 +128,12 @@ export const sameExclusions = (one: readonly Exclusion[], other: readonly Exclus
 // every conversation above it, read live, so it can never do more than the one that started it.
 
 /** One conversation in a chain of spawners. */
-type Link = { readonly session: string; readonly kind: ConversationKind; readonly routineRunId: string | null }
+type Link = {
+  readonly session: string
+  readonly kind: ConversationKind
+  readonly routineRunId: string | null
+  readonly topicId: number
+}
 
 /** Rows per insert: five bound values each, under SQLite's limit of 100 per statement on Cloudflare. */
 const INSERT_ROWS = 20
@@ -128,6 +180,7 @@ const switchRow = (db: Db, session: string) =>
       kind: appConversations.kind,
       parent: appConversations.parentSession,
       routineRunId: appConversations.routineRunId,
+      topicId: appConversations.topicId,
     })
     .from(appConversations)
     .where(eq(appConversations.chatId, session))
@@ -145,7 +198,7 @@ const chainOf = (db: Db, session: string): readonly Link[] | undefined => {
     const row = switchRow(db, at)
     if (row === undefined) return undefined
     seen.add(at)
-    chain.push({ session: at, kind: row.kind, routineRunId: row.routineRunId })
+    chain.push({ session: at, kind: row.kind, routineRunId: row.routineRunId, topicId: row.topicId })
     if (row.kind !== 'subagent') return chain
     at = row.parent
   }
@@ -156,7 +209,10 @@ const chainOf = (db: Db, session: string): readonly Link[] | undefined => {
 const effectiveExclusions = (db: Db, session: string): readonly Exclusion[] | undefined =>
   chainOf(db, session)?.flatMap((link) => ownExclusions(db, link.session))
 
-/** A routine's thread may use only the tools its definition allows, within the scope it would have anyway. */
+/**
+ * A routine's thread may use only the tools its definition allows, within the scope it would have anyway (its Topic's
+ * setup among the rest, ADR 0040); never skills, subagents or app powers.
+ */
 const routineScope = (db: Db, scope: CapabilityScope, runId: string): CapabilityScope => {
   const run = db.select().from(appRoutineRuns).where(eq(appRoutineRuns.id, runId)).get()
   if (run === undefined) return CLOSED
@@ -164,6 +220,7 @@ const routineScope = (db: Db, scope: CapabilityScope, runId: string): Capability
   const channel = db.select().from(appTelegramChannel).get() ?? db.select().from(appChannel).get()
   return {
     editable: false,
+    ...(scope.topic === undefined ? {} : { topic: scope.topic }),
     server: (id) => scope.server(id) && definition.allowedTools.some((tool) => tool.serverId === id),
     tool: (id, name) =>
       scope.tool(id, name) &&
@@ -171,35 +228,65 @@ const routineScope = (db: Db, scope: CapabilityScope, runId: string): Capability
       definition.allowedTools.some((tool) => tool.serverId === id && tool.name === name),
     skills: () => false,
     subagents: () => false,
+    app: () => false,
   }
 }
 
-/** The scope of a registered conversation: its own switches, and for a subagent those of every spawner above it. */
-export const capabilityScope = (db: Db, session: string): CapabilityScope => {
-  const chat = chatOfSession(db, session)
-  const chain = chat === undefined ? undefined : chainOf(db, chat)
+/** A Topic as a scope reads it, live: its name and its setup. A Topic that is not there holds nothing. */
+const topicOf = (db: Db, id: number): (ScopeTopic & { readonly setup: TopicSetup }) | undefined => {
+  const row = db
+    .select({ name: appTopics.name, setup: appTopics.setup })
+    .from(appTopics)
+    .where(eq(appTopics.id, id))
+    .get()
+  if (row === undefined) return undefined
+  const setup = topicSetupOf(row.setup)
+  return { id, name: row.name, setup, holds: (item) => holds(setup, item) }
+}
+
+/** The apps switched off in any of `sessions` (a helper's exclusions). */
+const appsOffIn = (db: Db, sessions: readonly string[]): ReadonlySet<string> =>
+  new Set(
+    db
+      .select({ app: appExecutionExclusions.app })
+      .from(appExecutionExclusions)
+      .where(inArray(appExecutionExclusions.sessionId, sessions))
+      .all()
+      .map(({ app }) => app),
+  )
+
+/**
+ * The scope of a registered chat (ADR 0040): its Topic's setup, read live, narrowed by its own switches and, for a
+ * subagent, those of every spawner above it; a routine's thread is narrowed to its allowed tools as well.
+ */
+export const chatScope = (db: Db, chat: string): CapabilityScope => {
+  const chain = chainOf(db, chat)
   const start = chain?.[0]
   const root = chain?.at(-1)
   if (chain === undefined || start === undefined || root === undefined) return CLOSED
-  const scope = scopeOf(
+  const topic = topicOf(db, root.topicId)
+  if (topic === undefined) return CLOSED
+  const editable = start.kind !== 'subagent' && start.routineRunId === null
+  const switches = scopeOf(
     chain.flatMap((link) => ownExclusions(db, link.session)),
-    start.kind !== 'subagent' && start.routineRunId === null,
+    editable,
+    appsOffIn(
+      db,
+      chain.map((link) => link.session),
+    ),
   )
+  const scope: CapabilityScope = { ...both(setupAllows(topic.setup), switches), editable, topic }
   return root.routineRunId === null ? scope : routineScope(db, scope, root.routineRunId)
 }
 
-/** App calls follow the same live chain as MCP and skills; routine scopes do not acquire app powers. */
-export const appAllowed = (db: Db, session: string, app: string): boolean => {
+/** The scope of the chat a Pi session belongs to; a session no chat owns may use nothing. */
+export const capabilityScope = (db: Db, session: string): CapabilityScope => {
   const chat = chatOfSession(db, session)
-  const chain = chat === undefined ? undefined : chainOf(db, chat)
-  if (chain === undefined || chain.some((link) => link.routineRunId !== null)) return false
-  const sessions = chain.map((link) => link.session)
-  return !db
-    .select()
-    .from(appExecutionExclusions)
-    .where(and(inArray(appExecutionExclusions.sessionId, sessions), eq(appExecutionExclusions.app, app)))
-    .get()
+  return chat === undefined ? CLOSED : chatScope(db, chat)
 }
+
+/** App calls follow the same live chain and Topic setup as MCP and skills; routine scopes do not acquire app powers. */
+export const appAllowed = (db: Db, session: string, app: string): boolean => capabilityScope(db, session).app(app)
 
 /** Switch one thing on or off in `session`. A server switched back on keeps the tools switched off under it. */
 export const setExclusion = (db: Db, session: string, target: CapabilityTarget, on: boolean, now: number): void => {
@@ -280,11 +367,9 @@ const resetSource = (db: Db, thread: string): string => switchRow(db, thread)?.p
 export const inheritedExclusions = (db: Db, thread: string): readonly Exclusion[] =>
   effectiveExclusions(db, resetSource(db, thread)) ?? []
 
-/** Pi's tool filter for `session`: without `subagentTools` when subagents are off where it works, else none. */
-export const piToolsFor = (db: Db, subagentTools: readonly ToolRegistration[], session: string): PiTools => {
-  const effective = effectiveExclusions(db, session)
-  return effective !== undefined && scopeOf(effective, true).subagents() ? null : { remove: subagentTools }
-}
+/** Pi's tool filter for `chat`: without `subagentTools` when subagents are off where it works, else none. */
+export const piToolsFor = (db: Db, subagentTools: readonly ToolRegistration[], chat: string): PiTools =>
+  chatScope(db, chat).subagents() ? null : { remove: subagentTools }
 
 /**
  * What applying the switches to Pi takes: the database, the subagent tools Pi's tool filter removes where subagents

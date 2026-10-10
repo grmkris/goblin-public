@@ -40,6 +40,7 @@ const world = (options: { readonly resident?: boolean; readonly plan?: boolean; 
     tool: (_serverId, name) => name !== 'off',
     skills: () => true,
     subagents: () => true,
+    app: () => true,
   }
   const refused = Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' }))
   const services = Layer.mergeAll(

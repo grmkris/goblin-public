@@ -72,6 +72,17 @@ export const SetupItem = Schema.Union([
 export type SetupItem = typeof SetupItem.Type
 export const SetupItems = Schema.Array(SetupItem).check(Schema.isMinLength(1), Schema.isMaxLength(50))
 
+/**
+ * A refusal's details when a chat asked for something its Topic's setup does not hold (ADR 0040): what it asked for and
+ * the Topic, which the owner can add it to. Only goblin's own results carry it (a remote result carries an `origin`).
+ */
+export const NotInTopic = Schema.Struct({
+  kind: Schema.Literal('not-in-topic'),
+  target: SetupItem,
+  topic: Schema.Struct({ id: Schema.Int, name: Schema.String }),
+})
+export type NotInTopic = typeof NotInTopic.Type
+
 /** What the owner allows now, by identity: what `withoutItems` lists when it narrows a category that was `all`. */
 export type Allowed = {
   readonly servers: readonly { readonly serverId: string; readonly tools: readonly { readonly name: string }[] }[]

@@ -16,14 +16,15 @@ type TopicKit = {
 }
 
 /**
- * A Topic's Conversation in Pi and the chat registry (ADR 0032): a new top-level Pi session configured like Personal's
- * (`Conversations.openConversation`), listed with role `conversation`, Personal's switches and its Topic's name, its
+ * A Topic's Conversation in Pi and the chat registry (ADR 0032): a new top-level Pi session whose tool filter follows its
+ * setup's subagents (`Conversations.openConversation`, ADR 0040), listed with role `conversation`, Personal's switches
+ * and its Topic's name, its
  * memory turned on, and its title following the Topic's renames. A seed is a passive write into it
  * (`Conversations.writeEntry`), under its admission lock and with its receipt.
  */
 export function topicPorts(db: Db['Service'], kit: TopicKit): TopicPorts {
   return {
-    open: kit.conversations.openConversation,
+    open: (setup) => kit.conversations.openConversation(setup.subagents),
     register: (chat, topic, name, now) => {
       registerChat(db, {
         chatId: chat,

@@ -34,7 +34,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
   db.insert(appConversations).values({ chatId: '1', piSession: '1', kind: 'main', role: 'primary', createdAt: 1 }).run()
   let sessions = 100
   const topics = new TopicRegistry(db, {
-    open: Effect.sync(() => String(sessions++)),
+    open: () => Effect.sync(() => String(sessions++)),
     register: (chat, topic, name, now) =>
       void db
         .insert(appConversations)

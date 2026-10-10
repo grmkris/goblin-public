@@ -452,20 +452,24 @@ pruned opportunistically. The lock covers admission only, and releases before mo
 answer. Nothing rebinds a chat: Move to thread (ADR 0034) forks the moved turn's Thread and records a `move` receipt;
 Topics and their memory are below.
 
-**Capabilities** (ADR 0010, `capabilities/`): each conversation can switch off, for its own agent, a connected server,
-one granted tool of it, a skills library, or subagents. `app_conversation_capabilities` stores only what is off, so a
-tool granted later is on everywhere. `capabilityScope(db, session)` maps the calling Pi session through
-`chatOf` to its current chat, then reads that chat's switches and, for a subagent, those of every chat above it,
-live at any depth (an unknown or no-longer-owned session,
-or a broken or cyclic chain of spawners, may use nothing). A thread copies the switches its parent works under as it
+**Capabilities** (ADR 0010, `capabilities/`): each chat works with its Topic's setup (ADR 0040), and each conversation
+can switch off, for its own agent, a connected server, one granted tool of it, a skills library, or subagents.
+`app_conversation_capabilities` stores only what is off. `capabilityScope(db, session)` maps the calling Pi session
+through `chatOf` to its current chat; `chatScope(db, chat)` reads, live, the setup of the Topic at the top of its chain
+(a chat's `topic_id`) and narrows it by that chat's switches and, for a subagent, those of every chat above it, at any
+depth, then by a routine run's allowed tools (an unknown or no-longer-owned session, a chat whose Topic is gone,
+or a broken or cyclic chain of spawners, may use nothing). The scope also answers for agent apps (`app`, from the
+setup and a helper's app exclusions) and names its Topic, so a refusal can say what held it back. A thread copies the switches its parent works under as it
 is registered; "Reset to where it came from" copies them again. What is off is hidden from the model there: `mcp_list`
 leaves it out, the `skills` section does not list or fetch that library, and Pi's per-conversation tool filter
 (`configure({ tools: { remove } })`) drops the subagent tools, whose section then hides too; Pi stores the filter as
 tool names, so when those names changed every filtering conversation's filter was applied again once
 (`retoolOnce`). A call that still arrives runs nothing: `mcp_call`, `skill_activate`, `skill_read`,
 `subagent_spawn` and `subagent_send` check the scope before anything else (before the grant check or any connection)
-and return an error result with details `{ kind: 'capability-off', target }` (`pi/capabilities.ts`), which the web
-turns into an owner-only "Turn on here" card. In a subagent the result has words only. The owner's console and an
+and return an error result (`pi/capabilities.ts`): when the Topic's setup does not hold the target, details
+`{ kind: 'not-in-topic', target, topic }` (`NotInTopic`) that ask the owner to add it to the Topic, and Goblin waits;
+otherwise `{ kind: 'capability-off', target }`, which the web turns into an owner-only "Turn on here" card. In a
+subagent or a routine the result has words only. Both show in a chat's `attention`. The owner's console and an
 App view and job calls carry no conversation. Agent-initiated app calls carry their conversation through nested apps
 and MCP powers, so its exclusions are checked live at dispatch; Telegram and inbound clients talk in main, so main's
 switches cover them.
@@ -835,8 +839,8 @@ Personal included, everything. A row that cannot be decoded reads as nothing cho
 everything.
 
 `TopicRegistry` (`topics/registry.ts`, a store behind the `Topics` service in `topics/service.ts`) creates a Topic
-with a new Pi session as its Conversation, configured like Personal's (its tool filter and copied switches) but not
-forked from it. Create is idempotent by operation id and serialized by the service's `KeyedLock` (key
+with a new Pi session as its Conversation, not forked from Personal's: its tool filter follows its setup's subagents,
+and it copies Personal's switches. Create is idempotent by operation id and serialized by the service's `KeyedLock` (key
 `topics.create`), so a retry or concurrent repeat finds one Topic and one Pi session; active
 names are unique ignoring case (409). A Topic's Conversation is never renamed or closed directly and takes its Topic's
 name. Branches, "+" threads (`CreateConversation.topic`) and subagents inherit their parent's Topic, and a "+" thread

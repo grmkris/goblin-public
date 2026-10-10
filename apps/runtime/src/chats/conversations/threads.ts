@@ -303,7 +303,10 @@ export const registryThreads = (core: RegistryCore, ports: ThreadPorts) => ({
   create: (input: CreateConversation) => create(core, ports, input),
   startThread: (parent: string, operationId: string, anchor: ThreadAnchor) =>
     startThread(core, ports, { parent, operationId, anchor }),
-  openConversation: newSession(core, [], primaryChat).pipe(Effect.withSpan('Conversations.openConversation')),
+  openConversation: (subagents: boolean) =>
+    newSession(core, [], { tools: subagents ? null : { remove: core.subagentTools } }).pipe(
+      Effect.withSpan('Conversations.openConversation'),
+    ),
   registerSubagent: (session: string, parent: string, name: string, exclusions: readonly HelperExclusion[] = []) =>
     registerSubagent(core, { session, parent, name }, exclusions),
   registerPersona: (session: string, parentChat: string, name: string) =>

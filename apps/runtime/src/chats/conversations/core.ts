@@ -5,7 +5,7 @@ import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { storedAsks } from '../../attention.ts'
-import { copyExclusions, piToolsFor } from '../../capabilities/profiles.ts'
+import { type PiTools, copyExclusions, piToolsFor } from '../../capabilities/profiles.ts'
 import { type AppError, InvalidInput, NotFound, attempt, attemptSync } from '../../http/errors.ts'
 import { BACKGROUND } from '../../pi/context.ts'
 import { PiSessions, fromPi } from '../../pi/sessions.ts'
@@ -114,14 +114,14 @@ export const describe = Effect.fn('Conversations.describe')(function* (core: Reg
 export const piTools = (core: RegistryCore, chat: string) =>
   attemptSync(() => piToolsFor(core.db, core.subagentTools, chat))
 
-/** A new top-level Pi session (not a fork) with `extensions` added and `like`'s tool filter. */
+/** A new top-level Pi session (not a fork) with `extensions` added and `like`'s tool filter, or `tools` given. */
 export const newSession = Effect.fn('Conversations.newSession')(function* (
   core: RegistryCore,
   extensions: readonly Extension[],
-  like: string,
+  like: string | { readonly tools: PiTools },
 ) {
   const session = yield* attempt(() => core.harness.sessions.create())
-  const tools = yield* piTools(core, like)
+  const tools = typeof like === 'string' ? yield* piTools(core, like) : like.tools
   const created = yield* fromPi(core.pi.conversation(session.id))
   if (Option.isNone(created)) return yield* new NotFound({ what: 'conversation' })
   yield* attempt(() => created.value.configure({ extensions: { add: [...extensions] }, tools }, BACKGROUND))

@@ -1,8 +1,10 @@
 import type { Message } from '@earendil-works/pi-ai'
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import type { Attention } from '@goblin/contracts'
+import { type Attention, NotInTopic, itemLabel } from '@goblin/contracts'
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm'
 import { Predicate } from 'effect'
+import * as Option from 'effect/Option'
+import * as Schema from 'effect/Schema'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import { appMcpApprovals } from './storage/mcp-approvals.ts'
 import { appAgentApps, appAgentPowers } from './storage/schema.ts'
@@ -22,6 +24,14 @@ function targetLabel(target: Fields | undefined): string {
   return kind === 'tool' ? `${server} · ${text(target?.name) ?? ''}` : server
 }
 
+const notInTopic = Schema.decodeUnknownOption(NotInTopic)
+
+/** How a refusal outside the Topic's setup reads: what to add, and where. */
+const addLabel = (details: Fields): string | undefined =>
+  Option.getOrUndefined(
+    Option.map(notInTopic(details), ({ target, topic }) => `Add ${itemLabel(target)} to #${topic.name}`),
+  )
+
 type ToolResult = Extract<Message, { role: 'toolResult' }>
 type Ask = { readonly kind: Attention['kind']; readonly label: string }
 
@@ -31,7 +41,8 @@ const questionLabel = (details: Fields): string =>
 
 /**
  * goblin's own markers that ask the owner, by the `kind` of a tool result's details: `ask_user`'s questions,
- * `mcp_call`'s grant request, and something switched off here (`pi/capabilities.ts`).
+ * `mcp_call`'s grant request, something switched off here, and something the Topic's setup does not hold
+ * (`pi/capabilities.ts`).
  */
 const MARKERS: Readonly<Record<string, (details: Fields, result: ToolResult) => Ask | undefined>> = {
   question: (details, result) =>
@@ -42,6 +53,10 @@ const MARKERS: Readonly<Record<string, (details: Fields, result: ToolResult) => 
       : undefined,
   'capability-off': (details, result) =>
     result.isError ? { kind: 'capability', label: targetLabel(record(details.target)) } : undefined,
+  'not-in-topic': (details, result) => {
+    const add = result.isError ? addLabel(details) : undefined
+    return add === undefined ? undefined : { kind: 'capability', label: add }
+  },
 }
 
 /**

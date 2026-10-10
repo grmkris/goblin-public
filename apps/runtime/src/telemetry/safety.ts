@@ -38,6 +38,7 @@ const FAILURES: Readonly<Record<string, string>> = {
   tool_error: 'Tool failed.',
   blocked: 'Execution blocked.',
   capability_off: 'Capability disabled in this conversation.',
+  not_in_topic: 'Not in the Topic setup.',
   interrupted: 'Execution interrupted.',
   aborted: 'Execution cancelled.',
 }
@@ -76,6 +77,7 @@ export const expectedFailure = (code: unknown): boolean =>
     'BudgetExhausted',
     'SubscriptionRequired',
     'capability_off',
+    'not_in_topic',
   ].includes(safeFailureCode(code))
 
 const ATTRIBUTES = new Set<string>(Object.values(RunAttribute))

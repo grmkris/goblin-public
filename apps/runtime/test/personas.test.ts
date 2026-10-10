@@ -46,7 +46,7 @@ const fixture = () => {
   const personas = new PersonaRegistry(db, ['model-a', 'model-b'])
   let opened = 100
   const topics = new TopicRegistry(db, {
-    open: Effect.sync(() => String(opened++)),
+    open: () => Effect.sync(() => String(opened++)),
     register: (chat, topic, name, now) =>
       void db
         .insert(appConversations)

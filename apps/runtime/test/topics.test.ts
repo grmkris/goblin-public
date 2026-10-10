@@ -28,12 +28,13 @@ const fixture = () => {
   const touched: string[] = []
   let gate: Promise<void> = Promise.resolve()
   const topics = new TopicRegistry(db, {
-    open: Effect.promise(async () => {
-      await gate
-      const session = String(100 + opened.length)
-      opened.push(session)
-      return session
-    }),
+    open: () =>
+      Effect.promise(async () => {
+        await gate
+        const session = String(100 + opened.length)
+        opened.push(session)
+        return session
+      }),
     register: (chat, topic, name, now) =>
       void db
         .insert(appConversations)

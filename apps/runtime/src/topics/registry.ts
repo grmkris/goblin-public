@@ -3,6 +3,7 @@ import {
   EVERYTHING,
   PERSONAL_TOPIC,
   type TopicSeedData,
+  type TopicSetup,
   type TopicView,
   type UpdateTopic,
 } from '@goblin/contracts'
@@ -20,13 +21,13 @@ export type TopicActor = 'owner' | 'agent'
 
 /**
  * What a new Topic's Conversation needs beyond this table, injected so the registry is tested without Pi: `open` makes
- * a new Pi session configured like Personal's Conversation (never a fork of it) and answers its id; `register` lists
+ * a new Pi session for a Topic with that setup (never a fork of Personal's Conversation) and answers its id; `register` lists
  * it in the chat registry as the Topic's Conversation, and `retitle` keeps its title the Topic's name, each inside the
  * registry's transaction; `touched` tells the conversations' listeners about a Conversation either wrote, after it;
  * `activate` turns its memory on (once; repeating it does nothing).
  */
 export type TopicPorts = {
-  readonly open: Effect.Effect<string, AppError>
+  readonly open: (setup: TopicSetup) => Effect.Effect<string, AppError>
   readonly register: (chat: string, topic: number, name: string, now: number) => void
   readonly retitle: (chat: string, name: string) => void
   readonly touched: (chats: readonly string[]) => Effect.Effect<void, AppError>
@@ -138,7 +139,7 @@ export class TopicRegistry<RunResult = unknown> {
         assertFree(clean)
         return clean
       })
-      const chat = yield* ports.open
+      const chat = yield* ports.open(input.setup ?? EVERYTHING)
       const row = yield* attemptSync(() =>
         db.transaction(() => {
           assertFree(name)

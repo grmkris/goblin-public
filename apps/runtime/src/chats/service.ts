@@ -232,8 +232,8 @@ export class Conversations extends Context.Service<
       operationId: string,
       anchor: ThreadAnchor,
     ) => Effect.Effect<ConversationView, AppError>
-    /** A new Topic's Conversation: a new Pi session configured like Personal's. Returns its session. */
-    readonly openConversation: Effect.Effect<string, AppError>
+    /** A new Topic's Conversation: a new Pi session, with the subagent tools when its setup allows them. */
+    readonly openConversation: (subagents: boolean) => Effect.Effect<string, AppError>
     /** Tells the change listeners about chats another registry wrote. */
     readonly touched: (chats: readonly string[]) => Effect.Effect<void, AppError>
     /** The open chats of `topic` other than subagents. */
