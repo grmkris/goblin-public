@@ -21,7 +21,6 @@
     // Errors, warnings and `@effect-diagnostics` directives that change nothing gate; messages and suggestions show in
     // editors only. Diagnostics left out keep @effect/tsgo's default severity. Override globs are relative to the
     // tsconfig that holds this block and must end in a file pattern (`**/*`, not `**`).
-    // has no Effect dependency, so only the structural diagnostics apply there).
     "plugins": [
       {
         "name": "@effect/language-service",
@@ -72,7 +71,7 @@
         "overrides": [
           {
             // Tests drive the harness over real HTTP and ports, wait on real time and read fixtures from disk.
-            "include": ["**/test/**/*", "**/tests/**/*", "**/*.test.ts", "**/*.test.tsx", "**/fixtures/**/*"],
+            "include": ["**/test/**/*", "**/*.test.ts", "**/*.test.tsx", "**/fixtures/**/*"],
             "options": {
               "diagnosticSeverity": {
                 "globalFetch": "off",

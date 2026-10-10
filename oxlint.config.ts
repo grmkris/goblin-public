@@ -115,21 +115,22 @@ export default defineConfig({
   overrides: [
     // Stack files declare the named Cloudflare resources; their physical names come from the stage (ADR 0002).
     {
-      files: ['alchemy.run.ts', 'apps/*/alchemy.run.ts'],
+      files: ['apps/*/alchemy.run.ts'],
       rules: { 'goblin/resource-name-via-stage': 'error' },
     },
     // process.env is these files' input, not app settings:
-    //   extension origin before anything is bundled;
-    // - test/support wires the harness to its ports and evidence directory (docs/agents/testing-harness.md);
+    // - the Vite and Vitest configs read the build's and the test harness's settings before anything is bundled;
     // - scripts/stage.ts builds and scrubs the child environment of every stage run (ADR 0001; decision F4 in
     //   docs/agents/lint-quality.md).
     {
-      files: ['**/vitest*.config.ts', '**/vite.config.ts', '**/test/support/**', 'scripts/stage.ts'],
+      files: ['**/vitest*.config.ts', '**/vite.config.ts', 'scripts/stage.ts'],
       rules: { 'goblin/no-process-env': 'off' },
     },
     // The isolated benchmark stack must replace ambient cloud credentials with local placeholders and restore them.
     { files: ['bench/scripts/local.ts'], rules: { 'goblin/no-process-env': 'off' } },
-    // nested package CSS import, which the plugin does not follow.
+    // shadcn's design-system rules on the web views and the shadcn package: theme tokens, no raw colours, inline
+    // styles, unknown or computed classes, and a component restyled only in its layout. The kit draws with its own
+    // stylesheet.
     {
       files: ['apps/web/src/**/*.tsx', 'packages/ui/src/**'],
       rules: {
@@ -158,25 +159,20 @@ export default defineConfig({
       plugins: REACT_PLUGINS,
       rules: { 'react/react-in-jsx-scope': 'off', 'react/rules-of-hooks': 'error', 'react/exhaustive-deps': 'error' },
     },
-    // `any` is banned in shipped code (src, app, entrypoints), and the unsafe rules keep it from flowing through.
-    // Tests, fixtures and one-shot tooling (scripts, deploy, config files) poke at untyped JSON, provider responses and
-    // mocks, where `any` is the honest type.
+    // `any` is banned everywhere. In shipped code (src, app, entrypoints) the unsafe rules also keep an inferred `any`
+    // from flowing through; tests and one-shot tooling (scripts, config files) poke at untyped JSON, provider responses
+    // and mocks, where an inferred `any` is the honest type.
     {
       files: [
         '**/test/**',
-        '**/tests/**',
         '**/*.test.ts',
         '**/*.test.tsx',
         '**/*.config.ts',
         'scripts/**',
-        'apps/*/scripts/**',
-        'apps/*/deploy/**',
-        'apps/*/fixtures/**',
         'bench/scripts/**',
         'spikes/**/scripts/**',
       ],
       rules: {
-        'typescript/no-explicit-any': 'off',
         'typescript/no-unsafe-argument': 'off',
         'typescript/no-unsafe-assignment': 'off',
         'typescript/no-unsafe-call': 'off',
@@ -187,7 +183,7 @@ export default defineConfig({
     // Test files: a `describe` block is the file's outline, not a function to split, and table-driven suites run
     // long. They still have a size limit.
     {
-      files: ['**/test/**', '**/tests/**', '**/*.test.ts', '**/*.test.tsx'],
+      files: ['**/test/**', '**/*.test.ts', '**/*.test.tsx'],
       rules: {
         'max-lines-per-function': 'off',
         'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
@@ -205,7 +201,6 @@ export default defineConfig({
         'packages/*/scripts/**',
         'spikes/**/scripts/**',
         '**/test/**',
-        '**/tests/**',
         '**/*.test.ts',
         '**/*.test.tsx',
       ],
