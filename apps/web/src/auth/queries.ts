@@ -17,6 +17,13 @@ import { answerRef } from '../lib/query/app-error.ts'
  */
 export class AuthRefused extends Data.TaggedError('AuthRefused')<{ readonly status: number; readonly ref: string }> {}
 
+/** Every auth read: keys are `['auth', kind, input]`. */
+const authKeys = {
+  session: ['auth', 'session'] as const,
+  health: ['auth', 'health'] as const,
+  client: (clientId: string) => ['auth', 'client', clientId] as const,
+}
+
 /** The reference `response` carries for the owner to quote. */
 const refOf = (response: Response): string | undefined => answerRef((name) => response.headers.get(name))
 
@@ -57,7 +64,7 @@ async function authCall<A>(
 
 /** Whether someone is signed in. Better Auth answers a visitor without a session with null, which is not a failure. */
 export const sessionQuery = queryOptions({
-  queryKey: ['auth', 'session'],
+  queryKey: authKeys.session,
   queryFn: async ({ signal }): Promise<'signed-in' | 'signed-out'> => {
     const { data: session } = await authCall((fetchOptions) => authClient.getSession({ fetchOptions }), { signal })
     return session === null ? 'signed-out' : 'signed-in'
@@ -73,7 +80,7 @@ const decodeHealth = Schema.decodeUnknownOption(Health)
 
 /** How sign-up works here and whether sign-in mail is on; anything the Worker does not say reads as off. */
 export const healthQuery = queryOptions({
-  queryKey: ['auth', 'health'],
+  queryKey: authKeys.health,
   queryFn: async ({ signal }) => {
     const sent = requestId()
     let response: Response
@@ -98,7 +105,7 @@ const decodeClient = Schema.decodeUnknownOption(ClientClaims)
 /** The name and address an OAuth client registered: its own claims, unverified. */
 export const consentClientQuery = (clientId: string) =>
   queryOptions({
-    queryKey: ['auth', 'client', clientId],
+    queryKey: authKeys.client(clientId),
     queryFn: async ({ signal }) => {
       const { data, ref } = await authCall(
         (fetchOptions) =>
