@@ -1,14 +1,14 @@
 import { type ReactNode, useEffect, useMemo, useRef } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ConversationView } from '@goblin/contracts'
 import { GitBranchIcon, MessageCircleIcon } from 'lucide-react'
+import { modelQuery } from '../../agent/queries.ts'
 import { type Part, partKey } from '../../lib/parts.ts'
 import { closedBy, entryOfPart, movableEntry, repliesLabel, rootParts, threadTitle } from '../../lib/threads.ts'
 import { useConversation as useFeedConversation, useFeedStatus } from '../../lib/workspace/hooks.ts'
 import { updateWorkspaceConversationMutation } from '../../lib/workspace/mutations.ts'
 import { Conversation } from '../conversation.tsx'
 import { ConversationDock } from '../conversation-dock.tsx'
-import { useModelChoice } from '../model-picker.tsx'
 import { useMarkRead, useOnScreen } from '../on-screen.ts'
 import { AppsIn } from '../parts/mcp-tool-part.tsx'
 import { PartView } from '../parts/registry.tsx'
@@ -133,7 +133,7 @@ export function ChatView({
   const reading = useOnScreen(section, 0.5)
   const conversation = useConversation(id, visible)
   const { projection, report } = conversation
-  const model = useModelChoice(report)
+  const models = useQuery(modelQuery).data?.options.length ?? 0
   const fork = place === 'panel' ? view.forkEntry : undefined
   const { parts, branchable, earlier } = useTranscript(id, projection, report, fork)
   useMarkRead(view, reading)
@@ -155,7 +155,7 @@ export function ChatView({
       <AppsIn conversation={id}>
         <Conversation
           parts={shown}
-          canSwitchModel={(model.choice?.options.length ?? 0) > 1}
+          canSwitchModel={models > 1}
           threads={threads}
           onOpen={openChat}
           after={extras.after}
@@ -170,7 +170,6 @@ export function ChatView({
           ref={dock}
           id={id}
           conversation={conversation}
-          model={model}
           parts={parts}
           closed={closedBy(view)}
           onReopen={() => update({ id, change: { closed: false } })}

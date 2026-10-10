@@ -1,7 +1,9 @@
 import { type RefObject, useMemo } from 'react'
-import type { AppContext, ComposerSelection } from '@goblin/contracts'
+import { useQuery } from '@tanstack/react-query'
+import type { AppContext, ComposerSelection, UsageToday } from '@goblin/contracts'
 import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@goblin/ui'
 import { RotateCcwIcon } from 'lucide-react'
+import { modelQuery, usageQuery } from '../agent/queries.ts'
 import { openInteractions } from '../lib/interactions.ts'
 import type { Part } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
@@ -14,10 +16,9 @@ import { MessageComposer } from './composer.tsx'
 import type { SendExtras } from './composer-state.ts'
 import { QueuedMessages } from './queued-messages.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
-import { ModelPicker, type useModelChoice } from './model-picker.tsx'
+import { ModelPicker } from './model-picker.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
 import type { useConversation } from './use-conversation.ts'
-import { useUsageToday } from './use-usage.ts'
 
 type Send = ReturnType<typeof useConversation>['send']
 
@@ -43,18 +44,14 @@ export function Notice({ text }: { readonly text: string }) {
  * The owner's message, with the files they attached and what the conversation's Apps share (sent once, then cleared):
  * here, or as a new thread's head when Start thread is on.
  */
-export function useSendWithAppContext(
-  conversation: string,
-  send: Send,
-  startThread?: StartThread,
-): (
-  input: string,
-  attachments: readonly string[],
-  selections: readonly ComposerSelection[],
-  extras: SendExtras,
-) => Promise<boolean> {
-  const shared = useSharedContext(conversation)
-  return async (input, attachments, selections, extras) => {
+const withSharedContext =
+  (shared: ReturnType<typeof useSharedContext>, send: Send, startThread: StartThread | undefined) =>
+  async (
+    input: string,
+    attachments: readonly string[],
+    selections: readonly ComposerSelection[],
+    extras: SendExtras,
+  ): Promise<boolean> => {
     const { personaOrder } = extras
     const sent =
       extras.thread === true && startThread !== undefined
@@ -68,7 +65,6 @@ export function useSendWithAppContext(
     if (sent) shared.clear()
     return sent
   }
-}
 
 /** Why a conversation takes no message: the owner closed it, or, for a subagent, its job was done. */
 function ClosedNotice({ by, onReopen }: { readonly by: 'owner' | 'done'; readonly onReopen: () => void }) {
@@ -92,29 +88,31 @@ function ComposerContext({
   id,
   active,
   presence,
-  model,
   usage,
   context,
+  onError,
 }: {
   readonly id: string
   readonly presence: ReturnType<typeof presenceOf>
-  readonly model: ReturnType<typeof useModelChoice>
-  readonly usage: ReturnType<typeof useUsageToday>
+  readonly usage: UsageToday | undefined
   readonly context: number | undefined
   readonly active: boolean
+  /** Hears why the models could not be read, or a pick failed. */
+  readonly onError: (message: string) => void
 }) {
+  const choice = useQuery(modelQuery).data
   return (
     <>
       <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
         <PresenceOrb state={presence.state} label={presence.label} active={active} />
         <span className="truncate">{presence.label}</span>
       </span>
-      <ModelPicker choice={model.choice} onChoose={(picked) => void model.choose(picked)} />
+      <ModelPicker onError={onError} />
       <CapabilitiesButton thread={id} />
       <UsageIndicator
         usage={usage}
         context={context}
-        contextWindow={model.choice?.options.find((option) => option.id === model.choice?.current)?.contextWindow}
+        contextWindow={choice?.options.find((option) => option.id === choice.current)?.contextWindow}
       />
     </>
   )
@@ -161,7 +159,7 @@ function DockCards({
 function useDockStatus(conversation: ReturnType<typeof useConversation>, parts: readonly Part[]) {
   const { projection, status } = conversation
   const running = projection?.running ?? false
-  const usage = useUsageToday()
+  const usage = useQuery(usageQuery).data
   const waiting = useMemo(() => openInteractions(parts), [parts])
   const context = useMemo(() => contextTokens(projection?.messages ?? []), [projection])
   const presence = presenceOf({
@@ -184,7 +182,6 @@ export function ConversationDock({
   id,
   conversation,
   parts,
-  model,
   closed,
   onReopen,
   notices = [],
@@ -200,7 +197,6 @@ export function ConversationDock({
   /** Offers Start thread in the composer, posting the message as a new thread's head this way. */
   readonly onStartThread?: StartThread
   readonly conversation: ReturnType<typeof useConversation>
-  readonly model: ReturnType<typeof useModelChoice>
   readonly parts: readonly Part[]
   /** Who closed it, when it is closed. */
   readonly closed: 'owner' | 'done' | undefined
@@ -213,8 +209,8 @@ export function ConversationDock({
 }) {
   const navigation = useNavigation()
   const personas = usePersonas()
-  const { projection, notice, send, stop, removeQueued } = conversation
-  const sendOwn = useSendWithAppContext(id, send, onStartThread)
+  const { projection, notice, send, stop, removeQueued, report } = conversation
+  const sendOwn = withSharedContext(useSharedContext(id), send, onStartThread)
   const { running, usage, waiting, context, presence } = useDockStatus(conversation, parts)
   return (
     <div className="chat-dock" ref={ref} data-app-cover>
@@ -249,9 +245,9 @@ export function ConversationDock({
                   id={id}
                   active={active}
                   presence={presence}
-                  model={model}
                   usage={usage}
                   context={context}
+                  onError={report}
                 />
               }
             />

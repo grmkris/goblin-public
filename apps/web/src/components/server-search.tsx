@@ -170,13 +170,6 @@ export function searchOf(
   return { kind: 'found', results: read.data.entries, partial: read.data.partial }
 }
 
-/** The registries' answer for what the owner typed, a moment after they stop typing. */
-function useCatalog(query: string): Search {
-  const text = query.trim()
-  const settled = useSettled(text, 300)
-  return searchOf(text, settled, useQuery(optionalCatalogQuery(settled.length < 2 ? undefined : settled)))
-}
-
 /** Search the MCP registries; results update as the owner types. */
 export function ServerSearch({
   onChanged,
@@ -186,7 +179,10 @@ export function ServerSearch({
   readonly onMessage: (message: string) => void
 }) {
   const [query, setQuery] = useState('')
-  const search = useCatalog(query)
+  // The registries answer what the owner typed a moment after they stop typing.
+  const text = query.trim()
+  const settled = useSettled(text, 300)
+  const search = searchOf(text, settled, useQuery(optionalCatalogQuery(settled.length < 2 ? undefined : settled)))
   const addAndConnect = useAddAndConnect()
   const [adding, setAdding] = useState('')
   async function add(entry: CatalogEntry, endpoint: string): Promise<void> {

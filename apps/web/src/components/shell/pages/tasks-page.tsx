@@ -24,17 +24,6 @@ import { ChatRow, RowContents } from './chat-link.tsx'
 const NEXT = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 const SCHEDULED: readonly RoutineView['state'][] = ['activating', 'active', 'paused']
 
-/**
- * The routines that run on their own: their names, when each runs next or last ran. A failed read says so, with a
- * retry, so it never passes for having none.
- */
-function useRoutines() {
-  const read = useQuery(routinesQuery)
-  const routines = (read.data?.routines ?? []).filter((each) => SCHEDULED.includes(each.state))
-  const retry = () => void read.refetch()
-  return { routines, error: read.error, retry }
-}
-
 const STATES: Readonly<Record<PersonaInvocationView['state'], string>> = {
   pending: 'waiting',
   running: 'answering…',
@@ -96,10 +85,19 @@ function PersonaAnswers({ now }: { readonly now: number }) {
 }
 
 /**
- * The routines on a schedule: each by its title, when it runs next (or that it is paused); they open in Settings. A
- * failed read shows in their place.
+ * The routines on a schedule: each by its title, when it runs next (or that it is paused); they open in Settings. Their
+ * home is Settings, so here they are an optional section: a failed read shows in their place, with a retry, so it never
+ * passes for having none.
  */
-function Routines({ routines, error, retry }: ReturnType<typeof useRoutines>) {
+function Routines({
+  routines,
+  error,
+  retry,
+}: {
+  readonly routines: readonly RoutineView[]
+  readonly error: unknown
+  readonly retry: () => void
+}) {
   if (routines.length === 0 && error === null) return null
   return (
     <PageSection id="routines" title="Routines">
@@ -132,9 +130,10 @@ export function TasksPage() {
   const invocations = useInvocations()
   const now = useMinute()
   const work = delegates(useConversations(), useActivities())
-  const scheduled = useRoutines()
+  const read = useQuery(routinesQuery)
+  const routines = (read.data?.routines ?? []).filter((each) => SCHEDULED.includes(each.state))
   const listed = [...work.active, ...work.finished]
-  if (listed.length + invocations.length + scheduled.routines.length === 0 && scheduled.error === null)
+  if (listed.length + invocations.length + routines.length === 0 && read.error === null)
     return <p className="page-empty">No delegated work.</p>
   return (
     <div className="page-stack">
@@ -148,7 +147,7 @@ export function TasksPage() {
         </PageSection>
       )}
       <PersonaAnswers now={now} />
-      <Routines {...scheduled} />
+      <Routines routines={routines} error={read.error} retry={() => void read.refetch()} />
     </div>
   )
 }

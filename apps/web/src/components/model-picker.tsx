@@ -1,7 +1,7 @@
 import { Fragment, useEffect } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ChevronsUpDownIcon, CpuIcon } from 'lucide-react'
-import type { ModelChoice, ModelOption } from '@goblin/contracts'
+import type { ModelOption } from '@goblin/contracts'
 import {
   Button,
   DropdownMenu,
@@ -16,25 +16,6 @@ import {
 import { chooseModelMutation, modelQuery } from '../agent/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 
-/** The user's model and what the deployment offers. A pick shows at once and is undone if the server refuses it. */
-export function useModelChoice(onError: (message: string) => void) {
-  const read = useQuery(modelQuery)
-  const pick = useMutation(chooseModelMutation)
-  useEffect(() => {
-    if (read.error !== null) onError(messageOf(read.error, 'load the models'))
-  }, [read.error, onError])
-  const choice = read.data
-  async function choose(model: string): Promise<void> {
-    if (choice === undefined || model === choice.current) return
-    try {
-      await pick.mutateAsync(model)
-    } catch (error) {
-      onError(messageOf(error, 'change the model'))
-    }
-  }
-  return { choice, choose }
-}
-
 /** Options by route (Google, Alibaba Cloud, ...), in the order the deployment lists them. */
 function byRoute(options: readonly ModelOption[]): readonly (readonly [string, readonly ModelOption[]])[] {
   const routes = new Map<string, ModelOption[]>()
@@ -44,16 +25,21 @@ function byRoute(options: readonly ModelOption[]): readonly (readonly [string, r
 
 /**
  * Which model answers the next message: a quiet control beside Send. The menu groups models by route because quota
- * runs out per route, which is when someone switches; each row says what the model is good for.
+ * runs out per route, which is when someone switches; each row says what the model is good for. A pick shows at once
+ * and is undone if the server refuses it; `onError` hears why a read or a pick failed.
  */
-export function ModelPicker({
-  choice,
-  onChoose,
-}: {
-  readonly choice: ModelChoice | undefined
-  readonly onChoose: (model: string) => void
-}) {
+export function ModelPicker({ onError }: { readonly onError: (message: string) => void }) {
+  const read = useQuery(modelQuery)
+  const pick = useMutation(chooseModelMutation)
+  useEffect(() => {
+    if (read.error !== null) onError(messageOf(read.error, 'load the models'))
+  }, [read.error, onError])
+  const choice = read.data
   if (choice === undefined || choice.options.length < 2) return null
+  const onChoose = (model: string) => {
+    if (model !== choice.current)
+      pick.mutate(model, { onError: (error) => onError(messageOf(error, 'change the model')) })
+  }
   const current = choice.options.find((option) => option.id === choice.current)
   const label = current?.label ?? choice.current
   return (
