@@ -6,7 +6,7 @@ import { BACKGROUND, conversationId } from '../pi/context.ts'
 import type { PiSessions } from '../pi/sessions.ts'
 import { dropRelaysTo } from '../pi/subagent-relay.ts'
 import { type ChatDb, chatRow, chatSession } from './directory.ts'
-import { fromPi } from './conversations/core.ts'
+import { fromPi } from './operations.ts'
 
 // Close and Stop over the chat tree (ADRs 0017, 0018): which chats a Close reaches, which subagents a Stop reaches, as
 // functions of the agent's database, and stopping their Pi work. Chats resolve to their current Pi sessions through

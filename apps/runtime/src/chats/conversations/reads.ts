@@ -17,7 +17,8 @@ import {
   openChatSession,
 } from '../directory.ts'
 import { subtreeOf } from '../stops.ts'
-import { type RegistryCore, describe, fromPi, piConversation, registered } from './core.ts'
+import { fromPi } from '../operations.ts'
+import { type RegistryCore, describe, piConversation, registered } from './core.ts'
 
 // The registry's reads (ADR 0030): a chat id resolves to its current Pi session only once it is registered, so no
 // request opens a conversation by guessing its number; the owner's views of the chats; and what a thread may recall.

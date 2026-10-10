@@ -1,12 +1,13 @@
 import { InboxDoc, type Harness } from '@earendil-works/pi-durable'
-import type { PiHarness } from 'agents/harness/pi'
 import { ConversationQueue, type QueueRemoval, type QueueRemovalResult } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { attempt } from './http/errors.ts'
+import { fromPi } from './chats/operations.ts'
 import { Conversations } from './chats/service.ts'
 import { RoutineRuns } from './routines/service.ts'
 import { BACKGROUND, conversationId, submissionId } from './pi/context.ts'
+import { PiSessions } from './pi/sessions.ts'
 
 /** Read Pi's supported inbox document; neither the transcript nor application storage owns these inputs. */
 export async function queuedInputs(pi: Harness, session: string): Promise<ConversationQueue> {
@@ -26,12 +27,16 @@ const ownerQueueSession = (thread: string) =>
     return session
   })
 
+/** Pi's opened harness, its failure as an `AppError`. */
+const harness = PiSessions.use((pi) => fromPi(pi.pi))
+
 /** A shared browser stream may follow helpers and routines too; their queues are deliberately absent here. */
-export const ownerQueue = (harness: PiHarness, thread: string) =>
+export const ownerQueue = (thread: string) =>
   Effect.gen(function* () {
     const session = yield* ownerQueueSession(thread)
     if (session === undefined) return { inputs: [] }
-    return yield* attempt(async () => queuedInputs(await harness.pi(), session))
+    const pi = yield* harness
+    return yield* attempt(() => queuedInputs(pi, session))
   })
 
 const outcomes = {
@@ -50,9 +55,10 @@ export async function withdrawQueuedInput(pi: Harness, session: string, id: numb
   return { status: outcomes[await pi.abortSubmission(submission, BACKGROUND, conversation)] }
 }
 
-export const removeOwnerQueuedInput = (harness: PiHarness, thread: string, input: QueueRemoval) =>
+export const removeOwnerQueuedInput = (thread: string, input: QueueRemoval) =>
   Effect.gen(function* () {
     const session = yield* ownerQueueSession(thread)
     if (session === undefined) return { status: 'not_found' as const }
-    return yield* attempt(async () => withdrawQueuedInput(await harness.pi(), session, input.submissionId))
+    const pi = yield* harness
+    return yield* attempt(() => withdrawQueuedInput(pi, session, input.submissionId))
   })

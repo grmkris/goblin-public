@@ -28,7 +28,7 @@ import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { appMcpApprovals } from '../storage/mcp-approvals.ts'
-import { fromPi } from './conversations/core.ts'
+import { fromPi } from './operations.ts'
 import { recallFrom } from './conversations/reads.ts'
 import { chatRow, isConversationChat, openChatSession, topicOfChat } from './directory.ts'
 import {

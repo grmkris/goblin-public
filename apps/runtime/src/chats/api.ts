@@ -76,9 +76,8 @@ const update = ({ params, payload }: ChatWrite<UpdateConversation>) => updateOwn
 const move = ({ params, payload }: ChatWrite<MoveToThread>) => moveToThread(params.id, payload)
 const stop = ({ params, payload }: ChatWrite<StopConversation>) =>
   Effect.map(stopChat(params.id, payload.operationId), (stopped) => ({ stopped }))
-const queue = ({ params }: ChatRequest) => AgentInput.use(({ harness }) => ownerQueue(harness, params.id))
-const removeQueued = ({ params, payload }: ChatWrite<QueueRemoval>) =>
-  AgentInput.use(({ harness }) => removeOwnerQueuedInput(harness, params.id, payload))
+const queue = ({ params }: ChatRequest) => ownerQueue(params.id)
+const removeQueued = ({ params, payload }: ChatWrite<QueueRemoval>) => removeOwnerQueuedInput(params.id, payload)
 const markRead = ({ params }: ChatRequest) => Effect.map(markOwnerRead(params.id), (read) => ({ read }))
 const composer = ({ params }: ChatRequest) => composerOptions(params.id)
 

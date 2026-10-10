@@ -6,19 +6,16 @@ import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { storedAsks } from '../../attention.ts'
 import { copyExclusions, piToolsFor } from '../../capabilities/profiles.ts'
-import { type AppError, InvalidInput, NotFound, attempt, attemptSync, toAppError } from '../../http/errors.ts'
+import { type AppError, InvalidInput, NotFound, attempt, attemptSync } from '../../http/errors.ts'
 import { BACKGROUND } from '../../pi/context.ts'
-import { type PiFailure, PiSessions } from '../../pi/sessions.ts'
+import { PiSessions } from '../../pi/sessions.ts'
+import { fromPi } from '../operations.ts'
 import { type ChatActivity, ReplyLedger } from '../../replies.ts'
 import { Changes } from '../../runtime/changes.ts'
 import { Db } from '../../runtime/db.ts'
 import { AgentInput } from '../../runtime/input.ts'
 import { type ChatRow, type StoredChat, chatRow, chatSession, isChannel, registerChat } from '../directory.ts'
 import { movedFrom } from '../moves.ts'
-
-/** A Pi call's failure as the registry answers it: Pi's own error through `toAppError`. */
-export const fromPi = <A, R>(effect: Effect.Effect<A, PiFailure, R>): Effect.Effect<A, AppError, R> =>
-  effect.pipe(Effect.catchTag('PiFailure', (failure) => Effect.fail(toAppError(failure.cause))))
 
 /** Why a Topic's Conversation refuses a rename or Close: Personal's is Main; another's follows its Topic. */
 export const channelRefusal = (row: StoredChat) =>

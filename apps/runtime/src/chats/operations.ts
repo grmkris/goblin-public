@@ -28,7 +28,11 @@ import {
 import { type Admission, type Admitted, ChatOperations, type PassiveWrite, type Submit } from './service.ts'
 
 /** A Pi call's failure as the programs take one: Pi's own error through `toAppError`. */
-const piFailure = (failure: PiFailure) => Effect.fail(toAppError(failure.cause))
+const asAppError = (failure: PiFailure) => Effect.fail(toAppError(failure.cause))
+
+/** A Pi call whose only failure is Pi's, taken as `asAppError`. */
+export const fromPi = <A, R>(effect: Effect.Effect<A, PiFailure, R>): Effect.Effect<A, AppError, R> =>
+  effect.pipe(Effect.catchTag('PiFailure', asAppError))
 
 /** Each chat's admission lock: `KeyedLock`'s, first come first served. */
 const chatLock =
@@ -95,7 +99,7 @@ const writeHeld = (receipts: Receipts, pi: PiSessions['Service']) =>
     const { requestId, entry, origin = 'system', parentOp } = write
     const receipt = { kind: `write:${entry.kind}`, origin, ...(parentOp === undefined ? {} : { parentOp }) } as const
     const { session } = yield* receipts.record(chat, requestId, receipt)
-    const submission = yield* pi.write(session, { requestId, entry }).pipe(Effect.catchTag('PiFailure', piFailure))
+    const submission = yield* pi.write(session, { requestId, entry }).pipe(Effect.catchTag('PiFailure', asAppError))
     yield* receipts.advance(chat, requestId, { state: 'written' })
     return submission
   })
@@ -168,7 +172,7 @@ const sendWith =
             return { session, operationId, accepted: true } satisfies PiReceipt
           yield* useModel(harness, applied, session).pipe(Effect.provideService(Models, models))
           if (relay !== undefined) return yield* relay(session)
-          return yield* pi.submit(session, content, { operationId }).pipe(Effect.catchTag('PiFailure', piFailure))
+          return yield* fromPi(pi.submit(session, content, { operationId }))
         }),
       )
     }).pipe(Effect.withSpan('ChatOperations.send'))

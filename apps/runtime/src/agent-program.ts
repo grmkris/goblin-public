@@ -23,12 +23,11 @@ import { type AppError, InvalidInput, attempt } from './http/errors.ts'
 import type { McpServers, Resident } from './mcp/service.ts'
 import { Invocations, type Personas } from './personas/service.ts'
 import { RoutineControl, RoutineRuns } from './routines/service.ts'
-import type { RunProgram } from './runtime/bridge.ts'
 import { AgentInput, type AgentInputs } from './runtime/input.ts'
 import type { Skills } from './skills/service.ts'
-import type { Applied } from './agent-model.ts'
 import { conversationId } from './pi/context.ts'
-import type { PiSessions } from './pi/sessions.ts'
+import { PiSessions } from './pi/sessions.ts'
+import { fromPi } from './chats/operations.ts'
 import { type SharedContext, ownerContent } from './pi/content.ts'
 import type { SubagentKit } from './pi/subagents.ts'
 import type { PersonaTurnKit } from './pi/persona-turn.ts'
@@ -136,27 +135,18 @@ export type OwnerMessageContext = {
 }
 
 export type OwnerSubmit = {
-  harness: PiHarness
-  applied: Applied
   subagents: SubagentKit
   personas: PersonaTurnKit
   thread: string
   text: string
   operationId: string
   context: OwnerMessageContext
-  run: RunProgram
   /** The operation this message is part of: a started thread's first message is its start's. */
   parentOp?: string
 }
 
 /** What the owner's message paths run with, from the agent's instance. */
-export const ownerRuntime = ({ harness, applied, subagents, personas, run }: AgentInputs) => ({
-  harness,
-  applied,
-  subagents,
-  personas,
-  run,
-})
+export const ownerRuntime = ({ subagents, personas }: AgentInputs) => ({ subagents, personas })
 
 /** What the owner's open Apps shared, each with where it comes from, read from the App registry (never the browser). */
 const sharedContext = (context: readonly AppContext[], conversation: string) =>
@@ -197,7 +187,8 @@ const sendToSubagent = (
   Effect.gen(function* () {
     const conversations = yield* Conversations
     yield* conversations.update(view.id, { keepOpen: true })
-    const busy = yield* attempt(() => input.harness.session(session).busy())
+    const pi = yield* PiSessions
+    const busy = yield* fromPi(pi.busy(session))
     const send = {
       subagent: session,
       spawner: yield* conversations.spawnerSession(view.id),
@@ -207,7 +198,8 @@ const sendToSubagent = (
       operationId: input.operationId,
       busy,
     }
-    const accepted = yield* attempt(async () => input.subagents.ownerSend(await input.harness.pi(), send))
+    const harness = yield* fromPi(pi.pi)
+    const accepted = yield* attempt(() => input.subagents.ownerSend(harness, send))
     return { session, operationId: input.operationId, accepted }
   })
 
@@ -264,7 +256,7 @@ export const submitOwner = (input: OwnerSubmit): Effect.Effect<PiReceipt, AppErr
       view?.kind === 'subagent' && view.parent !== undefined
         ? (admitted: SessionId) => sendToSubagent(input, view, admitted, { attachments, shared, selections })
         : undefined
-    return yield* (yield* ChatOperations).send<Conversations | RoutineControl>({
+    return yield* (yield* ChatOperations).send<Conversations | RoutineControl | PiSessions>({
       chat: input.thread,
       operationId: input.operationId,
       receipt: { kind: 'send', origin: 'owner', ...(input.parentOp === undefined ? {} : { parentOp: input.parentOp }) },
