@@ -17,7 +17,7 @@ import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../runtime/input.ts'
 import { flowRunEvent } from '../telemetry/events.ts'
-import type { AppsInstance } from '../apps/registry.ts'
+import type { Apps } from '../apps/service.ts'
 import type { ProfilesInstance } from '../capabilities/profiles.ts'
 import type { Channel } from '../channel/service.ts'
 import type { ChatsInstance } from '../chats/directory.ts'
@@ -132,7 +132,7 @@ type StartServices =
   | Learner
   | RoutineUsage
   | Channel
-  | AppsInstance
+  | Apps
 
 /**
  * What an area's layer after the start may require: the core services and what the start made. It also sees the

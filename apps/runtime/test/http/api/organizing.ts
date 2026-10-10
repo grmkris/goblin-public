@@ -3,7 +3,6 @@ import type { FlowEvent } from '@goblin/contracts/telemetry'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import type { AgentApps } from '../../../src/agent-apps/engine.ts'
-import type { AppRegistry } from '../../../src/apps/registry.ts'
 import { Conversations } from '../../../src/chats/service.ts'
 import { RoutineControl, RoutineRuns } from '../../../src/routines/service.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
@@ -58,8 +57,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
   )
   // SAFETY: with no agent apps, Home reads only the engine's (empty) app list and never an App placement or its info.
   const engine = Object.assign(Object.create(null) as AgentApps, { store: { apps: () => [] } })
-  // SAFETY: nothing here places an App, so Home never reads the App registry.
-  const home = new HomeService(db, Object.create(null) as AppRegistry, engine)
+  const home = new HomeService(db, engine)
   // Current, counting the gate's renewals; the organizing programs ask it only to `require` itself.
   const resident = currentResident()
   // SAFETY: what only a Stop of an open chat or an App on Home reads, which no request here reaches.

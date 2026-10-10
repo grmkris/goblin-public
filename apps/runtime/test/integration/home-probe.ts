@@ -5,7 +5,16 @@ import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Schema from 'effect/Schema'
 import { agentApps } from '../../src/agent-apps/engine.ts'
-import { AppRegistry } from '../../src/apps/registry.ts'
+import {
+  type AppSources,
+  agentAppChanged,
+  agentAppId,
+  appList,
+  closeWithConversations,
+  keepApp,
+  removeAgentApp,
+  setAppClosed,
+} from '../../src/apps/registry.ts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { appConversations } from '../../src/storage/schema.ts'
 import { InvalidInput } from '../../src/http/errors.ts'
@@ -46,7 +55,7 @@ const boundsRejected = (kind: 'app' | 'conversations', length: number) =>
     }),
   )
 const hasApp = (tile: HomeLayout['tiles'][number]) => tile.kind === 'app'
-function mcpPlacementProbe(home: HomeService, apps: AppRegistry, db: ReturnType<typeof drizzle>) {
+function mcpPlacementProbe(home: HomeService, apps: AppSources, db: ReturnType<typeof drizzle>) {
   const edit = (
     operationId: string,
     expectedRevision: number,
@@ -54,7 +63,7 @@ function mcpPlacementProbe(home: HomeService, apps: AppRegistry, db: ReturnType<
     actor: 'owner' | 'agent' = 'agent',
   ) => home.edit({ operationId, expectedRevision, ops }, actor)
   const origin = { serverId: 'home-fixture', tool: 'board', uri: 'ui://home-fixture/board', title: 'Board' }
-  const mcp = apps.register('1', 'home-board', origin, 3)
+  const mcp = keepApp(db, apps, { session: '1', callId: 'home-board', origin }, 3)
   let agentMcpReason = ''
   try {
     edit('home-agent-mcp', 6, [{ kind: 'add', tile: { kind: 'app', id: 'mcp-board', appId: mcp.id, size: 'medium' } }])
@@ -68,7 +77,7 @@ function mcpPlacementProbe(home: HomeService, apps: AppRegistry, db: ReturnType<
     [{ kind: 'add', tile: { kind: 'app', id: 'mcp-board', appId: mcp.id, size: 'medium' } }],
     'owner',
   )
-  apps.update(mcp.id, true, 4)
+  setAppClosed(db, apps.agents, mcp.id, true, 4)
   const afterClose = edit('home-after-close', 7, [
     { kind: 'update', id: 'today', title: 'Today', markdown: 'Still editable' },
   ])
@@ -86,7 +95,7 @@ function mcpPlacementProbe(home: HomeService, apps: AppRegistry, db: ReturnType<
   db.insert(appConversations)
     .values({ chatId: '222', piSession: '222', kind: 'thread', parentSession: '1', createdAt: 1 })
     .run()
-  const threaded = apps.register('222', 'home-thread-board', origin, 4)
+  const threaded = keepApp(db, apps, { session: '222', callId: 'home-thread-board', origin }, 4)
   edit(
     'home-owner-thread-mcp',
     8,
@@ -94,31 +103,29 @@ function mcpPlacementProbe(home: HomeService, apps: AppRegistry, db: ReturnType<
     'owner',
   )
   db.update(appConversations).set({ closedAt: 5 }).where(eq(appConversations.chatId, '222')).run()
-  apps.closeWithConversations(['222'], 5)
+  closeWithConversations(db, apps, ['222'], 5)
   const afterThreadClose = edit('home-after-thread-close', 9, [{ kind: 'resize', id: 'today', size: 'large' }])
-  const threadClosed = apps.list().find((app) => app.id === threaded.id)?.closedAt !== undefined
+  const threadClosed = appList(db, apps.agents).find((app) => app.id === threaded.id)?.closedAt !== undefined
   return { agentMcpReason, ownerMcp, afterClose, closedAddRejected, afterThreadClose, threadClosed }
 }
 
 /** Native SQLite, a real Dynamic Worker app, atomic receipts, and reconstruction over retained rows. */
-export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string, harness: PiHarness) {
+export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string, _harness: PiHarness) {
   runApplicationMigrations(storage)
   const db = drizzle(storage)
   const engine = agentApps(storage, env, () => owner, { schedules: memorySchedules(), local: probeLocal })
   engine.attach(createRegistry())
   engine.restore()
-  const apps = new AppRegistry(
-    db,
-    harness,
-    {
+  const apps: AppSources = {
+    agents: {
       info: (name) => engine.info(name),
       launch: (name) => engine.launch(name),
       rehome: () => undefined,
     },
-    new ChatDirectory(db),
-  )
-  engine.onChange((name) => apps.agentChanged(name, 1))
-  const home = new HomeService(db, apps, engine)
+    chats: new ChatDirectory(db),
+  }
+  engine.onChange((name) => agentAppChanged(db, apps, name, 1))
+  const home = new HomeService(db, engine)
   const edit = (
     operationId: string,
     expectedRevision: number,
@@ -166,20 +173,20 @@ export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, 
     { name: 'home-list', files: { 'app.ts': APP, 'view.tsx': VIEW } },
     { session: '1', callId: 'home-build' },
   )
-  const id = apps.agentId('home-list')
+  const id = agentAppId(db, 'home-list')
   if (built.status !== 'active' || id === null) return { built }
   edit('home-app', 4, [{ kind: 'add', tile: { kind: 'app', id: 'reading', appId: id, size: 'medium' } }])
   const duplicate = rejected(() =>
     edit('home-duplicate', 5, [{ kind: 'add', tile: { kind: 'app', id: 'reading-again', appId: id, size: 'small' } }]),
   )
   const eight = boundsRejected('app', 9)
-  apps.update(id, true, 2)
+  setAppClosed(db, apps.agents, id, true, 2)
   const closePreserved = home.layout().tiles.some(hasApp)
   await engine.remove('home-list')
-  apps.removeAgent('home-list')
+  removeAgentApp(db, 'home-list')
   const erased = !home.layout().tiles.some(hasApp)
   const mcpPlacement = mcpPlacementProbe(home, apps, db)
-  const reconstructed = new HomeService(drizzle(storage), apps, engine)
+  const reconstructed = new HomeService(drizzle(storage), engine)
   return {
     first,
     replay,

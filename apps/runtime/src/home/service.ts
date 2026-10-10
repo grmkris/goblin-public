@@ -11,7 +11,7 @@ import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import type { AppRegistry } from '../apps/registry.ts'
+import { agentAppId, appPlacement } from '../apps/registry.ts'
 import type { AgentApps } from '../agent-apps/engine.ts'
 import { type AppError, Conflict, Forbidden, InvalidInput, NotFound, attemptSync } from '../http/errors.ts'
 import { Changes } from '../runtime/changes.ts'
@@ -78,7 +78,6 @@ export class HomeService<RunResult = unknown> {
   readonly #db: SQLiteAsyncDatabase<'sync', RunResult>
   constructor(
     db: SQLiteAsyncDatabase<'sync', RunResult>,
-    readonly apps: AppRegistry,
     readonly engine: AgentApps,
   ) {
     this.#db = db
@@ -91,7 +90,7 @@ export class HomeService<RunResult = unknown> {
       layout: this.layout(),
       apps: this.engine.store.apps().map((app) => ({
         name: app.name,
-        id: this.apps.agentId(app.name),
+        id: agentAppId(this.#db, app.name),
         hasView: this.engine.info(app.name)?.ui ?? false,
       })),
     }
@@ -160,7 +159,7 @@ export class HomeService<RunResult = unknown> {
   }
   #validateAdd(op: HomeOperation, actor: Actor): void {
     if (op.kind !== 'add' || op.tile.kind !== 'app') return
-    const placement = this.apps.placement(op.tile.appId)
+    const placement = appPlacement(this.#db, op.tile.appId)
     if (placement.source !== 'mcp') return
     if (actor !== 'owner') throw new InvalidInput({ reason: 'Only the owner pins MCP Apps on Home' })
     if (placement.closed) throw new InvalidInput({ reason: 'Open the MCP App before putting it on Home' })
@@ -174,7 +173,7 @@ export class HomeService<RunResult = unknown> {
     )
     for (const tile of layout.tiles) {
       if (tile.kind !== 'app') continue
-      const placement = this.apps.placement(tile.appId)
+      const placement = appPlacement(this.#db, tile.appId)
       if (placement.source === 'agent' && !agentViews.has(tile.appId))
         throw new InvalidInput({ reason: 'Home needs an existing agent app with a view' })
     }
@@ -186,7 +185,7 @@ export class HomeService<RunResult = unknown> {
       const tile = layout.tiles.find((candidate) => candidate.id === additions[0]?.tile.id)
       const title =
         tile?.kind === 'app'
-          ? this.apps.placement(tile.appId).title
+          ? appPlacement(this.#db, tile.appId).title
           : tile?.kind === 'note'
             ? tile.title
             : 'Recent conversations'

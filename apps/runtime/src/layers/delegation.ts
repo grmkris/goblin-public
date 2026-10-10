@@ -2,7 +2,6 @@ import type { EntryDraft } from '@earendil-works/pi-durable'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import { AppsInstance } from '../apps/registry.ts'
 import { ProfilesInstance } from '../capabilities/profiles.ts'
 import { ChatsInstance } from '../chats/directory.ts'
 import { Conversations } from '../chats/service.ts'
@@ -60,12 +59,12 @@ export const delegationServices = (
 /**
  * The agent's own delegation stores, each made here once: Topics, Personas, the invocations, receipts and Home. A
  * Topic's Conversation is made, listed and given memory by the agent's one conversation registry, profile store and
- * memory engine, synchronously inside the Topic's own transaction; Home reads the one App registry.
+ * memory engine, synchronously inside the Topic's own transaction.
  */
 const stores: Effect.Effect<
   DelegationStores,
   never,
-  AgentInput | Db | ConversationsInstance | ChatsInstance | ProfilesInstance | MemoriesInstance | AppsInstance
+  AgentInput | Db | ConversationsInstance | ChatsInstance | ProfilesInstance | MemoriesInstance
 > = Effect.gen(function* () {
   const input = yield* AgentInput
   const db = yield* Db
@@ -92,7 +91,7 @@ const stores: Effect.Effect<
       return undefined
     }
   })
-  const home = new HomeService(db, yield* AppsInstance, input.agentApps)
+  const home = new HomeService(db, input.agentApps)
   return { topics, personas, invocations: new PersonaInvocations(db), receipts, home } satisfies DelegationStores
 })
 
@@ -100,15 +99,7 @@ const stores: Effect.Effect<
 export const DelegationLive: Layer.Layer<
   Topics | Personas | Invocations | Receipts | Home,
   never,
-  | AgentInput
-  | Db
-  | KeyedLock
-  | Changes
-  | ConversationsInstance
-  | ChatsInstance
-  | ProfilesInstance
-  | MemoriesInstance
-  | AppsInstance
+  AgentInput | Db | KeyedLock | Changes | ConversationsInstance | ChatsInstance | ProfilesInstance | MemoriesInstance
 > = Layer.unwrap(Effect.map(stores, delegationServices))
 
 /** Start step 7: each helper conversation runs with the execution extensions the agent has now. */

@@ -3,7 +3,7 @@ import type { PiHarness } from 'agents/harness/pi'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { agentApps } from '../../src/agent-apps/engine.ts'
-import { AppRegistry } from '../../src/apps/registry.ts'
+import { type AppSources, agentAppChanged, agentAppId, agentAppName, appList } from '../../src/apps/registry.ts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { HomeService } from '../../src/home/service.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
@@ -12,7 +12,12 @@ import { InboxMcpFixture } from './inbox-mcp.ts'
 import { INBOX_APP, INBOX_VIEW } from './inbox-source.ts'
 
 /** Real Dynamic Worker, SQLite and schedule callback with a clock advanced to each 15-minute slot. */
-export async function inboxAppProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string, harness: PiHarness) {
+export async function inboxAppProbe(
+  storage: DurableObjectStorage,
+  env: RuntimeEnv,
+  owner: string,
+  _harness: PiHarness,
+) {
   const fixture = new InboxMcpFixture()
   const client = new Client({ name: 'inbox-probe', version: '1' })
   await client.connect(
@@ -33,17 +38,15 @@ export async function inboxAppProbe(storage: DurableObjectStorage, env: RuntimeE
     blocked: async () => undefined,
   })
   const db = drizzle(storage)
-  const registry = new AppRegistry(
-    db,
-    harness,
-    {
+  const sources: AppSources = {
+    agents: {
       info: (name) => apps.info(name),
       launch: (name) => apps.launch(name),
       rehome: () => undefined,
     },
-    new ChatDirectory(db),
-  )
-  apps.onChange((name) => registry.agentChanged(name, 1))
+    chats: new ChatDirectory(db),
+  }
+  apps.onChange((name) => agentAppChanged(db, sources, name, 1))
   const built = await apps.build(
     { name: 'inbox-glance', files: { 'app.ts': INBOX_APP, 'view.tsx': INBOX_VIEW } },
     { session: '1', callId: 'inbox-build' },
@@ -65,8 +68,8 @@ export async function inboxAppProbe(storage: DurableObjectStorage, env: RuntimeE
   fixture.failed = true
   await fire()
   const lastGood = apps.snapshot('inbox-glance')
-  const id = registry.agentId('inbox-glance') ?? ''
-  const home = new HomeService(drizzle(storage), registry, apps)
+  const id = agentAppId(db, 'inbox-glance') ?? ''
+  const home = new HomeService(drizzle(storage), apps)
   const placed = home.edit(
     {
       operationId: 'inbox-home',
@@ -75,7 +78,7 @@ export async function inboxAppProbe(storage: DurableObjectStorage, env: RuntimeE
     },
     'agent',
   )
-  const launch = await registry.launch(id)
+  const launch = apps.launch(agentAppName(db, id))
   await client.close()
   return {
     built: 'active',
@@ -85,7 +88,7 @@ export async function inboxAppProbe(storage: DurableObjectStorage, env: RuntimeE
     lastGood,
     job: apps.jobs.list('inbox-glance')[0],
     placed,
-    app: registry.list()[0],
+    app: appList(db, sources.agents)[0],
     launch,
   }
 }

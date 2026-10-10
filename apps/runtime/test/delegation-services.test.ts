@@ -7,7 +7,6 @@ import * as Option from 'effect/Option'
 import * as Stream from 'effect/Stream'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AgentApps } from '../src/agent-apps/engine.ts'
-import type { AppRegistry } from '../src/apps/registry.ts'
 import { Apps } from '../src/apps/service.ts'
 import type { ChatId } from '../src/chats/directory.ts'
 import { Chats, Conversations } from '../src/chats/service.ts'
@@ -55,8 +54,7 @@ const services = () => {
   const receipts = new OrganizeReceipts(db, () => undefined)
   // SAFETY: with no agent apps, Home reads only the engine's (empty) app list.
   const engine = Object.assign(Object.create(null) as AgentApps, { store: { apps: () => [] } })
-  // SAFETY: nothing here places an App, so Home never reads the App registry.
-  const home = new HomeService(db, Object.create(null) as AppRegistry, engine)
+  const home = new HomeService(db, engine)
   const watching = { count: 0 }
   // SAFETY: the feed reads the watch's first graph, starts it and stops it; the graph stays empty.
   const watch = Object.assign(Object.create(null) as TaskGraphWatch, {
