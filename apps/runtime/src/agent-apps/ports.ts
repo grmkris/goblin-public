@@ -46,7 +46,7 @@ const escaped = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', 
  * The services an agent app's powers use, over the agent's own services. Each is a call from the app's isolate, so it
  * enters the runtime through `run`, which checks the owner's plan; then resident authority (and, where a conversation
  * asked, its switches). A lapsed one stops the app's power, never the owner. A power's failure reaches the app as it
- * was thrown, as before.
+ * was thrown.
  */
 export function appServices(run: RunProgram, complete: AppCompletion): AppServices {
   const settled = async <A, E>(program: Effect.Effect<A, E, AgentServices>): Promise<A> => {
