@@ -80,9 +80,6 @@ export const answering =
       ),
     })
 
-/** What the decisions under test work over, and what a test sets before it runs them. */
-export type DecisionsFixture = ReturnType<typeof decisionsFixture>
-
 const opened: (() => Promise<void>)[] = []
 afterEach(async () => {
   for (const close of opened.splice(0)) await close()
