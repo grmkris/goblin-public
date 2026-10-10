@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { DelegateResultData, PersonaAnswerData, PersonaAskData, ThreadHeadData, TopicSeedData } from '@goblin/contracts'
 import { Schema } from 'effect'
-import { conversationParts, isOwnTurn, samePart } from '../src/lib/parts.ts'
+import { conversationParts } from '../src/lib/conversation-parts.ts'
+import { isOwnTurn, samePart } from '../src/lib/parts.ts'
 import { projectSnapshot } from '../src/lib/projection.ts'
 
 // Every fixture's data is the contract's own shape: it decodes with the schema the runtime writes it with.

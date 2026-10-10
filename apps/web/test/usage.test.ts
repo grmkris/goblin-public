@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { budgetFraction, contextTokens } from '../src/lib/usage.ts'
-import type { ChatMessage } from '../src/lib/projection.ts'
+import type { ChatMessage } from '../src/lib/chat-messages.ts'
 
 const answer = (input: number, cacheRead = 0): ChatMessage => ({
   id: `a${input}`,

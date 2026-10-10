@@ -1,5 +1,5 @@
 import type { UsageToday } from '@goblin/contracts'
-import type { ChatMessage } from './projection.ts'
+import type { ChatMessage } from './chat-messages.ts'
 
 /**
  * How many tokens the conversation's context held at the latest model response: its input, including what the

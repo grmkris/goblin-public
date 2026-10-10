@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { conversationParts } from '../src/lib/conversation-parts.ts'
 import {
-  conversationParts,
   elapsedMs,
   isOwnTurn,
   type Part,
