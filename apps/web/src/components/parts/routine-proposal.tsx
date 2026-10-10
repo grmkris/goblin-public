@@ -7,7 +7,7 @@ import { record } from '../../lib/values.ts'
 import { messageOf } from '../../lib/query/app-error.ts'
 import { reviewedRoutinesQuery } from '../../routines/queries.ts'
 import type { ToolPart } from '../../lib/parts.ts'
-import { RoutineReview } from '../routines.tsx'
+import { RoutineReview } from '../routine-review.tsx'
 import { ToolCard } from './tool-part.tsx'
 
 const Receipt = Schema.Struct({
