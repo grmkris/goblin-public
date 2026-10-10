@@ -174,6 +174,7 @@ async function deskChecks(page: Page, origin: string, checks: Record<string, Che
   } else checks['desk.menu.scales'] = skipped('no model picker in this account snapshot')
   await transcriptChecks(page, checks)
   await thoughtsCheck(page, checks)
+  await setupCheck(page, checks, 'desk')
   await panelCheck(page, origin, checks, 'desk')
 }
 
@@ -267,6 +268,7 @@ async function phoneChecks(page: Page, origin: string, checks: Record<string, Ch
         })
   checks[`${prefix}.icon.hit-area`] =
     hit === null ? skipped('no small icon control on this page') : { ok: hit.position === 'absolute', detail: hit }
+  await setupCheck(page, checks, prefix)
   await usageCheck(page, checks, prefix)
   const narrow = await page
     .locator('html')
@@ -304,6 +306,29 @@ async function editableChecks(page: Page, checks: Record<string, Check>, prefix:
         }
   if (!editable.some(({ code }) => code))
     checks[`${prefix}.code.18px`] = skipped('no sign-in code input on this page; local fixture covers it')
+}
+
+/**
+ * A Topic's setup (ADR 0040): the button beside the composer opens its editor (a panel on a desktop, a sheet on a
+ * phone) with each category's Everything | Only these choice; it is closed without saving.
+ */
+async function setupCheck(page: Page, checks: Record<string, Check>, prefix: string): Promise<void> {
+  const button = page.locator('button[aria-label^="MCP servers & skills of"]').first()
+  if ((await button.count()) === 0) {
+    checks[`${prefix}.setup.opens`] = skipped('no setup button on this page')
+    return
+  }
+  await button.click()
+  const editor = page.getByRole('dialog', { name: 'MCP servers & skills' })
+  const shown = await editor
+    .waitFor({ timeout: 8000 })
+    .then(() => true)
+    // expected: a timeout means it did not show, which the check records
+    .catch(() => false)
+  const tabs = shown ? await editor.getByRole('tab', { name: 'Only these' }).count() : 0
+  checks[`${prefix}.setup.opens`] = { ok: shown && tabs > 0, detail: { tabs } }
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(400)
 }
 
 /** Phone: today's usage opens in words on a tap (a phone shows only the ring). */
