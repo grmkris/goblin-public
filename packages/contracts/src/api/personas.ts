@@ -5,7 +5,7 @@ import * as HttpApiSchema from 'effect/http-api/HttpApiSchema'
 import { CreatePersona, PersonaDetail, PersonaView, UpdatePersona } from '../personas.ts'
 import { ApiErrors } from './errors.ts'
 
-/** A Persona's id in a path, as the route has always taken it: 1 to 999999999. */
+/** A Persona's id in a path: 1 to 999999999. */
 const PersonaParam = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 999_999_999 }))
 
 /**

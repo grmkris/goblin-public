@@ -4,7 +4,7 @@ import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import { AgentAppChange, AgentAppDeleted, AgentAppDetail, AgentAppSummary, DeleteAgentApp } from '../agent-apps.ts'
 import { ApiErrors } from './errors.ts'
 
-/** An agent app's name in a path, as the route has always taken it: kebab-case, 2 to 24 characters. */
+/** An agent app's name in a path: kebab-case, 2 to 24 characters. */
 const NameParam = { name: Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9-]{1,23}$/u)) }
 
 /**

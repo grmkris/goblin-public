@@ -5,8 +5,7 @@ import { BillingState } from '../billing.ts'
 import { API_ERRORS, statusEnvelope } from './errors.ts'
 
 /**
- * Why billing refused a checkout or the portal: its status and fixed copy, never runtime text. The codes and statuses
- * are the ones the billing routes have always answered.
+ * Why billing refused a checkout or the portal: its status and fixed copy, never runtime text.
  */
 export const BILLING_REFUSALS = {
   billing_unavailable: { status: 503, message: 'Checkout is being set up.', recovery: 'Please try again later.' },

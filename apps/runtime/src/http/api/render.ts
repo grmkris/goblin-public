@@ -26,9 +26,9 @@ export const refusal = (error: AppError, ref: string | undefined): Response => {
 }
 
 /**
- * A request HttpApi could not decode. A path parameter that does not parse names nothing, which the hand-written routes
- * always answered 404; a body, query or header that does not match is invalid input. A response that does not encode
- * is the agent's own fault: none here, so it is answered as internal.
+ * A request HttpApi could not decode. A path parameter that does not parse names nothing (404); a body, query or header
+ * that does not match is invalid input. A response that does not encode is the agent's own fault: none here, so it is
+ * answered as internal.
  */
 const DECODE_FAILURES: Readonly<Record<HttpApiError.HttpApiSchemaError['kind'], AppError | undefined>> = {
   Params: new NotFound({ what: 'route' }),

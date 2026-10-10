@@ -4,7 +4,7 @@ import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import { OrganizeReceipt } from '../topics.ts'
 import { ApiErrors } from './errors.ts'
 
-/** A receipt's id in a path, as the route has always taken it: `org_` and 32 lowercase hex digits. */
+/** A receipt's id in a path: `org_` and 32 lowercase hex digits. */
 const ReceiptParam = Schema.String.check(Schema.isPattern(/^org_[0-9a-f]{32}$/u))
 
 /**

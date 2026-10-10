@@ -125,7 +125,7 @@ function Routines({
   )
 }
 
-/** `/tasks`, delegated work (spec §5): the Delegates, the Personas answering, and the routines on their schedules. */
+/** `/tasks`, delegated work (ADR 0036): the Delegates, the Personas answering, and the routines on their schedules. */
 export function TasksPage() {
   const invocations = useInvocations()
   const now = useMinute()

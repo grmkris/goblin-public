@@ -15,7 +15,7 @@ import {
 } from '../routines.ts'
 import { ApiErrors } from './errors.ts'
 
-/** A routine's id in a path, as the route has always taken it: `rt_` and up to 100 word characters or dashes. */
+/** A routine's id in a path: `rt_` and up to 100 word characters or dashes. */
 const RoutineParam = Schema.String.check(Schema.isPattern(/^rt_[\w-]{1,100}$/u))
 const params = { id: RoutineParam }
 

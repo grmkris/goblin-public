@@ -13,7 +13,7 @@ export const PersonaAvatar = Schema.Struct({
 export type PersonaAvatar = typeof PersonaAvatar.Type
 
 /**
- * A Persona's definition (spec §5): a global name, its role in a line, its instructions, an optional model from the
+ * A Persona's definition (ADR 0033): a global name, its role in a line, its instructions, an optional model from the
  * offered list, and the capabilities it may not use. Exclusions only narrow the owner's grants; a Persona never gains
  * one.
  */

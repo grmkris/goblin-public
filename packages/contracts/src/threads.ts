@@ -37,7 +37,7 @@ export type ThreadHeadData = typeof ThreadHeadData.Type
 
 /**
  * `app.delegate_result` entry data: a Delegate's (subagent's) attributed result posted in the chat that assigned it.
- * Goblin does not answer it again unless the assignment asked for synthesis (spec §5).
+ * Goblin does not answer it again unless the assignment asked for synthesis (ADR 0033).
  */
 export const DelegateResultData = Schema.Struct({
   delegate: ChatId,

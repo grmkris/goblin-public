@@ -15,7 +15,7 @@ import {
 import { AppId } from '../ids.ts'
 import { ApiErrors } from './errors.ts'
 
-/** An App's id in a path, as the route has always taken it: 1 to 12 digits. */
+/** An App's id in a path: 1 to 12 digits. */
 const AppParam = { id: AppId }
 
 /**

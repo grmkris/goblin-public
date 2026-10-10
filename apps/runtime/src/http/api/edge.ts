@@ -76,7 +76,7 @@ const refusedWrite = (request: Request, edge: Edge): Effect.Effect<void, AppErro
     : Effect.void
 
 /**
- * Admission of a signed-in user, in the order the Worker has always checked it: a write from a foreign Origin, the
+ * Admission of a signed-in user, in this order: a write from a foreign Origin, the
  * session, the CSRF header on every write, then (when `plan`) the account's plan. The user it admitted.
  */
 const admitUser = (request: Request, edge: Edge, plan: boolean): Effect.Effect<string, AppError> =>

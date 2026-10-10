@@ -5,7 +5,7 @@ import * as HttpApiSchema from 'effect/http-api/HttpApiSchema'
 import { CreateTopic, TopicView, UpdateTopic } from '../topics.ts'
 import { ApiErrors } from './errors.ts'
 
-/** A Topic's id in a path, as the route has always taken it: 1 to 999999999. */
+/** A Topic's id in a path: 1 to 999999999. */
 const TopicParam = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 999_999_999 }))
 
 /**

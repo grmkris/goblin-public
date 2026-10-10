@@ -4,7 +4,7 @@ import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import { InboundClient } from '../account.ts'
 import { API_ERRORS } from './errors.ts'
 
-/** A registered client's id in a path, as the route has always taken it. */
+/** A registered client's id in a path. */
 const ClientId = Schema.String.check(Schema.isPattern(/^[\w.-]{1,200}$/u))
 
 /**

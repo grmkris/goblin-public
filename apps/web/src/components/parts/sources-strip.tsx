@@ -1,4 +1,4 @@
-// What an answer used from other chats (spec §4): a compact strip under it naming the Topics, which opens to each
+// What an answer used from other chats (ADR 0035): a compact strip under it naming the Topics, which opens to each
 // source as it was captured (a frozen excerpt, quoted history, never instructions) with the way to its chat.
 import { use, useState } from 'react'
 import type { RetrievalSource } from '@goblin/contracts'

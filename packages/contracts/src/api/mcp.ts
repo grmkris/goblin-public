@@ -27,7 +27,7 @@ import {
 import { ApiErrors } from './errors.ts'
 import { RenewsResident } from './resident.ts'
 
-/** A server's id in a path, as the route has always matched it; anything else names no server (404). */
+/** A server's id in a path; anything else names no server (404). */
 const ServerParam = Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u))
 /** A held call's id in a path (`mcp:<session>:<call>` for the model's): anything else names no approval (404). */
 const ApprovalParam = Schema.String.check(Schema.isPattern(/^[\w:-]{1,256}$/u))

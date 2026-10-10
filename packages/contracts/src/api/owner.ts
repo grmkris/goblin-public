@@ -55,7 +55,7 @@ export class OwnerApi extends HttpApi.make('goblin-owner')
 
 /**
  * The owner API with only `groups`, under the same id, prefix and gate: a test serves one area's handlers with only
- * the services that area needs (`apps/runtime/test/http/api/serve.ts`).
+ * the services that area needs (`apps/runtime/test/http/api/fixture.ts`).
  */
 export const ownerApiOf = <const A extends NonEmptyReadonlyArray<HttpApiGroup.Constraint>>(...groups: A) =>
   HttpApi.make('goblin-owner')

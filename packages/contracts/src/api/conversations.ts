@@ -22,7 +22,7 @@ import { ApiErrors } from './errors.ts'
 import { RenewsResident } from './resident.ts'
 import { EventStream } from './stream.ts'
 
-/** The chat a path names, as the routes have always taken it: a logical chat id of 1 to 12 digits. */
+/** The chat a path names: a logical chat id of 1 to 12 digits. */
 const params = { id: ChatId }
 
 /**
@@ -41,9 +41,9 @@ const HistoryQuery = {
 }
 
 /**
- * The owner's conversations and threads (ADRs 0030, 0032, 0034), as the Worker's routes have always served them. Paths
- * are relative to the API's `/api` prefix; every endpoint can also answer owner admission's failures (`OwnerAdmission` in
- * `owner.ts`), and `error` names the ones the endpoint itself produces.
+ * The owner's conversations and threads (ADRs 0030, 0032, 0034). Paths are relative to the API's `/api` prefix; every
+ * endpoint can also answer owner admission's failures (`OwnerAdmission` in `owner.ts`), and `error` names the ones the
+ * endpoint itself produces.
  *
  * - `create`: `POST /api/conversations`, 201: the thread operation without a message (`CreateConversation`), a Thread
  *   branched from an entry of an open chat or an empty one.
