@@ -157,7 +157,7 @@ export function SetupButton({ chat }: { readonly chat: string }) {
       <Button
         type="button"
         variant="ghost"
-        aria-label={`MCP servers & skills of ${topic.personal === true ? 'Personal' : `#${topic.name}`}: ${summary ?? 'everything'}`}
+        aria-label={`MCP servers & skills of ${topic.personal === true ? 'Personal' : `#${topic.name}`}: ${summary ?? (narrowed ? 'a chosen list' : 'everything')}`}
         onClick={() => setOpen(true)}
       >
         <Settings2Icon />
