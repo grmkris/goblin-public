@@ -3,28 +3,12 @@
 import { useEffect, useId, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ServerView, ToolView } from '@goblin/contracts'
-import {
-  Button,
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  Switch,
-} from '@goblin/ui'
-import { EllipsisIcon, RefreshCwIcon, Trash2Icon, UnplugIcon } from 'lucide-react'
+import { Button, Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle, Switch } from '@goblin/ui'
 import {
   connectMutation,
   connectedToolsQuery,
   disconnectMutation,
   refreshToolsMutation,
-  removeServerMutation,
   setSkillsMutation,
 } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
@@ -34,6 +18,7 @@ import { EventsHealth } from './event-health.tsx'
 import { AppTile } from './apps/app-tile.tsx'
 import { StatusLabel } from './status-label.tsx'
 import { type TelegramChannel, TelegramControl, hasTelegramTools } from './telegram-control.tsx'
+import { type Action, RemoveConfirm, ServerMenu } from './server-menu.tsx'
 import { ToolGrants } from './tool-grants.tsx'
 
 /** The endpoint without its scheme, which is always https for an added server. */
@@ -85,84 +70,6 @@ function SkillsSwitch({
         </span>
       </span>
       <Switch checked={enabled} disabled={pending} aria-busy={pending} aria-labelledby={id} onCheckedChange={change} />
-    </div>
-  )
-}
-
-type Action = 'connect' | 'disconnect' | 'refresh'
-
-/** Refresh, Disconnect and Remove, kept behind one button so the card's face stays calm. */
-function ServerMenu({
-  server,
-  busy,
-  onAct,
-  onRemove,
-}: {
-  readonly server: ServerView
-  readonly busy: boolean
-  readonly onAct: (action: Action) => void
-  readonly onRemove: () => void
-}) {
-  const connected = server.status === 'connected'
-  if (!connected && server.source !== 'added') return null
-  const name = serverTitle(server)
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={<Button type="button" size="icon-sm" variant="ghost" aria-label={`More for ${name}`} pending={busy} />}
-      >
-        <EllipsisIcon />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {connected && (
-          <>
-            <DropdownMenuItem onClick={() => onAct('refresh')}>
-              <RefreshCwIcon aria-hidden />
-              Look for new tools
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onAct('disconnect')}>
-              <UnplugIcon aria-hidden />
-              Disconnect
-            </DropdownMenuItem>
-          </>
-        )}
-        {connected && server.source === 'added' && <DropdownMenuSeparator />}
-        {server.source === 'added' && (
-          <DropdownMenuItem variant="destructive" onClick={onRemove}>
-            <Trash2Icon aria-hidden />
-            Remove…
-          </DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-/** Remove asks first: the server's sign-in and every tool grant go with it. */
-function RemoveConfirm({
-  server,
-  onCancel,
-  onMessage,
-}: {
-  readonly server: ServerView
-  readonly onCancel: () => void
-  readonly onMessage: (message: string) => void
-}) {
-  const removing = useMutation(removeServerMutation)
-  const pending = removing.isPending || removing.isSuccess
-  const remove = () =>
-    removing.mutate(server.serverId, {
-      onError: (error) => onMessage(messageOf(error, `remove ${serverTitle(server)}`)),
-    })
-  return (
-    <div className="inline-confirm" role="alertdialog" aria-label={`Remove ${serverTitle(server)}?`}>
-      <span>Remove it? Its sign-in and the tools you allowed go with it.</span>
-      <Button size="sm" variant="destructive" pending={pending} onClick={remove}>
-        Remove
-      </Button>
-      <Button size="sm" variant="ghost" disabled={pending} onClick={onCancel}>
-        Cancel
-      </Button>
     </div>
   )
 }
