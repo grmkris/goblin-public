@@ -2,7 +2,6 @@ import { AppView, type AgentAppLaunch } from '@goblin/contracts'
 import { AgentAppsGroup, AppsGroup, NotFound } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 import { AgentAppsHandlers } from '../../../src/agent-apps/api.ts'
@@ -16,7 +15,7 @@ import { Home } from '../../../src/home/service.ts'
 import { McpConnections, Resident } from '../../../src/mcp/service.ts'
 import type { McpConnectionSnapshot } from '../../../src/mcp/types.ts'
 import { callOwner } from '../../owner-client.ts'
-import { currentResident, json, plans, post, serve, served, stub } from './fixture.ts'
+import { currentResident, json, plans, post, serve, served, stub, unrouted } from './fixture.ts'
 
 /** `Apps` with `overrides`; any other member dies when used, so a test names every call it expects. */
 const fakeApps = (overrides: Partial<Apps['Service']> = {}) => stub(Apps, overrides)
@@ -45,7 +44,7 @@ function appsServer(
 ) {
   const resident = currentResident()
   const others = options.others ?? {}
-  const { handle, fetch } = serve(
+  const { fetch } = serve(
     served([AppsGroup, AgentAppsGroup], Layer.mergeAll(AppsHandlers, AgentAppsHandlers)).pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -61,7 +60,7 @@ function appsServer(
       ),
     ),
   )
-  return { handle, fetch, resident }
+  return { fetch, resident }
 }
 
 const BOARD = 'ui://fixture/board'
@@ -193,7 +192,7 @@ describe('the apps group served by the agent', () => {
   })
 
   it('answers a path id that is not one as 404 and a body that does not fit as 400, as the routes did', async () => {
-    const { fetch, handle } = appsServer({ apps: registry() })
+    const { fetch } = appsServer({ apps: registry() })
     const badId = await fetch(json('GET', '/api/apps/abc/launch'))
     expect(badId.status).toBe(404)
     expect(await badId.json()).toMatchObject({ error: { code: 'not_found', what: 'route' } })
@@ -208,7 +207,7 @@ describe('the apps group served by the agent', () => {
       expect(await response.json()).toMatchObject({ error: { code: 'invalid_input' } })
     }
     for (const request of [json('GET', '/api/apps/3'), json('DELETE', '/api/apps/3'), json('GET', '/api/apps')])
-      expect(Option.isNone(await handle(request))).toBe(true)
+      expect(await unrouted(await fetch(request))).toBe(true)
   })
 
   it("serves the probes' typed client: an unknown App decodes as the NotFound class with its reference", async () => {
@@ -314,13 +313,13 @@ describe('the agentApps group served by the agent', () => {
     expect(seen).toEqual(['engine.remove tally', 'apps.removeAgent tally', 'home.appRemoved'])
   })
 
-  it('answers a name that is not one as 404, and leaves other methods to the raw routes', async () => {
-    const { fetch, handle } = appsServer(agentApps())
+  it('answers a name that is not one as 404, and any other method as no route', async () => {
+    const { fetch } = appsServer(agentApps())
     const bad = await fetch(json('GET', '/api/agent-apps/Bad_Name'))
     expect(bad.status).toBe(404)
     expect(await bad.json()).toMatchObject({ error: { code: 'not_found', what: 'route' } })
     for (const request of [json('PUT', '/api/agent-apps/tally', {}), post('/api/agent-apps', {})])
-      expect(Option.isNone(await handle(request))).toBe(true)
+      expect(await unrouted(await fetch(request))).toBe(true)
   })
 
   it("serves the probes' typed client: a refused delete decodes as the InvalidInput class", async () => {

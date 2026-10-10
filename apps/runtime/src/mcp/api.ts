@@ -1,12 +1,16 @@
 import { OwnerApi } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
+import type * as HttpServerRequest from 'effect/http/HttpServerRequest'
+import * as HttpServerResponse from 'effect/http/HttpServerResponse'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import type * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
+import { RequestContext } from '../http/api/context.ts'
 import { InvalidInput } from '../http/errors.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { setSkillEvents } from '../skills/events.ts'
 import { approvalView, decideOwnerApproval, ownerResource, setAskFirst } from './approval-owner.ts'
-import { disconnectOwnerServer, ownerServers, removeOwnerServer, suggestedServers } from './program.ts'
+import { connectCallback, disconnectOwnerServer, ownerServers, removeOwnerServer, suggestedServers } from './program.ts'
 import { McpConnections, McpGrants, McpServers } from './service.ts'
 
 /** The mcp group's endpoints as the owner API serves them: behind the owner gate, which may answer any failure. */
@@ -75,31 +79,46 @@ const readResource = endpoint('readResource')(({ params, headers, payload }) =>
 )
 
 /**
+ * An outbound sign-in coming back (the provider's redirect, its query whole): to Connections, quoting the request's
+ * reference when it failed.
+ */
+const oauthCallback = ({ request }: { readonly request: HttpServerRequest.HttpServerRequest }) =>
+  Effect.gen(function* () {
+    const appUrl = yield* AgentInput.useSync(({ env }) => env.APP_URL)
+    const location = yield* connectCallback(new URL(request.originalUrl).searchParams, appUrl)
+    const ref = Option.getOrUndefined(yield* Effect.serviceOption(RequestContext))?.ref
+    if (location.searchParams.has('error') && ref !== undefined) location.searchParams.set('ref', ref)
+    return HttpServerResponse.redirect(location, { status: 302 })
+  })
+
+/**
  * The `mcp` group (ADRs 0003, 0005, 0006, 0008, 0028): each handler runs the program its Durable Object RPC method
  * ran, behind the owner gate. A decided held call goes on to its conversation as the owner's message, composed into
  * the decision rather than sent through the agent's own `submit`.
  */
 export const McpHandlers = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
-  handlers.handleAll({
-    servers,
-    addServer,
-    suggested,
-    catalog,
-    registries,
-    addRegistry,
-    removeRegistry,
-    grants,
-    setToolGrant,
-    setAskFirst: setToolAskFirst,
-    setSkills,
-    setAppGrant,
-    approval,
-    decideApproval,
-    tools,
-    connect,
-    disconnect,
-    removeServer,
-    callTool,
-    readResource,
-  }),
+  handlers
+    .handleAll({
+      servers,
+      addServer,
+      suggested,
+      catalog,
+      registries,
+      addRegistry,
+      removeRegistry,
+      grants,
+      setToolGrant,
+      setAskFirst: setToolAskFirst,
+      setSkills,
+      setAppGrant,
+      approval,
+      decideApproval,
+      tools,
+      connect,
+      disconnect,
+      removeServer,
+      callTool,
+      readResource,
+    })
+    .handleRaw('oauthCallback', oauthCallback),
 )

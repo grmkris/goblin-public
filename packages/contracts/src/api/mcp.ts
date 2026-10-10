@@ -25,6 +25,7 @@ import {
   ToolView,
 } from '../mcp.ts'
 import { ApiErrors } from './errors.ts'
+import { RenewsResident } from './resident.ts'
 
 /** A server's id in a path, as the route has always matched it; anything else names no server (404). */
 const ServerParam = Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u))
@@ -45,7 +46,8 @@ const REMOTE = [ApiErrors.upstream, ApiErrors.upstreamTimeout, ApiErrors.conflic
  * `/api` prefix. Every owner endpoint can also answer owner admission's failures; `error` names the ones the endpoint
  * itself produces. Remote results are the server's, untrusted, and answered whole.
  *
- * `GET /api/mcp/oauth/callback` is not here: it answers a redirect to `/connections`, not JSON, and stays a raw route.
+ * `oauthCallback`: `GET /api/mcp/oauth/callback`, an outbound sign-in coming back, answered with a redirect to
+ * Connections (with `?error=` and the request's `ref` when it failed). It does not renew resident authority.
  */
 export class McpGroup extends HttpApiGroup.make('mcp').add(
   HttpApiEndpoint.get('servers', '/mcp/servers', { success: Schema.Array(ServerView) }),
@@ -138,4 +140,8 @@ export class McpGroup extends HttpApiGroup.make('mcp').add(
     success: McpResourceResult,
     error: [ApiErrors.notFound, ...REMOTE],
   }),
+  HttpApiEndpoint.get('oauthCallback', '/mcp/oauth/callback', { success: HttpApiSchema.Empty(302) }).annotate(
+    RenewsResident,
+    false,
+  ),
 ) {}

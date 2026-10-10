@@ -77,7 +77,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
   const lane = delegationServices({ topics, personas, invocations: unread, receipts, home, feed }).pipe(
     Layer.provide(Layer.merge(KeyedLock.layer, Layer.succeed(Changes, makeChanges()))),
   )
-  const { handle, fetch } = serve(
+  const { fetch } = serve(
     served(
       [TopicsGroup, PersonasGroup, OrganizeGroup],
       Layer.mergeAll(TopicsHandlers, PersonasHandlers, OrganizeHandlers),
@@ -98,5 +98,5 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
       ),
     ),
   )
-  return { handle, fetch, resident, topics, personas, receipts, home, flows }
+  return { fetch, resident, topics, personas, receipts, home, flows }
 }

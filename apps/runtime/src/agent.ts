@@ -3,7 +3,6 @@ import { type Extension } from '@earendil-works/pi-durable'
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
 import * as Exit from 'effect/Exit'
-import * as Option from 'effect/Option'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import type { AgentRpcMethods, RuntimeEnv } from './env.ts'
 import { failureOf, toAppError } from './http/errors.ts'
@@ -17,7 +16,6 @@ import { mcpEventsWake } from './mcp/wake.ts'
 import { routinesWake, runRoutine, runRoutineDeadline } from './routines/wake.ts'
 import { appsExtension, appExecutionExtension } from './pi/apps.ts'
 import { serversExtension } from './pi/servers.ts'
-import { agentRequest } from './agent-requests.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
 import { type AgentTelemetry, agentTelemetry } from './telemetry/agent.ts'
 import { LITELLM_STREAMS, makePiModels } from './pi/model.ts'
@@ -245,14 +243,12 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return { ok: true, value: true }
   }
   /**
-   * The agent's typed APIs first (http/api/server.ts); any other path is one of the agent's raw routes
-   * (agent-requests.ts). Only the Worker reaches either: it admits the owner and forwards `/api/*` (http/api/edge.ts),
-   * and calls the internal API after its own check of the caller.
+   * The agent's typed APIs (http/api/server.ts), the one way in over `fetch`; a runtime that failed to start answers
+   * its failure in the envelope. Only the Worker reaches it: it admits the owner and forwards `/api/*`
+   * (http/api/edge.ts), and calls the internal API after its own check of the caller.
    */
   override async onRequest(request: Request): Promise<Response> {
     const served = await this.#bridge.exit(AgentHttp.use((http) => http.handle(request)))
-    if (Exit.isFailure(served)) return refusal(failureOf(served.cause), forwardedRef(request))
-    if (Option.isSome(served.value)) return served.value.value
-    return agentRequest(request, this.harness, this.#bridge.exit, this.env.APP_URL)
+    return Exit.isSuccess(served) ? served.value : refusal(failureOf(served.cause), forwardedRef(request))
   }
 }

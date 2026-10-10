@@ -19,6 +19,8 @@ import { ConversationQueue, QueueRemoval, QueueRemovalResult } from '../queue.ts
 import { SourceUse } from '../retrieval.ts'
 import { MoveReceipt, MoveToThread } from '../threads.ts'
 import { ApiErrors } from './errors.ts'
+import { RenewsResident } from './resident.ts'
+import { EventStream } from './stream.ts'
 
 /** The chat a path names, as the routes have always taken it: a logical chat id of 1 to 12 digits. */
 const params = { id: ChatId }
@@ -58,8 +60,8 @@ const HistoryQuery = {
  * - `snapshot`: `GET …/:id/snapshot`: the chat's Pi snapshot, as JSON.
  * - `history`: `GET …/:id/history?before=`: a page of older entries.
  * - `sources`: `GET …/:id/sources`: what retrieval gave the chat's answers (ADR 0035), newest first.
- *
- * The chat's live events (`GET …/:id/events`, server-sent) are a raw route of the agent, outside this group.
+ * - `events`: `GET …/:id/events`, server-sent: Pi's `snapshot`, then a `batch` per commit, until the browser goes away.
+ *   A chat keeps its Pi session, so this is its session's stream. It does not renew resident authority.
  */
 export class ConversationsGroup extends HttpApiGroup.make('conversations').add(
   HttpApiEndpoint.post('create', '/conversations', {
@@ -145,4 +147,9 @@ export class ConversationsGroup extends HttpApiGroup.make('conversations').add(
     success: Schema.Array(SourceUse),
     error: [ApiErrors.notFound],
   }),
+  HttpApiEndpoint.get('events', '/conversations/:id/events', {
+    params,
+    success: EventStream,
+    error: [ApiErrors.notFound],
+  }).annotate(RenewsResident, false),
 ) {}

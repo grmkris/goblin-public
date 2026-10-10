@@ -4,7 +4,7 @@ import type * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
-import * as Option from 'effect/Option'
+import * as Schema from 'effect/Schema'
 import * as HttpServer from 'effect/http/HttpServer'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import type * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
@@ -74,12 +74,17 @@ export const cleanup = (dispose: () => unknown): void => void disposals.push(dis
 export const serve = (http: Layer.Layer<AgentHttp>) => {
   const runtime = ManagedRuntime.make(http)
   cleanup(() => runtime.dispose())
-  const handle = (request: Request) => runtime.runPromise(AgentHttp.use((agent) => agent.handle(request)))
-  /** The agent's answer, or a failure if the server passed the request on to its raw routes. */
-  const fetch = async (request: Request) =>
-    Option.getOrThrowWith(await handle(request), () => new Error(`not an API route: ${request.url}`))
-  return { handle, fetch }
+  const fetch = (request: Request) => runtime.runPromise(AgentHttp.use((agent) => agent.handle(request)))
+  return { fetch }
 }
+
+const Unrouted = Schema.Struct({
+  error: Schema.Struct({ code: Schema.Literal('not_found'), what: Schema.Literal('route') }),
+})
+
+/** Whether `response` is the agent's answer to a path that names none of its endpoints. */
+export const unrouted = async (response: Response): Promise<boolean> =>
+  response.status === 404 && Schema.is(Unrouted)(await response.json())
 
 /** A node:sqlite database with the application migrations applied (chats-sqlite.ts), closed after each test. */
 export const database = () => {

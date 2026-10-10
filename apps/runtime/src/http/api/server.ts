@@ -3,7 +3,6 @@ import { FORWARDED_HEADER, INTERNAL_PREFIX, InternalApi } from '@goblin/contract
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import * as Option from 'effect/Option'
 import type * as Scope from 'effect/Scope'
 import * as HttpRouter from 'effect/http/HttpRouter'
 import type * as HttpServerRequest from 'effect/http/HttpServerRequest'
@@ -18,13 +17,13 @@ const under = (path: string, prefix: string): boolean => path === prefix || path
 /**
  * The agent's typed APIs served inside it (ADR 0038): the owner's (`/api`) and the internal one the Worker calls
  * (`/internal`), on one router built once, in the agent's own runtime and the layer's scope, never at module level.
- * `handle` answers a request that names an endpoint of either API. An internal path forwarded for the owner (it
- * carries the edge's `x-goblin-forwarded`) and any other internal path are a 404 in the envelope; any other path is
- * `None`, which the agent's raw routes (`agent-requests.ts`) still serve.
+ * `handle` answers every request: an endpoint of either API, or the 404 envelope for any other path and for an
+ * internal path forwarded for the owner (it carries the edge's `x-goblin-forwarded`). A streamed answer (server-sent
+ * events, a download) owns its body: it outlives the request's scope.
  */
 export class AgentHttp extends Context.Service<
   AgentHttp,
-  { readonly handle: (request: Request) => Effect.Effect<Option.Option<Response>> }
+  { readonly handle: (request: Request) => Effect.Effect<Response> }
 >()('goblin/http/AgentHttp') {
   /**
    * Serves the APIs `routes` names (`routeNames` of each) through `apiLayer`, their groups' handlers behind each API's
@@ -46,13 +45,10 @@ export class AgentHttp extends Context.Service<
         }
         return AgentHttp.of({
           handle: (request) => {
-            const path = new URL(request.url).pathname
-            const internal = under(path, INTERNAL_PREFIX)
+            const internal = under(new URL(request.url).pathname, INTERNAL_PREFIX)
             const route = internal && request.headers.has(FORWARDED_HEADER) ? undefined : routeOf(request)
-            if (route === undefined) {
-              if (!internal) return Effect.succeedNone
-              return Effect.succeed(Option.some(refusal(new NotFound({ what: 'route' }), forwardedRef(request))))
-            }
+            if (route === undefined)
+              return Effect.succeed(refusal(new NotFound({ what: 'route' }), forwardedRef(request)))
             const facts = requestFacts(request, route)
             // SAFETY: `services` is this layer's context, which holds every service the router's handlers require
             // (`R`'s `Requires`), and neither API declares a global middleware: what is left is the request and its
@@ -64,7 +60,7 @@ export class AgentHttp extends Context.Service<
               unknown,
               HttpServerRequest.HttpServerRequest | Scope.Scope
             >
-            return Effect.map(answer(served, request, facts), Option.some)
+            return answer(served, request, facts)
           },
         })
       }),

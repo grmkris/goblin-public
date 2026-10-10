@@ -7,6 +7,7 @@ import { AgentAppsGroup } from './agent-apps.ts'
 import { AppsGroup } from './apps.ts'
 import { ConversationsGroup } from './conversations.ts'
 import { API_ERRORS } from './errors.ts'
+import { FilesGroup } from './files.ts'
 import { InspectGroup } from './inspect.ts'
 import { McpGroup } from './mcp.ts'
 import { MemoryGroup } from './memory.ts'
@@ -15,6 +16,7 @@ import { PersonasGroup } from './personas.ts'
 import { ResidentGroup } from './resident.ts'
 import { RoutinesGroup } from './routines.ts'
 import { TopicsGroup } from './topics.ts'
+import { WorkspaceGroup } from './workspace.ts'
 
 /**
  * Admission to every owner endpoint, run by the agent before the handler: the account's plan, then a renewal of
@@ -43,6 +45,8 @@ export class OwnerApi extends HttpApi.make('goblin-owner')
     AppsGroup,
     AgentAppsGroup,
     InspectGroup,
+    WorkspaceGroup,
+    FilesGroup,
   )
   .prefix('/api')
   .middleware(OwnerAdmission) {}

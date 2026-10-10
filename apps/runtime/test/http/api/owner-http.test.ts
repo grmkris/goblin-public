@@ -1,10 +1,9 @@
 import { TopicView } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
-import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 import { callOwner } from '../../owner-client.ts'
-import { json, post } from './fixture.ts'
+import { json, post, unrouted } from './fixture.ts'
 import { organizing } from './organizing.ts'
 
 /**
@@ -88,15 +87,20 @@ describe('the owner API served by the agent', () => {
     expect(resident.renewals).toEqual([])
   })
 
-  it('passes every path that is not an owner endpoint back to the raw routes', async () => {
-    const { handle } = fixture()
+  it('answers every path that is no endpoint with the 404 envelope, quoting the reference', async () => {
+    const { fetch, resident } = fixture()
     for (const request of [
       new Request('https://agent/home'),
       new Request('https://agent/conversations/1/snapshot'),
-      new Request('https://agent/api/unknown'),
+      new Request('https://agent/api/unknown', { headers: { 'x-goblin-ref': 'ref-404' } }),
       new Request('https://agent/api/topics', { method: 'DELETE' }),
-    ])
-      expect(Option.isNone(await handle(request))).toBe(true)
+    ]) {
+      const response = await fetch(request)
+      expect(response.status).toBe(404)
+      expect(response.headers.get('cache-control')).toBe('no-store')
+      expect(await unrouted(response)).toBe(true)
+    }
+    expect(resident.renewals).toEqual([])
   })
 
   it("serves the probes' typed client: a clash decodes as the Conflict class with its reference", async () => {

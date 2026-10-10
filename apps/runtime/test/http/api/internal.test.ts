@@ -2,7 +2,6 @@ import { OwnerApi, ResidentGroup } from '@goblin/contracts/api'
 import { InternalApi } from '@goblin/contracts/internal'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import * as Option from 'effect/Option'
 import * as HttpServer from 'effect/http/HttpServer'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { describe, expect, it } from 'vitest'
@@ -17,7 +16,7 @@ import { Events, Resident } from '../../../src/mcp/service.ts'
 import { ResidentHandlers } from '../../../src/mcp/resident-api.ts'
 import { PiSessions } from '../../../src/pi/sessions.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
-import { currentResident, get, plans, post, serve, served, stub } from './fixture.ts'
+import { currentResident, get, plans, post, serve, served, stub, unrouted } from './fixture.ts'
 
 /** The internal API as the agent serves it, behind the internal gate, over `handlers`. */
 const servedInternal = <Handlers, R>(handlers: Layer.Layer<Handlers, never, R>) =>
@@ -100,7 +99,7 @@ describe('the internal API served by the agent', () => {
   it('serves only its own prefix, and the owner API only its own', async () => {
     const { handlers } = recording()
     const internalOnly = serve(servedInternal(handlers).pipe(Layer.provide(plans())))
-    expect(Option.isNone(await internalOnly.handle(get('/api/agent/resident')))).toBe(true)
+    expect(await unrouted(await internalOnly.fetch(get('/api/agent/resident')))).toBe(true)
     const resident = currentResident()
     const ownerOnly = serve(
       served([ResidentGroup], ResidentHandlers).pipe(

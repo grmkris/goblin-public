@@ -6,6 +6,7 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { AgentAppsHandlers } from '../../agent-apps/api.ts'
 import { AppsHandlers } from '../../apps/api.ts'
 import { ConversationsHandlers } from '../../chats/api.ts'
+import { FilesHandlers } from '../../files/api.ts'
 import { InboundHandlers } from '../../inbound/api.ts'
 import { InspectHandlers } from '../../inspect/api.ts'
 import { McpHandlers } from '../../mcp/api.ts'
@@ -16,6 +17,7 @@ import { PersonasHandlers } from '../../personas/api.ts'
 import { AgentHandlers } from '../../routines/agent-api.ts'
 import { RoutinesHandlers } from '../../routines/api.ts'
 import { TopicsHandlers } from '../../topics/api.ts'
+import { WorkspaceHandlers } from '../../workspace/api.ts'
 import { InternalGateLive, OwnerAdmissionLive } from './middleware.ts'
 
 /** Every owner group's handlers behind owner admission. */
@@ -33,6 +35,8 @@ const OwnerApiLayer = HttpApiBuilder.layer(OwnerApi).pipe(
     AppsHandlers,
     AgentAppsHandlers,
     InspectHandlers,
+    WorkspaceHandlers,
+    FilesHandlers,
   ]),
   Layer.provide(OwnerAdmissionLive),
 )

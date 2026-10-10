@@ -1,6 +1,17 @@
 import type { AgentEventStream } from '@earendil-works/pi-durable'
+import type { JsonObject } from '@goblin/contracts'
+import type { PiHarness } from 'agents/harness/pi'
 import { Internal } from '../http/errors.ts'
 import { sseResponse } from '../http/sse.ts'
+
+/** `session`'s Pi snapshot as JSON: its event stream's first frame, the stream stopped at once. */
+export async function sessionSnapshot(harness: PiHarness, session: string): Promise<JsonObject> {
+  const stream = await harness.session(session).events()
+  const snapshot = stream.snapshot
+  await stream.stop()
+  // SAFETY: Pi snapshots are structured cloneable; normalization enforces JSON at the RPC boundary.
+  return JSON.parse(JSON.stringify(snapshot)) as JsonObject
+}
 
 /** What fails the stream: Pi's own error, or one that says the event stream failed when Pi rejected with a non-error. */
 const failure = (error: unknown): Error => (error instanceof Error ? error : new Internal({ reason: 'event_stream' }))

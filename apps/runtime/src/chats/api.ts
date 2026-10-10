@@ -10,6 +10,7 @@ import type {
 } from '@goblin/contracts'
 import { OwnerApi } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
+import * as HttpServerResponse from 'effect/http/HttpServerResponse'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import {
   createOwnerConversation,
@@ -20,13 +21,14 @@ import {
   stopChat,
   updateOwnerConversation,
 } from '../agent-program.ts'
-import { sessionSnapshot } from '../agent-requests.ts'
 import { capabilitiesOf, changeCapabilities } from '../capabilities/program.ts'
 import { composerOptions } from '../composer.ts'
 import { ownerQueue, removeOwnerQueuedInput } from '../conversation-queue.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { Retrieval } from '../retrieval/service.ts'
-import { attempt } from '../http/errors.ts'
+import { attempt, toAppError } from '../http/errors.ts'
+import { piEventResponse, sessionSnapshot } from '../pi/events.ts'
+import { PiSessions } from '../pi/sessions.ts'
 import { Conversations } from './service.ts'
 import { moveToThread } from './mover.ts'
 import { startThread } from './thread-heads.ts'
@@ -107,9 +109,21 @@ const sources = ({ params }: ChatRequest) =>
   )
 
 /**
- * The `conversations` group (ADRs 0030, 0032, 0034): each handler runs the program its Durable Object RPC method ran
- * (agent.ts), or that its raw route ran (agent-requests.ts) for the snapshot, history and sources. The owner gate has
- * already admitted the request; the instance's pieces (Pi, the routine controller, Stop) come from `AgentInput`.
+ * A registered chat's Pi event stream, server-sent. The stream is its own: it runs until the browser goes away, past
+ * the request's scope, and stops Pi's stream then.
+ */
+const events = ({ params }: ChatRequest) =>
+  Effect.gen(function* () {
+    const session = yield* registeredConversation(params.id)
+    const stream = yield* PiSessions.use((pi) => pi.events(session)).pipe(
+      Effect.catchTag('PiFailure', (failure) => Effect.fail(toAppError(failure.cause))),
+    )
+    return HttpServerResponse.raw(piEventResponse(stream))
+  })
+
+/**
+ * The `conversations` group (ADRs 0030, 0032, 0034). The owner gate has already admitted the request; the instance's
+ * pieces (Pi, the routine controller, Stop) come from `AgentInput`.
  */
 export const ConversationsHandlers = HttpApiBuilder.group(OwnerApi, 'conversations', (handlers) =>
   handlers
@@ -127,5 +141,6 @@ export const ConversationsHandlers = HttpApiBuilder.group(OwnerApi, 'conversatio
     .handle('composer', composer)
     .handle('snapshot', snapshot)
     .handle('history', history)
-    .handle('sources', sources),
+    .handle('sources', sources)
+    .handleRaw('events', events),
 )
