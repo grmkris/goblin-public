@@ -39,7 +39,6 @@ const fakeOwner = () => {
   })
   const Personas = HttpApiBuilder.group(OwnerApi, 'personas', (handlers) =>
     handlers
-      .handle('list', () => Effect.succeed([state.persona]))
       .handle('create', () => Effect.die('not used'))
       .handle('detail', ({ params }) =>
         params.id === state.persona.id ? Effect.succeed(detail()) : Effect.fail(new NotFound({ what: 'persona' })),

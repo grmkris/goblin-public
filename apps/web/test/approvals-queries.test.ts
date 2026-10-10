@@ -47,8 +47,7 @@ const fakeOwner = () => {
       .handle('disconnect', unused)
       .handle('removeServer', unused)
       .handle('callTool', unused)
-      .handle('readResource', unused)
-      .handle('getPrompt', unused),
+      .handle('readResource', unused),
   )
   const gate = Layer.succeed(
     OwnerGate,

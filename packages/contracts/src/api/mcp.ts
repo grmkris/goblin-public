@@ -12,10 +12,8 @@ import {
   ConnectStart,
   Grant,
   GrantChange,
-  McpPromptResult,
   McpResourceResult,
   McpToolResult,
-  PromptGet,
   RegistryChange,
   RegistryView,
   ResourceRead,
@@ -138,12 +136,6 @@ export class McpGroup extends HttpApiGroup.make('mcp').add(
     headers: Caller,
     payload: ResourceRead,
     success: McpResourceResult,
-    error: [ApiErrors.notFound, ...REMOTE],
-  }),
-  HttpApiEndpoint.post('getPrompt', '/mcp/:id/prompts/get', {
-    params: { id: ServerParam },
-    payload: PromptGet,
-    success: McpPromptResult,
     error: [ApiErrors.notFound, ...REMOTE],
   }),
 ) {}

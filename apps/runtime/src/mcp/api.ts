@@ -73,9 +73,6 @@ const callTool = endpoint('callTool')(({ params, headers, payload }) =>
 const readResource = endpoint('readResource')(({ params, headers, payload }) =>
   ownerResource(params.id, payload.uri, callerOf(headers['x-mcp-caller'])),
 )
-const getPrompt = endpoint('getPrompt')(({ params, payload }) =>
-  McpConnections.use((connections) => connections.getPrompt(params.id, payload.name, payload.arguments ?? {})),
-)
 
 /**
  * The `mcp` group (ADRs 0003, 0005, 0006, 0008, 0028): each handler runs the program its Durable Object RPC method
@@ -104,6 +101,5 @@ export const McpHandlers = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
     removeServer,
     callTool,
     readResource,
-    getPrompt,
   }),
 )

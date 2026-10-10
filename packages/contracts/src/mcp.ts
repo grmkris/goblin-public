@@ -87,13 +87,6 @@ export type ToolCall = typeof ToolCall.Type
 export const ResourceRead = Schema.Struct({ uri: NonEmptyString(2048) })
 export type ResourceRead = typeof ResourceRead.Type
 
-/** `POST /api/mcp/:id/prompts/get`: one granted prompt with its arguments. */
-export const PromptGet = Schema.Struct({
-  name: NonEmptyString(256),
-  arguments: Schema.optional(Schema.Record(Schema.String, Schema.String.check(Schema.isMaxLength(16_384)))),
-})
-export type PromptGet = typeof PromptGet.Type
-
 /** `POST /api/agent/resident`: revoke resident authority, or enable it again. */
 export const ResidentChange = Schema.Struct({ enabled: Schema.Boolean })
 export type ResidentChange = typeof ResidentChange.Type
@@ -126,13 +119,6 @@ export type McpToolResult = typeof McpToolResult.Type
 /** A `resources/read` result: the resource's contents (an App's HTML bundle among them). */
 export const McpResourceResult = passthrough({ contents: Schema.Array(RemoteObject) })
 export type McpResourceResult = typeof McpResourceResult.Type
-
-/** A `prompts/get` result: its messages and description. */
-export const McpPromptResult = passthrough({
-  description: Schema.optional(Schema.String),
-  messages: Schema.Array(RemoteObject),
-})
-export type McpPromptResult = typeof McpPromptResult.Type
 
 export type McpServerConfig = {
   readonly serverId: string

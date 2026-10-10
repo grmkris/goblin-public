@@ -16,9 +16,8 @@ const scout: PersonaDefinition = {
 const decodeView = Schema.decodeUnknownSync(PersonaView)
 
 describe('the personas group', () => {
-  it('creates a Persona with 201, finds the same one for its operation id, and lists it', async () => {
-    const { fetch, resident } = organizing()
-    expect(await (await fetch(new Request('https://agent/api/personas'))).json()).toEqual([])
+  it('creates a Persona with 201 and finds the same one for its operation id', async () => {
+    const { fetch, resident, personas } = organizing()
     const first = await fetch(json('POST', '/api/personas', { ...scout, operationId: 'op-1' }))
     expect(first.status).toBe(201)
     const made = decodeView(await first.json())
@@ -26,10 +25,8 @@ describe('the personas group', () => {
     const again = await fetch(json('POST', '/api/personas', { ...scout, name: 'Other', operationId: 'op-1' }))
     expect(again.status).toBe(201)
     expect(decodeView(await again.json())).toEqual(made)
-    const list = await fetch(new Request('https://agent/api/personas'))
-    expect(list.status).toBe(200)
-    expect(await list.json()).toEqual([made])
-    expect(resident.renewals).toHaveLength(4)
+    expect(personas.list()).toEqual([made])
+    expect(resident.renewals).toHaveLength(2)
   })
 
   it('answers a taken name with 409 and a model the deployment does not offer with 400', async () => {

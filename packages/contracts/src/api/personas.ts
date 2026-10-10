@@ -11,7 +11,6 @@ const PersonaParam = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 99
 /**
  * The owner's Personas (ADR 0033): named, versioned agent definitions. Paths are relative to the API's `/api` prefix.
  *
- * - `list`: `GET /api/personas`, every Persona, archived ones included.
  * - `create`: `POST /api/personas`, 201 with the Persona as it is now. The same operation id finds the same Persona. A
  *   name another active Persona has is a conflict; a model the deployment does not offer is invalid input.
  * - `detail`: `GET /api/personas/:id`, one Persona with its revisions, newest first.
@@ -19,7 +18,6 @@ const PersonaParam = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 99
  *   otherwise), and the name and model rules of `create` apply.
  */
 export class PersonasGroup extends HttpApiGroup.make('personas').add(
-  HttpApiEndpoint.get('list', '/personas', { success: Schema.Array(PersonaView) }),
   HttpApiEndpoint.post('create', '/personas', {
     payload: CreatePersona,
     success: PersonaView.pipe(HttpApiSchema.status(201)),

@@ -8,9 +8,6 @@ import { Personas } from './service.ts'
 /** Who changed a Persona and from where: the receipt it leaves says so. `chat` is the run that did it, for the agent. */
 export type PersonaProvenance = { readonly actor: PersonaActor; readonly chat?: string; readonly operationId?: string }
 
-/** Every Persona, archived ones included. */
-export const personaList = Personas.use((personas) => personas.list)
-
 /** One Persona with its revisions. */
 export const personaDetail = (id: number) => Personas.use((personas) => personas.detail(id))
 

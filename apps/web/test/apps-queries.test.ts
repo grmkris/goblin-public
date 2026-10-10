@@ -81,8 +81,7 @@ const fakeApps = () => {
       .handle('readResource', ({ headers, payload }) => {
         callers.push(headers['x-mcp-caller'])
         return Effect.succeed({ contents: [{ uri: payload.uri, text: '<p>App</p>' }] })
-      })
-      .handle('getPrompt', unused),
+      }),
   )
   const gate = Layer.succeed(OwnerGate, (handler) => handler)
   const server = fakeHttpApi(ownerApiOf(AppsGroup, McpGroup), Layer.mergeAll(apps, mcp).pipe(Layer.provide(gate)))
