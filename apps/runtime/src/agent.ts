@@ -178,8 +178,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
         wake: (at) => this.#scheduleWake('routinesWake', at),
       }),
       startRoutine: this.#routineStart,
-      run: this.#bridge.run,
-      local: this.#bridge.local,
       instrument,
     }
   }

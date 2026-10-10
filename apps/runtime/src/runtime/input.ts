@@ -13,7 +13,6 @@ import type { StartRoutine } from '../pi/routine-run.ts'
 import type { SubagentKit } from '../pi/subagents.ts'
 import type { RoutineSchedules } from '../routines/scheduler.ts'
 import type { RunTelemetry } from '../telemetry/events.ts'
-import type { RunProgram } from './bridge.ts'
 import type { Instrument } from './instrument.ts'
 
 /**
@@ -53,10 +52,6 @@ export interface AgentInputs {
   /** Move to thread (ADR 0034): hands the moved turn's relays to the Thread, and the boundaries tests stop at. */
   readonly moves: MoverPorts
   readonly entitlements: EntitlementPolicy
-  /** Runs a program after the plan check, as an owner's or the agent's request does. */
-  readonly run: RunProgram
-  /** Runs a program without the plan check (ledger, budget record, routine gates, diagnose). */
-  readonly local: RunProgram
   /** How the bridge's programs and the change handlers are wrapped (instrument.ts). */
   readonly instrument: Instrument
 }

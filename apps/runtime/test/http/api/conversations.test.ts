@@ -224,18 +224,13 @@ const services = (calls: Calls, personas: readonly PersonaView[]) =>
     stub(Retrieval, { uses: () => Effect.succeed([]) }),
   )
 
-/** The bridge: the composer's skill checks would run through it, and no request here reaches one. */
-const run = async () =>
-  // SAFETY: as above, nothing calls it.
-  undefined as never
-
-/** The instance's pieces the handlers read: Pi, the model choices, the Personas and the bridge. */
+/** The instance's pieces the handlers read: Pi, the model choices and the Personas. */
 const instance = (harness: PiHarness, calls: Calls) => {
   const personas = fake<PersonaTurnKit>({
     drop: async () => calls.push('personas:drop'),
     start: async (_pi, ask) => void calls.push(`personas:${ask.order}`),
   })
-  return fake<AgentInputs>({ harness, applied: new Map(), personas, run })
+  return fake<AgentInputs>({ harness, applied: new Map(), personas })
 }
 
 /**
