@@ -49,5 +49,7 @@ export const Attempt = Schema.Struct({
   error: Schema.NullOr(Schema.String),
   usageKnown: Schema.Boolean,
   latencyMs: Schema.Number,
+  ownerApproved: Schema.optional(Schema.String),
+  campaignId: Schema.optional(Schema.String),
 })
 export type Attempt = typeof Attempt.Type

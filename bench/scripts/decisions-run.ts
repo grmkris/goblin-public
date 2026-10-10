@@ -5,7 +5,7 @@ import { type Provider } from './decisions-provider.ts'
 import { executeAttempt } from './decisions-attempt.ts'
 import { Attempt, Row, type Arm, type Fixture } from '../src/decisions/schema.ts'
 import { activeArms, modelFor, type Manifest } from '../src/decisions/manifest.ts'
-import { batches, localRow, type Batch } from '../src/decisions/runner.ts'
+import { plannedBatches, localRow, type Batch } from '../src/decisions/runner.ts'
 import { totals } from '../src/decisions/budget.ts'
 import { rules } from '../src/decisions/rules.ts'
 
@@ -85,7 +85,7 @@ const runBatch = Effect.fn('decisions.batch')(function* (
 const runArm = Effect.fn('decisions.arm')(function* (options: RunOptions, state: RunState, arm: Arm) {
   yield* options.steer
   if (arm === 'rules') {
-    const local = batches(options.fixtures, arm, options.manifest.repetitions).flatMap((batch) =>
+    const local = plannedBatches(options.manifest, options.fixtures, arm).flatMap((batch) =>
       batch.fixtures.map((fixture) => localRow(fixture, arm, batch.repetition)),
     )
     state.rows.push(...local)
@@ -93,7 +93,7 @@ const runArm = Effect.fn('decisions.arm')(function* (options: RunOptions, state:
   }
   const available = yield* options.available(modelFor(options.manifest, arm).keyEnv)
   let reason = available ? null : 'missing-credential'
-  for (const batch of batches(options.fixtures, arm, options.manifest.repetitions))
+  for (const batch of plannedBatches(options.manifest, options.fixtures, arm))
     reason = yield* runBatch(options, state, batch, reason)
 })
 /** One coordinator and one durable allowance span every trial in this lane. No implicit retry. */

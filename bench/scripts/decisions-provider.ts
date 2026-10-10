@@ -23,15 +23,14 @@ export const liveProvider = Effect.fn('decisions.provider')(function* (request: 
   const token = yield* Config.option(Config.Redacted(request.model.keyEnv))
   if (Option.isNone(token)) return { status: 0, text: '', latencyMs: 0, error: 'missing-credential' }
   const started = DateTime.toEpochMillis(yield* DateTime.now)
-  const headers =
-    request.model.arm === 'jev'
-      ? {
-          'ai-gateway-protocol-version': '0.0.1',
-          'ai-evaluation-model-specification-version': '4',
-          'ai-model-id': request.model.model,
-          'ai-gateway-auth-method': 'api-key',
-        }
-      : {}
+  const headers = request.model.endpoint.includes('ai-gateway.vercel.sh')
+    ? {
+        'ai-gateway-protocol-version': '0.0.1',
+        'ai-evaluation-model-specification-version': '4',
+        'ai-model-id': request.model.model,
+        'ai-gateway-auth-method': 'api-key',
+      }
+    : {}
   const send = client
     .execute(
       HttpClientRequest.post(request.model.endpoint).pipe(
@@ -69,7 +68,7 @@ export const configuredProvider: Provider = (request) =>
 
 export const discoverAccount = Effect.fn('decisions.account')(function* () {
   const client = yield* HttpClient.HttpClient
-  const token = yield* Config.option(Config.Redacted('CLOUDFLARE_AI_TOKEN'))
+  const token = yield* Config.option(Config.Redacted('CLOUDFLARE_API_TOKEN'))
   if (Option.isNone(token)) return { account: 'unavailable', status: 0 }
   const response = yield* client.execute(
     HttpClientRequest.get('https://api.cloudflare.com/client/v4/accounts').pipe(

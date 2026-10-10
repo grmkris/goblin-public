@@ -1,5 +1,22 @@
 # Memory benchmark workspace
 
+Interrupted decision attempts remain fully charged and block later admission. Only an explicit owner approval can
+settle a reservation without known usage; the command appends a receipt under the same coordinator lock and refuses
+unknown or already settled attempts:
+
+```sh
+bun run bench:decisions settle-unfinished --run decisions-heldout-20261008 --attempt decisions-heldout-20261008.536 --owner-approved 2026-10-09
+```
+
+The approval permits later admission without claiming recovered usage or retrying the interrupted request.
+
+For the 2026-10-09 decision campaign, each new manifest declares `--campaign decisions-20261009`: the durable ledger
+enforces USD 3.50 across those manifests, plus USD 3 per manifest. Prior attempts remain in the same append-only ledger;
+unfinished or unapproved unknown usage still stops every campaign. Use `--exclude-from <run>` to seal completed
+case/arm/repetition keys into a new manifest when finishing a partial run, including prior invalid answers. Each new
+manifest requires a dry run. Jev uses its pinned direct `jev-1.13.0` route with `JEV_API_KEY`, OpenAI Decisions uses
+`OPENAI_DECISIONS_API_KEY`, and Workers AI uses `CLOUDFLARE_API_TOKEN`.
+
 ## Cross-chat transcript retrieval spike
 
 The [retrieval spike report](retrieval-report.md) compares a native DO FTS5 candidate index with a bounded

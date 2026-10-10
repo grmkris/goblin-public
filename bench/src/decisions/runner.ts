@@ -29,14 +29,27 @@ export function requestBody(batch: Batch, model: Model, output: number): string 
   const data = packet(batch.fixtures, batch.selected)
   if (model.arm === 'cheap-llm') return JSON.stringify(chatBody(model.model, data, output))
   if (model.arm === 'openai-decisions') return JSON.stringify(openaiBody(data))
-  return JSON.stringify(typedBody(model.model, data, model.arm === 'jev'))
+  return JSON.stringify(typedBody(model.model, data, model.endpoint.includes('ai-gateway.vercel.sh')))
+}
+export function plannedBatches(manifest: Manifest, fixtures: readonly Fixture[], arm: Arm): Batch[] {
+  const excluded = new Set(manifest.excludeRows?.map((row) => [row.id, row.arm, row.repetition].join('/')))
+  return batches(fixtures, arm, manifest.repetitions)
+    .map((batch) => {
+      const remaining = batch.fixtures.filter((fixture) => !excluded.has([fixture.id, arm, batch.repetition].join('/')))
+      return {
+        ...batch,
+        fixtures: remaining,
+        selected: batch.selected.filter((fixture) => remaining.includes(fixture)),
+      }
+    })
+    .filter((batch) => batch.fixtures.length > 0)
 }
 export function plan(manifest: Manifest, fixtures: readonly Fixture[]) {
   const estimates = activeArms(manifest)
     .filter((arm) => arm !== 'rules')
     .map((arm) => {
       const model = modelFor(manifest, arm)
-      const calls = batches(fixtures, arm, manifest.repetitions).filter((batch) => batch.selected.length > 0)
+      const calls = plannedBatches(manifest, fixtures, arm).filter((batch) => batch.selected.length > 0)
       const input = calls.reduce(
         (sum, batch) =>
           sum +

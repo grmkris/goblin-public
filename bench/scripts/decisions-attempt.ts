@@ -52,6 +52,7 @@ export const executeAttempt = Effect.fn('decisions.attempt')(function* (options:
   const started: Attempt = {
     id,
     runId: manifest.runId,
+    ...(manifest.campaign === undefined ? {} : { campaignId: manifest.campaign.id }),
     arm: batch.arm,
     fixtureId: batch.fixtures.map((fixture) => fixture.id).join(','),
     repetition: batch.repetition,

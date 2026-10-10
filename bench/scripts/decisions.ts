@@ -13,11 +13,12 @@ import { plan } from '../src/decisions/runner.ts'
 import { Attempt, Row, arms } from '../src/decisions/schema.ts'
 import { reportData, markdown, combineRows } from '../src/decisions/report.ts'
 import { totals } from '../src/decisions/budget.ts'
+import { settleUnfinished } from './decisions-settle.ts'
 
 const [command = 'plan', ...args] = Bun.argv.slice(2)
 const root = resolve(import.meta.dirname, '../..')
 const privateRoot = join(root, '.local/bench/decisions')
-const lane = '/tmp/goblin-lanes/20261008/decisions'
+const lane = '/tmp/goblin-lanes/20261009/x'
 const option = (name: string): string | undefined => {
   const at = args.indexOf('--' + name)
   return at < 0 ? undefined : args[at + 1]
@@ -85,6 +86,16 @@ const frozenThresholds = Effect.fn('decisions.frozenThresholds')(function* (fixt
   )
   return { thresholdSource: id, frozenThresholds: freezeThresholds(data.metrics) }
 })
+const exclusions = Effect.fn('decisions.exclusions')(function* (fixtureHash: string) {
+  const sourceId = option('exclude-from')
+  if (sourceId === undefined) return {}
+  if (!/^[a-z0-9_-]+$/u.test(sourceId)) return yield* fail('Invalid exclusion source')
+  const dir = join(privateRoot, sourceId)
+  const prior = yield* readJson(join(dir, 'manifest.json'), Manifest)
+  if (prior.fixtureHash !== fixtureHash) return yield* fail('Exclusion fixtures differ')
+  const rows = yield* readLedger(join(dir, 'results.jsonl'), Row)
+  return { excludeRows: rows.map(({ id, arm, repetition }) => ({ id, arm, repetition })) }
+})
 const createManifest = Effect.fn('decisions.createManifest')(function* (runId: string, fixtureFile: string) {
   const fixtures = yield* loadFixtures(fixtureFile)
   const account = yield* discoverAccount().pipe(
@@ -97,6 +108,8 @@ const createManifest = Effect.fn('decisions.createManifest')(function* (runId: s
     fixtureFile,
     ...(yield* frozenThresholds(fixtureFile)),
     fixtureHash: digest(fixtures),
+    ...(yield* exclusions(digest(fixtures))),
+    ...(option('campaign') === undefined ? {} : { campaign: { id: option('campaign') ?? '', maxUsd: 3.5 } }),
     sourceHash: yield* implementationHash(fixtureFile),
     repetitions: 3,
     batchSize: 2,
@@ -130,10 +143,14 @@ const prepare = Effect.fn('decisions.plan')(function* () {
   )
   yield* fs.makeDirectory(dir, { recursive: true, mode: 0o700 })
   const output = plan(manifest, fixtures)
-  const retained = totals(yield* readLedger(join(privateRoot, 'attempts.jsonl'), Attempt))
+  const records = yield* readLedger(join(privateRoot, 'attempts.jsonl'), Attempt)
+  const retained = totals(
+    manifest.campaign === undefined ? records : records.filter((record) => record.campaignId === manifest.campaign?.id),
+  )
   if (
-    output.requests + retained.requests > manifest.limits.maxRequests ||
-    output.maximumReservedUsd + retained.usd > manifest.limits.maxUsd
+    output.requests > manifest.limits.maxRequests ||
+    output.maximumReservedUsd > manifest.limits.maxUsd ||
+    output.maximumReservedUsd + retained.usd > (manifest.campaign?.maxUsd ?? manifest.limits.maxUsd)
   )
     return yield* fail('Dry run exceeds declared budget')
   yield* fs.writeFileString(join(dir, 'manifest.json'), json(manifest), { mode: 0o600, flag: 'wx' })
@@ -187,10 +204,18 @@ const includedRun = Effect.fn('decisions.includedRun')(function* (manifest: Mani
   const compatible =
     prior.fixtureHash === manifest.fixtureHash &&
     prior.prompt === manifest.prompt &&
-    digest(prior.questions) === digest(manifest.questions) &&
-    digest(prior.models) === digest(manifest.models)
+    digest(prior.questions) === digest(manifest.questions)
   if (!compatible) return yield* fail('Included run has incompatible evidence or model definitions')
-  return { manifest: prior, rows: yield* readLedger(join(dir, 'results.jsonl'), Row) }
+  const rows = yield* readLedger(join(dir, 'results.jsonl'), Row)
+  const matchingArms = new Set(
+    prior.models
+      .filter((model) => manifest.models.some((current) => digest(model) === digest(current)))
+      .map((model) => model.arm),
+  )
+  return {
+    manifest: prior,
+    rows: rows.filter((row) => row.route === 'rules' || matchingArms.has(row.arm === 'critic' ? 'clef' : row.arm)),
+  }
 })
 const report = Effect.fn('decisions.command.report')(function* () {
   const id = option('run')
@@ -211,6 +236,12 @@ const report = Effect.fn('decisions.command.report')(function* () {
   yield* fs.writeFileString(path, markdown(data))
   return { report: path, totals: data.totals }
 })
+const settleCommand = Effect.fn('decisions.command.settle')(function* () {
+  const runId = option('run')
+  const attemptId = option('attempt')
+  if (runId === undefined || attemptId === undefined) return yield* fail('Supply --run and --attempt')
+  return yield* settleUnfinished({ root: privateRoot, runId, attemptId, ownerApproved: option('owner-approved') })
+})
 const main = Effect.gen(function* () {
   yield* steer
   const result =
@@ -220,7 +251,9 @@ const main = Effect.gen(function* () {
         ? yield* run()
         : command === 'report'
           ? yield* report()
-          : yield* fail('Use plan, run or report')
+          : command === 'settle-unfinished'
+            ? yield* settleCommand()
+            : yield* fail('Use plan, run, report or settle-unfinished')
   yield* Console.log(json(result))
 }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(BunServices.layer, FetchHttpClient.layer)))
 BunRuntime.runMain(main)
