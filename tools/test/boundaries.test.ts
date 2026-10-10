@@ -19,6 +19,8 @@ tester.run('no-cross-boundary-import', noCrossBoundaryImport, {
     { code: "const ui = import('@goblin/app/runtime/ui.css?raw')", filename: at('apps/web/src/lib/a.ts') },
     { code: "import { readFile } from 'node:fs'", filename: at('tools/test/a.test.ts') },
     { code: "import { $ } from 'bun'", filename: at('tools/check.ts') },
+    { code: "import { InternalApi } from '@goblin/contracts/internal'", filename: at('apps/runtime/src/worker.ts') },
+    { code: "import { x } from '@goblin/contracts/internals'", filename: at('apps/web/src/lib/a.ts') },
   ],
   invalid: [
     {
@@ -47,6 +49,21 @@ tester.run('no-cross-boundary-import', noCrossBoundaryImport, {
       errors: [{ messageId: 'runtime' }],
     },
     { code: "import { $ } from 'bun'", filename: at('apps/runtime/src/agent.ts'), errors: [{ messageId: 'runtime' }] },
+    {
+      code: "import type { InternalApi } from '@goblin/contracts/internal'",
+      filename: at('apps/web/src/lib/a.ts'),
+      errors: [{ messageId: 'forbidden' }],
+    },
+    {
+      code: "export * from '@goblin/contracts/internal/ask'",
+      filename: at('apps/web/src/worker.ts'),
+      errors: [{ messageId: 'forbidden' }],
+    },
+    {
+      code: "const api = import('@goblin/contracts/internal')",
+      filename: at('apps/web/test/a.test.ts'),
+      errors: [{ messageId: 'forbidden' }],
+    },
   ],
 })
 

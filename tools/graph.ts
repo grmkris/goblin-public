@@ -7,6 +7,8 @@ export interface Node {
   readonly runtime: Runtime
   readonly mayImport: readonly string[]
   readonly zones?: Readonly<Record<string, Runtime>>
+  /** Entries of an importable workspace that this one must still never import, each with the reason. */
+  readonly forbids?: Readonly<Record<string, string>>
   readonly seam?: { readonly consumer: string; readonly reason: string }
 }
 export const zones: Readonly<Record<string, Runtime>> = {
@@ -61,6 +63,9 @@ export const nodes: readonly Node[] = [
     runtime: 'browser',
     mayImport: ['@goblin/app', '@goblin/contracts', '@goblin/kit', '@goblin/ui', '@goblin/runtime'],
     zones: { 'src/worker.ts': 'cloud' },
+    forbids: {
+      '@goblin/contracts/internal': 'it is the Worker-to-agent API, and nothing in the web app ever calls /internal',
+    },
   },
   {
     dir: 'packages/contracts',

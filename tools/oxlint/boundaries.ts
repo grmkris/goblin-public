@@ -7,7 +7,8 @@
  *   takes a cloud workspace's built files only as assets, `?url` or `?raw`, never its code), and a
  *   runtime-bound module (`bun`, `bun:*`, `@effect/platform-bun`, `cloudflare:*`, `node:*`) must suit the runtime of the
  *   importing file (its workspace's runtime, or the zone's: `scripts/` is tooling, `test/` is test, root files are
- *   tooling, and a node's own `zones` override both).
+ *   tooling, and a node's own `zones` override both). An entry a node `forbids` stays closed even where its workspace is
+ *   a declared edge.
  * - `no-runtime-global`: the `Bun` global, under the same runtime rule.
  */
 import { definePlugin, defineRule } from '@oxlint/plugins'
@@ -82,6 +83,7 @@ export const noCrossBoundaryImport = defineRule({
       workspace:
         '`{{specifier}}` is not a declared dependency of {{dir}} ({{role}}) Declared workspace imports: {{allowed}}. Import from one of those, or add {{target}} to {{dir}}/package.json and to the `mayImport` of {{dir}} in tools/graph.ts (`bun run graph` checks that they agree).',
       runtime: '`{{specifier}}` is a {{family}} module, but {{file}} runs as `{{runtime}}` (tools/graph.ts). {{fix}}',
+      forbidden: '{{dir}} must not import `{{entry}}`: {{reason}} (`forbids` in tools/graph.ts).',
     },
     schema: [],
   },
@@ -89,7 +91,14 @@ export const noCrossBoundaryImport = defineRule({
     const placement = placementOf(context.physicalFilename)
     if (placement === undefined) return {}
 
+    const forbidden = Object.entries(placement.node.forbids ?? {})
     const check = (specifier: string, node: Sourced): void => {
+      const closed = forbidden.find(([entry]) => specifier === entry || specifier.startsWith(`${entry}/`))
+      if (closed !== undefined) {
+        const [entry, reason] = closed
+        context.report({ messageId: 'forbidden', data: { dir: placement.node.dir, entry, reason }, node })
+        return
+      }
       const target = workspaceOf(specifier)
       if (target !== undefined) {
         // The web workspace may import the runtime only from its Worker adapter. Browser routes/components must
