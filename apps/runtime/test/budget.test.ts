@@ -88,4 +88,11 @@ describe('Credit rates (unit, ADR 0026)', () => {
     expect(creditRates(undefined)).toBe(DEFAULT_RATES)
     expect(creditRates('{"default":{"input":0}}').default).toEqual(DEFAULT_RATES.default)
   })
+
+  it('prices Clef by its input alone (ADR 0031), kept through unrelated overrides and overridable itself', () => {
+    expect(milliCredits(use(5000, 9000), 'clef', creditRates('{"models":{}}'))).toBe(1000)
+    const overridden = creditRates('{"models":{"clef":{"input":10000,"cached":10000,"output":null}}}')
+    expect(milliCredits(use(5000, 9000), 'cloudflare/clef', overridden)).toBe(500)
+    expect(rateFor('qwen3.8-flash', overridden)).toEqual(DEFAULT_RATES.default)
+  })
 })
