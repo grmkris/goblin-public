@@ -9,9 +9,11 @@ import { BACKGROUND, conversationId } from '../../src/pi/context.ts'
 import type { SeenRequest } from './model.ts'
 import { type RoutineDefinition } from '@goblin/contracts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
+import { type Probes, inAgent } from './probe.ts'
+import { until } from './until.ts'
 
 /** Bounded native happy path: real app SQLite, native Pi tasks and the injected keyless model. */
-export async function routineExecutionProbe(
+async function routineExecutionProbe(
   storage: DurableObjectStorage,
   agent: PersonalAgent,
   seen: readonly SeenRequest[],
@@ -31,10 +33,11 @@ export async function routineExecutionProbe(
   const replay = await runRoutineNow(agent, proposal.id, 1, 'execution-manual')
   const db = drizzle(storage)
   const store = new RoutineRunStore(db, 'fixture')
-  for (let count = 0; count < 200; count += 1) {
-    if (store.get(first.id).state === 'completed') break
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
+  await until(
+    () => store.get(first.id).state,
+    (state) => state === 'completed',
+    2000,
+  )
   await agent.routinesWake()
   const record = store.get(first.id)
   if (record.sessionId === null) throw new Error('Routine session did not bind')
@@ -74,4 +77,8 @@ export async function routineExecutionProbe(
     skipOutcome: skipped.outcome,
     noSkippedModel: seen.length === calls,
   }
+}
+
+export const probes: Probes = {
+  'routine-execution': inAgent(({ storage, agent, seen }) => routineExecutionProbe(storage, agent, seen)),
 }

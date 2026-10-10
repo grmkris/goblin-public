@@ -1,9 +1,7 @@
 import * as Schema from 'effect/Schema'
 import { expect } from 'vitest'
 import { Listed, ModelRequest, Ok } from './conversation-checks.ts'
-
-const decode = async <A>(base: string, path: string, name: string, schema: Schema.Decoder<A>) =>
-  Schema.decodeUnknownPromise(schema)(await (await fetch(`${base}/${path}?name=${name}`)).json())
+import { type NativeCase, probeOf } from './native-case.ts'
 
 const Lines = Schema.Array(Schema.String)
 const Settled = Schema.Struct({ status: Schema.String, text: Schema.optional(Schema.String) })
@@ -20,8 +18,8 @@ const ChainRun = Schema.Struct({
 })
 
 /** A subagent's subagent reports to it, and only its final answer reaches main; both close when done. */
-export async function chainChecks(base: string, name: string): Promise<void> {
-  const result = await decode(base, 'subagent-chain', name, ChainRun)
+async function chainChecks(base: string): Promise<void> {
+  const result = await probeOf(base, 'subagent-chain', ChainRun)
   const report = [
     { type: 'text', text: '[from subagent lead]' },
     { type: 'text', text: 'echo: echo: find deeper' },
@@ -46,8 +44,8 @@ const OwnerRun = Schema.Struct({
 })
 
 /** The owner's message to a busy subagent steers it, reports up once with their words, and keeps it open. */
-export async function ownerChecks(base: string, name: string): Promise<void> {
-  const result = await decode(base, 'subagent-owner', name, OwnerRun)
+async function ownerChecks(base: string): Promise<void> {
+  const result = await probeOf(base, 'subagent-owner', OwnerRun)
   expect(result.working).toBe(true)
   expect(result.sent.value.accepted).toBe(true)
   expect(result.child.filter((line) => !line.startsWith('pi.system'))).toEqual([
@@ -82,8 +80,8 @@ const CloseRun = Schema.Struct({
 })
 
 /** Stop and Close reach a subagent's subagents and report nothing; a send to an owner-closed one is refused. */
-export async function closeChecks(base: string, name: string): Promise<void> {
-  const result = await decode(base, 'subagent-close', name, CloseRun)
+async function closeChecks(base: string): Promise<void> {
+  const result = await probeOf(base, 'subagent-close', CloseRun)
   expect(result.working).toBe(true)
   expect(result.stopped.text).toBe('done: Stopped lead.')
   expect(result.diggerStopped).toBe(true)
@@ -109,8 +107,8 @@ const SynthesisRun = Schema.Struct({
 })
 
 /** A Delegate's result is passive unless the spawn asked for synthesis, which gets exactly one answer. */
-export async function synthesisChecks(base: string, name: string): Promise<void> {
-  const result = await decode(base, 'subagent-synthesis', name, SynthesisRun)
+async function synthesisChecks(base: string): Promise<void> {
+  const result = await probeOf(base, 'subagent-synthesis', SynthesisRun)
   const quiet = [
     { type: 'text', text: '[from subagent quiet]' },
     { type: 'text', text: 'echo: say little' },
@@ -132,3 +130,19 @@ export async function synthesisChecks(base: string, name: string): Promise<void>
   expect(result.quiet.closedBy).toBe('done')
   expect(result.loud.closedBy).toBe('done')
 }
+
+export const cases: readonly NativeCase[] = [
+  { title: "a subagent's subagent reports to it, and only the final answer reaches main", run: chainChecks },
+  {
+    title: 'the owner steers a busy subagent; the answer reports up once and the subagent stays open',
+    run: ownerChecks,
+  },
+  {
+    title: 'Stop and Close reach subagents of subagents and report nothing; a closed one refuses its spawner',
+    run: closeChecks,
+  },
+  {
+    title: "a Delegate's result is passive unless the spawn asked for synthesis, which gets exactly one answer",
+    run: synthesisChecks,
+  },
+]

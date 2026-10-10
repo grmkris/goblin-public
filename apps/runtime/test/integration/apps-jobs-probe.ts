@@ -9,6 +9,7 @@ import { type AppRunner, appLock } from '../../src/agent-apps/queue.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
 import { KeyedLock } from '../../src/observability/lock.ts'
 import { type AgentFetch, type OwnerClient, callOwner } from '../owner-client.ts'
+import { type Probes, inAgent } from './probe.ts'
 
 /** A runtime with only the per-key lock, for the apps engines a probe makes outside an agent's own runtime. */
 const probeRuntime = ManagedRuntime.make(KeyedLock.layer)
@@ -160,7 +161,7 @@ async function releases(bench: Bench, fire: (slot: JobSlot) => Promise<void>) {
 }
 
 /** The agent object as the owner reaches it: its native job callback, and the owner API over its own `fetch`. */
-export type AgentPort = AgentFetch & { readonly fire: (slot: JobSlot) => Promise<void> }
+type AgentPort = AgentFetch & { readonly fire: (slot: JobSlot) => Promise<void> }
 
 /** An owner API call's value, or the tag of the failure it answered. */
 const settle = <A, E>(agent: AgentFetch, call: (api: OwnerClient) => Effect.Effect<A, E>): Promise<A | string> =>
@@ -240,7 +241,7 @@ async function management(bench: Bench, agent: AgentPort, bucket: R2Bucket, owne
  * a lapsed authority waits; failures back off and pause the schedule after ten, and a new release resumes it; a
  * schedule a release drops goes. The agent's own callback runs the same job, and the owner manages and deletes it.
  */
-export async function appsJobsProbe(
+async function appsJobsProbe(
   storage: DurableObjectStorage,
   env: RuntimeEnv,
   owner: string,
@@ -272,4 +273,11 @@ export async function appsJobsProbe(
   }
   for (const id of await bench.armed()) await schedules.cancel(id)
   return result
+}
+
+/** On the object's own native schedules, and its own `runAppJob` callback. */
+export const probes: Probes = {
+  'apps-jobs': inAgent(({ storage, env, name, schedules, fire, api }) =>
+    appsJobsProbe(storage, env, name, schedules, { fire, fetch: api.fetch }),
+  ),
 }

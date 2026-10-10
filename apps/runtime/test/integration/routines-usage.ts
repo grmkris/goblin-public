@@ -9,17 +9,14 @@ import { BACKGROUND, conversationId } from '../../src/pi/context.ts'
 import { unwrap } from '../../src/http/rpc.ts'
 import { ownerSend } from './probe-reads.ts'
 import type { SeenRequest } from './model.ts'
-import { changeRoutine, proposeRoutine, runRoutineNow } from './routines-owner.ts'
+import { changeRoutine, proposeRoutine, runReached, runRoutineNow } from './routines-owner.ts'
+import { type Probes, inAgent } from './probe.ts'
 
-async function waitFor(store: RoutineRunStore, id: string, state: string) {
-  // Native Pi settles a blocked provider after its bounded retry schedule (up to ~16 s).
-  // Observe that terminal state rather than racing it with the old five-second fixture deadline.
-  for (let index = 0; index < 2500; index += 1) {
-    if (store.get(id).state === state) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`Routine usage fixture did not reach ${state}`)
-}
+/**
+ * Native Pi settles a blocked provider after its bounded retry schedule (up to ~16 s): observe that terminal state
+ * rather than race it with a shorter deadline.
+ */
+const reached = (store: RoutineRunStore, id: string, state: string) => runReached(store, id, state, 25_000)
 async function start(agent: PersonalAgent, prompt: string, operation: string) {
   const definition: RoutineDefinition = {
     title: `Native slow routine ${operation}`,
@@ -36,11 +33,7 @@ async function start(agent: PersonalAgent, prompt: string, operation: string) {
 }
 
 /** Actual native compaction spend, cumulative replay, UTC-day delta receipts and measured in-flight cap overshoot. */
-export async function routineUsageProbe(
-  storage: DurableObjectStorage,
-  agent: PersonalAgent,
-  seen: readonly SeenRequest[],
-) {
+async function routineUsageProbe(storage: DurableObjectStorage, agent: PersonalAgent, seen: readonly SeenRequest[]) {
   const db = drizzle(storage)
   const store = new RoutineRunStore(db, agent.name)
   const run = await start(
@@ -48,7 +41,7 @@ export async function routineUsageProbe(
     'call ask_user {"questions":[{"id":"usage","prompt":"Continue?","kind":"text"}]}',
     'usage',
   )
-  await waitFor(store, run.id, 'waiting_owner')
+  await reached(store, run.id, 'waiting_owner')
   const session = store.get(run.id).sessionId
   if (!session) throw new Error('Usage fixture session missing')
   const pi = await agent.harness.pi()
@@ -70,7 +63,7 @@ export async function routineUsageProbe(
   const task = await child.compact(undefined, BACKGROUND)
   pi.resume()
   const compacted = await pi.waitForTask(task, BACKGROUND)
-  await waitFor(store, run.id, 'completed')
+  await reached(store, run.id, 'completed')
   const used = store.used(run.id, Date.now()).run
   const projection = new RoutineUsage(db, store, DEFAULT_RATES, agent.harness)
   const snapshot = await pi.snapshot(UsageDoc, child.id, BACKGROUND)
@@ -78,9 +71,9 @@ export async function routineUsageProbe(
   projection.project(session, snapshot, Date.now() + 86_400_000)
   const afterReplay = store.used(run.id, Date.now()).run
   const capped = await start(agent, 'call mcp_list {}', 'overshoot')
-  await waitFor(store, capped.id, 'running')
+  await reached(store, capped.id, 'running')
   store.recordUsage(capped.id, 'fixture-previous-usage', 995, 0, Date.now())
-  await waitFor(store, capped.id, 'failed')
+  await reached(store, capped.id, 'failed')
   const capRequests = seen.filter((request) =>
     request.messages.some((message) => message.text.includes('Confirmed routine: Native slow routine overshoot')),
   )
@@ -94,4 +87,8 @@ export async function routineUsageProbe(
     overshoot: spent - 1000,
     capModelRequests: capRequests.length,
   }
+}
+
+export const probes: Probes = {
+  'routine-usage': inAgent(({ storage, agent, seen }) => routineUsageProbe(storage, agent, seen)),
 }

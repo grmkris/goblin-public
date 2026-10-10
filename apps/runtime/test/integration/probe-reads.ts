@@ -1,9 +1,10 @@
-import type {
-  CapabilityChange,
-  ConversationView,
-  CreateConversation,
-  SendMessage,
-  UpdateConversation,
+import {
+  type CapabilityChange,
+  type ConversationView,
+  type CreateConversation,
+  PRIMARY_CHAT,
+  type SendMessage,
+  type UpdateConversation,
 } from '@goblin/contracts'
 import { AppError } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
@@ -11,14 +12,13 @@ import * as Schema from 'effect/Schema'
 import { isAppError } from '../../src/http/errors.ts'
 import type { RpcResult } from '../../src/http/rpc.ts'
 import { type AgentFetch, type OwnerClient, ownerApi, workspaceSnapshot } from '../owner-client.ts'
-import type { PersonalAgentProbe } from './worker.ts'
-
-type Probe = DurableObjectStub<PersonalAgentProbe>
+import type { ProbeStub } from './probe.ts'
+import { until } from './until.ts'
 
 /**
- * One owner API call against `agent`, answered in the shape of the owner RPC method it replaces: `{ ok: true, value }`,
- * or `{ ok: false, error }` with the encoded `AppError` (carrying the reference the API stamps on it). A failure the API
- * did not answer (transport, or a body that does not decode) rejects.
+ * One owner API call against `agent`, its refusals as data: `{ ok: true, value }`, or `{ ok: false, error }` with the
+ * encoded `AppError` (carrying the reference the API stamps on it), for a probe to answer and its case to decode. A
+ * failure the API did not answer (transport, or a body that does not decode) rejects.
  */
 export const ownerResult = <A, E>(
   agent: AgentFetch,
@@ -53,6 +53,10 @@ export const workspaceConversations = async (agent: AgentFetch): Promise<readonl
 /** A Thread, empty or branched from an entry: `POST /api/conversations`. */
 export const ownerCreate = (agent: AgentFetch, input: CreateConversation) =>
   ownerResult(agent, (api) => api.conversations.create({ payload: input }))
+
+/** A thread branched from main at `entry`; with no entry, a request the agent refuses. */
+export const branchMain = (agent: AgentFetch, entry: number | undefined) =>
+  ownerCreate(agent, { from: { conversation: PRIMARY_CHAT, entry: entry ?? 0 } })
 
 /** Rename, close or reopen, or pin a subagent open: `PATCH /api/conversations/:id`. */
 export const ownerUpdate = (agent: AgentFetch, chat: string, change: UpdateConversation) =>
@@ -95,8 +99,10 @@ export const ownerSnapshot = (agent: AgentFetch, chat: string) =>
   Effect.runPromise(Effect.flatMap(ownerApi(agent), (api) => api.conversations.snapshot({ params: { id: chat } })))
 
 /** A conversation's snapshot, as far as its entries. */
-export const snapshotOf = async (agent: Probe, session: string): Promise<{ readonly entries?: readonly Entry[] }> =>
-  decodeEntries(await ownerSnapshot(agent, session))
+export const snapshotOf = async (
+  agent: AgentFetch,
+  session: string,
+): Promise<{ readonly entries?: readonly Entry[] }> => decodeEntries(await ownerSnapshot(agent, session))
 
 /** Entries as `kind: content`, one line per model message. */
 export const linesOf = (records: readonly Entry[]) =>
@@ -104,7 +110,7 @@ export const linesOf = (records: readonly Entry[]) =>
 
 /** A conversation's history before entry `before`, through the owner API (`GET …/history?before=`). */
 export const historyOf = async (
-  agent: Probe,
+  agent: AgentFetch,
   session: string,
   before = 2 ** 31,
 ): Promise<{ readonly entries?: readonly Entry[] }> =>
@@ -117,28 +123,15 @@ export const historyOf = async (
   )
 
 /** A conversation's newest entries as people read them, in order, whatever the model's context starts with now. */
-export const transcript = async (agent: Probe, session: string): Promise<string[]> =>
+export const transcript = async (agent: AgentFetch, session: string): Promise<string[]> =>
   linesOf((await historyOf(agent, session)).entries ?? [])
 
-/**
- * Reads every 20 ms until `done` holds, for up to `ms` (5 s by default); the last read either way (background work
- * settles late).
- */
-export async function until<A>(read: () => Promise<A>, done: (value: A) => boolean, ms = 5000): Promise<A> {
-  let value = await read()
-  for (let attempt = 0; attempt < ms / 20 && !done(value); attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    value = await read()
-  }
-  return value
-}
-
 /** The agent's conversations, once `done` holds for them. */
-export const threadsUntil = (agent: Probe, done: (views: readonly ConversationView[]) => boolean, ms?: number) =>
+export const threadsUntil = (agent: AgentFetch, done: (views: readonly ConversationView[]) => boolean, ms?: number) =>
   until(() => workspaceConversations(agent), done, ms)
 
 /** One owner message into a conversation, settled. */
-export async function exchange(agent: Probe, session: string, text: string, id: string) {
+export async function exchange(agent: ProbeStub, session: string, text: string, id: string) {
   await ownerSend(agent, session, text, id)
   return agent.settle(session, id)
 }

@@ -1,13 +1,18 @@
 import { createRegistry } from '@earendil-works/pi-durable'
+import { PRIMARY_CHAT } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
+import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { agentApps } from '../../src/agent-apps/engine.ts'
 import type { Send } from '../../src/agent-apps/egress.ts'
 import { AppFiles } from '../../src/agent-apps/files.ts'
 import { problemText } from '../../src/agent-apps/queue.ts'
 import { runScript } from '../../src/agent-apps/script.ts'
+import { ChatDirectory } from '../../src/chats/directory.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
+import { callOwner } from '../owner-client.ts'
 import { memorySchedules, probePorts } from './apps-jobs-probe.ts'
 import type { SeenRequest } from './model.ts'
+import { type Inside, type Probes, inAgent } from './probe.ts'
 
 const LIB = 'export const bump = (count: number, by: number): number => count + by\n'
 
@@ -75,7 +80,7 @@ const refusal = (result: { readonly ok: true } | { readonly ok: false; readonly 
  * input and a failing run, migrate on upgrade, keep a broken build from running, roll back, and restore in a fresh
  * engine. Plus a one-off script over the owner's files with no network.
  */
-export async function appsEngineProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string) {
+async function appsEngineProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string) {
   const changes: string[] = []
   const apps = agentApps(storage, env, () => owner, {
     schedules: memorySchedules(),
@@ -168,12 +173,12 @@ const withoutZoom = (tools: readonly string[] | undefined) => (tools ?? []).filt
  * request: the getter-backed default selection picks the installed extension up. The build changes the trailing
  * context block, not the system prompt, so the prompt the provider caches stays the same.
  */
-export async function appsTurnProbe(harness: PiHarness, seen: () => readonly SeenRequest[], session: string) {
+async function appsTurnProbe(harness: PiHarness, seen: readonly SeenRequest[], session: string) {
   const build = JSON.stringify({
     name: 'tally',
     files: { 'app.ts': COUNTER_V1.replace("name: 'counter'", "name: 'tally'"), 'lib.ts': LIB },
   })
-  const main = () => seen().filter((request) => request.systemPrompt.includes('You can build apps'))
+  const main = () => seen.filter((request) => request.systemPrompt.includes('You can build apps'))
   const before = main().length
   await harness.submit(`call app_build ${build}`, { session, operationId: 'apps-build' })
   const built = await harness.wait('apps-build', { session })
@@ -272,7 +277,7 @@ const approvalOf = (built: Awaited<ReturnType<ReturnType<typeof agentApps>['buil
  * revocation takes effect at once; one app reads another it may; the model, Telegram and MCP tools go through the
  * agent's services within the app's caps.
  */
-export async function appsPowersProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string) {
+async function appsPowersProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string) {
   const seen: unknown[] = []
   const apps = agentApps(storage, env, () => owner, {
     schedules: memorySchedules(),
@@ -333,4 +338,19 @@ export async function appsPowersProbe(storage: DurableObjectStorage, env: Runtim
     powers: apps.powers('weather'),
     usage: apps.store.usage('weather', Date.now()),
   }
+}
+
+/**
+ * The turn probe submits directly to Pi. Turning resident authority on through the owner API also starts the agent's
+ * services, which register the primary chat the directory reads next.
+ */
+async function appsTurn({ api, storage, harness, seen }: Inside) {
+  await callOwner(api, (owner) => owner.resident.set({ payload: { enabled: true } }))
+  return appsTurnProbe(harness, seen, new ChatDirectory(drizzle(storage)).session(PRIMARY_CHAT))
+}
+
+export const probes: Probes = {
+  'apps-engine': inAgent(({ storage, env, name }) => appsEngineProbe(storage, env, name)),
+  'apps-powers': inAgent(({ storage, env, name }) => appsPowersProbe(storage, env, name)),
+  'apps-turn': inAgent(appsTurn),
 }

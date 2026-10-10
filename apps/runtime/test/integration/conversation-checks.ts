@@ -1,7 +1,7 @@
-import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { expect } from 'vitest'
 import { WorkspaceChange, WorkspaceSnapshot } from '@goblin/contracts'
+import { type NativeCase, probeOf } from './native-case.ts'
 
 /** A model request as the probe recorded it. */
 export const ModelRequest = Schema.Struct({
@@ -12,19 +12,12 @@ export const ModelRequest = Schema.Struct({
 /** A request's turns, without the system messages Pi places among them. */
 export const requestTurns = (request: typeof ModelRequest.Type) =>
   request.messages.filter(({ role }) => role !== 'system').map(({ text }) => text)
-/** An owner RPC that answered, with its value. */
+/** An owner API call that answered, with its value (`ownerResult`). */
 export const Ok = <S extends Schema.Top>(value: S) => Schema.Struct({ ok: Schema.Literal(true), value })
-/** An owner RPC the agent refused. */
+/** An owner API call the agent refused, with its failure's tag (`ownerResult`). */
 export const Refused = Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) })
-
-/** Runs one probe sequence of the native worker and decodes its answer. */
-const probe = <A>(base: string, path: string, name: string, schema: Schema.Decoder<A>) =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const response = yield* Effect.promise(() => fetch(`${base}/${path}?name=${name}`))
-      return yield* Schema.decodeUnknownEffect(schema)(yield* Effect.promise(() => response.json()))
-    }),
-  )
+/** A Pi operation as it settled. */
+export const Settled = Schema.Struct({ status: Schema.Literal('done'), text: Schema.String })
 
 /** A conversation as the registry lists it, as far as these checks read it. */
 export const Listed = Schema.Struct({
@@ -55,8 +48,8 @@ const closedness = (views: readonly (typeof Listed.Type)[]) =>
   Object.fromEntries(views.map(({ id, closedBy }) => [id, closedBy ?? 'open']))
 
 /** A thread branches from a thread, and Close shuts it with everything under it until Reopen. */
-export async function treeChecks(base: string, name: string): Promise<void> {
-  const result = await probe(base, 'tree', name, TreeRun)
+async function treeChecks(base: string): Promise<void> {
+  const result = await probeOf(base, 'tree', TreeRun)
   expect(result.outer.parent).toBe('1')
   expect(result.nested.parent).toBe(result.outer.id)
   // The nested thread read main and the outer thread up to its branch point, and nothing after it.
@@ -98,8 +91,8 @@ const SubagentBranchRun = Schema.Struct({
 })
 
 /** A subagent closes once its job is done; a thread branched from it (reopened) is the owner's, and keeps it open. */
-export async function subagentBranchChecks(base: string, name: string): Promise<void> {
-  const result = await probe(base, 'subagent-branch', name, SubagentBranchRun)
+async function subagentBranchChecks(base: string): Promise<void> {
+  const result = await probeOf(base, 'subagent-branch', SubagentBranchRun)
   expect(result.doneClosed.closedBy).toBe('done')
   expect(result.branch).toMatchObject({ kind: 'thread', parent: result.subagentAfter.id })
   expect(requestTurns(result.request)).toEqual(['find the word', 'echo: find the word', 'what did you find?'])
@@ -120,8 +113,8 @@ const FeedRun = Schema.Struct({
 })
 
 /** The workspace feed sends a snapshot, then each conversation change (a read mark too) and what each is doing. */
-export async function feedChecks(base: string, name: string): Promise<void> {
-  const result = await probe(base, 'feed', name, FeedRun)
+async function feedChecks(base: string): Promise<void> {
+  const result = await probeOf(base, 'feed', FeedRun)
   expect(result.snapshot.data.conversations.map(({ kind }) => kind)).toEqual(['main'])
   expect(result.snapshot.data.activity).toEqual([])
   expect(result.snapshot.data.apps).toEqual([])
@@ -143,3 +136,249 @@ export async function feedChecks(base: string, name: string): Promise<void> {
   const marked = read.find(({ readAt }) => readAt !== undefined)
   expect(marked?.readAt).toBeGreaterThanOrEqual(marked?.lastReplyAt ?? Number.POSITIVE_INFINITY)
 }
+
+/** A transcript's turns, without the system prompt and memory view entries placed among them for the model. */
+const turns = (lines: readonly string[]) =>
+  lines.filter((line) => !line.startsWith('pi.system') && !line.startsWith('app.memory'))
+
+/** The subagent tools among a request's tools. */
+const offered = (tools: readonly string[] = []) => tools.filter((tool) => tool.startsWith('subagent'))
+
+const Activity = Schema.Struct({
+  createdAt: Schema.Number,
+  forkEntry: Schema.Number,
+  replies: Schema.Number,
+  lastReplyAt: Schema.optional(Schema.Number),
+})
+const Branch = Schema.Struct({
+  thread: Schema.Struct({ kind: Schema.Literal('thread'), parent: Schema.Literal('1') }),
+  settled: Settled,
+  main: Schema.Array(Schema.String),
+  branch: Schema.Array(Schema.String),
+  request: ModelRequest,
+  forkedAt: Schema.Number,
+  before: Activity,
+  afterOne: Activity,
+  afterTwo: Activity,
+})
+
+/** A thread branched from main sees main up to the branch, and main never sees the thread. */
+async function branchChecks(base: string): Promise<void> {
+  const result = await probeOf(base, 'branch', Branch)
+  expect(result.settled.text).toBe('echo: what was the word?')
+  expect(turns(result.main)).toEqual([
+    'pi.user: "remember the word lantern"',
+    'pi.assistant: [{"type":"text","text":"echo: remember the word lantern"}]',
+  ])
+  expect(turns(result.branch)).toEqual([
+    ...turns(result.main),
+    'pi.user: "what was the word?"',
+    'pi.assistant: [{"type":"text","text":"echo: what was the word?"}]',
+  ])
+  expect(requestTurns(result.request)).toEqual([
+    'remember the word lantern',
+    'echo: remember the word lantern',
+    'what was the word?',
+  ])
+  // The thread list knows where the thread branched and counts only what was said in it.
+  expect(result.before).toMatchObject({ forkEntry: result.forkedAt, replies: 0 })
+  expect(result.before.lastReplyAt).toBeUndefined()
+  expect(result.afterOne).toMatchObject({ forkEntry: result.forkedAt, replies: 2 })
+  expect(result.afterOne.lastReplyAt).toBeGreaterThanOrEqual(result.afterOne.createdAt)
+  expect(result.afterTwo.replies).toBe(4)
+}
+
+const Share = Schema.Struct({
+  shared: Settled,
+  main: Schema.Array(Schema.String),
+  mainRequest: ModelRequest,
+  threadRequest: ModelRequest,
+  title: Schema.String,
+})
+
+/** A thread shares a note with main, which main sees as context without answering it. */
+async function shareChecks(base: string): Promise<void> {
+  const result = await probeOf(base, 'share', Share)
+  expect(result.shared.text).toBe('done: Shared with main.')
+  const note = [
+    { type: 'text', text: '[from thread (untitled)]' },
+    { type: 'text', text: 'the word is lantern' },
+  ]
+  expect(turns(result.main)).toEqual([
+    'pi.user: "remember the word lantern"',
+    'pi.assistant: [{"type":"text","text":"echo: remember the word lantern"}]',
+    `app.shared: ${JSON.stringify(note)}`,
+    'pi.user: "what did the thread say?"',
+    'pi.assistant: [{"type":"text","text":"echo: what did the thread say?"}]',
+  ])
+  // Main's background memory builder may compact the earlier exchange before this request.
+  const requested = requestTurns(result.mainRequest)
+  expect(requested.join('\n')).toContain('remember the word lantern')
+  expect(requested.join('\n')).toContain('echo: remember the word lantern')
+  expect(requested.slice(-2)).toEqual(['[from thread (untitled)]\nthe word is lantern', 'what did the thread say?'])
+  expect(result.threadRequest.tools).toContain('share_back')
+  expect(result.mainRequest.tools).not.toContain('share_back')
+  // The cheap model (scripted: it echoes the last line) was asked to name the thread's latest exchange.
+  expect(result.title).toBe('echo: Agent: done: Shared with main.')
+}
+
+const Announce = Schema.Struct({
+  thread: Schema.String,
+  title: Schema.String,
+  first: Schema.Array(Schema.String),
+  notes: Schema.Array(Schema.Unknown),
+  main: Schema.Array(Schema.String),
+  request: ModelRequest,
+})
+
+/** A thread started with + tells main its name once, and a branched thread tells it nothing. */
+async function announceChecks(base: string): Promise<void> {
+  const result = await probeOf(base, 'announce', Announce)
+  const note = `[thread started: "${result.title}"]`
+  expect(result.first).toEqual([`app.thread_started: ${JSON.stringify([{ type: 'text', text: note }])}`])
+  // One note however often the thread answers, naming the thread; the branched thread added none.
+  expect(result.notes).toEqual([{ thread: result.thread }])
+  // The note started no run in main: the next line in main is the owner's own question.
+  expect(turns(result.main).slice(2)).toEqual([
+    `app.thread_started: ${JSON.stringify([{ type: 'text', text: note }])}`,
+    'pi.user: "which threads did I start?"',
+    'pi.assistant: [{"type":"text","text":"echo: which threads did I start?"}]',
+  ])
+  expect(requestTurns(result.request)).toContain(note)
+}
+
+const View = Schema.Struct({
+  thread: Schema.String,
+  kind: Schema.String,
+  servers: Schema.Array(
+    Schema.Struct({
+      serverId: Schema.String,
+      label: Schema.String,
+      on: Schema.Boolean,
+      tools: Schema.Array(Schema.Struct({ name: Schema.String, on: Schema.Boolean })),
+    }),
+  ),
+  skills: Schema.Array(Schema.Unknown),
+  subagents: Schema.Boolean,
+  sameAsParent: Schema.optional(Schema.Boolean),
+})
+const Tools = Schema.optional(Schema.Array(Schema.String))
+/** The seeded `notes` server as a conversation shows it, `write` switched as given. */
+const notes = (write: boolean) => [
+  {
+    serverId: 'notes',
+    label: 'Notes',
+    on: true,
+    tools: [
+      { name: 'read', on: true },
+      { name: 'write', on: write },
+    ],
+  },
+]
+const CapabilityRun = Schema.Struct({
+  mainBefore: Ok(View),
+  mainAfter: Ok(View),
+  freshView: Ok(View),
+  branchedView: Ok(View),
+  freshOn: Ok(View),
+  reset: Ok(View),
+  unknown: Refused,
+  mainReset: Refused,
+  tools: Schema.Struct({ main: Tools, thread: Tools, branch: Tools, reset: Tools }),
+  off: Settled,
+  offDetails: Schema.Unknown,
+  listed: Settled,
+})
+
+/** The owner switches a tool and subagents off in main, a new thread copies that, and Reset restores it. */
+async function capabilityChecks(base: string): Promise<void> {
+  const result = await probeOf(base, 'capabilities', CapabilityRun)
+  expect(result.mainBefore.value).toMatchObject({ kind: 'main', servers: notes(true), skills: [], subagents: true })
+  expect(result.mainBefore.value.sameAsParent).toBeUndefined()
+  expect(result.mainAfter.value).toMatchObject({ servers: notes(false), subagents: false })
+  for (const copied of [result.freshView.value, result.branchedView.value])
+    expect(copied).toMatchObject({ kind: 'thread', servers: notes(false), subagents: false, sameAsParent: true })
+  expect(result.freshOn.value).toMatchObject({ subagents: true, sameAsParent: false })
+  expect(result.reset.value).toMatchObject({ servers: notes(false), subagents: false, sameAsParent: true })
+  expect(result.unknown.error._tag).toBe('InvalidInput')
+  expect(result.mainReset.error._tag).toBe('InvalidInput')
+  // Pi's tool filter follows the switch: no subagent tool where subagents are off.
+  expect(result.tools.main).toContain('mcp_call')
+  expect(offered(result.tools.main)).toEqual([])
+  expect(offered(result.tools.thread)).toEqual([
+    'subagent_spawn',
+    'subagent_send',
+    'subagent_stop',
+    'subagent_config',
+    'subagent_status',
+  ])
+  expect(offered(result.tools.branch)).toEqual([])
+  expect(offered(result.tools.reset)).toEqual([])
+  // The switched-off tool ran nothing: the gate answered before the grant check or any connection to notes.test.
+  expect(result.off.text).toContain('Off in this conversation: notes · write. Nothing ran.')
+  expect(result.offDetails).toEqual({
+    kind: 'capability-off',
+    target: { kind: 'tool', serverId: 'notes', name: 'write' },
+  })
+  expect(result.listed.text).toBe('done: {"servers":[]}')
+}
+
+const SubagentRun = Schema.Struct({
+  spawned: Settled,
+  main: Schema.Array(Schema.String),
+  subagent: Schema.Struct({ kind: Schema.Literal('subagent'), title: Schema.String, parent: Schema.String }),
+  child: Schema.Array(Schema.String),
+  mainRequest: ModelRequest,
+  childRequest: ModelRequest,
+})
+
+/** A subagent works in the background and its answer is posted in main as a passive result main does not answer. */
+async function subagentChecks(base: string): Promise<void> {
+  const result = await probeOf(base, 'subagent', SubagentRun)
+  expect(result.spawned.text).toBe('done: Started scout.')
+  expect(result.subagent).toEqual({ kind: 'subagent', title: 'scout', parent: '1' })
+  expect(turns(result.child)).toEqual([
+    'pi.user: "find the word"',
+    'pi.assistant: [{"type":"text","text":"echo: find the word"}]',
+  ])
+  const report = [
+    { type: 'text', text: '[from subagent scout]' },
+    { type: 'text', text: 'echo: find the word' },
+  ]
+  expect(turns(result.main).at(-1)).toBe(`app.delegate_result: ${JSON.stringify(report)}`)
+  expect(turns(result.main).filter((line) => line.includes('echo: echo: find the word'))).toEqual([])
+  expect(result.mainRequest.tools).toEqual(expect.arrayContaining(['subagent_spawn', 'ask_user', 'mcp_call']))
+  expect(result.childRequest.tools).toEqual(expect.arrayContaining(['mcp_list', 'mcp_call', 'subagent_spawn']))
+  expect(result.childRequest.tools).not.toContain('ask_user')
+}
+
+/** Threads, switches, subagents in main, the conversation tree and the workspace feed. */
+export const cases: readonly NativeCase[] = [
+  {
+    title: 'a thread branched from main sees main up to the branch, and main never sees the thread',
+    run: branchChecks,
+  },
+  {
+    title: 'a thread shares a note with main, which main sees as context without answering it',
+    run: shareChecks,
+  },
+  {
+    title: 'a thread started with + tells main its name once, and a branched thread tells it nothing',
+    run: announceChecks,
+  },
+  {
+    title: 'the owner switches a tool and subagents off in main, a new thread copies that, and Reset restores it',
+    run: capabilityChecks,
+  },
+  {
+    title:
+      'a subagent works in the background and its answer is posted in main as a passive result main does not answer',
+    run: subagentChecks,
+  },
+  {
+    title: 'a thread branches from a thread, and Close shuts it with everything under it until Reopen',
+    run: treeChecks,
+  },
+  { title: "a thread branched from a subagent is the owner's, and keeps it open", run: subagentBranchChecks },
+  { title: 'the workspace feed sends a snapshot, then each change and what each is doing [canary]', run: feedChecks },
+]

@@ -5,7 +5,7 @@ import * as Effect from 'effect/Effect'
 import * as ConfigProvider from 'effect/ConfigProvider'
 import * as Config from 'effect/Config'
 import Stack from './stack.ts'
-import { homeCase } from './native-home.ts'
+import { homeChecks } from './native-home.ts'
 
 const harness = Test.make({
   providers: Cloudflare.providers(),
@@ -31,5 +31,5 @@ const stack = harness.beforeAll(
 )
 harness.test(
   'local workerd: Home layout receipts, bounds, authority and reconstruction',
-  stack.pipe(Effect.flatMap(({ url }) => homeCase(url))),
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => homeChecks(url.replace(/\/+$/u, ''))))),
 )

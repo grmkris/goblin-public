@@ -5,6 +5,9 @@ import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { flowRunEvent } from '../../src/telemetry/events.ts'
 import { runTelemetry } from '../../src/telemetry/run.ts'
+import { inspectResult } from '../internal-client.ts'
+import { type Probes, inAgent } from './probe.ts'
+import { ownerSend } from './probe-reads.ts'
 
 type Row = { kind: string; status: string; operation_id: string | null; attributes: string }
 const json = (text: string): unknown => JSON.parse(text)
@@ -17,20 +20,20 @@ const answerOf = (encoded: unknown): number | undefined =>
     )(encoded),
   )?.value.submission.answer
 
-/** The agent's own `/inspect` route: a query in, its encoded result out. */
+/** The agent's own inspection (`POST /internal/inspect`): a query in, its encoded result out. */
 type Inspect = (query: InspectQuery | { readonly kind: string }) => Promise<unknown>
 
 /**
  * The run ledger on the agent's real SQLite (ADR 0024): one owner turn with a tool call, the rows it left for that
  * operation, the inspection route reading that turn back, then the restart sweep interrupting a row left started and
- * `problems` reporting it. As JSON text.
+ * `problems` reporting it.
  */
-export async function telemetryProbe(
+async function telemetryProbe(
   storage: DurableObjectStorage,
   owner: string,
   turn: (text: string, operationId: string) => Promise<unknown>,
   inspect: Inspect,
-): Promise<string> {
+) {
   await turn('call subagent_status {}', 'telemetry-turn')
   const rows = storage.sql
     .exec<Row>(
@@ -153,7 +156,7 @@ export async function telemetryProbe(
     })
   const paged = await inspect({ kind: 'problems', since: at, limit: 10 })
   const pagedAll = await inspect({ kind: 'problems', since: at, all: true, limit: 3 })
-  return JSON.stringify({
+  return {
     rows,
     inspected,
     details,
@@ -166,5 +169,19 @@ export async function telemetryProbe(
     incomplete,
     paged,
     pagedAll,
-  })
+  }
+}
+
+export const probes: Probes = {
+  telemetry: inAgent(({ storage, name, api, agent }) =>
+    telemetryProbe(
+      storage,
+      name,
+      async (text, operationId) => {
+        await ownerSend(api, PRIMARY_CHAT, text, operationId)
+        return agent.settle(PRIMARY_CHAT, operationId)
+      },
+      (query) => inspectResult(api, query),
+    ),
+  ),
 }

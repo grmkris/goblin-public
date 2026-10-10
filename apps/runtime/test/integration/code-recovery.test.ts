@@ -2,8 +2,8 @@ import * as Alchemy from 'alchemy'
 import * as Cloudflare from 'alchemy/Cloudflare'
 import * as Test from 'alchemy/Test/Vitest'
 import { Config, ConfigProvider, Effect, Schema } from 'effect'
-import { nextInt } from 'effect/Random'
 import { expect } from 'vitest'
+import { evict, freshName, probeOf } from './native-case.ts'
 import Stack from './stack.ts'
 
 const harness = Test.make({
@@ -35,23 +35,13 @@ harness.test(
   'local workerd: interrupted code_run never replays a committed file write',
   Effect.gen(function* () {
     const { url } = yield* stack
-    const name = `code-recovery-${yield* nextInt}`
-    // Eviction deliberately closes a socket. These lifecycle probes each use a fresh connection.
-    const get = (path: string) =>
-      fetch(`${url.replace(/\/+$/u, '')}/${path}?name=${name}`, { headers: { connection: 'close' } })
-    const first = yield* Schema.decodeUnknownEffect(Written)(
-      yield* Effect.promise(() => get('code-recovery-write').then((r) => r.json())),
-    )
+    const base = url.replace(/\/+$/u, '')
+    const name = freshName('code-recovery')
+    const first = yield* Effect.promise(() => probeOf(base, 'code-recovery-write', Written, name))
     expect(first.text).toBe('x')
-    yield* Effect.promise(() =>
-      get('routine-evict').then(
-        () => undefined,
-        () => undefined,
-      ),
-    )
-    const after = yield* Schema.decodeUnknownEffect(Recovered)(
-      yield* Effect.promise(() => get('code-recovery-read').then((r) => r.json())),
-    )
+    // Eviction deliberately closes a socket; every probe request uses a fresh connection.
+    yield* Effect.promise(() => evict(base, name))
+    const after = yield* Effect.promise(() => probeOf(base, 'code-recovery-read', Recovered, name))
     expect(after.instance).not.toBe(first.instance)
     expect(after.text).toBe('x')
     expect(after.result.text).toContain('interrupted')

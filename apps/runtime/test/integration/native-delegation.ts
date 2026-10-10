@@ -4,22 +4,20 @@ import { Schema } from 'effect'
 import { expect } from 'vitest'
 import { inspectResult } from '../internal-client.ts'
 import { callOwner } from '../owner-client.ts'
-import { exchange, ownerSend, snapshotOf, transcript, until } from './probe-reads.ts'
-import type { PersonalAgentProbe } from './worker.ts'
-
-type Probe = DurableObjectStub<PersonalAgentProbe>
+import { Ok } from './conversation-checks.ts'
+import { type NativeCase, probeOf } from './native-case.ts'
+import { type Probes, type ProbeStub, inWorker } from './probe.ts'
+import { exchange, ownerSend, snapshotOf, transcript } from './probe-reads.ts'
+import { until } from './until.ts'
 
 const ASK = 'flows-ask'
 const SPAWN = 'flows-spawn'
 
-/** One query of the agent's inspection (`POST /internal/inspect`), answered as its `{ ok, value }` result. */
-const inspect = (agent: Probe, query: object): Promise<unknown> => inspectResult(agent, query)
-
 /**
- * The flows a Persona and a Delegate leave (plan §4): the owner tags a Persona in main and it answers; main spawns a
+ * The flows a Persona and a Delegate leave: the owner tags a Persona in main and it answers; main spawns a
  * subagent, which reports. Then the run ledger's flow rows, and the details of the ask and of the spawn's turn.
  */
-export async function delegationFlowsSequence(agent: Probe): Promise<Response> {
+async function delegationFlowsSequence(agent: ProbeStub) {
   const scout = await callOwner(agent, (api) =>
     api.personas.create({
       payload: {
@@ -48,29 +46,23 @@ export async function delegationFlowsSequence(agent: Probe): Promise<Response> {
     20_000,
   )
   const flows = await until(
-    () => inspect(agent, { kind: 'flows', chat: PRIMARY_CHAT }),
+    () => inspectResult(agent, { kind: 'flows', chat: PRIMARY_CHAT }),
     (result) => JSON.stringify(result).includes('subagent_report'),
   )
-  return Response.json({
+  return {
     flows,
-    askDetails: await inspect(agent, { kind: 'details', operation: ASK }),
-    spawnDetails: await inspect(agent, { kind: 'details', operation: SPAWN }),
-  })
+    askDetails: await inspectResult(agent, { kind: 'details', operation: ASK }),
+    spawnDetails: await inspectResult(agent, { kind: 'details', operation: SPAWN }),
+  }
 }
 
-const Ok = <S extends Schema.Top>(value: S) => Schema.Struct({ ok: Schema.Literal(true), value })
+export const probes: Probes = { 'delegation-flows': inWorker(({ agent }) => delegationFlowsSequence(agent)) }
 const DelegationFlowsRun = Schema.Struct({
   flows: Ok(Schema.Struct({ flows: Schema.Array(FlowRecord) })),
   askDetails: Schema.Unknown,
   spawnDetails: Schema.Unknown,
 })
 const decodeDetails = Schema.decodeUnknownSync(Ok(InspectDetails))
-
-/** The sequence on a fresh agent `name` of the native worker at `base`, decoded. */
-const run = async (base: string, name: string) =>
-  Schema.decodeUnknownPromise(DelegationFlowsRun)(
-    await (await fetch(`${base}/delegation-flows?name=${name}`, { headers: { connection: 'close' } })).json(),
-  )
 
 /**
  * A Persona's answer and a Delegate's spawn and report are each one content-free flow row in main: the answer with the
@@ -119,7 +111,7 @@ function flowChecks(result: typeof DelegationFlowsRun.Type): void {
 
 /**
  * The details of the owner's ask name the Persona's turn among its related operations, and those of main's turn that
- * spawned the subagent name the subagent's report (lane O's details reader over lane C's operation receipts).
+ * spawned the subagent name the subagent's report.
  */
 function detailChecks(result: typeof DelegationFlowsRun.Type): void {
   const ask = decodeDetails(result.askDetails).value
@@ -134,9 +126,13 @@ function detailChecks(result: typeof DelegationFlowsRun.Type): void {
   )
 }
 
-/** The flow rows first, then the details (which need lanes C and O as well). */
-export async function delegationChecks(base: string, name: string): Promise<void> {
-  const result = await run(base, name)
-  flowChecks(result)
-  detailChecks(result)
-}
+export const cases: readonly NativeCase[] = [
+  {
+    title: 'a Persona answer, a spawn and a report are one flow row each, and details relate them',
+    run: async (base) => {
+      const result = await probeOf(base, 'delegation-flows', DelegationFlowsRun)
+      flowChecks(result)
+      detailChecks(result)
+    },
+  },
+]

@@ -29,6 +29,7 @@ import { MemoryCredentials, MemoryGrants, MemoryRegistries } from '../mcp/memory
 import { appRoutineRuns } from '../../src/storage/routines.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { lowLevelServer } from '../mcp/low-level-server.ts'
+import { type Probes, inAgent } from './probe.ts'
 
 const KEY = 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE='
 const fixturePlan = () =>
@@ -146,7 +147,7 @@ function createNotification(routines: RoutineStore, runs: RoutineRunStore, id: s
 }
 
 /** Native SQLite receipts and official SDK; all sends remain in the injected fixture. */
-export async function routineNotificationProbe(storage: DurableObjectStorage, owner: string) {
+async function routineNotificationProbe(storage: DurableObjectStorage, owner: string) {
   runApplicationMigrations(storage)
   const { db, routines, runs, attempts, accepted, notify } = await setupNotifications(storage, owner)
   const off = createNotification(routines, runs, 'notify-off', false)
@@ -171,4 +172,8 @@ export async function routineNotificationProbe(storage: DurableObjectStorage, ow
     scrubbed: delivered.summary,
     reported: delivered.reportAcceptedAt !== null,
   }
+}
+
+export const probes: Probes = {
+  'routine-notifications': inAgent(({ storage, name }) => routineNotificationProbe(storage, name)),
 }

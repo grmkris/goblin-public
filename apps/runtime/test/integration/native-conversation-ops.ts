@@ -14,24 +14,22 @@ import { FlowEvents } from '../../src/observability/flows.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { portServices } from '../chat-fixtures.ts'
 import { inspectResult } from '../internal-client.ts'
-import { callOwner } from '../owner-client.ts'
-import { ownerCreate, ownerResult, ownerSend, snapshotOf, until, workspaceConversations } from './probe-reads.ts'
-import type { PersonalAgentProbe } from './worker.ts'
-
-type Probe = DurableObjectStub<PersonalAgentProbe>
-
-/** One query of the agent's inspection (`POST /internal/inspect`), answered as its `{ ok, value }` result. */
-const inspect = (agent: Probe, query: object): Promise<unknown> => inspectResult(agent, query)
+import { type AgentFetch, callOwner } from '../owner-client.ts'
+import { Ok } from './conversation-checks.ts'
+import { type NativeCase, probeOf } from './native-case.ts'
+import { type Probes, inAgent, inWorker } from './probe.ts'
+import { ownerCreate, ownerResult, ownerSend, snapshotOf, workspaceConversations } from './probe-reads.ts'
+import { until } from './until.ts'
 
 /** C4: the owner's create, sent twice at once under one operation id. */
-export async function doubleCreateSequence(agent: Probe): Promise<Response> {
+async function doubleCreateSequence(agent: AgentFetch) {
   const create = async () => ownerCreate(agent, { operationId: 'c4-double' })
   const [first, second] = await Promise.all([create(), create()])
-  return Response.json({ first, second, listed: await workspaceConversations(agent) })
+  return { first, second, listed: await workspaceConversations(agent) }
 }
 
 /** Two Personas tagged in a Thread started from main's composer, asked to answer one after the other. */
-export async function startOrderSequence(agent: Probe): Promise<Response> {
+async function startOrderSequence(agent: AgentFetch) {
   const persona = async (name: string) =>
     callOwner(agent, (api) =>
       api.personas.create({
@@ -59,32 +57,32 @@ export async function startOrderSequence(agent: Probe): Promise<Response> {
       },
     }),
   )
-  if (!started.ok) return Response.json({ started })
+  if (!started.ok) return { started }
   const thread = started.value.thread.id
   const entries = await until(
     async () => (await snapshotOf(agent, thread)).entries ?? [],
     (list) => list.some((entry) => entry.kind === 'app.persona_ask'),
     10_000,
   )
-  return Response.json({ started, ask: entries.find((entry) => entry.kind === 'app.persona_ask')?.data })
+  return { started, ask: entries.find((entry) => entry.kind === 'app.persona_ask')?.data }
 }
 
 /** The owner's message into main, then the same operation again: its flow rows in the run ledger. */
-export async function sendFlowsSequence(agent: Probe): Promise<Response> {
+async function sendFlowsSequence(agent: AgentFetch) {
   await ownerSend(agent, PRIMARY_CHAT, 'flows hello', 'flow-send')
   await ownerSend(agent, PRIMARY_CHAT, 'flows hello', 'flow-send')
   const flows = await until(
-    async () => inspect(agent, { kind: 'flows', chat: PRIMARY_CHAT }),
+    async () => inspectResult(agent, { kind: 'flows', chat: PRIMARY_CHAT }),
     (result) => JSON.stringify(result).includes('replayed'),
   )
-  return Response.json({ flows })
+  return { flows }
 }
 
 /**
  * The owner's Telegram message into main through the channel's submit port, twice under one operation id, over the
  * probe's own SQLite and Pi, with the flows it records.
  */
-export async function telegramFlowsProbe(storage: DurableObjectStorage, harness: PiHarness) {
+async function telegramFlowsProbe(storage: DurableObjectStorage, harness: PiHarness) {
   runApplicationMigrations(storage)
   const db = drizzle(storage)
   registerPrimary(db, 1)
@@ -105,29 +103,13 @@ export async function telegramFlowsProbe(storage: DurableObjectStorage, harness:
   return { flows: recorded }
 }
 
-/** The sequences of these cases by name, each on a fresh agent of the native worker (`/conversation-ops?case=`). */
-const SEQUENCES: Readonly<Record<string, (agent: Probe) => Promise<Response>>> = {
-  'c4-double': doubleCreateSequence,
-  'start-order': startOrderSequence,
-  'send-flows': sendFlowsSequence,
-  'telegram-flows': async (agent) => Response.json(await agent.telegramFlowsProbe()),
+export const probes: Probes = {
+  'c4-double': inWorker(({ agent }) => doubleCreateSequence(agent)),
+  'start-order': inWorker(({ agent }) => startOrderSequence(agent)),
+  'send-flows': inWorker(({ agent }) => sendFlowsSequence(agent)),
+  'telegram-flows': inAgent(({ storage, harness }) => telegramFlowsProbe(storage, harness)),
 }
 
-/** The native worker's `/conversation-ops` route: the sequence `case` names, on the agent of the request's `name`. */
-export async function conversationOpsFetch(agent: Probe, url: URL): Promise<Response> {
-  const sequence = SEQUENCES[url.searchParams.get('case') ?? '']
-  return sequence === undefined ? new Response('unknown case', { status: 404 }) : sequence(agent)
-}
-
-const base = (url: string) => url.replace(/\/+$/u, '')
-const probe = async (url: string, name: string) =>
-  (
-    await fetch(`${base(url)}/conversation-ops?case=${name}&name=${name}-${Date.now()}`, {
-      headers: { connection: 'close' },
-    })
-  ).json()
-
-const Ok = <S extends Schema.Top>(value: S) => Schema.Struct({ ok: Schema.Literal(true), value })
 const Thread = Schema.Struct({ id: Schema.String, kind: Schema.String })
 const DoubleCreate = Schema.Struct({
   first: Ok(Thread),
@@ -141,40 +123,47 @@ const StartOrder = Schema.Struct({
 const SendFlows = Schema.Struct({ flows: Ok(Schema.Struct({ flows: Schema.Array(FlowRecord) })) })
 const TelegramFlows = Schema.Struct({ flows: Schema.Array(Schema.Unknown) })
 
-/** C4: a create sent twice at once under one operation id makes one Thread, which both answers name. */
-export const doubleCreateCase = (url: string) =>
-  Effect.promise(async () => {
-    const { first, second, listed } = await Schema.decodeUnknownPromise(DoubleCreate)(await probe(url, 'c4-double'))
-    expect(second.value.id).toBe(first.value.id)
-    expect(listed.filter(({ kind }) => kind === 'thread').map(({ id }) => id)).toEqual([first.value.id])
-  })
-
-/** A Thread started with tagged Personas keeps the order the message asked for them (H1), its first message `:first`. */
-export const startOrderCase = (url: string) =>
-  Effect.promise(async () => {
-    const { started, ask } = await Schema.decodeUnknownPromise(StartOrder)(await probe(url, 'start-order'))
-    expect(started.value.receipt.operationId).toBe('start-order:first')
-    expect(ask.order).toBe('sequence')
-    expect(ask.personas.map(({ name }) => name)).toEqual(['Ada', 'Bo'])
-  })
-
 /** A send and a Telegram message each record one flow row per run: `ok`, then `replayed` for the same operation. */
-export const flowRowsCase = (url: string) =>
-  Effect.promise(async () => {
-    const sent = await Schema.decodeUnknownPromise(SendFlows)(await probe(url, 'send-flows'))
-    const sends = sent.flows.value.flows.filter(
-      ({ flow, operationId }) => flow === 'send' && operationId === 'flow-send',
-    )
-    expect(sends.map(({ via, actor, chat, status }) => ({ via, actor, chat, status }))).toEqual(
-      expect.arrayContaining([
-        { via: 'app', actor: 'owner', chat: PRIMARY_CHAT, status: 'ok' },
-        { via: 'app', actor: 'owner', chat: PRIMARY_CHAT, status: 'replayed' },
-      ]),
-    )
-    expect(sends).toHaveLength(2)
-    const telegram = await Schema.decodeUnknownPromise(TelegramFlows)(await probe(url, 'telegram-flows'))
-    expect(telegram.flows).toEqual([
-      expect.objectContaining({ flow: 'telegram', via: 'telegram', actor: 'owner', chat: PRIMARY_CHAT, status: 'ok' }),
-      expect.objectContaining({ flow: 'telegram', operationId: 'telegram-flow', status: 'replayed' }),
-    ])
-  })
+async function flowRows(base: string): Promise<void> {
+  const sent = await probeOf(base, 'send-flows', SendFlows)
+  const sends = sent.flows.value.flows.filter(({ flow, operationId }) => flow === 'send' && operationId === 'flow-send')
+  expect(sends.map(({ via, actor, chat, status }) => ({ via, actor, chat, status }))).toEqual(
+    expect.arrayContaining([
+      { via: 'app', actor: 'owner', chat: PRIMARY_CHAT, status: 'ok' },
+      { via: 'app', actor: 'owner', chat: PRIMARY_CHAT, status: 'replayed' },
+    ]),
+  )
+  expect(sends).toHaveLength(2)
+  const telegram = await probeOf(base, 'telegram-flows', TelegramFlows)
+  expect(telegram.flows).toEqual([
+    expect.objectContaining({ flow: 'telegram', via: 'telegram', actor: 'owner', chat: PRIMARY_CHAT, status: 'ok' }),
+    expect.objectContaining({ flow: 'telegram', operationId: 'telegram-flow', status: 'replayed' }),
+  ])
+}
+
+/** The conversation operation cases: one Thread per create operation, Persona order, and the flow rows of a send. */
+export const cases: readonly NativeCase[] = [
+  {
+    // C4: both answers name the one Thread.
+    title: 'a create sent twice at once under one operation id makes one Thread (C4)',
+    run: async (base) => {
+      const { first, second, listed } = await probeOf(base, 'c4-double', DoubleCreate)
+      expect(second.value.id).toBe(first.value.id)
+      expect(listed.filter(({ kind }) => kind === 'thread').map(({ id }) => id)).toEqual([first.value.id])
+    },
+  },
+  {
+    // H1: the order the message asked for, and the Thread's first message is `:first`.
+    title: 'a Thread started with tagged Personas keeps the order the message asks for them',
+    run: async (base) => {
+      const { started, ask } = await probeOf(base, 'start-order', StartOrder)
+      expect(started.value.receipt.operationId).toBe('start-order:first')
+      expect(ask.order).toBe('sequence')
+      expect(ask.personas.map(({ name }) => name)).toEqual(['Ada', 'Bo'])
+    },
+  },
+  {
+    title: 'a send and a Telegram message each record their flow row, a repeat of either as replayed [canary]',
+    run: flowRows,
+  },
+]

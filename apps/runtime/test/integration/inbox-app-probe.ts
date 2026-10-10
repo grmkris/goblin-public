@@ -1,5 +1,4 @@
 import { createRegistry } from '@earendil-works/pi-durable'
-import type { PiHarness } from 'agents/harness/pi'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { agentApps } from '../../src/agent-apps/engine.ts'
@@ -9,14 +8,10 @@ import type { RuntimeEnv } from '../../src/env.ts'
 import { memorySchedules, probePorts } from './apps-jobs-probe.ts'
 import { InboxMcpFixture } from './inbox-mcp.ts'
 import { INBOX_APP, INBOX_VIEW } from './inbox-source.ts'
+import { type Probes, inAgent } from './probe.ts'
 
 /** Real Dynamic Worker, SQLite and schedule callback with a clock advanced to each 15-minute slot. */
-export async function inboxAppProbe(
-  storage: DurableObjectStorage,
-  env: RuntimeEnv,
-  owner: string,
-  _harness: PiHarness,
-) {
+async function inboxAppProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string) {
   const fixture = new InboxMcpFixture()
   const client = new Client({ name: 'inbox-probe', version: '1' })
   await client.connect(
@@ -89,3 +84,5 @@ export async function inboxAppProbe(
     launch,
   }
 }
+
+export const probes: Probes = { 'inbox-app': inAgent(({ storage, env, name }) => inboxAppProbe(storage, env, name)) }

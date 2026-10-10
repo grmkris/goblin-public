@@ -29,6 +29,7 @@ import type { EventEnvelope } from '../../src/mcp/events/protocol.ts'
 import { SqliteSkillState } from '../../src/skills/store.ts'
 import { eventsSkillsProbe, eventsRecoveryProbe } from './events-recovery.ts'
 import { servicesOf } from '../mcp/runtime.ts'
+import { type Probes, inAgent } from './probe.ts'
 
 const KEY = 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE='
 const occurrence = (fixture: EventsFixture, eventId: string): EventEnvelope => ({
@@ -272,7 +273,7 @@ const runSummary = (events: readonly RunEvent[]) => ({
 })
 
 /** Real workerd SQLite + official MCP transport + native PiHarness. No model/provider/network traffic. */
-export async function eventsProbe(storage: DurableObjectStorage, harness: PiHarness) {
+async function eventsProbe(storage: DurableObjectStorage, harness: PiHarness) {
   const state = await setup(storage, harness)
   try {
     await subscribeTelegram(state)
@@ -294,3 +295,5 @@ export async function eventsProbe(storage: DurableObjectStorage, harness: PiHarn
     await state.dispose()
   }
 }
+
+export const probes: Probes = { events: inAgent(({ storage, harness }) => eventsProbe(storage, harness)) }

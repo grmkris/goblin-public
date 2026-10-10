@@ -1,5 +1,4 @@
 import { createRegistry } from '@earendil-works/pi-durable'
-import type { PiHarness } from 'agents/harness/pi'
 import { HomeLayout, type HomeEdit, type HomeOperation } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
@@ -22,6 +21,7 @@ import { readHome } from '../../src/home/store.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
 import { memorySchedules, probePorts } from './apps-jobs-probe.ts'
+import { type Probes, inAgent } from './probe.ts'
 
 const APP = `import { defineApp, s } from '@goblin/app'
 export type State = { count: number }
@@ -109,7 +109,7 @@ function mcpPlacementProbe(home: HomeService, apps: AgentAppsPort, db: ReturnTyp
 }
 
 /** Native SQLite, a real Dynamic Worker app, atomic receipts, and reconstruction over retained rows. */
-export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string, _harness: PiHarness) {
+async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string) {
   runApplicationMigrations(storage)
   const db = drizzle(storage)
   const engine = agentApps(storage, env, () => owner, {
@@ -206,4 +206,9 @@ export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, 
     retained: reconstructed.layout(),
   }
 }
-export const retainedHome = (storage: DurableObjectStorage) => readHome(drizzle(storage))
+const retainedHome = (storage: DurableObjectStorage) => readHome(drizzle(storage))
+
+export const probes: Probes = {
+  home: inAgent(({ storage, env, name }) => homeProbe(storage, env, name)),
+  'home-retained': inAgent(({ storage }) => retainedHome(storage)),
+}

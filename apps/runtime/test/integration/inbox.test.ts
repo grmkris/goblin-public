@@ -7,6 +7,7 @@ import * as Config from 'effect/Config'
 import * as ConfigProvider from 'effect/ConfigProvider'
 import { writeFileSync } from 'node:fs'
 import { expect } from 'vitest'
+import { probeOf } from './native-case.ts'
 import Stack from './stack.ts'
 
 const harness = Test.make({
@@ -56,12 +57,7 @@ harness.test(
   'local workerd: inbox example refreshes on its 15-minute schedule and preserves last-good data',
   Effect.gen(function* () {
     const { url } = yield* stack
-    const response = yield* Effect.promise(() =>
-      fetch(`${url.replace(/\/+$/u, '')}/inbox-app?name=inbox-${Date.now()}`),
-    )
-    const raw: unknown = yield* Effect.promise(() => response.json())
-    expect(response.status, JSON.stringify(raw)).toBe(200)
-    const proof = yield* Schema.decodeUnknownEffect(Proof)(raw)
+    const proof = yield* Effect.promise(() => probeOf(url.replace(/\/+$/u, ''), 'inbox-app', Proof))
     expect(proof.calls).toBe(3)
     expect(proof.first.state.messages).toHaveLength(5)
     expect(proof.first.state.messages[0]).toMatchObject({ id: 'fixture-7' })

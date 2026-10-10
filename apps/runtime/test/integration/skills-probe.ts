@@ -18,6 +18,7 @@ import { Learner, Skills } from '../../src/skills/service.ts'
 import { SqliteSkillState } from '../../src/skills/store.ts'
 import { digestOf } from '../../src/skills/verify.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
+import { type Probes, inAgent } from './probe.ts'
 import { appSkillFiles } from '../../src/storage/schema.ts'
 import { appSkillDrafts } from '../../src/storage/schema.ts'
 import { makeLearner } from '../../src/skills/learner.ts'
@@ -263,3 +264,5 @@ export async function skillsLearnerRejectionProbe(storage: DurableObjectStorage,
   await dispose()
   return { first, second, submitted, statusCalls, row }
 }
+
+export const probes: Probes = { 'skills-cache': inAgent(({ storage }) => skillsCacheProbe(storage)) }

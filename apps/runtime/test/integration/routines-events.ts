@@ -16,6 +16,8 @@ import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import type { EventsFixture } from '../mcp/events-fixture.ts'
 import type { SeenRequest } from './model.ts'
 import { changeRefused, changeRoutine, editRoutine, proposeRoutine } from './routines-owner.ts'
+import { type Probes, inAgent } from './probe.ts'
+import { waitFor } from './until.ts'
 
 const KEY = 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE='
 const includesPublicTokens = (metadata: string, modelData: string) =>
@@ -35,14 +37,14 @@ async function draft(agent: PersonalAgent, operation: string, input = definition
 async function confirm(agent: PersonalAgent, id: string, revision: number, operation: string) {
   return changeRoutine(agent, id, { revision, operationId: `${operation}-confirm` }, 'confirm')
 }
-async function wait(store: RoutineRunStore, id: string, count: number) {
-  for (let index = 0; index < 300; index += 1) {
-    const runs = store.list(id)
-    if (runs.length === count && runs.every((run) => run.state === 'completed')) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error('Routine Events fixture did not settle')
-}
+/** Until routine `id` has `count` runs, all completed. */
+const wait = (store: RoutineRunStore, id: string, count: number) =>
+  waitFor(
+    () => store.list(id),
+    (runs) => runs.length === count && runs.every((run) => run.state === 'completed'),
+    'the routine Events runs',
+    3000,
+  )
 async function setup(storage: DurableObjectStorage, agent: PersonalAgent, fixture: EventsFixture) {
   runApplicationMigrations(storage)
   const db = drizzle(storage)
@@ -81,7 +83,7 @@ async function setup(storage: DurableObjectStorage, agent: PersonalAgent, fixtur
 }
 
 /** Official MCP producer, signed ingress, real Agent/Pi/SQLite and keyless model; no provider or Telegram send. */
-export async function routineEventsProbe(
+async function routineEventsProbe(
   storage: DurableObjectStorage,
   agent: PersonalAgent,
   fixture: EventsFixture,
@@ -247,4 +249,8 @@ export async function routineEventsProbe(
     main: PRIMARY_CHAT,
     count: state.db.select().from(appRoutines).all().length,
   }
+}
+
+export const probes: Probes = {
+  'routine-events': inAgent(({ storage, agent, producer, seen }) => routineEventsProbe(storage, agent, producer, seen)),
 }

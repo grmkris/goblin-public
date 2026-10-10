@@ -6,6 +6,8 @@ import { changeRoutine, editRoutine, proposeRoutine } from './routines-owner.ts'
 import { appRoutines } from '../../src/storage/routines.ts'
 import { RoutineStore } from '../../src/routines/store.ts'
 import { RoutineRunStore } from '../../src/routines/runs.ts'
+import { type Probes, inAgent } from './probe.ts'
+import { until } from './until.ts'
 
 const definition: RoutineDefinition = {
   title: 'Native dated reminder',
@@ -30,22 +32,20 @@ async function cancelWakes(agent: PersonalAgent) {
 async function recurringWake(agent: PersonalAgent): Promise<boolean> {
   await cancelWakes(agent)
   await agent.schedule(new Date(Date.now() + 500), 'routinesWake', { at: Date.now() }, { idempotent: true })
-  for (let index = 0; index < 400; index += 1) {
-    const retained = (await agent.listSchedules()).some(
-      (job) => job.callback === 'routinesWake' && job.time > Math.floor(Date.now() / 1000) + 10,
-    )
-    if (retained) {
-      await cancelWakes(agent)
-      return true
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
+  const retained = await until(
+    async () =>
+      (await agent.listSchedules()).some(
+        (job) => job.callback === 'routinesWake' && job.time > Math.floor(Date.now() / 1000) + 10,
+      ),
+    (found) => found,
+    4000,
+  )
   await cancelWakes(agent)
-  return false
+  return retained
 }
 
 /** Uses the native alarm for the reminder; later callbacks exercise app watermarks and edit fences. */
-export async function routineScheduleProbe(storage: DurableObjectStorage, agent: PersonalAgent) {
+async function routineScheduleProbe(storage: DurableObjectStorage, agent: PersonalAgent) {
   const db = drizzle(storage)
   const routines = new RoutineStore(db, agent.name)
   const runs = new RoutineRunStore(db, agent.name)
@@ -57,10 +57,10 @@ export async function routineScheduleProbe(storage: DurableObjectStorage, agent:
   )
   const jobs = await agent.listSchedules()
   const duplicateScheduleCount = jobs.filter((job) => job.callback === 'runRoutine').length
-  for (let count = 0; count < 500; count += 1) {
-    if (runs.list(onceId).some((run) => run.state === 'completed')) break
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
+  await until(
+    () => runs.list(onceId),
+    (list) => list.some((run) => run.state === 'completed'),
+  )
   const before = runs.list(onceId)
   await agent.runRoutine({ routineId: onceId, revision: 1, firedAt })
   const once = runs.list(onceId)
@@ -97,4 +97,8 @@ export async function routineScheduleProbe(storage: DurableObjectStorage, agent:
     editedState: routines.get(cronId).state,
     staleRevisionKeptRuns: after.length === 1,
   }
+}
+
+export const probes: Probes = {
+  'routine-schedule': inAgent(({ storage, agent }) => routineScheduleProbe(storage, agent)),
 }

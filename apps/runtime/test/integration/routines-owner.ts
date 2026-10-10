@@ -1,9 +1,9 @@
 import type { RoutineDefinition, RoutineEdit, RoutineRevision } from '@goblin/contracts'
-import * as Effect from 'effect/Effect'
-import * as Exit from 'effect/Exit'
-import { toAppError } from '../../src/http/errors.ts'
-import { encodeExit } from '../../src/http/rpc.ts'
+import type * as Effect from 'effect/Effect'
 import { type AgentFetch, type OwnerClient, callOwner } from '../owner-client.ts'
+import type { RoutineRunStore } from '../../src/routines/runs.ts'
+import { ownerResult } from './probe-reads.ts'
+import { waitFor } from './until.ts'
 
 /** The owner's routine calls the probes make, through the typed owner API as the Worker forwards them. */
 export const proposeRoutine = (agent: AgentFetch, definition: RoutineDefinition, operationId: string) =>
@@ -25,7 +25,7 @@ export const runRoutineNow = (agent: AgentFetch, id: string, revision: number, o
 
 /** Whether the owner API refused `call` (any typed failure), for the probes that expect a refusal. */
 const refused = async <A, E>(agent: AgentFetch, call: (api: OwnerClient) => Effect.Effect<A, E>) =>
-  Exit.isFailure(await callOwner(agent, (api) => Effect.exit(call(api))))
+  !(await ownerResult(agent, call)).ok
 
 /** Whether the owner API refused a confirm, pause or archive. */
 export const changeRefused = (
@@ -39,6 +39,11 @@ export const changeRefused = (
 export const runRefused = (agent: AgentFetch, id: string, revision: number, operationId: string) =>
   refused(agent, (api) => api.routines.run({ params: { id }, payload: { revision, operationId, confirmRun: true } }))
 
-/** An owner call's outcome in the RPC result shape the native assertions decode: its value, or its encoded failure. */
-export const ownerResult = async <A, E>(agent: AgentFetch, call: (api: OwnerClient) => Effect.Effect<A, E>) =>
-  encodeExit(await callOwner(agent, (api) => Effect.exit(Effect.mapError(call(api), toAppError))))
+/** Until run `id` is in `state`, read from the run store; it rejects after `ms` (2 s by default). */
+export const runReached = (store: RoutineRunStore, id: string, state: string, ms = 2000) =>
+  waitFor(
+    () => store.get(id).state,
+    (now) => now === state,
+    `routine run ${state}`,
+    ms,
+  )

@@ -1,5 +1,6 @@
 import { FileStore } from '../../src/files/store.ts'
-import type { PersonalAgentProbe } from './worker.ts'
+import { callOwner } from '../owner-client.ts'
+import { type Probes, type ProbeStub, inAgent, inWorker } from './probe.ts'
 
 const KIB = 1024
 
@@ -28,7 +29,7 @@ function streamOf(size: number): ReadableStream<Uint8Array> {
  * The real Shell Workspace and the stack's R2 bucket, as the agent's tools use them: the agent writes only under
  * `/agent`, text reads page, a declared size over the limit or a body longer than declared stores nothing.
  */
-export async function filesStoreProbe(sql: SqlStorage, bucket: R2Bucket, owner: string) {
+async function filesStoreProbe(sql: SqlStorage, bucket: R2Bucket, owner: string) {
   const store = new FileStore(sql, bucket, () => owner)
   const report = `# Report\n${'line\n'.repeat(40)}`
   const written = await store.write('agent', '/agent/report.md', report, 'text/markdown', report.length)
@@ -51,7 +52,7 @@ export async function filesStoreProbe(sql: SqlStorage, bucket: R2Bucket, owner: 
   }
 }
 
-const put = (agent: DurableObjectStub<PersonalAgentProbe>, path: string, body: Uint8Array, type: string) =>
+const put = (agent: ProbeStub, path: string, body: Uint8Array, type: string) =>
   agent.fetch(`https://agent/api/files/content?path=${encodeURIComponent(path)}`, {
     method: 'PUT',
     body,
@@ -63,7 +64,7 @@ const put = (agent: DurableObjectStub<PersonalAgentProbe>, path: string, body: U
  * agent's prefix, downloads never render in place except plain images, deleting removes the R2 object, and erasing
  * the account empties the prefix.
  */
-export async function filesSequence(agent: DurableObjectStub<PersonalAgentProbe>, bucket: R2Bucket, owner: string) {
+async function filesSequence(agent: ProbeStub, bucket: R2Bucket, owner: string) {
   const big = new Uint8Array(200 * KIB).fill(1)
   const uploads = [
     (await put(agent, '/uploads/notes.txt', new TextEncoder().encode('hello notes'), 'text/plain')).status,
@@ -71,12 +72,7 @@ export async function filesSequence(agent: DurableObjectStub<PersonalAgentProbe>
     (await put(agent, '/uploads/dot.png', new Uint8Array([137, 80, 78, 71]), 'image/png')).status,
     (await put(agent, '/uploads/../escape.txt', new Uint8Array([1]), 'text/plain')).status,
   ]
-  const listing = await (
-    await agent.fetch('https://agent/api/files?dir=/uploads')
-  ).json<{
-    entries: { name: string; size: number }[]
-    usedBytes: number
-  }>()
+  const listing = await callOwner(agent, (api) => api.files.list({ query: { dir: '/uploads' } }))
   const spilled = await keysOf(bucket, owner)
   const bigRead = await agent.fetch(`https://agent/api/files/content?path=${encodeURIComponent('/uploads/big.bin')}`)
   const bigBytes = (await bigRead.arrayBuffer()).byteLength
@@ -110,4 +106,9 @@ export async function filesSequence(agent: DurableObjectStub<PersonalAgentProbe>
     erased,
     afterErase: await keysOf(bucket, owner),
   }
+}
+
+export const probes: Probes = {
+  'files-store': inAgent(({ storage, env, name }) => filesStoreProbe(storage.sql, env.FILES, name)),
+  'files-sequence': inWorker(({ agent, env, name }) => filesSequence(agent, env.FILES, name)),
 }

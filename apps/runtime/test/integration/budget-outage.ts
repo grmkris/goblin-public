@@ -3,17 +3,14 @@ import type { PiHarness } from 'agents/harness/pi'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { ChatDirectory, registerPrimary } from '../../src/chats/directory.ts'
 import { BUDGET_BLOCKS } from '../../src/pi/budget.ts'
+import { type Probes, inAgent } from './probe.ts'
 
 /**
  * The budget hook while auth D1 cannot answer (R1): a tool in main is blocked as a check that failed, never as a spent
  * budget, and runs again once the plan can be read. The turns go straight to Pi, as an alarm's would, so only the hook
  * reads the plan; `outage` switches the agent's plan reads off and on.
  */
-export async function budgetOutageProbe(
-  storage: DurableObjectStorage,
-  harness: PiHarness,
-  outage: (on: boolean) => void,
-) {
+async function budgetOutageProbe(storage: DurableObjectStorage, harness: PiHarness, outage: (on: boolean) => void) {
   const db = drizzle(storage)
   registerPrimary(db, Math.floor(Date.now() / 1000))
   const session = new ChatDirectory(db).session(PRIMARY_CHAT)
@@ -33,4 +30,8 @@ export async function budgetOutageProbe(
   } finally {
     outage(false)
   }
+}
+
+export const probes: Probes = {
+  'budget-outage': inAgent(({ storage, harness, plan }) => budgetOutageProbe(storage, harness, plan.outage)),
 }

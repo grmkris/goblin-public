@@ -1,4 +1,5 @@
 import { drizzle } from 'drizzle-orm/durable-sqlite'
+import { type Probes, inAgent } from './probe.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { RoutineStore } from '../../src/routines/store.ts'
 import type { RoutineDefinition } from '@goblin/contracts'
@@ -31,7 +32,7 @@ const rejected = (call: () => unknown) => {
   }
 }
 /** Real Durable Object SQLite migration, replay and revision checks; no fake storage. */
-export function routinesProbe(storage: DurableObjectStorage) {
+function routinesProbe(storage: DurableObjectStorage) {
   runApplicationMigrations(storage)
   const db = drizzle(storage)
   const at = Date.parse('2026-10-05T06:00:00Z')
@@ -73,3 +74,5 @@ export function routinesProbe(storage: DurableObjectStorage) {
     ],
   }
 }
+
+export const probes: Probes = { routines: inAgent(({ storage }) => routinesProbe(storage)) }
