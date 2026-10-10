@@ -300,7 +300,7 @@ harness.test(
 )
 
 harness.test(
-  'local workerd: routine manual runs isolate native Pi sessions and dedupe passive reports',
+  'local workerd: routine manual runs isolate native Pi sessions and dedupe passive reports [canary]',
   Effect.gen(function* () {
     const { url } = yield* stack
     const response = yield* Effect.promise(() =>
@@ -364,7 +364,7 @@ harness.test(
   stack.pipe(Effect.flatMap(({ url }) => routineSchedulingCase(url))),
 )
 harness.test(
-  'local workerd: owner files keep small ones in SQLite, spill larger ones to R2 and erase them with the account',
+  'local workerd: owner files keep small ones in SQLite, spill larger ones to R2 and erase them with the account [canary]',
   stack.pipe(Effect.flatMap(({ url }) => filesCase(url))),
 )
 harness.test(
@@ -372,11 +372,11 @@ harness.test(
   stack.pipe(Effect.flatMap(({ url }) => appsCase(url))),
 )
 harness.test(
-  'local workerd: a turn leaves its run ledger (turn, attempts, tool call) and a restart interrupts what was left started',
+  'local workerd: a turn leaves its run ledger (turn, attempts, tool call) and a restart interrupts what was left started [canary]',
   stack.pipe(Effect.flatMap(({ url }) => telemetryCase(url))),
 )
 harness.test(
-  'local workerd: Events discovery, challenge, signed Telegram, replay, gap, refresh, termination and cleanup',
+  'local workerd: Events discovery, challenge, signed Telegram, replay, gap, refresh, termination and cleanup [canary]',
   Effect.gen(function* () {
     const { url } = yield* stack
     const response = yield* Effect.promise(() => nativeFetch(`${baseUrl(url)}/events-probe?name=events-${Date.now()}`))
@@ -519,7 +519,7 @@ const Rpc = Schema.Struct({
 })
 
 harness.test(
-  'local workerd: owner RPC renews resident authority, gates threads, revocation blocks client asks, and Events ingress',
+  'local workerd: owner RPC renews resident authority, gates threads, revocation blocks client asks, and Events ingress [canary]',
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `rpc-${yield* nextInt}`
@@ -858,7 +858,7 @@ harness.test(
 for (const [title, path, check] of [
   ['a thread branches from a thread, and Close shuts it with everything under it until Reopen', 'tree', treeChecks],
   ["a thread branched from a subagent is the owner's, and keeps it open", 'subagent-branch', subagentBranchChecks],
-  ['the workspace feed sends a snapshot, then each change and what each is doing', 'feed', feedChecks],
+  ['the workspace feed sends a snapshot, then each change and what each is doing [canary]', 'feed', feedChecks],
   ["a subagent's subagent reports to it, and only the final answer reaches main", 'chain', chainChecks],
   ['a Persona answer, a spawn and a report are one flow row each, and details relate them', 'flows', delegationChecks],
   ['the owner steers a busy subagent; the answer reports up once and the subagent stays open', 'owner', ownerChecks],
@@ -901,7 +901,7 @@ harness.test(
 )
 
 harness.test(
-  'local workerd: native Pi submit, receipt retry, durable readback and public dispose/reopen',
+  'local workerd: native Pi submit, receipt retry, durable readback and public dispose/reopen [canary]',
   Effect.gen(function* () {
     const { url } = yield* stack
     const name = `lifecycle-${yield* nextInt}`
@@ -1048,6 +1048,6 @@ harness.test(
 )
 
 harness.test(
-  'local workerd: a send and a Telegram message each record their flow row, a repeat of either as replayed',
+  'local workerd: a send and a Telegram message each record their flow row, a repeat of either as replayed [canary]',
   stack.pipe(Effect.flatMap(({ url }) => flowRowsCase(url))),
 )
