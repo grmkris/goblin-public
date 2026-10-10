@@ -3,22 +3,12 @@ import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import * as HttpApiSchema from 'effect/http-api/HttpApiSchema'
 import { ChatId } from '../ids.ts'
-import {
-  CapabilityChange,
-  ComposerOptions,
-  ConversationCapabilities,
-  ConversationQueue,
-  ConversationView,
-  CreateConversation,
-  MoveReceipt,
-  MoveToThread,
-  QueueRemoval,
-  QueueRemovalResult,
-  SendMessage,
-  SourceUse,
-  StartThread,
-  UpdateConversation,
-} from '../index.ts'
+import { CapabilityChange, ConversationCapabilities } from '../capabilities.ts'
+import { ComposerOptions } from '../composer.ts'
+import { ConversationView, CreateConversation, SendMessage, StartThread, UpdateConversation } from '../conversations.ts'
+import { ConversationQueue, QueueRemoval, QueueRemovalResult } from '../queue.ts'
+import { SourceUse } from '../retrieval.ts'
+import { MoveReceipt, MoveToThread } from '../threads.ts'
 import { ApiErrors } from './errors.ts'
 
 /** The chat a path names, as the routes have always taken it: a logical chat id of 1 to 12 digits. */

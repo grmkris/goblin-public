@@ -2,7 +2,7 @@ import * as Schema from 'effect/Schema'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import { ChatId } from '../ids.ts'
-import { MemoryStatus } from '../index.ts'
+import { MemoryStatus } from '../agent.ts'
 import { ApiErrors } from './errors.ts'
 
 /**

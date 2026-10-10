@@ -1,7 +1,7 @@
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import * as HttpApiSchema from 'effect/http-api/HttpApiSchema'
-import { ClientErrorReport } from '../index.ts'
+import { ClientErrorReport } from '../account.ts'
 import { API_ERRORS } from './errors.ts'
 
 /**

@@ -1,6 +1,6 @@
 import * as Schema from 'effect/Schema'
 import { ChatId, EntryId, OperationId } from './ids.ts'
-import { ConversationView } from './index.ts'
+import { ConversationView } from './conversations.ts'
 import { FlowEvent, FlowName, RunEvent, RunEventStatus } from './telemetry.ts'
 
 /**

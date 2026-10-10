@@ -1,7 +1,7 @@
 import * as Schema from 'effect/Schema'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
-import { AgentAppChange, AgentAppDeleted, AgentAppDetail, AgentAppSummary, DeleteAgentApp } from '../index.ts'
+import { AgentAppChange, AgentAppDeleted, AgentAppDetail, AgentAppSummary, DeleteAgentApp } from '../agent-apps.ts'
 import { ApiErrors } from './errors.ts'
 
 /** An agent app's name in a path, as the route has always taken it: kebab-case, 2 to 24 characters. */

@@ -1,7 +1,7 @@
 import * as Context from 'effect/Context'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
-import { ResidentStatus } from '../index.ts'
+import { ResidentStatus } from '../agent.ts'
 import { ResidentChange } from '../mcp.ts'
 
 /**

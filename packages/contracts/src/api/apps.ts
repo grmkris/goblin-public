@@ -12,7 +12,7 @@ import {
   AppView,
   CreateApp,
   UpdateApp,
-} from '../index.ts'
+} from '../apps.ts'
 import { ApiErrors } from './errors.ts'
 
 /** An App's id in a path, as the route has always taken it: 1 to 12 digits. */

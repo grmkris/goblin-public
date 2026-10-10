@@ -1,7 +1,7 @@
 import * as Schema from 'effect/Schema'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
-import { InboundClient } from '../index.ts'
+import { InboundClient } from '../account.ts'
 import { API_ERRORS } from './errors.ts'
 
 /** A registered client's id in a path, as the route has always taken it. */

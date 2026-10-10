@@ -2,12 +2,13 @@ import * as Schema from 'effect/Schema'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import * as HttpApiSchema from 'effect/http-api/HttpApiSchema'
-import { ApprovalView, CatalogEntry, RegistryView, ServerSuggestion, ServerView, ToolView } from '../index.ts'
 import {
   AddServer,
   AppGrantChange,
   ApprovalDecision,
+  ApprovalView,
   AskFirstChange,
+  CatalogEntry,
   ConnectStart,
   Grant,
   GrantChange,
@@ -16,10 +17,14 @@ import {
   McpToolResult,
   PromptGet,
   RegistryChange,
+  RegistryView,
   ResourceRead,
+  ServerSuggestion,
+  ServerView,
   SkillsChange,
   SkillsSetting,
   ToolCall,
+  ToolView,
 } from '../mcp.ts'
 import { ApiErrors } from './errors.ts'
 

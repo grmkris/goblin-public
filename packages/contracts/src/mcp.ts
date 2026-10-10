@@ -126,3 +126,114 @@ export const McpPromptResult = passthrough({
   messages: Schema.Array(RemoteObject),
 })
 export type McpPromptResult = typeof McpPromptResult.Type
+
+export type McpServerConfig = {
+  readonly serverId: string
+  readonly endpoint: string
+  readonly issuer?: string
+  readonly resource?: string
+}
+
+/** Owner-safe Events health. No callback URL, secret, signature or occurrence body crosses this view. */
+export const EventHealth = Schema.Struct({
+  subscriptionId: Schema.String,
+  name: Schema.String,
+  granted: Schema.Boolean,
+  status: Schema.String,
+  refreshBefore: Schema.NullOr(Schema.Number),
+  lastReceiptAt: Schema.NullOr(Schema.Number),
+})
+export type EventHealth = typeof EventHealth.Type
+
+/**
+ * An outbound MCP server as the owner sees it. `live`: a connection is open right now. `source`: the deployment
+ * configured it, or the owner added it. `title`, `description` and `icon` are the server's own claims.
+ */
+export const ServerView = Schema.Struct({
+  serverId: Schema.String,
+  endpoint: Schema.String,
+  status: Schema.Literals(['connected', 'needs_auth', 'disconnected']),
+  live: Schema.Boolean,
+  serverName: Schema.optional(Schema.String),
+  source: Schema.Literals(['config', 'added']),
+  title: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  icon: Schema.optional(Schema.String),
+  /** The live connection declares the MCP Skills extension. */
+  skillsOffered: Schema.optional(Schema.Boolean),
+  eventsOffered: Schema.optional(Schema.Boolean),
+  eventHealth: Schema.optional(Schema.Array(EventHealth)),
+  /** The owner uses this server's skills (procedures the agent follows). */
+  skillsEnabled: Schema.optional(Schema.Boolean),
+})
+export type ServerView = typeof ServerView.Type
+
+/** A server we suggest: our own description, whether it needs sign-in, and whether the owner already has it. */
+export const ServerSuggestion = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  description: Schema.String,
+  endpoint: Schema.String,
+  signIn: Schema.Boolean,
+  added: Schema.Boolean,
+})
+export type ServerSuggestion = typeof ServerSuggestion.Type
+
+/**
+ * A server found in an MCP registry, as its publisher describes it. `verified`: the registry checks namespace
+ * ownership (the official one does). `variables`: placeholders in the endpoint the owner fills in. `needsKey`: the
+ * server wants an API key header, which goblin cannot send yet.
+ */
+export const CatalogEntry = Schema.Struct({
+  registry: Schema.String,
+  registryTitle: Schema.String,
+  verified: Schema.Boolean,
+  name: Schema.String,
+  title: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  version: Schema.optional(Schema.String),
+  endpoint: Schema.String,
+  variables: Schema.Array(Schema.String),
+  needsKey: Schema.Boolean,
+  added: Schema.Boolean,
+})
+export type CatalogEntry = typeof CatalogEntry.Type
+
+/** An MCP registry searched for servers: built in (always searched) or added by the owner. */
+export const RegistryView = Schema.Struct({ url: Schema.String, title: Schema.String, builtIn: Schema.Boolean })
+export type RegistryView = typeof RegistryView.Type
+
+/** A discovered remote tool. The hints come from the server and are unverified; only `granted` is ours. */
+export const ToolView = Schema.Struct({
+  name: Schema.String,
+  title: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  readOnlyHint: Schema.optional(Schema.Boolean),
+  destructiveHint: Schema.optional(Schema.Boolean),
+  modelVisible: Schema.Boolean,
+  appResource: Schema.optional(Schema.String),
+  granted: Schema.Boolean,
+  askFirst: Schema.optional(Schema.Boolean),
+})
+export type ToolView = typeof ToolView.Type
+
+/** An exact held call, shown only to its signed-in owner. */
+export const ApprovalView = Schema.Struct({
+  id: Schema.String,
+  serverId: Schema.String,
+  name: Schema.String,
+  arguments: Schema.Record(Schema.String, Schema.Json),
+  conversation: Schema.optional(Schema.String),
+  state: Schema.Literals([
+    'pending',
+    'approved',
+    'dispatching',
+    'completed',
+    'refused',
+    'failed',
+    'uncertain',
+    'expired',
+  ]),
+  expiresAt: Schema.Number,
+})
+export type ApprovalView = typeof ApprovalView.Type

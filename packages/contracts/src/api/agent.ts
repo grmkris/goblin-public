@@ -1,7 +1,7 @@
 import * as Schema from 'effect/Schema'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
-import { ChannelStatus, ModelChoice, UsageToday } from '../index.ts'
+import { ChannelStatus, ModelChoice, UsageToday } from '../agent.ts'
 import { ApiErrors } from './errors.ts'
 
 const Bounded = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max))
