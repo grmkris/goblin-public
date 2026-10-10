@@ -1,21 +1,18 @@
 import { and, eq } from 'drizzle-orm'
 import * as Effect from 'effect/Effect'
-import type { CapabilityProfiles } from '../capabilities/profiles.ts'
-import { registerChat } from '../chats/directory.ts'
-import type { Chats, Conversations } from '../chats/service.ts'
-import { attempt } from '../http/errors.ts'
-import type { ChatMemories } from '../memory/memory.ts'
+import { copyExclusions } from '../capabilities/profiles.ts'
+import { primaryChat, registerChat } from '../chats/directory.ts'
+import type { Conversations } from '../chats/service.ts'
+import type { Memories } from '../memory/service.ts'
 import type { Db } from '../runtime/db.ts'
 import { appConversations } from '../storage/schema.ts'
 import { topicSeedContent } from '../pi/content.ts'
 import type { TopicPorts } from './registry.ts'
 
-/** What a Topic's Conversation is made with besides the database: the conversation services, profiles and memory. */
+/** What a Topic's Conversation is made with besides the database: the conversation services and the memories. */
 type TopicKit = {
   readonly conversations: Conversations['Service']
-  readonly chats: Chats['Service']
-  readonly capabilities: CapabilityProfiles
-  readonly memories: ChatMemories
+  readonly memories: Memories['Service']
 }
 
 /**
@@ -36,7 +33,7 @@ export function topicPorts(db: Db['Service'], kit: TopicKit): TopicPorts {
         topicId: topic,
         createdAt: now,
       })
-      kit.capabilities.copy(kit.chats.primary, chat, now)
+      copyExclusions(db, primaryChat, chat, now)
     },
     retitle: (chat, name) => {
       db.update(appConversations)
@@ -45,7 +42,7 @@ export function topicPorts(db: Db['Service'], kit: TopicKit): TopicPorts {
         .run()
     },
     touched: kit.conversations.touched,
-    activate: (chat) => attempt(() => kit.memories.activate(chat)),
+    activate: kit.memories.activate,
     seed: (chat, operationId, seed) =>
       Effect.asVoid(
         kit.conversations.writeEntry(chat, `topic-seed:${operationId}`, {

@@ -1,11 +1,10 @@
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import { ProfilesInstance } from '../capabilities/profiles.ts'
 import { ChatsInstance } from '../chats/directory.ts'
-import { Chats, Conversations } from '../chats/service.ts'
+import { Conversations } from '../chats/service.ts'
 import { Home, HomeService } from '../home/service.ts'
-import { MemoriesInstance } from '../memory/memory.ts'
+import { Memories } from '../memory/service.ts'
 import { modelOptions } from '../models.ts'
 import type { KeyedLock } from '../observability/lock.ts'
 import { OrganizeReceipts } from '../organize/receipts.ts'
@@ -56,46 +55,39 @@ export const delegationServices = (
 
 /**
  * The agent's own delegation stores, each made here once: Topics, Personas, the invocations, receipts and Home. A
- * Topic's Conversation is made, written and told about through the conversation services, and listed with Personal's
- * switches by the agent's one profile store inside the Topic's own transaction; its memory is the one engine's.
+ * Topic's Conversation is made, written and told about through the conversation services, listed with Personal's
+ * switches inside the Topic's own transaction, and its memory turned on through Memories.
  */
-const stores: Effect.Effect<
-  DelegationStores,
-  never,
-  AgentInput | Db | Conversations | Chats | ProfilesInstance | MemoriesInstance
-> = Effect.gen(function* () {
-  const input = yield* AgentInput
-  const db = yield* Db
-  const topics = new TopicRegistry(
-    db,
-    topicPorts(db, {
-      conversations: yield* Conversations,
-      chats: yield* Chats,
-      capabilities: yield* ProfilesInstance,
-      memories: yield* MemoriesInstance,
-    }),
-  )
-  const personas = new PersonaRegistry(
-    db,
-    modelOptions(input.env.MODELS, input.env.MODEL_ID).map((option) => option.id),
-  )
-  const receipts = new OrganizeReceipts(db, (kind, target) => {
-    try {
-      return (kind.startsWith('topic.') ? topics : personas).get(Number(target)).revision
-    } catch {
-      // expected: a receipt whose target is gone is not undoable.
-      return undefined
-    }
-  })
-  const home = new HomeService(db, input.agentApps)
-  return { topics, personas, invocations: new PersonaInvocations(db), receipts, home } satisfies DelegationStores
-})
+const stores: Effect.Effect<DelegationStores, never, AgentInput | Db | Conversations | Memories> = Effect.gen(
+  function* () {
+    const input = yield* AgentInput
+    const db = yield* Db
+    const topics = new TopicRegistry(
+      db,
+      topicPorts(db, { conversations: yield* Conversations, memories: yield* Memories }),
+    )
+    const personas = new PersonaRegistry(
+      db,
+      modelOptions(input.env.MODELS, input.env.MODEL_ID).map((option) => option.id),
+    )
+    const receipts = new OrganizeReceipts(db, (kind, target) => {
+      try {
+        return (kind.startsWith('topic.') ? topics : personas).get(Number(target)).revision
+      } catch {
+        // expected: a receipt whose target is gone is not undoable.
+        return undefined
+      }
+    })
+    const home = new HomeService(db, input.agentApps)
+    return { topics, personas, invocations: new PersonaInvocations(db), receipts, home } satisfies DelegationStores
+  },
+)
 
 /** Delegation, Topics, Personas, organizing and Home. */
 export const DelegationLive: Layer.Layer<
   Topics | Personas | Invocations | Receipts | Home,
   never,
-  AgentInput | Db | KeyedLock | Changes | Conversations | Chats | ProfilesInstance | MemoriesInstance
+  AgentInput | Db | KeyedLock | Changes | Conversations | Memories
 > = Layer.unwrap(Effect.map(stores, delegationServices))
 
 /** Start step 7: each helper conversation runs with the execution extensions the agent has now. */

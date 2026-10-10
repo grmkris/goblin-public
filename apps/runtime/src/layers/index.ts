@@ -52,10 +52,10 @@ export const AgentLive = (input: AgentInputs) =>
   start(input).pipe(
     then(ModelBudgetLive),
     then(ConversationLive),
-    then(DelegationLive),
     then(McpLive),
     then(CapabilitiesLive),
     then(KnowledgeLive),
+    then(DelegationLive),
     then(RoutinesLive),
     then(ObservabilityLive),
     then(AppsLive),
