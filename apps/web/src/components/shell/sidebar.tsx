@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useState, useSyncExternalStore } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import type { AppView, ConversationView, PersonaView, TopicView } from '@goblin/contracts'
 import { ChevronRightIcon, HashIcon, LayoutGridIcon, MessagesSquareIcon, PlusIcon } from 'lucide-react'
@@ -21,25 +21,45 @@ import { AppTile } from '../apps/app-tile.tsx'
 import { PersonaAvatar } from '../persona-avatar.tsx'
 import { TopicDialog } from './topic-dialog.tsx'
 
-/** The sections the owner folded, remembered in this browser (a convenience: without storage they open on reload). */
+/** What this visit folded, whether or not storage kept it, and who to tell when it changes. */
+const foldedHere = new Map<string, boolean>()
+const foldListeners = new Set<() => void>()
+const subscribeFolds = (listener: () => void) => {
+  foldListeners.add(listener)
+  return () => {
+    foldListeners.delete(listener)
+  }
+}
+function storedFold(key: string): boolean {
+  const chosen = foldedHere.get(key)
+  if (chosen !== undefined) return chosen
+  try {
+    return localStorage.getItem(key) === 'folded'
+  } catch {
+    // expected: storage is off in this browser, so every section starts open
+    return false
+  }
+}
+
+/**
+ * The sections the owner folded, remembered in this browser (a convenience: without storage they open on reload). The
+ * server, and the first render in the browser, show them open; the browser's choice follows.
+ */
 function useFolded(section: string): readonly [boolean, () => void] {
   const key = `goblin:sidebar:${section}`
-  const [folded, setFolded] = useState(false)
-  useEffect(() => {
-    try {
-      setFolded(localStorage.getItem(key) === 'folded')
-    } catch {
-      // expected: storage is off in this browser, so every section starts open
-      setFolded(false)
-    }
-  }, [key])
+  const folded = useSyncExternalStore(
+    subscribeFolds,
+    () => storedFold(key),
+    () => false,
+  )
   const toggle = () => {
-    setFolded(!folded)
+    foldedHere.set(key, !folded)
     try {
       localStorage.setItem(key, folded ? 'open' : 'folded')
     } catch {
       // expected: storage is off or full; folding is a device preference only, kept for this visit
     }
+    for (const listener of foldListeners) listener()
   }
   return [folded, toggle]
 }
@@ -87,12 +107,24 @@ function useCurrent(): { readonly channel: string | undefined; readonly thread: 
   }
 }
 
-/** The threads this browser opened recently, read again as the page changes (a device convenience). */
+const NO_THREADS: ReadonlySet<string> = new Set()
+const noSubscription = () => () => undefined
+let recentRead: { readonly ids: string; readonly set: ReadonlySet<string> } = { ids: '', set: NO_THREADS }
+/** The recent threads as stored now, the same set while they are the same. */
+function storedRecent(): ReadonlySet<string> {
+  const ids = recentThreads()
+  if (ids.join(',') !== recentRead.ids) recentRead = { ids: ids.join(','), set: new Set(ids) }
+  return recentRead.set
+}
+
+/**
+ * The threads this browser opened recently, read again as the page changes (a device convenience). The server, and
+ * the first render in the browser, know none.
+ */
 function useRecentThreads(): ReadonlySet<string> {
-  const href = useRouterState({ select: (router) => router.location.href })
-  const [recent, setRecent] = useState<ReadonlySet<string>>(() => new Set())
-  useEffect(() => setRecent(new Set(recentThreads())), [href])
-  return recent
+  // Each page change renders this again, and so reads the store again.
+  useRouterState({ select: (router) => router.location.href })
+  return useSyncExternalStore(noSubscription, storedRecent, () => NO_THREADS)
 }
 
 /** A Topic's channel: `#` and its name, bold with a dot while it has replies the owner has not read. */

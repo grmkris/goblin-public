@@ -1,4 +1,4 @@
-import { type ReactNode, createContext, use, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, createContext, use, useCallback, useMemo, useState } from 'react'
 import { useRouterState } from '@tanstack/react-router'
 import { Button, Drawer, DrawerDescription, DrawerSide, DrawerTitle, useIsMobile } from '@goblin/ui'
 import { PanelLeftIcon } from 'lucide-react'
@@ -69,10 +69,12 @@ function NavigationDrawer({
  */
 export function ShellFrame({ children }: { readonly children: ReactNode }) {
   const narrow = useIsMobile()
-  const [open, setOpen] = useState(false)
   const path = useRouterState({ select: (router) => router.location.pathname })
-  useEffect(() => setOpen(false), [path])
-  const openNavigation = useCallback(() => setOpen(true), [])
+  // The drawer is open on the page it was opened on: going to another page closes it.
+  const [openOn, setOpenOn] = useState<string>()
+  const open = openOn === path
+  const setOpen = useCallback((next: boolean) => setOpenOn(next ? path : undefined), [path])
+  const openNavigation = useCallback(() => setOpen(true), [setOpen])
   const shell = useMemo(() => ({ openNavigation }), [openNavigation])
   return (
     <ShellContext value={shell}>

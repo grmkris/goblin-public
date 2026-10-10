@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Conflict } from '@goblin/contracts/api'
 import { MessageSquareShareIcon } from 'lucide-react'
@@ -43,12 +43,11 @@ export function useMover(chat: string, offered: boolean, running: boolean, entry
   const panel = usePanel()
   const moving = useMutation(moveMutation).mutate
   const [refused, setRefused] = useState<{ readonly entry: number; readonly reason: string }>()
-  useEffect(() => {
-    if (!running) setRefused((now) => (now?.reason === 'streaming' ? undefined : now))
-  }, [running])
   return useMemo((): Mover | undefined => {
     if (!offered || entry === undefined) return undefined
-    const reason = refused?.entry === entry ? refused.reason : undefined
+    // A `streaming` refusal lasts until the run ends; while it runs, `waiting` says the same.
+    const current = refused?.entry === entry && (refused.reason !== 'streaming' || running)
+    const reason = current ? refused.reason : undefined
     return {
       entry,
       waiting: running,

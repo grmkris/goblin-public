@@ -1,4 +1,4 @@
-import { type ReactNode, use, useEffect, useState } from 'react'
+import { type ReactNode, use, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import type { ConversationView, UpdateConversation } from '@goblin/contracts'
 import { Button, Duration } from '@goblin/ui'
@@ -58,12 +58,11 @@ export function useSubagent(view: ConversationView) {
   const conversations = useConversations()
   const stopping = useMutation(stopMutation).mutate
   const updating = useMutation(updateWorkspaceConversationMutation).mutate
-  const [stopped, setStopped] = useState(false)
   const [failure, setFailure] = useState('')
   const activity = useActivity(view.id)
-  useEffect(() => {
-    if (activity !== undefined) setStopped(false)
-  }, [activity])
+  // Stopped, until the subagent's activity moves on: what it was doing when the owner stopped it.
+  const [stoppedDuring, setStoppedDuring] = useState<{ readonly activity: typeof activity }>()
+  const stopped = stoppedDuring !== undefined && (activity === undefined || activity === stoppedDuring.activity)
   // A change the server refuses shows in the feed's status, beside the composer, as every conversation change does.
   const act = (change: UpdateConversation) => {
     setFailure('')
@@ -81,7 +80,7 @@ export function useSubagent(view: ConversationView) {
     stop: () => {
       setFailure('')
       stopping(view.id, {
-        onSuccess: () => setStopped(true),
+        onSuccess: () => setStoppedDuring({ activity }),
         onError: (cause) => setFailure(messageOf(cause, 'stop the subagent')),
       })
     },
