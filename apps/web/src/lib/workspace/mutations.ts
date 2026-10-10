@@ -2,39 +2,37 @@ import { mutationOptions } from '@tanstack/react-query'
 import { appClosedMutation, keepAppMutation } from '../../apps/queries.ts'
 import { markReadMutation, updateConversationMutation } from '../../conversations/queries.ts'
 import { messageOf } from '../query/app-error.ts'
-import { AppOverlay, applyWorkspaceChanges, setFeedStatus, workspaceKeys, workspaceQueries } from './sync.ts'
+import { applyWorkspaceChanges, setFeedStatus, workspaceKeys, workspaceQueries, workspaceSync } from './sync.ts'
 
 const now = () => Math.floor(Date.now() / 1000)
 
-/** Keeps the App of call `callId` in a conversation, reopening it if it was closed; it shows once the server answers. */
+/**
+ * Keeps the App of call `callId` in a conversation, reopening it if it was closed. It shows once the server answers,
+ * and stays as answered until the feed agrees (`lib/workspace/pending-apps.ts`).
+ */
 export const keepWorkspaceAppMutation = mutationOptions({
   ...keepAppMutation,
   mutationKey: workspaceKeys.apps,
-  onSuccess: (app, _keep, _overlay, { client }) => applyWorkspaceChanges(client, [{ type: 'app', app }]),
+  onSuccess: (app, _keep, _context, { client }) => workspaceSync(client).appAnswered(app),
 })
 
 /**
  * Closes a kept App (its iframe goes everywhere, its place offers to show it again), or opens a closed one again. A
- * close shows at once, over whatever the feed sends meanwhile, and the App comes back as it was if the server refuses.
+ * close shows at once; either stays as the server answered until the feed agrees, over whatever the feed sends
+ * meanwhile, and a refused one shows the App as the feed has it.
  */
 export const closeWorkspaceAppMutation = mutationOptions({
   ...appClosedMutation,
   mutationKey: workspaceKeys.apps,
   onMutate: ({ id, closed }, { client }) => {
-    const before = client.getQueryData(workspaceQueries.apps.queryKey)?.find((app) => app.id === id)
-    if (!closed || before === undefined) return undefined
-    const overlay = new AppOverlay({ ...before, closedAt: now() }, before)
-    applyWorkspaceChanges(client, [{ type: 'app', app: overlay.shown }])
-    return overlay
+    const shown = client.getQueryData(workspaceQueries.apps.queryKey)?.find((app) => app.id === id)
+    if (!closed || shown === undefined) return undefined
+    return workspaceSync(client).appStarted({ ...shown, closedAt: now() })
   },
-  onError: (_failure, _change, overlay, { client }) => {
-    overlay?.settle()
-    if (overlay !== undefined) applyWorkspaceChanges(client, [{ type: 'app', app: overlay.before }])
+  onError: (_failure, _change, started, { client }) => {
+    if (started !== undefined) workspaceSync(client).appRefused(started)
   },
-  onSuccess: (app, _change, overlay, { client }) => {
-    overlay?.settle()
-    applyWorkspaceChanges(client, [{ type: 'app', app }])
-  },
+  onSuccess: (app, _change, started, { client }) => workspaceSync(client).appAnswered(app, started),
 })
 
 /**

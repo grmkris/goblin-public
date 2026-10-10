@@ -57,11 +57,12 @@ function agentAppEdges(before: readonly AppView[], after: readonly AppView[]): Q
  * - An agent app new, changed or gone: the Apps list and that app's page.
  * - A Persona changed: the Persona reads, and what composers can tag.
  */
-export function staleAfter(before: Cached, after: Slices): readonly QueryKey[] {
+export function staleAfter(before: Cached, after: Cached): readonly QueryKey[] {
+  const { activity, apps, personas } = after
   return [
-    ...(before.activity === undefined ? [] : runEdges(before.activity, after.activity)),
-    ...(before.apps === undefined ? [] : agentAppEdges(before.apps, after.apps)),
-    ...(before.personas === undefined || before.personas === after.personas
+    ...(before.activity === undefined || activity === undefined ? [] : runEdges(before.activity, activity)),
+    ...(before.apps === undefined || apps === undefined ? [] : agentAppEdges(before.apps, apps)),
+    ...(before.personas === undefined || before.personas === personas
       ? []
       : [personaKeys.all, conversationKeys.composers]),
   ]

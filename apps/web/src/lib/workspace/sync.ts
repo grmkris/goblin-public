@@ -4,15 +4,8 @@ import type { PiEventSource } from '../conversation-stream.ts'
 import { reportUnexpected } from '../unexpected.ts'
 import { WorkspaceFeedConnection } from './connection.ts'
 import { type Cached, staleAfter } from './invalidations.ts'
-import {
-  EMPTY_WORKSPACE,
-  SLICE_NAMES,
-  type Slice,
-  type Slices,
-  applyChanges,
-  fromSnapshot,
-  withPendingApps,
-} from './slices.ts'
+import { type AppChange, PendingApps } from './pending-apps.ts'
+import { EMPTY_WORKSPACE, SLICE_NAMES, type Slice, type Slices, applyChanges, fromSnapshot } from './slices.ts'
 
 /**
  * The workspace in the Query cache: each slice under `['workspace', slice]`, what is wrong with the feed under
@@ -25,34 +18,8 @@ export const workspaceKeys = {
   apps: ['workspace', 'apps'] as const,
 }
 
-/**
- * What a close shows while its call is on its way: the App closed, over whatever the feed sends meanwhile, so a change
- * about something else never brings it back (and loads it again). Settled once the call answers: the answer, or on a
- * failure the App as it was (`before`), then stands in the cache.
- */
-export class AppOverlay {
-  #open = true
-  constructor(
-    readonly shown: AppView,
-    readonly before: AppView,
-  ) {}
-
-  get showing(): readonly AppView[] {
-    return this.#open ? [this.shown] : []
-  }
-
-  settle(): void {
-    this.#open = false
-  }
-}
-
-/** The overlays of the App changes still on their way, oldest first, so the latest shows. */
-const pendingApps = (client: QueryClient): readonly AppView[] =>
-  client
-    .getMutationCache()
-    .findAll({ mutationKey: workspaceKeys.apps, status: 'pending' })
-    .toSorted((a, b) => a.state.submittedAt - b.state.submittedAt)
-    .flatMap(({ state }) => (state.context instanceof AppOverlay ? state.context.showing : []))
+/** A change the server answered the owner with, shown before the feed repeats it. An App's goes through `appAnswered`. */
+type AnsweredChange = Exclude<WorkspaceChange, { readonly type: 'app' | 'app-removed' }>
 
 /** A promise settled from outside, once. */
 function deferred() {
@@ -67,12 +34,17 @@ function deferred() {
  * The feed's writer into one QueryClient's cache: the snapshot of every (re)connect and the changes after it, each
  * slice set on its own, so a component reading one slice does not render for a change to another. A slice's read waits
  * for the first snapshot, then the feed keeps it current; it is never read from the server on its own.
+ *
+ * The Apps slice is the feed's Apps (`#feedApps`) with the owner's App changes the feed has not caught up with shown
+ * over them (`#pending`), so every write, from the feed or not, shows them.
  */
 class WorkspaceSync {
   readonly #client: QueryClient
   #first = deferred()
   #synced = false
   #connection: WorkspaceFeedConnection | undefined
+  #feedApps: readonly AppView[] = EMPTY_WORKSPACE.apps
+  readonly #pending = new PendingApps()
 
   constructor(client: QueryClient) {
     this.#client = client
@@ -85,16 +57,50 @@ class WorkspaceSync {
     return this.#cached(slice) ?? EMPTY_WORKSPACE[slice]
   }
 
-  /** Every slice from a snapshot: the first one, or a reconnect's, which replaces what the tab had. */
+  /**
+   * Every slice from a snapshot: the first one, or a reconnect's, which replaces what the tab had. An answered App
+   * change it agrees with ends, and so does one whose App it no longer lists.
+   */
   snapshot(snapshot: WorkspaceSnapshot): void {
-    this.#write(fromSnapshot(snapshot))
+    const next = fromSnapshot(snapshot)
+    this.#feedApps = next.apps
+    this.#pending.heard(next.apps, () => true)
+    this.#write(next)
     this.#synced = true
     this.#first.resolve()
   }
 
-  /** Changes from the feed, or a server's answer shown before the feed repeats it, onto the slices as they are. */
+  /** Changes from the feed, onto the slices as they are. */
   changes(changes: readonly WorkspaceChange[]): void {
+    const next = applyChanges(this.#current(), changes)
+    const removed = new Set(changes.flatMap((change) => (change.type === 'app-removed' ? [change.id] : [])))
+    this.#feedApps = next.apps
+    this.#pending.heard(next.apps, (id) => removed.has(id))
+    this.#write(next)
+  }
+
+  /** What the server answered the owner's change with, shown before the feed repeats it. */
+  show(changes: readonly AnsweredChange[]): void {
     this.#write(applyChanges(this.#current(), changes))
+  }
+
+  /** An App change on its way, shown at once as `shown`; pass what this returns on to its answer or refusal. */
+  appStarted(shown: AppView): AppChange {
+    const change = this.#pending.start(shown)
+    this.#write(this.#current())
+    return change
+  }
+
+  /** The server answered an App change (`change`, if it showed itself while on its way) with `app`. */
+  appAnswered(app: AppView, change?: AppChange): void {
+    this.#pending.answered(app, this.#feedApps, change)
+    this.#write(this.#current())
+  }
+
+  /** The server refused an App change: the App shows as the feed has it. */
+  appRefused(change: AppChange): void {
+    this.#pending.refused(change)
+    this.#write(this.#current())
   }
 
   /** What is wrong with the feed, in words; undefined once it is healthy again. */
@@ -134,12 +140,13 @@ class WorkspaceSync {
     }
   }
 
+  /** The slices as the feed left them: the cache's, but the feed's own Apps. */
   #current(): Slices {
     const cached = this.#present()
     return {
       conversations: cached.conversations ?? EMPTY_WORKSPACE.conversations,
       activity: cached.activity ?? EMPTY_WORKSPACE.activity,
-      apps: cached.apps ?? EMPTY_WORKSPACE.apps,
+      apps: this.#feedApps,
       topics: cached.topics ?? EMPTY_WORKSPACE.topics,
       personas: cached.personas ?? EMPTY_WORKSPACE.personas,
       invocations: cached.invocations ?? EMPTY_WORKSPACE.invocations,
@@ -152,15 +159,14 @@ class WorkspaceSync {
   }
 
   /**
-   * Writes the slices that changed, with the Apps the owner just closed shown closed over them, then reads again what
-   * went stale with the change (`staleAfter`).
+   * Writes the slices that changed, with the owner's pending App changes shown over the feed's Apps, then reads again
+   * what went stale with the change (`staleAfter`).
    */
   #write(next: Slices): void {
-    const pending = pendingApps(this.#client)
-    const shown = pending.length === 0 ? next : { ...next, apps: withPendingApps(next.apps, pending) }
+    const shown = { ...next, apps: this.#pending.over(next.apps) }
     const before = this.#present()
     for (const slice of SLICE_NAMES) this.#set(slice, shown[slice])
-    for (const queryKey of staleAfter(before, this.#current()))
+    for (const queryKey of staleAfter(before, this.#present()))
       this.#client.invalidateQueries({ queryKey }).catch(reportUnexpected)
   }
 }
@@ -177,8 +183,8 @@ export function workspaceSync(client: QueryClient): WorkspaceSync {
 }
 
 /** Shows what the server just answered a change with (a thread, a Topic, a Persona…) before the feed repeats it. */
-export const applyWorkspaceChanges = (client: QueryClient, changes: readonly WorkspaceChange[]): void =>
-  workspaceSync(client).changes(changes)
+export const applyWorkspaceChanges = (client: QueryClient, changes: readonly AnsweredChange[]): void =>
+  workspaceSync(client).show(changes)
 
 /** Sets what is wrong with the feed or with the owner's last change to it, in words; empty when nothing is. */
 export function setFeedStatus(client: QueryClient, problem: string): void {

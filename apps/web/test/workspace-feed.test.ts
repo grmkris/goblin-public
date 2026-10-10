@@ -400,7 +400,7 @@ describe('Apps the owner just changed', () => {
     expect(closedAt('4')).toBe(10)
   })
 
-  it('come back as they were when the server refuses the close, and stay so', async () => {
+  it('show as the feed has them when the server refuses the close, and stay so', async () => {
     const client = testQueryClient()
     const sync = workspaceSync(client)
     sync.snapshot(snapshot({ apps: [app('4')] }))
@@ -416,12 +416,79 @@ describe('Apps the owner just changed', () => {
     expect(appsOf(client)?.[0]?.closedAt).toBeUndefined()
   })
 
-  it('show an App just kept before the feed lists it', async () => {
+  it('stay closed after the server answers, through a stale change, until the feed agrees', async () => {
     const client = testQueryClient()
-    workspaceSync(client).snapshot(snapshot())
+    const sync = workspaceSync(client)
+    sync.snapshot(snapshot({ apps: [app('4')] }))
+    const closing = new MutationObserver(client, {
+      ...closeWorkspaceAppMutation,
+      mutationFn: async () => app('4', { closedAt: 10 }),
+    })
+    await closing.mutate({ id: '4', closed: true })
+    const shown = () => appsOf(client)?.find(({ id }) => id === '4')
+    expect(shown()?.closedAt).toBe(10)
+    // A change the server made before the close, arriving after its answer: the App stays closed.
+    sync.changes([{ type: 'app', app: app('4', { title: 'Board, before' }) }])
+    expect(shown()?.closedAt).toBe(10)
+    sync.changes([{ type: 'conversation', conversation: view('6') }])
+    expect(shown()?.closedAt).toBe(10)
+    // The feed agrees: the change is done, and what the feed says next stands.
+    sync.changes([{ type: 'app', app: app('4', { closedAt: 11, title: 'Board, closed' }) }])
+    expect(shown()).toMatchObject({ closedAt: 11, title: 'Board, closed' })
+    sync.changes([{ type: 'app', app: app('4') }])
+    expect(shown()?.closedAt).toBeUndefined()
+  })
+
+  it('end on a reconnect snapshot that already agrees, or no longer lists the App', async () => {
+    const client = testQueryClient()
+    const sync = workspaceSync(client)
+    sync.snapshot(snapshot({ apps: [app('4'), app('5')] }))
+    const answer = (closedAt: number) => async () => app('4', { closedAt })
+    await new MutationObserver(client, { ...closeWorkspaceAppMutation, mutationFn: answer(10) }).mutate({
+      id: '4',
+      closed: true,
+    })
+    sync.snapshot(snapshot({ apps: [app('4', { closedAt: 10 }), app('5')] }))
+    sync.changes([{ type: 'app', app: app('4') }])
+    expect(appsOf(client)?.find(({ id }) => id === '4')?.closedAt).toBeUndefined()
+    await new MutationObserver(client, { ...closeWorkspaceAppMutation, mutationFn: answer(12) }).mutate({
+      id: '4',
+      closed: true,
+    })
+    sync.snapshot(snapshot({ apps: [app('5')] }))
+    expect(appsOf(client)?.map(({ id }) => id)).toEqual(['5'])
+  })
+
+  it('end at once when the feed agreed before the server answered', async () => {
+    const client = testQueryClient()
+    const sync = workspaceSync(client)
+    sync.snapshot(snapshot({ apps: [app('4')] }))
+    const call = held<AppView>()
+    const done = new MutationObserver(client, {
+      ...closeWorkspaceAppMutation,
+      mutationFn: () => call.promise,
+    }).mutate({ id: '4', closed: true })
+    await settled()
+    sync.changes([{ type: 'app', app: app('4', { closedAt: 10 }) }])
+    call.answer(app('4', { closedAt: 10 }))
+    await done
+    sync.changes([{ type: 'app', app: app('4') }])
+    expect(appsOf(client)?.[0]?.closedAt).toBeUndefined()
+  })
+
+  it('show an App just kept before the feed lists it, until it does', async () => {
+    const client = testQueryClient()
+    const sync = workspaceSync(client)
+    sync.snapshot(snapshot())
     const keeping = new MutationObserver(client, { ...keepWorkspaceAppMutation, mutationFn: async () => app('6') })
     await keeping.mutate({ conversation: '1', callId: 'call-6' })
     expect(appsOf(client)?.map(({ id }) => id)).toEqual(['6'])
+    sync.changes([{ type: 'activity', activity: working('1', 2) }])
+    expect(appsOf(client)?.map(({ id }) => id)).toEqual(['6'])
+    sync.changes([{ type: 'app', app: app('6', { title: 'Board, listed' }) }])
+    expect(appsOf(client)?.[0]?.title).toBe('Board, listed')
+    sync.changes([{ type: 'app-removed', id: '6' }])
+    expect(appsOf(client)).toEqual([])
   })
 
   it('a conversation marked read shows read at once, and a mark the server refused says so', async () => {
