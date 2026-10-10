@@ -485,8 +485,11 @@ snapshot arrives a chat shows nothing. Conversations open at their end. A turn m
 (`components/turn-map.tsx`) marks each of the owner's turns where it sits, with a band for what is on screen; hovering it
 lists the turns and a click jumps to one. Without a fine pointer, or in a narrow window, an edge tab opens the list as a
 bottom drawer that a swipe down closes. The view follows a streaming reply only while the reader is at the end, and
-otherwise offers a jump back. The chat's bar and the composer float over the transcript as translucent chrome. Assistant Markdown is set by shadcn/typeset, whose append-stable rules keep earlier blocks still
-while a reply streams.
+otherwise offers a jump back. The chat's bar and the composer float over the transcript as translucent chrome. Assistant Markdown is parsed by Streamdown (`components/parts/markdown.tsx`) and set by shadcn/typeset, whose append-stable rules keep earlier blocks still
+while a reply streams. Streamdown splits a reply into blocks and renders each on its own, so a streamed batch renders
+only the block being written; it stays in streaming mode once the reply settles, so the blocks are not remounted. Every
+Streamdown renderer is replaced by its plain element, raw HTML is never rendered, and links keep react-markdown's safe
+schemes (`safeUrl`).
 
 Tool calls remain quiet expandable lines (`ToolCall` in `packages/ui`). Opening one shows labelled Input and Output
 sections (`ToolPayload`), with the local `JsonView` adapted from MIT-licensed `mnove/json-view-cn`. The root opens,
@@ -496,7 +499,7 @@ content blocks, suppressing a duplicate JSON text block while keeping additional
 Text that reads as Markdown opens Formatted (`lib/markdown.ts`), judged by the CommonMark and GFM grammar the renderer
 parses: a table, two kinds of anchor (an ATX heading on its own line, a fenced code block, a table), or one anchor
 among three kinds of signal. YAML and script comments, diffs, tracebacks and listings stay plain, because a missed
-document is still readable and a false one would mangle data. `ToolMarkdown` sets it in the compact `typeset-tool`
+document is still readable and a false one would mangle data. `ToolMarkdown` sets it, through Streamdown's static mode, in the compact `typeset-tool`
 preset as untrusted text: images are named and never loaded, only absolute http(s) and mailto links work and they
 show their host, raw HTML shows as written and fences stay code. Reference definitions and link titles show only in
 Raw. A long payload scrolls in place and fades at its bottom edge while more lies below (`scroll-edge-bottom`, driven
@@ -613,7 +616,8 @@ The agent's replies draw fenced blocks (ADR 0023): ```mermaid diagrams, and ```c
 JSON spec (`ChartSpec`, `MapSpec` in `packages/kit/src/specs.ts`). `MessageText`
 (`components/parts/text-part.tsx`) hands such a block to `RichBlock` (`components/parts/blocks.tsx`), which loads that kind's module from `@goblin/kit`
 on first use and shows the plain code block whenever the source does not parse or drawing fails. While a reply
-streams, the block whose fence is still open stays code (`lib/fences.ts`). A diagram is beautiful-mermaid's SVG as an
+streams, the block whose fence is still open stays code: Streamdown parses each block on its own and says which one
+that is (`useIsCodeFenceIncomplete`). A diagram is beautiful-mermaid's SVG as an
 `<img>` data URI with the theme's tokens resolved to concrete colours, so nothing in it runs or loads; it redraws when
 the theme changes. **Explore diagram** opens the kit's native dialog with Panzoom 4.6.2, fitted 1–4× zoom,
 bounded dragging/pinch gestures and keyboard node selection. `diagram-svg.ts` rebuilds a passive, allowlisted SVG,

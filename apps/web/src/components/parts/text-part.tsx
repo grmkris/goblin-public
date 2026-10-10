@@ -1,61 +1,20 @@
 import { type ReactNode, createContext, memo, use } from 'react'
-import Markdown, { type Components, type ExtraProps } from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { AppWindowIcon, CornerDownRightIcon } from 'lucide-react'
 import { type Attachment, type ComposerOption, selectionKey } from '@goblin/contracts'
 import type { SharedContext } from '../../lib/app-context.ts'
 import { contextPreview } from '../../lib/app-context.ts'
-import { blockKind, openFenceAt } from '../../lib/fences.ts'
 import { relativeTime, reporterOf } from '../../lib/threads.ts'
 import { MessageFiles } from '../attachments.tsx'
-import { RichBlock } from './blocks.tsx'
+import { ChatMarkdown } from './markdown.tsx'
 import { useWorkspaceFeed } from '../workspace-feed.tsx'
 
-type PreProps = { readonly node?: ExtraProps['node']; readonly children?: ReactNode }
-const BlockContext = createContext<{
-  readonly open: number | undefined
-  readonly live: boolean
-}>({ open: undefined, live: false })
-
 /**
- * A code block, or the figure it describes (```mermaid, ```chart, ```map). `open` is where a fence the
- * streaming reply has not closed yet begins: that block stays code until it is whole.
- */
-function Pre({ node, children }: PreProps) {
-  const { open, live } = use(BlockContext)
-  const plain = <pre>{children}</pre>
-  const code = node?.children[0]
-  if (code?.type !== 'element' || code.tagName !== 'code') return plain
-  const kind = blockKind(code.properties.className)
-  const unfinished = open !== undefined && (node?.position?.start.offset ?? 0) >= open
-  if (kind === undefined || (unfinished && live)) return plain
-  const source = code.children.map((child) => (child.type === 'text' ? child.value : '')).join('')
-  return <RichBlock kind={kind} source={source} code={plain} />
-}
-
-/** Links open in a new tab without a referrer; wide tables scroll sideways instead of widening the conversation. */
-const COMPONENTS: Components = {
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noreferrer noopener">
-      {children}
-    </a>
-  ),
-  table: ({ children }) => (
-    <div className="typeset-scroll">
-      <table>{children}</table>
-    </div>
-  ),
-  pre: Pre,
-}
-const REMARK_PLUGINS = [remarkGfm]
-
-/**
- * Assistant text as GitHub-flavoured Markdown, set by shadcn/typeset. Raw HTML is never rendered. ```mermaid, ```chart
- * and ```map blocks are drawn (ADR 0023). While `live`, an open fence stays code.
+ * Assistant text as GitHub-flavoured Markdown, set by shadcn/typeset (`ChatMarkdown`). Raw HTML is never rendered.
+ * ```mermaid, ```chart and ```map blocks are drawn (ADR 0023). While `live`, an open fence stays code.
  *
  * Memoised on its text, and its renderers are module constants: a streamed batch rebuilds every part of the
  * transcript, and new renderer functions would remount every link and table (a table scrolled sideways would snap
- * back) and re-parse every message, not just the one still being written.
+ * back) and parse every message again, not just the one still being written.
  */
 export const MessageText = memo(function MessageText({
   text,
@@ -64,15 +23,7 @@ export const MessageText = memo(function MessageText({
   readonly text: string
   readonly live?: boolean
 }) {
-  return (
-    <div className="typeset typeset-chat">
-      <BlockContext value={{ open: openFenceAt(text), live }}>
-        <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
-          {text}
-        </Markdown>
-      </BlockContext>
-    </div>
-  )
+  return <ChatMarkdown text={text} live={live} />
 })
 
 /** Opens a thread in a pane beside the transcript: given where a note's thread label can lead somewhere. */
