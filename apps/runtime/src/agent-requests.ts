@@ -1,9 +1,7 @@
 import type { PiHarness } from 'agents/harness/pi'
-import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
-import { type AppError, NotFound } from './http/errors.ts'
+import { NotFound } from './http/errors.ts'
 import { refusal } from './http/api/render.ts'
-import type { AgentServices } from './layers/index.ts'
 import { registeredConversation } from './agent-program.ts'
 import { piEventResponse } from './pi/events.ts'
 import { Workspace } from './workspace/service.ts'
@@ -11,8 +9,8 @@ import { filesRequest } from './files/routes.ts'
 import { inspectRequest } from './inspect/request.ts'
 import type { JsonObject } from '@goblin/contracts'
 import { connectCallback } from './mcp/program.ts'
+import type { ExitProgram } from './runtime/bridge.ts'
 
-type Execute = <A>(program: Effect.Effect<A, AppError, AgentServices>) => Promise<Exit.Exit<A, AppError>>
 export async function sessionSnapshot(harness: PiHarness, session: string): Promise<JsonObject> {
   const stream = await harness.session(session).events()
   const snapshot = stream.snapshot
@@ -37,7 +35,7 @@ const EVENTS = /^\/api\/conversations\/(\d{1,12})\/events$/u
 export async function agentRequest(
   request: Request,
   harness: PiHarness,
-  execute: Execute,
+  execute: ExitProgram,
   appUrl: string,
 ): Promise<Response> {
   const url = new URL(request.url)
@@ -58,7 +56,7 @@ export async function agentRequest(
 }
 
 /** A chat's Pi event stream: a chat keeps its Pi session (a Move makes a new Thread), so the stream is its session's. */
-async function eventsResponse(chat: string, harness: PiHarness, execute: Execute): Promise<Response> {
+async function eventsResponse(chat: string, harness: PiHarness, execute: ExitProgram): Promise<Response> {
   const session = await execute(registeredConversation(chat))
   if (Exit.isFailure(session)) return Response.json({ error: 'NotFound' }, { status: 404 })
   return piEventResponse(await harness.session(session.value).events())

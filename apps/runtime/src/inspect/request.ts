@@ -1,13 +1,10 @@
 import { InspectQuery } from '@goblin/contracts/inspect'
 import * as Effect from 'effect/Effect'
-import type * as Exit from 'effect/Exit'
 import * as Schema from 'effect/Schema'
-import { type AppError, InvalidInput } from '../http/errors.ts'
+import { InvalidInput } from '../http/errors.ts'
 import { encodeExit } from '../http/rpc.ts'
+import type { ExitProgram } from '../runtime/bridge.ts'
 import { Inspection } from './service.ts'
-
-/** Runs an inspection program to its exit; it needs nothing but `Inspection`. */
-type Execute = <A>(program: Effect.Effect<A, AppError, Inspection>) => Promise<Exit.Exit<A, AppError>>
 
 const decodeQuery = Schema.decodeUnknownEffect(Schema.fromJsonString(InspectQuery))
 
@@ -16,7 +13,7 @@ const decodeQuery = Schema.decodeUnknownEffect(Schema.fromJsonString(InspectQuer
  * reaches it, from `/mcp` for a client that holds `goblin:inspect`; it renews no authority, needs
  * no plan, and never calls a model.
  */
-export async function inspectRequest(request: Request, execute: Execute): Promise<Response> {
+export async function inspectRequest(request: Request, execute: ExitProgram): Promise<Response> {
   if (request.method !== 'POST') return Response.json({ error: 'MethodNotAllowed' }, { status: 405 })
   const body = await request.text()
   const exit = await execute(
