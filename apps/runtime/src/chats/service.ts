@@ -97,8 +97,11 @@ export type Admission = {
 export type Submit<R> = Admission & {
   /** What Pi takes as the input. */
   readonly content: UserInput
-  /** The owner's words, which a routine's question waiting in the chat takes as its answer instead. */
-  readonly answers?: string
+  /**
+   * A routine's question waiting in the chat takes the input as its answer instead of Pi, under the chat's lock: true
+   * when one did (the owner's message wires the routines' answer here).
+   */
+  readonly answer?: (session: SessionId) => Effect.Effect<boolean, AppError, R>
   /** Where the input goes instead of Pi's submit (the owner's message to a subagent goes through its relay). */
   readonly relay?: (session: SessionId) => Effect.Effect<PiReceipt, AppError, R>
 }
@@ -158,7 +161,8 @@ export class ChatOperations extends Context.Service<
     ) => Effect.Effect<A, E | AppError, R>
     /**
      * The one admission sequence of an input: within the budget, admitted (`admit`), a routine's waiting question
-     * answered when `answers` is one, the session put on the owner's model, then Pi's submit or the `relay`.
+     * answered through `answer` when it takes the input, the session put on the owner's model, then Pi's submit or
+     * the `relay`.
      */
     readonly send: <R = never>(input: Submit<R>) => Effect.Effect<PiReceipt, AppError, R>
   }

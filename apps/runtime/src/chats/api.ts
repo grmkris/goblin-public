@@ -70,8 +70,7 @@ const threadStart = ({ params, payload }: ChatWrite<StartThread>) =>
   )
 
 const create = ({ payload }: { readonly payload: CreateConversation }) => createOwnerConversation(payload)
-const update = ({ params, payload }: ChatWrite<UpdateConversation>) =>
-  AgentInput.use(({ routines }) => updateOwnerConversation(routines, params.id, payload))
+const update = ({ params, payload }: ChatWrite<UpdateConversation>) => updateOwnerConversation(params.id, payload)
 const move = ({ params, payload }: ChatWrite<MoveToThread>) => moveToThread(params.id, payload)
 const stop = ({ params, payload }: ChatWrite<StopConversation>) =>
   Effect.map(stopChat(params.id, payload.operationId), (stopped) => ({ stopped }))

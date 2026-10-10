@@ -21,10 +21,9 @@ import { type FlowEvents, withFlow } from './observability/flows.ts'
 import { type AppError, InvalidInput, attempt } from './http/errors.ts'
 import type { McpServers, Resident } from './mcp/service.ts'
 import { Invocations, type Personas } from './personas/service.ts'
-import { RoutineRuns } from './routines/service.ts'
+import { RoutineControl, RoutineRuns } from './routines/service.ts'
 import type { RunProgram } from './runtime/bridge.ts'
 import { AgentInput, type AgentInputs } from './runtime/input.ts'
-import type { RoutineRunner } from './routines/runner.ts'
 import type { Skills } from './skills/service.ts'
 import type { Applied } from './agent-model.ts'
 import { conversationId } from './pi/context.ts'
@@ -48,7 +47,7 @@ export const createOwnerConversation = (input: CreateConversation) =>
  * Rename, close or reopen, or pin a subagent open. A Close settles the live routine runs among what it closes first, so
  * a routine stopped this way reads as stopped by the owner, never as failed.
  */
-export const updateOwnerConversation = (routines: RoutineRunner, id: string, change: UpdateConversation) =>
+export const updateOwnerConversation = (id: string, change: UpdateConversation) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations
     if (change.closed === true) {
@@ -56,7 +55,8 @@ export const updateOwnerConversation = (routines: RoutineRunner, id: string, cha
       const live = (yield* (yield* RoutineRuns).live).filter(
         (run) => run.sessionId !== null && closing.has(run.sessionId),
       )
-      for (const run of live) yield* attempt(() => routines.stop(run.id, 'Closed by owner'))
+      const control = yield* RoutineControl
+      for (const run of live) yield* control.stop(run.id, 'Closed by owner')
     }
     return (yield* conversations.update(id, change)).view
   })
@@ -68,10 +68,9 @@ export const markOwnerRead = (id: string) =>
     true,
   )
 
-/** What the owner's Stop reaches: Pi, a routine's runs and the Persona turns asked in the chat. */
+/** What the owner's Stop reaches besides the services: Pi and the Persona turns asked in the chat. */
 export type StopRuntime = {
   readonly harness: PiHarness
-  readonly routines: RoutineRunner
   readonly personas: PersonaTurnKit
 }
 
@@ -90,7 +89,7 @@ export const stopOwner = (
     const session = yield* conversations.require(input.thread)
     const run = yield* (yield* RoutineRuns).session(session)
     if (run !== undefined) {
-      yield* attempt(() => input.routines.stop(run.id))
+      yield* RoutineControl.use((control) => control.stop(run.id))
       return true
     }
     const operationId = input.operationId === undefined ? {} : { operationId: input.operationId }
@@ -110,7 +109,11 @@ export const stopChat = (
   chat: string,
   operationId?: string,
   actor: 'owner' | 'agent' = 'owner',
-): Effect.Effect<boolean, AppError, Conversations | RoutineRuns | Invocations | AgentInput | FlowEvents> => {
+): Effect.Effect<
+  boolean,
+  AppError,
+  Conversations | RoutineRuns | RoutineControl | Invocations | AgentInput | FlowEvents
+> => {
   const flow = {
     flow: 'stop',
     via: actor === 'owner' ? 'app' : 'tool',
@@ -134,7 +137,6 @@ export type OwnerMessageContext = {
 export type OwnerSubmit = {
   harness: PiHarness
   applied: Applied
-  routines: RoutineRunner
   subagents: SubagentKit
   personas: PersonaTurnKit
   thread: string
@@ -147,10 +149,9 @@ export type OwnerSubmit = {
 }
 
 /** What the owner's message paths run with, from the agent's instance. */
-export const ownerRuntime = ({ harness, applied, routines, subagents, personas, run }: AgentInputs) => ({
+export const ownerRuntime = ({ harness, applied, subagents, personas, run }: AgentInputs) => ({
   harness,
   applied,
-  routines,
   subagents,
   personas,
   run,
@@ -223,6 +224,11 @@ export type OwnerSubmitServices =
   | Invocations
   | Personas
   | PiSessions
+  | RoutineControl
+
+/** The owner's words as the answer to a routine's question waiting in the session they reach, when one is. */
+const routineAnswer = (operationId: string, text: string) => (admitted: SessionId) =>
+  RoutineControl.use((control) => control.answer(admitted, operationId, text))
 
 /**
  * The owner's message into a chat, or an ask of the Personas it tags. Admission (the chat open, the operation recorded,
@@ -256,13 +262,13 @@ export const submitOwner = (input: OwnerSubmit): Effect.Effect<PiReceipt, AppErr
       view?.kind === 'subagent' && view.parent !== undefined
         ? (admitted: SessionId) => sendToSubagent(input, view, admitted, { attachments, shared, selections })
         : undefined
-    return yield* (yield* ChatOperations).send({
+    return yield* (yield* ChatOperations).send<Conversations | RoutineControl>({
       chat: input.thread,
       operationId: input.operationId,
       receipt: { kind: 'send', origin: 'owner', ...(input.parentOp === undefined ? {} : { parentOp: input.parentOp }) },
       flow: { flow: 'send', via: 'app', actor: 'owner' },
       content,
-      answers: input.text,
+      answer: routineAnswer(input.operationId, input.text),
       ...(relay === undefined ? {} : { relay }),
     })
   })

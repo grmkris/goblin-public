@@ -19,7 +19,7 @@ import { ChatOperations, Chats, Conversations } from '../../../src/chats/service
 import { Files } from '../../../src/files/service.ts'
 import { Invocations, Personas } from '../../../src/personas/service.ts'
 import { PiSessions } from '../../../src/pi/sessions.ts'
-import { RoutineRuns } from '../../../src/routines/service.ts'
+import { RoutineControl, RoutineRuns } from '../../../src/routines/service.ts'
 import { Skills } from '../../../src/skills/service.ts'
 import { MemoryAddedServers, MemoryCredentials, MemoryGrants } from '../../mcp/memory.ts'
 import { callOwner } from '../../owner-client.ts'
@@ -114,6 +114,7 @@ const fixture = async () => {
           Layer.mergeAll(stub(ChatOperations), stub(Skills), stub(Chats), stub(RoutineRuns), stub(Apps), stub(Budget)),
           Layer.mergeAll(stub(Capabilities), stub(Conversations), stub(Files), stub(Invocations), stub(Personas)),
           stub(PiSessions),
+          stub(RoutineControl),
         ),
       ),
     ),

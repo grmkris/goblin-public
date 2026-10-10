@@ -7,13 +7,12 @@ import * as Exit from 'effect/Exit'
 import * as Option from 'effect/Option'
 import { type Applied, useModel } from '../agent-model.ts'
 import { Budget } from '../budget.ts'
-import { type AppError, attempt, attemptSync, toAppError } from '../http/errors.ts'
+import { type AppError, attemptSync, toAppError } from '../http/errors.ts'
 import { Models } from '../models.ts'
 import { FlowEvents, failedFlow } from '../observability/flows.ts'
 import { KeyedLock } from '../observability/lock.ts'
 import { safeErrorType } from '../observability/report.ts'
 import { type PiFailure, PiSessions } from '../pi/sessions.ts'
-import type { RoutineController } from '../routines/controller.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { type ChatDirectory, SessionId } from './directory.ts'
@@ -146,7 +145,7 @@ const admitWith =
     return flowed(flows, admission, withChat(chat, admitted)).pipe(Effect.withSpan('ChatOperations.admit'))
   }
 
-/** What an input's hand-on reads: the budget, Pi, the owner's model, and the routine questions waiting for answers. */
+/** What an input's hand-on reads: the budget, Pi and the owner's model. */
 type Sending = {
   readonly admit: ReturnType<typeof admitWith>
   readonly budget: Budget['Service']
@@ -154,19 +153,18 @@ type Sending = {
   readonly pi: PiSessions['Service']
   readonly harness: PiHarness
   readonly applied: Applied
-  readonly routines: RoutineController
 }
 
 /** `ChatOperations.send`: the one admission sequence of an input (plan §3). */
 const sendWith =
-  ({ admit, budget, models, pi, harness, applied, routines }: Sending) =>
+  ({ admit, budget, models, pi, harness, applied }: Sending) =>
   <R = never>(input: Submit<R>): Effect.Effect<PiReceipt, AppError, R> =>
     Effect.gen(function* () {
       yield* budget.require(yield* epochSeconds)
-      const { operationId, content, answers, relay } = input
+      const { operationId, content, answer, relay } = input
       return yield* admit(input, ({ session }) =>
         Effect.gen(function* () {
-          if (answers !== undefined && (yield* attempt(() => routines.answer(session, operationId, answers))))
+          if (answer !== undefined && (yield* answer(session)))
             return { session, operationId, accepted: true } satisfies PiReceipt
           yield* useModel(harness, applied, session).pipe(Effect.provideService(Models, models))
           if (relay !== undefined) return yield* relay(session)
@@ -184,13 +182,13 @@ export const makeChatOperations = (chats: ChatDirectory) =>
     const db = yield* Db
     const pi = yield* PiSessions
     const flows = yield* FlowEvents
-    const { harness, applied, routines } = yield* AgentInput
+    const { harness, applied } = yield* AgentInput
     const withChat = chatLock(yield* KeyedLock)
     const receipts = receiptsOf(db, chats)
     const written = writeHeld(receipts, pi)
     const tracked = trackedWith(receipts)
     const admit = admitWith({ withChat, tracked, flows, requireOpen: (chat) => chats.requireOpen(chat) })
-    const sending = { admit, budget: yield* Budget, models: yield* Models, pi, harness, applied, routines }
+    const sending = { admit, budget: yield* Budget, models: yield* Models, pi, harness, applied }
     return ChatOperations.of({
       ...receipts,
       tracked,

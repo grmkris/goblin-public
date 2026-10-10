@@ -3,7 +3,7 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Conversations } from '../src/chats/service.ts'
-import { RoutineRuns } from '../src/routines/service.ts'
+import { RoutineControl, RoutineRuns } from '../src/routines/service.ts'
 import { AgentInput } from '../src/runtime/input.ts'
 import { FlowEvents } from '../src/observability/flows.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
@@ -271,7 +271,16 @@ describe('what a Persona turn changes in its fork', () => {
 })
 
 /** The services the Undo programs read. */
-type Provided = Personas | Topics | Receipts | Conversations | AgentInput | RoutineRuns | Invocations | FlowEvents
+type Provided =
+  | Personas
+  | Topics
+  | Receipts
+  | Conversations
+  | AgentInput
+  | RoutineRuns
+  | RoutineControl
+  | Invocations
+  | FlowEvents
 const run = <A, E>(layer: Layer.Layer<Provided>, program: Effect.Effect<A, E, Provided>) =>
   Effect.runPromise(Effect.provide(program, layer))
 const fails = <A, E>(layer: Layer.Layer<Provided>, program: Effect.Effect<A, E, Provided>) =>
@@ -306,6 +315,7 @@ describe('organize receipts and Undo', () => {
       Layer.succeed(Conversations, conversations),
       Layer.succeed(AgentInput, unread),
       Layer.succeed(RoutineRuns, unread),
+      Layer.succeed(RoutineControl, unread),
       Layer.succeed(Invocations, unread),
       FlowEvents.noop,
     ).pipe(Layer.provide(Layer.merge(KeyedLock.layer, Layer.succeed(Changes, makeChanges()))))

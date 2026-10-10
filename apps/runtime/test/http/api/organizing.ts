@@ -5,7 +5,7 @@ import * as Layer from 'effect/Layer'
 import type { AgentApps } from '../../../src/agent-apps/engine.ts'
 import type { AppRegistry } from '../../../src/apps/registry.ts'
 import { Conversations } from '../../../src/chats/service.ts'
-import { RoutineRuns } from '../../../src/routines/service.ts'
+import { RoutineControl, RoutineRuns } from '../../../src/routines/service.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
 import { Apps } from '../../../src/apps/service.ts'
 import { HomeService } from '../../../src/home/service.ts'
@@ -88,6 +88,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
           conversations,
           stub(AgentInput),
           stub(RoutineRuns),
+          stub(RoutineControl),
           stub(Apps),
           stub(McpConnections),
           Layer.succeed(Resident, resident.service),

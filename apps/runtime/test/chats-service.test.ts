@@ -20,7 +20,6 @@ import { Budget } from '../src/budget.ts'
 import { Models } from '../src/models.ts'
 import { FlowEvents } from '../src/observability/flows.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
-import type { RoutineController } from '../src/routines/controller.ts'
 import { PiFailure, PiSessions } from '../src/pi/sessions.ts'
 import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
@@ -78,8 +77,8 @@ const harnessOf = (calls: Calls) => {
 
 /**
  * The conversation services over the one legacy instance of each: a real chat directory on SQLite, a registry and a
- * mover that record their calls, Pi's harness for a write, a model choice and a submit, a routine that takes `op-r` as
- * its answer, and the flows recorded. Nothing else the layer captures is read.
+ * mover that record their calls, Pi's harness for a write, a model choice and a submit, and the flows recorded.
+ * Nothing else the layer captures is read.
  */
 const services = (calls: Calls) => {
   const flows: FlowEvent[] = []
@@ -108,8 +107,7 @@ const services = (calls: Calls) => {
   const harness = harnessOf(calls)
   const directory = new ChatDirectory(db)
   const registry = registryOf(calls)
-  const routines = fake<RoutineController>({ answer: async (_session, operationId) => operationId === 'op-r' })
-  const input = Layer.succeed(AgentInput, fake<AgentInputs>({ harness, applied: new Map(), routines }))
+  const input = Layer.succeed(AgentInput, fake<AgentInputs>({ harness, applied: new Map() }))
   const plans = Layer.mergeAll(
     Layer.succeed(Budget, fake<Budget['Service']>({ require: () => Effect.void })),
     Layer.succeed(Models, fake<Models['Service']>({ current: Effect.succeed('model-a') })),
@@ -223,11 +221,12 @@ describe('the conversation services', () => {
         receipt: { kind: 'send', origin: 'owner' },
         flow: { flow: 'send', via: 'app', actor: 'owner' },
         content: 'hello',
-        answers: 'hello',
+        answer: () => Effect.succeed(false),
       } as const
       expect(yield* operations.send(input)).toEqual({ session: '42', operationId: 'op-1', accepted: true })
       yield* operations.send(input)
-      yield* operations.send({ ...input, operationId: 'op-r' })
+      // A routine's question waiting in the chat takes `op-r` as its answer, so Pi never sees it.
+      yield* operations.send({ ...input, operationId: 'op-r', answer: () => Effect.succeed(true) })
       expect(calls).toEqual(['model:42:model-a', 'submit:42:op-1', 'submit:42:op-1'])
       expect(yield* operations.receipt('2', 'op-1')).toMatchObject(Option.some({ kind: 'send', state: 'submitted' }))
       expect(yield* operations.receipt('2', 'op-r')).toMatchObject(Option.some({ state: 'submitted' }))

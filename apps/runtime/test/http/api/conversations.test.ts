@@ -25,7 +25,7 @@ import { Invocations, Personas } from '../../../src/personas/service.ts'
 import type { PersonaView } from '@goblin/contracts'
 import { Retrieval } from '../../../src/retrieval/service.ts'
 import type { RoutineController } from '../../../src/routines/controller.ts'
-import { RoutineRuns } from '../../../src/routines/service.ts'
+import { RoutineControl, RoutineRuns } from '../../../src/routines/service.ts'
 import { FlowEvents } from '../../../src/observability/flows.ts'
 import { KeyedLock } from '../../../src/observability/lock.ts'
 import { PiSessions } from '../../../src/pi/sessions.ts'
@@ -183,6 +183,7 @@ const services = (calls: Calls, personas: readonly PersonaView[]) =>
     stub(Budget, { require: () => Effect.void }),
     stub(Models, { current: Effect.succeed('fixture-model') }),
     stub(RoutineRuns, { session: () => Effect.undefined }),
+    stub(RoutineControl, { answer: () => Effect.succeed(false) }),
     stub(Invocations, {
       stopChat: (chat) => Effect.sync(() => calls.push(`invocations:${chat}`)),
       insert: (asked) =>
