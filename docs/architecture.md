@@ -846,7 +846,9 @@ items added or removed (`withItems`/`withoutItems`; removing from a category tha
 `setupCatalog`, `setup/catalog.ts`, says the owner allows now). The agent may add only what the owner allows now; the
 owner may keep or restore an item that is gone, which stays listed. A real change leaves a `topic.setup` receipt whose
 Undo restores the setup before it, applies the Pi filter again to the Topic's chats when subagents changed
-(`retoolTopic`), and answers the routines it leaves without some of their allowed tools (`routinesOutside`).
+(`retoolTopic`), and answers the routines it leaves without some of their allowed tools (`routinesOutside`). The
+`<apps>` context lists only the apps a chat's scope holds, and a new agent app built in a Topic that lists its apps
+joins that Topic's setup with an agent receipt (`newAppJoinsTopic`; a failure there leaves the build as it is).
 
 `TopicRegistry` (`topics/registry.ts`, a store behind the `Topics` service in `topics/service.ts`) creates a Topic
 with a new Pi session as its Conversation, not forked from Personal's: its tool filter follows its setup's subagents,
