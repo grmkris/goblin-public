@@ -17,7 +17,7 @@ const fixture = (): string => {
 }
 
 const source = '---\nname: x\ndescription: Apply the reviewed fixture skill when checking provenance.\n---\nBody\n'
-test('vendored skills skip the repo-authored checks; agents-sync verifies them', () => {
+test('vendored skills skip the repo-authored checks; repoagents verifies them', () => {
   const root = fixture()
   const dir = path.join(root, '.agents/skills/x')
   writeFileSync(path.join(dir, 'SKILL.md'), '---\nname: x\ndescription: Short.\n---\nTODO upstream\n')

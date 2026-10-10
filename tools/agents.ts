@@ -60,7 +60,7 @@ const skillDirs = (root: string): string[] =>
         .toSorted()
     : []
 
-/** sources.json (v2) as far as this checker needs it: which skills are vendored. scripts/agents-sync.ts verifies the entries. */
+/** sources.json (v2) as far as this checker needs it: which skills are vendored. repoagents verifies the entries. */
 export const readSourcesAt = (root: string): typeof SourcesNames.Type | undefined =>
   exists(root, '.agents/skills/sources.json')
     ? decodeOrUndefined(SourcesNames, JSON.parse(read(root, '.agents/skills/sources.json')))
@@ -109,7 +109,7 @@ const checkSkill = (root: string, dir: string, vendored: boolean, names: Set<str
   if (names.has(matter.name)) failures.push(`${file}: the skill name \`${matter.name}\` is used twice.`)
   names.add(matter.name)
   failures.push(...checkManualAgreement(root, dir, matter))
-  // vendored skills (licences, hashes, adaptations) are verified by scripts/agents-sync.ts
+  // vendored skills (licences, hashes, adaptations) are verified by repoagents
   if (!vendored) failures.push(...checkRepoAuthored(file, source, matter))
   return failures
 }
@@ -144,7 +144,7 @@ const checkRootInstructions = (root: string, rootAgents: string): string[] => {
   }
   if (!linksToAgents(root, 'CLAUDE.md')) {
     failures.push(
-      'CLAUDE.md must be a symlink to AGENTS.md (Grok reads only CLAUDE.md and ignores `@AGENTS.md`). Run: bun scripts/agents-sync.ts',
+      'CLAUDE.md must be a symlink to AGENTS.md (Grok reads only CLAUDE.md and ignores `@AGENTS.md`). Run: bunx repoagents',
     )
   }
   return failures
@@ -156,7 +156,7 @@ const checkNestedAgents = (root: string, file: string, rootLinks: ReadonlySet<st
   const dir = path.posix.dirname(file)
   if (!linksToAgents(root, `${dir}/CLAUDE.md`)) {
     failures.push(
-      `${dir}/CLAUDE.md must be a symlink to AGENTS.md so Claude Code and Grok load ${file}. Run: bun scripts/agents-sync.ts`,
+      `${dir}/CLAUDE.md must be a symlink to AGENTS.md so Claude Code and Grok load ${file}. Run: bunx repoagents`,
     )
   }
   if (!rootLinks.has(file)) {

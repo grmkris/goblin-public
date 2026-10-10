@@ -1,6 +1,6 @@
 /**
- * Vendored agent skills live in `.agents/skills`, pinned in `.agents/skills/sources.json` (v2). scripts/agents-sync.ts
- * owns that file and verifies it (`bun scripts/agents-sync.ts --check`, part of `agents:check`); this module only
+ * Vendored agent skills live in `.agents/skills`, pinned in `.agents/skills/sources.json` (v2). repoagents
+ * owns that file and verifies it (`bunx repoagents check`, part of `agents:check`); this module only
  * reads the skill names, so oxfmt.config.ts and oxlint.config.ts skip the vendored copies.
  */
 import { Schema } from 'effect'
@@ -20,12 +20,11 @@ export const vendoredSkillNames = (): string[] =>
 /** What oxfmt and oxlint must not touch: vendored skills in upstream style, harness link and state directories. */
 export const agentIgnorePatterns = (): string[] => [
   ...vendoredSkillNames().map((name) => `.agents/skills/${name}/**`),
-  // written by scripts/agents-sync.ts in its own JSON style
+  // written by repoagents in its own JSON style
   '.agents/skills/sources.json',
   '.claude/skills/**',
   '.codex/**',
   '.grok/**',
-  // Vendored from grmkris/personal tools/agents-sync; generated from .mcp.json.
-  'scripts/agents-sync.ts',
+  // generated from .mcp.json
   '.cursor/mcp.json',
 ]
