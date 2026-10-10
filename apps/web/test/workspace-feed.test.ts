@@ -1,4 +1,10 @@
-import { MutationObserver, QueryObserver, type QueryClient, type QueryObserverOptions } from '@tanstack/react-query'
+import {
+  MutationObserver,
+  QueryObserver,
+  type QueryClient,
+  type QueryKey,
+  type QueryObserverOptions,
+} from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AppView, ConversationView, WorkspaceSnapshot } from '@goblin/contracts'
 import { usageQuery } from '../src/agent/queries.ts'
@@ -492,7 +498,10 @@ describe('what goes stale with a feed change', () => {
  * How often a reader of the cache is told to render: what `useQuery` subscribes with, tracking `status` and `data` as
  * the slice hooks read them (`lib/workspace/hooks.ts`).
  */
-function renders(client: QueryClient, options: QueryObserverOptions<any, Error, any, any, any>) {
+function renders<Data, Selected, Key extends QueryKey>(
+  client: QueryClient,
+  options: QueryObserverOptions<Data, Error, Selected, Data, Key>,
+) {
   const observer = new QueryObserver(client, { ...options, notifyOnChangeProps: ['status', 'data'] })
   const count = { renders: 0 }
   const stop = observer.subscribe(() => {
