@@ -1,12 +1,17 @@
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import { Entitlements, cachedPolicy } from '../billing/gates.ts'
+import { ResidentInactive } from '../http/errors.ts'
+import { type Events, Resident } from '../mcp/service.ts'
 import { flowAnalytics } from '../observability/ae.ts'
 import { FlowEvents } from '../observability/flows.ts'
 import { KeyedLock } from '../observability/lock.ts'
 import { LoggerLive } from '../observability/logger.ts'
 import { ReporterLive } from '../observability/report.ts'
+import { SingleFlight } from '../observability/single-flight.ts'
 import { PiSessions } from '../pi/sessions.ts'
+import { enableResident, renewResident, residentStatus, revokeResident } from '../resident.ts'
 import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../runtime/input.ts'
@@ -20,7 +25,6 @@ import type { MovesInstance } from '../chats/mover.ts'
 import type { ConversationsInstance } from '../conversations.ts'
 import type { Cipher } from '../mcp/cipher.ts'
 import type { McpHostInstance } from '../mcp/host.ts'
-import type { Events } from '../mcp/service.ts'
 import type { MemoriesInstance } from '../memory/memory.ts'
 import type { CheapModels } from '../memory/model.ts'
 import type { TranscriptsInstance } from '../retrieval/index.ts'
@@ -43,15 +47,77 @@ const FlowsLive = Layer.unwrap(
   }),
 )
 
+/** Wall-clock seconds, the unit resident authority is kept in. */
+const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
+
 /**
- * What every program can read: the instance's input, its database, the change bus, Pi, the per-key lock and flow
- * events. The content-free logger and failure reporter (observability/) replace Effect's defaults for everything the
- * runtime runs. None of them starts anything.
+ * The account's plan as the agent checks it, an active one kept a minute (`cachedPolicy`): for the bridge, the owner
+ * gate, the MCP host and Events, and every program that reads `Entitlements` when it runs.
+ */
+export const EntitlementsLive: Layer.Layer<Entitlements, never, AgentInput> = Layer.effect(
+  Entitlements,
+  AgentInput.use((input) => cachedPolicy(input.entitlements)),
+)
+
+/** Resident authority over its row in the agent's database: no state of its own. */
+export const ResidentLive: Layer.Layer<Resident, never, Db> = Layer.effect(
+  Resident,
+  Effect.gen(function* () {
+    const db = yield* Db
+    const status = Effect.fn('Resident.status')(function* () {
+      const now = yield* nowSeconds
+      return yield* Effect.sync(() => residentStatus(db, now))
+    })
+    return Resident.of({
+      status,
+      renew: Effect.fn('Resident.renew')(function* () {
+        const now = yield* nowSeconds
+        yield* Effect.sync(() => renewResident(db, now))
+      }),
+      revoke: Effect.fn('Resident.revoke')(function* () {
+        const now = yield* nowSeconds
+        return yield* Effect.sync(() => {
+          revokeResident(db, now)
+          return residentStatus(db, now)
+        })
+      }),
+      enable: Effect.fn('Resident.enable')(function* () {
+        const now = yield* nowSeconds
+        return yield* Effect.sync(() => {
+          enableResident(db, now)
+          return residentStatus(db, now)
+        })
+      }),
+      require: Effect.fn('Resident.require')(function* () {
+        const { state } = yield* status()
+        if (state !== 'active') return yield* new ResidentInactive({ state })
+      }),
+    })
+  }),
+)
+
+/**
+ * What every program can read: the instance's input, its database, the change bus, Pi, the per-key lock, single
+ * flights, flow events, the plan the agent keeps and resident authority. The content-free logger and failure reporter
+ * (observability/) replace Effect's defaults for everything the runtime runs. None of them starts anything.
  */
 export const CoreLive = (
   input: AgentInputs,
-): Layer.Layer<AgentInput | Db | Changes | PiSessions | KeyedLock | FlowEvents> =>
-  Layer.mergeAll(Db.layer, Changes.layer, PiSessions.layer, KeyedLock.layer, FlowsLive).pipe(
+): Layer.Layer<
+  AgentInput | Db | Changes | PiSessions | KeyedLock | SingleFlight | FlowEvents | Entitlements | Resident
+> =>
+  ResidentLive.pipe(
+    Layer.provideMerge(
+      Layer.mergeAll(
+        Db.layer,
+        Changes.layer,
+        PiSessions.layer,
+        KeyedLock.layer,
+        SingleFlight.layer,
+        FlowsLive,
+        EntitlementsLive,
+      ),
+    ),
     Layer.provideMerge(Layer.mergeAll(Layer.succeed(AgentInput, input), LoggerLive, ReporterLive)),
   )
 

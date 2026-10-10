@@ -1,6 +1,6 @@
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import { Entitlements, cachedPolicy } from '../billing/gates.ts'
+import { Entitlements } from '../billing/gates.ts'
 import { Budget, UsageStore, recordUse, utcDay } from '../budget.ts'
 import { creditRates } from '../budget-credits.ts'
 import { BudgetExhausted, toAppError } from '../http/errors.ts'
@@ -68,20 +68,10 @@ const ModelsLive: Layer.Layer<Models, never, AgentInput | Db> = Layer.effect(
 )
 
 /**
- * The account's plan as the agent checks it, an active one kept a minute (`cachedPolicy`). It replaces the legacy
- * start's uncached policy for the bridge, the owner gate and every program that reads `Entitlements` when it runs.
+ * The daily model budget, over the plan the core layer keeps, and the model picker, over the agent's SQLite (they keep
+ * no state of their own). A send's admission reads them, so `layers/index.ts` builds them before the conversation layer.
  */
-export const EntitlementsLive = Layer.effect(
-  Entitlements,
-  AgentInput.use((input) => cachedPolicy(input.entitlements)),
-)
-
-/**
- * The plan the agent keeps, its daily model budget and the model picker, over the agent's SQLite (they keep no state of
- * their own but the kept plan). A send's admission reads them, so `layers/index.ts` builds them before the conversation
- * layer; they need only the instance input and the database.
- */
-export const ModelBudgetLive: Layer.Layer<Entitlements | Budget | Models, never, AgentInput | Db> = Layer.mergeAll(
-  Layer.provideMerge(BudgetLive, EntitlementsLive),
+export const ModelBudgetLive: Layer.Layer<Budget | Models, never, AgentInput | Db | Entitlements> = Layer.mergeAll(
+  BudgetLive,
   ModelsLive,
 )

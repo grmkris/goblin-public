@@ -8,7 +8,7 @@ import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import { Channel } from '../channel/service.ts'
 import { nowMillis } from '../clock.ts'
-import { Forbidden, GrantDenied, ResidentInactive, toAppError } from '../http/errors.ts'
+import { Forbidden, GrantDenied, toAppError } from '../http/errors.ts'
 import { type HeldCall, McpApprovalStore } from '../mcp/approvals.ts'
 import { Cipher, CredentialCipher } from '../mcp/cipher.ts'
 import { configuredServers } from '../mcp/config.ts'
@@ -24,10 +24,9 @@ import { logEndpointsReset } from '../mcp/log.ts'
 import { RegistryStore } from '../mcp/registries.ts'
 import { makeCatalog } from '../mcp/registry.ts'
 import { AddedServerStore } from '../mcp/servers.ts'
-import { Approvals, Events, McpConnections, McpGrants, McpServers, Resident, requireResident } from '../mcp/service.ts'
+import { Approvals, Events, McpConnections, McpGrants, McpServers, requireResident } from '../mcp/service.ts'
 import { type Stage, suggestions } from '../mcp/suggested.ts'
 import type { McpCallOptions, McpRequestOptions } from '../mcp/types.ts'
-import { enableResident, renewResident, residentStatus, revokeResident } from '../resident.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../runtime/input.ts'
 import { SqliteSkillState } from '../skills/store.ts'
@@ -37,10 +36,7 @@ import { mcpReporter } from '../telemetry/report.ts'
 // The MCP layers. Two are steps of the agent's start, in its order (layers/index.ts): the MCP host (step 2) and Events
 // with their consumers (17). The host is made once and shared by its instance tags (`McpHostInstance`, `Cipher`) with
 // the steps and layers that wire it; `Events` is the service itself. The services after the start (`McpLive`) read
-// those instances, and resident authority, held calls and the registry catalog are built over the agent's database.
-
-/** Wall-clock seconds, the unit resident authority and grants are kept in. */
-const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
+// those instances, and held calls and the registry catalog are built over the agent's database.
 
 /** A call into a stateful instance's async code: a failure is the `AppError` it threw, anything else `Internal`. */
 const fromPromise = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: toAppError })
@@ -206,43 +202,6 @@ export const McpEventsLive: Layer.Layer<Events, never, AgentInput | Db | McpHost
     engine.register('routine-trigger', input.routineEvent)
     installEventConsumers(engine, consumerPorts(input))
     return eventsOver(engine)
-  }),
-)
-
-/** Resident authority over its row in the agent's database: no state of its own. */
-export const ResidentLive = Layer.effect(
-  Resident,
-  Effect.gen(function* () {
-    const db = yield* Db
-    const status = Effect.fn('Resident.status')(function* () {
-      const now = yield* nowSeconds
-      return yield* Effect.sync(() => residentStatus(db, now))
-    })
-    return Resident.of({
-      status,
-      renew: Effect.fn('Resident.renew')(function* () {
-        const now = yield* nowSeconds
-        yield* Effect.sync(() => renewResident(db, now))
-      }),
-      revoke: Effect.fn('Resident.revoke')(function* () {
-        const now = yield* nowSeconds
-        return yield* Effect.sync(() => {
-          revokeResident(db, now)
-          return residentStatus(db, now)
-        })
-      }),
-      enable: Effect.fn('Resident.enable')(function* () {
-        const now = yield* nowSeconds
-        return yield* Effect.sync(() => {
-          enableResident(db, now)
-          return residentStatus(db, now)
-        })
-      }),
-      require: Effect.fn('Resident.require')(function* () {
-        const { state } = yield* status()
-        if (state !== 'active') return yield* new ResidentInactive({ state })
-      }),
-    })
   }),
 )
 
@@ -422,11 +381,11 @@ export const ApprovalsLive = Layer.effect(
 )
 
 /**
- * Lane M's services after the start: resident authority, the MCP servers, grants, connections and held calls (`Events`
- * is start step 17's).
+ * The MCP services after the start: the servers, grants, connections and held calls (`Events` is start step 17's, and
+ * resident authority the core layer's).
  */
 export const McpLive: Layer.Layer<
-  Resident | McpServers | McpGrants | McpConnections | Approvals,
+  McpServers | McpGrants | McpConnections | Approvals,
   never,
   AgentInput | Db | McpHostInstance | Cipher
-> = Layer.mergeAll(ResidentLive, McpServersLive, McpGrantsLive, McpConnectionsLive, ApprovalsLive)
+> = Layer.mergeAll(McpServersLive, McpGrantsLive, McpConnectionsLive, ApprovalsLive)

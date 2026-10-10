@@ -175,7 +175,8 @@ from the instance (its storage and env, the Pi pieces its constructor made, sche
 record, `AgentInput` (`runtime/input.ts`). The layers build in a fixed order, each over everything before it:
 
 - **Core** (`layers/core.ts`): `AgentInput`, the application database (`Db`), the change bus (`Changes`), Pi's calls
-  as Effects (`PiSessions`), the per-key lock (`KeyedLock`), conversation flow events (`FlowEvents`), and goblin's
+  as Effects (`PiSessions`), the per-key lock (`KeyedLock`), keyed single flights (`SingleFlight`), conversation flow
+  events (`FlowEvents`), the plan the agent keeps (`Entitlements`), resident authority (`Resident`), and goblin's
   content-free logger and failure reporter in place of Effect's defaults (see Logs, failures and references).
 - **The start** (`layers/index.ts`): the agent's start, step by step in one fixed order, each step a layer in its
   owning area's file and built after every step before it, so each await holds up the steps after it. In order: the
@@ -192,10 +193,10 @@ record, `AgentInput` (`runtime/input.ts`). The layers build in a fixed order, ea
   The conversation registry tells `conversations.changed` what each write changed, inline (`syncWith` in
   `runtime/boundary.ts`, because it writes from synchronous code inside Promise work); the App registry and the
   workspace feed follow that topic.
-- **One layer per area** after the start, in order: the plan, model budget and picker (`Entitlements`, `Budget`,
-  `Models`, which a send's admission reads), conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`),
-  delegation (`Topics`, `Personas`, `Invocations`, `Receipts`, `Home`, `Workspace`), MCP (`Resident`, `McpServers`,
-  `McpGrants`, `McpConnections`, `Approvals`), capabilities (`Capabilities`), knowledge (`Memories`, `Retrieval`), routines
+- **One layer per area** after the start, in order: the model budget and picker (`Budget`, `Models`, which a send's
+  admission reads), conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`), delegation (`Topics`,
+  `Personas`, `Invocations`, `Receipts`, `Home`, `Workspace`), MCP (`McpServers`, `McpGrants`, `McpConnections`,
+  `Approvals`), capabilities (`Capabilities`), knowledge (`Memories`, `Retrieval`), routines
   (`Routines`, `RoutineRuns`, `RoutineControl`), observability (`Inspection`), apps (`Apps`, `AppEngine`, `Files`)
   and HTTP (`OwnerHttp`). `Events`, `Skills`, `Learner`, `RoutineUsage` and `Channel` are served by their start steps.
 
