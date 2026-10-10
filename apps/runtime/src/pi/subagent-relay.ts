@@ -21,6 +21,7 @@ import * as Schema from 'effect/Schema'
 import { type DelegateResultData, type HelperExclusion, HelperExclusions } from '@goblin/contracts'
 import { Channel } from '../channel/service.ts'
 import { ChatOperations, Chats, Conversations } from '../chats/service.ts'
+import { Decisions } from '../decisions/service.ts'
 import { attempt } from '../http/errors.ts'
 import { requireResident } from '../mcp/service.ts'
 import { FlowEvents } from '../observability/flows.ts'
@@ -321,6 +322,13 @@ const reportPhase =
       if (chat === undefined) throw new ConversationMissing({ missing: 'spawner_chat' })
       const delivery = { relay, chat, requestId: `subagent-report:${relay.id}`, text: report, failed }
       await run(relay.input.synthesize === true ? submitInput(runtime, context, delivery) : writeResult(delivery))
+      // After the write and outside any commit: whether the result deserves the owner's attention (ADR 0031).
+      const judged = { session: String(runtime.conversationId), relayId: String(relay.id), text: report }
+      void run(Decisions.use((decisions) => decisions.afterReport({ ...judged, complete: close && !failed }))).catch(
+        () => {
+          // expected: judging is optional side work that never fails the relay; run reported anything unexpected
+        },
+      )
     }
     if (close) await run(closeAsDone(String(relay.input.conversationId)))
     await runtime.commit(() => ({ status: 'terminal', outcome: { status: 'completed', result: null } }), context)

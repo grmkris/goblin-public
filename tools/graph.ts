@@ -75,6 +75,7 @@ export const nodes: readonly Node[] = [
           'src/organize/kit.ts',
           'src/pi/apps.ts',
           'src/pi/budget.ts',
+          'src/pi/decisions.ts',
           'src/pi/diagnose.ts',
           'src/pi/files.ts',
           'src/pi/home.ts',
