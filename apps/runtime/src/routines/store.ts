@@ -1,10 +1,12 @@
 import { and, desc, eq, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { Conflict, InvalidInput, NotFound } from '../http/errors.ts'
-import { PERSONAL_TOPIC, RoutineDefinition, RoutineView } from '@goblin/contracts'
+import { PERSONAL_TOPIC, RoutineDefinition, RoutineView, hasTool } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { canonicalArguments } from '../mcp/events/store.ts'
 import { appRoutineOperations, appRoutines, appRoutineSettings } from '../storage/routines.ts'
+import { appTopics } from '../storage/topics.ts'
+import { topicSetupOf } from '../topics/setup.ts'
 import { nextFire, timezoneValid } from './time.ts'
 
 type Db = DrizzleSqliteDODatabase
@@ -51,12 +53,22 @@ export class RoutineStore {
     )
   }
 
+  /** The allowed tools of `definition` that the setup of Topic `topic` does not hold now (ADR 0040). */
+  #outside(topic: number, definition: RoutineDefinition) {
+    const row = this.#db.select({ setup: appTopics.setup }).from(appTopics).where(eq(appTopics.id, topic)).get()
+    const setup = row === undefined ? undefined : topicSetupOf(row.setup)
+    return definition.allowedTools
+      .filter((tool) => setup === undefined || !hasTool(setup, tool.serverId, tool.name))
+      .map(({ serverId, name }) => ({ serverId, name }))
+  }
+
   #view(row: RoutineRow): RoutineView {
+    const definition = definitionOf(row)
     return {
       id: row.id,
       revision: row.revision,
       state: row.state,
-      definition: definitionOf(row),
+      definition,
       confirmedAt: row.confirmedAt,
       nextFireAt: row.nextFireAt,
       lastFireAt: row.lastFireAt,
@@ -65,6 +77,8 @@ export class RoutineStore {
       health: row.health,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      topic: row.topicId,
+      outsideSetup: this.#outside(row.topicId, definition),
     }
   }
   list(includeArchived = false): RoutineView[] {

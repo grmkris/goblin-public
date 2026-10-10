@@ -6,6 +6,7 @@ import { chatScope, piToolsFor, routinesOutside, sessionScope } from '../src/set
 import { outsideScopeResult } from '../src/pi/setup.ts'
 import { appPersonaForks } from '../src/storage/personas.ts'
 import { appRoutineRuns, appRoutines } from '../src/storage/routines.ts'
+import { RoutineStore } from '../src/routines/store.ts'
 import { appHelperExclusions, appConversations, appExecutionExclusions } from '../src/storage/schema.ts'
 import { appTopics } from '../src/storage/topics.ts'
 import { storedSetup } from '../src/topics/setup.ts'
@@ -313,6 +314,30 @@ describe('the routines a setup leaves out', () => {
       },
     ])
     expect(routinesOutside(db, 2, EVERYTHING)).toEqual([])
+  })
+
+  it("flags them on the routine's own view, with its Topic", () => {
+    const { db, raw } = fixture()
+    raw
+      .insert(appRoutines)
+      .values({
+        id: 'r_1',
+        revision: 1,
+        state: 'proposed',
+        definitionJson: DEFINITION,
+        proposerUserId: 'owner',
+        createdAt: 1,
+        updatedAt: 1,
+        topicId: 2,
+      })
+      .run()
+    expect(new RoutineStore(db, 'owner').view('r_1')).toMatchObject({
+      topic: 2,
+      outsideSetup: [
+        { serverId: 'notes', name: 'write' },
+        { serverId: 'mail', name: 'send' },
+      ],
+    })
   })
 })
 

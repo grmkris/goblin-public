@@ -44,6 +44,10 @@ export const RoutineView = Schema.Struct({
   health: Schema.NullOr(Schema.String),
   createdAt: Schema.Number,
   updatedAt: Schema.Number,
+  /** The Topic the routine lives in (ADR 0040). */
+  topic: Schema.optional(Schema.Int),
+  /** Its allowed tools that its Topic's setup does not hold now: a run that calls one is refused. */
+  outsideSetup: Schema.optional(Schema.Array(Schema.Struct({ serverId: Schema.String, name: Schema.String }))),
 })
 export type RoutineView = typeof RoutineView.Type
 export const RoutinePage = Schema.Struct({

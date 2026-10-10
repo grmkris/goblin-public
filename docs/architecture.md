@@ -1453,7 +1453,11 @@ review; real source checkpoints and explicit product criteria do not authorize p
 typed definition (`routine_propose`, which ends its turn), list (`routine_list`) or pause (`routine_pause`), one typed
 tool each (ADR 0027); only an authenticated owner may confirm the exact revision. Routine writes require
 an exact configured Origin and `x-goblin-csrf: 1`. Edits clear confirmation and stale revisions return 409. Settings
-shows the prompt, exact tool pairs, timezone, budgets and Telegram policy before confirmation.
+shows the prompt, exact tool pairs, timezone, budgets and Telegram policy before confirmation. A routine lives in a
+Topic, and its runs are bounded by that Topic's setup as well as its allowed tools (ADR 0040): each `RoutineView`
+carries `topic` and `outsideSetup`, the allowed tools the setup does not hold now, read live so a proposal or a
+routine's page can flag them; a run that calls one gets the words-only `not-in-topic` refusal (code `not_in_topic` in
+its ledger), and a setup edit answers the routines it leaves short.
 
 Confirmed reminders and cron schedules use native dated Agent callbacks carrying routine ID, revision and firing
 instant. A short application transaction claims each firing and advances its watermark before rearming; one newest
