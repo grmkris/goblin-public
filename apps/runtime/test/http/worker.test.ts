@@ -1,20 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import type { RuntimeEnv } from '../../src/env.ts'
 import { worker } from '../../src/http/worker.ts'
+import { fake } from '../fake.ts'
 
 const APP = 'https://goblin.test'
 
 /** The deployment with an agent namespace that records every agent asked for, and never answers. */
 const deployment = () => {
   const asked: string[] = []
-  const agents = {
+  const agents = fake<RuntimeEnv['AGENTS']>({
     getByName: (name: string) => {
       asked.push(name)
       throw new Error('no agent in this test')
     },
-  }
-  // SAFETY: the routes under test read only the app's URL (and a hook's key) before they would ask for an agent.
-  const env: RuntimeEnv = { APP_URL: APP, AGENTS: agents } as never
+  })
+  // The routes under test read only the app's URL (and a hook's key) before they would ask for an agent.
+  const env = fake<RuntimeEnv>({ APP_URL: APP, AGENTS: agents })
   return { env, asked }
 }
 

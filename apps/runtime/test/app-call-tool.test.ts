@@ -1,8 +1,10 @@
 import { validateToolArguments } from '@earendil-works/pi-ai/utils/validation'
-import type { ToolRegistration } from '@earendil-works/pi-durable'
+import type { ToolExecutionApi, ToolRegistration } from '@earendil-works/pi-durable'
 import { describe, expect, it } from 'vitest'
 import type { CallRequest, CallResult } from '../src/agent-apps/dispatch.ts'
 import { AppToolset } from '../src/agent-apps/toolset.ts'
+import type { PiContext } from '../src/pi/context.ts'
+import { executeTool, inConversation } from './pi-tool.ts'
 
 const calls: CallRequest[] = []
 const dispatch = {
@@ -24,15 +26,19 @@ const tool: ToolRegistration | undefined = tools[0]
 if (tool === undefined) throw new Error('app_call missing')
 
 type Arguments = Parameters<typeof validateToolArguments>[1]['arguments']
+type Json = Parameters<ToolExecutionApi['memo']>[1]
 
+/** A memo that keeps nothing: every call's candidate is its value. */
+function memo<T extends Json>(name: string, context: PiContext): Promise<T | undefined>
+function memo<T extends Json>(name: string, candidate: T, context: PiContext): Promise<T>
+async function memo(_name: string, candidate: unknown) {
+  return candidate
+}
+
+/** app_call reads the conversation, the call id and the release memo of the execution API. */
 const run = (args: Arguments) => {
   const checked = validateToolArguments(tool, { type: 'toolCall', id: 'tc_1', name: 'app_call', arguments: args })
-  // SAFETY: app_call reads the conversation, the call id and the release memo of the API, and none of the context.
-  return tool.execute(
-    checked,
-    { conversationId: 7, callId: 'tc_1', memo: async (_k: string, v: unknown) => v } as never,
-    {} as never,
-  )
+  return executeTool(tool, checked, inConversation(7, { callId: 'tc_1', memo }))
 }
 
 describe('app_call (unit, ADR 0027)', () => {

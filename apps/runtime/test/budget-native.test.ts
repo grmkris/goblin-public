@@ -7,9 +7,8 @@ import type { AccountPlan } from '../src/billing/reconcile.ts'
 import { Budget } from '../src/budget.ts'
 import { ModelBudgetLive } from '../src/layers/budget.ts'
 import { EntitlementsLive } from '../src/layers/core.ts'
-import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
-import { chatDatabase } from './chats-sqlite.ts'
+import { chatDatabase, sqliteDb } from './chats-sqlite.ts'
 
 const PLAN: AccountPlan = {
   active: true,
@@ -40,8 +39,7 @@ const lane = () => {
     Layer.provideMerge(EntitlementsLive),
     Layer.provide(
       Layer.mergeAll(
-        // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
-        Layer.succeed(Db, db as never),
+        sqliteDb(db),
         // SAFETY: the budget, the kept plan and the picker read only these from the instance input.
         Layer.succeed(AgentInput, { entitlements: plans, env: { MODEL_ID: 'model-a' } } as AgentInputs),
       ),

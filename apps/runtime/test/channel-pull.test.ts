@@ -7,7 +7,7 @@ import { type ChannelCall, type ChannelPorts, telegramChannel } from '../src/cha
 import { enableEvents } from '../src/channel/store.ts'
 import { registerPrimary } from '../src/chats/directory.ts'
 import { CredentialCipher } from '../src/mcp/cipher.ts'
-import { chatDatabase } from './chats-sqlite.ts'
+import { chatDatabase, durable } from './chats-sqlite.ts'
 
 const KEY = 'cHVycmFibGUtdGVzdC1rZXktMzItYnl0ZXMtbG9uZyE='
 
@@ -24,8 +24,7 @@ const fixture = Effect.gen(function* () {
   const { db, close } = chatDatabase()
   closes.push(close)
   registerPrimary(db, 1)
-  // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
-  const sqlite = db as never
+  const sqlite = durable(db)
   const cipher = yield* Effect.promise(() => CredentialCipher.fromBase64(KEY))
   const channel = yield* telegramChannel({
     db: sqlite,

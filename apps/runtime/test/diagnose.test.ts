@@ -5,6 +5,7 @@ import type { AppError } from '../src/http/errors.ts'
 import type { AgentServices } from '../src/layers/index.ts'
 import { diagnoseExtension } from '../src/pi/diagnose.ts'
 import { inspectionFixture } from './inspection-fixture.ts'
+import { executeTool } from './pi-tool.ts'
 
 const closes: (() => void)[] = []
 afterEach(() => {
@@ -20,8 +21,8 @@ const fixture = () => {
     Effect.runPromise(Effect.provide(program, layer) as Effect.Effect<A, AppError>)
   const tool = diagnoseExtension(run).tools?.find((candidate) => candidate.name === 'diagnose')
   const diagnose = async (input: Record<string, unknown>): Promise<unknown> => {
-    // SAFETY: diagnose reads nothing of the execution API or the context.
-    const result = await tool?.execute(input, {} as never, {} as never)
+    if (tool === undefined) throw new Error('diagnose is not registered')
+    const result = await executeTool(tool, input)
     const [block] = result?.content ?? []
     return block?.type === 'text' ? JSON.parse(block.text) : undefined
   }

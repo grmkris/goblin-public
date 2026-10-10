@@ -9,10 +9,7 @@ import type { AppError } from '../src/http/errors.ts'
 import { FlowEvents } from '../src/observability/flows.ts'
 import { threadExtension } from '../src/pi/thread.ts'
 import type { RunProgram } from '../src/runtime/bridge.ts'
-
-const fake = <T>(members: Partial<T>): T =>
-  // SAFETY: each fake is given every member the thread's announce program calls.
-  members as T
+import { fake } from './fake.ts'
 
 /** The thread extension's `afterResponse` for a thread whose announce writes a note (`announced`) or owes none. */
 const afterResponse = (announced: boolean) => {

@@ -5,7 +5,8 @@ import { makeEvents } from '../../src/mcp/events.ts'
 import { SqliteEventStore } from '../../src/mcp/events/store.ts'
 import { SingleFlight } from '../../src/observability/single-flight.ts'
 import { appEventConsumerReceipts, appMetadata } from '../../src/storage/schema.ts'
-import { chatDatabase } from '../chats-sqlite.ts'
+import { chatDatabase, durable } from '../chats-sqlite.ts'
+import { fake } from '../fake.ts'
 
 const closes: (() => void)[] = []
 afterEach(() => {
@@ -27,10 +28,11 @@ const pending = async () => {
   db.insert(appEventConsumerReceipts)
     .values({ ...RECEIPT, state: 'pending' })
     .run()
-  // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
-  const store = new SqliteEventStore(db as never)
-  // SAFETY: `ackWith` reads only the store and the clock; the rest of the engine is never reached here.
-  const events = await Effect.runPromise(makeEvents({ store } as never).pipe(Effect.provide(SingleFlight.layer)))
+  const store = new SqliteEventStore(durable(db))
+  // `ackWith` reads only the store and the clock; the rest of the engine is never reached here.
+  const events = await Effect.runPromise(
+    makeEvents(fake<Parameters<typeof makeEvents>[0]>({ store })).pipe(Effect.provide(SingleFlight.layer)),
+  )
   const state = () => db.select().from(appEventConsumerReceipts).get()?.state
   const written = () => db.select().from(appMetadata).all().length
   const write = () => db.insert(appMetadata).values({ id: 'pending-handoff', value: '1' }).run()

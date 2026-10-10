@@ -22,6 +22,7 @@ import { MemoryCredentials, MemoryGrants, MemoryRegistries } from './mcp/memory.
 import { MemorySkillState } from './skills-memory.ts'
 import { lowLevelServer } from './mcp/low-level-server.ts'
 import { servicesOf } from './mcp/runtime.ts'
+import { executeTool, inConversation } from './pi-tool.ts'
 
 const bytes = (text: string) => new TextEncoder().encode(text)
 const skillMd = (version: string) =>
@@ -241,8 +242,7 @@ describe('a skills library switched off in one conversation (unit)', () => {
       Effect.runPromise(Effect.provide(program, layer) as Effect.Effect<A, AppError>)
     const activate = skillsExtension(run).tools?.find((tool) => tool.name === 'skill_activate')
     if (activate === undefined) throw new Error('skill_activate is not registered')
-    // SAFETY: skill_activate reads only `conversationId` from the execution API and the abort signal from the context.
-    const result = await activate.execute({ skill: 'lib:code-review' }, { conversationId: 4 } as never, {} as never)
+    const result = await executeTool(activate, { skill: 'lib:code-review' }, inConversation(4))
     expect(result).toMatchObject({
       isError: true,
       details: { kind: 'capability-off', target: { kind: 'skills', serverId: 'lib' } },

@@ -2,12 +2,12 @@ import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 import { QuestionSpec } from '@goblin/contracts'
 import { askUserExtension } from '../src/pi/ask-user.ts'
+import { executeTool } from './pi-tool.ts'
 
 const askUser = askUserExtension.tools?.find((tool) => tool.name === 'ask_user')
 const ask = (questions: readonly QuestionSpec[]) => {
   if (askUser === undefined) throw new Error('ask_user is not registered')
-  // SAFETY: ask_user reads neither the execution API nor the invocation context.
-  return askUser.execute({ questions }, {} as never, {} as never)
+  return executeTool(askUser, { questions })
 }
 const decodeQuestions = Schema.decodeUnknownSync(Schema.Array(QuestionSpec))
 

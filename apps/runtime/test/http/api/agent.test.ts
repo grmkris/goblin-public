@@ -18,12 +18,13 @@ import { PiSessions } from '../../../src/pi/sessions.ts'
 import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
 import { callOwner } from '../../owner-client.ts'
+import { durable } from '../../chats-sqlite.ts'
 import { PLAN, currentResident, database, json, plans, serve, served, stub } from './fixture.ts'
+import { unread } from '../../fake.ts'
 
 const fixture = () => {
   const db = database()
-  // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
-  const sqlite = db as never
+  const sqlite = durable(db)
   registerPrimary(db, 1)
   const budget = new ModelBudget(usageLedger(sqlite), 100)
   const pinned: string[] = []
@@ -32,8 +33,8 @@ const fixture = () => {
   const legacy = Layer.mergeAll(
     Layer.effect(
       Channel,
-      // SAFETY: the channel's status and disable read and clear its tables only; the cipher stays unused.
-      telegramChannel({ db: sqlite, cipher: undefined as never, telemetry: undefined, wake: () => undefined }),
+      // The channel's status and disable read and clear its tables only; the cipher stays unused.
+      telegramChannel({ db: sqlite, cipher: unread, telemetry: undefined, wake: () => undefined }),
     ),
     // The channel's tools: the server offers none, so turning the channel on is refused before anything is granted.
     stub(McpServers, { tools: () => Effect.succeed([]) }),

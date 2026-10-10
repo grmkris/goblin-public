@@ -9,6 +9,7 @@ import { Resident } from '../src/mcp/service.ts'
 import { routineToolVerdict } from '../src/pi/routine-budget.ts'
 import type { RoutineRun } from '../src/routines/runs.ts'
 import { RoutineRuns, RoutineUsage } from '../src/routines/service.ts'
+import { fake } from './fake.ts'
 
 const PLAN: AccountPlan = {
   active: true,
@@ -28,11 +29,6 @@ const DEFINITION = JSON.stringify({
   allowedTools: [],
   budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
 })
-
-/** A stand-in implementing only the members the gate reaches. */
-const fake = <T>(members: Partial<T>): T =>
-  // SAFETY: each fake below is given every member requireRoutine and the verdict call on it.
-  members as T
 
 type Gate = {
   readonly plan?: Effect.Effect<AccountPlan, Internal | SubscriptionRequired>

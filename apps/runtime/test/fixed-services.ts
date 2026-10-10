@@ -2,6 +2,7 @@ import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import { CapabilityProfiles, type CapabilityScope, scopeOf } from '../src/capabilities/profiles.ts'
 import { Resident } from '../src/mcp/service.ts'
+import { unread } from './fake.ts'
 
 /** A resident authority method no fake caller reaches. */
 const unused = () => Effect.die('resident authority: not used here')
@@ -30,8 +31,8 @@ export class FixedProfiles extends CapabilityProfiles {
   readonly #scopes: Readonly<Record<string, CapabilityScope>>
 
   constructor(scopes: Readonly<Record<string, CapabilityScope>>) {
-    // SAFETY: `scope` is overridden below and nothing else is called, so the database is never touched.
-    super(undefined as never, undefined as never, async () => undefined)
+    // `scope` is overridden below and nothing else is called, so neither the database nor the tools are read.
+    super(unread, unread, async () => undefined)
     this.#scopes = scopes
   }
 

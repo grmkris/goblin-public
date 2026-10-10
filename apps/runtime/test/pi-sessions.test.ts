@@ -5,18 +5,14 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { PiFailure, PiSessions } from '../src/pi/sessions.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
-
-/** A stand-in implementing only the members these tests reach. */
-const fake = <T>(members: Partial<T>): T =>
-  // SAFETY: each fake below is given every member the calls under test reach.
-  members as T
+import { fake } from './fake.ts'
 
 /** The service over a harness whose opened Pi is `opened` and whose sessions' event streams are `streams`. */
 const sessionsOver = (opened: Harness, streams: (session: string) => Promise<AgentEventStream>) => {
   const harness = fake<PiHarness>({
     pi: async () => opened,
-    // SAFETY: the events call asks a session for its event stream only.
-    session: (session?: string) => ({ events: () => streams(session ?? 'root') }) as never,
+    // The events call asks a session for its event stream only.
+    session: (session?: string) => fake<ReturnType<PiHarness['session']>>({ events: () => streams(session ?? 'root') }),
   })
   return PiSessions.layer.pipe(Layer.provide(Layer.succeed(AgentInput, fake<AgentInputs>({ harness }))))
 }

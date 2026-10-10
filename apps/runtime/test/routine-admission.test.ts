@@ -7,6 +7,7 @@ import { Budget } from '../src/budget.ts'
 import { type AppError, BudgetExhausted, Internal, ResidentInactive, SubscriptionRequired } from '../src/http/errors.ts'
 import { Resident } from '../src/mcp/service.ts'
 import { admissionSkip } from '../src/routines/runner.ts'
+import { fake } from './fake.ts'
 
 const PLAN: AccountPlan = {
   active: true,
@@ -17,11 +18,6 @@ const PLAN: AccountPlan = {
   hasCustomer: false,
   cancelAtPeriodEnd: false,
 }
-
-/** A stand-in implementing only the members admission reaches. */
-const fake = <T>(members: Partial<T>): T =>
-  // SAFETY: each fake below is given every member admissionSkip calls on it.
-  members as T
 
 /** Admission's verdict when the plan, resident authority and today's budget answer as given. */
 const skipOf = (

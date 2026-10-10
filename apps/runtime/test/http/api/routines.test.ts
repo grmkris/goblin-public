@@ -12,6 +12,7 @@ import { RoutineRunStore } from '../../../src/routines/runs.ts'
 import { RoutineControl, RoutineRuns, Routines } from '../../../src/routines/service.ts'
 import { RoutineStore } from '../../../src/routines/store.ts'
 import { callOwner } from '../../owner-client.ts'
+import { durable } from '../../chats-sqlite.ts'
 import { currentResident, database, json, plans, post, serve, served, stub } from './fixture.ts'
 
 const DEFINITION: RoutineDefinition = {
@@ -30,8 +31,7 @@ const DEFINITION: RoutineDefinition = {
  */
 const fixture = () => {
   const db = database()
-  // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
-  const sqlite = db as never
+  const sqlite = durable(db)
   const routines = new RoutineStore(sqlite, 'owner')
   const runs = new RoutineRunStore(sqlite, 'owner')
   const calls: string[] = []

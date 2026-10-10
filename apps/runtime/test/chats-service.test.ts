@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@effect/vitest'
 import { eq } from 'drizzle-orm'
+import type { Extension } from '@earendil-works/pi-durable'
 import type { PiHarness, PiOperationResult } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
 import * as Deferred from 'effect/Deferred'
@@ -23,15 +24,10 @@ import { SingleFlight } from '../src/observability/single-flight.ts'
 import { type CheapModel, CheapModels } from '../src/memory/model.ts'
 import { Changes, makeChanges } from '../src/runtime/changes.ts'
 import { PiFailure, PiSessions } from '../src/pi/sessions.ts'
-import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 import { appChatMoves, appChatOperations, appConversations } from '../src/storage/schema.ts'
-import { chatDatabase } from './chats-sqlite.ts'
-
-/** A stand-in implementing only the members these tests reach. */
-const fake = <T>(members: Partial<T>): T =>
-  // SAFETY: each fake below is given every member the services under test call on it.
-  members as T
+import { chatDatabase, sqliteDb } from './chats-sqlite.ts'
+import { fake } from './fake.ts'
 
 /** What Pi was asked, in order. */
 type Calls = string[]
@@ -73,11 +69,15 @@ const harnessOf = (calls: Calls) => {
         snapshot: async () => undefined,
         inspect: async () => ({ submissions: [{ conversationId: 41, type: 'input' }] }),
       }) as never,
-    // SAFETY: a send asks a session only to change its model.
+    // A send asks a session only to change its model.
     session: (session: string) =>
-      ({ setModel: async ({ id }: { id: string }) => void calls.push(`model:${session}:${id}`) }) as never,
-    // SAFETY: a new session is asked only for its id.
-    sessions: { create: async () => ({ id: String((sessions += 1)) }) } as never,
+      fake<ReturnType<PiHarness['session']>>({
+        setModel: async ({ id }) => void calls.push(`model:${session}:${id}`),
+      }),
+    // A new session is asked only for its id.
+    sessions: fake<PiHarness['sessions']>({
+      create: async () => fake<Awaited<ReturnType<PiHarness['sessions']['create']>>>({ id: String((sessions += 1)) }),
+    }),
     submit: async (_content, options = {}) => {
       calls.push(`submit:${options.session}:${options.operationId}`)
       return { session: options.session ?? '', operationId: options.operationId ?? '', accepted: true }
@@ -118,8 +118,8 @@ const services = (calls: Calls) => {
     ])
     .run()
   const harness = harnessOf(calls)
-  // SAFETY: a thread's extensions are handed to Pi's fake configure and fork, which never read them.
-  const extension = {} as never
+  // A thread's extensions are handed to Pi's fake configure and fork, which never read them.
+  const extension = fake<Extension>({})
   const input = Layer.succeed(
     AgentInput,
     fake<AgentInputs>({
@@ -141,8 +141,7 @@ const services = (calls: Calls) => {
       Layer.mergeAll(
         // SAFETY: the layer reads only the core services and the input given below; the rest stays unprovided.
         Layer.succeedContext(Context.empty() as Context.Context<FoundationServices>),
-        // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
-        Layer.succeed(Db, db as never),
+        sqliteDb(db),
         KeyedLock.layer,
         SingleFlight.layer,
         Layer.succeed(Changes, makeChanges()),
@@ -467,9 +466,11 @@ describe('the conversation services', () => {
   })
 })
 
+/** Pi's sessions, whose every wait for an operation is `wait`. */
+const waiting = (wait: Effect.Effect<PiOperationResult, PiFailure>) =>
+  Layer.succeed(PiSessions, fake<PiSessions['Service']>({ wait: () => wait }))
+
 describe('a bounded wait for an operation (C2, C3)', () => {
-  const waiting = (wait: Effect.Effect<PiOperationResult, PiFailure>) =>
-    Layer.succeed(PiSessions, fake<PiSessions['Service']>({ wait: () => wait }))
   const done: PiOperationResult = { operationId: 'op', session: '41', status: 'done', text: 'hi' }
 
   it.effect('is still running past its time, settled with its result, and a failed wait is that failure', () =>

@@ -9,10 +9,10 @@ import { registerChat, registerPrimary } from '../src/chats/directory.ts'
 import { AppRegistryLive, appsOver } from '../src/layers/apps.ts'
 import { PiSessions } from '../src/pi/sessions.ts'
 import { Changes, makeChanges } from '../src/runtime/changes.ts'
-import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 import { appConversations } from '../src/storage/schema.ts'
-import { chatDatabase } from './chats-sqlite.ts'
+import { chatDatabase, durable, sqliteDb } from './chats-sqlite.ts'
+import { unread } from './fake.ts'
 import { stub } from './http/api/fixture.ts'
 
 const closes: (() => void)[] = []
@@ -28,15 +28,14 @@ const apps = () => {
   const { db, close } = chatDatabase()
   closes.push(close)
   registerPrimary(db, 1)
-  // SAFETY: nothing here launches an App, so `launch` is never called.
-  const sources: AgentAppsPort = { info: () => INFO, launch: () => undefined as never, rehome: () => undefined }
+  // Nothing here launches an App, so `launch` is never called.
+  const sources: AgentAppsPort = { info: () => INFO, launch: () => unread, rehome: () => undefined }
   const changes = makeChanges()
   const told: unknown[] = []
   Effect.runSync(changes.on('apps.changed', ({ ids }) => Effect.sync(() => void told.push(['changed', ids]))))
   Effect.runSync(changes.on('apps.removed', ({ id }) => Effect.sync(() => void told.push(['removed', id]))))
-  // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's; nothing here
-  // launches an App, so Pi is never read.
-  const service = appsOver(db as never, sources, changes, undefined as never)
+  // Nothing here launches an App, so Pi is never read.
+  const service = appsOver(durable(db), sources, changes, unread)
   return { service, db, sources, told }
 }
 
@@ -74,8 +73,8 @@ describe("a conversation's close reaches its Apps through the change bus (unit)"
     const input = Object.assign(Object.create(null), {
       agentApps: { info: () => undefined, launch: () => undefined, rehome: () => undefined },
     }) as AgentInputs
-    // SAFETY: nothing here launches an App, so `launch` is never called.
-    const agents = { info: () => undefined, launch: () => undefined as never, rehome: () => undefined }
+    // Nothing here launches an App, so `launch` is never called.
+    const agents: AgentAppsPort = { info: () => undefined, launch: () => unread, rehome: () => undefined }
     const app = keepApp(db, agents, { session: '7', callId: 'call-1', origin: ORIGIN }, 2)
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -89,8 +88,7 @@ describe("a conversation's close reaches its Apps through the change bus (unit)"
             Layer.provide(
               Layer.mergeAll(
                 Layer.succeed(AgentInput, input),
-                // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
-                Layer.succeed(Db, db as never),
+                sqliteDb(db),
                 Layer.succeed(Changes, changes),
                 stub(PiSessions),
               ),

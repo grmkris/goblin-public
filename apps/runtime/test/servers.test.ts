@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { requestTool } from '../src/pi/servers.ts'
+import { executeTool } from './pi-tool.ts'
 
-// SAFETY: the tool reads neither the execution API nor the invocation context.
-const ask = (endpoint: string) =>
-  requestTool.execute({ endpoint, name: 'Maps', reason: 'To show routes' }, {} as never, {} as never)
+const ask = (endpoint: string) => executeTool(requestTool, { endpoint, name: 'Maps', reason: 'To show routes' })
 
 describe('mcp_request_server (unit)', () => {
   it('asks the owner with a card, and ends the run until they reply', async () => {

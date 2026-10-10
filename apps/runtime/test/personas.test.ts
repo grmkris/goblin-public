@@ -24,6 +24,7 @@ import { appConversations } from '../src/storage/schema.ts'
 import { updateTopic } from '../src/topics/program.ts'
 import { TopicRegistry } from '../src/topics/registry.ts'
 import { chatDatabase } from './chats-sqlite.ts'
+import { unread } from './fake.ts'
 
 const cleanups: (() => void)[] = []
 afterEach(() => {
@@ -321,8 +322,7 @@ describe('organize receipts and Undo', () => {
   /** The services Undo runs over: real registries on real SQLite, no Pi. */
   const services = () => {
     const parts = fixture()
-    // SAFETY: Stop is never reached here: no Undo here archives a Topic with chats.
-    const unread = undefined as never
+    // Stop is never reached here: no Undo here archives a Topic with chats.
     // SAFETY: renaming a Topic never reaches the chat registry; only an archive reads its open chats (`openIn`).
     const conversations = Object.assign(Object.create(null) as Conversations['Service'], {
       openIn: () => Effect.succeed([]),

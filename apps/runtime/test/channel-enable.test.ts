@@ -5,7 +5,7 @@ import { type ChannelCall, telegramChannel } from '../src/channel/channel.ts'
 import { registerPrimary } from '../src/chats/directory.ts'
 import { UpstreamMcp } from '../src/http/errors.ts'
 import { CredentialCipher } from '../src/mcp/cipher.ts'
-import { chatDatabase } from './chats-sqlite.ts'
+import { chatDatabase, durable } from './chats-sqlite.ts'
 
 const KEY = 'cHVycmFibGUtdGVzdC1rZXktMzItYnl0ZXMtbG9uZyE='
 
@@ -25,8 +25,7 @@ const fixture = (pages: number, subscribe: unknown = { status: 'subscribed' }) =
     registerPrimary(db, 1)
     const cipher = yield* Effect.promise(() => CredentialCipher.fromBase64(KEY))
     const channel = yield* telegramChannel({
-      // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
-      db: db as never,
+      db: durable(db),
       cipher,
       telemetry: undefined,
       wake: () => undefined,

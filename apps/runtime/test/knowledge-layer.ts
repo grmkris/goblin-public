@@ -9,12 +9,13 @@ import { KeyedLock } from '../src/observability/lock.ts'
 import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 import { Learner, Skills } from '../src/skills/service.ts'
-import type { chatDatabase } from './chats-sqlite.ts'
+import { type ChatDatabase, sqliteDb } from './chats-sqlite.ts'
+import { unread } from './fake.ts'
 
 /** The database and started instances the knowledge layer reads; a test gives the ones its programs reach. */
 type Given = {
   /** The memory tables (chats-sqlite.ts). */
-  readonly db?: ReturnType<typeof chatDatabase>['db']
+  readonly db?: ChatDatabase
   /** The chats, as the memory's status reads them: Personal, and the Conversation a chat sits under. */
   readonly chats?: ChatDirectory
   /** Pi, as the memory's builder reads it. */
@@ -32,8 +33,7 @@ type Given = {
  * `given` holds, with a KeyedLock of their own. Retrieval's Pi and cheap model are never read here.
  */
 export const knowledgeOver = (given: Given) => {
-  // SAFETY: a layer only holds what it is given until one of its methods runs; a test reaches only the ones it gave.
-  const unread = undefined as never
+  // A layer only holds what it is given until one of its methods runs; a test reaches only the ones it gave.
   const { chats } = given
   const input: Pick<AgentInputs, 'harness' | 'memory'> & { readonly env: Partial<AgentInputs['env']> } = {
     harness: given.harness ?? unread,
@@ -43,8 +43,7 @@ export const knowledgeOver = (given: Given) => {
   const services = KnowledgeLive.pipe(
     Layer.provide(
       Layer.mergeAll(
-        // SAFETY: the memory's queries use only Drizzle's query builder, which node:sqlite's driver serves alike.
-        Layer.succeed(Db, (given.db ?? unread) as never),
+        given.db === undefined ? Layer.succeed(Db, unread) : sqliteDb(given.db),
         chats === undefined
           ? Layer.succeed(Chats, unread)
           : Layer.mock(Chats)({

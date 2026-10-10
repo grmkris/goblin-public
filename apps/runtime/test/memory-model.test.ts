@@ -6,9 +6,8 @@ import { AppCodeError, problemText } from '../src/agent-apps/queue.ts'
 import { usageMilliCredits, utcDay } from '../src/budget.ts'
 import { CheapModelsLive } from '../src/layers/knowledge.ts'
 import { CheapModel, CheapModels, ModelFailed, modelFailureText } from '../src/memory/model.ts'
-import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
-import { chatDatabase } from './chats-sqlite.ts'
+import { chatDatabase, durable, sqliteDb } from './chats-sqlite.ts'
 
 const usage = {
   input: 1,
@@ -81,10 +80,7 @@ describe('the cheap models the agent starts with (unit)', () => {
         },
       },
     })
-    const services = CheapModelsLive.pipe(
-      // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
-      Layer.provide(Layer.mergeAll(Layer.succeed(AgentInput, input), Layer.succeed(Db, db as never))),
-    )
+    const services = CheapModelsLive.pipe(Layer.provide(Layer.mergeAll(Layer.succeed(AgentInput, input), sqliteDb(db))))
     const models = await Effect.runPromise(
       Effect.provide(
         CheapModels.useSync((make) => make),
@@ -93,7 +89,6 @@ describe('the cheap models the agent starts with (unit)', () => {
     )
     expect(await models('naming').complete('system', 'user', 10)).toBe('named')
     const { day } = utcDay(Math.floor(Date.now() / 1000))
-    // SAFETY: as above.
-    expect(usageMilliCredits(db as never, day)).toBeGreaterThan(0)
+    expect(usageMilliCredits(durable(db), day)).toBeGreaterThan(0)
   })
 })

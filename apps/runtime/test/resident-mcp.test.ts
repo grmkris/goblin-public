@@ -17,6 +17,7 @@ import { FixedProfiles } from './fixed-services.ts'
 import { plans, sqliteDb, stub } from './http/api/fixture.ts'
 import { MemoryCredentials, MemoryGrants, MemoryRegistries } from './mcp/memory.ts'
 import { lowLevelServer } from './mcp/low-level-server.ts'
+import { executeTool, inConversation } from './pi-tool.ts'
 
 /** The tools the notes server ran, in order. */
 const ran: string[] = []
@@ -87,8 +88,7 @@ const tools = residentMcpExtension(run).tools ?? []
 const execute = (tool: string, input: Record<string, unknown>, conversationId: number) => {
   const found = tools.find((candidate) => candidate.name === tool)
   if (found === undefined) throw new Error(`${tool} is not registered`)
-  // SAFETY: the MCP tools read only `conversationId` from the execution API, and only the abort signal from the context.
-  return found.execute(input, { conversationId } as never, {} as never)
+  return executeTool(found, input, inConversation(conversationId))
 }
 const call = (name: string, conversationId = 7) =>
   execute('mcp_call', { serverId: 'notes', name, arguments: {} }, conversationId)

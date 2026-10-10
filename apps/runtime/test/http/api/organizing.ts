@@ -22,6 +22,7 @@ import { appConversations } from '../../../src/storage/schema.ts'
 import { TopicsHandlers } from '../../../src/topics/api.ts'
 import { TopicRegistry } from '../../../src/topics/registry.ts'
 import { currentResident, database, plans, serve, served, stub } from './fixture.ts'
+import { unread } from '../../fake.ts'
 
 /**
  * The organizing groups (topics, personas, organize) as the agent serves them: lane D's services over real Topic,
@@ -62,8 +63,6 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
   const home = new HomeService(db, engine)
   // Current, counting the gate's renewals; the organizing programs ask it only to `require` itself.
   const resident = currentResident()
-  // SAFETY: what only a Stop of an open chat or an App on Home reads, which no request here reaches.
-  const unread = undefined as never
   // A Topic created here has no open chat, so an archive (an Undo of its creation) reads only `openIn`.
   const conversations = stub(Conversations, { openIn: () => Effect.succeed([]) })
   const flows: FlowEvent[] = []

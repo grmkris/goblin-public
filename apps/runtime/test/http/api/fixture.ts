@@ -14,10 +14,10 @@ import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
 import { routeNames } from '../../../src/http/api/context.ts'
 import { AgentHttp } from '../../../src/http/api/server.ts'
-import { Db } from '../../../src/runtime/db.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 
 export { currentResident } from '../../fixed-services.ts'
+export { type ChatDatabase as Database, sqliteDb } from '../../chats-sqlite.ts'
 
 /** The account's plan in these tests: an active override with 100 Credits a day. */
 export const PLAN: AccountPlan = {
@@ -92,14 +92,6 @@ export const database = () => {
   cleanup(close)
   return db
 }
-
-/** A test's database, as `database` makes it. */
-export type Database = ReturnType<typeof chatDatabase>['db']
-
-/** The agent's database (`Db`) over `db`. */
-export const sqliteDb = (db: Database): Layer.Layer<Db> =>
-  // SAFETY: the services under test use only Drizzle's synchronous query builder, which both drivers share.
-  Layer.succeed(Db, db as never)
 
 /**
  * `tag`'s service with only `parts` (`Layer.mock`): any member they leave out dies when it is used, naming the service

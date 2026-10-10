@@ -1,4 +1,6 @@
 import type { Submission } from '@earendil-works/pi-durable'
+import type { Conversation, Harness } from '@earendil-works/pi-durable'
+import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -11,6 +13,7 @@ import { appChatMemoryLog, appChatMemoryNodes, appChatMemoryState } from '../src
 import { appConversations } from '../src/storage/schema.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 import { knowledgeOver } from './knowledge-layer.ts'
+import { fake, unread } from './fake.ts'
 
 const cleanups: (() => void)[] = []
 afterEach(() => {
@@ -74,9 +77,8 @@ describe('per-Topic memory (ADR 0032)', () => {
         { chatId: '70', originEntry: 20, viewThrough: 4 },
       ])
       .run()
-    // SAFETY: size, sizeAt, viewThrough and truncate use SQLite only; Pi and the model are never called.
-    const memory = (chat: string) =>
-      new ChatMemory(chat, { db, harness: undefined as never, model: undefined as never })
+    // size, sizeAt, viewThrough and truncate use SQLite only; Pi and the model are never called.
+    const memory = (chat: string) => new ChatMemory(chat, { db, harness: unread, model: unread })
     expect([memory('1').size(), memory('70').size()]).toEqual([4, 5])
     expect([memory('1').sizeAt(13), memory('70').sizeAt(23)]).toEqual([3, 3])
     expect(memory('1').sizeAt(23)).toBe(4)
@@ -103,8 +105,8 @@ describe('per-Topic memory (ADR 0032)', () => {
     db.insert(appChatMemoryLog)
       .values(log('1', [11, 12]))
       .run()
-    // SAFETY: the missing row is found in SQLite before Pi or the model would be asked.
-    const memory = new ChatMemory('1', { db, harness: undefined as never, model: undefined as never })
+    // The missing row is found in SQLite before Pi or the model would be asked.
+    const memory = new ChatMemory('1', { db, harness: unread, model: unread })
     await expect(memory.zoom(5, 1, 10)).rejects.toMatchObject({ _tag: 'MemoryMissing', what: 'message' })
     expect(await memory.zoom(5, 1, 4)).toBe('No line 5+1.')
   })
@@ -127,9 +129,9 @@ describe('per-Topic memory (ADR 0032)', () => {
         .values([node('1', 0, 0), node('1', 0, 1), node('1', 0, 2)])
         .run()
       db.insert(appChatMemoryState).values({ chatId: '1', originEntry: 10, viewThrough: 0 }).run()
-      const pi = { conversation: async () => ({ entries: async () => ({ items: [], next: undefined }) }) }
-      // SAFETY: a step reads only `pi().conversation().entries()`, answered empty here.
-      const harness = { pi: async () => pi } as never
+      // A step reads only `pi().conversation().entries()`, answered empty here.
+      const conversation = fake<Conversation>({ entries: async () => ({ items: [] }) })
+      const harness = fake<PiHarness>({ pi: async () => fake<Harness>({ conversation: async () => conversation }) })
       // Every remembered message is summarized already, so no step asks the model.
       const operations = Layer.mock(ChatOperations)({ passiveWrite: write })
       const step = Memories.use((service) => service.step('1', new AbortController().signal)).pipe(
