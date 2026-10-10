@@ -13,9 +13,6 @@ import { Topics } from '../topics/service.ts'
 import { failedFlow, recordFlow } from './flows.ts'
 import { Receipts } from './service.ts'
 
-/** The recent receipts, newest first. */
-export const receiptList = Receipts.use((receipts) => receipts.list())
-
 const TopicBefore = Schema.NullOr(Schema.Struct({ name: Schema.String, archived: Schema.Boolean }))
 const PersonaBefore = Schema.NullOr(Schema.Struct({ ...PersonaDefinitionSchema.fields, archived: Schema.Boolean }))
 const decodeTopic = Schema.decodeUnknownEffect(TopicBefore)

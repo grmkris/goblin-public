@@ -22,7 +22,7 @@ import {
   moveStopCase,
   moveTopicCase,
 } from './move-case.ts'
-import { person, call, ownerFetch } from './owner-requests.ts'
+import { person, call, ownerFetch, workspaceOf, type Person } from './owner-requests.ts'
 import { clientErrorsCase, csrfCase } from './edge-case.ts'
 
 const harness = Test.make({
@@ -145,16 +145,12 @@ async function ownerRoutingCase(url: string): Promise<void> {
   })
   expect(renamed.status).toBe(200)
   const selection = { 'x-goblin-workspace': owner.userId }
-  const foreign = await call(
-    url,
-    other,
-    `/api/conversations?agent=${owner.userId}&workspaceId=${owner.userId}`,
-    undefined,
-    selection,
-  )
-  expect(foreign.status).toBe(200)
-  expect(await foreign.text()).not.toContain(sentinel)
-  expect(await (await call(url, owner, '/api/conversations', undefined, selection)).text()).toContain(sentinel)
+  // What each account's workspace feed shows, as JSON.
+  const shown = async (who: Person, path?: string, headers?: Record<string, string>) =>
+    JSON.stringify(await workspaceOf(url, who, path, headers))
+  const foreign = `/api/workspace/events?agent=${owner.userId}&workspaceId=${owner.userId}`
+  expect(await shown(other, foreign, selection)).not.toContain(sentinel)
+  expect(await shown(owner, undefined, selection)).toContain(sentinel)
   const created = await call(
     url,
     other,
@@ -163,7 +159,7 @@ async function ownerRoutingCase(url: string): Promise<void> {
     selection,
   )
   expect(created.status).toBe(201)
-  expect(await (await call(url, other, '/api/conversations')).text()).not.toContain(sentinel)
+  expect(await shown(other)).not.toContain(sentinel)
   for (const path of ['/api/workspaces', '/api/members', '/api/invitations/admission', '/api/interactions'])
     expect((await call(url, owner, path)).status).toBe(404)
   expect(

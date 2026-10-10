@@ -9,7 +9,7 @@ import { AppError } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import type { RpcResult } from '../../src/http/rpc.ts'
-import { type AgentFetch, type OwnerClient, ownerApi } from './owner-api.ts'
+import { type AgentFetch, type OwnerClient, ownerApi, workspaceSnapshot } from './owner-api.ts'
 import type { PersonalAgentProbe } from './worker.ts'
 
 type Probe = DurableObjectStub<PersonalAgentProbe>
@@ -47,8 +47,9 @@ export const ownerSend = (
     api.conversations.submit({ params: { id: chat }, payload: { input, operationId, ...extra } }),
   )
 
-/** Every registered chat: `GET /api/conversations`. */
-export const ownerList = (agent: AgentFetch) => ownerResult(agent, (api) => api.conversations.list())
+/** Every registered chat, closed ones included, as the workspace feed's snapshot lists them. */
+export const workspaceConversations = async (agent: AgentFetch): Promise<readonly ConversationView[]> =>
+  (await workspaceSnapshot(await agent.fetch(new Request('https://agent/api/workspace/events')))).conversations
 
 /** A Thread, empty or branched from an entry: `POST /api/conversations`. */
 export const ownerCreate = (agent: AgentFetch, input: CreateConversation) =>
@@ -135,14 +136,7 @@ export async function until<A>(read: () => Promise<A>, done: (value: A) => boole
 
 /** The agent's conversations, once `done` holds for them. */
 export const threadsUntil = (agent: Probe, done: (views: readonly ConversationView[]) => boolean, ms?: number) =>
-  until(
-    async () => {
-      const threads = await ownerList(agent)
-      return threads.ok ? threads.value : []
-    },
-    done,
-    ms,
-  )
+  until(() => workspaceConversations(agent), done, ms)
 
 /** One owner message into a conversation, settled. */
 export async function exchange(agent: Probe, session: string, text: string, id: string) {

@@ -28,7 +28,6 @@ const fakeOwner = () => {
   const state = { topics: [PERSONAL], undone: false }
   const Topics = HttpApiBuilder.group(OwnerApi, 'topics', (handlers) =>
     handlers
-      .handle('list', () => Effect.succeed(state.topics))
       .handle('create', ({ payload }) => {
         if (state.topics.some((topic) => topic.name === payload.name))
           return Effect.fail(new Conflict({ reason: 'topic_name_taken' }))
@@ -42,23 +41,21 @@ const fakeOwner = () => {
       }),
   )
   const Organize = HttpApiBuilder.group(OwnerApi, 'organize', (handlers) =>
-    handlers
-      .handle('list', () => Effect.succeed([]))
-      .handle('undo', ({ params }) => {
-        if (state.undone) return Effect.fail(new Conflict({ reason: 'undone' }))
-        state.undone = true
-        const receipt: OrganizeReceipt = {
-          id: params.id,
-          kind: 'topic.create',
-          target: '2',
-          actor: 'agent',
-          summary: 'Created #Garden',
-          at: 1,
-          undoable: false,
-          undoneAt: 2,
-        }
-        return Effect.succeed(receipt)
-      }),
+    handlers.handle('undo', ({ params }) => {
+      if (state.undone) return Effect.fail(new Conflict({ reason: 'undone' }))
+      state.undone = true
+      const receipt: OrganizeReceipt = {
+        id: params.id,
+        kind: 'topic.create',
+        target: '2',
+        actor: 'agent',
+        summary: 'Created #Garden',
+        at: 1,
+        undoable: false,
+        undoneAt: 2,
+      }
+      return Effect.succeed(receipt)
+    }),
   )
   const gate = Layer.succeed(
     OwnerGate,

@@ -7,7 +7,6 @@ import { AgentAppsGroup } from './agent-apps.ts'
 import { AppsGroup } from './apps.ts'
 import { ConversationsGroup } from './conversations.ts'
 import { API_ERRORS } from './errors.ts'
-import { HomeGroup } from './home.ts'
 import { InspectGroup } from './inspect.ts'
 import { McpGroup } from './mcp.ts'
 import { MemoryGroup } from './memory.ts'
@@ -34,7 +33,6 @@ export class OwnerApi extends HttpApi.make('goblin-owner')
     TopicsGroup,
     PersonasGroup,
     OrganizeGroup,
-    HomeGroup,
     McpGroup,
     ResidentGroup,
     AgentGroup,

@@ -67,8 +67,6 @@ const threadStart = ({ params, payload }: ChatWrite<ThreadStart>) =>
     }),
   )
 
-/** Every registered chat, closed ones included. */
-const list = () => Conversations.use((conversations) => conversations.list)
 const create = ({ payload }: { readonly payload: CreateConversation }) => createOwnerConversation(payload)
 const update = ({ params, payload }: ChatWrite<UpdateConversation>) =>
   AgentInput.use(({ routines }) => updateOwnerConversation(routines, params.id, payload))
@@ -114,7 +112,6 @@ const sources = ({ params }: ChatRequest) =>
  */
 export const ConversationsHandlers = HttpApiBuilder.group(OwnerApi, 'conversations', (handlers) =>
   handlers
-    .handle('list', list)
     .handle('create', create)
     .handle('update', update)
     .handle('submit', submit)

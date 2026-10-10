@@ -1,8 +1,11 @@
 import { expect } from 'vitest'
 import { Schema } from 'effect'
 import { ApprovalView, ConversationView, RoutineRunView, RoutineView } from '@goblin/contracts'
-import { call, waitFor, type Person } from './owner-requests.ts'
+import { call, waitFor, workspaceUntil, type Person } from './owner-requests.ts'
 import { approvalId } from './approvals-case.ts'
+
+/** The subagent the background run starts to hold a call. */
+const approver = (view: ConversationView) => view.kind === 'subagent' && view.title === 'approver'
 
 const toolInput = (operationKey: string) =>
   `call mcp_call ${JSON.stringify({ serverId: 'apps-fixture', name: 'board', arguments: { operationKey } })}`
@@ -78,10 +81,9 @@ export async function approvalsBackground(base: string, owner: Person) {
       })
     ).status,
   ).toBe(202)
-  const conversations = await waitFor(base, owner, '/api/conversations', 'approver')
-  const child = Schema.decodeUnknownSync(Schema.Array(ConversationView))(JSON.parse(conversations)).find(
-    (view) => view.kind === 'subagent' && view.title === 'approver',
-  )
+  const child = (
+    await workspaceUntil(base, owner, ({ conversations }) => conversations.some(approver))
+  ).conversations.find(approver)
   if (child === undefined) throw new Error('no subagent conversation')
   const childPath = await heldIn(base, owner, child.id)
   expect((await call(base, owner, childPath, { allowed: false })).status).toBe(200)

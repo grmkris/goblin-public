@@ -501,7 +501,7 @@ const Rpc = Schema.Struct({
   unknownServer: Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) }),
   unknownApp: Schema.Struct({ ok: Schema.Literal(false), error: Schema.Struct({ _tag: Schema.String }) }),
   noConversation: Schema.Struct({ ok: Schema.Literal(true), value: Schema.Array(Schema.Unknown) }),
-  threads: Ok(Schema.Array(Listed)),
+  threads: Schema.Array(Listed),
   badBranch: Failure,
   unknownThread: Failure,
   closed: Ok(Listed),
@@ -533,7 +533,7 @@ harness.test(
     expect([result.unknownServer.error._tag, result.unknownApp.error._tag]).toEqual(['NotFound', 'NotFound'])
     expect(result.noConversation.value).toEqual([])
     // Main is registered on first use; an empty thread joins it. Only registered conversations reach Pi.
-    expect(result.threads.value.map(({ kind, closedAt }) => ({ kind, closed: closedAt !== undefined }))).toEqual([
+    expect(result.threads.map(({ kind, closedAt }) => ({ kind, closed: closedAt !== undefined }))).toEqual([
       { kind: 'main', closed: false },
       { kind: 'thread', closed: false },
     ])

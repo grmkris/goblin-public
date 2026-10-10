@@ -8,15 +8,13 @@ import { ApiErrors } from './errors.ts'
 const ReceiptParam = Schema.String.check(Schema.isPattern(/^org_[0-9a-f]{32}$/u))
 
 /**
- * What organizing changed (ADR 0033), and Undo for one change. Paths are relative to the API's `/api` prefix.
+ * Undo for one organizing change (ADR 0033); the workspace feed carries the receipts. Paths are relative to the API's `/api` prefix.
  *
- * - `list`: `GET /api/organize`, the recent receipts, newest first.
  * - `undo`: `POST /api/organize/:id/undo` puts the target back as it was before the change. It is a conflict once
  *   anything changed the target since (`touched`) and once the receipt is undone (`undone`); restoring a name another
  *   active Topic or Persona took since is a conflict too.
  */
 export class OrganizeGroup extends HttpApiGroup.make('organize').add(
-  HttpApiEndpoint.get('list', '/organize', { success: Schema.Array(OrganizeReceipt) }),
   HttpApiEndpoint.post('undo', '/organize/:id/undo', {
     params: { id: ReceiptParam },
     success: OrganizeReceipt,

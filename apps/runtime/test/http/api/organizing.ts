@@ -1,11 +1,4 @@
-import {
-  HomeGroup,
-  OrganizeGroup,
-  PersonasGroup,
-  SubscriptionRequired,
-  TopicsGroup,
-  ownerApiOf,
-} from '@goblin/contracts/api'
+import { OrganizeGroup, PersonasGroup, SubscriptionRequired, TopicsGroup, ownerApiOf } from '@goblin/contracts/api'
 import type { FlowEvent } from '@goblin/contracts/telemetry'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -22,7 +15,6 @@ import { Conversations } from '../../../src/chats/service.ts'
 import { RoutineRuns } from '../../../src/routines/service.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
 import { Apps } from '../../../src/apps/service.ts'
-import { HomeHandlers } from '../../../src/home/api.ts'
 import { HomeService } from '../../../src/home/service.ts'
 import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
@@ -53,9 +45,9 @@ const PLAN: AccountPlan = {
 }
 
 /** Lane D's groups only, behind the real gate, router and failure rendering (the pattern of owner-http.test.ts). */
-const API = ownerApiOf(TopicsGroup, PersonasGroup, OrganizeGroup, HomeGroup)
+const API = ownerApiOf(TopicsGroup, PersonasGroup, OrganizeGroup)
 const LAYER = HttpApiBuilder.layer(API).pipe(
-  Layer.provide([TopicsHandlers, PersonasHandlers, OrganizeHandlers, HomeHandlers]),
+  Layer.provide([TopicsHandlers, PersonasHandlers, OrganizeHandlers]),
   Layer.provide(OwnerGateLive),
   Layer.provide(HttpServer.layerServices),
 )
@@ -68,7 +60,7 @@ afterEach(async () => {
 })
 
 /**
- * The organizing groups (topics, personas, organize, home) as the agent serves them: lane D's services over real Topic,
+ * The organizing groups (topics, personas, organize) as the agent serves them: lane D's services over real Topic,
  * Persona, receipt and Home stores on SQLite. The gate's plan and resident authority are the only fakes. Nothing here
  * has an open chat to stop, an agent app or an MCP App, so Pi, Stop, the apps and the MCP host are never read.
  */

@@ -2,22 +2,17 @@ import { expect } from 'vitest'
 import * as Schema from 'effect/Schema'
 import {
   ComposerOptions,
-  ConversationView,
   OrganizeReceipt,
   PersonaDetail,
   PersonaView,
-  TopicView,
   WorkspaceChange,
   type PersonaDefinition,
 } from '@goblin/contracts'
-import { call, ownerFetch, person, waitFor, type Person } from './owner-requests.ts'
+import { call, ownerFetch, person, waitFor, workspaceOf, type Person } from './owner-requests.ts'
 
 const decodePersona = Schema.decodeUnknownSync(PersonaView)
 const decodeDetail = Schema.decodeUnknownSync(PersonaDetail)
-const decodeReceipts = Schema.decodeUnknownSync(Schema.Array(OrganizeReceipt))
 const decodeReceipt = Schema.decodeUnknownSync(OrganizeReceipt)
-const decodeTopics = Schema.decodeUnknownSync(Schema.Array(TopicView))
-const decodeViews = Schema.decodeUnknownSync(Schema.Array(ConversationView))
 const decodeOptions = Schema.decodeUnknownSync(ComposerOptions)
 const decodeChanges = Schema.decodeUnknownSync(Schema.Array(WorkspaceChange))
 const decodeSeen = Schema.decodeUnknownSync(
@@ -220,7 +215,7 @@ async function asking(url: string, owner: Person, scout: PersonaView): Promise<v
   expect(textOf(ask?.model?.[0]?.content)).toBe('[to @Scout, @Critic] weigh in on seeds')
   expect(all.some((entry) => entry.kind === 'pi.assistant')).toBe(false)
   // The forks are hidden: the conversation list holds the chat alone.
-  expect(decodeViews(await (await call(url, owner, '/api/conversations')).json()).map((view) => view.id)).toEqual(['1'])
+  expect((await workspaceOf(url, owner)).conversations.map((view) => view.id)).toEqual(['1'])
 
   const first = await makePersona(url, owner, definition('First'))
   const second = await makePersona(url, owner, definition('Second'))
@@ -395,12 +390,11 @@ const ask = async (url: string, owner: Person, input: string, expected: string) 
   expect(sent.status).toBe(202)
   await waitFor(url, owner, '/api/conversations/1/snapshot', expected)
 }
-const receipts = async (url: string, owner: Person) =>
-  decodeReceipts(await (await call(url, owner, '/api/organize')).json())
+const receipts = async (url: string, owner: Person) => (await workspaceOf(url, owner)).receipts ?? []
 const newest = async (url: string, owner: Person) => (await receipts(url, owner))[0]
 const undo = (url: string, owner: Person, id: string | undefined) =>
   call(url, owner, `/api/organize/${id ?? ''}/undo`, {})
-const topics = async (url: string, owner: Person) => decodeTopics(await (await call(url, owner, '/api/topics')).json())
+const topics = async (url: string, owner: Person) => (await workspaceOf(url, owner)).topics ?? []
 const personaOf = async (url: string, owner: Person, id: number | string) =>
   decodeDetail(await (await call(url, owner, `/api/personas/${String(id)}`)).json()).persona
 

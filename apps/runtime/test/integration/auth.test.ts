@@ -150,7 +150,7 @@ async function onlyCodeCase(base: string) {
   expect((await call(base, who, '/api/auth/delete-user', {})).ok).toBe(false)
   const fresh = await person(base)
   expect((await call(base, fresh, '/api/auth/delete-user', {})).status).toBe(200)
-  expect((await call(base, fresh, '/api/conversations')).status).toBe(401)
+  expect((await call(base, fresh, '/api/agent/usage')).status).toBe(401)
 }
 harness.test(
   'native OTP only: removed account methods return 404; deletion requires a fresh code session',

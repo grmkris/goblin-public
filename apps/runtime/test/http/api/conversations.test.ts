@@ -337,8 +337,6 @@ const json = (method: string, path: string, body?: unknown, headers: Record<stri
     ...(body === undefined ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
   })
 
-const decodeViews = Schema.decodeUnknownSync(Schema.Array(ConversationView))
-
 /** A message that tags a skill of `serverId`. */
 const skill = (serverId: string) => ({
   input: 'use it',
@@ -347,11 +345,8 @@ const skill = (serverId: string) => ({
 })
 
 describe('the conversations API served by the agent', () => {
-  it('lists the chats and creates a Thread with 201, empty or branched from an entry', async () => {
+  it('creates a Thread with 201, empty or branched from an entry', async () => {
     const { fetch } = fixture()
-    const list = await fetch(json('GET', '/api/conversations'))
-    expect(list.status).toBe(200)
-    expect(decodeViews(await list.json()).map(({ id }) => id)).toEqual(['1', '2', '3', '4'])
     const empty = await fetch(json('POST', '/api/conversations', {}))
     expect(empty.status).toBe(201)
     expect(await empty.json()).toMatchObject({ id: NEW, parent: '1' })

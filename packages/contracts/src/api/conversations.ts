@@ -59,7 +59,6 @@ const HistoryQuery = {
  * are relative to the API's `/api` prefix; every endpoint can also answer the owner gate's failures (`OwnerGate` in
  * `owner.ts`), and `error` names the ones the endpoint itself produces.
  *
- * - `list`: `GET /api/conversations`, every registered chat, closed ones included.
  * - `create`: `POST /api/conversations`, 201: a Thread branched from an entry of an open chat, or an empty one; with an
  *   `operationId` it is that chat's thread operation, so the same id finds the same Thread.
  * - `update`: `PATCH /api/conversations/:id` renames, closes or reopens, or pins a subagent open.
@@ -79,7 +78,6 @@ const HistoryQuery = {
  * The chat's live events (`GET …/:id/events`, server-sent) are a raw route of the agent, outside this group.
  */
 export class ConversationsGroup extends HttpApiGroup.make('conversations').add(
-  HttpApiEndpoint.get('list', '/conversations', { success: Schema.Array(ConversationView) }),
   HttpApiEndpoint.post('create', '/conversations', {
     payload: CreateConversation,
     success: ConversationView.pipe(HttpApiSchema.status(201)),

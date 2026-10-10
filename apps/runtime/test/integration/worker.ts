@@ -47,7 +47,6 @@ import {
   linesOf,
   ownerCapabilities,
   ownerCreate,
-  ownerList,
   ownerMarkRead,
   ownerSend,
   ownerSetCapability,
@@ -57,6 +56,7 @@ import {
   threadsUntil,
   transcript,
   until,
+  workspaceConversations,
 } from './probe-reads.ts'
 import {
   subagentChainSequence,
@@ -567,7 +567,7 @@ async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promis
   )
   const noConversation = await agent.recentMessages(5)
   const thread = await ownerCreate(agent, {})
-  const threads = await ownerList(agent)
+  const threads = await workspaceConversations(agent)
   const badBranch = await branchMain(agent, 999_999)
   const unknownThread = await ownerSend(agent, '424242', 'hello', 'op-unknown-thread')
   const closed = thread.ok ? await ownerUpdate(agent, thread.value.id, { closed: true }) : thread
@@ -609,8 +609,7 @@ const entries = async (agent: DurableObjectStub<PersonalAgentProbe>): Promise<nu
 
 /** How the thread list shows one conversation now. */
 async function listedThread(agent: DurableObjectStub<PersonalAgentProbe>, id: string) {
-  const threads = await ownerList(agent)
-  return threads.ok ? threads.value.find((view) => view.id === id) : undefined
+  return (await workspaceConversations(agent)).find((view) => view.id === id)
 }
 
 /**
@@ -840,10 +839,10 @@ async function treeSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promi
   )
   const closed = await ownerUpdate(agent, outer.value.id, { closed: true })
   const stopped = !(await agent.busy(subagent.id))
-  const closedViews = await ownerList(agent)
+  const closedViews = await workspaceConversations(agent)
   const refused = await ownerSend(agent, nested.value.id, 'still there?', 'tree-refused')
   const reopened = await ownerUpdate(agent, outer.value.id, { closed: false })
-  const reopenedViews = await ownerList(agent)
+  const reopenedViews = await workspaceConversations(agent)
   const main = await ownerUpdate(agent, PRIMARY_CHAT, { closed: true })
   return Response.json({
     outer: outer.value,
@@ -852,10 +851,10 @@ async function treeSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promi
     working,
     closed,
     stopped,
-    closedViews: closedViews.ok ? closedViews.value : [],
+    closedViews,
     refused,
     reopened,
-    reopenedViews: reopenedViews.ok ? reopenedViews.value : [],
+    reopenedViews,
     subagent: subagent.id,
     main,
   })
@@ -886,7 +885,7 @@ async function subagentBranchSequence(agent: DurableObjectStub<PersonalAgentProb
   await exchange(agent, branch.value.id, 'what did you find?', 'subagent-branch-ask')
   // The subagent already offered `subagent`, so the thread's request lists only what it adds: use the tool instead.
   const status = await exchange(agent, branch.value.id, 'call subagent_status {}', 'subagent-branch-status')
-  const subagentAfter = (await ownerList(agent)).ok ? await listedThread(agent, listed.id) : undefined
+  const subagentAfter = await listedThread(agent, listed.id)
   const closed = await ownerUpdate(agent, listed.id, { closed: true })
   return Response.json({
     doneClosed: done.find(({ id }) => id === listed.id),

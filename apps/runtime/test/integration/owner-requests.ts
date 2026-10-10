@@ -1,5 +1,7 @@
+import type { WorkspaceSnapshot } from '@goblin/contracts'
 import { expect } from 'vitest'
 import { Schema } from 'effect'
+import { workspaceSnapshot } from './owner-api.ts'
 
 const Signup = Schema.Struct({ user: Schema.Struct({ id: Schema.String }) })
 export interface Person {
@@ -65,4 +67,26 @@ export async function waitFor(base: string, who: Person, path: string, expected:
     await new Promise((resolve) => setTimeout(resolve, 20))
   }
   throw new Error(`missing fixture response ${expected}`)
+}
+
+/** The workspace feed's snapshot as `who` sees it (`GET /api/workspace/events`, or `path` with `headers`). */
+export const workspaceOf = async (
+  base: string,
+  who: Person,
+  path = '/api/workspace/events',
+  headers: Record<string, string> = {},
+): Promise<WorkspaceSnapshot> => workspaceSnapshot(await call(base, who, path, undefined, headers))
+
+/** The workspace feed's snapshot once `done` holds for it, read again as `waitFor` reads. */
+export async function workspaceUntil(
+  base: string,
+  who: Person,
+  done: (snapshot: WorkspaceSnapshot) => boolean,
+): Promise<WorkspaceSnapshot> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const snapshot = await workspaceOf(base, who)
+    if (done(snapshot)) return snapshot
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  throw new Error('missing workspace state')
 }

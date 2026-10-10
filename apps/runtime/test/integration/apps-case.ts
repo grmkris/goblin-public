@@ -1,6 +1,6 @@
 import { expect } from 'vitest'
 import { Schema } from 'effect'
-import { AppLaunch, ConversationView, HomeEditResult, HomeRead, WorkspaceSnapshot } from '@goblin/contracts'
+import { AppLaunch, ConversationView, WorkspaceSnapshot } from '@goblin/contracts'
 import { BOARD } from './apps-mcp.ts'
 import { person, call, ownerFetch, waitFor, type Person } from './owner-requests.ts'
 
@@ -85,20 +85,6 @@ export async function appsCase(base: string): Promise<void> {
   })
   expect(crossed.status).toBe(404)
   expect(await crossed.text()).toMatch(REFUSED.notFound)
-  const initialHome = Schema.decodeUnknownSync(HomeRead)(await (await call(base, owner, '/api/home')).json())
-  const pinInput = {
-    operationId: crypto.randomUUID(),
-    expectedRevision: initialHome.layout.revision,
-    ops: [{ kind: 'add', tile: { kind: 'app', appId: app.id, id: 'fixture-home-app', size: 'medium' } }],
-  }
-  const pinned = await call(base, owner, '/api/home', pinInput)
-  expect(pinned.status).toBe(200)
-  const home = Schema.decodeUnknownSync(HomeEditResult)(await pinned.json())
-  expect(home).toMatchObject({
-    kind: 'applied',
-    layout: { tiles: [expect.objectContaining({ appId: app.id, placedBy: 'owner' })] },
-  })
-
   expect((await send(base, owner, `/api/conversations/${thread.id}`, 'PATCH', { closed: true })).status).toBe(200)
   expect((await snapshot(base, owner)).apps[0]?.closedAt).toBeDefined()
   const callId = app.source.kind === 'mcp' ? app.source.callId : ''
@@ -116,12 +102,6 @@ export async function appsCase(base: string): Promise<void> {
   })
   expect(deniedCall.status).toBeGreaterThanOrEqual(400)
   expect(await deniedCall.text()).toMatch(REFUSED.grantDenied)
-  expect(Schema.decodeUnknownSync(HomeRead)(await (await call(base, owner, '/api/home')).json()).layout).toEqual(
-    home.kind === 'applied' ? home.layout : undefined,
-  )
-  const replay = await call(base, owner, '/api/home', pinInput)
-  expect(replay.status).toBe(200)
-  expect(Schema.decodeUnknownSync(HomeEditResult)(await replay.json())).toEqual(home)
   const grants = await (await call(base, owner, '/api/mcp/grants')).json()
   expect(JSON.stringify(grants)).not.toContain('"name":"board"')
   for (const headers of [{ origin: '' }, { 'x-goblin-csrf': '' }]) {

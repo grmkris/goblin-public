@@ -5,7 +5,6 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { AgentAppsHandlers } from '../../agent-apps/api.ts'
 import { AppsHandlers } from '../../apps/api.ts'
 import { ConversationsHandlers } from '../../chats/api.ts'
-import { HomeHandlers } from '../../home/api.ts'
 import { InspectHandlers } from '../../inspect/api.ts'
 import { McpHandlers } from '../../mcp/api.ts'
 import { ResidentHandlers } from '../../mcp/resident-api.ts'
@@ -24,7 +23,6 @@ export const OwnerApiLayer = HttpApiBuilder.layer(OwnerApi).pipe(
     TopicsHandlers,
     PersonasHandlers,
     OrganizeHandlers,
-    HomeHandlers,
     McpHandlers,
     ResidentHandlers,
     AgentHandlers,

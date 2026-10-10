@@ -191,19 +191,18 @@ describe('the owner API served by the agent', () => {
     expect(resident.renewals).toHaveLength(5)
   })
 
-  it('refuses to archive Personal (400) and lists the Topics', async () => {
+  it('refuses to archive Personal (400)', async () => {
     const { fetch } = fixture()
     const archive = await fetch(json('PATCH', '/api/topics/1', { archived: true }))
     expect(archive.status).toBe(400)
     expect(await archive.json()).toMatchObject({ error: { code: 'invalid_input', reason: 'personal_topic' } })
-    const list = await fetch(new Request('https://agent/api/topics'))
-    expect(list.status).toBe(200)
-    expect(await list.json()).toEqual([expect.objectContaining({ id: 1, name: 'Personal', personal: true })])
   })
 
   it('answers 402 subscription_required from the gate before any handler runs', async () => {
     const { fetch, resident } = fixture({ active: false })
-    const response = await fetch(new Request('https://agent/api/topics', { headers: { 'x-goblin-ref': 'ref-402' } }))
+    const response = await fetch(
+      json('POST', '/api/topics', { name: 'Work', operationId: 'op-1' }, { 'x-goblin-ref': 'ref-402' }),
+    )
     expect(response.status).toBe(402)
     expect(await response.json()).toMatchObject({
       error: { code: 'subscription_required', subscribe: '/subscribe', ref: 'ref-402' },

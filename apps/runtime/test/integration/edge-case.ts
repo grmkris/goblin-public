@@ -1,12 +1,10 @@
-import { TopicView } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { expect } from 'vitest'
-import { call, ownerFetch, person, type Person } from './owner-requests.ts'
+import { call, ownerFetch, person, workspaceOf, type Person } from './owner-requests.ts'
 
 const APP = 'https://goblin.test'
 const Detail = Schema.Struct({ error: Schema.Struct({ code: Schema.String, ref: Schema.optional(Schema.String) }) })
 const decodeDetail = Schema.decodeUnknownSync(Detail)
-const decodeTopics = Schema.decodeUnknownSync(Schema.Array(TopicView))
 
 /** A browser crash report as the web posts it: same origin and the CSRF header, no session. */
 const report = (url: string, body: string, headers: Record<string, string> = {}) =>
@@ -96,16 +94,13 @@ export async function csrfCase(url: string): Promise<void> {
     headers: { origin: APP },
   })
   expect(await refusalOf(revoke)).toMatchObject({ status: 403, code: 'forbidden' })
-  const listed = await call(url, owner, '/api/topics')
-  expect(listed.status).toBe(200)
-  expect(decodeTopics(await listed.json()).some((each) => each.name === name)).toBe(false)
+  const topics = async () => (await workspaceOf(url, owner)).topics ?? []
+  expect((await topics()).some((each) => each.name === name)).toBe(false)
   const created = await write(url, owner, '/api/topics', {
     method: 'POST',
     body: topic,
     headers: { origin: APP, 'x-goblin-csrf': '1' },
   })
   expect(created.status).toBe(201)
-  expect(decodeTopics(await (await call(url, owner, '/api/topics')).json()).some((each) => each.name === name)).toBe(
-    true,
-  )
+  expect((await topics()).some((each) => each.name === name)).toBe(true)
 }

@@ -1,5 +1,14 @@
-import { type ApiCode, Conflict, ERROR_COPY, OwnerApi, OwnerGate, TopicsGroup, ownerApiOf } from '@goblin/contracts/api'
-import type { CreateTopic, TopicView } from '@goblin/contracts'
+import {
+  type ApiCode,
+  Conflict,
+  ERROR_COPY,
+  MemoryGroup,
+  OwnerApi,
+  OwnerGate,
+  TopicsGroup,
+  ownerApiOf,
+} from '@goblin/contracts/api'
+import type { CreateTopic, MemoryStatus, TopicView } from '@goblin/contracts'
 import { MutationObserver } from '@tanstack/react-query'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -23,15 +32,19 @@ const PERSONAL: TopicView = {
   createdAt: 1,
 }
 
+const MEMORY: MemoryStatus = { messages: 3, summarized: 1 }
+
 /**
- * The real owner contract's Topics group served in memory, answering from a list. Only Topics is served, so another
- * group gaining an endpoint never needs a handler here.
+ * The real owner contract's Topics and Memory groups served in memory: Topics answering from a list, Memory with a
+ * fixed status to read. Only these two are served, so another group gaining an endpoint never needs a handler here.
  */
 const fakeOwner = () => {
   const topics: TopicView[] = []
+  const Memory = HttpApiBuilder.group(OwnerApi, 'memory', (handlers) =>
+    handlers.handle('status', () => Effect.succeed(MEMORY)),
+  )
   const Topics = HttpApiBuilder.group(OwnerApi, 'topics', (handlers) =>
     handlers
-      .handle('list', () => Effect.succeed(topics))
       .handle('create', ({ payload }) => {
         if (topics.some((topic) => topic.name.toLowerCase() === payload.name.toLowerCase()))
           return Effect.fail(new Conflict({ reason: 'topic_name_taken', ref: RAY }))
@@ -42,7 +55,10 @@ const fakeOwner = () => {
       .handle('update', () => Effect.die('not used')),
   )
   const gate = Layer.succeed(OwnerGate, (handler) => handler)
-  const server = fakeHttpApi(ownerApiOf(TopicsGroup), Topics.pipe(Layer.provide(gate)))
+  const server = fakeHttpApi(
+    ownerApiOf(TopicsGroup, MemoryGroup),
+    Layer.mergeAll(Topics, Memory).pipe(Layer.provide(gate)),
+  )
   return { ...server, reset: () => void topics.splice(0, topics.length, PERSONAL) }
 }
 
@@ -72,10 +88,10 @@ const createTopic = owner.apiMutation({
 describe('the owner API bridge', () => {
   it('resolves a query through the contract, with a fresh request id and no CSRF header on a read', async () => {
     const client = testQueryClient()
-    const topics = await client.query(
-      owner.apiQuery({ queryKey: ['topics', 'list'], queryFn: (api) => api.topics.list() }),
+    const memory = await client.query(
+      owner.apiQuery({ queryKey: ['memory', 'status'], queryFn: (api) => api.memory.status({ query: {} }) }),
     )
-    expect(topics).toEqual([PERSONAL])
+    expect(memory).toEqual(MEMORY)
     const [request] = calls()
     expect(request?.headers.get('x-goblin-request')).toMatch(/^[0-9a-f]{8}$/u)
     expect(request?.headers.get('x-goblin-csrf')).toBeNull()
@@ -114,12 +130,14 @@ describe('the owner API bridge', () => {
         { preconnect: () => undefined },
       ),
     })
-    // expected: the test asserts on the failure it captures
-    const failure: unknown = await offline.run((api) => api.topics.list()).catch((error: unknown) => error)
+    const failure: unknown = await offline
+      .run((api) => api.memory.status({ query: {} }))
+      // expected: the test asserts on the failure it captures
+      .catch((error: unknown) => error)
     expect(sent).toHaveLength(1)
     expect(describeError(failure)).toMatchObject({ kind: 'unavailable', code: 'transport_error', ref: 'a1b2c3d4' })
-    expect(messageOf(failure, 'load your topics')).toBe(
-      'Could not load your topics. The service is not answering. Try again in a minute. · ref a1b2c3d4',
+    expect(messageOf(failure, 'load your memory')).toBe(
+      'Could not load your memory. The service is not answering. Try again in a minute. · ref a1b2c3d4',
     )
     await offline.runtime.dispose()
   })
@@ -128,7 +146,7 @@ describe('the owner API bridge', () => {
     const controller = new AbortController()
     controller.abort()
     const failure: unknown = await owner
-      .run((api) => api.topics.list(), controller.signal)
+      .run((api) => api.memory.status({ query: {} }), controller.signal)
       // expected: the test asserts on the failure it captures
       .catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(ApiDefect)

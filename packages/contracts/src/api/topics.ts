@@ -13,13 +13,11 @@ const TopicParam = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 999_
  * Every owner endpoint can also answer the owner gate's failures (`OwnerGate` in `owner.ts`); `error` names the ones
  * the endpoint itself produces.
  *
- * - `list`: `GET /api/topics`, every Topic, archived ones included.
  * - `create`: `POST /api/topics`, 201 with the Topic as it is now. The same operation id finds the same Topic.
  * - `update`: `PATCH /api/topics/:id` renames, archives, restores or changes the search opt-out. A name another active
  *   Topic has is a conflict; archiving Personal is invalid input.
  */
 export class TopicsGroup extends HttpApiGroup.make('topics').add(
-  HttpApiEndpoint.get('list', '/topics', { success: Schema.Array(TopicView) }),
   HttpApiEndpoint.post('create', '/topics', {
     payload: CreateTopic,
     success: TopicView.pipe(HttpApiSchema.status(201)),

@@ -10,9 +10,6 @@ import { Receipts } from '../organize/service.ts'
 import type { TopicActor } from './registry.ts'
 import { Topics } from './service.ts'
 
-/** Every Topic, archived ones included. */
-export const topicList = Topics.use((topics) => topics.list)
-
 /** Who changed a Topic and from where: the receipt it leaves says so. `chat` is the run that did it, for the agent. */
 export type Provenance = { readonly actor: TopicActor; readonly chat?: string; readonly operationId?: string }
 

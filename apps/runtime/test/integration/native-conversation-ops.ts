@@ -14,7 +14,7 @@ import { FlowEvents } from '../../src/observability/flows.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { portServices } from '../chat-fixtures.ts'
 import { callOwner } from './owner-api.ts'
-import { ownerCreate, ownerList, ownerResult, ownerSend, snapshotOf, until } from './probe-reads.ts'
+import { ownerCreate, ownerResult, ownerSend, snapshotOf, until, workspaceConversations } from './probe-reads.ts'
 import type { PersonalAgentProbe } from './worker.ts'
 
 type Probe = DurableObjectStub<PersonalAgentProbe>
@@ -27,7 +27,7 @@ const inspect = async (agent: Probe, query: object): Promise<unknown> =>
 export async function doubleCreateSequence(agent: Probe): Promise<Response> {
   const create = async () => ownerCreate(agent, { operationId: 'c4-double' })
   const [first, second] = await Promise.all([create(), create()])
-  return Response.json({ first, second, listed: await ownerList(agent) })
+  return Response.json({ first, second, listed: await workspaceConversations(agent) })
 }
 
 /** Two Personas tagged in a Thread started from main's composer, asked to answer one after the other. */
@@ -132,7 +132,7 @@ const Thread = Schema.Struct({ id: Schema.String, kind: Schema.String })
 const DoubleCreate = Schema.Struct({
   first: Ok(Thread),
   second: Ok(Thread),
-  listed: Ok(Schema.Array(Thread)),
+  listed: Schema.Array(Thread),
 })
 const StartOrder = Schema.Struct({
   started: Ok(Schema.Struct({ thread: Thread, receipt: Schema.Struct({ operationId: Schema.String }) })),
@@ -146,7 +146,7 @@ export const doubleCreateCase = (url: string) =>
   Effect.promise(async () => {
     const { first, second, listed } = await Schema.decodeUnknownPromise(DoubleCreate)(await probe(url, 'c4-double'))
     expect(second.value.id).toBe(first.value.id)
-    expect(listed.value.filter(({ kind }) => kind === 'thread').map(({ id }) => id)).toEqual([first.value.id])
+    expect(listed.filter(({ kind }) => kind === 'thread').map(({ id }) => id)).toEqual([first.value.id])
   })
 
 /** A Thread started with tagged Personas keeps the order the message asked for them (H1), its first message `:first`. */

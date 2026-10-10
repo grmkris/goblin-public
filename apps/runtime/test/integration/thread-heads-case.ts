@@ -1,7 +1,7 @@
 import { expect } from 'vitest'
 import * as Schema from 'effect/Schema'
 import { ConversationView, ThreadHeadData, TopicView } from '@goblin/contracts'
-import { call, ownerFetch, person, waitFor, type Person } from './owner-requests.ts'
+import { call, ownerFetch, person, waitFor, workspaceOf, type Person } from './owner-requests.ts'
 
 const Started = Schema.Struct({
   thread: ConversationView,
@@ -9,7 +9,6 @@ const Started = Schema.Struct({
 })
 const decodeStarted = Schema.decodeUnknownSync(Started)
 const decodeTopic = Schema.decodeUnknownSync(TopicView)
-const decodeViews = Schema.decodeUnknownSync(Schema.Array(ConversationView))
 const Snapshot = Schema.Struct({
   entries: Schema.optional(
     Schema.Array(
@@ -35,8 +34,7 @@ const entries = async (url: string, owner: Person, chat: string) =>
 /** The thread heads written into `chat`, decoded. */
 const heads = async (url: string, owner: Person, chat: string) =>
   (await entries(url, owner, chat)).filter((entry) => entry.kind === 'app.thread_head')
-const threadCount = async (url: string, owner: Person) =>
-  decodeViews(await (await call(url, owner, '/api/conversations')).json()).length
+const threadCount = async (url: string, owner: Person) => (await workspaceOf(url, owner)).conversations.length
 
 /** A started Thread: forked from the channel, its head in the channel, the owner's message answered in the Thread. */
 async function headAndInput(url: string, owner: Person): Promise<void> {

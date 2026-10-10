@@ -20,7 +20,6 @@ const unused = () => Effect.die('not used')
 const fakeOwner = () => {
   const Conversations = HttpApiBuilder.group(OwnerApi, 'conversations', (handlers) =>
     handlers
-      .handle('list', unused)
       .handle('create', unused)
       .handle('update', unused)
       .handle('submit', ({ payload }) =>

@@ -3,11 +3,10 @@ import { URL as FileURL } from 'node:url'
 import { expect } from 'vitest'
 import * as Schema from 'effect/Schema'
 import { ConversationView, MoveReceipt, ThreadHeadData, TopicView } from '@goblin/contracts'
-import { call, ownerFetch, person, type Person } from './owner-requests.ts'
+import { call, ownerFetch, person, workspaceOf, type Person } from './owner-requests.ts'
 
 const decodeReceipt = Schema.decodeUnknownSync(MoveReceipt)
 const decodeView = Schema.decodeUnknownSync(ConversationView)
-const decodeViews = Schema.decodeUnknownSync(Schema.Array(ConversationView))
 const decodeHead = Schema.decodeUnknownSync(ThreadHeadData)
 const decodeTopic = Schema.decodeUnknownSync(TopicView)
 const Entry = Schema.Struct({
@@ -106,8 +105,7 @@ const requests = async (url: string, owner: Person) =>
   decodeRequests(await (await call(url, owner, '/__test/move/requests')).json())
 const state = async (url: string, owner: Person) =>
   decodeState(await (await call(url, owner, '/__test/move/state')).json())
-const views = async (url: string, owner: Person) =>
-  decodeViews(await (await call(url, owner, '/api/conversations')).json())
+const views = async (url: string, owner: Person) => (await workspaceOf(url, owner)).conversations
 const heads = async (url: string, owner: Person, chat: string) =>
   (await entries(url, owner, chat)).filter((entry) => entry.kind === 'app.thread_head').map((e) => decodeHead(e.data))
 

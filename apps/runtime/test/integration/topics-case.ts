@@ -1,12 +1,10 @@
 import { expect } from 'vitest'
 import * as Schema from 'effect/Schema'
 import { ConversationView, TopicView } from '@goblin/contracts'
-import { call, ownerFetch, person, waitFor, type Person } from './owner-requests.ts'
+import { call, ownerFetch, person, waitFor, workspaceOf, type Person } from './owner-requests.ts'
 
 const decodeTopic = Schema.decodeUnknownSync(TopicView)
-const decodeTopics = Schema.decodeUnknownSync(Schema.Array(TopicView))
 const decodeView = Schema.decodeUnknownSync(ConversationView)
-const decodeViews = Schema.decodeUnknownSync(Schema.Array(ConversationView))
 const decodeSessions = Schema.decodeUnknownSync(Schema.Struct({ sessions: Schema.Number }))
 const decodeEntries = Schema.decodeUnknownSync(
   Schema.Struct({ entries: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.Number, kind: Schema.String }))) }),
@@ -31,8 +29,8 @@ const snapshot = async (url: string, owner: Person, chat: string) =>
 /** Every Pi session in the owner's agent, to prove a create made exactly one. */
 const sessions = async (url: string, owner: Person) =>
   decodeSessions(await (await call(url, owner, '/__test/topics/sessions')).json()).sessions
-const views = async (url: string, owner: Person) =>
-  decodeViews(await (await call(url, owner, '/api/conversations')).json())
+const views = async (url: string, owner: Person) => (await workspaceOf(url, owner)).conversations
+const topics = async (url: string, who: Person) => (await workspaceOf(url, who)).topics ?? []
 const held = async (url: string, owner: Person) => (await call(url, owner, '/__test/queue/held')).text()
 
 /** Until the queue model no longer holds `input`: its run ended (Stop aborts a held generation). */
@@ -117,7 +115,7 @@ async function archiveAndRestore(url: string, owner: Person, topic: TopicView, t
   expect((await send(url, owner, channel, 'back again')).status).toBe(202)
   await waitFor(url, owner, `/api/conversations/${channel}/snapshot`, 'echo: back again')
   expect((await patch(url, owner, '/api/topics/1', { archived: true })).status).toBe(400)
-  const personal = decodeTopics(await (await call(url, owner, '/api/topics')).json()).find((each) => each.id === 1)
+  const personal = (await topics(url, owner)).find((each) => each.id === 1)
   expect(personal).toMatchObject({ personal: true, conversation: '1' })
   expect(personal?.archivedAt).toBeUndefined()
 }
@@ -127,7 +125,7 @@ export async function topicsCase(url: string): Promise<void> {
   const other = await person(url)
   for (const who of [owner, other])
     await call(url, who, '/__test/billing/override', { userId: who.userId, dailyCredits: 1000 })
-  expect(decodeTopics(await (await call(url, owner, '/api/topics')).json())).toEqual([
+  expect(await topics(url, owner)).toEqual([
     expect.objectContaining({ id: 1, name: 'Personal', conversation: '1', personal: true }),
   ])
   const topic = await createOnce(url, owner)
@@ -142,6 +140,6 @@ export async function topicsCase(url: string): Promise<void> {
   expect(await snapshot(url, owner, '1')).toContain('inbound lands in personal')
   expect(await snapshot(url, owner, topic.conversation)).not.toContain('inbound lands in personal')
   // Another account sees only its own Personal, and cannot reach the owner's Topic.
-  expect(decodeTopics(await (await call(url, other, '/api/topics')).json()).map((each) => each.id)).toEqual([1])
+  expect((await topics(url, other)).map((each) => each.id)).toEqual([1])
   expect((await patch(url, other, `/api/topics/${topic.id}`, { name: 'Taken over' })).status).toBe(404)
 }

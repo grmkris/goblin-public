@@ -4,7 +4,16 @@ import { nextInt } from 'effect/Random'
 import { expect } from 'vitest'
 import { ModelRequest, requestTurns } from './conversation-checks.ts'
 import { callOwner } from './owner-api.ts'
-import { exchange, linesOf, ownerCreate, ownerList, ownerResult, snapshotOf, transcript, until } from './probe-reads.ts'
+import {
+  exchange,
+  linesOf,
+  ownerCreate,
+  ownerResult,
+  snapshotOf,
+  transcript,
+  until,
+  workspaceConversations,
+} from './probe-reads.ts'
 import type { PersonalAgentProbe } from './worker.ts'
 
 type Probe = DurableObjectStub<PersonalAgentProbe>
@@ -55,8 +64,8 @@ export async function topicRoutineSequence(agent: Probe): Promise<Response> {
   if (Result.isFailure(created)) return Response.json({ created: created.failure })
   const errands = created.success.conversation
   const attentionOf = async () => {
-    const views = await ownerList(agent)
-    return (views.ok ? views.value : []).find((view) => view.id === errands)?.attention ?? []
+    const views = await workspaceConversations(agent)
+    return views.find((view) => view.id === errands)?.attention ?? []
   }
   const question = { questions: [{ id: 'day', prompt: 'Which day suits you?', kind: 'text' }] }
   await exchange(agent, errands, `call ask_user ${JSON.stringify(question)}`, 'topic-ask')
@@ -87,14 +96,14 @@ export async function topicRoutineSequence(agent: Probe): Promise<Response> {
   await until(runs, (each) => each.some((run) => run.state === 'completed'))
   await agent.routinesWake()
   const reported = await until(runs, (each) => each.some((run) => run.reportAcceptedAt !== null))
-  const views = await ownerList(agent)
+  const views = await workspaceConversations(agent)
   return Response.json({
     topic: created.success.id,
     errands,
     asked,
     answered,
     reported: reported.some((run) => run.reportAcceptedAt !== null),
-    runChat: (views.ok ? views.value : []).find((view) => view.title === 'Errand check') ?? null,
+    runChat: views.find((view) => view.title === 'Errand check') ?? null,
     errandsLines: await transcript(agent, errands),
     personalLines: await transcript(agent, PRIMARY_CHAT),
   })
