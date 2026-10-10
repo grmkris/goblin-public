@@ -65,18 +65,19 @@ shape (`BillingRefused`).
 - Each failed answer, the edge's own refusals and the agent's alike, is one content-free `http.failure` log line:
   route template, method, status, code, reference, the browser's request and operation ids, and the agent.
 
-**The agent** (`PersonalAgent.onRequest`) serves the contract with `OwnerHttp` (`http/api/server.ts`): the router is
+**The agent** (`PersonalAgent.onRequest`) serves the contract with `AgentHttp` (`http/api/server.ts`): the router is
 `HttpRouter.toHttpEffect` over every group's handlers (`http/api/groups.ts`), built once inside the agent's own
-runtime as a layer, never at module level. Handlers (`<area>/api.ts`) get the agent's services from context. A path
-that names no endpoint goes to the agent's raw routes (`agent-requests.ts`), which are not JSON in and out:
+runtime as a layer, never at module level. Handlers (`<area>/api.ts`) get the agent's services from context. What is
+not JSON in and out is served through HttpApi's raw handlers (amended 2026-10-10; these were raw routes of the agent):
 
 - `GET /api/conversations/:id/events` and `GET /api/workspace/events`, the server-sent event streams;
 - `/api/files` and `/api/files/content`, the owner's file bytes;
 - `GET /api/mcp/oauth/callback`, an outbound sign-in coming back, answered with a redirect to Connections (carrying
   `ref` when it failed).
 
-Anything else under `/api` is an envelope 404. The agent's `/inspect` route is outside `/api`, so no browser request
-reaches it; only `/mcp` calls it, for a client that holds `goblin:inspect` (ADR 0024).
+Anything else is an envelope 404. The agent's internal API (`/internal`, amended 2026-10-10) is outside `/api`, so no
+browser request reaches it; only the Worker calls it, `/mcp`'s inspection among it, for a client that holds
+`goblin:inspect` (ADR 0024).
 
 **The owner gate** (`OwnerGate`, `http/api/middleware.ts`) replaces `#owner`. Before the handler, and before HttpApi
 decodes a body, it requires the plan through the agent's `Entitlements` (an active plan is kept for 60 seconds, ADR
@@ -86,11 +87,11 @@ decodes a body, it requires the plan through the agent's `Entitlements` (an acti
 
 ## Durable Object RPC that remains
 
-Five methods serve callers that are not the owner's browser: `askAsClient` and `recentMessages` (inbound `/mcp`),
-`channelDoorbell` (myagent's Telegram doorbell), `mcpEventsWebhook` (signed MCP Events) and `deleteAgentData` (account
-deletion). The first four each run one program through the agent's bridge; `deleteAgentData` erases the owner's
-files, closes the runtime and destroys the object. They still return an encoded `RpcResult` (`http/rpc.ts`), because
-Workers RPC drops error classes. `/inspect` answers the same shape as JSON.
+One method remains (amended 2026-10-10): `deleteAgentData` (account deletion) erases the owner's files, closes the
+runtime and destroys the object, and returns an encoded `RpcResult` (`http/rpc.ts`), because Workers RPC drops error
+classes. The callers that are not the owner's browser (inbound `/mcp`'s ask, recent read and inspection, myagent's
+Telegram doorbell, signed MCP Events) reach the agent through its internal API (`InternalApi`, `/internal`), which the
+Worker calls on the stub's `fetch` with a typed client, behind `InternalGate`.
 
 Deleted at the switch: the 71 owner methods on `PersonalAgent` and `AgentRpcMethods`, `#owner`, `organize/rpc.ts`,
 the Worker's route tables and local body schemas, the route modules of routines, topics, personas, organize and home,
@@ -129,18 +130,17 @@ The differences:
 - **No signed-in layout.** Owner pages render inside `OwnerGate`, which signs a visitor in on the page itself. A
   loader runs ahead of that gate, so it primes and decides nothing (`lib/prime.ts` `primeOwnerRead`).
 - **References.** The envelope adds `ref`, and the web quotes it with every failure (ADR 0037).
-- **Outside the API.** Better Auth's routes, `/health`, `/mcp`, the hooks and the raw routes above keep their own
-  protocols. No OpenAPI document is published yet.
+- **Outside the API.** Better Auth's routes, `/health`, `/mcp` and the hooks keep their own protocols. No OpenAPI document is published yet.
 
 ## Consequences
 
 - Every owner write needs the CSRF header; before, only some areas did. An endpoint's failure body is the envelope,
-  no longer `{ error: Tag, …fields }`; the raw routes and the hooks still answer that older shape.
+  no longer `{ error: Tag, …fields }`; since 2026-10-10 the hooks and the Worker's fallback answer the envelope too.
 - An unknown `/api` path is an envelope 404, and the owner gate admits a request before its body is decoded.
 - Each owner request is one `fetch` from the Worker to the agent, as an RPC call was before. Workers RPC's lost error
   classes no longer matter for the owner.
 - Tests: each group's handlers are served in memory with only the services that area needs
-  (`OwnerHttp.serve(ownerApiOf(Group), handlers)`, `test/http/api/`), and the edge's admission is unit-tested
+  (`served([Group], handlers)` over `AgentHttp.serve`, `test/http/api/fixture.ts`), and the edge's admission is unit-tested
   (`test/http/api/edge.test.ts`). Integration probes call the agent through the typed client over its stub's `fetch`
   (`test/integration/owner-api.ts`), standing where the Worker's admission stood. The web's tests serve the real
   contract in memory (`fakeHttpApi`).

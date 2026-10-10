@@ -10,7 +10,7 @@ flowchart LR
   Web --> Worker[Worker routes]
   Client[MCP client\nClaude Code, agents] -->|Bearer| Worker
   Worker --> Auth[(D1\nBetter Auth)]
-  Worker -->|owner API over fetch, five RPCs| Agent[PersonalAgent DO]
+  Worker -->|owner and internal APIs over fetch, one RPC| Agent[PersonalAgent DO]
   Agent --> Pi[(Pi tables)]
   Agent --> App[(app_* tables\nDrizzle)]
   Agent --> MCP[MyPlan, MyBrowser\nOAuth, refreshed in the DO]
@@ -19,7 +19,8 @@ flowchart LR
 
 ## Worker
 
-`apps/web/src/worker.ts` sends pages to TanStack Start and the routes below to `apps/runtime/src/worker.ts`.
+`apps/web/src/worker.ts` sends pages to TanStack Start and the routes below to `apps/runtime/src/worker.ts`, whose
+handlers are `http/worker.ts`.
 Runtime paths below are relative to `apps/runtime/src/`; browser paths are relative to `apps/web/src/`.
 
 | Path | What happens |
@@ -30,8 +31,9 @@ Runtime paths below are relative to `apps/runtime/src/`; browser paths are relat
 | `/mcp` | goblin's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented, and `goblin:inspect` adds read-only inspection (ADR 0024). |
 | `/api/billing/…`, `/api/clients…`, `/api/client-errors` | The account API, answered in the Worker without waking an agent (see The owner API). |
 | `/api/*` | The owner API: admitted at the Worker's edge, then forwarded to the signed-in user's own agent (see The owner API). |
-| `/hooks/mcp-events/<userId>/<token>` | Signed MCP Events; the user-bound route token is checked before object lookup. |
-| `/hooks/myagent/<userId>/<token>` | Legacy Telegram doorbell fallback for servers without Events. |
+| `/hooks/mcp-events/<userId>/<token>` | Signed MCP Events; the user-bound route token is checked before object lookup, then the agent's internal API takes it (`mcpEvents`). |
+| `/hooks/myagent/<userId>/<token>` | Legacy Telegram doorbell fallback for servers without Events; the internal API's `doorbell`. |
+| anything else, `/internal/*` included | A 404 in the envelope: the internal API is reached only by the Worker, on the agent's stub. |
 | `/hooks/dodo` | Signed payment webhooks (see Plans and payments). |
 
 ## The owner API
@@ -52,15 +54,17 @@ browser crash report, without a session. Every other `/api/*` request is admitte
 5. a body is capped at 64 KiB, except file bytes, which stream through to the agent's own limits;
 6. `AGENTS.getByName(userId).fetch` gets the request with only `content-type`, `content-length`, `accept`,
    `last-event-id`, `x-goblin-request`, `x-goblin-operation` and `x-mcp-caller`, plus the edge's reference in
-   `x-goblin-ref` (the request's cf-ray, or a random id where there is none). Cookies and authorization stay at the
-   edge.
+   `x-goblin-ref` (the request's cf-ray, or a random id where there is none) and `x-goblin-forwarded: owner`. Cookies
+   and authorization stay at the edge. Only an `/api/*` path that is not the account API's is forwarded, as the parsed
+   URL names it; anything else is a 404.
 
 Every answer carries `x-goblin-ref`, `cache-control: no-store` and `nosniff`. Each failed one, the edge's refusals and
 the agent's answers alike, is one `http.failure` log line: route template, method, status, code, reference, the
 browser's request and operation ids, and the agent; never a body.
 
-**The agent** (`PersonalAgent.onRequest`) answers with `OwnerHttp` (`http/api/server.ts`): a router over every group's
-handlers (`http/api/groups.ts`), built once inside the agent's runtime as one of its layers, never at module level.
+**The agent** (`PersonalAgent.onRequest`) answers with `AgentHttp` (`http/api/server.ts`): one router over every group's
+handlers of the owner and internal APIs (`http/api/groups.ts`), built once inside the agent's runtime as one of its
+layers, never at module level.
 Each group's handlers (`HttpApiBuilder.group`) live in their area (`<area>/api.ts`) and read the agent's services
 from context. The `OwnerGate` middleware (`http/api/middleware.ts`) admits every request before its handler,
 and before its body is decoded: the plan through the agent's `Entitlements`, then a renewal of resident authority
@@ -69,7 +73,7 @@ and before its body is decoded: the plan through the agent's `Entitlements`, the
 
 | Group | Paths under `/api` | Handlers |
 | --- | --- | --- |
-| `conversations` | `/conversations`, `/conversations/:id`, and under it `messages`, `threads`, `move`, `stop`, `queue`, `read`, `capabilities`, `composer`, `snapshot`, `history`, `sources` | `chats/api.ts` |
+| `conversations` | `/conversations`, `/conversations/:id`, and under it `messages`, `threads`, `move`, `stop`, `queue`, `read`, `capabilities`, `composer`, `snapshot`, `history`, `sources`, `events` (SSE) | `chats/api.ts` |
 | `inspect` | `GET /conversations/:id/details` | `inspect/api.ts` |
 | `topics` | `/topics`, `/topics/:id` | `topics/api.ts` |
 | `personas` | `/personas`, `/personas/:id` | `personas/api.ts` |
@@ -82,12 +86,14 @@ and before its body is decoded: the plan through the agent's `Entitlements`, the
 | `routines` | `/routines`, `/routines/settings`, `/routines/:id`, and under it `confirm`, `pause`, `run`, `runs` | `routines/api.ts` |
 | `apps` | `/apps`, `/apps/:id`, and under it `launch`, `state`, `call`, `diagnostics` | `apps/api.ts` |
 | `agentApps` | `/agent-apps`, `/agent-apps/:name` | `agent-apps/api.ts` |
-| raw routes | `GET /conversations/:id/events`, `GET /workspace/events`, `/files`, `/files/content`, `GET /mcp/oauth/callback` | `agent-requests.ts` |
+| `workspace` | `GET /workspace/events` (SSE) | `workspace/api.ts` |
+| `files` | `GET /files`, `GET`/`PUT`/`DELETE /files/content` | `files/api.ts` |
 | account (Worker) | `billing`: `/billing/state`, `/billing/checkout`, `/billing/portal`; `clients`: `/clients`, `/clients/:clientId`; `clientErrors`: `/client-errors` | `http/api/account.ts` |
 
-A path no group names goes to the agent's raw routes, which are not JSON in and out: the two event streams (SSE), the
-owner's file bytes, and the MCP OAuth callback, a redirect to Connections that carries `ref` when it failed. Anything
-else is a 404. The agent's `/inspect` route is outside `/api`, so only `/mcp` reaches it (see Inspection).
+What is not JSON in and out is served through HttpApi's raw handlers, all annotated `RenewsResident: false`: the two
+event streams (SSE), the owner's file bytes (streamed both ways, never buffered), and `mcp.oauthCallback`, a redirect
+to Connections that carries `ref` when it failed. A streamed answer owns its body, past the request's scope. Any path
+no endpoint names is a 404 in the envelope.
 
 A failure answers the envelope `{ error: { code, message, recovery?, …safe fields, ref? } }`: `code` is the
 `AppError` tag in lower_snake_case, which the typed client decodes back into the class, `message` and `recovery` are
@@ -95,12 +101,15 @@ fixed copy (`ERROR_COPY`), and the safe fields are the ones the UI uses (`reason
 `state`, `subscribe`, `limit`, `resetsAt`, `rpcCode`). A request that does not decode is answered as the old routes
 answered it: a path parameter that does not parse is 404, a body, query or header that does not match is 400. A
 failure from stored data, a response that does not encode, or a defect is a 500 `Internal`, reported with its stack
-locations and never its message. The raw routes and the hooks still answer the older `{ error: Tag, …fields }`.
+locations and never its message. The Worker's own routes (`/mcp`'s failures aside) answer the same envelope.
 
-Five Durable Object RPC methods remain, for callers that are not the owner's browser: `askAsClient` and
-`recentMessages` (inbound `/mcp`), `channelDoorbell` and `mcpEventsWebhook` (the hooks) and `deleteAgentData` (account
-deletion). Workers RPC drops custom error classes, so they return an encoded `RpcResult` (`http/rpc.ts`) that the
-Worker unwraps; `/inspect` answers the same shape as JSON.
+Callers that are not the owner's browser reach the agent through its internal API (`InternalApi`, `/internal`,
+exported only from `@goblin/contracts/internal`), which the Worker calls on the agent's stub with a typed client
+(`inbound/client.ts`) after its own check: `ask`, `recent` and `inspect` (inbound `/mcp`), `doorbell` and `mcpEvents`
+(the hooks). Its gate (`InternalGate`, `http/api/middleware.ts`) refuses a request carrying the owner forward's mark
+and checks the plan the agent keeps unless the endpoint says otherwise (`RequiresPlan`: `inspect`); it never renews
+resident authority. One Durable Object RPC method remains, `deleteAgentData` (account deletion): Workers RPC drops
+custom error classes, so it returns an encoded `RpcResult` (`http/rpc.ts`) that the Worker unwraps.
 
 ### In the browser
 
@@ -167,7 +176,7 @@ forgotten, not revoked remotely. Conversations, credentials, grants and resident
 tasks, submissions, recovery and tool replay. PiHarness and Pi Durable are experimental; Alchemy is a pinned beta and
 Drizzle an RC. `@shadcn/react` is pinned at 0.3.1 and patched (`patches/shadcn-react/README.md`): its MessageScroller
 carries unreleased upstream fixes. The owner reaches the object through its typed API (`onRequest`, see The owner
-API); five RPC methods serve the Worker's other callers.
+API) and the Worker's other callers through the internal one; one RPC method is left, `deleteAgentData`.
 
 The object's constructor migrates the application tables first (synchronously, as the Agents SDK makes its own): the
 lifecycle's start opens Pi, whose apps and run ledger read them, before `onStart`, and an RPC or the runtime may come
@@ -200,7 +209,7 @@ each over everything before it:
   admission reads), conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`), delegation (`Topics`,
   `Personas`, `Invocations`, `Receipts`, `Home`, `Workspace`), capabilities (`Capabilities`), knowledge (`Memories`,
   `Retrieval`), routines (`Routines`, `RoutineRuns`, `RoutineControl`), observability (`Inspection`), apps (`Apps`,
-  `AppEngine`, `Files`) and HTTP (`OwnerHttp`). The MCP host's `McpConnections`, `McpServers`, `McpGrants` and
+  `AppEngine`, `Files`) and HTTP (`AgentHttp`). The MCP host's `McpConnections`, `McpServers`, `McpGrants` and
   `Approvals`, and `Events`, `Skills`, `Learner`, `RoutineUsage` and `Channel`, are served by their start steps.
 
 `AgentServices`, every service a program may require, is derived from the layers, so no area edits a shared union. A
@@ -212,7 +221,7 @@ run.
 
 The object runs its programs through one bridge (`runtime/bridge.ts`): `run` checks the plan
 (`Entitlements.require()`) first, `local` does not (the ledger, budget records, routine gates, diagnose), and `exit`
-returns the program's exit, for `onRequest` and the RPC methods. Every program it runs reports an `Internal` failure
+returns the program's exit, for `onRequest` and `deleteAgentData`. Every program it runs reports an `Internal` failure
 or a defect with its code location (`runtime/instrument.ts`). Pi extensions receive `run` and `local`; a program never
 calls them from inside an Effect, it composes instead.
 
@@ -325,8 +334,8 @@ and input type, then calls Pi's native `abortSubmission` with the conversation I
 placement winning the race returns `already_started` without interrupting the run. Repeated removal returns a settled
 outcome. Only the selected row is busy, failures keep it visible, and native inbox updates refresh every view.
 
-The conversation-scoped routes of the owner API: the `conversations`, `inspect`, `apps` and `agentApps` groups, and the
-agent's raw routes (marked raw). Like every owner write, each write needs the CSRF header.
+The conversation-scoped routes of the owner API: the `conversations`, `inspect`, `workspace`, `apps` and `agentApps`
+groups (a raw handler marked raw). Like every owner write, each write needs the CSRF header.
 
 | Route | Purpose |
 | --- | --- |
@@ -1168,8 +1177,8 @@ without changing it or calling a model. The queries are in `contracts/src/inspec
   result: the operation's timeline (with its turn when it ran one) and `related`, the operations it came from and
   led to.
 
-The agent answers them on its internal `/inspect` route as the RPC result shape (`agent-requests.ts`,
-`inspect/request.ts`), which only `/mcp` calls, for a client that holds `goblin:inspect` (see Inbound MCP). The owner's
+The agent answers them on its internal API (`POST /internal/inspect` with `{ query }`, no plan needed), which only
+`/mcp` calls, for a client that holds `goblin:inspect` (see Inbound MCP). The owner's
 own app reads `details` through the owner API (`GET /api/conversations/:id/details`, the `inspect` group), for a
 message's Details sheet.
 

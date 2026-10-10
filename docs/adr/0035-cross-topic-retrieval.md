@@ -95,7 +95,7 @@ When it abstains, `search_chats` and the owner's explicit references remain avai
 Every search records one `app_retrieval_uses` row under a stable id (`tool:<session>:<call id>`, or the automatic
 `auto:<session>:<input entry>`), with the sources as captured. A replayed or re-run tool call finds the first record and returns it unchanged, so the tool is replay-safe.
 `GET /api/conversations/:id/sources` returns the chat's recorded uses that found something, newest first, as
-`SourceUse[]`. The agent object serves it like a chat's snapshot and history (`agent-requests.ts`): only a registered
+`SourceUse[]`. The agent object serves it like a chat's snapshot and history (`chats/api.ts`): only a registered
 chat of the signed-in owner's own agent, so another account sees none of them.
 
 ## Boundaries
