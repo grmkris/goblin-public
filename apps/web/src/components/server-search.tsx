@@ -2,7 +2,7 @@
 // came from; "namespace verified" appears only where the registry checks it. Adding one works as adding by URL.
 import { type SubmitEvent, useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import type { CatalogEntry } from '@goblin/contracts'
+import type { CatalogEntry, CatalogResults } from '@goblin/contracts'
 import { InvalidInput } from '@goblin/contracts/api'
 import { Badge, Button, Input, Spinner } from '@goblin/ui'
 import { optionalCatalogQuery, registriesQuery, registryMutation } from '../mcp/queries.ts'
@@ -143,7 +143,8 @@ function Result({
 type Search =
   | { readonly kind: 'idle' }
   | { readonly kind: 'searching' }
-  | { readonly kind: 'found'; readonly results: readonly CatalogEntry[] }
+  /** `partial`: a registry did not answer, so some matches may be missing. */
+  | { readonly kind: 'found'; readonly results: readonly CatalogEntry[]; readonly partial: boolean }
   | { readonly kind: 'failed'; readonly reason: string }
 
 /** `value` once it has stayed the same for `ms`. */
@@ -156,15 +157,24 @@ function useSettled(value: string, ms: number): string {
   return settled
 }
 
+/** What the search shows for `text`, typed so far, given the read of `settled`, what was typed a moment ago. */
+export function searchOf(
+  text: string,
+  settled: string,
+  read: { readonly isFetching: boolean; readonly error: unknown; readonly data: CatalogResults | undefined },
+): Search {
+  if (text.length < 2) return { kind: 'idle' }
+  if (text !== settled || read.isFetching) return { kind: 'searching' }
+  if (read.error !== null) return { kind: 'failed', reason: messageOf(read.error, 'search the registries') }
+  if (read.data === undefined) return { kind: 'searching' }
+  return { kind: 'found', results: read.data.entries, partial: read.data.partial }
+}
+
 /** The registries' answer for what the owner typed, a moment after they stop typing. */
 function useCatalog(query: string): Search {
   const text = query.trim()
   const settled = useSettled(text, 300)
-  const read = useQuery(optionalCatalogQuery(settled.length < 2 ? undefined : settled))
-  if (text.length < 2) return { kind: 'idle' }
-  if (text !== settled || read.isFetching) return { kind: 'searching' }
-  if (read.error !== null) return { kind: 'failed', reason: messageOf(read.error, 'search the registries') }
-  return read.data === undefined ? { kind: 'searching' } : { kind: 'found', results: read.data.entries }
+  return searchOf(text, settled, useQuery(optionalCatalogQuery(settled.length < 2 ? undefined : settled)))
 }
 
 /** Search the MCP registries; results update as the owner types. */
@@ -211,6 +221,9 @@ export function ServerSearch({
         <p className="server-note" role="alert">
           {search.reason}
         </p>
+      )}
+      {search.kind === 'found' && search.partial && (
+        <p className="server-note">Some registries did not answer, so some servers may be missing.</p>
       )}
       {search.kind === 'found' && search.results.length === 0 && (
         <p className="server-note">No server this agent can reach matches “{query.trim()}”.</p>
