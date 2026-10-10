@@ -6,7 +6,7 @@ import { requirePlan } from '../billing/gates.ts'
 import { requireBudget } from '../budget.ts'
 import { Chats, Conversations } from '../chats/service.ts'
 import { NotFound } from '../http/errors.ts'
-import { recordFlow } from '../organize/flows.ts'
+import { FlowEvents } from '../observability/flows.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { typedTool } from './typed-tool.ts'
 
@@ -66,7 +66,7 @@ export function threadExtension(run: RunProgram) {
             yield* Effect.ignore(requireBudget.pipe(Effect.andThen(conversations.nameIfUntitled(chat))))
             // Only a note actually written is the thread_announce flow; one owed nothing (or announced) records none.
             if (yield* conversations.announce(chat))
-              yield* recordFlow({ flow: 'thread_announce', via: 'system', actor: 'agent', chat, status: 'ok' })
+              yield* FlowEvents.record({ flow: 'thread_announce', via: 'system', actor: 'agent', chat, status: 'ok' })
           })
           // expected: the bridge reports an unexpected failure; a refusal (plan, authority) only means no announce.
           void run(announce).catch(() => undefined)

@@ -21,7 +21,7 @@ import { requireBudget } from '../budget.ts'
 import { Capabilities } from '../capabilities/service.ts'
 import { Conversations } from '../chats/service.ts'
 import { requireResident } from '../mcp/service.ts'
-import { recordFlow } from '../organize/flows.ts'
+import { FlowEvents } from '../observability/flows.ts'
 import { Invocations } from '../personas/service.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { withContext } from './context-tail.ts'
@@ -181,7 +181,7 @@ const settle = (input: Input, state: 'answered' | 'failed' | 'stopped', entry?: 
     const now = yield* epochSeconds
     const settled = yield* (yield* Invocations).settle(input.operationId, input.persona.id, state, now, entry)
     if (!settled) return
-    yield* recordFlow({
+    yield* FlowEvents.record({
       flow: 'persona_answer',
       via: 'system',
       actor: 'persona',

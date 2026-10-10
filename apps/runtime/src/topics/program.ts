@@ -4,7 +4,8 @@ import * as Exit from 'effect/Exit'
 import { stopChat } from '../agent-program.ts'
 import { Conversations } from '../chats/service.ts'
 import type { AppError } from '../http/errors.ts'
-import { failedFlow, recordFlow, viaOf } from '../organize/flows.ts'
+import { viaOf } from '../organize/flows.ts'
+import { FlowEvents, failedFlow, withFlow } from '../observability/flows.ts'
 import type { NewReceipt } from '../organize/receipts.ts'
 import { Receipts } from '../organize/service.ts'
 import type { TopicActor } from './registry.ts'
@@ -42,9 +43,11 @@ export const createTopic = (input: CreateTopic, provenance: Provenance | TopicAc
         afterRevision: made.topic.revision,
         operationId: `topic.create:${input.operationId}`,
       })
-    yield* recordFlow({ ...flow, topic: made.topic.id, status: made.created ? 'ok' : 'replayed' })
-    return made.topic
-  }).pipe(Effect.tapError((error) => recordFlow({ ...flow, ...failedFlow(error) })))
+    return made
+  }).pipe(
+    withFlow(flow, (made) => ({ topic: made.topic.id, status: made.created ? 'ok' : 'replayed' })),
+    Effect.map((made) => made.topic),
+  )
 }
 
 /**
@@ -77,7 +80,7 @@ export const updateTopic = (id: number, change: UpdateTopic, provenance: Provena
     const failed = stops.find(Exit.isFailure)
     if (failed !== undefined) return yield* Effect.failCause(failed.cause)
     // An archive asked again stops the chats again, as a replay of the first.
-    yield* recordFlow({
+    yield* FlowEvents.record({
       ...archive,
       count: stops.length,
       status: before.archivedAt === undefined ? 'ok' : 'replayed',
@@ -85,7 +88,7 @@ export const updateTopic = (id: number, change: UpdateTopic, provenance: Provena
     return after
   })
   return change.archived === true
-    ? program.pipe(Effect.tapError((error) => recordFlow({ ...archive, ...failedFlow(error) })))
+    ? program.pipe(Effect.tapError((error) => FlowEvents.record({ ...archive, ...failedFlow(error) })))
     : program
 }
 

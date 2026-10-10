@@ -19,17 +19,15 @@ type Ports = {
 
 /** One answer's delivery to Telegram as a flow (ADR 0024): its turn, how many messages it took, and its failure. */
 const deliveryFlow = (reply: DeliveredReply) =>
-  FlowEvents.use((flows) =>
-    flows.record({
-      flow: 'telegram_delivery',
-      via: 'telegram',
-      actor: 'agent',
-      operationId: reply.operationId,
-      count: reply.pieces,
-      status: reply.errorType === undefined ? 'ok' : 'error',
-      ...(reply.errorType === undefined ? {} : { errorType: reply.errorType }),
-    }),
-  )
+  FlowEvents.record({
+    flow: 'telegram_delivery',
+    via: 'telegram',
+    actor: 'agent',
+    operationId: reply.operationId,
+    count: reply.pieces,
+    status: reply.errorType === undefined ? 'ok' : 'error',
+    ...(reply.errorType === undefined ? {} : { errorType: reply.errorType }),
+  })
 
 /** The agent's one Telegram pull at a time, in arrival order (`KeyedLock` is FIFO). */
 const PULL_LOCK = 'channel.pull'

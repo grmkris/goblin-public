@@ -23,7 +23,7 @@ import { Channel } from '../channel/service.ts'
 import { ChatOperations, Chats, Conversations } from '../chats/service.ts'
 import { attempt } from '../http/errors.ts'
 import { requireResident } from '../mcp/service.ts'
-import { recordFlow } from '../organize/flows.ts'
+import { FlowEvents } from '../observability/flows.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { authoredContent } from './content.ts'
 import { BACKGROUND, entryId, conversationId as piConversationId } from './context.ts'
@@ -253,7 +253,7 @@ const answers = (relay: Report['relay']): string | undefined => relay.input.pare
  * record its flow again.
  */
 const reportFlow = ({ relay, chat, requestId, failed }: Report) =>
-  recordFlow({
+  FlowEvents.record({
     flow: relay.input.synthesize === true ? 'subagent_synthesize' : 'subagent_report',
     via: 'system',
     actor: 'subagent',

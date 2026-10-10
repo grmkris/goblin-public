@@ -23,10 +23,9 @@ import { MemoriesInstance } from '../memory/memory.ts'
 import { CheapModels } from '../memory/model.ts'
 import type { Models } from '../models.ts'
 import { type AppError, attempt, attemptSync } from '../http/errors.ts'
-import { FlowEvents } from '../observability/flows.ts'
+import { FlowEvents, withFlow } from '../observability/flows.ts'
 import { writeLine } from '../observability/logger.ts'
 import { safeErrorType } from '../observability/report.ts'
-import { failedFlow } from '../organize/flows.ts'
 import { BACKGROUND } from '../pi/context.ts'
 import { TranscriptsInstance } from '../retrieval/index.ts'
 import { syncWith } from '../runtime/boundary.ts'
@@ -245,17 +244,18 @@ const threadStarts = (
     const started = Effect.gen(function* () {
       yield* operations.record(parent, operationId, { kind, origin: 'owner' })
       const now = yield* epochSeconds
-      const { view, existing } = yield* attempt(() => conversations.startThread(parent, operationId, anchor, now))
-      yield* operations.advance(parent, operationId, { state: 'settled', targetChat: view.id })
-      yield* flows.record({ ...flow, chat: view.id, status: existing ? 'replayed' : 'ok' })
-      return view
+      const thread = yield* attempt(() => conversations.startThread(parent, operationId, anchor, now))
+      yield* operations.advance(parent, operationId, { state: 'settled', targetChat: thread.view.id })
+      return thread
     })
     const refused = (error: AppError) =>
-      Effect.andThen(
-        flows.record({ ...flow, ...failedFlow(error) }),
-        operations.advance(parent, operationId, { state: 'refused', reason: safeErrorType(error) }),
-      )
-    return yield* started.pipe(Effect.tapError(refused))
+      operations.advance(parent, operationId, { state: 'refused', reason: safeErrorType(error) })
+    const thread = yield* started.pipe(
+      withFlow(flow, ({ view, existing }) => ({ chat: view.id, status: existing ? 'replayed' : 'ok' })),
+      Effect.provideService(FlowEvents, flows),
+      Effect.tapError(refused),
+    )
+    return thread.view
   })
   const create = Effect.fn('Conversations.create')(function* (input: CreateConversation) {
     const { from, topic, operationId } = input
@@ -288,10 +288,8 @@ const closing = <A, E, R>(
     by === 'owner' ? ({ via: 'app', actor: 'owner' } as const) : ({ via: 'system', actor: 'subagent' } as const)
   const flow = { flow: 'close', chat, ...who } as const
   return close.pipe(
-    Effect.tap((closed) =>
-      flows.record({ ...flow, count: count(closed), status: count(closed) === 0 ? 'replayed' : 'ok' }),
-    ),
-    Effect.tapError((error) => flows.record({ ...flow, ...failedFlow(error) })),
+    withFlow(flow, (closed) => ({ count: count(closed), status: count(closed) === 0 ? 'replayed' : 'ok' })),
+    Effect.provideService(FlowEvents, flows),
   )
 }
 
@@ -305,12 +303,15 @@ const shareBackWith = (
     const flow = { flow: 'share', via: 'tool', actor: 'agent', chat: thread, operationId: requestId } as const
     const shared = Effect.gen(function* () {
       const at = yield* Clock.currentTimeMillis
-      const { chat, write, sharedWith } = yield* attemptSync(() => conversations.shareBack(thread, note, requestId, at))
-      yield* operations.passiveWrite(chat, write)
-      yield* flows.record({ ...flow, parentChat: chat, status: 'ok' })
-      return sharedWith
+      const share = yield* attemptSync(() => conversations.shareBack(thread, note, requestId, at))
+      yield* operations.passiveWrite(share.chat, share.write)
+      return share
     })
-    return yield* shared.pipe(Effect.tapError((error) => flows.record({ ...flow, ...failedFlow(error) })))
+    const { sharedWith } = yield* shared.pipe(
+      withFlow(flow, ({ chat }) => ({ parentChat: chat })),
+      Effect.provideService(FlowEvents, flows),
+    )
+    return sharedWith
   })
 
 const registryWrites = (
@@ -423,14 +424,17 @@ const MovesAdapter = Layer.effect(
           const now = yield* epochSeconds
           const receipt = yield* attempt(() => moves.move(chat, input, now))
           yield* operations.advance(chat, input.operationId, moveEnd(receipt))
-          const status =
-            receipt.state === 'refused'
-              ? ({ status: 'refused', errorType: receipt.reason ?? 'refused' } as const)
-              : ({ status: existing ? 'replayed' : 'ok' } as const)
-          yield* flows.record({ ...flow, ...status })
-          return receipt
+          return { receipt, existing }
         })
-        return yield* moved.pipe(Effect.tapError((error) => flows.record({ ...flow, ...failedFlow(error) })))
+        const settled = yield* moved.pipe(
+          withFlow(flow, ({ receipt, existing }) =>
+            receipt.state === 'refused'
+              ? { status: 'refused', errorType: receipt.reason ?? 'refused' }
+              : { status: existing ? 'replayed' : 'ok' },
+          ),
+          Effect.provideService(FlowEvents, flows),
+        )
+        return settled.receipt
       }),
       moving: Effect.fn('Moves.moving')(function* (chat: string) {
         return yield* attemptSync(() => moves.moving(chat))

@@ -10,7 +10,7 @@ import { updatePersona } from '../personas/program.ts'
 import { Personas } from '../personas/service.ts'
 import { updateTopic } from '../topics/program.ts'
 import { Topics } from '../topics/service.ts'
-import { failedFlow, recordFlow } from './flows.ts'
+import { withFlow } from '../observability/flows.ts'
 import { Receipts } from './service.ts'
 
 const TopicBefore = Schema.NullOr(Schema.Struct({ name: Schema.String, archived: Schema.Boolean }))
@@ -66,9 +66,8 @@ export const undoReceipt = (id: string) => {
     }
     const undone: OrganizeReceipt = yield* receipts.markUndone(id)
     if (undone.undoneAt === undefined) return yield* new InvalidInput({ reason: 'undo' })
-    yield* recordFlow({ ...flow, ...(isTopic ? { topic: target } : {}), status: 'ok' })
     return undone
-  }).pipe(Effect.tapError((error) => recordFlow({ ...flow, ...failedFlow(error) })))
+  }).pipe(withFlow(flow, (undone) => (undone.kind.startsWith('topic.') ? { topic: Number(undone.target) } : {})))
 }
 
 /**

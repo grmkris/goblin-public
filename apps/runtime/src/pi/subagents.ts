@@ -20,7 +20,7 @@ import { HelperExclusions, type HelperExclusion } from '@goblin/contracts'
 import { Capabilities } from '../capabilities/service.ts'
 import { Chats, Conversations } from '../chats/service.ts'
 import { requireResident } from '../mcp/service.ts'
-import { recordFlow } from '../organize/flows.ts'
+import { FlowEvents } from '../observability/flows.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { capabilityOffResult } from './capabilities.ts'
@@ -195,7 +195,7 @@ const callingOperation = (api: Api): Effect.Effect<string | undefined, never, Ag
 const spawned = (session: string, started: boolean, synthesize: boolean, parentOperation: string | undefined) =>
   Effect.gen(function* () {
     const chat = Option.getOrUndefined(yield* (yield* Chats).chatOf(session))
-    yield* recordFlow({
+    yield* FlowEvents.record({
       flow: 'subagent_spawn',
       via: 'tool',
       actor: 'agent',

@@ -42,31 +42,27 @@ const failure = (errorType: string | undefined) => (errorType === undefined ? {}
  * operation admitted before (`replayed`), or an admission that failed (`error`).
  */
 const fireFlow = (firing: Firing, status: FlowStatus, errorType?: string) =>
-  FlowEvents.use((flows) =>
-    flows.record({
-      flow: 'routine_fire',
-      via: VIA[firing.source],
-      actor: firing.source === 'manual' ? 'owner' : 'routine',
-      operationId: firing.operationId,
-      status,
-      ...failure(errorType),
-    }),
-  )
+  FlowEvents.record({
+    flow: 'routine_fire',
+    via: VIA[firing.source],
+    actor: firing.source === 'manual' ? 'owner' : 'routine',
+    operationId: firing.operationId,
+    status,
+    ...failure(errorType),
+  })
 
 /** A run's frozen report into its Topic's Conversation as a flow, under the run's operation. */
 const reportFlow = (record: RoutineRun, topic: number | undefined, status: FlowStatus, errorType?: string) =>
-  FlowEvents.use((flows) =>
-    flows.record({
-      flow: 'routine_report',
-      via: 'system',
-      actor: 'routine',
-      operationId: record.reportRequestId,
-      parentOperation: record.operationId,
-      ...(topic === undefined ? {} : { topic }),
-      status,
-      ...failure(errorType),
-    }),
-  )
+  FlowEvents.record({
+    flow: 'routine_report',
+    via: 'system',
+    actor: 'routine',
+    operationId: record.reportRequestId,
+    parentOperation: record.operationId,
+    ...(topic === undefined ? {} : { topic }),
+    status,
+    ...failure(errorType),
+  })
 
 /**
  * Why a firing is recorded as skipped rather than run: no plan, resident authority off, or today's budget spent. Any

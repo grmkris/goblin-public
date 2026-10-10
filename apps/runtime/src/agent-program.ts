@@ -17,8 +17,7 @@ import { epochSeconds } from './clock.ts'
 import { ChatOperations, Conversations } from './chats/service.ts'
 import { resolveSelections, type ResolvedSelections } from './composer.ts'
 import { Files } from './files/service.ts'
-import type { FlowEvents } from './observability/flows.ts'
-import { failedFlow, recordFlow } from './organize/flows.ts'
+import { type FlowEvents, withFlow } from './observability/flows.ts'
 import { type AppError, InvalidInput, attempt } from './http/errors.ts'
 import type { McpServers, Resident } from './mcp/service.ts'
 import { Invocations, type Personas } from './personas/service.ts'
@@ -120,8 +119,7 @@ export const stopChat = (
     ...(operationId === undefined ? {} : { operationId }),
   } as const
   return AgentInput.use((input) => stopOwner({ ...input.stopping(), thread: chat, operationId })).pipe(
-    Effect.tap((stopped) => recordFlow({ ...flow, count: stopped ? 1 : 0, status: 'ok' })),
-    Effect.tapError((error) => recordFlow({ ...flow, ...failedFlow(error) })),
+    withFlow(flow, (stopped) => ({ count: stopped ? 1 : 0 })),
   )
 }
 
