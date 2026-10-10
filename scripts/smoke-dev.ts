@@ -10,7 +10,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { chmod, stat, writeFile } from 'node:fs/promises'
 import { appChecks } from './smoke-apps.ts'
 import { DevClient, type Step } from './smoke-client.ts'
-import { edgeChecks } from './smoke-edge.ts'
+import { edgeChecks, internalChecks } from './smoke-edge.ts'
 import { delegateReported } from './smoke-entries.ts'
 import { publicSmoke } from './smoke-public.ts'
 import { clientBuild, flowsCheck } from './smoke-release.ts'
@@ -434,6 +434,7 @@ type Receipt = {
   readonly memory: MemoryCheck['memory']
   readonly files: FileCheck['files']
   readonly edge: Awaited<ReturnType<typeof edgeChecks>>['edge']
+  readonly internal: Awaited<ReturnType<typeof internalChecks>>['internal']
   readonly app: 'ok'
   /** The commit the deployed client bundle names, or why it was not checked. */
   readonly build: string
@@ -480,6 +481,7 @@ async function smokeDev(
   const { resident } = await ownerReads(dev)
   const { files } = await fileChecks(dev)
   const { edge } = await edgeChecks(dev)
+  const { internal } = await internalChecks(dev.origin, steps)
   const servers = await serverReports(dev)
   const client = await InboundClient.register(dev)
   try {
@@ -493,7 +495,7 @@ async function smokeDev(
     })
     const model = config.smokeModel ?? 'owner pick'
     const flows = await flowsCheck(config.stage, started)
-    return { stage: config.stage, model, signup, resident, servers, files, edge, build, flows, ...checks }
+    return { stage: config.stage, model, signup, resident, servers, files, edge, internal, build, flows, ...checks }
   } finally {
     // Never leave the throwaway client authorized, whatever failed above.
     // expected: the step list records the revoke's answer; a refusal here must not hide the failure above

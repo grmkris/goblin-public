@@ -1,4 +1,6 @@
-/** First production release: public health, admission, page, metadata and canonical redirect checks. */
+import { internalChecks } from './smoke-edge.ts'
+
+/** First production release: public health, admission, page, metadata, internal-route and canonical redirect checks. */
 type Client = {
   readonly origin: string
   send: (path: string, init?: RequestInit & { readonly owner?: boolean }) => Promise<Response>
@@ -15,6 +17,7 @@ export async function publicSmoke(
   if (signup !== 'invite' || health['mail'] !== true) throw new Error('prod_admission_policy_mismatch')
   const probe = await dev.send('/api/agent/usage', { owner: false })
   if (probe.status !== 401) throw new Error('anonymous_auth_probe_not_refused')
+  await internalChecks(dev.origin, steps)
   await refusedSignup()
   const metadata = await dev.json('/.well-known/oauth-protected-resource', { owner: false })
   if (metadata['resource'] !== `${dev.origin}/mcp`) throw new Error('prod_mcp_resource_mismatch')
