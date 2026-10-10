@@ -1,6 +1,6 @@
 /**
- * A revision of the web app to measure: the checkout itself (`.`), or a commit checked out in a scratch worktree with
- * today's harness copied in. Shared by `../ui-perf.ts` and `../ui-bytes.ts`; runs in Bun, never in the page.
+ * A revision of the web app to measure: the checkout itself (`.`), a prepared checkout elsewhere (an absolute path), or
+ * a commit checked out in a scratch worktree with today's harness copied in. Shared by `../ui-perf.ts` and `../ui-bytes.ts`; runs in Bun, never in the page.
  */
 import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync } from 'node:fs'
@@ -27,6 +27,8 @@ const created: string[] = []
  */
 export function revision(ref: string): Revision {
   if (ref === '.') return { ref, sha: `${git('rev-parse', 'HEAD')}+worktree`, root: REPO }
+  // A prepared checkout elsewhere (a bake-off variant): measured as it stands.
+  if (path.isAbsolute(ref) && existsSync(path.join(ref, 'apps/web'))) return { ref, sha: `dir:${ref}`, root: ref }
   const sha = git('rev-parse', ref)
   const root = path.join(WORKTREES, sha.slice(0, 12))
   if (!existsSync(root)) {
