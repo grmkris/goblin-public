@@ -38,6 +38,17 @@ a prepend. New scroll anchors are the ones not yet handled, wherever they were i
 after the previous item count. Three browser tests cover a persistent load-earlier row, the last page landing as that
 row goes away (same count), and a lead item; each fails without the change.
 
+Applied with `bun patch` directly on `dist/message-scroller/index.js`, **not in `message-scroller.diff` yet** (so a
+regeneration with the script drops it until it is ported into the source diff, and `check:patches` cannot notice): a
+turn that arrives together with more than a screen of its reply (the stream starting again from a snapshot after the
+tab was away, a Telegram turn, a queued one starting) used to stay pinned at the top for the whole stream with the
+jump-to-end arrow on, because the only hand-off from the held turn to following the bottom needed the reserved space
+under it to shrink to 0, and here it was 0 from the start. `followAnsweredTurn` (called after a new turn is pinned and
+after every re-pin) hands off as soon as the held turn has a message row after it and more of the transcript is below
+the fold than in view; a long message of the owner's with no reply yet stays pinned. Proved by
+`heavy bun apps/web/test/ui-follow.ts` (scenarios `same-batch` and `resnapshot`: the newest row ended 2,835px, phone
+4,102px, below the view before). Port it into the source diff, with a browser test, when the diff is next regenerated.
+
 Not in it yet, candidates for the next regeneration: the open PRs #11183 (a held turn jitters while its reply streams,
 when the content briefly shrinks under an exact-fit spacer) and #12029 (Home/PageUp from the end re-arms follow-output
 mid-animation, #12021; a row resizing then pulls the view back, most often a `content-visibility` row, which goblin's
