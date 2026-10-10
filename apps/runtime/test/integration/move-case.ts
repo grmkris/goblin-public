@@ -149,7 +149,7 @@ export async function moveSettledCase(url: string): Promise<void> {
   const before = (await state(url, owner)).sessions
   const operationId = crypto.randomUUID()
   const receipt = decodeReceipt(await (await move(url, owner, '1', entry, operationId)).json())
-  expect(receipt).toMatchObject({ operationId, chat: '1', mode: 'settled', state: 'settled' })
+  expect(receipt).toMatchObject({ operationId, chat: '1', state: 'settled' })
   const thread = receipt.thread ?? ''
   expect((await state(url, owner)).sessions).toBe(before + 1)
   const view = (await views(url, owner)).find((each) => each.id === thread)
@@ -210,7 +210,7 @@ export async function moveRefusedCase(url: string): Promise<void> {
   const runningEntry = await messageId(url, owner, '1', running)
   const streaming = crypto.randomUUID()
   const refused = decodeReceipt(await (await move(url, owner, '1', runningEntry, streaming)).json())
-  expect(refused).toMatchObject({ state: 'refused', reason: 'streaming', mode: 'settled' })
+  expect(refused).toMatchObject({ state: 'refused', reason: 'streaming' })
   await release(url, owner, running)
   await waitEcho(url, owner, '1', running)
   expect(decodeReceipt(await (await move(url, owner, '1', runningEntry, streaming)).json())).toEqual(refused)

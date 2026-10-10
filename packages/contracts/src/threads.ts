@@ -9,15 +9,14 @@ export const MoveToThread = Schema.Struct({ entry: EntryId, operationId: Operati
 export type MoveToThread = typeof MoveToThread.Type
 
 /**
- * What a move did. `swap` moved a running turn (the run continues in the Thread); `settled` moved a finished one.
- * `refused` says why not (for example `streaming` where only settled turns can move, or `not_latest`).
+ * Where a move of a settled turn is: `requested`, `forked` (the Thread's Pi fork exists), `settled` with its `thread`,
+ * or `refused` with why not (for example `streaming`, since only a settled turn moves, or `not_latest`).
  */
 export const MoveReceipt = Schema.Struct({
   operationId: OperationId,
   chat: ChatId,
   thread: Schema.optional(ChatId),
-  mode: Schema.Literals(['swap', 'settled']),
-  state: Schema.Literals(['requested', 'forked', 'swapped', 'settled', 'refused']),
+  state: Schema.Literals(['requested', 'forked', 'settled', 'refused']),
   reason: Schema.optional(Schema.String),
 })
 export type MoveReceipt = typeof MoveReceipt.Type

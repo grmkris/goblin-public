@@ -101,7 +101,7 @@ const services = (calls: Calls) => {
   const moves = fake<ChatMover>({
     move: async (chat, input, now) => {
       calls.push(`move:${chat}@${now}`)
-      return { ...input, chat, mode: 'settled', state: 'refused', reason: 'streaming' }
+      return { ...input, chat, state: 'refused', reason: 'streaming' }
     },
   })
   const harness = harnessOf(calls)

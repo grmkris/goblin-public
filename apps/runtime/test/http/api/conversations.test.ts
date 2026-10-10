@@ -287,7 +287,7 @@ const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) =
   const plans: EntitlementPolicy = { state: () => plan, require: () => plan }
   const registry = fake<ConversationRegistry>({ ...registryReads(), ...registryWrites(db, calls) })
   const mover = fake<ChatMover>({
-    move: async (chat, input) => ({ ...input, chat, mode: 'settled', state: 'settled', thread: NEW }),
+    move: async (chat, input) => ({ ...input, chat, state: 'settled', thread: NEW }),
   })
   const legacy = Layer.mergeAll(
     Layer.succeed(ChatsInstance, new ChatDirectory(db)),
@@ -526,7 +526,6 @@ describe('the conversations API served by the agent', () => {
     expect(await move.json()).toEqual({
       operationId: 'move-1',
       chat: '1',
-      mode: 'settled',
       state: 'settled',
       thread: NEW,
     })

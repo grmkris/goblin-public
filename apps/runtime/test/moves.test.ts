@@ -40,7 +40,6 @@ describe('the moves store (ADR 0034)', () => {
     expect(moveReceipt(refused)).toEqual({
       operationId: 'op-0',
       chat: '1',
-      mode: 'settled',
       state: 'refused',
       reason: 'streaming',
     })
@@ -90,7 +89,6 @@ describe('the moves store (ADR 0034)', () => {
       operationId: 'op-1',
       chat: '1',
       thread: '70',
-      mode: 'settled',
       state: 'settled',
     })
     expect(store.active('1')).toBeUndefined()

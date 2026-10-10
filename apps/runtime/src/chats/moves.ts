@@ -9,10 +9,7 @@ import { appChatMoves, appConversations, appRegistry } from '../storage/schema.t
 
 export type MoveRow = typeof appChatMoves.$inferSelect
 
-/**
- * The states a move is still working through; a chat has at most one move in them (a partial unique index, which also
- * allows `swapped`: the running-turn identity swap was never built, so no move reaches it).
- */
+/** The states a move is still working through; a chat has at most one move in them (a partial unique index). */
 const ACTIVE_MOVE = ['requested', 'forked'] as const
 
 /** What the owner and the web see of a move. */
@@ -20,7 +17,6 @@ export const moveReceipt = (row: MoveRow): MoveReceipt => ({
   operationId: row.operationId,
   chat: row.chatId,
   ...(row.threadChat === null ? {} : { thread: row.threadChat }),
-  mode: row.mode,
   state: row.state,
   ...(row.reason === null ? {} : { reason: row.reason }),
 })
