@@ -1,6 +1,5 @@
 import type { WorkspaceChange, WorkspaceSnapshot } from '@goblin/contracts'
 import * as Context from 'effect/Context'
-import type * as Effect from 'effect/Effect'
 import type * as Stream from 'effect/Stream'
 import type { AppError } from '../http/errors.ts'
 
@@ -22,7 +21,5 @@ export class Workspace extends Context.Service<
      * its own subscription and the watch of Pi's task graph while it runs; both end with it.
      */
     readonly stream: Stream.Stream<WorkspaceEvent, AppError>
-    /** The stream as Server-Sent Events: `event: snapshot`, then `event: change` batches. */
-    readonly events: Effect.Effect<Response>
   }
 >()('goblin/workspace/Workspace') {}

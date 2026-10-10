@@ -21,7 +21,7 @@ import { PiSessions } from '../pi/sessions.ts'
 import { promiseWith } from '../runtime/boundary.ts'
 import { Changes } from '../runtime/changes.ts'
 import { Topics } from '../topics/service.ts'
-import { type Busy, activityOf, moveActivity, sseFrames } from './feed.ts'
+import { type Busy, activityOf, moveActivity } from './feed.ts'
 import { Workspace, type WorkspaceEvent } from './service.ts'
 
 /** What the feed reads, each source's service as it is now. */
@@ -171,8 +171,6 @@ const taskGraph = (
   })
 }
 
-const SSE_HEADERS = { 'cache-control': 'no-cache', 'content-type': 'text/event-stream' }
-
 /**
  * The workspace feed (`Workspace`): the change bus topics of every source it shows, read only while a stream is
  * open, into one `PubSub` each stream subscribes to before it reads its snapshot, so no change between the two is
@@ -231,10 +229,6 @@ export const WorkspaceLive: Layer.Layer<
         )
       }).pipe(reportFailure('workspace.open')),
     )
-    // The response's body runs the stream with the layer's services; a client that goes away interrupts it.
-    const events = Effect.sync(
-      () => new Response(Stream.toReadableStreamWith(sseFrames(stream), context), { headers: SSE_HEADERS }),
-    )
-    return Workspace.of({ stream, events: events.pipe(Effect.withSpan('Workspace.events')) })
+    return Workspace.of({ stream })
   }),
 )
