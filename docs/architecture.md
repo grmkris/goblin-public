@@ -187,12 +187,12 @@ each over everything before it:
   held calls a restart cut off recovered); the cheap models; the chat directory; the memory engine;
   the capability profiles; helper execution restored and the retained Pi filters retooled once; the routine usage
   projection, subscribed to Pi's commits; the conversation registry (main is registered here); the App registry; the
-  transcript index; the mover (a move a restart interrupted finishes in the background, never holding up the start);
+  mover (a move a restart interrupted finishes in the background, never holding up the start);
   every Topic Conversation given memory; skills and the learner; the Telegram channel; and Events, with the routine
   trigger and then the Telegram and skills consumers registered. A stateful object is made once, by its step, and
   shared with the layers that wire it by an instance tag in its own module (`ChatsInstance`, `ConversationsInstance`,
-  `MovesInstance`, `McpHostInstance`, `Cipher`, `ProfilesInstance`, `MemoriesInstance`, `TranscriptsInstance`,
-  `AppsInstance`); programs use the area's services.
+  `MovesInstance`, `McpHostInstance`, `Cipher`, `ProfilesInstance`, `MemoriesInstance`, `AppsInstance`); programs use
+  the area's services.
   The conversation registry tells `conversations.changed` what each write changed, inline (`syncWith` in
   `runtime/boundary.ts`, because it writes from synchronous code inside Promise work); the App registry and the
   workspace feed follow that topic.
@@ -844,10 +844,10 @@ deployed-stage evidence.
 
 ## Cross-Topic retrieval
 
-[ADR 0035](adr/0035-cross-topic-retrieval.md). `TranscriptIndex` (`retrieval/index.ts`, inside the `Retrieval`
-service) keeps an FTS5 index (`unicode61`, `bm25`) over one bounded, redacted excerpt per indexed Pi entry:
-`app_transcript_excerpts`, the external-content `app_transcript_fts` with its triggers, per-session progress in
-`app_transcript_index`, and the frozen sources of each use in `app_retrieval_uses` (migration
+[ADR 0035](adr/0035-cross-topic-retrieval.md). The transcript index (`retrieval/index.ts`, functions of the agent's
+database behind the `Retrieval` service) keeps an FTS5 index (`unicode61`, `bm25`) over one bounded, redacted excerpt
+per indexed Pi entry: `app_transcript_excerpts`, the external-content `app_transcript_fts` with its triggers,
+per-session progress in `app_transcript_index`, and the frozen sources of each use in `app_retrieval_uses` (migration
 `20261026000300_transcript_index`). It reads Pi through `Conversation.entries` in entry-id windows and keeps only
 entries the session owns (`entry.conversationId`), so forked history is indexed once under the chat that wrote it;
 persona forks are skipped. Inputs, answers, share-backs, Persona answers, Delegate results and Topic seeds are

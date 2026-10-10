@@ -74,7 +74,7 @@ answers the same. Then, still under the lock:
    over them (`ChatMemories.truncate` at the memory's size before the message), and its collector skips entries a
    later entry omits, so the turn is never remembered again. The memory builder does not start while the chat has a
    move in flight. The cross-Topic index (ADR 0035) gives the session's entries from the moved message on to the
-   Thread (`TranscriptIndex.reassign`).
+   Thread (`reassignExcerpts`).
 
 Outside the lock (stopping a relay waits for it, and a relay's report waits for that lock), the live relays carrying
 messages to the turn's helpers are chosen once (stored on the row), made again in the Thread with their original

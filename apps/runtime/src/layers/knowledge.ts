@@ -20,18 +20,18 @@ import { CheapModel, CheapModels } from '../memory/model.ts'
 import { Memories, type MemoryLine } from '../memory/service.ts'
 import { memoryModelId, modelOptions } from '../models.ts'
 import { KeyedLock } from '../observability/lock.ts'
-import { TranscriptIndex, TranscriptsInstance, piTranscripts } from '../retrieval/index.ts'
-import { ChatRetrieval, Retrieval, retrievalOver } from '../retrieval/service.ts'
+import { piTranscripts } from '../retrieval/index.ts'
+import { Retrieval, retrievalOver } from '../retrieval/service.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { auxReporter } from '../telemetry/report.ts'
 
-// The knowledge layers. Four are steps of the agent's start, in its order (layers/index.ts): the cheap models (step 3),
-// the memory engine (5), the transcript index (12) and the memory's activation of every Topic Conversation (14). The
-// memory engine and the index are shared with the conversations, Topics and the mover by their instance tags
-// (`MemoriesInstance`, `TranscriptsInstance`). After the start, `KnowledgeLive` serves memory and retrieval: what a
-// memory remembers, how far its view reaches and what a Move forgets over the agent's database, a view placed through
-// the chat's passive write (lane C), and every transcript catch-up on its session's turn of the agent's KeyedLock.
+// The knowledge layers. Three are steps of the agent's start, in its order (layers/index.ts): the cheap models (step
+// 3), the memory engine (5) and the memory's activation of every Topic Conversation (14). The memory engine is shared
+// with the conversations, Topics and the mover by its instance tag (`MemoriesInstance`). After the start,
+// `KnowledgeLive` serves memory and retrieval: what a memory remembers, how far its view reaches and what a Move forgets
+// over the agent's database, a view placed through the chat's passive write, and the transcript index over the agent's
+// database, every catch-up on its session's turn of the agent's KeyedLock.
 
 /**
  * Start step 3: the deployment's cheap model (`GOBLIN_MEMORY_MODEL`), one per housekeeping purpose. Its tokens count in
@@ -72,15 +72,6 @@ export const MemoryEngineLive: Layer.Layer<MemoriesInstance, never, AgentInput |
       return new ChatMemories(deps, options, [input.memory.memory, input.memory.recall])
     }),
   )
-
-/** Start step 12: cross-Topic retrieval's one transcript index (ADR 0035), which a Move to thread also reassigns. */
-export const TranscriptsLive: Layer.Layer<TranscriptsInstance, never, AgentInput | Db> = Layer.effect(
-  TranscriptsInstance,
-  Effect.gen(function* () {
-    const { harness } = yield* AgentInput
-    return new TranscriptIndex(yield* Db, piTranscripts(harness), nowSeconds)
-  }),
-)
 
 /** Start step 14: every Topic Conversation without memory yet is given it, after main is registered (step 10). */
 export const ActivateMemoriesLive: Layer.Layer<never, never, MemoriesInstance> = Layer.effectDiscard(
@@ -135,21 +126,22 @@ const MemoriesLive = Layer.effect(
 )
 
 /**
- * Cross-Topic retrieval over the one transcript index, its rerank on the cheap model, every catch-up under the agent's
- * KeyedLock.
+ * Cross-Topic retrieval (ADR 0035) over the transcript index in the agent's database, Pi's transcripts read through its
+ * harness, its rerank on the cheap model, every catch-up under the agent's KeyedLock.
  */
 const RetrievalLive = Layer.effect(
   Retrieval,
   Effect.gen(function* () {
+    const { harness } = yield* AgentInput
     const cheap = yield* CheapModels
-    const retrieval = new ChatRetrieval(yield* TranscriptsInstance, cheap('retrieval'), nowSeconds)
-    return retrievalOver(retrieval, yield* KeyedLock)
+    const deps = { db: yield* Db, source: piTranscripts(harness), model: cheap('retrieval') }
+    return retrievalOver(deps, yield* KeyedLock)
   }),
 )
 
-/** Lane K's services after the start: memory and retrieval. */
+/** The knowledge services after the start: memory and retrieval. */
 export const KnowledgeLive: Layer.Layer<
   Memories | Retrieval,
   never,
-  Db | Chats | ChatOperations | MemoriesInstance | TranscriptsInstance | CheapModels | KeyedLock
+  AgentInput | Db | Chats | ChatOperations | MemoriesInstance | CheapModels | KeyedLock
 > = Layer.mergeAll(MemoriesLive, RetrievalLive)

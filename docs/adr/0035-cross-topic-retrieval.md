@@ -23,7 +23,7 @@ The additive migration `20261026000300_transcript_index` creates application tab
 `unicode61` is what the spike measured: recall@5 82.9% over 70 labelled positive queries (100% exact-term, 68%
 paraphrase). `trigram` was only probed and stays a later variant.
 
-`TranscriptIndex` (`retrieval/index.ts`) reads Pi only through its public Conversation API (`entries`), in windows of
+The transcript index (`retrieval/index.ts`) reads Pi only through its public Conversation API (`entries`), in windows of
 entry ids from where a session stopped. Pi mints conversation and entry ids from one sequence, so a session's own
 entries all have ids above its own, and inherited (forked) history is filtered out by `entry.conversationId`: each
 entry is indexed once, under the chat whose session wrote it. Persona forks (`role = 'persona'`) are never indexed or

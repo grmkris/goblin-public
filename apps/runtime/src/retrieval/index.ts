@@ -3,13 +3,12 @@ import { RetrievalSource, type SourceUse } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import { and, count, desc, eq, gte, ne, sql } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
-import * as Context from 'effect/Context'
 import * as Schema from 'effect/Schema'
 import { BACKGROUND, conversationId, entryId } from '../pi/context.ts'
 import { appConversations } from '../storage/schema.ts'
 import { appRetrievalUses, appTranscriptExcerpts, appTranscriptIndex } from '../storage/retrieval.ts'
 import { type Range, excerptOf, ftsQuery, indexable, mergeRanges } from './text.ts'
-import { searchHits, topicByName, rangeEdge, sourceRows, chatsToIndex, type Hit } from './sql.ts'
+import { searchHits, rangeEdge, sourceRows, type Hit } from './sql.ts'
 
 /** Where the index reads Pi from, injected so the index is tested without Pi. */
 export type TranscriptSource = {
@@ -71,214 +70,164 @@ class UseNotRecorded extends Schema.TaggedError<UseNotRecorded>()('UseNotRecorde
 const decodeSources = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(RetrievalSource)))
 const encodeSources = Schema.encodeSync(Schema.fromJsonString(Schema.Array(RetrievalSource)))
 
+/** The index's database: the agent's SQLite, or a test's. */
+type IndexDb = SQLiteAsyncDatabase<'sync', unknown>
+
+// The owner's transcripts as a full-text index (ADR 0035): an FTS5 (unicode61, bm25) external-content table over one
+// bounded, redacted excerpt per indexed entry, as functions of the agent's database. Each Pi session is read through
+// Pi's API in id windows from where it stopped, and only entries the session owns are kept, so fork-inherited history
+// is indexed once, under its own chat. Persona forks are never indexed. Writes are short synchronous transactions;
+// nothing is held across Pi reads. A session's catch-ups must not overlap: the Retrieval service runs each under that
+// session's turn of the agent's KeyedLock (`retrieval/service.ts`). Times are epoch seconds.
+
+/** The chat a session is registered as and whether it may retrieve automatically (never a persona fork). */
+export const chatForSession = (
+  db: IndexDb,
+  session: string,
+): { readonly chat: string; readonly persona: boolean } | undefined => {
+  const row = db
+    .select({ chat: appConversations.chatId, role: appConversations.role })
+    .from(appConversations)
+    .where(eq(appConversations.piSession, session))
+    .get()
+  return row === undefined ? undefined : { chat: row.chat, persona: row.role === 'persona' }
+}
+
+const indexedThrough = (db: IndexDb, session: string): number | undefined =>
+  db.select().from(appTranscriptIndex).where(eq(appTranscriptIndex.sessionId, session)).get()?.throughEntry
+
+const markChecked = (db: IndexDb, session: string, through: number, now: number): void => {
+  db.insert(appTranscriptIndex)
+    .values({ sessionId: session, throughEntry: through, checkedAt: now })
+    .onConflictDoUpdate({ target: appTranscriptIndex.sessionId, set: { checkedAt: now } })
+    .run()
+}
+
+/** One window's excerpts and the new progress mark, in one short transaction. */
+const writeWindow = (
+  db: IndexDb,
+  place: { readonly session: string; readonly chat: string },
+  entries: readonly EntryRecord[],
+  through: number,
+  now: number,
+): void => {
+  const { session, chat } = place
+  const rows = entries.flatMap((entry) => {
+    const kept = indexable(entry, now)
+    return kept === undefined
+      ? []
+      : [{ entryId: entry.id, sessionId: session, chatId: chat, ...kept, author: kept.author ?? null }]
+  })
+  db.transaction((tx) => {
+    for (const row of rows) tx.insert(appTranscriptExcerpts).values(row).onConflictDoNothing().run()
+    tx.insert(appTranscriptIndex)
+      .values({ sessionId: session, throughEntry: through, checkedAt: now })
+      .onConflictDoUpdate({ target: appTranscriptIndex.sessionId, set: { throughEntry: through, checkedAt: now } })
+      .run()
+  })
+}
+
 /**
- * The owner's transcripts as a full-text index (ADR 0035): an FTS5 (unicode61, bm25) external-content table over one
- * bounded, redacted excerpt per indexed entry. Each Pi session is read through Pi's API in id windows from where it
- * stopped, and only entries the session owns are kept, so fork-inherited history is indexed once, under its own chat.
- * Persona forks are never indexed. Writes are short synchronous transactions; nothing is held across Pi reads. A
- * session's catch-ups must not overlap: the Retrieval service runs each under that session's turn of the agent's
- * KeyedLock (`retrieval/service.ts`).
+ * Indexes the session's own entries after its progress mark, reading at most about `maxEntries` of them: `more` when
+ * it stopped before the session's newest entry, and how many it read. An unregistered session or a persona fork
+ * indexes nothing. Never two at once for one session.
  */
-export class TranscriptIndex<RunResult = unknown> {
-  readonly #db: SQLiteAsyncDatabase<'sync', RunResult>
-  readonly #source: TranscriptSource
-  readonly #now: () => number
-
-  constructor(db: SQLiteAsyncDatabase<'sync', RunResult>, source: TranscriptSource, now: () => number) {
-    this.#db = db
-    this.#source = source
-    this.#now = now
+export async function catchUpTranscript(
+  db: IndexDb,
+  source: TranscriptSource,
+  session: string,
+  limits: { readonly maxEntries: number; readonly now: number },
+): Promise<{ readonly more: boolean; readonly read: number }> {
+  const { maxEntries, now } = limits
+  const chat = chatForSession(db, session)
+  if (chat === undefined || chat.persona) return { more: false, read: 0 }
+  const newest = await source.newest(session)
+  // A session's own entries all have ids above its own: Pi mints conversation and entry ids from one sequence.
+  let through = indexedThrough(db, session) ?? Number(session)
+  if (newest === undefined || through >= newest) {
+    markChecked(db, session, through, now)
+    return { more: false, read: 0 }
   }
-
-  /**
-   * Indexes the session's own entries after its progress mark, reading at most about `maxEntries` of them: `more` when
-   * it stopped before the session's newest entry, and how many it read. An unregistered session or a persona fork
-   * indexes nothing. Never two at once for one session (see the class).
-   */
-  async catchUp(session: string, maxEntries: number): Promise<{ readonly more: boolean; readonly read: number }> {
-    const chat = this.chatFor(session)
-    if (chat === undefined || chat.persona) return { more: false, read: 0 }
-    const newest = await this.#source.newest(session)
-    // A session's own entries all have ids above its own: Pi mints conversation and entry ids from one sequence.
-    let through = this.#through(session) ?? Number(session)
-    if (newest === undefined || through >= newest) {
-      this.#mark(session, through)
-      return { more: false, read: 0 }
-    }
-    let read = 0
-    for (let window = 0; window < WINDOWS && through < newest && read < maxEntries; window += 1) {
-      const upper = Math.min(through + WINDOW, newest)
-      const owned = (await this.#source.entries(session, through + 1, upper)).filter(
-        (entry) => String(entry.conversationId) === session,
-      )
-      this.#write(session, chat.chat, owned, upper)
-      read += owned.length
-      through = upper
-    }
-    return { more: through < newest, read }
-  }
-
-  #mark(session: string, through: number): void {
-    this.#db
-      .insert(appTranscriptIndex)
-      .values({ sessionId: session, throughEntry: through, checkedAt: this.#now() })
-      .onConflictDoUpdate({ target: appTranscriptIndex.sessionId, set: { checkedAt: this.#now() } })
-      .run()
-  }
-
-  /** One window's excerpts and the new progress mark, in one short transaction. */
-  #write(session: string, chat: string, entries: readonly EntryRecord[], through: number): void {
-    const now = this.#now()
-    const rows = entries.flatMap((entry) => {
-      const kept = indexable(entry, now)
-      return kept === undefined
-        ? []
-        : [{ entryId: entry.id, sessionId: session, chatId: chat, ...kept, author: kept.author ?? null }]
-    })
-    this.#db.transaction((tx) => {
-      for (const row of rows) tx.insert(appTranscriptExcerpts).values(row).onConflictDoNothing().run()
-      tx.insert(appTranscriptIndex)
-        .values({ sessionId: session, throughEntry: through, checkedAt: now })
-        .onConflictDoUpdate({ target: appTranscriptIndex.sessionId, set: { throughEntry: through, checkedAt: now } })
-        .run()
-    })
-  }
-
-  /**
-   * The sessions a catch-up of every chat visits, stalest first: open chats, and closed ones not read since they
-   * closed.
-   */
-  toIndex(): readonly string[] {
-    return chatsToIndex(this.#db)
-  }
-
-  #through(session: string): number | undefined {
-    return this.#db.select().from(appTranscriptIndex).where(eq(appTranscriptIndex.sessionId, session)).get()
-      ?.throughEntry
-  }
-
-  /** How many excerpts the index holds (bm25 magnitudes grow with it). */
-  size(): number {
-    return this.#db.select({ n: count() }).from(appTranscriptExcerpts).get()?.n ?? 0
-  }
-
-  /** The chat a session is registered as and whether it may retrieve automatically (never a persona fork). */
-  chatFor(session: string): { readonly chat: string; readonly persona: boolean } | undefined {
-    const row = this.#db
-      .select({ chat: appConversations.chatId, role: appConversations.role })
-      .from(appConversations)
-      .where(eq(appConversations.piSession, session))
-      .get()
-    return row === undefined ? undefined : { chat: row.chat, persona: row.role === 'persona' }
-  }
-
-  /**
-   * The newest owner input of the session among its last 100 entries (a long tool loop included), with its id and
-   * indexed text (bounded and redacted); none when they hold no input with text.
-   */
-  async latestInput(session: string): Promise<{ readonly entry: number; readonly text: string } | undefined> {
-    const input = (await this.#source.recent(session, 100)).find((entry) => entry.kind === 'pi.user')
-    const kept = input === undefined ? undefined : indexable(input, this.#now())
-    return input === undefined || kept === undefined ? undefined : { entry: input.id, text: kept.text }
-  }
-
-  /** Entries of `session` from `fromEntry` on now belong to `chat` (a Move to a thread). */
-  reassign(session: string, fromEntry: number, chat: string): void {
-    this.#db
-      .update(appTranscriptExcerpts)
-      .set({ chatId: chat })
-      .where(and(eq(appTranscriptExcerpts.sessionId, session), gte(appTranscriptExcerpts.entryId, fromEntry)))
-      .run()
-  }
-
-  /** The Topic a name or id refers to, archived ones included (a named Topic is searched whatever its state). */
-  topicNamed(name: string): number | undefined {
-    return topicByName(this.#db, name)
-  }
-
-  /**
-   * The best matches for `query` as sources: the top bm25 hits grouped into ±2-entry ranges per chat, at most
-   * `scope.limit` ranges, each with a quoted excerpt of at most 1,200 characters. Lower scores are better.
-   */
-  search(query: string, scope: SearchScope): readonly RetrievalSource[] {
-    const match = ftsQuery(query)
-    if (match === '') return []
-    const hits = searchHits(this.#db, match, scope, HITS)
-    const ranges: Range[] = hits.map((hit) => ({
-      chat: hit.chat,
-      start: rangeEdge(this.#db, hit, 'before', NEIGHBOURS),
-      end: rangeEdge(this.#db, hit, 'after', NEIGHBOURS),
-      score: hit.score,
-    }))
-    const at = this.#now()
-    return mergeRanges(ranges, scope.limit).flatMap((range) => this.#sourceOf(range, hits, at))
-  }
-
-  #sourceOf(range: Range, hits: readonly Hit[], at: number): readonly RetrievalSource[] {
-    const found = sourceRows(this.#db, range)
-    if (found === undefined) return []
-    const inside = new Set(
-      hits.filter((hit) => hit.chat === range.chat && hit.entryId >= range.start && hit.entryId <= range.end),
+  let read = 0
+  for (let window = 0; window < WINDOWS && through < newest && read < maxEntries; window += 1) {
+    const upper = Math.min(through + WINDOW, newest)
+    const owned = (await source.entries(session, through + 1, upper)).filter(
+      (entry) => String(entry.conversationId) === session,
     )
-    const excerpt = excerptOf(found.rows, new Set([...inside].map((hit) => hit.entryId)))
-    return [
-      {
-        topic: found.topic,
-        topicName: found.topicName,
-        chat: range.chat,
-        ...(found.title === null ? {} : { chatTitle: found.title }),
-        entryStart: range.start,
-        entryEnd: range.end,
-        excerpt,
-        retrievedAt: at,
-        score: range.score,
-      },
-    ]
+    writeWindow(db, { session, chat: chat.chat }, owned, upper, now)
+    read += owned.length
+    through = upper
   }
+  return { more: through < newest, read }
+}
 
-  /**
-   * Records what a run used under its stable id, once: a repeat (a replayed tool, a retried request) finds the first
-   * record, which is what it returns. Excerpts are stored as captured (frozen evidence).
-   */
-  record(use: UseRecord): SourceUse {
-    this.#db
-      .insert(appRetrievalUses)
-      .values({
-        id: use.id,
-        chatId: use.chat,
-        sessionId: use.session,
-        inputEntry: use.inputEntry ?? null,
-        mode: use.mode,
-        sources: encodeSources(use.sources),
-        retrievedAt: use.retrievedAt,
-      })
-      .onConflictDoNothing()
-      .run()
-    const stored = this.recorded(use.id)
-    if (stored === undefined) throw new UseNotRecorded()
-    return stored
-  }
+/** How many excerpts the index holds (bm25 magnitudes grow with it). */
+export const indexSize = (db: IndexDb): number => db.select({ n: count() }).from(appTranscriptExcerpts).get()?.n ?? 0
 
-  /** The use recorded under `id`, if any. */
-  recorded(id: string): SourceUse | undefined {
-    const row = this.#db.select().from(appRetrievalUses).where(eq(appRetrievalUses.id, id)).get()
-    return row === undefined ? undefined : useOf(row)
-  }
+/**
+ * The newest owner input of the session among its last 100 entries (a long tool loop included), with its id and
+ * indexed text (bounded and redacted); none when they hold no input with text.
+ */
+export async function latestInput(
+  source: TranscriptSource,
+  session: string,
+  now: number,
+): Promise<{ readonly entry: number; readonly text: string } | undefined> {
+  const input = (await source.recent(session, 100)).find((entry) => entry.kind === 'pi.user')
+  const kept = input === undefined ? undefined : indexable(input, now)
+  return input === undefined || kept === undefined ? undefined : { entry: input.id, text: kept.text }
+}
 
-  /**
-   * The chat's recorded uses that found something, newest first, at most `limit`: what its answers' source strips show.
-   * A search that found nothing stays recorded (its replay is the same empty result) but has no strip.
-   */
-  uses(chat: string, limit = 100): readonly SourceUse[] {
-    return this.#db
-      .select()
-      .from(appRetrievalUses)
-      .where(and(eq(appRetrievalUses.chatId, chat), ne(appRetrievalUses.sources, '[]')))
-      .orderBy(desc(appRetrievalUses.retrievedAt), desc(sql`rowid`))
-      .limit(limit)
-      .all()
-      .map(useOf)
-  }
+/** Entries of `session` from `fromEntry` on now belong to `chat` (a Move to a thread). */
+export const reassignExcerpts = (db: IndexDb, session: string, fromEntry: number, chat: string): void => {
+  db.update(appTranscriptExcerpts)
+    .set({ chatId: chat })
+    .where(and(eq(appTranscriptExcerpts.sessionId, session), gte(appTranscriptExcerpts.entryId, fromEntry)))
+    .run()
+}
+
+const sourceOf = (db: IndexDb, range: Range, hits: readonly Hit[], at: number): readonly RetrievalSource[] => {
+  const found = sourceRows(db, range)
+  if (found === undefined) return []
+  const inside = new Set(
+    hits.filter((hit) => hit.chat === range.chat && hit.entryId >= range.start && hit.entryId <= range.end),
+  )
+  const excerpt = excerptOf(found.rows, new Set([...inside].map((hit) => hit.entryId)))
+  return [
+    {
+      topic: found.topic,
+      topicName: found.topicName,
+      chat: range.chat,
+      ...(found.title === null ? {} : { chatTitle: found.title }),
+      entryStart: range.start,
+      entryEnd: range.end,
+      excerpt,
+      retrievedAt: at,
+      score: range.score,
+    },
+  ]
+}
+
+/**
+ * The best matches for `query` as sources, retrieved at `now`: the top bm25 hits grouped into ±2-entry ranges per
+ * chat, at most `scope.limit` ranges, each with a quoted excerpt of at most 1,200 characters. Lower scores are better.
+ */
+export function searchTranscripts(
+  db: IndexDb,
+  query: string,
+  scope: SearchScope,
+  now: number,
+): readonly RetrievalSource[] {
+  const match = ftsQuery(query)
+  if (match === '') return []
+  const hits = searchHits(db, match, scope, HITS)
+  const ranges: Range[] = hits.map((hit) => ({
+    chat: hit.chat,
+    start: rangeEdge(db, hit, 'before', NEIGHBOURS),
+    end: rangeEdge(db, hit, 'after', NEIGHBOURS),
+    score: hit.score,
+  }))
+  return mergeRanges(ranges, scope.limit).flatMap((range) => sourceOf(db, range, hits, now))
 }
 
 function useOf(row: typeof appRetrievalUses.$inferSelect): SourceUse {
@@ -292,10 +241,44 @@ function useOf(row: typeof appRetrievalUses.$inferSelect): SourceUse {
   }
 }
 
+/** The use recorded under `id`, if any. */
+export const recordedUse = (db: IndexDb, id: string): SourceUse | undefined => {
+  const row = db.select().from(appRetrievalUses).where(eq(appRetrievalUses.id, id)).get()
+  return row === undefined ? undefined : useOf(row)
+}
+
 /**
- * Cross-Topic retrieval's one transcript index (ADR 0035), made at the start (`layers/knowledge.ts`): retrieval reads it
- * and a Move to thread reassigns its rows (ADR 0034).
+ * Records what a run used under its stable id, once: a repeat (a replayed tool, a retried request) finds the first
+ * record, which is what it returns. Excerpts are stored as captured (frozen evidence).
  */
-export class TranscriptsInstance extends Context.Service<TranscriptsInstance, TranscriptIndex>()(
-  'goblin/retrieval/TranscriptsInstance',
-) {}
+export function recordUse(db: IndexDb, use: UseRecord): SourceUse {
+  db.insert(appRetrievalUses)
+    .values({
+      id: use.id,
+      chatId: use.chat,
+      sessionId: use.session,
+      inputEntry: use.inputEntry ?? null,
+      mode: use.mode,
+      sources: encodeSources(use.sources),
+      retrievedAt: use.retrievedAt,
+    })
+    .onConflictDoNothing()
+    .run()
+  const stored = recordedUse(db, use.id)
+  if (stored === undefined) throw new UseNotRecorded()
+  return stored
+}
+
+/**
+ * The chat's recorded uses that found something, newest first, at most `limit`: what its answers' source strips show.
+ * A search that found nothing stays recorded (its replay is the same empty result) but has no strip.
+ */
+export const recordedUses = (db: IndexDb, chat: string, limit = 100): readonly SourceUse[] =>
+  db
+    .select()
+    .from(appRetrievalUses)
+    .where(and(eq(appRetrievalUses.chatId, chat), ne(appRetrievalUses.sources, '[]')))
+    .orderBy(desc(appRetrievalUses.retrievedAt), desc(sql`rowid`))
+    .limit(limit)
+    .all()
+    .map(useOf)

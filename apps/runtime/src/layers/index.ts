@@ -7,7 +7,7 @@ import { ChatDirectoryLive, ConversationLive, ConversationRegistryLive, MoverLiv
 import { CoreLive } from './core.ts'
 import { DelegationLive, HelperExecutionLive } from './delegation.ts'
 import { HttpLive } from './http.ts'
-import { ActivateMemoriesLive, CheapModelsLive, KnowledgeLive, MemoryEngineLive, TranscriptsLive } from './knowledge.ts'
+import { ActivateMemoriesLive, CheapModelsLive, KnowledgeLive, MemoryEngineLive } from './knowledge.ts'
 import { McpEventsLive, McpHostLive, McpLive } from './mcp.ts'
 import { ObservabilityLive } from './observability.ts'
 import { ChannelLive, RoutineUsageLive, RoutinesLive } from './routines.ts'
@@ -35,7 +35,6 @@ const start = (input: AgentInputs) =>
     then(RoutineUsageLive), // 9 routines: await
     then(ConversationRegistryLive), // 10 conversation: main registered
     then(AppRegistryLive), // 11 apps
-    then(TranscriptsLive), // 12 knowledge
     then(MoverLive), // 13 conversation: reconcile, not awaited
     then(ActivateMemoriesLive), // 14 knowledge: await
     then(SkillsLive), // 15 skills

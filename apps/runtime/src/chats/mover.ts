@@ -14,6 +14,7 @@ import { forkThread, stopBuilder, turnEntries, turnRelays } from '../pi/moves.ts
 import type { SubagentKit } from '../pi/subagents.ts'
 import { textBlocks } from '../pi/transcript.ts'
 import { latestTurnStart, runInputEntries } from '../pi/turns.ts'
+import { reassignExcerpts } from '../retrieval/index.ts'
 import { writeLine } from '../observability/logger.ts'
 import { framesOf, safeErrorType } from '../observability/report.ts'
 import { Moves } from './service.ts'
@@ -37,8 +38,6 @@ export type MoverPorts = {
   readonly subagentTools: readonly ToolRegistration[]
   /** Each Topic Conversation's memory: a move forgets the turn there. */
   readonly memories: ChatMemories
-  /** The cross-Topic index (ADR 0035): the session's entries from the moved message on now belong to the Thread. */
-  readonly reassign: (session: string, fromEntry: number, chat: string) => void
   readonly thread: Extension
   readonly recall: Extension
   readonly handover: SubagentKit['handover']
@@ -247,7 +246,8 @@ export class ChatMover {
     }
     this.#store.register(row, thread, now)
     copyExclusions(db, row.chatId, fork, now)
-    this.#ports.reassign(required(row).source, row.messageEntry, fork)
+    // The cross-Topic index (ADR 0035): the session's entries from the moved message on now belong to the Thread.
+    reassignExcerpts(db, required(row).source, row.messageEntry, fork)
     conversations.touched([fork])
   }
 

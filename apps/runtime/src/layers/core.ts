@@ -27,7 +27,6 @@ import type { Cipher } from '../mcp/cipher.ts'
 import type { McpHostInstance } from '../mcp/host.ts'
 import type { MemoriesInstance } from '../memory/memory.ts'
 import type { CheapModels } from '../memory/model.ts'
-import type { TranscriptsInstance } from '../retrieval/index.ts'
 import type { RoutineUsage } from '../routines/service.ts'
 import type { Learner, Skills } from '../skills/service.ts'
 
@@ -129,7 +128,6 @@ type StartServices =
   | Events
   | CheapModels
   | MemoriesInstance
-  | TranscriptsInstance
   | Skills
   | Learner
   | RoutineUsage
