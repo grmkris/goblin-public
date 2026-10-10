@@ -3,7 +3,7 @@ import * as Effect from 'effect/Effect'
 import { afterEach } from 'vitest'
 import { type ChannelCall, type ChannelPorts, type DeliveredReply, telegramChannel } from '../src/channel/channel.ts'
 import { enableEvents, trackReply } from '../src/channel/store.ts'
-import { ChatDirectory, registerPrimary } from '../src/chats/directory.ts'
+import { registerPrimary } from '../src/chats/directory.ts'
 import { UpstreamMcp } from '../src/http/errors.ts'
 import { CredentialCipher } from '../src/mcp/cipher.ts'
 import { chatDatabase } from './chats-sqlite.ts'
@@ -27,7 +27,6 @@ const fixture = (sends: ChannelCall) =>
     const channel = yield* telegramChannel({
       db: sqlite,
       cipher,
-      chats: new ChatDirectory(db),
       telemetry: undefined,
       wake: () => undefined,
     })

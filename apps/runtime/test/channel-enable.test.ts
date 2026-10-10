@@ -2,7 +2,7 @@ import { describe, expect, it } from '@effect/vitest'
 import * as Effect from 'effect/Effect'
 import { afterEach } from 'vitest'
 import { type ChannelCall, telegramChannel } from '../src/channel/channel.ts'
-import { ChatDirectory, registerPrimary } from '../src/chats/directory.ts'
+import { registerPrimary } from '../src/chats/directory.ts'
 import { UpstreamMcp } from '../src/http/errors.ts'
 import { CredentialCipher } from '../src/mcp/cipher.ts'
 import { chatDatabase } from './chats-sqlite.ts'
@@ -28,7 +28,6 @@ const fixture = (pages: number, subscribe: unknown = { status: 'subscribed' }) =
       // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
       db: db as never,
       cipher,
-      chats: new ChatDirectory(db),
       telemetry: undefined,
       wake: () => undefined,
     })

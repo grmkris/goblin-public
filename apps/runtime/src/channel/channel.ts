@@ -10,7 +10,7 @@ import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import * as Semaphore from 'effect/Semaphore'
-import type { ChatDirectory } from '../chats/directory.ts'
+import { chatSession, operationSession, primaryChat } from '../chats/directory.ts'
 import { type AppError, InvalidInput, UpstreamMcp, attempt, toAppError } from '../http/errors.ts'
 import type { CredentialCipher } from '../mcp/cipher.ts'
 import type { McpConnections } from '../mcp/service.ts'
@@ -134,11 +134,10 @@ const readToEnd = Effect.fn('Channel.readToEnd')(function* (call: ChannelCall) {
   return yield* new InvalidInput({ reason: 'the inbox is too long to start from its end' })
 })
 
-/** What the channel is made over: the agent's database and credential cipher, main's directory and its ledger. */
+/** What the channel is made over: the agent's database, its credential cipher and its run ledger. */
 export interface ChannelInput {
   readonly db: DrizzleSqliteDODatabase
   readonly cipher: CredentialCipher
-  readonly chats: ChatDirectory
   readonly telemetry: RunTelemetry | undefined
   /** Asks the agent to send the answers that are ready (a schedule of its own). */
   readonly wake: () => void
@@ -146,7 +145,7 @@ export interface ChannelInput {
 
 /** One message in, one answer out, in the run ledger (ADR 0024), by the turn's operation id. */
 const recorder =
-  ({ chats, telemetry }: ChannelInput) =>
+  ({ db, telemetry }: ChannelInput) =>
   (kind: 'channel.received' | 'channel.reply', operationId: string, startedAt: number, extra: RunAttributes) =>
     Effect.flatMap(Clock.currentTimeMillis, (endedAt) =>
       Effect.sync(() =>
@@ -154,7 +153,7 @@ const recorder =
           id: `${kind === 'channel.received' ? 'channel' : 'reply'}:${operationId}`,
           kind,
           status: RunAttribute.errorType in extra ? 'error' : 'ok',
-          conversationId: chats.operation(chats.primary(), operationId) ?? chats.session(chats.primary()),
+          conversationId: operationSession(db, primaryChat, operationId) ?? chatSession(db, primaryChat),
           operationId,
           startedAt,
           endedAt,

@@ -3,7 +3,6 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { creditRates } from '../budget-credits.ts'
 import { telegramChannel } from '../channel/channel.ts'
-import { ChatsInstance } from '../chats/directory.ts'
 import { Channel } from '../channel/service.ts'
 import { attempt, attemptSync } from '../http/errors.ts'
 import { Cipher } from '../mcp/cipher.ts'
@@ -101,10 +100,10 @@ export const RoutineRunsLive: Layer.Layer<RoutineRuns | RoutineUsage, never, Age
 )
 
 /**
- * Start step 16: the Telegram channel, the one instance, over the agent's database, the chat directory and the
- * credential cipher, with its pull's own semaphore.
+ * Start step 16: the Telegram channel, the one instance, over the agent's database and the credential cipher, with its
+ * pull's own semaphore.
  */
-export const ChannelLive: Layer.Layer<Channel, never, AgentInput | Db | Cipher | ChatsInstance> = Layer.effect(
+export const ChannelLive: Layer.Layer<Channel, never, AgentInput | Db | Cipher> = Layer.effect(
   Channel,
   Effect.gen(function* () {
     const { scheduleReplies, telemetry } = yield* AgentInput
@@ -112,7 +111,6 @@ export const ChannelLive: Layer.Layer<Channel, never, AgentInput | Db | Cipher |
     return yield* telegramChannel({
       db,
       cipher: yield* Cipher,
-      chats: yield* ChatsInstance,
       telemetry,
       wake: scheduleReplies,
     })

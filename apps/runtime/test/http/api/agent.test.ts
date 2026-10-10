@@ -10,7 +10,7 @@ import type { EntitlementPolicy } from '../../../src/billing/gates.ts'
 import { ModelBudget, usageLedger } from '../../../src/budget.ts'
 import { telegramChannel } from '../../../src/channel/channel.ts'
 import { Channel } from '../../../src/channel/service.ts'
-import { ChatDirectory, registerPrimary } from '../../../src/chats/directory.ts'
+import { registerPrimary } from '../../../src/chats/directory.ts'
 import { AgentHandlers } from '../../../src/routines/agent-api.ts'
 import { ChatsLive } from '../../../src/layers/conversation.ts'
 import { ModelBudgetLive } from '../../../src/layers/budget.ts'
@@ -25,7 +25,6 @@ const fixture = () => {
   // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
   const sqlite = db as never
   registerPrimary(db, 1)
-  const chats = new ChatDirectory(db)
   const budget = new ModelBudget(usageLedger(sqlite), 100)
   const pinned: string[] = []
   // Choosing a model only puts the primary session on it; nothing else of Pi is reached.
@@ -40,7 +39,7 @@ const fixture = () => {
     Layer.effect(
       Channel,
       // SAFETY: the channel's status and disable read and clear its tables only; the cipher stays unused.
-      telegramChannel({ db: sqlite, cipher: undefined as never, chats, telemetry: undefined, wake: () => undefined }),
+      telegramChannel({ db: sqlite, cipher: undefined as never, telemetry: undefined, wake: () => undefined }),
     ),
     // The channel's tools: the server offers none, so turning the channel on is refused before anything is granted.
     stub(McpServers, { tools: () => Effect.succeed([]) }),

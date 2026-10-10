@@ -5,7 +5,7 @@ import * as Fiber from 'effect/Fiber'
 import { afterEach } from 'vitest'
 import { type ChannelCall, type ChannelPorts, telegramChannel } from '../src/channel/channel.ts'
 import { enableEvents } from '../src/channel/store.ts'
-import { ChatDirectory, registerPrimary } from '../src/chats/directory.ts'
+import { registerPrimary } from '../src/chats/directory.ts'
 import { CredentialCipher } from '../src/mcp/cipher.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 
@@ -30,7 +30,6 @@ const fixture = Effect.gen(function* () {
   const channel = yield* telegramChannel({
     db: sqlite,
     cipher,
-    chats: new ChatDirectory(db),
     telemetry: undefined,
     wake: () => undefined,
   })

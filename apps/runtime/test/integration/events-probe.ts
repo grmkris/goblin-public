@@ -70,7 +70,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
   const { run } = services
   await run(TestClock.setTime(fixture.now))
   const connections = await run(McpConnections)
-  const channel = await Effect.runPromise(telegramChannel({ db, cipher, chats, telemetry, wake: () => undefined }))
+  const channel = await Effect.runPromise(telegramChannel({ db, cipher, telemetry, wake: () => undefined }))
   const eventOptions: EventsOptions = {
     connections,
     store,

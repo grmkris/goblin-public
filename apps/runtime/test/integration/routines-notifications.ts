@@ -12,7 +12,6 @@ import { notifyRoutine } from '../../src/routines/notifications.ts'
 import { ResidentAuthority } from '../../src/resident.ts'
 import { telegramChannel } from '../../src/channel/channel.ts'
 import { enableEvents } from '../../src/channel/store.ts'
-import { ChatDirectory } from '../../src/chats/directory.ts'
 import { Entitlements } from '../../src/billing/gates.ts'
 import { routineRunsOf } from '../../src/layers/routines.ts'
 import { RoutineRuns as RoutineRunsService } from '../../src/routines/service.ts'
@@ -90,7 +89,6 @@ async function setupNotifications(storage: DurableObjectStorage, owner: string) 
   const channel = telegramChannel({
     db,
     cipher: await CredentialCipher.fromBase64(KEY),
-    chats: new ChatDirectory(db),
     telemetry: undefined,
     wake: () => undefined,
   })
