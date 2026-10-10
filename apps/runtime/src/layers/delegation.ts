@@ -1,7 +1,6 @@
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import { ChatsInstance } from '../chats/directory.ts'
 import { Conversations } from '../chats/service.ts'
 import { Home, HomeService } from '../home/service.ts'
 import { Memories } from '../memory/service.ts'
@@ -91,11 +90,10 @@ export const DelegationLive: Layer.Layer<
 > = Layer.unwrap(Effect.map(stores, delegationServices))
 
 /** Start step 7: each helper conversation runs with the execution extensions the agent has now. */
-export const HelperExecutionLive: Layer.Layer<never, never, AgentInput | Db | ChatsInstance> = Layer.effectDiscard(
+export const HelperExecutionLive: Layer.Layer<never, never, AgentInput | Db> = Layer.effectDiscard(
   Effect.gen(function* () {
     const { harness, helperExtensions } = yield* AgentInput
     const db = yield* Db
-    const chats = yield* ChatsInstance
-    yield* Effect.promise(() => restoreHelperExecution(db, harness, helperExtensions, chats))
+    yield* Effect.promise(() => restoreHelperExecution(db, harness, helperExtensions))
   }),
 )

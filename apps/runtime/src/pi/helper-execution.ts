@@ -3,7 +3,7 @@ import type { PiHarness } from 'agents/harness/pi'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import { appConversations } from '../storage/schema.ts'
-import type { ChatDirectory } from '../chats/directory.ts'
+import { chatSession } from '../chats/directory.ts'
 import { BACKGROUND, conversationId } from './context.ts'
 
 /** Registered helpers use the current execution extensions, including after a retained-object reconstruction. */
@@ -11,14 +11,13 @@ export async function restoreHelperExecution(
   db: DrizzleSqliteDODatabase,
   harness: PiHarness,
   extensions: readonly Extension[],
-  chats: ChatDirectory,
 ): Promise<void> {
   const helpers = db.select().from(appConversations).where(eq(appConversations.kind, 'subagent')).all()
   if (helpers.length === 0) return
   const pi = await harness.pi()
   const names = extensions.map((extension) => extension.name).join('\n')
   for (const helper of helpers) {
-    const conversation = await pi.conversation(conversationId(chats.session(helper.chatId)), BACKGROUND)
+    const conversation = await pi.conversation(conversationId(chatSession(db, helper.chatId)), BACKGROUND)
     if (conversation === undefined) continue
     const current = await conversation.agent(BACKGROUND)
     if (current.extensions.map((extension) => extension.name).join('\n') !== names)
