@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { LinkConfirmProvider } from '../../src/components/parts/link-confirm.tsx'
 import { MessageText } from '../../src/components/parts/text-part.tsx'
 import '../../src/styles.css'
 
@@ -12,7 +13,7 @@ const TABLE = [
 ].join('\n')
 const REPLY = ['Here is the comparison.', TABLE, 'And the summary **after** it.'].join('\n\n')
 
-/** Real source components for Markdown behaviour in a browser: images, settling streams. */
+/** Real source components for Markdown behaviour in a browser: images, links, settling streams. */
 function Fixture() {
   const [live, setLive] = useState(true)
   return (
@@ -23,6 +24,9 @@ function Fixture() {
       <section aria-label="Streaming reply">
         <MessageText text={REPLY} live={live} />
       </section>
+      <section aria-label="Reply with a link">
+        <MessageText text="Read [the official guide](https://phish.example/login?next=bank) first." />
+      </section>
       <section aria-label="Reply with an image">
         <MessageText text="The chart: ![quarterly chart](https://images.example/chart.png?d=secret)" />
       </section>
@@ -31,4 +35,9 @@ function Fixture() {
 }
 
 const root = document.getElementById('root')
-if (root) createRoot(root).render(<Fixture />)
+if (root)
+  createRoot(root).render(
+    <LinkConfirmProvider>
+      <Fixture />
+    </LinkConfirmProvider>,
+  )

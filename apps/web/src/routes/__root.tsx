@@ -10,6 +10,7 @@ import {
 import { type ReactNode, useEffect } from 'react'
 import { AppHost } from '../components/apps/host.tsx'
 import { AppLayer } from '../components/apps/stage.tsx'
+import { LinkConfirmProvider } from '../components/parts/link-confirm.tsx'
 import { EphemeralProvider } from '../components/shell/ephemeral-slot.tsx'
 import { ShellNavigation } from '../components/shell/navigation.tsx'
 import { ShellFrame } from '../components/shell/shell.tsx'
@@ -95,7 +96,9 @@ function Shell({ children }: { readonly children: ReactNode }) {
       <ShellNavigation>
         <AppHost>
           <EphemeralProvider>
-            <ShellFrame>{children}</ShellFrame>
+            <LinkConfirmProvider>
+              <ShellFrame>{children}</ShellFrame>
+            </LinkConfirmProvider>
           </EphemeralProvider>
           <AppLayer />
         </AppHost>

@@ -1,9 +1,10 @@
-import { type ReactNode, useState } from 'react'
+import { type MouseEvent, type ReactNode, use, useState } from 'react'
 import { type Components, type ExtraProps, Streamdown, type UrlTransform, useIsCodeFenceIncomplete } from 'streamdown'
 import remarkGfm from 'remark-gfm'
 import { ImageIcon } from 'lucide-react'
 import { blockKind } from '../../lib/fences.ts'
 import { RichBlock } from './blocks.tsx'
+import { LinkConfirm } from './link-confirm.tsx'
 
 /**
  * Streamdown's own renderers, each replaced by its plain element: shadcn/typeset sets Goblin's Markdown, not
@@ -77,15 +78,29 @@ export const safeUrl: UrlTransform = (url) => {
   return end === -1 || SAFE_PROTOCOL.test(url.slice(0, end)) ? url : undefined
 }
 
-/** Links open in a new tab without a referrer. */
-const ChatLink = ({
+/**
+ * A link in a reply: a real link (its address shows on hover and copies), which in the shell asks before it opens
+ * (`LinkConfirm`), on a click or a middle click alike. It opens in a new tab without a referrer.
+ */
+function ChatLink({
   href,
   children,
-}: { readonly href?: string | undefined; readonly children?: ReactNode } & ExtraProps) => (
-  <a href={href} target="_blank" rel="noreferrer noopener">
-    {children}
-  </a>
-)
+}: { readonly href?: string | undefined; readonly children?: ReactNode } & ExtraProps) {
+  const ask = use(LinkConfirm)
+  const confirm =
+    ask === undefined || href === undefined
+      ? undefined
+      : (event: MouseEvent) => {
+          if (event.button > 1) return
+          event.preventDefault()
+          ask(href)
+        }
+  return (
+    <a href={href} target="_blank" rel="noreferrer noopener" onClick={confirm} onAuxClick={confirm}>
+      {children}
+    </a>
+  )
+}
 
 /**
  * An image in a reply: named, with where it is from, and fetched only when the owner asks. A reply cannot make the

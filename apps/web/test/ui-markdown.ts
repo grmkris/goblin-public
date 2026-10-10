@@ -52,6 +52,32 @@ async function image(page: Page, fetched: { url: string; referer: string | undef
   checks.push('an image loads only on request, once, with no referrer')
 }
 
+/** A link asks first, showing where it goes; Cancel opens nothing, Open opens one tab there. */
+async function link(page: Page) {
+  const anchor = page.getByLabel('Reply with a link').getByRole('link', { name: 'the official guide' })
+  assert.equal(await anchor.getAttribute('href'), 'https://phish.example/login?next=bank')
+  const dialog = page.getByRole('dialog', { name: 'Open this link?' })
+  const popups: string[] = []
+  page.context().on('page', (opened) => popups.push(opened.url()))
+  await anchor.click()
+  await dialog.waitFor()
+  assert((await dialog.innerText()).includes('phish.example'))
+  assert((await dialog.innerText()).includes('https://phish.example/login?next=bank'))
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await dialog.waitFor({ state: 'hidden' })
+  await anchor.click({ button: 'middle' })
+  await dialog.waitFor()
+  const popup = page.context().waitForEvent('page')
+  await dialog.getByRole('button', { name: 'Open' }).click()
+  const opened = await popup
+  await opened.waitForLoadState('domcontentloaded')
+  assert.equal(opened.url(), 'https://phish.example/login?next=bank')
+  assert.equal(await opened.evaluate(() => window.opener), null, 'the opened tab cannot reach back')
+  await opened.close()
+  assert.equal(popups.length, 1, 'only Open opened a tab')
+  checks.push('a link asks before it opens (click and middle click), shows its address, opens once without an opener')
+}
+
 const server = await createServer({ configFile: path.join(import.meta.dirname, 'browser/vite.config.ts') })
 await server.listen()
 const origin = server.resolvedUrls?.local[0]
@@ -62,12 +88,16 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' })
     page.on('pageerror', (error) => errors.push(error.message))
     const fetched: { url: string; referer: string | undefined }[] = []
+    await page
+      .context()
+      .route('https://phish.example/**', (route) => route.fulfill({ body: 'phish', contentType: 'text/html' }))
     await page.route('https://images.example/**', async (route) => {
       fetched.push({ url: route.request().url(), referer: (await route.request().allHeaders())['referer'] })
       await route.fulfill({ body: PIXEL, contentType: 'image/png' })
     })
     await page.goto(`${origin}markdown.html`)
     await settling(page)
+    await link(page)
     await image(page, fetched)
     await page.close()
   }
