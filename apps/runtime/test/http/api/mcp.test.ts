@@ -25,8 +25,7 @@ import { MemoryAddedServers, MemoryCredentials, MemoryGrants, MemoryRegistries }
 import { callOwner } from '../../owner-client.ts'
 import { database, get, json, plans, post, serve, served, sqliteDb, stub } from './fixture.ts'
 import { lowLevelServer } from '../../mcp/low-level-server.ts'
-
-const BOARD = 'ui://notes/board.html'
+import { BOARD, boardTools } from '../../mcp/notes-board.ts'
 
 /**
  * A notes server: `open` renders the board App (offered to the model), `move` is the App's own, `delete` stands alone.
@@ -34,17 +33,7 @@ const BOARD = 'ui://notes/board.html'
  */
 const notes = createMcpHandler(() => {
   const server = lowLevelServer({ name: 'notes', version: '1.0.0' }, { capabilities: { tools: {} } })
-  server.setRequestHandler('tools/list', () => ({
-    tools: [
-      { name: 'open', inputSchema: { type: 'object', properties: {} }, _meta: { ui: { resourceUri: BOARD } } },
-      {
-        name: 'move',
-        inputSchema: { type: 'object', properties: {} },
-        _meta: { ui: { resourceUri: BOARD, visibility: ['app'] } },
-      },
-      { name: 'delete', inputSchema: { type: 'object', properties: {} } },
-    ],
-  }))
+  server.setRequestHandler('tools/list', boardTools)
   server.setRequestHandler('tools/call', (request) => ({
     content: [{ type: 'text', text: `called ${request.params.name}` }],
     structuredContent: { tool: request.params.name },

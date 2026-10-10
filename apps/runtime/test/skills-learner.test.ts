@@ -26,6 +26,7 @@ import { servicesOf } from './mcp/runtime.ts'
 import { fake, unread } from './fake.ts'
 import { BACKGROUND } from '../src/pi/context.ts'
 import type { CheapModel } from '../src/memory/model.ts'
+import { draftTools } from './mcp/skill-drafts.ts'
 
 /** What the library fixture received and answers: drafts in order, and the status it reports for each. */
 const library: { drafts: Record<string, unknown>[]; status: 'open' | 'accepted' | 'rejected' } = {
@@ -40,12 +41,7 @@ const skills = createMcpHandler(() => {
   )
   server.setRequestHandler('skills/list', { params: AnyParams }, () => ({ skills: [], ttlMs: 60_000 }))
   server.setRequestHandler('resources/list', () => ({ resources: [] }))
-  server.setRequestHandler('tools/list', () => ({
-    tools: [
-      { name: 'skill_draft', inputSchema: { type: 'object', properties: {} } },
-      { name: 'skill_draft_status', inputSchema: { type: 'object', properties: {} } },
-    ],
-  }))
+  server.setRequestHandler('tools/list', draftTools)
   server.setRequestHandler('tools/call', (request) => {
     if (request.params.name === 'skill_draft') {
       library.drafts.push(request.params.arguments ?? {})

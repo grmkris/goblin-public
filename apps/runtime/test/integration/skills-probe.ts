@@ -29,11 +29,56 @@ import { makePiModels } from '../../src/pi/model.ts'
 import { conversationId } from '../../src/pi/context.ts'
 import type { PiHarness } from 'agents/harness/pi'
 import { lowLevelServer } from '../mcp/low-level-server.ts'
+import { draftTools } from '../mcp/skill-drafts.ts'
 import { servicesOf } from '../mcp/runtime.ts'
 
 /** The draft tools the learner probe's owner granted. */
 const draftTool = (serverId: string, name: string) =>
   serverId === 'myskills' && (name === 'skill_draft' || name === 'skill_draft_status')
+
+/** One skill as a library lists it: its `SKILL.md` at `uri` is the one resource. */
+interface ListedSkill {
+  readonly uri: string
+  readonly frontmatter: { readonly name: string; readonly description: string }
+  readonly resources: readonly { readonly uri: string; readonly digest: string; readonly size: number }[]
+}
+
+/**
+ * A skills library server `name` that lists `entry` and serves `body` as its file, `read` hearing each read; with
+ * `tools`, it also declares tools for the test to answer.
+ */
+function libraryServer(name: string, entry: ListedSkill, body: Uint8Array, tools: boolean, read = () => {}) {
+  const server = lowLevelServer(
+    { name, version: '1' },
+    { capabilities: { resources: {}, ...(tools ? { tools: {} } : {}), extensions: { [SKILLS_EXTENSION]: {} } } },
+  )
+  server.setRequestHandler(
+    'skills/list',
+    { params: Schema.toStandardSchemaV1(Schema.Record(Schema.String, Schema.Unknown)) },
+    () => ({ skills: [entry], ttlMs: 60_000 }),
+  )
+  server.setRequestHandler('resources/list', () => ({ resources: [] }))
+  server.setRequestHandler('resources/templates/list', () => ({ resourceTemplates: [] }))
+  server.setRequestHandler('resources/read', () => {
+    read()
+    return { contents: [{ uri: entry.uri, text: new TextDecoder().decode(body), mimeType: 'text/markdown' }] }
+  })
+  return server
+}
+
+/** The host's options for one skills server `serverId` reached through `fetch`, with signed-out credentials. */
+const managerOver = (
+  state: SqliteSkillState,
+  serverId: string,
+  fetch: McpManagerOptions['fetch'],
+  allows: McpManagerOptions['allows'] = () => false,
+): McpManagerOptions => ({
+  servers: [{ serverId, endpoint: `https://${serverId}.test/mcp` }],
+  skillsEnabled: (enabled) => state.enabled(enabled),
+  allows,
+  auth: () => ({ token: async () => '', onUnauthorized: async () => undefined }),
+  fetch,
+})
 
 /** The connections over `options`, made as the host makes them. */
 export const connectionsLayer = (options: McpManagerOptions) =>
@@ -63,31 +108,12 @@ export async function skillsCacheProbe(storage: DurableObjectStorage) {
     resources: [{ uri, digest, size: body.byteLength }],
   } as const
   let reads = 0
-  const handler = createMcpHandler(() => {
-    const server = lowLevelServer(
-      { name: 'skills-fixture', version: '1' },
-      { capabilities: { resources: {}, extensions: { [SKILLS_EXTENSION]: {} } } },
-    )
-    server.setRequestHandler(
-      'skills/list',
-      { params: Schema.toStandardSchemaV1(Schema.Record(Schema.String, Schema.Unknown)) },
-      () => ({ skills: [entry], ttlMs: 60_000 }),
-    )
-    server.setRequestHandler('resources/list', () => ({ resources: [] }))
-    server.setRequestHandler('resources/templates/list', () => ({ resourceTemplates: [] }))
-    server.setRequestHandler('resources/read', () => {
+  const handler = createMcpHandler(() =>
+    libraryServer('skills-fixture', entry, body, false, () => {
       reads += 1
-      return { contents: [{ uri, text: new TextDecoder().decode(body), mimeType: 'text/markdown' }] }
-    })
-    return server
-  })
-  const manager: McpManagerOptions = {
-    servers: [{ serverId: 'skills', endpoint: 'https://skills.test/mcp' }],
-    skillsEnabled: (serverId) => state.enabled(serverId),
-    allows: () => false,
-    auth: () => ({ token: async () => '', onUnauthorized: async () => undefined }),
-    fetch: (input, init) => handler.fetch(new Request(input, init)),
-  }
+    }),
+  )
+  const manager = managerOver(state, 'skills', (input, init) => handler.fetch(new Request(input, init)))
   state.setEnabled('skills', true, 1)
   const { run, dispose } = skillsOver(manager, state)
   const library = await run(Skills)
@@ -119,16 +145,10 @@ export async function skillsPersistedRead(storage: DurableObjectStorage) {
   const resource = activation.entry.resources[0]
   if (resource === undefined) throw new Error('fixture manifest missing')
   let networkCalls = 0
-  const manager: McpManagerOptions = {
-    servers: [{ serverId: 'skills', endpoint: 'https://skills.test/mcp' }],
-    skillsEnabled: (serverId) => state.enabled(serverId),
-    allows: () => false,
-    auth: () => ({ token: async () => '', onUnauthorized: async () => undefined }),
-    fetch: async () => {
-      networkCalls += 1
-      throw new Error('restart read must use verified persisted bytes')
-    },
-  }
+  const manager = managerOver(state, 'skills', async () => {
+    networkCalls += 1
+    throw new Error('restart read must use verified persisted bytes')
+  })
   const { run, dispose } = skillsOver(manager, state)
   const file = await run(
     Effect.flatMap(Skills, (library) => library.read('cache-session', 'skills:cache-test', 'SKILL.md')),
@@ -161,26 +181,8 @@ export async function skillsLearnerRejectionProbe(storage: DurableObjectStorage,
   let submitted = 0
   let statusCalls = 0
   const handler = createMcpHandler(() => {
-    const server = lowLevelServer(
-      { name: 'myskills-double', version: '1' },
-      { capabilities: { resources: {}, tools: {}, extensions: { [SKILLS_EXTENSION]: {} } } },
-    )
-    server.setRequestHandler(
-      'skills/list',
-      { params: Schema.toStandardSchemaV1(Schema.Record(Schema.String, Schema.Unknown)) },
-      () => ({ skills: [entry], ttlMs: 60_000 }),
-    )
-    server.setRequestHandler('resources/list', () => ({ resources: [] }))
-    server.setRequestHandler('resources/templates/list', () => ({ resourceTemplates: [] }))
-    server.setRequestHandler('resources/read', () => ({
-      contents: [{ uri, text: new TextDecoder().decode(body), mimeType: 'text/markdown' }],
-    }))
-    server.setRequestHandler('tools/list', () => ({
-      tools: [
-        { name: 'skill_draft', inputSchema: { type: 'object', properties: {} } },
-        { name: 'skill_draft_status', inputSchema: { type: 'object', properties: {} } },
-      ],
-    }))
+    const server = libraryServer('myskills-double', entry, body, true)
+    server.setRequestHandler('tools/list', draftTools)
     server.setRequestHandler('tools/call', (request) => {
       if (request.params.name === 'skill_draft') {
         submitted += 1
@@ -191,13 +193,12 @@ export async function skillsLearnerRejectionProbe(storage: DurableObjectStorage,
     })
     return server
   })
-  const manager: McpManagerOptions = {
-    servers: [{ serverId: 'myskills', endpoint: 'https://myskills.test/mcp' }],
-    skillsEnabled: (serverId) => state.enabled(serverId),
-    allows: ({ serverId, capability, name }) => capability === 'tool' && draftTool(serverId, name),
-    auth: () => ({ token: async () => '', onUnauthorized: async () => undefined }),
-    fetch: (input, init) => handler.fetch(new Request(input, init)),
-  }
+  const manager = managerOver(
+    state,
+    'myskills',
+    (input, init) => handler.fetch(new Request(input, init)),
+    ({ serverId, capability, name }) => capability === 'tool' && draftTool(serverId, name),
+  )
   state.setEnabled('myskills', true, 1)
   const receipt = await harness.submit('Run the checksum procedure.', {
     operationId: 'checksum-procedure',

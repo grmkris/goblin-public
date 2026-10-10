@@ -2,24 +2,13 @@ import { createMcpHandler } from '@modelcontextprotocol/server'
 import { describe, expect, it } from 'vitest'
 import { MemoryCredentials, MemoryGrants } from './memory.ts'
 import { lowLevelServer } from './low-level-server.ts'
+import { BOARD, boardTools } from './notes-board.ts'
 import { hostOf } from './manager.ts'
-
-const BOARD = 'ui://notes/board.html'
 
 /** A notes server whose board App uses `open` (offered to the model) and `move` (App-only); `delete` is separate. */
 const notes = createMcpHandler(() => {
   const server = lowLevelServer({ name: 'notes', version: '1.0.0' }, { capabilities: { tools: {} } })
-  server.setRequestHandler('tools/list', () => ({
-    tools: [
-      { name: 'open', inputSchema: { type: 'object', properties: {} }, _meta: { ui: { resourceUri: BOARD } } },
-      {
-        name: 'move',
-        inputSchema: { type: 'object', properties: {} },
-        _meta: { ui: { resourceUri: BOARD, visibility: ['app'] } },
-      },
-      { name: 'delete', inputSchema: { type: 'object', properties: {} } },
-    ],
-  }))
+  server.setRequestHandler('tools/list', boardTools)
   return server
 })
 

@@ -36,23 +36,7 @@ const reply: FlowEvent = {
 describe('flow attributes', () => {
   it('keep only allowlisted keys with values of their closed set or id shape', () => {
     const text = 'Please move my notes about the divorce into a thread'
-    expect(
-      sanitizeAttributes({
-        [RunAttribute.flow]: 'reply',
-        [RunAttribute.flowVia]: 'telegram',
-        [RunAttribute.flowStatus]: 'refused',
-        [RunAttribute.actor]: 'persona',
-        [RunAttribute.origin]: 'routine',
-        [RunAttribute.chat]: '12',
-        [RunAttribute.parentChat]: '1',
-        [RunAttribute.topic]: 3,
-        [RunAttribute.parentOperation]: 'owner:op-6',
-        [RunAttribute.count]: 0,
-        [RunAttribute.personaOrder]: 'parallel',
-        [RunAttribute.synthesize]: true,
-        'goblin.message': text,
-      }),
-    ).toEqual({
+    const kept = {
       [RunAttribute.flow]: 'reply',
       [RunAttribute.flowVia]: 'telegram',
       [RunAttribute.flowStatus]: 'refused',
@@ -65,7 +49,8 @@ describe('flow attributes', () => {
       [RunAttribute.count]: 0,
       [RunAttribute.personaOrder]: 'parallel',
       [RunAttribute.synthesize]: true,
-    })
+    }
+    expect(sanitizeAttributes({ ...kept, 'goblin.message': text })).toEqual(kept)
   })
 
   it('drop free text and out-of-shape values instead of coercing them', () => {

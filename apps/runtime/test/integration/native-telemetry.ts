@@ -6,6 +6,15 @@ import { type NativeCase, probeOf } from './native-case.ts'
 /** A vitest matcher where an object property expects a value: vitest types matchers `any`, this one `unknown`. */
 const like = (matcher: unknown): unknown => matcher
 
+/**
+ * The problems the default view keeps, newest first: the actionable ones, however many quieter rows (waits, bounded
+ * memory completions) were recorded after them.
+ */
+const actionable = () =>
+  ['filter:gap', 'filter:empty', 'filter:cutoff', 'filter:unresolved', 'filter:aux-failure'].map((id) =>
+    expect.objectContaining({ id }),
+  )
+
 /** The run ledger a real turn leaves in the agent's SQLite, its inspection over it, and the restart sweep (ADR 0024). */
 async function telemetryChecks(base: string): Promise<void> {
   const result = await probeOf(base, 'telemetry', Schema.Unknown)
@@ -124,36 +133,14 @@ async function telemetryChecks(base: string): Promise<void> {
         ),
       },
     },
-    incomplete: {
-      ok: true,
-      value: {
-        problems: [
-          expect.objectContaining({ id: 'filter:gap' }),
-          expect.objectContaining({ id: 'filter:empty' }),
-          expect.objectContaining({ id: 'filter:cutoff' }),
-          expect.objectContaining({ id: 'filter:unresolved' }),
-          expect.objectContaining({ id: 'filter:aux-failure' }),
-        ],
-      },
-    },
+    incomplete: { ok: true, value: { problems: actionable() } },
     problems: {
       ok: true,
       value: {
         problems: like(expect.arrayContaining([expect.objectContaining({ id: 'probe:left', status: 'interrupted' })])),
       },
     },
-    paged: {
-      ok: true,
-      value: {
-        problems: [
-          expect.objectContaining({ id: 'filter:gap' }),
-          expect.objectContaining({ id: 'filter:empty' }),
-          expect.objectContaining({ id: 'filter:cutoff' }),
-          expect.objectContaining({ id: 'filter:unresolved' }),
-          expect.objectContaining({ id: 'filter:aux-failure' }),
-        ],
-      },
-    },
+    paged: { ok: true, value: { problems: actionable() } },
     pagedAll: {
       ok: true,
       value: {
