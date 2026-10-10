@@ -74,7 +74,14 @@ export const inboundServer = (agent: ClientAgentPort): McpServer => {
       inputSchema: standard(RecentInput),
       annotations: { readOnlyHint: true },
     },
-    async (input) => text({ messages: await agent.recent(input.limit ?? 20) }),
+    async (input) => {
+      try {
+        return text({ messages: await agent.recent(input.limit ?? 20) })
+      } catch (cause) {
+        // expected: the failure is the tool's error result, its tag and safe fields only (tools.ts).
+        return failed(cause)
+      }
+    },
   )
   if (agent.inspect !== undefined) registerInspection(server, agent.inspect)
   return server

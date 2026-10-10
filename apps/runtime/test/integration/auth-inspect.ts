@@ -199,6 +199,9 @@ export async function inspectAuthCase(base: string) {
     const refused = await client.callTool({ name: 'ask_agent', arguments: { input: 'hello' } })
     expect(refused.isError).toBe(true)
     expect(JSON.stringify(refused.content)).toContain('SubscriptionRequired')
+    const unpaid = await client.callTool({ name: 'get_recent_messages', arguments: {} })
+    expect(unpaid.isError).toBe(true)
+    expect(JSON.stringify(unpaid.content)).toContain('SubscriptionRequired')
   } finally {
     await client.close()
   }
@@ -221,8 +224,16 @@ export async function inspectAuthCase(base: string) {
   expect(inspection(await toolsOf(base, refreshed.access_token))).toEqual([])
   expect(inspection(await toolsOf(base, narrowed.access))).toEqual([])
 
-  // Revoking the client in Settings (an account with a plan) ends every token.
+  // With a plan, reading main's newest messages works; revoking the client in Settings then ends every token.
   await call(base, owner, '/__test/billing/override', { userId: owner.userId, dailyCredits: 1000 })
+  const reading = await connect(base, narrowed.access)
+  try {
+    const recent = await reading.callTool({ name: 'get_recent_messages', arguments: { limit: 5 } })
+    expect(recent.isError, JSON.stringify(recent)).toBeFalsy()
+    expect(JSON.stringify(recent.content)).toContain('messages')
+  } finally {
+    await reading.close()
+  }
   const revoked = await fetch(`${base}/api/clients/${clientId}`, {
     method: 'DELETE',
     headers: { cookie: owner.cookie, origin: APP, 'x-goblin-csrf': '1', 'cf-connecting-ip': owner.ip },
