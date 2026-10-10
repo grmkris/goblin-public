@@ -18,7 +18,7 @@ import type { RoutineController } from '../routines/controller.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { type ChatDirectory, SessionId } from './directory.ts'
-import { epochSeconds } from './instance.ts'
+import { epochSeconds } from '../clock.ts'
 import {
   type ReceiptChange,
   type ReceiptInput,

@@ -1,4 +1,3 @@
-import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { AgentAppsLive } from '../agent-apps/live.ts'
@@ -6,7 +5,7 @@ import type { AppEngine } from '../agent-apps/service.ts'
 import { type AppOrigin, AppRegistry, AppsInstance } from '../apps/registry.ts'
 import { Apps } from '../apps/service.ts'
 import { ChatsInstance } from '../chats/directory.ts'
-import { nowSeconds as clockSeconds } from '../clock.ts'
+import { epochSeconds, nowSeconds as clockSeconds } from '../clock.ts'
 import { FilesLive } from '../files/live.ts'
 import type { Files } from '../files/service.ts'
 import { attempt, attemptSync } from '../http/errors.ts'
@@ -15,8 +14,6 @@ import { syncWith } from '../runtime/boundary.ts'
 import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
-
-const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
 
 /**
  * Start step 11: the one App registry. Closing a conversation (`conversations.changed`) closes its MCP Apps, and an
@@ -60,13 +57,13 @@ export const appsOver = (registry: AppRegistry, changes: Changes['Service']) => 
       return yield* attemptSync(() => registry.placement(id))
     }),
     register: Effect.fn('Apps.register')(function* (session: string, callId: string, origin: AppOrigin) {
-      const now = yield* nowSeconds
+      const now = yield* epochSeconds
       const app = yield* attemptSync(() => registry.register(session, callId, origin, now))
       yield* changed(app.id)
       return app
     }),
     update: Effect.fn('Apps.update')(function* (id: string, closed: boolean) {
-      const now = yield* nowSeconds
+      const now = yield* epochSeconds
       const app = yield* attemptSync(() => registry.update(id, closed, now))
       yield* changed(app.id)
       return app

@@ -29,6 +29,7 @@ import { authoredContent } from './content.ts'
 import { BACKGROUND, entryId } from './context.ts'
 import { MODEL_PROVIDER } from './model.ts'
 import { ConversationMissing, answerText } from './subagent-relay.ts'
+import { epochSeconds } from '../clock.ts'
 
 /** The task kind of one Persona answering one owner message. */
 export const PERSONA_TURN = 'goblin.persona-turn'
@@ -163,7 +164,6 @@ const terminal = { status: 'terminal', outcome: { status: 'completed', result: n
 const failed = (message: string) => ({ status: 'terminal', outcome: { status: 'failed', error: { message } } }) as const
 
 /** The instance clock in epoch seconds, as the invocation rows and the budget keep time. */
-const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
 
 /** How a Persona's answer flow ended: answered, failed, or stopped by the owner (a refusal of the work). */
 const ANSWER_STATUS = {
@@ -178,7 +178,7 @@ const ANSWER_STATUS = {
  */
 const settle = (input: Input, state: 'answered' | 'failed' | 'stopped', entry?: number) =>
   Effect.gen(function* () {
-    const now = yield* nowSeconds
+    const now = yield* epochSeconds
     const settled = yield* (yield* Invocations).settle(input.operationId, input.persona.id, state, now, entry)
     if (!settled) return
     yield* recordFlow({
@@ -203,7 +203,7 @@ const registerFork = (input: Input, fork: ConversationId) =>
 /** What the fork may do before the model is asked: the owner's authority is current and the day's budget is not spent. */
 const mayAnswer = Effect.gen(function* () {
   yield* (yield* Resident).require()
-  yield* (yield* Budget).require(yield* nowSeconds)
+  yield* (yield* Budget).require(yield* epochSeconds)
 })
 
 type Phase<P extends State['phase']> = PhaseHandler<Input, Extract<State, { phase: P }>, State, null, object>

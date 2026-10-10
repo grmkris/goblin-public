@@ -18,6 +18,7 @@ import { type AppCompletion, appServices } from './ports.ts'
 import { AppCodeError, appKey, promised, thrownOf } from './queue.ts'
 import { AppEngine } from './service.ts'
 import { readJobInput } from './stored.ts'
+import { epochSeconds } from '../clock.ts'
 
 /** A step of the engine in the service's error channel, mapped as the programs' `attempt` did. */
 
@@ -151,9 +152,7 @@ const completion = (input: AgentInputs): AppCompletion => {
       const spent: TokenUse[] = []
       const model = new CheapModel(pi.models, id, (use) => void spent.push(use), report)
       const record = Effect.suspend(() =>
-        Effect.forEach(spent, (use) =>
-          Effect.flatMap(Clock.currentTimeMillis, (millis) => budget.record(use, Math.floor(millis / 1000), id)),
-        ),
+        Effect.forEach(spent, (use) => Effect.flatMap(epochSeconds, (now) => budget.record(use, now, id))),
       )
       return yield* promised(() => appAnswer(model.complete(system, prompt, maxTokens))).pipe(Effect.ensuring(record))
     })

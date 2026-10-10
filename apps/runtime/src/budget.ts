@@ -1,12 +1,12 @@
 import type { UsageToday } from '@goblin/contracts'
 import { eq, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import * as Clock from 'effect/Clock'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import { type CreditRates, DEFAULT_RATES, type TokenUse, milliCredits, totalTokens } from './budget-credits.ts'
 import { type AppError, BudgetExhausted } from './http/errors.ts'
 import { appUsageDaily } from './storage/schema.ts'
+import { epochSeconds } from './clock.ts'
 
 const DAY_SECONDS = 86_400
 
@@ -107,6 +107,6 @@ export class Budget extends Context.Service<
 >()('goblin/budget/Budget') {}
 
 /** `BudgetExhausted` once the agent has spent today's model budget. */
-export const requireBudget: Effect.Effect<void, AppError, Budget> = Effect.flatMap(Clock.currentTimeMillis, (millis) =>
-  Budget.use((budget) => budget.require(Math.floor(millis / 1000))),
+export const requireBudget: Effect.Effect<void, AppError, Budget> = Effect.flatMap(epochSeconds, (now) =>
+  Budget.use((budget) => budget.require(now)),
 )

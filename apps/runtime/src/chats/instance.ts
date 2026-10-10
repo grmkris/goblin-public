@@ -1,16 +1,11 @@
 import type { PiOperationResult } from 'agents/harness/pi'
-import * as Clock from 'effect/Clock'
 import * as Duration from 'effect/Duration'
 import * as Effect from 'effect/Effect'
 import type * as Option from 'effect/Option'
 import { Budget } from '../budget.ts'
 import { type AppError, toAppError } from '../http/errors.ts'
+import { epochSeconds } from '../clock.ts'
 import { PiSessions } from '../pi/sessions.ts'
-
-/** The Clock's time in epoch seconds, which the conversation programs stamp rows and check the budget with. */
-export const epochSeconds: Effect.Effect<number> = Effect.map(Clock.currentTimeMillis, (millis) =>
-  Math.floor(millis / 1000),
-)
 
 /** Fails with `BudgetExhausted` once today's model budget is spent (ADR 0026). */
 export const withinBudget: Effect.Effect<void, AppError, Budget> = Effect.gen(function* () {

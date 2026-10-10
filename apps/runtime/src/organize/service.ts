@@ -3,7 +3,7 @@ import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import { type AppError, attemptSync } from '../http/errors.ts'
 import { Changes } from '../runtime/changes.ts'
-import { nowSeconds } from './effects.ts'
+import { epochSeconds } from '../clock.ts'
 import type { NewReceipt, OrganizeReceipts, StoredReceipt } from './receipts.ts'
 
 declare module '../runtime/changes.ts' {
@@ -40,7 +40,7 @@ export class Receipts extends Context.Service<
       const changed = (id: string) => changes.publish('receipts.changed', { ids: [id] })
       return Receipts.of({
         record: Effect.fn('Receipts.record')(function* (input: NewReceipt) {
-          const now = yield* nowSeconds
+          const now = yield* epochSeconds
           const receipt = yield* attemptSync(() => store.record(input, now))
           yield* changed(receipt.id)
           return receipt
@@ -52,7 +52,7 @@ export class Receipts extends Context.Service<
           return yield* attemptSync(() => store.get(id))
         }),
         markUndone: Effect.fn('Receipts.markUndone')(function* (id: string) {
-          const now = yield* nowSeconds
+          const now = yield* epochSeconds
           const receipt = yield* attemptSync(() => store.markUndone(id, now))
           yield* changed(receipt.id)
           return receipt

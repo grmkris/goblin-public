@@ -10,7 +10,7 @@ import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { type AppError, attemptSync } from '../http/errors.ts'
-import { nowSeconds } from '../organize/effects.ts'
+import { epochSeconds } from '../clock.ts'
 import { Changes } from '../runtime/changes.ts'
 import type { NewInvocation, PersonaInvocations } from './invocations.ts'
 import type { PersonaActor, PersonaRegistry } from './registry.ts'
@@ -83,13 +83,13 @@ export class Personas extends Context.Service<
           return yield* Effect.sync(() => store.offers(model))
         }),
         create: Effect.fn('Personas.create')(function* (input: CreatePersona, actor: PersonaActor) {
-          const now = yield* nowSeconds
+          const now = yield* epochSeconds
           const made = yield* attemptSync(() => store.create(input, actor, now))
           if (made.created) yield* changed(made.persona.id)
           return made
         }),
         update: Effect.fn('Personas.update')(function* (id: number, change: UpdatePersona, actor: PersonaActor) {
-          const now = yield* nowSeconds
+          const now = yield* epochSeconds
           const result = yield* attemptSync(() => {
             const before = store.get(id)
             return { before, after: store.update(id, change, actor, now) }

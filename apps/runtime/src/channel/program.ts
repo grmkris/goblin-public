@@ -8,6 +8,7 @@ import { Forbidden, InvalidInput, attempt } from '../http/errors.ts'
 import { offersEvents } from '../mcp/connection.ts'
 import type { Consumer } from '../mcp/events/store.ts'
 import { Events, McpConnections, McpGrants, McpServers } from '../mcp/service.ts'
+import { epochSeconds } from '../clock.ts'
 
 const TELEGRAM_EVENTS = ['message.received', 'question.answered']
 
@@ -39,7 +40,7 @@ export const enableTelegram = Effect.fn('channel.enable')(function* (
   for (const name of required) yield* grants.setTool(serverId, name, true)
   if (!modern) {
     const url = hookUrl(appUrl, userId, yield* attempt(() => hookToken(key, userId)))
-    const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
+    const now = yield* epochSeconds
     return yield* channel.enable(serverId, url, channelTool(connections, serverId), now)
   }
   const cursor = yield* channel.startCursor(serverId, channelTool(connections, serverId))
@@ -60,7 +61,7 @@ export const enableTelegram = Effect.fn('channel.enable')(function* (
       handlerKey: 'telegram-inbox',
     })
   }
-  const status = yield* channel.enableEvents(serverId, cursor, Math.floor((yield* Clock.currentTimeMillis) / 1000))
+  const status = yield* channel.enableEvents(serverId, cursor, yield* epochSeconds)
   yield* retirePrevious(events, previous)
   yield* attempt(wake)
   return status

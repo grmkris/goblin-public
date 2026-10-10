@@ -2,6 +2,7 @@ import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { Entitlements, cachedPolicy } from '../billing/gates.ts'
+import { epochSeconds } from '../clock.ts'
 import { ResidentInactive } from '../http/errors.ts'
 import { type Events, Resident } from '../mcp/service.ts'
 import { flowAnalytics } from '../observability/ae.ts'
@@ -46,9 +47,6 @@ const FlowsLive = Layer.unwrap(
   }),
 )
 
-/** Wall-clock seconds, the unit resident authority is kept in. */
-const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
-
 /**
  * The account's plan as the agent checks it, an active one kept a minute (`cachedPolicy`): for the bridge, the owner
  * gate, the MCP host and Events, and every program that reads `Entitlements` when it runs.
@@ -64,24 +62,24 @@ export const ResidentLive: Layer.Layer<Resident, never, Db> = Layer.effect(
   Effect.gen(function* () {
     const db = yield* Db
     const status = Effect.fn('Resident.status')(function* () {
-      const now = yield* nowSeconds
+      const now = yield* epochSeconds
       return yield* Effect.sync(() => residentStatus(db, now))
     })
     return Resident.of({
       status,
       renew: Effect.fn('Resident.renew')(function* () {
-        const now = yield* nowSeconds
+        const now = yield* epochSeconds
         yield* Effect.sync(() => renewResident(db, now))
       }),
       revoke: Effect.fn('Resident.revoke')(function* () {
-        const now = yield* nowSeconds
+        const now = yield* epochSeconds
         return yield* Effect.sync(() => {
           revokeResident(db, now)
           return residentStatus(db, now)
         })
       }),
       enable: Effect.fn('Resident.enable')(function* () {
-        const now = yield* nowSeconds
+        const now = yield* epochSeconds
         return yield* Effect.sync(() => {
           enableResident(db, now)
           return residentStatus(db, now)

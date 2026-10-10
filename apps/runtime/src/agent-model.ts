@@ -1,6 +1,6 @@
 import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
-import { epochSeconds } from './chats/instance.ts'
+import { epochSeconds } from './clock.ts'
 import { attempt } from './http/errors.ts'
 import { Chats } from './chats/service.ts'
 import { Models } from './models.ts'

@@ -1,11 +1,11 @@
 import type { CapabilityTarget, HelperExclusion } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
-import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { CapabilityProfiles, type PiTools, ProfilesInstance } from '../capabilities/profiles.ts'
 import { Capabilities } from '../capabilities/service.ts'
 import { ChatsInstance } from '../chats/directory.ts'
+import { epochSeconds } from '../clock.ts'
 import { attempt } from '../http/errors.ts'
 import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { Db } from '../runtime/db.ts'
@@ -14,9 +14,6 @@ import { AgentInput } from '../runtime/input.ts'
 // Each conversation's switches. Two layers are steps of the agent's start, in its order (layers/index.ts): the
 // capability profiles (step 6), made once and shared by `ProfilesInstance` with the conversations, Topics and the
 // mover, and their one retool (8). `CapabilitiesLive` serves them after the start.
-
-/** Wall-clock seconds, the unit profiles are kept in. */
-const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
 
 /** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
 const retool = (harness: PiHarness) => async (session: string, tools: PiTools) => {
@@ -37,7 +34,7 @@ export const ProfilesLive: Layer.Layer<ProfilesInstance, never, AgentInput | Db 
 export const RetoolLive: Layer.Layer<never, never, ProfilesInstance> = Layer.effectDiscard(
   Effect.gen(function* () {
     const profiles = yield* ProfilesInstance
-    const now = yield* nowSeconds
+    const now = yield* epochSeconds
     yield* Effect.promise(() => profiles.retoolOnce('retool:subagent-config', now))
   }),
 )
@@ -61,19 +58,19 @@ export const CapabilitiesLive: Layer.Layer<Capabilities, never, ProfilesInstance
         return yield* Effect.sync(() => profiles.inherited(thread))
       }),
       set: Effect.fn('Capabilities.set')(function* (session: string, target: CapabilityTarget, on: boolean) {
-        const now = yield* nowSeconds
+        const now = yield* epochSeconds
         yield* Effect.sync(() => profiles.set(session, target, on, now))
       }),
       narrow: Effect.fn('Capabilities.narrow')(function* (session: string, exclusions: readonly HelperExclusion[]) {
-        const now = yield* nowSeconds
+        const now = yield* epochSeconds
         yield* Effect.sync(() => profiles.narrow(session, exclusions, now))
       }),
       copy: Effect.fn('Capabilities.copy')(function* (from: string, to: string) {
-        const now = yield* nowSeconds
+        const now = yield* epochSeconds
         yield* Effect.sync(() => profiles.copy(from, to, now))
       }),
       reset: Effect.fn('Capabilities.reset')(function* (thread: string) {
-        const now = yield* nowSeconds
+        const now = yield* epochSeconds
         yield* attempt(() => profiles.reset(thread, now))
       }),
       configureHelper: Effect.fn('Capabilities.configureHelper')(function* (
@@ -81,7 +78,7 @@ export const CapabilitiesLive: Layer.Layer<Capabilities, never, ProfilesInstance
         session: string,
         exclusions: readonly HelperExclusion[],
       ) {
-        const now = yield* nowSeconds
+        const now = yield* epochSeconds
         yield* attempt(() => profiles.configureHelper(parent, session, exclusions, now))
       }),
       piTools: Effect.fn('Capabilities.piTools')(function* (session: string) {

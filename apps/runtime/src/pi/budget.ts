@@ -1,10 +1,10 @@
 import { GenerationTask, ToolTask, defineExtension, hook } from '@earendil-works/pi-durable'
-import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import { Budget } from '../budget.ts'
 import { writeLine } from '../observability/logger.ts'
 import { reportAndRecover, safeErrorType } from '../observability/report.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
+import { epochSeconds } from '../clock.ts'
 
 /** Why a tool may not run against today's budget, or `open` when it may. */
 export type BudgetVerdict = 'open' | 'exhausted' | 'unsubscribed' | 'failed'
@@ -17,8 +17,6 @@ export const BUDGET_BLOCKS: Readonly<Record<Exclude<BudgetVerdict, 'open'>, stri
   failed: "Today's model budget could not be checked, so this tool was not run. Tell the user, then try again later.",
 }
 
-const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
-
 /**
  * Today's budget as a tool sees it: spent (`BudgetExhausted` or used up), not subscribed (`SubscriptionRequired`), or
  * open. Anything else (auth D1 or the ledger failing) is reported and fails closed as a check that failed, never as a
@@ -26,7 +24,7 @@ const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(mi
  */
 export const budgetVerdict: Effect.Effect<BudgetVerdict, never, Budget> = Effect.gen(function* () {
   const budget = yield* Budget
-  const today = yield* budget.today(yield* nowSeconds)
+  const today = yield* budget.today(yield* epochSeconds)
   return today.used >= today.limit ? ('exhausted' as const) : ('open' as const)
 }).pipe(
   Effect.catchTags({
@@ -57,7 +55,7 @@ export function budgetExtension(local: RunProgram) {
           await local(
             Effect.gen(function* () {
               const budget = yield* Budget
-              yield* budget.record(message.usage, yield* nowSeconds, message.model)
+              yield* budget.record(message.usage, yield* epochSeconds, message.model)
             }),
           )
         },

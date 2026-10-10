@@ -3,7 +3,7 @@ import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import { type AppError, attempt, attemptSync } from '../http/errors.ts'
 import { KeyedLock } from '../observability/lock.ts'
-import { nowSeconds } from '../organize/effects.ts'
+import { epochSeconds } from '../clock.ts'
 import { Changes } from '../runtime/changes.ts'
 import type { TopicActor, TopicRegistry } from './registry.ts'
 
@@ -61,13 +61,13 @@ export class Topics extends Context.Service<
           return yield* attemptSync(() => store.get(id))
         }),
         create: Effect.fn('Topics.create')(function* (input: CreateTopic, actor: TopicActor, seed?: TopicSeedData) {
-          const now = yield* nowSeconds
+          const now = yield* epochSeconds
           const made = yield* lock.withLock('topics.create')(attempt(() => store.create(input, actor, now, seed)))
           yield* changed(made.topic.id)
           return made
         }),
         update: Effect.fn('Topics.update')(function* (id: number, change: UpdateTopic) {
-          const now = yield* nowSeconds
+          const now = yield* epochSeconds
           const result = yield* attemptSync(() => {
             const before = store.get(id)
             return { before, after: store.update(id, change, now) }

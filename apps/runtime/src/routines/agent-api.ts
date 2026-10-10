@@ -1,5 +1,4 @@
 import { OwnerApi } from '@goblin/contracts/api'
-import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { chooseOwnerModel } from '../agent-model.ts'
@@ -8,8 +7,7 @@ import { disableTelegram, enableTelegram } from '../channel/program.ts'
 import { Channel } from '../channel/service.ts'
 import { Models } from '../models.ts'
 import { AgentInput } from '../runtime/input.ts'
-
-const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
+import { epochSeconds } from '../clock.ts'
 
 /**
  * The `agent` group: today's usage, the model and the Telegram channel. Each handler runs the program its Durable
@@ -17,7 +15,7 @@ const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(mi
  */
 export const AgentHandlers = HttpApiBuilder.group(OwnerApi, 'agent', (handlers) =>
   handlers
-    .handle('usage', () => Effect.flatMap(nowSeconds, (now) => Budget.use((budget) => budget.today(now))))
+    .handle('usage', () => Effect.flatMap(epochSeconds, (now) => Budget.use((budget) => budget.today(now))))
     .handle('model', () => Models.use((models) => models.choice))
     .handle('chooseModel', ({ payload }) =>
       AgentInput.use(({ harness, applied }) => chooseOwnerModel(harness, applied, payload.model)),

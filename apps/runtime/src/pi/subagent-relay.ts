@@ -27,6 +27,7 @@ import { recordFlow } from '../organize/flows.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { authoredContent } from './content.ts'
 import { BACKGROUND, entryId, conversationId as piConversationId } from './context.ts'
+import { epochSeconds } from '../clock.ts'
 
 /**
  * The task that carries one message to a subagent and its answer back to the spawner. While one is live in a
@@ -391,7 +392,7 @@ const register = (session: string, parent: string, name: string, exclusions: rea
 const track = (requestId: string, parentOp: string | undefined) =>
   Effect.gen(function* () {
     const chats = yield* Chats
-    const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
+    const now = yield* epochSeconds
     yield* (yield* ChatOperations).record(chats.primary, requestId, {
       kind: 'subagent_report',
       origin: 'agent',
