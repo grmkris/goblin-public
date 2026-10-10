@@ -1,6 +1,6 @@
 // An App as a page of its own (ADR 0020): the main column under a bar with the way back to the chat it belongs to, its
 // stage filling the rest. That is also what an App asking for fullscreen gets.
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import type { AppView } from '@goblin/contracts'
 import {
   Button,
@@ -101,7 +101,7 @@ export function AppPage({ id }: { readonly id: string }) {
     opened.current = true
     show(app)
   }, [app, show])
-  const title = useMemo(() => appNames(apps).get(id), [apps, id]) ?? 'App'
+  const title = appNames(apps).get(id) ?? 'App'
   return (
     <section className="app-page" aria-label={title}>
       <TopBar data-app-cover>

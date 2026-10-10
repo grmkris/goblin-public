@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useMemo, useRef, useState } from 'react'
+import { type RefObject, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useMutation } from '@tanstack/react-query'
 import type { AppContext, ComposerSelection } from '@goblin/contracts'
 import {
@@ -91,11 +91,11 @@ export function useConversation(thread: string, visible = true) {
     }),
   )
   const lease = useRef<Lease | undefined>(undefined)
-  const seen = useRef(visible)
-  seen.current = visible
+  // Whether it is on screen when the stream is taken up; later changes go through the lease below.
+  const visibleNow = useEffectEvent(() => visible)
   useEffect(() => {
     resumeWithThePage()
-    const held = streams.acquire(thread, seen.current, setState)
+    const held = streams.acquire(thread, visibleNow(), setState)
     lease.current = held
     return () => {
       held.release()

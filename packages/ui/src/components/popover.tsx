@@ -32,7 +32,7 @@ function PopoverContent({
   Pick<PopoverPrimitive.Positioner.Props, 'align' | 'alignOffset' | 'side' | 'sideOffset' | 'anchor'> & {
     readonly size?: 'default' | 'panel'
   }) {
-  const padding = React.useMemo(edgePadding, [])
+  const padding = React.useMemo(() => edgePadding(), [])
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Positioner

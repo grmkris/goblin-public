@@ -12,7 +12,7 @@ import {
   useMessageScroller,
 } from '@goblin/ui'
 import { HistoryIcon, ListIcon } from 'lucide-react'
-import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
+import { type RefObject, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { currentTurn, markPositions, viewportBand } from '../lib/turn-map.ts'
 import { glide } from '../lib/motion.ts'
 
@@ -70,7 +70,8 @@ function useTurnGeometry(
   const [geometry, setGeometry] = useState(NOWHERE)
   const layout = useRef<Layout | undefined>(undefined)
   const trackRef = useRef(track)
-  const scrolled = useCallback(() => {
+  // Run from the effects below and the listeners they set up, reading the refs as they are then.
+  const scrolled = useEffectEvent(() => {
     const element = viewport.current
     const current = layout.current
     if (element === null || current === undefined) return
@@ -80,11 +81,11 @@ function useTurnGeometry(
     const { top, size } = viewportBand(scrollTop, clientHeight, current.height, trackRef.current)
     band.current?.setAttribute('y', String(top))
     band.current?.setAttribute('height', String(size))
-  }, [viewport, band])
+  })
   useEffect(() => {
     trackRef.current = track
     scrolled()
-  }, [track, scrolled])
+  }, [track])
   useEffect(() => {
     const element = viewport.current
     const content = element?.querySelector('[data-slot="message-scroller-content"]')
@@ -127,7 +128,7 @@ function useTurnGeometry(
       resize.disconnect()
       rows.disconnect()
     }
-  }, [viewport, ids, scrolled])
+  }, [viewport, ids])
   return geometry
 }
 

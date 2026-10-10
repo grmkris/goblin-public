@@ -2,7 +2,7 @@
 // the DOM; it follows its App's page while the App has one, else the App's place in its transcript, frame by frame,
 // and springs between the two when the App moves, so it leaves the transcript for its page and comes back along the
 // same path without reloading. It clips itself to what of that place shows, and tells the host whether any does.
-import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
+import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { PanelRightOpenIcon, XIcon } from 'lucide-react'
 import type { AppView } from '@goblin/contracts'
 import { Button, Receipt } from '@goblin/ui'
@@ -177,7 +177,7 @@ function ChromeButton({ label, icon: Icon, onClick }: { label: string; icon: typ
 function AppChrome({ instance, onPage }: { readonly instance: Instance; readonly onPage: () => void }) {
   const host = useAppHost()
   const { id } = instance.app
-  const title = useApps(useCallback((apps: readonly AppView[]) => appNames(apps).get(id), [id])) ?? instance.app.title
+  const title = useApps((apps: readonly AppView[]) => appNames(apps).get(id)) ?? instance.app.title
   return (
     <div className="app-chrome">
       <span className="app-chrome-title">{title}</span>
@@ -246,11 +246,14 @@ function Stage({ instance }: { readonly instance: Instance }) {
   })
   const [error, setError] = useState('')
   const grants = useAppGrantAsks(origin)
-  const chrome = useRef(CHROME_HEIGHT)
-  chrome.current = place.surface === 'inline' ? CHROME_HEIGHT : 0
-  const { box, onTarget } = useRoom(chrome)
+  const chrome = useRef(place.surface === 'inline' ? CHROME_HEIGHT : 0)
   const latest = useRef({ name, host })
-  latest.current = { name, host }
+  // The motion loop and the room read these as they are now; they are written after each render, before any frame.
+  useLayoutEffect(() => {
+    chrome.current = place.surface === 'inline' ? CHROME_HEIGHT : 0
+    latest.current = { name, host }
+  })
+  const { box, onTarget } = useRoom(chrome)
   const [slot] = useState(() => () => slotOf(latest.current.host.element(latest.current.name)))
   const [onVisible] = useState(() => (visible: boolean) => {
     if (live.current.visible === visible) return

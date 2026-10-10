@@ -4,7 +4,7 @@
 // is assembled here from its launch and goblin's frame bundles (ADR 0021).
 import * as Data from 'effect/Data'
 import { type QueryClient, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
   type AppBridge,
   type McpUiDisplayMode,
@@ -196,35 +196,35 @@ export function AppFrame({
   const iframe = useRef<HTMLIFrameElement>(null)
   const bridge = useRef<AppBridge>(undefined)
   const push = useRef<StatePush>(undefined)
-  const wanted = useRef(revision)
-  wanted.current = revision
-  const latest = useRef({ placement, events })
-  latest.current = { placement, events }
+  // The bridge outlives renders: what it relays to, where it is placed and which revision it wants are read as they
+  // are when it asks, not as they were when it was attached.
+  const current = useEffectEvent(() => ({ events, placement, revision }))
   useEffect(() => {
     const controller = new AbortController()
     const element = iframe.current
     const relay: FrameEvents = {
-      report: (message) => latest.current.events.report(message),
-      resize: (asked) => latest.current.events.resize(asked),
-      close: () => latest.current.events.close(),
-      requestMode: (mode) => latest.current.events.requestMode(mode),
-      share: (shared) => latest.current.events.share(shared),
-      offerLink: (link) => latest.current.events.offerLink(link),
-      offerDownload: (file) => latest.current.events.offerDownload(file),
-      askGrant: (name) => latest.current.events.askGrant(name),
-      ...(latest.current.events.message === undefined
+      report: (message) => current().events.report(message),
+      resize: (asked) => current().events.resize(asked),
+      close: () => current().events.close(),
+      requestMode: (mode) => current().events.requestMode(mode),
+      share: (shared) => current().events.share(shared),
+      offerLink: (link) => current().events.offerLink(link),
+      offerDownload: (file) => current().events.offerDownload(file),
+      askGrant: (name) => current().events.askGrant(name),
+      ...(current().events.message === undefined
         ? {}
-        : { message: (receipt: QuestionAnswerReceipt) => latest.current.events.message?.(receipt) ?? false }),
+        : { message: (receipt: QuestionAnswerReceipt) => current().events.message?.(receipt) ?? false }),
     }
     if (element)
-      attachApp(element, selection, () => latest.current.placement, controller.signal, {
+      attachApp(element, selection, () => current().placement, controller.signal, {
         calls: appCalls(queryClient),
         events: relay,
       })
         .then((attached) => {
           bridge.current = attached?.bridge
           push.current = attached?.push
-          if (wanted.current !== undefined) push.current?.want(wanted.current)
+          const wanted = current().revision
+          if (wanted !== undefined) push.current?.want(wanted)
         })
         .catch((cause: unknown) => {
           if (!controller.signal.aborted) relay.report(loadFailure(cause))
@@ -240,7 +240,7 @@ export function AppFrame({
   }, [revision])
   const { mode, width, height: room, surface } = placement
   useEffect(() => {
-    bridge.current?.setHostContext(contextFor(latest.current.placement))
+    bridge.current?.setHostContext(contextFor(current().placement))
   }, [mode, width, room, surface])
   return (
     <iframe
