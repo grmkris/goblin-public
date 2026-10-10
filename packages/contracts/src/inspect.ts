@@ -8,7 +8,7 @@ import { FlowEvent, FlowName, RunEvent, RunEventStatus } from './telemetry.ts'
  * timelines, what went wrong, its conversation flows and the details behind a message. Full content for conversations,
  * bounded and paged; no reads call a model.
  */
-const Session = Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)).annotate({
+const Session = ChatId.annotate({
   description: 'A conversation id as `inspect_conversations` lists it; "1" is the main conversation.',
 })
 const Limit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 })).annotate({
@@ -61,7 +61,7 @@ export const InspectInput = {
   conversation: Schema.Struct({
     conversation: Session,
     before: Schema.optional(
-      Schema.Int.check(Schema.isGreaterThan(0)).annotate({
+      EntryId.annotate({
         description: 'Entries before this entry id, from the last page; the newest page without it.',
       }),
     ),
@@ -72,7 +72,7 @@ export const InspectInput = {
     limit: Schema.optional(Limit),
   }),
   turn: Schema.Struct({
-    operationId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)).annotate({
+    operationId: OperationId.annotate({
       description: "The turn's operation id, from `inspect_turns` or `inspect_problems`.",
     }),
   }),

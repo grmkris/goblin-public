@@ -1,26 +1,28 @@
 import * as Schema from 'effect/Schema'
+import { NonEmptyString, OperationId } from './ids.ts'
 
-const text = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max))
 const positive = (max: number) => Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: max }))
-const server = text(64).check(Schema.isPattern(/^[\w-]+$/u))
+const server = NonEmptyString(64).check(Schema.isPattern(/^[\w-]+$/u))
 
 export const RoutineTrigger = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal('once'), at: text(64) }),
-  Schema.Struct({ kind: Schema.Literal('cron'), expression: text(120) }),
+  Schema.Struct({ kind: Schema.Literal('once'), at: NonEmptyString(64) }),
+  Schema.Struct({ kind: Schema.Literal('cron'), expression: NonEmptyString(120) }),
   Schema.Struct({
     kind: Schema.Literal('event'),
     serverId: server,
-    name: text(256),
+    name: NonEmptyString(256),
     arguments: Schema.Record(Schema.String, Schema.Json),
   }),
 ])
 export const RoutineDefinition = Schema.Struct({
-  title: text(120),
-  prompt: text(12_000),
+  title: NonEmptyString(120),
+  prompt: NonEmptyString(12_000),
   trigger: RoutineTrigger,
-  timezone: text(80),
+  timezone: NonEmptyString(80),
   notifyTelegram: Schema.Boolean,
-  allowedTools: Schema.Array(Schema.Struct({ serverId: server, name: text(256) })).check(Schema.isMaxLength(100)),
+  allowedTools: Schema.Array(Schema.Struct({ serverId: server, name: NonEmptyString(256) })).check(
+    Schema.isMaxLength(100),
+  ),
   budget: Schema.Struct({
     tokensPerRun: positive(100_000),
     tokensPerDay: positive(2_000_000),
@@ -49,9 +51,9 @@ export const RoutinePage = Schema.Struct({
   nextCursor: Schema.optional(Schema.String),
 })
 export type RoutinePage = typeof RoutinePage.Type
-export const RoutineProposal = Schema.Struct({ operationId: text(200), definition: RoutineDefinition })
+export const RoutineProposal = Schema.Struct({ operationId: OperationId, definition: RoutineDefinition })
 export type RoutineProposal = typeof RoutineProposal.Type
-export const RoutineRevision = Schema.Struct({ revision: positive(1_000_000), operationId: text(200) })
+export const RoutineRevision = Schema.Struct({ revision: positive(1_000_000), operationId: OperationId })
 export type RoutineRevision = typeof RoutineRevision.Type
 export const RoutineEdit = Schema.Struct({ ...RoutineRevision.fields, definition: RoutineDefinition })
 export type RoutineEdit = typeof RoutineEdit.Type
@@ -77,5 +79,9 @@ export const RoutineRunPage = Schema.Struct({
   nextCursor: Schema.optional(Schema.String),
 })
 export type RoutineRunPage = typeof RoutineRunPage.Type
-export const RoutineSettings = Schema.Struct({ timezone: text(80), maxActive: Schema.Int, maxRunning: Schema.Int })
+export const RoutineSettings = Schema.Struct({
+  timezone: NonEmptyString(80),
+  maxActive: Schema.Int,
+  maxRunning: Schema.Int,
+})
 export type RoutineSettings = typeof RoutineSettings.Type

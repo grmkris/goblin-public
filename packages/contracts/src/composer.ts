@@ -1,5 +1,5 @@
 import * as Schema from 'effect/Schema'
-import { PersonaId } from './ids.ts'
+import { ChatId, NonEmptyString, PersonaId } from './ids.ts'
 
 const Server = Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u))
 export const ComposerSelection = Schema.Union([
@@ -7,11 +7,11 @@ export const ComposerSelection = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal('skill'),
     serverId: Server,
-    uri: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048)),
+    uri: NonEmptyString(2048),
   }),
   Schema.Struct({
     kind: Schema.Literal('subagent'),
-    conversationId: Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)),
+    conversationId: ChatId,
   }),
   /** `@Persona`: this Persona answers the message, with attribution, instead of Goblin. */
   Schema.Struct({ kind: Schema.Literal('persona'), personaId: PersonaId }),

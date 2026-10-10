@@ -1,13 +1,13 @@
 import * as Schema from 'effect/Schema'
 import { HelperExclusions } from './capabilities.ts'
-import { ChatId, EntryId, OperationId, PersonaId } from './ids.ts'
+import { ChatId, EntryId, NonEmptyString, OperationId, PersonaId } from './ids.ts'
 
 /** A Persona's name, as `@name` in the composer: a letter, then up to 31 letters, digits, spaces, `_` or `-`. */
 export const PersonaName = Schema.String.check(Schema.isPattern(/^[A-Za-z][\w -]{0,31}$/u))
 
 /** A small mark: one to four characters on a hue (0–359). */
 export const PersonaAvatar = Schema.Struct({
-  glyph: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4)),
+  glyph: NonEmptyString(4),
   hue: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(359)),
 })
 export type PersonaAvatar = typeof PersonaAvatar.Type
@@ -22,7 +22,7 @@ export const PersonaDefinition = Schema.Struct({
   avatar: PersonaAvatar,
   role: Schema.String.check(Schema.isMaxLength(120)),
   instructions: Schema.String.check(Schema.isMaxLength(8000)),
-  model: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
+  model: Schema.optional(NonEmptyString(128)),
   exclusions: HelperExclusions,
 })
 export type PersonaDefinition = typeof PersonaDefinition.Type
@@ -51,7 +51,7 @@ export const UpdatePersona = Schema.Struct({
   avatar: Schema.optional(PersonaAvatar),
   role: Schema.optional(PersonaDefinition.fields.role),
   instructions: Schema.optional(PersonaDefinition.fields.instructions),
-  model: Schema.optional(Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)))),
+  model: Schema.optional(Schema.NullOr(NonEmptyString(128))),
   exclusions: Schema.optional(HelperExclusions),
   archived: Schema.optional(Schema.Boolean),
   expectedRevision: Schema.Int,

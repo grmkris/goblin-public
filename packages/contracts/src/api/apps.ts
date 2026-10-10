@@ -1,4 +1,3 @@
-import * as Schema from 'effect/Schema'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import * as HttpApiSchema from 'effect/http-api/HttpApiSchema'
@@ -13,10 +12,11 @@ import {
   CreateApp,
   UpdateApp,
 } from '../apps.ts'
+import { AppId } from '../ids.ts'
 import { ApiErrors } from './errors.ts'
 
 /** An App's id in a path, as the route has always taken it: 1 to 12 digits. */
-const AppParam = { id: Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)) }
+const AppParam = { id: AppId }
 
 /**
  * The owner's kept Apps (ADRs 0020, 0021). Paths are relative to the API's `/api` prefix; `error` names the failures

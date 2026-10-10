@@ -1,5 +1,5 @@
 import * as Schema from 'effect/Schema'
-import { ChatId, EntryId, OperationId } from './ids.ts'
+import { ChatId, EntryId, NonEmptyString, OperationId } from './ids.ts'
 
 /**
  * `POST /api/conversations/:id/move`: move the owner's message `entry` and the turn it started into a new Thread.
@@ -69,8 +69,8 @@ export const EphemeralMessage = Schema.Struct({
   body: Schema.String.check(Schema.isMaxLength(2000)),
   actions: Schema.Array(
     Schema.Struct({
-      id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40)),
-      label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40)),
+      id: NonEmptyString(40),
+      label: NonEmptyString(40),
       tone: Schema.Literals(['primary', 'neutral', 'danger']),
     }),
   ).check(Schema.isMaxLength(3)),

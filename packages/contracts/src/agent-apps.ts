@@ -1,4 +1,5 @@
 import * as Schema from 'effect/Schema'
+import { ChatId, NonEmptyString } from './ids.ts'
 
 /**
  * One schedule of an agent app (ADR 0021): the action it runs, how often (a daily one at `at`, UTC), when next, how
@@ -31,7 +32,7 @@ export type AppPower = typeof AppPower.Type
 /** The owner approves (`allowed`) or revokes one power an agent app asks for. */
 export const AppPowerChange = Schema.Struct({
   kind: AppPowerKind,
-  target: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(260)),
+  target: NonEmptyString(260),
   allowed: Schema.Boolean,
 })
 export type AppPowerChange = typeof AppPowerChange.Type
@@ -75,7 +76,7 @@ export const AgentAppDetail = Schema.Struct({
 })
 export type AgentAppDetail = typeof AgentAppDetail.Type
 
-const AppAction = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))
+const AppAction = NonEmptyString(64)
 
 /**
  * What the owner changes about an agent app: go back to an earlier version, pause or resume a schedule, run one now,
@@ -85,7 +86,7 @@ export const AgentAppChange = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('rollback'), release: Schema.String.check(Schema.isMaxLength(40)) }),
   Schema.Struct({ kind: Schema.Literal('pause'), action: AppAction, paused: Schema.Boolean }),
   Schema.Struct({ kind: Schema.Literal('run'), action: AppAction }),
-  Schema.Struct({ kind: Schema.Literal('home'), conversation: Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)) }),
+  Schema.Struct({ kind: Schema.Literal('home'), conversation: ChatId }),
   Schema.Struct({
     kind: Schema.Literal('power'),
     power: AppPowerKind,

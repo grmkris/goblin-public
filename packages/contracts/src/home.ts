@@ -1,9 +1,10 @@
 import * as Schema from 'effect/Schema'
+import { AppId, NonEmptyString, OperationId } from './ids.ts'
 
 /** Home has ordered, fixed-size tiles; columns are a property of the screen. */
 export const TileSize = Schema.Literals(['small', 'medium', 'large', 'wide'])
 export type TileSize = typeof TileSize.Type
-const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100))
+const Id = NonEmptyString(100)
 const Base = { id: Id, size: TileSize }
 const Note = {
   title: Schema.String.check(Schema.isMaxLength(60)),
@@ -14,7 +15,7 @@ const variants = <F extends Schema.Struct.Fields>(fields: F) =>
     Schema.Struct({
       ...fields,
       kind: Schema.Literal('app'),
-      appId: Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)),
+      appId: AppId,
     }),
     Schema.Struct({ ...fields, kind: Schema.Literal('conversations') }),
     Schema.Struct({ ...fields, kind: Schema.Literal('note'), ...Note }),
@@ -48,11 +49,11 @@ export const HomeOperation = Schema.Union([
 ])
 export type HomeOperation = typeof HomeOperation.Type
 export const HomeEdit = Schema.Struct({
-  operationId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+  operationId: OperationId,
   expectedRevision: HomeLayout.fields.revision,
   ops: Schema.Array(HomeOperation).check(Schema.isMaxLength(72)),
   /** Owner-only Undo of a stored edit. It refuses if another edit has landed since that receipt. */
-  undoOf: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200))),
+  undoOf: Schema.optional(OperationId),
 })
 export type HomeEdit = typeof HomeEdit.Type
 export const HomeEditResult = Schema.Union([

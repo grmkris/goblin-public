@@ -1,9 +1,10 @@
 import * as Schema from 'effect/Schema'
 import { ConversationKind } from './conversations.ts'
+import { NonEmptyString } from './ids.ts'
 
 /** A server id as configuration and the owner's added servers spell it. */
 const ServerId = Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u))
-const ToolName = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256))
+const ToolName = NonEmptyString(256)
 
 /**
  * One thing a conversation can switch off for its agent: a connected server, one of that server's granted tools, the

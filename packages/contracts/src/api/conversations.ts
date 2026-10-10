@@ -2,7 +2,7 @@ import * as Schema from 'effect/Schema'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import * as HttpApiSchema from 'effect/http-api/HttpApiSchema'
-import { ChatId } from '../ids.ts'
+import { ChatId, OperationId } from '../ids.ts'
 import { CapabilityChange, ConversationCapabilities } from '../capabilities.ts'
 import { ComposerOptions } from '../composer.ts'
 import { ConversationView, CreateConversation, SendMessage, StartThread, UpdateConversation } from '../conversations.ts'
@@ -36,7 +36,7 @@ export type ThreadStart = typeof ThreadStart.Type
 
 /** `POST …/stop`: the owner's Stop, optionally naming the one operation to stop. */
 const StopConversation = Schema.Struct({
-  operationId: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200))),
+  operationId: Schema.optional(OperationId),
 })
 
 /**

@@ -1,5 +1,6 @@
 import * as Schema from 'effect/Schema'
 import { AgentAppJob } from './agent-apps.ts'
+import { ChatId, NonEmptyString } from './ids.ts'
 
 /** Where a kept MCP App comes from: the tool call it shows, on its server, rendering a `ui://` resource. */
 export const McpAppSource = Schema.Struct({
@@ -36,8 +37,8 @@ export type AppView = typeof AppView.Type
 
 /** Keep the App of a tool call made in `conversation` (one from before Apps were kept, or one the owner closed). */
 export const CreateApp = Schema.Struct({
-  conversation: Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)),
-  callId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+  conversation: ChatId,
+  callId: NonEmptyString(200),
 })
 export type CreateApp = typeof CreateApp.Type
 

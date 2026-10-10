@@ -1,7 +1,7 @@
 import * as Schema from 'effect/Schema'
 import { ComposerSelections } from './composer.ts'
 import { FilePath } from './files.ts'
-import { ChatId, EntryId, OperationId, TopicId } from './ids.ts'
+import { AppId, ChatId, EntryId, NonEmptyString, OperationId, TopicId } from './ids.ts'
 import { Attention } from './threads.ts'
 
 /** Stable primary chat id for URLs and application metadata; its current Pi session is resolved by the runtime. */
@@ -55,8 +55,8 @@ export const CreateConversation = Schema.Struct({
   topic: Schema.optional(TopicId),
   from: Schema.optional(
     Schema.Struct({
-      conversation: Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)),
-      entry: Schema.Int.check(Schema.isGreaterThan(0)),
+      conversation: ChatId,
+      entry: EntryId,
     }),
   ),
 })
@@ -64,7 +64,7 @@ export type CreateConversation = typeof CreateConversation.Type
 
 /** Rename, close or reopen (with everything under it), or pin a subagent open. */
 export const UpdateConversation = Schema.Struct({
-  title: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))),
+  title: Schema.optional(NonEmptyString(120)),
   closed: Schema.optional(Schema.Boolean),
   keepOpen: Schema.optional(Schema.Boolean),
 })
@@ -105,8 +105,8 @@ export type QuestionSpec = typeof QuestionSpec.Type
  * a separate block labelled untrusted, never as the owner's words.
  */
 export const AppContext = Schema.Struct({
-  app: Schema.String.check(Schema.isPattern(/^\d{1,12}$/u)),
-  text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(8192)),
+  app: AppId,
+  text: NonEmptyString(8192),
 })
 export type AppContext = typeof AppContext.Type
 
@@ -117,7 +117,7 @@ export type AppContext = typeof AppContext.Type
  */
 export const SendMessage = Schema.Struct({
   input: Schema.String.check(Schema.isMaxLength(20_000)),
-  operationId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+  operationId: OperationId,
   appContext: Schema.optional(Schema.Array(AppContext).check(Schema.isMaxLength(2))),
   attachments: Schema.optional(Schema.Array(FilePath).check(Schema.isMaxLength(8))),
   selections: Schema.optional(ComposerSelections),

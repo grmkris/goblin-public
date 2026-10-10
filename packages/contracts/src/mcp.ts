@@ -1,9 +1,8 @@
 import * as Schema from 'effect/Schema'
+import { NonEmptyString } from './ids.ts'
 
-/** A bounded, non-empty string. */
-const Bounded = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max))
 /** A server id as the owner's requests name it: configured ids and the ones added servers get. */
-const ServerIdField = Bounded(64)
+const ServerIdField = NonEmptyString(64)
 
 /** What a grant covers on a server: a tool, a resource (an App's `ui://` bundle) or a prompt. */
 export const GrantCapability = Schema.Literals(['tool', 'resource', 'prompt'])
@@ -23,26 +22,34 @@ export type Grant = typeof Grant.Type
 
 /** Where an added server was found: a registry entry (name and version), or nothing for a pasted URL. */
 export const ServerSource = Schema.Struct({
-  registry: Bounded(2048),
-  name: Bounded(256),
-  version: Schema.optional(Bounded(64)),
+  registry: NonEmptyString(2048),
+  name: NonEmptyString(256),
+  version: Schema.optional(NonEmptyString(64)),
 })
 export type ServerSource = typeof ServerSource.Type
 
 /** `POST /api/mcp/servers`: add a server by its https endpoint, from a registry entry or pasted. */
-export const AddServer = Schema.Struct({ endpoint: Bounded(2048), source: Schema.optional(ServerSource) })
+export const AddServer = Schema.Struct({ endpoint: NonEmptyString(2048), source: Schema.optional(ServerSource) })
 export type AddServer = typeof AddServer.Type
 
 /** `POST /api/mcp/registries` and `…/registries/remove`: a registry by its URL. */
-export const RegistryChange = Schema.Struct({ url: Bounded(2048) })
+export const RegistryChange = Schema.Struct({ url: NonEmptyString(2048) })
 export type RegistryChange = typeof RegistryChange.Type
 
 /** `PUT /api/mcp/grants`: grant or revoke one discovered tool. */
-export const GrantChange = Schema.Struct({ serverId: ServerIdField, name: Bounded(256), allowed: Schema.Boolean })
+export const GrantChange = Schema.Struct({
+  serverId: ServerIdField,
+  name: NonEmptyString(256),
+  allowed: Schema.Boolean,
+})
 export type GrantChange = typeof GrantChange.Type
 
 /** `PUT /api/mcp/ask-first`: a granted tool's calls wait for the owner's decision, or no longer do. */
-export const AskFirstChange = Schema.Struct({ serverId: ServerIdField, name: Bounded(256), enabled: Schema.Boolean })
+export const AskFirstChange = Schema.Struct({
+  serverId: ServerIdField,
+  name: NonEmptyString(256),
+  enabled: Schema.Boolean,
+})
 export type AskFirstChange = typeof AskFirstChange.Type
 
 /** `PUT /api/mcp/skills`: the agent uses a server's skills, or stops. */
@@ -56,7 +63,7 @@ export type SkillsSetting = typeof SkillsSetting.Type
 /** `PUT /api/mcp/app-grants`: grant or revoke an MCP App as a whole, by its `ui://` resource. */
 export const AppGrantChange = Schema.Struct({
   serverId: ServerIdField,
-  uri: Bounded(2048).check(Schema.isPattern(/^ui:\/\//u)),
+  uri: NonEmptyString(2048).check(Schema.isPattern(/^ui:\/\//u)),
   allowed: Schema.Boolean,
 })
 export type AppGrantChange = typeof AppGrantChange.Type
@@ -71,18 +78,18 @@ export type ConnectStart = typeof ConnectStart.Type
 
 /** `POST /api/mcp/:id/tools/call`: the owner (or an App they opened) calls one granted tool. */
 export const ToolCall = Schema.Struct({
-  name: Bounded(256),
+  name: NonEmptyString(256),
   arguments: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 })
 export type ToolCall = typeof ToolCall.Type
 
 /** `POST /api/mcp/:id/resources/read`: one granted resource by its URI. */
-export const ResourceRead = Schema.Struct({ uri: Bounded(2048) })
+export const ResourceRead = Schema.Struct({ uri: NonEmptyString(2048) })
 export type ResourceRead = typeof ResourceRead.Type
 
 /** `POST /api/mcp/:id/prompts/get`: one granted prompt with its arguments. */
 export const PromptGet = Schema.Struct({
-  name: Bounded(256),
+  name: NonEmptyString(256),
   arguments: Schema.optional(Schema.Record(Schema.String, Schema.String.check(Schema.isMaxLength(16_384)))),
 })
 export type PromptGet = typeof PromptGet.Type

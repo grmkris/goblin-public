@@ -1,7 +1,7 @@
 import * as Schema from 'effect/Schema'
-import { ChatId, EntryId, OperationId, TopicId } from './ids.ts'
+import { ChatId, EntryId, NonEmptyString, OperationId, TopicId } from './ids.ts'
 
-export const TopicName = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))
+export const TopicName = NonEmptyString(80)
 
 /**
  * A Topic: a durable container with exactly one Conversation (`conversation`) and any number of Threads under it.

@@ -1,4 +1,5 @@
 import * as Schema from 'effect/Schema'
+import { NonEmptyString } from './ids.ts'
 
 const MIB = 1024 * 1024
 
@@ -38,7 +39,7 @@ export type FileListing = typeof FileListing.Type
 /** A file the owner attached to a message: shown on the message, read by the agent with `files_read`. */
 export const Attachment = Schema.Struct({
   path: FilePath,
-  name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
+  name: NonEmptyString(80),
   size: Schema.Number,
   mimeType: Schema.String.check(Schema.isMaxLength(128)),
 })
