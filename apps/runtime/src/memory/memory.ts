@@ -1,5 +1,4 @@
 import type { Extension } from '@earendil-works/pi-durable'
-import * as Context from 'effect/Context'
 import { ChatMemory, type MemoryDeps, type MemoryOptions } from './chat-memory.ts'
 import { conversationsWithoutMemory } from './store.ts'
 
@@ -30,25 +29,3 @@ export const activateMemory = async (engine: MemoryEngine, chat: string): Promis
 export const activateConversations = async (engine: MemoryEngine): Promise<void> => {
   for (const chat of conversationsWithoutMemory(engine.deps.db)) await activateMemory(engine, chat)
 }
-
-/** Turning a Topic Conversation's memory on, as one object over the engine, for a Topic's ports. */
-export class ChatMemories {
-  readonly #engine: MemoryEngine
-
-  constructor(engine: MemoryEngine) {
-    this.#engine = engine
-  }
-
-  /** Turns on the memory of `chat`, a Topic's Conversation, once. */
-  async activate(chat: string): Promise<void> {
-    await activateMemory(this.#engine, chat)
-  }
-}
-
-/**
- * The agent's memory object, made at the start (`layers/knowledge.ts`) for a Topic's ports, which turn a new
- * Conversation's memory on inside their own work. Programs use the `Memories` service.
- */
-export class MemoriesInstance extends Context.Service<MemoriesInstance, ChatMemories>()(
-  'goblin/memory/MemoriesInstance',
-) {}

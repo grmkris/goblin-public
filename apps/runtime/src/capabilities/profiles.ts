@@ -16,7 +16,6 @@ import {
   appTelegramChannel,
 } from '../storage/schema.ts'
 import { appRoutineRuns } from '../storage/routines.ts'
-import * as Context from 'effect/Context'
 import * as Schema from 'effect/Schema'
 import { chatOfSession, chatSession, primaryChat } from '../chats/directory.ts'
 import { InvalidInput } from '../http/errors.ts'
@@ -348,10 +347,7 @@ export const retoolOnce = async (retooling: Retooling, marker: string, now: numb
     .run()
 }
 
-/**
- * The switches as one object over a database, for code outside the services that takes one (a Topic's ports, the
- * probes). Programs use the `Capabilities` service.
- */
+/** The switches as one object over a database, for the probes and test fixtures. Programs use `Capabilities`. */
 export class CapabilityProfiles {
   readonly #retooling: Retooling
 
@@ -416,11 +412,3 @@ export class CapabilityProfiles {
     await retoolOnce(this.#retooling, marker, now)
   }
 }
-
-/**
- * The agent's switches object, made at the start (`layers/capabilities.ts`) for a Topic's ports, which change switches
- * inside their own synchronous writes. Programs use the `Capabilities` service.
- */
-export class ProfilesInstance extends Context.Service<ProfilesInstance, CapabilityProfiles>()(
-  'goblin/capabilities/ProfilesInstance',
-) {}

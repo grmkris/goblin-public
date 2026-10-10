@@ -6,14 +6,7 @@ import { creditRates } from '../budget-credits.ts'
 import { ChatOperations, Chats } from '../chats/service.ts'
 import { nowSeconds } from '../clock.ts'
 import { attempt } from '../http/errors.ts'
-import {
-  ChatMemories,
-  MemoriesInstance,
-  type MemoryEngine,
-  activateConversations,
-  activateMemory,
-  memoryOf,
-} from '../memory/memory.ts'
+import { type MemoryEngine, activateConversations, activateMemory, memoryOf } from '../memory/memory.ts'
 import { CheapModel, CheapModels } from '../memory/model.ts'
 import { Memories, type MemoryLine } from '../memory/service.ts'
 import { forgetFrom, recordView, rememberedCount, rememberedThrough, viewReach } from '../memory/store.ts'
@@ -25,9 +18,8 @@ import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { auxReporter } from '../telemetry/report.ts'
 
-// The knowledge layers. Three are steps of the agent's start, in its order (layers/index.ts): the cheap models (step
-// 3), the memory object a Topic's ports turn memory on with (5) and the memory's activation of every Topic
-// Conversation (14). After the start, `KnowledgeLive` serves memory and retrieval: what a memory remembers, how far its
+// The knowledge layers. Two are steps of the agent's start, in its order (layers/index.ts): the cheap models (step 3)
+// and the memory's activation of every Topic Conversation (14). After the start, `KnowledgeLive` serves memory and retrieval: what a memory remembers, how far its
 // view reaches and what a Move forgets over the agent's database, a view placed through the chat's passive write, and
 // the transcript index over the agent's database, every catch-up on its session's turn of the agent's KeyedLock.
 
@@ -68,12 +60,6 @@ const memoryEngine: Effect.Effect<MemoryEngine, never, AgentInput | Db | CheapMo
     extensions: [input.memory.memory, input.memory.recall],
   }
 })
-
-/** Start step 5: turning a Topic Conversation's memory on, as one object for a Topic's ports. */
-export const MemoryEngineLive: Layer.Layer<MemoriesInstance, never, AgentInput | Db | CheapModels> = Layer.effect(
-  MemoriesInstance,
-  Effect.map(memoryEngine, (engine) => new ChatMemories(engine)),
-)
 
 /** Start step 14: every Topic Conversation without memory yet is given it, after main is registered (step 10). */
 export const ActivateMemoriesLive: Layer.Layer<never, never, AgentInput | Db | CheapModels> = Layer.effectDiscard(

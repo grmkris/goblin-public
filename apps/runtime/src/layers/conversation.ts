@@ -26,14 +26,12 @@ import { registryWrites } from '../chats/conversations/writes.ts'
 import { makeMoves } from '../chats/mover.ts'
 import { ChatOperations, Chats, Conversations, Moves } from '../chats/service.ts'
 import { epochSeconds } from '../clock.ts'
-import { ConversationsInstance } from '../conversations.ts'
 import { CheapModels } from '../memory/model.ts'
 import type { Models } from '../models.ts'
 import { attemptSync } from '../http/errors.ts'
 import { FlowEvents } from '../observability/flows.ts'
 import { KeyedLock } from '../observability/lock.ts'
 import { SingleFlight } from '../observability/single-flight.ts'
-import { promiseWith, syncWith } from '../runtime/boundary.ts'
 import { Db } from '../runtime/db.ts'
 import type { FoundationServices } from './core.ts'
 
@@ -105,36 +103,19 @@ export const ConversationsLive = Layer.effect(
   }),
 )
 
-/** The registry's Promise view, for the Topic ports and the workspace feed: it runs the native service's methods. */
-const ConversationsInstanceLive = Layer.effect(
-  ConversationsInstance,
-  Effect.gen(function* () {
-    const conversations = yield* Conversations
-    const context = yield* Effect.context()
-    const run = promiseWith(context)
-    return {
-      openConversation: () => run(conversations.openConversation),
-      // The change bus runs its handlers inline and never waits, so this ends on the caller's stack.
-      touched: (ids) => syncWith(context)(conversations.touched(ids)),
-      list: () => run(conversations.list),
-      view: (id) => run(Effect.map(conversations.view(id), Option.getOrUndefined)),
-    }
-  }),
-)
-
 /** Move to thread natively (chats/mover.ts): its reconcile runs in the layer's scope, never holding up the start. */
 const MovesLive = Layer.effect(Moves, makeMoves)
 
 /**
  * The conversation services after the start (chats/service.ts), natively: SQLite reads and receipts, each chat's one
  * lock in `KeyedLock`, single flights in `SingleFlight`, Pi through `PiSessions`, flows through `FlowEvents`, and
- * changes through `Changes`. The registry's Promise view serves the Topic ports and the feed.
+ * changes through `Changes`.
  */
 export const ConversationLive: Layer.Layer<
-  Chats | ChatOperations | Conversations | ConversationsInstance | Moves,
+  Chats | ChatOperations | Conversations | Moves,
   never,
   FoundationServices | Budget | Models
-> = Layer.mergeAll(ChatsLive, ConversationsInstanceLive, MovesLive).pipe(
+> = Layer.mergeAll(ChatsLive, MovesLive).pipe(
   Layer.provideMerge(ConversationsLive),
   Layer.provideMerge(ChatOperationsLive),
 )

@@ -3,9 +3,7 @@ import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import {
-  CapabilityProfiles,
   type PiTools,
-  ProfilesInstance,
   type Retooling,
   appAllowed,
   capabilityScope,
@@ -27,9 +25,8 @@ import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 
-// Each conversation's switches, as functions of the agent's database (capabilities/profiles.ts). Two layers are steps
-// of the agent's start, in its order (layers/index.ts): the switches object a Topic's ports change (step 6) and the
-// one retool (8). `CapabilitiesLive` serves the switches after the start.
+// Each conversation's switches, as functions of the agent's database (capabilities/profiles.ts). The one retool is a
+// step of the agent's start (8, layers/index.ts); `CapabilitiesLive` serves the switches after the start.
 
 /** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
 const retool = (harness: PiHarness) => async (session: string, tools: PiTools) => {
@@ -42,12 +39,6 @@ const retooling: Effect.Effect<Retooling, never, AgentInput | Db> = Effect.gen(f
   const { subagentTools, harness } = yield* AgentInput
   return { db: yield* Db, subagentTools, retool: retool(harness) }
 })
-
-/** Start step 6: the switches as one object, for a Topic's ports. */
-export const ProfilesLive: Layer.Layer<ProfilesInstance, never, AgentInput | Db> = Layer.effect(
-  ProfilesInstance,
-  Effect.map(retooling, ({ db, subagentTools, retool: apply }) => new CapabilityProfiles(db, subagentTools, apply)),
-)
 
 /** Start step 8: the current complete delegation tool set is applied to the retained Pi filters, once. */
 export const RetoolLive: Layer.Layer<never, never, AgentInput | Db> = Layer.effectDiscard(
