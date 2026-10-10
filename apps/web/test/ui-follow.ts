@@ -8,13 +8,14 @@
  *   heavy bun apps/web/test/ui-follow.ts [--scenarios reply,tools,long-first,dock,same-batch,resnapshot] [--profiles mobile,desktop]
  *     [--parts 60] [--dist <built fixture>] [--assert]
  *
+ * With `--shots` it also saves screenshots to the receipt directory: mid-turn, settled, and the last turn's folded line opened.
  * With `--assert` it exits 1 when a turn ends with its newest row hidden or the arrow still offered. Receipts go to
  * `.local/goblin-perf/<utc>-follow/receipt.json`.
  */
 import { mkdirSync, writeFileSync, writeSync } from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
-import { chromium } from 'playwright-core'
+import { type Browser, chromium, type Page } from 'playwright-core'
 import { install, PROFILES, serve } from './perf/browser.ts'
 import { build, receiptDirectory, revision } from './perf/revision.ts'
 import {
@@ -34,12 +35,69 @@ const { values: options } = parseArgs({
     parts: { type: 'string', default: '60' },
     dist: { type: 'string' },
     assert: { type: 'boolean', default: false },
+    shots: { type: 'boolean', default: false },
   },
 })
 const isScenario = (name: string): name is FollowScenario => FOLLOW_SCENARIOS.some((known) => known === name)
 
 const out = receiptDirectory('follow')
 mkdirSync(out, { recursive: true, mode: 0o700 })
+const FOLDED_LINE = '[data-slot="tool-call-trigger"]'
+const shot = (page: Page, name: string) => page.screenshot({ path: path.join(out, `${name}.png`) })
+
+/** The newest folded line, as it reads while a tool turn runs, then a picture of the screen. */
+async function sampleLine(page: Page, name: string): Promise<void> {
+  const line = page.locator(FOLDED_LINE).last()
+  for (const wait of [800, 1_000, 1_000, 1_000]) {
+    await page.waitForTimeout(wait)
+    const text = (await line.count()) > 0 ? await line.textContent() : null
+    writeSync(STDERR, `    live line: ${JSON.stringify(text)}\n`)
+  }
+  await shot(page, `${name}-live`)
+}
+
+/** The settled screen and, for a tool turn, the newest folded line opened. */
+async function shootSettled(page: Page, name: string, tools: boolean): Promise<void> {
+  await shot(page, `${name}-settled`)
+  const opener = page.locator(FOLDED_LINE).last()
+  if (!tools || (await opener.count()) === 0) return
+  await opener.click()
+  await page.waitForTimeout(400)
+  await shot(page, `${name}-open`)
+}
+
+/** One scripted turn on a fresh page in `profile`: what the scroller did, and with `--shots` how it looked. */
+async function play(
+  browser: Browser,
+  origin: string,
+  profile: string,
+  scenario: FollowScenario,
+): Promise<FollowReport> {
+  const settings = PROFILES[profile]
+  if (settings === undefined) throw new Error(`unknown profile ${profile}`)
+  const { entries, parts } = history(Number(options.parts))
+  const context = await browser.newContext(settings.context)
+  try {
+    const page = await context.newPage()
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    const cdp = await context.newCDPSession(page)
+    if (settings.cpu > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: settings.cpu })
+    await install(page, entries)
+    await page.goto(`${origin}/?parts=${parts}`)
+    await page.waitForFunction(() => window.perf.ready !== undefined, null, { timeout: 120_000 })
+    const playing = page.evaluate((script) => window.perf.follow(script), followSteps(scenario, entries))
+    const tools = options.shots && scenario === 'tool-storm'
+    if (tools) await sampleLine(page, `${profile}-${scenario}`)
+    const report = await playing
+    if (options.shots) await shootSettled(page, `${profile}-${scenario}`, tools)
+    if (errors.length > 0) throw new Error(`${scenario} ${profile}: ${errors.join('; ')}`)
+    return report
+  } finally {
+    await context.close()
+  }
+}
+
 const dist = options.dist ?? path.join(out, 'build')
 if (options.dist === undefined) build(revision('.'), dist, 'test/perf/vite.config.ts')
 const served = await serve(dist)
@@ -49,30 +107,12 @@ type Row = { readonly scenario: string; readonly profile: string; readonly repor
 const rows: Row[] = []
 try {
   for (const profile of options.profiles.split(',')) {
-    const settings = PROFILES[profile]
-    if (settings === undefined) throw new Error(`unknown profile ${profile}`)
     for (const scenario of options.scenarios.split(',').filter(isScenario)) {
-      const { entries, parts } = history(Number(options.parts))
-      const context = await browser.newContext(settings.context)
-      try {
-        const page = await context.newPage()
-        const errors: string[] = []
-        page.on('pageerror', (error) => errors.push(error.message))
-        const cdp = await context.newCDPSession(page)
-        if (settings.cpu > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: settings.cpu })
-        await install(page, entries)
-        await page.goto(`${served.origin}/?parts=${parts}`)
-        await page.waitForFunction(() => window.perf.ready !== undefined, null, { timeout: 120_000 })
-        const steps = followSteps(scenario, entries)
-        const report = await page.evaluate((script) => window.perf.follow(script), steps)
-        if (errors.length > 0) throw new Error(`${scenario} ${profile}: ${errors.join('; ')}`)
-        rows.push({ scenario, profile, report })
-        const { trace, ...numbers } = report
-        writeSync(STDERR, `${profile} ${scenario} ${JSON.stringify(numbers)}\n`)
-        for (const line of trace.slice(0, 40)) writeSync(STDERR, `    ${line}\n`)
-      } finally {
-        await context.close()
-      }
+      const report = await play(browser, served.origin, profile, scenario)
+      rows.push({ scenario, profile, report })
+      const { trace, ...numbers } = report
+      writeSync(STDERR, `${profile} ${scenario} ${JSON.stringify(numbers)}\n`)
+      for (const line of trace.slice(0, 40)) writeSync(STDERR, `    ${line}\n`)
     }
   }
 } finally {

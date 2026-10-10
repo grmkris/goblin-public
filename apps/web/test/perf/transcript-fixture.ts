@@ -181,100 +181,213 @@ function textSteps(reply: string, contentIndex: number): Step[] {
 }
 
 /** Scenarios of one owner turn that the follow runner (`../ui-follow.ts`) plays against the real transcript. */
-export const FOLLOW_SCENARIOS = ['reply', 'tools', 'long-first', 'dock', 'same-batch', 'resnapshot'] as const
+export const FOLLOW_SCENARIOS = [
+  'reply',
+  'tools',
+  'tool-storm',
+  'long-first',
+  'dock',
+  'same-batch',
+  'resnapshot',
+] as const
 export type FollowScenario = (typeof FOLLOW_SCENARIOS)[number]
 
 /**
  * `reply`: the baseline, a streamed answer. `tools`: a slow provider, thinking, a tool that takes a while, then the
- * answer. `long-first`: the answer is already longer than the screen when its first batch arrives. `dock`: the
- * baseline while the composer grows (a queued message, an attachment) partway through. `same-batch`: the owner's turn
- * and more than a screen of its reply arrive together (a Telegram turn, a queued one starting). `resnapshot`: the tab
- * comes back from the background and the stream starts again from a snapshot that already holds the turn and a long
- * partial reply, which then keeps streaming.
+ * answer. `tool-storm`: three rounds of thinking and four parallel tool calls that finish one after another, then the
+ * answer: a turn of the kind that fills a screen with rows. `long-first`: the answer is already longer than the screen
+ * when its first batch arrives. `dock`: the baseline while the composer grows (a queued message, an attachment) partway
+ * through. `same-batch`: the owner's turn and more than a screen of its reply arrive together (a Telegram turn, a queued
+ * one starting). `resnapshot`: the tab comes back from the background and the stream starts again from a snapshot that
+ * already holds the turn and a long partial reply, which then keeps streaming.
  */
 export function followSteps(scenario: FollowScenario, entries: readonly Entry[]): readonly Step[] {
+  return SCENARIOS[scenario](turnOf(entries))
+}
+
+/** When the scripted owner turn starts (the fixture's clock). */
+const TURN_AT = START + 10_000_000
+/** How much of the reply the scenarios that start with a long one deliver in their first batch. */
+const FIRST_SLICE = 2_400
+const THINKING = 'The saved notes probably have this; fetch the page to be sure.'
+
+/** The owner turn a scenario plays: the history it follows, its message, and the reply it streams. */
+type Turn = {
+  readonly entries: readonly Entry[]
+  readonly lastId: number
+  readonly question: Entry
+  readonly opening: Step
+  readonly reply: string
+}
+function turnOf(entries: readonly Entry[]): Turn {
   const lastId = entries.length
-  const at = START + 10_000_000
-  const question = user(lastId + 1, at, 'Pull it all together into one overview I can keep.')
-  const opening = step([{ type: 'entry_appended', entry: question }, { type: 'run_start' }])
-  const message = (when: number) => ({
-    type: 'message_start',
-    message: { role: 'assistant', content: [], timestamp: when },
-  })
-  const reply = streamedReply()
-  const committed = (id: number, when: number) =>
-    step([{ type: 'message_end', entry: assistant(id, when, [{ type: 'text', text: reply }]) }, { type: 'run_end' }])
-  if (scenario === 'reply')
-    return [opening, step([message(at + 1_000)]), ...textSteps(reply, 0), committed(lastId + 2, at + 1_000)]
-  if (scenario === 'long-first')
-    return [
-      opening,
-      step([
-        message(at + 1_000),
-        { type: 'message_update', changes: [{ type: 'text_delta', contentIndex: 0, delta: reply.slice(0, 2_400) }] },
-      ]),
-      ...textSteps(reply.slice(2_400), 0),
-      committed(lastId + 2, at + 1_000),
-    ]
-  if (scenario === 'same-batch')
-    return [
-      step([
-        { type: 'entry_appended', entry: question },
-        { type: 'run_start' },
-        message(at + 1_000),
-        { type: 'message_update', changes: [{ type: 'text_delta', contentIndex: 0, delta: reply.slice(0, 2_400) }] },
-      ]),
-      ...textSteps(reply.slice(2_400), 0),
-      committed(lastId + 2, at + 1_000),
-    ]
-  if (scenario === 'resnapshot')
-    return [
-      step([
-        {
-          type: 'snapshot',
-          entries: [...entries, question],
-          tools: [],
-          inbox: [],
-          run: {},
-          generation: {
-            message: {
-              role: 'assistant',
-              content: [{ type: 'text', text: reply.slice(0, 2_400) }],
-              timestamp: at + 1_000,
-            },
-          },
-        },
-      ]),
-      ...textSteps(reply.slice(2_400), 0),
-      committed(lastId + 2, at + 1_000),
-    ]
-  if (scenario === 'dock') {
-    const steps = [opening, step([message(at + 1_000)]), ...textSteps(reply, 0)]
-    const third = Math.floor(steps.length / 3)
-    const grown = steps.map((one, index) => (index === third ? { ...one, dock: '11rem' } : one))
-    return [...grown, committed(lastId + 2, at + 1_000)]
+  const question = user(lastId + 1, TURN_AT, 'Pull it all together into one overview I can keep.')
+  return {
+    entries,
+    lastId,
+    question,
+    opening: step([{ type: 'entry_appended', entry: question }, { type: 'run_start' }]),
+    reply: streamedReply(),
   }
+}
+
+const messageStart = (when: number): Entry => ({
+  type: 'message_start',
+  message: { role: 'assistant', content: [], timestamp: when },
+})
+const textUpdate = (delta: string): Entry => ({
+  type: 'message_update',
+  changes: [{ type: 'text_delta', contentIndex: 0, delta }],
+})
+/** Thinking streaming in, as the two batches that start the block and then fill it. */
+const thinkingSteps = (thinking: string): Step[] => [
+  step([
+    {
+      type: 'message_update',
+      changes: [{ type: 'thinking_start', contentIndex: 0, block: { type: 'thinking', thinking: '' } }],
+    },
+  ]),
+  step([{ type: 'message_update', changes: [{ type: 'thinking_delta', contentIndex: 0, delta: thinking }] }]),
+]
+/** The reply committing and the run ending. */
+const committed = (turn: Turn, id: number, when: number): Step =>
+  step([{ type: 'message_end', entry: assistant(id, when, [{ type: 'text', text: turn.reply }]) }, { type: 'run_end' }])
+
+const streamed = (turn: Turn): Step[] => [
+  turn.opening,
+  step([messageStart(TURN_AT + 1_000)]),
+  ...textSteps(turn.reply, 0),
+  committed(turn, turn.lastId + 2, TURN_AT + 1_000),
+]
+
+/** A slow provider, thinking, one tool that takes a while, then the answer. */
+function tools(turn: Turn): Step[] {
   const call = 'call-follow'
-  const thinking = 'The saved notes probably have this; fetch the page to be sure.'
   const request = { type: 'toolCall', id: call, name: 'web_fetch', arguments: { url: 'https://example.com/plans' } }
-  const first = assistant(lastId + 2, at + 1_000, [{ type: 'thinking', thinking }, request])
+  const first = assistant(turn.lastId + 2, TURN_AT + 1_000, [{ type: 'thinking', thinking: THINKING }, request])
   return [
-    { ...opening, wait: 3_000 }, // the provider's quiet stretch before anything streams
-    step([message(at + 1_000)]),
-    step([
-      {
-        type: 'message_update',
-        changes: [{ type: 'thinking_start', contentIndex: 0, block: { type: 'thinking', thinking: '' } }],
-      },
-    ]),
-    step([{ type: 'message_update', changes: [{ type: 'thinking_delta', contentIndex: 0, delta: thinking }] }]),
+    { ...turn.opening, wait: 3_000 }, // the provider's quiet stretch before anything streams
+    step([messageStart(TURN_AT + 1_000)]),
+    ...thinkingSteps(THINKING),
     step([{ type: 'message_end', entry: first }]),
     step([{ type: 'tool_execution_start', toolCallId: call, toolName: 'web_fetch', args: request.arguments }], 1_500),
-    step([{ type: 'tool_execution_end', toolCallId: call, entry: toolResult(lastId + 3, at + 2_500, call) }], 2_500),
-    step([message(at + 3_000)]),
-    ...textSteps(reply, 0),
-    committed(lastId + 4, at + 3_000),
+    step(
+      [{ type: 'tool_execution_end', toolCallId: call, entry: toolResult(turn.lastId + 3, TURN_AT + 2_500, call) }],
+      2_500,
+    ),
+    step([messageStart(TURN_AT + 3_000)]),
+    ...textSteps(turn.reply, 0),
+    committed(turn, turn.lastId + 4, TURN_AT + 3_000),
   ]
+}
+
+const STORM_TOOLS = ['list_messages', 'list_tasks', 'list_gaps', 'whoami']
+/** One round of the storm: the model thinks, asks for four calls to one server, and they finish one by one. */
+function stormRound(round: number, firstId: number): Step[] {
+  const when = TURN_AT + 1_000 + round * 10_000
+  const calls = STORM_TOOLS.map((name, index) => ({
+    type: 'toolCall',
+    id: `storm-${round}-${index}`,
+    name: 'mcp_call',
+    arguments: { serverId: 'dev-sidequest-exchange', name, arguments: {} },
+  }))
+  const asking = assistant(firstId, when, [{ type: 'thinking', thinking: 'Checking the next set of pages.' }, ...calls])
+  return [
+    step([messageStart(when)]),
+    ...thinkingSteps('Checking the next set of pages.'),
+    step([{ type: 'message_end', entry: asking }]),
+    step(
+      calls.map((one) => ({
+        type: 'tool_execution_start',
+        toolCallId: one.id,
+        toolName: 'mcp_call',
+        args: one.arguments,
+      })),
+      400,
+    ),
+    ...calls.map((one, index) =>
+      step(
+        [
+          {
+            type: 'tool_execution_end',
+            toolCallId: one.id,
+            entry: toolResult(firstId + 1 + index, when + 2_000, one.id),
+          },
+        ],
+        250,
+      ),
+    ),
+  ]
+}
+/** Each round takes an entry for the asking message and one per result. */
+const STORM_ROUND_ENTRIES = STORM_TOOLS.length + 1
+
+function toolStorm(turn: Turn): Step[] {
+  const rounds = [0, 1, 2].flatMap((round) => stormRound(round, turn.lastId + 2 + round * STORM_ROUND_ENTRIES))
+  const answerId = turn.lastId + 2 + 3 * STORM_ROUND_ENTRIES
+  return [
+    turn.opening,
+    ...rounds,
+    step([messageStart(TURN_AT + 40_000)]),
+    ...textSteps(turn.reply, 0),
+    committed(turn, answerId, TURN_AT + 40_000),
+  ]
+}
+
+/** The owner's turn and the start of the reply in one batch, so the reply is already past the fold when it lands. */
+const sameBatch = (turn: Turn): Step[] => [
+  step([
+    { type: 'entry_appended', entry: turn.question },
+    { type: 'run_start' },
+    messageStart(TURN_AT + 1_000),
+    textUpdate(turn.reply.slice(0, FIRST_SLICE)),
+  ]),
+  ...textSteps(turn.reply.slice(FIRST_SLICE), 0),
+  committed(turn, turn.lastId + 2, TURN_AT + 1_000),
+]
+
+/** The stream starting again from a snapshot that already holds the turn and a long partial reply. */
+const resnapshot = (turn: Turn): Step[] => [
+  step([
+    {
+      type: 'snapshot',
+      entries: [...turn.entries, turn.question],
+      tools: [],
+      inbox: [],
+      run: {},
+      generation: {
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: turn.reply.slice(0, FIRST_SLICE) }],
+          timestamp: TURN_AT + 1_000,
+        },
+      },
+    },
+  ]),
+  ...textSteps(turn.reply.slice(FIRST_SLICE), 0),
+  committed(turn, turn.lastId + 2, TURN_AT + 1_000),
+]
+
+/** The baseline, with the composer growing a third of the way through. */
+function dockGrows(turn: Turn): Step[] {
+  const steps = streamed(turn)
+  const third = Math.floor(steps.length / 3)
+  return steps.map((one, index) => (index === third ? { ...one, dock: '11rem' } : one))
+}
+
+const SCENARIOS: Record<FollowScenario, (turn: Turn) => Step[]> = {
+  reply: streamed,
+  tools,
+  'tool-storm': toolStorm,
+  'long-first': (turn) => [
+    turn.opening,
+    step([messageStart(TURN_AT + 1_000), textUpdate(turn.reply.slice(0, FIRST_SLICE))]),
+    ...textSteps(turn.reply.slice(FIRST_SLICE), 0),
+    committed(turn, turn.lastId + 2, TURN_AT + 1_000),
+  ],
+  dock: dockGrows,
+  'same-batch': sameBatch,
+  resnapshot,
 }
 
 /** What the page saw of the scroller over one scripted turn (`transcript.tsx`). */
@@ -296,6 +409,8 @@ export type FollowReport = {
   readonly shiftMax: number
   /** The tallest the reserved space under a pinned turn got (px). */
   readonly spacerMax: number
+  /** How many rows the turn that was just played takes, from the owner's message to the end. */
+  readonly turnRows: number
   /** What happened, frame by frame: the view pulled back, the arrow toggled, the newest row shrank, rows jumped on screen. */
   readonly trace: readonly string[]
 }

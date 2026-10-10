@@ -8,6 +8,7 @@ import type { ChatThreads } from '../../src/components/shell/thread-summary.tsx'
 import { useConversation, useTranscript } from '../../src/components/use-conversation.ts'
 import { WorkspaceFeedProvider } from '../../src/components/workspace-feed.tsx'
 import { type Navigation, NavigationContext } from '../../src/lib/navigation.ts'
+import { groupWork } from '../../src/lib/work-groups.ts'
 import {
   BATCH_INTERVAL_MS,
   type FollowReport,
@@ -64,53 +65,85 @@ function look() {
   }
 }
 
+type Look = NonNullable<ReturnType<typeof look>>
+/** What the watcher adds up over a turn; `FollowReport` is its settled form. */
+type Tally = {
+  frames: number
+  hiddenMax: number
+  arrowFrames: number
+  backFrames: number
+  backMax: number
+  shifts: number
+  shiftMax: number
+  spacerMax: number
+  trace: string[]
+}
+const TRACE_LIMIT = 400
+
+/** Where the gap between two neighbouring rows that are on screen in both frames changed, and by how much (px). */
+function gapChanges(previous: Look, now: Look): { readonly id: string; readonly change: number }[] {
+  const was = new Map(previous.visible)
+  return now.visible.flatMap(([id, top], index) => {
+    const next = now.visible[index + 1]
+    const before = was.get(id)
+    const nextBefore = next === undefined ? undefined : was.get(next[0])
+    if (next === undefined || before === undefined || nextBefore === undefined) return []
+    const change = next[1] - top - (nextBefore - before)
+    return Math.abs(change) > 1 ? [{ id, change }] : []
+  })
+}
+
+/** Adds one frame to the tally: what the scroller offered, and what moved since the last frame. */
+function tallyFrame(tally: Tally, previous: Look | undefined, now: Look, streaming: boolean): void {
+  tally.frames += 1
+  tally.hiddenMax = Math.max(tally.hiddenMax, now.hidden)
+  tally.spacerMax = Math.max(tally.spacerMax, now.spacer)
+  if (now.arrow && streaming) tally.arrowFrames += 1
+  if (previous === undefined) return
+  const back = previous.top - now.top
+  if (back > 2) {
+    tally.backFrames += 1
+    tally.backMax = Math.max(tally.backMax, back)
+  }
+  // A visible jump: the gap between two rows that are both on screen changed. Rows above the screen changing height are
+  // not one; the scroller keeps the screen where it was.
+  for (const { id, change } of gapChanges(previous, now)) {
+    tally.shifts += 1
+    tally.shiftMax = Math.max(tally.shiftMax, Math.abs(change))
+    tally.trace.push(`f${tally.frames} row ${id} is ${Math.round(change)}px taller on screen`)
+  }
+  const shrank = now.newestId === previous.newestId && previous.newestHeight - now.newestHeight > 20
+  if (shrank)
+    tally.trace.push(
+      `f${tally.frames} newest ${now.newestId} shrank ${Math.round(previous.newestHeight)}→${Math.round(now.newestHeight)}`,
+    )
+  if (back > 2 || now.arrow !== previous.arrow)
+    tally.trace.push(
+      `f${tally.frames} top ${Math.round(previous.top)}→${Math.round(now.top)} arrow ${now.arrow} spacer ${now.spacer}`,
+    )
+  tally.trace.length = Math.min(tally.trace.length, TRACE_LIMIT)
+}
+
 /** Plays `steps` and watches every frame; the scroller's own state is read from the DOM, as a person would see it. */
 async function follow(steps: readonly Step[]): Promise<FollowReport> {
+  const tally: Tally = {
+    frames: 0,
+    hiddenMax: Number.NEGATIVE_INFINITY,
+    arrowFrames: 0,
+    backFrames: 0,
+    backMax: 0,
+    shifts: 0,
+    shiftMax: 0,
+    spacerMax: 0,
+    trace: [],
+  }
   let watching = true
   let streaming = true
   let previous = look()
-  let frames = 0
-  let hiddenMax = Number.NEGATIVE_INFINITY
-  let arrowFrames = 0
-  let backFrames = 0
-  let backMax = 0
-  let shifts = 0
-  let shiftMax = 0
-  let spacerMax = 0
-  const trace: string[] = []
   const watch = () => {
     const now = look()
     if (now !== undefined) {
-      frames += 1
-      hiddenMax = Math.max(hiddenMax, now.hidden)
-      spacerMax = Math.max(spacerMax, now.spacer)
-      if (now.arrow && streaming) arrowFrames += 1
-      if (previous !== undefined) {
-        const back = previous.top - now.top
-        if (back > 2) {
-          backFrames += 1
-          backMax = Math.max(backMax, back)
-        }
-        // A visible jump: the gap between two rows that are both on screen, in this frame and the last, changed. Rows
-        // above the screen changing height are not one; the scroller keeps the screen where it was.
-        const was = new Map(previous.visible)
-        for (const [index, [id, top]] of now.visible.entries()) {
-          const next = now.visible[index + 1]
-          const before = was.get(id)
-          const nextBefore = next === undefined ? undefined : was.get(next[0])
-          if (next === undefined || before === undefined || nextBefore === undefined) continue
-          const change = next[1] - top - (nextBefore - before)
-          if (Math.abs(change) > 1) {
-            shifts += 1
-            shiftMax = Math.max(shiftMax, Math.abs(change))
-            if (trace.length < 400) trace.push(`f${frames} row ${id} is ${Math.round(change)}px taller on screen`)
-          }
-        }
-        if (trace.length < 400 && (back > 2 || now.arrow !== previous.arrow))
-          trace.push(
-            `f${frames} top ${Math.round(previous.top)}→${Math.round(now.top)} arrow ${now.arrow} spacer ${now.spacer}`,
-          )
-      }
+      tallyFrame(tally, previous, now, streaming)
       previous = now
     }
     if (watching) requestAnimationFrame(watch)
@@ -126,18 +159,16 @@ async function follow(steps: readonly Step[]): Promise<FollowReport> {
   await sleep(500)
   const settled = look()
   watching = false
+  const items = [...document.querySelectorAll<HTMLElement>('[data-message-id]')]
+  const turnStart = items.findLastIndex((item) => item.dataset.scrollAnchor === 'true')
   return {
-    frames,
-    hiddenMax: Math.round(hiddenMax),
+    ...tally,
+    turnRows: turnStart < 0 ? 0 : items.length - turnStart,
+    hiddenMax: Math.round(tally.hiddenMax),
     hiddenFinal: Math.round(settled?.hidden ?? 0),
     arrowFinal: settled?.arrow ?? false,
-    arrowFrames,
-    backFrames,
-    backMax: Math.round(backMax),
-    shifts,
-    shiftMax: Math.round(shiftMax),
-    spacerMax,
-    trace,
+    backMax: Math.round(tally.backMax),
+    shiftMax: Math.round(tally.shiftMax),
   }
 }
 const perf: PerfApi = {
@@ -179,6 +210,8 @@ function Transcript({ expected }: { readonly expected: number }) {
     () => ({ chat: '1', at: new Map(), branchable, reply: () => undefined, open: () => undefined }),
     [branchable],
   )
+  // As `ChatView` folds a turn's quiet work to one line each.
+  const rows = useMemo(() => groupWork(parts, { appCalls: new Set() }), [parts])
   const shown = projection !== undefined && parts.length >= expected
   useEffect(() => {
     // Two frames on: the scroller has placed the transcript at its end and the browser has painted it.
@@ -189,7 +222,7 @@ function Transcript({ expected }: { readonly expected: number }) {
     <section className="chat-view" data-place="channel" aria-label="Transcript" data-app-scope>
       <AppsIn conversation="1">
         <Conversation
-          parts={parts}
+          parts={rows}
           canSwitchModel={false}
           threads={threads}
           loading={projection === undefined}
