@@ -1,6 +1,5 @@
 import type { PiReceipt } from 'agents/harness/pi'
 import type { RpcResult } from './http/rpc.ts'
-import type { GrantCapability } from './mcp/grants.ts'
 import type { ConversationView } from '@goblin/contracts'
 import type { TranscriptMessage } from './pi/transcript.ts'
 import type { MailBinding } from './auth/mail.ts'
@@ -33,7 +32,6 @@ export type AskResult =
   | { readonly status: 'running'; readonly operationId: string }
   | { readonly status: 'unanswered'; readonly operationId: string; readonly reason: string }
 export type AgentRpc = AgentRpcMethods & Rpc.DurableObjectBranded
-export type { GrantCapability }
 
 export interface RuntimeEnv {
   readonly AGENTS: DurableObjectNamespace<AgentRpc>

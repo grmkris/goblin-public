@@ -1085,10 +1085,10 @@ the user's task if a commit listener throws, so the recorder and every sink are 
 failures. Verified with in-memory Pi (`test/telemetry.test.ts`) and local workerd (`native-telemetry.ts`, the
 Telegram Events probe). Compaction summaries' model calls are not recorded yet.
 
-The benchmark measures its turns with the same pieces (`@goblin/runtime/telemetry`, `telemetry/benchmark.ts`):
-`runTelemetry(storage, name, sinks)` gives the ledger, log and recorder for any object that runs Pi on its own SQLite.
-Attach its `recorder` and await `recorder.restore(harness)` right after `Harness.open`, before enabling scheduling.
-Pass a `CollectedRuns` sink to read events in process
+Any other object that runs Pi on its own SQLite can measure its turns with the same pieces: `runTelemetry(storage,
+name, sinks)` (`telemetry/run.ts`) gives its ledger, log and recorder. Attach its `recorder` and await
+`recorder.restore(harness)` right after `Harness.open`, before enabling scheduling. Pass a `CollectedRuns` sink
+(`telemetry/events.ts`) to read events in process
 (or read `ledger.forOperation(operationId)`), and `summarize(turn, events)` gives the per-turn numbers: attempts,
 failures, tool calls and tokens. Attempt timing runs from the generation entering `request` to its assistant entry;
 the first chunk is the first committed partial, so it is good to about 100 ms.
