@@ -9,6 +9,7 @@ import { Button, Receipt } from '@goblin/ui'
 import { clipStage, clippingAncestors } from '../../lib/app-occlusion.ts'
 import { CHROME_HEIGHT, type Rect } from '../../lib/app-stage.ts'
 import { APP_MODES, type AppPlacement, inlineHeight } from '../../lib/host-context.ts'
+import { prefersReducedMotion } from '../../lib/motion.ts'
 import { atRest, type Motion, PLACE, stepSpring } from '../../lib/spring.ts'
 import { AppFrame, selectionOrigin } from './frame.tsx'
 import { AppJobs } from './app-jobs.tsx'
@@ -267,8 +268,7 @@ function Stage({ instance }: { readonly instance: Instance }) {
   useEffect(() => {
     if (previous.current === place.surface) return
     previous.current = place.surface
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches)
-      stage.current?.animate([{ opacity: 0.4 }, { opacity: 1 }], { duration: 150 })
+    if (prefersReducedMotion()) stage.current?.animate([{ opacity: 0.4 }, { opacity: 1 }], { duration: 150 })
     live.current.moving = live.current.seeded
     kick()
   }, [place.surface, kick])
