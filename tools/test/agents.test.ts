@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -18,32 +17,12 @@ const fixture = (): string => {
 }
 
 const source = '---\nname: x\ndescription: Apply the reviewed fixture skill when checking provenance.\n---\nBody\n'
-test('changed vendor bytes fail even when SKILL.md is unchanged', () => {
+test('vendored skills skip the repo-authored checks; agents-sync verifies them', () => {
   const root = fixture()
   const dir = path.join(root, '.agents/skills/x')
-  writeFileSync(path.join(dir, 'SKILL.md'), source)
-  writeFileSync(path.join(dir, 'LICENSE'), 'license')
-  writeFileSync(path.join(dir, 'reference.md'), 'changed')
-  writeFileSync(
-    path.join(root, '.agents/skills/sources.json'),
-    JSON.stringify({
-      version: 1,
-      reviewedAt: '2026-10-04',
-      skills: {
-        x: {
-          repository: 'fixture/skills',
-          commit: 'a'.repeat(40),
-          path: 'x',
-          sourceSha256: createHash('sha256').update(source).digest('hex'),
-          licenses: ['LICENSE'],
-          unchanged: true,
-          adaptation: 'Fixture skill copied unchanged.',
-          copiedFileHashes: { 'reference.md': createHash('sha256').update('original').digest('hex') },
-        },
-      },
-    }),
-  )
-  expect(checkSkills(root).some((failure) => failure.includes('reference.md differs'))).toBe(true)
+  writeFileSync(path.join(dir, 'SKILL.md'), '---\nname: x\ndescription: Short.\n---\nTODO upstream\n')
+  writeFileSync(path.join(root, '.agents/skills/sources.json'), JSON.stringify({ version: 2, skills: { x: {} } }))
+  expect(checkSkills(root)).toEqual([])
 })
 
 test('wrong skill name/folder fails', () => {

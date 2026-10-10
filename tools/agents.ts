@@ -5,14 +5,11 @@
  */
 import { Option, Schema } from 'effect'
 import { execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync } from 'node:fs'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
-import { Sources } from './vendored.ts'
+import { SourcesNames } from './vendored.ts'
 
-/** Skills other tools install locally into .claude/skills (gitignored); they are not ours to check. */
-const LOCAL_ONLY_SKILLS = new Set<string>()
 const MAX_ROOT_AGENTS_LINES = 150
 const DESCRIPTION = { min: 20, max: 220 }
 
@@ -63,16 +60,16 @@ const skillDirs = (root: string): string[] =>
         .toSorted()
     : []
 
-export const readSourcesAt = (root: string): typeof Sources.Type | undefined =>
+/** sources.json (v2) as far as this checker needs it: which skills are vendored. scripts/agents-sync.ts verifies the entries. */
+export const readSourcesAt = (root: string): typeof SourcesNames.Type | undefined =>
   exists(root, '.agents/skills/sources.json')
-    ? decodeOrUndefined(Sources, JSON.parse(read(root, '.agents/skills/sources.json')))
+    ? decodeOrUndefined(SourcesNames, JSON.parse(read(root, '.agents/skills/sources.json')))
     : undefined
 
 // ---------------------------------------------------------------------------------------------------------------------
 // skills
 
 type SkillMatter = typeof SkillFrontmatter.Type
-type SkillSourceEntry = NonNullable<ReturnType<typeof readSourcesAt>>['skills'][string]
 
 /** Manual-only in Claude Code (`disable-model-invocation`) exactly when manual-only in Codex (agents/openai.yaml). */
 const checkManualAgreement = (root: string, dir: string, matter: SkillMatter): string[] => {
@@ -100,31 +97,8 @@ const checkRepoAuthored = (file: string, source: string, matter: SkillMatter): s
   return failures
 }
 
-/** A vendored skill: its licences are present, and an unchanged SKILL.md still equals upstream. */
-const checkVendored = (root: string, dir: string, entry: SkillSourceEntry): string[] => {
-  const file = `.agents/skills/${dir}/SKILL.md`
-  const failures = entry.licenses
-    .filter((license) => !exists(root, `.agents/skills/${dir}/${license}`))
-    .map((license) => `.agents/skills/${dir}/${license} is missing. Copy the upstream licence (sources.json names it).`)
-  const hash = createHash('sha256')
-    .update(readFileSync(path.join(root, file)))
-    .digest('hex')
-  if (entry.unchanged && hash !== entry.sourceSha256) {
-    failures.push(
-      `${file} differs from upstream (${entry.repository}@${entry.commit ?? 'local'}), but sources.json says it is unchanged. Restore the upstream file, or record the adaptation and set \`unchanged: false\`.`,
-    )
-  }
-  for (const [relative, expected] of Object.entries(entry.copiedFileHashes ?? {})) {
-    const copied = path.join(root, '.agents/skills', dir, relative)
-    if (!existsSync(copied)) failures.push(`${copied} is missing from the recorded skill copy.`)
-    else if (createHash('sha256').update(readFileSync(copied)).digest('hex') !== expected)
-      failures.push(`${copied} differs from its recorded copy hash.`)
-  }
-  return failures
-}
-
 /** One skill folder; `names` collects the names seen so far, to catch duplicates. */
-const checkSkill = (root: string, dir: string, entry: SkillSourceEntry | undefined, names: Set<string>): string[] => {
+const checkSkill = (root: string, dir: string, vendored: boolean, names: Set<string>): string[] => {
   const file = `.agents/skills/${dir}/SKILL.md`
   if (!exists(root, file)) return [`.agents/skills/${dir} has no SKILL.md. Add one, or remove the folder.`]
   const source = read(root, file)
@@ -135,60 +109,15 @@ const checkSkill = (root: string, dir: string, entry: SkillSourceEntry | undefin
   if (names.has(matter.name)) failures.push(`${file}: the skill name \`${matter.name}\` is used twice.`)
   names.add(matter.name)
   failures.push(...checkManualAgreement(root, dir, matter))
-  failures.push(...(entry === undefined ? checkRepoAuthored(file, source, matter) : checkVendored(root, dir, entry)))
+  // vendored skills (licences, hashes, adaptations) are verified by scripts/agents-sync.ts
+  if (!vendored) failures.push(...checkRepoAuthored(file, source, matter))
   return failures
 }
 
 export const checkSkills = (root: string): string[] => {
-  const sources = readSourcesAt(root)
-  const failures =
-    exists(root, '.agents/skills/sources.json') && sources === undefined
-      ? ['.agents/skills/sources.json does not match its schema (tools/vendored.ts). Fix the entry the decoder names.']
-      : []
-  const vendored = sources?.skills ?? {}
+  const vendored = readSourcesAt(root)?.skills ?? {}
   const names = new Set<string>()
-  for (const dir of skillDirs(root)) failures.push(...checkSkill(root, dir, vendored[dir], names))
-  for (const name of Object.keys(vendored).filter((candidate) => !names.has(candidate))) {
-    failures.push(
-      `sources.json lists \`${name}\`, but .agents/skills/${name}/SKILL.md does not exist. Remove the entry.`,
-    )
-  }
-  return failures
-}
-
-const linkFix = (name: string): string => `Run: ln -sfn ../../.agents/skills/${name} .claude/skills/${name}`
-
-/** Every skill is linked from .claude/skills by a relative per-skill symlink (docs/agents/agent-setup.md). */
-export const checkSkillLinks = (root: string): string[] => {
-  const failures: string[] = []
-  const skills = new Set(skillDirs(root).filter((dir) => exists(root, `.agents/skills/${dir}/SKILL.md`)))
-  const linkDir = path.join(root, '.claude/skills')
-  const entries = existsSync(linkDir) ? readdirSync(linkDir) : []
-  if (existsSync(linkDir) && !lstatSync(linkDir).isDirectory()) {
-    return ['.claude/skills must be a directory of per-skill symlinks, not a link to .agents/skills.']
-  }
-  for (const name of entries) {
-    if (LOCAL_ONLY_SKILLS.has(name)) continue
-    const entry = path.join(linkDir, name)
-    if (!lstatSync(entry).isSymbolicLink()) {
-      failures.push(
-        `.claude/skills/${name} must be a symlink into .agents/skills. Move the skill there. ${linkFix(name)}`,
-      )
-      continue
-    }
-    const target = readlinkSync(entry)
-    if (target !== `../../.agents/skills/${name}`) {
-      failures.push(`.claude/skills/${name} points at ${target}. ${linkFix(name)}`)
-    } else if (!skills.has(name)) {
-      failures.push(
-        `.claude/skills/${name} is dangling: .agents/skills/${name}/SKILL.md does not exist. Remove the link.`,
-      )
-    }
-  }
-  for (const name of skills) {
-    if (!entries.includes(name)) failures.push(`Claude Code cannot see the skill \`${name}\`. ${linkFix(name)}`)
-  }
-  return failures
+  return skillDirs(root).flatMap((dir) => checkSkill(root, dir, dir in vendored, names))
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -323,7 +252,6 @@ export const checkAll = (root: string, workspaceDirs: readonly string[]): string
   const files = listFiles(root)
   return [
     ...checkSkills(root),
-    ...checkSkillLinks(root),
     ...checkInstructions(root, workspaceDirs, files),
     ...checkLinks(root, files),
     ...checkRules(root, files),

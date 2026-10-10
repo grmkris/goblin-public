@@ -20,6 +20,7 @@
     "unresolved": "error",
   },
   "treatConfigHintsAsErrors": true,
+  // Vendored lint rules are upstream files, not goblin sources.
   "ignore": ["tools/oxlint/anti-slop/**"],
   // `cloudflare:workers` is a Workers runtime module (RpcTarget, WorkerEntrypoint), not a package.
   "ignoreDependencies": ["@effect/language-service", "cloudflare"],

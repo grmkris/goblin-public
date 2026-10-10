@@ -1,42 +1,27 @@
 /**
- * Vendored agent skills: the schema of `.agents/skills/sources.json` and the paths the formatter and the linter skip.
- * oxfmt.config.ts and oxlint.config.ts read the skip list from here, so adding a vendored skill to sources.json is
- * enough; `bun run agents:check` verifies the entries themselves.
+ * Vendored agent skills live in `.agents/skills`, pinned in `.agents/skills/sources.json` (v2). scripts/agents-sync.ts
+ * owns that file and verifies it (`bun scripts/agents-sync.ts --check`, part of `agents:check`); this module only
+ * reads the skill names, so oxfmt.config.ts and oxlint.config.ts skip the vendored copies.
  */
 import { Schema } from 'effect'
-import { readFileSync } from 'node:fs'
-
-export const SkillSource = Schema.Struct({
-  /** `owner/name` on GitHub, or `local:<path>` for a skill taken from a local installation. */
-  repository: Schema.String,
-  commit: Schema.optional(Schema.String),
-  /** The skill folder inside the source. */
-  path: Schema.String,
-  /** SHA-256 of the source's SKILL.md. */
-  sourceSha256: Schema.String,
-  /** Licence files inside our skill folder. */
-  licenses: Schema.Array(Schema.String),
-  /** Our SKILL.md is byte-identical to the source's, so its hash must equal sourceSha256. */
-  unchanged: Schema.Boolean,
-  copiedFileHashes: Schema.optional(Schema.Record(Schema.String, Schema.String)),
-  reviewedAt: Schema.optional(Schema.String),
-  adaptation: Schema.String,
-})
-
-export const Sources = Schema.Struct({
-  version: Schema.Literal(1),
-  reviewedAt: Schema.String,
-  skills: Schema.Record(Schema.String, SkillSource),
-})
+import { existsSync, readFileSync } from 'node:fs'
 
 export const sourcesFile = new URL('../.agents/skills/sources.json', import.meta.url)
 
-export const readSources = (): typeof Sources.Type =>
-  Schema.decodeUnknownSync(Sources)(JSON.parse(readFileSync(sourcesFile, 'utf8')))
+/** The part of sources.json this repo reads: which skills are vendored. */
+export const SourcesNames = Schema.Struct({ skills: Schema.Record(Schema.String, Schema.Unknown) })
+
+/** Names of the vendored skills (keys of sources.json `skills`). */
+export const vendoredSkillNames = (): string[] =>
+  existsSync(sourcesFile)
+    ? Object.keys(Schema.decodeUnknownSync(SourcesNames)(JSON.parse(readFileSync(sourcesFile, 'utf8'))).skills)
+    : []
 
 /** What oxfmt and oxlint must not touch: vendored skills in upstream style, harness link and state directories. */
 export const agentIgnorePatterns = (): string[] => [
-  ...Object.keys(readSources().skills).map((name) => `.agents/skills/${name}/**`),
+  ...vendoredSkillNames().map((name) => `.agents/skills/${name}/**`),
+  // written by scripts/agents-sync.ts in its own JSON style
+  '.agents/skills/sources.json',
   '.claude/skills/**',
   '.codex/**',
   '.grok/**',
