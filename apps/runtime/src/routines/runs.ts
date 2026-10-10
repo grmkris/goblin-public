@@ -90,9 +90,12 @@ function newRun(firing: Firing, id: string, skip: string | undefined, at: number
 export class RoutineRunStore {
   readonly db: DrizzleSqliteDODatabase
   readonly owner: string
+  /** The owner's routines, for their caps, revisions and schedules. */
+  readonly #routines: RoutineStore
   constructor(db: DrizzleSqliteDODatabase, owner: string) {
     this.db = db
     this.owner = owner
+    this.#routines = new RoutineStore(db, owner)
   }
 
   async ask(
@@ -167,10 +170,7 @@ export class RoutineRunStore {
       .where(and(eq(appInteractions.runId, run.id), eq(appInteractions.state, 'pending')))
       .get()
     if (question === undefined || question.expiresAt <= at) throw new Conflict({ reason: 'routine question expired' })
-    if (
-      this.live().filter((live) => live.state !== 'waiting_owner').length >=
-      new RoutineStore(this.db, this.owner).settings().maxRunning
-    )
+    if (this.live().filter((live) => live.state !== 'waiting_owner').length >= this.#routines.settings().maxRunning)
       throw new Conflict({ reason: 'running routine limit' })
     this.db.transaction(() => {
       this.db
@@ -196,7 +196,7 @@ export class RoutineRunStore {
     return this.db.select().from(appRoutineRuns).where(eq(appRoutineRuns.sessionId, session)).get()
   }
   list(routineId: string): RoutineRunView[] {
-    new RoutineStore(this.db, this.owner).get(routineId)
+    this.#routines.get(routineId)
     return this.db
       .select()
       .from(appRoutineRuns)
@@ -238,7 +238,7 @@ export class RoutineRunStore {
         requireSameFiring(previous, firing)
         return { run: previous, created: false }
       }
-      const routine = new RoutineStore(this.db, this.owner).get(firing.routineId)
+      const routine = this.#routines.get(firing.routineId)
       if (routine.revision !== firing.revision || routine.state !== 'active' || routine.confirmedAt === null)
         throw new Conflict({ reason: 'routine is not active at this revision' })
       if (skip === undefined) {
@@ -248,10 +248,7 @@ export class RoutineRunStore {
       const run = newRun(firing, id, skip, at, routine.definitionJson)
       this.db.insert(appRoutineRuns).values(run).run()
       if (firing.schedule !== undefined)
-        new RoutineStore(this.db, this.owner).advance(
-          { id: routine.id, revision: routine.revision, ...firing.schedule },
-          at,
-        )
+        this.#routines.advance({ id: routine.id, revision: routine.revision, ...firing.schedule }, at)
       this.db
         .update(appRoutines)
         .set({ lastFireAt: firing.firedAt, updatedAt: at })
@@ -272,10 +269,7 @@ export class RoutineRunStore {
   #requireSlot(routineId: string): void {
     const live = this.live()
     if (live.some((run) => run.routineId === routineId)) throw new Conflict({ reason: 'routine already running' })
-    if (
-      live.filter((run) => run.state !== 'waiting_owner').length >=
-      new RoutineStore(this.db, this.owner).settings().maxRunning
-    )
+    if (live.filter((run) => run.state !== 'waiting_owner').length >= this.#routines.settings().maxRunning)
       throw new Conflict({ reason: 'running routine limit' })
   }
   bind(id: string, sessionId: string, at: number): void {
