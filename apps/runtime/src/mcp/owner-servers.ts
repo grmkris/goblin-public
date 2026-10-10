@@ -1,0 +1,270 @@
+import { auth, discoverOAuthServerInfo, type Tool } from '@modelcontextprotocol/client'
+import type { ServerSource, ServerView, ToolView } from '@goblin/contracts'
+import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
+import { epochSeconds } from '../clock.ts'
+import { Internal, InvalidInput, NeedsAuthorization, UpstreamMcp, attempt, attemptSync } from '../http/errors.ts'
+import { OPEN_ACCESS } from './auth.ts'
+import type { McpManager } from './connections.ts'
+import type { Credentials } from './credentials.ts'
+import { addedServerId, serverClaims, userEndpoint } from './endpoint.ts'
+import type { Grants } from './grants.ts'
+import { StoredOAuthProvider } from './oauth-provider.ts'
+import type { AddedRegistries } from './registries.ts'
+import { makeCatalog } from './registry.ts'
+import { offersEvents, offersSkills, toolAppResource, toolOffered } from './remote.ts'
+import { type AddedServer, type AddedServers, MAX_ADDED_SERVERS } from './servers.ts'
+import { McpServers } from './service.ts'
+import { type Stage, suggestions } from './suggested.ts'
+import type { McpConnectionSnapshot, McpServerConfig } from './types.ts'
+
+/** The failures that mean a server was not reached at all, rather than that it refused this agent. */
+const UNREACHABLE: ReadonlySet<UpstreamMcp['reason']> = new Set(['transport', 'timeout', 'cancelled'])
+
+/**
+ * Request every scope the server offers: the resource's own list, else its authorization server's. The SDK only
+ * falls back to the resource's list, so a server that publishes scopes on the authorization server alone would get
+ * no scope request, and with it no `offline_access` and no refresh token. Grants, not scopes, limit what runs.
+ */
+export const offeredScope = async (endpoint: string, fetchFn: typeof fetch): Promise<string | undefined> => {
+  const info = await discoverOAuthServerInfo(endpoint, { fetchFn })
+  const scopes = info.resourceMetadata?.scopes_supported ?? info.authorizationServerMetadata?.scopes_supported ?? []
+  return scopes.length === 0 ? undefined : scopes.join(' ')
+}
+
+/** What the owner's servers are kept and signed in with. */
+export type OwnerServers = {
+  readonly manager: McpManager
+  /** The deployment's servers, by id; they win over an added server with the same id. */
+  readonly configured: ReadonlySet<string>
+  readonly credentials: Credentials
+  readonly grants: Grants
+  readonly appUrl: string
+  readonly fetch: typeof fetch
+  readonly registries: AddedRegistries
+  /** Servers the owner added; without it, the server list is fixed. */
+  readonly added?: AddedServers
+  /** Random characters for added server ids. */
+  readonly random: () => string
+  readonly skillsEnabled: (serverId: string) => boolean
+}
+
+const viewOf = (
+  owner: OwnerServers,
+  server: McpServerConfig,
+  snapshot: McpConnectionSnapshot | undefined,
+  claims: AddedServer | undefined,
+): ServerView => {
+  const name = snapshot?.serverInfo?.name
+  const events = snapshot !== undefined && offersEvents(snapshot)
+  return {
+    serverId: server.serverId,
+    endpoint: server.endpoint,
+    status: owner.credentials.status(server.serverId),
+    live: snapshot !== undefined,
+    skillsOffered: snapshot !== undefined && offersSkills(snapshot),
+    ...(events ? { eventsOffered: true } : {}),
+    skillsEnabled: owner.skillsEnabled(server.serverId),
+    ...(name === undefined ? {} : { serverName: name }),
+    source: claims === undefined ? 'config' : 'added',
+    ...(claims?.title === undefined ? {} : { title: claims.title }),
+    ...(claims?.description === undefined ? {} : { description: claims.description }),
+    ...(claims?.icon === undefined ? {} : { icon: claims.icon }),
+  }
+}
+
+/** Every server offered, configured first, with its connection status and the claims of an added one. */
+const views = (owner: OwnerServers) =>
+  Effect.gen(function* () {
+    const claimed = new Map((owner.added?.list() ?? []).map((server) => [server.serverId, server]))
+    const offered: ServerView[] = []
+    for (const server of yield* owner.manager.servers()) {
+      const snapshot = Option.getOrUndefined(yield* owner.manager.snapshot(server.serverId))
+      const claims = owner.configured.has(server.serverId) ? undefined : claimed.get(server.serverId)
+      offered.push(viewOf(owner, server, snapshot, claims))
+    }
+    return offered
+  })
+
+/**
+ * Adds a server by its endpoint: a public https URL not already offered, labelled from its server card. It starts
+ * disconnected; the owner connects it as any other. `source` records the registry entry it came from.
+ */
+const addServer = (owner: OwnerServers, raw: string, source: ServerSource | undefined) =>
+  Effect.gen(function* () {
+    const { added, manager } = owner
+    if (added === undefined) return yield* new InvalidInput({ reason: 'servers_fixed' })
+    const endpoint = yield* attemptSync(() => userEndpoint(raw))
+    const servers = yield* manager.servers()
+    if (servers.some((server) => server.endpoint === endpoint.href))
+      return yield* new InvalidInput({ reason: 'already_added' })
+    if (added.list().length >= MAX_ADDED_SERVERS) return yield* new InvalidInput({ reason: 'too_many_servers' })
+    const claims = yield* attempt(() => serverClaims(endpoint, owner.fetch))
+    const taken = new Set((yield* manager.servers()).map((server) => server.serverId))
+    const server = { serverId: addedServerId(endpoint, taken, owner.random), endpoint: endpoint.href }
+    const now = yield* epochSeconds
+    yield* attemptSync(() => added.add({ ...server, ...claims, ...(source === undefined ? {} : { source }) }, now))
+    yield* manager.add(server)
+    const view = (yield* views(owner)).find((item) => item.serverId === server.serverId)
+    if (view === undefined) return yield* new Internal({ reason: 'added server missing' })
+    return view
+  })
+
+/** Removes a server the owner added, with its credentials, grants and pending sign-ins. Configured ones stay. */
+const removeServer = (owner: OwnerServers, serverId: string) =>
+  Effect.gen(function* () {
+    const { added } = owner
+    if (added === undefined || !added.list().some((server) => server.serverId === serverId))
+      return yield* new InvalidInput({
+        reason: owner.configured.has(serverId) ? 'configured_server' : 'unknown_server',
+      })
+    yield* owner.manager.remove(serverId)
+    yield* attemptSync(() => added.remove(serverId))
+  })
+
+/**
+ * Many servers need no sign-in (public documentation servers, for example), some only offer it. Try the server with
+ * an empty token, which the transport leaves out: if it answers discovery, it is connected. If it refuses, the OAuth
+ * flow runs. A server that cannot be reached is that failure: no sign-in is started for it. A server that later
+ * demands sign-in is marked needs_auth by the refused refresh, as any other.
+ */
+const connectsOpenly = (owner: OwnerServers, serverId: string) =>
+  Effect.gen(function* () {
+    const { credentials, manager } = owner
+    const now = yield* epochSeconds
+    yield* attempt(() => credentials.saveTokens(serverId, OPEN_ACCESS, now))
+    const refused = Effect.andThen(
+      manager.close(serverId),
+      Effect.flatMap(epochSeconds, (later) => Effect.sync(() => credentials.invalidate(serverId, 'tokens', later))),
+    )
+    return yield* manager.connect(serverId).pipe(
+      Effect.as(true),
+      Effect.catch((error) =>
+        Effect.andThen(
+          refused,
+          error instanceof UpstreamMcp && UNREACHABLE.has(error.reason) ? Effect.fail(error) : Effect.succeed(false),
+        ),
+      ),
+    )
+  })
+
+/** Starts (or silently renews) authorization: the URL to send the owner's browser to, when one is needed. */
+const beginConnect = (owner: OwnerServers, serverId: string) =>
+  Effect.gen(function* () {
+    const server = yield* owner.manager.server(serverId)
+    yield* owner.manager.close(serverId)
+    if (yield* connectsOpenly(owner, serverId)) return {}
+    const provider = new StoredOAuthProvider(owner.credentials, serverId, owner.appUrl, { kind: 'interactive' })
+    const result = yield* attempt(async () => {
+      const scope = await offeredScope(server.endpoint, owner.fetch)
+      return auth(provider, {
+        serverUrl: server.endpoint,
+        fetchFn: owner.fetch,
+        ...(scope === undefined ? {} : { scope }),
+      })
+    })
+    if (result === 'AUTHORIZED') return {}
+    if (provider.authorizationUrl === undefined) return yield* new Internal({ reason: 'authorization URL missing' })
+    return { authorizationUrl: provider.authorizationUrl.href }
+  })
+
+/** Completes the authorization the browser was redirected back from. The `state` is single-use. */
+const finishConnect = (owner: OwnerServers, state: string, code: string, issuer: string | undefined) =>
+  Effect.gen(function* () {
+    const now = yield* epochSeconds
+    const pending = yield* attempt(() => owner.credentials.takePending(state, now))
+    if (pending === undefined) return yield* new InvalidInput({ reason: 'unknown or expired authorization state' })
+    const server = yield* owner.manager.server(pending.serverId)
+    const provider = new StoredOAuthProvider(owner.credentials, server.serverId, owner.appUrl, {
+      kind: 'callback',
+      codeVerifier: pending.codeVerifier,
+    })
+    const result = yield* attempt(() =>
+      auth(provider, {
+        serverUrl: server.endpoint,
+        authorizationCode: code,
+        ...(issuer === undefined ? {} : { iss: issuer }),
+        fetchFn: owner.fetch,
+      }),
+    )
+    if (result !== 'AUTHORIZED') return yield* new NeedsAuthorization({ serverId: server.serverId })
+    return server.serverId
+  })
+
+/** A discovered tool as the owner sees it, with their grant and ask-first switch for it. */
+export const toolView = (grants: Grants, serverId: string, tool: Tool): ToolView => {
+  const appResource = toolAppResource(tool)
+  const { readOnlyHint, destructiveHint } = tool.annotations ?? {}
+  return {
+    name: tool.name,
+    ...(tool.title === undefined ? {} : { title: tool.title }),
+    ...(tool.description === undefined ? {} : { description: tool.description }),
+    ...(readOnlyHint === undefined ? {} : { readOnlyHint }),
+    ...(destructiveHint === undefined ? {} : { destructiveHint }),
+    modelVisible: toolOffered(tool, 'model'),
+    ...(appResource === undefined ? {} : { appResource }),
+    granted: grants.allows({ serverId, capability: 'tool', name: tool.name }),
+    askFirst: grants.policy({ serverId, capability: 'tool', name: tool.name })?.askFirst ?? false,
+  }
+}
+
+/** The servers, their sign-in and their tools. */
+const connecting = (owner: OwnerServers) => ({
+  list: Effect.fn('McpServers.list')(function* () {
+    return yield* views(owner)
+  }),
+  status: Effect.fn('McpServers.status')(function* (serverId: string) {
+    return yield* Effect.sync(() => owner.credentials.status(serverId))
+  }),
+  add: Effect.fn('McpServers.add')(function* (raw: string, source?: ServerSource) {
+    return yield* addServer(owner, raw, source)
+  }),
+  remove: Effect.fn('McpServers.remove')(function* (serverId: string) {
+    yield* removeServer(owner, serverId)
+  }),
+  beginConnect: Effect.fn('McpServers.beginConnect')(function* (serverId: string) {
+    return yield* beginConnect(owner, serverId)
+  }),
+  finishConnect: Effect.fn('McpServers.finishConnect')(function* (state: string, code: string, issuer?: string) {
+    return yield* finishConnect(owner, state, code, issuer)
+  }),
+  /** Forgets the server's credentials and closes its connection. Grants stay, so a reconnect keeps them. */
+  disconnect: Effect.fn('McpServers.disconnect')(function* (serverId: string) {
+    yield* owner.manager.server(serverId)
+    yield* owner.manager.close(serverId)
+    yield* Effect.sync(() => owner.credentials.remove(serverId))
+  }),
+  tools: Effect.fn('McpServers.tools')(function* (serverId: string, refresh: boolean) {
+    const snapshot = refresh ? yield* owner.manager.reconnect(serverId) : yield* owner.manager.connect(serverId)
+    return snapshot.tools.map((tool) => toolView(owner.grants, serverId, tool))
+  }),
+})
+
+/** The suggested servers and the registries searched for more. */
+const finding = (owner: OwnerServers) => {
+  const catalog = makeCatalog({ added: owner.registries, fetch: owner.fetch })
+  const offered = Effect.map(owner.manager.servers(), (servers) => new Set(servers.map((server) => server.endpoint)))
+  return {
+    suggested: Effect.fn('McpServers.suggested')(function* (stage: Stage | undefined) {
+      return suggestions(stage, yield* offered)
+    }),
+    catalog: Effect.fn('McpServers.catalog')(function* (query: string) {
+      const { entries, partial } = yield* catalog.search(query.trim())
+      const endpoints = yield* offered
+      return { entries: entries.map((entry) => ({ ...entry, added: endpoints.has(entry.endpoint) })), partial }
+    }),
+    registries: Effect.fn('McpServers.registries')(function* () {
+      return yield* catalog.registries
+    }),
+    addRegistry: Effect.fn('McpServers.addRegistry')(function* (url: string) {
+      return yield* catalog.add(url)
+    }),
+    removeRegistry: Effect.fn('McpServers.removeRegistry')(function* (url: string) {
+      return yield* catalog.remove(url)
+    }),
+  }
+}
+
+/** The owner's servers over the connections: their views, adding, removing, signing in and finding more. */
+export const ownerServers = (owner: OwnerServers): McpServers['Service'] =>
+  McpServers.of({ ...connecting(owner), ...finding(owner) })

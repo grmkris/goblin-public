@@ -35,14 +35,17 @@ export type McpManagerOptions = {
   readonly servers: readonly McpServerConfig[]
   /** The owner's exact grants; checked before any connection is opened for a call. */
   readonly allows: (grant: Grant) => boolean
+  /**
+   * The owner's decision on one call, checked before it connects and again right before each dispatch (`dispatch`):
+   * an ask-first tool needs its held call's approval (`approvalId`); `authorize` is the caller's own check.
+   */
   readonly authorizeTool?: (
     call: ApprovedDispatch,
     approvalId: string | undefined,
     dispatch: boolean,
-    authorize?: () => Promise<void>,
-  ) => Promise<void>
+    authorize: Effect.Effect<void, AppError> | undefined,
+  ) => Effect.Effect<void, AppError>
   /** Whether the owner uses skills from a server (skills/store.ts); checked before any skill request. */
-  readonly authorizeEvents?: (serverId: string, name: string, argumentsJson: string) => void | Promise<void>
   readonly skillsEnabled?: (serverId: string) => boolean
   /** Bearer token source per server, with refresh on 401 (mcp/host.ts). */
   readonly auth: (server: McpServerConfig) => AuthProvider

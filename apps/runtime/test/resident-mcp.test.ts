@@ -1,20 +1,20 @@
 import { createMcpHandler } from '@modelcontextprotocol/server'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { AppError } from '../src/http/errors.ts'
-import { McpHost, McpHostInstance } from '../src/mcp/host.ts'
+import { mcpHost } from '../src/mcp/host.ts'
 import { type CapabilityScope, type Exclusion, scopeOf } from '../src/capabilities/profiles.ts'
 import { Capabilities } from '../src/capabilities/service.ts'
 import { residentMcpExtension } from '../src/pi/resident-mcp.ts'
-import { McpConnectionsLive, McpGrantsLive, McpServersLive } from '../src/layers/mcp.ts'
 import { Resident } from '../src/mcp/service.ts'
+import { SingleFlight } from '../src/observability/single-flight.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 import type { AgentServices } from '../src/layers/index.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 import { FixedProfiles } from './fixed-services.ts'
 import { plans, sqliteDb, stub } from './http/api/fixture.ts'
-import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
+import { MemoryCredentials, MemoryGrants, MemoryRegistries } from './mcp/memory.ts'
 import { lowLevelServer } from './mcp/low-level-server.ts'
 
 /** The tools the notes server ran, in order. */
@@ -40,16 +40,18 @@ const notes = createMcpHandler(() => {
 const credentials = new MemoryCredentials()
 await credentials.saveTokens('notes', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
 const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => notes.fetch(new Request(input, init))
-const host = new McpHost({
+/** The MCP host over the notes server; each program run opens its connection and closes it when it ends. */
+const host = mcpHost({
   servers: [{ serverId: 'notes', endpoint: 'https://notes.test/mcp' }],
   credentials,
   grants: new MemoryGrants([{ serverId: 'notes', capability: 'tool', name: 'read' }]),
+  registries: new MemoryRegistries(),
   appUrl: 'https://goblin.test',
   fetch: fetcher,
 })
 /** Resident authority that is always current. */
 const resident = stub(Resident, { require: () => Effect.void })
-// SAFETY: the MCP services read only the catalog's fetch from the instance input; neither tool searches the catalog.
+// SAFETY: the capability services read nothing of the instance input that these tools reach.
 const instance = { mcpFetch: fetcher } as AgentInputs
 const off = (kind: Exclusion['kind'], serverId = '', name = ''): Exclusion => ({ kind, serverId, name })
 /**
@@ -64,10 +66,10 @@ const scopes: Readonly<Record<string, CapabilityScope>> = {
 }
 /** The tools' services over the host and the fixed switches above, always resident, on an active plan. */
 const profiles = new FixedProfiles(scopes)
-const layer = Layer.mergeAll(McpServersLive, McpGrantsLive, McpConnectionsLive).pipe(
+const layer = host.pipe(
   Layer.provideMerge(
     Layer.mergeAll(
-      Layer.succeed(McpHostInstance, host),
+      SingleFlight.layer,
       stub(Capabilities, { scope: (session) => Effect.sync(() => profiles.scope(session)) }),
       Layer.succeed(AgentInput, instance),
       sqliteDb(chatDatabase().db),
@@ -92,10 +94,6 @@ const listed = async (input: Record<string, unknown>, conversationId: number): P
   const [block] = result.content ?? []
   return block?.type === 'text' ? JSON.parse(block.text) : undefined
 }
-
-afterEach(async () => {
-  await host.manager.closeAll()
-})
 
 describe('mcp_call and the owner grant (unit)', () => {
   it('runs a granted tool and returns its untrusted result', async () => {

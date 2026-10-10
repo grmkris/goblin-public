@@ -16,9 +16,11 @@ import type {
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import type * as Option from 'effect/Option'
+import type * as Schema from 'effect/Schema'
 import type { AppError } from '../http/errors.ts'
 import type { ApprovalRow, HeldCall } from './approvals.ts'
 import type { CredentialCipher } from './cipher.ts'
+import type { ConnectionStatus } from './credentials.ts'
 import type { EventWebhook, EventWebhookResult, SubscribeConsumer } from './events.ts'
 import type { EventContext } from './events/dispatcher.ts'
 import type { Consumer, Receipt, Subscription } from './events/store.ts'
@@ -34,8 +36,8 @@ import type {
 import type { SkillEntry } from '../skills/protocol.ts'
 
 // The MCP area's services (ADRs 0003, 0006, 0011, 0028). Each method is one Effect with the area's typed failures;
-// the instance clocks (seconds for authority and grants, milliseconds for approvals and Events) are read inside, so no
-// caller passes a time. Until each native layer lands (wave 3), `layers/mcp.ts` builds these over the legacy instances.
+// the clocks (seconds for authority and grants, milliseconds for approvals and Events) are read inside, so no caller
+// passes a time.
 
 /**
  * Resident authority (ADR 0003): what lets tools run without a live browser session. Every owner request renews it; a
@@ -68,6 +70,8 @@ export class McpServers extends Context.Service<
   {
     /** Every server offered, configured first, with its connection status. */
     readonly list: () => Effect.Effect<readonly ServerView[]>
+    /** One server's connection status: signed in, needing sign-in, or never connected. */
+    readonly status: (serverId: string) => Effect.Effect<ConnectionStatus>
     /** goblin's suggested servers for `stage`, each marked added when the owner already has its endpoint. */
     readonly suggested: (stage: Stage | undefined) => Effect.Effect<readonly ServerSuggestion[]>
     /** Adds a public https endpoint, labelled from its server card; it starts disconnected. */
@@ -134,6 +138,10 @@ export class McpConnections extends Context.Service<
     readonly snapshot: (serverId: string) => Effect.Effect<Option.Option<McpConnectionSnapshot>>
     /** Connects (or reuses the live connection) and answers what it discovered. */
     readonly connect: (serverId: string, options?: McpRequestOptions) => Effect.Effect<McpConnectionSnapshot, AppError>
+    /** Drops the live connection and discovers again over a fresh handshake. */
+    readonly reconnect: (serverId: string) => Effect.Effect<McpConnectionSnapshot, AppError>
+    /** Closes the server's connection, if it has one. */
+    readonly close: (serverId: string) => Effect.Effect<void>
     readonly callTool: (
       serverId: string,
       name: string,
@@ -146,6 +154,17 @@ export class McpConnections extends Context.Service<
       uri: string,
       caller: 'human' | 'app',
     ) => Effect.Effect<ReadResourceResult, AppError>
+    /**
+     * One draft Events request over the server's connection, `authorize` (the Events authority for its selector)
+     * checked before it connects and again before it is sent; the result decoded with `schema`.
+     */
+    readonly events: <S extends Schema.ConstraintDecoder<unknown>>(
+      serverId: string,
+      method: EventMethod,
+      params: Record<string, unknown>,
+      schema: S,
+      authorize: Effect.Effect<void, AppError>,
+    ) => Effect.Effect<S['Type'], AppError>
     /**
      * Every skill a server lists, when the owner uses skills from it and it declares the Skills extension, with the
      * shortest `ttlMs` seen for the caller's cache.
@@ -161,9 +180,12 @@ export class McpConnections extends Context.Service<
       options?: SkillRequestOptions,
     ) => Effect.Effect<ReadResourceResult, AppError>
     /** Closes every connection, when the agent's runtime goes. */
-    readonly closeAll: () => Effect.Effect<void, AppError>
+    readonly closeAll: () => Effect.Effect<void>
   }
 >()('goblin/mcp/McpConnections') {}
+
+/** The draft Events methods a server may answer (ADR 0011). */
+export type EventMethod = 'events/list' | 'events/poll' | 'events/subscribe' | 'events/unsubscribe'
 
 /**
  * Held calls (ADR 0028): the exact arguments of an ask-first call, frozen and encrypted until the owner decides, and

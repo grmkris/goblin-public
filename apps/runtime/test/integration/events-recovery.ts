@@ -1,14 +1,12 @@
 import * as Effect from 'effect/Effect'
 import { attempt } from '../../src/http/errors.ts'
-import { eventsOver } from '../../src/layers/mcp.ts'
-import { McpEvents } from '../../src/mcp/events.ts'
+import { makeEvents } from '../../src/mcp/events.ts'
 import { installEventConsumers } from '../../src/mcp/events/consumers.ts'
 import { SqliteEventStore } from '../../src/mcp/events/store.ts'
-import { Skills } from '../../src/skills/service.ts'
+import { makeSkills } from '../../src/skills/library.ts'
 import { SqliteSkillState } from '../../src/skills/store.ts'
 import { digestOf } from '../../src/skills/verify.ts'
 import type { EventsProbeState } from './events-probe.ts'
-import { skillsOver } from './skills-probe.ts'
 
 async function skillVersion(state: EventsProbeState, version: string) {
   const uri = `skill://skv_${version.repeat(24)}/events-test/SKILL.md`
@@ -26,21 +24,20 @@ async function skillVersion(state: EventsProbeState, version: string) {
 
 /** Signed Events drive the installed Skills consumer, persisted generations and immutable retained activations. */
 export async function eventsSkillsProbe(state: EventsProbeState) {
-  const { manager, skillState, fixture, events, channel } = state
-  const services = skillsOver(manager, skillState)
-  const library = await services.run(Skills)
-  await services.run(library.setEnabled('mygram', true))
-  await Effect.runPromise(
-    installEventConsumers(eventsOver(events), {
+  const { skillState, fixture, events, channel, run } = state
+  const library = await run(makeSkills(skillState))
+  await run(library.setEnabled('mygram', true))
+  await run(
+    installEventConsumers(events, {
       channel: Effect.sync(() => channel.status()),
       pull: attempt(state.pull),
       skills: { enabled: library.enabled, invalidate: library.invalidate },
     }),
   )
   await skillVersion(state, '1')
-  const first = await services.run(library.activate('skills-old', 'mygram:events-test'))
-  events.grant('mygram', 'skills.updated', {}, true)
-  await Effect.runPromise(
+  const first = await run(library.activate('skills-old', 'mygram:events-test'))
+  await run(events.grant('mygram', 'skills.updated', {}, true))
+  await run(
     events.subscribe({
       consumerId: 'skills:updates',
       revision: 1,
@@ -58,20 +55,17 @@ export async function eventsSkillsProbe(state: EventsProbeState) {
     data: { instruction: 'This untrusted field is never executed.' },
   }
   await fixture.deliver('sub_skills.updated', envelope, envelope.eventId)
-  await Effect.runPromise(events.dispatch())
+  await run(events.dispatch())
   const dirty = new SqliteSkillState(state.db).catalogState('mygram').dirty
   await fixture.deliver('sub_skills.updated', envelope, envelope.eventId)
-  await Effect.runPromise(events.dispatch())
+  await run(events.dispatch())
   const replayDirty = skillState.catalogState('mygram').dirty
-  const rebuilt = skillsOver(manager, new SqliteSkillState(state.db))
-  const reconstructed = await rebuilt.run(Skills)
-  const second = await rebuilt.run(reconstructed.activate('skills-new', 'mygram:events-test'))
-  const retained = await rebuilt.run(reconstructed.read('skills-old', 'mygram:events-test', 'SKILL.md'))
-  await rebuilt.dispose()
+  const reconstructed = await run(makeSkills(new SqliteSkillState(state.db)))
+  const second = await run(reconstructed.activate('skills-new', 'mygram:events-test'))
+  const retained = await run(reconstructed.read('skills-old', 'mygram:events-test', 'SKILL.md'))
   const refreshed = skillState.catalogState('mygram').refreshed
   await fixture.deliver('sub_skills.updated', { type: 'terminated', error: { code: -32012 } }, 'msg_terminated_skills')
-  await Effect.runPromise(events.dispatch())
-  await services.dispose()
+  await run(events.dispatch())
   return {
     first: first.body.includes('Version 1'),
     second: second.body.includes('Version 2'),
@@ -85,13 +79,11 @@ export async function eventsSkillsProbe(state: EventsProbeState) {
 
 /** Rebuild services over real DO SQLite after acceptance, including handler failure and retention beyond eight days. */
 export async function eventsRecoveryProbe(state: EventsProbeState) {
-  const { events, fixture, store } = state
-  events.grant('mygram', 'skills.list_changed', {}, true)
-  events.register('recover-test', async () => {
-    throw new Error('injected handler interruption')
-  })
+  const { events, fixture, store, run } = state
+  await run(events.grant('mygram', 'skills.list_changed', {}, true))
+  await run(events.register('recover-test', () => Effect.die(new Error('injected handler interruption'))))
   const binding = { consumerId: 'recovery-test', revision: 1 }
-  const subscribed = await Effect.runPromise(
+  const subscribed = await run(
     events.subscribe({
       ...binding,
       serverId: 'mygram',
@@ -107,18 +99,22 @@ export async function eventsRecoveryProbe(state: EventsProbeState) {
     data: {},
   }
   await fixture.deliver('sub_skills.list_changed', envelope, envelope.eventId)
-  await Effect.runPromise(events.dispatch())
+  await run(events.dispatch())
   const interrupted = store.delivery(subscribed.subscriptionId, envelope.eventId)
-  state.clock(fixture.now + 9 * 86_400_000)
+  await state.clock(fixture.now + 9 * 86_400_000)
   store.prune(fixture.now)
   const pendingRetained = store.delivery(subscribed.subscriptionId, envelope.eventId)?.processedAt === null
-  const reconstructed = new McpEvents({ ...state.eventOptions, store: new SqliteEventStore(state.db) })
+  const reconstructed = await run(makeEvents({ ...state.eventOptions, store: new SqliteEventStore(state.db) }))
   const operationIds: string[] = []
-  reconstructed.register('recover-test', async ({ receipt }) => {
-    operationIds.push(receipt.operationId)
-  })
-  await Effect.runPromise(reconstructed.dispatch())
-  await Effect.runPromise(reconstructed.dispatch())
+  await run(
+    reconstructed.register('recover-test', ({ receipt }) =>
+      Effect.sync(() => {
+        operationIds.push(receipt.operationId)
+      }),
+    ),
+  )
+  await run(reconstructed.dispatch())
+  await run(reconstructed.dispatch())
   const accepted = store.snapshots(subscribed.subscriptionId, envelope.eventId)[0]
   return {
     interrupted: interrupted?.attempts === 1 && interrupted.processedAt === null,

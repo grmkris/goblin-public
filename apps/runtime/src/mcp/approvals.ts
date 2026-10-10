@@ -24,6 +24,9 @@ export type HeldCall = {
   readonly arguments: Record<string, unknown>
 }
 const decodeArguments = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Json))
+/** What a held call's arguments are checked by: the SHA-256 of their JSON, as held. */
+export const argumentsHash = (args: Record<string, unknown>): Promise<string> =>
+  sha256Hex(JSON.stringify(decodeArguments(args)))
 const matches = (row: ApprovalRow, input: HeldCall, hash: string) =>
   row.argumentsHash === hash &&
   row.serverId === input.serverId &&
@@ -136,23 +139,26 @@ export class McpApprovalStore {
     )
   }
 
-  async assert(input: {
+  /**
+   * The held call `id` still carries exactly the authority the owner reviewed: approved, unexpired, the same grant
+   * version, endpoint, server, tool, caller, arguments (`hash`, from `argumentsHash`) and conversation. A `dispatch`
+   * check also claims the one dispatch.
+   */
+  check(input: {
     readonly id: string
     readonly call: ApprovedDispatch
-    readonly version: () => string | undefined
+    readonly hash: string
+    readonly version: string | undefined
     readonly now: number
     readonly dispatch: boolean
-    readonly authorize?: () => Promise<void>
-  }): Promise<void> {
-    const { id, call, version, now, dispatch, authorize } = input
-    const hash = await sha256Hex(JSON.stringify(decodeArguments(call.arguments)))
-    await authorize?.()
+  }): void {
+    const { id, call, hash, version, now, dispatch } = input
     const row = this.get(id)
     const context = call.approvalContext
     if (
       row.state !== 'approved' ||
       row.expiresAt <= now ||
-      row.grantVersion !== version() ||
+      row.grantVersion !== version ||
       row.endpoint !== call.endpoint ||
       row.serverId !== call.serverId ||
       row.name !== call.name ||
@@ -164,6 +170,18 @@ export class McpApprovalStore {
     )
       throw new Conflict({ reason: 'held call no longer has its reviewed authority' })
     if (dispatch && !this.claim(id, now)) throw new Conflict({ reason: 'approval was already dispatched' })
+  }
+
+  /** `check` with the call's arguments hashed here. */
+  async assert(input: {
+    readonly id: string
+    readonly call: ApprovedDispatch
+    readonly version: () => string | undefined
+    readonly now: number
+    readonly dispatch: boolean
+  }): Promise<void> {
+    const hash = await argumentsHash(input.call.arguments)
+    this.check({ ...input, hash, version: input.version() })
   }
 
   async finish(id: string, result: CallToolResult, now: number): Promise<void> {

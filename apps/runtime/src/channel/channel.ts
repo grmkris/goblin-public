@@ -12,7 +12,6 @@ import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { type AppError, InvalidInput, UpstreamMcp, attempt, toAppError } from '../http/errors.ts'
 import type { CredentialCipher } from '../mcp/cipher.ts'
-import type { McpConnectionManager } from '../mcp/connection.ts'
 import type { McpConnections } from '../mcp/service.ts'
 import { appChannel, appChannelReplies, appTelegramChannel } from '../storage/schema.ts'
 import { nowMillis } from '../clock.ts'
@@ -90,18 +89,9 @@ export function reportChannelFailure(step: 'pull' | 'replies', error: unknown): 
 }
 
 /**
- * A tool of the channel server, called for the agent itself: the owner's exact grant applies as for any call of the
- * model. Its structured result; an error result fails.
+ * A tool of the channel server through the MCP connections, called for the agent itself: the owner's exact grant
+ * applies as for any call of the model. Its structured result; an error result fails.
  */
-export const channelCall =
-  (manager: McpConnectionManager, serverId: string): ChannelPorts['call'] =>
-  async (name, args) => {
-    const result = await manager.callTool(serverId, name, args, { caller: 'model' })
-    if (result.isError === true) throw new UpstreamMcp({ serverId, reason: 'remote-rpc' })
-    return result.structuredContent
-  }
-
-/** A tool of the channel server through the MCP connections, as `channelCall` calls it; an error result fails. */
 export const channelTool = (connections: typeof McpConnections.Service, serverId: string) =>
   Effect.fn('Channel.tool')(function* (name: string, args: Record<string, unknown>) {
     const result = yield* connections.callTool(serverId, name, args, { caller: 'model' })

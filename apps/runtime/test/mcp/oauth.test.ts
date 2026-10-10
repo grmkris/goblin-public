@@ -1,9 +1,12 @@
 import { createMcpHandler } from '@modelcontextprotocol/server'
 import { createHash } from 'node:crypto'
+import * as Effect from 'effect/Effect'
+import * as Fiber from 'effect/Fiber'
 import { describe, expect, it } from 'vitest'
-import { McpHost } from '../../src/mcp/host.ts'
+import { McpConnections } from '../../src/mcp/service.ts'
 import { MemoryCredentials, MemoryGrants } from './memory.ts'
 import { lowLevelServer } from './low-level-server.ts'
+import { hostOf } from './manager.ts'
 
 const BASE = 'https://fixture.test'
 const RESOURCE_METADATA = `${BASE}/.well-known/oauth-protected-resource/mcp`
@@ -22,6 +25,11 @@ class FixtureAuthorizationServer {
   access: string | undefined
   refresh: string | undefined
   refreshCount = 0
+  /** Every refresh asked for, answered or not. */
+  refreshAttempts = 0
+  /** While set, the token endpoint answers a refresh only once it settles; `refreshing` hears each one arrive. */
+  hold: Promise<void> | undefined
+  refreshing: (() => void) | undefined
   readonly #codes = new Map<string, string>()
   #serial = 0
 
@@ -54,6 +62,11 @@ class FixtureAuthorizationServer {
       if (challenge === undefined || challenge !== verifier)
         return Response.json({ error: 'invalid_grant' }, { status: 400 })
       return this.#issue()
+    }
+    if (form.get('grant_type') === 'refresh_token') {
+      this.refreshAttempts++
+      this.refreshing?.()
+      await this.hold
     }
     if (form.get('grant_type') === 'refresh_token' && form.get('refresh_token') === this.refresh) {
       this.refreshCount++
@@ -104,111 +117,162 @@ class FixtureAuthorizationServer {
 const setup = () => {
   const authorizationServer = new FixtureAuthorizationServer()
   const credentials = new MemoryCredentials()
-  const host = new McpHost({
+  const { servers, connections, grants, run, dispose } = hostOf({
     servers: [{ serverId: 'fixture', endpoint: `${BASE}/mcp` }],
     credentials,
     grants: new MemoryGrants(),
-    appUrl: 'https://goblin.test',
     fetch: authorizationServer.fetch,
   })
   const connect = async () => {
-    const { authorizationUrl } = await host.beginConnect('fixture')
+    const { authorizationUrl } = await servers.beginConnect('fixture')
     const params = new URL(authorizationUrl ?? '').searchParams
     expect(params.get('code_challenge_method')).toBe('S256')
     expect(params.get('scope')).toBe('notes offline_access')
     const approval = authorizationServer.approve(authorizationUrl ?? '')
-    await host.finishConnect(approval.state, approval.code, undefined)
+    await servers.finishConnect(approval.state, approval.code, undefined)
     return approval
   }
-  return { authorizationServer, credentials, host, connect }
+  const status = async () => (await servers.list())[0]?.status
+  /** Connected, `read` granted and called once, then the access token revoked server-side. */
+  const expired = async () => {
+    await connect()
+    await grants.setTool('fixture', 'read', true)
+    await connections.callTool('fixture', 'read', {})
+    authorizationServer.access = 'revoked-server-side'
+  }
+  return { authorizationServer, credentials, servers, connections, grants, run, dispose, connect, status, expired }
 }
 
 describe('outbound OAuth connect and refresh (unit, fixture authorization server)', () => {
   it('connects with DCR + PKCE, then calls a granted tool with the stored token', async () => {
-    const { host, credentials, connect } = setup()
+    const { servers, connections, grants, credentials, connect, status, dispose } = setup()
     try {
-      expect(host.servers()[0]?.status).toBe('disconnected')
+      expect(await status()).toBe('disconnected')
       const approval = await connect()
       expect(approval.code).toMatch(/^code-/u)
-      expect(host.servers()[0]?.status).toBe('connected')
-      const tools = await host.tools('fixture', false)
+      expect(await status()).toBe('connected')
+      const tools = await servers.tools('fixture', false)
       expect(tools).toEqual([expect.objectContaining({ name: 'read', readOnlyHint: true, granted: false })])
-      await expect(host.manager.callTool('fixture', 'read')).rejects.toMatchObject({ _tag: 'GrantDenied' })
-      await host.setToolGrant('fixture', 'read', true)
-      expect((await host.manager.callTool('fixture', 'read')).content).toEqual([{ type: 'text', text: 'ok' }])
+      await expect(connections.callTool('fixture', 'read', {})).rejects.toMatchObject({ _tag: 'GrantDenied' })
+      await grants.setTool('fixture', 'read', true)
+      expect((await connections.callTool('fixture', 'read', {})).content).toEqual([{ type: 'text', text: 'ok' }])
       expect(credentials.pending.size).toBe(0)
     } finally {
-      await host.manager.closeAll()
+      await dispose()
     }
   })
 
-  it('refreshes once when concurrent calls hit an expired access token', async () => {
-    const { host, authorizationServer, connect } = setup()
+  it('refreshes once when concurrent calls hit an expired access token, and keeps the rotated refresh token', async () => {
+    const { connections, authorizationServer, credentials, expired, dispose } = setup()
     try {
-      await connect()
-      await host.setToolGrant('fixture', 'read', true)
-      await host.manager.callTool('fixture', 'read')
-      authorizationServer.access = 'revoked-server-side'
+      await expired()
       const results = await Promise.all([
-        host.manager.callTool('fixture', 'read'),
-        host.manager.callTool('fixture', 'read'),
+        connections.callTool('fixture', 'read', {}),
+        connections.callTool('fixture', 'read', {}),
       ])
       expect(results.map((result) => result.isError ?? false)).toEqual([false, false])
       expect(authorizationServer.refreshCount).toBe(1)
+      expect((await credentials.tokens('fixture'))?.refresh_token).toBe(authorizationServer.refresh)
     } finally {
-      await host.manager.closeAll()
+      await dispose()
     }
   })
 
-  it('marks the server needs_auth when the refresh token is rejected', async () => {
-    const { host, authorizationServer, connect } = setup()
+  it('gives every caller the one refresh that failed', async () => {
+    const { connections, authorizationServer, expired, status, dispose } = setup()
     try {
-      await connect()
-      await host.setToolGrant('fixture', 'read', true)
-      authorizationServer.access = 'revoked-server-side'
+      await expired()
       authorizationServer.refresh = 'revoked-refresh'
-      await expect(host.manager.callTool('fixture', 'read')).rejects.toMatchObject({ _tag: 'NeedsAuthorization' })
-      expect(host.servers()[0]?.status).toBe('needs_auth')
+      const calls = await Promise.allSettled([
+        connections.callTool('fixture', 'read', {}),
+        connections.callTool('fixture', 'read', {}),
+      ])
+      expect(calls).toEqual([
+        { status: 'rejected', reason: expect.objectContaining({ _tag: 'NeedsAuthorization' }) },
+        { status: 'rejected', reason: expect.objectContaining({ _tag: 'NeedsAuthorization' }) },
+      ])
+      expect(authorizationServer.refreshAttempts).toBe(1)
+      expect(await status()).toBe('needs_auth')
     } finally {
-      await host.manager.closeAll()
+      await dispose()
+    }
+  })
+
+  it('finishes a refresh whose first caller was interrupted, for the caller that joined it', async () => {
+    const { authorizationServer, expired, run, dispose } = setup()
+    try {
+      await expired()
+      const held = Promise.withResolvers<void>()
+      const arrived = Promise.withResolvers<void>()
+      authorizationServer.hold = held.promise
+      authorizationServer.refreshing = arrived.resolve
+      const connections = await run(McpConnections)
+      const first = await run(Effect.forkDetach(connections.callTool('fixture', 'read', {})))
+      await arrived.promise
+      const second = run(connections.callTool('fixture', 'read', {}))
+      await run(Fiber.interrupt(first))
+      held.resolve()
+      expect((await second).isError ?? false).toBe(false)
+      expect(authorizationServer.refreshAttempts).toBe(1)
+      expect(authorizationServer.refreshCount).toBe(1)
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('marks the server needs_auth when the refresh token is rejected, a NeedsAuthorization the SDK passes through', async () => {
+    const { connections, authorizationServer, expired, status, dispose } = setup()
+    try {
+      await expired()
+      authorizationServer.refresh = 'revoked-refresh'
+      await expect(connections.callTool('fixture', 'read', {})).rejects.toMatchObject({ _tag: 'NeedsAuthorization' })
+      expect(await status()).toBe('needs_auth')
+    } finally {
+      await dispose()
     }
   })
 
   it('keeps the server connected when a refresh cannot reach the token endpoint, and refreshes once it can', async () => {
-    const { host, authorizationServer, connect } = setup()
+    const { connections, authorizationServer, expired, status, dispose } = setup()
     try {
-      await connect()
-      await host.setToolGrant('fixture', 'read', true)
-      authorizationServer.access = 'revoked-server-side'
+      await expired()
       authorizationServer.unreachable.add('/token')
-      await expect(host.manager.callTool('fixture', 'read')).rejects.toMatchObject({
+      await expect(connections.callTool('fixture', 'read', {})).rejects.toMatchObject({
         _tag: 'UpstreamMcp',
         reason: 'transport',
       })
-      expect(host.servers()[0]?.status).toBe('connected')
+      expect(await status()).toBe('connected')
       authorizationServer.unreachable.clear()
-      expect((await host.manager.callTool('fixture', 'read')).isError ?? false).toBe(false)
+      expect((await connections.callTool('fixture', 'read', {})).isError ?? false).toBe(false)
       expect(authorizationServer.refreshCount).toBe(1)
     } finally {
-      await host.manager.closeAll()
+      await dispose()
     }
   })
 
   it('starts no sign-in for a server it cannot reach', async () => {
-    const { host, authorizationServer } = setup()
-    authorizationServer.unreachable.add('/mcp')
-    await expect(host.beginConnect('fixture')).rejects.toMatchObject({ _tag: 'UpstreamMcp', reason: 'transport' })
-    expect(host.servers()[0]?.status).not.toBe('connected')
+    const { servers, authorizationServer, status, dispose } = setup()
+    try {
+      authorizationServer.unreachable.add('/mcp')
+      await expect(servers.beginConnect('fixture')).rejects.toMatchObject({ _tag: 'UpstreamMcp', reason: 'transport' })
+      expect(await status()).not.toBe('connected')
+    } finally {
+      await dispose()
+    }
   })
 
   it('accepts each authorization state once', async () => {
-    const { host, authorizationServer } = setup()
-    const { authorizationUrl } = await host.beginConnect('fixture')
-    const approval = authorizationServer.approve(authorizationUrl ?? '')
-    await host.finishConnect(approval.state, approval.code, undefined)
-    await expect(host.finishConnect(approval.state, approval.code, undefined)).rejects.toMatchObject({
-      _tag: 'InvalidInput',
-    })
-    await expect(host.finishConnect('forged', 'code', undefined)).rejects.toMatchObject({ _tag: 'InvalidInput' })
+    const { servers, authorizationServer, dispose } = setup()
+    try {
+      const { authorizationUrl } = await servers.beginConnect('fixture')
+      const approval = authorizationServer.approve(authorizationUrl ?? '')
+      await servers.finishConnect(approval.state, approval.code, undefined)
+      await expect(servers.finishConnect(approval.state, approval.code, undefined)).rejects.toMatchObject({
+        _tag: 'InvalidInput',
+      })
+      await expect(servers.finishConnect('forged', 'code', undefined)).rejects.toMatchObject({ _tag: 'InvalidInput' })
+    } finally {
+      await dispose()
+    }
   })
 })

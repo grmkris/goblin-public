@@ -1,8 +1,14 @@
 import { createMcpHandler } from '@modelcontextprotocol/server'
-import { describe, expect, it } from 'vitest'
-import { McpHost } from '../../src/mcp/host.ts'
+import { afterEach, describe, expect, it } from 'vitest'
 import { MemoryAddedServers, MemoryCredentials, MemoryGrants } from './memory.ts'
 import { lowLevelServer } from './low-level-server.ts'
+import { hostOf } from './manager.ts'
+
+/** The hosts a test made, ended after it. */
+const made: (() => Promise<void>)[] = []
+afterEach(async () => {
+  await Promise.all(made.splice(0).map((dispose) => dispose()))
+})
 
 /** A remote that only serves a server card; nothing here connects. */
 const remote: typeof fetch = async (input) =>
@@ -14,15 +20,15 @@ function host(random = () => 'abc123') {
   const credentials = new MemoryCredentials()
   const grants = new MemoryGrants()
   const added = new MemoryAddedServers(credentials, grants)
-  const mcp = new McpHost({
+  const { servers: mcp, dispose } = hostOf({
     servers: [{ serverId: 'myplan', endpoint: 'https://myplan.test/mcp' }],
     credentials,
     grants,
-    appUrl: 'https://goblin.test',
     fetch: remote,
     added,
     random,
   })
+  made.push(dispose)
   return { mcp, grants, added }
 }
 
@@ -35,7 +41,7 @@ const reason = async (work: Promise<unknown>): Promise<string> =>
 describe('servers the owner adds', () => {
   it('adds a public endpoint, labelled from its card as the server’s claim, disconnected until connected', async () => {
     const { mcp } = host()
-    const view = await mcp.addServer('https://notes.example.com/mcp', { registry: 'https://r.test', name: 'n' })
+    const view = await mcp.add('https://notes.example.com/mcp', { registry: 'https://r.test', name: 'n' })
     expect(view).toEqual({
       serverId: 'notes-example-com-abc123',
       endpoint: 'https://notes.example.com/mcp',
@@ -47,7 +53,7 @@ describe('servers the owner adds', () => {
       title: 'Example notes',
       description: 'Notes, as the publisher puts it.',
     })
-    expect(mcp.servers().map((server) => [server.serverId, server.source])).toEqual([
+    expect((await mcp.list()).map((server) => [server.serverId, server.source])).toEqual([
       ['myplan', 'config'],
       ['notes-example-com-abc123', 'added'],
     ])
@@ -55,20 +61,20 @@ describe('servers the owner adds', () => {
   it('refuses private endpoints, duplicates and more than sixteen servers', async () => {
     let next = 0
     const { mcp } = host(() => String(++next).padStart(6, '0'))
-    expect(await reason(mcp.addServer('https://localhost/mcp'))).toBe('endpoint_not_public')
-    expect(await reason(mcp.addServer('https://myplan.test/mcp'))).toBe('already_added')
-    for (let index = 0; index < 16; index += 1) await mcp.addServer(`https://s${index}.example.com/mcp`)
-    expect(await reason(mcp.addServer('https://one-more.example.com/mcp'))).toBe('too_many_servers')
+    expect(await reason(mcp.add('https://localhost/mcp'))).toBe('endpoint_not_public')
+    expect(await reason(mcp.add('https://myplan.test/mcp'))).toBe('already_added')
+    for (let index = 0; index < 16; index += 1) await mcp.add(`https://s${index}.example.com/mcp`)
+    expect(await reason(mcp.add('https://one-more.example.com/mcp'))).toBe('too_many_servers')
   })
   it('removes an added server with its grants, and never a configured one', async () => {
     const { mcp, grants } = host()
-    const { serverId } = await mcp.addServer('https://notes.example.com/mcp')
+    const { serverId } = await mcp.add('https://notes.example.com/mcp')
     grants.set({ serverId, capability: 'tool', name: 'read' }, true)
-    await mcp.removeServer(serverId)
-    expect(mcp.servers().map((server) => server.serverId)).toEqual(['myplan'])
+    await mcp.remove(serverId)
+    expect((await mcp.list()).map((server) => server.serverId)).toEqual(['myplan'])
     expect(grants.list(serverId)).toEqual([])
-    expect(await reason(mcp.removeServer('myplan'))).toBe('configured_server')
-    expect(await reason(mcp.removeServer('nobody'))).toBe('unknown_server')
+    expect(await reason(mcp.remove('myplan'))).toBe('configured_server')
+    expect(await reason(mcp.remove('nobody'))).toBe('unknown_server')
   })
 })
 
@@ -89,22 +95,21 @@ describe('servers that need no sign-in', () => {
   it('connects without OAuth and sends no Authorization header', async () => {
     const credentials = new MemoryCredentials()
     const grants = new MemoryGrants()
-    const mcp = new McpHost({
+    const { servers: mcp, dispose } = hostOf({
       servers: [],
       credentials,
       grants,
-      appUrl: 'https://goblin.test',
       fetch: openFetch,
       added: new MemoryAddedServers(credentials, grants),
       random: () => 'abc123',
     })
     try {
-      const { serverId } = await mcp.addServer('https://docs.example.com/mcp')
+      const { serverId } = await mcp.add('https://docs.example.com/mcp')
       expect(await mcp.beginConnect(serverId)).toEqual({})
-      expect(mcp.servers()[0]?.status).toBe('connected')
+      expect((await mcp.list())[0]?.status).toBe('connected')
       expect((await mcp.tools(serverId, true)).map((tool) => tool.name)).toEqual(['search'])
     } finally {
-      await mcp.manager.closeAll()
+      await dispose()
     }
   })
 })

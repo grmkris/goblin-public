@@ -1,186 +1,154 @@
 import type { CallToolResult } from '@modelcontextprotocol/client'
-import type { ServerSource } from '@goblin/contracts'
-import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Clock from 'effect/Clock'
-import * as Context from 'effect/Context'
+import type * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
-import { Entitlements, requirePlan } from '../billing/gates.ts'
+import { type Entitlements, requirePlan } from '../billing/gates.ts'
 import { Channel } from '../channel/service.ts'
-import { nowMillis } from '../clock.ts'
-import { type AppError, Forbidden, GrantDenied, attempt, attemptSync } from '../http/errors.ts'
-import { type HeldCall, McpApprovalStore } from '../mcp/approvals.ts'
+import { Forbidden, GrantDenied, attempt, attemptSync } from '../http/errors.ts'
+import { type HeldCall, McpApprovalStore, argumentsHash } from '../mcp/approvals.ts'
 import { Cipher, CredentialCipher } from '../mcp/cipher.ts'
 import { configuredServers } from '../mcp/config.ts'
 import { CredentialStore } from '../mcp/credentials.ts'
 import { bindEndpoints } from '../mcp/endpoints.ts'
-import { type EventWebhook, McpEvents, type SubscribeConsumer } from '../mcp/events.ts'
+import { makeEvents } from '../mcp/events.ts'
 import { type EventConsumerPorts, installEventConsumers } from '../mcp/events/consumers.ts'
-import type { EventContext } from '../mcp/events/dispatcher.ts'
 import { eventsHookToken, eventsHookUrl } from '../mcp/events/route-token.ts'
-import { type Receipt, SqliteEventStore } from '../mcp/events/store.ts'
+import { SqliteEventStore } from '../mcp/events/store.ts'
 import { GrantStore } from '../mcp/grants.ts'
-import type { McpConnectionManager } from '../mcp/connection.ts'
-import { McpHost, McpHostInstance } from '../mcp/host.ts'
+import { mcpHost } from '../mcp/host.ts'
 import { logEndpointsReset } from '../mcp/log.ts'
 import { RegistryStore } from '../mcp/registries.ts'
-import { makeCatalog } from '../mcp/registry.ts'
 import { AddedServerStore } from '../mcp/servers.ts'
 import {
   Approvals,
   Events,
   McpConnections,
-  McpGrants,
+  type McpGrants,
   McpServers,
   type Resident,
   requireResident,
 } from '../mcp/service.ts'
-import { type Stage, suggestions } from '../mcp/suggested.ts'
-import type { McpCallOptions, McpRequestOptions, SkillRequestOptions } from '../mcp/types.ts'
-import { promiseWith } from '../runtime/boundary.ts'
+import type { McpManagerOptions } from '../mcp/types.ts'
+import type { SingleFlight } from '../observability/single-flight.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../runtime/input.ts'
 import { SqliteSkillState } from '../skills/store.ts'
 import { Skills } from '../skills/service.ts'
 import { mcpReporter } from '../telemetry/report.ts'
 
-// The MCP layers. Two are steps of the agent's start, in its order (layers/index.ts): the MCP host (step 2) and Events
-// with their consumers (17). The host is made once and shared by its instance tags (`McpHostInstance`, `Cipher`) with
-// the steps and layers that wire it; `Events` is the service itself. The services after the start (`McpLive`) read
-// those instances, and held calls and the registry catalog are built over the agent's database.
+// The MCP layers, both steps of the agent's start in its order (layers/index.ts): the MCP host (step 2) and Events
+// with their consumers (17). Every store is made once, here, and every MCP service once over them.
 
 /**
- * The plan the agent keeps, then current resident authority: what the MCP host and Events check before an Events call
- * goes out, and what ingress checks before it takes a webhook.
+ * The plan the agent keeps, then current resident authority: what Events check before a subscription, a sweep, a
+ * dispatch or a delivery, and what ingress checks before it takes a webhook.
  */
 const eventsAuthority = Effect.andThen(requirePlan(), requireResident)
 
+/** Held calls over their one store, sealed with the credential key. */
+const approvalsOver = (store: McpApprovalStore) =>
+  Approvals.of({
+    cipher: store.cipher,
+    hold: Effect.fn('Approvals.hold')(function* (call: HeldCall) {
+      const now = yield* Clock.currentTimeMillis
+      return yield* attempt(() => store.hold(call, now))
+    }),
+    find: Effect.fn('Approvals.find')(function* (id: string) {
+      return yield* Effect.sync(() => Option.fromNullishOr(store.find(id)))
+    }),
+    get: Effect.fn('Approvals.get')(function* (id: string) {
+      return yield* attemptSync(() => store.get(id))
+    }),
+    decide: Effect.fn('Approvals.decide')(function* (id: string, allowed: boolean) {
+      const now = yield* Clock.currentTimeMillis
+      return yield* attemptSync(() => store.decide(id, allowed, now))
+    }),
+    arguments: Effect.fn('Approvals.arguments')(function* (id: string) {
+      return yield* attempt(() => store.arguments(id))
+    }),
+    finish: Effect.fn('Approvals.finish')(function* (id: string, result: CallToolResult) {
+      const now = yield* Clock.currentTimeMillis
+      yield* attempt(() => store.finish(id, result, now))
+    }),
+    fail: Effect.fn('Approvals.fail')(function* (id: string, state: 'failed' | 'uncertain') {
+      const now = yield* Clock.currentTimeMillis
+      yield* Effect.sync(() => store.fail(id, state, now))
+    }),
+    result: Effect.fn('Approvals.result')(function* (id: string) {
+      return Option.fromNullishOr(yield* attempt(() => store.result(id)))
+    }),
+    view: Effect.fn('Approvals.view')(function* (id: string) {
+      const now = yield* Clock.currentTimeMillis
+      return yield* attempt(() => store.view(id, now))
+    }),
+  })
+
 /**
- * The MCP host over the agent's database, with the stores it checks and the held calls a restart cut off recovered;
- * `authority` is the Events check (`eventsAuthority`).
+ * The owner's decision on a call by the model or an App: an ask-first tool's call goes out only as the held call the
+ * owner approved, with exactly its reviewed arguments, conversation and grant version; `authorize`, the caller's own
+ * check, runs after the arguments are hashed and before the held call is read.
  */
-async function makeHost(input: AgentInputs, db: DrizzleSqliteDODatabase, authority: () => Promise<void>) {
-  const env = input.env
-  const servers = configuredServers(env.MCP_SERVERS)
-  const added = new AddedServerStore(db)
-  const reset = bindEndpoints(db, [...servers, ...added.list()], Math.floor(nowMillis() / 1000))
-  if (reset.length > 0) logEndpointsReset(reset)
-  const skillState = new SqliteSkillState(db)
-  const grants = new GrantStore(db)
-  const cipher = await CredentialCipher.fromBase64(env.CREDENTIAL_KEY)
-  const approvals = new McpApprovalStore(db, cipher)
-  approvals.recover(nowMillis())
-  const eventStore = new SqliteEventStore(db)
-  const credentials = new CredentialStore(db, cipher)
-  const host = new McpHost({
-    servers,
-    added,
-    credentials,
-    authorizeEvents: async (serverId, name, argumentsJson) => {
-      await authority()
-      if (credentials.status(serverId) !== 'connected')
-        throw new Forbidden({ reason: 'event connection requires authorization' })
-      if (!eventStore.allows(serverId, name, argumentsJson)) throw new GrantDenied({ serverId, name })
-    },
-    grants,
-    authorizeTool: async (call, approvalId, dispatch, authorize) => {
-      if (call.caller === 'human') return
-      const policy = grants.policy({ serverId: call.serverId, capability: 'tool', name: call.name })
-      if (approvalId !== undefined) {
-        if (policy === undefined) throw new GrantDenied({ serverId: call.serverId, name: call.name })
-        await approvals.assert({
-          id: approvalId,
-          call,
-          version: () => grants.policy({ serverId: call.serverId, capability: 'tool', name: call.name })?.version,
-          now: nowMillis(),
-          dispatch,
-          ...(authorize === undefined ? {} : { authorize }),
-        })
-      } else if (policy?.askFirst === true) {
-        throw new Forbidden({ reason: 'Owner approval required for this exact call' })
-      }
-    },
-    skillsEnabled: (serverId) => skillState.enabled(serverId),
-    appUrl: env.APP_URL,
-    fetch: input.mcpFetch,
-    report: mcpReporter(input.telemetry),
-  })
-  return { host, cipher }
-}
-
-/** The one MCP host, its stores and the credential cipher. */
-const HostLive: Layer.Layer<McpHostInstance | Cipher, never, AgentInput | Db | Entitlements | Resident> =
-  Layer.effectContext(
+const heldCalls =
+  (approvals: McpApprovalStore, grants: GrantStore): NonNullable<McpManagerOptions['authorizeTool']> =>
+  (call, approvalId, dispatch, authorize) =>
     Effect.gen(function* () {
-      const input = yield* AgentInput
-      const db = yield* Db
-      // The host's Events check is Promise code: it runs the Effect with this layer's services.
-      const run = promiseWith(yield* Effect.context<Entitlements | Resident>())
-      const { host, cipher } = yield* Effect.promise(() => makeHost(input, db, () => run(eventsAuthority)))
-      return Context.mergeAll(McpHostInstance.context(host), Cipher.context(cipher))
-    }),
-  )
+      if (call.caller === 'human') return
+      const grant = { serverId: call.serverId, capability: 'tool' as const, name: call.name }
+      const policy = grants.policy(grant)
+      if (approvalId === undefined) {
+        if (policy?.askFirst === true)
+          return yield* new Forbidden({ reason: 'Owner approval required for this exact call' })
+        return
+      }
+      if (policy === undefined) return yield* new GrantDenied({ serverId: call.serverId, name: call.name })
+      const hash = yield* attempt(() => argumentsHash(call.arguments))
+      if (authorize !== undefined) yield* authorize
+      const now = yield* Clock.currentTimeMillis
+      const version = grants.policy(grant)?.version
+      yield* attemptSync(() => approvals.check({ id: approvalId, call, hash, version, now, dispatch }))
+    })
 
-/** Runs a registered handler, bound to its own services, from the engine's Promise dispatch. */
-const handled = promiseWith(Context.empty())
-
-/** `Events` over the agent's one engine: its methods are Effects already. */
-export const eventsOver = (engine: McpEvents) =>
-  Events.of({
-    health: Effect.fn('Events.health')(function* (serverId: string) {
-      return yield* Effect.sync(() => engine.health(serverId))
-    }),
-    grant: Effect.fn('Events.grant')(function* (
-      serverId: string,
-      name: string,
-      args: Record<string, unknown>,
-      allowed: boolean,
-    ) {
-      yield* Effect.sync(() => engine.grant(serverId, name, args, allowed))
-    }),
-    subscribe: Effect.fn('Events.subscribe')(function* (input: SubscribeConsumer) {
-      return yield* engine.subscribe(input)
-    }),
-    unsubscribe: Effect.fn('Events.unsubscribe')(function* (input: {
-      readonly consumerId: string
-      readonly revision: number
-    }) {
-      return yield* engine.unsubscribe(input)
-    }),
-    activeConsumer: Effect.fn('Events.activeConsumer')(function* (consumerId: string) {
-      return yield* Effect.sync(() => Option.fromNullishOr(engine.store.activeConsumer(consumerId)))
-    }),
-    subscription: Effect.fn('Events.subscription')(function* (id: string) {
-      return yield* Effect.sync(() => Option.fromNullishOr(engine.store.get(id)))
-    }),
-    ack: Effect.fn('Events.ack')(function* (
-      input: Pick<Receipt, 'subscriptionId' | 'webhookId' | 'consumerId' | 'revision' | 'operationId'>,
-    ) {
-      yield* engine.ack(input)
-    }),
-    ackWith: Effect.fn('Events.ackWith')(function* (
-      input: Pick<Receipt, 'subscriptionId' | 'webhookId' | 'consumerId' | 'revision' | 'operationId'>,
-      write: () => void,
-    ) {
-      yield* engine.ackWith(input, write)
-    }),
-    disableServer: Effect.fn('Events.disableServer')(function* (serverId?: string) {
-      yield* engine.disableServer(serverId)
-    }),
-    receive: Effect.fn('Events.receive')(function* (input: EventWebhook) {
-      return yield* engine.receive(input)
-    }),
-    maintain: Effect.fn('Events.maintain')(function* () {
-      yield* engine.maintain()
-    }),
-    register: Effect.fn('Events.register')(function* (
-      key: string,
-      handler: (context: EventContext) => Effect.Effect<void, AppError>,
-    ) {
-      yield* Effect.sync(() => engine.register(key, (context) => handled(handler(context))))
-    }),
-  })
+/**
+ * Start step 2: every server's endpoint binding is checked (a re-pointed server loses what it had), the credential
+ * cipher is made, held calls a restart cut off are recovered, and the one MCP host is made over its stores: the
+ * connections, the owner's servers and grants, and held calls.
+ */
+export const McpHostLive: Layer.Layer<
+  McpConnections | McpServers | McpGrants | Approvals | Cipher,
+  never,
+  AgentInput | Db | SingleFlight
+> = Layer.unwrap(
+  Effect.gen(function* () {
+    const input = yield* AgentInput
+    const db = yield* Db
+    const { env } = input
+    const servers = configuredServers(env.MCP_SERVERS)
+    const added = new AddedServerStore(db)
+    const now = yield* Clock.currentTimeMillis
+    const reset = bindEndpoints(db, [...servers, ...added.list()], Math.floor(now / 1000))
+    if (reset.length > 0) logEndpointsReset(reset)
+    const cipher = yield* Effect.promise(() => CredentialCipher.fromBase64(env.CREDENTIAL_KEY))
+    const grants = new GrantStore(db)
+    const approvals = new McpApprovalStore(db, cipher)
+    yield* Effect.sync(() => approvals.recover(now))
+    const skillState = new SqliteSkillState(db)
+    const host = mcpHost({
+      servers,
+      added,
+      credentials: new CredentialStore(db, cipher),
+      grants,
+      registries: new RegistryStore(db),
+      skillsEnabled: (serverId) => skillState.enabled(serverId),
+      authorizeTool: heldCalls(approvals, grants),
+      appUrl: env.APP_URL,
+      fetch: input.mcpFetch,
+      report: mcpReporter(input.telemetry),
+    })
+    return Layer.mergeAll(host, Layer.succeed(Approvals, approvalsOver(approvals)), Layer.succeed(Cipher, cipher))
+  }),
+)
 
 /**
  * What the Telegram and skills consumers reach, read when an event arrives: the channel and skills services of the
@@ -200,235 +168,41 @@ const consumerPorts = (
 })
 
 /**
- * Start step 17: the one Events engine over the host's connections, with the routine trigger and then the Telegram
- * and skills consumers registered before any delivery can reach it.
+ * Start step 17: the one Events engine over the host's connections and its event store, with the routine trigger and
+ * then the Telegram and skills consumers registered before any delivery can reach it.
  */
 export const McpEventsLive: Layer.Layer<
   Events,
   never,
-  AgentInput | Db | Entitlements | Resident | McpHostInstance | Cipher | Channel | Skills
+  AgentInput | Db | Entitlements | Resident | SingleFlight | McpConnections | McpServers | Cipher | Channel | Skills
 > = Layer.effect(
   Events,
   Effect.gen(function* () {
     const input = yield* AgentInput
     const context = yield* Effect.context<AgentInput | Entitlements | Resident | Channel | Skills>()
-    const run = promiseWith(context)
     const { env, userId } = input
-    const host = yield* McpHostInstance
-    const cipher = yield* Cipher
+    const servers = yield* McpServers
     const store = new SqliteEventStore(yield* Db)
     const token = yield* Effect.promise(() => eventsHookToken(env.CREDENTIAL_KEY, userId))
-    const engine = new McpEvents({
-      manager: host.manager,
+    const authority = Effect.provideContext(eventsAuthority, context)
+    const events = yield* makeEvents({
+      connections: yield* McpConnections,
       store,
-      cipher,
+      cipher: yield* Cipher,
       principal: userId,
       callback: eventsHookUrl(env.APP_URL, userId, token),
-      wake: input.scheduleEvents,
-      authorize: () => run(eventsAuthority),
+      wake: (at) => attempt(() => input.scheduleEvents(at)),
+      authority,
+      authorize: (serverId, name, argumentsJson) =>
+        Effect.gen(function* () {
+          yield* authority
+          if ((yield* servers.status(serverId)) !== 'connected')
+            return yield* new Forbidden({ reason: 'event connection requires authorization' })
+          if (!store.allows(serverId, name, argumentsJson)) return yield* new GrantDenied({ serverId, name })
+        }),
     })
-    const events = eventsOver(engine)
     yield* events.register('routine-trigger', (event) => attempt(() => input.routineEvent(event)))
     yield* installEventConsumers(events, consumerPorts(input, context))
     return events
   }),
 )
-
-/**
- * The owner's servers. The registry catalog (its search cache is the catalog's one piece of state) is built here over
- * the owner's registries in the database; the servers themselves are the host's.
- */
-export const McpServersLive = Layer.effect(
-  McpServers,
-  Effect.gen(function* () {
-    const host = yield* McpHostInstance
-    const { mcpFetch } = yield* AgentInput
-    const catalog = makeCatalog({ added: new RegistryStore(yield* Db), fetch: mcpFetch })
-    const offered = () => new Set(host.manager.servers.map((server) => server.endpoint))
-    return McpServers.of({
-      list: Effect.fn('McpServers.list')(function* () {
-        return yield* Effect.sync(() => host.servers())
-      }),
-      suggested: Effect.fn('McpServers.suggested')(function* (stage: Stage | undefined) {
-        return yield* Effect.sync(() => suggestions(stage, offered()))
-      }),
-      add: Effect.fn('McpServers.add')(function* (endpoint: string, source?: ServerSource) {
-        return yield* attempt(() => host.addServer(endpoint, source))
-      }),
-      remove: Effect.fn('McpServers.remove')(function* (serverId: string) {
-        yield* attempt(() => host.removeServer(serverId))
-      }),
-      beginConnect: Effect.fn('McpServers.beginConnect')(function* (serverId: string) {
-        return yield* attempt(() => host.beginConnect(serverId))
-      }),
-      finishConnect: Effect.fn('McpServers.finishConnect')(function* (state: string, code: string, issuer?: string) {
-        return yield* attempt(() => host.finishConnect(state, code, issuer))
-      }),
-      disconnect: Effect.fn('McpServers.disconnect')(function* (serverId: string) {
-        yield* attempt(() => host.disconnect(serverId))
-      }),
-      tools: Effect.fn('McpServers.tools')(function* (serverId: string, refresh: boolean) {
-        return yield* attempt(() => host.tools(serverId, refresh))
-      }),
-      catalog: Effect.fn('McpServers.catalog')(function* (query: string) {
-        const { entries, partial } = yield* catalog.search(query.trim())
-        const endpoints = offered()
-        return { entries: entries.map((entry) => ({ ...entry, added: endpoints.has(entry.endpoint) })), partial }
-      }),
-      registries: Effect.fn('McpServers.registries')(function* () {
-        return yield* catalog.registries
-      }),
-      addRegistry: Effect.fn('McpServers.addRegistry')(function* (url: string) {
-        return yield* catalog.add(url)
-      }),
-      removeRegistry: Effect.fn('McpServers.removeRegistry')(function* (url: string) {
-        return yield* catalog.remove(url)
-      }),
-    })
-  }),
-)
-
-/** The owner's grants, kept by the host. */
-export const McpGrantsLive = Layer.effect(
-  McpGrants,
-  Effect.gen(function* () {
-    const host = yield* McpHostInstance
-    return McpGrants.of({
-      list: Effect.fn('McpGrants.list')(function* () {
-        return yield* Effect.sync(() => host.grants())
-      }),
-      policy: Effect.fn('McpGrants.policy')(function* (serverId: string, name: string) {
-        return yield* Effect.sync(() => Option.fromNullishOr(host.grantPolicy(serverId, name)))
-      }),
-      setTool: Effect.fn('McpGrants.setTool')(function* (serverId: string, name: string, allowed: boolean) {
-        return yield* attempt(() => host.setToolGrant(serverId, name, allowed))
-      }),
-      setAskFirst: Effect.fn('McpGrants.setAskFirst')(function* (serverId: string, name: string, enabled: boolean) {
-        return yield* attemptSync(() => {
-          host.setAskFirst(serverId, name, enabled)
-          return host.grants()
-        })
-      }),
-      setApp: Effect.fn('McpGrants.setApp')(function* (serverId: string, uri: string, allowed: boolean) {
-        return yield* attempt(() => host.setAppGrant(serverId, uri, allowed))
-      }),
-    })
-  }),
-)
-
-/** The connections over `manager`: one cached client per server. */
-export const connectionsOver = (manager: McpConnectionManager) =>
-  McpConnections.of({
-    servers: Effect.fn('McpConnections.servers')(function* () {
-      return yield* Effect.sync(() => manager.servers)
-    }),
-    server: Effect.fn('McpConnections.server')(function* (serverId: string) {
-      return yield* attemptSync(() => manager.server(serverId))
-    }),
-    snapshot: Effect.fn('McpConnections.snapshot')(function* (serverId: string) {
-      return yield* Effect.sync(() => Option.fromNullishOr(manager.snapshot(serverId)))
-    }),
-    connect: Effect.fn('McpConnections.connect')(function* (serverId: string, options?: McpRequestOptions) {
-      return yield* attempt(() => manager.connect(serverId, options))
-    }),
-    callTool: Effect.fn('McpConnections.callTool')(function* (
-      serverId: string,
-      name: string,
-      args: Record<string, unknown>,
-      options?: McpCallOptions,
-    ) {
-      return yield* attempt(() => manager.callTool(serverId, name, args, options))
-    }),
-    readResource: Effect.fn('McpConnections.readResource')(function* (
-      serverId: string,
-      uri: string,
-      caller: 'human' | 'app',
-    ) {
-      return yield* attempt(() =>
-        caller === 'app' ? manager.readAppResource(serverId, uri) : manager.readResource(serverId, uri),
-      )
-    }),
-    skills: Effect.fn('McpConnections.skills')(function* (serverId: string, options?: SkillRequestOptions) {
-      return yield* attempt(() => manager.listSkills(serverId, options))
-    }),
-    skillFile: Effect.fn('McpConnections.skillFile')(function* (
-      serverId: string,
-      uri: string,
-      options?: SkillRequestOptions,
-    ) {
-      return yield* attempt(() => manager.readSkillFile(serverId, uri, options))
-    }),
-    closeAll: Effect.fn('McpConnections.closeAll')(function* () {
-      yield* attempt(() => manager.closeAll())
-    }),
-  })
-
-/** The connections, the host's manager. */
-export const McpConnectionsLive = Layer.effect(
-  McpConnections,
-  Effect.gen(function* () {
-    return connectionsOver((yield* McpHostInstance).manager)
-  }),
-)
-
-/** Held calls over their table in the agent's database, sealed with the credential key: no state of their own. */
-export const ApprovalsLive = Layer.effect(
-  Approvals,
-  Effect.gen(function* () {
-    const cipher = yield* Cipher
-    const store = new McpApprovalStore(yield* Db, cipher)
-    return Approvals.of({
-      cipher,
-      hold: Effect.fn('Approvals.hold')(function* (call: HeldCall) {
-        const now = yield* Clock.currentTimeMillis
-        return yield* attempt(() => store.hold(call, now))
-      }),
-      find: Effect.fn('Approvals.find')(function* (id: string) {
-        return yield* Effect.sync(() => Option.fromNullishOr(store.find(id)))
-      }),
-      get: Effect.fn('Approvals.get')(function* (id: string) {
-        return yield* attemptSync(() => store.get(id))
-      }),
-      decide: Effect.fn('Approvals.decide')(function* (id: string, allowed: boolean) {
-        const now = yield* Clock.currentTimeMillis
-        return yield* attemptSync(() => store.decide(id, allowed, now))
-      }),
-      arguments: Effect.fn('Approvals.arguments')(function* (id: string) {
-        return yield* attempt(() => store.arguments(id))
-      }),
-      finish: Effect.fn('Approvals.finish')(function* (id: string, result: CallToolResult) {
-        const now = yield* Clock.currentTimeMillis
-        yield* attempt(() => store.finish(id, result, now))
-      }),
-      fail: Effect.fn('Approvals.fail')(function* (id: string, state: 'failed' | 'uncertain') {
-        const now = yield* Clock.currentTimeMillis
-        yield* Effect.sync(() => store.fail(id, state, now))
-      }),
-      result: Effect.fn('Approvals.result')(function* (id: string) {
-        return Option.fromNullishOr(yield* attempt(() => store.result(id)))
-      }),
-      view: Effect.fn('Approvals.view')(function* (id: string) {
-        const now = yield* Clock.currentTimeMillis
-        return yield* attempt(() => store.view(id, now))
-      }),
-    })
-  }),
-)
-
-/**
- * Start step 2: every server's endpoint binding is checked (a re-pointed server loses what it had), the credential
- * cipher is made, held calls a restart cut off are recovered, and the one MCP host is made, with its connections and
- * grants, which the skills (step 15) and Events (step 17) use.
- */
-export const McpHostLive: Layer.Layer<
-  McpHostInstance | Cipher | McpConnections | McpGrants,
-  never,
-  AgentInput | Db | Entitlements | Resident
-> = Layer.mergeAll(McpConnectionsLive, McpGrantsLive).pipe(Layer.provideMerge(HostLive))
-
-/**
- * The MCP services after the start: the servers and held calls (the connections and grants are start step 2's,
- * `Events` is step 17's, and resident authority the core layer's).
- */
-export const McpLive: Layer.Layer<McpServers | Approvals, never, AgentInput | Db | McpHostInstance | Cipher> =
-  Layer.mergeAll(McpServersLive, ApprovalsLive)

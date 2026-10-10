@@ -8,7 +8,7 @@ import { ChatDirectoryLive, ConversationLive, ConversationRegistryLive, MoverLiv
 import { CoreLive } from './core.ts'
 import { DelegationLive, HelperExecutionLive } from './delegation.ts'
 import { ActivateMemoriesLive, CheapModelsLive, KnowledgeLive, MemoryEngineLive } from './knowledge.ts'
-import { McpEventsLive, McpHostLive, McpLive } from './mcp.ts'
+import { McpEventsLive, McpHostLive } from './mcp.ts'
 import { ObservabilityLive } from './observability.ts'
 import { ChannelLive, RoutineUsageLive, RoutinesLive } from './routines.ts'
 import { SkillsLive } from './skills.ts'
@@ -26,7 +26,7 @@ const then =
  */
 const start = (input: AgentInputs) =>
   CoreLive(input).pipe(
-    then(McpHostLive), // 2 mcp: endpoint bindings, cipher, held calls recovered, the host
+    then(McpHostLive), // 2 mcp: endpoint bindings, cipher, held calls recovered, the host and its services
     then(CheapModelsLive), // 3 knowledge
     then(ChatDirectoryLive), // 4 conversation
     then(MemoryEngineLive), // 5 knowledge
@@ -52,7 +52,6 @@ export const AgentLive = (input: AgentInputs) =>
   start(input).pipe(
     then(ModelBudgetLive),
     then(ConversationLive),
-    then(McpLive),
     then(CapabilitiesLive),
     then(KnowledgeLive),
     then(DelegationLive),

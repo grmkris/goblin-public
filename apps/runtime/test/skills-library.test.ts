@@ -6,11 +6,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { scopeOf } from '../src/capabilities/profiles.ts'
 import * as TestClock from 'effect/testing/TestClock'
 import type { AppError } from '../src/http/errors.ts'
-import { connectionsOver } from '../src/layers/mcp.ts'
-import { McpHost } from '../src/mcp/host.ts'
+import { mcpHost } from '../src/mcp/host.ts'
 import { skillsExtension } from '../src/pi/skills.ts'
 import { Capabilities } from '../src/capabilities/service.ts'
-import { McpConnections, Resident } from '../src/mcp/service.ts'
+import { McpConnections, McpServers, Resident } from '../src/mcp/service.ts'
 import type { AgentServices } from '../src/layers/index.ts'
 import { SingleFlight } from '../src/observability/single-flight.ts'
 import { makeSkills } from '../src/skills/library.ts'
@@ -19,7 +18,7 @@ import { SKILLS_EXTENSION, type SkillEntry } from '../src/skills/protocol.ts'
 import { digestOf } from '../src/skills/verify.ts'
 import { FixedProfiles } from './fixed-services.ts'
 import { knowledgeOver } from './knowledge-layer.ts'
-import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
+import { MemoryCredentials, MemoryGrants, MemoryRegistries } from './mcp/memory.ts'
 import { MemorySkillState } from './skills-memory.ts'
 import { lowLevelServer } from './mcp/low-level-server.ts'
 import { servicesOf } from './mcp/runtime.ts'
@@ -91,28 +90,24 @@ const skills = createMcpHandler(() => {
 const state = new MemorySkillState()
 const credentials = new MemoryCredentials()
 await credentials.saveTokens('lib', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
-const host = new McpHost({
-  servers: [{ serverId: 'lib', endpoint: 'https://skills.test/mcp' }],
-  credentials,
-  grants: new MemoryGrants(),
-  skillsEnabled: (serverId) => state.enabled(serverId),
-  appUrl: 'https://goblin.test',
-  fetch: async (input, init) => {
-    if (served.down) throw new TypeError('network down')
-    return skills.fetch(new Request(input, init))
-  },
-})
-/** The skills service over the host's connections, on a test clock that starts at 1,000,000 ms. */
+/** The skills service over an MCP host for the skills server, on a test clock that starts at 1,000,000 ms. */
 const skillsAt = () => {
+  const host = mcpHost({
+    servers: [{ serverId: 'lib', endpoint: 'https://skills.test/mcp' }],
+    credentials,
+    grants: new MemoryGrants(),
+    registries: new MemoryRegistries(),
+    skillsEnabled: (serverId) => state.enabled(serverId),
+    appUrl: 'https://goblin.test',
+    fetch: async (input, init) => {
+      if (served.down) throw new TypeError('network down')
+      return skills.fetch(new Request(input, init))
+    },
+  })
   const services = servicesOf(
     Layer.effect(Skills, makeSkills(state)).pipe(
-      Layer.provideMerge(
-        Layer.mergeAll(
-          Layer.succeed(McpConnections, connectionsOver(host.manager)),
-          SingleFlight.layer,
-          TestClock.layer(),
-        ),
-      ),
+      Layer.provideMerge(host),
+      Layer.provideMerge(Layer.mergeAll(SingleFlight.layer, TestClock.layer())),
     ),
   )
   return { ...services, library: services.run(Effect.andThen(TestClock.setTime(1_000_000), Skills)) }
@@ -132,11 +127,10 @@ beforeEach(async () => {
 })
 afterEach(async () => {
   await services.dispose()
-  await host.manager.closeAll()
 })
 
 describe('skills over MCP (unit)', () => {
-  const run = <A, E>(program: Effect.Effect<A, E>) => services.run(program)
+  const run = <A, E>(program: Effect.Effect<A, E, McpConnections | McpServers>) => services.run(program)
 
   it('reads nothing from a server the owner has not turned skills on for', async () => {
     await run(library.setEnabled('lib', false))
@@ -145,10 +139,11 @@ describe('skills over MCP (unit)', () => {
   })
 
   it('shows the owner which servers offer skills and which are on', async () => {
+    const offered = async () => (await run(McpServers.use((servers) => servers.list())))[0]
     await run(library.catalog())
-    expect(host.servers()[0]).toMatchObject({ serverId: 'lib', skillsOffered: true, skillsEnabled: true })
+    expect(await offered()).toMatchObject({ serverId: 'lib', skillsOffered: true, skillsEnabled: true })
     await run(library.setEnabled('lib', false))
-    expect(host.servers()[0]).toMatchObject({ skillsOffered: true, skillsEnabled: false })
+    expect(await offered()).toMatchObject({ skillsOffered: true, skillsEnabled: false })
   })
 
   it('lists skills under host handles and activates one with verified content', async () => {
@@ -216,7 +211,7 @@ describe('skills over MCP (unit)', () => {
 
   it('reports an unreachable server as unavailable rather than empty, and keeps a cached listing', async () => {
     await run(library.catalog())
-    await host.manager.closeAll()
+    await run(McpConnections.use((connections) => connections.closeAll()))
     served.down = true
     expect((await run(library.catalog())).skills).toHaveLength(1)
     // A service made later has no listing of its own to keep.

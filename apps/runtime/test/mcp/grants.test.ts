@@ -1,8 +1,8 @@
 import { createMcpHandler } from '@modelcontextprotocol/server'
 import { describe, expect, it } from 'vitest'
-import { McpHost } from '../../src/mcp/host.ts'
 import { MemoryCredentials, MemoryGrants } from './memory.ts'
 import { lowLevelServer } from './low-level-server.ts'
+import { hostOf } from './manager.ts'
 
 const BOARD = 'ui://notes/board.html'
 
@@ -26,40 +26,38 @@ const notes = createMcpHandler(() => {
 async function host() {
   const credentials = new MemoryCredentials()
   await credentials.saveTokens('notes', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
-  return new McpHost({
+  return hostOf({
     servers: [{ serverId: 'notes', endpoint: 'https://notes.test/mcp' }],
     credentials,
     grants: new MemoryGrants(),
-    appUrl: 'https://goblin.test',
     fetch: async (input, init) => notes.fetch(new Request(input, init)),
   })
 }
 
-const allowed = (mcp: McpHost) =>
-  mcp
-    .grants()
-    .map((grant) => `${grant.capability}:${grant.name}`)
-    .toSorted()
+const allowed = async (mcp: Awaited<ReturnType<typeof host>>) =>
+  (await mcp.grants.list()).map((grant) => `${grant.capability}:${grant.name}`).toSorted()
 
 describe('allowing an App as a whole', () => {
   it('grants exactly the tools that declare the App, and its resource; nothing else', async () => {
     const mcp = await host()
     try {
-      await mcp.setAppGrant('notes', BOARD, true)
-      expect(allowed(mcp)).toEqual([`resource:${BOARD}`, 'tool:move', 'tool:open'])
-      await mcp.setAppGrant('notes', BOARD, false)
-      expect(allowed(mcp)).toEqual([])
+      await mcp.grants.setApp('notes', BOARD, true)
+      expect(await allowed(mcp)).toEqual([`resource:${BOARD}`, 'tool:move', 'tool:open'])
+      await mcp.grants.setApp('notes', BOARD, false)
+      expect(await allowed(mcp)).toEqual([])
     } finally {
-      await mcp.manager.closeAll()
+      await mcp.dispose()
     }
   })
   it('refuses an App no tool declares', async () => {
     const mcp = await host()
     try {
-      await expect(mcp.setAppGrant('notes', 'ui://notes/other.html', true)).rejects.toMatchObject({ _tag: 'NotFound' })
-      expect(allowed(mcp)).toEqual([])
+      await expect(mcp.grants.setApp('notes', 'ui://notes/other.html', true)).rejects.toMatchObject({
+        _tag: 'NotFound',
+      })
+      expect(await allowed(mcp)).toEqual([])
     } finally {
-      await mcp.manager.closeAll()
+      await mcp.dispose()
     }
   })
 })

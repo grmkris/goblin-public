@@ -1,8 +1,9 @@
 import * as Effect from 'effect/Effect'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Conflict } from '../../src/http/errors.ts'
-import { McpEvents } from '../../src/mcp/events.ts'
+import { makeEvents } from '../../src/mcp/events.ts'
 import { SqliteEventStore } from '../../src/mcp/events/store.ts'
+import { SingleFlight } from '../../src/observability/single-flight.ts'
 import { appEventConsumerReceipts, appMetadata } from '../../src/storage/schema.ts'
 import { chatDatabase } from '../chats-sqlite.ts'
 
@@ -20,7 +21,7 @@ const RECEIPT = {
 }
 
 /** Events over SQLite with one pending delivery receipt; acknowledging needs no connection, key or authority. */
-const pending = () => {
+const pending = async () => {
   const { db, close } = chatDatabase()
   closes.push(close)
   db.insert(appEventConsumerReceipts)
@@ -29,7 +30,7 @@ const pending = () => {
   // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
   const store = new SqliteEventStore(db as never)
   // SAFETY: `ackWith` reads only the store and the clock; the rest of the engine is never reached here.
-  const events = new McpEvents({ store, now: () => 5 } as never)
+  const events = await Effect.runPromise(makeEvents({ store } as never).pipe(Effect.provide(SingleFlight.layer)))
   const state = () => db.select().from(appEventConsumerReceipts).get()?.state
   const written = () => db.select().from(appMetadata).all().length
   const write = () => db.insert(appMetadata).values({ id: 'pending-handoff', value: '1' }).run()
@@ -38,14 +39,14 @@ const pending = () => {
 
 describe('an Events acknowledgement with a write of its own (unit)', () => {
   it('acknowledges and writes in one transaction', async () => {
-    const { events, state, written, write } = pending()
+    const { events, state, written, write } = await pending()
     await Effect.runPromise(events.ackWith(RECEIPT, write))
     expect(state()).toBe('accepted')
     expect(written()).toBe(1)
   })
 
   it('keeps neither when the write fails, so the delivery is handed over again', async () => {
-    const { events, state, written, write } = pending()
+    const { events, state, written, write } = await pending()
     const failed = await Effect.runPromise(
       Effect.flip(
         events.ackWith(RECEIPT, () => {

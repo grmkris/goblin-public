@@ -7,10 +7,10 @@ import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 import { NotFound } from '../../../src/http/errors.ts'
 import { ResidentLive } from '../../../src/layers/core.ts'
-import { McpConnectionsLive, McpGrantsLive, McpServersLive } from '../../../src/layers/mcp.ts'
 import { McpHandlers } from '../../../src/mcp/api.ts'
-import { McpHost, McpHostInstance } from '../../../src/mcp/host.ts'
+import { mcpHost } from '../../../src/mcp/host.ts'
 import { Approvals, Events } from '../../../src/mcp/service.ts'
+import { SingleFlight } from '../../../src/observability/single-flight.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import { Apps } from '../../../src/apps/service.ts'
 import { Budget } from '../../../src/budget.ts'
@@ -21,9 +21,9 @@ import { Invocations, Personas } from '../../../src/personas/service.ts'
 import { PiSessions } from '../../../src/pi/sessions.ts'
 import { RoutineControl, RoutineRuns, RoutineUsage } from '../../../src/routines/service.ts'
 import { Skills } from '../../../src/skills/service.ts'
-import { MemoryAddedServers, MemoryCredentials, MemoryGrants } from '../../mcp/memory.ts'
+import { MemoryAddedServers, MemoryCredentials, MemoryGrants, MemoryRegistries } from '../../mcp/memory.ts'
 import { callOwner } from '../../owner-client.ts'
-import { cleanup, database, get, json, plans, post, serve, served, sqliteDb, stub } from './fixture.ts'
+import { database, get, json, plans, post, serve, served, sqliteDb, stub } from './fixture.ts'
 import { lowLevelServer } from '../../mcp/low-level-server.ts'
 
 const BOARD = 'ui://notes/board.html'
@@ -77,15 +77,15 @@ const fixture = async () => {
     const request = new Request(input, init)
     return new URL(request.url).pathname === '/mcp' ? notes.fetch(request) : new Response(null, { status: 404 })
   }
-  const host = new McpHost({
+  const host = mcpHost({
     servers: [{ serverId: 'notes', endpoint: 'https://notes.test/mcp' }],
     credentials,
     grants,
     added: new MemoryAddedServers(credentials, grants),
+    registries: new MemoryRegistries(),
     appUrl: 'https://goblin.test',
     fetch: fetcher,
   })
-  cleanup(() => host.manager.closeAll())
   const disabled: (string | undefined)[] = []
   const events = stub(Events, {
     health: () => Effect.succeed([]),
@@ -94,17 +94,13 @@ const fixture = async () => {
   const approvals = stub(Approvals, {
     view: (id: string) => (id === VIEW.id ? Effect.succeed(VIEW) : Effect.fail(new NotFound({ what: 'MCP approval' }))),
   })
-  // SAFETY: the mcp handlers and services read only `env.STAGE` (suggested servers) and `mcpFetch` (the catalog) here.
-  const input = { env: { STAGE: 'test' }, mcpFetch: fetcher } as AgentInputs
+  // SAFETY: the mcp handlers read only `env.STAGE` (suggested servers) here.
+  const input = { env: { STAGE: 'test' } } as AgentInputs
   const { fetch } = serve(
     served([McpGroup], McpHandlers).pipe(
       Layer.provide(
         Layer.mergeAll(
-          Layer.mergeAll(McpServersLive, McpGrantsLive, McpConnectionsLive).pipe(
-            Layer.provideMerge(
-              Layer.mergeAll(Layer.succeed(McpHostInstance, host), Layer.succeed(AgentInput, input), sqliteDb(db)),
-            ),
-          ),
+          Layer.mergeAll(host.pipe(Layer.provide(SingleFlight.layer)), Layer.succeed(AgentInput, input), sqliteDb(db)),
           events,
           approvals,
           ResidentLive.pipe(Layer.provide(sqliteDb(db))),

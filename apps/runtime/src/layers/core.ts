@@ -4,7 +4,14 @@ import * as Layer from 'effect/Layer'
 import { Entitlements, cachedPolicy } from '../billing/gates.ts'
 import { epochSeconds } from '../clock.ts'
 import { ResidentInactive } from '../http/errors.ts'
-import { type Events, Resident } from '../mcp/service.ts'
+import {
+  type Approvals,
+  type Events,
+  type McpConnections,
+  type McpGrants,
+  type McpServers,
+  Resident,
+} from '../mcp/service.ts'
 import { flowAnalytics } from '../observability/ae.ts'
 import { FlowEvents } from '../observability/flows.ts'
 import { KeyedLock } from '../observability/lock.ts'
@@ -24,7 +31,6 @@ import type { ChatsInstance } from '../chats/directory.ts'
 import type { MovesInstance } from '../chats/mover.ts'
 import type { ConversationsInstance } from '../conversations.ts'
 import type { Cipher } from '../mcp/cipher.ts'
-import type { McpHostInstance } from '../mcp/host.ts'
 import type { MemoriesInstance } from '../memory/memory.ts'
 import type { CheapModels } from '../memory/model.ts'
 import type { RoutineUsage } from '../routines/service.ts'
@@ -122,7 +128,10 @@ type StartServices =
   | ChatsInstance
   | ConversationsInstance
   | MovesInstance
-  | McpHostInstance
+  | McpConnections
+  | McpServers
+  | McpGrants
+  | Approvals
   | Cipher
   | ProfilesInstance
   | Events

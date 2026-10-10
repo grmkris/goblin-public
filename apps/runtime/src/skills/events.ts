@@ -1,7 +1,7 @@
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
-import { offersEvents } from '../mcp/connection.ts'
+import { offersEvents } from '../mcp/remote.ts'
 import { Events, McpConnections } from '../mcp/service.ts'
 import { Skills } from './service.ts'
 

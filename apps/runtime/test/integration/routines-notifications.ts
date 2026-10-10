@@ -5,7 +5,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import type { RoutineDefinition } from '@goblin/contracts'
 import { CredentialCipher } from '../../src/mcp/cipher.ts'
-import { McpHost, McpHostInstance } from '../../src/mcp/host.ts'
+import { mcpHost } from '../../src/mcp/host.ts'
 import { RoutineStore } from '../../src/routines/store.ts'
 import { RoutineRunStore } from '../../src/routines/runs.ts'
 import { notifyRoutine } from '../../src/routines/notifications.ts'
@@ -16,7 +16,7 @@ import { Entitlements } from '../../src/billing/gates.ts'
 import { channelOver, routineRunsOf } from '../../src/layers/routines.ts'
 import { RoutineRuns as RoutineRunsService } from '../../src/routines/service.ts'
 import { ResidentLive } from '../../src/layers/core.ts'
-import { McpConnectionsLive } from '../../src/layers/mcp.ts'
+import { SingleFlight } from '../../src/observability/single-flight.ts'
 import { Db } from '../../src/runtime/db.ts'
 import type { AppError } from '../../src/http/errors.ts'
 import { Channel as ChannelService } from '../../src/channel/service.ts'
@@ -25,7 +25,7 @@ import { AgentInput, type AgentInputs } from '../../src/runtime/input.ts'
 
 /** What the dispatch check reads. */
 type LaneServices = Entitlements | ResidentService | ChannelService
-import { MemoryCredentials, MemoryGrants } from '../mcp/memory.ts'
+import { MemoryCredentials, MemoryGrants, MemoryRegistries } from '../mcp/memory.ts'
 import { appRoutineRuns } from '../../src/storage/routines.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { lowLevelServer } from '../mcp/low-level-server.ts'
@@ -61,11 +61,12 @@ function notificationHost(
   accepted: Record<string, unknown>[],
 ) {
   const handler = notificationHandler(accepted)
-  const host = new McpHost({
+  return mcpHost({
     servers: [{ serverId: 'mygram', endpoint: 'https://notification.test/mcp' }],
     appUrl: 'https://goblin.test',
     credentials,
     grants: new MemoryGrants([{ serverId: 'mygram', capability: 'tool', name: 'send_message' }]),
+    registries: new MemoryRegistries(),
     fetch: async (input, init) => {
       const request = new Request(input, init)
       if (request.method === 'POST') {
@@ -78,7 +79,6 @@ function notificationHost(
       return handler.fetch(request)
     },
   })
-  return host
 }
 async function setupNotifications(storage: DurableObjectStorage, owner: string) {
   const db = drizzle(storage)
@@ -103,9 +103,9 @@ async function setupNotifications(storage: DurableObjectStorage, owner: string) 
   const services = Layer.mergeAll(
     Layer.succeed(RoutineRunsService, routineRunsOf(runs)),
     Layer.succeed(ChannelService, channelOver(channel)),
-    McpConnectionsLive,
+    host.pipe(Layer.provide(SingleFlight.layer)),
     ResidentLive,
-  ).pipe(Layer.provide(Layer.mergeAll(Layer.succeed(McpHostInstance, host), Layer.succeed(Db, db))))
+  ).pipe(Layer.provide(Layer.succeed(Db, db)))
   const plans = { state: fixturePlan, require: fixturePlan }
   // The bridge's `local`, which notifyRoutine runs its last-moment check through, over the same services.
   const input: AgentInputs = Object.assign(Object.create(null), {
@@ -120,7 +120,7 @@ async function setupNotifications(storage: DurableObjectStorage, owner: string) 
         Effect.provideService(AgentInput, input),
       ),
     )
-  return { db, routines, runs, resident, channel, host, attempts, accepted, notify }
+  return { db, routines, runs, resident, channel, attempts, accepted, notify }
 }
 function createNotification(routines: RoutineStore, runs: RoutineRunStore, id: string, notifyTelegram: boolean) {
   const definition: RoutineDefinition = {
@@ -149,31 +149,27 @@ function createNotification(routines: RoutineStore, runs: RoutineRunStore, id: s
 /** Native SQLite receipts and official SDK; all sends remain in the injected fixture. */
 export async function routineNotificationProbe(storage: DurableObjectStorage, owner: string) {
   runApplicationMigrations(storage)
-  const { db, routines, runs, host, attempts, accepted, notify } = await setupNotifications(storage, owner)
-  try {
-    const off = createNotification(routines, runs, 'notify-off', false)
-    await notify(off)
-    const offCalls = attempts.length
-    const on = createNotification(routines, runs, 'notify-on', true)
-    await notify(on)
-    const failed = runs.get(on)
-    db.update(appRoutineRuns).set({ notificationNextAt: 0 }).where(eq(appRoutineRuns.id, on)).run()
-    await notify(on)
-    const delivered = runs.get(on)
-    await notify(on)
-    return {
-      offCalls,
-      frozenServer: failed.notificationServerId,
-      retryState: failed.notificationState,
-      attempts: attempts.length,
-      stableBytes: JSON.stringify(attempts[0]) === JSON.stringify(attempts[1]),
-      accepted: accepted.length,
-      state: delivered.notificationState,
-      metadata: JSON.parse(delivered.notificationReceipt ?? '{}'),
-      scrubbed: delivered.summary,
-      reported: delivered.reportAcceptedAt !== null,
-    }
-  } finally {
-    await host.manager.closeAll()
+  const { db, routines, runs, attempts, accepted, notify } = await setupNotifications(storage, owner)
+  const off = createNotification(routines, runs, 'notify-off', false)
+  await notify(off)
+  const offCalls = attempts.length
+  const on = createNotification(routines, runs, 'notify-on', true)
+  await notify(on)
+  const failed = runs.get(on)
+  db.update(appRoutineRuns).set({ notificationNextAt: 0 }).where(eq(appRoutineRuns.id, on)).run()
+  await notify(on)
+  const delivered = runs.get(on)
+  await notify(on)
+  return {
+    offCalls,
+    frozenServer: failed.notificationServerId,
+    retryState: failed.notificationState,
+    attempts: attempts.length,
+    stableBytes: JSON.stringify(attempts[0]) === JSON.stringify(attempts[1]),
+    accepted: accepted.length,
+    state: delivered.notificationState,
+    metadata: JSON.parse(delivered.notificationReceipt ?? '{}'),
+    scrubbed: delivered.summary,
+    reported: delivered.reportAcceptedAt !== null,
   }
 }

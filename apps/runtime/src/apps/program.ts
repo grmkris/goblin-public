@@ -13,7 +13,7 @@ import { AppEngine } from '../agent-apps/service.ts'
 import { InvalidInput, NotFound } from '../http/errors.ts'
 import { Conversations } from '../chats/service.ts'
 import { Home } from '../home/service.ts'
-import { toolAppResource } from '../mcp/connection.ts'
+import { toolAppResource } from '../mcp/remote.ts'
 import { McpConnections } from '../mcp/service.ts'
 import { Apps } from './service.ts'
 

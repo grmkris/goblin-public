@@ -1,5 +1,8 @@
 import { RunAttribute } from '@goblin/contracts/telemetry'
-import { nowMillis } from '../clock.ts'
+import * as Cause from 'effect/Cause'
+import * as Clock from 'effect/Clock'
+import * as Effect from 'effect/Effect'
+import * as Exit from 'effect/Exit'
 import { writeLine } from '../observability/logger.ts'
 import { safeErrorType } from '../observability/report.ts'
 import { outcomeOf } from '../telemetry/attributes.ts'
@@ -34,20 +37,27 @@ const reportSafely = (report: StepReport, step: McpStep, outcome: string, starte
 }
 
 /**
- * Runs one remote MCP step and reports it: the step, server, tool, outcome and duration. Never arguments, results or
- * credentials. This is how a slow or failing connect or call shows up in the run ledger and the Worker's logs.
+ * `effect`, one remote MCP step, reported when it ends: the step, server, tool, outcome and duration. Never arguments,
+ * results or credentials. This is how a slow or failing connect or call shows up in the run ledger and the Worker's logs.
  */
-export async function timed<T>(step: McpStep, work: () => Promise<T>, report: StepReport = logStep): Promise<T> {
-  const started = nowMillis()
-  try {
-    const value = await work()
-    reportSafely(report, step, 'ok', started, nowMillis())
-    return value
-  } catch (error) {
-    reportSafely(report, step, outcomeOf(error), started, nowMillis())
-    throw error
-  }
-}
+export const timed =
+  (step: McpStep, report: StepReport = logStep) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    Effect.flatMap(Clock.currentTimeMillis, (started) =>
+      Effect.onExit(effect, (exit) =>
+        Effect.flatMap(Clock.currentTimeMillis, (ended) =>
+          Effect.sync(() =>
+            reportSafely(
+              report,
+              step,
+              Exit.isSuccess(exit) ? 'ok' : outcomeOf(Cause.squash(exit.cause)),
+              started,
+              ended,
+            ),
+          ),
+        ),
+      ),
+    )
 
 /** One log line per server that lost its credentials and grants because its endpoint changed (ids only). */
 export function logEndpointsReset(serverIds: readonly string[]): void {

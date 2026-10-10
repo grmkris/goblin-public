@@ -1,8 +1,6 @@
 import { and, asc, count, eq, isNull, lte, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import * as Context from 'effect/Context'
-import * as Effect from 'effect/Effect'
-import { type AppError, InvalidInput, attemptSync } from '../../http/errors.ts'
+import { InvalidInput } from '../../http/errors.ts'
 import {
   appEventConsumerReceipts as receipts,
   appEventDeliveries as deliveries,
@@ -280,8 +278,3 @@ export class SqliteEventStore {
     })
   }
 }
-
-/** Injectable storage service, used without a network wait inside any transaction. */
-export class EventStorage extends Context.Service<EventStorage, SqliteEventStore>()('goblin/EventStorage') {}
-export const eventStorageEffect = <A>(work: (store: SqliteEventStore) => A): Effect.Effect<A, AppError, EventStorage> =>
-  EventStorage.use((store) => attemptSync(() => work(store)))

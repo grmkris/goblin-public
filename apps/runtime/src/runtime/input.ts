@@ -7,7 +7,7 @@ import type { StopRuntime } from '../agent-program.ts'
 import type { EntitlementPolicy } from '../billing/gates.ts'
 import type { MoverPorts } from '../chats/mover.ts'
 import type { RuntimeEnv } from '../env.ts'
-import type { EventHandler } from '../mcp/events/dispatcher.ts'
+import type { EventContext } from '../mcp/events/dispatcher.ts'
 import type { PersonaTurnKit } from '../organize/kit.ts'
 import type { PiModels } from '../pi/harness.ts'
 import type { memoryExtensions } from '../pi/memory.ts'
@@ -44,7 +44,7 @@ export interface AgentInputs {
   readonly pullTelegram: () => Promise<void>
   /** Schedules the Telegram pull alarm (channelPull) at once, instead of pulling inline. */
   readonly schedulePull: () => Promise<unknown>
-  readonly routineEvent: EventHandler
+  readonly routineEvent: (context: EventContext) => Promise<void>
   readonly mcpFetch: typeof fetch
   /** The agent's apps, made before Pi opened (their tools are Pi's). */
   readonly agentApps: AgentApps

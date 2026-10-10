@@ -1,45 +1,22 @@
 import * as Context from 'effect/Context'
-import type { StepReport } from './log.ts'
-import {
-  auth,
-  type AuthProvider,
-  discoverOAuthServerInfo,
-  type FetchLike,
-  type Tool,
-} from '@modelcontextprotocol/client'
-import type { ServerView, ToolView } from '@goblin/contracts'
-import { nowSeconds } from '../clock.ts'
-import { Forbidden, Internal, InvalidInput, NeedsAuthorization, NotFound, UpstreamMcp } from '../http/errors.ts'
-import { McpConnectionManager, offersEvents, offersSkills, toolAppResource, toolOffered } from './connection.ts'
+import * as Effect from 'effect/Effect'
+import * as Layer from 'effect/Layer'
+import * as Option from 'effect/Option'
+import { epochSeconds } from '../clock.ts'
+import { Forbidden, NotFound, attemptSync } from '../http/errors.ts'
+import type { SingleFlight } from '../observability/single-flight.ts'
+import { mcpAuth } from './auth.ts'
+import type { McpManager } from './connections.ts'
 import type { Credentials } from './credentials.ts'
-import type { Grant, Grants } from './grants.ts'
-import { addedServerId, serverClaims, userEndpoint } from './endpoint.ts'
-import { isOAuthRejection, mapMcpError } from './errors.ts'
-import { StoredOAuthProvider } from './oauth-provider.ts'
-import { type AddedServers, MAX_ADDED_SERVERS, type ServerSource } from './servers.ts'
-import type { McpServerConfig } from './types.ts'
-
-/** The failures that mean a server was not reached at all, rather than that it refused this agent. */
-const UNREACHABLE: ReadonlySet<UpstreamMcp['reason']> = new Set(['transport', 'timeout', 'cancelled'])
-
-/** Refresh this many seconds before the access token's recorded expiry. */
-const REFRESH_SKEW_SECONDS = 60
-/** A 401 this soon after a completed refresh is a request that raced it: retry with the new token instead. */
-const RECENT_REFRESH_MS = 10_000
-
-/**
- * Request every scope the server offers: the resource's own list, else its authorization server's. The SDK only
- * falls back to the resource's list, so a server that publishes scopes on the authorization server alone would get
- * no scope request, and with it no `offline_access` and no refresh token. Grants, not scopes, limit what runs.
- */
-export const offeredScope = async (endpoint: string, fetchFn: typeof fetch): Promise<string | undefined> => {
-  const info = await discoverOAuthServerInfo(endpoint, { fetchFn })
-  const scopes = info.resourceMetadata?.scopes_supported ?? info.authorizationServerMetadata?.scopes_supported ?? []
-  return scopes.length === 0 ? undefined : scopes.join(' ')
-}
-
-/** The "token" of a server that needs no sign-in: empty, so no Authorization header is sent. */
-const OPEN_ACCESS = { access_token: '', token_type: 'none' } as const
+import type { Grants } from './grants.ts'
+import type { StepReport } from './log.ts'
+import { makeManager } from './manager.ts'
+import { ownerServers } from './owner-servers.ts'
+import type { AddedRegistries } from './registries.ts'
+import { toolAppResource } from './remote.ts'
+import type { AddedServers } from './servers.ts'
+import { McpConnections, McpGrants, McpServers } from './service.ts'
+import type { McpManagerOptions, McpServerConfig } from './types.ts'
 
 export type McpHostOptions = {
   /** The deployment's servers; they win over an added server with the same id. */
@@ -48,317 +25,130 @@ export type McpHostOptions = {
   readonly grants: Grants
   readonly appUrl: string
   readonly fetch: typeof fetch
+  /** The registries the owner added, searched after the built-in ones. */
+  readonly registries: AddedRegistries
   /** Servers the owner added; without it, the server list is fixed. */
   readonly added?: AddedServers
   /** Random characters for added server ids. */
   readonly random?: () => string
   /** Whether the owner uses skills from a server; without it, no server's skills are read. */
-  readonly authorizeEvents?: (serverId: string, name: string, argumentsJson: string) => void | Promise<void>
   readonly skillsEnabled?: (serverId: string) => boolean
   /** Where each remote step is reported (the run ledger, ADR 0024). */
   readonly report?: StepReport
-  readonly authorizeTool?: import('./types.ts').McpManagerOptions['authorizeTool']
+  /** The owner's decision on a call (held calls); without it, an ask-first tool is refused to all but the owner. */
+  readonly authorizeTool?: McpManagerOptions['authorizeTool']
 }
 
-/**
- * Outbound MCP for the resident agent: the connection manager, the encrypted OAuth credentials and the owner's grants,
- * all inside the Agent DO. Token refresh is single-flight per server because refresh tokens rotate.
- */
-export class McpHost {
-  readonly manager: McpConnectionManager
-  readonly #credentials: Credentials
-  readonly #grants: Grants
-  readonly #appUrl: string
-  readonly #fetch: typeof fetch
-  readonly #configured: ReadonlySet<string>
-  readonly #added: AddedServers | undefined
-  readonly #random: () => string
-  readonly #skillsEnabled: (serverId: string) => boolean
-  readonly #refreshing = new Map<string, Promise<void>>()
-  readonly #refreshedAt = new Map<string, number>()
-
-  constructor(options: McpHostOptions) {
-    this.#credentials = options.credentials
-    this.#grants = options.grants
-    this.#appUrl = options.appUrl
-    this.#fetch = options.fetch
-    this.#added = options.added
-    this.#random = options.random ?? (() => crypto.randomUUID().replaceAll('-', ''))
-    this.#configured = new Set(options.servers.map((server) => server.serverId))
-    this.#skillsEnabled = (serverId) => options.skillsEnabled?.(serverId) === true
-    const added = (options.added?.list() ?? []).filter((server) => !this.#configured.has(server.serverId))
-    this.manager = new McpConnectionManager({
-      servers: [...options.servers, ...added.map(({ serverId, endpoint }) => ({ serverId, endpoint }))],
-      allows: (grant) => options.grants.allows(grant),
-      authorizeTool: async (call, approvalId, dispatch, authorize) => {
-        if (options.authorizeTool !== undefined) await options.authorizeTool(call, approvalId, dispatch, authorize)
-        else if (
-          call.caller !== 'human' &&
-          options.grants.policy({ serverId: call.serverId, capability: 'tool', name: call.name })?.askFirst === true
-        )
-          throw new Forbidden({ reason: 'Owner approval required for this exact call' })
-      },
-      skillsEnabled: (serverId) => this.#skillsEnabled(serverId),
-      ...(options.authorizeEvents === undefined ? {} : { authorizeEvents: options.authorizeEvents }),
-      auth: (server) => this.#authProvider(server),
-      fetch: options.fetch,
-      ...(options.report === undefined ? {} : { report: options.report }),
-    })
-  }
-
-  #authProvider(server: McpServerConfig): AuthProvider {
-    return {
-      token: () => this.#accessToken(server),
-      onUnauthorized: async () => {
-        if (Date.now() - (this.#refreshedAt.get(server.serverId) ?? 0) < RECENT_REFRESH_MS) return
-        const stale = (await this.#credentials.tokens(server.serverId))?.access_token
-        // Connected without sign-in and now refused: it wants sign-in. Nothing to refresh; the owner connects.
-        if (stale === OPEN_ACCESS.access_token) {
-          this.#credentials.markNeedsAuth(server.serverId, nowSeconds())
-          throw new NeedsAuthorization({ serverId: server.serverId })
-        }
-        await this.#refresh(server, stale)
-      },
-    }
-  }
-
-  async #accessToken(server: McpServerConfig): Promise<string> {
-    const serverId = server.serverId
-    const tokens = await this.#credentials.tokens(serverId)
-    if (tokens === undefined) throw new NeedsAuthorization({ serverId })
-    const expiresAt = this.#credentials.tokenExpiresAt(serverId)
-    if (expiresAt === undefined || expiresAt - REFRESH_SKEW_SECONDS > nowSeconds() || !tokens.refresh_token)
-      return tokens.access_token
-    await this.#refresh(server, tokens.access_token)
-    const fresh = await this.#credentials.tokens(serverId)
-    if (fresh === undefined) throw new NeedsAuthorization({ serverId })
-    return fresh.access_token
-  }
-
-  /** Single-flight refresh. If another refresh already replaced `stale`, there is nothing to do. */
-  #refresh(server: McpServerConfig, stale: string | undefined): Promise<void> {
-    const serverId = server.serverId
-    const running = this.#refreshing.get(serverId)
-    if (running !== undefined) return running
-    const refresh = (async () => {
-      const current = await this.#credentials.tokens(serverId)
-      if (current !== undefined && current.access_token !== stale) return
-      // Whether every request of this refresh got an answer the server meant (no network failure, no 5xx).
-      let reached = true
-      const fetchFn: FetchLike = async (input, init) => {
-        try {
-          const response = await this.#fetch(input, init)
-          if (response.status >= 500) reached = false
-          return response
-        } catch (error) {
-          reached = false
-          throw error
-        }
-      }
-      const provider = new StoredOAuthProvider(this.#credentials, serverId, this.#appUrl, {
-        kind: 'background',
-        reached: () => reached,
-      })
-      let result: 'AUTHORIZED' | 'REDIRECT'
-      try {
-        result = await auth(provider, { serverUrl: server.endpoint, fetchFn })
-      } catch (error) {
-        // A refresh the authorization server could not be reached for keeps the credentials: the next call tries again.
-        if (!isOAuthRejection(error)) throw mapMcpError(error, serverId)
-        this.#credentials.markNeedsAuth(serverId, nowSeconds())
-        throw new NeedsAuthorization({ serverId })
-      }
-      if (result !== 'AUTHORIZED') throw new NeedsAuthorization({ serverId })
-      this.#refreshedAt.set(serverId, Date.now())
-    })().finally(() => this.#refreshing.delete(serverId))
-    this.#refreshing.set(serverId, refresh)
-    return refresh
-  }
-
-  servers(): readonly ServerView[] {
-    const added = new Map((this.#added?.list() ?? []).map((server) => [server.serverId, server]))
-    return this.manager.servers.map((server) => {
-      const snapshot = this.manager.snapshot(server.serverId)
-      const name = snapshot?.serverInfo?.name
-      const claims = this.#configured.has(server.serverId) ? undefined : added.get(server.serverId)
-      return {
-        serverId: server.serverId,
-        endpoint: server.endpoint,
-        status: this.#credentials.status(server.serverId),
-        live: snapshot !== undefined,
-        skillsOffered: snapshot !== undefined && offersSkills(snapshot),
-        ...(snapshot !== undefined && offersEvents(snapshot) ? { eventsOffered: true } : {}),
-        skillsEnabled: this.#skillsEnabled(server.serverId),
-        ...(name === undefined ? {} : { serverName: name }),
-        source: claims === undefined ? 'config' : 'added',
-        ...(claims?.title === undefined ? {} : { title: claims.title }),
-        ...(claims?.description === undefined ? {} : { description: claims.description }),
-        ...(claims?.icon === undefined ? {} : { icon: claims.icon }),
-      }
-    })
-  }
-
-  /**
-   * Add a server by its endpoint: a public https URL not already offered, labelled from its server card. It starts
-   * disconnected; the owner connects it as any other. `source` records the registry entry it came from.
-   */
-  async addServer(raw: string, source?: ServerSource): Promise<ServerView> {
-    const added = this.#added
-    if (added === undefined) throw new InvalidInput({ reason: 'servers_fixed' })
-    const endpoint = userEndpoint(raw)
-    if (this.manager.servers.some((server) => server.endpoint === endpoint.href))
-      throw new InvalidInput({ reason: 'already_added' })
-    if (added.list().length >= MAX_ADDED_SERVERS) throw new InvalidInput({ reason: 'too_many_servers' })
-    const claims = await serverClaims(endpoint, this.#fetch)
-    const taken = new Set(this.manager.servers.map((server) => server.serverId))
-    const serverId = addedServerId(endpoint, taken, this.#random)
-    const server = { serverId, endpoint: endpoint.href }
-    added.add({ ...server, ...claims, ...(source === undefined ? {} : { source }) }, nowSeconds())
-    this.manager.add(server)
-    const view = this.servers().find((item) => item.serverId === serverId)
-    if (view === undefined) throw new Internal({ reason: 'added server missing' })
-    return view
-  }
-
-  /** Remove a server the owner added, with its credentials, grants and pending sign-ins. Configured ones stay. */
-  async removeServer(serverId: string): Promise<void> {
-    const added = this.#added
-    if (added === undefined || !added.list().some((server) => server.serverId === serverId))
-      throw new InvalidInput({ reason: this.#configured.has(serverId) ? 'configured_server' : 'unknown_server' })
-    await this.manager.remove(serverId)
-    added.remove(serverId)
-  }
-
-  /** Start (or silently renew) authorization. Returns the URL to send the owner's browser to, when one is needed. */
-  async beginConnect(serverId: string): Promise<{ readonly authorizationUrl?: string }> {
-    const server = this.manager.server(serverId)
-    await this.manager.close(serverId)
-    if (await this.#connectsOpenly(server)) return {}
-    const provider = new StoredOAuthProvider(this.#credentials, serverId, this.#appUrl, { kind: 'interactive' })
-    const scope = await offeredScope(server.endpoint, this.#fetch)
-    const result = await auth(provider, {
-      serverUrl: server.endpoint,
-      fetchFn: this.#fetch,
-      ...(scope === undefined ? {} : { scope }),
-    })
-    if (result === 'AUTHORIZED') return {}
-    if (provider.authorizationUrl === undefined) throw new Internal({ reason: 'authorization URL missing' })
-    return { authorizationUrl: provider.authorizationUrl.href }
-  }
-
-  /**
-   * Many servers need no sign-in (public documentation servers, for example), some only offer it. Try the server with
-   * an empty token, which the transport leaves out: if it answers discovery, it is connected. If it refuses, the
-   * OAuth flow runs. A server that cannot be reached is that failure: no sign-in is started for it. A server that
-   * later demands sign-in is marked needs_auth by the refused refresh, as any other.
-   */
-  async #connectsOpenly(server: McpServerConfig): Promise<boolean> {
-    await this.#credentials.saveTokens(server.serverId, OPEN_ACCESS, nowSeconds())
-    try {
-      await this.manager.connect(server.serverId)
-      return true
-    } catch (error) {
-      await this.manager.close(server.serverId)
-      this.#credentials.invalidate(server.serverId, 'tokens', nowSeconds())
-      if (error instanceof UpstreamMcp && UNREACHABLE.has(error.reason)) throw error
-      return false
-    }
-  }
-
-  /** Complete the authorization the browser was redirected back from. The `state` is single-use. */
-  async finishConnect(state: string, code: string, issuer: string | undefined): Promise<string> {
-    const pending = await this.#credentials.takePending(state, nowSeconds())
-    if (pending === undefined) throw new InvalidInput({ reason: 'unknown or expired authorization state' })
-    const server = this.manager.server(pending.serverId)
-    const provider = new StoredOAuthProvider(this.#credentials, server.serverId, this.#appUrl, {
-      kind: 'callback',
-      codeVerifier: pending.codeVerifier,
-    })
-    const result = await auth(provider, {
-      serverUrl: server.endpoint,
-      authorizationCode: code,
-      ...(issuer === undefined ? {} : { iss: issuer }),
-      fetchFn: this.#fetch,
-    })
-    if (result !== 'AUTHORIZED') throw new NeedsAuthorization({ serverId: server.serverId })
-    return server.serverId
-  }
-
-  /** Forget the server's credentials and close its connection. Grants stay, so a reconnect keeps them. */
-  async disconnect(serverId: string): Promise<void> {
-    this.manager.server(serverId)
-    await this.manager.close(serverId)
-    this.#credentials.remove(serverId)
-  }
-
-  async tools(serverId: string, refresh: boolean): Promise<readonly ToolView[]> {
-    const snapshot = refresh ? await this.manager.reconnect(serverId) : await this.manager.connect(serverId)
-    return snapshot.tools.map((tool) => this.#toolView(serverId, tool))
-  }
-
-  #toolView(serverId: string, tool: Tool): ToolView {
-    const appResource = toolAppResource(tool)
-    return {
-      name: tool.name,
-      ...(tool.title === undefined ? {} : { title: tool.title }),
-      ...(tool.description === undefined ? {} : { description: tool.description }),
-      ...(tool.annotations?.readOnlyHint === undefined ? {} : { readOnlyHint: tool.annotations.readOnlyHint }),
-      ...(tool.annotations?.destructiveHint === undefined ? {} : { destructiveHint: tool.annotations.destructiveHint }),
-      modelVisible: toolOffered(tool, 'model'),
-      ...(appResource === undefined ? {} : { appResource }),
-      granted: this.#grants.allows({ serverId, capability: 'tool', name: tool.name }),
-      askFirst: this.grantPolicy(serverId, tool.name)?.askFirst ?? false,
-    }
-  }
-
-  grants(): readonly Grant[] {
-    return this.#grants.list()
-  }
-
-  grantPolicy(serverId: string, name: string): { readonly askFirst: boolean; readonly version: string } | undefined {
-    return this.#grants.policy({ serverId, capability: 'tool', name })
-  }
-
-  setAskFirst(serverId: string, name: string, enabled: boolean): void {
-    this.#grants.setAskFirst({ serverId, capability: 'tool', name }, enabled)
-  }
-
-  /**
-   * Grant or revoke an App as a whole: exactly the discovered tools that declare `uri` as their App (including the
-   * ones only the App may call), and the App resource itself. Nothing else on the server changes.
-   */
-  async setAppGrant(serverId: string, uri: string, allowed: boolean): Promise<readonly Grant[]> {
-    const snapshot = await this.manager.connect(serverId)
-    const tools = snapshot.tools.filter((tool) => toolAppResource(tool) === uri)
-    if (tools.length === 0) throw new NotFound({ what: `app ${uri}` })
-    const now = nowSeconds()
-    for (const tool of tools) this.#grants.set({ serverId, capability: 'tool', name: tool.name }, allowed, now)
-    this.#grants.set({ serverId, capability: 'resource', name: uri }, allowed, now)
-    return this.#grants.list()
-  }
-
-  /** Grant or revoke one discovered tool. Its `ui://` App resource follows the tools that use it. */
-  async setToolGrant(serverId: string, name: string, allowed: boolean): Promise<readonly Grant[]> {
-    const snapshot = await this.manager.connect(serverId)
-    const tool = snapshot.tools.find((item) => item.name === name)
-    if (tool === undefined) throw new NotFound({ what: `tool ${name}` })
-    const now = nowSeconds()
-    this.#grants.set({ serverId, capability: 'tool', name }, allowed, now)
-    const appResource = toolAppResource(tool)
-    if (appResource !== undefined) {
+/** Grants or revokes one discovered tool; its `ui://` App resource follows the tools that use it. */
+const setTool = (grants: Grants, manager: McpManager, tool: { readonly serverId: string; readonly name: string }) =>
+  Effect.fnUntraced(function* (allowed: boolean) {
+    const { serverId, name } = tool
+    const snapshot = yield* manager.connect(serverId)
+    const found = snapshot.tools.find((item) => item.name === name)
+    if (found === undefined) return yield* new NotFound({ what: `tool ${name}` })
+    const now = yield* epochSeconds
+    return yield* Effect.sync(() => {
+      grants.set({ serverId, capability: 'tool', name }, allowed, now)
+      const appResource = toolAppResource(found)
+      if (appResource === undefined) return grants.list()
       const stillUsed = snapshot.tools.some(
         (other) =>
-          toolAppResource(other) === appResource &&
-          this.#grants.allows({ serverId, capability: 'tool', name: other.name }),
+          toolAppResource(other) === appResource && grants.allows({ serverId, capability: 'tool', name: other.name }),
       )
-      this.#grants.set({ serverId, capability: 'resource', name: appResource }, stillUsed, now)
-    }
-    return this.#grants.list()
-  }
-}
+      grants.set({ serverId, capability: 'resource', name: appResource }, stillUsed, now)
+      return grants.list()
+    })
+  })
 
 /**
- * The agent's one MCP host, made at the start (`layers/mcp.ts`) and shared by the layers that wire it; programs reach
- * it through the `mcp/service.ts` services.
+ * Grants or revokes an App as a whole: exactly the discovered tools that declare `uri` as their App (including the
+ * ones only the App may call), and the App resource itself. Nothing else on the server changes.
  */
-export class McpHostInstance extends Context.Service<McpHostInstance, McpHost>()('goblin/mcp/McpHostInstance') {}
+const setApp = (grants: Grants, manager: McpManager, app: { readonly serverId: string; readonly uri: string }) =>
+  Effect.fnUntraced(function* (allowed: boolean) {
+    const { serverId, uri } = app
+    const snapshot = yield* manager.connect(serverId)
+    const tools = snapshot.tools.filter((tool) => toolAppResource(tool) === uri)
+    if (tools.length === 0) return yield* new NotFound({ what: `app ${uri}` })
+    const now = yield* epochSeconds
+    return yield* Effect.sync(() => {
+      for (const tool of tools) grants.set({ serverId, capability: 'tool', name: tool.name }, allowed, now)
+      grants.set({ serverId, capability: 'resource', name: uri }, allowed, now)
+      return grants.list()
+    })
+  })
+
+/** The owner's exact grants over the connections' discovered tools. */
+const hostGrants = (grants: Grants, manager: McpManager): McpGrants['Service'] =>
+  McpGrants.of({
+    list: Effect.fn('McpGrants.list')(function* () {
+      return yield* Effect.sync(() => grants.list())
+    }),
+    policy: Effect.fn('McpGrants.policy')(function* (serverId: string, name: string) {
+      return yield* Effect.sync(() => Option.fromNullishOr(grants.policy({ serverId, capability: 'tool', name })))
+    }),
+    setTool: Effect.fn('McpGrants.setTool')(function* (serverId: string, name: string, allowed: boolean) {
+      return yield* setTool(grants, manager, { serverId, name })(allowed)
+    }),
+    setAskFirst: Effect.fn('McpGrants.setAskFirst')(function* (serverId: string, name: string, enabled: boolean) {
+      return yield* attemptSync(() => {
+        grants.setAskFirst({ serverId, capability: 'tool', name }, enabled)
+        return grants.list()
+      })
+    }),
+    setApp: Effect.fn('McpGrants.setApp')(function* (serverId: string, uri: string, allowed: boolean) {
+      return yield* setApp(grants, manager, { serverId, uri })(allowed)
+    }),
+  })
+
+/** Without a held-call decision, an ask-first tool's call is refused to all but the owner. */
+const askFirstRefused =
+  (grants: Grants): NonNullable<McpManagerOptions['authorizeTool']> =>
+  (call) =>
+    call.caller !== 'human' &&
+    grants.policy({ serverId: call.serverId, capability: 'tool', name: call.name })?.askFirst === true
+      ? Effect.fail(new Forbidden({ reason: 'Owner approval required for this exact call' }))
+      : Effect.void
+
+/**
+ * Outbound MCP for the resident agent: the connections (mcp/manager.ts) with their OAuth tokens (mcp/auth.ts), the
+ * owner's servers (mcp/owner-servers.ts) and grants, all over the stores in `options`. Made once, by the agent's start
+ * (layers/mcp.ts).
+ */
+export const mcpHost = (
+  options: McpHostOptions,
+): Layer.Layer<McpConnections | McpServers | McpGrants, never, SingleFlight> =>
+  Layer.effectContext(
+    Effect.gen(function* () {
+      const { credentials, grants } = options
+      const skillsEnabled = (serverId: string) => options.skillsEnabled?.(serverId) === true
+      const configured: ReadonlySet<string> = new Set(options.servers.map((server) => server.serverId))
+      const added = (options.added?.list() ?? []).filter((server) => !configured.has(server.serverId))
+      const manager = yield* makeManager({
+        servers: [...options.servers, ...added.map(({ serverId, endpoint }) => ({ serverId, endpoint }))],
+        allows: (grant) => grants.allows(grant),
+        authorizeTool: options.authorizeTool ?? askFirstRefused(grants),
+        skillsEnabled,
+        auth: yield* mcpAuth({ credentials, appUrl: options.appUrl, fetch: options.fetch }),
+        fetch: options.fetch,
+        ...(options.report === undefined ? {} : { report: options.report }),
+      }).pipe(Effect.orDie)
+      const servers = ownerServers({
+        manager,
+        configured,
+        credentials,
+        grants,
+        appUrl: options.appUrl,
+        fetch: options.fetch,
+        registries: options.registries,
+        ...(options.added === undefined ? {} : { added: options.added }),
+        random: options.random ?? (() => crypto.randomUUID().replaceAll('-', '')),
+        skillsEnabled,
+      })
+      return Context.mergeAll(
+        McpConnections.context(manager),
+        McpServers.context(servers),
+        McpGrants.context(hostGrants(grants, manager)),
+      )
+    }),
+  )

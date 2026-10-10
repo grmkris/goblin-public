@@ -1,11 +1,14 @@
 import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
+import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { McpConnectionManager, offersEvents } from '../../src/mcp/connection.ts'
+import { GrantDenied } from '../../src/http/errors.ts'
+import { offersEvents } from '../../src/mcp/remote.ts'
 import { EventsListResult } from '../../src/mcp/events/protocol.ts'
 import { decodeEnvelope, sign, verifyWebhook } from '../../src/mcp/events/webhook.ts'
 import { eventsHookToken, eventsHookTokenValid } from '../../src/mcp/events/route-token.ts'
 import { EventsFixture } from './events-fixture.ts'
+import { managerOf } from './manager.ts'
 
 const SECRET = `whsec_${Buffer.from(Array.from({ length: 32 }, (_, i) => i + 1)).toString('base64')}`
 const BODY = new TextEncoder().encode(
@@ -65,7 +68,7 @@ describe('actual MCP Events connection manager (unit)', () => {
     const fixture = new EventsFixture()
     let allowed = false
     let calls = 0
-    const manager = new McpConnectionManager({
+    const { connections, dispose } = managerOf({
       servers: [{ serverId: 'fixture', endpoint: 'https://events.test/mcp' }],
       allows: () => false,
       auth: () => ({ token: async () => 'fixture-bearer' }),
@@ -73,36 +76,26 @@ describe('actual MCP Events connection manager (unit)', () => {
         calls++
         return fixture.fetch(input, init)
       },
-      authorizeEvents: () => {
-        if (!allowed) throw new Error('ungranted')
-      },
     })
+    const authorize = Effect.suspend(() =>
+      allowed ? Effect.void : Effect.fail(new GrantDenied({ serverId: 'fixture', name: 'message.received' })),
+    )
     try {
-      await expect(
-        manager.eventRequest(
-          'fixture',
-          { name: 'message.received', argumentsJson: '{}' },
-          'events/list',
-          {},
-          EventsListResult,
-        ),
-      ).rejects.toThrow()
+      await expect(connections.events('fixture', 'events/list', {}, EventsListResult, authorize)).rejects.toMatchObject(
+        {
+          _tag: 'GrantDenied',
+        },
+      )
       expect(calls).toBe(0)
       allowed = true
-      const snapshot = await manager.connect('fixture')
+      const snapshot = await connections.connect('fixture')
       expect(offersEvents(snapshot)).toBe(true)
       expect(snapshot.capabilities.events).toEqual({})
-      const catalog = await manager.eventRequest(
-        'fixture',
-        { name: 'message.received', argumentsJson: '{}' },
-        'events/list',
-        {},
-        EventsListResult,
-      )
+      const answer = await connections.events('fixture', 'events/list', {}, EventsListResult, authorize)
+      const catalog = Schema.decodeUnknownSync(EventsListResult)(answer)
       expect(catalog.events.map((e) => e.name)).toContain('question.answered')
-      expect(Schema.is(EventsListResult)(catalog)).toBe(true)
     } finally {
-      await manager.closeAll()
+      await dispose()
     }
   })
 })

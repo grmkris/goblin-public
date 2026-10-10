@@ -39,9 +39,5 @@ export const SkillsListResult = Schema.Struct({
 })
 export type SkillsListResult = typeof SkillsListResult.Type
 
-export const SkillsGetResult = Schema.Struct({ skill: SkillEntry, ...Cache })
-export type SkillsGetResult = typeof SkillsGetResult.Type
-
 /** For `client.request(..., schema)`: the SDK validates custom-method results with any Standard Schema. */
 export const skillsListStandard = Schema.toStandardSchemaV1(SkillsListResult)
-export const skillsGetStandard = Schema.toStandardSchemaV1(SkillsGetResult)

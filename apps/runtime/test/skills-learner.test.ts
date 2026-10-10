@@ -6,13 +6,12 @@ import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import * as TestClock from 'effect/testing/TestClock'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { connectionsOver } from '../src/layers/mcp.ts'
-import { McpHost } from '../src/mcp/host.ts'
+import { mcpHost } from '../src/mcp/host.ts'
 import { type LearnOutcome, logLearnOutcome, makeLearner } from '../src/skills/learner.ts'
 import { skillLearningExtension } from '../src/pi/skills.ts'
 import type { RunProgram } from '../src/pi/resident-mcp.ts'
 import { Budget } from '../src/budget.ts'
-import { McpConnections, McpGrants, Resident } from '../src/mcp/service.ts'
+import { Resident } from '../src/mcp/service.ts'
 import type { AppError } from '../src/http/errors.ts'
 import { SingleFlight } from '../src/observability/single-flight.ts'
 import { PiSessions } from '../src/pi/sessions.ts'
@@ -20,7 +19,7 @@ import { knowledgeOver } from './knowledge-layer.ts'
 import { makeSkills } from '../src/skills/library.ts'
 import { Learner } from '../src/skills/service.ts'
 import { SKILLS_EXTENSION } from '../src/skills/protocol.ts'
-import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
+import { MemoryCredentials, MemoryGrants, MemoryRegistries } from './mcp/memory.ts'
 import { MemoryDraftLog, MemorySkillState } from './skills-memory.ts'
 import { lowLevelServer } from './mcp/low-level-server.ts'
 import { servicesOf } from './mcp/runtime.ts'
@@ -77,17 +76,18 @@ const state = new MemorySkillState()
 const credentials = new MemoryCredentials()
 await credentials.saveTokens('lib', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
 const grants = new MemoryGrants()
-const host = new McpHost({
-  servers: [{ serverId: 'lib', endpoint: 'https://library.test/mcp' }],
-  credentials,
-  grants,
-  skillsEnabled: (serverId) => state.enabled(serverId),
-  appUrl: 'https://goblin.test',
-  fetch: async (input, init) => skills.fetch(new Request(input, init)),
-})
 let drafts = new MemoryDraftLog()
-/** The learner over the host's connections and the owner's grants, on a test clock at 10,000,000 ms. */
+/** The learner over an MCP host for the library server, on a test clock at 10,000,000 ms. */
 const learnerAt = () => {
+  const host = mcpHost({
+    servers: [{ serverId: 'lib', endpoint: 'https://library.test/mcp' }],
+    credentials,
+    grants,
+    registries: new MemoryRegistries(),
+    skillsEnabled: (serverId) => state.enabled(serverId),
+    appUrl: 'https://goblin.test',
+    fetch: async (input, init) => skills.fetch(new Request(input, init)),
+  })
   const services = servicesOf(
     Layer.effect(
       Learner,
@@ -109,11 +109,7 @@ const learnerAt = () => {
     ).pipe(
       Layer.provideMerge(
         Layer.mergeAll(
-          Layer.succeed(McpConnections, connectionsOver(host.manager)),
-          Layer.mock(McpGrants)({
-            policy: (serverId: string, name: string) =>
-              Effect.sync(() => Option.fromNullishOr(grants.policy({ serverId, capability: 'tool', name }))),
-          }),
+          host.pipe(Layer.provide(SingleFlight.layer)),
           Layer.mock(PiSessions)({
             // SAFETY: the learner only reads `entries()` of the conversation, which this fixture answers.
             conversation: () => Effect.succeed(Option.some(piConversation as never)),
@@ -168,7 +164,6 @@ beforeEach(() => {
 })
 afterEach(async () => {
   await services.dispose()
-  await host.manager.closeAll()
 })
 
 describe('the skill learner (unit)', () => {

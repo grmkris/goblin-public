@@ -1,14 +1,14 @@
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
-import { McpConnectionManager } from '../../src/mcp/connection.ts'
 import { createMcpHandler } from '@modelcontextprotocol/server'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { connectionsOver } from '../../src/layers/mcp.ts'
+import { makeManager } from '../../src/mcp/manager.ts'
 import { McpConnections, McpGrants } from '../../src/mcp/service.ts'
+import type { McpManagerOptions } from '../../src/mcp/types.ts'
 import { SingleFlight } from '../../src/observability/single-flight.ts'
 import { PiSessions } from '../../src/pi/sessions.ts'
 import { AgentInput, type AgentInputs } from '../../src/runtime/input.ts'
@@ -34,11 +34,15 @@ import { servicesOf } from '../mcp/runtime.ts'
 const draftTool = (serverId: string, name: string) =>
   serverId === 'myskills' && (name === 'skill_draft' || name === 'skill_draft_status')
 
-/** The skills service over `manager`'s connections, made as the agent's start makes it. */
-export const skillsOver = (manager: McpConnectionManager, state: SqliteSkillState) =>
+/** The connections over `options`, made as the host makes them. */
+export const connectionsLayer = (options: McpManagerOptions) =>
+  Layer.effect(McpConnections, Effect.orDie(makeManager(options))).pipe(Layer.provide(SingleFlight.layer))
+
+/** The skills service over connections made from `options`, as the agent's start makes it. */
+export const skillsOver = (options: McpManagerOptions, state: SqliteSkillState) =>
   servicesOf(
     Layer.effect(Skills, makeSkills(state)).pipe(
-      Layer.provide(Layer.mergeAll(Layer.succeed(McpConnections, connectionsOver(manager)), SingleFlight.layer)),
+      Layer.provide(Layer.mergeAll(connectionsLayer(options), SingleFlight.layer)),
     ),
   )
 
@@ -76,13 +80,13 @@ export async function skillsCacheProbe(storage: DurableObjectStorage) {
     })
     return server
   })
-  const manager = new McpConnectionManager({
+  const manager: McpManagerOptions = {
     servers: [{ serverId: 'skills', endpoint: 'https://skills.test/mcp' }],
     skillsEnabled: (serverId) => state.enabled(serverId),
     allows: () => false,
     auth: () => ({ token: async () => '', onUnauthorized: async () => undefined }),
     fetch: (input, init) => handler.fetch(new Request(input, init)),
-  })
+  }
   state.setEnabled('skills', true, 1)
   const { run, dispose } = skillsOver(manager, state)
   const library = await run(Skills)
@@ -96,7 +100,6 @@ export async function skillsCacheProbe(storage: DurableObjectStorage) {
   const repaired = state.file(digest)
   await run(library.activate('cache-session', 'skills:cache-test'))
   await dispose()
-  await manager.closeAll()
   return {
     firstBody: first.body,
     secondBody: second.body,
@@ -115,7 +118,7 @@ export async function skillsPersistedRead(storage: DurableObjectStorage) {
   const resource = activation.entry.resources[0]
   if (resource === undefined) throw new Error('fixture manifest missing')
   let networkCalls = 0
-  const manager = new McpConnectionManager({
+  const manager: McpManagerOptions = {
     servers: [{ serverId: 'skills', endpoint: 'https://skills.test/mcp' }],
     skillsEnabled: (serverId) => state.enabled(serverId),
     allows: () => false,
@@ -124,14 +127,13 @@ export async function skillsPersistedRead(storage: DurableObjectStorage) {
       networkCalls += 1
       throw new Error('restart read must use verified persisted bytes')
     },
-  })
+  }
   const { run, dispose } = skillsOver(manager, state)
   const file = await run(
     Effect.flatMap(Skills, (library) => library.read('cache-session', 'skills:cache-test', 'SKILL.md')),
   )
   const cached = state.file(resource.digest)
   await dispose()
-  await manager.closeAll()
   return {
     activation,
     digest: resource.digest,
@@ -188,14 +190,13 @@ export async function skillsLearnerRejectionProbe(storage: DurableObjectStorage,
     })
     return server
   })
-  const manager = new McpConnectionManager({
+  const manager: McpManagerOptions = {
     servers: [{ serverId: 'myskills', endpoint: 'https://myskills.test/mcp' }],
     skillsEnabled: (serverId) => state.enabled(serverId),
-    allows: ({ serverId, capability, name }) =>
-      serverId === 'myskills' && capability === 'tool' && (name === 'skill_draft' || name === 'skill_draft_status'),
+    allows: ({ serverId, capability, name }) => capability === 'tool' && draftTool(serverId, name),
     auth: () => ({ token: async () => '', onUnauthorized: async () => undefined }),
     fetch: (input, init) => handler.fetch(new Request(input, init)),
-  })
+  }
   state.setEnabled('myskills', true, 1)
   const receipt = await harness.submit('Run the checksum procedure.', {
     operationId: 'checksum-procedure',
@@ -233,7 +234,7 @@ export async function skillsLearnerRejectionProbe(storage: DurableObjectStorage,
     ).pipe(
       Layer.provide(
         Layer.mergeAll(
-          Layer.succeed(McpConnections, connectionsOver(manager)),
+          connectionsLayer(manager),
           Layer.mock(McpGrants)({
             policy: (serverId: string, name: string) =>
               Effect.succeed(
@@ -260,6 +261,5 @@ export async function skillsLearnerRejectionProbe(storage: DurableObjectStorage,
   const second = await run(learner.consider(conversationId(receipt.session)))
   const row = db.select({ status: appSkillDrafts.status }).from(appSkillDrafts).all()
   await dispose()
-  await manager.closeAll()
   return { first, second, submitted, statusCalls, row }
 }

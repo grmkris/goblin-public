@@ -6,6 +6,7 @@ import { createRegistry, defineExtension, defineTool, hook, Harness, ToolTask } 
 import type { JsonObject } from '@earendil-works/pi-durable'
 import { MemoryStorage } from '@earendil-works/pi-durable/storage/memory'
 import { RunAttribute, type RunEvent } from '@goblin/contracts/telemetry'
+import * as Effect from 'effect/Effect'
 import { describe, expect, it, vi } from 'vitest'
 import { BACKGROUND } from '../src/pi/context.ts'
 import { CollectedRuns, RunTelemetry, boundAttributes, type RunSink } from '../src/telemetry/events.ts'
@@ -14,7 +15,8 @@ import { PiRunRecorder, sourceOf } from '../src/telemetry/pi.ts'
 import { auxReporter, mcpReporter } from '../src/telemetry/report.ts'
 import { CheapModel } from '../src/memory/model.ts'
 import { MODEL_PROVIDER } from '../src/pi/model.ts'
-import { timed } from '../src/mcp/log.ts'
+import { type StepReport, timed } from '../src/mcp/log.ts'
+import type { McpStep } from '../src/telemetry/report.ts'
 import { grantRequiredResult } from '../src/mcp/extension.ts'
 import { NeedsAuthorization, NotFound, UpstreamMcp } from '../src/http/errors.ts'
 
@@ -156,6 +158,10 @@ async function turn(replies: Reply[], input = 'hello', operationId = 'op-1', ext
 }
 
 const ofKind = (events: readonly RunEvent[], kind: RunEvent['kind']) => events.filter((event) => event.kind === kind)
+/** `work` as one remote MCP step, reported to `report` when it ends; its value, or its own rejection. */
+const step = <A>(mcpStep: McpStep, work: () => Promise<A>, report: StepReport) =>
+  Effect.runPromise(Effect.promise(work).pipe(timed(mcpStep, report)))
+
 const throwingReport = () => {
   throw new Error('PRIVATE_CALLBACK_ERROR')
 }
@@ -431,7 +437,7 @@ describe('run telemetry outside Pi (unit)', () => {
     const collected = new CollectedRuns()
     const report = mcpReporter(new RunTelemetry([collected]))
     await expect(
-      timed(
+      step(
         { step: 'connect', serverId: 'myplan' },
         () => Promise.reject(new NeedsAuthorization({ serverId: 'myplan' })),
         report,
@@ -441,10 +447,10 @@ describe('run telemetry outside Pi (unit)', () => {
       { status: 'blocked', attributes: { [RunAttribute.errorType]: 'NeedsAuthorization' } },
     ])
     let calls = 0
-    await expect(timed({ step: 'call', serverId: 'myplan' }, async () => ++calls, throwingReport)).resolves.toBe(1)
+    await expect(step({ step: 'call', serverId: 'myplan' }, async () => ++calls, throwingReport)).resolves.toBe(1)
     const original = new NotFound({ what: 'fixture' })
     await expect(
-      timed({ step: 'call', serverId: 'myplan' }, () => Promise.reject(original), throwingReport),
+      step({ step: 'call', serverId: 'myplan' }, () => Promise.reject(original), throwingReport),
     ).rejects.toBe(original)
     expect(calls).toBe(1)
   })
@@ -485,9 +491,9 @@ describe('run telemetry outside Pi (unit)', () => {
   it('records each remote MCP step, and a failed one by its tag', async () => {
     const collected = new CollectedRuns()
     const report = mcpReporter(new RunTelemetry([collected]))
-    await timed({ step: 'call', serverId: 'myplan', tool: 'notes_search' }, async () => 'ok', report)
+    await step({ step: 'call', serverId: 'myplan', tool: 'notes_search' }, async () => 'ok', report)
     await expect(
-      timed(
+      step(
         { step: 'connect', serverId: 'myplan' },
         () => Promise.reject(new UpstreamMcp({ serverId: 'myplan', reason: 'timeout' })),
         report,

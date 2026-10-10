@@ -2,7 +2,7 @@ import type { HomeEdit } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import { Apps } from '../apps/service.ts'
 import { InvalidInput } from '../http/errors.ts'
-import { toolAppResource } from '../mcp/connection.ts'
+import { toolAppResource } from '../mcp/remote.ts'
 import { McpConnections, requireResident } from '../mcp/service.ts'
 import { Home } from './service.ts'
 
